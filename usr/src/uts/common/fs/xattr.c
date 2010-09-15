@@ -54,14 +54,8 @@ typedef struct {
 
 typedef struct {
 	gfs_dir_t	xattr_gfs_private;
-	vnode_t		*xattr_realvp;  /* Only used for VOP_REALVP */
+	vnode_t		*xattr_realvp;
 } xattr_dir_t;
-
-/*
- * xattr_realvp is only used for VOP_REALVP, this is so we don't
- * keep an unnecessary hold on the *real* xattr dir unless we have
- * no other choice.
- */
 
 /* ARGSUSED */
 static int
@@ -875,33 +869,34 @@ xattr_copy(vnode_t *sdvp, char *snm, vnode_t *tdvp, char *tnm,
 	return (error);
 }
 
+/*
+ * Note: This does NOT take a hold on the returned real_vp, which is OK
+ * because xattr_realvp is filled in on lookup of the dvp passed in here,
+ * and the lifetime of the real_vp completely covers the lifetime of *dvp.
+ * This DOES however imply that callers should not touch real_vp after a
+ * VN_RELE(dvp) because dvp is what (indirectly) "holds" real_vp.
+ */
 static int
 xattr_dir_realdir(vnode_t *dvp, vnode_t **realdvp, int lookup_flags,
     cred_t *cr, caller_context_t *ct)
 {
-	vnode_t *pvp;
+	xattr_dir_t *xattr_dir;
 	int error;
-	struct pathname pn;
-	char *startnm = "";
 
 	*realdvp = NULL;
 
-	pvp = gfs_file_parent(dvp);
+	if (dvp->v_type != VDIR)
+		return (EINVAL);
 
-	error = pn_get(startnm, UIO_SYSSPACE, &pn);
-	if (error) {
-		VN_RELE(pvp);
-		return (error);
-	}
+	mutex_enter(&dvp->v_lock);
+	xattr_dir = dvp->v_data;
+	*realdvp = xattr_dir->xattr_realvp;
+	mutex_exit(&dvp->v_lock);
 
-	/*
-	 * Set the LOOKUP_HAVE_SYSATTR_DIR flag so that we don't get into an
-	 * infinite loop with fop_lookup calling back to xattr_dir_lookup.
-	 */
-	lookup_flags |= LOOKUP_HAVE_SYSATTR_DIR;
-	error = VOP_LOOKUP(pvp, startnm, realdvp, &pn, lookup_flags,
-	    rootvp, cr, ct, NULL, NULL);
-	pn_free(&pn);
+	if (*realdvp == NULL)
+		error = ENOENT;
+	else
+		error = 0;
 
 	return (error);
 }
@@ -910,19 +905,49 @@ xattr_dir_realdir(vnode_t *dvp, vnode_t **realdvp, int lookup_flags,
 static int
 xattr_dir_open(vnode_t **vpp, int flags, cred_t *cr, caller_context_t *ct)
 {
+	vnode_t *realvp;
+	int error;
+
 	if (flags & FWRITE) {
 		return (EACCES);
 	}
 
-	return (0);
+	/*
+	 * If there is a real extended attribute directory,
+	 * let the underlying FS see the VOP_OPEN call;
+	 * otherwise just return zero.
+	 */
+	error = xattr_dir_realdir(*vpp, &realvp, LOOKUP_XATTR, cr, ct);
+	if (error == 0) {
+		error = VOP_OPEN(&realvp, flags, cr, ct);
+	} else {
+		error = 0;
+	}
+
+	return (error);
 }
 
 /* ARGSUSED */
 static int
-xattr_dir_close(vnode_t *vpp, int flags, int count, offset_t off, cred_t *cr,
+xattr_dir_close(vnode_t *vp, int flags, int count, offset_t off, cred_t *cr,
     caller_context_t *ct)
 {
-	return (0);
+	vnode_t *realvp;
+	int error;
+
+	/*
+	 * If there is a real extended attribute directory,
+	 * let the underlying FS see the VOP_CLOSE call;
+	 * otherwise just return zero.
+	 */
+	error = xattr_dir_realdir(vp, &realvp, LOOKUP_XATTR, cr, ct);
+	if (error == 0) {
+		error = VOP_CLOSE(realvp, flags, count, off, cr, ct);
+	} else {
+		error = 0;
+	}
+
+	return (error);
 }
 
 /*
@@ -946,7 +971,6 @@ xattr_dir_getattr(vnode_t *vp, vattr_t *vap, int flags, cred_t *cr,
 	error = xattr_dir_realdir(vp, &pvp, LOOKUP_XATTR, cr, ct);
 	if (error == 0) {
 		error = VOP_GETATTR(pvp, vap, 0, cr, ct);
-		VN_RELE(pvp);
 		if (error) {
 			return (error);
 		}
@@ -1016,11 +1040,10 @@ xattr_dir_setattr(vnode_t *vp, vattr_t *vap, int flags, cred_t *cr,
 	error = xattr_dir_realdir(vp, &realvp, LOOKUP_XATTR, cr, ct);
 	if (error == 0) {
 		error = VOP_SETATTR(realvp, vap, flags, cr, ct);
-		VN_RELE(realvp);
-	}
-	if (error == ENOENT) {
+	} else {
 		error = 0;
 	}
+
 	return (error);
 }
 
@@ -1036,18 +1059,18 @@ xattr_dir_access(vnode_t *vp, int mode, int flags, cred_t *cr,
 		return (EACCES);
 	}
 
-	error = xattr_dir_realdir(vp, &realvp, LOOKUP_XATTR, cr, ct);
-
-	if (realvp)
-		VN_RELE(realvp);
-
 	/*
-	 * No real xattr dir isn't an error
-	 * an error of EINVAL indicates attributes on attributes
-	 * are not supported.  In that case just allow access to the
-	 * transient directory.
+	 * If there is a real xattr directory, check access there;
+	 * otherwise just return success.
 	 */
-	return ((error == ENOENT || error == EINVAL) ? 0 : error);
+	error = xattr_dir_realdir(vp, &realvp, LOOKUP_XATTR, cr, ct);
+	if (error == 0) {
+		error = VOP_ACCESS(realvp, mode, flags, cr, ct);
+	} else {
+		error = 0;
+	}
+
+	return (error);
 }
 
 static int
@@ -1072,7 +1095,6 @@ xattr_dir_create(vnode_t *dvp, char *name, vattr_t *vap, vcexcl_t excl,
 	if (error == 0) {
 		error = VOP_CREATE(pvp, name, vap, excl, mode, vpp, cr, flag,
 		    ct, vsecp);
-		VN_RELE(pvp);
 	}
 	return (error);
 }
@@ -1091,7 +1113,6 @@ xattr_dir_remove(vnode_t *dvp, char *name, cred_t *cr, caller_context_t *ct,
 	error = xattr_dir_realdir(dvp, &pvp, LOOKUP_XATTR, cr, ct);
 	if (error == 0) {
 		error = VOP_REMOVE(pvp, name, cr, ct, flags);
-		VN_RELE(pvp);
 	}
 	return (error);
 }
@@ -1110,7 +1131,6 @@ xattr_dir_link(vnode_t *tdvp, vnode_t *svp, char *name, cred_t *cr,
 	error = xattr_dir_realdir(tdvp, &pvp, LOOKUP_XATTR, cr, ct);
 	if (error == 0) {
 		error = VOP_LINK(pvp, svp, name, cr, ct, flags);
-		VN_RELE(pvp);
 	}
 	return (error);
 }
@@ -1121,7 +1141,6 @@ xattr_dir_rename(vnode_t *sdvp, char *snm, vnode_t *tdvp, char *tnm,
 {
 	vnode_t *spvp, *tpvp;
 	int error;
-	int held_tgt;
 
 	if (is_sattr_name(snm) || is_sattr_name(tnm))
 		return (xattr_copy(sdvp, snm, tdvp, tnm, cr, ct));
@@ -1140,8 +1159,6 @@ xattr_dir_rename(vnode_t *sdvp, char *snm, vnode_t *tdvp, char *tnm,
 		 * underlying unnamed source and target dir will be the same.
 		 */
 		tpvp = spvp;
-		VN_HOLD(tpvp);
-		held_tgt = 1;
 	} else if (tdvp->v_flag & V_SYSATTR) {
 		/*
 		 * If the target dir is a different GFS directory,
@@ -1149,24 +1166,16 @@ xattr_dir_rename(vnode_t *sdvp, char *snm, vnode_t *tdvp, char *tnm,
 		 */
 		error = xattr_dir_realdir(tdvp, &tpvp, LOOKUP_XATTR, cr, ct);
 		if (error) {
-			VN_RELE(spvp);
 			return (error);
 		}
-		held_tgt = 1;
 	} else {
 		/*
 		 * Target dir is outside of GFS, pass it on through.
 		 */
 		tpvp = tdvp;
-		held_tgt = 0;
 	}
 
 	error = VOP_RENAME(spvp, snm, tpvp, tnm, cr, ct, flags);
-
-	if (held_tgt) {
-		VN_RELE(tpvp);
-	}
-	VN_RELE(spvp);
 
 	return (error);
 }
@@ -1247,8 +1256,6 @@ xattr_dir_readdir(vnode_t *dvp, uio_t *uiop, cred_t *cr, int *eofp,
 			    uiop, pino, ino, flags);
 		}
 		if (error) {
-			if (has_xattrs)
-				VN_RELE(pvp);
 			return (error);
 		}
 
@@ -1284,8 +1291,6 @@ xattr_dir_readdir(vnode_t *dvp, uio_t *uiop, cred_t *cr, int *eofp,
 
 		error = gfs_readdir_fini(&gstate, error, eofp, *eofp);
 		if (error) {
-			if (has_xattrs)
-				VN_RELE(pvp);
 			return (error);
 		}
 
@@ -1312,7 +1317,6 @@ xattr_dir_readdir(vnode_t *dvp, uio_t *uiop, cred_t *cr, int *eofp,
 	(void) VOP_RWLOCK(pvp, V_WRITELOCK_FALSE, NULL);
 	error = VOP_READDIR(pvp, uiop, cr, eofp, ct, flags);
 	VOP_RWUNLOCK(pvp, V_WRITELOCK_FALSE, NULL);
-	VN_RELE(pvp);
 
 	return (error);
 }
@@ -1323,14 +1327,17 @@ xattr_dir_inactive(vnode_t *vp, cred_t *cr, caller_context_t *ct)
 {
 	gfs_file_t *fp;
 	xattr_dir_t *xattr_dir;
+	vnode_t *real_vp = NULL;
 
 	mutex_enter(&vp->v_lock);
 	xattr_dir = vp->v_data;
 	if (xattr_dir->xattr_realvp) {
-		VN_RELE(xattr_dir->xattr_realvp);
+		real_vp = xattr_dir->xattr_realvp;
 		xattr_dir->xattr_realvp = NULL;
 	}
 	mutex_exit(&vp->v_lock);
+	if (real_vp != NULL)
+		VN_RELE(real_vp);
 	fp = gfs_dir_inactive(vp);
 	if (fp != NULL) {
 		kmem_free(fp, fp->gfs_size);
@@ -1356,38 +1363,11 @@ xattr_dir_pathconf(vnode_t *vp, int cmd, ulong_t *valp, cred_t *cr,
 static int
 xattr_dir_realvp(vnode_t *vp, vnode_t **realvp, caller_context_t *ct)
 {
-	xattr_dir_t *xattr_dir;
+	int error;
 
-	mutex_enter(&vp->v_lock);
-	xattr_dir = vp->v_data;
-	if (xattr_dir->xattr_realvp) {
-		*realvp = xattr_dir->xattr_realvp;
-		mutex_exit(&vp->v_lock);
-		return (0);
-	} else {
-		vnode_t *xdvp;
-		int error;
+	error = xattr_dir_realdir(vp, realvp, LOOKUP_XATTR, kcred, NULL);
+	return (error);
 
-		mutex_exit(&vp->v_lock);
-		if ((error = xattr_dir_realdir(vp, &xdvp,
-		    LOOKUP_XATTR, kcred, NULL)) == 0) {
-			/*
-			 * verify we aren't racing with another thread
-			 * to find the xattr_realvp
-			 */
-			mutex_enter(&vp->v_lock);
-			if (xattr_dir->xattr_realvp == NULL) {
-				xattr_dir->xattr_realvp = xdvp;
-				*realvp = xdvp;
-				mutex_exit(&vp->v_lock);
-			} else {
-				*realvp = xattr_dir->xattr_realvp;
-				mutex_exit(&vp->v_lock);
-				VN_RELE(xdvp);
-			}
-		}
-		return (error);
-	}
 }
 
 static const fs_operation_def_t xattr_dir_tops[] = {
@@ -1448,7 +1428,6 @@ xattr_lookup_cb(vnode_t *vp, const char *nm, vnode_t **vpp, ino64_t *inop,
 		    cr, NULL, deflags, rpnp);
 		pn_free(&pn);
 	}
-	VN_RELE(pvp);
 
 	return (error);
 }
@@ -1470,10 +1449,16 @@ xattr_init(void)
 	VERIFY(gfs_make_opsvec(xattr_opsvec) == 0);
 }
 
+/* See vnode.c: fop_lookup() */
 int
 xattr_dir_lookup(vnode_t *dvp, vnode_t **vpp, int flags, cred_t *cr)
 {
 	int error = 0;
+	vnode_t *gfs_vp = NULL;
+	vnode_t *real_vp = NULL;
+	xattr_dir_t *xattr_dir;
+	struct pathname pn;
+	char *nm = "";
 
 	*vpp = NULL;
 
@@ -1492,8 +1477,8 @@ xattr_dir_lookup(vnode_t *dvp, vnode_t **vpp, int flags, cred_t *cr)
 	}
 
 	if (dvp->v_xattrdir != NULL) {
-		*vpp = dvp->v_xattrdir;
-		VN_HOLD(*vpp);
+		gfs_vp = dvp->v_xattrdir;
+		VN_HOLD(gfs_vp);
 	} else {
 		ulong_t val;
 		int xattrs_allowed = dvp->v_vfsp->vfs_flag & VFS_XATTR;
@@ -1519,9 +1504,6 @@ xattr_dir_lookup(vnode_t *dvp, vnode_t **vpp, int flags, cred_t *cr)
 			return (EINVAL);
 
 		if (!sysattrs_allowed) {
-			struct pathname pn;
-			char *nm = "";
-
 			error = pn_get(nm, UIO_SYSSPACE, &pn);
 			if (error)
 				return (error);
@@ -1536,7 +1518,7 @@ xattr_dir_lookup(vnode_t *dvp, vnode_t **vpp, int flags, cred_t *cr)
 		 * Note that we act as if we were given CREATE_XATTR_DIR,
 		 * but only for creation of the GFS directory.
 		 */
-		*vpp = gfs_dir_create(
+		gfs_vp = gfs_dir_create(
 		    sizeof (xattr_dir_t), dvp, xattr_dir_ops, xattr_dirents,
 		    xattrdir_do_ino, MAXNAMELEN, NULL, xattr_lookup_cb);
 		mutex_enter(&dvp->v_lock);
@@ -1547,10 +1529,10 @@ xattr_dir_lookup(vnode_t *dvp, vnode_t **vpp, int flags, cred_t *cr)
 			 * just call VN_RELE(*vpp), because the vnode
 			 * is only partially initialized.
 			 */
-			gfs_dir_t *dp = (*vpp)->v_data;
+			gfs_dir_t *dp = gfs_vp->v_data;
 
-			ASSERT((*vpp)->v_count == 1);
-			vn_free(*vpp);
+			ASSERT(gfs_vp->v_count == 1);
+			vn_free(gfs_vp);
 
 			mutex_destroy(&dp->gfsd_lock);
 			kmem_free(dp->gfsd_static,
@@ -1560,20 +1542,52 @@ xattr_dir_lookup(vnode_t *dvp, vnode_t **vpp, int flags, cred_t *cr)
 			/*
 			 * There is an implied VN_HOLD(dvp) here.  We should
 			 * be doing a VN_RELE(dvp) to clean up the reference
-			 * from *vpp, and then a VN_HOLD(dvp) for the new
+			 * from gfs_vp, and then a VN_HOLD(dvp) for the new
 			 * reference.  Instead, we just leave the count alone.
 			 */
 
-			*vpp = dvp->v_xattrdir;
-			VN_HOLD(*vpp);
+			gfs_vp = dvp->v_xattrdir;
+			VN_HOLD(gfs_vp);
 		} else {
-			(*vpp)->v_flag |= (V_XATTRDIR|V_SYSATTR);
-			dvp->v_xattrdir = *vpp;
+			gfs_vp->v_flag |= (V_XATTRDIR|V_SYSATTR);
+			dvp->v_xattrdir = gfs_vp;
 		}
 	}
 	mutex_exit(&dvp->v_lock);
 
-	return (error);
+	/*
+	 * Some filesystems have a real extended attribute directory
+	 * associated with gfs_vp, which we find here by VOP_LOOKUP.
+	 * When there is such a dir, we keep it held as long as the
+	 * gfs_vp remains held, releasing it in xattr_dir_inactive.
+	 * This allows most operations to get the underlying dir
+	 * (via xattr_dir_realdir) when present and just pass the
+	 * operation through to the lower level FS.
+	 */
+	xattr_dir = gfs_vp->v_data;
+	if ((dvp->v_vfsp->vfs_flag & VFS_XATTR) != 0 &&
+	    (xattr_dir->xattr_realvp == NULL)) {
+		error = pn_get(nm, UIO_SYSSPACE, &pn);
+		if (error == 0) {
+			error = VOP_LOOKUP(dvp, nm, &real_vp, &pn,
+			    flags|LOOKUP_HAVE_SYSATTR_DIR, rootvp, cr, NULL,
+			    NULL, NULL);
+			pn_free(&pn);
+		}
+		if (error == 0) {
+			mutex_enter(&gfs_vp->v_lock);
+			if (xattr_dir->xattr_realvp == NULL) {
+				xattr_dir->xattr_realvp = real_vp;
+			} else {
+				/* lost race */
+				VN_RELE(real_vp);
+			}
+			mutex_exit(&gfs_vp->v_lock);
+		}
+	}
+
+	*vpp = gfs_vp;
+	return (0);
 }
 
 int
