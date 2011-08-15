@@ -1,0 +1,9 @@
+
+Don't upstream this file	"%Z%%M%	%I%	%E% GWR"
+nor any of the commits that modify this.
+
+I'm using this to create "marker" commits, that I use
+sort of like tags, but unlike tags in that they stay
+in the correct sequence through rebase actions.
+
+Fixes before start of Zones work.
