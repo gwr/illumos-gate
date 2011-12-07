@@ -178,17 +178,12 @@ _init(void)
 {
 	int rc;
 
-	if ((rc = smb_kshare_init()) != 0)
-		return (rc);
-
-	if ((rc = smb_server_svc_init()) != 0) {
-		smb_kshare_fini();
+	if ((rc = smb_server_g_init()) != 0) {
 		return (rc);
 	}
 
 	if ((rc = mod_install(&modlinkage)) != 0) {
-		smb_kshare_fini();
-		(void) smb_server_svc_fini();
+		(void) smb_server_g_fini();
 	}
 
 	return (rc);
@@ -206,8 +201,7 @@ _fini(void)
 	int	rc;
 
 	if ((rc = mod_remove(&modlinkage)) == 0) {
-		rc = smb_server_svc_fini();
-		smb_kshare_fini();
+		rc = smb_server_g_fini();
 	}
 
 	return (rc);
