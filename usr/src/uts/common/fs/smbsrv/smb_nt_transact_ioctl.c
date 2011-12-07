@@ -42,7 +42,7 @@ static uint32_t smb_nt_trans_ioctl_set_zero_data(smb_request_t *, smb_xa_t *);
  * any oplocks on the file to none:
  *   smb_oplock_break(sr, node, SMB_OPLOCK_BREAK_TO_NONE);
  */
-static struct {
+static const struct {
 	uint32_t fcode;
 	uint32_t (*ioctl_func)(smb_request_t *sr, smb_xa_t *xa);
 } ioctl_ret_tbl[] = {
