@@ -70,7 +70,7 @@ struct	tm {
 	int	tm_isdst;
 };
 
-static int days_in_month[] = {
+static const int days_in_month[] = {
 	31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
 };
 
@@ -788,7 +788,7 @@ smb_thread_entry_point(
 	thread->sth_state = SMB_THREAD_STATE_EXITING;
 	cv_broadcast(&thread->sth_cv);
 	mutex_exit(&thread->sth_mtx);
-	thread_exit();
+	zthread_exit();
 }
 
 /*
@@ -851,8 +851,8 @@ smb_thread_start(
 	case SMB_THREAD_STATE_EXITED:
 		thread->sth_state = SMB_THREAD_STATE_STARTING;
 		mutex_exit(&thread->sth_mtx);
-		tmpthread = thread_create(NULL, 0, smb_thread_entry_point,
-		    thread, 0, &p0, TS_RUN, thread->sth_pri);
+		tmpthread = zthread_create(NULL, 0, smb_thread_entry_point,
+		    thread, 0, thread->sth_pri);
 		ASSERT(tmpthread != NULL);
 		mutex_enter(&thread->sth_mtx);
 		while (thread->sth_state == SMB_THREAD_STATE_STARTING)
@@ -1791,7 +1791,8 @@ smb_panic(char *file, const char *func, int line)
  * structure using the passed args
  */
 void
-smb_avl_create(smb_avl_t *avl, size_t size, size_t offset, smb_avl_nops_t *ops)
+smb_avl_create(smb_avl_t *avl, size_t size, size_t offset,
+	const smb_avl_nops_t *ops)
 {
 	ASSERT(avl);
 	ASSERT(ops);
@@ -2246,14 +2247,14 @@ smb_srqueue_update(smb_srqueue_t *srq, smb_kstat_utilization_t *kd)
 }
 
 void
-smb_threshold_init(smb_cmd_threshold_t *ct, char *cmd, int threshold,
-    int timeout)
+smb_threshold_init(smb_cmd_threshold_t *ct, smb_server_t *sv, char *cmd,
+    int threshold, int timeout)
 {
 	bzero(ct, sizeof (smb_cmd_threshold_t));
 	mutex_init(&ct->ct_mutex, NULL, MUTEX_DEFAULT, NULL);
 	ct->ct_cmd = cmd;
 	ct->ct_threshold = threshold;
-	ct->ct_event = smb_event_create(timeout);
+	ct->ct_event = smb_event_create(sv, timeout);
 	ct->ct_event_id = smb_event_txid(ct->ct_event);
 
 	if (smb_threshold_debug) {

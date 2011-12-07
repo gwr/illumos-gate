@@ -239,14 +239,15 @@ smb_tree_connect_core(smb_request_t *sr)
 		return (NULL);
 	}
 
-	if ((si = smb_kshare_lookup(name)) == NULL) {
+	si = smb_kshare_lookup(sr->sr_server, name);
+	if (si == NULL) {
 		smb_tree_log(sr, name, "share not found");
 		smbsr_error(sr, 0, ERRSRV, ERRinvnetname);
 		return (NULL);
 	}
 
 	if (!strcasecmp(SMB_SHARE_PRINT, name)) {
-		smb_kshare_release(si);
+		smb_kshare_release(sr->sr_server, si);
 		smb_tree_log(sr, name, "access not permitted");
 		smbsr_error(sr, NT_STATUS_ACCESS_DENIED, ERRSRV, ERRaccess);
 		return (NULL);
@@ -270,8 +271,7 @@ smb_tree_connect_core(smb_request_t *sr)
 		break;
 	}
 
-	smb_kshare_release(si);
-
+	smb_kshare_release(sr->sr_server, si);
 	return (tree);
 }
 
@@ -324,7 +324,7 @@ smb_tree_disconnect(smb_tree_t *tree, boolean_t do_exec)
 	    (tree->t_execflags & SMB_EXEC_UNMAP)) {
 
 		smb_tree_set_execinfo(tree, &execinfo, SMB_EXEC_UNMAP);
-		(void) smb_kshare_exec(&execinfo);
+		(void) smb_kshare_exec(tree->t_server, &execinfo);
 	}
 #endif
 }
@@ -610,7 +610,7 @@ smb_tree_chkaccess(smb_request_t *sr, smb_kshare_t *shr, vnode_t *vp)
 		return (0);
 	}
 
-	host_access = smb_kshare_hostaccess(shr, &sr->session->ipaddr);
+	host_access = smb_kshare_hostaccess(shr, sr->session);
 	if ((host_access & ACE_ALL_PERMS) == 0) {
 		smb_tree_log(sr, sharename, "access denied: host access");
 		return (0);
@@ -738,7 +738,7 @@ smb_tree_connect_disk(smb_request_t *sr, const char *sharename)
 		if (tree->t_execflags & SMB_EXEC_MAP) {
 			smb_tree_set_execinfo(sr, &execinfo, SMB_EXEC_MAP);
 
-			rc = smb_kshare_exec(&execinfo);
+			rc = smb_kshare_exec(tree->t_server, &execinfo);
 
 			if ((rc != 0) && (tree->t_execflags & SMB_EXEC_TERM)) {
 				smb_tree_disconnect(tree, B_FALSE);
