@@ -62,7 +62,7 @@ smb_opipe_alloc(smb_server_t *sv)
 {
 	smb_opipe_t	*opipe;
 
-	opipe = kmem_cache_alloc(sv->si_cache_opipe, KM_SLEEP);
+	opipe = kmem_cache_alloc(smb_cache_opipe, KM_SLEEP);
 
 	bzero(opipe, sizeof (smb_opipe_t));
 	mutex_init(&opipe->p_mutex, NULL, MUTEX_DEFAULT, NULL);
@@ -95,7 +95,7 @@ smb_opipe_dealloc(smb_opipe_t *opipe)
 	cv_destroy(&opipe->p_cv);
 	mutex_destroy(&opipe->p_mutex);
 
-	kmem_cache_free(sv->si_cache_opipe, opipe);
+	kmem_cache_free(smb_cache_opipe, opipe);
 }
 
 /*

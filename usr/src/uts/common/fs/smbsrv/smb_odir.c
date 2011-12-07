@@ -878,7 +878,7 @@ smb_odir_create(smb_request_t *sr, smb_node_t *dnode,
 		return (0);
 	}
 
-	od = kmem_cache_alloc(tree->t_server->si_cache_odir, KM_SLEEP);
+	od = kmem_cache_alloc(smb_cache_odir, KM_SLEEP);
 	bzero(od, sizeof (smb_odir_t));
 
 	mutex_init(&od->d_mutex, NULL, MUTEX_DEFAULT, NULL);
@@ -955,7 +955,7 @@ smb_odir_delete(void *arg)
 	smb_node_release(od->d_dnode);
 	smb_user_release(od->d_user);
 	mutex_destroy(&od->d_mutex);
-	kmem_cache_free(od->d_tree->t_server->si_cache_odir, od);
+	kmem_cache_free(smb_cache_odir, od);
 }
 
 /*
