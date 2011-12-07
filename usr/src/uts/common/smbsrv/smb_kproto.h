@@ -80,6 +80,17 @@ extern	int smbsrv_worker_pri;
 extern	int smbsrv_notify_pri;
 extern	int smbsrv_timer_pri;
 
+extern	kmem_cache_t		*smb_cache_request;
+extern	kmem_cache_t		*smb_cache_session;
+extern	kmem_cache_t		*smb_cache_user;
+extern	kmem_cache_t		*smb_cache_tree;
+extern	kmem_cache_t		*smb_cache_ofile;
+extern	kmem_cache_t		*smb_cache_odir;
+extern	kmem_cache_t		*smb_cache_opipe;
+extern	kmem_cache_t		*smb_cache_event;
+
+extern	kmem_cache_t		*smb_kshare_cache_vfs;
+
 int		fd_dealloc(int);
 
 off_t		lseek(int fildes, off_t offset, int whence);
@@ -331,7 +342,7 @@ ksocket_t smb_socreate(int domain, int type, int protocol);
 void smb_soshutdown(ksocket_t so);
 void smb_sodestroy(ksocket_t so);
 int smb_sorecv(ksocket_t so, void *msg, size_t len);
-int smb_net_init(void);
+void smb_net_init(void);
 void smb_net_fini(void);
 void smb_net_txl_constructor(smb_txlst_t *);
 void smb_net_txl_destructor(smb_txlst_t *);
@@ -364,8 +375,8 @@ int smb_kdoor_upcall(uint32_t, void *, xdrproc_t, void *, xdrproc_t);
 /*
  * SMB server functions (file smb_server.c)
  */
-int smb_server_svc_init(void);
-int smb_server_svc_fini(void);
+int smb_server_g_init(void);
+int smb_server_g_fini(void);
 int smb_server_create(void);
 int smb_server_delete(void);
 int smb_server_configure(smb_ioc_cfg_t *);
@@ -414,7 +425,7 @@ void smb_event_notify(smb_server_t *, uint32_t);
 /*
  * SMB node functions (file smb_node.c)
  */
-int smb_node_init(void);
+void smb_node_init(void);
 void smb_node_fini(void);
 smb_node_t *smb_node_lookup(smb_request_t *, smb_arg_open_t *,
     cred_t *, vnode_t *, char *, smb_node_t *, smb_node_t *);
@@ -491,8 +502,10 @@ void smb_vfs_rele_all(smb_export_t *);
 void smb_notify_event(smb_node_t *, uint_t, const char *);
 void smb_notify_file_closed(smb_ofile_t *of);
 
-void smb_fem_fcn_install(smb_node_t *);
+int smb_fem_fcn_install(smb_node_t *);
 void smb_fem_fcn_uninstall(smb_node_t *);
+int smb_fem_oplock_install(smb_node_t *);
+void smb_fem_oplock_uninstall(smb_node_t *);
 
 /* FEM */
 
@@ -504,6 +517,7 @@ int smb_try_grow(smb_request_t *sr, int64_t new_size);
 unsigned short smb_worker_getnum();
 
 /* SMB signing routines smb_signing.c */
+void smb_sign_g_init(void);
 void smb_sign_init(smb_request_t *, smb_session_key_t *, char *, int);
 int smb_sign_check_request(smb_request_t *);
 int smb_sign_check_secondary(smb_request_t *, unsigned int);
@@ -810,8 +824,13 @@ door_handle_t smb_kshare_door_init(int);
 void smb_kshare_door_fini(door_handle_t);
 int smb_kshare_upcall(door_handle_t, void *, boolean_t);
 
-int smb_kshare_init(void);
+void smb_kshare_g_init(void);
+void smb_kshare_g_fini(void);
+void smb_kshare_init(void);
 void smb_kshare_fini(void);
+int smb_kshare_start(void);
+void smb_kshare_stop(void);
+
 int smb_kshare_export_list(smb_ioc_share_t *);
 int smb_kshare_unexport_list(smb_ioc_share_t *);
 int smb_kshare_info(smb_ioc_shareinfo_t *);

@@ -889,7 +889,7 @@ smb_tree_alloc(smb_request_t *sr, const smb_kshare_t *si,
 	if (smb_idpool_alloc(&session->s_tid_pool, &tid))
 		return (NULL);
 
-	tree = kmem_cache_alloc(session->s_server->si_cache_tree, KM_SLEEP);
+	tree = kmem_cache_alloc(smb_cache_tree, KM_SLEEP);
 	bzero(tree, sizeof (smb_tree_t));
 
 	tree->t_session = session;
@@ -902,21 +902,21 @@ smb_tree_alloc(smb_request_t *sr, const smb_kshare_t *si,
 	if (STYPE_ISDSK(stype) || STYPE_ISPRN(stype)) {
 		if (smb_tree_getattr(si, snode, tree) != 0) {
 			smb_idpool_free(&session->s_tid_pool, tid);
-			kmem_cache_free(session->s_server->si_cache_tree, tree);
+			kmem_cache_free(smb_cache_tree, tree);
 			return (NULL);
 		}
 	}
 
 	if (smb_idpool_constructor(&tree->t_fid_pool)) {
 		smb_idpool_free(&session->s_tid_pool, tid);
-		kmem_cache_free(session->s_server->si_cache_tree, tree);
+		kmem_cache_free(smb_cache_tree, tree);
 		return (NULL);
 	}
 
 	if (smb_idpool_constructor(&tree->t_odid_pool)) {
 		smb_idpool_destructor(&tree->t_fid_pool);
 		smb_idpool_free(&session->s_tid_pool, tid);
-		kmem_cache_free(session->s_server->si_cache_tree, tree);
+		kmem_cache_free(smb_cache_tree, tree);
 		return (NULL);
 	}
 
@@ -1001,7 +1001,7 @@ smb_tree_dealloc(void *arg)
 	SMB_USER_VALID(tree->t_owner);
 	smb_user_release(tree->t_owner);
 
-	kmem_cache_free(tree->t_server->si_cache_tree, tree);
+	kmem_cache_free(smb_cache_tree, tree);
 }
 
 /*

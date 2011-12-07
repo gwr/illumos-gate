@@ -43,8 +43,7 @@
 #include <sys/sid.h>
 #include <sys/priv_names.h>
 
-static kmem_cache_t	*smb_dtor_cache;
-static boolean_t	smb_llist_initialized = B_FALSE;
+static kmem_cache_t	*smb_dtor_cache = NULL;
 
 static boolean_t smb_thread_continue_timedwait_locked(smb_thread_t *, int);
 
@@ -374,13 +373,11 @@ smb_idpool_free(
 void
 smb_llist_init(void)
 {
-	if (smb_llist_initialized)
+	if (smb_dtor_cache != NULL)
 		return;
 
 	smb_dtor_cache = kmem_cache_create("smb_dtor_cache",
 	    sizeof (smb_dtor_t), 8, NULL, NULL, NULL, NULL, NULL, 0);
-
-	smb_llist_initialized = B_TRUE;
 }
 
 /*
@@ -389,11 +386,10 @@ smb_llist_init(void)
 void
 smb_llist_fini(void)
 {
-	if (!smb_llist_initialized)
-		return;
-
-	kmem_cache_destroy(smb_dtor_cache);
-	smb_llist_initialized = B_FALSE;
+	if (smb_dtor_cache != NULL) {
+		kmem_cache_destroy(smb_dtor_cache);
+		smb_dtor_cache = NULL;
+	}
 }
 
 /*
