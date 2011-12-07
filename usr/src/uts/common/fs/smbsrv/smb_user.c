@@ -196,7 +196,7 @@ smb_user_login(
 	ASSERT(account_name);
 	ASSERT(domain_name);
 
-	user = kmem_cache_alloc(session->s_server->si_cache_user, KM_SLEEP);
+	user = kmem_cache_alloc(smb_cache_user, KM_SLEEP);
 	bzero(user, sizeof (smb_user_t));
 	user->u_refcnt = 1;
 	user->u_session = session;
@@ -222,7 +222,7 @@ smb_user_login(
 	}
 	smb_mem_free(user->u_name);
 	smb_mem_free(user->u_domain);
-	kmem_cache_free(session->s_server->si_cache_user, user);
+	kmem_cache_free(smb_cache_user, user);
 	return (NULL);
 }
 
@@ -518,7 +518,7 @@ smb_user_delete(void *arg)
 		crfree(user->u_privcred);
 	smb_mem_free(user->u_name);
 	smb_mem_free(user->u_domain);
-	kmem_cache_free(user->u_server->si_cache_user, user);
+	kmem_cache_free(smb_cache_user, user);
 }
 
 cred_t *

@@ -119,7 +119,6 @@ static void smb_node_init_system(smb_node_t *);
 #define	SMB_ALLOCSZ(sz)	(((sz) + DEV_BSIZE-1) & ~(DEV_BSIZE-1))
 
 static kmem_cache_t	*smb_node_cache = NULL;
-static boolean_t	smb_node_initialized = B_FALSE;
 static smb_llist_t	smb_node_hash_table[SMBND_HASH_MASK+1];
 
 /*
@@ -130,13 +129,14 @@ static smb_llist_t	smb_node_hash_table[SMBND_HASH_MASK+1];
  * This function is not multi-thread safe. The caller must make sure only one
  * thread makes the call.
  */
-int
+void
 smb_node_init(void)
 {
 	int	i;
 
-	if (smb_node_initialized)
-		return (0);
+	if (smb_node_cache != NULL)
+		return;
+
 	smb_node_cache = kmem_cache_create(SMBSRV_KSTAT_NODE_CACHE,
 	    sizeof (smb_node_t), 8, smb_node_constructor, smb_node_destructor,
 	    NULL, NULL, NULL, 0);
@@ -145,8 +145,6 @@ smb_node_init(void)
 		smb_llist_constructor(&smb_node_hash_table[i],
 		    sizeof (smb_node_t), offsetof(smb_node_t, n_lnd));
 	}
-	smb_node_initialized = B_TRUE;
-	return (0);
 }
 
 /*
@@ -160,7 +158,7 @@ smb_node_fini(void)
 {
 	int	i;
 
-	if (!smb_node_initialized)
+	if (smb_node_cache == NULL)
 		return;
 
 #ifdef DEBUG
@@ -190,7 +188,6 @@ smb_node_fini(void)
 	}
 	kmem_cache_destroy(smb_node_cache);
 	smb_node_cache = NULL;
-	smb_node_initialized = B_FALSE;
 }
 
 /*
@@ -770,7 +767,7 @@ smb_node_fcn_subscribe(smb_node_t *node, smb_request_t *sr)
 
 	mutex_enter(&fcn->fcn_mutex);
 	if (fcn->fcn_count == 0)
-		smb_fem_fcn_install(node);
+		(void)smb_fem_fcn_install(node);
 	fcn->fcn_count++;
 	list_insert_tail(&fcn->fcn_watchers, sr);
 	mutex_exit(&fcn->fcn_mutex);
