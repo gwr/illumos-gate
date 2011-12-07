@@ -666,7 +666,6 @@ typedef struct smb_kshare {
 	char		*shr_access_ro;
 	char		*shr_access_rw;
 	avl_node_t	shr_link;
-	kmem_cache_t	*shr_cache;
 	kmutex_t	shr_mutex;
 } smb_kshare_t;
 
@@ -882,11 +881,10 @@ typedef struct smb_session {
 	smb_session_state_t	s_state;
 	uint32_t		s_flags;
 	int			s_write_raw_status;
+	taskqid_t		s_receiver_tqid;
 	kthread_t		*s_thread;
 	kt_did_t		s_ktdid;
 	smb_kmod_cfg_t		s_cfg;
-	kmem_cache_t		*s_cache;
-	kmem_cache_t		*s_cache_request;
 	struct smb_server	*s_server;
 	int32_t			s_gmtoff;
 	uint32_t		keep_alive;
@@ -1574,7 +1572,6 @@ typedef struct smb_request {
 	kmutex_t		sr_mutex;
 	list_node_t		sr_session_lnd;
 	smb_req_state_t		sr_state;
-	kmem_cache_t		*sr_cache;
 	struct smb_server	*sr_server;
 	pid_t			*sr_pid;
 	int32_t			sr_gmtoff;
@@ -1851,15 +1848,6 @@ typedef struct smb_server {
 
 	taskq_t			*sv_worker_pool;
 	taskq_t			*sv_receiver_pool;
-
-	kmem_cache_t		*si_cache_request;
-	kmem_cache_t		*si_cache_session;
-	kmem_cache_t		*si_cache_user;
-	kmem_cache_t		*si_cache_tree;
-	kmem_cache_t		*si_cache_ofile;
-	kmem_cache_t		*si_cache_odir;
-	kmem_cache_t		*si_cache_opipe;
-	kmem_cache_t		*si_cache_event;
 
 	smb_node_t		*si_root_smb_node;
 	smb_llist_t		sv_opipe_list;

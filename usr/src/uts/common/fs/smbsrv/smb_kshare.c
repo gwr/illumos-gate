@@ -34,6 +34,9 @@ typedef struct smb_unshare {
 } smb_unshare_t;
 
 static smb_export_t smb_export;
+static kmem_cache_t	*smb_kshare_cache_share;
+static kmem_cache_t	*smb_kshare_cache_unexport;
+kmem_cache_t	*smb_kshare_cache_vfs;
 
 static int smb_kshare_cmp(const void *, const void *);
 static void smb_kshare_hold(const void *);
@@ -290,33 +293,45 @@ smb_export_stop(void)
 	smb_vfs_rele_all(&smb_export);
 }
 
-int
-smb_kshare_init(void)
+void
+smb_kshare_g_init(void)
 {
-	int rc;
 
-	smb_export.e_cache_share = kmem_cache_create("smb_share_cache",
+	smb_kshare_cache_share = kmem_cache_create("smb_share_cache",
 	    sizeof (smb_kshare_t), 8, NULL, NULL, NULL, NULL, NULL, 0);
 
-	smb_export.e_cache_unexport = kmem_cache_create("smb_unexport_cache",
+	smb_kshare_cache_unexport = kmem_cache_create("smb_unexport_cache",
 	    sizeof (smb_unshare_t), 8, NULL, NULL, NULL, NULL, NULL, 0);
 
-	smb_export.e_cache_vfs = kmem_cache_create("smb_vfs_cache",
+	smb_kshare_cache_vfs = kmem_cache_create("smb_vfs_cache",
 	    sizeof (smb_vfs_t), 8, NULL, NULL, NULL, NULL, NULL, 0);
+}
+
+void
+smb_kshare_init(void)
+{
 
 	smb_llist_constructor(&smb_export.e_vfs_list, sizeof (smb_vfs_t),
 	    offsetof(smb_vfs_t, sv_lnd));
 
 	smb_slist_constructor(&smb_export.e_unexport_list,
 	    sizeof (smb_unshare_t), offsetof(smb_unshare_t, us_lnd));
+}
 
+int
+smb_kshare_start(void)
+{
 	smb_thread_init(&smb_export.e_unexport_thread, "smb_thread_unexport",
 	    smb_kshare_unexport_thread, NULL, smbsrv_base_pri);
 
-	if ((rc = smb_thread_start(&smb_export.e_unexport_thread)) != 0)
-		return (rc);
+	return (smb_thread_start(&smb_export.e_unexport_thread));
+}
 
-	return (0);
+void
+smb_kshare_stop(void)
+{
+	smb_thread_stop(&smb_export.e_unexport_thread);
+	smb_thread_destroy(&smb_export.e_unexport_thread);
 }
 
 void
@@ -324,22 +339,23 @@ smb_kshare_fini(void)
 {
 	smb_unshare_t *ux;
 
-	smb_thread_stop(&smb_export.e_unexport_thread);
-	smb_thread_destroy(&smb_export.e_unexport_thread);
-
 	while ((ux = list_head(&smb_export.e_unexport_list.sl_list)) != NULL) {
 		smb_slist_remove(&smb_export.e_unexport_list, ux);
-		kmem_cache_free(smb_export.e_cache_unexport, ux);
+		kmem_cache_free(smb_kshare_cache_unexport, ux);
 	}
 	smb_slist_destructor(&smb_export.e_unexport_list);
 
 	smb_vfs_rele_all(&smb_export);
 
 	smb_llist_destructor(&smb_export.e_vfs_list);
+}
 
-	kmem_cache_destroy(smb_export.e_cache_unexport);
-	kmem_cache_destroy(smb_export.e_cache_share);
-	kmem_cache_destroy(smb_export.e_cache_vfs);
+void
+smb_kshare_g_fini(void)
+{
+	kmem_cache_destroy(smb_kshare_cache_unexport);
+	kmem_cache_destroy(smb_kshare_cache_share);
+	kmem_cache_destroy(smb_kshare_cache_vfs);
 }
 
 /*
@@ -453,7 +469,7 @@ smb_kshare_unexport_list(smb_ioc_share_t *ioc)
 		if ((rc = smb_kshare_unexport(shrname)) != 0)
 			continue;
 
-		ux = kmem_cache_alloc(smb_export.e_cache_unexport, KM_SLEEP);
+		ux = kmem_cache_alloc(smb_kshare_cache_unexport, KM_SLEEP);
 		(void) strlcpy(ux->us_sharename, shrname, MAXNAMELEN);
 
 		smb_slist_insert_tail(&smb_export.e_unexport_list, ux);
@@ -768,11 +784,10 @@ smb_kshare_export_trans(char *name, char *path, char *cmnt)
 	ASSERT(name);
 	ASSERT(path);
 
-	shr = kmem_cache_alloc(smb_export.e_cache_share, KM_SLEEP);
+	shr = kmem_cache_alloc(smb_kshare_cache_share, KM_SLEEP);
 	bzero(shr, sizeof (smb_kshare_t));
 
 	shr->shr_magic = SMB_SHARE_MAGIC;
-	shr->shr_cache = smb_export.e_cache_share;
 	shr->shr_refcnt = 1;
 	shr->shr_flags = SMB_SHRF_TRANS | smb_kshare_is_admin(shr->shr_name);
 	if (strcasecmp(name, "IPC$") == 0)
@@ -861,11 +876,10 @@ smb_kshare_decode(nvlist_t *share)
 	(void) nvlist_lookup_string(smb, SHOPT_CSC, &csc_name);
 	smb_kshare_csc_flags(&tmp, csc_name);
 
-	shr = kmem_cache_alloc(smb_export.e_cache_share, KM_SLEEP);
+	shr = kmem_cache_alloc(smb_kshare_cache_share, KM_SLEEP);
 	bzero(shr, sizeof (smb_kshare_t));
 
 	shr->shr_magic = SMB_SHARE_MAGIC;
-	shr->shr_cache = smb_export.e_cache_share;
 	shr->shr_refcnt = 1;
 
 	shr->shr_name = smb_mem_strdup(tmp.shr_name);
@@ -999,7 +1013,7 @@ smb_kshare_destroy(void *p)
 	smb_mem_free(shr->shr_access_ro);
 	smb_mem_free(shr->shr_access_rw);
 
-	kmem_cache_free(shr->shr_cache, shr);
+	kmem_cache_free(smb_kshare_cache_share, shr);
 }
 
 
@@ -1159,7 +1173,7 @@ smb_kshare_unexport_thread(smb_thread_t *thread, void *arg)
 		    != NULL) {
 			smb_slist_remove(&smb_export.e_unexport_list, ux);
 			(void) smb_server_unshare(ux->us_sharename);
-			kmem_cache_free(smb_export.e_cache_unexport, ux);
+			kmem_cache_free(smb_kshare_cache_unexport, ux);
 		}
 	}
 }
