@@ -411,26 +411,6 @@ grow_netbuf(struct netbuf *nb, size_t length)
 }
 
 /*
- * XXX: xdr_pmap is here, because it's the only XDR function
- * of portmap protocol. If there'll be more portmap functions,
- * it would be better to put them to a separate file.
- */
-bool_t
-xdr_pmap(XDR *xdrs, PMAP *objp)
-{
-	if (!xdr_rpcprog(xdrs, &objp->pm_prog))
-		return (FALSE);
-	if (!xdr_rpcvers(xdrs, &objp->pm_vers))
-		return (FALSE);
-	if (!xdr_rpcprot(xdrs, &objp->pm_prot))
-		return (FALSE);
-	if (!xdr_u_int(xdrs, &objp->pm_port))
-		return (FALSE);
-
-	return (TRUE);
-}
-
-/*
  * Get remote port via PORTMAP protocol version 2 (works for IPv4 only)
  * according to RFC 1833, section 3.
  */
@@ -499,8 +479,6 @@ out:
  * expected to be initialized to "<hostname>.".
  * rpcbind_getaddr() is able to work with RPCBIND protocol version 3 and 4
  * and PORTMAP protocol version 2.
- * It tries version 4 at first, then version 3 and finally (if both failed)
- * it tries portmapper protocol version 2.
  */
 enum clnt_stat
 rpcbind_getaddr(struct knetconfig *config, rpcprog_t prog, rpcvers_t vers,
@@ -528,6 +506,16 @@ rpcbind_getaddr(struct knetconfig *config, rpcprog_t prog, rpcvers_t vers,
 
 	if (strcmp(config->knc_protofmly, NC_INET) == 0) {
 		put_inet_port(addr, htons(PMAPPORT));
+
+		/*
+		 * For IPv4 try to get remote port via PORTMAP protocol
+		 * version 2 at first. Some hosts may support only it.
+		 * If it fails continue with attempt of getting remote
+		 * port via RPCBIND version 4 and 3.
+		 */
+		status = portmap_getport(config, prog, vers, addr, tmo);
+		if (status == RPC_SUCCESS)
+			goto out;
 
 		if (strcmp(config->knc_proto, NC_TCP) == 0)
 			parms.r_netid = "tcp";
@@ -604,7 +592,7 @@ rpcbind_getaddr(struct knetconfig *config, rpcprog_t prog, rpcvers_t vers,
 		}
 	}
 	if (status != RPC_SUCCESS)
-		goto try_portmap;
+		goto out;
 
 	/*
 	 * Convert the universal address to the transport address.
@@ -637,19 +625,6 @@ rpcbind_getaddr(struct knetconfig *config, rpcprog_t prog, rpcvers_t vers,
 	} else {
 		/* "can't happen" - should have been checked for above */
 		cmn_err(CE_PANIC, "rpcbind_getaddr: bad protocol family");
-	}
-
-try_portmap:
-	if (status != RPC_SUCCESS &&
-	    strcmp(config->knc_protofmly, NC_INET) == 0) {
-		/*
-		 * For IPv4 try to get remote port via PORTMAP protocol.
-		 * NOTE: if we're here, then all attempts to get remote
-		 * port via RPCBIND protocol failed.
-		 */
-
-		DTRACE_PROBE1(try__portmap, enum clnt_stat, status);
-		status = portmap_getport(config, prog, vers, addr, tmo);
 	}
 
 out:
