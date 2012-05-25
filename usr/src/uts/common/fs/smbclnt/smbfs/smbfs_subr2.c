@@ -160,9 +160,10 @@ sn_inactive(smbnode_t *np)
 	cred_t		*oldcr;
 	char 		*orpath;
 	int		orplen;
+	vnode_t		*vp;
 
 	/*
-	 * Flush and invalidate all pages (todo)
+	 * Flush and invalidate all pages
 	 * Free any held credentials and caches...
 	 * etc.  (See NFS code)
 	 */
@@ -181,6 +182,11 @@ sn_inactive(smbnode_t *np)
 	np->n_rplen = 0;
 
 	mutex_exit(&np->r_statelock);
+
+	vp = SMBTOV(np);
+	if (vn_has_cached_data(vp)) {
+		smbfs_invalidate_pages(vp, (u_offset_t) 0, oldcr);
+	}
 
 	if (ovsa.vsa_aclentp != NULL)
 		kmem_free(ovsa.vsa_aclentp, ovsa.vsa_aclentsz);
@@ -1038,14 +1044,56 @@ sn_destroy_node(smbnode_t *np)
 }
 
 /*
+ * Correspond to rflush() in NFS.
  * Flush all vnodes in this (or every) vfs.
- * Used by nfs_sync and by nfs_unmount.
+ * Used by smbfs_sync and by smbfs_unmount.
  */
 /*ARGSUSED*/
 void
-smbfs_rflush(struct vfs *vfsp, cred_t *cr)
-{
-	/* Todo: mmap support. */
+smbfs_rflush(struct vfs *vfsp, cred_t *cr) {
+
+    smbmntinfo_t *mi;
+    smbnode_t *np;
+    vnode_t *vp;
+
+    long num, cnt;
+
+    vnode_t **vplist;
+
+    if(vfsp == NULL)
+        return;
+
+    mi = VFTOSMI(vfsp);
+
+    cnt = 0;
+
+    num = mi->smi_hash_avl.avl_numnodes;
+
+    vplist = kmem_alloc(num * sizeof (vnode_t*), KM_SLEEP);
+
+    rw_enter(&mi->smi_hash_lk, RW_READER);
+    for (np = avl_first(&mi->smi_hash_avl); np != NULL;
+            np = avl_walk(&mi->smi_hash_avl, np, AVL_AFTER)) {
+        vp = SMBTOV(np);
+        if (vn_is_readonly(vp))
+            continue;
+
+        if (vn_has_cached_data(vp) && (np->r_flags & RDIRTY || np->r_mapcnt > 0)) {
+            VN_HOLD(vp);
+            vplist[cnt++] = vp;
+            if (cnt == num)
+                break;
+        }
+    }
+    rw_exit(&mi->smi_hash_lk);
+
+    while (cnt-- > 0) {
+        vp = vplist[cnt];
+        (void) VOP_PUTPAGE(vp, 0, 0, 0, cr, NULL);
+        VN_RELE(vp);
+    }
+
+    kmem_free(vplist, num * sizeof (vnode_t*));
 }
 
 /* access cache (nfs_subr.c) not used here */
