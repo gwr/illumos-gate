@@ -879,8 +879,6 @@ cache_hit:
 	return (error);
 }
 
-static kmutex_t smbfs_syncbusy;
-
 /*
  * Flush dirty smbfs files for file system vfsp.
  * If vfsp == NULL, all smbfs files are flushed.
@@ -889,14 +887,25 @@ static kmutex_t smbfs_syncbusy;
 static int
 smbfs_sync(vfs_t *vfsp, short flag, cred_t *cr)
 {
+
 	/*
-	 * Cross-zone calls are OK here, since this translates to a
-	 * VOP_PUTPAGE(B_ASYNC), which gets picked up by the right zone.
+	 * SYNC_ATTR is used by fsflush() to force old filesystems like UFS
+	 * to sync metadata, which they would otherwise cache indefinitely.
+	 * Semantically, the only requirement is that the sync be initiated.
+	 * Assume the server-side takes care of attribute sync.
 	 */
-	if (!(flag & SYNC_ATTR) && mutex_tryenter(&smbfs_syncbusy) != 0) {
-		smbfs_rflush(vfsp, cr);
-		mutex_exit(&smbfs_syncbusy);
+	if (flag & SYNC_ATTR)
+		return (0);
+
+	if (vfsp == NULL) {
+		/*
+		 * Flush ALL smbfs mounts in this zone.
+		 */
+		smbfs_flushall(cr);
+		return (0);
 	}
+
+	smbfs_rflush(vfsp, cr);
 
 	return (0);
 }
@@ -907,7 +916,6 @@ smbfs_sync(vfs_t *vfsp, short flag, cred_t *cr)
 int
 smbfs_vfsinit(void)
 {
-	mutex_init(&smbfs_syncbusy, NULL, MUTEX_DEFAULT, NULL);
 	return (0);
 }
 
@@ -917,7 +925,6 @@ smbfs_vfsinit(void)
 void
 smbfs_vfsfini(void)
 {
-	mutex_destroy(&smbfs_syncbusy);
 }
 
 void
