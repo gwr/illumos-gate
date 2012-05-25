@@ -68,9 +68,13 @@
 #include <vm/seg_map.h>
 #include <vm/seg_vn.h>
 
+#define	ATTRCACHE_VALID(vp)	(gethrtime() < VTOSMB(vp)->r_attrtime)
+
 static int smbfs_getattr_cache(vnode_t *, smbfattr_t *);
 static void smbfattr_to_vattr(vnode_t *, smbfattr_t *, vattr_t *);
 static void smbfattr_to_xvattr(smbfattr_t *, vattr_t *);
+static int smbfs_getattr_otw(vnode_t *, struct smbfattr *, cred_t *);
+
 
 /*
  * The following code provide zone support in order to perform an action
@@ -102,35 +106,72 @@ static zone_key_t smi_list_key;
  */
 
 /*
- * Validate caches by checking cached attributes. If they have timed out
- * get the attributes from the server and compare mtimes. If mtimes are
- * different purge all caches for this vnode.
+ * Helper for _validate_caches
+ */
+int
+smbfs_waitfor_purge_complete(vnode_t *vp)
+{
+	smbnode_t *np;
+	k_sigset_t smask;
+
+	np = VTOSMB(vp);
+	if (np->r_serial != NULL && np->r_serial != curthread) {
+		mutex_enter(&np->r_statelock);
+		sigintr(&smask, VTOSMI(vp)->smi_flags & SMI_INT);
+		while (np->r_serial != NULL) {
+			if (!cv_wait_sig(&np->r_cv, &np->r_statelock)) {
+				sigunintr(&smask);
+				mutex_exit(&np->r_statelock);
+				return (EINTR);
+			}
+		}
+		sigunintr(&smask);
+		mutex_exit(&np->r_statelock);
+	}
+	return (0);
+}
+
+/*
+ * Validate caches by checking cached attributes. If the cached
+ * attributes have timed out, then get new attributes from the server.
+ * As a side affect, this will do cache invalidation if the attributes
+ * have changed.
+ *
+ * If the attributes have not timed out and if there is a cache
+ * invalidation being done by some other thread, then wait until that
+ * thread has completed the cache invalidation.
  */
 int
 smbfs_validate_caches(
 	struct vnode *vp,
 	cred_t *cr)
 {
-	struct vattr va;
+	struct smbfattr fa;
+	int error;
 
-	va.va_mask = AT_SIZE;
-	return (smbfsgetattr(vp, &va, cr));
+	if (ATTRCACHE_VALID(vp)) {
+		error = smbfs_waitfor_purge_complete(vp);
+		if (error)
+			return (error);
+		return (0);
+	}
+
+	return (smbfs_getattr_otw(vp, &fa, cr));
 }
 
 /*
  * Purge all of the various data caches.
  */
-/*ARGSUSED*/
+/* ARGSUSED */
 void
-smbfs_purge_caches(struct vnode *vp)
+smbfs_purge_caches(struct vnode *vp, int flags, cred_t *cr)
 {
-#if 0	/* not yet: mmap support */
+
 	/*
 	 * NFS: Purge the DNLC for this vp,
 	 * Clear any readdir state bits,
 	 * the readlink response cache, ...
 	 */
-	smbnode_t *np = VTOSMB(vp);
 
 	/*
 	 * Flush the page cache.
@@ -138,18 +179,27 @@ smbfs_purge_caches(struct vnode *vp)
 	if (vn_has_cached_data(vp)) {
 		(void) VOP_PUTPAGE(vp, (u_offset_t)0, 0, B_INVAL, cr, NULL);
 	}
-#endif	/* not yet */
+
+	/* NFS: Flush the readdir response cache. */
 }
+
+/*
+ * NFS: nfs_purge_rddir_cache()
+ * nfs3_cache_post_op_attr()
+ * nfs3_cache_post_op_vattr()
+ * nfs3_cache_wcc_data()
+ */
 
 /*
  * Check the attribute cache to see if the new attributes match
  * those cached.  If they do, the various `data' caches are
  * considered to be good.  Otherwise, purge the cached data.
  */
-void
+static void
 smbfs_cache_check(
 	struct vnode *vp,
-	struct smbfattr *fap)
+	struct smbfattr *fap,
+	cred_t *cr)
 {
 	smbnode_t *np;
 	int purge_data = 0;
@@ -174,14 +224,13 @@ smbfs_cache_check(
 		purge_acl = 1;
 
 	if (purge_acl) {
-		/* just invalidate r_secattr (XXX: OK?) */
 		np->r_sectime = gethrtime();
 	}
 
 	mutex_exit(&np->r_statelock);
 
 	if (purge_data)
-		smbfs_purge_caches(vp);
+		smbfs_purge_caches(vp, 0, cr);
 }
 
 /*
@@ -293,18 +342,17 @@ smbfs_attrcache_fa(vnode_t *vp, struct smbfattr *fap)
 	if (vtype == VDIR && newsize < DEV_BSIZE)
 		newsize = DEV_BSIZE;
 
-	if (np->r_size != newsize) {
-#if 0	/* not yet: mmap support */
-		if (!vn_has_cached_data(vp) || ...)
-			/* XXX: See NFS page cache code. */
-#endif	/* not yet */
+	if (np->r_size != newsize &&
+	    (!vn_has_cached_data(vp) ||
+	    (!(np->r_flags & RDIRTY) && np->r_count == 0))) {
 		/* OK to set the size. */
 		np->r_size = newsize;
 	}
 
+	/* nfs_setswaplike(vp, va); for mmap? */
 	/* NFS: np->r_flags &= ~RWRITEATTR; */
-	np->n_flag &= ~NATTRCHANGED;
 
+	np->n_flag &= ~NATTRCHANGED;
 	mutex_exit(&np->r_statelock);
 
 	if (oldvt != vtype) {
@@ -348,7 +396,7 @@ smbfs_getattr_cache(vnode_t *vp, struct smbfattr *fap)
  * Return 0 if successful, otherwise error.
  * From NFS: nfs_getattr_otw
  */
-int
+static int
 smbfs_getattr_otw(vnode_t *vp, struct smbfattr *fap, cred_t *cr)
 {
 	struct smbnode *np;
@@ -390,12 +438,12 @@ smbfs_getattr_otw(vnode_t *vp, struct smbfattr *fap, cred_t *cr)
 	}
 
 	/*
-	 * NFS: smbfs_cache_fattr(vap, fa, vap, t, cr);
+	 * NFS: nfs_cache_fattr(vap, fa, vap, t, cr);
 	 * which did: fattr_to_vattr, nfs_attr_cache.
 	 * We cache the fattr form, so just do the
 	 * cache check and store the attributes.
 	 */
-	smbfs_cache_check(vp, fap);
+	smbfs_cache_check(vp, fap, cr);
 	smbfs_attrcache_fa(vp, fap);
 
 	return (0);
@@ -547,6 +595,76 @@ smbfattr_to_xvattr(struct smbfattr *fa, struct vattr *vap)
 		xoap->xoa_hidden =
 		    ((fa->fa_attr & SMB_FA_HIDDEN) != 0);
 		XVA_SET_RTN(xvap, XAT_HIDDEN);
+	}
+}
+
+/* nfs_async_... */
+
+/*
+ * writerp(),
+ * nfs_putpages()
+ * nfs_invalidate_pages()
+ * All in smbfs_vnops.c
+ */
+
+/*
+ * nfs_printfhandle()
+ * nfs_write_error()
+ */
+
+/*
+ * Helper function for smbfs_sync
+ *
+ * Walk the per-zone list of smbfs mounts, calling smbfs_rflush
+ * on each one.  This is a little tricky because we need to exit
+ * the list mutex before each _rflush call and then try to resume
+ * where we were in the list after re-entering the mutex.
+ */
+void
+smbfs_flushall(cred_t *cr)
+{
+	smi_globals_t *smg;
+	smbmntinfo_t *tmp_smi, *cur_smi, *next_smi;
+
+	smg = zone_getspecific(smi_list_key, crgetzone(cr));
+	ASSERT(smg != NULL);
+
+	mutex_enter(&smg->smg_lock);
+	cur_smi = list_head(&smg->smg_list);
+	if (cur_smi == NULL) {
+		mutex_exit(&smg->smg_lock);
+		return;
+	}
+	VFS_HOLD(cur_smi->smi_vfsp);
+	mutex_exit(&smg->smg_lock);
+
+flush:
+	smbfs_rflush(cur_smi->smi_vfsp, cr);
+
+	mutex_enter(&smg->smg_lock);
+	/*
+	 * Resume after cur_smi if that's still on the list,
+	 * otherwise restart at the head.
+	 */
+	for (tmp_smi = list_head(&smg->smg_list);
+	    tmp_smi != NULL;
+	    tmp_smi = list_next(&smg->smg_list, tmp_smi))
+		if (tmp_smi == cur_smi)
+			break;
+	if (tmp_smi != NULL)
+		next_smi = list_next(&smg->smg_list, tmp_smi);
+	else
+		next_smi = list_head(&smg->smg_list);
+
+	if (next_smi != NULL)
+		VFS_HOLD(next_smi->smi_vfsp);
+	VFS_RELE(cur_smi->smi_vfsp);
+
+	mutex_exit(&smg->smg_lock);
+
+	if (next_smi != NULL) {
+		cur_smi = next_smi;
+		goto flush;
 	}
 }
 

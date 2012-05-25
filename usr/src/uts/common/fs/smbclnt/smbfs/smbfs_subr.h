@@ -237,6 +237,7 @@ void smbfs_zonelist_remove(smbmntinfo_t *smi);
 int smbfs_check_table(struct vfs *vfsp, struct smbnode *srp);
 void smbfs_destroy_table(struct vfs *vfsp);
 void smbfs_rflush(struct vfs *vfsp, cred_t *cr);
+void smbfs_flushall(cred_t *cr);
 
 uint32_t smbfs_newnum(void);
 int smbfs_newname(char *buf, size_t buflen);
@@ -254,7 +255,9 @@ void smbfs_attrcache_rm_locked(struct smbnode *np);
 #endif
 void smbfs_attr_touchdir(struct smbnode *dnp);
 void smbfs_attrcache_fa(vnode_t *vp, struct smbfattr *fap);
-void smbfs_cache_check(struct vnode *vp, struct smbfattr *fap);
+
+int smbfs_validate_caches(struct vnode *vp, cred_t *cr);
+void smbfs_purge_caches(struct vnode *vp, int flags, cred_t *cr);
 
 void smbfs_addfree(struct smbnode *sp);
 void smbfs_rmhash(struct smbnode *);
@@ -282,6 +285,10 @@ int smbfs_readvnode(vnode_t *, uio_t *, cred_t *, struct vattr *);
 int smbfs_writevnode(vnode_t *vp, uio_t *uiop, cred_t *cr,
 			int ioflag, int timo);
 int smbfsgetattr(vnode_t *vp, struct vattr *vap, cred_t *cr);
+
+/* nfs: writerp writenp */
+/* nfs_putpages? */
+void smbfs_invalidate_pages(vnode_t *vp, u_offset_t off, cred_t *cr);
 
 /* smbfs ACL support */
 int smbfs_acl_getids(vnode_t *, cred_t *);
