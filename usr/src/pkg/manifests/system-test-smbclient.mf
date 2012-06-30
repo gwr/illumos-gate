@@ -38,14 +38,21 @@ dir path=opt/smbclient-tests/tests/smbfs/create
 dir path=opt/smbclient-tests/tests/smbfs/error
 dir path=opt/smbclient-tests/tests/smbfs/misc
 dir path=opt/smbclient-tests/tests/smbfs/mkdir
+dir path=opt/smbclient-tests/tests/smbfs/mmap
 dir path=opt/smbclient-tests/tests/smbfs/mvtest
 dir path=opt/smbclient-tests/tests/smbfs/xattr
 dir path=opt/smbclient-tests/tests/smbmount
 dir path=opt/smbclient-tests/tests/smbutil
 file path=opt/smbclient-tests/README mode=0444
 file path=opt/smbclient-tests/bin/abort_conn mode=0555
+file path=opt/smbclient-tests/bin/close_wr mode=0555
+file path=opt/smbclient-tests/bin/cp_mmap mode=0555
 file path=opt/smbclient-tests/bin/file_trunc mode=0555
+file path=opt/smbclient-tests/bin/mkfile_mmap mode=0555
+file path=opt/smbclient-tests/bin/no_close mode=0555
 file path=opt/smbclient-tests/bin/passwd.exp mode=0555
+file path=opt/smbclient-tests/bin/prot_mmap mode=0555
+file path=opt/smbclient-tests/bin/rw_mmap mode=0555
 file path=opt/smbclient-tests/bin/smbclienttest mode=0555
 file path=opt/smbclient-tests/bin/smbutil.exp mode=0555
 file path=opt/smbclient-tests/config/fileio.prof mode=0444
@@ -123,6 +130,16 @@ file path=opt/smbclient-tests/tests/smbfs/mkdir/tp_mkdir_003 mode=0555
 file path=opt/smbclient-tests/tests/smbfs/mkdir/tp_mkdir_004 mode=0555
 file path=opt/smbclient-tests/tests/smbfs/mkdir/tp_mkdir_005 mode=0555
 file path=opt/smbclient-tests/tests/smbfs/mkdir/tp_mkdir_006 mode=0555
+file path=opt/smbclient-tests/tests/smbfs/mmap/tp_mmap_001 mode=0555
+file path=opt/smbclient-tests/tests/smbfs/mmap/tp_mmap_002 mode=0555
+file path=opt/smbclient-tests/tests/smbfs/mmap/tp_mmap_003 mode=0555
+file path=opt/smbclient-tests/tests/smbfs/mmap/tp_mmap_004 mode=0555
+file path=opt/smbclient-tests/tests/smbfs/mmap/tp_mmap_005 mode=0555
+file path=opt/smbclient-tests/tests/smbfs/mmap/tp_mmap_006 mode=0555
+file path=opt/smbclient-tests/tests/smbfs/mmap/tp_mmap_007 mode=0555
+file path=opt/smbclient-tests/tests/smbfs/mmap/tp_mmap_008 mode=0555
+file path=opt/smbclient-tests/tests/smbfs/mmap/tp_mmap_009 mode=0555
+file path=opt/smbclient-tests/tests/smbfs/mmap/tp_mmap_010 mode=0555
 file path=opt/smbclient-tests/tests/smbfs/mvtest/tp_mvtest_001 mode=0555
 file path=opt/smbclient-tests/tests/smbfs/mvtest/tp_mvtest_002 mode=0555
 file path=opt/smbclient-tests/tests/smbfs/mvtest/tp_mvtest_003 mode=0555

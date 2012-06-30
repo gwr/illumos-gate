@@ -13,16 +13,9 @@
 # Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
 #
 
-.PARALLEL:	$(SUBDIRS)
+include		$(SRC)/cmd/Makefile.cmd
+include		../../Makefile.com
 
-SUBDIRS=	abort_conn	\
-		close_wr	\
-		cp_mmap		\
-		file_trunc	\
-		mkfile_mmap	\
-		no_close	\
-		prot_mmap	\
-		rw_mmap		\
-		scripts
+PROG=		rw_mmap
 
-include		$(SRC)/test/Makefile.com
+include		../Makefile.cmd
