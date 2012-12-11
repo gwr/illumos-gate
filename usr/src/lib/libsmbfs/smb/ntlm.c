@@ -34,6 +34,7 @@
 
 /*
  * Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright 2012 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -410,22 +411,22 @@ ntlm_put_v2_responses(struct smb_ctx *ctx, struct mbdata *ti_mbp,
 	uchar_t v2hash[NTLM_HASH_SZ];
 	struct mbuf *tim = ti_mbp->mb_top;
 
-	if ((err = mb_init(lm_mbp)) != 0)
-		return (err);
-	if ((err = mb_init(nt_mbp)) != 0)
-		return (err);
-
 	/*
 	 * Convert the user name to upper-case, as
 	 * that's what's used when computing LMv2
 	 * and NTLMv2 responses.  Note that the
 	 * domain name is NOT upper-cased!
 	 */
+	if (ctx->ct_user[0] == '\0')
+		return (EINVAL);
 	ucuser = utf8_str_toupper(ctx->ct_user);
-	if (ucuser == NULL) {
-		err = ENOMEM;
+	if (ucuser == NULL)
+		return (ENOMEM);
+
+	if ((err = mb_init(lm_mbp)) != 0)
 		goto out;
-	}
+	if ((err = mb_init(nt_mbp)) != 0)
+		goto out;
 
 	/*
 	 * Compute the NTLMv2 hash

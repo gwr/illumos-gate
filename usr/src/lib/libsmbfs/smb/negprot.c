@@ -32,6 +32,7 @@
 
 /*
  * Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright 2012 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -118,9 +119,16 @@ smb_negprot(struct smb_ctx *ctx, struct mbdata *oblob)
 	 * if we find out it doesn't.  Need to do this because
 	 * some servers reject all non-Unicode requests.
 	 */
-	ctx->ct_hflags = SMB_FLAGS_CASELESS;
-	ctx->ct_hflags2 = SMB_FLAGS2_KNOWS_LONG_NAMES |
-	    SMB_FLAGS2_ERR_STATUS | SMB_FLAGS2_UNICODE;
+	ctx->ct_hflags =
+	    SMB_FLAGS_CASELESS |
+	    SMB_FLAGS_CANONICAL_PATHNAMES;
+	ctx->ct_hflags2 =
+	    SMB_FLAGS2_KNOWS_LONG_NAMES |
+	    SMB_FLAGS2_KNOWS_EAS |
+	    /* SMB_FLAGS2_IS_LONG_NAME |? */
+	    /* EXT_SEC (see below) */
+	    SMB_FLAGS2_ERR_STATUS |
+	    SMB_FLAGS2_UNICODE;
 
 	/*
 	 * Sould we offer extended security?

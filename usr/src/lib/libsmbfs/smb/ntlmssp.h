@@ -22,6 +22,7 @@
 /*
  * Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
+ * Copyright 2012 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #ifndef _NTLMSSP_H
@@ -51,7 +52,7 @@
 /*	reserved					0x00000100 */
 #define	NTLMSSP_NEGOTIATE_NTLM				0x00000200
 #define	NTLMSSP_NEGOTIATE_NT_ONLY			0x00000400
-/*	old anonymous_session (ignored by servers)	0x00000800 */
+#define	NTLMSSP_NEGOTIATE_NULL_SESSION			0x00000800
 #define	NTLMSSP_NEGOTIATE_OEM_DOMAIN_SUPPLIED		0x00001000
 #define	NTLMSSP_NEGOTIATE_OEM_WORKSTATION_SUPPLIED	0x00002000
 /*	reserved					0x00004000 */
