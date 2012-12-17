@@ -21,14 +21,15 @@
 /*
  * Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
+ * Copyright 2012 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <strings.h>
 #include <stdlib.h>
 #include <smbsrv/string.h>
 #include <smbsrv/libsmb.h>
+#include <assert.h>
 
-extern void randomize(char *data, unsigned len);
 static uint64_t unix_micro_to_nt_time(struct timeval *unix_time);
 
 /*
@@ -145,15 +146,15 @@ int
 smb_auth_ntlm_hash(const char *password, unsigned char *hash)
 {
 	smb_wchar_t *unicode_password;
-	int length;
+	int length, unicode_len;
 	int rc;
 
 	if (password == NULL || hash == NULL)
 		return (SMBAUTH_FAILURE);
 
 	length = strlen(password);
-	unicode_password = (smb_wchar_t *)
-	    malloc((length + 1) * sizeof (smb_wchar_t));
+	unicode_len = (length + 1) * sizeof (smb_wchar_t);
+	unicode_password = malloc(unicode_len);
 
 	if (unicode_password == NULL)
 		return (SMBAUTH_FAILURE);
@@ -161,7 +162,9 @@ smb_auth_ntlm_hash(const char *password, unsigned char *hash)
 	length = smb_auth_qnd_unicode(unicode_password, password, length);
 	rc = smb_auth_md4(hash, (unsigned char *)unicode_password, length);
 
+	(void) memset(unicode_password, 0, unicode_len);
 	free(unicode_password);
+
 	return (rc);
 }
 
@@ -753,4 +756,43 @@ smb_auth_validate_nt(
 		    smbpw->pw_nthash, passwd, session_key);
 
 	return (ok);
+}
+
+/*
+ * smb_gen_random_passwd(buf, len)
+ * Generate a random password of length len-1, and store it in buf,
+ * null terminated.  This is used as a machine account password,
+ * which we set when we join a domain.
+ *
+ * [MS-DISO] A machine password is an ASCII string of randomly chosen
+ * characters. Each character's ASCII code is between 32 and 122 inclusive.
+ * That's space through 'z'.
+ */
+
+int
+smb_gen_random_passwd(char *buf, size_t len)
+{
+	const uchar_t start = ' ';
+	const uchar_t modulus = 'z' - ' ' + 1;
+	uchar_t t;
+	int i;
+
+	/* Last byte is the null. */
+	len--;
+
+	/* Temporarily put random data in the caller's buffer. */
+	randomize(buf, len);
+
+	/* Convert the random data to printable characters. */
+	for (i = 0; i < len; i++) {
+		/* need unsigned math */
+		t = (uchar_t)buf[i];
+		t = (t % modulus) + start;
+		assert(' ' <= t && t <= 'z');
+		buf[i] = (char)t;
+	}
+
+	buf[len] = '\0';
+
+	return (0);
 }

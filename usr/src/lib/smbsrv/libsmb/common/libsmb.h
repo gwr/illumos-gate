@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2012 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #ifndef	_LIBSMB_H
@@ -478,6 +478,8 @@ extern int smb_auth_hmac_md5(unsigned char *, int, unsigned char *, int,
 
 extern int smb_auth_DES(unsigned char *, int, unsigned char *, int,
     unsigned char *, int);
+extern int smb_auth_RC4(unsigned char *, int, unsigned char *, int,
+    unsigned char *, int);
 
 extern int smb_auth_md4(unsigned char *, unsigned char *, int);
 extern int smb_auth_lm_hash(const char *, unsigned char *);
@@ -496,6 +498,8 @@ boolean_t smb_auth_validate_lm(unsigned char *, uint32_t, smb_passwd_t *,
     unsigned char *, int, char *, char *);
 boolean_t smb_auth_validate_nt(unsigned char *, uint32_t, smb_passwd_t *,
     unsigned char *, int, char *, char *, uchar_t *);
+
+int smb_gen_random_passwd(char *passwd, size_t bufsz);
 
 /*
  * SMB authenticated IPC
