@@ -34,9 +34,11 @@
  */
 
 #include <sys/errno.h>
+#include <sys/tzfile.h>
 #include <stdio.h>
 #include <time.h>
 #include <strings.h>
+#include <unistd.h>
 
 #include <smbsrv/libsmb.h>
 #include <smbsrv/libmlsvc.h>
@@ -407,6 +409,48 @@ srvsvc_net_server_getinfo(char *server, char *domain,
 
 	srvsvc_close(&handle);
 	return (0);
+}
+
+/*
+ * Compare the time here with the remote time on the server
+ * and report clock skew.
+ */
+void
+srvsvc_timecheck(char *server, char *domain)
+{
+	char			hostname[MAXHOSTNAMELEN];
+	struct timeval		dc_tv;
+	struct tm		dc_tm;
+	struct tm		*tm;
+	time_t			tnow;
+	time_t			tdiff;
+	int			priority;
+
+	if (srvsvc_net_remote_tod(server, domain, &dc_tv, &dc_tm) < 0) {
+		syslog(LOG_DEBUG, "srvsvc_net_remote_tod failed");
+		return;
+	}
+
+	tnow = time(NULL);
+
+	if (tnow > dc_tv.tv_sec)
+		tdiff = (tnow - dc_tv.tv_sec) / SECSPERMIN;
+	else
+		tdiff = (dc_tv.tv_sec - tnow) / SECSPERMIN;
+
+	if (tdiff != 0) {
+		(void) strlcpy(hostname, "localhost", MAXHOSTNAMELEN);
+		(void) gethostname(hostname, MAXHOSTNAMELEN);
+
+		priority = (tdiff > 2) ? LOG_NOTICE : LOG_DEBUG;
+		syslog(priority, "DC [%s] clock skew detected: %u minutes",
+		    server, tdiff);
+
+		tm = gmtime(&dc_tv.tv_sec);
+		syslog(priority, "%-8s  UTC: %s", server, asctime(tm));
+		tm = gmtime(&tnow);
+		syslog(priority, "%-8s  UTC: %s", hostname, asctime(tm));
+	}
 }
 
 /*
