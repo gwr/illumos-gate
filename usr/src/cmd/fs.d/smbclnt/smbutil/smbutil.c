@@ -33,6 +33,8 @@
 /*
  * Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
+ *
+ * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <sys/param.h>
@@ -70,6 +72,7 @@ static struct commands {
 } commands[] = {
 	{"crypt",	cmd_crypt,	NULL, CMDFL_NO_KMOD},
 	{"help",	cmd_help,	help_usage, CMDFL_NO_KMOD},
+	{"info",	cmd_info,	info_usage, 0},
 	{"login",	cmd_login,	login_usage, 0},
 	{"logout",	cmd_logout,	logout_usage, 0},
 	{"logoutall",	cmd_logoutall,	logoutall_usage, 0},
@@ -189,6 +192,7 @@ help(void) {
 	" crypt		slightly obscure password\n"
 	" help		display help on specified subcommand\n"
 	/* " lc 		display active connections\n" */
+	" info		display server type and version\n"
 	" login		login to specified host\n"
 	" logout 	logout from specified host\n"
 	" logoutall	logout all users (requires privilege)\n"
