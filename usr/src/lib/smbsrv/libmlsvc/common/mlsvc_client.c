@@ -39,12 +39,11 @@
 #include <syslog.h>
 #include <synch.h>
 
+#include <libmlrpc/libmlrpc.h>
 #include <netsmb/smbfs_api.h>
+
 #include <smbsrv/libsmb.h>
-#include <smbsrv/libsmbns.h>
-#include <smbsrv/libmlrpc.h>
 #include <smbsrv/libmlsvc.h>
-#include <smbsrv/ndl/srvsvc.ndl>
 #include <libsmbrdr.h>
 #include <mlsvc.h>
 
@@ -62,13 +61,15 @@
  * unbind and teardown the connection.  As each handle is initialized it
  * will inherit a reference to the client context.
  *
- * Returns 0 or an NT_STATUS:
+ * Returns 0 or an NT_STATUS:		(failed in...)
+ *
  *	NT_STATUS_BAD_NETWORK_PATH	(get server addr)
  *	NT_STATUS_NETWORK_ACCESS_DENIED	(connect, auth)
- *	NT_STATUS_BAD_NETWORK_NAME	(tcon, open)
+ *	NT_STATUS_BAD_NETWORK_NAME	(tcon)
+ *	RPC_NT_SERVER_TOO_BUSY		(open pipe)
+ *	RPC_NT_SERVER_UNAVAILABLE	(open pipe)
  *	NT_STATUS_ACCESS_DENIED		(open pipe)
  *	NT_STATUS_INVALID_PARAMETER	(rpc bind)
- *
  *	NT_STATUS_INTERNAL_ERROR	(bad args etc)
  *	NT_STATUS_NO_MEMORY
  */
@@ -77,10 +78,8 @@ ndr_rpc_bind(mlsvc_handle_t *handle, char *server, char *domain,
     char *username, const char *service)
 {
 	struct smb_ctx		*ctx = NULL;
-	ndr_client_t		*clnt = NULL;
 	ndr_service_t		*svc;
 	DWORD			status;
-	int			fd = -1;
 	int			rc;
 
 	if (handle == NULL || server == NULL || server[0] == '\0' ||
@@ -113,127 +112,79 @@ ndr_rpc_bind(mlsvc_handle_t *handle, char *server, char *domain,
 		    "(Srv=%s Dom=%s User=%s), %s (0x%x)",
 		    server, domain, username,
 		    xlate_nt_status(status), status);
-		/* Tell the DC Locator this DC failed. */
-		smb_ddiscover_bad_dc(server);
-		goto errout;
-	}
-
-	/*
-	 * Open the named pipe.
-	 */
-	fd = smb_fh_open(ctx, svc->endpoint, O_RDWR);
-	if (fd < 0) {
-		rc = errno;
-		syslog(LOG_DEBUG, "ndr_rpc_bind: "
-		    "smb_fh_open (%s) err=%d",
-		    svc->endpoint, rc);
-		switch (rc) {
-		case EACCES:
-			status = NT_STATUS_ACCESS_DENIED;
-			break;
+		/*
+		 * If the error is one where changing to a new DC
+		 * might help, try looking for a different DC.
+		 */
+		switch (status) {
+		case NT_STATUS_BAD_NETWORK_PATH:
+		case NT_STATUS_BAD_NETWORK_NAME:
+			/* Look for a new DC */
+			smb_ddiscover_bad_dc(server);
 		default:
-			status = NT_STATUS_BAD_NETWORK_NAME;
 			break;
 		}
-		goto errout;
+		return (status);
 	}
 
 	/*
 	 * Setup the RPC client handle.
 	 */
-	if ((clnt = malloc(sizeof (ndr_client_t))) == NULL) {
-		status = NT_STATUS_NO_MEMORY;
-		goto errout;
-	}
-	bzero(clnt, sizeof (ndr_client_t));
-
-	clnt->handle = &handle->handle;
-	clnt->xa_init = ndr_xa_init;
-	clnt->xa_exchange = ndr_xa_exchange;
-	clnt->xa_read = ndr_xa_read;
-	clnt->xa_preserve = ndr_xa_preserve;
-	clnt->xa_destruct = ndr_xa_destruct;
-	clnt->xa_release = ndr_xa_release;
-	clnt->xa_private = ctx;
-	clnt->xa_fd = fd;
-
-	ndr_svc_binding_pool_init(&clnt->binding_list,
-	    clnt->binding_pool, NDR_N_BINDING_POOL);
-
-	if ((clnt->heap = ndr_heap_create()) == NULL) {
-		status = NT_STATUS_NO_MEMORY;
-		goto errout;
+	rc = mlrpc_clh_create(handle, ctx);
+	if (rc != 0) {
+		syslog(LOG_ERR, "ndr_rpc_bind: mlrpc_clh_create: rc=%d", rc);
+		smbrdr_ctx_free(ctx);
+		switch (rc) {
+		case ENOMEM:
+			return (NT_STATUS_NO_MEMORY);
+		case EINVAL:
+			return (NT_STATUS_INVALID_PARAMETER);
+		default:
+			return (NT_STATUS_INTERNAL_ERROR);
+		}
 	}
 
 	/*
-	 * Fill in the caller's handle.
+	 * This does the pipe open and OtW RPC bind.
+	 * Handles pipe open retries.
 	 */
-	bzero(&handle->handle, sizeof (ndr_hdid_t));
-	handle->clnt = clnt;
-
-	/*
-	 * Do the OtW RPC bind.
-	 */
-	rc = ndr_clnt_bind(clnt, service, &clnt->binding);
-	switch (rc) {
-	case NDR_DRC_FAULT_OUT_OF_MEMORY:
-		status = NT_STATUS_NO_MEMORY;
-		break;
-	case NDR_DRC_FAULT_API_SERVICE_INVALID:	/* not registered */
-		status = NT_STATUS_INTERNAL_ERROR;
-		break;
-	default:
-		if (NDR_DRC_IS_FAULT(rc)) {
-			status = NT_STATUS_INVALID_PARAMETER;
+	status = mlrpc_clh_bind(handle, svc);
+	if (status != 0) {
+		syslog(LOG_DEBUG, "ndr_rpc_bind: "
+		    "mlrpc_clh_bind, %s (0x%x)",
+		    xlate_nt_status(status), status);
+		switch (status) {
+		case RPC_NT_SERVER_TOO_BUSY:
+			/* Look for a new DC */
+			smb_ddiscover_bad_dc(server);
+			break;
+		default:
 			break;
 		}
-		/* FALLTHROUGH */
-	case NDR_DRC_OK:
-		return (NT_STATUS_SUCCESS);
-	}
-
-	syslog(LOG_DEBUG, "ndr_rpc_bind: "
-	    "ndr_clnt_bind, %s (0x%x)",
-	    xlate_nt_status(status), status);
-
-errout:
-	handle->clnt = NULL;
-	if (clnt != NULL) {
-		ndr_heap_destroy(clnt->heap);
-		free(clnt);
-	}
-	if (ctx != NULL) {
-		if (fd != -1)
-			(void) smb_fh_close(fd);
-		smbrdr_ctx_free(ctx);
+		ctx = mlrpc_clh_free(handle);
+		if (ctx != NULL) {
+			smbrdr_ctx_free(ctx);
+		}
 	}
 
 	return (status);
 }
 
 /*
- * Unbind and close the pipe to an RPC service.
+ * Unbind and close the pipe to an RPC service
+ * and cleanup the smb_ctx.
  *
- * If the heap has been preserved we need to go through an xa release.
- * The heap is preserved during an RPC call because that's where data
- * returned from the server is stored.
- *
- * Otherwise we destroy the heap directly.
+ * The heap may or may not be destroyed (see mlrpc_clh_free)
  */
 void
 ndr_rpc_unbind(mlsvc_handle_t *handle)
 {
-	ndr_client_t *clnt = handle->clnt;
-	struct smb_ctx *ctx = clnt->xa_private;
+	struct smb_ctx *ctx;
 
-	if (clnt->heap_preserved)
-		ndr_clnt_free_heap(clnt);
-	else
-		ndr_heap_destroy(clnt->heap);
+	ctx = mlrpc_clh_free(handle);
+	if (ctx != NULL)
+		smbrdr_ctx_free(ctx);
 
-	(void) smb_fh_close(clnt->xa_fd);
-	smbrdr_ctx_free(ctx);
-	free(clnt);
 	bzero(handle, sizeof (mlsvc_handle_t));
 }
 
