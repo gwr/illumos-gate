@@ -86,7 +86,6 @@ ndr_rpc_bind(mlsvc_handle_t *handle, char *server, char *domain,
 	struct smb_ctx		*ctx = NULL;
 	ndr_client_t		*clnt = NULL;
 	ndr_service_t		*svc;
-	srvsvc_server_info_t	svinfo;
 	DWORD			status;
 	int			fd = -1;
 	int			rc;
@@ -98,19 +97,6 @@ ndr_rpc_bind(mlsvc_handle_t *handle, char *server, char *domain,
 	/* In case the service was not registered... */
 	if ((svc = ndr_svc_lookup_name(service)) == NULL)
 		return (NT_STATUS_INTERNAL_ERROR);
-
-	/*
-	 * Set the default based on the assumption that most
-	 * servers will be Windows 2000 or later.  This used to
-	 * try to get the actual server version, but that RPC
-	 * is not necessarily allowed anymore, so don't bother.
-	 */
-	bzero(&svinfo, sizeof (srvsvc_server_info_t));
-	svinfo.sv_platform_id = SV_PLATFORM_ID_NT;
-	svinfo.sv_version_major = 5;
-	svinfo.sv_version_minor = 0;
-	svinfo.sv_type = SV_TYPE_DEFAULT;
-	svinfo.sv_os = NATIVE_OS_WIN2000;
 
 	/*
 	 * Some callers pass this when they want a NULL session.
@@ -191,7 +177,6 @@ ndr_rpc_bind(mlsvc_handle_t *handle, char *server, char *domain,
 	 */
 	bzero(&handle->handle, sizeof (ndr_hdid_t));
 	handle->clnt = clnt;
-	bcopy(&svinfo, &handle->svinfo, sizeof (srvsvc_server_info_t));
 
 	/*
 	 * Do the OtW RPC bind.
@@ -303,24 +288,6 @@ ndr_rpc_set_nonull(mlsvc_handle_t *handle)
 }
 
 /*
- * Return a reference to the server info.
- */
-const srvsvc_server_info_t *
-ndr_rpc_server_info(mlsvc_handle_t *handle)
-{
-	return (&handle->svinfo);
-}
-
-/*
- * Return the RPC server OS level.
- */
-uint32_t
-ndr_rpc_server_os(mlsvc_handle_t *handle)
-{
-	return (handle->svinfo.sv_os);
-}
-
-/*
  * Get the session key from a bound RPC client handle.
  *
  * The key returned is the 16-byte "user session key"
@@ -421,7 +388,6 @@ void
 ndr_inherit_handle(mlsvc_handle_t *child, mlsvc_handle_t *parent)
 {
 	child->clnt = parent->clnt;
-	bcopy(&parent->svinfo, &child->svinfo, sizeof (srvsvc_server_info_t));
 }
 
 void
