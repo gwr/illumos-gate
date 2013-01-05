@@ -18,39 +18,61 @@
 #
 # CDDL HEADER END
 #
+
 #
 # Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
+#
+# Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
 #
 
 LIBRARY =	libmlrpc.a
 VERS =		.1
 
 OBJS_COMMON = 			\
+	mlrpc_clh.o		\
 	ndr_client.o		\
 	ndr_heap.o		\
 	ndr_marshal.o		\
 	ndr_ops.o		\
 	ndr_process.o		\
 	ndr_server.o		\
-	ndr_svc.o
+	ndr_svc.o		\
+	ndr_wchar.o
 
 NDLLIST = rpcpdu
 
-OBJECTS=	$(OBJS_COMMON) $(OBJS_SHARED) $(NDLLIST:%=%_ndr.o)
+OBJECTS=	$(OBJS_COMMON) $(NDLLIST:%=%_ndr.o)
+CLEANFILES += $(NDLLIST:%=%_ndr.c)
 
-include ../../../Makefile.lib
 include ../../Makefile.lib
 
-INCS += -I$(SRC)/common/smbsrv
+# Where can we find an ANSI cpp?
+ACPP=${GCC_ROOT}/bin/cpp
 
-LDLIBS +=	$(MACH_LDLIBS)
-LDLIBS +=	-lsmb -luuid -lc
+LIBS=		$(DYNLIB) $(LINTLIB)
 
+LDLIBS +=	-lsmbfs -luuid -lc
+
+SRCDIR=		../common
+SRCS=   $(OBJS_COMMON:%.o=$(SRCDIR)/%.c)
+$(LINTLIB) := SRCS = $(SRCDIR)/$(LINTSRC)
+
+NDLDIR =	$(SRCDIR)
+
+CFLAGS +=	$(CCVERBOSE)
+INCS = -I. -I$(SRCDIR)
 CPPFLAGS += $(INCS) -D_REENTRANT
 
-SRCS=   $(OBJS_COMMON:%.o=$(SRCDIR)/%.c)		\
-	$(OBJS_SHARED:%.o=$(SRC)/common/smbsrv/%.c)
+all:	$(LIBS)
+
+lint:	lintcheck
 
 include ../../Makefile.targ
-include ../../../Makefile.targ
+
+objs/%_ndr.o pics/%_ndr.o : %_ndr.c
+
+%_ndr.c : $(NDLDIR)/%.ndl
+	$(NDRGEN) -Y $(ACPP) $(CPPFLAGS) $<
+
+.KEEP_STATE:
