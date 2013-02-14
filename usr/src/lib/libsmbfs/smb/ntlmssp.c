@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2012 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -64,6 +64,10 @@
 #include "ssp.h"
 #include "ntlm.h"
 #include "ntlmssp.h"
+
+/* A shorter alias for a crazy long name from [MS-NLMP] */
+#define	NTLMSSP_NEGOTIATE_NTLM2 \
+	NTLMSSP_NEGOTIATE_EXTENDED_SESSIONSECURITY
 
 typedef struct ntlmssp_state {
 	uint32_t ss_flags;
@@ -221,8 +225,6 @@ ntlmssp_put_type1(struct ssp_ctx *sp, struct mbdata *out_mb)
 	int err;
 	struct smb_ctx *ctx = sp->smb_ctx;
 	ntlmssp_state_t *ssp_st = sp->sp_private;
-	char *ucdom = NULL;
-	char *ucwks = NULL;
 
 	if ((err = mb_init(&mb2)) != 0)
 		return (err);
@@ -231,19 +233,27 @@ ntlmssp_put_type1(struct ssp_ctx *sp, struct mbdata *out_mb)
 	/*
 	 * The initial negotiation flags represent the union of all
 	 * options we support.  The server selects from these.
-	 * See: [MS-NLMP 2.2.2.5]
+	 * See: [MS-NLMP 2.2.2.5 NEGOTIATE]
+	 *
+	 * Careful about these two flags:
+	 *	NTLMSSP_NEGOTIATE_SIGN
+	 *	NTLMSSP_NEGOTIATE_SEAL
+	 * If we set them when using NTLM(v1) all our requests fail.
+	 * Win2k3 does not set them with NTLM, but does for NTLMv2.
+	 * Apparently these affect the signing algorithm somehow.
+	 * Using just NTLMSSP_NEGOTIATE_ALWAYS_SIGN appears to be
+	 * sufficient to indicate the signing we use.
 	 */
 	ssp_st->ss_flags =
 	    NTLMSSP_NEGOTIATE_UNICODE |
 	    NTLMSSP_NEGOTIATE_OEM |
 	    NTLMSSP_REQUEST_TARGET |
-	    NTLMSSP_NEGOTIATE_SIGN |
-	    NTLMSSP_NEGOTIATE_LM_KEY |
+	    /* NTLMSSP_NEGOTIATE_LM_KEY (never) */
 	    NTLMSSP_NEGOTIATE_NTLM |
-	    /* ALWAYS_SIGN (below) */
-	    NTLMSSP_NEGOTIATE_EXTENDED_SESSIONSECURITY |
+	    /* NTLMSSP_NEGOTIATE_ALWAYS_SIGN (set below) */
+	    /* NTLMSSP_NEGOTIATE_NTLM2 (set below) */
 	    NTLMSSP_NEGOTIATE_128 |
-	    /* KEY_EXCH (not yet) */
+	    /* NTLMSSP_NEGOTIATE_KEY_EXCH (not yet) */
 	    NTLMSSP_NEGOTIATE_56;
 
 	if (ctx->ct_vcflags & SMBV_WILL_SIGN) {
@@ -251,29 +261,26 @@ ntlmssp_put_type1(struct ssp_ctx *sp, struct mbdata *out_mb)
 		ctx->ct_hflags2 |= SMB_FLAGS2_SECURITY_SIGNATURE;
 	}
 
+	/*
+	 * Win2k3r2 always sets this, but if we do, then our
+	 * authentication via NTLM(v1) fails, so only set it
+	 * when doing NTLMv2.
+	 */
+	if (ctx->ct_authflags & SMB_AT_NTLM2)
+		ssp_st->ss_flags |= NTLMSSP_NEGOTIATE_NTLM2;
+
 	bcopy(ntlmssp_id, &hdr.h_id, ID_SZ);
 	hdr.h_type = 1; /* Type 1 */
 	hdr.h_flags = ssp_st->ss_flags;
 
-#if 0	/* Note: Windows leaves these null. */
 	/*
-	 * Put the client domain, client name strings.
-	 * These are always in OEM format, upper-case.
+	 * We could put the client domain, client name strings
+	 * here, (always in OEM format, upper-case), and set
+	 * NTLMSSP_NEGOTIATE_OEM_..._SUPPLIED, but Windows
+	 * leaves these NULL so let's do the same.
 	 */
-	ucdom  = utf8_str_toupper(ctx->ct_domain);
-	ucwks  = utf8_str_toupper(ctx->ct_locname);
-	if (ucdom == NULL || ucwks == NULL) {
-		err = ENOMEM;
-		goto out;
-	}
-#endif
-
-	err = mb_put_sb_string(&mb2, &hdr.h_cldom, ucdom, 0);
-	if (err)
-		goto out;
-	err = mb_put_sb_string(&mb2, &hdr.h_wksta, ucwks, 0);
-	if (err)
-		goto out;
+	(void) mb_put_sb_string(&mb2, &hdr.h_cldom, NULL, 0);
+	(void) mb_put_sb_string(&mb2, &hdr.h_wksta, NULL, 0);
 
 	/*
 	 * Marshal the header (in LE order)
@@ -286,10 +293,6 @@ ntlmssp_put_type1(struct ssp_ctx *sp, struct mbdata *out_mb)
 	(void) mb_put_sb_hdr(out_mb, &hdr.h_wksta);
 
 	err = mb_put_mbuf(out_mb, mb2.mb_top);
-
-out:
-	free(ucdom);
-	free(ucwks);
 
 	return (err);
 }
@@ -435,8 +438,8 @@ ntlmssp_put_type3(struct ssp_ctx *sp, struct mbdata *out_mb)
 	hdr.h_flags = ssp_st->ss_flags;
 
 	/*
-	 * Put the LMv2,NTLMv2 responses, or
-	 * possibly LM, NTLM (v1) responses.
+	 * Put the NTLMv2/LMv2 or NTLM/LM (v1) responses.
+	 * See also NTLMSSP_NEGOTIATE_NTLM2 above.
 	 */
 	if (ctx->ct_authflags & SMB_AT_NTLM2) {
 		/* Build the NTLMv2 "target info" blob. */
@@ -634,7 +637,7 @@ ntlmssp_init_client(struct ssp_ctx *sp)
 	if ((sp->smb_ctx->ct_authflags &
 	    (SMB_AT_NTLM2 | SMB_AT_NTLM1 | SMB_AT_ANON)) == 0) {
 		DPRINT("No NTLM authflags");
-		return (ENOTSUP);
+		return (EINVAL);
 	}
 
 	ssp_st = calloc(1, sizeof (*ssp_st));
