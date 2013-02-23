@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2012 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -193,6 +193,14 @@ mlsvc_join(smb_domainex_t *dxi, char *admin_user, char *admin_pw)
 		status = NT_STATUS_INTERNAL_DB_ERROR;
 		goto out;
 	}
+
+	/*
+	 * Update idmap config
+	 */
+	if (smb_config_set_idmap_domain(di->di_fqname) != 0)
+		syslog(LOG_NOTICE, "Failed to set idmap domain name");
+	if (smb_config_refresh_idmap() != 0)
+		syslog(LOG_NOTICE, "Failed to refresh idmap service");
 
 	/*
 	 * Note: The caller (smbd) saves the "secmode" and

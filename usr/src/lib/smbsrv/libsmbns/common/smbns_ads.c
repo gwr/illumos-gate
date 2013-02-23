@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2012 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <sys/param.h>
@@ -2313,16 +2313,6 @@ adjoin_cleanup:
 		if (rename(tmpfile, SMBNS_KRB5_KEYTAB) != 0) {
 			(void) unlink(tmpfile);
 			rc = SMB_ADJOIN_ERR_COMMIT_KEYTAB;
-		} else {
-			/* Set IDMAP config */
-			if (smb_config_set_idmap_domain(ah->domain) != 0) {
-				rc = SMB_ADJOIN_ERR_IDMAP_SET_DOMAIN;
-			} else {
-
-				/* Refresh IDMAP service */
-				if (smb_config_refresh_idmap() != 0)
-					rc = SMB_ADJOIN_ERR_IDMAP_REFRESH;
-			}
 		}
 	} else {
 		(void) unlink(tmpfile);
