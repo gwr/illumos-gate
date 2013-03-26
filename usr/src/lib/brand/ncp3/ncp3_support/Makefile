@@ -19,34 +19,38 @@
 # CDDL HEADER END
 #
 #
-# Copyright (c) 2006, 2010, Oracle and/or its affiliates. All rights reserved.
+# Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
+# Use is subject to license terms.
 #
-# lib/brand/Makefile
+# Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
 #
-# include global definitions
-include ../../Makefile.master
 
-#
-# Build everything in parallel; use .WAIT for dependencies
-.PARALLEL:
+PROG =		ncp3_support
+PROGS =		$(PROG)
+OBJS =		ncp3_support
 
-SUBDIRS= shared .WAIT ipkg labeled ncp3 sn1 solaris10 $($(MACH)_SUBDIRS)
-MSGSUBDIRS= shared ncp3 solaris10 $($(MACH)_MSGSUBDIRS)
+all:		$(PROG)
 
-all :=		TARGET= all
-install :=	TARGET= install
-clean :=	TARGET= clean
-clobber :=	TARGET= clobber
-lint :=		TARGET= lint
-_msg :=		TARGET= _msg
+include ../Makefile.ncp3
+include $(SRC)/cmd/Makefile.cmd
+
+# override the install directory
+ROOTBIN =	$(ROOTBRANDDIR)
+CLOBBERFILES =	$(OBJS) $(ROOTPROGS)
+
+UTSBASE =	$(SRC)/uts
+
+CFLAGS +=	$(CCVERBOSE)
+CPPFLAGS +=	-D_REENTRANT -I$(UTSBASE)/common/brand/ncp3
+LDLIBS +=	-lzonecfg
 
 .KEEP_STATE:
 
-all install clean clobber lint: $(SUBDIRS)
+install:	all $(ROOTPROGS)
 
-_msg: $(MSGSUBDIRS)
+clean:
+		$(RM) $(PROG) $(OBJS)
 
-$(SUBDIRS): FRC
-	@cd $@; pwd; $(MAKE) $(TARGET)
+lint:		lint_PROG
 
-FRC:
+include $(SRC)/cmd/Makefile.targ

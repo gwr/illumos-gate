@@ -1,0 +1,42 @@
+#
+# This file and its contents are supplied under the terms of the
+# Common Development and Distribution License ("CDDL"), version 1.0.
+# You may only use this file in accordance with the terms of version
+# 1.0 of the CDDL.
+#
+# A full copy of the text of the CDDL should have accompanied this
+# source.  A copy of the CDDL is also available via the Internet at
+# http://www.illumos.org/license/CDDL.
+#
+# Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+#
+# This is a list of SMF services that should be removed when
+# converting a global zone to non-global.  Later, would be
+# better to determine this from pkg_hollow.lst
+#
+svc:/network/device-discovery/printers
+svc:/network/iscsi/initiator
+svc:/network/iscsi/target
+svc:/network/npiv_config
+svc:/network/rpc/smserver
+svc:/network/tnctl
+svc:/system/device/fc-fabric
+svc:/system/dumpadm
+svc:/system/fcoe_initiator
+svc:/system/fcoe_target
+svc:/system/filesystem/rmvolmgr
+svc:/system/fmd
+svc:/system/hal
+svc:/system/ibsrp/target
+svc:/system/intrd
+svc:/system/picl
+svc:/system/pools/dynamic
+svc:/system/pools
+svc:/system/power
+svc:/system/resource-mgmt
+svc:/system/scheduler
+svc:/system/stmf
+svc:/system/sysevent
+svc:/system/virtualbox/vboxservice
+svc:/system/zones
+svc:/system/zones-monitoring

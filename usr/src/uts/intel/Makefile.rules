@@ -22,6 +22,7 @@
 # Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
 # Copyright 2012 Joyent, Inc.  All rights reserved.
+# Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
 #
 
 #
@@ -56,6 +57,9 @@ $(OBJS_DIR)/%.o:		$(UTSBASE)/common/io/power/%.c
 	$(CTFCONVERT_O)
 
 $(OBJS_DIR)/%.o:		$(SRC)/common/util/i386/%.s
+	$(COMPILE.s) -o $@ $<
+
+$(OBJS_DIR)/%.o:		$(UTSBASE)/intel/brand/ncp3/%.s
 	$(COMPILE.s) -o $@ $<
 
 $(OBJS_DIR)/%.o:		$(UTSBASE)/intel/brand/sn1/%.s
@@ -314,6 +318,9 @@ $(LINTS_DIR)/%.ln:		$(SRC)/common/fs/%.c
 	@($(LHEAD) $(LINT.c) $< $(LTAIL))
 
 $(LINTS_DIR)/%.ln:		$(SRC)/common/util/i386/%.s
+	@($(LHEAD) $(LINT.s) $< $(LTAIL))
+
+$(LINTS_DIR)/%.ln:		$(UTSBASE)/intel/brand/ncp3/%.s
 	@($(LHEAD) $(LINT.s) $< $(LTAIL))
 
 $(LINTS_DIR)/%.ln:		$(UTSBASE)/intel/brand/sn1/%.s

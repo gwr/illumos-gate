@@ -1,0 +1,62 @@
+#
+# This file and its contents are supplied under the terms of the
+# Common Development and Distribution License ("CDDL"), version 1.0.
+# You may only use this file in accordance with the terms of version
+# 1.0 of the CDDL.
+#
+# A full copy of the text of the CDDL should have accompanied this
+# source.  A copy of the CDDL is also available via the Internet at
+# http://www.illumos.org/license/CDDL.
+#
+#
+# Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+#
+# This is a list of SMF service manifests that might need to be
+# removed when converting a global zone to non-global.
+# (so automatic manifest import does not re-enable)
+#
+var/svc/manifest/application/management/mms.xml
+var/svc/manifest/network/iscsi/iscsi-initiator.xml
+var/svc/manifest/network/iscsi/iscsi-target.xml
+var/svc/manifest/network/network-discovery.xml
+var/svc/manifest/network/npiv_config.xml
+var/svc/manifest/network/rpc/mdcomm.xml
+var/svc/manifest/network/rpc/meta.xml
+var/svc/manifest/network/rpc/metamed.xml
+var/svc/manifest/network/rpc/metamh.xml
+var/svc/manifest/network/tnctl.xml
+var/svc/manifest/network/tnd.xml
+var/svc/manifest/network/vrrp.xml
+var/svc/manifest/system/cvc.xml
+var/svc/manifest/system/device/devices-fc-fabric.xml
+var/svc/manifest/system/dumpadm.xml
+var/svc/manifest/system/fcoe_initiator.xml
+var/svc/manifest/system/fcoe_target.xml
+var/svc/manifest/system/filesystem/rmvolmgr.xml
+var/svc/manifest/system/fmd.xml
+var/svc/manifest/system/fpsd.xml
+var/svc/manifest/system/hal.xml
+var/svc/manifest/system/ibsrp/target.xml
+var/svc/manifest/system/intrd.xml
+var/svc/manifest/system/ipagent.xml
+var/svc/manifest/system/iscsi_target.xml
+var/svc/manifest/system/labeld.xml
+var/svc/manifest/system/mdmonitor.xml
+var/svc/manifest/system/metainit.xml
+var/svc/manifest/system/metasync.xml
+var/svc/manifest/system/ndmp.xml
+var/svc/manifest/system/nws_ii.xml
+var/svc/manifest/system/nws_rdc.xml
+var/svc/manifest/system/nws_rdcsyncd.xml
+var/svc/manifest/system/nws_scm.xml
+var/svc/manifest/system/nws_sv.xml
+var/svc/manifest/system/picl.xml
+var/svc/manifest/system/poold.xml
+var/svc/manifest/system/pools.xml
+var/svc/manifest/system/power.xml
+var/svc/manifest/system/resource-mgmt.xml
+var/svc/manifest/system/scheduler.xml
+var/svc/manifest/system/stmf.xml
+var/svc/manifest/system/sysevent.xml
+var/svc/manifest/system/wusb.xml
+var/svc/manifest/system/zones.xml

@@ -19,34 +19,15 @@
 # CDDL HEADER END
 #
 #
-# Copyright (c) 2006, 2010, Oracle and/or its affiliates. All rights reserved.
+# Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
+# Use is subject to license terms.
 #
-# lib/brand/Makefile
+# Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
 #
-# include global definitions
-include ../../Makefile.master
 
-#
-# Build everything in parallel; use .WAIT for dependencies
-.PARALLEL:
+include ../Makefile.com
+include $(SRC)/lib/Makefile.lib.64
 
-SUBDIRS= shared .WAIT ipkg labeled ncp3 sn1 solaris10 $($(MACH)_SUBDIRS)
-MSGSUBDIRS= shared ncp3 solaris10 $($(MACH)_MSGSUBDIRS)
+CLOBBERFILES	= $(ROOTLIBDIR64)/$(DYNLIB) $(ROOTLIBDIR64)/$(LINTLIB)
 
-all :=		TARGET= all
-install :=	TARGET= install
-clean :=	TARGET= clean
-clobber :=	TARGET= clobber
-lint :=		TARGET= lint
-_msg :=		TARGET= _msg
-
-.KEEP_STATE:
-
-all install clean clobber lint: $(SUBDIRS)
-
-_msg: $(MSGSUBDIRS)
-
-$(SUBDIRS): FRC
-	@cd $@; pwd; $(MAKE) $(TARGET)
-
-FRC:
+install: all $(ROOTLIBS64)

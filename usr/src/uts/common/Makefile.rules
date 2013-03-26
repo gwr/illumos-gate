@@ -21,7 +21,7 @@
 
 #
 # Copyright (c) 1991, 2010, Oracle and/or its affiliates. All rights reserved.
-# Copyright (c) 2012 Nexenta Systems, Inc. All rights reserved.
+# Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
 #
 
 #
@@ -95,6 +95,10 @@ $(OBJS_DIR)/%.o:		$(COMMONBASE)/avl/%.c
 	$(CTFCONVERT_O)
 
 $(OBJS_DIR)/%.o:		$(COMMONBASE)/ucode/%.c
+	$(COMPILE.c) -o $@ $<
+	$(CTFCONVERT_O)
+
+$(OBJS_DIR)/%.o:		$(UTSBASE)/common/brand/ncp3/%.c
 	$(COMPILE.c) -o $@ $<
 	$(CTFCONVERT_O)
 
@@ -1630,6 +1634,9 @@ $(LINTS_DIR)/%.ln:		$(COMMONBASE)/avl/%.c
 	@($(LHEAD) $(LINT.c) $< $(LTAIL))
 
 $(LINTS_DIR)/%.ln:		$(COMMONBASE)/ucode/%.c
+	@($(LHEAD) $(LINT.c) $< $(LTAIL))
+
+$(LINTS_DIR)/%.ln:		$(UTSBASE)/common/brand/ncp3/%.c
 	@($(LHEAD) $(LINT.c) $< $(LTAIL))
 
 $(LINTS_DIR)/%.ln:		$(UTSBASE)/common/brand/sn1/%.c

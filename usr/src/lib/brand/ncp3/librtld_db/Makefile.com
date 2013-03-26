@@ -19,34 +19,12 @@
 # CDDL HEADER END
 #
 #
-# Copyright (c) 2006, 2010, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
+# Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
 #
-# lib/brand/Makefile
-#
-# include global definitions
-include ../../Makefile.master
 
-#
-# Build everything in parallel; use .WAIT for dependencies
-.PARALLEL:
+COBJS	=	brand_librtld_db.o
+OBJECTS	=	$(COBJS) $(COBJS64)
 
-SUBDIRS= shared .WAIT ipkg labeled ncp3 sn1 solaris10 $($(MACH)_SUBDIRS)
-MSGSUBDIRS= shared ncp3 solaris10 $($(MACH)_MSGSUBDIRS)
-
-all :=		TARGET= all
-install :=	TARGET= install
-clean :=	TARGET= clean
-clobber :=	TARGET= clobber
-lint :=		TARGET= lint
-_msg :=		TARGET= _msg
-
-.KEEP_STATE:
-
-all install clean clobber lint: $(SUBDIRS)
-
-_msg: $(MSGSUBDIRS)
-
-$(SUBDIRS): FRC
-	@cd $@; pwd; $(MAKE) $(TARGET)
-
-FRC:
+include ../../Makefile.ncp3
+include $(BRAND_SHARED)/librtld_db/Makefile.com

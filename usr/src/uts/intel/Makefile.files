@@ -22,6 +22,7 @@
 #
 # Copyright (c) 1999, 2010, Oracle and/or its affiliates. All rights reserved.
 # Copyright (c) 2012, Joyent, Inc. All rights reserved.
+# Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
 #
 
 #
@@ -262,6 +263,7 @@ IOMMULIB_OBJS = iommulib.o
 #
 SN1_BRAND_OBJS	=	sn1_brand.o sn1_brand_asm.o
 S10_BRAND_OBJS	=	s10_brand.o s10_brand_asm.o
+NCP3_BRAND_OBJS	=	ncp3_brand.o ncp3_brand_asm.o
 
 #
 #	special files

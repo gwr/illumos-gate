@@ -19,19 +19,18 @@
 # CDDL HEADER END
 #
 #
-# Copyright (c) 2006, 2010, Oracle and/or its affiliates. All rights reserved.
+# Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
+# Use is subject to license terms.
 #
-# lib/brand/Makefile
+# Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
 #
-# include global definitions
-include ../../Makefile.master
 
-#
-# Build everything in parallel; use .WAIT for dependencies
-.PARALLEL:
+default: all
 
-SUBDIRS= shared .WAIT ipkg labeled ncp3 sn1 solaris10 $($(MACH)_SUBDIRS)
-MSGSUBDIRS= shared ncp3 solaris10 $($(MACH)_MSGSUBDIRS)
+include Makefile.ncp3
+
+SUBDIRS =	librtld_db ncp3_npreload ncp3_brand ncp3_support zone cmd
+MSGSUBDIRS =	ncp3_support zone
 
 all :=		TARGET= all
 install :=	TARGET= install
@@ -40,11 +39,24 @@ clobber :=	TARGET= clobber
 lint :=		TARGET= lint
 _msg :=		TARGET= _msg
 
+INSDIRS = $(ETCBRANDDIR) $(ROOTBRANDDIR) $(ROOTBRANDDIR64)
+$(BUILD64) INSDIRS += $(ROOTBRANDDIR)/64
+
 .KEEP_STATE:
 
-all install clean clobber lint: $(SUBDIRS)
+all clean clobber lint: $(SUBDIRS)
+
+install: insdirs .WAIT $(SUBDIRS)
 
 _msg: $(MSGSUBDIRS)
+
+insdirs: $(INSDIRS)
+
+$(ETCBRANDDIR) $(ROOTBRANDDIR) $(ROOTBRANDDIR64):
+	$(INS.dir)
+
+$(ROOTBRANDDIR)/64:
+	-$(RM) -r $@; $(SYMLINK) $(MACH64) $@
 
 $(SUBDIRS): FRC
 	@cd $@; pwd; $(MAKE) $(TARGET)

@@ -19,34 +19,28 @@
 # CDDL HEADER END
 #
 #
-# Copyright (c) 2006, 2010, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
+# Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
 #
-# lib/brand/Makefile
-#
-# include global definitions
-include ../../Makefile.master
 
-#
-# Build everything in parallel; use .WAIT for dependencies
-.PARALLEL:
+PROGS =		ncp3_native ncp3_isaexec_wrapper ncp3_python_wrapper
 
-SUBDIRS= shared .WAIT ipkg labeled ncp3 sn1 solaris10 $($(MACH)_SUBDIRS)
-MSGSUBDIRS= shared ncp3 solaris10 $($(MACH)_MSGSUBDIRS)
+include $(SRC)/cmd/Makefile.cmd
+include ../Makefile.ncp3
 
-all :=		TARGET= all
-install :=	TARGET= install
-clean :=	TARGET= clean
-clobber :=	TARGET= clobber
-lint :=		TARGET= lint
-_msg :=		TARGET= _msg
+# override the install directory
+ROOTBIN =	$(ROOTBRANDDIR)
+CLOBBERFILES =	$(ROOTPROGS)
 
 .KEEP_STATE:
 
-all install clean clobber lint: $(SUBDIRS)
+all: $(PROGS)
 
-_msg: $(MSGSUBDIRS)
+lint:
 
-$(SUBDIRS): FRC
-	@cd $@; pwd; $(MAKE) $(TARGET)
+install: all $(ROOTPROGS)
 
-FRC:
+clean:
+	$(RM) $(PROGS)
+
+include $(SRC)/cmd/Makefile.targ
