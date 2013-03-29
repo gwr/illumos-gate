@@ -21,6 +21,8 @@
 /*
  * Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
+ *
+ * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #ifndef _SYS_USB_UHCIHUB_H
@@ -47,8 +49,12 @@ int		uhci_root_hub_allocate_intr_pipe_resource(
 #define	UHCI_ENABLE_PORT	1
 #define	UHCI_CLEAR_ENDIS_BIT	2
 
-#define	UHCI_ENABLE_PORT_PWR	1
 #define	UHCI_DISABLE_PORT_PWR	0
+#define	UHCI_ENABLE_PORT_PWR	1
+
+#define	UHCI_SUSPEND_PORT	0
+#define	UHCI_RESUME_PORT	1
+#define	UHCI_CLEAR_SR_BIT	2
 
 #ifdef __cplusplus
 }

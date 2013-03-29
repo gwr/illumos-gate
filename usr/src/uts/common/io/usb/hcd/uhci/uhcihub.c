@@ -21,6 +21,8 @@
 /*
  * Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
+ *
+ * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  */
 
 
@@ -48,7 +50,7 @@ static	void	uhci_handle_port_power(
 			uhci_state_t		*uhcip,
 			usb_port_t		port,
 			uint_t			on);
-static	void	uhci_handle_port_suspend(
+static	void	uhci_handle_port_suspend_resume(
 			uhci_state_t		*uhcip,
 			usb_port_t		port,
 			uint_t			on);
@@ -293,7 +295,8 @@ uhci_handle_set_clear_port_feature(
 			    port, UHCI_ENABLE_PORT);
 			break;
 		case CFS_PORT_SUSPEND:
-			uhci_handle_port_suspend(uhcip, port, 1);
+			uhci_handle_port_suspend_resume(uhcip, port,
+			    UHCI_SUSPEND_PORT);
 
 			break;
 		case CFS_PORT_RESET:
@@ -328,7 +331,13 @@ uhci_handle_set_clear_port_feature(
 
 			break;
 		case CFS_PORT_SUSPEND:
-			uhci_handle_port_suspend(uhcip, port, 0);
+			uhci_handle_port_suspend_resume(uhcip, port,
+			    UHCI_RESUME_PORT);
+
+			break;
+		case CFS_C_PORT_SUSPEND:
+			uhci_handle_port_suspend_resume(uhcip, port,
+			    UHCI_CLEAR_SR_BIT);
 
 			break;
 		case CFS_C_PORT_RESET:
@@ -367,37 +376,63 @@ uhci_handle_set_clear_port_feature(
 
 
 /*
- * uhci_handle_port_suspend:
+ * uhci_handle_port_suspend_resume:
+ *	now similar to uhci_handle_port_enable_disable
  */
 static void
-uhci_handle_port_suspend(
+uhci_handle_port_suspend_resume(
 	uhci_state_t		*uhcip,
 	usb_port_t		port,
-	uint_t			on)
+	uint_t			action)
 {
 	uint_t	port_status = Get_OpReg16(PORTSC[port]);
 
 	USB_DPRINTF_L4(PRINT_MASK_ROOT_HUB, uhcip->uhci_log_hdl,
-	    "uhci_handle_port_suspend: port=%d on=%d",
-	    port, on);
+	    "uhci_handle_port_suspend_resume: "
+	    "port = 0x%x, action = %d, status = 0x%x",
+	    port, action, port_status);
 
-	if (on) {
+	switch (action) {
+	case UHCI_SUSPEND_PORT:
 		/* See if the port suspend is already on */
-		if (!(port_status & HCR_PORT_SUSPEND)) {
+		if ((port_status & HCR_PORT_SUSPEND) == 0) {
 			/* suspend the port */
-			Set_OpReg16(PORTSC[port],
-			    (port_status | HCR_PORT_SUSPEND));
+			port_status |= HCR_PORT_SUSPEND;
+			Set_OpReg16(PORTSC[port], port_status);
 		}
-	} else {
+		break;
+
+	case UHCI_RESUME_PORT:
 		/* See if the port suspend is already off */
-		if ((port_status & HCR_PORT_SUSPEND)) {
+		if ((port_status & HCR_PORT_SUSPEND) != 0) {
 			/* resume the port */
-			Set_OpReg16(PORTSC[port],
-			    (port_status & ~HCR_PORT_SUSPEND));
+			port_status &= ~HCR_PORT_SUSPEND;
+			Set_OpReg16(PORTSC[port], port_status);
 		}
+		break;
+
+	case UHCI_CLEAR_SR_BIT:
+		/*
+		 * For CFS_C_PORT_SUSPEND
+		 * After a resume event clear both the
+		 * suspend and resume detect bits.
+		 */
+		if (port_status & HCR_PORT_RESUME_DETECT) {
+			port_status &= ~(HCR_PORT_SUSPEND |
+			    HCR_PORT_RESUME_DETECT);
+			Set_OpReg16(PORTSC[port], port_status);
+		}
+
+		/* Update software port_changes register */
+		uhcip->uhci_root_hub.rh_port_changes[port] &=
+		    ~PORT_CHANGE_PSSC;
+		break;
+
+	default:
+		ASSERT(0);
+		break;
 	}
 }
-
 
 /*
  * uhci_handle_port_power:
@@ -429,29 +464,46 @@ uhci_handle_port_enable_disable(
 	uint_t	port_status = Get_OpReg16(PORTSC[port]);
 
 	USB_DPRINTF_L4(PRINT_MASK_ROOT_HUB, uhcip->uhci_log_hdl,
-	    "uhci_handle_port_enable: port = 0x%x, status = 0x%x",
-	    port, port_status);
+	    "uhci_handle_port_enable_disable: "
+	    "port = 0x%x, action = %d, status = 0x%x",
+	    port, action, port_status);
 
-	if (action == UHCI_ENABLE_PORT) {
+	switch (action) {
+	case UHCI_ENABLE_PORT:
 		/* See if the port enable is already on */
-		if (!(port_status & HCR_PORT_ENABLE)) {
+		if ((port_status & HCR_PORT_ENABLE) == 0) {
 			/* Enable the port */
-			Set_OpReg16(PORTSC[port],
-			    (port_status | HCR_PORT_ENABLE));
+			port_status |= HCR_PORT_ENABLE;
+			Set_OpReg16(PORTSC[port], port_status);
 		}
-	} else if (action == UHCI_DISABLE_PORT) {
+		break;
+
+	case UHCI_DISABLE_PORT:
 		/* See if the port enable is already off */
-		if ((port_status & HCR_PORT_ENABLE)) {
+		if ((port_status & HCR_PORT_ENABLE) != 0) {
 			/* Disable the port */
-			Set_OpReg16(PORTSC[port],
-			    (port_status & ~HCR_PORT_ENABLE));
+			port_status &= ~HCR_PORT_ENABLE;
+			Set_OpReg16(PORTSC[port], port_status);
 		}
-	} else {
-		/* Clear the Enable/Disable change bit */
-		Set_OpReg16(PORTSC[port], (port_status | HCR_PORT_ENDIS_CHG));
+		break;
+
+	case UHCI_CLEAR_ENDIS_BIT:
+		/*
+		 * For CFS_C_PORT_ENABLE
+		 * Clear the Enable/Disable
+		 * (it's a write-clear bit)
+		 */
+		port_status |= HCR_PORT_ENDIS_CHG;
+		Set_OpReg16(PORTSC[port], port_status);
 
 		/* Update software port_changes register */
-		uhcip->uhci_root_hub.rh_port_changes[port] &= ~PORT_CHANGE_PESC;
+		uhcip->uhci_root_hub.rh_port_changes[port] &=
+		    ~PORT_CHANGE_PESC;
+		break;
+
+	default:
+		ASSERT(0);
+		break;
 	}
 }
 
@@ -722,7 +774,7 @@ uhci_handle_root_hub_status_change(void *arg)
 	usb_port_t	port;
 	uint_t		old_port_status;
 	uint_t		new_port_status;
-	ushort_t	port_status;
+	/* ushort_t	port_status; XXX */
 	uint_t		change_status;
 	uchar_t		all_ports_status = 0;
 	uhci_state_t	*uhcip = (uhci_state_t *)arg;
@@ -744,13 +796,30 @@ uhci_handle_root_hub_status_change(void *arg)
 		change_status = (old_port_status ^ new_port_status) & 0xff;
 		change_status |= uhcip->uhci_root_hub.rh_port_changes[port];
 
-		/* See if a device was attached/detached */
-		if (change_status & PORT_STATUS_CCS) {
+		/*
+		 * Post an event for these status changes:
+		 * current connection status (CCS),
+		 * port enable status (PES),
+		 * port suspend status (PSS).
+		 * (XXX others too?)
+		 */
+		if (change_status &
+		    (PORT_STATUS_CCS | PORT_STATUS_PES | PORT_STATUS_PSS))
 			all_ports_status |= 1 << (port + 1);
-		}
 
+		/*
+		 * We are now posting status change events for:
+		 * PORT_STATUS_CCS, PORT_STATUS_PES, PORT_STATUS_PSS
+		 * so uhci_handle_set_clear_port_feature() will be
+		 * called with values CFS_C_PORT_CONNECTION,
+		 * CFS_C_PORT_ENABLE, CFS_C_PORT_SUSPEND after
+		 * those status changes have been handled.
+		 * The status change bits are cleared there.
+		 */
+#if 0	/* XXX: Now in uhci_handle_port_enable_disable */
 		port_status = Get_OpReg16(PORTSC[port]);
 		Set_OpReg16(PORTSC[port], port_status | HCR_PORT_ENDIS_CHG);
+#endif	/* XXX */
 
 		uhcip->uhci_root_hub.rh_port_status[port] = new_port_status;
 		uhcip->uhci_root_hub.rh_port_changes[port] = change_status;
@@ -812,7 +881,14 @@ uhci_get_port_status(
 		new_port_status |= PORT_STATUS_PES;
 	}
 
-	if (port_status & HCR_PORT_SUSPEND) {
+	/*
+	 * Ugh!  This is gross.  When resume event happens,
+	 * we see both the suspend and resume bits, and we
+	 * need to pretend the suspend bit turned off!
+	 * Clear both in: uhci_handle_port_suspend_resume
+	 */
+	if ((port_status & (HCR_PORT_SUSPEND | HCR_PORT_RESUME_DETECT))
+	    == HCR_PORT_SUSPEND) {
 		new_port_status |= PORT_STATUS_PSS;
 	}
 

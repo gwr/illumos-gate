@@ -21,6 +21,7 @@
 
 /*
  * Copyright (c) 1999, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
  */
 
 
@@ -68,7 +69,7 @@ uint_t	hid_instance_debug = (uint_t)-1;
 
 /* tunables */
 int	hid_default_pipe_drain_timeout = HID_DEFAULT_PIPE_DRAIN_TIMEOUT;
-int	hid_pm_mouse = 1; /* enable remote_wakeup for USB mouse/keyboard */
+int	hid_pm_mouse = 0; /* See hid_is_pm_enabled() */
 
 /* soft state structures */
 #define	HID_INITIAL_SOFT_SPACE	4
@@ -2643,21 +2644,28 @@ hid_create_pm_components(dev_info_t *dip, hid_state_t *hidp)
 	case KEYBOARD_PROTOCOL:
 	case MOUSE_PROTOCOL:
 		hidpm->hid_pm_strategy = HID_PM_ACTIVITY;
-		if ((hid_is_pm_enabled(dip) == USB_SUCCESS) &&
-		    (usb_handle_remote_wakeup(dip, USB_REMOTE_WAKEUP_ENABLE) ==
-		    USB_SUCCESS)) {
 
+		/*
+		 * Allow remote wakeup by keyboard or mouse.
+		 */
+		if (usb_handle_remote_wakeup(dip, USB_REMOTE_WAKEUP_ENABLE) ==
+		    USB_SUCCESS) {
 			USB_DPRINTF_L3(PRINT_MASK_PM, hidp->hid_log_handle,
 			    "hid_create_pm_components: Remote Wakeup Enabled");
-
-			if (usb_create_pm_components(dip, &pwr_states) ==
-			    USB_SUCCESS) {
-				hidpm->hid_wakeup_enabled = 1;
-				hidpm->hid_pwr_states = (uint8_t)pwr_states;
-			}
+			hidpm->hid_wakeup_enabled = 1;
 		}
 
+		/*
+		 * Setup PM components.  Similar to the default case
+		 * below, except for hid_wakeup_enabled.
+		 */
+		if ((hid_is_pm_enabled(dip) == USB_SUCCESS) &&
+		    (usb_create_pm_components(dip, &pwr_states) ==
+		    USB_SUCCESS)) {
+			hidpm->hid_pwr_states = (uint8_t)pwr_states;
+		}
 		break;
+
 	default:
 		hidpm->hid_pm_strategy = HID_PM_OPEN_CLOSE;
 		if ((hid_is_pm_enabled(dip) == USB_SUCCESS) &&
@@ -2677,14 +2685,11 @@ hid_create_pm_components(dev_info_t *dip, hid_state_t *hidp)
 
 /*
  * hid_is_pm_enabled
- *	Check if the device is pm enabled. Always enable
- *	pm on the new SUN mouse
+ *	Check if the device is pm enabled.
  */
 static int
 hid_is_pm_enabled(dev_info_t *dip)
 {
-	hid_state_t	*hidp = ddi_get_soft_state(hid_statep,
-	    ddi_get_instance(dip));
 
 	if (strcmp(ddi_node_name(dip), "mouse") == 0) {
 		/* check for overrides first */
@@ -2692,29 +2697,17 @@ hid_is_pm_enabled(dev_info_t *dip)
 		    (ddi_prop_exists(DDI_DEV_T_ANY, dip,
 		    (DDI_PROP_DONTPASS | DDI_PROP_NOTPROM),
 		    "hid-mouse-pm-enable") == 1)) {
-
 			return (USB_SUCCESS);
 		}
-
 		/*
-		 * Always enable PM for 1.05 or greater SUN mouse
-		 * hidp->hid_dev_descr won't be NULL.
+		 * Default for mouse is PM disabled,
+		 * per the hid(7D) man page.
 		 */
-		if ((hidp->hid_dev_descr->idVendor ==
-		    HID_SUN_MOUSE_VENDOR_ID) &&
-		    (hidp->hid_dev_descr->idProduct ==
-		    HID_SUN_MOUSE_PROD_ID) &&
-		    (hidp->hid_dev_descr->bcdDevice >=
-		    HID_SUN_MOUSE_BCDDEVICE)) {
-
-			return (USB_SUCCESS);
-		}
-	} else {
-
-		return (USB_SUCCESS);
+		return (USB_FAILURE);
 	}
 
-	return (USB_FAILURE);
+	/* keyboard, or something */
+	return (USB_SUCCESS);
 }
 
 

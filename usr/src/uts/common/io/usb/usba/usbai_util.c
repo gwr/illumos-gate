@@ -21,6 +21,8 @@
 /*
  * Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
+ *
+ * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
  */
 
 
@@ -2312,6 +2314,8 @@ static int
 usb_common_pwrlvl3(dev_info_t *dip, uint8_t *pm, int *dev_state)
 {
 	int	rval;
+	int	circ;
+	dev_info_t	*child = NULL;
 
 	switch (*dev_state) {
 	case USB_DEV_PWRED_DOWN:
@@ -2321,6 +2325,16 @@ usb_common_pwrlvl3(dev_info_t *dip, uint8_t *pm, int *dev_state)
 
 		*dev_state = USB_DEV_ONLINE;
 		*pm = USB_DEV_OS_FULL_PWR;
+
+		/*
+		 * Power-on any child devices.
+		 */
+		ndi_devi_enter(dip, &circ);
+		for (child = ddi_get_child(dip); child != NULL;
+		    child = ddi_get_next_sibling(child)) {
+			(void) pm_raise_power(child, 0, USB_DEV_OS_FULL_PWR);
+		}
+		ndi_devi_exit(dip, circ);
 
 		/* FALLTHRU */
 	case USB_DEV_ONLINE:
