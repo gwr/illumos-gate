@@ -20,6 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <smbsrv/smb_kproto.h>
@@ -280,7 +281,10 @@ smb_com_open(smb_request_t *sr)
 
 	file_attr = op->dattr  & FILE_ATTRIBUTE_MASK;
 	node = sr->fid_ofile->f_node;
-	if (smb_node_getattr(sr, node, &attr) != 0) {
+	bzero(&attr, sizeof (attr));
+	attr.sa_mask = SMB_AT_MTIME;
+	rc = smb_node_getattr(sr, node, sr->user_cr, sr->fid_ofile, &attr);
+	if (rc != 0) {
 		smbsr_error(sr, NT_STATUS_INTERNAL_ERROR,
 		    ERRDOS, ERROR_INTERNAL_ERROR);
 		return (SDRC_ERROR);
@@ -388,12 +392,16 @@ smb_com_open_andx(smb_request_t *sr)
 		op->action_taken &= ~SMB_OACT_LOCK;
 
 	file_attr = op->dattr & FILE_ATTRIBUTE_MASK;
+	bzero(&attr, sizeof (attr));
 
 	switch (sr->tid_tree->t_res_type & STYPE_MASK) {
 	case STYPE_DISKTREE:
 	case STYPE_PRINTQ:
 		node = sr->fid_ofile->f_node;
-		if (smb_node_getattr(sr, node, &attr) != 0) {
+		attr.sa_mask = SMB_AT_MTIME;
+		rc = smb_node_getattr(sr, node, sr->user_cr,
+		    sr->fid_ofile, &attr);
+		if (rc != 0) {
 			smbsr_error(sr, NT_STATUS_INTERNAL_ERROR,
 			    ERRDOS, ERROR_INTERNAL_ERROR);
 			return (SDRC_ERROR);

@@ -20,6 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <smbsrv/smb_kproto.h>
@@ -181,7 +182,9 @@ smb_nt_trans_ioctl_set_sparse(smb_request_t *sr, smb_xa_t *xa)
 
 	bzero(&attr, sizeof (smb_attr_t));
 	attr.sa_mask = SMB_AT_DOSATTR;
-	if ((rc = smb_node_getattr(sr, node, &attr)) != 0) {
+	rc = smb_node_getattr(sr, node, sr->user_cr,
+	    sr->fid_ofile, &attr);
+	if (rc != 0) {
 		smbsr_errno(sr, rc);
 		smbsr_release_file(sr);
 		return (sr->smb_error.status);
@@ -199,7 +202,8 @@ smb_nt_trans_ioctl_set_sparse(smb_request_t *sr, smb_xa_t *xa)
 	}
 
 	if (attr.sa_mask != 0) {
-		rc = smb_node_setattr(sr, node, sr->user_cr, NULL, &attr);
+		rc = smb_node_setattr(sr, node, sr->user_cr,
+		    sr->fid_ofile, &attr);
 		if (rc != 0) {
 			smbsr_errno(sr, rc);
 			smbsr_release_file(sr);
@@ -284,7 +288,8 @@ smb_nt_trans_ioctl_query_alloc_ranges(smb_request_t *sr, smb_xa_t *xa)
 	/* If zero size file don't return any data */
 	bzero(&attr, sizeof (smb_attr_t));
 	attr.sa_mask = SMB_AT_SIZE;
-	if ((rc = smb_node_getattr(sr, node, &attr)) != 0) {
+	rc = smb_node_getattr(sr, node, sr->user_cr, sr->fid_ofile, &attr);
+	if (rc != 0) {
 		smbsr_errno(sr, rc);
 		smbsr_release_file(sr);
 		return (sr->smb_error.status);
