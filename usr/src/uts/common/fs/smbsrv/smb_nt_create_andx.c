@@ -20,6 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -286,7 +287,11 @@ smb_com_nt_create_andx(struct smb_request *sr)
 
 		node = sr->fid_ofile->f_node;
 		DirFlag = smb_node_is_dir(node) ? 1 : 0;
-		if (smb_node_getattr(sr, node, &attr) != 0) {
+		bzero(&attr, sizeof (attr));
+		attr.sa_mask = SMB_AT_ALL;
+		rc = smb_node_getattr(sr, node, sr->user_cr,
+		    sr->fid_ofile, &attr);
+		if (rc != 0) {
 			smbsr_error(sr, NT_STATUS_INTERNAL_ERROR,
 			    ERRDOS, ERROR_INTERNAL_ERROR);
 			return (SDRC_ERROR);

@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2012 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <sys/sid.h>
@@ -1213,6 +1213,10 @@ smb_fsop_setattr(
 	 * The file system cannot detect pending READDONLY
 	 * (i.e. if the file has been opened readonly but
 	 * not yet closed) so we need to test READONLY here.
+	 *
+	 * Note that file handle that were opened before the
+	 * READONLY flag was set in the node (or the FS) are
+	 * immune to that change, and remain writable.
 	 */
 	if (sr && (set_attr->sa_mask & SMB_AT_SIZE)) {
 		if (sr->fid_ofile) {
