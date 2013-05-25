@@ -474,6 +474,7 @@ file path=lib/inet/in.mpathd mode=0555
 file path=lib/inet/ipmgmtd mode=0555
 file path=lib/inet/netcfgd mode=0555
 file path=lib/inet/nwamd mode=0555
+file path=lib/libsqlite.so.2.8.15
 file path=lib/svc/bin/lsvcrun group=sys mode=0555
 file path=lib/svc/bin/mfstscan group=sys mode=0555
 file path=lib/svc/bin/restore_repository group=sys mode=0555
