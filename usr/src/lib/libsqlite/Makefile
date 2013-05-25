@@ -21,7 +21,7 @@ HDRS=           sqlite.h sqlite-misc.h
 ROOTHDRDIR=     $(ROOT)/usr/include/sqlite
 ROOTHDRS=       $(HDRS:%=$(ROOTHDRDIR)/%)
 CHECKHDRS=      $(HDRS:%.h=%.check)
-CLEANFILES +=	sqlite.h
+CLOBBERFILES +=	sqlite.h
 
 .KEEP_STATE:
 
