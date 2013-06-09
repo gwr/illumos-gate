@@ -22,6 +22,7 @@
 /*
  * Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright (c) 2013, OmniTI Computer Consulting, Inc. All rights reserved.
  */
 
 #include <sys/errno.h>
@@ -361,6 +362,7 @@ _init(void)
 	ncp3_emulation_table[NCP3_SYS_utime] = 1;		/*  30 */
 	ncp3_emulation_table[SYS_kill] = 1;			/*  37 */
 	ncp3_emulation_table[NCP3_SYS_dup] = 1;			/*  41 */
+	ncp3_emulation_table[NCP3_SYS_pipe] = 1;		/*  42 */
 	ncp3_emulation_table[SYS_ioctl] = 1;			/*  54 */
 	ncp3_emulation_table[SYS_execve] = 1;			/*  59 */
 	ncp3_emulation_table[NCP3_SYS_fsat] = 1;		/*  76 */
@@ -388,6 +390,8 @@ _init(void)
 	ncp3_emulation_table[SYS_sigqueue] = 1;			/* 190 */
 	ncp3_emulation_table[NCP3_SYS_creat64] = 1;		/* 224 */
 	ncp3_emulation_table[SYS_zone] = 1;			/* 227 */
+	ncp3_emulation_table[NCP3_SYS_so_socket] = 1;		/* 230 */
+	ncp3_emulation_table[NCP3_SYS_accept] = 1;		/* 234 */
 
 	err = mod_install(&modlinkage);
 	if (err) {

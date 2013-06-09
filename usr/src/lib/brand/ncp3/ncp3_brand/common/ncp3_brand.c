@@ -22,6 +22,7 @@
 /*
  * Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright (c) 2013, OmniTI Computer Consulting, Inc. All rights reserved.
  */
 
 #include <errno.h>
@@ -59,6 +60,7 @@
 #include <sys/lofi.h>
 #include <atomic.h>
 #include <sys/acl.h>
+#include <sys/socket.h>
 
 #include <ncp3_brand.h>
 #include <brand_misc.h>
@@ -277,6 +279,47 @@ ncp3_execve(sysret_t *rval, const char *fname, const char **argp,
 	err = __systemcall(rval, SYS_execve + 1024, fname, argp, envp);
 	brand_assert(err != 0);
 	return (err);
+}
+
+/*
+ * NCP3's socket() syscall does not split type and flags
+ */
+static int
+ncp3_so_socket(sysret_t *rval, int domain, int type, int protocol,
+    char *devpath, int version)
+{
+	if ((type & ~SOCK_TYPE_MASK) != 0) {
+		errno = EINVAL;
+		return (-1);
+	}
+	return (__systemcall(rval, SYS_so_socket + 1024, domain, type,
+	    protocol, devpath, version));
+}
+
+/*
+ * NCP3's pipe() syscall has a different calling convention
+ */
+static int
+ncp3_pipe(sysret_t *rval)
+{
+	int fds[2], err;
+	if ((err = __systemcall(rval, SYS_pipe + 1024, fds, 0)) != 0)
+		return (err);
+
+	rval->sys_rval1 = fds[0];
+	rval->sys_rval2 = fds[1];
+	return (0);
+}
+
+/*
+ * NCP3's accept() syscall takes three arguments
+ */
+static int
+ncp3_accept(sysret_t *rval, int sock, struct sockaddr *addr, uint_t *addrlen,
+    int version)
+{
+	return (__systemcall(rval, SYS_accept + 1024, sock, addr, addrlen,
+	    version, 0));
 }
 
 static long
@@ -605,7 +648,7 @@ brand_sysent_table_t brand_sysent_table[] = {
 	NOSYS,					/*  39 */
 	NOSYS,					/*  40 */
 	EMULATE(ncp3_dup, 1 | RV_DEFAULT),	/*  41 */
-	NOSYS,					/*  42 */
+	EMULATE(ncp3_pipe, 0 | RV_32RVAL2),	/*  42 */
 	NOSYS,					/*  43 */
 	NOSYS,					/*  44 */
 	NOSYS,					/*  45 */
@@ -804,11 +847,11 @@ brand_sysent_table_t brand_sysent_table[] = {
 	EMULATE(ncp3_zone, 5 | RV_DEFAULT),	/* 227 */
 	NOSYS,					/* 228 */
 	NOSYS,					/* 229 */
-	NOSYS,					/* 230 */
+	EMULATE(ncp3_so_socket, 5 | RV_DEFAULT), /* 230 */
 	NOSYS,					/* 231 */
 	NOSYS,					/* 232 */
 	NOSYS,					/* 233 */
-	NOSYS,					/* 234 */
+	EMULATE(ncp3_accept, 4 | RV_DEFAULT),	/* 234 */
 	NOSYS,					/* 235 */
 	NOSYS,					/* 236 */
 	NOSYS,					/* 237 */

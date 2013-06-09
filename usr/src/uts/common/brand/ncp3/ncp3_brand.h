@@ -22,6 +22,7 @@
 /*
  * Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright (c) 2013, OmniTI Computer Consulting, Inc. All rights reserved.
  */
 
 #ifndef _NCP3_BRAND_H
@@ -99,6 +100,7 @@ extern "C" {
 #define	NCP3_SYS_utime		30
 /* SYS_kill 37 */
 #define	NCP3_SYS_dup		41
+#define	NCP3_SYS_pipe		42
 /* SYS_ioctl 54 */
 /* SYS_execve 59 */
 #define	NCP3_SYS_fsat		76
@@ -124,6 +126,8 @@ extern "C" {
 /* SYS_sigqueue 190 */
 #define	NCP3_SYS_creat64	224
 /* SYS_zone 227 */
+#define	NCP3_SYS_so_socket	230
+#define	NCP3_SYS_accept		234
 
 
 /*
