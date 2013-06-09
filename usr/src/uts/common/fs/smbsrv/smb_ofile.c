@@ -369,6 +369,8 @@ smb_ofile_close(smb_ofile_t *of, int32_t mtime_sec)
 				    of->f_node->n_pending_dosattr;
 				if (pa->sa_dosattr != 0)
 					pa->sa_mask |= SMB_AT_DOSATTR;
+				/* Let's leave this zero when not in use. */
+				of->f_node->n_allocsz = 0;
 			}
 			if (pa->sa_mask != 0) {
 				/*
