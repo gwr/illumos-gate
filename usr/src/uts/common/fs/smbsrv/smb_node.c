@@ -1088,6 +1088,7 @@ smb_node_alloc(
 	node->n_hashkey = hashkey;
 	node->n_pending_dosattr = 0;
 	node->n_open_count = 0;
+	node->n_allocsz = 0;
 	node->n_dnode = NULL;
 	node->n_unode = NULL;
 	node->delete_on_close_cred = NULL;
@@ -1421,11 +1422,15 @@ smb_node_setattr(smb_request_t *sr, smb_node_t *node,
 
 	case SMB_AT_SIZE:
 		/*
-		 * Setting the EOF position but not alloc size.
-		 * Update the alloc size too.
+		 * Setting the EOF position but not allocation size.
+		 * If the new EOF position would be greater than
+		 * the allocation size, increase the latter.
 		 */
-		attr->sa_allocsz = SMB_ALLOCSZ(attr->sa_vattr.va_size);
-		attr->sa_mask |= SMB_AT_ALLOCSZ;
+		if (node->n_allocsz < attr->sa_vattr.va_size) {
+			attr->sa_mask |= SMB_AT_ALLOCSZ;
+			attr->sa_allocsz =
+			    SMB_ALLOCSZ(attr->sa_vattr.va_size);
+		}
 		break;
 
 	case SMB_AT_ALLOCSZ | SMB_AT_SIZE:
@@ -1507,9 +1512,13 @@ smb_node_setattr(smb_request_t *sr, smb_node_t *node,
 				node->n_pending_dosattr = 0;
 			}
 		}
-		if ((attr->sa_mask & SMB_AT_ALLOCSZ) != 0) {
+		/*
+		 * Simulate n_allocsz persistence only while
+		 * there are opens.  See smb_node_getattr
+		 */
+		if ((attr->sa_mask & SMB_AT_ALLOCSZ) != 0 &&
+		    node->n_open_count != 0)
 			node->n_allocsz = attr->sa_allocsz;
-		}
 		mutex_exit(&node->n_mutex);
 	}
 
@@ -1586,12 +1595,18 @@ smb_node_getattr(smb_request_t *sr, smb_node_t *node, cred_t *cr,
 
 	/*
 	 * Also fix-up sa_allocsz, which is not persistent.
-	 * If the file size grew, update node->n_allocsz
-	 * and return the updated size.
+	 * When there are no open files, allocsz is faked.
+	 * While there are open files, we pretend we have a
+	 * persistent allocation size in n_allocsz, and
+	 * keep that up-to-date here, increasing it when
+	 * we see the file size grow past it.
 	 */
 	if (attr->sa_mask & SMB_AT_ALLOCSZ) {
 		if (isdir) {
 			attr->sa_allocsz = 0;
+		} else if (node->n_open_count == 0) {
+			attr->sa_allocsz =
+			    SMB_ALLOCSZ(attr->sa_vattr.va_size);
 		} else {
 			if (node->n_allocsz < attr->sa_vattr.va_size)
 				node->n_allocsz =
