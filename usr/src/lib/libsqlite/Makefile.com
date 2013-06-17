@@ -193,6 +193,8 @@ install:	all \
 		$(ROOTLIBDIR)/$(LINTLIB) \
 		$(ROOTLIBDIR)/$(NATIVERELOC)
 
+lint:
+
 all_h: $(GENHDR)
 
 $(ROOTLIBDIR)/$(NATIVERELOC)	:= FILEMODE= 644

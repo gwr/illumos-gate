@@ -20,6 +20,8 @@ make=${MAKE:-dmake}
 CLOSED_IS_PRESENT=no
 export CLOSED_IS_PRESENT
 
+export SOURCEDEBUG=yes
+
 [ -n "$SRC" ] || {
   echo "SRC not set.  Run 'ws' or 'bldenv' first."
   exit 1
@@ -85,6 +87,7 @@ then
 
   # always update the smbsrv headers to be safe
   # test -f $ROOT/usr/include/smbsrv/wintypes.h ||
+    (cd $SRC/uts/common/sys && $make -k install_h)
     (cd $SRC/uts/common/smbsrv && $make -k install_h)
 
 fi
@@ -119,9 +122,10 @@ do_kern() {
   lint) targ=modlintlib ;;
   *) targ=$1 ;;
   esac
-  (cd $SRC/uts/$x/nsmb && $make $targ)
-  (cd $SRC/uts/$x/smbfs && $make $targ)
-  (cd $SRC/uts/$x/smbsrv && $make $targ)
+  ( unset SOURCEDEBUG ;
+  (cd $SRC/uts/$x/nsmb && $make $targ) ;
+  (cd $SRC/uts/$x/smbfs && $make $targ) ;
+  (cd $SRC/uts/$x/smbsrv && $make $targ) )
 }
 
 ################################################################
@@ -129,6 +133,7 @@ do_kern() {
 do_libs() {
 
 for lib in \
+  libfakekernel \
   libavl \
   libcmdutils \
   libsmbfs \
@@ -181,6 +186,16 @@ do
 	$make $1 KMDB_LINKTEST_ENABLE= )
   (cd $SRC/cmd/mdb/$x/$a/smbsrv &&
 	$make $1 KMDB_LINKTEST_ENABLE= )
+  (cd $SRC/cmd/mdb/$x/$a/libfksmbsrv &&
+	$make $1 KMDB_LINKTEST_ENABLE= )
+
+# We build these libraries (to the proto area), so we need to
+# build the mdb modules too so mdb will load them.
+  (cd $SRC/cmd/mdb/$x/$a/libcmdutils &&
+	$make $1 )
+  (cd $SRC/cmd/mdb/$x/$a/libavl &&
+	$make $1 )
+
 done
 
 (cd $SRC/cmd/Adm/sun && $make $1)

@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2012 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #ifndef	_LIBSMB_H
@@ -42,7 +42,6 @@ extern "C" {
 #include <stdlib.h>
 #include <libscf.h>
 #include <libshare.h>
-#include <sqlite/sqlite.h>
 #include <uuid/uuid.h>
 #include <synch.h>
 
@@ -131,6 +130,7 @@ typedef enum {
 	SMB_CI_SYNC_ENABLE,
 
 	SMB_CI_SECURITY,
+	SMB_CI_NETBIOS_ENABLE,
 	SMB_CI_NBSCOPE,
 	SMB_CI_SYS_CMNT,
 	SMB_CI_LM_LEVEL,
@@ -151,6 +151,7 @@ typedef enum {
 	SMB_CI_DISPOSITION,
 	SMB_CI_DFS_STDROOT_NUM,
 	SMB_CI_TRAVERSE_MOUNTS,
+
 	SMB_CI_MAX
 } smb_cfg_id_t;
 
@@ -290,6 +291,8 @@ void smb_trace(const char *s);
 void smb_tracef(const char *fmt, ...);
 
 const char *xlate_nt_status(unsigned int);
+
+void libsmb_redirect_syslog(__FILE_TAG *fp, int priority);
 
 /*
  * Authentication
@@ -680,9 +683,9 @@ typedef struct smb_gsid {
 } smb_gsid_t;
 
 typedef struct smb_giter {
-	sqlite_vm	*sgi_vm;
-	sqlite		*sgi_db;
-	uint32_t	sgi_nerr;
+	struct sqlite_vm	*sgi_vm;
+	struct sqlite		*sgi_db;
+	uint32_t		sgi_nerr;
 } smb_giter_t;
 
 typedef struct smb_group {

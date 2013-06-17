@@ -20,6 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <assert.h>
@@ -260,6 +261,7 @@ smb_door_call(uint32_t cmd, void *req_data, xdrproc_t req_xdr,
 	smb_doorarg_t	da;
 	int		fd;
 	int		rc;
+	char 		*door_name;
 
 	bzero(&da, sizeof (smb_doorarg_t));
 	da.da_opcode = cmd;
@@ -276,7 +278,11 @@ smb_door_call(uint32_t cmd, void *req_data, xdrproc_t req_xdr,
 		return (-1);
 	}
 
-	if ((fd = open(SMBD_DOOR_NAME, O_RDONLY)) < 0) {
+	door_name = getenv("SMBD_DOOR_NAME");
+	if (door_name == NULL)
+		door_name = SMBD_DOOR_NAME;
+
+	if ((fd = open(door_name, O_RDONLY)) < 0) {
 		syslog(LOG_DEBUG, "smb_door_call[%s]: %m", da.da_opname);
 		return (-1);
 	}

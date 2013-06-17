@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <sys/types.h>
@@ -62,6 +62,10 @@
 #define	SMBD_REFRESH_INTERVAL		10
 #define	SMB_DBDIR "/var/smb"
 
+#ifdef	_FAKE
+extern void fakekernel_redirect_cmn_err(__FILE_TAG *, int);
+#endif
+
 static int smbd_daemonize_init(void);
 static void smbd_daemonize_fini(int, int);
 static int smb_init_daemon_priv(int, uid_t, gid_t);
@@ -75,9 +79,6 @@ static void smbd_service_fini(void);
 
 static int smbd_setup_options(int argc, char *argv[]);
 static void smbd_usage(FILE *fp);
-static void smbd_report(const char *fmt, ...);
-
-static void smbd_sig_handler(int sig);
 
 static int32_t smbd_gmtoff(void);
 static void smbd_localtime_init(void);
@@ -85,6 +86,7 @@ static void *smbd_localtime_monitor(void *arg);
 
 static void smbd_dyndns_init(void);
 static void smbd_load_shares(void);
+static void *smbd_share_loader(void *);
 
 static int smbd_refresh_init(void);
 static void smbd_refresh_fini(void);
@@ -112,11 +114,10 @@ smbd_t smbd;
 int
 main(int argc, char *argv[])
 {
-	struct sigaction	act;
 	sigset_t		set;
 	uid_t			uid;
 	int			pfd = -1;
-	uint_t			sigval;
+	int			sigval;
 	struct rlimit		rl;
 	int			orig_limit;
 
@@ -128,7 +129,9 @@ main(int argc, char *argv[])
 
 	if ((uid = getuid()) != smbd.s_uid) {
 		smbd_report("user %d: %s", uid, strerror(EPERM));
+#ifndef	_FAKE
 		return (SMF_EXIT_ERR_FATAL);
+#endif	/* _FAKE */
 	}
 
 	if (is_system_labeled()) {
@@ -152,30 +155,29 @@ main(int argc, char *argv[])
 			    " from %d to %d", orig_limit, rl.rlim_cur);
 	}
 
-	(void) sigfillset(&set);
-	(void) sigdelset(&set, SIGABRT);
+	/*
+	 * Block async signals in all threads.
+	 */
+	(void) sigemptyset(&set);
 
-	(void) sigfillset(&act.sa_mask);
-	act.sa_handler = smbd_sig_handler;
-	act.sa_flags = 0;
+	(void) sigaddset(&set, SIGHUP);
+	(void) sigaddset(&set, SIGINT);
+	(void) sigaddset(&set, SIGQUIT);
+	(void) sigaddset(&set, SIGPIPE);
+	(void) sigaddset(&set, SIGTERM);
+	(void) sigaddset(&set, SIGUSR1);
+	(void) sigaddset(&set, SIGUSR2);
 
-	(void) sigaction(SIGABRT, &act, NULL);
-	(void) sigaction(SIGTERM, &act, NULL);
-	(void) sigaction(SIGHUP, &act, NULL);
-	(void) sigaction(SIGINT, &act, NULL);
-	(void) sigaction(SIGPIPE, &act, NULL);
-	(void) sigaction(SIGUSR1, &act, NULL);
-
-	(void) sigdelset(&set, SIGTERM);
-	(void) sigdelset(&set, SIGHUP);
-	(void) sigdelset(&set, SIGINT);
-	(void) sigdelset(&set, SIGPIPE);
-	(void) sigdelset(&set, SIGUSR1);
+	(void) sigprocmask(SIG_SETMASK, &set, NULL);
 
 	if (smbd.s_fg) {
-		(void) sigdelset(&set, SIGTSTP);
-		(void) sigdelset(&set, SIGTTIN);
-		(void) sigdelset(&set, SIGTTOU);
+#ifdef	_FAKE
+		fakekernel_redirect_cmn_err(stdout,
+		    smbd.s_debug ? CE_CONT : CE_WARN);
+#endif
+
+		libsmb_redirect_syslog(stdout,
+		    smbd.s_debug ? LOG_DEBUG : LOG_INFO);
 
 		if (smbd_service_init() != 0) {
 			smbd_report("service initialization failed");
@@ -201,23 +203,24 @@ main(int argc, char *argv[])
 	(void) atexit(smb_kmod_stop);
 
 	while (!smbd.s_shutting_down) {
-		if (smbd.s_sigval == 0 && smbd.s_refreshes == 0)
-			(void) sigsuspend(&set);
-
-		sigval = atomic_swap_uint(&smbd.s_sigval, 0);
+		sigval = sigwait(&set);
 
 		switch (sigval) {
-		case 0:
+		case -1:
+			syslog(LOG_DEBUG, "sigwait failed: %s",
+			    strerror(errno));
+			break;
 		case SIGPIPE:
-		case SIGABRT:
 			break;
 
 		case SIGHUP:
 			syslog(LOG_DEBUG, "refresh requested");
+			atomic_inc_uint(&smbd.s_refreshes);
 			(void) pthread_cond_signal(&refresh_cond);
 			break;
 
 		case SIGUSR1:
+			syslog(LOG_DEBUG, "log dump requested");
 			smb_log_dumpall();
 			break;
 
@@ -226,9 +229,23 @@ main(int argc, char *argv[])
 			 * Typically SIGINT or SIGTERM.
 			 */
 			smbd.s_shutting_down = B_TRUE;
+			(void) pthread_cond_signal(&refresh_cond);
 			break;
 		}
 	}
+
+	/*
+	 * Allow termination signals while shutting down.
+	 */
+	(void) sigemptyset(&set);
+
+	if (smbd.s_fg) {
+		(void) sigaddset(&set, SIGHUP);
+		(void) sigaddset(&set, SIGINT);
+	}
+	(void) sigaddset(&set, SIGTERM);
+
+	(void) sigprocmask(SIG_UNBLOCK, &set, NULL);
 
 	smbd_service_fini();
 	closelog();
@@ -440,9 +457,20 @@ smbd_service_init(void)
 	};
 	int	rc, i;
 
+	smbd.s_pid = getpid();
+
+	/*
+	 * Stop for a debugger attach here, which is after the
+	 * fork() etc. in smb_daemonize_init()
+	 */
+	if (smbd.s_dbg_stop) {
+		smbd_report("pid %d stop for debugger attach", smbd.s_pid);
+		(void) kill(smbd.s_pid, SIGSTOP);
+	}
+	smbd_report("smbd starting, pid %d", smbd.s_pid);
+
 	(void) mutex_lock(&smbd_service_mutex);
 
-	smbd.s_pid = getpid();
 	for (i = 0; i < sizeof (dir)/sizeof (dir[0]); ++i) {
 		if ((mkdir(dir[i].name, dir[i].perm) < 0) &&
 		    (errno != EEXIST)) {
@@ -476,7 +504,9 @@ smbd_service_init(void)
 	smbd_dyndns_init();
 	smb_ipc_init();
 
-	if (smb_netbios_start() != 0)
+	if (smb_config_getbool(SMB_CI_NETBIOS_ENABLE) == 0)
+		smbd_report("NetBIOS services disabled");
+	else if (smb_netbios_start() != 0)
 		smbd_report("NetBIOS services failed to start");
 	else
 		smbd_report("NetBIOS services started");
@@ -667,10 +697,11 @@ smbd_refresh_monitor(void *arg)
 			(void) pthread_cond_wait(&refresh_cond, &refresh_mutex);
 		(void) pthread_mutex_unlock(&refresh_mutex);
 
-		if (smbd.s_shutting_down) {
-			smbd_service_fini();
-			/*NOTREACHED*/
-		}
+		/*
+		 * main thread will call smbd_service_fini
+		 */
+		if (smbd.s_shutting_down)
+			break;
 
 		(void) mutex_lock(&smbd_service_mutex);
 
@@ -756,9 +787,14 @@ static int
 smbd_already_running(void)
 {
 	door_info_t info;
+	char 		*door_name;
 	int door;
 
-	if ((door = open(SMBD_DOOR_NAME, O_RDONLY)) < 0)
+	door_name = getenv("SMBD_DOOR_NAME");
+	if (door_name == NULL)
+		door_name = SMBD_DOOR_NAME;
+
+	if ((door = open(door_name, O_RDONLY)) < 0)
 		return (0);
 
 	if (door_info(door, &info) < 0)
@@ -791,7 +827,7 @@ smbd_kernel_bind(void)
 		rc = smb_kmod_setcfg(&cfg);
 		if (rc < 0)
 			smbd_report("kernel configuration update failed: %s",
-			    strerror(errno));
+			    strerror(rc));
 		return (rc);
 	}
 
@@ -804,10 +840,10 @@ smbd_kernel_bind(void)
 			smb_kmod_unbind();
 		else
 			smbd.s_kbound = B_TRUE;
+	} else {
+		smbd_report("kernel bind error: %s", strerror(rc));
 	}
 
-	if (rc != 0)
-		smbd_report("kernel bind error: %s", strerror(errno));
 	return (rc);
 }
 
@@ -819,18 +855,24 @@ smbd_kernel_start(void)
 
 	smb_load_kconfig(&cfg);
 	rc = smb_kmod_setcfg(&cfg);
-	if (rc != 0)
+	if (rc != 0) {
+		smbd_report("kernel config ioctl error: %s", strerror(rc));
 		return (rc);
+	}
 
 	rc = smb_kmod_setgmtoff(smbd_gmtoff());
-	if (rc != 0)
+	if (rc != 0) {
+		smbd_report("kernel gmtoff ioctl error: %s", strerror(rc));
 		return (rc);
+	}
 
 	rc = smb_kmod_start(smbd.s_door_opipe, smbd.s_door_lmshr,
 	    smbd.s_door_srv);
 
-	if (rc != 0)
+	if (rc != 0) {
+		smbd_report("kernel start ioctl error: %s", strerror(rc));
 		return (rc);
+	}
 
 	return (0);
 }
@@ -880,11 +922,40 @@ smbd_load_shares(void)
 
 	(void) pthread_attr_init(&attr);
 	(void) pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-	rc = pthread_create(&tid, &attr, smb_shr_load, NULL);
+	rc = pthread_create(&tid, &attr, smbd_share_loader, NULL);
 	(void) pthread_attr_destroy(&attr);
 
 	if (rc != 0)
 		smbd_report("unable to load disk shares: %s", strerror(errno));
+}
+
+/*
+ * Later, keep this thread around (just one thread)
+ * and "kick it" when we get a refresh.
+ */
+static void *
+smbd_share_loader(void *args)
+{
+#ifdef	_FAKE
+	smb_share_t si;
+	_NOTE(ARGUNUSED(args))
+
+	bzero(&si, sizeof (si));
+	(void) strlcpy(si.shr_name, "test", MAXNAMELEN);
+	(void) strlcpy(si.shr_path, "/var/smb/test", MAXPATHLEN);
+	(void) strlcpy(si.shr_cmnt, "fksmbd testing", MAXPATHLEN);
+	si.shr_flags = SMB_SHRF_GUEST_OK;
+	if (smb_shr_add(&si) != 0) {
+		smbd_report("failed to add test share (/tmp/test)");
+	}
+#else
+	/*
+	 * Not loading the real shares in fksmbd because that
+	 * tries to enable network/smb/server
+	 */
+	(void) smb_shr_load(args);
+#endif
+	return (NULL);
 }
 
 /*
@@ -972,23 +1043,6 @@ smbd_gmtoff(void)
 	return (gmtoff);
 }
 
-static void
-smbd_sig_handler(int sigval)
-{
-	if (smbd.s_sigval == 0)
-		(void) atomic_swap_uint(&smbd.s_sigval, sigval);
-
-	if (sigval == SIGHUP) {
-		atomic_inc_uint(&smbd.s_refreshes);
-		(void) pthread_cond_signal(&refresh_cond);
-	}
-
-	if (sigval == SIGINT || sigval == SIGTERM) {
-		smbd.s_shutting_down = B_TRUE;
-		(void) pthread_cond_signal(&refresh_cond);
-	}
-}
-
 /*
  * Set up configuration options and parse the command line.
  * This function will determine if we will run as a daemon
@@ -1011,12 +1065,17 @@ smbd_setup_options(int argc, char *argv[])
 
 	smbd.s_fg = smb_config_get_fg_flag();
 
-	while ((c = getopt(argc, argv, ":f")) != -1) {
+	while ((c = getopt(argc, argv, ":dfs")) != -1) {
 		switch (c) {
+		case 'd':
+			smbd.s_debug = 1;
+			break;
 		case 'f':
 			smbd.s_fg = 1;
 			break;
-
+		case 's':
+			smbd.s_dbg_stop = 1;
+			break;
 		case ':':
 		case '?':
 		default:
@@ -1032,6 +1091,7 @@ static void
 smbd_usage(FILE *fp)
 {
 	static char *help[] = {
+		"-d  enable debug messages"
 		"-f  run program in foreground"
 	};
 
@@ -1043,7 +1103,7 @@ smbd_usage(FILE *fp)
 		(void) fprintf(fp, "    %s\n", help[i]);
 }
 
-static void
+void
 smbd_report(const char *fmt, ...)
 {
 	char buf[128];
