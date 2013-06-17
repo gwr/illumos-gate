@@ -556,7 +556,9 @@ smb_node_root_init(vnode_t *vp, smb_server_t *sv, smb_node_t **root)
 	attr.sa_mask = SMB_AT_ALL;
 	error = smb_vop_getattr(vp, NULL, &attr, 0, zone_kcred());
 	if (error) {
-		VN_RELE(vp);
+		/*
+		 * NB: This is rootvp. We did not VN_HOLD, so no vn_rele
+		 */
 		return (error);
 	}
 
@@ -1171,7 +1173,7 @@ smb_node_free(smb_node_t *node)
 	VERIFY(node->n_oplock.ol_count == 0);
 	VERIFY(node->n_oplock.ol_xthread == NULL);
 	VERIFY(node->n_oplock.ol_fem == B_FALSE);
-	VERIFY(mutex_owner(&node->n_mutex) == NULL);
+	VERIFY(MUTEX_NOT_HELD(&node->n_mutex));
 	VERIFY(!RW_LOCK_HELD(&node->n_lock));
 	VN_RELE(node->vp);
 	kmem_cache_free(smb_node_cache, node);
@@ -1264,6 +1266,7 @@ smb_node_destroy_audit_buf(smb_node_t *node)
 static void
 smb_node_audit(smb_node_t *node)
 {
+#ifdef	_KERNEL
 	smb_audit_buf_node_t	*abn;
 	smb_audit_record_node_t	*anr;
 
@@ -1277,6 +1280,9 @@ smb_node_audit(smb_node_t *node)
 		anr->anr_depth = getpcstack(anr->anr_stack,
 		    SMB_AUDIT_STACK_DEPTH);
 	}
+#else	/* _KERNEL */
+	_NOTE(ARGUNUSED(node))
+#endif	/* _KERNEL */
 }
 
 static smb_llist_t *
@@ -1701,6 +1707,10 @@ smb_node_getattr(smb_request_t *sr, smb_node_t *node, cred_t *cr,
 	return (0);
 }
 
+
+#ifndef	_KERNEL
+extern int reparse_vnode_parse(vnode_t *vp, nvlist_t *nvl); /* XXX */
+#endif	/* _KERNEL */
 
 /*
  * Check to see if the node represents a reparse point.
