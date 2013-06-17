@@ -515,12 +515,16 @@ smb_tracef(const char *fmt, ...)
 }
 
 /*
- * Temporary fbt for dtrace until user space sdt enabled.
+ * This function is designed to be used with dtrace, i.e. see:
+ * usr/src/cmd/smbsrv/dtrace/smbd-all.d
+ *
+ * Outside of dtrace, the messages passed to this function usually
+ * lack sufficient context to be useful, so don't log them.
  */
+/* ARGSUSED */
 void
 smb_trace(const char *s)
 {
-	syslog(LOG_DEBUG, "%s", s);
 }
 
 /*
