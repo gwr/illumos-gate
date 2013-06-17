@@ -49,8 +49,6 @@ extern "C" {
 #include <netinet/in.h>
 #include <sys/ksocket.h>
 #include <sys/fem.h>
-#include <sys/door.h>
-#include <sys/extdirent.h>
 #include <smbsrv/smb.h>
 #include <smbsrv/smbinfo.h>
 #include <smbsrv/mbuf.h>
@@ -59,6 +57,9 @@ extern "C" {
 #include <smbsrv/netbios.h>
 #include <smbsrv/smb_vops.h>
 #include <smbsrv/smb_kstat.h>
+
+struct __door_handle;	/* <sys/door.h> */
+struct edirent;		/* <sys/extdirent.h> */
 
 struct smb_disp_entry;
 struct smb_request;
@@ -250,7 +251,8 @@ typedef enum smb_thread_state {
 	SMB_THREAD_STATE_STARTING = 0,
 	SMB_THREAD_STATE_RUNNING,
 	SMB_THREAD_STATE_EXITING,
-	SMB_THREAD_STATE_EXITED
+	SMB_THREAD_STATE_EXITED,
+	SMB_THREAD_STATE_FAILED
 } smb_thread_state_t;
 
 struct _smb_thread;
@@ -698,6 +700,8 @@ typedef struct smb_arg_negotiate {
 	timestruc_t	ni_servertime;
 } smb_arg_negotiate_t;
 
+#define	SMB_SSNKEY_LEN 16
+
 typedef struct smb_arg_sessionsetup {
 	char		*ssi_user;
 	char		*ssi_domain;
@@ -707,8 +711,8 @@ typedef struct smb_arg_sessionsetup {
 	uint8_t		*ssi_cspwd;
 	uint16_t	ssi_maxmpxcount;
 	uint32_t	ssi_capabilities;
-	uint32_t	ssi_sesskey;
 	boolean_t	ssi_guest;
+	uint8_t		ssi_ssnkey[SMB_SSNKEY_LEN];
 } smb_arg_sessionsetup_t;
 
 typedef struct tcon {
@@ -759,13 +763,11 @@ typedef struct tcon {
  * local_ipaddr: the local IP address used to connect to the server.
  */
 
-#define	SMB_MAC_KEYSZ	512
-
 struct smb_sign {
-	unsigned int seqnum;
-	unsigned int mackey_len;
 	unsigned int flags;
-	unsigned char mackey[SMB_MAC_KEYSZ];
+	uint32_t seqnum;
+	uint_t mackey_len;
+	uint8_t *mackey;
 };
 
 #define	SMB_SIGNING_ENABLED	1
@@ -1286,8 +1288,8 @@ typedef struct smb_odir {
 	uint64_t		d_offset;
 	union {
 		char		*u_bufptr;
-		edirent_t	*u_edp;
-		dirent64_t	*u_dp;
+		struct edirent	*u_edp;
+		struct dirent64	*u_dp;
 	} d_u;
 	uint32_t		d_last_cookie;
 	uint32_t		d_cookies[SMB_MAX_SEARCH];
@@ -1849,17 +1851,17 @@ typedef struct smb_server {
 	smb_session_t		*sv_session;
 
 	struct smb_export	sv_export;
-	door_handle_t		sv_lmshrd;
+	struct __door_handle	*sv_lmshrd;
 
 	/* Internal door for up-calls to smbd */
-	door_handle_t		sv_kdoor_hd;
+	struct __door_handle	*sv_kdoor_hd;
 	int			sv_kdoor_id; /* init -1 */
 	uint64_t		sv_kdoor_ncall;
 	kmutex_t		sv_kdoor_mutex;
 	kcondvar_t		sv_kdoor_cv;
 
 	/* RPC pipes (client side) */
-	door_handle_t		sv_opipe_door_hd;
+	struct __door_handle	*sv_opipe_door_hd;
 	int			sv_opipe_door_id;
 	uint64_t		sv_opipe_door_ncall;
 	kmutex_t		sv_opipe_door_mutex;
@@ -1935,9 +1937,6 @@ typedef struct smb_spoolfid {
 #define	SMB_INFO_NETBIOS_SESSION_SVC_FAILED	0x0002
 #define	SMB_INFO_USER_LEVEL_SECURITY		0x40000000
 #define	SMB_INFO_ENCRYPT_PASSWORDS		0x80000000
-
-#define	SMB_NEW_KID()	atomic_inc_64_nv(&smb_kids)
-#define	SMB_UNIQ_FID()	atomic_inc_32_nv(&smb_fids)
 
 #define	SMB_IS_STREAM(node) ((node)->n_unode)
 
