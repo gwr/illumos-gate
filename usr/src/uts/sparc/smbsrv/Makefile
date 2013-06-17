@@ -21,7 +21,8 @@
 #
 # Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
-# Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
+#
+# Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
 
 #
 #	This makefile drives the production of the cifs server file system
@@ -51,7 +52,7 @@ include $(UTSBASE)/sparc/Makefile.sparc
 #	Module dependencies
 #
 LDFLAGS += -dy -Nfs/sockfs -Nmisc/ksocket -Ndrv/ip -Nstrmod/rpcmod -Nsys/doorfs
-LDFLAGS += -Nmisc/kcf
+LDFLAGS += -Nmisc/kcf -Ncrypto/md5
 
 #
 #	Define targets
