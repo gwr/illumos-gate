@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2010 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <syslog.h>
@@ -47,6 +47,7 @@ smb_idmap_check(const char *s, idmap_stat stat)
  * smb_idmap_getsid
  *
  * Tries to get a mapping for the given uid/gid
+ * Allocates ->sim_domsid
  */
 idmap_stat
 smb_idmap_getsid(uid_t id, int idtype, smb_sid_t **sid)
@@ -203,20 +204,17 @@ smb_idmap_batch_getid(idmap_get_handle_t *idmaph, smb_idmap_t *sim,
     smb_sid_t *sid, int idtype)
 {
 	char sidstr[SMB_SID_STRSZ];
-	smb_sid_t *tmpsid;
 	idmap_stat stat;
 	int flag = 0;
 
 	if (idmaph == NULL || sim == NULL || sid == NULL)
 		return (IDMAP_ERR_ARG);
 
-	if ((tmpsid = smb_sid_split(sid, &sim->sim_rid)) == NULL)
-		return (IDMAP_ERR_MEMORY);
-
-	smb_sid_tostr(tmpsid, sidstr);
+	smb_sid_tostr(sid, sidstr);
+	if (smb_sid_splitstr(sidstr, &sim->sim_rid) != 0)
+		return (IDMAP_ERR_SID);
 	sim->sim_domsid = sidstr;
 	sim->sim_idtype = idtype;
-	smb_sid_free(tmpsid);
 
 	switch (idtype) {
 	case SMB_IDMAP_USER:
@@ -239,8 +237,12 @@ smb_idmap_batch_getid(idmap_get_handle_t *idmaph, smb_idmap_t *sim,
 		break;
 
 	default:
-		return (IDMAP_ERR_ARG);
+		stat = IDMAP_ERR_ARG;
+		break;
 	}
+
+	/* This was copied by idmap_get_Xbysid. */
+	sim->sim_domsid = NULL;
 
 	return (stat);
 }
@@ -252,6 +254,7 @@ smb_idmap_batch_getid(idmap_get_handle_t *idmaph, smb_idmap_t *sim,
  *
  * sim->sim_domsid and sim->sim_rid will contain the mapping
  * result upon successful process of the batched request.
+ * NB: sim_domsid allocated by strdup, here or in libidmap
  */
 idmap_stat
 smb_idmap_batch_getsid(idmap_get_handle_t *idmaph, smb_idmap_t *sim,
@@ -374,7 +377,7 @@ smb_idmap_batch_binsid(smb_idmap_batch_t *sib)
 			return (-1);
 
 		sim->sim_sid = smb_sid_splice(sid, sim->sim_rid);
-		free(sid);
+		smb_sid_free(sid);
 	}
 
 	return (0);
