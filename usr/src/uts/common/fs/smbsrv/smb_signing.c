@@ -155,18 +155,19 @@ smb_sign_begin(smb_request_t *sr, smb_token_t *token)
 	 * Compute and store the signing (MAC) key.
 	 *
 	 * With extended security, the MAC key is the same as the
-	 * session key (and we'll have sinfo->ssi_cspwlen == 0).
+	 * session key (and we'll have sinfo->ssi_ntpwlen == 0).
 	 * With non-extended security, it's the concatenation of
 	 * the session key and the "NT response" we received.
 	 * (NB: no extended security yet)
 	 */
-	sign->mackey_len = SSN_KEY_LEN + sinfo->ssi_cspwlen;
+
+	sign->mackey_len = SMB_SSNKEY_LEN + sinfo->ssi_ntpwlen;
 	sign->mackey = kmem_alloc(sign->mackey_len, KM_SLEEP);
+
 	bcopy(token->tkn_session_key, sign->mackey, SSN_KEY_LEN);
-	if (sinfo->ssi_cspwlen > 0) {
-		bcopy(sinfo->ssi_cspwd, sign->mackey + SSN_KEY_LEN,
-		    sinfo->ssi_cspwlen);
-	}
+	if (sinfo->ssi_ntpwlen > 0)
+		bcopy(sinfo->ssi_ntpwd, sign->mackey + SMB_SSNKEY_LEN,
+		    sinfo->ssi_ntpwlen);
 
 	session->signing.seqnum = 0;
 	sr->sr_seqnum = 2;
