@@ -26,8 +26,10 @@
 
 #include <strings.h>
 #include <stdlib.h>
+#include <syslog.h>
 #include <smbsrv/string.h>
 #include <smbsrv/libsmb.h>
+#include <netsmb/spnego.h>	/* libsmbfs */
 #include <assert.h>
 
 /*
@@ -484,81 +486,86 @@ smb_lmv2_password_ok(
 }
 
 /*
- * smb_auth_validate_lm
+ * smb_auth_validate
  *
- * Validates given LM/LMv2 client response, passed in passwd arg, against
- * stored user's password, passed in smbpw
- *
- * If LM level <=3 server accepts LM responses, otherwise LMv2
+ * Validates given NTLMv2 (or NTLM, LMv2, LM) client responses against
+ * the stored user's password, passed in smbpw.  Try those in the order
+ * strongest to weakest, stopping a point determined by the configured
+ * LM Compatibility Level.
  */
 boolean_t
-smb_auth_validate_lm(
-    unsigned char *challenge,
-    uint32_t clen,
+smb_auth_validate(
     smb_passwd_t *smbpw,
-    unsigned char *passwd,
-    int pwdlen,
-    char *domain,
-    char *username)
-{
-	boolean_t ok = B_FALSE;
-	int64_t lmlevel;
-
-	if (pwdlen != SMBAUTH_LM_RESP_SZ)
-		return (B_FALSE);
-
-	if (smb_config_getnum(SMB_CI_LM_LEVEL, &lmlevel) != SMBD_SMF_OK)
-		return (B_FALSE);
-
-	if (lmlevel <= 3) {
-		ok = smb_lm_password_ok(challenge, clen, smbpw->pw_lmhash,
-		    passwd);
-	}
-
-	if (!ok)
-		ok = smb_lmv2_password_ok(challenge, clen, smbpw->pw_nthash,
-		    passwd, domain, username);
-
-	return (ok);
-}
-
-/*
- * smb_auth_validate_nt
- *
- * Validates given NTLM/NTLMv2 client response, passed in passwd arg, against
- * stored user's password, passed in smbpw
- *
- * If LM level <=4 server accepts NTLM/NTLMv2 responses, otherwise only NTLMv2
- */
-boolean_t
-smb_auth_validate_nt(
-    unsigned char *challenge,
-    uint32_t clen,
-    smb_passwd_t *smbpw,
-    unsigned char *passwd,
-    int pwdlen,
     char *domain,
     char *username,
+    unsigned char *challenge,
+    uint_t clen,
+    unsigned char *nt_resp,
+    uint_t nt_len,
+    unsigned char *lm_resp,
+    uint_t lm_len,
     uchar_t *session_key)
 {
 	int64_t lmlevel;
-	boolean_t ok;
+	boolean_t ok = B_FALSE;
 
 	if (smb_config_getnum(SMB_CI_LM_LEVEL, &lmlevel) != SMBD_SMF_OK)
 		return (B_FALSE);
 
-	if ((lmlevel == 5) && (pwdlen <= SMBAUTH_LM_RESP_SZ))
+	if (lmlevel > 5)
 		return (B_FALSE);
 
-	if (pwdlen > SMBAUTH_LM_RESP_SZ)
+	/*
+	 * Accept NTLMv2 at any LM level (0-5).
+	 */
+	if (nt_len > SMBAUTH_LM_RESP_SZ) {
 		ok = smb_ntlmv2_password_ok(challenge, clen,
-		    smbpw->pw_nthash, passwd, pwdlen,
+		    smbpw->pw_nthash, nt_resp, nt_len,
 		    domain, username, session_key);
-	else
-		ok = smb_ntlm_password_ok(challenge, clen,
-		    smbpw->pw_nthash, passwd, session_key);
+		if (ok)
+			return (ok);
+	}
 
-	return (ok);
+	if (lmlevel == 5)
+		return (B_FALSE);
+
+	/*
+	 * Todo: NTLMSSP_NEGOTIATE_EXTENDED_SESSIONSECURITY
+	 * (a.k.a. NTLMSSP_NEGOTIATE_NTLM2) See: [MS-NLMP] 3.3.1
+	 */
+
+	/*
+	 * Accept NTLM at levels 0-4
+	 */
+	if (nt_len == SMBAUTH_LM_RESP_SZ) {
+		ok = smb_ntlm_password_ok(challenge, clen,
+		    smbpw->pw_nthash, nt_resp, session_key);
+		if (ok)
+			return (ok);
+	}
+
+	if (lmlevel == 4)
+		return (B_FALSE);
+
+
+	/*
+	 * Accept LM/LMv2 auth at levels 0-3
+	 */
+	if (lm_len != SMBAUTH_LM_RESP_SZ)
+		return (B_FALSE);
+	if (session_key)
+		(void) smb_auth_md4(session_key, smbpw->pw_nthash,
+		    SMBAUTH_HASH_SZ);
+	ok = smb_lmv2_password_ok(challenge, clen,
+	    smbpw->pw_nthash, lm_resp, domain, username);
+	if (ok)
+		return (ok);
+	ok = smb_lm_password_ok(challenge, clen,
+	    smbpw->pw_lmhash, lm_resp);
+	if (ok)
+		return (ok);
+
+	return (B_FALSE);
 }
 
 /*
@@ -598,4 +605,48 @@ smb_gen_random_passwd(char *buf, size_t len)
 	buf[len] = '\0';
 
 	return (0);
+}
+
+static SPNEGO_MECH_OID MechTypeList[] = {
+#if 0 /* Todo: Kerberos */
+	spnego_mech_oid_Kerberos_V5_Legacy,
+	spnego_mech_oid_Kerberos_V5,
+#endif
+	spnego_mech_oid_NTLMSSP,
+};
+static int MechTypeCnt = sizeof (MechTypeList) /
+	sizeof (MechTypeList[0]);
+
+/* This string is just like Windows. */
+static char IgnoreSPN[] = "not_defined_in_RFC4178@please_ignore";
+
+/*
+ * Build the SPNEGO "hint" token based on the
+ * configured authentication mechanisms.
+ * (NTLMSSP, and maybe Kerberos)
+ */
+void
+smb_config_get_negtok(uchar_t *pBuf, uint32_t *pBufLen)
+{
+	SPNEGO_TOKEN_HANDLE hSpnegoToken = NULL;
+	ulong_t tLen = *pBufLen;
+	int rc;
+
+	rc = spnegoCreateNegTokenHint(MechTypeList, MechTypeCnt,
+	    (uchar_t *)IgnoreSPN, &hSpnegoToken);
+	if (rc != SPNEGO_E_SUCCESS) {
+		syslog(LOG_DEBUG, "smb_config_get_negtok: "
+		    "spnegoCreateNegTokenHint, rc=%c", rc);
+		*pBufLen = 0;
+		return;
+	}
+	rc = spnegoTokenGetBinary(hSpnegoToken, pBuf, &tLen);
+	if (rc != SPNEGO_E_SUCCESS) {
+		syslog(LOG_DEBUG, "smb_config_get_negtok: "
+		    "spnegoTokenGetBinary, rc=%d", rc);
+		*pBufLen = 0;
+	} else {
+		*pBufLen = (uint32_t)tLen;
+	}
+	spnegoFreeData(hSpnegoToken);
 }

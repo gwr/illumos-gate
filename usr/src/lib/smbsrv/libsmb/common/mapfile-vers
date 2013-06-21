@@ -81,8 +81,7 @@ SYMBOL_VERSION SUNWprivate {
 	smb_auth_ntlm_hash;
 	smb_auth_ntlmv2_hash;
 	smb_auth_qnd_unicode;
-	smb_auth_validate_lm;
-	smb_auth_validate_nt;
+	smb_auth_validate;
 	smb_buf32_xdr;
 	smb_cache_add;
 	smb_cache_create;

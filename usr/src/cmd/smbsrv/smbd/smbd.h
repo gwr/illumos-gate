@@ -81,6 +81,7 @@ typedef struct smbd {
 	boolean_t	s_shutting_down; /* shutdown control */
 	volatile uint_t	s_refreshes;
 	boolean_t	s_kbound;	/* B_TRUE if bound to kernel */
+	int		s_authsvc_sock;
 	int		s_door_lmshr;
 	int		s_door_srv;
 	int		s_door_opipe;
@@ -89,6 +90,7 @@ typedef struct smbd {
 	smb_inaddr_t	s_pdc;
 	boolean_t	s_pdc_changed;
 	pthread_t	s_refresh_tid;
+	pthread_t	s_authsvc_tid;
 	pthread_t	s_localtime_tid;
 	pthread_t	s_spool_tid;
 	pthread_t	s_dc_monitor_tid;
@@ -99,6 +101,8 @@ typedef struct smbd {
 	boolean_t	s_fatal_error;
 	smb_log_hdl_t	s_loghd;
 } smbd_t;
+
+extern smbd_t smbd;
 
 #define	SMBD_LOGNAME		"smbd"
 #define	SMBD_LOGSIZE		1024
@@ -139,6 +143,9 @@ void smbd_door_enter(smbd_door_t *);
 void smbd_door_return(smbd_door_t *, char *, size_t, door_desc_t *, uint_t);
 
 void *smbd_door_dispatch_op(void *);
+
+int smbd_authsvc_start(void);
+void smbd_authsvc_stop(void);
 
 /* For smbd-d */
 int fksmb_kmod_start(void);

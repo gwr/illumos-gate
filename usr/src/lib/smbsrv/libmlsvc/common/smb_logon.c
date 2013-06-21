@@ -20,6 +20,7 @@
  */
 /*
  * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <unistd.h>
@@ -552,7 +553,8 @@ static uint32_t
 smb_token_auth_local(smb_logon_t *user_info, smb_token_t *token,
     smb_passwd_t *smbpw)
 {
-	boolean_t lm_ok, nt_ok;
+	boolean_t ok;
+	uint32_t lm_len;
 	uint32_t status = NT_STATUS_SUCCESS;
 
 	if (smb_pwd_getpwnam(user_info->lg_e_username, smbpw) == NULL)
@@ -561,41 +563,36 @@ smb_token_auth_local(smb_logon_t *user_info, smb_token_t *token,
 	if (smbpw->pw_flags & SMB_PWF_DISABLE)
 		return (NT_STATUS_ACCOUNT_DISABLED);
 
-	nt_ok = lm_ok = B_FALSE;
-	if ((smbpw->pw_flags & SMB_PWF_LM) &&
-	    (user_info->lg_lm_password.len != 0)) {
-		lm_ok = smb_auth_validate_lm(
-		    user_info->lg_challenge_key.val,
-		    user_info->lg_challenge_key.len,
-		    smbpw,
-		    user_info->lg_lm_password.val,
-		    user_info->lg_lm_password.len,
-		    user_info->lg_domain,
-		    user_info->lg_username);
-		token->tkn_session_key = NULL;
-	}
+	if (smbpw->pw_flags & SMB_PWF_LM)
+		lm_len = user_info->lg_lm_password.len;
+	else
+		lm_len = 0;
 
-	if (!lm_ok && (user_info->lg_nt_password.len != 0)) {
-		token->tkn_session_key = malloc(SMBAUTH_SESSION_KEY_SZ);
-		if (token->tkn_session_key == NULL)
-			return (NT_STATUS_NO_MEMORY);
-		nt_ok = smb_auth_validate_nt(
-		    user_info->lg_challenge_key.val,
-		    user_info->lg_challenge_key.len,
-		    smbpw,
-		    user_info->lg_nt_password.val,
-		    user_info->lg_nt_password.len,
-		    user_info->lg_domain,
-		    user_info->lg_username,
-		    (uchar_t *)token->tkn_session_key);
-	}
+	token->tkn_session_key = malloc(SMBAUTH_SESSION_KEY_SZ);
+	if (token->tkn_session_key == NULL)
+		return (NT_STATUS_NO_MEMORY);
 
-	if (!nt_ok && !lm_ok) {
-		status = NT_STATUS_WRONG_PASSWORD;
-		syslog(LOG_NOTICE, "logon[%s\\%s]: %s",
-		    user_info->lg_e_domain, user_info->lg_e_username,
-		    xlate_nt_status(status));
-	}
+	ok = smb_auth_validate(
+	    smbpw,
+	    user_info->lg_domain,
+	    user_info->lg_username,
+	    user_info->lg_challenge_key.val,
+	    user_info->lg_challenge_key.len,
+	    user_info->lg_nt_password.val,
+	    user_info->lg_nt_password.len,
+	    user_info->lg_lm_password.val,
+	    lm_len,
+	    (uchar_t *)token->tkn_session_key);
+	if (ok)
+		return (NT_STATUS_SUCCESS);
+
+	free(token->tkn_session_key);
+	token->tkn_session_key = NULL;
+
+	status = NT_STATUS_WRONG_PASSWORD;
+	syslog(LOG_NOTICE, "logon[%s\\%s]: %s",
+	    user_info->lg_e_domain, user_info->lg_e_username,
+	    xlate_nt_status(status));
 
 	return (status);
 }

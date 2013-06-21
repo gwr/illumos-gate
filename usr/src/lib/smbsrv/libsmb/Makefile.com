@@ -73,14 +73,16 @@ include ../../../Makefile.lib
 include ../../Makefile.lib
 
 INCS += -I$(SRC)/common/smbsrv
+INCS += -I$(SRC)/lib/libsmbfs/smb
 
 LINTCHECKFLAGS += -erroff=E_INCONS_ARG_DECL2
 LINTCHECKFLAGS += -erroff=E_BAD_FORMAT_STR2
 
 LDLIBS +=	$(MACH_LDLIBS)
-LDLIBS +=	-lscf -lmd -luuid -lpkcs11 -lcryptoutil
-LDLIBS +=	-lsec -lidmap -lnsl -lsocket -lresolv
-LDLIBS +=	-lreparse -lnvpair -lcmdutils -lavl -lc
+# perfer to keep libs ordered by dependence
+LDLIBS +=	-lsmbfs -lscf -lmd -luuid -lpkcs11 -lcryptoutil
+LDLIBS +=	-lsec -lidmap -lreparse -lcmdutils -lavl
+LDLIBS +=	-lnvpair -lresolv -lsocket -lnsl -lc
 CPPFLAGS +=	$(INCS) -D_REENTRANT
 CERRWARN +=	-_gcc=-Wno-uninitialized
 CERRWARN +=	-_gcc=-Wno-char-subscripts

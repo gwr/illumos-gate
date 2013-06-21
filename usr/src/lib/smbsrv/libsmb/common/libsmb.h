@@ -37,7 +37,6 @@ extern "C" {
 #include <arpa/inet.h>
 #include <net/if.h>
 #include <inet/tcp.h>
-#include <uuid/uuid.h>
 #include <netdb.h>
 #include <stdlib.h>
 #include <libscf.h>
@@ -140,6 +139,7 @@ typedef enum {
 	SMB_CI_DYNDNS_ENABLE,
 
 	SMB_CI_MACHINE_PASSWD,
+	SMB_CI_MACHINE_UUID,
 	SMB_CI_KPASSWD_SRV,
 	SMB_CI_KPASSWD_DOMAIN,
 	SMB_CI_KPASSWD_SEQNUM,
@@ -193,6 +193,7 @@ extern int smb_config_setbool(smb_cfg_id_t, boolean_t);
 extern boolean_t smb_config_get_ads_enable(void);
 extern uint8_t smb_config_get_fg_flag(void);
 extern char *smb_config_get_localsid(void);
+extern int smb_config_get_localuuid(uuid_t);
 extern int smb_config_secmode_fromstr(char *);
 extern char *smb_config_secmode_tostr(int);
 extern int smb_config_get_secmode(void);
@@ -202,7 +203,7 @@ extern int smb_config_refresh_idmap(void);
 extern int smb_config_getip(smb_cfg_id_t, smb_inaddr_t *);
 extern void smb_config_get_version(smb_version_t *);
 uint32_t smb_config_get_execinfo(char *, char *, size_t);
-
+extern void smb_config_get_negtok(uchar_t *, uint32_t *);
 
 extern void smb_load_kconfig(smb_kmod_cfg_t *kcfg);
 extern uint32_t smb_crc_gen(uint8_t *, size_t);
@@ -498,10 +499,8 @@ extern int smb_auth_ntlmv2_hash(unsigned char *,
 
 extern int smb_auth_gen_session_key(smb_auth_info_t *, unsigned char *);
 
-boolean_t smb_auth_validate_lm(unsigned char *, uint32_t, smb_passwd_t *,
-    unsigned char *, int, char *, char *);
-boolean_t smb_auth_validate_nt(unsigned char *, uint32_t, smb_passwd_t *,
-    unsigned char *, int, char *, char *, uchar_t *);
+boolean_t smb_auth_validate(smb_passwd_t *, char *, char *,
+    uchar_t *, uint_t, uchar_t *, uint_t, uchar_t *, uint_t, uchar_t *);
 
 int smb_gen_random_passwd(char *passwd, size_t bufsz);
 

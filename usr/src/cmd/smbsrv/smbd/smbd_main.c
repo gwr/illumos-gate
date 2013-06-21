@@ -455,6 +455,7 @@ smbd_service_init(void)
 		{ SMB_SYSTEM32,	0755 },
 		{ SMB_VSS,	0755 },
 		{ SMB_PIPE_DIR,	0755 },
+		{ "/var/smb/lipc", 0755 },
 	};
 	int	rc, i;
 
@@ -528,6 +529,12 @@ smbd_service_init(void)
 
 	if (smbd_pipesvc_start() != 0) {
 		smbd_report("pipesvc initialization failed");
+		(void) mutex_unlock(&smbd_service_mutex);
+		return (-1);
+	}
+
+	if (smbd_authsvc_start() != 0) {
+		smbd_report("authsvc initialization failed");
 		(void) mutex_unlock(&smbd_service_mutex);
 		return (-1);
 	}
@@ -608,6 +615,7 @@ smbd_service_fini(void)
 	smb_lgrp_stop();
 	smbd_pipesvc_stop();
 	smbd_door_stop();
+	smbd_authsvc_stop();
 	smbd_spool_stop();
 	smbd_refresh_fini();
 	smbd_kernel_unbind();

@@ -47,6 +47,7 @@ OBJS_LOCAL = \
 OBJS_FS_SMBSRV = \
 		smb_acl.o				\
 		smb_alloc.o				\
+		smb_authenticate.o			\
 		smb_close.o				\
 		smb_common_open.o			\
 		smb_common_transact.o			\
@@ -113,7 +114,6 @@ OBJS_FS_SMBSRV = \
 # Most files from $SRC/common/smbsrv are built in libsmb
 OBJS_CMN_SMBSRV = \
 		smb_match.o \
-		smb_token.o \
 		smb_netbios_util.o
 
 OBJS_CMN_ACL = \
