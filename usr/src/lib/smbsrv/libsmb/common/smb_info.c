@@ -23,8 +23,11 @@
  * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  */
 
-#include <assert.h>
 #include <sys/types.h>
+#include <sys/sockio.h>
+#include <sys/socket.h>
+#include <sys/utsname.h>
+
 #include <stdarg.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -39,11 +42,11 @@
 #include <netinet/in.h>
 #include <arpa/nameser.h>
 #include <resolv.h>
-#include <sys/sockio.h>
-#include <sys/socket.h>
+
 #include <smbsrv/smbinfo.h>
 #include <smbsrv/netbios.h>
 #include <smbsrv/libsmb.h>
+#include <assert.h>
 
 static mutex_t seqnum_mtx;
 
@@ -67,6 +70,7 @@ static rwlock_t		smb_ipc_lock;
 void
 smb_load_kconfig(smb_kmod_cfg_t *kcfg)
 {
+	struct utsname uts;
 	int64_t citem;
 
 	bzero(kcfg, sizeof (smb_kmod_cfg_t));
@@ -106,6 +110,19 @@ smb_load_kconfig(smb_kmod_cfg_t *kcfg)
 	    sizeof (kcfg->skc_system_comment));
 	smb_config_get_version(&kcfg->skc_version);
 	kcfg->skc_execflags = smb_config_get_execinfo(NULL, NULL, 0);
+	if (smb_config_get_localuuid(kcfg->skc_machine_uuid) < 0) {
+		syslog(LOG_ERR, "smb_load_kconfig: no machine_uuid");
+		uuid_generate_time(kcfg->skc_machine_uuid);
+	}
+	kcfg->skc_negtok_len = SMB_PI_MAX_NEGTOK;
+	smb_config_get_negtok(kcfg->skc_negtok, &kcfg->skc_negtok_len);
+
+	(void) uname(&uts);
+	(void) snprintf(kcfg->skc_native_os, sizeof (kcfg->skc_native_os),
+	    "%s %s %s", uts.sysname, uts.release, uts.version);
+
+	(void) strlcpy(kcfg->skc_native_lm, "Native SMB service",
+	    sizeof (kcfg->skc_native_lm));
 }
 
 /*
