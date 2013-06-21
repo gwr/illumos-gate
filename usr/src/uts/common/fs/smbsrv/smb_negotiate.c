@@ -230,6 +230,7 @@ static uint32_t	smb_nt_tcp_rcvbuf = 1048560;	/* scale factor of 4 */
 static int smb_xlate_dialect(const char *);
 
 int smb_cap_passthru = 1;
+int smb_cap_ext_sec = 1;
 
 smb_sdrc_t
 smb_pre_negotiate(smb_request_t *sr)
@@ -296,8 +297,8 @@ smb_com_negotiate(smb_request_t *sr)
 		return (SDRC_ERROR);
 	}
 
-	sr->session->secmode = NEGOTIATE_SECURITY_CHALLENGE_RESPONSE |
-	    NEGOTIATE_SECURITY_USER_LEVEL;
+	sr->session->secmode = NEGOTIATE_ENCRYPT_PASSWORDS |
+	    NEGOTIATE_USER_SECURITY;
 	secmode = sr->session->secmode;
 	sesskey = sr->session->sesskey;
 
@@ -404,14 +405,9 @@ smb_com_negotiate(smb_request_t *sr)
 		    sizeof (smb_nt_tcp_rcvbuf), CRED());
 
 		/*
-		 * Turn off Extended Security Negotiation
+		 * Allow SMB signatures if using encrypted passwords
 		 */
-		sr->smb_flg2 &= ~SMB_FLAGS2_EXT_SEC;
-
-		/*
-		 * Allow SMB signatures if security challenge response enabled
-		 */
-		if ((secmode & NEGOTIATE_SECURITY_CHALLENGE_RESPONSE) &&
+		if ((secmode & NEGOTIATE_ENCRYPT_PASSWORDS) &&
 		    sr->sr_cfg->skc_signing_enable) {
 			secmode |= NEGOTIATE_SECURITY_SIGNATURES_ENABLED;
 			if (sr->sr_cfg->skc_signing_required)
@@ -420,6 +416,15 @@ smb_com_negotiate(smb_request_t *sr)
 
 			sr->session->secmode = secmode;
 		}
+
+		/*
+		 * Does the client want Extended Security?
+		 * (and if we have it enabled)
+		 * If so, handle as if a different dialect.
+		 */
+		if ((sr->smb_flg2 & SMB_FLAGS2_EXT_SEC) && smb_cap_ext_sec)
+			goto NT_LM_0_12_ext_sec;
+		sr->smb_flg2 &= ~SMB_FLAGS2_EXT_SEC;
 
 		/*
 		 * nbdomain is not expected to be aligned.
@@ -456,6 +461,35 @@ smb_com_negotiate(smb_request_t *sr)
 
 		smb_msgbuf_term(&mb);
 		break;
+
+NT_LM_0_12_ext_sec:
+		/*
+		 * This is the "Extended Security" variant of
+		 * dialect NT_LM_0_12.
+		 */
+		negprot->ni_capabilities |= CAP_EXTENDED_SECURITY;
+
+		rc = smbsr_encode_result(sr, 17, VAR_BCC,
+		    "bwbwwllllTwbw#c#c",
+		    17,				/* wct */
+		    negprot->ni_index,		/* dialect index */
+		    secmode,			/* security mode */
+		    negprot->ni_maxmpxcount,	/* max MPX */
+		    1,				/* max VCs */
+		    (DWORD)smb_maxbufsize,	/* max buffer size */
+		    0xFFFF,			/* max raw size */
+		    sesskey,			/* session key */
+		    negprot->ni_capabilities,
+		    &negprot->ni_servertime,	/* system time */
+		    negprot->ni_tzcorrection,
+		    0,		/* encryption key length (MBZ) */
+		    VAR_BCC,
+		    UUID_LEN,
+		    sr->sr_cfg->skc_machine_uuid,
+		    sr->sr_cfg->skc_negtok_len,
+		    sr->sr_cfg->skc_negtok);
+		break;
+
 
 	default:
 		rc = smbsr_encode_result(sr, 1, 0, "bww", 1, -1, 0);
