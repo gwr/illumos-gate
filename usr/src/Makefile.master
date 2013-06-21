@@ -22,6 +22,7 @@
 #
 # Copyright (c) 1989, 2010, Oracle and/or its affiliates. All rights reserved.
 # Copyright (c) 2012 by Delphix. All rights reserved.
+# Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
 # Copyright 2014 Garrett D'Amore <garrett@damore.org>
 # Copyright 2015, OmniTI Computer Consulting, Inc. All rights reserved.
 # Copyright 2015 Gary Mills
@@ -96,6 +97,10 @@ INTEL_BLD=      $(INTEL_BLD_1:i386=)
 __SUNC=			$(POUND_SIGN)
 $(__SUNC)__GNUC=	$(POUND_SIGN)
 __GNUC64=		$(__GNUC)
+
+# dmake SOURCEDEBUG=yes ... enables source-level debugging information
+SOURCEDEBUG	= $(POUND_SIGN)
+SRCDBGBLD	= $(SOURCEDEBUG:yes=)
 
 # Allow build-time "configuration" to enable or disable some things.
 # The default is POUND_SIGN, meaning "not enabled". If the environment
@@ -426,6 +431,10 @@ amd64_COPTFLAG=		-xO3
 COPTFLAG= $($(MACH)_COPTFLAG)
 COPTFLAG64= $($(MACH64)_COPTFLAG)
 
+# When compiling for debug (-g) don't optimize.
+$(SRCDBGBLD)COPTFLAG		= -g -xs
+$(SRCDBGBLD)COPTFLAG64		= -g -xs
+
 # When -g is used, the compiler globalizes static objects
 # (gives them a unique prefix). Disable that.
 CNOGLOBAL= -W0,-noglobal
@@ -509,11 +518,6 @@ amd64_XREGSFLAG		=
 
 XREGSFLAG		= $($(MACH)_XREGSFLAG)
 XREGSFLAG64		= $($(MACH64)_XREGSFLAG)
-
-# dmake SOURCEDEBUG=yes ... enables source-level debugging information, and
-# avoids stripping it.
-SOURCEDEBUG	= $(POUND_SIGN)
-SRCDBGBLD	= $(SOURCEDEBUG:yes=)
 
 #
 # These variables are intended ONLY for use by developers to safely pass extra
@@ -614,6 +618,11 @@ amd64_CCOPTFLAG=	-O
 
 CCOPTFLAG=	$($(MACH)_CCOPTFLAG)
 CCOPTFLAG64=	$($(MACH64)_CCOPTFLAG)
+
+# When compiling for debug (-g) don't optimize.
+$(SRCDBGBLD)CCOPTFLAG		= -g -xs
+$(SRCDBGBLD)CCOPTFLAG64		= -g -xs
+
 CCFLAGS=	$(CCOPTFLAG) $($(MACH)_CCFLAGS) $(CCSOURCEDEBUGFLAGS) \
 		$(CCUSERFLAGS)
 CCFLAGS64=	$(CCOPTFLAG64) $($(MACH64)_CCFLAGS) $(CCSOURCEDEBUGFLAGS) \
@@ -868,6 +877,8 @@ ZTEXT=		-ztext
 ZVERBOSE=	-zverbose
 
 GSHARED=	-G
+$(SRCDBGBLD)GSHARED += -g -xs
+
 CCMT=		-mt
 
 # Handle different PIC models on different ISAs
