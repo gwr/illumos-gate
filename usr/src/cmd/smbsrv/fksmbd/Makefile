@@ -26,11 +26,14 @@
 
 PROG=	fksmbd
 OBJS_SMBD=			\
+	smbd_authsvc.o		\
 	smbd_doorsvc.o		\
 	smbd_join.o		\
+	smbd_krb5ssp.o		\
 	smbd_logon.o		\
 	smbd_main.o		\
 	smbd_nicmon.o		\
+	smbd_ntlmssp.o		\
 	smbd_pipesvc.o		\
 	smbd_share_doorsvc.o	\
 	smbd_spool.o		\
@@ -76,8 +79,8 @@ LDFLAGS += $(ZNOLAZYLOAD)
 LDFLAGS += -R/usr/lib/smbsrv
 LDLIBS += -L$(ROOT)/usr/lib/smbsrv 
 LDLIBS += -lfksmbsrv -lfakekernel
-LDLIBS += -lmlsvc -lmlrpc -lsmbns -lsmb
-LDLIBS += -lzfs -lcmdutils -lbsm -lsocket -lnsl -lscf -lumem
+LDLIBS += -lmlsvc -lmlrpc -lsmbns -lsmb -lsmbfs
+LDLIBS += -lzfs -lbsm -lscf -lcmdutils -lsocket -lnsl -lumem
 
 LINTFLAGS += -xerroff=E_NAME_DEF_NOT_USED2
 LINTFLAGS += -xerroff=E_INCONS_ARG_DECL2

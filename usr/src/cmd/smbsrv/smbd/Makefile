@@ -26,11 +26,14 @@
 
 PROG=	smbd
 OBJS=				\
+	smbd_authsvc.o		\
 	smbd_doorsvc.o		\
 	smbd_join.o		\
+	smbd_krb5ssp.o		\
 	smbd_logon.o		\
 	smbd_main.o		\
 	smbd_nicmon.o		\
+	smbd_ntlmssp.o		\
 	smbd_pipesvc.o		\
 	smbd_share_doorsvc.o	\
 	smbd_spool.o		\
@@ -63,9 +66,11 @@ $(NOT_RELEASE_BUILD)CPPFLAGS += -DDEBUG
 C99MODE =       -xc99=%all
 C99LMODE =      -Xc99=%all
 
-LDLIBS += -L$(ROOT)/usr/lib/smbsrv -lmlsvc -lmlrpc -lsmbns -lsmb \
-	-lzfs -lbsm -lsocket -lnsl -lscf -lumem -lcmdutils
 LDFLAGS += -R/usr/lib/smbsrv
+LDLIBS += -L$(ROOT)/usr/lib/smbsrv
+# perfer to keep libs ordered by dependence
+LDLIBS += -lmlsvc -lmlrpc -lsmbns -lsmb -lsmbfs
+LDLIBS += -lzfs -lbsm -lscf -lcmdutils -lsocket -lnsl -lumem
 
 $(ENABLE_SMB_PRINTING) CPPFLAGS += -DHAVE_CUPS
 

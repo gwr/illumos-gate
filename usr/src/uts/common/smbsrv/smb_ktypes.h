@@ -300,6 +300,7 @@ typedef struct smb_idpool {
 	kmutex_t	id_mutex;
 	uint8_t		*id_pool;
 	uint32_t	id_size;
+	uint32_t	id_maxsize;
 	uint8_t		id_bit;
 	uint8_t		id_bit_idx;
 	uint32_t	id_idx;
@@ -700,15 +701,36 @@ typedef struct smb_arg_negotiate {
 	timestruc_t	ni_servertime;
 } smb_arg_negotiate_t;
 
+typedef enum {
+	SMB_SSNSETUP_PRE_NTLM012 = 1,
+	SMB_SSNSETUP_NTLM012_NOEXT,
+	SMB_SSNSETUP_NTLM012_EXTSEC
+} smb_ssnsetup_type_t;
+
+#define	SMB_SSNKEY_LEN 16
+
 typedef struct smb_arg_sessionsetup {
+	smb_ssnsetup_type_t ssi_type;
 	char		*ssi_user;
 	char		*ssi_domain;
-	uint16_t	ssi_cipwlen;
-	uint8_t		*ssi_cipwd;
-	uint16_t	ssi_cspwlen;
-	uint8_t		*ssi_cspwd;
+	/* LM password hash, f.k.a. case-insensitive p/w */
+	uint16_t	ssi_lmpwlen;
+	uint8_t		*ssi_lmpwd;
+	/* NT password hash, f.k.a. case-sensitive p/w */
+	uint16_t	ssi_ntpwlen;
+	uint8_t		*ssi_ntpwd;
+	/* Incoming security blob */
+	uint16_t	ssi_iseclen;
+	uint8_t		*ssi_isecblob;
+	/* Incoming security blob */
+	uint16_t	ssi_oseclen;
+	uint8_t		*ssi_osecblob;
+	/* parameters */
+	uint16_t	ssi_maxbufsize;
 	uint16_t	ssi_maxmpxcount;
 	uint32_t	ssi_capabilities;
+	int		ssi_native_os;
+	int		ssi_native_lm;
 	boolean_t	ssi_guest;
 } smb_arg_sessionsetup_t;
 
@@ -902,7 +924,6 @@ typedef struct smb_session {
 	int32_t			s_gmtoff;
 	uint32_t		keep_alive;
 	uint64_t		opentime;
-	uint16_t		vcnumber;
 	uint16_t		s_local_port;
 	smb_inaddr_t		ipaddr;
 	smb_inaddr_t		local_ipaddr;
@@ -939,6 +960,7 @@ typedef struct smb_session {
 	 * in SMB_SESSION_SETUP_ANDX
 	 */
 	uint16_t		smb_msg_size;
+	uint16_t		smb_max_mpx;
 	uchar_t			*outpipe_data;
 	int			outpipe_datalen;
 	int			outpipe_cookie;
@@ -967,7 +989,8 @@ typedef struct smb_session {
 
 
 typedef enum {
-	SMB_USER_STATE_LOGGED_IN = 0,
+	SMB_USER_STATE_LOGGING_ON = 0,
+	SMB_USER_STATE_LOGGED_ON,
 	SMB_USER_STATE_LOGGING_OFF,
 	SMB_USER_STATE_LOGGED_OFF,
 	SMB_USER_STATE_SENTINEL
@@ -981,6 +1004,7 @@ typedef struct smb_user {
 
 	struct smb_server	*u_server;
 	smb_session_t		*u_session;
+	ksocket_t		u_authsock;
 	uint16_t		u_name_len;
 	char			*u_name;
 	uint16_t		u_domain_len;

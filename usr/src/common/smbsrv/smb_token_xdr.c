@@ -190,6 +190,8 @@ smb_logon_xdr(XDR *xdrs, smb_logon_t *objp)
 		return (FALSE);
 	if (!smb_buf32_xdr(xdrs, &objp->lg_lm_password))
 		return (FALSE);
+	if (!xdr_uint32_t(xdrs, &objp->lg_ntlm_flags))
+		return (FALSE);
 	if (!xdr_int(xdrs, &objp->lg_native_os))
 		return (FALSE);
 	if (!xdr_int(xdrs, &objp->lg_native_lm))
