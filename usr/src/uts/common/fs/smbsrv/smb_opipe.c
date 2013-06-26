@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -35,6 +35,9 @@
 #include <sys/filio.h>
 #include <smbsrv/smb_kproto.h>
 #include <smbsrv/smb_xdr.h>
+#include <smbsrv/winioctl.h>
+
+static uint32_t smb_opipe_transceive(smb_request_t *, smb_fsctl_t *);
 
 /*
  * Allocate a new opipe and return it, or NULL, in which case
@@ -335,13 +338,13 @@ smb_opipe_write(smb_request_t *sr, struct uio *uio)
 /*
  * smb_opipe_read
  *
- * This interface may be called because smb_opipe_transact could not return
- * all of the data in the original transaction or to form the second half
- * of a transaction set up using smb_opipe_write.  Either way, we just need
- * to read data from the pipe and return it.
+ * This interface may be called from smb_opipe_transact (write, read)
+ * or from smb_read / smb2_read to get the rest of an RPC response.
+ * The response data (and length) are returned via the uio.
  *
- * The response data is encoded into raw_data as required by the smb_read
- * functions.  The uio_resid value indicates the number of bytes read.
+ * If there's more data than the caller asked for, return E2BIG,
+ * which callers convert to NT_STATUS_BUFFER_OVERFLOW, etc.
+ * That's a magic non-error to tell clients to read again.
  */
 int
 smb_opipe_read(smb_request_t *sr, struct uio *uio)
@@ -372,10 +375,152 @@ smb_opipe_read(smb_request_t *sr, struct uio *uio)
 
 	rc = ksocket_recvmsg(sock, &msghdr, 0,
 	    &recvcnt, ofile->f_cr);
-	if (rc == 0)
-		uio->uio_resid -= recvcnt;
+	if (rc != 0)
+		goto out;
 
+	if (recvcnt == 0) {
+		/* Other side closed. */
+		rc = EPIPE;
+		goto out;
+	}
+	uio->uio_resid -= recvcnt;
+
+	/*
+	 * If we filled the user's buffer,
+	 * find out if there's more data.
+	 */
+	if (uio->uio_resid == 0) {
+		int rc2, nread, trval;
+		rc2 = ksocket_ioctl(sock, FIONREAD, (intptr_t)&nread,
+		    &trval, ofile->f_cr);
+		if (rc2 == 0 && nread != 0)
+			rc = E2BIG;	/* more data */
+	}
+
+out:
 	ksocket_rele(sock);
 
 	return (rc);
+}
+
+/*
+ * Get the smb_attr_t for a named pipe.
+ * Caller has already cleared to zero.
+ */
+int
+smb_opipe_getattr(smb_ofile_t *of, smb_attr_t *ap)
+{
+
+	if (of->f_pipe == NULL)
+		return (EINVAL);
+
+	ap->sa_vattr.va_type = VFIFO;
+	ap->sa_vattr.va_nlink = 1;
+	ap->sa_dosattr = FILE_ATTRIBUTE_NORMAL;
+	ap->sa_allocsz = 0x1000LL;
+
+	return (0);
+}
+
+int
+smb_opipe_getname(smb_ofile_t *of, char *buf, size_t buflen)
+{
+	smb_opipe_t *opipe;
+
+	if ((opipe = of->f_pipe) == NULL)
+		return (EINVAL);
+
+	(void) snprintf(buf, buflen, "\\%s", opipe->p_name);
+	return (0);
+}
+
+/*
+ * Handler for smb2_ioctl
+ */
+/* ARGSUSED */
+uint32_t
+smb_opipe_fsctl(smb_request_t *sr, smb_fsctl_t *fsctl)
+{
+	uint32_t status;
+
+	switch (fsctl->CtlCode) {
+	case FSCTL_PIPE_TRANSCEIVE:
+		status = smb_opipe_transceive(sr, fsctl);
+		break;
+
+	case FSCTL_PIPE_PEEK:
+	case FSCTL_PIPE_WAIT:
+		/* XXX todo */
+		status = NT_STATUS_NOT_SUPPORTED;
+		break;
+
+	default:
+		ASSERT(!"CtlCode");
+		status = NT_STATUS_INTERNAL_ERROR;
+		break;
+	}
+
+	return (status);
+}
+
+static uint32_t
+smb_opipe_transceive(smb_request_t *sr, smb_fsctl_t *fsctl)
+{
+	smb_vdb_t	vdb;
+	smb_ofile_t	*ofile;
+	struct mbuf	*mb;
+	uint32_t	status;
+	int		len, rc;
+
+	/*
+	 * Caller checked that this is the IPC$ share,
+	 * and that this call has a valid open handle.
+	 * Just check the type.
+	 */
+	ofile = sr->fid_ofile;
+	if (ofile->f_ftype != SMB_FTYPE_MESG_PIPE)
+		return (NT_STATUS_INVALID_HANDLE);
+
+	rc = smb_mbc_decodef(fsctl->in_mbc, "#B",
+	    fsctl->InputCount, &vdb);
+	if (rc != 0) {
+		/* Not enough data sent. */
+		return (NT_STATUS_INVALID_PARAMETER);
+	}
+
+	rc = smb_opipe_write(sr, &vdb.vdb_uio);
+	if (rc != 0)
+		return (smb_errno2status(rc));
+
+	vdb.vdb_tag = 0;
+	vdb.vdb_uio.uio_iov = &vdb.vdb_iovec[0];
+	vdb.vdb_uio.uio_iovcnt = MAX_IOVEC;
+	vdb.vdb_uio.uio_segflg = UIO_SYSSPACE;
+	vdb.vdb_uio.uio_extflg = UIO_COPY_DEFAULT;
+	vdb.vdb_uio.uio_loffset = (offset_t)0;
+	vdb.vdb_uio.uio_resid = fsctl->MaxOutputResp;
+	mb = smb_mbuf_allocate(&vdb.vdb_uio);
+
+	rc = smb_opipe_read(sr, &vdb.vdb_uio);
+	switch (rc) {
+	case 0:
+		status = 0;
+		break;
+	case E2BIG:
+		/*
+		 * Note: E2BIG is not a real error.  It just
+		 * tells us there's more data to be read.
+		 */
+		status = NT_STATUS_BUFFER_OVERFLOW;
+		break;
+	default:
+		m_freem(mb);
+		return (smb_errno2status(rc));
+	}
+
+	len = fsctl->MaxOutputResp - vdb.vdb_uio.uio_resid;
+	smb_mbuf_trim(mb, len);
+	MBC_ATTACH_MBUF(fsctl->out_mbc, mb);
+
+	return (status);
 }
