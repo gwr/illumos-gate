@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -451,7 +451,12 @@ smb_auth_get_token(smb_request_t *sr)
 	if (token->tkn_session_key) {
 		bcopy(token->tkn_session_key, sinfo->ssi_ssnkey,
 		    SMB_SSNKEY_LEN);
-		smb_sign_init(sr, sinfo);
+		if (sr->session->signing.mackey == NULL) {
+			if (sr->session->dialect >= 0x200)
+				smb2_sign_begin(sr, sinfo);
+			else
+				smb_sign_begin(sr, sinfo);
+		}
 	}
 
 	smb_token_free(token);
