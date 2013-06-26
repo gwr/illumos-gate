@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 /*
  * These routines provide the SMB MAC signing for the SMB server.
@@ -63,28 +63,7 @@ smb_sign_calc(struct mbuf_chain *mbc,
     unsigned char *mac_sign);
 
 #ifdef DEBUG
-void smb_sign_find_seqnum(
-    uint32_t seqnum,
-    struct smb_sign *sign,
-    struct mbuf_chain *command,
-    unsigned char *mac_sig,
-    unsigned char *sr_sig,
-    boolean_t *found);
-#define	SMB_CHECK_SEQNUM(seqnum, sign, command, mac_sig, sr_sig, found) \
-{ \
-	if (smb_sign_debug) \
-		smb_sign_find_seqnum(seqnum, sign, \
-		    command, mac_sig, sr_sig, found); \
-}
-#else
-#define	SMB_CHECK_SEQNUM(seqnum, sign, command, mac_sig, sr_sig, found) \
-	{ \
-		*found = 0; \
-	}
-#endif
-
-#ifdef DEBUG
-void
+static void
 smb_sign_find_seqnum(
     uint32_t seqnum,
     struct smb_sign *sign,
@@ -115,21 +94,19 @@ int i;
 #endif
 
 /*
- * smb_sign_init
+ * smb_sign_begin
  *
  * Intializes MAC key based on the user session key and
  * NTLM response and store it in the signing structure.
+ * This is what begins SMB signing.
  */
 void
-smb_sign_init(smb_request_t *sr, smb_arg_sessionsetup_t *sinfo)
+smb_sign_begin(smb_request_t *sr, smb_arg_sessionsetup_t *sinfo)
 {
 	smb_session_t *session = sr->session;
 	struct smb_sign *sign = &session->signing;
 
-	if (sign->mackey != NULL) {
-		/* Already have a signing key. */
-		return;
-	}
+	ASSERT(sign->mackey == NULL);
 
 	/*
 	 * With extended security, the MAC key is the same as the
@@ -302,8 +279,14 @@ smb_sign_check_request(smb_request_t *sr)
 		/*
 		 * check nearby sequence numbers in debug mode
 		 */
-		SMB_CHECK_SEQNUM(sr->sr_seqnum, sign, &command,
-		    mac_sig, sr->smb_sig, &found);
+#ifdef	DEBUG
+		if (smb_sign_debug)
+			smb_sign_find_seqnum(sr->sr_seqnum, sign,
+			    &command, mac_sig, sr->smb_sig, &found);
+		else
+#endif
+			found = B_FALSE;
+
 		if (found == B_FALSE)
 			rtn = -1;
 	}

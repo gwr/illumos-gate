@@ -112,24 +112,6 @@ static int g_init_done = 0;
 
 int fksmbsrv_vfs_init(void);
 
-/*
- * We need to adjust a couple things in the standard configuration
- * for this "fake" version of the smbsrv kernel module.
- *
- * Reduce the maximum number of connections and workers, just for
- * convenience while debugging.  (Don't want hundreds of threads.)
- */
-static void
-fksmbsrv_adjust_config(smb_ioc_cfg_t *ioc)
-{
-
-	/* Maybe add dynamic taskq support instead? */
-	ioc->maxconnections = 10;
-	ioc->maxworkers = 20;
-	cmn_err(CE_NOTE, "fksmbsrv: adjusted maxconn=%d maxworkers=%d",
-	    ioc->maxconnections, ioc->maxworkers);
-}
-
 int
 fksmbsrv_drv_open(void)
 {
@@ -178,7 +160,6 @@ fksmbsrv_drv_ioctl(int cmd, void *varg)
 
 	switch (cmd) {
 	case SMB_IOC_CONFIG:
-		fksmbsrv_adjust_config(&ioc->ioc_cfg);
 		rc = smb_server_configure(&ioc->ioc_cfg);
 		break;
 	case SMB_IOC_START:

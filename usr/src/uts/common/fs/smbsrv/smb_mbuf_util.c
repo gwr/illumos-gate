@@ -19,7 +19,7 @@
  * CDDL HEADER END
  */
 /*
- * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  * Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
@@ -312,16 +312,19 @@ MBC_ATTACH_BUF(struct mbuf_chain *MBC, unsigned char *BUF, int LEN)
 
 
 int
-MBC_SHADOW_CHAIN(struct mbuf_chain *SUBMBC, struct mbuf_chain *MBC,
-    int OFF, int LEN)
+MBC_SHADOW_CHAIN(struct mbuf_chain *submbc, struct mbuf_chain *mbc,
+    int off, int len)
 {
-	if (((OFF) + (LEN)) > (MBC)->max_bytes)
+	int x = off + len;
+
+	if (off < 0 || len < 0 || x < 0 ||
+	    off > mbc->max_bytes || x > mbc->max_bytes)
 		return (EMSGSIZE);
 
-	*(SUBMBC) = *(MBC);
-	(SUBMBC)->chain_offset = (OFF);
-	(SUBMBC)->max_bytes = (OFF) + (LEN);
-	(SUBMBC)->shadow_of = (MBC);
+	*submbc = *mbc;
+	submbc->chain_offset = off;
+	submbc->max_bytes = x;
+	submbc->shadow_of = mbc;
 	return (0);
 }
 
