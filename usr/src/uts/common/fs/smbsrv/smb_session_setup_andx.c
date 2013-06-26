@@ -228,6 +228,7 @@ smb_sdrc_t
 smb_com_session_setup_andx(smb_request_t *sr)
 {
 	smb_arg_sessionsetup_t	*sinfo = sr->sr_ssetup;
+	uint32_t		status;
 	int			rc;
 
 	/*
@@ -253,14 +254,77 @@ smb_com_session_setup_andx(smb_request_t *sr)
 	 * The "meat" of authentication happens here.
 	 */
 	if (sinfo->ssi_type == SMB_SSNSETUP_NTLM012_EXTSEC)
-		rc = smb_authenticate_ext(sr);
+		status = smb_authenticate_ext(sr);
 	else
-		rc = smb_authenticate_old(sr);
-	if (rc != 0)
+		status = smb_authenticate_old(sr);
+
+	switch (status) {
+
+	case NT_STATUS_SUCCESS:
+		break;
+
+	/*
+	 * This is not really an error, but tells the client
+	 * it should send another session setup request.
+	 */
+	case NT_STATUS_MORE_PROCESSING_REQUIRED:
+		smbsr_error(sr, status, 0, 0);
+		break;
+
+	case NT_STATUS_ACCESS_DENIED:
+		smbsr_error(sr, 0, ERRDOS, ERRnoaccess);
 		return (SDRC_ERROR);
+
+	case NT_STATUS_TOO_MANY_SESSIONS:
+		smbsr_error(sr, 0, ERRSRV, ERRtoomanyuids);
+		return (SDRC_ERROR);
+
+	case NT_STATUS_NETLOGON_NOT_STARTED:
+		smbsr_error(sr, 0, ERRDOS, NERR_NetlogonNotStarted);
+		return (SDRC_ERROR);
+
+	case NT_STATUS_USER_SESSION_DELETED:
+		smbsr_error(sr, 0, ERRSRV, ERRbaduid);
+		return (SDRC_ERROR);
+
+	case NT_STATUS_INSUFF_SERVER_RESOURCES:
+		smbsr_error(sr, 0, ERRSRV, ERRnoresource);
+		return (SDRC_ERROR);
+
+	case NT_STATUS_INTERNAL_ERROR:
+	default:
+		smbsr_error(sr, 0, ERRSRV, ERRsrverror);
+		return (SDRC_ERROR);
+
+	}
+
+	/*
+	 * If signing has not already been enabled on this session, check
+	 * to see if it should be enabled.  The first authenticated logon
+	 * provides the MAC key and sequence numbers for signing all
+	 * subsequent sessions on the same connection.
+	 */
+	if (!(sr->session->signing.flags & SMB_SIGNING_ENABLED) &&
+	    (sr->session->secmode & NEGOTIATE_SECURITY_SIGNATURES_ENABLED) &&
+	    (sr->smb_flg2 & SMB_FLAGS2_SMB_SECURITY_SIGNATURE))
+		smb_sign_init(sr, sinfo);
+
+	if (!(sr->smb_flg2 & SMB_FLAGS2_SMB_SECURITY_SIGNATURE) &&
+	    (sr->sr_cfg->skc_signing_required)) {
+		char ipaddr_buf[INET6_ADDRSTRLEN];
+		(void) smb_inet_ntop(&sr->session->ipaddr, ipaddr_buf,
+		    SMB_IPSTRLEN(sr->session->ipaddr.a_family));
+		cmn_err(CE_NOTE,
+		    "SmbSessonSetupX: client %s does not support signing",
+		    ipaddr_buf);
+		smbsr_error(sr, NT_STATUS_LOGON_FAILURE,
+		    ERRDOS, ERROR_LOGON_FAILURE);
+		return (SDRC_ERROR);
+	}
 
 	switch (sinfo->ssi_type) {
 
+	default:
 	case SMB_SSNSETUP_PRE_NTLM012:
 	case SMB_SSNSETUP_NTLM012_NOEXT:
 

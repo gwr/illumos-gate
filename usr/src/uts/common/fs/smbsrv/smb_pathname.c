@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2012 Nexenta Systems, Inc. All rights reserved.
+ * Copyright 2013 Nexenta Systems, Inc. All rights reserved.
  */
 
 #include <smbsrv/smb_kproto.h>
@@ -865,6 +865,8 @@ smb_pathname_strcat(smb_request_t *sr, char *s1, const char *s2)
  *
  * Returns: B_TRUE if pn is valid,
  *          otherwise returns B_FALSE and sets error status in sr.
+ *
+ * XXX: Get rid of smbsr_error calls for SMB2
  */
 boolean_t
 smb_pathname_validate(smb_request_t *sr, smb_pathname_t *pn)

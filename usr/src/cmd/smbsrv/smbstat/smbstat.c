@@ -20,8 +20,8 @@
  */
 
 /*
- * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -214,7 +214,8 @@ typedef struct smbstat_srv_info {
 	/*
 	 * Latency & Throughput per request
 	 */
-	smbstat_req_info_t	si_reqs[SMB_COM_NUM];
+	smbstat_req_info_t	si_reqs1[SMB_COM_NUM];
+	smbstat_req_info_t	si_reqs2[SMB2__NCMDS];
 } smbstat_srv_info_t;
 
 static void smbstat_init(void);
@@ -549,11 +550,29 @@ smbstat_print_requests(void)
 	if (!smbstat_opt_r)
 		return;
 
-	prq = smbstat_srv_info.si_reqs;
-
 	(void) printf(SMBSRV_REQUESTS_BANNER, "       ");
 
+	prq = smbstat_srv_info.si_reqs1;
 	for (i = 0; i < SMB_COM_NUM; i++) {
+		if (!smbstat_opt_a &&
+		    strncmp(prq[i].ri_name, "Invalid", sizeof ("Invalid")) == 0)
+			continue;
+
+		if (!smbstat_opt_z || (prq[i].ri_pct != 0)) {
+			(void) printf(SMBSRV_REQUESTS_FORMAT,
+			    prq[i].ri_name,
+			    prq[i].ri_opcode,
+			    smbstat_zero(prq[i].ri_pct),
+			    smbstat_zero(prq[i].ri_rbs),
+			    smbstat_zero(prq[i].ri_tbs),
+			    smbstat_zero(prq[i].ri_rqs),
+			    prq[i].ri_mean,
+			    prq[i].ri_stddev);
+		}
+	}
+
+	prq = smbstat_srv_info.si_reqs2;
+	for (i = 0; i < SMB2__NCMDS; i++) {
 		if (!smbstat_opt_a &&
 		    strncmp(prq[i].ri_name, "Invalid", sizeof ("Invalid")) == 0)
 			continue;
@@ -881,34 +900,40 @@ smbstat_srv_process_throughput(
 	smbstat_srv_info.si_rqs /= smbstat_srv_info.si_etime;
 
 	smbstat_srv_info.si_rds = smbstat_sub_64(
-	    curr->ss_data.ks_reqs[SMB_COM_READ].kr_nreq,
-	    prev->ss_data.ks_reqs[SMB_COM_READ].kr_nreq);
+	    curr->ss_data.ks_reqs1[SMB_COM_READ].kr_nreq,
+	    prev->ss_data.ks_reqs1[SMB_COM_READ].kr_nreq);
 	smbstat_srv_info.si_rds += smbstat_sub_64(
-	    curr->ss_data.ks_reqs[SMB_COM_LOCK_AND_READ].kr_nreq,
-	    prev->ss_data.ks_reqs[SMB_COM_LOCK_AND_READ].kr_nreq);
+	    curr->ss_data.ks_reqs1[SMB_COM_LOCK_AND_READ].kr_nreq,
+	    prev->ss_data.ks_reqs1[SMB_COM_LOCK_AND_READ].kr_nreq);
 	smbstat_srv_info.si_rds += smbstat_sub_64(
-	    curr->ss_data.ks_reqs[SMB_COM_READ_RAW].kr_nreq,
-	    prev->ss_data.ks_reqs[SMB_COM_READ_RAW].kr_nreq);
+	    curr->ss_data.ks_reqs1[SMB_COM_READ_RAW].kr_nreq,
+	    prev->ss_data.ks_reqs1[SMB_COM_READ_RAW].kr_nreq);
 	smbstat_srv_info.si_rds += smbstat_sub_64(
-	    curr->ss_data.ks_reqs[SMB_COM_READ_ANDX].kr_nreq,
-	    prev->ss_data.ks_reqs[SMB_COM_READ_ANDX].kr_nreq);
+	    curr->ss_data.ks_reqs1[SMB_COM_READ_ANDX].kr_nreq,
+	    prev->ss_data.ks_reqs1[SMB_COM_READ_ANDX].kr_nreq);
+	smbstat_srv_info.si_rds += smbstat_sub_64(
+	    curr->ss_data.ks_reqs2[SMB2_READ].kr_nreq,
+	    prev->ss_data.ks_reqs2[SMB2_READ].kr_nreq);
 	smbstat_srv_info.si_rds /= smbstat_srv_info.si_etime;
 
 	smbstat_srv_info.si_wrs = smbstat_sub_64(
-	    curr->ss_data.ks_reqs[SMB_COM_WRITE].kr_nreq,
-	    prev->ss_data.ks_reqs[SMB_COM_WRITE].kr_nreq);
+	    curr->ss_data.ks_reqs1[SMB_COM_WRITE].kr_nreq,
+	    prev->ss_data.ks_reqs1[SMB_COM_WRITE].kr_nreq);
 	smbstat_srv_info.si_wrs += smbstat_sub_64(
-	    curr->ss_data.ks_reqs[SMB_COM_WRITE_AND_UNLOCK].kr_nreq,
-	    prev->ss_data.ks_reqs[SMB_COM_WRITE_AND_UNLOCK].kr_nreq);
+	    curr->ss_data.ks_reqs1[SMB_COM_WRITE_AND_UNLOCK].kr_nreq,
+	    prev->ss_data.ks_reqs1[SMB_COM_WRITE_AND_UNLOCK].kr_nreq);
 	smbstat_srv_info.si_wrs += smbstat_sub_64(
-	    curr->ss_data.ks_reqs[SMB_COM_WRITE_RAW].kr_nreq,
-	    prev->ss_data.ks_reqs[SMB_COM_WRITE_RAW].kr_nreq);
+	    curr->ss_data.ks_reqs1[SMB_COM_WRITE_RAW].kr_nreq,
+	    prev->ss_data.ks_reqs1[SMB_COM_WRITE_RAW].kr_nreq);
 	smbstat_srv_info.si_wrs += smbstat_sub_64(
-	    curr->ss_data.ks_reqs[SMB_COM_WRITE_AND_CLOSE].kr_nreq,
-	    prev->ss_data.ks_reqs[SMB_COM_WRITE_AND_CLOSE].kr_nreq);
+	    curr->ss_data.ks_reqs1[SMB_COM_WRITE_AND_CLOSE].kr_nreq,
+	    prev->ss_data.ks_reqs1[SMB_COM_WRITE_AND_CLOSE].kr_nreq);
 	smbstat_srv_info.si_wrs += smbstat_sub_64(
-	    curr->ss_data.ks_reqs[SMB_COM_WRITE_ANDX].kr_nreq,
-	    prev->ss_data.ks_reqs[SMB_COM_WRITE_ANDX].kr_nreq);
+	    curr->ss_data.ks_reqs1[SMB_COM_WRITE_ANDX].kr_nreq,
+	    prev->ss_data.ks_reqs1[SMB_COM_WRITE_ANDX].kr_nreq);
+	smbstat_srv_info.si_rds += smbstat_sub_64(
+	    curr->ss_data.ks_reqs2[SMB2_WRITE].kr_nreq,
+	    prev->ss_data.ks_reqs2[SMB2_WRITE].kr_nreq);
 	smbstat_srv_info.si_wrs /= smbstat_srv_info.si_etime;
 }
 
@@ -1002,24 +1027,25 @@ smbstat_srv_process_requests(
 	double			nrqs;
 	int			i, idx;
 
-	info = smbstat_srv_info.si_reqs;
+	info = smbstat_srv_info.si_reqs1;
+	/* XXX: todo - si_reqs2 */
 
 	for (i = 0; i < SMB_COM_NUM; i++) {
 		idx = info[i].ri_opcode;
 
-		nrqs = smbstat_sub_64(curr->ss_data.ks_reqs[idx].kr_nreq,
-		    prev->ss_data.ks_reqs[idx].kr_nreq);
+		nrqs = smbstat_sub_64(curr->ss_data.ks_reqs1[idx].kr_nreq,
+		    prev->ss_data.ks_reqs1[idx].kr_nreq);
 
 		info[i].ri_rqs = nrqs / smbstat_srv_info.si_etime;
 
 		info[i].ri_rbs = smbstat_sub_64(
-		    curr->ss_data.ks_reqs[idx].kr_rxb,
-		    prev->ss_data.ks_reqs[idx].kr_rxb) /
+		    curr->ss_data.ks_reqs1[idx].kr_rxb,
+		    prev->ss_data.ks_reqs1[idx].kr_rxb) /
 		    smbstat_srv_info.si_etime;
 
 		info[i].ri_tbs = smbstat_sub_64(
-		    curr->ss_data.ks_reqs[idx].kr_txb,
-		    prev->ss_data.ks_reqs[idx].kr_txb) /
+		    curr->ss_data.ks_reqs1[idx].kr_txb,
+		    prev->ss_data.ks_reqs1[idx].kr_txb) /
 		    smbstat_srv_info.si_etime;
 
 		info[i].ri_pct = nrqs * 100;
@@ -1029,13 +1055,13 @@ smbstat_srv_process_requests(
 		if (prev->ss_snaptime == 0) {
 			/* First time. Take the aggregate */
 			info[i].ri_stddev =
-			    curr->ss_data.ks_reqs[idx].kr_a_stddev;
-			info[i].ri_mean = curr->ss_data.ks_reqs[idx].kr_a_mean;
+			    curr->ss_data.ks_reqs1[idx].kr_a_stddev;
+			info[i].ri_mean = curr->ss_data.ks_reqs1[idx].kr_a_mean;
 		} else {
 			/* Take the differential */
 			info[i].ri_stddev =
-			    curr->ss_data.ks_reqs[idx].kr_d_stddev;
-			info[i].ri_mean = curr->ss_data.ks_reqs[idx].kr_d_mean;
+			    curr->ss_data.ks_reqs1[idx].kr_d_stddev;
+			info[i].ri_mean = curr->ss_data.ks_reqs1[idx].kr_d_mean;
 		}
 		if (nrqs > 0) {
 			info[i].ri_stddev /= nrqs;
@@ -1221,8 +1247,8 @@ smbstat_req_order(void)
 	int			i;
 
 	smbstat_srv_snapshot();
-	reqs = smbstat_srv_current_snapshot()->ss_data.ks_reqs;
-	info = smbstat_srv_info.si_reqs;
+	reqs = smbstat_srv_current_snapshot()->ss_data.ks_reqs1;
+	info = smbstat_srv_info.si_reqs1;
 
 	for (i = 0; i < SMB_COM_NUM; i++) {
 		(void) strlcpy(info[i].ri_name, reqs[i].kr_name,

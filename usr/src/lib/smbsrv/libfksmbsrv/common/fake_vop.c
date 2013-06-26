@@ -48,8 +48,11 @@
 
 #define	O_RWMASK	(O_WRONLY | O_RDWR) /* == 3 */
 
-int
-stat_to_vattr(const struct stat *, vattr_t *);
+int fop_shrlock_enable = 0;
+
+int stat_to_vattr(const struct stat *, vattr_t *);
+int fop__getxvattr(vnode_t *, xvattr_t *);
+int fop__setxvattr(vnode_t *, xvattr_t *);
 
 
 /* ARGSUSED */
@@ -247,6 +250,9 @@ fop_getattr(
 		return (errno);
 	error = stat_to_vattr(&buf, vap);
 
+	if (vap->va_mask & AT_XVATTR)
+		(void) fop__getxvattr(vp, (xvattr_t *)vap);
+
 	return (error);
 }
 
@@ -259,10 +265,33 @@ fop_setattr(
 	cred_t *cr,
 	caller_context_t *ct)
 {
+	struct timeval times[2];
 
 	if (vap->va_mask & AT_SIZE) {
 		if (ftruncate(vp->v_fd, vap->va_size) == -1)
 			return (errno);
+	}
+
+	/* AT_MODE or anything else? */
+
+	if (vap->va_mask & AT_XVATTR)
+		(void) fop__setxvattr(vp, (xvattr_t *)vap);
+
+	if (vap->va_mask & (AT_ATIME | AT_MTIME)) {
+		times[0].tv_sec = 0;
+		times[0].tv_usec = UTIME_OMIT;
+		times[1].tv_sec = 0;
+		times[1].tv_usec = UTIME_OMIT;
+		if (vap->va_mask & AT_ATIME) {
+			times[0].tv_sec = vap->va_atime.tv_sec;
+			times[0].tv_usec = vap->va_atime.tv_nsec / 1000;
+		}
+		if (vap->va_mask & AT_MTIME) {
+			times[1].tv_sec = vap->va_mtime.tv_sec;
+			times[1].tv_usec = vap->va_mtime.tv_nsec / 1000;
+		}
+
+		(void) futimesat(vp->v_fd, NULL, times);
 	}
 
 	return (0);
@@ -298,6 +327,9 @@ fop_lookup(
 	int omode = O_RDWR | O_NOFOLLOW;
 	vnode_t *vp;
 	struct stat st;
+
+	if (flags & LOOKUP_XATTR)
+		return (ENOENT);
 
 	/*
 	 * If lookup is for "", just return dvp.
@@ -730,7 +762,20 @@ fop_space(
 	cred_t *cr,
 	caller_context_t *ct)
 {
-	return (ENOSYS);
+	/* See fs_frlock */
+
+	switch (cmd) {
+	case F_ALLOCSP:
+	case F_FREESP:
+		break;
+	default:
+		return (EINVAL);
+	}
+
+	if (fcntl(vp->v_fd, cmd, bfp) == -1)
+		return (errno);
+
+	return (0);
 }
 
 /* ARGSUSED */
@@ -1030,6 +1075,9 @@ fop_shrlock(
 	default:
 		return (EINVAL);
 	}
+
+	if (!fop_shrlock_enable)
+		return (0);
 
 	if (fcntl(vp->v_fd, cmd, shr) == -1)
 		return (errno);

@@ -88,6 +88,7 @@ then
   # always update the smbsrv headers to be safe
   # test -f $ROOT/usr/include/smbsrv/wintypes.h ||
     (cd $SRC/uts/common/sys && $make -k install_h)
+    (cd $SRC/uts/common/smb && $make -k install_h)
     (cd $SRC/uts/common/smbsrv && $make -k install_h)
 
 fi

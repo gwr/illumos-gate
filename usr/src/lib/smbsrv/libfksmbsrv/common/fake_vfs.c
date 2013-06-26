@@ -63,6 +63,7 @@ fksmbsrv_vfs_init(void)
 	if (rootvfs == NULL) {
 		rootvfs = &fake_rootvfs;
 		rootvfs->vfs_mntpt = refstr_alloc(name);
+		rootvfs->vfs_fsid.val[0] = 1;
 	}
 
 	if (rootdir == NULL) {

@@ -682,7 +682,6 @@ static const char *smb_session_state[SMB_SESSION_STATE_SENTINEL] =
 	"CONNECTED",
 	"ESTABLISHED",
 	"NEGOTIATED",
-	"OPLOCK_BREAKING",
 	"TERMINATED"
 };
 

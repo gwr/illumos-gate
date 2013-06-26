@@ -35,6 +35,9 @@
 #include <sys/filio.h>
 #include <smbsrv/smb_kproto.h>
 #include <smbsrv/smb_xdr.h>
+#include <smbsrv/winioctl.h>
+
+static uint32_t smb_opipe_transceive(smb_request_t *, smb_fsctl_t *);
 
 /*
  * Allocate a new opipe and return it, or NULL, in which case
@@ -378,4 +381,116 @@ smb_opipe_read(smb_request_t *sr, struct uio *uio)
 	ksocket_rele(sock);
 
 	return (rc);
+}
+
+/*
+ * Get the smb_attr_t for a named pipe.
+ * Caller has already cleared to zero.
+ */
+int
+smb_opipe_getattr(smb_ofile_t *of, smb_attr_t *ap)
+{
+
+	if (of->f_pipe == NULL)
+		return (EINVAL);
+
+	ap->sa_vattr.va_type = VFIFO;
+	ap->sa_vattr.va_nlink = 1;
+	ap->sa_dosattr = FILE_ATTRIBUTE_NORMAL;
+	ap->sa_allocsz = 0x1000LL;
+
+	return (0);
+}
+
+int
+smb_opipe_getname(smb_ofile_t *of, char *buf, size_t buflen)
+{
+	smb_opipe_t *opipe;
+
+	if ((opipe = of->f_pipe) == NULL)
+		return (EINVAL);
+
+	(void) snprintf(buf, buflen, "\\%s", opipe->p_name);
+	return (0);
+}
+
+/*
+ * Handler for smb2_ioctl
+ *
+ * A stub for now - not sure yet if SMB2 requires this.
+ */
+/* ARGSUSED */
+uint32_t
+smb_opipe_fsctl(smb_request_t *sr, smb_fsctl_t *fsctl)
+{
+	uint32_t status;
+
+	switch (fsctl->CtlCode) {
+	case FSCTL_PIPE_TRANSCEIVE:
+		status = smb_opipe_transceive(sr, fsctl);
+		break;
+
+	case FSCTL_PIPE_PEEK:
+	case FSCTL_PIPE_WAIT:
+		/* XXX todo */
+		status = NT_STATUS_NOT_SUPPORTED;
+		break;
+
+	default:
+		ASSERT(!"CtlCode");
+		status = NT_STATUS_INTERNAL_ERROR;
+		break;
+	}
+
+	return (status);
+}
+
+static uint32_t
+smb_opipe_transceive(smb_request_t *sr, smb_fsctl_t *fsctl)
+{
+	smb_vdb_t	vdb;
+	smb_ofile_t	*ofile;
+	struct mbuf	*mb;
+	int len, rc;
+
+	/*
+	 * Caller checked that this is the IPC$ share,
+	 * and that this call has a valid open handle.
+	 * Just check the type.
+	 */
+	ofile = sr->fid_ofile;
+	if (ofile->f_ftype != SMB_FTYPE_MESG_PIPE)
+		return (NT_STATUS_INVALID_HANDLE);
+
+	rc = smb_mbc_decodef(fsctl->in_mbc, "#B",
+	    fsctl->InputCount, &vdb);
+	if (rc != 0) {
+		/* Not enough data sent. */
+		return (NT_STATUS_INVALID_PARAMETER);
+	}
+
+	rc = smb_opipe_write(sr, &vdb.vdb_uio);
+	if (rc != 0)
+		return (smb_errno2status(rc));
+
+	vdb.vdb_tag = 0;
+	vdb.vdb_uio.uio_iov = &vdb.vdb_iovec[0];
+	vdb.vdb_uio.uio_iovcnt = MAX_IOVEC;
+	vdb.vdb_uio.uio_segflg = UIO_SYSSPACE;
+	vdb.vdb_uio.uio_extflg = UIO_COPY_DEFAULT;
+	vdb.vdb_uio.uio_loffset = (offset_t)0;
+	vdb.vdb_uio.uio_resid = fsctl->MaxOutputResp;
+	mb = smb_mbuf_allocate(&vdb.vdb_uio);
+
+	rc = smb_opipe_read(sr, &vdb.vdb_uio);
+	if (rc != 0) {
+		m_freem(mb);
+		return (smb_errno2status(rc));
+	}
+
+	len = fsctl->MaxOutputResp - vdb.vdb_uio.uio_resid;
+	smb_mbuf_trim(mb, len);
+	MBC_ATTACH_MBUF(fsctl->out_mbc, mb);
+
+	return (0);
 }

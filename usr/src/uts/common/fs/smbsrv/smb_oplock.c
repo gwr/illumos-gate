@@ -441,8 +441,7 @@ smb_oplock_exec_async_break(void *arg)
 		 * This is where we actually do the deferred work
 		 * requested by smb_oplock_sched_async_break().
 		 */
-		smb_session_oplock_break(sr->session,
-		    og->og_tid, og->og_fid, og->og_breaking);
+		smb_session_oplock_break(sr, og->og_breaking);
 
 		mutex_enter(&sr->sr_mutex);
 		/* FALLTHROUGH */

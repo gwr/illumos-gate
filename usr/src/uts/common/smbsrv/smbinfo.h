@@ -106,6 +106,14 @@ extern "C" {
 #define	SMB_PI_MAX_WORKERS_MIN		64
 
 /*
+ * Min/max initial credit grant (for SMB2 Negotiate)
+ * and credit limit we allow to be configured via
+ * SMB_CI_INITIAL_CREDITS, SMB_CI_MAXIMUM_CREDITS
+ */
+#define	SMB_PI_MIN_CREDITS	20
+#define	SMB_PI_MAX_CREDITS	1000
+
+/*
  * sv_size is used by the RPC services and should be set to
  * sizeof (smb_version_t).
  */
@@ -132,10 +140,12 @@ typedef struct smb_kmod_cfg {
 	int32_t skc_ipv6_enable;
 	int32_t skc_print_enable;
 	int32_t skc_traverse_mounts;
+	uint32_t skc_enable_smb2;
 	uint32_t skc_execflags;
 	uint32_t skc_negtok_len;
 	smb_version_t skc_version;
-	/* SMB negotiate protocol response. */
+	uint16_t skc_initial_credits;
+	uint16_t skc_maximum_credits;
 	uuid_t skc_machine_uuid;
 	uchar_t skc_negtok[SMB_PI_MAX_NEGTOK];
 	char skc_native_os[SMB_PI_MAX_NATIVE_OS];

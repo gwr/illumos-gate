@@ -52,9 +52,8 @@ Now you can run fksmbd from the proto area using this script:
 
 You can also run it under dbx (see the .dbxrc file).
 To run it under mdb (with mdb modules build here):
-  mdb -L $ROOT/usr/lib/mdb/proc fksmbd
-or with a core file:
-  mdb -L $ROOT/usr/lib/mdb/proc /tmp/core.nnnn
+  mdb -L $ROOT/usr/lib/mdb/proc:/usr/lib/mdb/proc ...
+where ... is one of: fksmbd, core.nnn, -p $PID
 
 There are also a couple dtrace scripts in here for watching
 either all activity or only selected areas.  (see *.d)

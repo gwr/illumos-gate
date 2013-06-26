@@ -73,7 +73,8 @@ static const int days_in_month[] = {
 int
 smb_ascii_or_unicode_strlen(struct smb_request *sr, char *str)
 {
-	if (sr->smb_flg2 & SMB_FLAGS2_UNICODE)
+	if (sr->session->dialect >= 0x200 ||
+	    (sr->smb_flg2 & SMB_FLAGS2_UNICODE) != 0)
 		return (smb_wcequiv_strlen(str));
 	return (strlen(str));
 }
@@ -81,7 +82,8 @@ smb_ascii_or_unicode_strlen(struct smb_request *sr, char *str)
 int
 smb_ascii_or_unicode_strlen_null(struct smb_request *sr, char *str)
 {
-	if (sr->smb_flg2 & SMB_FLAGS2_UNICODE)
+	if (sr->session->dialect >= 0x200 ||
+	    (sr->smb_flg2 & SMB_FLAGS2_UNICODE) != 0)
 		return (smb_wcequiv_strlen(str) + 2);
 	return (strlen(str) + 1);
 }
@@ -89,7 +91,8 @@ smb_ascii_or_unicode_strlen_null(struct smb_request *sr, char *str)
 int
 smb_ascii_or_unicode_null_len(struct smb_request *sr)
 {
-	if (sr->smb_flg2 & SMB_FLAGS2_UNICODE)
+	if (sr->session->dialect >= 0x200 ||
+	    (sr->smb_flg2 & SMB_FLAGS2_UNICODE) != 0)
 		return (2);
 	return (1);
 }
