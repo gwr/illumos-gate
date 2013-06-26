@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <sys/types.h>
@@ -72,6 +72,7 @@ smb_load_kconfig(smb_kmod_cfg_t *kcfg)
 {
 	struct utsname uts;
 	int64_t citem;
+	int rc;
 
 	bzero(kcfg, sizeof (smb_kmod_cfg_t));
 
@@ -99,7 +100,27 @@ smb_load_kconfig(smb_kmod_cfg_t *kcfg)
 	kcfg->skc_oplock_enable = smb_config_getbool(SMB_CI_OPLOCK_ENABLE);
 	kcfg->skc_sync_enable = smb_config_getbool(SMB_CI_SYNC_ENABLE);
 	kcfg->skc_traverse_mounts = smb_config_getbool(SMB_CI_TRAVERSE_MOUNTS);
+	kcfg->skc_max_protocol = smb_config_get_max_protocol();
 	kcfg->skc_secmode = smb_config_get_secmode();
+
+	rc = smb_config_getnum(SMB_CI_MAXIMUM_CREDITS, &citem);
+	if (rc != SMBD_SMF_OK)
+		citem = SMB_PI_MAX_CREDITS;
+	if (citem < SMB_PI_MIN_CREDITS)
+		citem = SMB_PI_MIN_CREDITS;
+	if (citem > SMB_PI_MAX_CREDITS)
+		citem = SMB_PI_MAX_CREDITS;
+	kcfg->skc_maximum_credits = (uint16_t)citem;
+
+	rc = smb_config_getnum(SMB_CI_INITIAL_CREDITS, &citem);
+	if (rc != SMBD_SMF_OK)
+		citem = SMB_PI_MIN_CREDITS;
+	if (citem < SMB_PI_MIN_CREDITS)
+		citem = SMB_PI_MIN_CREDITS;
+	if (citem > kcfg->skc_maximum_credits)
+		citem = kcfg->skc_maximum_credits;
+	kcfg->skc_initial_credits = (uint16_t)citem;
+
 	(void) smb_getdomainname(kcfg->skc_nbdomain,
 	    sizeof (kcfg->skc_nbdomain));
 	(void) smb_getfqdomainname(kcfg->skc_fqdn,
