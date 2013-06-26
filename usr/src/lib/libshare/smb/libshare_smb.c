@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -877,6 +877,8 @@ struct smb_proto_option_defs {
 	    string_length_check_validator, SMB_REFRESH_REFRESH },
 	{ SMB_CI_MAX_WORKERS, 64, 1024, range_check_validator,
 	    SMB_REFRESH_REFRESH },
+	{ SMB_CI_NETBIOS_ENABLE, 0, 0, true_false_validator,
+	    SMB_REFRESH_REFRESH },
 	{ SMB_CI_NBSCOPE, 0, MAX_VALUE_BUFLEN,
 	    string_length_check_validator, 0 },
 	{ SMB_CI_LM_LEVEL, 2, 5, range_check_validator, 0 },
@@ -911,7 +913,7 @@ struct smb_proto_option_defs {
 	    SMB_REFRESH_REFRESH },
 	{ SMB_CI_DISPOSITION, 0, MAX_VALUE_BUFLEN,
 	    disposition_validator, SMB_REFRESH_REFRESH },
-	{ SMB_CI_NETBIOS_ENABLE, 0, 0, true_false_validator,
+	{ SMB_CI_SMB2_ENABLE, 0, 0, true_false_validator,
 	    SMB_REFRESH_REFRESH },
 };
 
