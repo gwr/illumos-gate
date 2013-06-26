@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -49,6 +49,24 @@
 #include "smbd.h"
 
 boolean_t smbdrv_opened = B_FALSE;
+
+/*
+ * We want to adjust a few things in the standard configuration
+ * passed to the "fake" version of the smbsrv kernel module.
+ *
+ * Reduce the maximum number of connections and workers, just for
+ * convenience while debugging.  (Don't want hundreds of threads.)
+ */
+static void
+fksmbd_adjust_config(smb_ioc_header_t *ioc_hdr)
+{
+	smb_ioc_cfg_t *ioc = (smb_ioc_cfg_t *)ioc_hdr;
+
+	ioc->maxconnections = 10;
+	ioc->maxworkers = 20;
+	smbd_report("maxconnections=%d, maxworkers=%d",
+	    ioc->maxconnections, ioc->maxworkers);
+}
 
 boolean_t
 smb_kmod_isbound(void)
@@ -91,6 +109,9 @@ smb_kmod_ioctl(int cmd, smb_ioc_header_t *ioc, uint32_t len)
 
 	if (!smbdrv_opened)
 		return (EBADF);
+
+	if (cmd == SMB_IOC_CONFIG)
+		fksmbd_adjust_config(ioc);
 
 	rc = fksmbsrv_drv_ioctl(cmd, ioc);
 	return (rc);
