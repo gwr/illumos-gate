@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 
@@ -48,8 +48,11 @@
 
 #define	O_RWMASK	(O_WRONLY | O_RDWR) /* == 3 */
 
-int
-stat_to_vattr(const struct stat *, vattr_t *);
+int fop_shrlock_enable = 0;
+
+int stat_to_vattr(const struct stat *, vattr_t *);
+int fop__getxvattr(vnode_t *, xvattr_t *);
+int fop__setxvattr(vnode_t *, xvattr_t *);
 
 
 /* ARGSUSED */
@@ -247,6 +250,9 @@ fop_getattr(
 		return (errno);
 	error = stat_to_vattr(&buf, vap);
 
+	if (vap->va_mask & AT_XVATTR)
+		(void) fop__getxvattr(vp, (xvattr_t *)vap);
+
 	return (error);
 }
 
@@ -259,10 +265,33 @@ fop_setattr(
 	cred_t *cr,
 	caller_context_t *ct)
 {
+	struct timeval times[2];
 
 	if (vap->va_mask & AT_SIZE) {
 		if (ftruncate(vp->v_fd, vap->va_size) == -1)
 			return (errno);
+	}
+
+	/* AT_MODE or anything else? */
+
+	if (vap->va_mask & AT_XVATTR)
+		(void) fop__setxvattr(vp, (xvattr_t *)vap);
+
+	if (vap->va_mask & (AT_ATIME | AT_MTIME)) {
+		times[0].tv_sec = 0;
+		times[0].tv_usec = UTIME_OMIT;
+		times[1].tv_sec = 0;
+		times[1].tv_usec = UTIME_OMIT;
+		if (vap->va_mask & AT_ATIME) {
+			times[0].tv_sec = vap->va_atime.tv_sec;
+			times[0].tv_usec = vap->va_atime.tv_nsec / 1000;
+		}
+		if (vap->va_mask & AT_MTIME) {
+			times[1].tv_sec = vap->va_mtime.tv_sec;
+			times[1].tv_usec = vap->va_mtime.tv_nsec / 1000;
+		}
+
+		(void) futimesat(vp->v_fd, NULL, times);
 	}
 
 	return (0);
@@ -298,6 +327,9 @@ fop_lookup(
 	int omode = O_RDWR | O_NOFOLLOW;
 	vnode_t *vp;
 	struct stat st;
+
+	if (flags & LOOKUP_XATTR)
+		return (ENOENT);
 
 	/*
 	 * If lookup is for "", just return dvp.
@@ -479,11 +511,25 @@ fop_rename(
 	caller_context_t *ct,
 	int flags)
 {
+	struct stat st;
+	vnode_t *vp;
 	int err;
+
+	if (fstatat(from_dvp->v_fd, from_name, &st,
+	    AT_SYMLINK_NOFOLLOW) == -1)
+		return (errno);
+
+	vp = vncache_lookup(&st);
+	if (vp == NULL)
+		return (ENOENT);
 
 	err = renameat(from_dvp->v_fd, from_name, to_dvp->v_fd, to_name);
 	if (err == -1)
 		err = errno;
+	else
+		vncache_renamed(vp, to_dvp, to_name);
+
+	vn_rele(vp);
 
 	return (err);
 }
@@ -730,7 +776,20 @@ fop_space(
 	cred_t *cr,
 	caller_context_t *ct)
 {
-	return (ENOSYS);
+	/* See fs_frlock */
+
+	switch (cmd) {
+	case F_ALLOCSP:
+	case F_FREESP:
+		break;
+	default:
+		return (EINVAL);
+	}
+
+	if (fcntl(vp->v_fd, cmd, bfp) == -1)
+		return (errno);
+
+	return (0);
 }
 
 /* ARGSUSED */
@@ -994,21 +1053,56 @@ fop_setsecattr(
 	cred_t *cr,
 	caller_context_t *ct)
 {
-	return (ENOSYS);
+	return (0);
 }
 
+/*
+ * Fake up just enough of this so we can test get/set SDs.
+ */
 /* ARGSUSED */
 int
 fop_getsecattr(
 	vnode_t *vp,
-	vsecattr_t *vsap,
+	vsecattr_t *vsecattr,
 	int flag,
 	cred_t *cr,
 	caller_context_t *ct)
 {
-	/* See fs_fab_acl() */
 
-	return (ENOSYS);
+	vsecattr->vsa_aclcnt	= 0;
+	vsecattr->vsa_aclentsz	= 0;
+	vsecattr->vsa_aclentp	= NULL;
+	vsecattr->vsa_dfaclcnt	= 0;	/* Default ACLs are not fabricated */
+	vsecattr->vsa_dfaclentp	= NULL;
+
+	if (vsecattr->vsa_mask & (VSA_ACLCNT | VSA_ACL)) {
+		aclent_t *aclentp;
+		size_t aclsize;
+
+		aclsize = sizeof (aclent_t);
+		vsecattr->vsa_aclcnt = 1;
+		vsecattr->vsa_aclentp = kmem_zalloc(aclsize, KM_SLEEP);
+		aclentp = vsecattr->vsa_aclentp;
+
+		aclentp->a_type = OTHER_OBJ;
+		aclentp->a_perm = 0777;
+		aclentp->a_id = (gid_t)-1;
+		aclentp++;
+	} else if (vsecattr->vsa_mask & (VSA_ACECNT | VSA_ACE)) {
+		ace_t *acl;
+
+		acl = kmem_alloc(sizeof (ace_t), KM_SLEEP);
+		acl->a_who = (uint32_t)-1;
+		acl->a_type = ACE_ACCESS_ALLOWED_ACE_TYPE;
+		acl->a_flags = ACE_EVERYONE;
+		acl->a_access_mask  = ACE_MODIFY_PERMS;
+
+		vsecattr->vsa_aclentp = (void *)acl;
+		vsecattr->vsa_aclcnt = 1;
+		vsecattr->vsa_aclentsz = sizeof (ace_t);
+	}
+
+	return (0);
 }
 
 /* ARGSUSED */
@@ -1030,6 +1124,9 @@ fop_shrlock(
 	default:
 		return (EINVAL);
 	}
+
+	if (!fop_shrlock_enable)
+		return (0);
 
 	if (fcntl(vp->v_fd, cmd, shr) == -1)
 		return (errno);

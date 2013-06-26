@@ -25,7 +25,8 @@
 # Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
 #
 
-SRCS=	smbd-authsvc.d smbd-pipesvc.d smbnode.d smbsrv.d smbvfs.d
+SRCS=	smbd-authsvc.d smbd-doorsvc.d smbd-pipesvc.d \
+	smbnode.d smbsrv.d smbvfs.d
 
 include ../../Makefile.cmd
 
