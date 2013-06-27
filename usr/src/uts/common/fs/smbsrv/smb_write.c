@@ -355,15 +355,17 @@ smb_pre_write_andx(smb_request_t *sr)
 		    &off_low, &param->rw_mode, &remcnt, &datalen_high,
 		    &datalen_low, &param->rw_dsoff, &off_high);
 
-		param->rw_dsoff -= 63;
+		if (param->rw_dsoff > 63)
+			param->rw_dsoff -= 63;
 		param->rw_offset = ((uint64_t)off_high << 32) | off_low;
 	} else {
 		rc = smbsr_decode_vwv(sr, "4.wl4.wwwww", &sr->smb_fid,
 		    &off_low, &param->rw_mode, &remcnt, &datalen_high,
 		    &datalen_low, &param->rw_dsoff);
 
+		if (param->rw_dsoff > 59)
+			param->rw_dsoff -= 59;
 		param->rw_offset = (uint64_t)off_low;
-		param->rw_dsoff -= 59;
 	}
 
 	param->rw_count = (uint32_t)datalen_low;
