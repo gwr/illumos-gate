@@ -20,8 +20,8 @@
  */
 
 /*
- * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
  * Copyright (c) 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -47,8 +47,8 @@
  * of the named pipe API separately from the RPC libraries.
  *
  * I captured the two small name pipe messages sent when
- * requesting a server info via RPC over /pipe/srvsvc and
- * dropped them into the arrays below (bind and info).
+ * requesting a share list via RPC over /pipe/srvsvc and
+ * dropped them into the arrays below (bind and enum).
  * This program sends the two messages (with adjustments)
  * and just dumps whatever comes back over the pipe.
  * Use wireshark if you want to see decoded messages.
@@ -70,32 +70,39 @@ srvsvc_bind[] = {
 	0xeb, 0x1c, 0xc9, 0x11, 0x9f, 0xe8, 0x08, 0x00,
 	0x2b, 0x10, 0x48, 0x60, 0x02, 0x00, 0x00, 0x00 };
 
-/* This is a srvsvc "get server info" call, in two parts */
+/* This is a srvsvc "enum servers" call, in two parts */
 static const uchar_t
-srvsvc_info[] = {
+srvsvc_enum1[] = {
 	0x05, 0x00, 0x00, 0x03, 0x10, 0x00, 0x00, 0x00,
-#define	INFO_RPCLEN_OFF	8
+#define	ENUM_RPCLEN_OFF	8
 	/* V - RPC frag length */
 	0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 	/* ... and the operation number is: VVVV */
-	0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x15, 0x00,
-#define	INFO_SLEN1_OFF	28
-#define	INFO_SLEN2_OFF	36
+	0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x0f, 0x00,
+#define	ENUM_SLEN1_OFF	28
+#define	ENUM_SLEN2_OFF	36
 	/* server name, length 14 vv ... */
 	0x01, 0x00, 0x00, 0x00, 0x0e, 0x00, 0x00, 0x00,
 	0x00, 0x00, 0x00, 0x00, 0x0e, 0x00, 0x00, 0x00 };
 	/* UNC server here, i.e.: "\\192.168.1.6" */
 
+static const uchar_t
+srvsvc_enum2[] = {
+	0x01, 0x00, 0x00, 0x00,
+	0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00 };
+
 static uchar_t sendbuf[1024];
-static uchar_t recvbuf[1024];
+static uchar_t recvbuf[4096];
 static char *server;
 
 static int pipetest(struct smb_ctx *);
 
 static void
-testnp_usage(void)
+srvenum_usage(void)
 {
-	printf("usage: testnp [-d domain][-u user][-p passwd] server\n");
+	printf("usage: srvenum [-d domain][-u user][-p passwd] server\n");
 	exit(1);
 }
 
@@ -124,18 +131,18 @@ main(int argc, char *argv[])
 			pw = optarg;
 			break;
 		case '?':
-			testnp_usage();
+			srvenum_usage();
 			break;
 		}
 	}
 	if (optind >= argc)
-		testnp_usage();
+		srvenum_usage();
 	server = argv[optind];
 
 	if (pw != NULL && (dom == NULL || usr == NULL)) {
-		fprintf(stderr, "%0: -p arg requires -d dom -u usr\n",
+		fprintf(stderr, "%s: -p arg requires -d dom -u usr\n",
 		    argv[0]);
-		testnp_usage();
+		srvenum_usage();
 	}
 
 	/*
@@ -217,15 +224,46 @@ out:
 
 static void
 hexdump(const uchar_t *buf, int len) {
-	int ofs = 0;
+	int idx;
+	char ascii[24];
+	char *pa;
 
+	memset(ascii, '\0', sizeof (ascii));
+
+	idx = 0;
 	while (len--) {
-		if (ofs % 16 == 0)
-			printf("\n%02X: ", ofs);
+		if ((idx & 15) == 0) {
+			printf("[%04X] ", idx);
+			pa = ascii;
+		}
+		if (*buf > ' ' && *buf <= '~')
+			*pa++ = *buf;
+		else
+			*pa++ = '.';
 		printf("%02x ", *buf++);
-		ofs++;
+
+		idx++;
+		if ((idx & 7) == 0) {
+			*pa++ = ' ';
+			putchar(' ');
+		}
+		if ((idx & 15) == 0) {
+			*pa = '\0';
+			printf("%s\n", ascii);
+		}
 	}
-	printf("\n");
+
+	if ((idx & 15) != 0) {
+		*pa = '\0';
+		/* column align the last ascii row */
+		do {
+			printf("   ");
+			idx++;
+			if ((idx & 7) == 0)
+				putchar(' ');
+		} while ((idx & 15) != 0);
+		printf("%s\n", ascii);
+	}
 }
 
 /*
@@ -236,7 +274,6 @@ static int
 put_uncserver(const char *s, uchar_t *buf)
 {
 	uchar_t *p = buf;
-	int slashcnt = 0;
 	char c;
 
 	*p++ = '\\'; *p++ = '\0';
@@ -252,13 +289,6 @@ put_uncserver(const char *s, uchar_t *buf)
 	} while (c != 0);
 
 	return (p - buf);
-}
-
-/* Get a little-endian int.  Just for testing. */
-static int
-getint(const uchar_t *p)
-{
-	return (p[0] + (p[1]<<8) + (p[2]<<16) + (p[3]<<24));
 }
 
 /*
@@ -292,7 +322,7 @@ do_bind(int fid)
 		    more, (char *)recvbuf);
 		if (len == -1) {
 			err = EIO;
-			printf("read info resp, err=%d\n", err);
+			printf("read enum resp, err=%d\n", err);
 			return (err);
 		}
 		if (smb_verbose) {
@@ -305,52 +335,53 @@ do_bind(int fid)
 }
 
 static int
-do_info(int fid)
+do_enum(int fid)
 {
-	int err, len, rlen, wlen, x;
+	int err, len, rlen, wlen;
 	uchar_t *p;
 
 	/*
-	 * Build the info request - two parts.
-	 * See above: srvsvc_info
+	 * Build the enum request - three parts.
+	 * See above: srvsvc_enum1, srvsvc_enum2
 	 *
 	 * First part: RPC header, etc.
 	 */
 	p = sendbuf;
-	len = sizeof (srvsvc_info); /* 40 */
-	memcpy(p, srvsvc_info, len);
+	len = sizeof (srvsvc_enum1); /* 40 */
+	memcpy(p, srvsvc_enum1, len);
 	p += len;
 
 	/* Second part: UNC server name */
 	len = put_uncserver(server, p);
 	p += len;
-	sendbuf[INFO_SLEN1_OFF] = len / 2;
-	sendbuf[INFO_SLEN2_OFF] = len / 2;
+	sendbuf[ENUM_SLEN1_OFF] = len / 2;
+	sendbuf[ENUM_SLEN2_OFF] = len / 2;
 
 	/* Third part: level, etc. (align4) */
 	for (len = (p - sendbuf) & 3; len; len--)
 		*p++ = '\0';
-	*p++ = 101;	/* the "level" */
-	*p++ = 0; *p++ = 0; *p++ = 0;
+	len = sizeof (srvsvc_enum2); /* 28 */
+	memcpy(p, srvsvc_enum2, len);
+	p += len;
 
 	/*
 	 * Compute total length, and fixup RPC header.
 	 */
 	len = p - sendbuf;
-	sendbuf[INFO_RPCLEN_OFF] = len;
+	sendbuf[ENUM_RPCLEN_OFF] = len;
 
 	/*
-	 * Send the info request, read the response.
+	 * Send the enum request, read the response.
 	 * This tests smb_fh_write, smb_fh_read.
 	 */
 	wlen = smb_fh_write(fid, 0, len, (char *)sendbuf);
 	if (wlen == -1) {
 		err = errno;
-		printf("write info req, err=%d\n", err);
+		printf("write enum req, err=%d\n", err);
 		return (err);
 	}
 	if (wlen != len) {
-		printf("write info req, short write %d\n", wlen);
+		printf("write enum req, short write %d\n", wlen);
 		return (EIO);
 	}
 
@@ -358,24 +389,13 @@ do_info(int fid)
 	    sizeof (recvbuf), (char *)recvbuf);
 	if (rlen == -1) {
 		err = errno;
-		printf("read info resp, err=%d\n", err);
+		printf("read enum resp, err=%d\n", err);
 		return (err);
 	}
 
-	if (smb_verbose) {
-		printf("info recv, len=%d\n", rlen);
-		hexdump(recvbuf, rlen);
-	}
-
-	x = getint(recvbuf + 4);
-	if (x != 0x10) {
-		printf("Data representation 0x%x not supported\n", x);
-		return (ENOTSUP);
-	}
-	printf("Platform Id: %d\n", getint(recvbuf + 0x20));
-	printf("Version Major: %d\n", getint(recvbuf + 0x28));
-	printf("Version Minor: %d\n", getint(recvbuf + 0x2c));
-	printf("Srv type flags: 0x%x\n", getint(recvbuf + 0x30));
+	/* Just dump the response data. */
+	printf("enum recv, len=%d\n", rlen);
+	hexdump(recvbuf, rlen);
 
 	return (0);
 }
@@ -406,11 +426,11 @@ pipetest(struct smb_ctx *ctx)
 		printf("do_bind: %d\n", err);
 		goto out;
 	}
-	err = do_info(fd);
+	err = do_enum(fd);
 	if (err)
-		printf("do_info: %d\n", err);
+		printf("do_enum: %d\n", err);
 
 out:
 	smb_fh_close(fd);
-	return (err);
+	return (0);
 }

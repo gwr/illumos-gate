@@ -22,7 +22,7 @@
 /*
  * Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
- * Copyright 2012 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -468,8 +468,6 @@ smb_iod_connect(smb_ctx_t *ctx)
 		goto out;
 
 	/*
-	 * Do SMB Session Setup (authenticate)
-	 *
 	 * Empty user name means an explicit request for
 	 * NULL session setup, which is a special case.
 	 * If negotiate determined that we want to do
@@ -477,17 +475,21 @@ smb_iod_connect(smb_ctx_t *ctx)
 	 * NULL session. [MS-SMB 3.3.5.3].
 	 */
 	if (ctx->ct_user[0] == '\0') {
-		ctx->ct_authflags = SMB_AT_ANON;
-		ctx->ct_vcflags &= ~SMBV_WILL_SIGN;
-		/* Null user should imply null domain. */
+		/* Null user should have null domain too. */
 		ctx->ct_domain[0] = '\0';
+		ctx->ct_authflags = SMB_AT_ANON;
+		ctx->ct_clnt_caps &= ~SMB_CAP_EXT_SECURITY;
+		ctx->ct_vcflags &= ~SMBV_WILL_SIGN;
 	}
 
 	/*
+	 * Do SMB Session Setup (authenticate)
+	 *
 	 * If the server negotiated extended security,
-	 * run the SPNEGO state machine.
+	 * run the SPNEGO state machine, otherwise do
+	 * one of the old-style variants.
 	 */
-	if (ctx->ct_sopt.sv_caps & SMB_CAP_EXT_SECURITY) {
+	if (ctx->ct_clnt_caps & SMB_CAP_EXT_SECURITY) {
 		err = smb_ssnsetup_spnego(ctx, &blob);
 	} else {
 		/*

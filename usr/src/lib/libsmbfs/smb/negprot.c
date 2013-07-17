@@ -32,12 +32,11 @@
 
 /*
  * Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2012 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
  * SMB Negotiate Protocol, and related.
- * Copied from the driver: smb_smb.c
  */
 
 #include <errno.h>
@@ -67,6 +66,7 @@
 #include <netsmb/smb_dev.h>
 
 #include "charsets.h"
+#include "smb_crypt.h"
 #include "private.h"
 
 /*
@@ -87,6 +87,13 @@ static struct smb_dialect smb_dialects[] = {
 
 #define	SMB_DIALECT_MAX \
 	(sizeof (smb_dialects) / sizeof (struct smb_dialect) - 2)
+
+static const uint32_t smb_clnt_caps_mask =
+    SMB_CAP_UNICODE |
+    SMB_CAP_LARGE_FILES |
+    SMB_CAP_NT_SMBS |
+    SMB_CAP_STATUS32 |
+    SMB_CAP_EXT_SECURITY;
 
 /*
  * SMB Negotiate Protocol
@@ -370,7 +377,7 @@ smb_negprot(struct smb_ctx *ctx, struct mbdata *oblob)
 			err = EBADRPC;
 			goto errout;
 		}
-		err = md_get_mem(mbp, ctx->ct_ntlm_chal,
+		err = md_get_mem(mbp, ctx->ct_srv_chal,
 		    NTLM_CHAL_SZ, MB_MSYSTEM);
 		/*
 		 * Server domain follows (ignored)
@@ -430,6 +437,15 @@ smb_negprot(struct smb_ctx *ctx, struct mbdata *oblob)
 	is->is_rwmax = len;
 	is->is_rxmax = len;
 	is->is_wxmax = len;
+
+	/*
+	 * Most of the "capability" bits we offer in session setup
+	 * are just copied from those offered by the server.
+	 */
+	ctx->ct_clnt_caps = sv->sv_caps & smb_clnt_caps_mask;
+
+	/* Get the client nonce. */
+	(void) smb_get_urandom(ctx->ct_clnonce, NTLM_CHAL_SZ);
 
 	return (0);
 

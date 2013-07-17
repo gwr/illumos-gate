@@ -59,6 +59,7 @@
 
 #include "private.h"
 #include "charsets.h"
+#include "smb_crypt.h"
 #include "spnego.h"
 #include "derparse.h"
 #include "ssp.h"
@@ -73,6 +74,7 @@ typedef struct ntlmssp_state {
 	uint32_t ss_flags;
 	char *ss_target_name;	/* Primary domain or server name */
 	struct mbuf *ss_target_info;
+	uchar_t	ss_kxkey[NTLM_HASH_SZ];
 } ntlmssp_state_t;
 
 /*
@@ -86,6 +88,10 @@ struct sec_buf {
 };
 #define	ID_SZ 8
 static const char ntlmssp_id[ID_SZ] = "NTLMSSP";
+
+static int
+ntlm_rand_ssn_key(struct smb_ctx *ctx,
+	ntlmssp_state_t *ssp_st, struct mbdata *ek_mbp);
 
 /*
  * Get a "security buffer" (header part)
@@ -234,26 +240,19 @@ ntlmssp_put_type1(struct ssp_ctx *sp, struct mbdata *out_mb)
 	 * The initial negotiation flags represent the union of all
 	 * options we support.  The server selects from these.
 	 * See: [MS-NLMP 2.2.2.5 NEGOTIATE]
-	 *
-	 * Careful about these two flags:
-	 *	NTLMSSP_NEGOTIATE_SIGN
-	 *	NTLMSSP_NEGOTIATE_SEAL
-	 * If we set them when using NTLM(v1) all our requests fail.
-	 * Win2k3 does not set them with NTLM, but does for NTLMv2.
-	 * Apparently these affect the signing algorithm somehow.
-	 * Using just NTLMSSP_NEGOTIATE_ALWAYS_SIGN appears to be
-	 * sufficient to indicate the signing we use.
 	 */
 	ssp_st->ss_flags =
 	    NTLMSSP_NEGOTIATE_UNICODE |
 	    NTLMSSP_NEGOTIATE_OEM |
 	    NTLMSSP_REQUEST_TARGET |
+	    NTLMSSP_NEGOTIATE_SIGN |
+	    NTLMSSP_NEGOTIATE_SEAL |
 	    /* NTLMSSP_NEGOTIATE_LM_KEY (never) */
 	    NTLMSSP_NEGOTIATE_NTLM |
 	    /* NTLMSSP_NEGOTIATE_ALWAYS_SIGN (set below) */
-	    /* NTLMSSP_NEGOTIATE_NTLM2 (set below) */
+	    NTLMSSP_NEGOTIATE_NTLM2 |
 	    NTLMSSP_NEGOTIATE_128 |
-	    /* NTLMSSP_NEGOTIATE_KEY_EXCH (not yet) */
+	    NTLMSSP_NEGOTIATE_KEY_EXCH |
 	    NTLMSSP_NEGOTIATE_56;
 
 	if (ctx->ct_vcflags & SMBV_WILL_SIGN) {
@@ -261,16 +260,8 @@ ntlmssp_put_type1(struct ssp_ctx *sp, struct mbdata *out_mb)
 		ctx->ct_hflags2 |= SMB_FLAGS2_SECURITY_SIGNATURE;
 	}
 
-	/*
-	 * Win2k3r2 always sets this, but if we do, then our
-	 * authentication via NTLM(v1) fails, so only set it
-	 * when doing NTLMv2.
-	 */
-	if (ctx->ct_authflags & SMB_AT_NTLM2)
-		ssp_st->ss_flags |= NTLMSSP_NEGOTIATE_NTLM2;
-
 	bcopy(ntlmssp_id, &hdr.h_id, ID_SZ);
-	hdr.h_type = 1; /* Type 1 */
+	hdr.h_type = NTLMSSP_MSGTYPE_NEGOTIATE;
 	hdr.h_flags = ssp_st->ss_flags;
 
 	/*
@@ -337,7 +328,7 @@ ntlmssp_get_type2(struct ssp_ctx *sp, struct mbdata *in_mb)
 	bzero(&hdr, sizeof (hdr));
 	(void) md_get_mem(in_mb, &hdr.h_id, ID_SZ, MB_MSYSTEM);
 	(void) md_get_uint32le(in_mb, &hdr.h_type);
-	if (hdr.h_type != 2) {
+	if (hdr.h_type != NTLMSSP_MSGTYPE_CHALLENGE) {
 		err = EPROTO;
 		goto out;
 	}
@@ -346,11 +337,17 @@ ntlmssp_get_type2(struct ssp_ctx *sp, struct mbdata *in_mb)
 	(void) md_get_mem(in_mb, &hdr.h_challenge, NTLM_CHAL_SZ, MB_MSYSTEM);
 
 	/*
-	 * Save flags, challenge for later.
+	 * Save flags, server challenge for later.
 	 */
 	ssp_st->ss_flags = hdr.h_flags;
+	bcopy(&hdr.h_challenge, ctx->ct_srv_chal, NTLM_CHAL_SZ);
+
+	/*
+	 * Turn off flags that might have been given but
+	 * that we don't want to send with authenticate.
+	 */
 	uc = hdr.h_flags & NTLMSSP_NEGOTIATE_UNICODE;
-	bcopy(&hdr.h_challenge, ctx->ct_ntlm_chal, NTLM_CHAL_SZ);
+	ssp_st->ss_flags &= ~NTLMSSP_NEGOTIATE_VERSION;
 
 	/*
 	 * Now find out if the optional parts are there.
@@ -410,19 +407,24 @@ ntlmssp_put_type3(struct ssp_ctx *sp, struct mbdata *out_mb)
 		struct sec_buf h_wksta;
 		struct sec_buf h_ssn_key;
 		uint32_t h_flags;
+		/* Version struct (ommitted) */
+		uchar_t h_mic[NTLM_HASH_SZ];
 	} hdr;
 	struct mbdata lm_mbc;	/* LM response */
 	struct mbdata nt_mbc;	/* NT response */
 	struct mbdata ti_mbc;	/* target info */
+	struct mbdata ek_mbc;	/* encrypted session key */
 	struct mbdata mb2;	/* payload */
 	int err, uc;
 	struct smb_ctx *ctx = sp->smb_ctx;
 	ntlmssp_state_t *ssp_st = sp->sp_private;
+	uchar_t *pmic;
 
 	bzero(&hdr, sizeof (hdr));
 	bzero(&lm_mbc, sizeof (lm_mbc));
 	bzero(&nt_mbc, sizeof (nt_mbc));
 	bzero(&ti_mbc, sizeof (ti_mbc));
+	bzero(&ek_mbc, sizeof (ek_mbc));
 	bzero(&mb2, sizeof (mb2));
 
 	/*
@@ -434,30 +436,78 @@ ntlmssp_put_type3(struct ssp_ctx *sp, struct mbdata *out_mb)
 	uc = ssp_st->ss_flags & NTLMSSP_NEGOTIATE_UNICODE;
 
 	bcopy(ntlmssp_id, &hdr.h_id, ID_SZ);
-	hdr.h_type = 3; /* Type 3 */
+	hdr.h_type = NTLMSSP_MSGTYPE_AUTHENTICATE;
 	hdr.h_flags = ssp_st->ss_flags;
 
 	/*
-	 * Put the NTLMv2/LMv2 or NTLM/LM (v1) responses.
-	 * See also NTLMSSP_NEGOTIATE_NTLM2 above.
+	 * Put the NTLMv2/LMv2 or NTLM/LM (v1) responses,
+	 * and compute the session key, etc.
 	 */
-	if (ctx->ct_authflags & SMB_AT_NTLM2) {
-		/* Build the NTLMv2 "target info" blob. */
+	if (ctx->ct_authflags & SMB_AT_ANON) {
+		/*
+		 * We're setting up a NULL session, meaning
+		 * the lm_mbc, nt_mbc parts remain empty.
+		 * Let's add the "anon" flag (hint).
+		 * As there is no session key, disable the
+		 * fancy session key stuff.
+		 */
+		hdr.h_flags |= NTLMSSP_NEGOTIATE_NULL_SESSION;
+		ssp_st->ss_flags &= ~(
+		    NTLMSSP_NEGOTIATE_NTLM2 |
+		    NTLMSSP_NEGOTIATE_KEY_EXCH);
+		err = 0;
+	} else if (ctx->ct_authflags & SMB_AT_NTLM2) {
+		/*
+		 * Doing NTLMv2/LMv2
+		 */
 		err = ntlm_build_target_info(ctx,
 		    ssp_st->ss_target_info, &ti_mbc);
 		if (err)
 			goto out;
 		err = ntlm_put_v2_responses(ctx, &ti_mbc,
 		    &lm_mbc, &nt_mbc);
-	} else if (ctx->ct_authflags & SMB_AT_NTLM1) {
+		if (err)
+			goto out;
+		/* The "key exg. key" is the session base key */
+		memcpy(ssp_st->ss_kxkey, ctx->ct_ssn_key, NTLM_HASH_SZ);
+
+	} else if (ssp_st->ss_flags & NTLMSSP_NEGOTIATE_NTLM2) {
+		/*
+		 * Doing NTLM ("v1x") which is NTLM with
+		 * "Extended Session Security"
+		 */
+		err = ntlm_put_v1x_responses(ctx,
+		    &lm_mbc, &nt_mbc);
+		if (err)
+			goto out;
+		/* Compute the "Key exchange key". */
+		ntlm2_kxkey(ctx, &lm_mbc, ssp_st->ss_kxkey);
+	} else {
+		/*
+		 * Doing plain old NTLM (and LM if enabled)
+		 */
 		err = ntlm_put_v1_responses(ctx,
 		    &lm_mbc, &nt_mbc);
-	} else {
-		/* lm_mbc, nt_mbc remain empty for SMB_AT_ANON */
-		err = 0;
+		if (err)
+			goto out;
+		/* The "key exg. key" is the session base key */
+		memcpy(ssp_st->ss_kxkey, ctx->ct_ssn_key, NTLM_HASH_SZ);
 	}
-	if (err)
-		goto out;
+
+	/*
+	 * Compute the "Exported Session Key" and (possibly)
+	 * the "Encrypted Random Sesion Key".
+	 * [MS-NLMP 3.1.5.1.2]
+	 */
+	if (ssp_st->ss_flags & NTLMSSP_NEGOTIATE_KEY_EXCH) {
+		err = ntlm_rand_ssn_key(ctx, ssp_st, &ek_mbc);
+		if (err)
+			goto out;
+	} else {
+		/* ExportedSessionKey is the KeyExchangeKey */
+		memcpy(ctx->ct_ssn_key, ssp_st->ss_kxkey, NTLM_HASH_SZ);
+		/* EncryptedRandomSessionKey remains NULL */
+	}
 
 	err = mb_put_sb_data(&mb2, &hdr.h_lm_resp, lm_mbc.mb_top);
 	lm_mbc.mb_top = NULL; /* consumed */
@@ -482,12 +532,13 @@ ntlmssp_put_type3(struct ssp_ctx *sp, struct mbdata *out_mb)
 		goto out;
 
 	/*
-	 * Put the "Random Session Key".  We don't set
-	 * NTLMSSP_NEGOTIATE_KEY_EXCH, so it's empty.
-	 * (In-line mb_put_sb_data here.)
+	 * Put the "Encrypted Random Session Key", if any.
+	 * (ek_mbc.mb_top may be NULL)
 	 */
-	hdr.h_ssn_key.sb_maxlen = hdr.h_ssn_key.sb_length = 0;
-	hdr.h_ssn_key.sb_offset = mb2.mb_count;
+	err = mb_put_sb_data(&mb2, &hdr.h_ssn_key, ek_mbc.mb_top);
+	ek_mbc.mb_top = NULL; /* consumed (if any) */
+	if (err)
+		goto out;
 
 	/*
 	 * Marshal the header (in LE order)
@@ -506,14 +557,57 @@ ntlmssp_put_type3(struct ssp_ctx *sp, struct mbdata *out_mb)
 	(void) mb_put_sb_hdr(out_mb, &hdr.h_ssn_key);
 	(void) mb_put_uint32le(out_mb, hdr.h_flags);
 
+	/* Put zeros for the MIC - filled in later */
+	pmic = mb_reserve(out_mb, NTLM_HASH_SZ);
+
+	/* Put the payload. */
 	err = mb_put_mbuf(out_mb, mb2.mb_top);
 	mb2.mb_top = NULL; /* consumed */
+
+	/*
+	 * Compute the MIC and stuff that in...
+	 * The MIC is apparently optional.
+	 */
 
 out:
 	mb_done(&mb2);
 	mb_done(&lm_mbc);
 	mb_done(&nt_mbc);
 	mb_done(&ti_mbc);
+	mb_done(&ek_mbc);
+
+	return (err);
+}
+
+/*
+ * Helper for ntlmssp_put_type3 when doing key exchange.
+ *
+ * "ExportedSessionKey" is what we give to the "application"
+ * layer, which in here means the MAC key for SMB signing.
+ * With "key exchange", we replace the ExportedSessionKey
+ * with random data and send that (encrypted) to the peer.
+ */
+static int
+ntlm_rand_ssn_key(
+	struct smb_ctx *ctx,
+	ntlmssp_state_t *ssp_st,
+	struct mbdata *ek_mbp)
+{
+
+	uchar_t *encr_ssn_key;
+	int err;
+
+	if ((err = mb_init(ek_mbp)) != 0)
+		return (err);
+	encr_ssn_key = mb_reserve(ek_mbp, NTLM_HASH_SZ);
+
+	/* Set "ExportedSessionKey to NONCE(16) */
+	(void) smb_get_urandom(ctx->ct_ssn_key, NTLM_HASH_SZ);
+
+	/* Set "EncryptedRandomSessionKey" to RC4(...) */
+	err = smb_encrypt_RC4(encr_ssn_key, NTLM_HASH_SZ,
+	    ssp_st->ss_kxkey, NTLM_HASH_SZ,
+	    ctx->ct_ssn_key, NTLM_HASH_SZ);
 
 	return (err);
 }

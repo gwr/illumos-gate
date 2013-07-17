@@ -21,7 +21,7 @@
 /*
  * Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
- * Copyright 2012 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <strings.h>
@@ -29,8 +29,6 @@
 #include <smbsrv/string.h>
 #include <smbsrv/libsmb.h>
 #include <assert.h>
-
-static uint64_t unix_micro_to_nt_time(struct timeval *unix_time);
 
 /*
  * smb_auth_qnd_unicode
@@ -190,91 +188,6 @@ smb_auth_ntlm_response(unsigned char *hash,
 }
 
 /*
- * smb_auth_gen_data_blob
- *
- * Fill the NTLMv2 data blob structure with information as described in
- * "Implementing CIFS, The Common Internet File System". (pg. 282)
- */
-static void
-smb_auth_gen_data_blob(smb_auth_data_blob_t *blob, char *ntdomain)
-{
-	struct timeval now;
-
-	(void) memset(blob->ndb_signature, 1, 2);
-	(void) memset(&blob->ndb_signature[2], 0, 2);
-	(void) memset(blob->ndb_reserved, 0, sizeof (blob->ndb_reserved));
-
-	(void) gettimeofday(&now, 0);
-	blob->ndb_timestamp = unix_micro_to_nt_time(&now);
-	randomize((char *)blob->ndb_clnt_challenge,
-	    SMBAUTH_V2_CLNT_CHALLENGE_SZ);
-	(void) memset(blob->ndb_unknown, 0, sizeof (blob->ndb_unknown));
-	blob->ndb_names[0].nne_len = smb_auth_qnd_unicode(
-	    blob->ndb_names[0].nne_name, ntdomain, strlen(ntdomain));
-	blob->ndb_names[0].nne_type = SMBAUTH_NAME_TYPE_DOMAIN_NETBIOS;
-	blob->ndb_names[1].nne_len = 0;
-	blob->ndb_names[1].nne_type = SMBAUTH_NAME_TYPE_LIST_END;
-	*blob->ndb_names[1].nne_name = 0;
-	(void) memset(blob->ndb_unknown2, 0, sizeof (blob->ndb_unknown2));
-}
-
-/*
- * smb_auth_memcpy
- *
- * It increments the pointer to the destination buffer for the easy of
- * concatenation.
- */
-static void
-smb_auth_memcpy(unsigned char **dstbuf,
-	unsigned char *srcbuf,
-	int srcbuf_len)
-{
-	(void) memcpy(*dstbuf, srcbuf, srcbuf_len);
-	*dstbuf += srcbuf_len;
-}
-
-/*
- * smb_auth_blob_to_string
- *
- * Prepare the data blob string which will be used in NTLMv2 response
- * generation.
- *
- * Assumption: Caller must allocate big enough buffer to prevent buffer
- * overrun.
- *
- * Returns the len of the data blob string.
- */
-static int
-smb_auth_blob_to_string(smb_auth_data_blob_t *blob, unsigned char *data_blob)
-{
-	unsigned char *bufp = data_blob;
-
-	smb_auth_memcpy(&bufp, blob->ndb_signature,
-	    sizeof (blob->ndb_signature));
-	smb_auth_memcpy(&bufp, blob->ndb_reserved,
-	    sizeof (blob->ndb_reserved));
-	smb_auth_memcpy(&bufp, (unsigned char *)&blob->ndb_timestamp,
-	    sizeof (blob->ndb_timestamp));
-	smb_auth_memcpy(&bufp, blob->ndb_clnt_challenge,
-	    SMBAUTH_V2_CLNT_CHALLENGE_SZ);
-	smb_auth_memcpy(&bufp, blob->ndb_unknown, sizeof (blob->ndb_unknown));
-	smb_auth_memcpy(&bufp, (unsigned char *)&blob->ndb_names[0].nne_type,
-	    sizeof (blob->ndb_names[0].nne_type));
-	smb_auth_memcpy(&bufp, (unsigned char *)&blob->ndb_names[0].nne_len,
-	    sizeof (blob->ndb_names[0].nne_len));
-	smb_auth_memcpy(&bufp, (unsigned char *)blob->ndb_names[0].nne_name,
-	    blob->ndb_names[0].nne_len);
-	smb_auth_memcpy(&bufp, (unsigned char *)&blob->ndb_names[1].nne_type,
-	    sizeof (blob->ndb_names[1].nne_type));
-	smb_auth_memcpy(&bufp, (unsigned char *)&blob->ndb_names[1].nne_len,
-	    sizeof (blob->ndb_names[1].nne_len));
-	smb_auth_memcpy(&bufp, blob->ndb_unknown2, sizeof (blob->ndb_unknown2));
-
-	/*LINTED E_PTRDIFF_OVERFLOW*/
-	return (bufp - data_blob);
-}
-
-/*
  * smb_auth_ntlmv2_hash
  *
  * The NTLM v2 hash will be created from the given NTLM hash, username,
@@ -363,102 +276,6 @@ smb_auth_v2_response(
 }
 
 /*
- * smb_auth_set_info
- *
- * Fill the smb_auth_info instance with either NTLM or NTLMv2 related
- * authentication information based on the LMCompatibilityLevel.
- *
- * If the LMCompatibilityLevel equals 2, the SMB Redirector will perform
- * NTLM challenge/response authentication which requires the NTLM hash and
- * NTLM response.
- *
- * If the LMCompatibilityLevel is 3 or above, the SMB Redirector will
- * perfrom NTLMv2 challenge/response authenticatoin which requires the
- * NTLM hash, NTLMv2 hash, NTLMv2 response and LMv2 response.
- *
- * Returns -1 on error. Otherwise, returns 0 upon success.
- */
-int
-smb_auth_set_info(char *username,
-	char *password,
-	unsigned char *ntlm_hash,
-	char *domain,
-	unsigned char *srv_challenge_key,
-	int srv_challenge_len,
-	int lmcomp_lvl,
-	smb_auth_info_t *auth)
-{
-	unsigned short blob_len;
-	unsigned char blob_buf[SMBAUTH_BLOB_MAXLEN];
-	int rc;
-	char *uppercase_dom;
-
-	auth->lmcompatibility_lvl = lmcomp_lvl;
-	if (lmcomp_lvl == 2) {
-		auth->ci_len = 0;
-		*auth->ci = 0;
-		if (!ntlm_hash) {
-			if (smb_auth_ntlm_hash(password, auth->hash) !=
-			    SMBAUTH_SUCCESS)
-				return (-1);
-		} else {
-			(void) memcpy(auth->hash, ntlm_hash, SMBAUTH_HASH_SZ);
-		}
-
-		auth->cs_len = smb_auth_ntlm_response(auth->hash,
-		    srv_challenge_key, srv_challenge_len, auth->cs);
-	} else {
-		if (!ntlm_hash) {
-			if (smb_auth_ntlm_hash(password, auth->hash) !=
-			    SMBAUTH_SUCCESS)
-				return (-1);
-		} else {
-			(void) memcpy(auth->hash, ntlm_hash, SMBAUTH_HASH_SZ);
-		}
-
-		if (!domain)
-			return (-1);
-
-		if ((uppercase_dom = strdup(domain)) == NULL)
-			return (-1);
-
-		(void) smb_strupr(uppercase_dom);
-
-		if (smb_auth_ntlmv2_hash(auth->hash, username,
-		    uppercase_dom, auth->hash_v2) != SMBAUTH_SUCCESS) {
-			free(uppercase_dom);
-			return (-1);
-		}
-
-		/* generate data blob */
-		smb_auth_gen_data_blob(&auth->data_blob, uppercase_dom);
-		free(uppercase_dom);
-		blob_len = smb_auth_blob_to_string(&auth->data_blob, blob_buf);
-
-		/* generate NTLMv2 response */
-		rc = smb_auth_v2_response(auth->hash_v2, srv_challenge_key,
-		    srv_challenge_len, blob_buf, blob_len, auth->cs);
-
-		if (rc < 0)
-			return (-1);
-
-		auth->cs_len = rc;
-
-		/* generate LMv2 response */
-		rc = smb_auth_v2_response(auth->hash_v2, srv_challenge_key,
-		    srv_challenge_len, auth->data_blob.ndb_clnt_challenge,
-		    SMBAUTH_V2_CLNT_CHALLENGE_SZ, auth->ci);
-
-		if (rc < 0)
-			return (-1);
-
-		auth->ci_len = rc;
-	}
-
-	return (0);
-}
-
-/*
  * smb_auth_gen_session_key
  *
  * Generate the NTLM user session key if LMCompatibilityLevel is 2 or
@@ -486,20 +303,6 @@ smb_auth_gen_session_key(smb_auth_info_t *auth, unsigned char *session_key)
 		    SMBAUTH_SESSION_KEY_SZ, session_key);
 
 	return (rc);
-}
-
-/* 100's of ns between 1/1/1970 and 1/1/1601 */
-#define	NT_TIME_BIAS    (134774LL * 24LL * 60LL * 60LL * 10000000LL)
-
-static uint64_t
-unix_micro_to_nt_time(struct timeval *unix_time)
-{
-	uint64_t nt_time;
-
-	nt_time = unix_time->tv_sec;
-	nt_time *= 10000000;  /* seconds to 100ns */
-	nt_time += unix_time->tv_usec * 10;
-	return (nt_time + NT_TIME_BIAS);
 }
 
 static boolean_t
