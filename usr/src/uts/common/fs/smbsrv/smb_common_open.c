@@ -848,7 +848,7 @@ smb_open_subr(smb_request_t *sr)
 
 	if (status == NT_STATUS_SUCCESS) {
 		op->fqi.fq_fattr.sa_mask = SMB_AT_ALL;
-		rc = smb_node_getattr(sr, node, sr->user_cr, of,
+		rc = smb_node_getattr(sr, node, of->f_cr, of,
 		    &op->fqi.fq_fattr);
 		if (rc != 0) {
 			smbsr_error(sr, NT_STATUS_INTERNAL_ERROR,
@@ -1032,7 +1032,7 @@ smb_set_open_attributes(smb_request_t *sr, smb_ofile_t *of)
 		of->f_written = B_TRUE;
 
 	if (attr.sa_mask != 0)
-		rc = smb_node_setattr(sr, node, sr->user_cr, of, &attr);
+		rc = smb_node_setattr(sr, node, of->f_cr, of, &attr);
 
 	return (rc);
 }

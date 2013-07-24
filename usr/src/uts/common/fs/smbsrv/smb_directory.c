@@ -281,8 +281,12 @@ smb_com_delete_directory(smb_request_t *sr)
 		return (SDRC_ERROR);
 	}
 
+	/*
+	 * Using kcred because we just want the DOS attrs
+	 * and don't want access errors for this.
+	 */
 	fqi->fq_fattr.sa_mask = SMB_AT_DOSATTR;
-	rc = smb_node_getattr(sr, fqi->fq_fnode, sr->user_cr, NULL,
+	rc = smb_node_getattr(sr, fqi->fq_fnode, kcred, NULL,
 	    &fqi->fq_fattr);
 	if (rc != 0) {
 		smbsr_errno(sr, rc);

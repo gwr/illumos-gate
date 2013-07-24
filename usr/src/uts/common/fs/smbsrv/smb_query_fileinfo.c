@@ -252,6 +252,7 @@ smb_query_by_fid(smb_request_t *sr, smb_xa_t *xa, uint16_t infolev)
 		return (-1);
 	}
 
+	sr->user_cr = smb_ofile_getcred(sr->fid_ofile);
 	qinfo = kmem_alloc(sizeof (smb_queryinfo_t), KM_SLEEP);
 
 	switch (sr->fid_ofile->f_ftype) {

@@ -233,7 +233,7 @@ smb_com_nt_create_andx(struct smb_request *sr)
 	struct open_param	*op = &sr->arg.open;
 	unsigned char		DirFlag;
 	smb_attr_t		attr;
-	smb_node_t		*node;
+	smb_ofile_t		*of;
 	int rc;
 
 	if ((op->create_options & FILE_DELETE_ON_CLOSE) &&
@@ -279,22 +279,26 @@ smb_com_nt_create_andx(struct smb_request *sr)
 	if (smb_common_open(sr) != NT_STATUS_SUCCESS)
 		return (SDRC_ERROR);
 
+	/*
+	 * NB: after the above smb_common_open() success,
+	 * we have a handle allocated (sr->fid_ofile).
+	 * If we don't return success, we must close it.
+	 */
+	of = sr->fid_ofile;
+
 	switch (sr->tid_tree->t_res_type & STYPE_MASK) {
 	case STYPE_DISKTREE:
 	case STYPE_PRINTQ:
 		if (op->create_options & FILE_DELETE_ON_CLOSE)
-			smb_ofile_set_delete_on_close(sr->fid_ofile);
+			smb_ofile_set_delete_on_close(of);
 
-		node = sr->fid_ofile->f_node;
-		DirFlag = smb_node_is_dir(node) ? 1 : 0;
+		DirFlag = smb_node_is_dir(of->f_node) ? 1 : 0;
 		bzero(&attr, sizeof (attr));
 		attr.sa_mask = SMB_AT_ALL;
-		rc = smb_node_getattr(sr, node, sr->user_cr,
-		    sr->fid_ofile, &attr);
+		rc = smb_node_getattr(sr, of->f_node, of->f_cr, of, &attr);
 		if (rc != 0) {
-			smbsr_error(sr, NT_STATUS_INTERNAL_ERROR,
-			    ERRDOS, ERROR_INTERNAL_ERROR);
-			return (SDRC_ERROR);
+			smbsr_errno(sr, rc);
+			goto errout;
 		}
 
 		rc = smbsr_encode_result(sr, 34, 0, "bb.wbwlTTTTlqqwwbw",
@@ -341,8 +345,12 @@ smb_com_nt_create_andx(struct smb_request *sr)
 	default:
 		smbsr_error(sr, NT_STATUS_INVALID_DEVICE_REQUEST,
 		    ERRDOS, ERROR_INVALID_FUNCTION);
-		return (SDRC_ERROR);
+		goto errout;
 	}
+	if (rc == 0)
+		return (SDRC_SUCCESS);
 
-	return ((rc == 0) ? SDRC_SUCCESS : SDRC_ERROR);
+ errout:
+	smb_ofile_close(of, 0);
+	return (SDRC_ERROR);
 }
