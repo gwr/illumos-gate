@@ -130,7 +130,7 @@ main(int argc, char *argv[])
 	if (secopt != NULL) {
 		aflags = atoi(secopt);
 		if (aflags < 1 || aflags > 0x1f) {
-			fprintf(stderr, "%0: -s {0..31}\n", argv[0]);
+			fprintf(stderr, "%s: -s {0..31}\n", argv[0]);
 			tconn_usage();
 		}
 		smb_ctx_setauthflags(ctx, aflags);
