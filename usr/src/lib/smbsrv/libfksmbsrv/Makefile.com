@@ -33,7 +33,6 @@ OBJS_LOCAL = \
 		fksmb_fem.o \
 		fksmb_init.o \
 		fksmb_kdoor.o \
-		fksmb_opipe_door.o \
 		fake_lookup.o \
 		fake_nblk.o \
 		fake_vfs.o \

@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2012 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -994,6 +994,8 @@ static const struct {
 	{ EROFS,	ERRHRD, ERRnowrite, NT_STATUS_ACCESS_DENIED },
 	{ ESTALE,	ERRDOS, ERRbadfid, NT_STATUS_INVALID_HANDLE },
 	{ EBADF,	ERRDOS, ERRbadfid, NT_STATUS_INVALID_HANDLE },
+	{ ENOTSOCK,	ERRDOS, ERRbadfid, NT_STATUS_INVALID_HANDLE },
+	{ EPIPE,	ERRDOS, ERROR_BROKEN_PIPE, NT_STATUS_PIPE_BROKEN },
 	{ EEXIST,	ERRDOS, ERRfilexists, NT_STATUS_OBJECT_NAME_COLLISION },
 	{ ENXIO,	ERRSRV, ERRinvdevice, NT_STATUS_BAD_DEVICE_TYPE },
 	{ ESRCH,	ERRDOS, ERROR_FILE_NOT_FOUND,
