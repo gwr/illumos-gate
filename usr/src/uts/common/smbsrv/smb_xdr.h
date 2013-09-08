@@ -57,21 +57,20 @@ typedef struct smb_string {
 
 struct smb_buf32;
 
-#define	SMB_OPIPE_HDR_MAGIC	0x4F484452	/* OHDR */
-#define	SMB_OPIPE_DOOR_BUFSIZE	(30 * 1024)
+/*
+ * Initial message on server named pipes.
+ * Followed by smb_netuserinfo
+ */
+typedef struct smb_pipehdr {
+	uint32_t ph_magic;
+	uint32_t ph_uilen;
+} smb_pipehdr_t;
+
+#define	SMB_PIPE_HDR_MAGIC	0x50495045	/* PIPE */
 
 /*
- * Door operations for opipes.
+ * Door up-call stuff shared with smbd
  */
-typedef enum {
-	SMB_OPIPE_NULL = 0,
-	SMB_OPIPE_LOOKUP,
-	SMB_OPIPE_OPEN,
-	SMB_OPIPE_CLOSE,
-	SMB_OPIPE_READ,
-	SMB_OPIPE_WRITE,
-	SMB_OPIPE_EXEC
-} smb_opipe_op_t;
 
 #define	SMB_DOOR_HDR_MAGIC	0x444F4F52	/* DOOR */
 
