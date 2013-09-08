@@ -226,7 +226,7 @@ smb_kdoor_sethdr(smb_doorarg_t *da, uint32_t datalen)
 	hdr->dh_magic = SMB_DOOR_HDR_MAGIC;
 	hdr->dh_flags = da->da_flags | SMB_DF_FAKE_KERNEL;
 	hdr->dh_op = da->da_opcode;
-	hdr->dh_txid = smb_event_txid(da->da_event);
+	/* hdr->dh_txid = 0 (not used) */
 	hdr->dh_datalen = datalen;
 	hdr->dh_door_rc = SMB_DOP_NOT_CALLED;
 }
