@@ -537,11 +537,25 @@ traverse(vnode_t **cvpp)
 	return (error);
 }
 
+/*
+ * Get the vnode path, relative to the passed rootvp.
+ * Our vncache always fills in v_path, so this is easy.
+ */
 /* ARGSUSED */
 int
 vnodetopath(vnode_t *vrootp, vnode_t *vp, char *buf, size_t buflen, cred_t *cr)
 {
-	/* Our vncache always fills in v_path */
-	(void) strlcpy(buf, vp->v_path, buflen);
+	int len, rvp_len = 0;
+	const char *p = vp->v_path;
+
+	if (vrootp)
+		rvp_len = strlen(vrootp->v_path);
+	len = strlen(p);
+	if (rvp_len < len)
+		p += rvp_len;
+	else
+		p = "/";
+
+	(void) strlcpy(buf, p, buflen);
 	return (0);
 }

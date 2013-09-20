@@ -25,7 +25,8 @@
 
 if [[ ! -w /var/smb || ! -w /var/run/smb ]]
 then
-  echo "Need to chown/chmod /var/smb /var/run/smb"
+  echo "Need to create/chown/chmod /var/smb /var/run/smb"
+  echo 'mkdir -p /var/run/smb'
   echo 'chown -R $USER /var/smb /var/run/smb'
   echo 'chmod -R a+rw  /var/smb /var/run/smb'
   exit 1;
