@@ -505,7 +505,7 @@ smb_fsop_create_file(smb_request_t *sr, cred_t *cr,
 	}
 
 	if (rc == 0)
-		smb_node_notify_parents(dnode);
+		smb_node_notify_change(dnode, FILE_ACTION_ADDED, name);
 
 	return (rc);
 }
@@ -642,7 +642,7 @@ smb_fsop_mkdir(
 	}
 
 	if (rc == 0)
-		smb_node_notify_parents(dnode);
+		smb_node_notify_change(dnode, FILE_ACTION_ADDED, name);
 
 	return (rc);
 }
@@ -763,11 +763,11 @@ smb_fsop_remove(
 				rc = smb_vop_remove(dnode->vp, longname,
 				    flags, cr);
 			}
-
-			if (rc == 0)
-				smb_node_notify_parents(dnode);
-
 			kmem_free(longname, MAXNAMELEN);
+		}
+		if (rc == 0) {
+			smb_node_notify_change(dnode,
+			    FILE_ACTION_REMOVED, name);
 		}
 	}
 
@@ -908,7 +908,7 @@ smb_fsop_rmdir(
 	}
 
 	if (rc == 0)
-		smb_node_notify_parents(dnode);
+		smb_node_notify_change(dnode, FILE_ACTION_REMOVED, name);
 
 	return (rc);
 }
@@ -1039,8 +1039,8 @@ smb_fsop_link(smb_request_t *sr, cred_t *cr, smb_node_t *from_fnode,
 
 	rc = smb_vop_link(to_dnode->vp, from_fnode->vp, to_name, flags, cr);
 
-	if ((rc == 0) && from_fnode->n_dnode)
-		smb_node_notify_parents(from_fnode->n_dnode);
+	if (rc == 0)
+		smb_node_notify_change(to_dnode, FILE_ACTION_ADDED, to_name);
 
 	return (rc);
 }
@@ -1175,8 +1175,19 @@ smb_fsop_rename(
 	}
 	VN_RELE(from_vp);
 
-	if (rc == 0)
-		smb_node_notify_parents(from_dnode);
+	if (rc == 0) {
+		if (from_dnode == to_dnode) {
+			smb_node_notify_change(from_dnode,
+			    FILE_ACTION_RENAMED_OLD_NAME, from_name);
+			smb_node_notify_change(to_dnode,
+			    FILE_ACTION_RENAMED_NEW_NAME, to_name);
+		} else {
+			smb_node_notify_change(from_dnode,
+			    FILE_ACTION_REMOVED, from_name);
+			smb_node_notify_change(to_dnode,
+			    FILE_ACTION_ADDED, to_name);
+		}
+	}
 
 	/* XXX: unlock */
 
