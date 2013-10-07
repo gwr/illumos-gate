@@ -31,6 +31,7 @@ SHFILES= \
 	bldenv \
 	build_cscope \
 	bringovercheck \
+	check_mail_msg \
 	checkpaths \
 	checkproto \
 	cryptodrop \
