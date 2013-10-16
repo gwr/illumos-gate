@@ -26,6 +26,11 @@
 # Configuration variables for the runtime environment of the nightly
 # build script and other tools for construction and packaging of
 # releases.
+#
+# This version has some enhancements for running under Jenkins:
+# Keep both debug & non-debug proto areas, and use a POST_NIGHTLY
+# hook to check for noise in the mail_msg file.
+#
 # This example is suitable for building an illumos workspace, which
 # will contain the resulting archives. It is based off the onnv
 # release. It sets NIGHTLY_OPTIONS to make nightly do:
@@ -131,17 +136,16 @@ export MACH="$(uname -p)"
 #  The following two macros are the closed/crypto binaries.  Once
 #  Illumos has totally freed itself, we can remove these references.
 #
-# Location of encumbered binaries.
-export ON_CLOSED_BINS="$CODEMGR_WS/closed"
+# Location of encumbered binaries.  We keep a local copy.
+export ON_CLOSED_BINS=/ws/on-closed-bins/onnv147/closed
 # Location of signed cryptographic binaries.
-export ON_CRYPTO_BINS="$CODEMGR_WS/on-crypto.$MACH.tar.bz2"
+export ON_CRYPTO_BINS=/ws/on-closed-bins/onnv147/on-crypto.$MACH.tar.bz2
 
 # REF_PROTO_LIST - for comparing the list of stuff in your proto area
 # with. Generally this should be left alone, since you want to see differences
 # from your parent (the gate).
 #
 export REF_PROTO_LIST="$PARENT_WS/usr/src/proto_list_${MACH}"
-
 
 export ROOT="$CODEMGR_WS/proto/root_${MACH}"
 export SRC="$CODEMGR_WS/usr/src"
