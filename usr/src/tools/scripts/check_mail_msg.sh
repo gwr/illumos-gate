@@ -53,8 +53,11 @@ check mail_msg.txt "Build errors (non-DEBUG)" "Build warnings (non-DEBUG)"
 
 check mail_msg.txt "Build warnings" "Elapsed build time"
 check mail_msg.txt "Build warnings (DEBUG)" "Elapsed build time (DEBUG)"
-check mail_msg.txt "Build warnings (non-DEBUG)" "Elapsed build time (non-DEBUG)"
+check mail_msg.txt "Build warnings (non-DEBUG)" \
+		   "Elapsed build time (non-DEBUG)"
 
+check mail_msg.txt "Validating manifests against proto area" \
+		   "Check ELF runtime attributes"
 check mail_msg.txt "lint warnings src" "lint noise differences src"
 check mail_msg.txt "cstyle/hdrchk errors" "Find core files"
 
