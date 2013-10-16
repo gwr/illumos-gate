@@ -40,6 +40,11 @@ USRSBINF=	mountall shutdown umountall
 
 ETCTABS=	vfstab inittab nscd.conf security/crypt.conf
 
+ENCODINGS=	label_encodings label_encodings.example \
+		label_encodings.gfi.multi label_encodings.gfi.single \
+		label_encodings.multi label_encodings.single
+SEC_TSOL_ENCS= $(ENCODINGS:%=security/tsol/%)
+
 DFSTAB=		dfstab
 SBINETC=	rcS mountall rc0 rc1 rc2 rc3 rc5 rc6 swapadd umountall
 USRSBINETC=	shutdown
@@ -50,6 +55,7 @@ ROOTSBINF=	$(SBINF:%=$(ROOTSBIN)/%)
 ROOTSBINL=	$(SBINL:%=$(ROOTSBIN)/%)
 ROOTUSRSBINF=	$(USRSBINF:%=$(ROOTUSRSBIN)/%)
 ROOTETCTABS=	$(ETCTABS:%=$(ROOTETC)/%)
+ROOTETC_SEC_TSOL_ENCS= $(SEC_TSOL_ENCS:%=$(ROOTETC)/%)
 ROOTDFSTAB=	$(DFSTAB:%=$(ETCDFSD)/%)
 SYMSBINF=	$(SBINETC:%=$(ROOTETC)/%)
 SYMUSRSBINF=	$(USRSBINETC:%=$(ROOTETC)/%)
@@ -90,10 +96,20 @@ ins_init.d: FRC
 $(SHFILES):
 	sh $@.sh $(ROOT)
 
-install: $(ALL) ins_all ins_init.d $(RCDIRS)
+install: $(ALL) ins_all ins_init.d $(RCDIRS) ins_tsol
 
 ins_all : $(ROOTSBINF) $(ROOTSBINL) $(ROOTUSRSBINF) $(ROOTETCTABS) \
 	$(ROOTDFSTAB)  $(SYMSBINF) $(SYMUSRSBINF)
+
+ins_tsol := FILEMODE= 0444
+ins_tsol: $(ROOTETC_SEC_TSOL_ENCS)
+
+# special case mode 400 for this one.  Mode 400 files in the proto area
+# are a big PITA when you want to do things like test install from the
+# proto area using a non-privileged machine, but this quiets protocmp.
+$(ROOTETC)/security/tsol/label_encodings : security/tsol/label_encodings
+	$(RM) $@; $(INS) -s -m 0400 -f \
+	  $(ROOTETC)/security/tsol security/tsol/label_encodings
 
 # Don't re-install directories already installed by Targetdirs
 #$(DIRS):
