@@ -1484,6 +1484,41 @@ if [ "${SUNWSPRO}" != "" ]; then
 	export PATH
 fi
 
+# Compute the default maximum number of dmake jobs.  The recommended number
+# is 2 + NCPUS, where NCPUS is the number of logical CPUs on the system,
+# subject to an additional limitation that we schedule no more than
+# (phys. mem size) / 512MB dmake jobs.   The memory size limit avoids
+# excessive paging/swapping in cases of virtual machine installations
+# which have lots of CPUs but not enough memory assigned to handle
+# that many parallel jobs.
+function default_maxjobs
+{
+	nameref maxjobs=$1
+	integer ncpu
+	integer -r min_mem_per_job=512
+
+	ncpu=$(builtin getconf ; getconf 'NPROCESSORS_ONLN')
+	(( maxjobs=ncpu + 2 ))
+	
+	if [[ $(/usr/sbin/prtconf 2>'/dev/null') == \
+	    ~(E)Memory\ size:\ ([[:digit:]]+)\ Megabytes ]] ; then
+		integer max_jobs_per_memory # jobs that fit in physical memory
+		integer physical_memory # physical memory installed
+
+		# The array ".sh.match" contains the contents of capturing
+		# brackets in the last regex, .sh.match[1] will contain
+		# the value matched by ([[:digit:]]+), i.e. the amount of
+		# memory installed
+		physical_memory="10#${.sh.match[1]}"
+		((
+		  max_jobs_per_memory=round(physical_memory/min_mem_per_job) ,
+		  maxjobs=fmax(2, fmin(maxjobs, max_jobs_per_memory))
+		))
+	fi
+
+	return 0
+}
+
 hostname=$(uname -n)
 if [[ $DMAKE_MAX_JOBS != +([0-9]) || $DMAKE_MAX_JOBS -eq 0 ]]
 then
@@ -1500,7 +1535,7 @@ then
 	if [[ $maxjobs != +([0-9]) || $maxjobs -eq 0 ]]
 	then
 		# default
-		maxjobs=4
+		default_maxjobs
 	fi
 
 	export DMAKE_MAX_JOBS=$maxjobs

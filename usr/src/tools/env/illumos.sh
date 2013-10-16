@@ -61,44 +61,6 @@ export GATE='testws'
 # CODEMGR_WS - where is your workspace at (or what should nightly name it)
 export CODEMGR_WS="$HOME/ws/$GATE"
 
-# Maximum number of dmake jobs.  The recommended number is 2 + NCPUS,
-# where NCPUS is the number of logical CPUs on your build system.
-function maxjobs
-{
-	nameref maxjobs=$1
-	integer ncpu
-	integer -r min_mem_per_job=512 # minimum amount of memory for a job
-
-	ncpu=$(builtin getconf ; getconf 'NPROCESSORS_ONLN')
-	(( maxjobs=ncpu + 2 ))
-	
-	# Throttle number of parallel jobs launched by dmake to a value which
-	# gurantees that all jobs have enough memory. This was added to avoid
-	# excessive paging/swapping in cases of virtual machine installations
-	# which have lots of CPUs but not enough memory assigned to handle
-	# that many parallel jobs
-	if [[ $(/usr/sbin/prtconf 2>'/dev/null') == ~(E)Memory\ size:\ ([[:digit:]]+)\ Megabytes ]] ; then
-		integer max_jobs_per_memory # parallel jobs which fit into physical memory
-		integer physical_memory # physical memory installed
-
-		# The array ".sh.match" contains the contents of capturing
-		# brackets in the last regex, .sh.match[1] will contain
-		# the value matched by ([[:digit:]]+), i.e. the amount of
-		# memory installed
-		physical_memory="10#${.sh.match[1]}"
-		
-		((
-			max_jobs_per_memory=round(physical_memory/min_mem_per_job) ,
-			maxjobs=fmax(2, fmin(maxjobs, max_jobs_per_memory))
-		))
-	fi
-
-	return 0
-}
-
-maxjobs DMAKE_MAX_JOBS # "DMAKE_MAX_JOBS" passed as ksh(1) name reference
-export DMAKE_MAX_JOBS
-
 # path to onbld tool binaries
 ONBLD_BIN='/opt/onbld/bin'
 
@@ -223,9 +185,9 @@ export SPRO_VROOT="$SPRO_ROOT"
 # if the 'N' option is not specified, is to run this test.
 #CHECK_PATHS='y'
 
+# Uncomment this to disable support for SMB printing.
+# export ENABLE_SMB_PRINTING='#'
+
 # POST_NIGHTLY can be any command to be run at the end of nightly.  See
 # nightly(1) for interactions between environment variables and this command.
 #POST_NIGHTLY=
-
-# Uncomment this to disable support for SMB printing.
-# export ENABLE_SMB_PRINTING='#'
