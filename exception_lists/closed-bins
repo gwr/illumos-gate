@@ -9,6 +9,13 @@
 ./etc/llc2
 ./etc/llc2/llc2_start.default
 ./etc/rc2.d/S40llc2
+./etc/security/tsol
+./etc/security/tsol/label_encodings
+./etc/security/tsol/label_encodings.example
+./etc/security/tsol/label_encodings.gfi.multi
+./etc/security/tsol/label_encodings.gfi.single
+./etc/security/tsol/label_encodings.multi
+./etc/security/tsol/label_encodings.single
 ./etc/snmp
 ./etc/snmp/conf
 ./etc/snmp/conf/mibiisa.reg
