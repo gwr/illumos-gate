@@ -57,8 +57,8 @@ export MULTI_PROTO=yes
 export CODEMGR_WS=`git rev-parse --show-toplevel`
 
 # This is a variable for the rest of the script - GATE doesn't matter to
-# nightly itself
-export GATE=`basename ${CODEMGR_WS}`
+# nightly itself.  Use the Jenkins job name
+export GATE=${JOB_NAME}
 
 # Maximum number of dmake jobs.  The recommended number is 2 + NCPUS,
 # where NCPUS is the number of logical CPUs on your build system.
