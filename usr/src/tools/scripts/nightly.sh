@@ -1491,9 +1491,9 @@ fi
 # excessive paging/swapping in cases of virtual machine installations
 # which have lots of CPUs but not enough memory assigned to handle
 # that many parallel jobs.
+maxjobs=
 function default_maxjobs
 {
-	nameref maxjobs=$1
 	integer ncpu
 	integer -r min_mem_per_job=512
 
@@ -1522,7 +1522,6 @@ function default_maxjobs
 hostname=$(uname -n)
 if [[ $DMAKE_MAX_JOBS != +([0-9]) || $DMAKE_MAX_JOBS -eq 0 ]]
 then
-	maxjobs=
 	if [[ -f $HOME/.make.machines ]]
 	then
 		# Note: there is a hard tab and space character in the []s
