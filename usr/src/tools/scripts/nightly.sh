@@ -66,7 +66,7 @@ nightly_path=`whence $0`
 # on the $PATH settings, which will generally give us either /opt/onbld
 # or the user's workspace.
 #
-WHICH_SCM=$(dirname $nightly_path)/which_scm
+WHICH_SCM=$(dirname "$nightly_path")/which_scm
 if [[ ! -x $WHICH_SCM ]]; then
 	WHICH_SCM=which_scm
 fi
