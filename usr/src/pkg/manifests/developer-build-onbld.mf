@@ -86,6 +86,7 @@ file path=opt/onbld/bin/bldenv mode=0555
 file path=opt/onbld/bin/bringovercheck mode=0555
 file path=opt/onbld/bin/build_cscope mode=0555
 file path=opt/onbld/bin/cddlchk mode=0555
+file path=opt/onbld/bin/check_mail_msg mode=0555
 file path=opt/onbld/bin/check_rtime mode=0555
 file path=opt/onbld/bin/checkpaths mode=0555
 file path=opt/onbld/bin/checkproto mode=0555

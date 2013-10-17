@@ -1695,6 +1695,10 @@ function logshuffle {
 	NIGHTLY_STATUS=$state
 	export NIGHTLY_STATUS
 
+	# Want ${LLOG}/mail_msg available to POST_NIGHTLY
+	cat $build_time_file $build_environ_file $mail_msg_file \
+	    > ${LLOG}/mail_msg
+
 	run_hook POST_NIGHTLY $state
 	run_hook SYS_POST_NIGHTLY $state
 
@@ -1707,8 +1711,6 @@ function logshuffle {
 		mailx_r="-r ${MAILFROM}"
 	fi
 
-	cat $build_time_file $build_environ_file $mail_msg_file \
-	    > ${LLOG}/mail_msg
 	if [ "$m_FLAG" = "y" ]; then
 	    	cat ${LLOG}/mail_msg | /usr/bin/mailx ${mailx_r} -s \
 	"Nightly ${MACH} Build of `basename ${CODEMGR_WS}` ${state}." \
