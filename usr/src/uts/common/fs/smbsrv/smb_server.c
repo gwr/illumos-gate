@@ -1222,7 +1222,11 @@ smb_server_timers(smb_thread_t *thread, void *arg)
 
 	ASSERT(sv != NULL);
 
-	while (smb_thread_continue_timedwait(thread, 1 /* Seconds */)) {
+	/*
+	 * This just kills old inactive sessions.  No urgency.
+	 * The session code expects one call per minute.
+	 */
+	while (smb_thread_continue_timedwait(thread, 60 /* Seconds */)) {
 		smb_session_timers(&sv->sv_nbt_daemon.ld_session_list);
 		smb_session_timers(&sv->sv_tcp_daemon.ld_session_list);
 	}

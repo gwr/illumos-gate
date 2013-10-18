@@ -37,7 +37,11 @@
 
 static volatile uint64_t smb_kids;
 
-uint32_t smb_keep_alive = SSN_KEEP_ALIVE_TIMEOUT;
+/*
+ * We track the keepalive in minutes, but this constant
+ * specifies it in seconds, so convert to minutes.
+ */
+uint32_t smb_keep_alive = SMB_PI_KEEP_ALIVE_MIN / 60;
 
 static void smb_session_cancel(smb_session_t *);
 static int smb_session_message(smb_session_t *);
@@ -74,6 +78,12 @@ void
 smb_session_correct_keep_alive_values(smb_llist_t *ll, uint32_t new_keep_alive)
 {
 	smb_session_t		*sn;
+
+	/*
+	 * Caller specifies seconds, but we track in minutes, so
+	 * convert to minutes (rounded up).
+	 */
+	new_keep_alive = (new_keep_alive + 59) / 60;
 
 	if (new_keep_alive == smb_keep_alive)
 		return;
