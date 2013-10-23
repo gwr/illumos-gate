@@ -226,7 +226,7 @@ static void
 hexdump(const uchar_t *buf, int len) {
 	int idx;
 	char ascii[24];
-	char *pa;
+	char *pa = ascii;
 
 	memset(ascii, '\0', sizeof (ascii));
 
