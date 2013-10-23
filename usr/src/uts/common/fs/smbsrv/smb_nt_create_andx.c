@@ -231,10 +231,10 @@ smb_sdrc_t
 smb_com_nt_create_andx(struct smb_request *sr)
 {
 	struct open_param	*op = &sr->arg.open;
-	unsigned char		DirFlag;
-	smb_attr_t		attr;
+	smb_attr_t		*ap = &op->fqi.fq_fattr;
 	smb_ofile_t		*of;
-	int rc;
+	int			rc;
+	unsigned char		DirFlag;
 
 	if ((op->create_options & FILE_DELETE_ON_CLOSE) &&
 	    !(op->desired_access & DELETE)) {
@@ -293,14 +293,6 @@ smb_com_nt_create_andx(struct smb_request *sr)
 			smb_ofile_set_delete_on_close(of);
 
 		DirFlag = smb_node_is_dir(of->f_node) ? 1 : 0;
-		bzero(&attr, sizeof (attr));
-		attr.sa_mask = SMB_AT_ALL;
-		rc = smb_node_getattr(sr, of->f_node, of->f_cr, of, &attr);
-		if (rc != 0) {
-			smbsr_errno(sr, rc);
-			goto errout;
-		}
-
 		rc = smbsr_encode_result(sr, 34, 0, "bb.wbwlTTTTlqqwwbw",
 		    34,
 		    sr->andx_com,
@@ -308,13 +300,13 @@ smb_com_nt_create_andx(struct smb_request *sr)
 		    op->op_oplock_level,
 		    sr->smb_fid,
 		    op->action_taken,
-		    &attr.sa_crtime,
-		    &attr.sa_vattr.va_atime,
-		    &attr.sa_vattr.va_mtime,
-		    &attr.sa_vattr.va_ctime,
+		    &ap->sa_crtime,
+		    &ap->sa_vattr.va_atime,
+		    &ap->sa_vattr.va_mtime,
+		    &ap->sa_vattr.va_ctime,
 		    op->dattr & FILE_ATTRIBUTE_MASK,
-		    attr.sa_allocsz,
-		    attr.sa_vattr.va_size,
+		    ap->sa_allocsz,
+		    ap->sa_vattr.va_size,
 		    op->ftype,
 		    op->devstate,
 		    DirFlag,

@@ -847,8 +847,14 @@ smb_open_subr(smb_request_t *sr)
 	}
 
 	if (status == NT_STATUS_SUCCESS) {
+		/*
+		 * We've already done access checks above,
+		 * and want this call to succeed even when
+		 * !(desired_access & FILE_READ_ATTRIBUTES),
+		 * so pass kcred here.
+		 */
 		op->fqi.fq_fattr.sa_mask = SMB_AT_ALL;
-		rc = smb_node_getattr(sr, node, of->f_cr, of,
+		rc = smb_node_getattr(sr, node, kcred, of,
 		    &op->fqi.fq_fattr);
 		if (rc != 0) {
 			smbsr_error(sr, NT_STATUS_INTERNAL_ERROR,
