@@ -2310,7 +2310,6 @@ smb_threshold_enter(smb_cmd_threshold_t *ct)
 	return (0);
 }
 
-/* ARGSUSED */
 void
 smb_threshold_exit(smb_cmd_threshold_t *ct)
 {
