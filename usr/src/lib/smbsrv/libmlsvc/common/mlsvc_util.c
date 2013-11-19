@@ -51,15 +51,6 @@ extern int netr_open(char *, char *, mlsvc_handle_t *);
 extern int netr_close(mlsvc_handle_t *);
 extern DWORD netlogon_auth(char *, mlsvc_handle_t *, DWORD);
 
-/*
- * Domain join support: AD (Kerberos+LDAP) or MS-RPC?
- * Leave the AD code path disabled until it can be
- * fixed up so that the SMB server is in complete
- * control of which AD server we talk to.  See:
- * NX 12427 (Re-enable Kerberos+LDAP with...)
- */
-int mlsvc_ads_enabled = 0;
-
 static DWORD
 mlsvc_join_rpc(smb_domainex_t *dxi,
 	char *admin_user, char *admin_pw,
@@ -113,6 +104,15 @@ mlsvc_join(smb_domainex_t *dxi, char *admin_user, char *admin_pw)
 	DWORD status;
 	int rc;
 
+	/*
+	 * Domain join support: AD (Kerberos+LDAP) or MS-RPC?
+	 * Leave the AD code path disabled until it can be
+	 * fixed up so that the SMB server is in complete
+	 * control of which AD server we talk to.  See:
+	 * NX 12427 (Re-enable Kerberos+LDAP with...)
+	 */
+	boolean_t ads_enabled = smb_config_get_ads_enable();
+
 	if (smb_getsamaccount(machine_name, sizeof (machine_name)) != 0)
 		return (NT_STATUS_INTERNAL_ERROR);
 
@@ -134,7 +134,7 @@ mlsvc_join(smb_domainex_t *dxi, char *admin_user, char *admin_pw)
 		 * The ADS code needs work.  Not enabled yet.
 		 */
 		status = NT_STATUS_UNSUCCESSFUL;
-		if (mlsvc_ads_enabled) {
+		if (ads_enabled) {
 			smb_adjoin_status_t err;
 			err = smb_ads_join(di->di_fqname,
 			    admin_user, admin_pw, machine_pw);

@@ -189,6 +189,7 @@ extern int smb_config_setstr(smb_cfg_id_t, char *);
 extern int smb_config_setnum(smb_cfg_id_t, int64_t);
 extern int smb_config_setbool(smb_cfg_id_t, boolean_t);
 
+extern boolean_t smb_config_get_ads_enable(void);
 extern uint8_t smb_config_get_fg_flag(void);
 extern char *smb_config_get_localsid(void);
 extern int smb_config_secmode_fromstr(char *);

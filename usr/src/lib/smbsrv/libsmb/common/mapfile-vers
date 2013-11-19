@@ -98,6 +98,7 @@ SYMBOL_VERSION SUNWprivate {
 	smb_common_decode;
 	smb_common_encode;
 	smb_config_get;
+	smb_config_get_ads_enable;
 	smb_config_get_execinfo;
 	smb_config_get_fg_flag;
 	smb_config_get_localsid;
