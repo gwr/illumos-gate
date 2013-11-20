@@ -492,7 +492,8 @@ smb_vop_setattr(vnode_t *vp, vnode_t *unnamed_vp, smb_attr_t *attr,
 
 	if (at_size) {
 		attr->sa_vattr.va_mask = AT_SIZE;
-		error = VOP_SETATTR(vp, &attr->sa_vattr, flags, kcred, &smb_ct);
+		error = VOP_SETATTR(vp, &attr->sa_vattr, flags,
+		    zone_kcred(), &smb_ct);
 	}
 
 	return (error);
@@ -624,7 +625,8 @@ smb_vop_lookup(
 
 		if (attr != NULL) {
 			attr->sa_mask = SMB_AT_ALL;
-			(void) smb_vop_getattr(*vpp, NULL, attr, 0, kcred);
+			(void) smb_vop_getattr(*vpp, NULL, attr, 0,
+			    zone_kcred());
 		}
 	}
 
@@ -1256,7 +1258,8 @@ smb_vop_acl_type(vnode_t *vp)
 	int error;
 	ulong_t whichacl;
 
-	error = VOP_PATHCONF(vp, _PC_ACL_ENABLED, &whichacl, kcred, NULL);
+	error = VOP_PATHCONF(vp, _PC_ACL_ENABLED, &whichacl,
+	    zone_kcred(), NULL);
 	if (error != 0) {
 		/*
 		 * If we got an error, then the filesystem
