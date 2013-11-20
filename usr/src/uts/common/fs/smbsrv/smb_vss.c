@@ -225,8 +225,8 @@ smb_vss_lookup_node(smb_request_t *sr, smb_node_t *node, vnode_t *fsrootvp,
 	if (err == 0) {
 		vp = smb_lookuppathvptovp(sr, path, fsrootvp, fsrootvp);
 		if (vp) {
-			*vss_node = smb_node_lookup(sr, NULL, kcred, vp,
-			    odname, dnode, NULL);
+			*vss_node = smb_node_lookup(sr, NULL, zone_kcred(),
+			    vp, odname, dnode, NULL);
 			VN_RELE(vp);
 		}
 	}
