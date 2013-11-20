@@ -797,7 +797,7 @@ smb_ofile_seek(
 	case SMB_SEEK_END:
 		bzero(&attr, sizeof (smb_attr_t));
 		attr.sa_mask |= SMB_AT_SIZE;
-		rc = smb_fsop_getattr(NULL, kcred, of->f_node, &attr);
+		rc = smb_fsop_getattr(NULL, zone_kcred(), of->f_node, &attr);
 		if (rc != 0) {
 			mutex_exit(&of->f_mutex);
 			return (rc);
@@ -968,7 +968,7 @@ uint32_t
 smb_ofile_access(smb_ofile_t *of, cred_t *cr, uint32_t access)
 {
 
-	if ((of == NULL) || (cr == kcred))
+	if ((of == NULL) || (cr == zone_kcred()))
 		return (NT_STATUS_SUCCESS);
 
 	/*

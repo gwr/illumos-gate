@@ -245,7 +245,7 @@ smb_node_lookup(
 	 * that's why kcred is used not the user's cred
 	 */
 	attr.sa_mask = SMB_AT_ALL;
-	error = smb_vop_getattr(vp, unnamed_vp, &attr, 0, kcred);
+	error = smb_vop_getattr(vp, unnamed_vp, &attr, 0, zone_kcred());
 	if (error)
 		return (NULL);
 
@@ -552,7 +552,7 @@ smb_node_root_init(vnode_t *vp, smb_server_t *sv, smb_node_t **root)
 	smb_node_t	*node;
 
 	attr.sa_mask = SMB_AT_ALL;
-	error = smb_vop_getattr(vp, NULL, &attr, 0, kcred);
+	error = smb_vop_getattr(vp, NULL, &attr, 0, zone_kcred());
 	if (error) {
 		VN_RELE(vp);
 		return (error);
@@ -594,7 +594,7 @@ smb_node_set_delete_on_close(smb_node_t *node, cred_t *cr, uint32_t flags)
 
 	bzero(&attr, sizeof (smb_attr_t));
 	attr.sa_mask = SMB_AT_DOSATTR;
-	rc = smb_fsop_getattr(NULL, kcred, node, &attr);
+	rc = smb_fsop_getattr(NULL, zone_kcred(), node, &attr);
 	if ((rc != 0) || (attr.sa_dosattr & FILE_ATTRIBUTE_READONLY)) {
 		return (-1);
 	}
@@ -767,7 +767,7 @@ smb_node_fcn_subscribe(smb_node_t *node, smb_request_t *sr)
 
 	mutex_enter(&fcn->fcn_mutex);
 	if (fcn->fcn_count == 0)
-		(void)smb_fem_fcn_install(node);
+		(void) smb_fem_fcn_install(node);
 	fcn->fcn_count++;
 	list_insert_tail(&fcn->fcn_watchers, sr);
 	mutex_exit(&fcn->fcn_mutex);
@@ -963,7 +963,7 @@ smb_node_getmntpath(smb_node_t *node, char *buf, uint32_t buflen)
 	VN_HOLD(vp);
 
 	/* NULL is passed in as we want to start at "/" */
-	err = vnodetopath(NULL, root_vp, buf, buflen, kcred);
+	err = vnodetopath(NULL, root_vp, buf, buflen, zone_kcred());
 
 	VN_RELE(vp);
 	VN_RELE(root_vp);
@@ -1012,6 +1012,7 @@ smb_node_getpath(smb_node_t *node, vnode_t *rootvp, char *buf, uint32_t buflen)
 	int rc;
 	vnode_t *vp;
 	smb_node_t *unode, *dnode;
+	cred_t *kcr = zone_kcred();
 
 	unode = (SMB_IS_STREAM(node)) ? node->n_unode : node;
 	dnode = (smb_node_is_dir(unode)) ? unode : unode->n_dnode;
@@ -1021,10 +1022,10 @@ smb_node_getpath(smb_node_t *node, vnode_t *rootvp, char *buf, uint32_t buflen)
 	VN_HOLD(vp);
 	if (rootvp) {
 		VN_HOLD(rootvp);
-		rc = vnodetopath(rootvp, vp, buf, buflen, kcred);
+		rc = vnodetopath(rootvp, vp, buf, buflen, kcr);
 		VN_RELE(rootvp);
 	} else {
-		rc = vnodetopath(NULL, vp, buf, buflen, kcred);
+		rc = vnodetopath(NULL, vp, buf, buflen, kcr);
 	}
 	VN_RELE(vp);
 
@@ -1305,7 +1306,7 @@ smb_node_file_is_readonly(smb_node_t *node)
 
 	bzero(&attr, sizeof (smb_attr_t));
 	attr.sa_mask = SMB_AT_DOSATTR;
-	(void) smb_fsop_getattr(NULL, kcred, node, &attr);
+	(void) smb_fsop_getattr(NULL, zone_kcred(), node, &attr);
 	return ((attr.sa_dosattr & FILE_ATTRIBUTE_READONLY) != 0);
 }
 
@@ -1389,10 +1390,12 @@ smb_node_setattr(smb_request_t *sr, smb_node_t *node,
 		 * Setting the allocation size but not EOF position.
 		 * Get the current EOF in tmp_attr and (if necessary)
 		 * truncate to the (rounded up) allocation size.
+		 * Using kcred here because if we don't have access,
+		 * we want to fail at setattr below and not here.
 		 */
 		bzero(&tmp_attr, sizeof (smb_attr_t));
 		tmp_attr.sa_mask = SMB_AT_SIZE;
-		rc = smb_fsop_getattr(NULL, kcred, node, &tmp_attr);
+		rc = smb_fsop_getattr(NULL, zone_kcred(), node, &tmp_attr);
 		if (rc != 0)
 			return (rc);
 		attr->sa_allocsz = SMB_ALLOCSZ(attr->sa_allocsz);
