@@ -353,7 +353,7 @@ smb_odir_openat(smb_request_t *sr, smb_node_t *unode)
 		    ERRDOS, ERROR_ACCESS_DENIED);
 		return (0);
 	}
-	cr = kcred;
+	cr = zone_kcred();
 
 	/* find the xattrdir vnode */
 	rc = smb_vop_lookup_xattrdir(unode->vp, &xattr_dvp, LOOKUP_XATTR, cr);
@@ -1134,7 +1134,7 @@ smb_odir_single_fileinfo(smb_request_t *sr, smb_odir_t *od,
 
 	bzero(&attr, sizeof (attr));
 	attr.sa_mask = SMB_AT_ALL;
-	rc = smb_node_getattr(sr, fnode, kcred, NULL, &attr);
+	rc = smb_node_getattr(sr, fnode, zone_kcred(), NULL, &attr);
 	if (rc != 0) {
 		smb_node_release(fnode);
 		return (rc);
@@ -1147,7 +1147,7 @@ smb_odir_single_fileinfo(smb_request_t *sr, smb_odir_t *od,
 		smb_node_release(fnode);
 		fnode = tgt_node;
 		attr.sa_mask = SMB_AT_ALL;
-		rc = smb_node_getattr(sr, fnode, kcred, NULL, &attr);
+		rc = smb_node_getattr(sr, fnode, zone_kcred(), NULL, &attr);
 		if (rc != 0) {
 			smb_node_release(fnode);
 			return (rc);
@@ -1249,7 +1249,7 @@ smb_odir_wildcard_fileinfo(smb_request_t *sr, smb_odir_t *od,
 
 	bzero(&attr, sizeof (attr));
 	attr.sa_mask = SMB_AT_ALL;
-	rc = smb_node_getattr(sr, fnode, kcred, NULL, &attr);
+	rc = smb_node_getattr(sr, fnode, zone_kcred(), NULL, &attr);
 	if (rc != 0) {
 		smb_node_release(fnode);
 		return (rc);
