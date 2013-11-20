@@ -400,7 +400,7 @@ smb_unmangle(smb_node_t *dnode, char *name, char *namebuf,
 	offset = 0;
 
 	while ((err = smb_vop_readdir(vp, offset, buf, &bufsize,
-	    &eof, flags, kcred)) == 0) {
+	    &eof, flags, zone_kcred())) == 0) {
 		if (bufsize == 0) {
 			err = ENOENT;
 			break;
