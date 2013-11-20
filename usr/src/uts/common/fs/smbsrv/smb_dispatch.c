@@ -535,7 +535,7 @@ smb_dispatch_request(struct smb_request *sr)
 	sr->smb_fid = (uint16_t)-1;
 
 	/* temporary until we identify a user */
-	sr->user_cr = kcred;
+	sr->user_cr = zone_kcred();
 	sr->orig_request_hdr = sr->command.chain_offset;
 
 	/* If this connection is shutting down just kill request */

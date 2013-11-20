@@ -553,7 +553,7 @@ smb_tree_acl_access(smb_request_t *sr, const smb_kshare_t *si, vnode_t *pathvp)
 	pn_alloc(&pnp);
 	(void) pn_set(&pnp, sharepath);
 	rc = lookuppnvp(&pnp, NULL, NO_FOLLOW, NULL, &sharevp, rootdir, root,
-	    kcred);
+	    zone_kcred());
 	pn_free(&pnp);
 
 	/*

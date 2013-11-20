@@ -963,7 +963,7 @@ smb_server_sharevp(smb_server_t *sv, const char *shr_path, vnode_t **vp)
 	if ((sr = smb_request_alloc(sv->sv_session, 0)) == NULL) {
 		return (ENOMEM);
 	}
-	sr->user_cr = kcred;
+	sr->user_cr = zone_kcred();
 
 	rc = smb_pathname_reduce(sr, sr->user_cr, shr_path,
 	    NULL, NULL, &dnode, last_comp);
