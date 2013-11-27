@@ -35,6 +35,7 @@ SYMBOL_VERSION SUNWprivate_1.1 {
 	_curcred;
 	_curproc;
 	_curthread;
+	_curzone;
 
 	aok		{ FLAGS = NODIRECT };
 	cmn_err;

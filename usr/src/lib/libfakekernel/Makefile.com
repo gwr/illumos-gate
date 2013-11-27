@@ -46,6 +46,9 @@ SRCS=   $(COBJS:%.o=$(SRCDIR)/%.c)
 
 $(LINTLIB) :=	SRCS = $(SRCDIR)/$(LINTSRC)
 
+C99MODE =       -xc99=%all
+C99LMODE =      -Xc99=%all
+
 # hack hack - need our sys first
 DTS_ERRNO += -I../common
 INCS += -I$(SRC)/common/smbsrv

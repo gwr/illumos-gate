@@ -103,6 +103,7 @@ usr/lib/devfsadm/linkmod/SUNW_misc_link.so
 usr/lib/devfsadm/linkmod/SUNW_misc_link_i386.so
 usr/lib/fs/smb/${ARCH64}/libshare_smb.so.1
 usr/lib/fs/smb/libshare_smb.so.1
+usr/lib/libsmbfs.so.1
 usr/lib/mdb/kvm/${ARCH64}/smbsrv.so
 usr/lib/mdb/kvm/smbsrv.so
 usr/lib/reparse/libreparse_smb.so.1
@@ -111,8 +112,8 @@ usr/lib/smbsrv/libmlrpc.so.1
 usr/lib/smbsrv/libmlsvc.so.1
 usr/lib/smbsrv/libsmb.so.1
 usr/lib/smbsrv/libsmbns.so.1
-usr/lib/smbsrv/libsqlite.so.1
 usr/lib/smbsrv/smbd
+lib/libsqlite.so.2.8.15
 usr/sbin/devfsadm
 usr/sbin/smbadm
 usr/sbin/smbstat

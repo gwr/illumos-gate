@@ -17,6 +17,7 @@
 #include <sys/time.h>
 #include <sys/thread.h>
 #include <sys/proc.h>
+#include <sys/zone.h>
 
 #include <sys/poll.h>
 
@@ -31,6 +32,16 @@ proc_t *
 _curproc(void)
 {
 	return (&p0);
+}
+
+zone_t zone0 = {
+	.zone_zsched = &p0, 0
+};
+
+zone_t *
+_curzone(void)
+{
+	return (&zone0);
 }
 
 pid_t

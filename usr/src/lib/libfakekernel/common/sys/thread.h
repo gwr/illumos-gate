@@ -86,7 +86,8 @@ extern struct proc	*_curproc(void);
 #define	curproc		(_curproc())		/* current proc pointer */
 
 struct zone;
-extern struct zone *curzone;
+extern struct zone	*_curzone(void);
+#define	curzone		(_curzone())		/* current zone pointer */
 
 extern	kthread_t	*thread_create(
 	caddr_t		stk,

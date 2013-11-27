@@ -580,15 +580,19 @@ smb_server_start(smb_ioc_start_t *ioc)
 		if ((rc = smb_kshare_start(sv)) != 0)
 			break;
 
+		/*
+		 * NB: the proc passed here has to be a "system" one.
+		 * Normally that's p0, or the NGZ eqivalent.
+		 */
 		sv->sv_worker_pool = taskq_create_proc("smb_workers",
 		    sv->sv_cfg.skc_maxworkers, smbsrv_worker_pri,
 		    sv->sv_cfg.skc_maxworkers, INT_MAX,
-		    curproc, TASKQ_DYNAMIC);
+		    curzone->zone_zsched, TASKQ_DYNAMIC);
 
 		sv->sv_receiver_pool = taskq_create_proc("smb_receivers",
 		    sv->sv_cfg.skc_maxconnections, smbsrv_receive_pri,
 		    sv->sv_cfg.skc_maxconnections, INT_MAX,
-		    curproc, TASKQ_DYNAMIC);
+		    curzone->zone_zsched, TASKQ_DYNAMIC);
 
 		sv->sv_session = smb_session_create(NULL, 0, sv, 0);
 
@@ -1477,6 +1481,13 @@ smb_server_listener_init(
 static void
 smb_server_listener_destroy(smb_listener_daemon_t *ld)
 {
+	/*
+	 * Note that if startup fails early, we can legitimately
+	 * get here with an all-zeros object.
+	 */
+	if (ld->ld_magic == 0)
+		return;
+
 	SMB_LISTENER_VALID(ld);
 	ASSERT(ld->ld_so == NULL);
 	smb_thread_destroy(&ld->ld_thread);

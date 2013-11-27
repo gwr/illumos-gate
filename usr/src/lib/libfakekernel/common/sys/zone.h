@@ -50,8 +50,11 @@ extern "C" {
 
 #include <sys/list.h>
 
-struct zone;
-typedef struct zone zone_t;
+typedef struct zone {
+	zoneid_t	zone_id;	/* ID of zone */
+	struct proc	*zone_zsched;	/* Dummy kernel "zsched" process */
+	int fake_zone[10];
+} zone_t;
 
 extern zone_t zone0;
 extern zone_t *global_zone;
