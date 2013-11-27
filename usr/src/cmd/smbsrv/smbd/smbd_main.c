@@ -88,23 +88,9 @@ static void smbd_dyndns_init(void);
 static void smbd_load_shares(void);
 static void *smbd_share_loader(void *);
 
-static int smbd_refresh_init(void);
-static void smbd_refresh_fini(void);
-static void *smbd_refresh_monitor(void *);
+static void smbd_refresh_handler(void);
 
 static int smbd_kernel_start(void);
-
-static pthread_cond_t refresh_cond;
-static pthread_mutex_t refresh_mutex;
-
-/*
- * Mutex to ensure that smbd_service_fini() and smbd_service_init()
- * are atomic w.r.t. one another.  Otherwise, if a shutdown begins
- * before initialization is complete, resources can get deallocated
- * while initialization threads are still using them.
- */
-static mutex_t smbd_service_mutex;
-static cond_t smbd_service_cv;
 
 smbd_t smbd;
 
@@ -200,8 +186,6 @@ main(int argc, char *argv[])
 		smbd_daemonize_fini(pfd, SMF_EXIT_OK);
 	}
 
-	(void) atexit(smb_kmod_stop);
-
 	while (!smbd.s_shutting_down) {
 		sigval = sigwait(&set);
 
@@ -215,8 +199,7 @@ main(int argc, char *argv[])
 
 		case SIGHUP:
 			syslog(LOG_DEBUG, "refresh requested");
-			atomic_inc_uint(&smbd.s_refreshes);
-			(void) pthread_cond_signal(&refresh_cond);
+			smbd_refresh_handler();
 			break;
 
 		case SIGUSR1:
@@ -229,7 +212,6 @@ main(int argc, char *argv[])
 			 * Typically SIGINT or SIGTERM.
 			 */
 			smbd.s_shutting_down = B_TRUE;
-			(void) pthread_cond_signal(&refresh_cond);
 			break;
 		}
 	}
@@ -248,7 +230,6 @@ main(int argc, char *argv[])
 	(void) sigprocmask(SIG_UNBLOCK, &set, NULL);
 
 	smbd_service_fini();
-	closelog();
 	return ((smbd.s_fatal_error) ? SMF_EXIT_ERR_FATAL : SMF_EXIT_OK);
 }
 
@@ -471,14 +452,11 @@ smbd_service_init(void)
 	}
 	smbd_report("smbd starting, pid %d", smbd.s_pid);
 
-	(void) mutex_lock(&smbd_service_mutex);
-
 	for (i = 0; i < sizeof (dir)/sizeof (dir[0]); ++i) {
 		if ((mkdir(dir[i].name, dir[i].perm) < 0) &&
 		    (errno != EEXIST)) {
 			smbd_report("mkdir %s: %s", dir[i].name,
 			    strerror(errno));
-			(void) mutex_unlock(&smbd_service_mutex);
 			return (-1);
 		}
 	}
@@ -489,7 +467,6 @@ smbd_service_init(void)
 			    strerror(errno));
 		else
 			smbd_report("unable to set KRB5CCNAME");
-		(void) mutex_unlock(&smbd_service_mutex);
 		return (-1);
 	}
 
@@ -518,7 +495,6 @@ smbd_service_init(void)
 		if (rc == SMB_DOMAIN_NOMACHINE_SID) {
 			smbd_report(
 			    "no machine SID: check idmap configuration");
-			(void) mutex_unlock(&smbd_service_mutex);
 			return (-1);
 		}
 	}
@@ -529,25 +505,17 @@ smbd_service_init(void)
 
 	if (smbd_pipesvc_start() != 0) {
 		smbd_report("pipesvc initialization failed");
-		(void) mutex_unlock(&smbd_service_mutex);
 		return (-1);
 	}
 
 	if (smbd_authsvc_start() != 0) {
 		smbd_report("authsvc initialization failed");
-		(void) mutex_unlock(&smbd_service_mutex);
 		return (-1);
 	}
 
 	smbd.s_door_srv = smbd_door_start();
 	if (smbd.s_door_srv < 0) {
 		smbd_report("door initialization failed %s", strerror(errno));
-		(void) mutex_unlock(&smbd_service_mutex);
-		return (-1);
-	}
-
-	if (smbd_refresh_init() != 0) {
-		(void) mutex_unlock(&smbd_service_mutex);
 		return (-1);
 	}
 
@@ -558,7 +526,6 @@ smbd_service_init(void)
 
 	if (smb_shr_start() != 0) {
 		smbd_report("share initialization failed: %s", strerror(errno));
-		(void) mutex_unlock(&smbd_service_mutex);
 		return (-1);
 	}
 
@@ -568,7 +535,6 @@ smbd_service_init(void)
 
 	/* This reloads the kernel config info. */
 	if (smbd_kernel_bind() != 0) {
-		(void) mutex_unlock(&smbd_service_mutex);
 		return (-1);
 	}
 
@@ -578,34 +544,18 @@ smbd_service_init(void)
 
 	smbd.s_initialized = B_TRUE;
 	smbd_report("service initialized");
-	(void) cond_signal(&smbd_service_cv);
-	(void) mutex_unlock(&smbd_service_mutex);
+
 	return (0);
 }
 
 /*
  * Shutdown smbd and smbsrv kernel services.
  *
- * Shutdown will not begin until initialization has completed.
- * Only one thread is allowed to perform the shutdown.  Other
- * threads will be blocked on fini_in_progress until the process
- * has exited.
+ * Called only by the main thread.
  */
 static void
 smbd_service_fini(void)
 {
-	static uint_t	fini_in_progress;
-
-	(void) mutex_lock(&smbd_service_mutex);
-
-	while (!smbd.s_initialized)
-		(void) cond_wait(&smbd_service_cv, &smbd_service_mutex);
-
-	if (atomic_swap_uint(&fini_in_progress, 1) != 0) {
-		while (fini_in_progress)
-			(void) cond_wait(&smbd_service_cv, &smbd_service_mutex);
-		/*NOTREACHED*/
-	}
 
 	smbd.s_shutting_down = B_TRUE;
 	smbd_report("service shutting down");
@@ -617,7 +567,6 @@ smbd_service_fini(void)
 	smbd_door_stop();
 	smbd_authsvc_stop();
 	smbd_spool_stop();
-	smbd_refresh_fini();
 	smbd_kernel_unbind();
 	smbd_share_stop();
 	smb_shr_stop();
@@ -632,113 +581,45 @@ smbd_service_fini(void)
 
 	smbd.s_initialized = B_FALSE;
 	smbd_report("service terminated");
-	(void) mutex_unlock(&smbd_service_mutex);
-	exit((smbd.s_fatal_error) ? SMF_EXIT_ERR_FATAL : SMF_EXIT_OK);
+	closelog();
 }
 
 /*
- * smbd_refresh_init()
- *
- * SMB service refresh thread initialization.  This thread waits for a
- * refresh event and updates the daemon's view of the configuration
- * before going back to sleep.
- */
-static int
-smbd_refresh_init()
-{
-	pthread_attr_t		tattr;
-	pthread_condattr_t	cattr;
-	int			rc;
-
-	(void) pthread_condattr_init(&cattr);
-	(void) pthread_cond_init(&refresh_cond, &cattr);
-	(void) pthread_condattr_destroy(&cattr);
-
-	(void) pthread_mutex_init(&refresh_mutex, NULL);
-
-	(void) pthread_attr_init(&tattr);
-	(void) pthread_attr_setdetachstate(&tattr, PTHREAD_CREATE_DETACHED);
-	rc = pthread_create(&smbd.s_refresh_tid, &tattr, smbd_refresh_monitor,
-	    NULL);
-	(void) pthread_attr_destroy(&tattr);
-
-	if (rc != 0)
-		smbd_report("unable to start refresh monitor: %s",
-		    strerror(errno));
-	return (rc);
-}
-
-/*
- * smbd_refresh_fini()
- *
- * Stop the refresh thread.
+ * Called when SMF sends us a SIGHUP.  Update the smbd configuration
+ * from SMF and check for changes that require service reconfiguration.
  */
 static void
-smbd_refresh_fini()
+smbd_refresh_handler()
 {
-	if ((pthread_self() != smbd.s_refresh_tid) &&
-	    (smbd.s_refresh_tid != 0)) {
-		(void) pthread_cancel(smbd.s_refresh_tid);
-		(void) pthread_cond_destroy(&refresh_cond);
-		(void) pthread_mutex_destroy(&refresh_mutex);
-	}
-}
 
-/*
- * Wait for refresh events.  When woken up, update the smbd configuration
- * from SMF and check for changes that require service reconfiguration.
- * Throttling is applied to coallesce multiple refresh events when the
- * service is being refreshed repeatedly.
- */
-/*ARGSUSED*/
-static void *
-smbd_refresh_monitor(void *arg)
-{
-	smbd_online_wait("smbd_refresh_monitor");
+	if (smbd.s_shutting_down)
+		return;
 
-	while (!smbd.s_shutting_down) {
-		(void) sleep(SMBD_REFRESH_INTERVAL);
+	smbd.s_refreshes++;
 
-		(void) pthread_mutex_lock(&refresh_mutex);
-		while ((atomic_swap_uint(&smbd.s_refreshes, 0) == 0) &&
-		    (!smbd.s_shutting_down))
-			(void) pthread_cond_wait(&refresh_cond, &refresh_mutex);
-		(void) pthread_mutex_unlock(&refresh_mutex);
+	smbd_spool_stop();
+	smbd_dc_monitor_refresh();
+	smb_ccache_remove(SMB_CCACHE_PATH);
 
-		/*
-		 * main thread will call smbd_service_fini
-		 */
-		if (smbd.s_shutting_down)
-			break;
+	/*
+	 * Clear the DNS zones for the existing interfaces
+	 * before updating the NIC interface list.
+	 */
+	dyndns_clear_zones();
 
-		(void) mutex_lock(&smbd_service_mutex);
+	if (smbd_nicmon_refresh() != 0)
+		smbd_report("NIC monitor refresh failed");
 
-		smbd_spool_stop();
-		smbd_dc_monitor_refresh();
-		smb_ccache_remove(SMB_CCACHE_PATH);
+	smb_netbios_name_reconfig();
+	smb_browser_reconfig();
+	dyndns_update_zones();
 
-		/*
-		 * Clear the DNS zones for the existing interfaces
-		 * before updating the NIC interface list.
-		 */
-		dyndns_clear_zones();
+	/* This reloads the in-kernel config. */
+	(void) smbd_kernel_bind();
 
-		if (smbd_nicmon_refresh() != 0)
-			smbd_report("NIC monitor refresh failed");
-
-		smb_netbios_name_reconfig();
-		smb_browser_reconfig();
-		dyndns_update_zones();
-		(void) smbd_kernel_bind();
-		smbd_load_shares();
-		smbd_load_printers();
-		smbd_spool_start();
-
-		(void) mutex_unlock(&smbd_service_mutex);
-	}
-
-	smbd.s_refresh_tid = 0;
-	return (NULL);
+	smbd_load_shares();
+	smbd_load_printers();
+	smbd_spool_start();
 }
 
 void
