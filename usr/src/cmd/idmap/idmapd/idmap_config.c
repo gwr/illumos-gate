@@ -126,8 +126,8 @@ generate_machine_sid(char **machine_sid, char *machine_uuid)
 	 * (see struct uuid)
 	 */
 
-	memset(&uv, 0, sizeof (uv));
-	uuid_parse(machine_uuid, uv.uu);
+	(void) memset(&uv, 0, sizeof (uv));
+	(void) uuid_parse(machine_uuid, uv.uu);
 
 	len = asprintf(machine_sid, "S-1-5-21-%u-%u-%u",
 	    uv.v[3], uv.v[0], uv.v[1]);
