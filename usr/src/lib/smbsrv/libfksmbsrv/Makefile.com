@@ -108,8 +108,7 @@ OBJS_FS_SMBSRV = \
 		smb_vfs.o				\
 		smb_vops.o				\
 		smb_vss.o				\
-		smb_write.o				\
-		smb_write_raw.o
+		smb_write.o
 
 # Most files from $SRC/common/smbsrv are built in libsmb
 OBJS_CMN_SMBSRV = \
