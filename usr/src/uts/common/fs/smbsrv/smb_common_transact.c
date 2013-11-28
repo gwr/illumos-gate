@@ -212,12 +212,12 @@ smb_com_transaction_secondary(smb_request_t *sr)
 	 * fire some static dtrace probes when it does.
 	 */
 	if (xa->req_param_mb.chain_offset != psdisp) {
-		DTRACE_SMB_2(op__Trans_param_disp,
+		DTRACE_PROBE2(trans_param_disp,
 		    smb_xa_t *, xa, uint16_t, psdisp);
 		xa->req_param_mb.chain_offset = psdisp;
 	}
 	if (xa->req_data_mb.chain_offset != dsdisp) {
-		DTRACE_SMB_2(op__Trans_data_disp,
+		DTRACE_PROBE2(trans_data_disp,
 		    smb_xa_t *, xa, uint16_t, dsdisp);
 		xa->req_data_mb.chain_offset = dsdisp;
 	}
@@ -417,12 +417,12 @@ smb_com_transaction2_secondary(smb_request_t *sr)
 	 * See comment in smb_com_transaction_secondary
 	 */
 	if (xa->req_param_mb.chain_offset != psdisp) {
-		DTRACE_SMB_2(op__Trans2_param_disp,
+		DTRACE_PROBE2(trans_param_disp,
 		    smb_xa_t *, xa, uint16_t, psdisp);
 		xa->req_param_mb.chain_offset = psdisp;
 	}
 	if (xa->req_data_mb.chain_offset != dsdisp) {
-		DTRACE_SMB_2(op__Trans2_data_disp,
+		DTRACE_PROBE2(trans_data_disp,
 		    smb_xa_t *, xa, uint16_t, dsdisp);
 		xa->req_data_mb.chain_offset = dsdisp;
 	}
@@ -693,12 +693,12 @@ smb_com_nt_transact_secondary(struct smb_request *sr)
 	 * See comment in smb_com_transaction_secondary
 	 */
 	if (xa->req_param_mb.chain_offset != psdisp) {
-		DTRACE_SMB_2(op__NtTrans_param_disp,
+		DTRACE_PROBE2(trans_param_disp,
 		    smb_xa_t *, xa, uint16_t, psdisp);
 		xa->req_param_mb.chain_offset = psdisp;
 	}
 	if (xa->req_data_mb.chain_offset != dsdisp) {
-		DTRACE_SMB_2(op__NtTrans_data_disp,
+		DTRACE_PROBE2(trans_data_disp,
 		    smb_xa_t *, xa, uint16_t, dsdisp);
 		xa->req_data_mb.chain_offset = dsdisp;
 	}
