@@ -263,7 +263,7 @@ typedef void (*smb_thread_ep_t)(struct _smb_thread *, void *ep_arg);
 
 typedef struct _smb_thread {
 	uint32_t		sth_magic;
-	char			sth_name[16];
+	char			sth_name[32];
 	smb_thread_state_t	sth_state;
 	kthread_t		*sth_th;
 	kt_did_t		sth_did;
@@ -580,6 +580,7 @@ typedef struct smb_oplock {
 typedef struct smb_oplock_grant {
 	uint32_t		og_magic;
 	list_node_t		og_lnd;
+	uint8_t			og_breaking;
 	uint8_t			og_level;
 	uint16_t		og_fid;
 	uint16_t		og_tid;
@@ -1678,6 +1679,7 @@ typedef struct smb_request {
 		smb_arg_dirop_t		dirop;
 		smb_arg_open_t		open;
 		smb_rw_param_t		*rw;
+		smb_oplock_grant_t	olbrk;	/* for async oplock break */
 		int32_t			timestamp;
 	} arg;
 } smb_request_t;

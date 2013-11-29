@@ -280,6 +280,15 @@ kmem_cache_t		*smb_cache_event;
  */
 
 /*
+ * How many zones have an SMB server active?
+ */
+int
+smb_server_get_count(void)
+{
+	return (smb_llist_get_count(&smb_servers));
+}
+
+/*
  * smb_server_g_init
  *
  * This function must be called from smb_drv_attach().
@@ -292,8 +301,6 @@ smb_server_g_init(void)
 	if ((rc = smb_vop_init()) != 0)
 		goto errout;
 	if ((rc = smb_fem_init()) != 0)
-		goto errout;
-	if ((rc = smb_oplock_init()) != 0)
 		goto errout;
 
 	smb_kshare_g_init();
@@ -337,12 +344,12 @@ errout:
  * This function must called from smb_drv_detach(). It will fail if servers
  * still exist.
  */
-int
+void
 smb_server_g_fini(void)
 {
 
-	if (smb_llist_get_count(&smb_servers) != 0)
-		return (EBUSY);
+	ASSERT(smb_llist_get_count(&smb_servers) == 0);
+
 	smb_llist_fini();
 
 	kmem_cache_destroy(smb_cache_request);
@@ -359,13 +366,10 @@ smb_server_g_fini(void)
 	smb_mbc_fini();
 	smb_kshare_g_fini();
 
-	smb_oplock_fini();
 	smb_fem_fini();
 	smb_vop_fini();
 
 	smb_llist_destructor(&smb_servers);
-
-	return (0);
 }
 
 /*

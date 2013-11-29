@@ -250,8 +250,6 @@ int smb_net_id(uint32_t);
 /*
  * oplock functions - node operations
  */
-int smb_oplock_init(void);
-void smb_oplock_fini(void);
 void smb_oplock_acquire(smb_request_t *sr, smb_node_t *, smb_ofile_t *);
 void smb_oplock_release(smb_node_t *, smb_ofile_t *);
 int smb_oplock_break(smb_request_t *, smb_node_t *, uint32_t);
@@ -399,8 +397,9 @@ void fksmb_kdoor_open(smb_server_t *, void *);
 /*
  * SMB server functions (file smb_server.c)
  */
+int smb_server_get_count(void);
 int smb_server_g_init(void);
-int smb_server_g_fini(void);
+void smb_server_g_fini(void);
 int smb_server_create(void);
 int smb_server_delete(void);
 int smb_server_configure(smb_ioc_cfg_t *);
