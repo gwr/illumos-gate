@@ -43,7 +43,8 @@ OBJS_SMBD=			\
 OBJS_LOCAL =			\
 	fksmbd_door.o		\
 	fksmbd_kmod.o		\
-	fksmbd_ksock.o
+	fksmbd_ksock.o		\
+	fksmbd_log.o
 
 OBJS=	${OBJS_SMBD} ${OBJS_LOCAL}
 SRCS=	${OBJS_SMBD:%.o=../smbd/%.c} \

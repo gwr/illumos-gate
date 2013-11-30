@@ -62,10 +62,6 @@
 #define	SMBD_REFRESH_INTERVAL		10
 #define	SMB_DBDIR "/var/smb"
 
-#ifdef	_FAKE
-extern void fakekernel_redirect_cmn_err(__FILE_TAG *, int);
-#endif
-
 static int smbd_daemonize_init(void);
 static void smbd_daemonize_fini(int, int);
 static int smb_init_daemon_priv(int, uid_t, gid_t);
@@ -157,14 +153,6 @@ main(int argc, char *argv[])
 	(void) sigprocmask(SIG_SETMASK, &set, NULL);
 
 	if (smbd.s_fg) {
-#ifdef	_FAKE
-		fakekernel_redirect_cmn_err(stdout,
-		    smbd.s_debug ? CE_CONT : CE_WARN);
-#endif
-
-		libsmb_redirect_syslog(stdout,
-		    smbd.s_debug ? LOG_DEBUG : LOG_INFO);
-
 		if (smbd_service_init() != 0) {
 			smbd_report("service initialization failed");
 			exit(SMF_EXIT_ERR_FATAL);

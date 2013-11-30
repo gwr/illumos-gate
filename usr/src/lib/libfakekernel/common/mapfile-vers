@@ -62,7 +62,9 @@ SYMBOL_VERSION SUNWprivate_1.1 {
 	ddi_get_pid;
 
 	delay;
-	fakekernel_redirect_cmn_err;
+
+	fakekernel_cprintf	{ FLAGS = NODIRECT };
+	fakekernel_putlog	{ FLAGS = NODIRECT };
 
 	gethrestime;
 	gethrestime_sec;

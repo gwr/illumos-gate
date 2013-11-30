@@ -29,52 +29,82 @@
 #include <sys/varargs.h>
 #include <sys/systm.h>
 #include <sys/cmn_err.h>
+#include <sys/log.h>
 
 #include <fakekernel.h>
-/* Can't use <stdio.h> - conflicts */
+
+void	abort(void) __NORETURN;
 
 char *volatile panicstr;
 va_list  panicargs;
 
-int	fprintf(__FILE_TAG *, const char *, ...);
-int	vfprintf(__FILE_TAG *, const char *, __va_list);
-void	abort(void) __NORETURN;
+volatile int aok;
 
+static const int
+ce_flags[CE_IGNORE] = { SL_NOTE, SL_NOTE, SL_WARN, SL_FATAL };
 static const char
 ce_prefix[CE_IGNORE][10] = { "", "NOTICE: ", "WARNING: ", "" };
-
 static const char
 ce_suffix[CE_IGNORE][2] = { "", "\n", "\n", "" };
 
-volatile int aok;
 
 /*
- * Only print if the main program calls
- * _set_logfp()
+ * This function is just a stub, exported NODIRECT so that
+ * comsumers like fksmbd can provide their own.
+ * (One that actually prints the messages.)
+ *
+ * It's used by fakekernel_cprintf() below.
+ * The flags are SL_... from strlog.h
  */
-static __FILE_TAG *cmn_err_logfp = NULL;
-static int cmn_err_level = CE_WARN;
-
+/* ARGSUSED */
 void
-fakekernel_redirect_cmn_err(__FILE_TAG *fp, int level)
+fakekernel_putlog(char *msg, size_t len, int flags)
 {
-	cmn_err_logfp = fp;
-	cmn_err_level = level;
+}
+
+/*
+ * fakekernel_cprintf() corresponds to os/printf.c:cprintf()
+ * This formats the message and calls fakekernel_putlog().
+ * It's exported NODIRECT to allow replacment.
+ * The flags are SL_... from strlog.h
+ */
+void
+fakekernel_cprintf(const char *fmt, va_list adx, int flags,
+	const char *prefix, const char *suffix)
+{
+	size_t bufsize = LOG_MSGSIZE;
+	char buf[LOG_MSGSIZE];
+	char *bufp = buf;
+	char *msgp, *bufend;
+	size_t len;
+
+	if (strchr("^!?", fmt[0]) != NULL) {
+		if (fmt[0] == '^')
+			flags |= SL_CONSONLY;
+		else if (fmt[0] == '!')
+			flags |= SL_LOGONLY;
+		fmt++;
+	}
+
+	bufend = bufp + bufsize;
+	msgp = bufp;
+	msgp += snprintf(msgp, bufend - msgp, "[fake_kernel] ");
+	msgp += snprintf(msgp, bufend - msgp, prefix);
+	msgp += vsnprintf(msgp, bufend - msgp, fmt, adx);
+	msgp += snprintf(msgp, bufend - msgp, suffix);
+	len = msgp - bufp;
+
+	fakekernel_putlog(bufp, len, flags);
 }
 
 void
 vpanic(const char *fmt, va_list adx)
 {
-	__FILE_TAG *fp;
 
 	panicstr = (char *)fmt;
 	va_copy(panicargs, adx);
 
-	if ((fp = cmn_err_logfp) != NULL) {
-		(void) fprintf(fp, "error: ");
-		(void) vfprintf(fp, fmt, adx);
-		(void) fprintf(fp, "\n");
-	}
+	fakekernel_cprintf(fmt, adx, SL_FATAL, "fatal: ", "\n");
 
 	abort();	/* think of it as a "user-level crash dump" */
 }
@@ -92,18 +122,14 @@ panic(const char *fmt, ...)
 void
 vcmn_err(int ce, const char *fmt, va_list adx)
 {
-	__FILE_TAG *fp;
 
 	if (ce == CE_PANIC)
 		vpanic(fmt, adx);
-	/* suppress noise in userland stress testing */
-	if (ce < cmn_err_level)
+	if (ce >= CE_IGNORE)
 		return;
-	if ((fp = cmn_err_logfp) != NULL) {
-		(void) fprintf(fp, "%s", ce_prefix[ce]);
-		(void) vfprintf(fp, fmt, adx);
-		(void) fprintf(fp, "%s", ce_suffix[ce]);
-	}
+
+	fakekernel_cprintf(fmt, adx, ce_flags[ce] | SL_CONSOLE,
+	    ce_prefix[ce], ce_suffix[ce]);
 }
 
 /*PRINTFLIKE2*/

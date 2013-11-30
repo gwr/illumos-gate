@@ -43,6 +43,7 @@ extern "C" {
 #include <libshare.h>
 #include <uuid/uuid.h>
 #include <synch.h>
+#include <stdarg.h>
 
 #include <smbsrv/string.h>
 #include <smbsrv/smb_idmap.h>
@@ -1024,6 +1025,9 @@ typedef struct smb_loglist {
 smb_log_hdl_t smb_log_create(int, char *);
 void smb_log(smb_log_hdl_t, int, const char *, ...);
 void smb_log_dumpall(void);
+
+void smb_syslog(int, const char *, ...);
+void smb_vsyslog(int, const char *, va_list ap);
 
 #ifdef	__cplusplus
 }

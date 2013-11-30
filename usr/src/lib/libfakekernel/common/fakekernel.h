@@ -16,14 +16,16 @@
 #ifndef _FAKEKERNEL_H
 #define	_FAKEKERNEL_H
 
-#include <stdio_tag.h>
+#include <sys/types.h>
+#include <sys/varargs.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-void _set_logfile(__FILE_TAG *);
-void fakekernel_redirect_cmn_err(__FILE_TAG *, int);
+void fakekernel_putlog(char *, size_t, int);
+void fakekernel_cprintf(const char *, va_list, int,
+	const char *, const char *);
 
 #ifdef __cplusplus
 }

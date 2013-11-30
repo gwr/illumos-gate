@@ -22,111 +22,57 @@
 #include <syslog.h>
 #include <smbsrv/libsmb.h>
 
-#define	SMB_DEFAULT_IDENT "smb"
+static void (*real_vsyslog)() = NULL;
 
-static const char *pri_name[LOG_DEBUG+1] = {
-	"emerg", "alert", "crit", "err", "warning", "notice", "info", "debug"
-};
-
-static FILE *smb_logfp = NULL;
-static const char *smb_logident = SMB_DEFAULT_IDENT;
-static int smb_logpri = LOG_INFO;
-static void (*_openlog)(const char *, int, int) = NULL;
-static void (*_closelog)(void) = NULL;
-static void (*_vsyslog)(int, const char *, va_list) = NULL;
-
-#pragma init(_init)
-
+#pragma init(libsmb_syslog_init)
 static void
-_init(void)
+libsmb_syslog_init(void)
 {
-	_openlog =
-	    (void (*)(const char *, int, int))dlsym(RTLD_NEXT, "openlog");
-	_vsyslog =
-	    (void (*)(int, const char *, va_list))dlsym(RTLD_NEXT, "vsyslog");
-	_closelog = (void (*)(void))dlsym(RTLD_NEXT, "closelog");
-}
-
-static const char *
-format_m(char *buf, const char *str, int err, int buflen)
-{
-	char		*bp = buf;
-	const char	*sp = str;
-	const char	*endp = buf + buflen - 1;
-
-	while ((*bp = *sp) != '\0' && bp != endp) {
-		if ((*sp++ == '%') && (*sp == 'm')) {
-			sp++;
-			if (strerror_r(err, bp, endp - bp) == 0)
-				bp += strlen(bp);
-		} else {
-			bp++;
-		}
-	}
-	*bp = '\0';
-
-	return (buf);
+	real_vsyslog = (void (*)())dlsym(RTLD_NEXT, "vsyslog");
 }
 
 /*
- * Enables syslog redirection to fp, if fp is non-NULL.
+ * This is exported NODIRECT so that fksmbd can provide it's own.
  */
 void
-libsmb_redirect_syslog(FILE *fp, int priority)
+smb_vsyslog(int pri, const char *fmt, va_list ap)
 {
-	smb_logfp = fp;
-	smb_logpri = priority & LOG_PRIMASK;
+	real_vsyslog(pri, fmt, ap);
 }
 
 /*
- * syslog(3C) interposers for smb.
+ * This is exported NODIRECT so that fksmbd can provide it's own.
  */
 void
-openlog(const char *ident, int logopt, int facility)
+smb_syslog(int pri, const char *fmt, ...)
 {
-	assert(ident != NULL);
-	smb_logident = ident;
-	_openlog(ident, logopt, facility);
+	va_list ap;
+
+	va_start(ap, fmt);
+	smb_vsyslog(pri, fmt, ap);
+	va_end(ap);
 }
 
-void
-closelog(void)
-{
-	smb_logident = SMB_DEFAULT_IDENT;
-	_closelog();
-}
-
-void
-vsyslog(int pri, const char *fmt, va_list ap)
-{
-	int save_errno = errno;
-	char fmtbuf[SMB_LOG_LINE_SZ];
-
-	if (smb_logfp == NULL) {
-		_vsyslog(pri, fmt, ap);
-		return;
-	}
-
-	pri &= LOG_PRIMASK;
-	if (pri > smb_logpri)
-		return;
-
-	(void) fprintf(smb_logfp,
-	    "%s: [daemon.%s] ", smb_logident, pri_name[pri]);
-	/* LINTED E_SEC_PRINTF_VAR_FMT */
-	(void) vfprintf(smb_logfp,
-	    format_m(fmtbuf, fmt, save_errno, sizeof (fmtbuf)), ap);
-	(void) fprintf(smb_logfp, "\n");
-	(void) fflush(smb_logfp);
-}
-
-/*PRINTFLIKE2*/
+/*
+ * This is not exported by the mapfile.  It's here just to catch
+ * syslog calls originating inside libsmb.
+ */
 void
 syslog(int pri, const char *fmt, ...)
 {
 	va_list ap;
 
 	va_start(ap, fmt);
-	vsyslog(pri, fmt, ap);
+	smb_vsyslog(pri, fmt, ap);
 	va_end(ap);
+}
+
+/*
+ * This is not exported by the mapfile.  It's here just to catch
+ * vsyslog calls originating inside libsmb.
+ */
+void
+vsyslog(int pri, const char *fmt, va_list ap)
+{
+	smb_vsyslog(pri, fmt, ap);
 }
