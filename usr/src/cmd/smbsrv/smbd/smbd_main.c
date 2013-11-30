@@ -113,8 +113,14 @@ main(int argc, char *argv[])
 		return (SMF_EXIT_ERR_FATAL);
 
 	if ((uid = getuid()) != smbd.s_uid) {
+#ifdef	_FAKE
+		/* Can't manipulate privileges in daemonize. */
+		if (smbd.s_fg == 0) {
+			smbd.s_fg = 1;
+			smbd_report("user %d (forced -f)", uid);
+		}
+#else	/* _FAKE */
 		smbd_report("user %d: %s", uid, strerror(EPERM));
-#ifndef	_FAKE
 		return (SMF_EXIT_ERR_FATAL);
 #endif	/* _FAKE */
 	}
@@ -524,7 +530,7 @@ smbd_service_init(void)
 	if (smbd.s_door_lmshr < 0)
 		smbd_report("share initialization failed");
 
-	/* This reloads the kernel config info. */
+	/* Open the driver, load the kernel config. */
 	if (smbd_kernel_bind() != 0) {
 		return (-1);
 	}

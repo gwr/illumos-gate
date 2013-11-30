@@ -21,6 +21,23 @@
 
 #include <umem.h>
 
+void	abort(void) __NORETURN;
+
+static int
+kmem_failed_cb(void)
+{
+	abort();
+	return (UMEM_CALLBACK_RETRY);
+}
+
+#pragma init(_kmem_init)
+static int
+_kmem_init(void)
+{
+	umem_nofail_callback(kmem_failed_cb);
+	return (0);
+}
+
 static int
 kmem2umem_flags(int kmflags)
 {
@@ -93,9 +110,10 @@ kmem_cache_destroy(kmem_cache_t *kc)
 }
 
 void *
-kmem_cache_alloc(kmem_cache_t *kc, int sz)
+kmem_cache_alloc(kmem_cache_t *kc, int kmflags)
 {
-	return (umem_cache_alloc((umem_cache_t *)kc, sz));
+	return (umem_cache_alloc((umem_cache_t *)kc,
+	    kmem2umem_flags(kmflags)));
 }
 
 void

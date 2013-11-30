@@ -108,12 +108,31 @@ int smbsrv_timer_pri	= MINCLSYSPRI + 5;
  * (fake) "driver".  They are declared in smb_ioctl.h
  */
 
+static int g_init_done = 0;
+
 int fksmbsrv_vfs_init(void);
+
+/*
+ * We need to adjust a couple things in the standard configuration
+ * for this "fake" version of the smbsrv kernel module.
+ *
+ * Reduce the maximum number of connections and workers, just for
+ * convenience while debugging.  (Don't want hundreds of threads.)
+ */
+static void
+fksmbsrv_adjust_config(smb_ioc_cfg_t *ioc)
+{
+
+	/* Maybe add dynamic taskq support instead? */
+	ioc->maxconnections = 10;
+	ioc->maxworkers = 20;
+	cmn_err(CE_NOTE, "fksmbsrv: adjusted maxconn=%d maxworkers=%d",
+	    ioc->maxconnections, ioc->maxworkers);
+}
 
 int
 fksmbsrv_drv_open(void)
 {
-	static int g_init_done = 0;
 	int rc;
 
 	if (g_init_done == 0) {
@@ -128,18 +147,28 @@ fksmbsrv_drv_open(void)
 		g_init_done = 1;
 	}
 
-	return (smb_server_create());
+	rc = smb_server_create();
+	return (rc);
 }
 
 int
 fksmbsrv_drv_close(void)
 {
-	return (smb_server_delete());
+	int rc;
+
+	rc = smb_server_delete();
+
+	if (g_init_done != 0) {
+		smb_server_g_fini();
+		g_init_done = 0;
+	}
+
+	return (rc);
 }
 
 /*
  * This is the primary entry point into this library, called by
- * the smbd-d (user-level debug version of smbsrv).
+ * fksmbd (user-level debug version of smbsrv).
  */
 int
 fksmbsrv_drv_ioctl(int cmd, void *varg)
@@ -149,6 +178,7 @@ fksmbsrv_drv_ioctl(int cmd, void *varg)
 
 	switch (cmd) {
 	case SMB_IOC_CONFIG:
+		fksmbsrv_adjust_config(&ioc->ioc_cfg);
 		rc = smb_server_configure(&ioc->ioc_cfg);
 		break;
 	case SMB_IOC_START:
@@ -193,4 +223,14 @@ fksmbsrv_drv_ioctl(int cmd, void *varg)
 	}
 
 	return (rc);
+}
+
+/*
+ * This function intentionally does nothing.  It's used only to
+ * force libfksmbsrv to load when fksmbd starts so one can set
+ * breakpoints etc. without debugger "force load" tricks.
+ */
+void
+fksmbsrv_drv_load(void)
+{
 }

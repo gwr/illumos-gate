@@ -14,8 +14,21 @@
  */
 
 /*
- * These replace functions (mostly of the same name) in
- * $SRC/lib/smbsrv/libsmb/common/smb_kmod.c
+ * These replace NODIRECT functions of the same name in
+ * $SRC/lib/smbsrv/libsmb/common/smb_kmod.c including:
+ *	smb_kmod_bind, smb_kmod_ioctl, smb_kmod_isbound,
+ *	smb_kmod_start, smb_kmod_stop, smb_kmod_unbind.
+ *
+ * For all the other smb_kmod_... functions, we can just use the
+ * libsmb code because those all call smb_kmod_ioctl, for which
+ * we have an override here.
+ *
+ * The replacment functions here just call the libfksmbsrv code
+ * directly where the real (in-kernel) versions would be entered
+ * via the driver framework (open, close, ioctl).  Aside from that,
+ * the call sequences are intentionally the same (where possible).
+ * In particular, that makes it possible to debug startup/teardown
+ * problems in the user-space version of this code.
  */
 
 #include <sys/types.h>
@@ -35,49 +48,52 @@
 #include <smbsrv/smb_ioctl.h>
 #include "smbd.h"
 
+boolean_t smbdrv_opened = B_FALSE;
+
+boolean_t
+smb_kmod_isbound(void)
+{
+	return (smbdrv_opened);
+}
 
 int
 smb_kmod_bind(void)
 {
-	return (fksmbsrv_drv_open());
+	int rc;
+
+	if (smbdrv_opened) {
+		smbdrv_opened = B_FALSE;
+		(void) fksmbsrv_drv_close();
+	}
+
+	rc = fksmbsrv_drv_open();
+	if (rc == 0)
+		smbdrv_opened = B_TRUE;
+
+	return (rc);
 }
 
 void
 smb_kmod_unbind(void)
 {
-	(void) fksmbsrv_drv_close();
+	if (smbdrv_opened) {
+		smbdrv_opened = B_FALSE;
+		(void) fksmbsrv_drv_close();
+	}
 }
 
-void
-fksmb_override_config(smb_ioc_header_t *iochdr, uint32_t len)
-{
-	smb_ioc_cfg_t *ioc = (smb_ioc_cfg_t *)iochdr;
-	if (len != sizeof (*ioc))
-		abort();
-
-	/* XXX: Fix dynamic taskq instead */
-	ioc->maxconnections = 10;
-	ioc->maxworkers = 20;
-}
-
-
-/*
- * Note: This replaces the function of the name name in libsmb,
- * which would use ioctl(2) to enter the smbsrv driver.
- * Here, we call the smbsrv code directly instead.
- */
 int
 smb_kmod_ioctl(int cmd, smb_ioc_header_t *ioc, uint32_t len)
 {
+	int rc;
 
 	_NOTE(ARGUNUSED(len));
 
-	if (cmd == SMB_IOC_CONFIG) {
-		/* Some overrides... */
-		fksmb_override_config(ioc, len);
-	}
+	if (!smbdrv_opened)
+		return (EBADF);
 
-	return (fksmbsrv_drv_ioctl(cmd, ioc));
+	rc = fksmbsrv_drv_ioctl(cmd, ioc);
+	return (rc);
 }
 
 /* ARGSUSED */
@@ -85,6 +101,9 @@ int
 smb_kmod_start(int opipe, int lmshr, int udoor)
 {
 	smb_ioc_start_t ioc;
+	int rc;
+
+	bzero(&ioc, sizeof (ioc));
 
 	/* These three are unused */
 	ioc.opipe = -1;
@@ -96,5 +115,15 @@ smb_kmod_start(int opipe, int lmshr, int udoor)
 	ioc.opipe_func = NULL; /* not used */
 	ioc.udoor_func = (void *)fksmbd_door_dispatch;
 
-	return (smb_kmod_ioctl(SMB_IOC_START, &ioc.hdr, sizeof (ioc)));
+	rc = smb_kmod_ioctl(SMB_IOC_START, &ioc.hdr, sizeof (ioc));
+	return (rc);
+}
+
+void
+smb_kmod_stop(void)
+{
+	smb_ioc_header_t ioc;
+
+	bzero(&ioc, sizeof (ioc));
+	(void) smb_kmod_ioctl(SMB_IOC_STOP, &ioc, sizeof (ioc));
 }

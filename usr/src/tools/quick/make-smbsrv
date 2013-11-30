@@ -98,17 +98,16 @@ for lib in \
   libcmdutils \
   libcryptoutil \
   libdevid \
+  libfakekernel	\
   libidmap \
   libpam \
   libsec \
-  libzfs_core \
-  libzfs \
+  libscf \
   libshare \
   libsmbfs \
-  libuutil \
-  libscf \
-  passwdutil \
   libsqlite \
+  libuutil \
+  passwdutil \
   smbsrv
 do
   (cd $SRC/lib/$lib && $make $targ)
@@ -173,13 +172,17 @@ esac
 (cd $SRC/cmd/mdb/tools && $make $1)
 for a in $mdb_arch
 do
-  if [ $1 = install ]; then
+  case $1 in
+  install|lint)
     (cd $SRC/cmd/mdb/$x/$a/kmdb &&
 	$make kmdb_modlinktest.o )
-  else
+    ;;
+  clean|clobber)
     (cd $SRC/cmd/mdb/$x/$a/kmdb &&
 	$make -k $1 )
-  fi
+    ;;
+  esac
+
   (cd $SRC/cmd/mdb/$x/$a/nsmb &&
 	$make $1 KMDB_LINKTEST_ENABLE= )
   (cd $SRC/cmd/mdb/$x/$a/smbfs &&

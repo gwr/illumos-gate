@@ -197,10 +197,11 @@ typedef union smb_ioc {
 
 uint32_t smb_crc_gen(uint8_t *, size_t);
 
-/* smbd-d (open,close,ioctl) calls into libfksmbsrv */
+/* fksmbd (init,open,close,ioctl) calls into libfksmbsrv */
 int fksmbsrv_drv_open(void);
 int fksmbsrv_drv_close(void);
 int fksmbsrv_drv_ioctl(int cmd, void *arg);
+void fksmbsrv_drv_load(void);
 
 #ifdef __cplusplus
 }

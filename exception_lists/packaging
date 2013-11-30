@@ -760,6 +760,7 @@ usr/include/smbsrv
 #
 # Private/Internal libraries for smbsrv in user space
 #
+usr/include/libfakekernel
 usr/lib/libfakekernel.so
 usr/lib/libfakekernel.so.1
 usr/lib/llib-lfakekernel

@@ -28,6 +28,12 @@
 
 include	../Makefile.lib
 
+HDRS=		fakekernel.h
+HDRDIR=		common
+
+ROOTHDRDIR=	$(ROOT)/usr/include/libfakekernel
+ROOTHDRS= $(HDRS:%=$(ROOTHDRDIR)/%)
+
 SUBDIRS = $(MACH)
 $(BUILD64)SUBDIRS += $(MACH64)
 
@@ -41,7 +47,15 @@ lint :=		TARGET= lint
 
 all clean clobber install lint: $(SUBDIRS)
 
+install_h: $(ROOTHDRDIR) $(ROOTHDRS)
+
 check: $(CHECKHDRS)
+
+$(ROOTHDRDIR)/%: $(HDRDIR)/%
+	$(INS.file)
+
+$(ROOTHDRDIR):
+	$(INS.dir)
 
 $(MACH) $(MACH64): FRC
 	@cd $@; pwd; $(MAKE) $(TARGET)

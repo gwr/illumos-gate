@@ -67,4 +67,4 @@ smbclient -L localhost -U guest%guest
 
 smbclient //localhost/test -U guest%guest -c dir
 
-smbtorture //localhost/junk -U guest%guest base
+smbtorture //localhost/test -U guest%guest base

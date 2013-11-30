@@ -18,11 +18,13 @@
 #include <errno.h>
 #include <string.h>
 #include <syslog.h>
-#include <smbsrv/libsmb.h>
 #include <sys/strlog.h>
+
+#include <smbsrv/smbinfo.h>
+#include <smbsrv/smb_ioctl.h>
 #include "smbd.h"
 
-extern void fakekernel_init(void);
+#include <libfakekernel/fakekernel.h>
 
 static const char *pri_name[LOG_DEBUG+1] = {
 	"emerg", "alert", "crit", "err", "warning", "notice", "info", "debug"
@@ -94,13 +96,16 @@ fakekernel_putlog(char *msg, size_t len, int flags)
 }
 
 /*
- * Initialization function called at the start of main()
- * when built as fksmbd.  Not much to do here, except:
- * We need at least one call into libfakekernel to avoid
- * elfcheck complaints.
+ * Initialization function called at the start of fksmbd:main().
+ * Call an empty function in both of libfksmbsrv, libfakekernel,
+ * just to force them to load so we can set breakpoints in them
+ * without debugger forceload tricks.  This also avoids elfchk
+ * complaints from libfakekernel, which we don't call directly
+ * except for here.
  */
 void
 fksmbd_init(void)
 {
+	fksmbsrv_drv_load();
 	fakekernel_init();
 }

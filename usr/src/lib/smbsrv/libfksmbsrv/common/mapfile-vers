@@ -44,6 +44,7 @@ SYMBOL_VERSION SUNWprivate {
     global:
 	fksmbsrv_drv_close;
 	fksmbsrv_drv_ioctl;
+	fksmbsrv_drv_load;
 	fksmbsrv_drv_open;
 
     local:
