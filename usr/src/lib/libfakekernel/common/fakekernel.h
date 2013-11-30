@@ -23,6 +23,7 @@
 extern "C" {
 #endif
 
+void fakekernel_init(void);
 void fakekernel_putlog(char *, size_t, int);
 void fakekernel_cprintf(const char *, va_list, int,
 	const char *, const char *);

@@ -22,6 +22,8 @@
 #include <sys/strlog.h>
 #include "smbd.h"
 
+extern void fakekernel_init(void);
+
 static const char *pri_name[LOG_DEBUG+1] = {
 	"emerg", "alert", "crit", "err", "warning", "notice", "info", "debug"
 };
@@ -89,4 +91,16 @@ fakekernel_putlog(char *msg, size_t len, int flags)
 		return;
 	(void) fwrite(msg, 1, len, stdout);
 	(void) fflush(stdout);
+}
+
+/*
+ * Initialization function called at the start of main()
+ * when built as fksmbd.  Not much to do here, except:
+ * We need at least one call into libfakekernel to avoid
+ * elfcheck complaints.
+ */
+void
+fksmbd_init(void)
+{
+	fakekernel_init();
 }

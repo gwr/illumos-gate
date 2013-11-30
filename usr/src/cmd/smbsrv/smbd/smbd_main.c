@@ -103,6 +103,9 @@ main(int argc, char *argv[])
 	struct rlimit		rl;
 	int			orig_limit;
 
+#ifdef	_FAKE
+	fksmbd_init();
+#endif
 	smbd.s_pname = basename(argv[0]);
 	openlog(smbd.s_pname, LOG_PID | LOG_NOWAIT, LOG_DAEMON);
 

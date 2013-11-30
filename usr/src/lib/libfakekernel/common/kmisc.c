@@ -24,6 +24,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <fakekernel.h>
+
 pri_t minclsyspri = 60;
 
 proc_t p0;
@@ -55,4 +57,15 @@ delay(clock_t ticks)
 {
 	int msec = ticks;  /* NB: hz==1000 */
 	(void) poll(0, 0, msec);
+}
+
+/*
+ * This library does not really need an "init" function, but
+ * providing one the main program can call is an easy way to
+ * make sure this library is loaded into the debugger, and
+ * gives us a way to avoid elfcheck complaints in the build.
+ */
+void
+fakekernel_init(void)
+{
 }
