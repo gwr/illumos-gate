@@ -76,12 +76,15 @@ smb_thread_entry_point(
 
 		mutex_enter(&thread->sth_mtx);
 	}
+	/*
+	 * It's tempting to clear sth_did here too, but don't.
+	 * That's needed in thread_join().
+	 */
 	thread->sth_th = NULL;
-	thread->sth_did = 0;
 	thread->sth_state = SMB_THREAD_STATE_EXITING;
 	cv_broadcast(&thread->sth_cv);
 	mutex_exit(&thread->sth_mtx);
-	thread_exit();
+	zthread_exit();
 }
 
 /*
@@ -144,8 +147,8 @@ smb_thread_start(
 	case SMB_THREAD_STATE_EXITED:
 		thread->sth_state = SMB_THREAD_STATE_STARTING;
 		mutex_exit(&thread->sth_mtx);
-		tmpthread = thread_create(NULL, 0, smb_thread_entry_point,
-		    thread, 0, curproc, TS_RUN, thread->sth_pri);
+		tmpthread = zthread_create(NULL, 0, smb_thread_entry_point,
+		    thread, 0, thread->sth_pri);
 		ASSERT(tmpthread != NULL);
 		mutex_enter(&thread->sth_mtx);
 		thread->sth_th = tmpthread;

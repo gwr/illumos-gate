@@ -168,8 +168,6 @@ SYMBOL_VERSION SUNWprivate_1.1 {
 	taskq_member;
 	taskq_wait;
 
-	thread_create;
-	thread_exit;
 	thread_join;
 
 	tick_per_msec;

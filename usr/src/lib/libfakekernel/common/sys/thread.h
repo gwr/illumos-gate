@@ -101,6 +101,10 @@ extern	kthread_t	*thread_create(
 extern	void	thread_exit(void) __NORETURN;
 extern	void	thread_join(kt_did_t);
 
+extern kthread_t *zthread_create(caddr_t, size_t, void (*)(), void *, size_t,
+    pri_t);
+extern void zthread_exit(void) __NORETURN;
+
 #ifdef	__cplusplus
 }
 #endif
