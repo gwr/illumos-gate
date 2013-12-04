@@ -290,6 +290,11 @@ smbd_authctx_destroy(authsvc_context_t *ctx)
 	if (ctx->ctx_token != NULL)
 		smb_token_destroy(ctx->ctx_token);
 
+	if (ctx->ctx_itoken != NULL)
+		spnegoFreeData(ctx->ctx_itoken);
+	if (ctx->ctx_otoken != NULL)
+		spnegoFreeData(ctx->ctx_otoken);
+
 	free(ctx->ctx_irawbuf);
 	free(ctx->ctx_orawbuf);
 	free(ctx->ctx_ibodybuf);
@@ -589,6 +594,14 @@ smbd_authsvc_escmn(authsvc_context_t *ctx)
 	SPNEGO_MECH_OID oid;
 	ulong_t toklen;
 	int rc;
+
+	/*
+	 * Cleanup state from previous calls.
+	 */
+	if (ctx->ctx_otoken != NULL) {
+		spnegoFreeData(ctx->ctx_otoken);
+		ctx->ctx_otoken = NULL;
+	}
 
 	/*
 	 * Extract the payload (mech token).
