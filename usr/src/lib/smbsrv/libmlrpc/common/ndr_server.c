@@ -105,41 +105,40 @@ ndr_pipe_process(ndr_pipe_t *np, ndr_xa_t *mxa)
 {
 	ndr_stream_t	*recv_nds;
 	ndr_stream_t	*send_nds;
-	int		rc;
+	int		rc = ENOMEM;
 
 	mxa->pipe = np;
 	mxa->binding_list = np->np_binding;
 
-	if ((mxa->heap = ndr_heap_create()) == NULL) {
-		return (ENOMEM);
-	}
+	if ((mxa->heap = ndr_heap_create()) == NULL)
+		goto out1;
 
 	recv_nds = &mxa->recv_nds;
 	rc = nds_initialize(recv_nds, 0, NDR_MODE_CALL_RECV, mxa->heap);
-	if (rc != 0) {
-		ndr_heap_destroy(mxa->heap);
-		return (ENOMEM);
-	}
+	if (rc != 0)
+		goto out2;
 
 	send_nds = &mxa->send_nds;
 	rc = nds_initialize(send_nds, 0, NDR_MODE_RETURN_SEND, mxa->heap);
-	if (rc != 0) {
-		nds_destruct(&mxa->recv_nds);
-		ndr_heap_destroy(mxa->heap);
-		return (ENOMEM);
-	}
+	if (rc != 0)
+		goto out3;
 
 	rc = ndr_recv_request(mxa);
 	if (rc != 0)
-		return (rc);
+		goto out4;
+
 	(void) ndr_svc_process(mxa);
 	(void) ndr_send_reply(mxa);
+	rc = 0;
 
-	nds_destruct(&mxa->recv_nds);
+out4:
 	nds_destruct(&mxa->send_nds);
+out3:
+	nds_destruct(&mxa->recv_nds);
+out2:
 	ndr_heap_destroy(mxa->heap);
-
-	return (0);
+out1:
+	return (rc);
 }
 
 /*
