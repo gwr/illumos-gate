@@ -19,8 +19,8 @@
  * CDDL HEADER END
  */
 /*
- * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -60,7 +60,10 @@ static int smb_oplock_insert_grant(smb_node_t *, smb_oplock_grant_t *);
 static void smb_oplock_remove_grant(smb_node_t *, smb_oplock_grant_t *);
 static smb_oplock_grant_t *smb_oplock_exclusive_grant(list_t *);
 static smb_oplock_grant_t *smb_oplock_get_grant(smb_oplock_t *, smb_ofile_t *);
-static void smb_oplock_break_async(void *);
+
+static void smb_oplock_sched_async_break(smb_oplock_grant_t *, uint8_t);
+static void smb_oplock_exec_async_break(void *);
+static void smb_oplock_break_levelII_locked(smb_node_t *);
 
 /*
  * smb_oplock_install_fem
@@ -268,8 +271,7 @@ smb_oplock_break(smb_request_t *sr, smb_node_t *node, uint32_t flags)
 	switch (ol->ol_break) {
 	case SMB_OPLOCK_NO_BREAK:
 		ol->ol_break = brk;
-		smb_session_oplock_break(og->og_session,
-		    og->og_tid, og->og_fid, brk);
+		smb_oplock_sched_async_break(og, brk);
 		break;
 	case SMB_OPLOCK_BREAK_TO_LEVEL_II:
 		if (brk == SMB_OPLOCK_BREAK_TO_NONE)
@@ -307,100 +309,148 @@ smb_oplock_break(smb_request_t *sr, smb_node_t *node, uint32_t flags)
  * LevelII (shared) oplock breaks are processed asynchronously.
  * Unlike exclusive oplock breaks, the thread initiating the break
  * is NOT blocked while the request is processed.
+ *
+ * There may be a thread with exclusive rights to oplock state for
+ * this node (via ol_xthread in smb_oplock_wait) and if so, we must
+ * avoid breaking oplocks until that's out of the way.  However, we
+ * really don't want to block here, so when ol_xthread is set, we'll
+ * just mark that a "break level II to none" is pending, and let the
+ * exclusive thread do this work when it's done being exclusive.
  */
 void
 smb_oplock_break_levelII(smb_node_t *node)
 {
 	smb_oplock_t		*ol;
-	smb_oplock_grant_t	*og;
-	list_t			*grants;
-	smb_request_t		*sr;
-
-	if (!smb_oplock_levelII)
-		return;
 
 	ol = &node->n_oplock;
 	mutex_enter(&ol->ol_mutex);
-	grants = &node->n_oplock.ol_grants;
 
-	for (og = list_head(grants); og != NULL;
-	     og = list_next(grants, og)) {
-
-		SMB_OPLOCK_GRANT_VALID(og);
-
-		if (SMB_OPLOCK_IS_EXCLUSIVE(og->og_level))
-			break;
-
-		/*
-		 * If we've already scheduled this one, skip.
-		 */
-		if (og->og_breaking)
-			continue;
-
-		/*
-		 * Make sure we can get a hold on the ofile
-		 * for the async break we'll schedule here.
-		 * If we can't, it's closing, and there's no
-		 * point scheduling an oplock break on it.
-		 * This hold is released in smb_request_free.
-		 */
-		if (!smb_ofile_hold(og->og_ofile))
-			continue;
-
-		sr = smb_request_alloc(og->og_session, 0);
-		sr->sr_state = SMB_REQ_STATE_SUBMITTED;
-		sr->user_cr = zone_kcred();
-		sr->fid_ofile = og->og_ofile;
-		sr->arg.olbrk = *og; /* struct copy */
-		og->og_breaking = 1;
-
-		(void) taskq_dispatch(
-		    sr->session->s_server->sv_worker_pool,
-		    smb_oplock_break_async, sr, TQ_SLEEP);
+	/* Instead of: smb_oplock_wait() ... */
+	if (ol->ol_xthread != NULL) {
+		/* Defer the call to smb_oplock_broadcast(). */
+		ol->ol_brk_pending = SMB_OPLOCK_BREAK_TO_NONE;
+	} else {
+		/* Equivalent of smb_oplock_wait() done. */
+		smb_oplock_break_levelII_locked(node);
 	}
 
 	mutex_exit(&ol->ol_mutex);
 }
 
 /*
- * smb_oplock_break_async
+ * smb_oplock_break_levelII_locked
+ * Internal helper for smb_oplock_break_levelII()
+ *
+ * Called with the oplock mutex already held, and _after_
+ * (the equivalent of) an smb_oplock_wait().
+ */
+static void
+smb_oplock_break_levelII_locked(smb_node_t *node)
+{
+	smb_oplock_t		*ol;
+	smb_oplock_grant_t	*og;
+	list_t			*grants;
+
+	ol = &node->n_oplock;
+	grants = &ol->ol_grants;
+
+	ASSERT(MUTEX_HELD(&ol->ol_mutex));
+	ASSERT(ol->ol_xthread == NULL);
+
+	while ((og = list_head(grants)) != NULL) {
+		SMB_OPLOCK_GRANT_VALID(og);
+
+		/*
+		 * If there's an exclusive oplock, there are
+		 * no LevelII oplocks, so do nothing.
+		 */
+		if (SMB_OPLOCK_IS_EXCLUSIVE(og->og_level))
+			break;
+
+		smb_oplock_sched_async_break(og, SMB_OPLOCK_BREAK_TO_NONE);
+		smb_oplock_remove_grant(node, og);
+		smb_oplock_clear_grant(og);
+	}
+}
+
+/*
+ * Schedule a call to smb_session_oplock_break
+ * using an smb_request on the owning session.
+ */
+static void
+smb_oplock_sched_async_break(smb_oplock_grant_t *og, uint8_t brk)
+{
+	smb_request_t		*sr;
+	smb_ofile_t		*ofile;
+
+	/*
+	 * Make sure we can get a hold on the ofile.  If we can't,
+	 * the file is closing, and there's no point scheduling an
+	 * oplock break on it.  (Also hold the tree and user.)
+	 * These holds account for the pointers we copy into the
+	 * smb_request fields: fid_ofile, tid_tree, uid_user.
+	 * These holds are released via smb_request_free after
+	 * the oplock break has been sent.
+	 */
+	ofile = og->og_ofile;
+	if (!smb_ofile_hold(ofile))
+		return;
+	smb_tree_hold_internal(ofile->f_tree);
+	smb_user_hold_internal(ofile->f_user);
+
+	sr = smb_request_alloc(og->og_session, 0);
+	sr->sr_state = SMB_REQ_STATE_SUBMITTED;
+	sr->user_cr = zone_kcred();
+	sr->fid_ofile = ofile;
+	sr->tid_tree = ofile->f_tree;
+	sr->uid_user = ofile->f_user;
+
+	sr->arg.olbrk = *og; /* struct copy */
+	sr->arg.olbrk.og_breaking = brk;
+
+	(void) taskq_dispatch(
+	    sr->sr_server->sv_worker_pool,
+	    smb_oplock_exec_async_break, sr, TQ_SLEEP);
+}
+
+/*
+ * smb_oplock_exec_async_break
  *
  * Called via the taskq to handle an asynchronous oplock break.
  * We have a hold on the ofile, which keeps the FID here valid.
  */
 static void
-smb_oplock_break_async(void *arg)
+smb_oplock_exec_async_break(void *arg)
 {
 	smb_request_t *sr = arg;
-	smb_ofile_t *ofile = sr->fid_ofile;
-	smb_node_t *node = ofile->f_node;
-	smb_oplock_t *ol = &node->n_oplock;
-	smb_oplock_grant_t *og;
+	smb_oplock_grant_t *og = &sr->arg.olbrk;
+
+	SMB_REQ_VALID(sr);
+	SMB_OPLOCK_GRANT_VALID(og);
 
 	mutex_enter(&sr->sr_mutex);
-	sr->sr_state = SMB_REQ_STATE_ACTIVE;
-	mutex_exit(&sr->sr_mutex);
+	sr->sr_worker = curthread;
+	sr->sr_time_active = gethrtime();
 
-	mutex_enter(&ol->ol_mutex);
-	smb_oplock_wait(node);
+	switch (sr->sr_state) {
+	case SMB_REQ_STATE_SUBMITTED:
+		sr->sr_state = SMB_REQ_STATE_ACTIVE;
+		mutex_exit(&sr->sr_mutex);
 
-	og = smb_oplock_get_grant(ol, ofile);
-	if (og != NULL) {
-
-		SMB_OPLOCK_GRANT_VALID(og);
-
+		/*
+		 * This is where we actually do the deferred work
+		 * requested by smb_oplock_sched_async_break().
+		 */
 		smb_session_oplock_break(sr->session,
-		    og->og_tid, og->og_fid,
-		    SMB_OPLOCK_BREAK_TO_NONE);
+		    og->og_tid, og->og_fid, og->og_breaking);
 
-		smb_oplock_remove_grant(node, og);
-		smb_oplock_clear_grant(og);
+		mutex_enter(&sr->sr_mutex);
+		/* FALLTHROUGH */
+
+	default: /* typically cancelled */
+		sr->sr_state = SMB_REQ_STATE_COMPLETED;
+		mutex_exit(&sr->sr_mutex);
 	}
-	mutex_exit(&ol->ol_mutex);
-
-	mutex_enter(&sr->sr_mutex);
-	sr->sr_state = SMB_REQ_STATE_COMPLETED;
-	mutex_exit(&sr->sr_mutex);
 
 	smb_request_free(sr);
 }
@@ -519,7 +569,6 @@ smb_oplock_ack(smb_node_t *node, smb_ofile_t *of, uint8_t brk)
 {
 	smb_oplock_t		*ol;
 	smb_oplock_grant_t	*og;
-	boolean_t		brk_to_none = B_FALSE;
 
 	ol = &node->n_oplock;
 	mutex_enter(&ol->ol_mutex);
@@ -541,7 +590,8 @@ smb_oplock_ack(smb_node_t *node, smb_ofile_t *of, uint8_t brk)
 		} else {
 			/* SMB_OPLOCK_BREAK_TO_NONE */
 			og->og_level = SMB_OPLOCK_NONE;
-			brk_to_none = B_TRUE;
+			smb_oplock_sched_async_break(og,
+			    SMB_OPLOCK_BREAK_TO_NONE);
 		}
 		break;
 	default:
@@ -556,22 +606,18 @@ smb_oplock_ack(smb_node_t *node, smb_ofile_t *of, uint8_t brk)
 	ol->ol_break = SMB_OPLOCK_NO_BREAK;
 	cv_broadcast(&ol->ol_cv);
 
-	if (brk_to_none) {
-		smb_session_oplock_break(of->f_session,
-		    of->f_tree->t_tid, of->f_fid,
-		    SMB_OPLOCK_BREAK_TO_NONE);
-	}
-
 	mutex_exit(&ol->ol_mutex);
 }
 
 /*
  * smb_oplock_broadcast
  *
+ * Called when an open with oplock request completes.
+ *
  * ol->ol_xthread identifies the thread that was performing an oplock
  * acquire. Other threads may be blocked awaiting completion of the
  * acquire.
- * If the calling thread is ol_ol_xthread, wake any waiting threads.
+ * If the calling thread is ol_xthread, wake any waiting threads.
  */
 void
 smb_oplock_broadcast(smb_node_t *node)
@@ -584,6 +630,10 @@ smb_oplock_broadcast(smb_node_t *node)
 	mutex_enter(&ol->ol_mutex);
 	if ((ol->ol_xthread != NULL) && (ol->ol_xthread == curthread)) {
 		ol->ol_xthread = NULL;
+		if (ol->ol_brk_pending) {
+			ol->ol_brk_pending = 0;
+			smb_oplock_break_levelII_locked(node);
+		}
 		cv_broadcast(&ol->ol_cv);
 	}
 	mutex_exit(&ol->ol_mutex);

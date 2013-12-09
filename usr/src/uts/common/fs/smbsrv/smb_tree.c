@@ -336,8 +336,7 @@ boolean_t
 smb_tree_hold(
     smb_tree_t		*tree)
 {
-	ASSERT(tree);
-	ASSERT(tree->t_magic == SMB_TREE_MAGIC);
+	SMB_TREE_VALID(tree);
 
 	mutex_enter(&tree->t_mutex);
 
@@ -349,6 +348,25 @@ smb_tree_hold(
 
 	mutex_exit(&tree->t_mutex);
 	return (B_FALSE);
+}
+
+/*
+ * Bump the hold count regardless of the tree state.  This is used in
+ * some internal code paths where we've already checked that we had a
+ * valid tree connection, and don't want to deal with the possiblity
+ * that the tree state might have changed to disconnecting after our
+ * original hold was taken.  It's correct to continue processing a
+ * request even when new requests cannot lookup that tree anymore.
+ */
+void
+smb_tree_hold_internal(
+    smb_tree_t		*tree)
+{
+	SMB_TREE_VALID(tree);
+
+	mutex_enter(&tree->t_mutex);
+	tree->t_refcnt++;
+	mutex_exit(&tree->t_mutex);
 }
 
 /*

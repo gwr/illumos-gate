@@ -694,6 +694,7 @@ boolean_t smb_tree_has_feature(smb_tree_t *, uint_t);
 int smb_tree_enum(smb_tree_t *, smb_svcenum_t *);
 int smb_tree_fclose(smb_tree_t *, uint32_t);
 boolean_t smb_tree_hold(smb_tree_t *);
+void smb_tree_hold_internal(smb_tree_t *);
 void smb_tree_release(smb_tree_t *);
 smb_odir_t *smb_tree_lookup_odir(smb_request_t *, uint16_t);
 boolean_t smb_tree_is_connected(smb_tree_t *);

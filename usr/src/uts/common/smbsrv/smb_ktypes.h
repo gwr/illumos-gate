@@ -567,6 +567,7 @@ typedef struct smb_oplock {
 	kcondvar_t		ol_cv;
 	kthread_t		*ol_xthread;
 	boolean_t		ol_fem;		/* fem monitor installed? */
+	uint8_t			ol_brk_pending;
 	uint8_t			ol_break;
 	uint32_t		ol_count;	/* number of grants */
 	list_t			ol_grants;	/* list of smb_oplock_grant_t */
