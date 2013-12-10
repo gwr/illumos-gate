@@ -711,7 +711,7 @@ smbd_raw_ntlmssp_esfirst(authsvc_context_t *ctx)
 	ctx->ctx_mh_work = mh->mh_work;
 	ctx->ctx_mh_fini = mh->mh_fini;
 
-	rc = ctx->ctx_mh_work(ctx);
+	rc = smbd_raw_ntlmssp_esnext(ctx);
 
 	return (rc);
 }
