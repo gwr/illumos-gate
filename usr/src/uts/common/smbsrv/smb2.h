@@ -47,6 +47,12 @@ typedef enum {
 	SMB2_QUERY_INFO,
 	SMB2_SET_INFO,
 	SMB2_OPLOCK_BREAK,
+	/*
+	 * The above (oplock break) is the last real SMB2 op-code.
+	 * We use one more slot to represent invalid commands, and
+	 * the final enum value is used for array sizes. Keep last!
+	 */
+	SMB2_INVALID_CMD,
 	SMB2__NCMDS
 } SMB2_cmd_code;
 

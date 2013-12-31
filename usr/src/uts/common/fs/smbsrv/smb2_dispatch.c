@@ -69,6 +69,7 @@ static int smb2sr_dispatch(smb_request_t *,
 	smb_sdrc_t (*)(smb_request_t *));
 
 void smb2sr_do_async(smb_request_t *);
+smb_sdrc_t smb2_invalid_cmd(smb_request_t *);
 
 static const smb_disp_entry_t const
 smb2_disp_table[SMB2__NCMDS] = {
@@ -141,7 +142,20 @@ smb2_disp_table[SMB2__NCMDS] = {
 
 	{  "smb2_oplock_break_ack", NULL,
 	    smb2_oplock_break_ack, NULL, 0, 0 },
+
+	{  "smb2_invalid_cmd", NULL,
+	    smb2_invalid_cmd, NULL, 0, 0,
+	    SDDF_SUPPRESS_UID | SDDF_SUPPRESS_TID },
 };
+
+smb_sdrc_t
+smb2_invalid_cmd(smb_request_t *sr)
+{
+	cmn_err(CE_NOTE, "clnt %s bad SMB2 cmd code",
+	    sr->session->ip_addr_str);
+	sr->smb2_status = NT_STATUS_INVALID_PARAMETER;
+	return (SDRC_DROP_VC);
+}
 
 /*
  * This is the SMB2 handler for new smb requests, called from
@@ -330,8 +344,21 @@ next_command:
 	 * Common dispatch (for sync & async)
 	 */
 	rc = smb2sr_dispatch(sr, NULL);
-	if (rc != 0 && sr->smb2_status == 0)
-		sr->smb2_status = NT_STATUS_INTERNAL_ERROR;
+	switch (rc) {
+	case SDRC_SUCCESS:
+		break;
+	/* SMB2 does not use the other dispatch return codes. */
+	default:
+		ASSERT(0);
+		/* FALLTHROUGH */
+	case SDRC_ERROR:
+		if (sr->smb2_status == 0)
+			sr->smb2_status = NT_STATUS_INTERNAL_ERROR;
+		break;
+	case SDRC_DROP_VC:
+		disconnect = B_TRUE;
+		goto cleanup;
+	}
 
 	/*
 	 * If there's a next command, figure out where it starts,
@@ -551,24 +578,25 @@ smb2sr_dispatch(smb_request_t *sr,
 	smb_disp_stats_t	*sds;
 	smb_session_t		*session;
 	smb_server_t		*server;
-	uint32_t		status;
 	boolean_t		related;
-	int			rc = -1;
+	int			rc = 0;
 
 	session = sr->session;
 	server = session->s_server;
-	sdd = &smb2_disp_table[sr->smb2_cmd_code];
-	sds = &server->sv_disp_stats2[sr->smb2_cmd_code];
 
 	/*
 	 * Validate the commmand code, get dispatch table entries.
 	 * [MS-SMB2] 3.3.5.2.6 Handling Incorrectly Formatted...
+	 *
+	 * The last slot in the dispatch table is used to handle
+	 * invalid commands.  Same for statistics.
 	 */
-	if (sr->smb2_cmd_code >= SMB2__NCMDS) {
-		cmn_err(CE_NOTE, "clnt %s bad SMB2 cmd code",
-		    session->ip_addr_str);
-		status = NT_STATUS_INVALID_PARAMETER;
-		goto put_error;
+	if (sr->smb2_cmd_code < SMB2_INVALID_CMD) {
+		sdd = &smb2_disp_table[sr->smb2_cmd_code];
+		sds = &server->sv_disp_stats2[sr->smb2_cmd_code];
+	} else {
+		sdd = &smb2_disp_table[SMB2_INVALID_CMD];
+		sds = &server->sv_disp_stats2[SMB2_INVALID_CMD];
 	}
 
 #if 0	/* XXX - not yet */
@@ -576,19 +604,18 @@ smb2sr_dispatch(smb_request_t *sr,
 	 * Verify SMB signature if signing is enabled and active now.
 	 * [MS-SMB2] 3.3.5.2.4 Verifying the Signature
 	 */
-	if (session->signing.flags & SMB_SIGNING_ENABLED) {
-		if (smb2_sign_check_request(sr) != 0) {
-			status = STATUS_ACCESS_DENIED;
-			goto put_error;
-		}
+	if ((session->signing.flags & SMB_SIGNING_ENABLED) != 0 &&
+	    (smb2_sign_check_request(sr) != 0)) {
+		smb2sr_put_error(sr, STATUS_ACCESS_DENIED, NULL, 0);
+		goto done;
 	}
 #endif	/* XXX */
 
 	if (sr->smb2_hdr_flags & SMB2_FLAGS_SERVER_TO_REDIR) {
 		cmn_err(CE_WARN, "clnt %s bad SMB2 flags 1",
 		    session->ip_addr_str);
-		status = NT_STATUS_INVALID_PARAMETER;
-		goto put_error;
+		smb2sr_put_error(sr, NT_STATUS_INVALID_PARAMETER, NULL, 0);
+		goto done;
 	}
 
 	/*
@@ -642,8 +669,9 @@ smb2sr_dispatch(smb_request_t *sr,
 		}
 		if (sr->uid_user == NULL) {
 			/* [MS-SMB2] 3.3.5.2.9 Verifying the Session */
-			status = NT_STATUS_USER_SESSION_DELETED;
-			goto put_error;
+			smb2sr_put_error(sr, NT_STATUS_USER_SESSION_DELETED,
+			    NULL, 0);
+			goto done;
 		}
 		sr->user_cr = smb_user_getcred(sr->uid_user);
 	}
@@ -662,8 +690,9 @@ smb2sr_dispatch(smb_request_t *sr,
 		}
 		if (sr->tid_tree == NULL) {
 			/* [MS-SMB2] 3.3.5.2.11 Verifying the Tree Connect */
-			status = NT_STATUS_NETWORK_NAME_DELETED;
-			goto put_error;
+			smb2sr_put_error(sr, NT_STATUS_NETWORK_NAME_DELETED,
+			    NULL, 0);
+			goto done;
 		}
 	}
 
@@ -681,12 +710,7 @@ smb2sr_dispatch(smb_request_t *sr,
 
 	MBC_FLUSH(&sr->raw_data);
 
-	if (rc != SDRC_SUCCESS) {
-		status = NT_STATUS_UNSUCCESSFUL;
-	put_error:
-		smb2sr_put_error(sr, status, NULL, 0);
-	}
-
+done:
 	/*
 	 * Pad the reply to align(8) if necessary.
 	 */
