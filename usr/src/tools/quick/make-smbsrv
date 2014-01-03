@@ -31,11 +31,13 @@ cpu=`uname -p`
 case $cpu in
 i386)
 	x=intel
-	mdb_arch="ia32 amd64";
+	mdb_arch="ia32 amd64"
+	arch64=amd64
 	;;
 sparc)
 	x=sparc
 	mdb_arch=v9
+	arch64=sparcv9
 	;;
 *)  echo "Huh?" ; exit 1;;
 esac
@@ -236,6 +238,35 @@ do_tags() {
 }
 
 ################################################################
+# This creates a tarfile one can use to update a test machine.
+
+do_tar() {
+	files="
+usr/kernel/drv/$arch64/smbsrv
+usr/kernel/drv/smbsrv
+usr/kernel/kmdb/$arch64/smbsrv
+usr/kernel/kmdb/smbsrv
+usr/lib/fs/smb/$arch64/libshare_smb.so.1
+usr/lib/fs/smb/libshare_smb.so.1
+usr/lib/libsmbfs.so.1
+usr/lib/mdb/kvm/$arch64/smbsrv.so
+usr/lib/mdb/kvm/smbsrv.so
+usr/lib/reparse/libreparse_smb.so.1
+usr/lib/security/pam_smb_passwd.so.1
+usr/lib/smbsrv/libmlrpc.so.1
+usr/lib/smbsrv/libmlsvc.so.1
+usr/lib/smbsrv/libsmb.so.1
+usr/lib/smbsrv/libsmbns.so.1
+usr/lib/smbsrv/smbd
+usr/sbin/devfsadm
+usr/sbin/smbadm
+usr/sbin/smbstat
+"
+
+	(cd $ROOT && tar cfj ../../smbsrv.tar.bz2 $files)
+}
+
+################################################################
 
 if [ "$1" = "" ]; then
   set '?' # force usage
@@ -275,8 +306,11 @@ do
   tags)
     do_tags
     ;;
+  tar)
+    do_tar
+    ;;
   *)
-    echo "Usage: $0 {build|lint|clean|clobber|tags}";
+    echo "Usage: $0 {build|lint|clean|clobber|tags|tar}";
     exit 1;
     ;;
   esac
