@@ -22,7 +22,7 @@
  * Copyright 2010 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  *
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -117,6 +117,10 @@ smb2_query_dir(smb_request_t *sr)
 		 */
 		skip = (sr->smb2_cmd_hdr + NameOffset) -
 		    sr->smb_data.chain_offset;
+		if (skip < 0) {
+			status = NT_STATUS_OBJECT_PATH_INVALID;
+			goto errout;
+		}
 		if (skip > 0)
 			(void) smb_mbc_decodef(&sr->smb_data, "#.", skip);
 		rc = smb_mbc_decodef(&sr->smb_data, "%#U", sr,

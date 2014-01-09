@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -131,6 +131,10 @@ smb2_create(smb_request_t *sr)
 	 */
 	skip = (NameOffset + sr->smb2_cmd_hdr) -
 	    sr->smb_data.chain_offset;
+	if (skip < 0) {
+		status = NT_STATUS_OBJECT_PATH_INVALID;
+		goto errout;
+	}
 	if (skip > 0)
 		(void) smb_mbc_decodef(&sr->smb_data, "#.", skip);
 
@@ -173,7 +177,7 @@ smb2_create(smb_request_t *sr)
 	op->op_oplock_levelII = B_TRUE;
 
 	/*
-	 * XXX: ImpersonationLevel
+	 * ImpersonationLevel (ignore)
 	 * SmbCreateFlags (spec. says ignore)
 	 */
 
@@ -199,9 +203,15 @@ smb2_create(smb_request_t *sr)
 	/*
 	 * If there is a "Create Context" payload, decode it.
 	 * This may carry things like a security descriptor,
-	 * etc. etc. XXX
+	 * extended attributes, etc. to be used in create.
 	 */
 	if (CreateCtxLength != 0) {
+		if ((CreateCtxOffset + sr->smb2_cmd_hdr) <
+		    sr->smb_data.chain_offset) {
+			status = NT_STATUS_INVALID_PARAMETER;
+			goto errout;
+		}
+
 		rc = MBC_SHADOW_CHAIN(&cc_mbc, &sr->smb_data,
 		    sr->smb2_cmd_hdr + CreateCtxOffset, CreateCtxLength);
 		if (rc) {
@@ -407,7 +417,7 @@ smb2_decode_create_ctx(mbuf_chain_t *in_mbc, smb2_create_ctx_t *cc)
 		char ch[4];
 	} cc_name;
 	uint32_t status = 0;
-	uint32_t next_off;
+	int32_t next_off;
 	uint32_t data_len;
 	uint16_t data_off;
 	uint16_t name_off;
@@ -437,6 +447,8 @@ smb2_decode_create_ctx(mbuf_chain_t *in_mbc, smb2_create_ctx_t *cc)
 		 * switch below.  We don't have routines to decode
 		 * native order, so read as char[4] then ntohl.
 		 */
+		if ((top_offset + name_off) < in_mbc->chain_offset)
+			break;
 		rc = MBC_SHADOW_CHAIN(&name_mbc, in_mbc,
 		    top_offset + name_off, name_len);
 		if (rc)
@@ -490,11 +502,13 @@ smb2_decode_create_ctx(mbuf_chain_t *in_mbc, smb2_create_ctx_t *cc)
 		}
 
 		if (cce != NULL && data_len != 0) {
-			cce->cce_len = data_len;
+			if ((top_offset + data_off) < in_mbc->chain_offset)
+				break;
 			rc = MBC_SHADOW_CHAIN(&cce->cce_mbc, in_mbc,
 			    top_offset + data_off, data_len);
 			if (rc)
 				break;
+			cce->cce_len = data_len;
 		}
 
 		if (next_off == 0) {
@@ -503,6 +517,8 @@ smb2_decode_create_ctx(mbuf_chain_t *in_mbc, smb2_create_ctx_t *cc)
 			break;
 		}
 
+		if ((top_offset + next_off) < in_mbc->chain_offset)
+			break;
 		if ((top_offset + next_off) > in_mbc->max_bytes)
 			break;
 		in_mbc->chain_offset = top_offset + next_off;
@@ -513,8 +529,6 @@ smb2_decode_create_ctx(mbuf_chain_t *in_mbc, smb2_create_ctx_t *cc)
 
 /*
  * Encode an SMB2 Create Context buffer from our internal form.
- * None of context elements currently supported have any data
- * to return, so this is a place holder for now.
  */
 /* ARGSUSED */
 static uint32_t

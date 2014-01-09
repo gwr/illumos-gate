@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -52,6 +52,8 @@ smb2_tree_connect(smb_request_t *sr)
 	 */
 	skip = (PathOffset + sr->smb2_cmd_hdr) -
 	    sr->smb_data.chain_offset;
+	if (skip < 0)
+		return (SDRC_ERROR);
 	if (skip > 0)
 		(void) smb_mbc_decodef(&sr->smb_data, "#.", skip);
 
