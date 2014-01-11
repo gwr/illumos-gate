@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -506,6 +506,7 @@ smb_authsock_sendrecv(ksocket_t so, smb_lsa_msg_hdr_t *hdr,
 		rc = smb_authsock_recv(so, *recvbuf, hdr->lmh_msglen);
 		if (rc) {
 			kmem_free(*recvbuf, hdr->lmh_msglen);
+			*recvbuf = NULL;
 		}
 	}
 
