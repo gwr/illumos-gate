@@ -209,7 +209,7 @@ smb_set_by_fid(smb_request_t *sr, smb_xa_t *xa, uint16_t infolev)
 {
 	smb_setinfo_t sinfo;
 	uint32_t status;
-	int rc;
+	int rc = 0;
 
 	if (SMB_TREE_IS_READONLY(sr)) {
 		smbsr_error(sr, NT_STATUS_ACCESS_DENIED,
