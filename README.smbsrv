@@ -13,3 +13,4 @@ Before AF_UNIX pipes for RPC
 Before extended security
 Before Kerberos inbound
 Before new DC locator etc.
+Before first commit of SMB2 support.
