@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -551,15 +551,19 @@ smb_open_subr(smb_request_t *sr)
 
 		smb_node_wrlock(node);
 
+		/* MS-FSA 2.1.5.1.2 */
+		if (op->create_disposition == FILE_SUPERSEDE)
+			op->desired_access |= DELETE;
+		if ((op->create_disposition == FILE_OVERWRITE_IF) ||
+		    (op->create_disposition == FILE_OVERWRITE))
+			op->desired_access |= FILE_WRITE_DATA;
+
 		if ((op->create_disposition == FILE_SUPERSEDE) ||
 		    (op->create_disposition == FILE_OVERWRITE_IF) ||
 		    (op->create_disposition == FILE_OVERWRITE)) {
 
-			if ((!(op->desired_access &
-			    (FILE_WRITE_DATA | FILE_APPEND_DATA |
-			    FILE_WRITE_ATTRIBUTES | FILE_WRITE_EA))) ||
-			    (!smb_sattr_check(op->fqi.fq_fattr.sa_dosattr,
-			    op->dattr))) {
+			if (!smb_sattr_check(op->fqi.fq_fattr.sa_dosattr,
+			    op->dattr)) {
 				smb_node_unlock(node);
 				smb_node_dec_opening_count(node);
 				smb_node_release(node);
