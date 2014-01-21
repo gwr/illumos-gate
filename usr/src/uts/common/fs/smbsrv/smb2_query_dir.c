@@ -125,11 +125,12 @@ smb2_query_dir(smb_request_t *sr)
 			(void) smb_mbc_decodef(&sr->smb_data, "#.", skip);
 		rc = smb_mbc_decodef(&sr->smb_data, "%#U", sr,
 		    NameLength, &pattern);
-		if (rc) {
+		if (rc || pattern == NULL) {
 			status = NT_STATUS_OBJECT_PATH_INVALID;
 			goto errout;
 		}
-	}
+	} else
+		pattern = "*";
 
 	/*
 	 * Setup the output buffer.
