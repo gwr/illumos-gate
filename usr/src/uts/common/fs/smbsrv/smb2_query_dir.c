@@ -188,8 +188,11 @@ smb2_query_dir(smb_request_t *sr)
 		of->f_odir = od;
 	}
 	mutex_exit(&of->f_mutex);
-	if (od == NULL)
-		return (status);
+	if (od == NULL) {
+		if (status == 0)
+			status = NT_STATUS_INTERNAL_ERROR;
+		goto errout;
+	}
 
 	/*
 	 * "Reopen" sets a new pattern and restart.

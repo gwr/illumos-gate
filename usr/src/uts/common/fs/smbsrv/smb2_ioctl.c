@@ -99,8 +99,10 @@ smb2_ioctl(smb_request_t *sr)
 	 * Some requests are only valid on IPC$
 	 */
 	if ((te->te_flags & ITF_IPC_ONLY) != 0 &&
-	    !STYPE_ISIPC(sr->tid_tree->t_res_type))
-		return (NT_STATUS_ACCESS_DENIED);
+	    !STYPE_ISIPC(sr->tid_tree->t_res_type)) {
+		status = NT_STATUS_ACCESS_DENIED;
+		goto errout;
+	}
 
 	/*
 	 * Note: some ioctl commands don't need a FID.

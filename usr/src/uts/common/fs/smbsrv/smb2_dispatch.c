@@ -151,8 +151,10 @@ smb2_disp_table[SMB2__NCMDS] = {
 smb_sdrc_t
 smb2_invalid_cmd(smb_request_t *sr)
 {
+#ifdef	DEBUG
 	cmn_err(CE_NOTE, "clnt %s bad SMB2 cmd code",
 	    sr->session->ip_addr_str);
+#endif
 	sr->smb2_status = NT_STATUS_INVALID_PARAMETER;
 	return (SDRC_DROP_VC);
 }
@@ -347,9 +349,17 @@ next_command:
 	switch (rc) {
 	case SDRC_SUCCESS:
 		break;
-	/* SMB2 does not use the other dispatch return codes. */
 	default:
-		ASSERT(0);
+		/*
+		 * SMB2 does not use the other dispatch return codes.
+		 * If we see something else, log an event so we'll
+		 * know something is returning bogus status codes.
+		 * If you see these in the log, use dtrace to find
+		 * the code returning something else.
+		 */
+#ifdef	DEBUG
+		cmn_err(CE_NOTE, "smb2sr_dispatch -> 0x%x", rc);
+#endif
 		/* FALLTHROUGH */
 	case SDRC_ERROR:
 		if (sr->smb2_status == 0)
@@ -612,8 +622,6 @@ smb2sr_dispatch(smb_request_t *sr,
 #endif	/* XXX */
 
 	if (sr->smb2_hdr_flags & SMB2_FLAGS_SERVER_TO_REDIR) {
-		cmn_err(CE_WARN, "clnt %s bad SMB2 flags 1",
-		    session->ip_addr_str);
 		smb2sr_put_error(sr, NT_STATUS_INVALID_PARAMETER, NULL, 0);
 		goto done;
 	}
@@ -834,7 +842,9 @@ smb2_send_reply(smb_request_t *sr)
 /*
  * This wrapper function exists to help catch calls to smbsr_status()
  * (which is SMB1-specific) in common code.  See smbsr_status().
- * This is a good place watch with a dtrace fbt probe.
+ * If the log message below is seen, put a dtrace probe on this
+ * function with a stack() action to see who is calling the SMB1
+ * "put error" from common code, and fix it.
  */
 void
 smbsr_status_smb2(smb_request_t *sr, DWORD status)
@@ -845,7 +855,9 @@ smbsr_status_smb2(smb_request_t *sr, DWORD status)
 		name = smb2_disp_table[sr->smb2_cmd_code].sdt_name;
 	else
 		name = "<unknown>";
+#ifdef	DEBUG
 	cmn_err(CE_NOTE, "smbsr_status called for %s", name);
+#endif
 
 	smb2sr_put_error(sr, status, NULL, 0);
 }
