@@ -11,7 +11,7 @@
 #
 
 #
-# Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+# Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
 #
 
 # Use distributed make (dmake) by default.
@@ -167,7 +167,7 @@ clean|clobber)
   (cd $SRC/cmd/fs.d && $make ${1}_local)
   ;;
 esac
-  
+
 (cd $SRC/cmd/devfsadm && $make $1)
 (cd $SRC/cmd/smbsrv && $make $1)
 
@@ -241,7 +241,9 @@ do_tags() {
 # This creates a tarfile one can use to update a test machine.
 
 do_tar() {
+	git_rev=`git rev-parse --short=8 HEAD`
 	files="
+lib/svc/manifest/network/smb/server.xml
 usr/kernel/drv/$arch64/smbsrv
 usr/kernel/drv/smbsrv
 usr/kernel/kmdb/$arch64/smbsrv
@@ -253,6 +255,7 @@ usr/lib/mdb/kvm/$arch64/smbsrv.so
 usr/lib/mdb/kvm/smbsrv.so
 usr/lib/reparse/libreparse_smb.so.1
 usr/lib/security/pam_smb_passwd.so.1
+usr/lib/smbsrv/dtrace
 usr/lib/smbsrv/libmlrpc.so.1
 usr/lib/smbsrv/libmlsvc.so.1
 usr/lib/smbsrv/libsmb.so.1
@@ -263,7 +266,7 @@ usr/sbin/smbadm
 usr/sbin/smbstat
 "
 
-	(cd $ROOT && tar cfj ../../smbsrv.tar.bz2 $files)
+	(cd $ROOT && tar cfj ../../smbsrv-${git_rev}.tar.bz2 $files)
 }
 
 ################################################################
