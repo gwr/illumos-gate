@@ -11,7 +11,7 @@
 #
 
 #
-# Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+# Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
 #
 
 # Use distributed make (dmake) by default.
@@ -253,6 +253,7 @@ usr/lib/mdb/kvm/$arch64/smbsrv.so
 usr/lib/mdb/kvm/smbsrv.so
 usr/lib/reparse/libreparse_smb.so.1
 usr/lib/security/pam_smb_passwd.so.1
+usr/lib/smbsrv/dtrace/
 usr/lib/smbsrv/libmlrpc.so.1
 usr/lib/smbsrv/libmlsvc.so.1
 usr/lib/smbsrv/libsmb.so.1

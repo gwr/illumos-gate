@@ -22,10 +22,10 @@
 # Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
 #
-# ident	"%Z%%M%	%I%	%E% SMI"
+# Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
 #
 
-SRCS=	cifs.d msrpc.d smbnode.d smbvfs.d stype.d
+SRCS=	cifs.d msrpc.d smbd-authsvc.d smbnode.d smbsrv.d smbvfs.d stype.d
 
 include ../../Makefile.cmd
 
