@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -281,4 +281,32 @@ smb2_negotiate(smb_request_t *sr)
 {
 	sr->smb2_status = NT_STATUS_INVALID_PARAMETER;
 	return (SDRC_ERROR);
+}
+
+/*
+ * VALIDATE_NEGOTIATE_INFO [MS-SMB2] 2.2.32.6
+ */
+uint32_t
+smb2_fsctl_vneginfo(smb_request_t *sr, smb_fsctl_t *fsctl)
+{
+	smb_session_t *s = sr->session;
+	int rc;
+
+	/*
+	 * We're supposed to parse the client's
+	 * VALIDATE_NEGOTIATE_INFO here, but it
+	 * appears to be unnecessary.
+	 */
+
+	rc = smb_mbc_encodef(
+	    fsctl->out_mbc, "l#cww",
+	    smb2srv_capabilities,	/* l */
+	    UUID_LEN,			/* # */
+	    &s->s_cfg.skc_machine_uuid, /* c */
+	    s->secmode,			/* w */
+	    s->dialect);		/* w */
+	if (rc)
+		return (NT_STATUS_INTERNAL_ERROR);
+
+	return (0);
 }

@@ -45,6 +45,8 @@ void smb2sr_put_error_data(smb_request_t *, uint32_t, mbuf_chain_t *);
 void smb2sr_put_errno(struct smb_request *, int);
 uint32_t smb2sr_lookup_fid(smb_request_t *, smb2fid_t *);
 
+uint32_t smb2_fsctl_vneginfo(smb_request_t *, smb_fsctl_t *);
+
 smb_sdrc_t smb2_negotiate(smb_request_t *);
 smb_sdrc_t smb2_session_setup(smb_request_t *);
 smb_sdrc_t smb2_logoff(smb_request_t *);

@@ -27,6 +27,7 @@
 
 /*
  * Dispatch function for SMB2_IOCTL
+ * [MS-SMB2] 3.3.5.15
  */
 
 #include <smbsrv/smb2_kproto.h>
@@ -91,6 +92,10 @@ smb2_ioctl(smb_request_t *sr)
 			break;
 	}
 	if (te->te_code == 0) {
+#ifdef	DEBUG
+		cmn_err(CE_NOTE, "smb2_ioctl: unknown code 0x%x",
+		    fsctl.CtlCode);
+#endif
 		status = NT_STATUS_NOT_SUPPORTED;
 		goto errout;
 	}
@@ -100,7 +105,7 @@ smb2_ioctl(smb_request_t *sr)
 	 */
 	if ((te->te_flags & ITF_IPC_ONLY) != 0 &&
 	    !STYPE_ISIPC(sr->tid_tree->t_res_type)) {
-		status = NT_STATUS_ACCESS_DENIED;
+		status = NT_STATUS_INVALID_DEVICE_REQUEST;
 		goto errout;
 	}
 
@@ -114,8 +119,10 @@ smb2_ioctl(smb_request_t *sr)
 		}
 	} else {
 		status = smb2sr_lookup_fid(sr, &smb2fid);
-		if (status)
+		if (status) {
+			status = NT_STATUS_FILE_CLOSED;
 			goto errout;
+		}
 	}
 
 	/*
@@ -204,6 +211,7 @@ smb2_ioc_tbl[] = {
 	 * FILE_DEVICE_FILE_SYSTEM (9)
 	 */
 	{ FSCTL_SET_REPARSE_POINT,	0,	smb2_fsctl_notsup },
+	{ FSCTL_CREATE_OR_GET_OBJECT_ID, 0,	smb2_fsctl_notsup },
 	{ FSCTL_FILE_LEVEL_TRIM,	0,	smb2_fsctl_notsup },
 
 	/*
@@ -230,7 +238,7 @@ smb2_ioc_tbl[] = {
 	{ FSCTL_QUERY_NETWORK_INTERFACE_INFO,
 	    ITF_IPC_ONLY | ITF_NO_FID,		smb2_fsctl_notsup },
 	{ FSCTL_VALIDATE_NEGOTIATE_INFO,
-	    ITF_IPC_ONLY | ITF_NO_FID,		smb2_fsctl_notsup },
+	    ITF_IPC_ONLY | ITF_NO_FID,		smb2_fsctl_vneginfo },
 
 	/*
 	 * End marker
