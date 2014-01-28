@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <stdio.h>
@@ -22,22 +22,13 @@
 #include <syslog.h>
 #include <smbsrv/libsmb.h>
 
-static void (*real_vsyslog)() = NULL;
-
-#pragma init(libsmb_syslog_init)
-static void
-libsmb_syslog_init(void)
-{
-	real_vsyslog = (void (*)())dlsym(RTLD_NEXT, "vsyslog");
-}
-
 /*
  * This is exported NODIRECT so that fksmbd can provide it's own.
  */
 void
 smb_vsyslog(int pri, const char *fmt, va_list ap)
 {
-	real_vsyslog(pri, fmt, ap);
+	vsyslog(pri, fmt, ap);
 }
 
 /*
@@ -51,28 +42,4 @@ smb_syslog(int pri, const char *fmt, ...)
 	va_start(ap, fmt);
 	smb_vsyslog(pri, fmt, ap);
 	va_end(ap);
-}
-
-/*
- * This is not exported by the mapfile.  It's here just to catch
- * syslog calls originating inside libsmb.
- */
-void
-syslog(int pri, const char *fmt, ...)
-{
-	va_list ap;
-
-	va_start(ap, fmt);
-	smb_vsyslog(pri, fmt, ap);
-	va_end(ap);
-}
-
-/*
- * This is not exported by the mapfile.  It's here just to catch
- * vsyslog calls originating inside libsmb.
- */
-void
-vsyslog(int pri, const char *fmt, va_list ap)
-{
-	smb_vsyslog(pri, fmt, ap);
 }

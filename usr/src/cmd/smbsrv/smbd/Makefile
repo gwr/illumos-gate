@@ -20,7 +20,7 @@
 #
 #
 # Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
-# Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+# Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
 #
 
 
@@ -58,6 +58,7 @@ $(ROOTVARSMBDLL):= FILEMODE = 0755
 LINTFLAGS += -xerroff=E_NAME_DEF_NOT_USED2
 
 CFLAGS += $(CCVERBOSE)
+CPPFLAGS += -Dsyslog=smb_syslog
 $(NOT_RELEASE_BUILD)CPPFLAGS += -DDEBUG
 
 C99MODE =       -xc99=%all

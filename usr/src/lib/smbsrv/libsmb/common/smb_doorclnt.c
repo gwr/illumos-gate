@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <assert.h>
@@ -125,8 +125,11 @@ smb_join(smb_joininfo_t *jdi)
 	    &status, xdr_uint32_t);
 
 	if (rc != 0) {
+		/*
+		 * This usually means the SMB service is not running.
+		 */
 		syslog(LOG_DEBUG, "smb_join: %m");
-		status = NT_STATUS_INTERNAL_ERROR;
+		status = NT_STATUS_SERVER_DISABLED;
 	}
 
 	return (status);

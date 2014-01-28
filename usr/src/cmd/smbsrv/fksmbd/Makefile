@@ -20,7 +20,7 @@
 #
 #
 # Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
-# Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+# Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
 #
 
 
@@ -66,8 +66,9 @@ C99LMODE=	-Xc99=%all
 
 CFLAGS += $(CCVERBOSE)
 CFLAGS64 += $(CCVERBOSE)
-CPPFLAGS += -D_LARGEFILE64_SOURCE=1
 CPPFLAGS += -D_REENTRANT
+CPPFLAGS += -Dsyslog=smb_syslog
+CPPFLAGS += -D_LARGEFILE64_SOURCE=1
 CPPFLAGS += -D_FAKE
 # Always debug here
 CPPFLAGS += -DDEBUG 

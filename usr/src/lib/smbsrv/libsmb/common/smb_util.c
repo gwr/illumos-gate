@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <ctype.h>
@@ -1178,7 +1178,7 @@ smb_log(smb_log_hdl_t hdl, int priority, const char *fmt, ...)
 
 	priority &= LOG_PRIMASK;
 	va_start(ap, fmt);
-	vsyslog(priority, fmt, ap);
+	smb_vsyslog(priority, fmt, ap);
 	va_end(ap);
 
 	va_start(ap, fmt);
