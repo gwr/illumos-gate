@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -56,8 +56,6 @@ boolean_t smbdrv_opened = B_FALSE;
  *
  * Reduce the maximum number of connections and workers, just for
  * convenience while debugging.  (Don't want hundreds of threads.)
- *
- * Also force SMB2 enabled here.
  */
 static void
 fksmbd_adjust_config(smb_ioc_header_t *ioc_hdr)
@@ -66,8 +64,8 @@ fksmbd_adjust_config(smb_ioc_header_t *ioc_hdr)
 
 	ioc->maxconnections = 10;
 	ioc->maxworkers = 20;
-	smbd_report("maxconnections=%d, maxworkers=%d smb2_enable=%d",
-	    ioc->maxconnections, ioc->maxworkers, ioc->smb2_enable);
+	smbd_report("maxconnections=%d, maxworkers=%d",
+	    ioc->maxconnections, ioc->maxworkers);
 }
 
 boolean_t
