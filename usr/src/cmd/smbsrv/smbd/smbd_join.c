@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2012 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <syslog.h>
@@ -192,7 +192,7 @@ smbd_dc_update(void)
 		 * or the credential chain setup failed.
 		 */
 		smb_log(smbd.s_loghd, LOG_NOTICE,
-		    "smbd_dc_update: %s: smb/server restart required");
+		    "smbd_dc_update: smb/server restart required");
 
 		if (smb_smf_restart_service() != 0)
 			smb_log(smbd.s_loghd, LOG_ERR,
