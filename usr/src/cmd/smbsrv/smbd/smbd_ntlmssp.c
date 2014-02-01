@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -422,6 +422,7 @@ smbd_ntlmssp_authenticate(authsvc_context_t *ctx)
 
 	user_info.lg_ntlm_flags = be->clnt_flags;
 	user_info.lg_domain = (domain) ? domain : "";
+	user_info.lg_e_domain = user_info.lg_domain;
 	user_info.lg_workstation = (wksta) ? wksta : "";
 
 	user_info.lg_clnt_ipaddr =
