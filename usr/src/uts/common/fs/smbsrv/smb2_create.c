@@ -399,7 +399,7 @@ errout:
 		smb_ofile_close(of, 0);
 	if (cctx.cc_out_flags)
 		smb2_free_create_ctx(&cctx);
-	smb2sr_put_error(sr, status, NULL, 0);
+	smb2sr_put_error(sr, status);
 	return (SDRC_SUCCESS);
 }
 

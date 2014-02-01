@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #ifndef _SMB2_KPROTO_H_
@@ -40,7 +40,8 @@ void	smb2sr_work(smb_request_t *);
 int smb2_decode_header(smb_request_t *);
 int smb2_encode_header(smb_request_t *, boolean_t);
 void smb2_send_reply(smb_request_t *);
-void smb2sr_put_error(smb_request_t *, uint32_t, void *, uint32_t);
+void smb2sr_put_error(smb_request_t *, uint32_t);
+void smb2sr_put_error_data(smb_request_t *, uint32_t, mbuf_chain_t *);
 void smb2sr_put_errno(struct smb_request *, int);
 uint32_t smb2sr_lookup_fid(smb_request_t *, smb2fid_t *);
 

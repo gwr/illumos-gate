@@ -262,7 +262,7 @@ smb2_query_dir(smb_request_t *sr)
 	status = NT_STATUS_UNSUCCESSFUL;
 
 errout:
-	smb2sr_put_error(sr, status, NULL, 0);
+	smb2sr_put_error(sr, status);
 	return (SDRC_SUCCESS);
 }
 
@@ -295,7 +295,7 @@ smb2_find_entries(smb_request_t *sr, smb_odir_t *od, smb2_find_args_t *args)
 	while (count < args->fa_maxcount) {
 
 		if (!MBC_ROOM_FOR(&sr->raw_data, minsize)) {
-			status = NT_STATUS_BUFFER_TOO_SMALL;
+			status = NT_STATUS_BUFFER_OVERFLOW;
 			break;
 		}
 
@@ -342,8 +342,7 @@ smb2_find_entries(smb_request_t *sr, smb_odir_t *od, smb2_find_args_t *args)
 	} else {
 		/*
 		 * We copied some directory entries, but stopped for
-		 * NT_STATUS_NO_MORE_FILES, NT_STATUS_BUFFER_TOO_SMALL
-		 * or something.
+		 * NT_STATUS_NO_MORE_FILES, or something.
 		 *
 		 * Per [MS-FSCC] sec. 2.4, the last entry in the
 		 * enumeration MUST have its NextEntryOffset value
@@ -536,7 +535,7 @@ smb2_find_mbc_encode(smb_request_t *sr, smb_fileinfo_t *fileinfo,
 		return (NT_STATUS_INVALID_INFO_CLASS);
 	}
 	if (rc)	/* smb_mbc_encodef failed */
-		return (NT_STATUS_BUFFER_TOO_SMALL);
+		return (NT_STATUS_BUFFER_OVERFLOW);
 
 	/*
 	 * At this point we have written all the fixed-size data
@@ -549,7 +548,7 @@ smb2_find_mbc_encode(smb_request_t *sr, smb_fileinfo_t *fileinfo,
 	    &sr->raw_data, "U",
 	    fileinfo->fi_name);
 	if (rc)
-		return (NT_STATUS_BUFFER_TOO_SMALL);
+		return (NT_STATUS_BUFFER_OVERFLOW);
 
 	/* Next entry needs to be 8-byte aligned. */
 	padsz = sr->raw_data.chain_offset & 7;

@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -77,7 +77,7 @@ smb2_change_notify(smb_request_t *sr)
 	status = smb2sr_go_async(sr, smb2_change_notify_async);
 puterror:
 	ASSERT(status != 0);
-	smb2sr_put_error(sr, status, NULL, 0);
+	smb2sr_put_error(sr, status);
 	return (SDRC_SUCCESS);
 }
 
@@ -111,7 +111,7 @@ smb2_change_notify_async(smb_request_t *sr)
 
 	status = smb2sr_lookup_fid(sr, &smb2fid);
 	if (status != 0) {
-		smb2sr_put_error(sr, status, NULL, 0);
+		smb2sr_put_error(sr, status);
 		return (SDRC_SUCCESS);
 	}
 
@@ -125,7 +125,7 @@ smb2_change_notify_async(smb_request_t *sr)
 
 	status = smb_notify_common(sr, &sr->raw_data, CompletionFilter);
 	if (status != 0) {
-		smb2sr_put_error(sr, status, NULL, 0);
+		smb2sr_put_error(sr, status);
 		return (SDRC_SUCCESS);
 	}
 

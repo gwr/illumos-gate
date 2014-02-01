@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -103,7 +103,7 @@ smb2_set_info(smb_request_t *sr)
 
 	if (status) {
 	errout:
-		smb2sr_put_error(sr, status, NULL, 0);
+		smb2sr_put_error(sr, status);
 		return (sdrc);
 	}
 

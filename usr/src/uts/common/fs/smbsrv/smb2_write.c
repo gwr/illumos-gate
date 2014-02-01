@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -65,13 +65,13 @@ smb2_write(smb_request_t *sr)
 
 	status = smb2sr_lookup_fid(sr, &smb2fid);
 	if (status) {
-		smb2sr_put_error(sr, status, NULL, 0);
+		smb2sr_put_error(sr, status);
 		return (SDRC_SUCCESS);
 	}
 	of = sr->fid_ofile;
 
 	if (Length > smb2_max_rwsize) {
-		smb2sr_put_error(sr, NT_STATUS_INVALID_PARAMETER, NULL, 0);
+		smb2sr_put_error(sr, NT_STATUS_INVALID_PARAMETER);
 		return (SDRC_SUCCESS);
 	}
 
@@ -82,7 +82,7 @@ smb2_write(smb_request_t *sr)
 	rc = MBC_SHADOW_CHAIN(&wr_data, &sr->smb_data,
 	    sr->smb2_cmd_hdr + DataOff, Length);
 	if (rc) {
-		smb2sr_put_error(sr, NT_STATUS_INVALID_PARAMETER, NULL, 0);
+		smb2sr_put_error(sr, NT_STATUS_INVALID_PARAMETER);
 		return (SDRC_SUCCESS);
 	}
 
@@ -90,7 +90,7 @@ smb2_write(smb_request_t *sr)
 	vdb = smb_srm_zalloc(sr, sizeof (*vdb));
 	rc = smb_mbc_decodef(&wr_data, "#B", Length, vdb);
 	if (rc != 0 || vdb->vdb_len != Length) {
-		smb2sr_put_error(sr, NT_STATUS_INVALID_PARAMETER, NULL, 0);
+		smb2sr_put_error(sr, NT_STATUS_INVALID_PARAMETER);
 		return (SDRC_SUCCESS);
 	}
 	vdb->vdb_uio.uio_loffset = (offset_t)Offset;

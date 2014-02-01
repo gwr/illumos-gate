@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -65,13 +65,13 @@ smb2_read(smb_request_t *sr)
 
 	status = smb2sr_lookup_fid(sr, &smb2fid);
 	if (status) {
-		smb2sr_put_error(sr, status, NULL, 0);
+		smb2sr_put_error(sr, status);
 		return (SDRC_SUCCESS);
 	}
 	of = sr->fid_ofile;
 
 	if (Length > smb2_max_rwsize) {
-		smb2sr_put_error(sr, NT_STATUS_INVALID_PARAMETER, NULL, 0);
+		smb2sr_put_error(sr, NT_STATUS_INVALID_PARAMETER);
 		return (SDRC_SUCCESS);
 	}
 	if (MinCount > Length)

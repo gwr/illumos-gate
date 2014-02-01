@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 
@@ -1039,21 +1039,56 @@ fop_setsecattr(
 	cred_t *cr,
 	caller_context_t *ct)
 {
-	return (ENOSYS);
+	return (0);
 }
 
+/*
+ * Fake up just enough of this so we can test get/set SDs.
+ */
 /* ARGSUSED */
 int
 fop_getsecattr(
 	vnode_t *vp,
-	vsecattr_t *vsap,
+	vsecattr_t *vsecattr,
 	int flag,
 	cred_t *cr,
 	caller_context_t *ct)
 {
-	/* See fs_fab_acl() */
 
-	return (ENOSYS);
+	vsecattr->vsa_aclcnt	= 0;
+	vsecattr->vsa_aclentsz	= 0;
+	vsecattr->vsa_aclentp	= NULL;
+	vsecattr->vsa_dfaclcnt	= 0;	/* Default ACLs are not fabricated */
+	vsecattr->vsa_dfaclentp	= NULL;
+
+	if (vsecattr->vsa_mask & (VSA_ACLCNT | VSA_ACL)) {
+		aclent_t *aclentp;
+		size_t aclsize;
+
+		aclsize = sizeof (aclent_t);
+		vsecattr->vsa_aclcnt = 1;
+		vsecattr->vsa_aclentp = kmem_zalloc(aclsize, KM_SLEEP);
+		aclentp = vsecattr->vsa_aclentp;
+
+		aclentp->a_type = OTHER_OBJ;
+		aclentp->a_perm = 0777;
+		aclentp->a_id = (gid_t)-1;
+		aclentp++;
+	} else if (vsecattr->vsa_mask & (VSA_ACECNT | VSA_ACE)) {
+		ace_t *acl;
+
+		acl = kmem_alloc(sizeof (ace_t), KM_SLEEP);
+		acl->a_who = (uint32_t)-1;
+		acl->a_type = ACE_ACCESS_ALLOWED_ACE_TYPE;
+		acl->a_flags = ACE_EVERYONE;
+		acl->a_access_mask  = ACE_MODIFY_PERMS;
+
+		vsecattr->vsa_aclentp = (void *)acl;
+		vsecattr->vsa_aclcnt = 1;
+		vsecattr->vsa_aclentsz = sizeof (ace_t);
+	}
+
+	return (0);
 }
 
 /* ARGSUSED */

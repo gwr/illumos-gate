@@ -22,7 +22,7 @@
  * Copyright 2010 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  *
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -178,7 +178,7 @@ smb2_ioctl(smb_request_t *sr)
 	return ((rc) ? SDRC_ERROR : SDRC_SUCCESS);
 
 errout:
-	smb2sr_put_error(sr, status, NULL, 0);
+	smb2sr_put_error(sr, status);
 	return (SDRC_SUCCESS);
 }
 

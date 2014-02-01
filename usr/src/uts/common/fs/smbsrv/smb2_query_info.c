@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -60,7 +60,7 @@ smb2_query_info(smb_request_t *sr)
 
 	status = smb2sr_lookup_fid(sr, &smb2fid);
 	if (status) {
-		smb2sr_put_error(sr, status, NULL, 0);
+		smb2sr_put_error(sr, status);
 		goto out;
 	}
 
@@ -74,8 +74,7 @@ smb2_query_info(smb_request_t *sr)
 		rc = MBC_SHADOW_CHAIN(&qi->in_data, &sr->smb_data,
 		    sr->smb2_cmd_hdr + iBufOffset, iBufLength);
 		if (rc) {
-			smb2sr_put_error(sr, NT_STATUS_INVALID_PARAMETER,
-			    NULL, 0);
+			smb2sr_put_error(sr, NT_STATUS_INVALID_PARAMETER);
 			goto out;
 		}
 	}
@@ -100,8 +99,30 @@ smb2_query_info(smb_request_t *sr)
 		break;
 	}
 
-	if (status) {
-		smb2sr_put_error(sr, status, NULL, 0);
+	switch (status) {
+
+	case 0: /* success */
+		break;
+
+	case NT_STATUS_BUFFER_OVERFLOW:
+		/* Not really an error, per se.  Advisory. */
+		sr->smb2_status = status;
+		break;
+
+	case NT_STATUS_BUFFER_TOO_SMALL:
+	case NT_STATUS_INFO_LENGTH_MISMATCH:
+		/*
+		 * These are special, per. [MS-SMB2] 3.2.5.17
+		 * The error data is a 4-byte count of the size
+		 * required to successfully query the data.
+		 * That error data is built by the functions
+		 * that returns one of these errors.
+		 */
+		smb2sr_put_error_data(sr, status, &sr->raw_data);
+		goto out;
+
+	default:
+		smb2sr_put_error(sr, status);
 		goto out;
 	}
 

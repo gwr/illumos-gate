@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 
@@ -616,13 +616,13 @@ smb2sr_dispatch(smb_request_t *sr,
 	 */
 	if ((session->signing.flags & SMB_SIGNING_ENABLED) != 0 &&
 	    (smb2_sign_check_request(sr) != 0)) {
-		smb2sr_put_error(sr, STATUS_ACCESS_DENIED, NULL, 0);
+		smb2sr_put_error(sr, STATUS_ACCESS_DENIED);
 		goto done;
 	}
 #endif	/* XXX */
 
 	if (sr->smb2_hdr_flags & SMB2_FLAGS_SERVER_TO_REDIR) {
-		smb2sr_put_error(sr, NT_STATUS_INVALID_PARAMETER, NULL, 0);
+		smb2sr_put_error(sr, NT_STATUS_INVALID_PARAMETER);
 		goto done;
 	}
 
@@ -677,8 +677,7 @@ smb2sr_dispatch(smb_request_t *sr,
 		}
 		if (sr->uid_user == NULL) {
 			/* [MS-SMB2] 3.3.5.2.9 Verifying the Session */
-			smb2sr_put_error(sr, NT_STATUS_USER_SESSION_DELETED,
-			    NULL, 0);
+			smb2sr_put_error(sr, NT_STATUS_USER_SESSION_DELETED);
 			goto done;
 		}
 		sr->user_cr = smb_user_getcred(sr->uid_user);
@@ -698,8 +697,7 @@ smb2sr_dispatch(smb_request_t *sr,
 		}
 		if (sr->tid_tree == NULL) {
 			/* [MS-SMB2] 3.3.5.2.11 Verifying the Tree Connect */
-			smb2sr_put_error(sr, NT_STATUS_NETWORK_NAME_DELETED,
-			    NULL, 0);
+			smb2sr_put_error(sr, NT_STATUS_NETWORK_NAME_DELETED);
 			goto done;
 		}
 	}
@@ -859,24 +857,29 @@ smbsr_status_smb2(smb_request_t *sr, DWORD status)
 	cmn_err(CE_NOTE, "smbsr_status called for %s", name);
 #endif
 
-	smb2sr_put_error(sr, status, NULL, 0);
+	smb2sr_put_error_data(sr, status, NULL);
 }
 
 void
 smb2sr_put_errno(struct smb_request *sr, int errnum)
 {
 	uint32_t status = smb_errno2status(errnum);
-	smb2sr_put_error(sr, status, NULL, 0);
+	smb2sr_put_error_data(sr, status, NULL);
+}
+
+void
+smb2sr_put_error(smb_request_t *sr, uint32_t status)
+{
+	smb2sr_put_error_data(sr, status, NULL);
 }
 
 /*
- * Build an error response.
+ * Build an SMB2 error response.  [MS-SMB2] 2.2.2
  */
 void
-smb2sr_put_error(smb_request_t *sr, uint32_t status,
-	void *data, uint32_t len)
+smb2sr_put_error_data(smb_request_t *sr, uint32_t status, mbuf_chain_t *mbc)
 {
-	DWORD dlen;
+	DWORD len;
 
 	/*
 	 * The common dispatch code writes this when it
@@ -888,20 +891,25 @@ smb2sr_put_error(smb_request_t *sr, uint32_t status,
 	sr->reply.chain_offset = sr->smb2_reply_hdr + SMB2_HDR_SIZE;
 
 	/*
-	 * SMB2 error response [MS-SMB2] 2.2.2
+	 * NB: Must provide at least one byte of error data,
+	 * per [MS-SMB2] 2.2.2
 	 */
-	if ((dlen = len) == 0) {
-		dlen = 1;
-		data = "";
+	if (mbc != NULL && (len = MBC_LENGTH(mbc)) != 0) {
+		(void) smb_mbc_encodef(
+		    &sr->reply,
+		    "wwlC",
+		    9,	/* StructSize */	/* w */
+		    0,	/* reserved */		/* w */
+		    len,			/* l */
+		    mbc);			/* C */
+	} else {
+		(void) smb_mbc_encodef(
+		    &sr->reply,
+		    "wwl.",
+		    9,	/* StructSize */	/* w */
+		    0,	/* reserved */		/* w */
+		    0);				/* l. */
 	}
-	(void) smb_mbc_encodef(
-	    &sr->reply,
-	    "wwl#c",
-	    9,	/* StructSize */	/* w */
-	    0,	/* reserver */		/* w */
-	    len,			/* l */
-	    dlen,			/* # */
-	    data);			/* c */
 }
 
 /*
@@ -933,7 +941,7 @@ smb2sr_lookup_fid(smb_request_t *sr, smb2fid_t *fid)
 		    sr->smb_fid);
 	}
 	if (sr->fid_ofile == NULL)
-		return (NT_STATUS_INVALID_HANDLE);
+		return (NT_STATUS_FILE_CLOSED);
 
 	return (0);
 }

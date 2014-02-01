@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -48,7 +48,7 @@ smb2_close(smb_request_t *sr)
 
 	status = smb2sr_lookup_fid(sr, &smb2fid);
 	if (status) {
-		smb2sr_put_error(sr, status, NULL, 0);
+		smb2sr_put_error(sr, status);
 		return (SDRC_SUCCESS);
 	}
 	of = sr->fid_ofile;

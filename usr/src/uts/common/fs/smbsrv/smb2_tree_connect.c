@@ -68,7 +68,7 @@ smb2_tree_connect(smb_request_t *sr)
 
 	status = smb_tree_connect(sr);
 	if (status) {
-		(void) smb2sr_put_error(sr, status, NULL, 0);
+		(void) smb2sr_put_error(sr, status);
 		return (SDRC_SUCCESS);
 	}
 	tree = sr->tid_tree;

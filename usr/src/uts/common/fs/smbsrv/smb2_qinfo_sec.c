@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -66,21 +66,29 @@ smb2_qinfo_sec(smb_request_t *sr, smb_queryinfo_t *qi)
 
 	sdlen = smb_sd_len(&sd, secinfo);
 	if (sdlen == 0) {
-		smb_sd_term(&sd);
-		return (NT_STATUS_INVALID_SECURITY_DESCR);
+		status = NT_STATUS_INVALID_SECURITY_DESCR;
+		goto out;
 	}
 
 	if (sdlen > sr->raw_data.max_bytes) {
 		/*
 		 * The maximum data return count specified by the
 		 * client is not big enough to hold the security
-		 * descriptor. We have to return an error.
+		 * descriptor.  Return the special error that
+		 * tells the client how much room they need.
+		 * Error data is the required size.
 		 */
-		smb_sd_term(&sd);
-		return (NT_STATUS_BUFFER_TOO_SMALL);
+		MBC_FLUSH(&sr->raw_data);
+		sr->raw_data.max_bytes = 4;
+		(void) smb_mbc_encodef(&sr->raw_data, "l", sdlen);
+		status = NT_STATUS_BUFFER_TOO_SMALL;
+		goto out;
 	}
 
 	smb_encode_sd(&sr->raw_data, &sd, secinfo);
+	status = 0;
+
+out:
 	smb_sd_term(&sd);
-	return (0);
+	return (status);
 }

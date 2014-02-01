@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -98,7 +98,7 @@ smb2_oplock_break_ack(smb_request_t *sr)
 	return (SDRC_SUCCESS);
 
 errout:
-	smb2sr_put_error(sr, status, NULL, 0);
+	smb2sr_put_error(sr, status);
 	return (SDRC_SUCCESS);
 }
 

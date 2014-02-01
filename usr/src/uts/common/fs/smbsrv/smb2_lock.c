@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -145,7 +145,7 @@ smb2_lock(smb_request_t *sr)
 	return (SDRC_SUCCESS);
 
 errout:
-	smb2sr_put_error(sr, status, NULL, 0);
+	smb2sr_put_error(sr, status);
 	return (SDRC_SUCCESS);
 }
 
@@ -197,7 +197,7 @@ smb2_lock_async(smb_request_t *sr)
 	return (SDRC_SUCCESS);
 
 errout:
-	smb2sr_put_error(sr, status, NULL, 0);
+	smb2sr_put_error(sr, status);
 	return (SDRC_SUCCESS);
 }
 
