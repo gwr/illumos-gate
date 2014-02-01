@@ -216,7 +216,7 @@ file.
 			value='0' override='true'/>
 		<propval name='traverse_mounts' type='boolean'
 			value='true' override='true'/>
-		<propval name='enable_smb2' type='boolean'
+		<propval name='smb2_enable' type='boolean'
 			value='true' override='true'/>
 	</property_group>
 

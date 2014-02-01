@@ -163,7 +163,7 @@ smb2_newrq_negotiate(smb_request_t *sr)
 	/*
 	 * Conditionally enable SMB2
 	 */
-	if (sr->sr_server->sv_cfg.skc_enable_smb2 == 0)
+	if (sr->sr_server->sv_cfg.skc_smb2_enable == 0)
 		return (SDRC_DROP_VC);
 
 	/*

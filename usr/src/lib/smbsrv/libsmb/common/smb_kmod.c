@@ -88,7 +88,7 @@ smb_kmod_setcfg(smb_kmod_cfg_t *cfg)
 	ioc.ipv6_enable = cfg->skc_ipv6_enable;
 	ioc.print_enable = cfg->skc_print_enable;
 	ioc.traverse_mounts = cfg->skc_traverse_mounts;
-	ioc.enable_smb2 = cfg->skc_enable_smb2;
+	ioc.smb2_enable = cfg->skc_smb2_enable;
 	ioc.exec_flags = cfg->skc_execflags;
 	ioc.negtok_len = cfg->skc_negtok_len;
 	ioc.version = cfg->skc_version;

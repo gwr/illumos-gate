@@ -135,7 +135,7 @@ static smb_cfg_param_t smb_cfg_table[] =
 	{SMB_CI_DISPOSITION, "disposition", SCF_TYPE_ASTRING, SMB_CF_EXEC},
 	{SMB_CI_DFS_STDROOT_NUM, "dfs_stdroot_num", SCF_TYPE_INTEGER, 0},
 	{SMB_CI_TRAVERSE_MOUNTS, "traverse_mounts", SCF_TYPE_BOOLEAN, 0},
-	{SMB_CI_ENABLE_SMB2, "enable_smb2", SCF_TYPE_BOOLEAN, 0},
+	{SMB_CI_SMB2_ENABLE, "smb2_enable", SCF_TYPE_BOOLEAN, 0},
 	{SMB_CI_INITIAL_CREDITS, "initial_credits", SCF_TYPE_INTEGER, 0},
 	{SMB_CI_MAXIMUM_CREDITS, "maximum_credits", SCF_TYPE_INTEGER, 0},
 

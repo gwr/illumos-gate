@@ -339,7 +339,7 @@ smb_pre_negotiate(smb_request_t *sr)
 		 * Conditionally recognize the SMB2 dialects.
 		 */
 		if ((dialect >= DIALECT_SMB2002) &&
-		    sr->sr_server->sv_cfg.skc_enable_smb2 == 0)
+		    sr->sr_server->sv_cfg.skc_smb2_enable == 0)
 			continue;
 
 		if (negprot->ni_dialect < dialect) {

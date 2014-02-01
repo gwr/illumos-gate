@@ -66,9 +66,8 @@ fksmbd_adjust_config(smb_ioc_header_t *ioc_hdr)
 
 	ioc->maxconnections = 10;
 	ioc->maxworkers = 20;
-	ioc->enable_smb2 = 1;
-	smbd_report("maxconnections=%d, maxworkers=%d enable_smb2=%d",
-	    ioc->maxconnections, ioc->maxworkers, ioc->enable_smb2);
+	smbd_report("maxconnections=%d, maxworkers=%d smb2_enable=%d",
+	    ioc->maxconnections, ioc->maxworkers, ioc->smb2_enable);
 }
 
 boolean_t

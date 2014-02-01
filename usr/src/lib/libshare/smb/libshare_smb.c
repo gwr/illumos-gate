@@ -913,7 +913,7 @@ struct smb_proto_option_defs {
 	    SMB_REFRESH_REFRESH },
 	{ SMB_CI_DISPOSITION, 0, MAX_VALUE_BUFLEN,
 	    disposition_validator, SMB_REFRESH_REFRESH },
-	{ SMB_CI_ENABLE_SMB2, 0, 0, true_false_validator,
+	{ SMB_CI_SMB2_ENABLE, 0, 0, true_false_validator,
 	    SMB_REFRESH_REFRESH },
 };
 
