@@ -23,7 +23,6 @@
 smb_sdrc_t
 smb2_write(smb_request_t *sr)
 {
-	mbuf_chain_t wr_data;	/* NB: not allocated */
 	smb_ofile_t *of = NULL;
 	smb_vdb_t *vdb = NULL;
 	uint16_t StructSize;
@@ -38,6 +37,7 @@ smb2_write(smb_request_t *sr)
 	uint32_t Flags;
 	uint32_t XferCount;
 	uint32_t status;
+	int data_chain_off, skip;
 	int stability = 0;
 	int rc = 0;
 
@@ -46,7 +46,7 @@ smb2_write(smb_request_t *sr)
 	 */
 	rc = smb_mbc_decodef(
 	    &sr->smb_data,
-	    "wwlqqqlllww",
+	    "wwlqqqllwwl",
 	    &StructSize,		/* w */
 	    &DataOff,			/* w */
 	    &Length,			/* l */
@@ -76,19 +76,21 @@ smb2_write(smb_request_t *sr)
 	}
 
 	/*
-	 * Setup a shadow chain for the data.
-	 * smb_request_free disposes of it.
+	 * Skip any padding before the write data.
 	 */
-	rc = MBC_SHADOW_CHAIN(&wr_data, &sr->smb_data,
-	    sr->smb2_cmd_hdr + DataOff, Length);
-	if (rc) {
+	data_chain_off = sr->smb2_cmd_hdr + DataOff;
+	skip = data_chain_off - sr->smb_data.chain_offset;
+	if (skip < 0) {
 		smb2sr_put_error(sr, NT_STATUS_INVALID_PARAMETER);
 		return (SDRC_SUCCESS);
+	}
+	if (skip > 0) {
+		(void) smb_mbc_decodef(&sr->smb_data, "#.", skip);
 	}
 
 	/* This is automatically free'd. */
 	vdb = smb_srm_zalloc(sr, sizeof (*vdb));
-	rc = smb_mbc_decodef(&wr_data, "#B", Length, vdb);
+	rc = smb_mbc_decodef(&sr->smb_data, "#B", Length, vdb);
 	if (rc != 0 || vdb->vdb_len != Length) {
 		smb2sr_put_error(sr, NT_STATUS_INVALID_PARAMETER);
 		return (SDRC_SUCCESS);

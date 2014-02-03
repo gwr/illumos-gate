@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -375,8 +375,14 @@ smb_opipe_read(smb_request_t *sr, struct uio *uio)
 
 	rc = ksocket_recvmsg(sock, &msghdr, 0,
 	    &recvcnt, ofile->f_cr);
-	if (rc == 0)
-		uio->uio_resid -= recvcnt;
+	if (rc == 0) {
+		if (recvcnt == 0) {
+			/* Other side closed. */
+			rc = EPIPE;
+		} else {
+			uio->uio_resid -= recvcnt;
+		}
+	}
 
 	ksocket_rele(sock);
 
