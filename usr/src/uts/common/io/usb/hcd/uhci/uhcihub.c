@@ -417,12 +417,13 @@ uhci_handle_port_suspend_resume(
 		 * After a resume event clear both the
 		 * suspend and resume detect bits.
 		 */
+#if 0	/* XXX - try doing this in uhci_get_port_status() now... */
 		if (port_status & HCR_PORT_RESUME_DETECT) {
 			port_status &= ~(HCR_PORT_SUSPEND |
 			    HCR_PORT_RESUME_DETECT);
 			Set_OpReg16(PORTSC[port], port_status);
 		}
-
+#endif	/* XXX */
 		/* Update software port_changes register */
 		uhcip->uhci_root_hub.rh_port_changes[port] &=
 		    ~PORT_CHANGE_PSSC;
@@ -774,7 +775,7 @@ uhci_handle_root_hub_status_change(void *arg)
 	usb_port_t	port;
 	uint_t		old_port_status;
 	uint_t		new_port_status;
-	/* ushort_t	port_status; XXX */
+	ushort_t	port_status;
 	uint_t		change_status;
 	uchar_t		all_ports_status = 0;
 	uhci_state_t	*uhcip = (uhci_state_t *)arg;
@@ -815,8 +816,11 @@ uhci_handle_root_hub_status_change(void *arg)
 		 * CFS_C_PORT_ENABLE, CFS_C_PORT_SUSPEND after
 		 * those status changes have been handled.
 		 * The status change bits are cleared there.
+		 *
+		 * XXX - That didn't seem to work...
+		 * Try putting it back here.
 		 */
-#if 0	/* XXX: Now in uhci_handle_port_enable_disable */
+#if 1	/* XXX: Here? or in uhci_handle_port_enable_disable? */
 		port_status = Get_OpReg16(PORTSC[port]);
 		Set_OpReg16(PORTSC[port], port_status | HCR_PORT_ENDIS_CHG);
 #endif	/* XXX */
@@ -884,12 +888,17 @@ uhci_get_port_status(
 	/*
 	 * Ugh!  This is gross.  When resume event happens,
 	 * we see both the suspend and resume bits, and we
-	 * need to pretend the suspend bit turned off!
-	 * Clear both in: uhci_handle_port_suspend_resume
+	 * need to clear the suspend bit and report resume.
+	 * XXX? Clear it in uhci_handle_port_suspend_resume?
 	 */
-	if ((port_status & (HCR_PORT_SUSPEND | HCR_PORT_RESUME_DETECT))
-	    == HCR_PORT_SUSPEND) {
-		new_port_status |= PORT_STATUS_PSS;
+	if (port_status & HCR_PORT_SUSPEND) {
+		if (port_status & HCR_PORT_RESUME_DETECT) {
+			Set_OpReg16(PORTSC[port],
+			    port_status &
+			    ~(HCR_PORT_SUSPEND|HCR_PORT_RESUME_DETECT));
+		} else {
+			new_port_status |= PORT_STATUS_PSS;
+		}
 	}
 
 	if (port_status & HCR_PORT_RESET) {
