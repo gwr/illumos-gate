@@ -60,6 +60,10 @@ fbt::smb_wcequiv_strlen:entry
   self->mask++;
 }
 
+/*
+ * Now inverses of above, unwind order.
+ */
+
 fbt::smb_mbc_vdecodef:return,
 fbt::smb_mbc_vencodef:return,
 fbt::smb_msgbuf_decode:return,
