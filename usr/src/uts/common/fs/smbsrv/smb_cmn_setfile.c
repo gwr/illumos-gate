@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -222,11 +222,10 @@ smb_set_disposition_info(smb_request_t *sr, smb_setinfo_t *si)
 	if (mark_delete) {
 		if (SMB_TREE_SUPPORTS_CATIA(sr))
 			flags |= SMB_CATIA;
-		if (smb_node_set_delete_on_close(node, of->f_cr, flags))
-			return (NT_STATUS_CANNOT_DELETE);
+		return (smb_node_set_delete_on_close(node, of->f_cr, flags));
 	} else {
 		smb_node_reset_delete_on_close(node);
 	}
 
-	return (0);
+	return (NT_STATUS_SUCCESS);
 }
