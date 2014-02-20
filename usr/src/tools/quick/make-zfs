@@ -11,7 +11,7 @@
 #
 
 #
-# Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+# Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
 #
 
 # Use distributed make (dmake) by default.
@@ -29,11 +29,15 @@ cpu=`uname -p`
 case $cpu in
 i386)
 	x=intel
-	mdb_arch="ia32 amd64";
+	mdb_arch="ia32 amd64"
+	arch32=i86
+	arch64=amd64
 	;;
 sparc)
 	x=sparc
 	mdb_arch=v9
+	arch32=sparc
+	arch64=sparcv9
 	;;
 *)  echo "Huh?" ; exit 1;;
 esac
@@ -83,6 +87,9 @@ then
   test -f $ROOT/usr/include/rpcsvc/daemon_utils.h ||
     (cd $SRC/head && $make install_h)
 
+  # always update the sys headers to be safe
+  (cd $SRC/uts/common/sys && $make -k install_h)
+
 fi
 
 # Need some library headers too...
@@ -95,13 +102,13 @@ for lib in \
   libidmap \
   libpam \
   libsec \
+  libscf \
+  libshare \
+  libuutil \
   libzpool \
   libzfs_core \
   libzfs \
-  libzfs_jni \
-  libshare \
-  libuutil \
-  libscf
+  libzfs_jni
 do
   (cd $SRC/lib/$lib && $make $targ)
 done
@@ -128,7 +135,8 @@ for lib in \
   libzpool \
   libzfs_core \
   libzfs \
-  libzfs_jni
+  libzfs_jni \
+  pyzfs
 do
   (cd $SRC/lib/$lib && $make $1)
 done
@@ -140,14 +148,15 @@ done
 do_cmds() {
   
 for cmd in \
-  devfsadm \
+  availdevs \
   fstyp \
   zdb \
   zfs \
   zhack \
   zpool \
   ztest \
-  zstreamdump
+  zstreamdump \
+  pyzfs
 do
   (cd $SRC/cmd/$cmd && $make $1)
 done
@@ -163,19 +172,30 @@ clean|clobber)
   ;;
 esac
 
+(cd $SRC/cmd/devfsadm && $make $1)
+(cd $SRC/cmd/syseventd/modules/zfs_mod && $make $1)
+
 # Build the MDB modules, WITH the linktest
 (cd $SRC/cmd/mdb/tools && $make $1)
 for a in $mdb_arch
 do
-  if [ $1 = install ]; then
+  case $1 in
+  install|lint)
     (cd $SRC/cmd/mdb/$x/$a/kmdb &&
 	$make kmdb_modlinktest.o )
-  else
+    ;;
+  clean|clobber)
     (cd $SRC/cmd/mdb/$x/$a/kmdb &&
 	$make -k $1 )
-  fi
+    ;;
+  esac
+
   (cd $SRC/cmd/mdb/$x/$a/zfs &&
 	$make $1 KMDB_LINKTEST_ENABLE= )
+
+  (cd $SRC/cmd/mdb/$x/$a/libzpool &&
+	$make $1 )
+
 done
 }
 
@@ -186,7 +206,7 @@ do_tags() {
 	(cd $SRC ;
 	find uts/common/sys -name '*.[ch]' -print |sort
 	find uts/common/fs/zfs -name '*.[ch]' -print |sort
-	find lib/libpool -name '*.[ch]' -print |sort
+	find lib/libzpool -name '*.[ch]' -print |sort
 	find lib/libzfs -name '*.[ch]' -print |sort
 	find cmd/zpool -name '*.[ch]' -print |sort
 	find cmd/zfs -name '*.[ch]' -print |sort
@@ -198,6 +218,47 @@ do_tags() {
 	(cd $SRC ;
 	exctags -e --langmap=c:+.ndl -h ndl -L - < cscope.files
 	cscope -b )
+}
+
+################################################################
+# This creates a tarfile one can use to update a test machine.
+
+do_tar() {
+	git_rev=`git rev-parse --short=8 HEAD`
+	files="
+kernel/drv/$arch64/zfs
+kernel/drv/zfs
+kernel/fs/$arch64/zfs
+kernel/fs/zfs
+kernel/kmdb/$arch64/zfs
+kernel/kmdb/zfs
+lib/$arch64/libzfs.so.1
+lib/$arch64/libzfs_core.so.1
+lib/libzfs.so.1
+lib/libzfs_core.so.1
+usr/lib/$arch64/libzfs_jni.so.1
+usr/lib/$arch64/libzpool.so.1
+usr/lib/devfsadm/linkmod/SUNW_zfs_link.so
+usr/lib/fs/zfs/bootinstall
+usr/lib/fs/zfs/fstyp.so.1
+usr/lib/libzfs_jni.so.1
+usr/lib/libzpool.so.1
+usr/lib/mdb/kvm/$arch64/zfs.so
+usr/lib/mdb/kvm/zfs.so
+usr/lib/mdb/proc/$arch64/libzpool.so
+usr/lib/mdb/proc/libzpool.so
+sbin/zfs
+sbin/zpool
+usr/lib/sysevent/modules/zfs_mod.so
+usr/lib/zfs/availdevs
+usr/lib/zfs/pyzfs.py
+usr/lib/zfs/pyzfs.pyc
+usr/sbin/$arch32/zdb
+usr/sbin/$arch64/zdb
+usr/sbin/zstreamdump
+"
+
+	(cd $ROOT && tar cfj ../../zfs-${git_rev}.tar.bz2 $files)
 }
 
 ################################################################
@@ -239,6 +300,9 @@ do
     ;;
   tags)
     do_tags
+    ;;
+  tar)
+    do_tar
     ;;
   *)
     echo "Usage: $0 {build|lint|clean|clobber|tags}";
