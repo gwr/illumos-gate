@@ -107,10 +107,6 @@ smb2_session_setup(smb_request_t *sr)
 	}
 
 	/*
-	 * XXX: Todo - signing stuff after auth success.
-	 */
-
-	/*
 	 * SMB2 Session Setup reply
 	 */
 

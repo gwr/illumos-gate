@@ -584,10 +584,12 @@ int smb_try_grow(smb_request_t *sr, int64_t new_size);
 unsigned short smb_worker_getnum();
 
 /* SMB signing routines smb_signing.c */
-void smb_sign_init(smb_request_t *, smb_arg_sessionsetup_t *);
+void smb_sign_begin(smb_request_t *, smb_arg_sessionsetup_t *);
 int smb_sign_check_request(smb_request_t *);
 int smb_sign_check_secondary(smb_request_t *, unsigned int);
 void smb_sign_reply(smb_request_t *, mbuf_chain_t *);
+/* SMB2, but here because it's called from common code. */
+void smb2_sign_begin(smb_request_t *, smb_arg_sessionsetup_t *);
 
 boolean_t smb_sattr_check(uint16_t, uint16_t);
 

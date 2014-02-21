@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <sys/types.h>
@@ -229,6 +229,7 @@ smb_com_session_setup_andx(smb_request_t *sr)
 {
 	smb_arg_sessionsetup_t	*sinfo = sr->sr_ssetup;
 	uint32_t		status;
+	uint16_t		action;
 	int			rc;
 
 	/*
@@ -298,29 +299,7 @@ smb_com_session_setup_andx(smb_request_t *sr)
 
 	}
 
-	/*
-	 * If signing has not already been enabled on this session, check
-	 * to see if it should be enabled.  The first authenticated logon
-	 * provides the MAC key and sequence numbers for signing all
-	 * subsequent sessions on the same connection.
-	 */
-	if (!(sr->session->signing.flags & SMB_SIGNING_ENABLED) &&
-	    (sr->session->secmode & NEGOTIATE_SECURITY_SIGNATURES_ENABLED) &&
-	    (sr->smb_flg2 & SMB_FLAGS2_SMB_SECURITY_SIGNATURE))
-		smb_sign_init(sr, sinfo);
-
-	if (!(sr->smb_flg2 & SMB_FLAGS2_SMB_SECURITY_SIGNATURE) &&
-	    (sr->sr_cfg->skc_signing_required)) {
-		char ipaddr_buf[INET6_ADDRSTRLEN];
-		(void) smb_inet_ntop(&sr->session->ipaddr, ipaddr_buf,
-		    SMB_IPSTRLEN(sr->session->ipaddr.a_family));
-		cmn_err(CE_NOTE,
-		    "SmbSessonSetupX: client %s does not support signing",
-		    ipaddr_buf);
-		smbsr_error(sr, NT_STATUS_LOGON_FAILURE,
-		    ERRDOS, ERROR_LOGON_FAILURE);
-		return (SDRC_ERROR);
-	}
+	action = SMB_USER_IS_GUEST(sr->uid_user) ? 1 : 0;
 
 	switch (sinfo->ssi_type) {
 
@@ -332,7 +311,7 @@ smb_com_session_setup_andx(smb_request_t *sr)
 		    3,
 		    sr->andx_com,
 		    -1,			/* andx_off */
-		    sinfo->ssi_guest ? 1 : 0,
+		    action,
 		    VAR_BCC,
 		    sr,
 		    sr->sr_cfg->skc_native_os,
@@ -346,7 +325,7 @@ smb_com_session_setup_andx(smb_request_t *sr)
 		    4,
 		    sr->andx_com,
 		    -1,			/* andx_off */
-		    sinfo->ssi_guest ? 1 : 0,
+		    action,
 		    sinfo->ssi_oseclen,
 		    VAR_BCC,
 		    sr,

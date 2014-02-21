@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -735,7 +735,6 @@ typedef struct smb_arg_sessionsetup {
 	uint32_t	ssi_capabilities;
 	int		ssi_native_os;
 	int		ssi_native_lm;
-	boolean_t	ssi_guest;
 	uint8_t		ssi_ssnkey[SMB_SSNKEY_LEN];
 } smb_arg_sessionsetup_t;
 

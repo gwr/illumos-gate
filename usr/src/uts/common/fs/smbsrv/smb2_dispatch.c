@@ -255,7 +255,7 @@ void
 smb2sr_work(struct smb_request *sr)
 {
 	smb_session_t		*session;
-	uint32_t		max_bytes;
+	uint32_t		msg_len;
 	int			rc;
 	boolean_t		disconnect = B_FALSE;
 
@@ -283,9 +283,16 @@ smb2sr_work(struct smb_request *sr)
 	}
 	mutex_exit(&sr->sr_mutex);
 
-next_command:
+cmd_start:
 	/*
-	 * Decode the header
+	 * Reserve space for the reply header, and save the offset.
+	 * The reply header will be overwritten later.
+	 */
+	sr->smb2_reply_hdr = sr->reply.chain_offset;
+	(void) smb_mbc_encodef(&sr->reply, "#.", SMB2_HDR_SIZE);
+
+	/*
+	 * Decode the request header
 	 *
 	 * Most problems with decoding will result in the error
 	 * STATUS_INVALID_PARAMETER.  If the decoding problem
@@ -302,45 +309,65 @@ next_command:
 	}
 
 	/*
-	 * Default credit response.  Command handler may modify.
-	 */
-	sr->smb2_credit_response = sr->smb2_credit_request;
-
-	/*
 	 * Figure out the length of data following the SMB2 header.
 	 * It ends at either the next SMB2 header if there is one
 	 * (smb2_next_command != 0) or at the end of the message.
 	 */
 	if (sr->smb2_next_command != 0) {
 		/* [MS-SMB2] says this is 8-byte aligned */
-		if ((sr->smb2_next_command & 7) != 0 ||
-		    (sr->smb2_next_command < SMB2_HDR_SIZE) ||
-		    ((sr->smb2_next_command + sr->smb2_cmd_hdr) >
-		    sr->command.max_bytes)) {
+		msg_len = sr->smb2_next_command;
+		if ((msg_len & 7) != 0 || (msg_len < SMB2_HDR_SIZE) ||
+		    ((sr->smb2_cmd_hdr + msg_len) > sr->command.max_bytes)) {
 			cmn_err(CE_WARN, "clnt %s bad SMB2 next cmd",
 			    session->ip_addr_str);
 			disconnect = B_TRUE;
 			goto cleanup;
 		}
-		max_bytes = sr->smb2_next_command - SMB2_HDR_SIZE;
 	} else {
-		max_bytes = sr->command.max_bytes -
-		    sr->command.chain_offset;
+		msg_len = sr->command.max_bytes - sr->smb2_cmd_hdr;
 	}
 
 	/*
-	 * Setup a shadow chain for everything after the header
-	 * up to the next (compound) header or end of message.
+	 * Setup a shadow chain for this SMB2 command, starting
+	 * with the header and ending at either the next command
+	 * or the end of the message.  Note that we've already
+	 * decoded the header, so chain_offset is now positioned
+	 * at the end of the header.  The signing check needs the
+	 * entire SMB2 command, so we'll shadow starting at the
+	 * smb2_cmd_hdr offset.  After the signing check, we'll
+	 * move chain_offset up to the end of the header.
 	 */
 	(void) MBC_SHADOW_CHAIN(&sr->smb_data, &sr->command,
-	    sr->command.chain_offset, max_bytes);
+	    sr->smb2_cmd_hdr, msg_len);
 
 	/*
-	 * Reserve space for the header, and save the offset.
-	 * It will be overwritten later.
+	 * Verify SMB signature if signing is enabled and active now.
+	 * [MS-SMB2] 3.3.5.2.4 Verifying the Signature
 	 */
-	sr->smb2_reply_hdr = sr->reply.chain_offset;
-	(void) smb_mbc_encodef(&sr->reply, "#.", SMB2_HDR_SIZE);
+	if ((sr->smb2_hdr_flags & SMB2_FLAGS_SIGNED) != 0) {
+		rc = smb2_sign_check_request(sr);
+		if (rc != 0) {
+			DTRACE_PROBE1(smb2__sign__check, smb_request_t, sr);
+			if (session->signing.flags & SMB_SIGNING_CHECK) {
+				smb2sr_put_error(sr, NT_STATUS_ACCESS_DENIED);
+				goto cmd_finish;
+			}
+		}
+	}
+
+	/*
+	 * Now that the signing check is done with smb_data,
+	 * advance past the SMB2 header we decoded above.
+	 * This leaves sr->smb_data correctly positioned
+	 * for command-specific decoding in the dispatch
+	 * function called next.
+	 */
+	sr->smb_data.chain_offset = sr->smb2_cmd_hdr + SMB2_HDR_SIZE;
+
+	/*
+	 * Default credit response.  Command handler may modify.
+	 */
+	sr->smb2_credit_response = sr->smb2_credit_request;
 
 	/*
 	 * Common dispatch (for sync & async)
@@ -377,6 +404,7 @@ next_command:
 	 * (the offset to the next command).  Similarly set
 	 * smb2_next_reply as the offset to the next reply.
 	 */
+cmd_finish:
 	if (sr->smb2_next_command != 0) {
 		sr->command.chain_offset =
 		    sr->smb2_cmd_hdr + sr->smb2_next_command;
@@ -393,12 +421,11 @@ next_command:
 	sr->smb2_hdr_flags |= SMB2_FLAGS_SERVER_TO_REDIR;
 	(void) smb2_encode_header(sr, B_TRUE);
 
-	/*
-	 * XXX: Sign this reply (todo).
-	 */
+	if (sr->smb2_hdr_flags & SMB2_FLAGS_SIGNED)
+		smb2_sign_reply(sr);
 
 	if (sr->smb2_next_command != 0)
-		goto next_command;
+		goto cmd_start;
 
 	/*
 	 * We've done all the commands in this compound.
@@ -486,6 +513,7 @@ smb2sr_do_async(smb_request_t *sr)
 	 * command handler function with the async handler
 	 * (ar->ar_func) which will be used instead of the
 	 * normal handler from the dispatch table.
+	 * The SMB signature was already checked.
 	 */
 	rc = smb2sr_dispatch(sr, ar->ar_func);
 	if (rc != 0 && sr->smb2_status == 0)
@@ -499,9 +527,8 @@ smb2sr_do_async(smb_request_t *sr)
 	sr->smb2_next_reply = 0;
 	(void) smb2_encode_header(sr, B_TRUE);
 
-	/*
-	 * XXX: Sign this reply (todo).
-	 */
+	if (sr->smb2_hdr_flags & SMB2_FLAGS_SIGNED)
+		smb2_sign_reply(sr);
 
 	/*
 	 * An async reply goes alone (no compound).
@@ -550,6 +577,7 @@ smb2sr_go_async(smb_request_t *sr,
 	ar = kmem_zalloc(sizeof (*ar), KM_SLEEP);
 
 	/*
+	 * Place an interim response in the compound reply.
 	 * The interim reply gets the async flag, as does
 	 * the final reply (via the saved ar_hdr_flags).
 	 */
@@ -567,6 +595,9 @@ smb2sr_go_async(smb_request_t *sr,
 	ar->ar_tid = sr->smb_tid;
 
 	sr->sr_async_req = ar;
+
+	/* Interim responses are NOT signed. */
+	sr->smb2_hdr_flags &= ~SMB2_FLAGS_SIGNED;
 
 	return (NT_STATUS_PENDING);
 }
@@ -608,18 +639,6 @@ smb2sr_dispatch(smb_request_t *sr,
 		sdd = &smb2_disp_table[SMB2_INVALID_CMD];
 		sds = &server->sv_disp_stats2[SMB2_INVALID_CMD];
 	}
-
-#if 0	/* XXX - not yet */
-	/*
-	 * Verify SMB signature if signing is enabled and active now.
-	 * [MS-SMB2] 3.3.5.2.4 Verifying the Signature
-	 */
-	if ((session->signing.flags & SMB_SIGNING_ENABLED) != 0 &&
-	    (smb2_sign_check_request(sr) != 0)) {
-		smb2sr_put_error(sr, STATUS_ACCESS_DENIED);
-		goto done;
-	}
-#endif	/* XXX */
 
 	if (sr->smb2_hdr_flags & SMB2_FLAGS_SERVER_TO_REDIR) {
 		smb2sr_put_error(sr, NT_STATUS_INVALID_PARAMETER);

@@ -226,12 +226,15 @@ smb2_negotiate_common(smb_request_t *sr, uint16_t dialect)
 	timestruc_t server_time;
 	smb_session_t *s = sr->session;
 	int rc;
+	uint16_t secmode;
 
 	/*
 	 * Negotiation itself
-	 * XXX: Disable signing for now
 	 */
-	s->secmode = 0;
+	secmode = SMB2_NEGOTIATE_SIGNING_ENABLED;
+	if (sr->sr_cfg->skc_signing_required)
+		secmode |= SMB2_NEGOTIATE_SIGNING_REQUIRED;
+	s->secmode = secmode;
 	(void) microtime(&server_time);
 
 	/*
