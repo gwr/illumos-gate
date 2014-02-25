@@ -141,7 +141,7 @@ smb2_create(smb_request_t *sr)
 	/*
 	 * Get the path name
 	 */
-	if (NameLength >= MAXPATHLEN) {
+	if (NameLength >= SMB_MAXPATHLEN) {
 		status = NT_STATUS_OBJECT_PATH_INVALID;
 		goto errout;
 	}
