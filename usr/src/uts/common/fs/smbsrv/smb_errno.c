@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -81,6 +81,7 @@ smb_errno2status_map[] = {
 	{ ENOTSUP,	NT_STATUS_NOT_SUPPORTED },
 	{ EDQUOT,	NT_STATUS_DISK_FULL },
 	{ EREMOTE, 	NT_STATUS_PATH_NOT_COVERED},
+	{ ENAMETOOLONG,	NT_STATUS_OBJECT_NAME_INVALID },
 	{ EILSEQ,	NT_STATUS_OBJECT_NAME_INVALID },
 	{ ENOTEMPTY,	NT_STATUS_DIRECTORY_NOT_EMPTY },
 	{ ENOTSOCK,	NT_STATUS_INVALID_HANDLE },

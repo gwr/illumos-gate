@@ -68,6 +68,17 @@ smb_is_executable(char *path)
 }
 
 /*
+ * Temporarily here.  Later, move this to fs/pathname.c
+ */
+void
+pn_alloc_sz(struct pathname *pnp, size_t sz)
+{
+	pnp->pn_path = pnp->pn_buf = kmem_alloc(sz, KM_SLEEP);
+	pnp->pn_pathlen = 0;
+	pnp->pn_bufsize = sz;
+}
+
+/*
  * smb_pathname_reduce
  *
  * smb_pathname_reduce() takes a path and returns the smb_node for the
@@ -184,10 +195,11 @@ smb_pathname_reduce(
 	if (*path == '\0')
 		return (ENOENT);
 
-	usepath = kmem_alloc(MAXPATHLEN, KM_SLEEP);
+	usepath = kmem_alloc(SMB_MAXPATHLEN, KM_SLEEP);
 
-	if ((len = strlcpy(usepath, path, MAXPATHLEN)) >= MAXPATHLEN) {
-		kmem_free(usepath, MAXPATHLEN);
+	len = strlcpy(usepath, path, SMB_MAXPATHLEN);
+	if (len >= SMB_MAXPATHLEN) {
+		kmem_free(usepath, SMB_MAXPATHLEN);
 		return (ENAMETOOLONG);
 	}
 
@@ -213,9 +225,9 @@ smb_pathname_reduce(
 			is_dfs = sr->smb_flg2 & SMB_FLAGS2_DFS;
 		if (is_dfs != 0) {
 			err = smb_pathname_dfs_preprocess(sr, usepath,
-			    MAXPATHLEN);
+			    SMB_MAXPATHLEN);
 			if (err != 0) {
-				kmem_free(usepath, MAXPATHLEN);
+				kmem_free(usepath, SMB_MAXPATHLEN);
 				return (err);
 			}
 			len = strlen(usepath);
@@ -233,7 +245,7 @@ smb_pathname_reduce(
 			err = smb_vss_lookup_nodes(sr, root_node, cur_node,
 			    usepath, &vss_cur_node, &vss_root_node);
 			if (err != 0) {
-				kmem_free(usepath, MAXPATHLEN);
+				kmem_free(usepath, SMB_MAXPATHLEN);
 				return (err);
 			}
 
@@ -248,11 +260,11 @@ smb_pathname_reduce(
 
 	(void) strcanon(usepath, "/");
 
-	(void) pn_alloc(&ppn);
+	(void) pn_alloc_sz(&ppn, SMB_MAXPATHLEN);
 
 	if ((err = pn_set(&ppn, usepath)) != 0) {
 		(void) pn_free(&ppn);
-		kmem_free(usepath, MAXPATHLEN);
+		kmem_free(usepath, SMB_MAXPATHLEN);
 		if (vss_cur_node != NULL)
 			(void) smb_node_release(vss_cur_node);
 		if (vss_root_node != NULL)
@@ -284,7 +296,7 @@ smb_pathname_reduce(
 	}
 
 	(void) pn_free(&ppn);
-	kmem_free(usepath, MAXPATHLEN);
+	kmem_free(usepath, SMB_MAXPATHLEN);
 
 	/*
 	 * Prevent traversal to another file system if mount point
@@ -382,7 +394,7 @@ smb_pathname(smb_request_t *sr, char *path, int flags,
 	if (dir_node)
 		*dir_node = NULL;
 
-	(void) pn_alloc(&upn);
+	(void) pn_alloc_sz(&upn, SMB_MAXPATHLEN);
 
 	if ((err = pn_set(&upn, path)) != 0) {
 		(void) pn_free(&upn);
