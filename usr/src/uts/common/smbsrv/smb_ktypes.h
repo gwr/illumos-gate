@@ -912,6 +912,7 @@ typedef struct smb_session {
 	 * Maximum negotiated buffer size between SMB client and server
 	 * in SMB_SESSION_SETUP_ANDX
 	 */
+	int			reply_max_bytes;
 	uint16_t		smb_msg_size;
 	uint16_t		smb_max_mpx;
 	uchar_t			*outpipe_data;

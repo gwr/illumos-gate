@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <sys/atomic.h>
@@ -728,6 +728,8 @@ smb_session_create(ksocket_t new_so, uint16_t port, smb_server_t *sv,
 
 	session->cur_credits = session->s_cfg.skc_initial_credits;
 	session->max_credits = session->s_cfg.skc_maximum_credits;
+	/* This may increase in SMB2 negotiate. */
+	session->reply_max_bytes = smb_maxbufsize;
 
 	session->s_magic = SMB_SESSION_MAGIC;
 	return (session);
@@ -1329,7 +1331,7 @@ smb_request_alloc(smb_session_t *session, int req_length)
 	sr->sr_gmtoff = session->s_server->si_gmtoff;
 	sr->sr_cfg = &session->s_cfg;
 	sr->command.max_bytes = req_length;
-	sr->reply.max_bytes = smb_maxbufsize;
+	sr->reply.max_bytes = session->reply_max_bytes;
 	sr->sr_req_length = req_length;
 	if (req_length)
 		sr->sr_request_buf = kmem_alloc(req_length, KM_SLEEP);

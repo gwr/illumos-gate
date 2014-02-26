@@ -26,6 +26,7 @@ uint32_t smb2srv_capabilities =
 	SMB2_CAP_DFS; /* XXX: more to come */
 
 /* No, these should not be easy to "tune". */
+uint32_t smb2_tcp_sndbuf = (1<<20);
 uint32_t smb2_tcp_rcvbuf = (1<<20);
 uint32_t smb2_max_rwsize = (1<<18);
 uint32_t smb2_max_trans  = (1<<16);
@@ -235,6 +236,7 @@ smb2_negotiate_common(smb_request_t *sr, uint16_t dialect)
 	if (sr->sr_cfg->skc_signing_required)
 		secmode |= SMB2_NEGOTIATE_SIGNING_REQUIRED;
 	s->secmode = secmode;
+	s->reply_max_bytes = smb2_tcp_sndbuf;
 	(void) microtime(&server_time);
 
 	/*
@@ -270,6 +272,13 @@ smb2_negotiate_common(smb_request_t *sr, uint16_t dialect)
 	    sr->sr_cfg->skc_negtok);	/* c */
 
 	smb2_send_reply(sr);
+
+	(void) ksocket_setsockopt(s->sock, SOL_SOCKET,
+	    SO_SNDBUF, (const void *)&smb2_tcp_sndbuf,
+	    sizeof (smb2_tcp_sndbuf), CRED());
+	(void) ksocket_setsockopt(s->sock, SOL_SOCKET,
+	    SO_RCVBUF, (const void *)&smb2_tcp_rcvbuf,
+	    sizeof (smb2_tcp_rcvbuf), CRED());
 
 	return (rc);
 }
