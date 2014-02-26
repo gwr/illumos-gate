@@ -266,10 +266,8 @@ smb2_sign_reply(smb_request_t *sr)
 	/*
 	 * Calculate MAC signature
 	 */
-	if (smb2_sign_calc(&tmp_mbc, sign, digest) != 0) {
-		cmn_err(CE_WARN, "smb2_sign_reply: error in smb2_sign_calc");
+	if (smb2_sign_calc(&tmp_mbc, sign, digest) != 0)
 		return;
-	}
 
 	/*
 	 * Poke the signature into the response.
