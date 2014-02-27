@@ -624,7 +624,7 @@ smb2_free_create_ctx(smb2_create_ctx_t *cc)
 		MBC_FLUSH(&cce->cce_mbc);
 	}
 	if (cc->cc_out_flags & CCTX_QUERY_ON_DISK_ID) {
-		cce = &cc->cc_out_max_access;
+		cce = &cc->cc_out_file_id;
 		MBC_FLUSH(&cce->cce_mbc);
 	}
 }
