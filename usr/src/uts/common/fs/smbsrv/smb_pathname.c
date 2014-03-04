@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc. All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc. All rights reserved.
  */
 
 #include <smbsrv/smb_kproto.h>
@@ -204,27 +204,43 @@ smb_pathname_reduce(
 	local_cur_node = cur_node;
 	local_root_node = root_node;
 
-	if (SMB_TREE_IS_DFSROOT(sr) && (sr->smb_flg2 & SMB_FLAGS2_DFS)) {
-		err = smb_pathname_dfs_preprocess(sr, usepath, MAXPATHLEN);
-		if (err != 0) {
-			kmem_free(usepath, MAXPATHLEN);
-			return (err);
+	if (SMB_TREE_IS_DFSROOT(sr)) {
+		int is_dfs;
+		if (sr->session->dialect >= 0x200)
+			is_dfs = sr->smb2_hdr_flags &
+			    SMB2_FLAGS_DFS_OPERATIONS;
+		else
+			is_dfs = sr->smb_flg2 & SMB_FLAGS2_DFS;
+		if (is_dfs != 0) {
+			err = smb_pathname_dfs_preprocess(sr, usepath,
+			    MAXPATHLEN);
+			if (err != 0) {
+				kmem_free(usepath, MAXPATHLEN);
+				return (err);
+			}
+			len = strlen(usepath);
 		}
-		len = strlen(usepath);
 	}
 
-	if (sr && (sr->smb_flg2 & SMB_FLAGS2_REPARSE_PATH)) {
-		err = smb_vss_lookup_nodes(sr, root_node, cur_node,
-		    usepath, &vss_cur_node, &vss_root_node);
+	if (sr != NULL) {
+		boolean_t chk_vss;
+		if (sr->session->dialect >= 0x200)
+			chk_vss = sr->arg.open.create_timewarp;
+		else
+			chk_vss = (sr->smb_flg2 &
+			    SMB_FLAGS2_REPARSE_PATH) != 0;
+		if (chk_vss) {
+			err = smb_vss_lookup_nodes(sr, root_node, cur_node,
+			    usepath, &vss_cur_node, &vss_root_node);
+			if (err != 0) {
+				kmem_free(usepath, MAXPATHLEN);
+				return (err);
+			}
 
-		if (err != 0) {
-			kmem_free(usepath, MAXPATHLEN);
-			return (err);
+			len = strlen(usepath);
+			local_cur_node = vss_cur_node;
+			local_root_node = vss_root_node;
 		}
-
-		len = strlen(usepath);
-		local_cur_node = vss_cur_node;
-		local_root_node = vss_root_node;
 	}
 
 	if (usepath[len - 1] == '/')

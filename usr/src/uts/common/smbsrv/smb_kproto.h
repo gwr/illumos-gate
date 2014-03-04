@@ -868,7 +868,7 @@ boolean_t smb_ace_is_generic(int);
 boolean_t smb_ace_is_access(int);
 boolean_t smb_ace_is_audit(int);
 
-uint32_t smb_vss_ioctl_enumerate_snaps(smb_request_t *, smb_xa_t *);
+uint32_t smb_vss_enum_snapshots(smb_request_t *, smb_fsctl_t *);
 int smb_vss_lookup_nodes(smb_request_t *, smb_node_t *, smb_node_t *,
     char *, smb_node_t **, smb_node_t **);
 vnode_t *smb_lookuppathvptovp(smb_request_t *, char *, vnode_t *, vnode_t *);

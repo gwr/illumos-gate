@@ -43,6 +43,7 @@ static struct smb2_ioctbl_ent smb2_ioc_tbl[];
 /* te_flags */
 #define	ITF_IPC_ONLY	1
 #define	ITF_NO_FID	2
+#define	ITF_DISK_FID	4
 
 smb_sdrc_t
 smb2_ioctl(smb_request_t *sr)
@@ -121,6 +122,17 @@ smb2_ioctl(smb_request_t *sr)
 		status = smb2sr_lookup_fid(sr, &smb2fid);
 		if (status) {
 			status = NT_STATUS_FILE_CLOSED;
+			goto errout;
+		}
+	}
+
+	/*
+	 * Note: some ioctls require a "disk" fid.
+	 */
+	if (te->te_flags & ITF_DISK_FID) {
+		if (sr->fid_ofile == NULL ||
+		    !SMB_FTYPE_IS_DISK(sr->fid_ofile->f_ftype)) {
+			status = NT_STATUS_INVALID_PARAMETER;
 			goto errout;
 		}
 	}
@@ -227,7 +239,8 @@ smb2_ioc_tbl[] = {
 	/*
 	 * FILE_DEVICE_NETWORK_FILE_SYSTEM (20)
 	 */
-	{ FSCTL_SRV_ENUMERATE_SNAPSHOTS, 0,	smb2_fsctl_notsup },
+	{ FSCTL_SRV_ENUMERATE_SNAPSHOTS,
+	    ITF_DISK_FID,			smb_vss_enum_snapshots },
 	{ FSCTL_SRV_REQUEST_RESUME_KEY,	0,	smb2_fsctl_notsup },
 	{ FSCTL_SRV_COPYCHUNK,		0,	smb2_fsctl_notsup },
 	{ FSCTL_SRV_COPYCHUNK_WRITE,	0,	smb2_fsctl_notsup },

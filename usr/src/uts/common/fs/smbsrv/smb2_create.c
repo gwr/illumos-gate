@@ -237,10 +237,21 @@ smb2_create(smb_request_t *sr)
 			op->sd = kmem_alloc(sizeof (sd), KM_SLEEP);
 			*op->sd = sd;
 		}
+
 		/*
-		 * Could do these too:  (later)
-		 * CCTX_TIMEWARP_TOKEN
+		 * Support for opening "Previous Versions".
+		 * [MS-SMB2] 2.2.13.2.7  Data is an NT time.
 		 */
+		if (cctx.cc_in_flags & CCTX_TIMEWARP_TOKEN) {
+			uint64_t timewarp;
+			cce = &cctx.cc_in_time_warp;
+			status = smb_mbc_decodef(&cce->cce_mbc,
+			    "q", &timewarp);
+			if (status)
+				goto errout;
+			smb_time_nt_to_unix(timewarp, &op->timewarp);
+			op->create_timewarp = B_TRUE;
+		}
 	}
 
 	/*

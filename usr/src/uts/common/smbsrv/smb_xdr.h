@@ -228,19 +228,23 @@ bool_t lsa_account_xdr(XDR *, lsa_account_t *);
  */
 #define	SMB_VSS_GMT_SIZE sizeof ("@GMT-yyyy.mm.dd-hh.mm.ss")
 
+/*
+ * Args for enumerating "previous versions".
+ * See also: smb_gmttoken_query_xdr()
+ */
 typedef struct smb_gmttoken_query {
 	uint32_t	gtq_count;
 	char		*gtq_path;
 } smb_gmttoken_query_t;
 
 /*
- * Args for opening "previous versions".
+ * Part of response for enumerating "previous versions".
  * See also: smb_gmttoken_xdr()
  */
 typedef char *smb_gmttoken_t;
 
 /*
- * Response for opening "previous versions".
+ * Response for enumerating "previous versions".
  * See also: smb_gmttoken_response_xdr()
  */
 typedef struct smb_gmttoken_response {
@@ -252,12 +256,13 @@ typedef struct smb_gmttoken_response {
 } smb_gmttoken_response_t;
 
 /*
- * More stuff for "previous versions" support.
+ * Args to lookup "previous versions" during open.
  * See also: smb_gmttoken_snapname_xdr()
  */
 typedef struct smb_gmttoken_snapname {
 	char	*gts_path;
 	char	*gts_gmttoken;
+	uint64_t gts_toktime; /* seconds */
 } smb_gmttoken_snapname_t;
 
 bool_t smb_gmttoken_query_xdr(XDR *, smb_gmttoken_query_t *);

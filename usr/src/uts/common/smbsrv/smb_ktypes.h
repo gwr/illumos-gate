@@ -1463,11 +1463,13 @@ typedef struct open_param {
 	uint32_t	dattr;
 	timestruc_t	crtime;
 	timestruc_t	mtime;
+	timestruc_t	timewarp;
 	uint64_t	dsize;
 	uint32_t	desired_access;
 	uint32_t	share_access;
 	uint32_t	create_options;
 	uint32_t	create_disposition;
+	boolean_t	create_timewarp;
 	boolean_t	created_readonly;
 	uint32_t	ftype;
 	uint32_t	devstate;
