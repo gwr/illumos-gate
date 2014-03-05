@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -1179,7 +1179,7 @@ smb_odir_single_fileinfo(smb_request_t *sr, smb_odir_t *od,
 
 	bzero(&attr, sizeof (attr));
 	attr.sa_mask = SMB_AT_ALL;
-	rc = smb_node_getattr(NULL, fnode, od->d_cred, NULL, &attr);
+	rc = smb_node_getattr(NULL, fnode, zone_kcred(), NULL, &attr);
 	if (rc != 0) {
 		smb_node_release(fnode);
 		return (rc);
@@ -1192,7 +1192,7 @@ smb_odir_single_fileinfo(smb_request_t *sr, smb_odir_t *od,
 		smb_node_release(fnode);
 		fnode = tgt_node;
 		attr.sa_mask = SMB_AT_ALL;
-		rc = smb_node_getattr(NULL, fnode, od->d_cred, NULL, &attr);
+		rc = smb_node_getattr(NULL, fnode, zone_kcred(), NULL, &attr);
 		if (rc != 0) {
 			smb_node_release(fnode);
 			return (rc);
@@ -1294,7 +1294,7 @@ smb_odir_wildcard_fileinfo(smb_request_t *sr, smb_odir_t *od,
 
 	bzero(&attr, sizeof (attr));
 	attr.sa_mask = SMB_AT_ALL;
-	rc = smb_node_getattr(NULL, fnode, od->d_cred, NULL, &attr);
+	rc = smb_node_getattr(NULL, fnode, zone_kcred(), NULL, &attr);
 	if (rc != 0) {
 		smb_node_release(fnode);
 		return (rc);
