@@ -227,13 +227,10 @@ smbd_ntlmssp_negotiate(authsvc_context_t *ctx)
 	else if (be->clnt_flags & NTLMSSP_NEGOTIATE_OEM)
 		be->srv_flags |= NTLMSSP_NEGOTIATE_OEM;
 
-#if 0 /* Todo.  See also smb_auth_validate() */
-	if (be->clnt_flags & NTLMSSP_NEGOTIATE_NTLM2)
-		be->srv_flags |= NTLMSSP_NEGOTIATE_NTLM2;
-	else
-#endif
-		if (be->clnt_flags & NTLMSSP_NEGOTIATE_LM_KEY)
-			be->srv_flags |= NTLMSSP_NEGOTIATE_LM_KEY;
+	/* LM Key is mutually exclusive with NTLM2 */
+	if ((be->srv_flags & NTLMSSP_NEGOTIATE_NTLM2) == 0 &&
+	    (be->clnt_flags & NTLMSSP_NEGOTIATE_LM_KEY) != 0)
+		be->srv_flags |= NTLMSSP_NEGOTIATE_LM_KEY;
 
 	if (secmode == SMB_SECMODE_DOMAIN) {
 		be->srv_flags |= NTLMSSP_TARGET_TYPE_DOMAIN;

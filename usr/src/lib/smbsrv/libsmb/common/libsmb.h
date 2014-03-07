@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #ifndef	_LIBSMB_H
@@ -501,8 +501,6 @@ extern int smb_auth_set_info(char *, char *,
 extern int smb_auth_ntlmv2_hash(unsigned char *,
 	char *, char *, unsigned char *);
 
-extern int smb_auth_gen_session_key(smb_auth_info_t *, unsigned char *);
-
 boolean_t smb_auth_validate(smb_passwd_t *, char *, char *,
     uchar_t *, uint_t, uchar_t *, uint_t, uchar_t *, uint_t, uchar_t *);
 
@@ -517,14 +515,6 @@ extern void smb_ipc_get_passwd(uint8_t *, size_t);
 extern void smb_ipc_init(void);
 extern void smb_ipc_rollback(void);
 extern void smb_ipc_set(char *, uint8_t *);
-
-/*
- * SMB MAC Signing
- */
-
-#define	SMB_MAC_KEY_SZ	(SMBAUTH_SESSION_KEY_SZ + SMBAUTH_CS_MAXLEN)
-#define	SMB_SIG_OFFS	14	/* signature field offset within header */
-#define	SMB_SIG_SIZE	8	/* SMB signature size */
 
 /*
  * Signing flags:
@@ -548,38 +538,6 @@ extern void smb_ipc_set(char *, uint8_t *);
 #define	SMB_SCF_REQUIRED	0x02
 #define	SMB_SCF_STARTED		0x04
 #define	SMB_SCF_KEY_ISSET_THIS_LOGON	0x08
-
-/*
- * smb_sign_ctx
- *
- * SMB signing context.
- *
- *	ssc_seqnum				sequence number
- *	ssc_keylen				mac key length
- *	ssc_mid					multiplex id - reserved
- *	ssc_flags				flags
- *	ssc_mackey				mac key
- *	ssc_sign				mac signature
- *
- */
-typedef struct smb_sign_ctx {
-	unsigned int ssc_seqnum;
-	unsigned short ssc_keylen;
-	unsigned short ssc_mid;
-	unsigned int ssc_flags;
-	unsigned char ssc_mackey[SMB_MAC_KEY_SZ];
-	unsigned char ssc_sign[SMB_SIG_SIZE];
-} smb_sign_ctx_t;
-
-extern int smb_mac_init(smb_sign_ctx_t *sign_ctx, smb_auth_info_t *auth);
-extern int smb_mac_calc(smb_sign_ctx_t *sign_ctx,
-    const unsigned char *buf, size_t buf_len, unsigned char *mac_sign);
-extern int smb_mac_chk(smb_sign_ctx_t *sign_ctx,
-    const unsigned char *buf, size_t buf_len);
-extern int smb_mac_sign(smb_sign_ctx_t *sign_ctx,
-    unsigned char *buf, size_t buf_len);
-extern void smb_mac_inc_seqnum(smb_sign_ctx_t *sign_ctx);
-extern void smb_mac_dec_seqnum(smb_sign_ctx_t *sign_ctx);
 
 /*
  * Each domain is categorized using the enum values below.

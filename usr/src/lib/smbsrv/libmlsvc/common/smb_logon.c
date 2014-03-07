@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <unistd.h>
@@ -476,7 +476,6 @@ smb_logon_local(smb_logon_t *user_info, smb_token_t *token)
 	char guest[SMB_USERNAME_MAXLEN];
 	smb_passwd_t smbpw;
 	uint32_t status;
-	boolean_t isguest;
 
 	if (user_info->lg_secmode == SMB_SECMODE_DOMAIN) {
 		if ((user_info->lg_domain_type != SMB_DOMAIN_LOCAL) &&
@@ -484,16 +483,18 @@ smb_logon_local(smb_logon_t *user_info, smb_token_t *token)
 			return;
 	}
 
+	/*
+	 * If the requested account name is "guest" (or whatever
+	 * our guest account is named) then don't handle it here.
+	 * Let this request fall through to smb_logon_guest().
+	 */
 	smb_guest_account(guest, SMB_USERNAME_MAXLEN);
-	isguest = (smb_strcasecmp(guest, user_info->lg_e_username, 0) == 0);
+	if (smb_strcasecmp(guest, user_info->lg_e_username, 0) == 0)
+		return;
 
 	status = smb_token_auth_local(user_info, token, &smbpw);
-	if (status == NT_STATUS_SUCCESS) {
-		if (isguest)
-			status = smb_token_setup_guest(user_info, token);
-		else
-			status = smb_token_setup_local(&smbpw, token);
-	}
+	if (status == NT_STATUS_SUCCESS)
+		status = smb_token_setup_local(&smbpw, token);
 
 	user_info->lg_status = status;
 }
@@ -515,23 +516,31 @@ smb_logon_guest(smb_logon_t *user_info, smb_token_t *token)
 	char guest[SMB_USERNAME_MAXLEN];
 	smb_passwd_t smbpw;
 	char *temp;
-	uint32_t status;
 
 	if (user_info->lg_status != NT_STATUS_NO_SUCH_USER)
 		return;
 
+	/* Get the name of the guest account. */
 	smb_guest_account(guest, SMB_USERNAME_MAXLEN);
+
+	/* Does the guest account exist? */
+	if (smb_pwd_getpwnam(guest, &smbpw) == NULL)
+		return;
+
+	/* Is it enabled? (empty p/w is OK) */
+	if (smbpw.pw_flags & SMB_PWF_DISABLE)
+		return;
+
+	/*
+	 * OK, give the client a guest logon.  Note that on entry,
+	 * lg_e_username is typically something other than "guest"
+	 * so we need to set the effective username when createing
+	 * the guest token.
+	 */
 	temp = user_info->lg_e_username;
 	user_info->lg_e_username = guest;
-
-	status = smb_token_auth_local(user_info, token, &smbpw);
-	if ((status == NT_STATUS_SUCCESS) ||
-	    (status == NT_STATUS_NO_SUCH_USER)) {
-		status = smb_token_setup_guest(user_info, token);
-	}
-
+	user_info->lg_status = smb_token_setup_guest(user_info, token);
 	user_info->lg_e_username = temp;
-	user_info->lg_status = status;
 }
 
 /*
@@ -554,7 +563,6 @@ smb_token_auth_local(smb_logon_t *user_info, smb_token_t *token,
     smb_passwd_t *smbpw)
 {
 	boolean_t ok;
-	uint32_t lm_len;
 	uint32_t status = NT_STATUS_SUCCESS;
 
 	if (smb_pwd_getpwnam(user_info->lg_e_username, smbpw) == NULL)
@@ -563,10 +571,14 @@ smb_token_auth_local(smb_logon_t *user_info, smb_token_t *token,
 	if (smbpw->pw_flags & SMB_PWF_DISABLE)
 		return (NT_STATUS_ACCOUNT_DISABLED);
 
-	if (smbpw->pw_flags & SMB_PWF_LM)
-		lm_len = user_info->lg_lm_password.len;
-	else
-		lm_len = 0;
+	if ((smbpw->pw_flags & (SMB_PWF_LM | SMB_PWF_NT)) == 0) {
+		/*
+		 * The SMB passwords have not been set.
+		 * Return an error that suggests the
+		 * password needs to be set.
+		 */
+		return (NT_STATUS_PASSWORD_EXPIRED);
+	}
 
 	token->tkn_session_key = malloc(SMBAUTH_SESSION_KEY_SZ);
 	if (token->tkn_session_key == NULL)
@@ -581,7 +593,7 @@ smb_token_auth_local(smb_logon_t *user_info, smb_token_t *token,
 	    user_info->lg_nt_password.val,
 	    user_info->lg_nt_password.len,
 	    user_info->lg_lm_password.val,
-	    lm_len,
+	    user_info->lg_lm_password.len,
 	    (uchar_t *)token->tkn_session_key);
 	if (ok)
 		return (NT_STATUS_SUCCESS);
