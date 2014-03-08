@@ -585,7 +585,7 @@ smb_rmdir_possible(smb_node_t *n, uint32_t flags)
 {
 	ASSERT(n->vp->v_type == VDIR);
 	char buf[512]; /* Only large enough to see if the dir is empty. */
-	int eof, bsize = sizeof(buf), reclen = 0;
+	int eof, bsize = sizeof (buf), reclen = 0;
 	char *name;
 	boolean_t edp = vfs_has_feature(n->vp->v_vfsp, VFSFT_DIRENTFLAGS);
 
@@ -646,12 +646,6 @@ smb_node_set_delete_on_close(smb_node_t *node, cred_t *cr, uint32_t flags)
 		return (NT_STATUS_CANNOT_DELETE);
 	}
 
-	mutex_enter(&node->n_mutex);
-	if (node->flags & NODE_FLAGS_DELETE_ON_CLOSE) {
-		mutex_exit(&node->n_mutex);
-		return (NT_STATUS_CANNOT_DELETE);
-	}
-
 	/*
 	 * If the directory is not empty we should fail setting del-on-close
 	 * with STATUS_DIRECTORY_NOT_EMPTY. see MS's
@@ -660,10 +654,16 @@ smb_node_set_delete_on_close(smb_node_t *node, cred_t *cr, uint32_t flags)
 	if (smb_node_is_dir(node)) {
 		status = smb_rmdir_possible(node, flags);
 		if (status != 0) {
-			mutex_exit(&node->n_mutex);
 			return (status);
 		}
 	}
+
+	mutex_enter(&node->n_mutex);
+	if (node->flags & NODE_FLAGS_DELETE_ON_CLOSE) {
+		mutex_exit(&node->n_mutex);
+		return (NT_STATUS_CANNOT_DELETE);
+	}
+
 	crhold(cr);
 	node->delete_on_close_cred = cr;
 	node->n_delete_on_close_flags = flags;
