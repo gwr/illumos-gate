@@ -402,11 +402,11 @@ smb2_find_mbc_encode(smb_request_t *sr, smb_fileinfo_t *fileinfo,
 	 */
 	starting_offset = sr->raw_data.chain_offset;
 
-#if 0	/* Only if it turns out we need to... */
+	/*
+	 * Technically (per MS-SMB2) resume keys are optional.
+	 * Windows doesn't need them, but MacOS does.
+	 */
 	resume_key = fileinfo->fi_cookie;
-#else
-	resume_key = 0;
-#endif
 
 	/*
 	 * This switch handles all the "information levels" (formats)
