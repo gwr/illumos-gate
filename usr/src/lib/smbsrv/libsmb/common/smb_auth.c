@@ -556,12 +556,13 @@ smb_auth_validate(
 	/*
 	 * Accept NTLM at levels 0-4
 	 */
-	if (nt_len == SMBAUTH_LM_RESP_SZ) {
+	if (nt_len == SMBAUTH_LM_RESP_SZ && lm_len >= NTLM_CHAL_SZ) {
 		ok = smb_ntlmv1x_password_ok(challenge, smbpw->pw_nthash,
 		    nt_resp, lm_resp, session_key);
 		if (ok)
 			return (ok);
-
+	}
+	if (nt_len == SMBAUTH_LM_RESP_SZ) {
 		ok = smb_ntlm_password_ok(challenge, smbpw->pw_nthash,
 		    nt_resp, session_key);
 		if (ok)
