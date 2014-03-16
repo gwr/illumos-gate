@@ -434,8 +434,15 @@ smb_cred_create(smb_token_t *token)
 	ksidlist = smb_cred_set_sidlist(&token->tkn_win_grps);
 	crsetsidlist(cr, ksidlist);
 
-	if (smb_token_query_privilege(token, SE_TAKE_OWNERSHIP_LUID))
-		(void) crsetpriv(cr, PRIV_FILE_CHOWN, NULL);
+	if (smb_token_query_privilege(token, SE_TAKE_OWNERSHIP_LUID)) {
+		(void) crsetpriv(cr,
+		    PRIV_FILE_CHOWN,
+		    PRIV_FILE_DAC_READ,
+		    PRIV_FILE_DAC_SEARCH,
+		    PRIV_FILE_DAC_WRITE,
+		    PRIV_FILE_OWNER,
+		    NULL);
+	}
 
 	return (cr);
 }
