@@ -290,8 +290,8 @@ smb_authenticate_ext(smb_request_t *sr)
 
 	case LSA_MTYPE_ES_CONT:
 		sinfo->ssi_oseclen = (uint16_t)rlen;
-		sinfo->ssi_osecblob = rbuf;
-		rbuf = NULL;	/* caller consumes */
+		sinfo->ssi_osecblob = smb_srm_alloc(sr, sinfo->ssi_oseclen);
+		bcopy(rbuf, sinfo->ssi_osecblob, sinfo->ssi_oseclen);
 		/*
 		 * This is not really an error, but tells the client
 		 * it should send another session setup request.
@@ -301,8 +301,8 @@ smb_authenticate_ext(smb_request_t *sr)
 
 	case LSA_MTYPE_ES_DONE:
 		sinfo->ssi_oseclen = (uint16_t)rlen;
-		sinfo->ssi_osecblob = rbuf;
-		rbuf = NULL;	/* caller consumes */
+		sinfo->ssi_osecblob = smb_srm_alloc(sr, sinfo->ssi_oseclen);
+		bcopy(rbuf, sinfo->ssi_osecblob, sinfo->ssi_oseclen);
 		/*
 		 * Get the final auth. token.
 		 */

@@ -210,9 +210,6 @@ smb_post_session_setup_andx(smb_request_t *sr)
 
 	if (sinfo->ssi_ntpwd != NULL)
 		bzero(sinfo->ssi_ntpwd, sinfo->ssi_ntpwlen);
-
-	if (sinfo->ssi_osecblob != NULL)
-		kmem_free(sinfo->ssi_osecblob, sinfo->ssi_oseclen);
 }
 
 /*
