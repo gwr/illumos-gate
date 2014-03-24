@@ -21,6 +21,7 @@
 
 /*
  * Copyright (c) 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <stdio.h>
@@ -194,7 +195,7 @@ static uint32_t smb_quota_query_list(smb_quota_tree_t *,
 #define	SMB_QUOTA_CNTRL_DIR		".$EXTEND"
 #define	SMB_QUOTA_CNTRL_FILE		"$QUOTA"
 #define	SMB_QUOTA_CNTRL_INDEX_XATTR	"SUNWsmb:$Q:$INDEX_ALLOCATION"
-#define	SMB_QUOTA_CNTRL_PERM		"everyone@:rwpaARWc::allow"
+#define	SMB_QUOTA_CNTRL_PERM		"everyone@:rwpaARWcs::allow"
 
 /*
  * smb_quota_init
