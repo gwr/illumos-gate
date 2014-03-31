@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -442,9 +442,6 @@ smbd_authsvc_oldreq(authsvc_context_t *ctx)
 	}
 	xdr_destroy(&xdrs);
 
-	if (user_info.lg_username[0] == '\0')
-		user_info.lg_flags |= SMB_ATF_ANON;
-
 	token = smbd_user_auth_logon(&user_info);
 	xdr_free(smb_logon_xdr, (char *)&user_info);
 	if (token == NULL)
@@ -455,7 +452,8 @@ smbd_authsvc_oldreq(authsvc_context_t *ctx)
 	return (rc);
 }
 
-static int smbd_authsvc_clinfo(authsvc_context_t *ctx)
+static int
+smbd_authsvc_clinfo(authsvc_context_t *ctx)
 {
 
 	if (ctx->ctx_irawlen != sizeof (smb_lsa_clinfo_t))

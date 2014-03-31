@@ -407,19 +407,10 @@ smbd_ntlmssp_authenticate(authsvc_context_t *ctx)
 
 	user_info.lg_level = NETR_NETWORK_LOGON;
 	user_info.lg_flags = 0;
-	if (user == NULL) {
-		user_info.lg_flags |= SMB_ATF_ANON;
-		user_info.lg_username = "";
-		user_info.lg_e_username = "anonymous";
-		domain = NULL;
-	} else {
-		user_info.lg_username = user;
-		user_info.lg_e_username = user;
-	}
 
 	user_info.lg_ntlm_flags = be->clnt_flags;
+	user_info.lg_username = (user) ? user : "";
 	user_info.lg_domain = (domain) ? domain : "";
-	user_info.lg_e_domain = user_info.lg_domain;
 	user_info.lg_workstation = (wksta) ? wksta : "";
 
 	user_info.lg_clnt_ipaddr =
