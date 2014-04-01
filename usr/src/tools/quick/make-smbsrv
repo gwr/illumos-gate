@@ -167,7 +167,7 @@ clean|clobber)
   (cd $SRC/cmd/fs.d && $make ${1}_local)
   ;;
 esac
-  
+
 (cd $SRC/cmd/devfsadm && $make $1)
 (cd $SRC/cmd/smbsrv && $make $1)
 
