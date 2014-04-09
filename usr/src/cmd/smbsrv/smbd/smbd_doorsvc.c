@@ -573,6 +573,8 @@ smbd_dop_user_auth_logoff(smbd_arg_t *arg)
 static int
 smbd_dop_user_auth_logon(smbd_arg_t *arg)
 {
+	_NOTE(ARGUNUSED(arg))
+
 	/* No longer used */
 	return (SMB_DOP_EMPTYBUF);
 }
