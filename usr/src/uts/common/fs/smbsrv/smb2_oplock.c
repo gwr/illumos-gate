@@ -131,7 +131,7 @@ smb2_oplock_break_notification(smb_request_t *sr, uint8_t brk)
 	 * SMB2 Header
 	 */
 	sr->smb2_cmd_code = SMB2_OPLOCK_BREAK;
-	sr->smb2_hdr_flags = 0;
+	sr->smb2_hdr_flags = SMB2_FLAGS_SERVER_TO_REDIR;
 	sr->smb_tid = ofile->f_tree->t_tid;
 	sr->smb_pid = 0;
 	sr->smb_uid = 0;

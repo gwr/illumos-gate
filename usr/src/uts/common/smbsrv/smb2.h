@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #ifndef _SMB_SMB2_H
@@ -66,10 +66,6 @@ typedef enum {
  * a request. This MUST be set on responses sent from the
  * server to the client, and MUST NOT be set on requests
  * sent from the client to the server.
- *
- * Note that for "backwards" requests like oplock break, that
- * go from server to client, this is NOT set in the request.
- * This flag is therefore mis-named; Should be _RESPONSE.
  */
 #define	SMB2_FLAGS_SERVER_TO_REDIR	0x00000001
 
