@@ -264,10 +264,13 @@ smb_pwd_getpwnam(const char *name, smb_passwd_t *smbpw)
 		return (smb_pwd_ops.pwop_getpwnam(name, smbpw));
 
 	err = smb_pwd_lock();
-	if (err != SMB_PWE_SUCCESS)
+	if (err != SMB_PWE_SUCCESS) {
+		syslog(LOG_WARNING, "smb_pwdutil: lock failed, err=%d", err);
 		return (NULL);
+	}
 
 	if ((fp = fopen(SMB_PASSWD, "rF")) == NULL) {
+		syslog(LOG_WARNING, "smb_pwdutil: open failed, %m");
 		(void) smb_pwd_unlock();
 		return (NULL);
 	}
@@ -312,10 +315,13 @@ smb_pwd_getpwuid(uid_t uid, smb_passwd_t *smbpw)
 		return (smb_pwd_ops.pwop_getpwuid(uid, smbpw));
 
 	err = smb_pwd_lock();
-	if (err != SMB_PWE_SUCCESS)
+	if (err != SMB_PWE_SUCCESS) {
+		syslog(LOG_WARNING, "smb_pwdutil: lock failed, err=%d", err);
 		return (NULL);
+	}
 
 	if ((fp = fopen(SMB_PASSWD, "rF")) == NULL) {
+		syslog(LOG_WARNING, "smb_pwdutil: open failed, %m");
 		(void) smb_pwd_unlock();
 		return (NULL);
 	}
@@ -1002,10 +1008,13 @@ smb_lucache_do_update(void)
 	void *cookie = NULL;
 	FILE *fp;
 
-	if ((rc = smb_pwd_lock()) != SMB_PWE_SUCCESS)
+	if ((rc = smb_pwd_lock()) != SMB_PWE_SUCCESS) {
+		syslog(LOG_WARNING, "smb_pwdutil: lock failed, err=%d", rc);
 		return (rc);
+	}
 
 	if ((fp = fopen(SMB_PASSWD, "rF")) == NULL) {
+		syslog(LOG_WARNING, "smb_pwdutil: open failed, %m");
 		(void) smb_pwd_unlock();
 		return (SMB_PWE_OPEN_FAILED);
 	}
