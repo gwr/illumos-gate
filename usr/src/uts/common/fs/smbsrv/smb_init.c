@@ -78,10 +78,8 @@ uint_t	smb_audit_flags =
 #endif
 
 /*
- * Maximum number of simultaneous authentication, share mapping, pipe open
- * requests to be processed.
+ * Maximum number of simultaneous share mapping, pipe open requests allowed.
  */
-int	smb_ssetup_threshold = 256;
 int	smb_tcon_threshold = 1024;
 int	smb_opipe_threshold = 1024;
 

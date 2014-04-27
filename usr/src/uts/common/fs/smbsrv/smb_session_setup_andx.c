@@ -270,28 +270,32 @@ smb_com_session_setup_andx(smb_request_t *sr)
 		break;
 
 	case NT_STATUS_ACCESS_DENIED:
-		smbsr_error(sr, 0, ERRDOS, ERRnoaccess);
+		smbsr_error(sr, status, ERRDOS, ERROR_ACCESS_DENIED);
 		return (SDRC_ERROR);
 
 	case NT_STATUS_TOO_MANY_SESSIONS:
-		smbsr_error(sr, 0, ERRSRV, ERRtoomanyuids);
+		smbsr_error(sr, status, ERRSRV, ERRtoomanyuids);
+		return (SDRC_ERROR);
+
+	case NT_STATUS_NO_LOGON_SERVERS:
+		smbsr_error(sr, status, ERRDOS, ERROR_NO_LOGON_SERVERS);
 		return (SDRC_ERROR);
 
 	case NT_STATUS_NETLOGON_NOT_STARTED:
-		smbsr_error(sr, 0, ERRDOS, NERR_NetlogonNotStarted);
+		smbsr_error(sr, status, ERRDOS, ERROR_NETLOGON_NOT_STARTED);
 		return (SDRC_ERROR);
 
 	case NT_STATUS_USER_SESSION_DELETED:
-		smbsr_error(sr, 0, ERRSRV, ERRbaduid);
+		smbsr_error(sr, status, ERRSRV, ERRbaduid);
 		return (SDRC_ERROR);
 
 	case NT_STATUS_INSUFF_SERVER_RESOURCES:
-		smbsr_error(sr, 0, ERRSRV, ERRnoresource);
+		smbsr_error(sr, status, ERRSRV, ERRnoresource);
 		return (SDRC_ERROR);
 
 	case NT_STATUS_INTERNAL_ERROR:
 	default:
-		smbsr_error(sr, 0, ERRSRV, ERRsrverror);
+		smbsr_error(sr, status, ERRSRV, ERRsrverror);
 		return (SDRC_ERROR);
 
 	}

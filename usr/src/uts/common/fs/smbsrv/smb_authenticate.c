@@ -62,6 +62,7 @@ smb_authenticate_old(smb_request_t *sr)
 	smb_user_t	*user = NULL;
 	ksocket_t	so = NULL;
 	uint32_t	status;
+	int		rc;
 
 	user = smb_user_new(sr->session);
 	if (user == NULL)
@@ -73,13 +74,29 @@ smb_authenticate_old(smb_request_t *sr)
 
 	/*
 	 * Open a connection to the local logon service.
-	 * If we can't, it must be "too busy".
+	 * If we can't, it's probably not running.
 	 */
-	if (smb_authsock_open(&so))
+	rc = smb_authsock_open(&so);
+	if (rc != 0) {
+		cmn_err(CE_NOTE, "smb_authsock_open, rc=%d", rc);
 		return (NT_STATUS_NETLOGON_NOT_STARTED);
+	}
 
-	/* so cleanup in smb_user_logon or logoff */
+	/* Note: so cleanup in smb_user_logon or logoff */
 	user->u_authsock = so;
+
+	/*
+	 * Tell the auth. svc who this client is.  This is our first
+	 * request on the socket.  If this gets ECONNRESET or similar,
+	 * the auth. svc. probably closed the socket because there are
+	 * too many concurrent authentications happening, so return an
+	 * error indicating the auth. service is busy.
+	 */
+	rc = smb_auth_do_clinfo(sr);
+	if (rc != 0) {
+		cmn_err(CE_NOTE, "smb_auth_do_clinfo, rc=%d", rc);
+		return (NT_STATUS_NO_LOGON_SERVERS);
+	}
 
 	status = smb_auth_do_oldreq(sr);
 	if (status != 0)
@@ -238,14 +255,32 @@ smb_authenticate_ext(smb_request_t *sr)
 		sr->uid_user = user;
 		sr->smb_uid = user->u_uid;
 
-		if (smb_authsock_open(&so))
+		/*
+		 * Open a connection to the local logon service.
+		 * If we can't, it's probably not running.
+		 */
+		rc = smb_authsock_open(&so);
+		if (rc != 0) {
+			cmn_err(CE_NOTE, "smb_authsock_open, rc=%d", rc);
 			return (NT_STATUS_NETLOGON_NOT_STARTED);
+		}
 
+		/* Note: so cleanup in smb_user_logon or logoff. */
 		user->u_authsock = so;
 
+		/*
+		 * Tell the auth. svc who this client is.  This is our
+		 * first request on the socket.  If this gets ECONNRESET
+		 * or similar, the auth. svc. probably closed the socket
+		 * because there are too many concurrent authentications
+		 * happening, so return an error indicating the auth.
+		 * service is busy.
+		 */
 		rc = smb_auth_do_clinfo(sr);
-		if (rc)
-			return (NT_STATUS_INTERNAL_ERROR);
+		if (rc != 0) {
+			cmn_err(CE_NOTE, "smb_auth_do_clinfo, rc=%d", rc);
+			return (NT_STATUS_NO_LOGON_SERVERS);
+		}
 	} else {
 		msg_hdr.lmh_msgtype = LSA_MTYPE_ESNEXT;
 		user = smb_session_lookup_uid_st(sr->session,
@@ -523,6 +558,18 @@ smb_authsock_sendrecv(ksocket_t so, smb_lsa_msg_hdr_t *hdr,
 static struct sockaddr_un smbauth_sockname = {
 	AF_UNIX, SMB_AUTHSVC_SOCKNAME };
 
+/*
+ * Limit how long smb_authsock_sendrecv() will wait for a
+ * response from the local authentication service.
+ */
+struct timeval smb_auth_recv_tmo = { 45, 0 };
+
+/*
+ * Also limit the time smb_authsock_sendrecv() will wait
+ * trying to send a request to the authentication service.
+ */
+struct timeval smb_auth_send_tmo = { 15, 0 };
+
 static int
 smb_authsock_open(ksocket_t *so)
 {
@@ -533,12 +580,32 @@ smb_authsock_open(ksocket_t *so)
 	if (rc != 0)
 		return (rc);
 
+	/*
+	 * Set the send/recv timeouts.
+	 */
+	rc = ksocket_setsockopt(*so, SOL_SOCKET, SO_SNDTIMEO,
+	    &smb_auth_send_tmo, sizeof (smb_auth_send_tmo), CRED());
+	if (rc != 0)
+		goto errout;
+	rc = ksocket_setsockopt(*so, SOL_SOCKET, SO_RCVTIMEO,
+	    &smb_auth_recv_tmo, sizeof (smb_auth_recv_tmo), CRED());
+	if (rc != 0)
+		goto errout;
+
+	/*
+	 * Connect to the smbd auth. service.
+	 *
+	 * Would like to set the connect timeout too, but there's
+	 * apparently no easy way to do that for AF_UNIX.
+	 */
 	rc = ksocket_connect(*so, (struct sockaddr *)&smbauth_sockname,
 	    sizeof (smbauth_sockname), CRED());
-	if (rc != 0) {
-		(void) ksocket_close(*so, CRED());
-		*so = NULL;
-	}
+	if (rc == 0)
+		return (0);
+
+errout:
+	(void) ksocket_close(*so, CRED());
+	*so = NULL;
 
 	return (rc);
 }

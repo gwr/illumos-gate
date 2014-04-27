@@ -62,6 +62,7 @@ static int smbd_authsock_create(void);
 static void smbd_authsock_destroy(void);
 static void *smbd_authsvc_listen(void *);
 static void *smbd_authsvc_work(void *);
+static void smbd_authsvc_flood(void);
 
 static authsvc_context_t *smbd_authctx_create(void);
 static void smbd_authctx_destroy(authsvc_context_t *);
@@ -77,6 +78,13 @@ static int smbd_raw_ntlmssp_esfirst(authsvc_context_t *);
 static int smbd_raw_ntlmssp_esnext(authsvc_context_t *);
 
 static int smbd_authsvc_bufsize = 4000;
+
+static mutex_t smbd_authsvc_mutex = DEFAULTMUTEX;
+int smbd_authsvc_thrcnt = 0;
+int smbd_authsvc_maxthread = 200;
+#ifdef DEBUG
+int smbd_authsvc_slowdown = 0;
+#endif
 
 static const spnego_mech_handler_t
 smbd_auth_mech_table[] = {
@@ -225,9 +233,26 @@ smbd_authsvc_listen(void *arg)
 			}
 		}
 
+		/*
+		 * Limit the number of auth. sockets
+		 * (and the threads that service them).
+		 */
+		mutex_lock(&smbd_authsvc_mutex);
+		if (smbd_authsvc_thrcnt >= smbd_authsvc_maxthread) {
+			mutex_unlock(&smbd_authsvc_mutex);
+			close(ns);
+			smbd_authsvc_flood();
+			continue;
+		}
+		smbd_authsvc_thrcnt++;
+		mutex_unlock(&smbd_authsvc_mutex);
+
 		ctx = smbd_authctx_create();
 		if (ctx == NULL) {
 			smbd_report("authsvc, can't allocate context");
+			mutex_lock(&smbd_authsvc_mutex);
+			smbd_authsvc_thrcnt--;
+			mutex_unlock(&smbd_authsvc_mutex);
 			(void) close(ns);
 			goto out;
 		}
@@ -236,6 +261,9 @@ smbd_authsvc_listen(void *arg)
 		rc = pthread_create(&tid, &attr, smbd_authsvc_work, ctx);
 		if (rc) {
 			smbd_report("authsvc, thread create failed, %d", rc);
+			mutex_lock(&smbd_authsvc_mutex);
+			smbd_authsvc_thrcnt--;
+			mutex_unlock(&smbd_authsvc_mutex);
 			smbd_authctx_destroy(ctx);
 			goto out;
 		}
@@ -246,6 +274,18 @@ out:
 	(void) pthread_attr_destroy(&attr);
 	smbd_authsock_destroy();
 	return (NULL);
+}
+
+static void
+smbd_authsvc_flood(void)
+{
+	static time_t last_report;
+	time_t now = time(NULL);
+
+	if (last_report + 60 < now) {
+		last_report = now;
+		smbd_report("authsvc: flooded");
+	}
 }
 
 authsvc_context_t *
@@ -303,6 +343,19 @@ smbd_authctx_destroy(authsvc_context_t *ctx)
 	free(ctx);
 }
 
+/*
+ * Limit how long smbd_authsvc_work will wait for the client to
+ * send us the next part of the authentication sequence.
+ */
+static struct timeval recv_tmo = { 30, 0 };
+
+/*
+ * Also set a timeout for send, where we're sending a response to
+ * the client side (in smbsrv).  That should always be waiting in
+ * recv by the time we send, so a short timeout is OK.
+ */
+static struct timeval send_tmo = { 15, 0 };
+
 static void *
 smbd_authsvc_work(void *arg)
 {
@@ -310,6 +363,18 @@ smbd_authsvc_work(void *arg)
 	smb_lsa_msg_hdr_t	hdr;
 	int sock = ctx->ctx_socket;
 	int len, rc;
+
+	if (setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO,
+	    (char *)&send_tmo,  sizeof (send_tmo)) != 0) {
+		smbd_report("authsvc_work: set set timeout: %m");
+		goto out;
+	}
+
+	if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO,
+	    (char *)&recv_tmo,  sizeof (recv_tmo)) != 0) {
+		smbd_report("authsvc_work: set recv timeout: %m");
+		goto out;
+	}
 
 	for (;;) {
 
@@ -367,11 +432,17 @@ smbd_authsvc_work(void *arg)
 		}
 	}
 
+out:
 	if (ctx->ctx_mh_fini)
 		(ctx->ctx_mh_fini)(ctx);
 
 	smbd_authctx_destroy(ctx);
-	return (NULL);
+
+	mutex_lock(&smbd_authsvc_mutex);
+	smbd_authsvc_thrcnt--;
+	mutex_unlock(&smbd_authsvc_mutex);
+
+	return (NULL);	/* implied pthread_exit() */
 }
 
 /*
@@ -386,6 +457,10 @@ smbd_authsvc_dispatch(authsvc_context_t *ctx)
 	switch (ctx->ctx_irawtype) {
 
 	case LSA_MTYPE_OLDREQ:
+#ifdef DEBUG
+		if (smbd_authsvc_slowdown)
+			sleep(smbd_authsvc_slowdown);
+#endif
 		rc = smbd_authsvc_oldreq(ctx);
 		break;
 
@@ -396,7 +471,12 @@ smbd_authsvc_dispatch(authsvc_context_t *ctx)
 	case LSA_MTYPE_ESFIRST:
 		rc = smbd_authsvc_esfirst(ctx);
 		break;
+
 	case LSA_MTYPE_ESNEXT:
+#ifdef DEBUG
+		if (smbd_authsvc_slowdown)
+			sleep(smbd_authsvc_slowdown);
+#endif
 		rc = smbd_authsvc_esnext(ctx);
 		break;
 
