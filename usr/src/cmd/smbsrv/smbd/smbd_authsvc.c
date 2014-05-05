@@ -237,22 +237,22 @@ smbd_authsvc_listen(void *arg)
 		 * Limit the number of auth. sockets
 		 * (and the threads that service them).
 		 */
-		mutex_lock(&smbd_authsvc_mutex);
+		(void) mutex_lock(&smbd_authsvc_mutex);
 		if (smbd_authsvc_thrcnt >= smbd_authsvc_maxthread) {
-			mutex_unlock(&smbd_authsvc_mutex);
-			close(ns);
+			(void) mutex_unlock(&smbd_authsvc_mutex);
+			(void) close(ns);
 			smbd_authsvc_flood();
 			continue;
 		}
 		smbd_authsvc_thrcnt++;
-		mutex_unlock(&smbd_authsvc_mutex);
+		(void) mutex_unlock(&smbd_authsvc_mutex);
 
 		ctx = smbd_authctx_create();
 		if (ctx == NULL) {
 			smbd_report("authsvc, can't allocate context");
-			mutex_lock(&smbd_authsvc_mutex);
+			(void) mutex_lock(&smbd_authsvc_mutex);
 			smbd_authsvc_thrcnt--;
-			mutex_unlock(&smbd_authsvc_mutex);
+			(void) mutex_unlock(&smbd_authsvc_mutex);
 			(void) close(ns);
 			goto out;
 		}
@@ -261,9 +261,9 @@ smbd_authsvc_listen(void *arg)
 		rc = pthread_create(&tid, &attr, smbd_authsvc_work, ctx);
 		if (rc) {
 			smbd_report("authsvc, thread create failed, %d", rc);
-			mutex_lock(&smbd_authsvc_mutex);
+			(void) mutex_lock(&smbd_authsvc_mutex);
 			smbd_authsvc_thrcnt--;
-			mutex_unlock(&smbd_authsvc_mutex);
+			(void) mutex_unlock(&smbd_authsvc_mutex);
 			smbd_authctx_destroy(ctx);
 			goto out;
 		}
@@ -438,9 +438,9 @@ out:
 
 	smbd_authctx_destroy(ctx);
 
-	mutex_lock(&smbd_authsvc_mutex);
+	(void) mutex_lock(&smbd_authsvc_mutex);
 	smbd_authsvc_thrcnt--;
-	mutex_unlock(&smbd_authsvc_mutex);
+	(void) mutex_unlock(&smbd_authsvc_mutex);
 
 	return (NULL);	/* implied pthread_exit() */
 }
