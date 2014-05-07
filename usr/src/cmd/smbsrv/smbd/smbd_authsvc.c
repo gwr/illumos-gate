@@ -459,7 +459,7 @@ smbd_authsvc_dispatch(authsvc_context_t *ctx)
 	case LSA_MTYPE_OLDREQ:
 #ifdef DEBUG
 		if (smbd_authsvc_slowdown)
-			sleep(smbd_authsvc_slowdown);
+			(void) sleep(smbd_authsvc_slowdown);
 #endif
 		rc = smbd_authsvc_oldreq(ctx);
 		break;
@@ -475,7 +475,7 @@ smbd_authsvc_dispatch(authsvc_context_t *ctx)
 	case LSA_MTYPE_ESNEXT:
 #ifdef DEBUG
 		if (smbd_authsvc_slowdown)
-			sleep(smbd_authsvc_slowdown);
+			(void) sleep(smbd_authsvc_slowdown);
 #endif
 		rc = smbd_authsvc_esnext(ctx);
 		break;
