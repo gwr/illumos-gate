@@ -59,14 +59,12 @@ smb2_oplock_break_ack(smb_request_t *sr)
 	/*
 	 * Process the oplock break ack.  We only expect levels
 	 * at or below the hightest break levels we send, which is
-	 * currently SMB2_OPLOCK_LEVEL_II.  Also not that after a
-	 * break to none, no response is expected, so that gets
-	 * an error response.
+	 * currently SMB2_OPLOCK_LEVEL_II.
 	 */
 	switch (OplockLevel) {
 	case SMB2_OPLOCK_LEVEL_NONE:	/* 0x00 */
-		status = NT_STATUS_INVALID_OPLOCK_PROTOCOL;
-		goto errout;
+		brk = SMB_OPLOCK_BREAK_TO_NONE;
+		break;
 
 	case SMB2_OPLOCK_LEVEL_II:	/* 0x01 */
 		brk = SMB_OPLOCK_BREAK_TO_LEVEL_II;
