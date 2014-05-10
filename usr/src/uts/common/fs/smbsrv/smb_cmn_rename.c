@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <sys/synch.h>
@@ -55,10 +55,8 @@ smb_setinfo_rename(smb_request_t *sr, smb_node_t *node, char *fname, int flags)
 	smb_fqi_t	*src_fqi = &sr->arg.dirop.fqi;
 	smb_fqi_t	*dst_fqi = &sr->arg.dirop.dst_fqi;
 	smb_pathname_t	*dst_pn = &dst_fqi->fq_path;
-	char		*path;
 	uint32_t	status;
 	int		rc = 0;
-	int		len;
 
 	sr->arg.dirop.flags = flags ? SMB_RENAME_FLAG_OVERWRITE : 0;
 	sr->arg.dirop.info_level = FileRenameInformation;
@@ -68,26 +66,10 @@ smb_setinfo_rename(smb_request_t *sr, smb_node_t *node, char *fname, int flags)
 	src_fqi->fq_dnode = node->n_dnode;
 
 	/* costruct and validate the dst pathname */
-	path = smb_srm_zalloc(sr, MAXPATHLEN);
-	if (src_fqi->fq_path.pn_pname) {
-		(void) snprintf(path, MAXPATHLEN, "%s\\%s",
-		    src_fqi->fq_path.pn_pname, fname);
-	} else {
-		rc = smb_node_getshrpath(node->n_dnode, sr->tid_tree,
-		    path, MAXPATHLEN);
-		if (rc != 0) {
-			status = smb_rename_errno2status(rc);
-			return (status);
-		}
-		len = strlen(path);
-		(void) snprintf(path + len, MAXPATHLEN - len, "\\%s", fname);
-	}
-
-	smb_pathname_init(sr, dst_pn, path);
+	smb_pathname_init(sr, dst_pn, fname);
 	if (!smb_pathname_validate(sr, dst_pn))
 		return (NT_STATUS_OBJECT_NAME_INVALID);
 
-	dst_fqi->fq_dnode = node->n_dnode;
 	(void) strlcpy(dst_fqi->fq_last_comp, dst_pn->pn_fname, MAXNAMELEN);
 
 	rc = smb_common_rename(sr, src_fqi, dst_fqi);
