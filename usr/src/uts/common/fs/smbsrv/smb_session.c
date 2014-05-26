@@ -1411,7 +1411,16 @@ boolean_t
 smb_session_levelII_oplocks(smb_session_t *session)
 {
 	SMB_SESSION_VALID(session);
-	return (session->capabilities & CAP_LEVEL_II_OPLOCKS);
+
+	/* Clients using SMB2 and later always know about oplocks. */
+	if (session->dialect > NT_LM_0_12)
+		return (B_TRUE);
+
+	/* Older clients only do Level II oplocks if negotiated. */
+	if ((session->capabilities & CAP_LEVEL_II_OPLOCKS) != 0)
+		return (B_TRUE);
+
+	return (B_FALSE);
 }
 
 /*
