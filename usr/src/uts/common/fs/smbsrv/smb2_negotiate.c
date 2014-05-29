@@ -28,7 +28,7 @@ uint32_t smb2srv_capabilities =
 /* No, these should not be easy to "tune". */
 uint32_t smb2_tcp_sndbuf = (1<<20);
 uint32_t smb2_tcp_rcvbuf = (1<<20);
-uint32_t smb2_max_rwsize = (1<<18);
+uint32_t smb2_max_rwsize = (1<<16);
 uint32_t smb2_max_trans  = (1<<16);
 
 /*
