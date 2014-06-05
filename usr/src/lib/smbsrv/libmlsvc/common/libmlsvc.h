@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #ifndef	_LIBMLSVC_H
@@ -59,7 +59,9 @@ uint32_t lsa_lookup_sid(smb_sid_t *, smb_account_t *);
  * information.
  */
 
-extern boolean_t smb_locate_dc(char *, char *, smb_domainex_t *);
+extern boolean_t smb_locate_dc(char *, smb_domainex_t *);
+extern void smb_ddiscover_bad_dc(char *);
+extern void smb_ddiscover_refresh(void);
 extern int smb_ddiscover_wait(void);
 
 extern int dssetup_check_service(void);
@@ -68,7 +70,7 @@ extern void mlsvc_disconnect(const char *);
 extern int mlsvc_init(void);
 extern void mlsvc_fini(void);
 extern DWORD mlsvc_netlogon(char *, char *);
-extern DWORD mlsvc_join(smb_domainex_t *, char *, char *);
+extern void mlsvc_join(smb_joininfo_t *, smb_joinres_t *);
 
 
 /*

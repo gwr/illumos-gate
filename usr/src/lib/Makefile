@@ -23,7 +23,7 @@
 # Copyright (c) 2012 by Delphix. All rights reserved.
 # Copyright (c) 2012, Joyent, Inc. All rights reserved.
 # Copyright (c) 2013 Gary Mills
-# Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+# Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
 
 include ../Makefile.master
 
@@ -244,6 +244,7 @@ SUBDIRS += \
 	libshare	\
 	libsqlite	\
 	libidmap	\
+	libads		\
 	libadutils	\
 	libipmi		\
 	libexacct/demo	\
@@ -375,6 +376,7 @@ i386_MSGSUBDIRS= libfdisk
 
 HDRSUBDIRS=		\
 	auditd_plugins	\
+	libads		\
 	libast		\
 	libbrand	\
 	libbsm		\
@@ -651,7 +653,7 @@ libtsalarm:	libpcp
 smbsrv:		libsocket libnsl libmd libxnet libpthread librt \
 		libshare libidmap pkcs11 libsqlite libcryptoutil \
 		libreparse libcmdutils libresolv libsmbfs libuuid \
-		libfakekernel
+		libfakekernel libads
 libv12n:	libds libuuid
 libvrrpadm:	libsocket libdladm libscf
 libvscan:	libscf
