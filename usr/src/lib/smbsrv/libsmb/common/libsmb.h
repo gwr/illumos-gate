@@ -220,6 +220,7 @@ extern void smb_update_netlogon_seqnum(void);
 #define	SMB_PASSWD_MAXLEN	127
 #define	SMB_USERNAME_MAXLEN	40
 
+/* See also: smb_joininfo_xdr() */
 typedef struct smb_joininfo {
 	char domain_name[MAXHOSTNAMELEN];
 	char domain_username[SMB_USERNAME_MAXLEN + 1];
@@ -227,10 +228,18 @@ typedef struct smb_joininfo {
 	uint32_t mode;
 } smb_joininfo_t;
 
+/* See also: smb_joinres_xdr() */
+typedef struct smb_joinres {
+	uint32_t status;
+	int join_err;
+} smb_joinres_t;
+
 /* APIs to communicate with SMB daemon via door calls */
-uint32_t smb_join(smb_joininfo_t *info);
+int smb_join(smb_joininfo_t *, smb_joinres_t *info);
 bool_t smb_joininfo_xdr(XDR *, smb_joininfo_t *);
+bool_t smb_joinres_xdr(XDR *, smb_joinres_t *);
 boolean_t smb_find_ads_server(char *, char *, int);
+void smb_notify_dc_changed(void);
 
 extern void smb_config_getdomaininfo(char *, char *, char *, char *, char *);
 extern void smb_config_setdomaininfo(char *, char *, char *, char *, char *);
@@ -609,6 +618,11 @@ typedef struct smb_trusted_domains {
 #define	SMB_DOMAIN_NO_MEMORY		6
 #define	SMB_DOMAIN_NO_CACHE		7
 
+typedef struct smb_dcinfo {
+	char			dc_name[MAXHOSTNAMELEN];
+	smb_inaddr_t		dc_addr;
+} smb_dcinfo_t;
+
 /*
  * This structure could contain information about
  * the primary domain the name of selected domain controller
@@ -618,7 +632,7 @@ typedef struct smb_trusted_domains {
  * which only contains information about a single domain.
  */
 typedef struct smb_domainex {
-	char			d_dc[MAXHOSTNAMELEN];
+	smb_dcinfo_t		d_dci;
 	smb_domain_t		d_primary;
 	smb_trusted_domains_t	d_trusted;
 } smb_domainex_t;
@@ -639,7 +653,7 @@ void smb_domain_set_dns_info(char *, char *, char *, char *, char *,
     smb_domain_t *);
 void smb_domain_set_trust_info(char *, char *, char *,
     uint32_t, uint32_t, uint32_t, smb_domain_t *);
-void smb_domain_current_dc(char *buf, size_t len);
+void smb_domain_current_dc(smb_dcinfo_t *);
 
 typedef struct smb_gsid {
 	smb_sid_t *gs_sid;
