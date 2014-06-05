@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #ifndef	_LIBMLSVC_H
@@ -68,7 +68,7 @@ extern void mlsvc_disconnect(const char *);
 extern int mlsvc_init(void);
 extern void mlsvc_fini(void);
 extern DWORD mlsvc_netlogon(char *, char *);
-extern DWORD mlsvc_join(smb_domainex_t *, char *, char *);
+extern DWORD mlsvc_join(char *, char *, char *);
 
 
 /*

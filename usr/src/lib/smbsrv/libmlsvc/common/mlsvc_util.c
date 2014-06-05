@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -95,21 +95,19 @@ mlsvc_netlogon(char *server, char *domain)
  * Returns NT status codes.
  */
 DWORD
-mlsvc_join(smb_domainex_t *dxi, char *admin_user, char *admin_pw)
+mlsvc_join(char *domain_name, char *admin_user, char *admin_pw)
 {
+	static unsigned char zero_hash[SMBAUTH_HASH_SZ];
 	char machine_name[SMB_SAMACCT_MAXLEN];
 	char machine_pw[NETR_MACHINE_ACCT_PASSWD_MAX];
 	unsigned char passwd_hash[SMBAUTH_HASH_SZ];
-	smb_domain_t *di = &dxi->d_primary;
+	smb_domainex_t dxi;
+	smb_domain_t *di = &dxi.d_primary;
 	DWORD status;
 	int rc;
 
 	/*
 	 * Domain join support: AD (Kerberos+LDAP) or MS-RPC?
-	 * Leave the AD code path disabled until it can be
-	 * fixed up so that the SMB server is in complete
-	 * control of which AD server we talk to.  See:
-	 * NX 12427 (Re-enable Kerberos+LDAP with...)
 	 */
 	boolean_t ads_enabled = smb_config_get_ads_enable();
 
@@ -117,6 +115,44 @@ mlsvc_join(smb_domainex_t *dxi, char *admin_user, char *admin_pw)
 		return (NT_STATUS_INTERNAL_ERROR);
 
 	(void) smb_gen_random_passwd(machine_pw, sizeof (machine_pw));
+
+	/*
+	 * Ensure that any previous membership of this domain has
+	 * been cleared from the environment before we start. This
+	 * will ensure that we don't attempt a NETLOGON_SAMLOGON
+	 * when attempting to find the PDC.
+	 */
+	(void) smb_config_setbool(SMB_CI_DOMAIN_MEMB, B_FALSE);
+
+	/*
+	 * Use a NULL session while searching for a DC, and
+	 * while getting information about the domain.
+	 */
+	smb_ipc_set(MLSVC_ANON_USER, zero_hash);
+
+	/*
+	 * Tentatively set the idmap domain to the one we're joining,
+	 * so that the DC locator in idmap knows what to look for.
+	 */
+	if (smb_config_set_idmap_domain(domain_name) != 0)
+		syslog(LOG_NOTICE, "Failed to set idmap domain name");
+	if (smb_config_refresh_idmap() != 0)
+		syslog(LOG_NOTICE, "Failed to refresh idmap service");
+
+	/* Clear DNS local (ADS) lookup cache. */
+	smb_ads_refresh(B_FALSE);
+
+	/*
+	 * This tells the smb_ddiscover_service to go find the DC.
+	 * Does IPC to the DC Locator in idmap, fills in dxi.
+	 */
+	if (!smb_locate_dc(domain_name, "", &dxi)) {
+		syslog(LOG_ERR, "smbd: failed locating "
+		    "domain controller for %s",
+		    domain_name);
+		status = NT_STATUS_DOMAIN_CONTROLLER_NOT_FOUND;
+		goto out;
+	}
 
 	/*
 	 * A non-null user means we do "secure join".
@@ -150,7 +186,7 @@ mlsvc_join(smb_domainex_t *dxi, char *admin_user, char *admin_pw)
 		 * fall-back and try to join using RPC.
 		 */
 		if (status != NT_STATUS_SUCCESS) {
-			status = mlsvc_join_rpc(dxi,
+			status = mlsvc_join_rpc(&dxi,
 			    admin_user, admin_pw,
 			    machine_name, machine_pw);
 		}
@@ -162,7 +198,7 @@ mlsvc_join(smb_domainex_t *dxi, char *admin_user, char *admin_pw)
 		bzero(passwd_hash, sizeof (passwd_hash));
 		smb_ipc_set(MLSVC_ANON_USER, passwd_hash);
 
-		status = mlsvc_join_noauth(dxi, machine_name, machine_pw);
+		status = mlsvc_join_noauth(&dxi, machine_name, machine_pw);
 	}
 
 	if (status != NT_STATUS_SUCCESS)
@@ -174,7 +210,7 @@ mlsvc_join(smb_domainex_t *dxi, char *admin_user, char *admin_pw)
 	 */
 	(void) smb_auth_ntlm_hash(machine_pw, passwd_hash);
 	smb_ipc_set(machine_name, passwd_hash);
-	rc = smbrdr_logon(dxi->d_dc, di->di_nbname, machine_name);
+	rc = smbrdr_logon(dxi.d_dc, di->di_nbname, machine_name);
 	if (rc != 0) {
 		syslog(LOG_NOTICE, "Authenticate with "
 		    "new/updated machine account: %s",
@@ -186,7 +222,7 @@ mlsvc_join(smb_domainex_t *dxi, char *admin_user, char *admin_pw)
 	/*
 	 * Store the new machine account password.
 	 */
-	rc = smb_setdomainprops(NULL, dxi->d_dc, machine_pw);
+	rc = smb_setdomainprops(NULL, dxi.d_dc, machine_pw);
 	if (rc != 0) {
 		syslog(LOG_NOTICE,
 		    "Failed to save machine account password");
@@ -195,21 +231,33 @@ mlsvc_join(smb_domainex_t *dxi, char *admin_user, char *admin_pw)
 	}
 
 	/*
-	 * Update idmap config
+	 * Update idmap config?
+	 * Already set the domain_name above.
 	 */
-	if (smb_config_set_idmap_domain(di->di_fqname) != 0)
-		syslog(LOG_NOTICE, "Failed to set idmap domain name");
-	if (smb_config_refresh_idmap() != 0)
-		syslog(LOG_NOTICE, "Failed to refresh idmap service");
 
 	/*
-	 * Note: The caller (smbd) saves the "secmode" and
-	 * domain info (via smb_config_setdomaininfo) and
-	 * and does smb_ipc_commit (or rollback).
+	 * Save the SMB server config.
+	 * Should unify SMB vs idmap configs.
 	 */
+	smb_config_setdomaininfo(di->di_nbname, di->di_fqname,
+	    di->di_sid,
+	    di->di_u.di_dns.ddi_forest,
+	    di->di_u.di_dns.ddi_guid);
+	smb_ipc_commit();
+
 	status = 0;
 
 out:
+
+	if (status != 0) {
+		/*
+		 * Undo the tentative idmap domain setting.
+		 */
+		(void) smb_config_set_idmap_domain("");
+		(void) smb_config_refresh_idmap();
+		smb_ipc_rollback();
+	}
+
 	/* Avoid leaving cleartext passwords around. */
 	bzero(machine_pw, sizeof (machine_pw));
 	bzero(passwd_hash, sizeof (passwd_hash));

@@ -249,6 +249,19 @@ smb_find_ads_server(char *fqdn, char *buf, int buflen)
 	return (found);
 }
 
+void
+smb_notify_dc_changed(void)
+{
+	int rc;
+
+	rc = smb_door_call(SMB_DR_NOTIFY_DC_CHANGED,
+	    NULL, NULL, NULL, NULL);
+
+	if (rc != 0)
+		syslog(LOG_DEBUG, "smb_notify_dc_changed: %m");
+}
+
+
 /*
  * After a successful door call the local door_arg->data_ptr is assigned
  * to the caller's arg->rbuf so that arg has references to both input and

@@ -231,6 +231,7 @@ typedef struct smb_joininfo {
 uint32_t smb_join(smb_joininfo_t *info);
 bool_t smb_joininfo_xdr(XDR *, smb_joininfo_t *);
 boolean_t smb_find_ads_server(char *, char *, int);
+void smb_notify_dc_changed(void);
 
 extern void smb_config_getdomaininfo(char *, char *, char *, char *, char *);
 extern void smb_config_setdomaininfo(char *, char *, char *, char *, char *);

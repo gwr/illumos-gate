@@ -74,6 +74,7 @@ static int smbd_dop_quota_set(smbd_arg_t *);
 static int smbd_dop_dfs_get_referrals(smbd_arg_t *);
 static int smbd_dop_shr_hostaccess(smbd_arg_t *);
 static int smbd_dop_shr_exec(smbd_arg_t *);
+static int smbd_dop_notify_dc_changed(smbd_arg_t *);
 
 typedef int (*smbd_dop_t)(smbd_arg_t *);
 
@@ -100,7 +101,8 @@ smbd_doorop_t smbd_doorops[] = {
 	{ SMB_DR_QUOTA_SET,		smbd_dop_quota_set },
 	{ SMB_DR_DFS_GET_REFERRALS,	smbd_dop_dfs_get_referrals },
 	{ SMB_DR_SHR_HOSTACCESS,	smbd_dop_shr_hostaccess },
-	{ SMB_DR_SHR_EXEC,		smbd_dop_shr_exec }
+	{ SMB_DR_SHR_EXEC,		smbd_dop_shr_exec },
+	{ SMB_DR_NOTIFY_DC_CHANGED,	smbd_dop_notify_dc_changed }
 };
 
 static int smbd_ndoorop = (sizeof (smbd_doorops) / sizeof (smbd_doorops[0]));
@@ -979,5 +981,15 @@ smbd_dop_shr_exec(smbd_arg_t *arg)
 
 	if (arg->rbuf == NULL)
 		return (SMB_DOP_ENCODE_ERROR);
+	return (SMB_DOP_SUCCESS);
+}
+
+/* ARGSUSED */
+static int
+smbd_dop_notify_dc_changed(smbd_arg_t *arg)
+{
+
+	smbd_dc_monitor_refresh();
+
 	return (SMB_DOP_SUCCESS);
 }

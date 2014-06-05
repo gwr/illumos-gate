@@ -29,6 +29,7 @@ OBJS_SMBD=			\
 	smbd_authsvc.o		\
 	smbd_doorsvc.o		\
 	smbd_join.o		\
+	smbd_krb5lookup.o	\
 	smbd_krb5ssp.o		\
 	smbd_logon.o		\
 	smbd_main.o		\
@@ -60,6 +61,9 @@ INCS += -I../smbd
 INCS +=	-I../../../uts/common
 INCS +=	-I../../../uts/common/smbsrv
 INCS +=	-I../../../common/smbsrv
+
+# Should not have to do this, but the Kerberos includes are a mess.
+INCS += -I $(ROOT)/usr/include/kerberosv5
 
 C99MODE=	-xc99=%all
 C99LMODE=	-Xc99=%all

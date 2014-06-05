@@ -29,6 +29,7 @@ OBJS=				\
 	smbd_authsvc.o		\
 	smbd_doorsvc.o		\
 	smbd_join.o		\
+	smbd_krb5lookup.o	\
 	smbd_krb5ssp.o		\
 	smbd_logon.o		\
 	smbd_main.o		\
@@ -60,6 +61,9 @@ LINTFLAGS += -xerroff=E_NAME_DEF_NOT_USED2
 CFLAGS += $(CCVERBOSE)
 CPPFLAGS += -Dsyslog=smb_syslog
 $(NOT_RELEASE_BUILD)CPPFLAGS += -DDEBUG
+
+# Should not have to do this, but the Kerberos includes are a mess.
+CPPFLAGS += -I $(ROOT)/usr/include/kerberosv5
 
 C99MODE =       -xc99=%all
 C99LMODE =      -Xc99=%all
