@@ -20,7 +20,8 @@ make=${MAKE:-dmake}
 CLOSED_IS_PRESENT=no
 export CLOSED_IS_PRESENT
 
-export SOURCEDEBUG=yes
+# Do this if you want to use dbx or gdb
+# export SOURCEDEBUG=yes
 
 [ -n "$SRC" ] || {
   echo "SRC not set.  Run 'ws' or 'bldenv' first."
@@ -97,11 +98,13 @@ fi
 
 # Need some library headers too...
 for lib in \
+  libads \
   libbsm \
   libcmdutils \
   libcryptoutil \
   libdevid \
   libfakekernel	\
+  libkrb5 \
   libidmap \
   libpam \
   libsec \
@@ -138,6 +141,7 @@ for lib in \
   libfakekernel \
   libavl \
   libcmdutils \
+  libads \
   libsmbfs \
   libsqlite \
   libuutil
@@ -226,8 +230,10 @@ do_tags() {
 	find uts/common/smbsrv -name '*.ndl' -print |sort
 	find uts/common/smbsrv -name '*.[ch]' -print |sort
 	find uts/common/fs/smbsrv -name '*.[ch]' -print |sort
-	find lib/libsmbfs -name '*.[ch]' -print |sort
+	find head -name '*.h' -print |sort
 	find lib/smbsrv -name '*.[ch]' -print |sort
+	find lib/libsmbfs -name '*.[ch]' -print |sort
+	find lib/libads -name '*.[ch]' -print |sort
 	find cmd/smbsrv -name '*.[ch]' -print |sort
 	find common/smbsrv -name '*.[ch]' -print |sort
 	) > $SRC/cscope.files
