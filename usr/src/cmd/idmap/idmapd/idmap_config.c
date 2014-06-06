@@ -1512,7 +1512,7 @@ idmap_cfg_load_smf(idmap_cfg_handles_t *handles, idmap_pg_config_t *pgcfg,
 		(*errors)++;
 
 	rc = get_val_bool(handles, "use_ads",
-	    &pgcfg->use_ads, B_FALSE);
+	    &pgcfg->use_ads, B_TRUE);
 	if (rc != 0)
 		(*errors)++;
 
