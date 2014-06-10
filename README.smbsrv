@@ -10,3 +10,4 @@ Added fixes before start of Zones work.
 Added smb server in a zone changes.
 Before first commit of SMB2 support.
 After SMB2 integration, before new DC locator etc.
+Before Kerberos inbound
