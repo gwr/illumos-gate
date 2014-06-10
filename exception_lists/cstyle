@@ -614,6 +614,7 @@ usr/src/lib/libsmbfs/smb/derparse.h
 usr/src/lib/libsmbfs/smb/spnego.c
 usr/src/lib/libsmbfs/smb/spnegoparse.c
 usr/src/lib/libsmbfs/smb/spnegoparse.h
+usr/src/lib/pkcs11/include/pkcs11t.h
 usr/src/uts/common/gssapi/gssapi.h
 usr/src/uts/common/gssapi/mechs/krb5/crypto/block_size.c
 usr/src/uts/common/gssapi/mechs/krb5/crypto/checksum_length.c
