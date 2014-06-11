@@ -88,34 +88,15 @@ then
   test -f $ROOT/usr/include/rpcsvc/daemon_utils.h ||
     (cd $SRC/head && $make install_h)
 
-  # always update the smbsrv headers to be safe
-  (cd $SRC/uts/common/gssapi && $make -k install_h)
+  # system headers
   (cd $SRC/uts/common/sys && $make -k install_h)
-  (cd $SRC/uts/common/smb && $make -k install_h)
-  (cd $SRC/uts/common/smbsrv && $make -k install_h)
 
 fi
 
 # Need some library headers too...
 for lib in \
-  libads \
-  libbsm \
-  libcmdutils \
-  libcryptoutil \
-  libdevid \
-  libfakekernel	\
   libgss \
-  libkrb5 \
-  libidmap \
-  libpam \
-  libsec \
-  libscf \
-  libshare \
-  libsmbfs \
-  libsqlite \
-  libuutil \
-  passwdutil \
-  smbsrv
+  libkrb5
 do
   (cd $SRC/lib/$lib && $make $targ)
 done
@@ -129,9 +110,7 @@ do_kern() {
   *) targ=$1 ;;
   esac
   ( unset SOURCEDEBUG ;
-  (cd $SRC/uts/$x/nsmb && $make $targ) ;
-  (cd $SRC/uts/$x/smbfs && $make $targ) ;
-  (cd $SRC/uts/$x/smbsrv && $make $targ) )
+  (cd $SRC/uts/$x/kgssapi && $make $targ) )
 }
 
 ################################################################
@@ -139,23 +118,17 @@ do_kern() {
 do_libs() {
 
 for lib in \
-  libfakekernel \
-  libavl \
-  libgss \
-  libkrb5 \
-  libcmdutils \
-  libads \
-  libsmbfs \
-  libsqlite \
-  libuutil
+  libgss
 do
   (cd $SRC/lib/$lib && $make $1)
 done
 
-(cd $SRC/lib/libshare && $make $1 PLUGINS=smb)
-(cd $SRC/lib/smbsrv && $make $1)
-(cd $SRC/lib/passwdutil && $make $1)
-(cd $SRC/lib/pam_modules/smb && $make $1)
+# For some reason, mech_krb5 does not build for debug.
+# It also takes forever to lint.  skip that.
+if [ "$1" != "lint" ]; then
+  (cd $SRC/lib/gss_mechs/mech_krb5 && unset SOURCEDEBUG && $make $1)
+  (cd $SRC/lib/gss_mechs/mech_spnego && $make $1)
+fi
 
 }
 
@@ -163,61 +136,8 @@ done
 
 do_cmds() {
 
-case $1 in
-install)
-  # mount programs need fslib.o
-  (cd $SRC/cmd/fs.d && $make fslib.o)
-  (cd $SRC/cmd/fs.d/smbclnt && $make $1 catalog)
-  ;;
-clean|clobber)
-  (cd $SRC/cmd/fs.d/smbclnt && $make $1)
-  (cd $SRC/cmd/fs.d && $make ${1}_local)
-  ;;
-esac
+(cd $SRC/cmd/gss && $make $1)
 
-(cd $SRC/cmd/devfsadm && $make $1)
-(cd $SRC/cmd/smbsrv && $make $1)
-
-# Build the MDB modules, WITH the linktest
-(cd $SRC/cmd/mdb/tools && $make $1)
-for a in $mdb_arch
-do
-  case $1 in
-  install|lint)
-    (cd $SRC/cmd/mdb/$x/$a/kmdb &&
-	$make kmdb_modlinktest.o )
-    ;;
-  clean|clobber)
-    (cd $SRC/cmd/mdb/$x/$a/kmdb &&
-	$make -k $1 )
-    ;;
-  esac
-
-  (cd $SRC/cmd/mdb/$x/$a/nsmb &&
-	$make $1 KMDB_LINKTEST_ENABLE= )
-  (cd $SRC/cmd/mdb/$x/$a/smbfs &&
-	$make $1 KMDB_LINKTEST_ENABLE= )
-  (cd $SRC/cmd/mdb/$x/$a/smbsrv &&
-	$make $1 KMDB_LINKTEST_ENABLE= )
-  (cd $SRC/cmd/mdb/$x/$a/libfksmbsrv &&
-	$make $1 KMDB_LINKTEST_ENABLE= )
-
-# We build these libraries (to the proto area), so we need to
-# build the mdb modules too so mdb will load them.
-  (cd $SRC/cmd/mdb/$x/$a/libcmdutils &&
-	$make $1 )
-  (cd $SRC/cmd/mdb/$x/$a/libavl &&
-	$make $1 )
-
-done
-
-(cd $SRC/cmd/Adm/sun && $make $1)
-
-# Deal with mode 0400 file annoyance...
-# See usr/src/cmd/Adm/sun/Makefile
-if [ $1 = install ]; then
-  chmod a+r $ROOT/var/smb/smbpasswd
-fi
 }
 
 
@@ -229,18 +149,10 @@ do_tags() {
 	find uts/common/sys -name '*.[ch]' -print |sort
 	find uts/common/net -name '*.[ch]' -print |sort
 	find uts/common/netinet -name '*.[ch]' -print |sort
-	find uts/common/smb -name '*.[ch]' -print |sort
-	find uts/common/smbsrv -name '*.ndl' -print |sort
-	find uts/common/smbsrv -name '*.[ch]' -print |sort
-	find uts/common/fs/smbsrv -name '*.[ch]' -print |sort
 	find uts/common/gssapi -name '*.[ch]' -print |sort
 	find head -name '*.h' -print |sort
-	find lib/smbsrv -name '*.[ch]' -print |sort
-	find lib/libsmbfs -name '*.[ch]' -print |sort
-	find lib/libads -name '*.[ch]' -print |sort
-	find lib/libgss -name '*.[ch]' -print |sort
-	find cmd/smbsrv -name '*.[ch]' -print |sort
-	find common/smbsrv -name '*.[ch]' -print |sort
+	find lib/gss_mechs -name '*.[ch]' -print |sort
+	find cmd/gss -name '*.[ch]' -print |sort
 	) > $SRC/cscope.files
 
 	(cd $SRC ;
@@ -254,30 +166,16 @@ do_tags() {
 do_tar() {
 	git_rev=`git rev-parse --short=8 HEAD`
 	files="
-lib/svc/manifest/network/smb/server.xml
-usr/kernel/drv/$arch64/smbsrv
-usr/kernel/drv/smbsrv
-usr/kernel/kmdb/$arch64/smbsrv
-usr/kernel/kmdb/smbsrv
-usr/lib/fs/smb/$arch64/libshare_smb.so.1
-usr/lib/fs/smb/libshare_smb.so.1
-usr/lib/libsmbfs.so.1
-usr/lib/mdb/kvm/$arch64/smbsrv.so
-usr/lib/mdb/kvm/smbsrv.so
-usr/lib/reparse/libreparse_smb.so.1
-usr/lib/security/pam_smb_passwd.so.1
-usr/lib/smbsrv/dtrace
-usr/lib/smbsrv/libmlrpc.so.1
-usr/lib/smbsrv/libmlsvc.so.1
-usr/lib/smbsrv/libsmb.so.1
-usr/lib/smbsrv/libsmbns.so.1
-usr/lib/smbsrv/smbd
-usr/sbin/devfsadm
-usr/sbin/smbadm
-usr/sbin/smbstat
+usr/lib/gss/gssd
+usr/lib/gss/mech_krb5.so.1
+usr/lib/$arch64/gss/mech_krb5.so.1
+usr/lib/gss/mech_spnego.so.1
+usr/lib/$arch64/gss/mech_spnego.so.1
+usr/lib/libgss.so.1
+usr/lib/$arch64/libgss.so.1
 "
 
-	(cd $ROOT && tar cfj ../../smbsrv-${git_rev}.tar.bz2 $files)
+	(cd $ROOT && tar cfj ../../gss-${git_rev}.tar.bz2 $files)
 }
 
 ################################################################
