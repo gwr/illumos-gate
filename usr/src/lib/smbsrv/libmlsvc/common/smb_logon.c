@@ -45,7 +45,6 @@ static rwlock_t smb_logoninit_rwl;
 
 typedef void (*smb_logonop_t)(smb_logon_t *, smb_token_t *);
 
-extern void smb_logon_domain(smb_logon_t *, smb_token_t *);
 static void smb_logon_local(smb_logon_t *, smb_token_t *);
 static void smb_logon_guest(smb_logon_t *, smb_token_t *);
 static void smb_logon_anon(smb_logon_t *, smb_token_t *);
@@ -159,8 +158,8 @@ smb_token_sids2ids(smb_token_t *token)
 	}
 
 	stat = smb_idmap_batch_getmappings(&sib);
-	smb_idmap_batch_destroy(&sib);
 	smb_idmap_check("smb_idmap_batch_getmappings", stat);
+	smb_idmap_batch_destroy(&sib);
 
 	return (stat == IDMAP_SUCCESS ? 0 : -1);
 }
@@ -345,8 +344,10 @@ smb_token_set_flags(smb_token_t *token)
  * has been done.
  *
  * Note that the order of calls in this function are important.
+ *
+ * Returns B_TRUE for success.
  */
-static boolean_t
+boolean_t
 smb_token_setup_common(smb_token_t *token)
 {
 	smb_token_set_flags(token);
