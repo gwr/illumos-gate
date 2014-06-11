@@ -81,12 +81,15 @@ CPPFLAGS += $(INCS)
 
 LDFLAGS += $(ZNOLAZYLOAD)
 LDFLAGS += -R/usr/lib/smbsrv
-LDLIBS += -L$(ROOT)/usr/lib/smbsrv 
+LDLIBS += -L$(ROOT)/usr/lib/smbsrv
 LDLIBS += -lfksmbsrv -lfakekernel
-LDLIBS += -lmlsvc -lmlrpc -lsmbns -lsmb -lsmbfs
+# prefer to keep libs ordered by dependence
+LDLIBS += -lmlsvc -lmlrpc -lsmbns -lsmb -lsmbfs -lgss
 LDLIBS += -lzfs -lbsm -lscf -lcmdutils -lsocket -lnsl -lumem
+$(PROG) := LDLIBS += -lkrb5
 
 LINTFLAGS += -xerroff=E_NAME_DEF_NOT_USED2
+LINTFLAGS += -xerroff=E_NAME_USED_NOT_DEF2
 LINTFLAGS += -xerroff=E_INCONS_ARG_DECL2
 LINTFLAGS += -xerroff=E_INCONS_VAL_TYPE_DECL2
 
