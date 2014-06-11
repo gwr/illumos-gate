@@ -54,6 +54,18 @@ pid$target:libads.so.1::entry
   printf("\t0x%x", arg3);
 }
 
+pid$target:libsmb.so.1:smb_trace:entry
+/self->trace > 0 && self->mask == 0/
+{
+  printf("%s", copyinstr(arg0));
+}
+
+pid$target:libc_hwcap1.so.1:syslog:entry
+/self->trace > 0 && self->mask == 0/
+{
+  printf("%s", copyinstr(arg1));
+}
+
 /*
  * Mask (don't print) all function calls below these functions.
  * These make many boring, repetitive function calls like

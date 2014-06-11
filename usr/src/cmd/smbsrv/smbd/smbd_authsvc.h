@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #ifndef _SMBD_AUTHSVC_H
@@ -73,5 +73,10 @@ void smbd_krb5ssp_fini(authsvc_context_t *);
 int smbd_ntlmssp_init(authsvc_context_t *);
 int smbd_ntlmssp_work(authsvc_context_t *);
 void smbd_ntlmssp_fini(authsvc_context_t *);
+
+/* Exposed for unit tests. */
+int smbd_authsvc_dispatch(authsvc_context_t *);
+authsvc_context_t *smbd_authctx_create(void);
+void smbd_authctx_destroy(authsvc_context_t *);
 
 #endif /* _SMBD_AUTHSVC_H */

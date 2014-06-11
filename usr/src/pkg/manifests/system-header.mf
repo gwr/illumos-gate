@@ -384,6 +384,7 @@ file path=usr/include/glob.h
 file path=usr/include/grp.h
 file path=usr/include/gssapi/gssapi.h
 file path=usr/include/gssapi/gssapi_ext.h
+file path=usr/include/gssapi/gssapi_krb5.h
 file path=usr/include/hal/libhal-storage.h
 file path=usr/include/hal/libhal.h
 $(i386_ONLY)file path=usr/include/ia32/sys/asm_linkage.h

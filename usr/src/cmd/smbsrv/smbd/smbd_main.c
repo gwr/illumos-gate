@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <sys/types.h>
@@ -458,6 +458,12 @@ smbd_service_init(void)
 		}
 	}
 
+	/*
+	 * This environment variable tells mech_krb5 to give us
+	 * MS-compatible behavior.
+	 */
+	(void) putenv("MS_INTEROP=1");
+
 	if ((rc = smb_ccache_init(SMB_VARRUN_DIR, SMB_CCACHE_FILE)) != 0) {
 		if (rc == -1)
 			smbd_report("mkdir %s: %s", SMB_VARRUN_DIR,
@@ -710,6 +716,7 @@ smbd_kernel_bind(void)
 
 	if (smbd.s_kbound) {
 		smb_load_kconfig(&cfg);
+		smbd_get_authconf(&cfg);
 		rc = smb_kmod_setcfg(&cfg);
 		if (rc < 0)
 			smbd_report("kernel configuration update failed: %s",
@@ -740,6 +747,7 @@ smbd_kernel_start(void)
 	int		rc;
 
 	smb_load_kconfig(&cfg);
+	smbd_get_authconf(&cfg);
 	rc = smb_kmod_setcfg(&cfg);
 	if (rc != 0) {
 		smbd_report("kernel config ioctl error: %s", strerror(rc));

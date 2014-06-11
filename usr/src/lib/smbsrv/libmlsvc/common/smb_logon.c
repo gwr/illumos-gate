@@ -45,7 +45,6 @@ static rwlock_t smb_logoninit_rwl;
 
 typedef void (*smb_logonop_t)(smb_logon_t *, smb_token_t *);
 
-extern void smb_logon_domain(smb_logon_t *, smb_token_t *);
 static void smb_logon_local(smb_logon_t *, smb_token_t *);
 static void smb_logon_guest(smb_logon_t *, smb_token_t *);
 static void smb_logon_anon(smb_logon_t *, smb_token_t *);
@@ -345,8 +344,10 @@ smb_token_set_flags(smb_token_t *token)
  * has been done.
  *
  * Note that the order of calls in this function are important.
+ *
+ * Returns B_TRUE for success.
  */
-static boolean_t
+boolean_t
 smb_token_setup_common(smb_token_t *token)
 {
 	smb_token_set_flags(token);

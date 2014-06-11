@@ -89,9 +89,9 @@ then
     (cd $SRC/head && $make install_h)
 
   # system and smbsrv headers (we need to build libsmb)
-    (cd $SRC/uts/common/sys && $make -k install_h)
-    (cd $SRC/uts/common/smb && $make -k install_h)
-    (cd $SRC/uts/common/smbsrv && $make -k install_h)
+  (cd $SRC/uts/common/sys && $make -k install_h)
+  (cd $SRC/uts/common/smb && $make -k install_h)
+  (cd $SRC/uts/common/smbsrv && $make -k install_h)
 
 fi
 
@@ -102,6 +102,7 @@ for lib in \
   libcmdutils \
   libcryptoutil \
   libdevid \
+  libgss \
   libkrb5 \
   libldap5 \
   libidmap \
@@ -143,13 +144,7 @@ do
   (cd $SRC/lib/$lib && $make $1)
 done
 
-# For some reason, this does not build for debug.
-# It also takes forever to lint.  skip that.
-if [ "$1" != "lint" ]; then
-  (cd $SRC/lib/gss_mechs/mech_krb5 && unset SOURCEDEBUG && $make $1)
-fi
-
-# needed by cmd/idmap/idmapd
+# need libsmb for cmd/idmap/idmapd (and libsmbfs for libsmb)
 (cd $SRC/lib/smbsrv/libsmb && $make $1)
 
 }
@@ -173,12 +168,10 @@ do_tags() {
 	find uts/common/netinet -name '*.[ch]' -print |sort
 	find uts/common/rpcsvc -name '*.[ch]' -print |sort
 	find uts/common/idmap -name '*.[ch]' -print |sort
-	find uts/common/gssapi/mechs/krb5 -name '*.[ch]' -print |sort
 	find head -name '*.h' -print |sort
 	find lib/libidmap -name '*.[ch]' -print |sort
 	find lib/libadutils -name '*.[ch]' -print |sort
 	find lib/libldap5 -name '*.[ch]' -print |sort
-	find lib/gss_mechs/mech_krb5 -name '*.[ch]' -print |sort
 	find cmd/idmap -name '*.[ch]' -print |sort
 	) > $SRC/cscope.files
 
@@ -193,9 +186,8 @@ do_tags() {
 do_tar() {
 	git_rev=`git rev-parse --short=8 HEAD`
 	files="
+lib/svc/manifest/system/idmap.xml
 usr/lib/idmapd
-usr/lib/gss/mech_krb5.so.1
-usr/lib/$arch64/gss/mech_krb5.so.1
 usr/lib/libads.so.1
 usr/lib/$arch64/libads.so.1
 usr/lib/libadutils.so.1

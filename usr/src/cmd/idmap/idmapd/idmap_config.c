@@ -1910,6 +1910,8 @@ idmap_cfg_discover(idmap_cfg_handles_t *handles, idmap_pg_config_t *pgcfg)
 		idmapdlog(LOG_DEBUG, "Running discovery.");
 
 	ad_disc_refresh(ad_ctx);
+
+	(void) unlink(IDMAP_CACHEDIR "/discovery.log");
 	status_fp = fopen(IDMAP_CACHEDIR "/discovery.log", "w");
 	if (status_fp)
 		ad_disc_set_StatusFP(ad_ctx, status_fp);

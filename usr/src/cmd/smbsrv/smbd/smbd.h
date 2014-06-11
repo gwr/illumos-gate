@@ -56,6 +56,7 @@ uint32_t smbd_join(smb_joininfo_t *);
 void smbd_set_secmode(int);
 boolean_t smbd_online(void);
 void smbd_online_wait(const char *);
+void smbd_get_authconf(smb_kmod_cfg_t *);
 
 void smbd_spool_start(void);
 void smbd_spool_stop(void);
