@@ -79,7 +79,7 @@ LINTCHECKFLAGS += -erroff=E_BAD_FORMAT_STR2
 
 LDLIBS +=	$(MACH_LDLIBS)
 # perfer to keep libs ordered by dependence
-LDLIBS +=	-lsmbfs -lscf -lmd -luuid -lpkcs11 -lcryptoutil
+LDLIBS +=	-lscf -lmd -luuid -lpkcs11 -lcryptoutil
 LDLIBS +=	-lsec -lidmap -lreparse -lcmdutils -lavl
 LDLIBS +=	-lnvpair -lresolv -lsocket -lnsl -lc
 CPPFLAGS +=	$(INCS) -D_REENTRANT

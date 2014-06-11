@@ -58,6 +58,7 @@ $(ROOTSVCMETHOD):= FILEMODE = 0555
 $(ROOTVARSMBDLL):= FILEMODE = 0755
 
 LINTFLAGS += -xerroff=E_NAME_DEF_NOT_USED2
+LINTFLAGS += -xerroff=E_NAME_USED_NOT_DEF2
 
 CFLAGS += $(CCVERBOSE)
 CPPFLAGS += -D_REENTRANT
@@ -72,9 +73,10 @@ C99LMODE =      -Xc99=%all
 
 LDFLAGS += -R/usr/lib/smbsrv
 LDLIBS += -L$(ROOT)/usr/lib/smbsrv
-# perfer to keep libs ordered by dependence
-LDLIBS += -lmlsvc -lmlrpc -lsmbns -lsmb -lsmbfs
+# prefer to keep libs ordered by dependence
+LDLIBS += -lmlsvc -lmlrpc -lsmbns -lsmb -lsmbfs -lgss
 LDLIBS += -lzfs -lbsm -lscf -lcmdutils -lsocket -lnsl -lumem
+$(PROG) := LDLIBS += -lkrb5
 
 $(ENABLE_SMB_PRINTING) CPPFLAGS += -DHAVE_CUPS
 
