@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <sys/types.h>
@@ -135,8 +135,7 @@ smb_load_kconfig(smb_kmod_cfg_t *kcfg)
 		syslog(LOG_ERR, "smb_load_kconfig: no machine_uuid");
 		uuid_generate_time(kcfg->skc_machine_uuid);
 	}
-	kcfg->skc_negtok_len = SMB_PI_MAX_NEGTOK;
-	smb_config_get_negtok(kcfg->skc_negtok, &kcfg->skc_negtok_len);
+	/* skc_negtok, skc_negtok_len: see smbd_authsvc.c */
 
 	(void) uname(&uts);
 	(void) snprintf(kcfg->skc_native_os, sizeof (kcfg->skc_native_os),

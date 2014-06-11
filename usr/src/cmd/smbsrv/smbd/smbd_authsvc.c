@@ -64,10 +64,6 @@ static void *smbd_authsvc_listen(void *);
 static void *smbd_authsvc_work(void *);
 static void smbd_authsvc_flood(void);
 
-static authsvc_context_t *smbd_authctx_create(void);
-static void smbd_authctx_destroy(authsvc_context_t *);
-
-static int smbd_authsvc_dispatch(authsvc_context_t *);
 static int smbd_authsvc_oldreq(authsvc_context_t *);
 static int smbd_authsvc_clinfo(authsvc_context_t *);
 static int smbd_authsvc_esfirst(authsvc_context_t *);
@@ -77,7 +73,12 @@ static int smbd_authsvc_gettoken(authsvc_context_t *);
 static int smbd_raw_ntlmssp_esfirst(authsvc_context_t *);
 static int smbd_raw_ntlmssp_esnext(authsvc_context_t *);
 
-int smbd_authsvc_bufsize = 16000;
+/*
+ * We can get relatively large tokens now, thanks to krb5 PAC.
+ * Might be better to size these buffers dynamically, but these
+ * are all short-lived so not bothering with that for now.
+ */
+int smbd_authsvc_bufsize = 65000;
 
 static mutex_t smbd_authsvc_mutex = DEFAULTMUTEX;
 
@@ -96,16 +97,21 @@ int smbd_authsvc_hiwat = 0;	/* largest thrcnt seen */
 int smbd_authsvc_slowdown = 0;
 #endif
 
+/*
+ * These are the mechanisms we support, in order of preference.
+ * But note: it's really the _client's_ preference that matters.
+ * See the spnegoIsMechTypeAvailable() calls below.
+ */
 static const spnego_mech_handler_t
-smbd_auth_mech_table[] = {
+mech_table[] = {
 	{
-		spnego_mech_oid_Kerberos_V5,
+		spnego_mech_oid_Kerberos_V5_Legacy,
 		smbd_krb5ssp_init,
 		smbd_krb5ssp_work,
 		smbd_krb5ssp_fini
 	},
 	{
-		spnego_mech_oid_Kerberos_V5_Legacy,
+		spnego_mech_oid_Kerberos_V5,
 		smbd_krb5ssp_init,
 		smbd_krb5ssp_work,
 		smbd_krb5ssp_fini
@@ -464,7 +470,7 @@ out:
  * Dispatch based on message type LSA_MTYPE_...
  * Non-zero return here ends the conversation.
  */
-static int
+int
 smbd_authsvc_dispatch(authsvc_context_t *ctx)
 {
 	int rc;
@@ -571,13 +577,17 @@ static int
 smbd_authsvc_esfirst(authsvc_context_t *ctx)
 {
 	const spnego_mech_handler_t *mh;
-	int indx, rc;
+	int i, pref, rc;
+	int best_pref = 1000;
+	int best_mhidx = -1;
 
 	/*
 	 * NTLMSSP header is 8+, SPNEGO is 10+
 	 */
-	if (ctx->ctx_irawlen < 8)
+	if (ctx->ctx_irawlen < 8) {
+		smbd_report("authsvc: short blob");
 		return (NT_STATUS_INVALID_PARAMETER);
+	}
 
 	/*
 	 * We could have "Raw NTLMSSP" here intead of SPNEGO.
@@ -592,36 +602,56 @@ smbd_authsvc_esfirst(authsvc_context_t *ctx)
 	 */
 	rc = spnegoInitFromBinary(ctx->ctx_irawbuf,
 	    ctx->ctx_irawlen, &ctx->ctx_itoken);
-	if (rc != 0)
+	if (rc != 0) {
+		smbd_report("authsvc: spnego parse failed");
 		return (NT_STATUS_INVALID_PARAMETER);
+	}
 
 	rc = spnegoGetTokenType(ctx->ctx_itoken, &ctx->ctx_itoktype);
-	if (rc != 0)
+	if (rc != 0) {
+		smbd_report("authsvc: spnego get token type failed");
 		return (NT_STATUS_INVALID_PARAMETER);
+	}
 
-	if (ctx->ctx_itoktype != SPNEGO_TOKEN_INIT)
+	if (ctx->ctx_itoktype != SPNEGO_TOKEN_INIT) {
+		smbd_report("authsvc: spnego wrong token type %d",
+		    ctx->ctx_itoktype);
 		return (NT_STATUS_INVALID_PARAMETER);
+	}
 
 	/*
-	 * Figure out which mech type to use.
+	 * Figure out which mech type to use.  We want to use the
+	 * first of the client's supported mechanisms that we also
+	 * support.  Unfortunately, the spnego code does not have an
+	 * interface to walk the token's mech list, so we have to
+	 * ask about each mech type we know and keep track of which
+	 * was earliest in the token's mech list.
 	 */
-	for (mh = smbd_auth_mech_table; mh->mh_init != NULL; mh++) {
+	for (i = 0, mh = mech_table; mh->mh_init != NULL; i++, mh++) {
 
 		if (spnegoIsMechTypeAvailable(ctx->ctx_itoken,
-		    mh->mh_oid, &indx) != 0)
+		    mh->mh_oid, &pref) != 0)
 			continue;
 
-		rc = mh->mh_init(ctx);
-		if (rc == 0) {
-			ctx->ctx_mech_oid = mh->mh_oid;
-			ctx->ctx_mh_work = mh->mh_work;
-			ctx->ctx_mh_fini = mh->mh_fini;
-			break;
+		if (pref < best_pref) {
+			best_pref = pref;
+			best_mhidx = i;
 		}
 	}
-	if (mh->mh_init == NULL) {
-		/* No supported mech. type! */
+	if (best_mhidx == -1) {
+		smbd_report("authsvc: no supported spnego mechanism");
 		return (NT_STATUS_INVALID_PARAMETER);
+	}
+
+	/* Found a mutually agreeable mech. */
+	mh = &mech_table[best_mhidx];
+	ctx->ctx_mech_oid = mh->mh_oid;
+	ctx->ctx_mh_work = mh->mh_work;
+	ctx->ctx_mh_fini = mh->mh_fini;
+	rc = mh->mh_init(ctx);
+	if (rc != 0) {
+		smbd_report("authsvc: mech init failed");
+		return (rc);
 	}
 
 	/*
@@ -868,4 +898,52 @@ smbd_authsvc_gettoken(authsvc_context_t *ctx)
 	xdr_destroy(&xdrs);
 
 	return (rc);
+}
+
+/*
+ * Initialization time code to figure out what mechanisms we support.
+ */
+
+static SPNEGO_MECH_OID MechTypeList[] = {
+	spnego_mech_oid_Kerberos_V5_Legacy,
+	spnego_mech_oid_Kerberos_V5,
+	spnego_mech_oid_NTLMSSP,
+};
+static int MechTypeCnt = sizeof (MechTypeList) /
+	sizeof (MechTypeList[0]);
+
+/* This string is just like Windows. */
+static char IgnoreSPN[] = "not_defined_in_RFC4178@please_ignore";
+
+/*
+ * Build the SPNEGO "hint" token based on the
+ * configured authentication mechanisms.
+ * (NTLMSSP, and maybe Kerberos)
+ */
+void
+smbd_get_authconf(smb_kmod_cfg_t *kcfg)
+{
+	SPNEGO_TOKEN_HANDLE hSpnegoToken = NULL;
+	uchar_t *pBuf = kcfg->skc_negtok;
+	uint32_t *pBufLen = &kcfg->skc_negtok_len;
+	ulong_t tLen = sizeof (kcfg->skc_negtok);
+	int rc;
+
+	rc = spnegoCreateNegTokenHint(MechTypeList, MechTypeCnt,
+	    (uchar_t *)IgnoreSPN, &hSpnegoToken);
+	if (rc != SPNEGO_E_SUCCESS) {
+		syslog(LOG_DEBUG, "smb_config_get_negtok: "
+		    "spnegoCreateNegTokenHint, rc=%d", rc);
+		*pBufLen = 0;
+		return;
+	}
+	rc = spnegoTokenGetBinary(hSpnegoToken, pBuf, &tLen);
+	if (rc != SPNEGO_E_SUCCESS) {
+		syslog(LOG_DEBUG, "smb_config_get_negtok: "
+		    "spnegoTokenGetBinary, rc=%d", rc);
+		*pBufLen = 0;
+	} else {
+		*pBufLen = (uint32_t)tLen;
+	}
+	spnegoFreeData(hSpnegoToken);
 }
