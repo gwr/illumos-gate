@@ -15,7 +15,7 @@
  */
 
 /*
- * User-level dtrace for smbd
+ * User-level dtrace for the smbd authentication service
  * Usage: dtrace -s smbd-authsvc.d -p `pgrep smbd`
  */
 
@@ -56,7 +56,12 @@ pid$target:libsmbfs.so.1::entry
  * Mask (don't print) all function calls below these functions.
  * These make many boring, repetitive function calls like
  * smb_mbtowc, smb_msgbuf_has_space, ...
+ *
+ * Also, libmlrpc has rather deep call stacks, particularly under
+ * ndr_encode_decode_common(), so this stops traces below there.
+ * Remove that from the mask actions to see the details.
  */
+pid$target::ndr_encode_decode_common:entry,
 pid$target::smb_msgbuf_decode:entry,
 pid$target::smb_msgbuf_encode:entry,
 pid$target::smb_strlwr:entry,
@@ -70,6 +75,7 @@ pid$target::smb_wcequiv_strlen:entry
  * Now inverses of above, unwind order.
  */
 
+pid$target::ndr_encode_decode_common:return,
 pid$target::smb_msgbuf_decode:return,
 pid$target::smb_msgbuf_encode:return,
 pid$target::smb_strlwr:return,
