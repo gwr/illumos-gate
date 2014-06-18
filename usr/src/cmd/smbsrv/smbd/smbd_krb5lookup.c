@@ -30,6 +30,10 @@
 #include "smbd.h"
 #include "locate_plugin.h"
 
+/* osconf.h - sigh */
+#define	KRB5_DEFAULT_PORT	88
+#define	DEFAULT_KADM5_PORT	749
+#define	DEFAULT_KPASSWD_PORT	464
 
 /*
  * This is an "override plugin" used by libkrb5.  See:
@@ -57,6 +61,7 @@ _krb5_override_service_locator(
 	char myfqdom[MAXHOSTNAMELEN];
 	smb_ads_host_info_t *host = NULL;
 	int rc = KRB5_PLUGIN_NO_HANDLE;
+	short port;
 
 	/*
 	 * Is this a service we want to override?
@@ -64,10 +69,15 @@ _krb5_override_service_locator(
 	switch (svc) {
 	case locate_service_kdc:
 	case locate_service_master_kdc:
-	case locate_service_kadmin:
-	case locate_service_krb524:
-	case locate_service_kpasswd:
+		port = htons(KRB5_DEFAULT_PORT);
 		break;
+	case locate_service_kadmin:
+		port = htons(DEFAULT_KADM5_PORT);
+		break;
+	case locate_service_kpasswd:
+		port = htons(DEFAULT_KPASSWD_PORT);
+		break;
+	case locate_service_krb524:
 	default:
 		return (rc);
 	}
@@ -107,7 +117,7 @@ _krb5_override_service_locator(
 		struct sockaddr_in sin;
 		(void) memset(&sin, 0, sizeof (sin));
 		sin.sin_family = AF_INET;
-		host->ipaddr.a_family = AF_INET;
+		sin.sin_port = port;
 		(void) memcpy(&sin.sin_addr, &host->ipaddr.a_ipv4,
 		    sizeof (sin.sin_addr));
 		rc = cbfunc(cbdata, socktype, (struct sockaddr *)&sin);
@@ -117,6 +127,7 @@ _krb5_override_service_locator(
 		struct sockaddr_in6 sin6;
 		(void) memset(&sin6, 0, sizeof (sin6));
 		sin6.sin6_family = AF_INET6;
+		sin6.sin6_port = port;
 		(void) memcpy(&sin6.sin6_addr, &host->ipaddr.a_ipv6,
 		    sizeof (sin6.sin6_addr));
 		rc = cbfunc(cbdata, socktype, (struct sockaddr *)&sin6);

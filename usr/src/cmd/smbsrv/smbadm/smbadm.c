@@ -754,10 +754,11 @@ smbadm_list(int argc, char **argv)
 	    (!smb_inet_iszero(&srvipaddr))) {
 		(void) smb_inet_ntop(&srvipaddr, ipstr,
 		    SMB_IPSTRLEN(srvipaddr.a_family));
-		(void) printf(gettext("\t[+%s.%s] [%s]\n"),
-		    srvname, fqdn, ipstr);
+		(void) printf(gettext("\t[+%s] [%s]\n"),
+		    srvname, ipstr);
 	}
 
+	/* Print the local and domain SID. */
 	smb_domain_show();
 	return (0);
 }

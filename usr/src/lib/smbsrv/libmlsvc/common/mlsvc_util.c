@@ -179,16 +179,17 @@ mlsvc_join(char *domain_name, char *admin_user, char *admin_pw)
 			} else {
 				status = NT_STATUS_SUCCESS;
 			}
-		}
+		} else {
+			syslog(LOG_DEBUG, "use_ads=false (do RPC join)");
 
-		/*
-		 * If ADS was disabled or gave an error,
-		 * fall-back and try to join using RPC.
-		 */
-		if (status != NT_STATUS_SUCCESS) {
-			status = mlsvc_join_rpc(&dxi,
-			    admin_user, admin_pw,
-			    machine_name, machine_pw);
+			/*
+			 * If ADS was disabled, join using RPC.
+			 */
+			if (status != NT_STATUS_SUCCESS) {
+				status = mlsvc_join_rpc(&dxi,
+				    admin_user, admin_pw,
+				    machine_name, machine_pw);
+			}
 		}
 
 	} else {

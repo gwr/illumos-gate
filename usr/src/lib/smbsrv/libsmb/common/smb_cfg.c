@@ -148,8 +148,8 @@ static smb_cfg_param_t *smb_config_getent(smb_cfg_id_t);
 static boolean_t smb_is_base64(unsigned char c);
 static char *smb_base64_encode(char *str_to_encode);
 static char *smb_base64_decode(char *encoded_str);
-static int smb_config_get_idmap_prefered_dc(char *, int);
-static int smb_config_set_idmap_prefered_dc(char *);
+static int smb_config_get_idmap_preferred_dc(char *, int);
+static int smb_config_set_idmap_preferred_dc(char *);
 
 char *
 smb_config_getname(smb_cfg_id_t id)
@@ -372,7 +372,7 @@ smb_config_getstr(smb_cfg_id_t id, char *cbuf, int bufsz)
 	assert(cfg->sc_type == SCF_TYPE_ASTRING);
 
 	if (id == SMB_CI_DOMAIN_SRV)
-		return (smb_config_get_idmap_prefered_dc(cbuf, bufsz));
+		return (smb_config_get_idmap_preferred_dc(cbuf, bufsz));
 
 	handle = smb_smf_scf_init(SMBD_FMRI_PREFIX);
 	if (handle == NULL)
@@ -578,7 +578,7 @@ smb_config_setstr(smb_cfg_id_t id, char *value)
 	assert(cfg->sc_type == SCF_TYPE_ASTRING);
 
 	if (id == SMB_CI_DOMAIN_SRV)
-		return (smb_config_set_idmap_prefered_dc(value));
+		return (smb_config_set_idmap_preferred_dc(value));
 
 	protected = B_FALSE;
 
@@ -774,7 +774,7 @@ smb_config_get_ads_enable(void)
 		rc = smb_smf_get_boolean_property(handle, "use_ads", &vbool);
 	smb_smf_scf_fini(handle);
 
-	return ((rc == SMBD_SMF_OK) ? (vbool == 1) : B_FALSE);
+	return ((rc == SMBD_SMF_OK) ? (vbool == 1) : B_TRUE);
 }
 
 /*
@@ -818,7 +818,7 @@ smb_config_get_localuuid(uuid_t uu)
 }
 
 static int
-smb_config_get_idmap_prefered_dc(char *cbuf, int bufsz)
+smb_config_get_idmap_preferred_dc(char *cbuf, int bufsz)
 {
 	char *s;
 	int len, rc = -1;
@@ -835,7 +835,7 @@ smb_config_get_idmap_prefered_dc(char *cbuf, int bufsz)
 }
 
 static int
-smb_config_set_idmap_prefered_dc(char *value)
+smb_config_set_idmap_preferred_dc(char *value)
 {
 	return (smb_config_setenv_generic(IDMAP_FMRI_PREFIX, IDMAP_PG_NAME,
 	    IDMAP_PREF_DC, value));

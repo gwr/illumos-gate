@@ -234,6 +234,9 @@ smb_ads_init(void)
 	    smb_ads_cfg.c_site, SMB_ADS_SITE_MAX);
 	(void) smb_config_getip(SMB_CI_DOMAIN_SRV, &smb_ads_cfg.c_pdc);
 	(void) mutex_unlock(&smb_ads_cfg.c_mtx);
+
+	/* Force -lads to load, for dtrace. */
+	DsFreeDcInfo(NULL);
 }
 
 void
