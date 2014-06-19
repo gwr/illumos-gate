@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -415,6 +415,9 @@ smb2_qif_alignment(smb_request_t *sr, smb_queryinfo_t *qi)
 
 /*
  * FileAlternateNameInformation
+ * See also:
+ *	SMB_QUERY_FILE_ALT_NAME_INFO
+ *	SMB_FILE_ALT_NAME_INFORMATION
  */
 static uint32_t
 smb2_qif_altname(smb_request_t *sr, smb_queryinfo_t *qi)
@@ -429,7 +432,13 @@ smb2_qif_altname(smb_request_t *sr, smb_queryinfo_t *qi)
 	if ((of->f_tree->t_flags & SMB_TREE_SHORTNAMES) == 0)
 		return (NT_STATUS_OBJECT_NAME_NOT_FOUND);
 
+	/* fill in qi->qi_shortname */
 	smb_query_shortname(of->f_node, qi);
+
+	(void) smb_mbc_encodef(
+	    &sr->raw_data, "%lU", sr,
+	    smb_wcequiv_strlen(qi->qi_shortname),
+	    qi->qi_shortname);
 
 	return (0);
 }
