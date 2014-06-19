@@ -77,7 +77,7 @@ static int smbd_authsvc_gettoken(authsvc_context_t *);
 static int smbd_raw_ntlmssp_esfirst(authsvc_context_t *);
 static int smbd_raw_ntlmssp_esnext(authsvc_context_t *);
 
-static int smbd_authsvc_bufsize = 4000;
+int smbd_authsvc_bufsize = 16000;
 
 static mutex_t smbd_authsvc_mutex = DEFAULTMUTEX;
 int smbd_authsvc_thrcnt = 0;
@@ -838,8 +838,12 @@ smbd_authsvc_gettoken(authsvc_context_t *ctx)
 	 * Encode the token response
 	 */
 	len = xdr_sizeof(smb_token_xdr, token);
-	if (len > ctx->ctx_orawlen)
-		return (NT_STATUS_INTERNAL_ERROR);
+	if (len > ctx->ctx_orawlen) {
+		if ((ctx->ctx_orawbuf = realloc(ctx->ctx_orawbuf, len)) ==
+		    NULL) {
+			return (NT_STATUS_INTERNAL_ERROR);
+		}
+	}
 
 	ctx->ctx_orawtype = LSA_MTYPE_TOKEN;
 	ctx->ctx_orawlen = len;
