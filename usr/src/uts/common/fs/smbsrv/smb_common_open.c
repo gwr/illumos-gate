@@ -541,15 +541,23 @@ smb_open_subr(smb_request_t *sr)
 			}
 		}
 
-		/*
-		 * Oplock break is done prior to sharing checks as the break
-		 * may cause other clients to close the file which would
-		 * affect the sharing checks.
-		 */
-		smb_node_inc_opening_count(node);
-		smb_open_oplock_break(sr, node);
+		if ((op->create_disposition == FILE_SUPERSEDE) ||
+		    (op->create_disposition == FILE_OVERWRITE_IF) ||
+		    (op->create_disposition == FILE_OVERWRITE)) {
 
-		smb_node_wrlock(node);
+			if (!smb_sattr_check(op->fqi.fq_fattr.sa_dosattr,
+			    op->dattr)) {
+				smb_node_release(node);
+				smb_node_release(dnode);
+				return (NT_STATUS_ACCESS_DENIED);
+			}
+
+			if (smb_node_is_dir(node)) {
+				smb_node_release(node);
+				smb_node_release(dnode);
+				return (NT_STATUS_ACCESS_DENIED);
+			}
+		}
 
 		/* MS-FSA 2.1.5.1.2 */
 		if (op->create_disposition == FILE_SUPERSEDE)
@@ -558,39 +566,9 @@ smb_open_subr(smb_request_t *sr)
 		    (op->create_disposition == FILE_OVERWRITE))
 			op->desired_access |= FILE_WRITE_DATA;
 
-		if ((op->create_disposition == FILE_SUPERSEDE) ||
-		    (op->create_disposition == FILE_OVERWRITE_IF) ||
-		    (op->create_disposition == FILE_OVERWRITE)) {
-
-			if (!smb_sattr_check(op->fqi.fq_fattr.sa_dosattr,
-			    op->dattr)) {
-				smb_node_unlock(node);
-				smb_node_dec_opening_count(node);
-				smb_node_release(node);
-				smb_node_release(dnode);
-				return (NT_STATUS_ACCESS_DENIED);
-			}
-		}
-
-		status = smb_fsop_shrlock(sr->user_cr, node, uniq_fid,
-		    op->desired_access, op->share_access);
-
-		if (status == NT_STATUS_SHARING_VIOLATION) {
-			smb_node_unlock(node);
-			smb_node_dec_opening_count(node);
-			smb_node_release(node);
-			smb_node_release(dnode);
-			return (status);
-		}
-
 		status = smb_fsop_access(sr, sr->user_cr, node,
 		    op->desired_access);
-
 		if (status != NT_STATUS_SUCCESS) {
-			smb_fsop_unshrlock(sr->user_cr, node, uniq_fid);
-
-			smb_node_unlock(node);
-			smb_node_dec_opening_count(node);
 			smb_node_release(node);
 			smb_node_release(dnode);
 
@@ -602,19 +580,42 @@ smb_open_subr(smb_request_t *sr)
 			}
 		}
 
+		if (max_requested) {
+			smb_fsop_eaccess(sr, sr->user_cr, node, &max_allowed);
+			op->desired_access |= max_allowed;
+		}
+
+		/*
+		 * Oplock break is done prior to sharing checks as the break
+		 * may cause other clients to close the file which would
+		 * affect the sharing checks. This may block, so set the
+		 * file opening count before oplock stuff.
+		 */
+		smb_node_inc_opening_count(node);
+		smb_open_oplock_break(sr, node);
+
+		smb_node_wrlock(node);
+
+		/*
+		 * Check for sharing violations
+		 */
+		status = smb_fsop_shrlock(sr->user_cr, node, uniq_fid,
+		    op->desired_access, op->share_access);
+		if (status == NT_STATUS_SHARING_VIOLATION) {
+			smb_node_unlock(node);
+			smb_node_dec_opening_count(node);
+			smb_node_release(node);
+			smb_node_release(dnode);
+			return (status);
+		}
+
+		/*
+		 * Go ahead with modifications as necessary.
+		 */
 		switch (op->create_disposition) {
 		case FILE_SUPERSEDE:
 		case FILE_OVERWRITE_IF:
 		case FILE_OVERWRITE:
-			if (smb_node_is_dir(node)) {
-				smb_fsop_unshrlock(sr->user_cr, node, uniq_fid);
-				smb_node_unlock(node);
-				smb_node_dec_opening_count(node);
-				smb_node_release(node);
-				smb_node_release(dnode);
-				return (NT_STATUS_ACCESS_DENIED);
-			}
-
 			op->dattr |= FILE_ATTRIBUTE_ARCHIVE;
 			/* Don't apply readonly bit until smb_ofile_close */
 			if (op->dattr & FILE_ATTRIBUTE_READONLY) {
@@ -764,11 +765,11 @@ smb_open_subr(smb_request_t *sr)
 
 		created = B_TRUE;
 		op->action_taken = SMB_OACT_CREATED;
-	}
 
-	if (max_requested) {
-		smb_fsop_eaccess(sr, sr->user_cr, node, &max_allowed);
-		op->desired_access |= max_allowed;
+		if (max_requested) {
+			smb_fsop_eaccess(sr, sr->user_cr, node, &max_allowed);
+			op->desired_access |= max_allowed;
+		}
 	}
 
 	status = NT_STATUS_SUCCESS;
@@ -920,7 +921,7 @@ static boolean_t
 smb_open_attr_only(smb_arg_open_t *op)
 {
 	if (((op->desired_access & ~(FILE_READ_ATTRIBUTES |
-	    FILE_WRITE_ATTRIBUTES | SYNCHRONIZE)) == 0) &&
+	    FILE_WRITE_ATTRIBUTES | SYNCHRONIZE | READ_CONTROL)) == 0) &&
 	    (op->create_disposition != FILE_SUPERSEDE) &&
 	    (op->create_disposition != FILE_OVERWRITE)) {
 		return (B_TRUE);
