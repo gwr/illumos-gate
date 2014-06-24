@@ -83,8 +83,9 @@ LDFLAGS += -R/usr/lib/smbsrv
 LDLIBS += -L$(ROOT)/usr/lib/smbsrv
 LDLIBS += -lfksmbsrv -lfakekernel
 # prefer to keep libs ordered by dependence
-LDLIBS += -lmlsvc -lmlrpc -lsmbns -lsmb -lsmbfs -lgss -lkrb5
+LDLIBS += -lmlsvc -lmlrpc -lsmbns -lsmb -lsmbfs -lgss
 LDLIBS += -lzfs -lbsm -lscf -lcmdutils -lsocket -lnsl -lumem
+$(PROG) := LDLIBS += -lkrb5
 
 LINTFLAGS += -xerroff=E_NAME_DEF_NOT_USED2
 LINTFLAGS += -xerroff=E_NAME_USED_NOT_DEF2
