@@ -33,7 +33,56 @@
 #include <netsmb/spnego.h>	/* libsmbfs */
 #include <assert.h>
 
-#define	NTLM_CHAL_SZ	8	/* challenge size */
+#define	NTLM_CHAL_SZ	SMBAUTH_CHAL_SZ	/* challenge size */
+
+/*
+ * Compute the combined (server+client) challenge per. [MS-NLMP 3.3.1]
+ * MD5(concat(ServerChallenge,ClientChallenge))
+ */
+void
+smb_auth_ntlm2_mkchallenge(char *result,
+	const char *srv_chal, const char *clnt_chal)
+{
+	MD5_CTX context;
+	uchar_t challenges[2 * NTLM_CHAL_SZ];
+	uchar_t digest[SMBAUTH_HASH_SZ];
+
+	/*
+	 * challenges = ConcatenationOf(ServerChallenge, ClientChallenge)
+	 */
+	(void) memcpy(challenges, srv_chal, NTLM_CHAL_SZ);
+	(void) memcpy(challenges + NTLM_CHAL_SZ, clnt_chal, NTLM_CHAL_SZ);
+
+	/*
+	 * digest = MD5(challenges)
+	 */
+	MD5Init(&context);
+	MD5Update(&context, challenges, sizeof (challenges));
+	MD5Final(digest, &context);
+
+	/*
+	 * result = digest[0..7]
+	 */
+	(void) memcpy(result, digest, NTLM_CHAL_SZ);
+}
+
+void
+smb_auth_ntlm2_kxkey(unsigned char *result, const char *srv_chal,
+	const char *clnt_chal, unsigned char *ssn_base_key)
+{
+	uchar_t challenges[2 * NTLM_CHAL_SZ];
+
+	/*
+	 * challenges = ConcatenationOf(ServerChallenge, ClientChallenge)
+	 */
+	(void) memcpy(challenges, srv_chal, NTLM_CHAL_SZ);
+	(void) memcpy(challenges + NTLM_CHAL_SZ, clnt_chal, NTLM_CHAL_SZ);
+
+	/* HMAC_MD5(SessionBaseKey, concat(...)) */
+	/* SMBAUTH_HMACT64 args: D, Dsz, K, Ksz, digest */
+	(void) SMBAUTH_HMACT64(challenges, sizeof (challenges),
+	    ssn_base_key, SMBAUTH_HASH_SZ, result);
+}
 
 /*
  * smb_auth_qnd_unicode
@@ -322,56 +371,6 @@ smb_ntlm_password_ok(
 	return (ok);
 }
 
-/*
- * Check for an NTLMSSP_NEGOTIATE_EXTENDED_SESSIONSECURITY response.
- * It's NTLM(v1) with a "client nonce" in the LM reponse field.
- * We refer to it as "v1x" for short.
- *
- * This challenge used for the NTLM hash check is an MD5 hash of
- * ConcatenationOf(ServerChallenge, ClientChallenge)
- * See: [MS-NLMP] 3.3.1
- */
-static boolean_t
-smb_ntlmv1x_password_ok(
-    unsigned char *srv_challenge,
-    unsigned char *nt_hash,
-    unsigned char *nt_resp,
-    unsigned char *lm_resp, /* client challenge */
-    unsigned char *session_key)
-{
-	MD5_CTX context;
-	unsigned char ok_resp[SMBAUTH_LM_RESP_SZ];
-	uchar_t challenges[2 * NTLM_CHAL_SZ];
-	uchar_t digest[SMBAUTH_HASH_SZ];
-	int rc;
-	boolean_t ok;
-
-	/*
-	 * challenges = ConcatenationOf(ServerChallenge, ClientChallenge)
-	 */
-	(void) memcpy(challenges, srv_challenge, NTLM_CHAL_SZ);
-	(void) memcpy(challenges + NTLM_CHAL_SZ, lm_resp, NTLM_CHAL_SZ);
-
-	/*
-	 * digest = MD5(challenges)
-	 */
-	MD5Init(&context);
-	MD5Update(&context, challenges, sizeof (challenges));
-	MD5Final(digest, &context);
-
-	rc = smb_auth_ntlm_response(nt_hash, digest, ok_resp);
-	if (rc != SMBAUTH_LM_RESP_SZ)
-		return (B_FALSE);
-
-	ok = (bcmp(ok_resp, nt_resp, SMBAUTH_LM_RESP_SZ) == 0);
-	if (ok && (session_key)) {
-		rc = smb_auth_md4(session_key, nt_hash, SMBAUTH_HASH_SZ);
-		if (rc != SMBAUTH_SUCCESS)
-			ok = B_FALSE;
-	}
-	return (ok);
-}
-
 static boolean_t
 smb_ntlmv2_password_ok(
     unsigned char *challenge,
@@ -493,7 +492,7 @@ smb_lmv2_password_ok(
 			break;
 
 		if (smb_auth_v2_response(ntlmv2_hash, srv_challenge,
-		    clnt_challenge, SMBAUTH_V2_CLNT_CHALLENGE_SZ,
+		    clnt_challenge, SMBAUTH_CHAL_SZ,
 		    lmv2_resp) < 0)
 			break;
 
@@ -556,12 +555,6 @@ smb_auth_validate(
 	/*
 	 * Accept NTLM at levels 0-4
 	 */
-	if (nt_len == SMBAUTH_LM_RESP_SZ && lm_len >= NTLM_CHAL_SZ) {
-		ok = smb_ntlmv1x_password_ok(challenge, smbpw->pw_nthash,
-		    nt_resp, lm_resp, session_key);
-		if (ok)
-			return (ok);
-	}
 	if (nt_len == SMBAUTH_LM_RESP_SZ) {
 		ok = smb_ntlm_password_ok(challenge, smbpw->pw_nthash,
 		    nt_resp, session_key);

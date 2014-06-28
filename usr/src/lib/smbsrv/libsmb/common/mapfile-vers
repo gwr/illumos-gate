@@ -77,6 +77,8 @@ SYMBOL_VERSION SUNWprivate {
 	smb_auth_RC4;
 	smb_auth_hmac_md5;
 	smb_auth_ntlm_hash;
+	smb_auth_ntlm2_kxkey;
+	smb_auth_ntlm2_mkchallenge;
 	smb_auth_ntlmv2_hash;
 	smb_auth_qnd_unicode;
 	smb_auth_validate;

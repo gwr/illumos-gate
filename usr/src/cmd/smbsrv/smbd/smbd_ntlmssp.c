@@ -83,7 +83,6 @@ struct auth_hdr {
 
 /* Allow turning these off for debugging, etc. */
 int smbd_signing_enabled = 1;
-int smbd_key_exch_enabled = 1;
 
 int smbd_constant_challenge = 0;
 static uint8_t constant_chal[8] = {
@@ -209,11 +208,8 @@ smbd_ntlmssp_negotiate(authsvc_context_t *ctx)
 	be->srv_flags |= be->clnt_flags & (
 	    NTLMSSP_NEGOTIATE_NTLM2 |
 	    NTLMSSP_NEGOTIATE_128 |
+	    NTLMSSP_NEGOTIATE_KEY_EXCH |
 	    NTLMSSP_NEGOTIATE_56);
-
-	if (smbd_key_exch_enabled &&
-	    (be->clnt_flags & NTLMSSP_NEGOTIATE_KEY_EXCH))
-		be->srv_flags |= NTLMSSP_NEGOTIATE_KEY_EXCH;
 
 	if (smbd_signing_enabled) {
 		be->srv_flags |= be->clnt_flags & (
@@ -369,6 +365,9 @@ smbd_ntlmssp_authenticate(authsvc_context_t *ctx)
 	void *essn_key;	/* encrypted session key (optional) */
 	int mbflags;
 	uint_t status = NT_STATUS_INTERNAL_ERROR;
+	char combined_challenge[SMBAUTH_CHAL_SZ];
+	unsigned char kxkey[SMBAUTH_HASH_SZ];
+	boolean_t ntlm_v1x = B_FALSE;
 
 	bzero(&user_info, sizeof (user_info));
 
@@ -417,7 +416,7 @@ smbd_ntlmssp_authenticate(authsvc_context_t *ctx)
 	    ctx->ctx_clinfo.lci_clnt_ipaddr;
 	user_info.lg_local_port = 445;
 
-	user_info.lg_challenge_key.len = 8;
+	user_info.lg_challenge_key.len = SMBAUTH_CHAL_SZ;
 	user_info.lg_challenge_key.val = (uint8_t *)be->srv_challenge;
 
 	user_info.lg_nt_password.len = hdr.h_nt_resp.sb_length;
@@ -430,32 +429,63 @@ smbd_ntlmssp_authenticate(authsvc_context_t *ctx)
 	user_info.lg_native_lm = ctx->ctx_clinfo.lci_native_lm;
 
 	/*
+	 * If we're doing extended session security, the challenge
+	 * this OWF was computed with is different. [MS-NLMP 3.3.1]
+	 * It's: MD5(concat(ServerChallenge,ClientChallenge))
+	 * where the ClientChallenge is in the LM resp. field.
+	 */
+	if (user_info.lg_nt_password.len == SMBAUTH_LM_RESP_SZ &&
+	    user_info.lg_lm_password.len >= SMBAUTH_CHAL_SZ &&
+	    (be->clnt_flags & NTLMSSP_NEGOTIATE_NTLM2) != 0) {
+		smb_auth_ntlm2_mkchallenge(combined_challenge,
+		    be->srv_challenge, lm_resp);
+		user_info.lg_challenge_key.val =
+		    (uint8_t *)combined_challenge;
+		user_info.lg_lm_password.len = 0;
+		ntlm_v1x = B_TRUE;
+	}
+
+	/*
 	 * This (indirectly) calls smb_auth_validate() to
 	 * check that the client gave us a valid hash.
 	 */
 	token = smbd_user_auth_logon(&user_info);
-
 	if (token == NULL) {
 		status = NT_STATUS_ACCESS_DENIED;
 		goto errout;
 	}
 
-	/*
-	 * Did the client give us an encrypted session key?
-	 * If so, decrypt it (RC4) using the "key exchange key"
-	 * (per MS-NLMP) which is the traditional sessnion key
-	 * already computed and placed in the token above.
-	 */
-	if (smbd_key_exch_enabled && token->tkn_session_key != NULL &&
-	    (be->clnt_flags & NTLMSSP_NEGOTIATE_KEY_EXCH)) {
-		/* Decrypt the session key */
-		smb_session_key_t new_key;
-		/* RC4 args: result, key, data */
-		(void) smb_auth_RC4(new_key.data, SMBAUTH_HASH_SZ,
-		    token->tkn_session_key->data, SMBAUTH_HASH_SZ,
-		    essn_key, hdr.h_essn_key.sb_length);
-		(void) memcpy(token->tkn_session_key->data,
-		    new_key.data, SMBAUTH_HASH_SZ);
+	if (token->tkn_session_key != NULL) {
+		/*
+		 * At this point, token->tkn_session_key is the
+		 * "Session Base Key" [MS-NLMP] 3.2.5.1.2
+		 * Compute the final session key.  First need the
+		 * "Key Exchange Key" [MS-NLMP] 3.4.5.1
+		 */
+		if (ntlm_v1x) {
+			smb_auth_ntlm2_kxkey(kxkey,
+			    be->srv_challenge, lm_resp,
+			    token->tkn_session_key->data);
+		} else {
+			/* KXKEY is the Session Base Key. */
+			(void) memcpy(kxkey, token->tkn_session_key->data,
+			    SMBAUTH_HASH_SZ);
+		}
+
+		/*
+		 * If the client give us an encrypted session key,
+		 * decrypt it (RC4) using the "key exchange key".
+		 */
+		if (be->clnt_flags & NTLMSSP_NEGOTIATE_KEY_EXCH) {
+			/* RC4 args: result, key, data */
+			(void) smb_auth_RC4(token->tkn_session_key->data,
+			    SMBAUTH_HASH_SZ, kxkey, SMBAUTH_HASH_SZ,
+			    essn_key, hdr.h_essn_key.sb_length);
+		} else {
+			/* Final key is the KXKEY */
+			(void) memcpy(token->tkn_session_key->data, kxkey,
+			    SMBAUTH_HASH_SZ);
+		}
 	}
 
 	ctx->ctx_token = token;

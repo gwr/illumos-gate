@@ -309,7 +309,7 @@ void libsmb_redirect_syslog(__FILE_TAG *fp, int priority);
 #define	SMBAUTH_HASH_SZ		16	/* also LM/NTLM/NTLMv2 Hash size */
 #define	SMBAUTH_LM_RESP_SZ	24	/* also NTLM Response size */
 #define	SMBAUTH_LM_PWD_SZ	14	/* LM password size */
-#define	SMBAUTH_V2_CLNT_CHALLENGE_SZ 8	/* both LMv2 and NTLMv2 */
+#define	SMBAUTH_CHAL_SZ		 8	/* both LMv2 and NTLMv2 */
 #define	SMBAUTH_SESSION_KEY_SZ	SMBAUTH_HASH_SZ
 #define	SMBAUTH_HEXHASH_SZ	(SMBAUTH_HASH_SZ * 2)
 
@@ -370,7 +370,7 @@ typedef struct smb_auth_data_blob {
 	unsigned char ndb_signature[4];
 	unsigned char ndb_reserved[4];
 	uint64_t ndb_timestamp;
-	unsigned char ndb_clnt_challenge[SMBAUTH_V2_CLNT_CHALLENGE_SZ];
+	unsigned char ndb_clnt_challenge[SMBAUTH_CHAL_SZ];
 	unsigned char ndb_unknown[4];
 	smb_auth_name_entry_t ndb_names[2];
 	unsigned char ndb_unknown2[4];
@@ -494,6 +494,9 @@ extern int smb_auth_RC4(unsigned char *, int, unsigned char *, int,
 extern int smb_auth_md4(unsigned char *, unsigned char *, int);
 extern int smb_auth_lm_hash(const char *, unsigned char *);
 extern int smb_auth_ntlm_hash(const char *, unsigned char *);
+extern void smb_auth_ntlm2_mkchallenge(char *, const char *, const char *);
+extern void smb_auth_ntlm2_kxkey(unsigned char *, const char *, const char *,
+    unsigned char *);
 
 extern int smb_auth_set_info(char *, char *,
     unsigned char *, char *, unsigned char *,
