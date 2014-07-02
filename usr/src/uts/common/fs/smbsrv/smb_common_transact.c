@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <smbsrv/smb_kproto.h>
@@ -1403,10 +1403,8 @@ is_supported_mailslot(const char *mailslot)
  * The residual data remains in the pipe until the client comes back
  * with a read request or closes the pipe.
  *
- * When we read less than what's available, we SHOULD return the
- * special ERROR_MORE_DATA error code.  That's not implemented,
- * and clients appear to figure out that they need to read more
- * based on higher level protocol state (RPC).
+ * When we read less than what's available, we MUST return the
+ * status NT_STATUS_BUFFER_OVERFLOW (or ERRDOS/ERROR_MORE_DATA)
  */
 static smb_sdrc_t
 smb_trans_nmpipe(smb_request_t *sr, smb_xa_t *xa)
@@ -1437,7 +1435,9 @@ smb_trans_nmpipe(smb_request_t *sr, smb_xa_t *xa)
 	status = smb_opipe_fsctl(sr, &fsctl);
 	if (status) {
 		smbsr_status(sr, status, 0, 0);
-		return (SDRC_ERROR);
+		if (NT_SC_SEVERITY(status) == NT_STATUS_SEVERITY_ERROR)
+			return (SDRC_ERROR);
+		/* Warnings like NT_STATUS_BUFFER_OVERFLOW are OK */
 	}
 
 	return (SDRC_SUCCESS);

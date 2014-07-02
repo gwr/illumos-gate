@@ -166,8 +166,12 @@ smb2_ioctl(smb_request_t *sr)
 	 * Dispatch to the handler for CtlCode
 	 */
 	status = (te->te_func)(sr, &fsctl);
-	if (status)
-		goto errout;
+	if (status != 0) {
+		sr->smb2_status = status;
+		if (NT_SC_SEVERITY(status) == NT_STATUS_SEVERITY_ERROR)
+			goto errout;
+		/* Warnings like NT_STATUS_BUFFER_OVERFLOW are OK. */
+	}
 
 	fsctl.InputCount = 0;
 	InputOffset = SMB2_HDR_SIZE + 48;

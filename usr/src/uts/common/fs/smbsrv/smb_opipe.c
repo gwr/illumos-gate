@@ -338,13 +338,13 @@ smb_opipe_write(smb_request_t *sr, struct uio *uio)
 /*
  * smb_opipe_read
  *
- * This interface may be called because smb_opipe_transact could not return
- * all of the data in the original transaction or to form the second half
- * of a transaction set up using smb_opipe_write.  Either way, we just need
- * to read data from the pipe and return it.
+ * This interface may be called from smb_opipe_transact (write, read)
+ * or from smb_read / smb2_read to get the rest of an RPC response.
+ * The response data (and length) are returned via the uio.
  *
- * The response data is encoded into raw_data as required by the smb_read
- * functions.  The uio_resid value indicates the number of bytes read.
+ * If there's more data than the caller asked for, return E2BIG,
+ * which callers convert to NT_STATUS_BUFFER_OVERFLOW, etc.
+ * That's a magic non-error to tell clients to read again.
  */
 int
 smb_opipe_read(smb_request_t *sr, struct uio *uio)
@@ -375,15 +375,29 @@ smb_opipe_read(smb_request_t *sr, struct uio *uio)
 
 	rc = ksocket_recvmsg(sock, &msghdr, 0,
 	    &recvcnt, ofile->f_cr);
-	if (rc == 0) {
-		if (recvcnt == 0) {
-			/* Other side closed. */
-			rc = EPIPE;
-		} else {
-			uio->uio_resid -= recvcnt;
-		}
+	if (rc != 0)
+		goto out;
+
+	if (recvcnt == 0) {
+		/* Other side closed. */
+		rc = EPIPE;
+		goto out;
+	}
+	uio->uio_resid -= recvcnt;
+
+	/*
+	 * If we filled the user's buffer,
+	 * find out if there's more data.
+	 */
+	if (uio->uio_resid == 0) {
+		int rc2, nread, trval;
+		rc2 = ksocket_ioctl(sock, FIONREAD, (intptr_t)&nread,
+		    &trval, ofile->f_cr);
+		if (rc2 == 0 && nread != 0)
+			rc = E2BIG;	/* more data */
 	}
 
+out:
 	ksocket_rele(sock);
 
 	return (rc);
@@ -422,8 +436,6 @@ smb_opipe_getname(smb_ofile_t *of, char *buf, size_t buflen)
 
 /*
  * Handler for smb2_ioctl
- *
- * A stub for now - not sure yet if SMB2 requires this.
  */
 /* ARGSUSED */
 uint32_t
@@ -457,7 +469,8 @@ smb_opipe_transceive(smb_request_t *sr, smb_fsctl_t *fsctl)
 	smb_vdb_t	vdb;
 	smb_ofile_t	*ofile;
 	struct mbuf	*mb;
-	int len, rc;
+	uint32_t	status;
+	int		len, rc;
 
 	/*
 	 * Caller checked that this is the IPC$ share,
@@ -489,7 +502,18 @@ smb_opipe_transceive(smb_request_t *sr, smb_fsctl_t *fsctl)
 	mb = smb_mbuf_allocate(&vdb.vdb_uio);
 
 	rc = smb_opipe_read(sr, &vdb.vdb_uio);
-	if (rc != 0) {
+	switch (rc) {
+	case 0:
+		status = 0;
+		break;
+	case E2BIG:
+		/*
+		 * Note: E2BIG is not a real error.  It just
+		 * tells us there's more data to be read.
+		 */
+		status = NT_STATUS_BUFFER_OVERFLOW;
+		break;
+	default:
 		m_freem(mb);
 		return (smb_errno2status(rc));
 	}
@@ -498,5 +522,5 @@ smb_opipe_transceive(smb_request_t *sr, smb_fsctl_t *fsctl)
 	smb_mbuf_trim(mb, len);
 	MBC_ATTACH_MBUF(fsctl->out_mbc, mb);
 
-	return (0);
+	return (status);
 }

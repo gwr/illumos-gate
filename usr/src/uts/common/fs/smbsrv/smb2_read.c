@@ -105,6 +105,14 @@ smb2_read(smb_request_t *sr)
 		break;
 	case STYPE_IPC:
 		rc = smb_opipe_read(sr, &vdb->vdb_uio);
+		if (rc == E2BIG) {
+			/*
+			 * Note: E2BIG is not a real error.  It just
+			 * tells us there's more data to be read.
+			 */
+			sr->smb2_status = NT_STATUS_BUFFER_OVERFLOW;
+			rc = 0;
+		}
 		break;
 	default:
 	case STYPE_PRINTQ:

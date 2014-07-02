@@ -830,25 +830,7 @@ smbd_load_shares(void)
 static void *
 smbd_share_loader(void *args)
 {
-#ifdef	_FAKE
-	smb_share_t si;
-	_NOTE(ARGUNUSED(args))
-
-	bzero(&si, sizeof (si));
-	(void) strlcpy(si.shr_name, "test", MAXNAMELEN);
-	(void) strlcpy(si.shr_path, "/var/smb/test", MAXPATHLEN);
-	(void) strlcpy(si.shr_cmnt, "fksmbd testing", MAXPATHLEN);
-	si.shr_flags = SMB_SHRF_GUEST_OK;
-	if (smb_shr_add(&si) != 0) {
-		smbd_report("failed to add test share (/tmp/test)");
-	}
-#else
-	/*
-	 * Not loading the real shares in fksmbd because that
-	 * tries to enable network/smb/server
-	 */
 	(void) smb_shr_load(args);
-#endif
 	return (NULL);
 }
 
