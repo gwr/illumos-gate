@@ -16,6 +16,11 @@ MODULE = Kstat
 
 include $(SRC)/cmd/perl/Makefile.perl
 
+$(INTEL_BLD) CPPFLAGS += -I$(ROOT)/usr/platform/i86pc/include \
+			 -I$(ROOT)/usr/platform/i86xpv/include
+$(SPARC_BLD) CPPFLAGS += -I$(ROOT)/usr/platform/sun4u/include \
+			 -I$(ROOT)/usr/platform/sun4v/include
+
 LDLIBS += -lkstat
 
 CERRWARN += -_gcc=-Wno-unused-value
