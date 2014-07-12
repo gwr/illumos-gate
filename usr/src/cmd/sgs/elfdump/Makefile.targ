@@ -42,8 +42,12 @@
 		$(COMPILE.c) -o $@ $<
 		$(POST_PROCESS_O)
 
+# This program runs "native" (on the build machine) but needs to use
+# headers from our proto area.  These are technically the wrong headers
+# to use for compiling a native program but we get away with it because
+# this program uses only a few standard libc functions like printf.
 gen_struct_layout:	../common/gen_struct_layout.c
-		$(NATIVECC) $(NATIVECC_CFLAGS) $(CFLAGS) -o $@ \
+		$(NATIVECC) $(CFLAGS) $(CPPFLAGS.native) -o $@ \
 			../common/gen_struct_layout.c
 
 $(PROG):	$(OBJS) $(MAPFILE) gen_struct_layout
