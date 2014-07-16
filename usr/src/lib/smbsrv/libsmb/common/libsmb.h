@@ -220,6 +220,7 @@ extern void smb_update_netlogon_seqnum(void);
 #define	SMB_PASSWD_MAXLEN	127
 #define	SMB_USERNAME_MAXLEN	40
 
+/* See also: smb_joininfo_xdr() */
 typedef struct smb_joininfo {
 	char domain_name[MAXHOSTNAMELEN];
 	char domain_username[SMB_USERNAME_MAXLEN + 1];
@@ -227,9 +228,16 @@ typedef struct smb_joininfo {
 	uint32_t mode;
 } smb_joininfo_t;
 
+/* See also: smb_joinres_xdr() */
+typedef struct smb_joinres {
+	uint32_t status;
+	int join_err;
+} smb_joinres_t;
+
 /* APIs to communicate with SMB daemon via door calls */
-uint32_t smb_join(smb_joininfo_t *info);
+int smb_join(smb_joininfo_t *, smb_joinres_t *info);
 bool_t smb_joininfo_xdr(XDR *, smb_joininfo_t *);
+bool_t smb_joinres_xdr(XDR *, smb_joinres_t *);
 boolean_t smb_find_ads_server(char *, char *, int);
 void smb_notify_dc_changed(void);
 

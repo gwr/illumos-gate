@@ -670,17 +670,18 @@ static int
 smbd_dop_join(smbd_arg_t *arg)
 {
 	smb_joininfo_t	jdi;
-	uint32_t	status;
+	smb_joinres_t	jdres;
 
 	bzero(&jdi, sizeof (smb_joininfo_t));
+	bzero(&jdres, sizeof (smb_joinres_t));
 
 	if (smb_common_decode(arg->data, arg->datalen,
 	    smb_joininfo_xdr, &jdi) != 0)
 		return (SMB_DOP_DECODE_ERROR);
 
-	status = smbd_join(&jdi);
+	smbd_join(&jdi, &jdres);
 
-	arg->rbuf = smb_common_encode(&status, xdr_uint32_t, &arg->rsize);
+	arg->rbuf = smb_common_encode(&jdres, smb_joinres_xdr, &arg->rsize);
 
 	if (arg->rbuf == NULL)
 		return (SMB_DOP_ENCODE_ERROR);

@@ -196,7 +196,7 @@ typedef struct smb_ads_host_list {
 	smb_ads_host_info_t *ah_list;
 } smb_ads_host_list_t;
 
-static smb_ads_handle_t *smb_ads_open_main(char *, char *, char *);
+static int smb_ads_open_main(smb_ads_handle_t **, char *, char *, char *);
 static int smb_ads_add_computer(smb_ads_handle_t *, int, char *);
 static int smb_ads_modify_computer(smb_ads_handle_t *, int, char *);
 static int smb_ads_computer_op(smb_ads_handle_t *, int, int, char *);
@@ -684,6 +684,8 @@ smb_ads_handle_t *
 smb_ads_open(void)
 {
 	char domain[MAXHOSTNAMELEN];
+	smb_ads_handle_t *h;
+	smb_ads_status_t err;
 
 	if (smb_config_get_secmode() != SMB_SECMODE_DOMAIN)
 		return (NULL);
@@ -691,7 +693,13 @@ smb_ads_open(void)
 	if (smb_getfqdomainname(domain, MAXHOSTNAMELEN) != 0)
 		return (NULL);
 
-	return (smb_ads_open_main(domain, NULL, NULL));
+	err = smb_ads_open_main(&h, domain, NULL, NULL);
+	if (err != 0) {
+		smb_ads_log_errmsg(err);
+		return (NULL);
+	}
+
+	return (h);
 }
 
 static int
@@ -737,30 +745,34 @@ smb_ads_saslcallback(LDAP *ld, unsigned flags, void *defaults, void *prompts)
  *   NULL              : can't connect to ADS server or other errors
  *   smb_ads_handle_t* : handle to ADS server
  */
-static smb_ads_handle_t *
-smb_ads_open_main(char *domain, char *user, char *password)
+static int
+smb_ads_open_main(smb_ads_handle_t **hp, char *domain, char *user,
+    char *password)
 {
 	smb_ads_handle_t *ah;
 	LDAP *ld;
 	int version = 3;
 	smb_ads_host_info_t *ads_host = NULL;
-	int rc;
+	int err, rc;
+
+	*hp = NULL;
 
 	if (user != NULL) {
-		if (smb_kinit(user, password) == 0)
-			return (NULL);
+		err = smb_kinit(user, password);
+		if (err != 0)
+			return (err);
 		user = NULL;
 		password = NULL;
 	}
 
 	ads_host = smb_ads_find_host(domain, NULL);
 	if (ads_host == NULL)
-		return (NULL);
+		return (SMB_ADS_CANT_LOCATE_DC);
 
 	ah = (smb_ads_handle_t *)malloc(sizeof (smb_ads_handle_t));
 	if (ah == NULL) {
 		free(ads_host);
-		return (NULL);
+		return (ENOMEM);
 	}
 
 	(void) memset(ah, 0, sizeof (smb_ads_handle_t));
@@ -769,7 +781,7 @@ smb_ads_open_main(char *domain, char *user, char *password)
 		smb_ads_free_cached_host();
 		free(ah);
 		free(ads_host);
-		return (NULL);
+		return (SMB_ADS_LDAP_INIT);
 	}
 
 	if (ldap_set_option(ld, LDAP_OPT_PROTOCOL_VERSION, &version)
@@ -778,7 +790,7 @@ smb_ads_open_main(char *domain, char *user, char *password)
 		free(ah);
 		free(ads_host);
 		(void) ldap_unbind(ld);
-		return (NULL);
+		return (SMB_ADS_LDAP_SETOPT);
 	}
 
 	(void) ldap_set_option(ld, LDAP_OPT_REFERRALS, LDAP_OPT_OFF);
@@ -788,7 +800,7 @@ smb_ads_open_main(char *domain, char *user, char *password)
 	if (ah->domain == NULL) {
 		smb_ads_close(ah);
 		free(ads_host);
-		return (NULL);
+		return (SMB_ADS_LDAP_SETOPT);
 	}
 
 	/*
@@ -800,14 +812,14 @@ smb_ads_open_main(char *domain, char *user, char *password)
 	if (ah->domain_dn == NULL) {
 		smb_ads_close(ah);
 		free(ads_host);
-		return (NULL);
+		return (SMB_ADS_LDAP_SET_DOM);
 	}
 
 	ah->hostname = strdup(ads_host->name);
 	if (ah->hostname == NULL) {
 		smb_ads_close(ah);
 		free(ads_host);
-		return (NULL);
+		return (ENOMEM);
 	}
 	(void) mutex_lock(&smb_ads_cfg.c_mtx);
 	if (*smb_ads_cfg.c_site != '\0') {
@@ -815,7 +827,7 @@ smb_ads_open_main(char *domain, char *user, char *password)
 			smb_ads_close(ah);
 			(void) mutex_unlock(&smb_ads_cfg.c_mtx);
 			free(ads_host);
-			return (NULL);
+			return (ENOMEM);
 		}
 	} else {
 		ah->site = NULL;
@@ -829,11 +841,13 @@ smb_ads_open_main(char *domain, char *user, char *password)
 		    ldap_err2string(rc));
 		smb_ads_close(ah);
 		free(ads_host);
-		return (NULL);
+		return (SMB_ADS_LDAP_SASL_BIND);
 	}
 
 	free(ads_host);
-	return (ah);
+	*hp = ah;
+
+	return (SMB_ADS_SUCCESS);
 }
 
 /*
@@ -1784,7 +1798,7 @@ smb_ads_lookup_computer_attr_kvno(smb_ads_handle_t *ah, char *dn)
  * That would be needed while acquiring Kerberos TGT ticket for the host
  * principal after the domain join operation.
  */
-smb_adjoin_status_t
+smb_ads_status_t
 smb_ads_join(char *domain, char *user, char *usr_passwd, char *machine_passwd)
 {
 	smb_ads_handle_t *ah = NULL;
@@ -1792,7 +1806,7 @@ smb_ads_join(char *domain, char *user, char *usr_passwd, char *machine_passwd)
 	krb5_principal *krb5princs = NULL;
 	krb5_kvno kvno;
 	boolean_t delete = B_TRUE;
-	smb_adjoin_status_t rc = SMB_ADJOIN_SUCCESS;
+	smb_ads_status_t rc;
 	boolean_t new_acct;
 	int dclevel, num, usrctl_flags = 0;
 	smb_ads_qstat_t qstat;
@@ -1800,12 +1814,12 @@ smb_ads_join(char *domain, char *user, char *usr_passwd, char *machine_passwd)
 	char tmpfile[] = SMBNS_KRB5_KEYTAB_TMP;
 	int cnt;
 	smb_krb5_pn_set_t spns;
-
 	krb5_enctype *encptr;
 
-	if ((ah = smb_ads_open_main(domain, user, usr_passwd)) == NULL) {
+	rc = smb_ads_open_main(&ah, domain, user, usr_passwd);
+	if (rc != 0) {
 		smb_ccache_remove(SMB_CCACHE_PATH);
-		return (SMB_ADJOIN_ERR_GET_HANDLE);
+		return (rc);
 	}
 
 	if ((dclevel = smb_ads_get_dc_level(ah)) == -1) {
@@ -1912,6 +1926,8 @@ smb_ads_join(char *domain, char *user, char *usr_passwd, char *machine_passwd)
 	}
 
 	delete = B_FALSE;
+	rc = SMB_ADS_SUCCESS;
+
 adjoin_cleanup:
 	if (new_acct && delete)
 		smb_ads_del_computer(ah, dn);
@@ -1923,7 +1939,7 @@ adjoin_cleanup:
 	}
 
 	/* commit keytab file */
-	if (rc == SMB_ADJOIN_SUCCESS) {
+	if (rc == SMB_ADS_SUCCESS) {
 		if (rename(tmpfile, SMBNS_KRB5_KEYTAB) != 0) {
 			(void) unlink(tmpfile);
 			rc = SMB_ADJOIN_ERR_COMMIT_KEYTAB;
@@ -1937,59 +1953,103 @@ adjoin_cleanup:
 	return (rc);
 }
 
-/*
- * smb_ads_join_errmsg
- *
- * Display error message for the specific adjoin error code.
- */
-void
-smb_ads_join_errmsg(smb_adjoin_status_t status)
-{
-	int i;
-	struct xlate_table {
-		smb_adjoin_status_t status;
-		char *msg;
-	} adjoin_table[] = {
-		{ SMB_ADJOIN_ERR_GET_HANDLE, "Failed to connect to an "
-		    "Active Directory server." },
-		{ SMB_ADJOIN_ERR_GEN_PWD, "Failed to generate machine "
-		    "password." },
-		{ SMB_ADJOIN_ERR_GET_DCLEVEL, "Unknown functional level of "
-		    "the domain controller. The rootDSE attribute named "
-		    "\"domainControllerFunctionality\" is missing from the "
-		    "Active Directory." },
-		{ SMB_ADJOIN_ERR_ADD_TRUST_ACCT, "Failed to create the "
-		    "workstation trust account." },
-		{ SMB_ADJOIN_ERR_MOD_TRUST_ACCT, "Failed to modify the "
-		    "workstation trust account." },
-		{ SMB_ADJOIN_ERR_DUP_TRUST_ACCT, "Failed to create the "
-		    "workstation trust account because its name is already "
-		    "in use." },
-		{ SMB_ADJOIN_ERR_TRUST_ACCT, "Error in querying the "
-		    "workstation trust account" },
-		{ SMB_ADJOIN_ERR_INIT_KRB_CTX, "Failed to initialize Kerberos "
-		    "context." },
-		{ SMB_ADJOIN_ERR_GET_SPNS, "Failed to get Kerberos "
-		    "principals." },
-		{ SMB_ADJOIN_ERR_KSETPWD, "Failed to set machine password." },
-		{ SMB_ADJOIN_ERR_UPDATE_CNTRL_ATTR,  "Failed to modify "
-		    "userAccountControl attribute of the workstation trust "
-		    "account." },
-		{ SMB_ADJOIN_ERR_WRITE_KEYTAB, "Error in writing to local "
-		    "keytab file (i.e /etc/krb5/krb5.keytab)." },
-		{ SMB_ADJOIN_ERR_IDMAP_SET_DOMAIN, "Failed to update idmap "
-		    "configuration." },
-		{ SMB_ADJOIN_ERR_IDMAP_REFRESH, "Failed to refresh idmap "
-		    "service." },
-		{ SMB_ADJOIN_ERR_COMMIT_KEYTAB, "Failed to commit changes to "
-		    "local keytab file (i.e. /etc/krb5/krb5.keytab)." }
-	};
+struct xlate_table {
+	int err;
+	const char const *msg;
+};
 
-	for (i = 0; i < sizeof (adjoin_table) / sizeof (adjoin_table[0]); i++) {
-		if (adjoin_table[i].status == status)
-			syslog(LOG_NOTICE, "%s", adjoin_table[i].msg);
-	}
+static const struct xlate_table
+adjoin_table[] = {
+	{ SMB_ADS_SUCCESS, "Success" },
+	{ SMB_ADS_KRB5_INIT_CTX,
+	    "Failed creating a Kerberos context." },
+	{ SMB_ADS_KRB5_CC_DEFAULT,
+	    "Failed to resolve default credential cache." },
+	{ SMB_ADS_KRB5_PARSE_PRINCIPAL,
+	    "Failed parsing the user principal name." },
+	{ SMB_ADS_KRB5_GET_INIT_CREDS_PW,
+	    "Failed getting initial credentials.  (Wrong password?)" },
+	{ SMB_ADS_KRB5_CC_INITIALIZE,
+	    "Failed initializing the credential cache." },
+	{ SMB_ADS_KRB5_CC_STORE_CRED,
+	    "Failed to update the credential cache." },
+	{ SMB_ADS_CANT_LOCATE_DC,
+	    "Failed to locate a domain controller." },
+	{ SMB_ADS_LDAP_INIT,
+	    "Failed to create an LDAP handle." },
+	{ SMB_ADS_LDAP_SETOPT,
+	    "Failed to set an LDAP option." },
+	{ SMB_ADS_LDAP_SET_DOM,
+	    "Failed to set the LDAP handle DN." },
+	{ SMB_ADS_LDAP_SASL_BIND,
+	    "Failed to bind the LDAP handle. "
+	    "Usually indicates an authentication problem." },
+
+	{ SMB_ADJOIN_ERR_GEN_PWD,
+	    "Failed to generate machine password." },
+	{ SMB_ADJOIN_ERR_GET_DCLEVEL, "Unknown functional level of "
+	    "the domain controller. The rootDSE attribute named "
+	    "\"domainControllerFunctionality\" is missing from the "
+	    "Active Directory." },
+	{ SMB_ADJOIN_ERR_ADD_TRUST_ACCT, "Failed to create the "
+	    "workstation trust account." },
+	{ SMB_ADJOIN_ERR_MOD_TRUST_ACCT, "Failed to modify the "
+	    "workstation trust account." },
+	{ SMB_ADJOIN_ERR_DUP_TRUST_ACCT, "Failed to create the "
+	    "workstation trust account because its name is already "
+	    "in use." },
+	{ SMB_ADJOIN_ERR_TRUST_ACCT, "Error in querying the "
+	    "workstation trust account" },
+	{ SMB_ADJOIN_ERR_INIT_KRB_CTX, "Failed to initialize Kerberos "
+	    "context." },
+	{ SMB_ADJOIN_ERR_GET_SPNS, "Failed to get Kerberos "
+	    "principals." },
+	{ SMB_ADJOIN_ERR_KSETPWD, "Failed to set machine password." },
+	{ SMB_ADJOIN_ERR_UPDATE_CNTRL_ATTR,  "Failed to modify "
+	    "userAccountControl attribute of the workstation trust "
+	    "account." },
+	{ SMB_ADJOIN_ERR_WRITE_KEYTAB, "Error in writing to local "
+	    "keytab file (i.e /etc/krb5/krb5.keytab)." },
+	{ SMB_ADJOIN_ERR_IDMAP_SET_DOMAIN, "Failed to update idmap "
+	    "configuration." },
+	{ SMB_ADJOIN_ERR_IDMAP_REFRESH, "Failed to refresh idmap "
+	    "service." },
+	{ SMB_ADJOIN_ERR_COMMIT_KEYTAB, "Failed to commit changes to "
+	    "local keytab file (i.e. /etc/krb5/krb5.keytab)." },
+	{ SMB_ADJOIN_ERR_AUTH_NETLOGON,
+	    "Failed to authenticate using the new computer account." },
+	{ SMB_ADJOIN_ERR_STORE_PROPS,
+	    "Failed to store computer account information locally." },
+	{ 0, NULL }
+};
+
+/*
+ * smb_ads_strerror
+ *
+ * Lookup an error message for the specific adjoin error code.
+ */
+const char *
+smb_ads_strerror(int err)
+{
+	const struct xlate_table *xt;
+
+	if (err > 0 && err < SMB_ADS_ERRNO_GAP)
+		return (strerror(err));
+
+	for (xt = adjoin_table; xt->msg; xt++)
+		if (xt->err == err)
+			return (xt->msg);
+
+	return ("Unknown error code.");
 }
+
+void
+smb_ads_log_errmsg(smb_ads_status_t err)
+{
+	const char *s = smb_ads_strerror(err);
+	syslog(LOG_NOTICE, "%s", s);
+}
+
 
 /*
  * smb_ads_match_pdc

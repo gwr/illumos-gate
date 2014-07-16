@@ -50,8 +50,8 @@ static cond_t smbd_dc_cv;
 static void *smbd_dc_monitor(void *);
 static void smbd_dc_update(void);
 /* Todo: static boolean_t smbd_set_netlogon_cred(void); */
-static uint32_t smbd_join_workgroup(smb_joininfo_t *);
-static uint32_t smbd_join_domain(smb_joininfo_t *);
+static void smbd_join_workgroup(smb_joininfo_t *, smb_joinres_t *);
+static void smbd_join_domain(smb_joininfo_t *, smb_joinres_t *);
 
 /*
  * Launch the DC discovery and monitor thread.
@@ -169,7 +169,11 @@ smbd_dc_update(void)
 
 	if (smb_getfqdomainname(domain, MAXHOSTNAMELEN) != 0) {
 		(void) smb_getdomainname(domain, MAXHOSTNAMELEN);
-		(void) smb_strupr(domain);
+	}
+	if (domain[0] == '\0') {
+		smb_log(smbd.s_loghd, LOG_NOTICE,
+		    "smbd_dc_update: no domain name set");
+		return;
 	}
 
 	if (!smb_locate_dc(domain, "", &info)) {
@@ -209,22 +213,18 @@ smbd_dc_update(void)
  * If the security mode or domain name is being changed,
  * the caller must restart the service.
  */
-uint32_t
-smbd_join(smb_joininfo_t *info)
+void
+smbd_join(smb_joininfo_t *info, smb_joinres_t *res)
 {
-	uint32_t status;
-
 	dssetup_clear_domain_info();
 	if (info->mode == SMB_SECMODE_WORKGRP)
-		status = smbd_join_workgroup(info);
+		smbd_join_workgroup(info, res);
 	else
-		status = smbd_join_domain(info);
-
-	return (status);
+		smbd_join_domain(info, res);
 }
 
-static uint32_t
-smbd_join_workgroup(smb_joininfo_t *info)
+static void
+smbd_join_workgroup(smb_joininfo_t *info, smb_joinres_t *res)
 {
 	char nb_domain[SMB_PI_MAX_DOMAIN];
 
@@ -239,23 +239,19 @@ smbd_join_workgroup(smb_joininfo_t *info)
 	if (strcasecmp(nb_domain, info->domain_name))
 		smb_browser_reconfig();
 
-	return (NT_STATUS_SUCCESS);
+	res->status = NT_STATUS_SUCCESS;
 }
 
-static uint32_t
-smbd_join_domain(smb_joininfo_t *info)
+static void
+smbd_join_domain(smb_joininfo_t *info, smb_joinres_t *res)
 {
-	uint32_t status;
 
 	/* info->domain_name could either be NetBIOS domain name or FQDN */
-	status = mlsvc_join(info->domain_name, info->domain_username,
-	    info->domain_passwd);
-	if (status == 0) {
+	mlsvc_join(info, res);
+	if (res->status == 0) {
 		smbd_set_secmode(SMB_SECMODE_DOMAIN);
 	} else {
 		syslog(LOG_ERR, "smbd: failed joining %s (%s)",
-		    info->domain_name, xlate_nt_status(status));
+		    info->domain_name, xlate_nt_status(res->status));
 	}
-
-	return (status);
 }

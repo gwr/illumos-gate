@@ -68,7 +68,7 @@ extern void mlsvc_disconnect(const char *);
 extern int mlsvc_init(void);
 extern void mlsvc_fini(void);
 extern DWORD mlsvc_netlogon(char *, char *);
-extern DWORD mlsvc_join(char *, char *, char *);
+extern void mlsvc_join(smb_joininfo_t *, smb_joinres_t *);
 
 extern void smb_logon_domain(smb_logon_t *, smb_token_t *);
 extern uint32_t smb_decode_krb5_pac(smb_token_t *, char *, uint_t);

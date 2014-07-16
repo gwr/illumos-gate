@@ -112,27 +112,24 @@ smb_lookup_name(const char *name, sid_type_t sidtype, lsa_account_t *acct)
 	return (rc);
 }
 
-uint32_t
-smb_join(smb_joininfo_t *jdi)
+int
+smb_join(smb_joininfo_t *jdi, smb_joinres_t *jres)
 {
-	uint32_t	status;
 	int		rc;
 
-	if (jdi == NULL)
-		return (NT_STATUS_INVALID_PARAMETER);
-
 	rc = smb_door_call(SMB_DR_JOIN, jdi, smb_joininfo_xdr,
-	    &status, xdr_uint32_t);
+	    jres, smb_joinres_xdr);
 
 	if (rc != 0) {
 		/*
 		 * This usually means the SMB service is not running.
 		 */
 		syslog(LOG_DEBUG, "smb_join: %m");
-		status = NT_STATUS_SERVER_DISABLED;
+		jres->status = NT_STATUS_SERVER_DISABLED;
+		return (rc);
 	}
 
-	return (status);
+	return (0);
 }
 
 /*
@@ -193,6 +190,19 @@ smb_joininfo_xdr(XDR *xdrs, smb_joininfo_t *objp)
 		return (FALSE);
 
 	if (!xdr_uint32_t(xdrs, &objp->mode))
+		return (FALSE);
+
+	return (TRUE);
+}
+
+bool_t
+smb_joinres_xdr(XDR *xdrs, smb_joinres_t *objp)
+{
+
+	if (!xdr_uint32_t(xdrs, &objp->status))
+		return (FALSE);
+
+	if (!xdr_int(xdrs, &objp->join_err))
 		return (FALSE);
 
 	return (TRUE);

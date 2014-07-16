@@ -94,8 +94,8 @@ mlsvc_netlogon(char *server, char *domain)
  *
  * Returns NT status codes.
  */
-DWORD
-mlsvc_join(char *domain_name, char *admin_user, char *admin_pw)
+void
+mlsvc_join(smb_joininfo_t *info, smb_joinres_t *res)
 {
 	static unsigned char zero_hash[SMBAUTH_HASH_SZ];
 	char machine_name[SMB_SAMACCT_MAXLEN];
@@ -111,8 +111,10 @@ mlsvc_join(char *domain_name, char *admin_user, char *admin_pw)
 	 */
 	boolean_t ads_enabled = smb_config_get_ads_enable();
 
-	if (smb_getsamaccount(machine_name, sizeof (machine_name)) != 0)
-		return (NT_STATUS_INTERNAL_ERROR);
+	if (smb_getsamaccount(machine_name, sizeof (machine_name)) != 0) {
+		res->status = NT_STATUS_INVALID_COMPUTER_NAME;
+		return;
+	}
 
 	(void) smb_gen_random_passwd(machine_pw, sizeof (machine_pw));
 
@@ -133,8 +135,9 @@ mlsvc_join(char *domain_name, char *admin_user, char *admin_pw)
 	/*
 	 * Tentatively set the idmap domain to the one we're joining,
 	 * so that the DC locator in idmap knows what to look for.
+	 * Ditto the SMB server domain.
 	 */
-	if (smb_config_set_idmap_domain(domain_name) != 0)
+	if (smb_config_set_idmap_domain(info->domain_name) != 0)
 		syslog(LOG_NOTICE, "Failed to set idmap domain name");
 	if (smb_config_refresh_idmap() != 0)
 		syslog(LOG_NOTICE, "Failed to refresh idmap service");
@@ -146,10 +149,10 @@ mlsvc_join(char *domain_name, char *admin_user, char *admin_pw)
 	 * This tells the smb_ddiscover_service to go find the DC.
 	 * Does IPC to the DC Locator in idmap, fills in dxi.
 	 */
-	if (!smb_locate_dc(domain_name, "", &dxi)) {
+	if (!smb_locate_dc(info->domain_name, "", &dxi)) {
 		syslog(LOG_ERR, "smbd: failed locating "
 		    "domain controller for %s",
-		    domain_name);
+		    info->domain_name);
 		status = NT_STATUS_DOMAIN_CONTROLLER_NOT_FOUND;
 		goto out;
 	}
@@ -157,13 +160,13 @@ mlsvc_join(char *domain_name, char *admin_user, char *admin_pw)
 	/*
 	 * A non-null user means we do "secure join".
 	 */
-	if (admin_user != NULL && admin_user[0] != '\0') {
+	if (info->domain_username[0] != '\0') {
 		/*
 		 * Doing "secure join", so authenticate as the
 		 * specified user (with admin. rights).
 		 */
-		(void) smb_auth_ntlm_hash(admin_pw, passwd_hash);
-		smb_ipc_set(admin_user, passwd_hash);
+		(void) smb_auth_ntlm_hash(info->domain_passwd, passwd_hash);
+		smb_ipc_set(info->domain_username, passwd_hash);
 
 		/*
 		 * If enabled, try to join using AD Services.
@@ -171,12 +174,10 @@ mlsvc_join(char *domain_name, char *admin_user, char *admin_pw)
 		 */
 		status = NT_STATUS_UNSUCCESSFUL;
 		if (ads_enabled) {
-			smb_adjoin_status_t err;
-			err = smb_ads_join(di->di_fqname,
-			    admin_user, admin_pw, machine_pw);
-			if (err != SMB_ADJOIN_SUCCESS) {
-				smb_ads_join_errmsg(err);
-			} else {
+			res->join_err = smb_ads_join(di->di_fqname,
+			    info->domain_username, info->domain_passwd,
+			    machine_pw);
+			if (res->join_err == SMB_ADS_SUCCESS) {
 				status = NT_STATUS_SUCCESS;
 			}
 		} else {
@@ -187,7 +188,8 @@ mlsvc_join(char *domain_name, char *admin_user, char *admin_pw)
 			 */
 			if (status != NT_STATUS_SUCCESS) {
 				status = mlsvc_join_rpc(&dxi,
-				    admin_user, admin_pw,
+				    info->domain_username,
+				    info->domain_passwd,
 				    machine_name, machine_pw);
 			}
 		}
@@ -216,6 +218,7 @@ mlsvc_join(char *domain_name, char *admin_user, char *admin_pw)
 		syslog(LOG_NOTICE, "Authenticate with "
 		    "new/updated machine account: %s",
 		    strerror(rc));
+		res->join_err = SMB_ADJOIN_ERR_AUTH_NETLOGON;
 		status = NT_STATUS_CANT_ACCESS_DOMAIN_INFO;
 		goto out;
 	}
@@ -227,6 +230,7 @@ mlsvc_join(char *domain_name, char *admin_user, char *admin_pw)
 	if (rc != 0) {
 		syslog(LOG_NOTICE,
 		    "Failed to save machine account password");
+		res->join_err = SMB_ADJOIN_ERR_STORE_PROPS;
 		status = NT_STATUS_INTERNAL_DB_ERROR;
 		goto out;
 	}
@@ -263,7 +267,7 @@ out:
 	bzero(machine_pw, sizeof (machine_pw));
 	bzero(passwd_hash, sizeof (passwd_hash));
 
-	return (status);
+	res->status = status;
 }
 
 static DWORD

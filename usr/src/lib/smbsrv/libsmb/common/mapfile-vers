@@ -195,6 +195,7 @@ SYMBOL_VERSION SUNWprivate {
 	smb_gmttoken_response_xdr;
 	smb_gmttoken_snapname_xdr;
 	smb_joininfo_xdr;
+	smb_joinres_xdr;
 	smb_idmap_batch_create;
 	smb_idmap_batch_destroy;
 	smb_idmap_batch_getid;

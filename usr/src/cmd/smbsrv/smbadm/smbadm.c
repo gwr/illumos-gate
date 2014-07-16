@@ -46,6 +46,7 @@
 #include <auth_attr.h>
 #include <locale.h>
 #include <smbsrv/libsmb.h>
+#include <smbsrv/libsmbns.h>
 
 #if !defined(TEXT_DOMAIN)
 #define	TEXT_DOMAIN "SYS_TEST"
@@ -528,8 +529,10 @@ static int
 smbadm_join_workgroup(const char *workgroup, boolean_t prompt)
 {
 	smb_joininfo_t jdi;
+	smb_joinres_t jdres;
 	uint32_t status;
 
+	bzero(&jdres, sizeof (jdres));
 	bzero(&jdi, sizeof (jdi));
 	jdi.mode = SMB_SECMODE_WORKGRP;
 	(void) strlcpy(jdi.domain_name, workgroup, sizeof (jdi.domain_name));
@@ -543,7 +546,7 @@ smbadm_join_workgroup(const char *workgroup, boolean_t prompt)
 	if (prompt && !smbadm_join_prompt(jdi.domain_name))
 		return (0);
 
-	if ((status = smb_join(&jdi)) != NT_STATUS_SUCCESS) {
+	if ((status = smb_join(&jdi, &jdres)) != NT_STATUS_SUCCESS) {
 		(void) fprintf(stderr, gettext("failed to join %s: %s\n"),
 		    jdi.domain_name, xlate_nt_status(status));
 		return (1);
@@ -567,11 +570,12 @@ static int
 smbadm_join_domain(const char *domain, const char *username, boolean_t prompt)
 {
 	smb_joininfo_t jdi;
-	uint32_t status;
+	smb_joinres_t jdres;
 	char *passwd_prompt;
 	char *p;
-	int len;
+	int len, rc;
 
+	bzero(&jdres, sizeof (jdres));
 	bzero(&jdi, sizeof (jdi));
 	jdi.mode = SMB_SECMODE_DOMAIN;
 	(void) strlcpy(jdi.domain_name, domain, sizeof (jdi.domain_name));
@@ -630,9 +634,18 @@ smbadm_join_domain(const char *domain, const char *username, boolean_t prompt)
 	(void) printf(gettext("Joining %s ... this may take a minute ...\n"),
 	    jdi.domain_name);
 
-	status = smb_join(&jdi);
+	rc = smb_join(&jdi, &jdres);
+	if (rc != 0) {
+		(void) printf(gettext("Cannot call the SMB service. "
+		    " (error %d: %s) "
+		    "Please check the service status "
+		    "(svcs -vx network/smb/server)\n"),
+		    rc, strerror(rc));
+		bzero(&jdi, sizeof (jdi));
+		return (1);
+	}
 
-	switch (status) {
+	switch (jdres.status) {
 	case NT_STATUS_SUCCESS:
 		(void) printf(gettext("Successfully joined %s\n"),
 		    jdi.domain_name);
@@ -640,29 +653,36 @@ smbadm_join_domain(const char *domain, const char *username, boolean_t prompt)
 		smbadm_restart_service();
 		return (0);
 
+	case NT_STATUS_INVALID_COMPUTER_NAME:
+		(void) fprintf(stderr,
+		    gettext("failed to get the local system name\n"));
+		goto common;
+
 	case NT_STATUS_DOMAIN_CONTROLLER_NOT_FOUND:
 		(void) fprintf(stderr,
 		    gettext("failed to find any domain controllers for %s\n"),
 		    jdi.domain_name);
-		bzero(&jdi, sizeof (jdi));
-		return (1);
+		goto common;
 
 	case NT_STATUS_BAD_NETWORK_PATH:
 		(void) fprintf(stderr,
 		    gettext("failed to resolve domain controller name\n"));
-		bzero(&jdi, sizeof (jdi));
-		return (1);
+		goto common;
 
 	case NT_STATUS_NETWORK_ACCESS_DENIED:
 	case NT_STATUS_BAD_NETWORK_NAME:
 		(void) fprintf(stderr,
 		    gettext("failed connecting to domain controller\n"));
-		bzero(&jdi, sizeof (jdi));
-		return (1);
+		goto common;
 
 	default:
 		(void) fprintf(stderr, gettext("failed to join %s: %s\n"),
-		    jdi.domain_name, xlate_nt_status(status));
+		    jdi.domain_name, xlate_nt_status(jdres.status));
+	common:
+		if (jdres.join_err) {
+			(void) fprintf(stderr, "%s\n",
+			    smb_ads_strerror(jdres.join_err));
+		}
 		(void) fprintf(stderr, gettext("Please refer to the system log"
 		    " for more information.\n"));
 		bzero(&jdi, sizeof (jdi));
