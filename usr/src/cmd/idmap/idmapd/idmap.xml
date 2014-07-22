@@ -106,6 +106,10 @@
 			type='count'
 			value='604800' />
 		<propval
+			name='rediscovery_interval'
+			type='count'
+			value='3600' />
+		<propval
 			name='use_ads'
 			type='boolean'
 			value='true' />

@@ -63,6 +63,19 @@
 #define	ID_CACHE_TMO_DEFAULT	86400
 #define	NAME_CACHE_TMO_DEFAULT	604800
 
+/*
+ * Default maximum time between rediscovery runs.
+ * config/rediscovery_interval = count: seconds
+ */
+#define	REDISCOVERY_INTERVAL_DEFAULT	3600
+
+/*
+ * Mininum time between rediscovery runs, in case adutils gives us a
+ * really short TTL (which it never should, but be defensive)
+ * (not configurable) seconds.
+ */
+#define	MIN_REDISCOVERY_INTERVAL	60
+
 enum event_type {
 	EVENT_NOTHING,	/* Woke up for no good reason */
 	EVENT_TIMEOUT,	/* Timeout expired */
@@ -1294,15 +1307,15 @@ void *
 idmap_cfg_update_thread(void *arg)
 {
 	NOTE(ARGUNUSED(arg))
-	int flags = CFG_DISCOVER;
-
+	idmap_pg_config_t *pgcfg = &_idmapdstate.cfg->pgcfg;
 	const ad_disc_t		ad_ctx = _idmapdstate.cfg->handles.ad_ctx;
+	int flags = CFG_DISCOVER;
 
 	for (;;) {
 		struct timespec timeout;
 		struct timespec	*timeoutp;
 		int		rc;
-		int		ttl;
+		int		ttl, max_ttl;
 
 		(void) ad_disc_SubnetChanged(ad_ctx);
 
@@ -1323,14 +1336,26 @@ idmap_cfg_update_thread(void *arg)
 		 */
 		flags = CFG_DISCOVER;
 		for (;;) {
-			ttl = ad_disc_get_TTL(ad_ctx);
-
+			/*
+			 * If we don't know our domain name, don't bother
+			 * with rediscovery until the next config change.
+			 * Avoids hourly noise in workgroup mode.
+			 */
+			if (pgcfg->domain_name == NULL)
+				ttl = -1;
+			else
+				ttl = ad_disc_get_TTL(ad_ctx);
 			if (ttl < 0) {
 				timeoutp = NULL;
 			} else {
-				timeoutp = &timeout;
+				max_ttl = (int)pgcfg->rediscovery_interval;
+				if (ttl > max_ttl)
+					ttl = max_ttl;
+				if (ttl < MIN_REDISCOVERY_INTERVAL)
+					ttl = MIN_REDISCOVERY_INTERVAL;
 				timeout.tv_sec = ttl;
 				timeout.tv_nsec = 0;
+				timeoutp = &timeout;
 			}
 
 			switch (wait_for_event(timeoutp)) {
@@ -1562,6 +1587,13 @@ idmap_cfg_load_smf(idmap_cfg_handles_t *handles, idmap_pg_config_t *pgcfg,
 		(*errors)++;
 	if (pgcfg->name_cache_timeout == 0)
 		pgcfg->name_cache_timeout = NAME_CACHE_TMO_DEFAULT;
+
+	rc = get_val_int(handles, "rediscovery_interval",
+	    &pgcfg->rediscovery_interval, SCF_TYPE_COUNT);
+	if (rc != 0)
+		(*errors)++;
+	if (pgcfg->rediscovery_interval == 0)
+		pgcfg->rediscovery_interval = REDISCOVERY_INTERVAL_DEFAULT;
 
 	rc = get_val_astring(handles, "domain_name",
 	    &pgcfg->domain_name);
@@ -2077,6 +2109,9 @@ idmap_cfg_load(idmap_cfg_t *cfg, int flags)
 
 	changed += update_uint64(&live_pgcfg->name_cache_timeout,
 	    &new_pgcfg.name_cache_timeout, "name_cache_timeout");
+
+	changed += update_uint64(&live_pgcfg->rediscovery_interval,
+	    &new_pgcfg.rediscovery_interval, "rediscovery_interval");
 
 	changed += update_string(&live_pgcfg->machine_sid,
 	    &new_pgcfg.machine_sid, "machine_sid");
