@@ -38,6 +38,7 @@ OBJS=				\
 	smbd_pipesvc.o		\
 	smbd_share_doorsvc.o	\
 	smbd_spool.o		\
+	smbd_syslog.o		\
 	smbd_vss.o
 
 SRCS=	$(OBJS:%.o=%.c)
@@ -60,6 +61,7 @@ LINTFLAGS += -xerroff=E_NAME_DEF_NOT_USED2
 LINTFLAGS += -xerroff=E_NAME_USED_NOT_DEF2
 
 CFLAGS += $(CCVERBOSE)
+CPPFLAGS += -D_REENTRANT
 CPPFLAGS += -Dsyslog=smb_syslog
 $(NOT_RELEASE_BUILD)CPPFLAGS += -DDEBUG
 

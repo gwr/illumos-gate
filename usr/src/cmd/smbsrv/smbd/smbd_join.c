@@ -183,7 +183,7 @@ smbd_dc_update(void)
 	}
 
 	di = &info.d_primary;
-	smb_log(smbd.s_loghd, LOG_NOTICE,
+	smb_log(smbd.s_loghd, LOG_INFO,
 	    "smbd_dc_update: %s: located %s", domain, info.d_dc);
 
 	status = mlsvc_netlogon(info.d_dc, di->di_nbname);

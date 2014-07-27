@@ -43,3 +43,27 @@ smb_syslog(int pri, const char *fmt, ...)
 	smb_vsyslog(pri, fmt, ap);
 	va_end(ap);
 }
+
+/*
+ * Helper for smb_vsyslog().  Does %m substitutions.
+ */
+char *
+smb_syslog_fmt_m(char *buf, int buflen, const char *str, int err)
+{
+	char		*bp = buf;
+	const char	*sp = str;
+	const char	*endp = buf + buflen - 1;
+
+	while ((*bp = *sp) != '\0' && bp != endp) {
+		if ((*sp++ == '%') && (*sp == 'm')) {
+			sp++;
+			if (strerror_r(err, bp, endp - bp) == 0)
+				bp += strlen(bp);
+		} else {
+			bp++;
+		}
+	}
+	*bp = '\0';
+
+	return (buf);
+}

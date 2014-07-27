@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <stdio.h>
@@ -30,29 +30,6 @@ static const char *pri_name[LOG_DEBUG+1] = {
 	"emerg", "alert", "crit", "err", "warning", "notice", "info", "debug"
 };
 
-/*
- * Helper for smb_vsyslog().  Does %m substitutions.
- */
-static const char *
-format_m(char *buf, const char *str, int err, int buflen)
-{
-	char		*bp = buf;
-	const char	*sp = str;
-	const char	*endp = buf + buflen - 1;
-
-	while ((*bp = *sp) != '\0' && bp != endp) {
-		if ((*sp++ == '%') && (*sp == 'm')) {
-			sp++;
-			if (strerror_r(err, bp, endp - bp) == 0)
-				bp += strlen(bp);
-		} else {
-			bp++;
-		}
-	}
-	*bp = '\0';
-
-	return (buf);
-}
 
 /*
  * Provide a replacement for libsmb:smb_vsyslog() that just
@@ -62,18 +39,23 @@ void
 smb_vsyslog(int pri, const char *fmt, va_list ap)
 {
 	int save_errno = errno;
-	char fmtbuf[SMB_LOG_LINE_SZ];
+	char buf[SMB_LOG_LINE_SZ];
+	char *newfmt;
 
 	pri &= LOG_PRIMASK;
 
 	if (smbd.s_debug == 0 && pri > LOG_INFO)
 		return;
 
-	(void) fprintf(stdout, "fksmbd: [daemon.%s] ", pri_name[pri]);
+	newfmt = smb_syslog_fmt_m(buf, sizeof (buf), fmt, save_errno);
+
+	flockfile(stdout);
+	(void) fprintf(stdout, "fksmbd.%s: ", pri_name[pri]);
 	/* LINTED E_SEC_PRINTF_VAR_FMT */
-	(void) vfprintf(stdout,
-	    format_m(fmtbuf, fmt, save_errno, sizeof (fmtbuf)), ap);
+	(void) vfprintf(stdout, newfmt, ap);
 	(void) fprintf(stdout, "\n");
+	funlockfile(stdout);
+
 	(void) fflush(stdout);
 }
 

@@ -99,6 +99,7 @@ SYMBOL_VERSION SUNWprivate {
 	smb_common_encode;
 	smb_config_get;
 	smb_config_get_ads_enable;
+	smb_config_get_debug;
 	smb_config_get_execinfo;
 	smb_config_get_fg_flag;
 	smb_config_get_localsid;
@@ -383,6 +384,7 @@ SYMBOL_VERSION SUNWprivate {
 	smb_strlwr;
 	smb_strupr;
 	smb_syslog			{ FLAGS = NODIRECT };
+	smb_syslog_fmt_m;
 	smb_tolower;
 	smb_toupper;
 	smb_token_encode;

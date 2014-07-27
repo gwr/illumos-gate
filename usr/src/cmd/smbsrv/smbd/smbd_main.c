@@ -594,11 +594,17 @@ smbd_service_fini(void)
 static void
 smbd_refresh_handler()
 {
+	int new_debug;
 
 	if (smbd.s_shutting_down)
 		return;
 
 	smbd.s_refreshes++;
+
+	new_debug = smb_config_get_debug();
+	if (smbd.s_debug || new_debug)
+		smbd_report("debug=%d", new_debug);
+	smbd.s_debug = new_debug;
 
 	smbd_spool_stop();
 	smbd_dc_monitor_refresh();
@@ -939,12 +945,13 @@ smbd_setup_options(int argc, char *argv[])
 	if ((grp = getgrnam("sys")) != NULL)
 		smbd.s_gid = grp->gr_gid;
 
+	smbd.s_debug = smb_config_get_debug();
 	smbd.s_fg = smb_config_get_fg_flag();
 
 	while ((c = getopt(argc, argv, ":dfs")) != -1) {
 		switch (c) {
 		case 'd':
-			smbd.s_debug = 1;
+			smbd.s_debug++;
 			break;
 		case 'f':
 			smbd.s_fg = 1;
