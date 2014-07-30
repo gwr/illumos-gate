@@ -66,17 +66,22 @@ mlsvc_netlogon(char *server, char *domain)
 	mlsvc_handle_t netr_handle;
 	DWORD status;
 
-	if (netr_open(server, domain, &netr_handle) == 0) {
-		if ((status = netlogon_auth(server, &netr_handle,
-		    NETR_FLG_INIT)) != NT_STATUS_SUCCESS)
-			syslog(LOG_NOTICE, "Failed to establish NETLOGON "
-			    "credential chain");
-		(void) netr_close(&netr_handle);
-	} else {
+	if (netr_open(server, domain, &netr_handle) != 0) {
 		syslog(LOG_NOTICE, "Failed to connect to %s "
 		    "for domain %s", server, domain);
-		status = NT_STATUS_CANT_ACCESS_DOMAIN_INFO;
+		return (NT_STATUS_CANT_ACCESS_DOMAIN_INFO);
 	}
+
+	status = netlogon_auth(server, &netr_handle, NETR_FLG_INIT);
+	if (status != NT_STATUS_SUCCESS) {
+		syslog(LOG_NOTICE, "Failed to establish NETLOGON "
+		    "credential chain with DC: %s (%s)", server,
+		    xlate_nt_status(status));
+		syslog(LOG_NOTICE, "The machine account information on the "
+		    "domain controller does not match the local storage.");
+		syslog(LOG_NOTICE, "To correct this, use 'smbadm join'");
+	}
+	(void) netr_close(&netr_handle);
 
 	return (status);
 }
@@ -88,9 +93,6 @@ mlsvc_netlogon(char *server, char *domain)
  * latter case, the machine account is created "by hand" before this
  * machine attempts to join, and we just change the password from the
  * (weak) default password for a new machine account to a random one.
- *
- * Note that the caller has already done "DC discovery" and passes the
- * domain info. in the first arg.
  *
  * Returns NT status codes.
  */
@@ -143,13 +145,14 @@ mlsvc_join(smb_joininfo_t *info, smb_joinres_t *res)
 		syslog(LOG_NOTICE, "Failed to refresh idmap service");
 
 	/* Clear DNS local (ADS) lookup cache. */
+	/* XXX: or smb_ddiscover_refresh? */
 	smb_ads_refresh(B_FALSE);
 
 	/*
 	 * This tells the smb_ddiscover_service to go find the DC.
 	 * Does IPC to the DC Locator in idmap, fills in dxi.
 	 */
-	if (!smb_locate_dc(info->domain_name, "", &dxi)) {
+	if (!smb_locate_dc(info->domain_name, &dxi)) {
 		syslog(LOG_ERR, "smbd: failed locating "
 		    "domain controller for %s",
 		    info->domain_name);
@@ -186,12 +189,10 @@ mlsvc_join(smb_joininfo_t *info, smb_joinres_t *res)
 			/*
 			 * If ADS was disabled, join using RPC.
 			 */
-			if (status != NT_STATUS_SUCCESS) {
-				status = mlsvc_join_rpc(&dxi,
-				    info->domain_username,
-				    info->domain_passwd,
-				    machine_name, machine_pw);
-			}
+			status = mlsvc_join_rpc(&dxi,
+			    info->domain_username,
+			    info->domain_passwd,
+			    machine_name, machine_pw);
 		}
 
 	} else {
@@ -213,7 +214,7 @@ mlsvc_join(smb_joininfo_t *info, smb_joinres_t *res)
 	 */
 	(void) smb_auth_ntlm_hash(machine_pw, passwd_hash);
 	smb_ipc_set(machine_name, passwd_hash);
-	rc = smbrdr_logon(dxi.d_dc, di->di_nbname, machine_name);
+	rc = smbrdr_logon(dxi.d_dci.dc_name, di->di_nbname, machine_name);
 	if (rc != 0) {
 		syslog(LOG_NOTICE, "Authenticate with "
 		    "new/updated machine account: %s",
@@ -226,7 +227,7 @@ mlsvc_join(smb_joininfo_t *info, smb_joinres_t *res)
 	/*
 	 * Store the new machine account password.
 	 */
-	rc = smb_setdomainprops(NULL, dxi.d_dc, machine_pw);
+	rc = smb_setdomainprops(NULL, dxi.d_dci.dc_name, machine_pw);
 	if (rc != 0) {
 		syslog(LOG_NOTICE,
 		    "Failed to save machine account password");
@@ -241,7 +242,7 @@ mlsvc_join(smb_joininfo_t *info, smb_joinres_t *res)
 	 */
 
 	/*
-	 * Save the SMB server config.
+	 * Save the SMB server config.  Sets: SMB_CI_DOMAIN_*
 	 * Should unify SMB vs idmap configs.
 	 */
 	smb_config_setdomaininfo(di->di_nbname, di->di_fqname,
@@ -256,7 +257,7 @@ out:
 
 	if (status != 0) {
 		/*
-		 * Undo the tentative idmap domain setting.
+		 * Undo the tentative domain settings.
 		 */
 		(void) smb_config_set_idmap_domain("");
 		(void) smb_config_refresh_idmap();
@@ -279,7 +280,7 @@ mlsvc_join_rpc(smb_domainex_t *dxi,
 	mlsvc_handle_t domain_handle;
 	mlsvc_handle_t user_handle;
 	smb_account_t ainfo;
-	char *server = dxi->d_dc;
+	char *server = dxi->d_dci.dc_name;
 	smb_domain_t *di = &dxi->d_primary;
 	DWORD account_flags;
 	DWORD rid;
@@ -381,7 +382,7 @@ mlsvc_join_noauth(smb_domainex_t *dxi,
 		return (NT_STATUS_INTERNAL_ERROR);
 	old_pw[14] = '\0';
 
-	status = netr_change_password(dxi->d_dc, machine_name,
+	status = netr_change_password(dxi->d_dci.dc_name, machine_name,
 	    old_pw, machine_pw);
 	if (status != NT_STATUS_SUCCESS) {
 		syslog(LOG_NOTICE,

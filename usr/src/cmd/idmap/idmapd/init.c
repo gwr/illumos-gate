@@ -137,7 +137,7 @@ reload_gcs()
 		 * If that stops working we'll go into degraded mode anyways
 		 * when it does.
 		 */
-		degrade_svc(0,
+		idmapdlog(LOG_INFO,
 		    "Global Catalog servers not configured/discoverable");
 		return;
 	}
@@ -270,7 +270,7 @@ reload_dcs(void)
 		 * If that stops working we'll go into degraded mode anyways
 		 * when it does.
 		 */
-		degrade_svc(0,
+		idmapdlog(LOG_INFO,
 		    "Domain controller servers not configured/discoverable");
 		return;
 	}

@@ -170,7 +170,6 @@ static mutex_t smb_ads_cached_host_mtx;
  */
 typedef struct smb_ads_config {
 	char c_site[SMB_ADS_SITE_MAX];
-	smb_inaddr_t c_pdc;
 	mutex_t c_mtx;
 } smb_ads_config_t;
 
@@ -213,10 +212,7 @@ static smb_ads_qstat_t smb_ads_getattr(LDAP *, LDAPMessage *,
     smb_ads_avpair_t *);
 static smb_ads_qstat_t smb_ads_get_qstat(smb_ads_handle_t *, LDAPMessage *,
     smb_ads_avpair_t *);
-static boolean_t smb_ads_match_pdc(smb_ads_host_info_t *);
-static boolean_t smb_ads_is_sought_host(smb_ads_host_info_t *, char *);
 static boolean_t smb_ads_is_same_domain(char *, char *);
-static boolean_t smb_ads_is_pdc_configured(void);
 static smb_ads_host_info_t *smb_ads_dup_host_info(smb_ads_host_info_t *);
 static char *smb_ads_get_sharedn(const char *, const char *, const char *);
 static krb5_enctype *smb_ads_get_enctypes(int, int *);
@@ -232,7 +228,6 @@ smb_ads_init(void)
 	(void) mutex_lock(&smb_ads_cfg.c_mtx);
 	(void) smb_config_getstr(SMB_CI_ADS_SITE,
 	    smb_ads_cfg.c_site, SMB_ADS_SITE_MAX);
-	(void) smb_config_getip(SMB_CI_DOMAIN_SRV, &smb_ads_cfg.c_pdc);
 	(void) mutex_unlock(&smb_ads_cfg.c_mtx);
 
 	/* Force -lads to load, for dtrace. */
@@ -258,49 +253,19 @@ void
 smb_ads_refresh(boolean_t force_rediscovery)
 {
 	char new_site[SMB_ADS_SITE_MAX];
-	smb_inaddr_t new_pdc;
-	boolean_t purge = B_FALSE;
 
 	(void) smb_config_getstr(SMB_CI_ADS_SITE, new_site, SMB_ADS_SITE_MAX);
-	(void) smb_config_getip(SMB_CI_DOMAIN_SRV, &new_pdc);
 	(void) mutex_lock(&smb_ads_cfg.c_mtx);
-	if (smb_strcasecmp(smb_ads_cfg.c_site, new_site, 0)) {
-		(void) strlcpy(smb_ads_cfg.c_site, new_site, SMB_ADS_SITE_MAX);
-		purge = B_TRUE;
-	}
-
-	smb_ads_cfg.c_pdc = new_pdc;
+	(void) strlcpy(smb_ads_cfg.c_site, new_site, SMB_ADS_SITE_MAX);
 	(void) mutex_unlock(&smb_ads_cfg.c_mtx);
 
-	(void) mutex_lock(&smb_ads_cached_host_mtx);
-	if (smb_ads_cached_host_info &&
-	    smb_ads_is_pdc_configured() &&
-	    !smb_ads_match_pdc(smb_ads_cached_host_info))
-		purge = B_TRUE;
-	(void) mutex_unlock(&smb_ads_cached_host_mtx);
+	smb_ads_free_cached_host();
 
 	if (force_rediscovery) {
 		(void) _DsForceRediscovery(NULL, 0);
-		purge = B_TRUE;
 	}
-
-	if (purge)
-		smb_ads_free_cached_host();
 }
 
-
-
-static boolean_t
-smb_ads_is_pdc_configured(void)
-{
-	boolean_t configured;
-
-	(void) mutex_lock(&smb_ads_cfg.c_mtx);
-	configured = !smb_inet_iszero(&smb_ads_cfg.c_pdc);
-	(void) mutex_unlock(&smb_ads_cfg.c_mtx);
-
-	return (configured);
-}
 
 /*
  * smb_ads_build_unc_name
@@ -325,47 +290,6 @@ smb_ads_build_unc_name(char *unc_name, int maxlen,
 }
 
 /*
- * smb_ads_ldap_ping
- *
- * This is used to bind to an ADS server to see
- * if it is still alive.
- *
- * XXX: This is not what MS calls "LDAP ping",
- * which should be a connectionless query.
- *
- * Returns:
- *   -1: error
- *    0: successful
- */
-/*ARGSUSED*/
-static int
-smb_ads_ldap_ping(smb_ads_host_info_t *ads_host)
-{
-	int ldversion = LDAP_VERSION3, status, timeoutms = 5 * 1000;
-	LDAP *ld = NULL;
-
-	ld = ldap_init(ads_host->name, ads_host->port);
-	if (ld == NULL)
-		return (-1);
-
-	ldversion = LDAP_VERSION3;
-	(void) ldap_set_option(ld, LDAP_OPT_PROTOCOL_VERSION, &ldversion);
-	/* setup TCP/IP connect timeout */
-	(void) ldap_set_option(ld, LDAP_X_OPT_CONNECT_TIMEOUT, &timeoutms);
-
-	status = ldap_bind_s(ld, "", NULL, LDAP_AUTH_SIMPLE);
-
-	if (status != LDAP_SUCCESS) {
-		(void) ldap_unbind(ld);
-		return (-1);
-	}
-
-	(void) ldap_unbind(ld);
-
-	return (0);
-}
-
-/*
  * The cached ADS host is no longer valid if one of the following criteria
  * is satisfied:
  *
@@ -379,39 +303,12 @@ smb_ads_ldap_ping(smb_ads_host_info_t *ads_host)
  * Return B_TRUE if the cache host is still valid. Otherwise, return B_FALSE.
  */
 static boolean_t
-smb_ads_validate_cache_host(char *domain, char *srv)
+smb_ads_validate_cache_host(char *domain)
 {
 	if (!smb_ads_cached_host_info)
 		return (B_FALSE);
 
 	if (!smb_ads_is_same_domain(smb_ads_cached_host_info->name, domain))
-		return (B_FALSE);
-
-	if (smb_ads_ldap_ping(smb_ads_cached_host_info) == 0) {
-		if (!srv)
-			return (B_TRUE);
-
-		if (smb_ads_is_sought_host(smb_ads_cached_host_info, srv))
-			return (B_TRUE);
-	}
-
-	return (B_FALSE);
-}
-
-/*
- * smb_ads_is_sought_host
- *
- * Returns true, if the sought host name matches the input host (host) name.
- * The sought host is expected to be in Fully Qualified Domain Name (FQDN)
- * format.
- */
-static boolean_t
-smb_ads_is_sought_host(smb_ads_host_info_t *host, char *sought_host_name)
-{
-	if ((host == NULL) || (sought_host_name == NULL))
-		return (B_FALSE);
-
-	if (smb_strcasecmp(host->name, sought_host_name, 0))
 		return (B_FALSE);
 
 	return (B_TRUE);
@@ -489,7 +386,6 @@ smb_ads_dup_host_info(smb_ads_host_info_t *ads_host)
  *
  * Parameters:
  *   domain: fully-qualified domain name.
- *   kpasswd_srv: fully-quailifed hostname of the kpasswd server.
  *
  * Returns:
  *   A copy of the cached host info is returned. The caller is responsible
@@ -497,9 +393,8 @@ smb_ads_dup_host_info(smb_ads_host_info_t *ads_host)
  */
 /*ARGSUSED*/
 smb_ads_host_info_t *
-smb_ads_find_host(char *domain, char *kpasswd_srv)
+smb_ads_find_host(char *domain)
 {
-	_NOTE(ARGUNUSED(kpasswd_srv))
 	smb_ads_host_info_t *host = NULL;
 	DOMAIN_CONTROLLER_INFO *dci = NULL;
 	struct sockaddr_storage *ss;
@@ -507,11 +402,8 @@ smb_ads_find_host(char *domain, char *kpasswd_srv)
 	uint32_t status;
 	int tries;
 
-	if ((kpasswd_srv) && (*kpasswd_srv == '\0'))
-		kpasswd_srv = NULL;
-
 	(void) mutex_lock(&smb_ads_cached_host_mtx);
-	if (smb_ads_validate_cache_host(domain, kpasswd_srv)) {
+	if (smb_ads_validate_cache_host(domain)) {
 		host = smb_ads_dup_host_info(smb_ads_cached_host_info);
 		(void) mutex_unlock(&smb_ads_cached_host_mtx);
 		return (host);
@@ -758,14 +650,14 @@ smb_ads_open_main(smb_ads_handle_t **hp, char *domain, char *user,
 	*hp = NULL;
 
 	if (user != NULL) {
-		err = smb_kinit(user, password);
+		err = smb_kinit(domain, user, password);
 		if (err != 0)
 			return (err);
 		user = NULL;
 		password = NULL;
 	}
 
-	ads_host = smb_ads_find_host(domain, NULL);
+	ads_host = smb_ads_find_host(domain);
 	if (ads_host == NULL)
 		return (SMB_ADS_CANT_LOCATE_DC);
 
@@ -778,6 +670,7 @@ smb_ads_open_main(smb_ads_handle_t **hp, char *domain, char *user,
 	(void) memset(ah, 0, sizeof (smb_ads_handle_t));
 
 	if ((ld = ldap_init(ads_host->name, ads_host->port)) == NULL) {
+		syslog(LOG_ERR, "smbns: ldap_init failed");
 		smb_ads_free_cached_host();
 		free(ah);
 		free(ads_host);
@@ -837,7 +730,7 @@ smb_ads_open_main(smb_ads_handle_t **hp, char *domain, char *user,
 	rc = ldap_sasl_interactive_bind_s(ah->ld, "", "GSSAPI", NULL, NULL,
 	    LDAP_SASL_INTERACTIVE, &smb_ads_saslcallback, NULL);
 	if (rc != LDAP_SUCCESS) {
-		syslog(LOG_ERR, "ldal_sasl_interactive_bind_s failed (%s)",
+		syslog(LOG_ERR, "smbns: ldap_sasl_..._bind_s failed (%s)",
 		    ldap_err2string(rc));
 		smb_ads_close(ah);
 		free(ads_host);
@@ -1812,7 +1705,7 @@ smb_ads_join(char *domain, char *user, char *usr_passwd, char *machine_passwd)
 	smb_ads_qstat_t qstat;
 	char dn[SMB_ADS_DN_MAX];
 	char tmpfile[] = SMBNS_KRB5_KEYTAB_TMP;
-	int cnt;
+	int cnt, x;
 	smb_krb5_pn_set_t spns;
 	krb5_enctype *encptr;
 
@@ -1897,18 +1790,19 @@ smb_ads_join(char *domain, char *user, char *usr_passwd, char *machine_passwd)
 	    SMB_ADS_USER_ACCT_CTL_WKSTATION_TRUST_ACCT |
 	    SMB_ADS_USER_ACCT_CTL_TRUSTED_FOR_DELEGATION |
 	    SMB_ADS_USER_ACCT_CTL_DONT_EXPIRE_PASSWD);
-	if (smb_ads_update_computer_cntrl_attr(ah, usrctl_flags, dn)
-	    == LDAP_INSUFFICIENT_ACCESS) {
+set_ctl_again:
+	x = smb_ads_update_computer_cntrl_attr(ah, usrctl_flags, dn);
+	if (x != LDAP_SUCCESS && (usrctl_flags &
+	    SMB_ADS_USER_ACCT_CTL_TRUSTED_FOR_DELEGATION) != 0) {
 		syslog(LOG_NOTICE, "Unable to set the "
 "TRUSTED_FOR_DELEGATION userAccountControl flag on the "
 "machine account in Active Directory.  It may be necessary "
 "to set that via Active Directory administration.");
 		usrctl_flags &=
 		    ~SMB_ADS_USER_ACCT_CTL_TRUSTED_FOR_DELEGATION;
+		goto set_ctl_again;
 	}
-
-	if (smb_ads_update_computer_cntrl_attr(ah, usrctl_flags, dn)
-	    != 0) {
+	if (x != LDAP_SUCCESS) {
 		rc = SMB_ADJOIN_ERR_UPDATE_CNTRL_ATTR;
 		goto adjoin_cleanup;
 	}
@@ -2052,28 +1946,6 @@ smb_ads_log_errmsg(smb_ads_status_t err)
 
 
 /*
- * smb_ads_match_pdc
- *
- * Returns B_TRUE if the given host's IP address matches the preferred DC's
- * IP address. Otherwise, returns B_FALSE.
- */
-static boolean_t
-smb_ads_match_pdc(smb_ads_host_info_t *host)
-{
-	boolean_t match = B_FALSE;
-
-	if (!host)
-		return (match);
-
-	(void) mutex_lock(&smb_ads_cfg.c_mtx);
-	if (smb_inet_equal(&host->ipaddr, &smb_ads_cfg.c_pdc))
-		match = B_TRUE;
-	(void) mutex_unlock(&smb_ads_cfg.c_mtx);
-
-	return (match);
-}
-
-/*
  * smb_ads_lookup_msdcs
  *
  * If server argument is set, try to locate the specified DC.
@@ -2081,30 +1953,27 @@ smb_ads_match_pdc(smb_ads_host_info_t *host)
  * Returns the discovered DC via buf.
  *
  * fqdn	  - fully-qualified domain name
- * server - fully-qualifed hostname of a DC
- * buf    - the hostname of the discovered DC
+ * dci    - the name and address of the found DC
  */
 uint32_t
-smb_ads_lookup_msdcs(char *fqdn, char *server, char *buf, uint32_t buflen)
+smb_ads_lookup_msdcs(char *fqdn, smb_dcinfo_t *dci)
 {
 	smb_ads_host_info_t *hinfo = NULL;
-	char *sought_host;
 	char ipstr[INET6_ADDRSTRLEN];
 
-	if (!fqdn || !buf)
+	if (!fqdn || !dci)
 		return (NT_STATUS_INTERNAL_ERROR);
 
 	ipstr[0] = '\0';
-	*buf = '\0';
-	sought_host = (*server == 0 ? NULL : server);
-	if ((hinfo = smb_ads_find_host(fqdn, sought_host)) == NULL)
+	if ((hinfo = smb_ads_find_host(fqdn)) == NULL)
 		return (NT_STATUS_DOMAIN_CONTROLLER_NOT_FOUND);
 
 	(void) smb_inet_ntop(&hinfo->ipaddr, ipstr,
 	    SMB_IPSTRLEN(hinfo->ipaddr.a_family));
 	smb_tracef("msdcsLookupADS: %s [%s]", hinfo->name, ipstr);
 
-	(void) strlcpy(buf, hinfo->name, buflen);
+	(void) strlcpy(dci->dc_name, hinfo->name, sizeof (dci->dc_name));
+	dci->dc_addr = hinfo->ipaddr;
 
 	free(hinfo);
 	return (NT_STATUS_SUCCESS);
