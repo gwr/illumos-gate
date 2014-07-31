@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <smbsrv/smb_kproto.h>
@@ -454,10 +454,11 @@ smb_decode_sid(mbuf_chain_t *mbc, uint32_t offset)
 
 	offset += mbc->chain_offset;
 	bytes_left = mbc->max_bytes - offset;
-	if (bytes_left < sizeof (smb_sid_t))
+	if (bytes_left < (int)sizeof (smb_sid_t))
 		return (NULL);
 
-	(void) MBC_SHADOW_CHAIN(&sidbuf, mbc, offset, bytes_left);
+	if (MBC_SHADOW_CHAIN(&sidbuf, mbc, offset, bytes_left) != 0)
+		return (NULL);
 
 	if (smb_mbc_decodef(&sidbuf, "bb", &revision, &subauth_cnt))
 		return (NULL);
@@ -512,7 +513,8 @@ smb_decode_acl(mbuf_chain_t *mbc, uint32_t offset)
 	if (bytes_left < SMB_ACL_HDRSIZE)
 		return (NULL);
 
-	(void) MBC_SHADOW_CHAIN(&aclbuf, mbc, offset, bytes_left);
+	if (MBC_SHADOW_CHAIN(&aclbuf, mbc, offset, bytes_left) != 0)
+		return (NULL);
 
 	if (smb_mbc_decodef(&aclbuf, "b.ww2.", &revision, &size, &acecnt))
 		return (NULL);

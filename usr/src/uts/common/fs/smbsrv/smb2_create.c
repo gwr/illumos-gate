@@ -177,7 +177,7 @@ smb2_create(smb_request_t *sr)
 	op->op_oplock_levelII = B_TRUE;
 
 	/*
-	 * ImpersonationLevel (ignore)
+	 * ImpersonationLevel (spec. says ignore)
 	 * SmbCreateFlags (spec. says ignore)
 	 */
 
@@ -204,9 +204,13 @@ smb2_create(smb_request_t *sr)
 	 * If there is a "Create Context" payload, decode it.
 	 * This may carry things like a security descriptor,
 	 * extended attributes, etc. to be used in create.
+	 *
+	 * The create ctx buffer must start after the headers
+	 * and file name, and must be 8-byte aligned.
 	 */
 	if (CreateCtxLength != 0) {
-		if ((CreateCtxOffset + sr->smb2_cmd_hdr) <
+		if ((CreateCtxOffset & 7) != 0 ||
+		    (CreateCtxOffset + sr->smb2_cmd_hdr) <
 		    sr->smb_data.chain_offset) {
 			status = NT_STATUS_INVALID_PARAMETER;
 			goto errout;
@@ -427,7 +431,7 @@ smb2_decode_create_ctx(mbuf_chain_t *in_mbc, smb2_create_ctx_t *cc)
 		uint32_t i;
 		char ch[4];
 	} cc_name;
-	uint32_t status = 0;
+	uint32_t status;
 	int32_t next_off;
 	uint32_t data_len;
 	uint16_t data_off;
@@ -457,6 +461,7 @@ smb2_decode_create_ctx(mbuf_chain_t *in_mbc, smb2_create_ctx_t *cc)
 		 * They're defined as network-order integers for our
 		 * switch below.  We don't have routines to decode
 		 * native order, so read as char[4] then ntohl.
+		 * NB: in SMB3, some of these are 8 bytes.
 		 */
 		if ((top_offset + name_off) < in_mbc->chain_offset)
 			break;
@@ -507,12 +512,23 @@ smb2_decode_create_ctx(mbuf_chain_t *in_mbc, smb2_create_ctx_t *cc)
 			cce = &cc->cc_in_req_lease;
 			break;
 		default:
-			cmn_err(CE_CONT, "unknown create context ID 0x%x",
+			/*
+			 * Unknown create context values are normal, and
+			 * should be ignored.  However, in debug mode,
+			 * let's log them so we know which ones we're
+			 * not handling (and may want to add).
+			 */
+#ifdef	DEBUG
+			cmn_err(CE_NOTE, "unknown create context ID 0x%x",
 			    cc_name.i);
+#endif
+			cce = NULL;
 			break;
 		}
 
 		if (cce != NULL && data_len != 0) {
+			if ((data_off & 7) != 0)
+				break;
 			if ((top_offset + data_off) < in_mbc->chain_offset)
 				break;
 			rc = MBC_SHADOW_CHAIN(&cce->cce_mbc, in_mbc,
@@ -528,6 +544,8 @@ smb2_decode_create_ctx(mbuf_chain_t *in_mbc, smb2_create_ctx_t *cc)
 			break;
 		}
 
+		if ((next_off & 7) != 0)
+			break;
 		if ((top_offset + next_off) < in_mbc->chain_offset)
 			break;
 		if ((top_offset + next_off) > in_mbc->max_bytes)

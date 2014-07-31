@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <smbsrv/smb_kproto.h>
@@ -139,13 +139,18 @@ smb_quota_decode_sids(mbuf_chain_t *mbc, list_t *list)
 	smb_quota_sid_t	*qsid;
 	uint32_t status = NT_STATUS_SUCCESS;
 	struct mbuf_chain sidbuf;
+	int rc;
 
 	offset = 0;
 	do {
 		mb_offset = offset + mbc->chain_offset;
 		bytes_left = mbc->max_bytes - mb_offset;
-		(void) MBC_SHADOW_CHAIN(&sidbuf, mbc,
+		rc = MBC_SHADOW_CHAIN(&sidbuf, mbc,
 		    mb_offset, bytes_left);
+		if (rc != 0) {
+			status = NT_STATUS_INVALID_PARAMETER;
+			break;
+		}
 
 		if (smb_mbc_decodef(&sidbuf, "ll", &next_offset, &sidlen)) {
 			status = NT_STATUS_INVALID_PARAMETER;
@@ -215,13 +220,18 @@ smb_quota_decode_quotas(mbuf_chain_t *mbc, list_t *list)
 	smb_quota_t	*quota;
 	uint32_t	status = NT_STATUS_SUCCESS;
 	struct mbuf_chain quotabuf;
+	int rc;
 
 	offset = 0;
 	do {
 		mb_offset = offset + mbc->chain_offset;
 		bytes_left = mbc->max_bytes - mb_offset;
-		(void) MBC_SHADOW_CHAIN(&quotabuf, mbc,
+		rc = MBC_SHADOW_CHAIN(&quotabuf, mbc,
 		    mb_offset, bytes_left);
+		if (rc != 0) {
+			status = NT_STATUS_INVALID_PARAMETER;
+			break;
+		}
 
 		quota = kmem_zalloc(sizeof (smb_quota_t), KM_SLEEP);
 
