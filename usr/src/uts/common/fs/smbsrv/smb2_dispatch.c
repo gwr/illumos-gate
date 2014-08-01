@@ -117,12 +117,14 @@ smb2_disp_table[SMB2__NCMDS] = {
 	    smb2_ioctl, NULL, 0, 0 },
 
 	/*
-	 * Note: Cancel has a NULL function pointer because
-	 * that's always handled directly in the reader, and
-	 * never gets to the function using this table.
+	 * Note: Cancel gets the "invalid command" handler because
+	 * that's always handled directly in the reader.  We should
+	 * never get to the function using this table, but note:
+	 * We CAN get here if a nasty client adds cancel to some
+	 * compound message, which is a protocol violation.
 	 */
 	{  "smb2_cancel", NULL,
-	    NULL, NULL, 0, 0 },
+	    smb2_invalid_cmd, NULL, 0, 0 },
 
 	{  "smb2_echo", NULL,
 	    smb2_echo, NULL, 0, 0,
