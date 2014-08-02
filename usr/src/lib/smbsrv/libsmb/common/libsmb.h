@@ -968,38 +968,6 @@ int smb_reparse_svcget(const char *, const char *, char **);
 
 uint32_t smb_get_txid(void);
 
-#define	SMB_LOG_LINE_SZ		256
-
-typedef uint32_t	smb_log_hdl_t;
-
-typedef struct smb_log_item {
-	list_node_t	li_lnd;
-	char		li_msg[SMB_LOG_LINE_SZ];
-} smb_log_item_t;
-
-typedef struct smb_log {
-	smb_log_hdl_t	l_handle;
-	int		l_cnt;
-	int		l_max_cnt;
-	mutex_t		l_mtx;
-	list_t		l_list;
-	char		l_file[MAXPATHLEN];
-} smb_log_t;
-
-typedef struct smb_loglist_item {
-	list_node_t	lli_lnd;
-	smb_log_t	lli_log;
-} smb_loglist_item_t;
-
-typedef struct smb_loglist {
-	mutex_t		ll_mtx;
-	list_t		ll_list;
-} smb_loglist_t;
-
-smb_log_hdl_t smb_log_create(int, char *);
-void smb_log(smb_log_hdl_t, int, const char *, ...);
-void smb_log_dumpall(void);
-
 void smb_syslog(int, const char *, ...);
 void smb_vsyslog(int, const char *, va_list ap);
 char *smb_syslog_fmt_m(char *, int, const char *, int);

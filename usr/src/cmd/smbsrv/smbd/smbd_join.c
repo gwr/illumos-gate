@@ -139,7 +139,7 @@ smbd_dc_monitor(void *arg)
 		}
 
 		if (ds_not_responding)
-			smb_log(smbd.s_loghd, LOG_NOTICE,
+			syslog(LOG_NOTICE,
 			    "smbd_dc_monitor: domain service not responding");
 
 		if (ds_not_responding || ds_cfg_changed) {
@@ -171,19 +171,19 @@ smbd_dc_update(void)
 		(void) smb_getdomainname(domain, MAXHOSTNAMELEN);
 	}
 	if (domain[0] == '\0') {
-		smb_log(smbd.s_loghd, LOG_NOTICE,
+		syslog(LOG_NOTICE,
 		    "smbd_dc_update: no domain name set");
 		return;
 	}
 
 	if (!smb_locate_dc(domain, "", &info)) {
-		smb_log(smbd.s_loghd, LOG_NOTICE,
+		syslog(LOG_NOTICE,
 		    "smbd_dc_update: %s: locate failed", domain);
 		return;
 	}
 
 	di = &info.d_primary;
-	smb_log(smbd.s_loghd, LOG_INFO,
+	syslog(LOG_INFO,
 	    "smbd_dc_update: %s: located %s", domain, info.d_dc);
 
 	status = mlsvc_netlogon(info.d_dc, di->di_nbname);
@@ -195,11 +195,11 @@ smbd_dc_update(void)
 		 * Restart required because the domain changed
 		 * or the credential chain setup failed.
 		 */
-		smb_log(smbd.s_loghd, LOG_NOTICE,
+		syslog(LOG_NOTICE,
 		    "smbd_dc_update: smb/server restart required");
 
 		if (smb_smf_restart_service() != 0)
-			smb_log(smbd.s_loghd, LOG_ERR,
+			syslog(LOG_ERR,
 			    "restart failed: run 'svcs -xv smb/server'"
 			    " for more information");
 	}

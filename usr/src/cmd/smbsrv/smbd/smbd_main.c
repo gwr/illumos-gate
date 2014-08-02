@@ -200,8 +200,7 @@ main(int argc, char *argv[])
 			break;
 
 		case SIGUSR1:
-			syslog(LOG_DEBUG, "log dump requested");
-			smb_log_dumpall();
+			syslog(LOG_DEBUG, "SIGUSR1 ignored");
 			break;
 
 		default:
@@ -473,7 +472,6 @@ smbd_service_init(void)
 		return (-1);
 	}
 
-	smbd.s_loghd = smb_log_create(SMBD_LOGSIZE, SMBD_LOGNAME);
 	smb_codepage_init();
 
 	rc = smbd_cups_init();
@@ -670,7 +668,7 @@ smbd_online_wait(const char *text)
 		(void) sleep(SMBD_ONLINE_WAIT_INTERVAL);
 
 	if (text != NULL) {
-		smb_log(smbd.s_loghd, LOG_DEBUG, "%s: online", text);
+		syslog(LOG_DEBUG, "%s: online", text);
 		(void) fprintf(stderr, "%s: online\n", text);
 	}
 }

@@ -100,13 +100,11 @@ typedef struct smbd {
 	pthread_t	s_nbt_listener_id;
 	pthread_t	s_tcp_listener_id;
 	boolean_t	s_fatal_error;
-	smb_log_hdl_t	s_loghd;
 } smbd_t;
 
 extern smbd_t smbd;
 
-#define	SMBD_LOGNAME		"smbd"
-#define	SMBD_LOGSIZE		1024
+#define	SMBD_LOG_MSGSIZE	256
 
 #define	SMBD_DOOR_NAMESZ	16
 

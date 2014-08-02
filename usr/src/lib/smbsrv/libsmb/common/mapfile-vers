@@ -261,9 +261,6 @@ SYMBOL_VERSION SUNWprivate {
 	smb_lgrp_stop;
 	smb_lgrp_strerror;
 	smb_load_kconfig;
-	smb_log				{ FLAGS = NODIRECT };
-	smb_log_create;
-	smb_log_dumpall;
 	smb_logon_decode;
 	smb_logon_free;
 	smb_logon_xdr;
