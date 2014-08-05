@@ -909,9 +909,10 @@ typedef struct smb_session {
 	unsigned char		challenge_key[SMB_CHALLENGE_SZ];
 	int64_t			activity_timestamp;
 	/*
-	 * Maximum negotiated buffer size between SMB client and server
+	 * Maximum negotiated buffer sizes between SMB client and server
 	 * in SMB_SESSION_SETUP_ANDX
 	 */
+	int			cmd_max_bytes;
 	int			reply_max_bytes;
 	uint16_t		smb_msg_size;
 	uint16_t		smb_max_mpx;

@@ -288,10 +288,18 @@ smb2sr_work(struct smb_request *sr)
 cmd_start:
 	/*
 	 * Reserve space for the reply header, and save the offset.
-	 * The reply header will be overwritten later.
+	 * The reply header will be overwritten later.  If we have
+	 * already exhausted the output space, then this client is
+	 * trying something funny.  Log it and kill 'em.
 	 */
 	sr->smb2_reply_hdr = sr->reply.chain_offset;
-	(void) smb_mbc_encodef(&sr->reply, "#.", SMB2_HDR_SIZE);
+	rc = smb_mbc_encodef(&sr->reply, "#.", SMB2_HDR_SIZE);
+	if (rc != 0) {
+		cmn_err(CE_WARN, "clnt %s excessive reply",
+		    session->ip_addr_str);
+		disconnect = B_TRUE;
+		goto cleanup;
+	}
 
 	/*
 	 * Decode the request header
