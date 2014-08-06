@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -3429,15 +3429,19 @@ sid2pid_second_pass(lookup_state_t *state,
 			 * have a UID or GID that isn't in the
 			 * name service.
 			 */
+			if (AVOID_NAMESERVICE(req)) {
+				TRACE(req, res, "Get UNIX name, avoid NS");
+				goto out;
+			}
 			retcode2 = ns_lookup_bypid(res->id.idmap_id_u.uid,
 			    res->id.idtype == IDMAP_UID, &req->id2name);
 			if (IDMAP_ERROR(retcode2)) {
 				TRACE(req, res,
 				    "Getting UNIX name, error=%d (ignored)",
 				    retcode2);
-			} else {
-				TRACE(req, res, "Found UNIX name");
+				goto out;
 			}
+			TRACE(req, res, "Found UNIX name");
 		}
 		goto out;
 	}
@@ -3510,6 +3514,12 @@ sid2pid_second_pass(lookup_state_t *state,
 			/* fallback */
 		} else {
 			if (res->id.idmap_id_u.uid == IDMAP_SENTINEL_PID) {
+				if (AVOID_NAMESERVICE(req)) {
+					TRACE(req, res,
+					    "Get UNIX name, avoid NS");
+					retcode = IDMAP_ERR_NOTFOUND;
+					goto out;
+				}
 				retcode = ns_lookup_byname(req->id2name,
 				    NULL, &res->id);
 				if (retcode != IDMAP_SUCCESS) {
@@ -4670,6 +4680,11 @@ pid2sid_first_pass(lookup_state_t *state, idmap_mapping *req,
 			goto out;
 		}
 
+		if (AVOID_NAMESERVICE(req)) {
+			TRACE(req, res, "Avoid nameservice (no mapping)");
+			retcode = IDMAP_ERR_NOMAPPING;
+			goto out;
+		}
 		retcode = ns_lookup_byname(req->id1name, NULL, &req->id1);
 		if (retcode != IDMAP_SUCCESS) {
 			TRACE(req, res, "Getting UNIX ID error=%d", retcode);
@@ -4831,6 +4846,12 @@ pid2sid_second_pass(lookup_state_t *state, idmap_mapping *req,
 	/* Free any mapping info from Directory based mapping */
 	if (res->info.how.map_type != IDMAP_MAP_TYPE_UNKNOWN)
 		idmap_how_clear(&res->info.how);
+
+	if (AVOID_NAMESERVICE(req)) {
+		gen_localsid_on_err = FALSE;
+		retcode = IDMAP_ERR_NOMAPPING;
+		goto out;
+	}
 
 	if (req->id1name == NULL) {
 		/* Get unixname from name service */
