@@ -23,15 +23,15 @@
  * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  */
 
-#ifndef _KERNEL
+#if !defined(_KERNEL) && !defined(_FAKE_KERNEL)
 #include <stdio.h>
 #include <strings.h>
 #include <stdlib.h>
 #include <syslog.h>
-#else /* _KERNEL */
+#else	/* !_KERNEL && !_FAKE_KERNEL */
 #include <sys/types.h>
 #include <sys/sunddi.h>
-#endif /* _KERNEL */
+#endif	/* !_KERNEL && !_FAKE_KERNEL */
 
 #include <smbsrv/smb_sid.h>
 
@@ -183,7 +183,7 @@ smb_sid_splitstr(char *strsid, uint32_t *rid)
 
 	*p++ = '\0';
 	if (rid) {
-#ifdef _KERNEL
+#if defined(_KERNEL) || defined(_FAKE_KERNEL)
 		unsigned long sua = 0;
 		(void) ddi_strtoul(p, NULL, 10, &sua);
 		*rid = (uint32_t)sua;
@@ -303,7 +303,7 @@ smb_sid_tostr(const smb_sid_t *sid, char *strsid)
  * On success, a pointer to a SID is returned. Otherwise a null pointer
  * is returned.
  */
-#ifdef _KERNEL
+#if defined(_KERNEL) || defined(_FAKE_KERNEL)
 smb_sid_t *
 smb_sid_fromstr(const char *sidstr)
 {
@@ -429,7 +429,7 @@ static smb_sid_t *
 smb_sid_alloc(size_t size)
 {
 	smb_sid_t *sid;
-#ifdef _KERNEL
+#if defined(_KERNEL) || defined(_FAKE_KERNEL)
 	sid = kmem_alloc(size, KM_SLEEP);
 #else
 	sid = malloc(size);
@@ -440,7 +440,7 @@ smb_sid_alloc(size_t size)
 void
 smb_sid_free(smb_sid_t *sid)
 {
-#ifdef _KERNEL
+#if defined(_KERNEL) || defined(_FAKE_KERNEL)
 	if (sid == NULL)
 		return;
 
