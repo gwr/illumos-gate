@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #if !defined(_KERNEL) && !defined(_FAKE_KERNEL)
@@ -150,14 +150,19 @@ smb_sid_t *
 smb_sid_split(smb_sid_t *sid, uint32_t *rid)
 {
 	smb_sid_t *domsid;
+	int size;
 
 	if (!smb_sid_isvalid(sid) || (sid->sid_subauthcnt == 0))
 		return (NULL);
 
-	if ((domsid = smb_sid_dup(sid)) == NULL)
+	/* We will reduce sid_subauthcnt by one. */
+	size = smb_sid_len(sid) - sizeof (uint32_t);
+	if ((domsid = smb_sid_alloc(size)) == NULL)
 		return (NULL);
 
-	--domsid->sid_subauthcnt;
+	bcopy(sid, domsid, size);
+	domsid->sid_subauthcnt = sid->sid_subauthcnt - 1;
+
 	if (rid)
 		*rid = domsid->sid_subauth[domsid->sid_subauthcnt];
 
