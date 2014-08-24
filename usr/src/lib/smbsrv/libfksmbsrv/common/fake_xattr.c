@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <sys/types.h>
@@ -32,6 +32,10 @@
 
 static uint64_t zero_times[2];
 
+static int
+getxva_parse_nvl(xvattr_t *xvap,
+    xoptattr_t *xoap, nvlist_t *nvl);
+
 /*
  * See similar code to parse the nvlist in:
  * uts/common/fs/xattr.c : xattr_file_write()
@@ -39,8 +43,7 @@ static uint64_t zero_times[2];
 int
 fop__getxvattr(vnode_t *vp, xvattr_t *xvap)
 {
-	nvlist_t *nvl;
-	nvpair_t *pair = NULL;
+	nvlist_t *nvl = NULL;
 	xoptattr_t *xoap = NULL;
 	int error;
 
@@ -49,8 +52,29 @@ fop__getxvattr(vnode_t *vp, xvattr_t *xvap)
 	}
 
 	error = fgetattr(vp->v_fd, XATTR_VIEW_READWRITE, &nvl);
-	if (error)
-		return (error);
+	if (error == 0) {
+		error = getxva_parse_nvl(xvap, xoap, nvl);
+		nvlist_free(nvl);
+		nvl = NULL;
+	}
+
+	/*
+	 * Also get the readonly attrs, but don't fail.
+	 */
+	if (fgetattr(vp->v_fd, XATTR_VIEW_READONLY, &nvl) == 0) {
+		(void) getxva_parse_nvl(xvap, xoap, nvl);
+		nvlist_free(nvl);
+	}
+
+	return (error);
+}
+
+static int
+getxva_parse_nvl(xvattr_t *xvap,
+    xoptattr_t *xoap, nvlist_t *nvl)
+{
+	nvpair_t *pair = NULL;
+	int error;
 
 	while (pair = nvlist_next_nvpair(nvl, pair)) {
 		data_type_t type;
@@ -165,9 +189,9 @@ fop__getxvattr(vnode_t *vp, xvattr_t *xvap)
 			break;
 		}
 	}
+	error = 0;
 
 out:
-	nvlist_free(nvl);
 	return (error);
 }
 
@@ -239,7 +263,7 @@ fop__setxvattr(vnode_t *vp, xvattr_t *xvap)
 		    xoap->xoa_sparse) == 0);
 	}
 
-	error = fsetattr(vp->v_fd, XATTR_VIEW_READONLY, nvl);
+	error = fsetattr(vp->v_fd, XATTR_VIEW_READWRITE, nvl);
 
 	nvlist_free(nvl);
 
