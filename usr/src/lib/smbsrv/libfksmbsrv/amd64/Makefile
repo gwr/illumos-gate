@@ -22,14 +22,12 @@
 # Copyright 2007 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
 #
-# Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+# Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
 #
 
 MACH_LDLIBS +=	-L$(ROOT)/usr/lib/smbsrv/$(MACH64)
 
 include ../Makefile.com
 include ../../../Makefile.lib.64
-
-DYNFLAGS +=	-R/usr/lib/smbsrv/$(MACH64)
 
 install: all $(ROOTLIBS64) $(ROOTLINKS64) $(ROOTLINT64)
