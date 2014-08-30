@@ -37,14 +37,14 @@
 #include <smbsrv/smb_kproto.h>
 #include <smbsrv/smb_token.h>
 
-static int smb_authsock_open(ksocket_t *);
+static uint32_t smb_authsock_open(smb_user_t *);
 static int smb_authsock_send(ksocket_t, void *, size_t);
 static int smb_authsock_recv(ksocket_t, void *, size_t);
-static int smb_authsock_sendrecv(ksocket_t, smb_lsa_msg_hdr_t *hdr,
+static uint32_t smb_authsock_sendrecv(smb_user_t *, smb_lsa_msg_hdr_t *hdr,
 				void *sndbuf, void **recvbuf);
-/* int smb_authsock_close(ksocket_t); kproto.h */
+/* void smb_authsock_close(smb_user_t *); kproto.h */
 
-static int smb_auth_do_clinfo(smb_request_t *);
+static uint32_t smb_auth_do_clinfo(smb_request_t *);
 static uint32_t smb_auth_do_oldreq(smb_request_t *);
 static uint32_t smb_auth_get_token(smb_request_t *);
 static uint32_t smb_priv_xlate(smb_token_t *);
@@ -60,9 +60,7 @@ int
 smb_authenticate_old(smb_request_t *sr)
 {
 	smb_user_t	*user = NULL;
-	ksocket_t	so = NULL;
 	uint32_t	status;
-	int		rc;
 
 	user = smb_user_new(sr->session);
 	if (user == NULL)
@@ -74,38 +72,34 @@ smb_authenticate_old(smb_request_t *sr)
 
 	/*
 	 * Open a connection to the local logon service.
-	 * If we can't, it's probably not running.
+	 * If we can't, it may be busy, or not running.
+	 * Don't log here - this may be frequent.
 	 */
-	rc = smb_authsock_open(&so);
-	if (rc != 0) {
-		cmn_err(CE_NOTE, "smb_authsock_open, rc=%d", rc);
-		return (NT_STATUS_NETLOGON_NOT_STARTED);
-	}
-
-	/* Note: so cleanup in smb_user_logon or logoff */
-	user->u_authsock = so;
+	if ((status = smb_authsock_open(user)) != 0)
+		goto errout;
 
 	/*
-	 * Tell the auth. svc who this client is.  This is our first
-	 * request on the socket.  If this gets ECONNRESET or similar,
-	 * the auth. svc. probably closed the socket because there are
-	 * too many concurrent authentications happening, so return an
-	 * error indicating the auth. service is busy.
+	 * Tell the auth. svc who this client is.
 	 */
-	rc = smb_auth_do_clinfo(sr);
-	if (rc != 0) {
-		cmn_err(CE_NOTE, "smb_auth_do_clinfo, rc=%d", rc);
-		return (NT_STATUS_NO_LOGON_SERVERS);
-	}
+	if ((status = smb_auth_do_clinfo(sr)) != 0)
+		goto errout;
 
-	status = smb_auth_do_oldreq(sr);
-	if (status != 0)
-		return (status);
+	/*
+	 * Authentication proper
+	 */
+	if ((status = smb_auth_do_oldreq(sr)) != 0)
+		goto errout;
 
 	/*
 	 * Get the final auth. token.
 	 */
-	status = smb_auth_get_token(sr);
+	if ((status = smb_auth_get_token(sr)) != 0)
+		goto errout;
+
+	return (0);
+
+errout:
+	smb_user_logoff(user);
 	return (status);
 }
 
@@ -121,13 +115,12 @@ smb_auth_do_oldreq(smb_request_t *sr)
 	XDR		xdrs;
 	smb_arg_sessionsetup_t *sinfo = sr->sr_ssetup;
 	smb_user_t	*user = sr->uid_user;
-	ksocket_t	so = user->u_authsock;
 	void		*sbuf = NULL;
 	void		*rbuf = NULL;
 	uint32_t	slen = 0;
 	uint32_t	rlen = 0;
-	uint32_t	status = NT_STATUS_INTERNAL_ERROR;
-	int		rc;
+	uint32_t	status;
+	bool_t		ok;
 
 	bzero(&user_info, sizeof (smb_logon_t));
 
@@ -151,15 +144,17 @@ smb_auth_do_oldreq(smb_request_t *sr)
 	slen = xdr_sizeof(smb_logon_xdr, &user_info);
 	sbuf = kmem_alloc(slen, KM_SLEEP);
 	xdrmem_create(&xdrs, sbuf, slen, XDR_ENCODE);
-	rc = smb_logon_xdr(&xdrs, &user_info);
+	ok = smb_logon_xdr(&xdrs, &user_info);
 	xdr_destroy(&xdrs);
-	if (!rc)
+	if (!ok) {
+		status = RPC_NT_BAD_STUB_DATA;
 		goto out;
+	}
 
 	msg_hdr.lmh_msgtype = LSA_MTYPE_OLDREQ;
 	msg_hdr.lmh_msglen = slen;
-	rc = smb_authsock_sendrecv(so, &msg_hdr, sbuf, &rbuf);
-	if (rc)
+	status = smb_authsock_sendrecv(user, &msg_hdr, sbuf, &rbuf);
+	if (status != 0)
 		goto out;
 	rlen = msg_hdr.lmh_msglen;
 	kmem_free(sbuf, slen);
@@ -170,20 +165,20 @@ smb_auth_do_oldreq(smb_request_t *sr)
 	 */
 	switch (msg_hdr.lmh_msgtype) {
 
-	case LSA_MTYPE_ERROR: {
-		smb_lsa_eresp_t *eresp = rbuf;
-		if (rlen != sizeof (*eresp))
-			goto out;
-		status = eresp->ler_ntstatus;
-		goto out;
-	}
-
 	case LSA_MTYPE_OK:
 		status = 0;
 		break;
 
-	/*  Bogus message type */
-	default:
+	case LSA_MTYPE_ERROR:
+		if (rlen == sizeof (smb_lsa_eresp_t)) {
+			smb_lsa_eresp_t *ler = rbuf;
+			status = ler->ler_ntstatus;
+			break;
+		}
+		/* FALLTHROUGH */
+
+	default:	/*  Bogus message type */
+		status = NT_STATUS_INTERNAL_ERROR;
 		break;
 	}
 
@@ -227,14 +222,12 @@ out:
 int
 smb_authenticate_ext(smb_request_t *sr)
 {
+	smb_lsa_msg_hdr_t	msg_hdr;
 	smb_arg_sessionsetup_t *sinfo = sr->sr_ssetup;
-	ksocket_t	so = NULL;
 	smb_user_t	*user = NULL;
 	void		*rbuf = NULL;
 	uint32_t	rlen = 0;
-	smb_lsa_msg_hdr_t	msg_hdr;
-	uint32_t	status = NT_STATUS_INTERNAL_ERROR;
-	int		rc;
+	uint32_t	status;
 
 	ASSERT(sr->uid_user == NULL);
 
@@ -246,7 +239,6 @@ smb_authenticate_ext(smb_request_t *sr)
 	 * for the smb_request (sr).  Ditto u_authsock.
 	 */
 	if (sr->smb_uid == 0) {
-		msg_hdr.lmh_msgtype = LSA_MTYPE_ESFIRST;
 		user = smb_user_new(sr->session);
 		if (user == NULL)
 			return (NT_STATUS_TOO_MANY_SESSIONS);
@@ -257,32 +249,20 @@ smb_authenticate_ext(smb_request_t *sr)
 
 		/*
 		 * Open a connection to the local logon service.
-		 * If we can't, it's probably not running.
+		 * If we can't, it may be busy, or not running.
+		 * Don't log here - this may be frequent.
 		 */
-		rc = smb_authsock_open(&so);
-		if (rc != 0) {
-			cmn_err(CE_NOTE, "smb_authsock_open, rc=%d", rc);
-			return (NT_STATUS_NETLOGON_NOT_STARTED);
-		}
-
-		/* Note: so cleanup in smb_user_logon or logoff. */
-		user->u_authsock = so;
+		if ((status = smb_authsock_open(user)) != 0)
+			goto errout;
 
 		/*
-		 * Tell the auth. svc who this client is.  This is our
-		 * first request on the socket.  If this gets ECONNRESET
-		 * or similar, the auth. svc. probably closed the socket
-		 * because there are too many concurrent authentications
-		 * happening, so return an error indicating the auth.
-		 * service is busy.
+		 * Tell the auth. svc who this client is.
 		 */
-		rc = smb_auth_do_clinfo(sr);
-		if (rc != 0) {
-			cmn_err(CE_NOTE, "smb_auth_do_clinfo, rc=%d", rc);
-			return (NT_STATUS_NO_LOGON_SERVERS);
-		}
+		if ((status = smb_auth_do_clinfo(sr)) != 0)
+			goto errout;
+
+		msg_hdr.lmh_msgtype = LSA_MTYPE_ESFIRST;
 	} else {
-		msg_hdr.lmh_msgtype = LSA_MTYPE_ESNEXT;
 		user = smb_session_lookup_uid_st(sr->session,
 		    sr->smb_uid, SMB_USER_STATE_LOGGING_ON);
 		if (user == NULL)
@@ -290,7 +270,8 @@ smb_authenticate_ext(smb_request_t *sr)
 
 		/* user cleanup in smb_request_free */
 		sr->uid_user = user;
-		so = user->u_authsock;
+
+		msg_hdr.lmh_msgtype = LSA_MTYPE_ESNEXT;
 	}
 
 	/*
@@ -299,10 +280,10 @@ smb_authenticate_ext(smb_request_t *sr)
 	 * and send it up the authsock with either
 	 */
 	msg_hdr.lmh_msglen = sinfo->ssi_iseclen;
-	rc = smb_authsock_sendrecv(so, &msg_hdr,
+	status = smb_authsock_sendrecv(user, &msg_hdr,
 	    sinfo->ssi_isecblob, &rbuf);
-	if (rc)
-		goto out;
+	if (status != 0)
+		goto errout;
 	rlen = msg_hdr.lmh_msglen;
 
 	/*
@@ -310,18 +291,6 @@ smb_authenticate_ext(smb_request_t *sr)
 	 * Note: allocated rbuf
 	 */
 	switch (msg_hdr.lmh_msgtype) {
-
-	case LSA_MTYPE_ERROR: {
-		/*
-		 * Authentication failed.  Return the error
-		 * provided in the reply message.
-		 */
-		smb_lsa_eresp_t *eresp = rbuf;
-		if (rlen != sizeof (*eresp))
-			goto out;
-		status = eresp->ler_ntstatus;
-		break;
-	}
 
 	case LSA_MTYPE_ES_CONT:
 		sinfo->ssi_oseclen = (uint16_t)rlen;
@@ -344,12 +313,28 @@ smb_authenticate_ext(smb_request_t *sr)
 		status = smb_auth_get_token(sr);
 		break;
 
-	/*  Bogus message type */
-	default:
-		break;
+	case LSA_MTYPE_ERROR:
+		/*
+		 * Authentication failed.  Return the error
+		 * provided in the reply message.
+		 */
+		if (rlen == sizeof (smb_lsa_eresp_t)) {
+			smb_lsa_eresp_t *ler = rbuf;
+			status = ler->ler_ntstatus;
+			goto errout;
+		}
+		/* FALLTHROUGH */
+
+	default:	/*  Bogus message type */
+		status = NT_STATUS_INTERNAL_ERROR;
+		goto errout;
 	}
 
-out:
+	if (status != 0 && status != NT_STATUS_MORE_PROCESSING_REQUIRED) {
+	errout:
+		smb_user_logoff(user);
+	}
+
 	if (rbuf != NULL)
 		kmem_free(rbuf, rlen);
 
@@ -359,15 +344,14 @@ out:
 /*
  * Send the "client info" up to the auth service.
  */
-static int
+static uint32_t
 smb_auth_do_clinfo(smb_request_t *sr)
 {
 	smb_lsa_msg_hdr_t msg_hdr;
 	smb_lsa_clinfo_t clinfo;
 	smb_user_t *user = sr->uid_user;
-	ksocket_t so = user->u_authsock;
 	void *rbuf = NULL;
-	int rc;
+	uint32_t status;
 
 	/*
 	 * Send a message with info. about the client
@@ -379,14 +363,14 @@ smb_auth_do_clinfo(smb_request_t *sr)
 	(void) memcpy(clinfo.lci_challenge_key,
 	    sr->session->challenge_key,
 	    sizeof (clinfo.lci_challenge_key));
-	rc = smb_authsock_sendrecv(so, &msg_hdr, &clinfo, &rbuf);
+	status = smb_authsock_sendrecv(user, &msg_hdr, &clinfo, &rbuf);
 	/* We don't use this response. */
 	if (rbuf != NULL) {
 		kmem_free(rbuf, msg_hdr.lmh_msglen);
 		rbuf = NULL;
 	}
 
-	return (rc);
+	return (status);
 }
 
 /*
@@ -400,44 +384,52 @@ smb_auth_get_token(smb_request_t *sr)
 	XDR		xdrs;
 	smb_arg_sessionsetup_t *sinfo = sr->sr_ssetup;
 	smb_user_t	*user = sr->uid_user;
-	ksocket_t	so = user->u_authsock;
 	smb_token_t	*token = NULL;
 	cred_t		*cr = NULL;
 	void		*rbuf = NULL;
 	uint32_t	rlen = 0;
 	uint32_t	privileges;
-	uint32_t	status = NT_STATUS_INTERNAL_ERROR;
-	int		rc;
+	uint32_t	status;
+	bool_t		ok;
 
 	msg_hdr.lmh_msgtype = LSA_MTYPE_GETTOK;
 	msg_hdr.lmh_msglen = 0;
 
-	rc = smb_authsock_sendrecv(so, &msg_hdr, NULL, &rbuf);
-	if (rc)
+	status = smb_authsock_sendrecv(user, &msg_hdr, NULL, &rbuf);
+	if (status != 0)
 		goto errout;
 
 	rlen = msg_hdr.lmh_msglen;
-	if (msg_hdr.lmh_msgtype == LSA_MTYPE_ERROR) {
-		smb_lsa_eresp_t *eresp = rbuf;
-		if (rlen != sizeof (*eresp)) {
+	switch (msg_hdr.lmh_msgtype) {
+
+	case LSA_MTYPE_TOKEN:
+		status = 0;
+		break;
+
+	case LSA_MTYPE_ERROR:
+		if (rlen == sizeof (smb_lsa_eresp_t)) {
+			smb_lsa_eresp_t *ler = rbuf;
+			status = ler->ler_ntstatus;
 			goto errout;
 		}
-		status = eresp->ler_ntstatus;
+		/* FALLTHROUGH */
+
+	default:
+		status = NT_STATUS_INTERNAL_ERROR;
 		goto errout;
 	}
-
-	if (msg_hdr.lmh_msgtype != LSA_MTYPE_TOKEN)
-		goto errout;
 
 	/*
 	 * Authenticated.  Decode the LSA_MTYPE_TOKEN.
 	 */
 	xdrmem_create(&xdrs, rbuf, rlen, XDR_DECODE);
 	token = kmem_zalloc(sizeof (smb_token_t), KM_SLEEP);
-	rc = smb_token_xdr(&xdrs, token);
+	ok = smb_token_xdr(&xdrs, token);
 	xdr_destroy(&xdrs);
-	if (!rc)
+	if (!ok) {
+		status = RPC_NT_BAD_STUB_DATA;
 		goto errout;
+	}
 	kmem_free(rbuf, rlen);
 	rbuf = NULL;
 
@@ -518,29 +510,40 @@ smb_priv_xlate(smb_token_t *token)
 
 /*
  * Send/recv a request/reply sequence on the auth socket.
- * Returns zero or an errno.
+ * Returns zero or an NT status.
+ *
+ * Errors here mean we can't communicate with the smbd_authsvc.
+ * With limited authsock instances, this should be rare.
  */
-static int
-smb_authsock_sendrecv(ksocket_t so, smb_lsa_msg_hdr_t *hdr,
+static uint32_t
+smb_authsock_sendrecv(smb_user_t *user, smb_lsa_msg_hdr_t *hdr,
 	void *sndbuf, void **recvbuf)
 {
+	ksocket_t so;
+	uint32_t status;
 	int rc;
 
-	rc = smb_authsock_send(so, hdr, sizeof (*hdr));
-	if (rc)
-		return (rc);
-	if (hdr->lmh_msglen != 0) {
-		rc = smb_authsock_send(so, sndbuf, hdr->lmh_msglen);
-		if (rc)
-			return (rc);
+	/*
+	 * Get a hold on the auth socket.
+	 */
+	mutex_enter(&user->u_mutex);
+	so = user->u_authsock;
+	if (so == NULL) {
+		mutex_exit(&user->u_mutex);
+		return (NT_STATUS_INTERNAL_ERROR);
 	}
+	ksocket_hold(so);
+	mutex_exit(&user->u_mutex);
+
+	rc = smb_authsock_send(so, hdr, sizeof (*hdr));
+	if (rc == 0 && hdr->lmh_msglen != 0) {
+		rc = smb_authsock_send(so, sndbuf, hdr->lmh_msglen);
+	}
+	if (rc)
+		goto out;
 
 	rc = smb_authsock_recv(so, hdr, sizeof (*hdr));
-	if (rc)
-		return (rc);
-	if (hdr->lmh_msglen == 0) {
-		*recvbuf = NULL;
-	} else {
+	if (rc == 0 && hdr->lmh_msglen != 0) {
 		*recvbuf = kmem_alloc(hdr->lmh_msglen, KM_SLEEP);
 		rc = smb_authsock_recv(so, *recvbuf, hdr->lmh_msglen);
 		if (rc) {
@@ -549,7 +552,24 @@ smb_authsock_sendrecv(ksocket_t so, smb_lsa_msg_hdr_t *hdr,
 		}
 	}
 
-	return (rc);
+out:
+	ksocket_rele(so);
+	switch (rc) {
+	case 0:
+		status = 0;
+		break;
+	case EIO:
+		status = RPC_NT_COMM_FAILURE;
+		break;
+	case ENOTCONN:
+		status = RPC_NT_PIPE_CLOSED;
+		break;
+	default:
+		status = RPC_NT_CALL_FAILED;
+		break;
+	}
+
+	return (status);
 }
 
 /*
@@ -570,27 +590,36 @@ struct timeval smb_auth_recv_tmo = { 45, 0 };
  */
 struct timeval smb_auth_send_tmo = { 15, 0 };
 
-static int
-smb_authsock_open(ksocket_t *so)
+static uint32_t
+smb_authsock_open(smb_user_t *user)
 {
+	smb_server_t *sv = user->u_server;
+	ksocket_t so = NULL;
+	uint32_t status;
 	int rc;
 
-	rc = ksocket_socket(so, AF_UNIX, SOCK_STREAM, 0,
+	/*
+	 * If the auth. service is busy, wait our turn.
+	 * This may be frequent, so don't log.
+	 */
+	if ((rc = smb_threshold_enter(&sv->sv_ssetup_ct)) != 0)
+		return (NT_STATUS_NO_LOGON_SERVERS);
+
+	rc = ksocket_socket(&so, AF_UNIX, SOCK_STREAM, 0,
 	    KSOCKET_SLEEP, CRED());
-	if (rc != 0)
-		return (rc);
+	if (rc != 0) {
+		cmn_err(CE_NOTE, "smb_authsock_open: socket, rc=%d", rc);
+		status = NT_STATUS_INSUFF_SERVER_RESOURCES;
+		goto errout;
+	}
 
 	/*
 	 * Set the send/recv timeouts.
 	 */
-	rc = ksocket_setsockopt(*so, SOL_SOCKET, SO_SNDTIMEO,
+	(void) ksocket_setsockopt(so, SOL_SOCKET, SO_SNDTIMEO,
 	    &smb_auth_send_tmo, sizeof (smb_auth_send_tmo), CRED());
-	if (rc != 0)
-		goto errout;
-	rc = ksocket_setsockopt(*so, SOL_SOCKET, SO_RCVTIMEO,
+	(void) ksocket_setsockopt(so, SOL_SOCKET, SO_RCVTIMEO,
 	    &smb_auth_recv_tmo, sizeof (smb_auth_recv_tmo), CRED());
-	if (rc != 0)
-		goto errout;
 
 	/*
 	 * Connect to the smbd auth. service.
@@ -598,45 +627,83 @@ smb_authsock_open(ksocket_t *so)
 	 * Would like to set the connect timeout too, but there's
 	 * apparently no easy way to do that for AF_UNIX.
 	 */
-	rc = ksocket_connect(*so, (struct sockaddr *)&smbauth_sockname,
+	rc = ksocket_connect(so, (struct sockaddr *)&smbauth_sockname,
 	    sizeof (smbauth_sockname), CRED());
-	if (rc == 0)
-		return (0);
+	if (rc != 0) {
+		DTRACE_PROBE1(error, int, rc);
+		status = NT_STATUS_NETLOGON_NOT_STARTED;
+		goto errout;
+	}
+
+	/* Note: u_authsock cleanup in smb_authsock_close() */
+	mutex_enter(&user->u_mutex);
+	if (user->u_authsock != NULL) {
+		mutex_exit(&user->u_mutex);
+		status = NT_STATUS_INTERNAL_ERROR;
+		goto errout;
+	}
+	user->u_authsock = so;
+	mutex_exit(&user->u_mutex);
+	return (0);
 
 errout:
-	(void) ksocket_close(*so, CRED());
-	*so = NULL;
+	if (so != NULL)
+		(void) ksocket_close(so, CRED());
+	smb_threshold_exit(&sv->sv_ssetup_ct);
 
-	return (rc);
+	return (status);
 }
 
-static int smb_authsock_send(ksocket_t so, void *buf, size_t len)
+static int
+smb_authsock_send(ksocket_t so, void *buf, size_t len)
 {
 	int rc;
 	size_t iocnt = 0;
 
 	rc = ksocket_send(so, buf, len, 0, &iocnt, CRED());
-	if (rc == 0 && iocnt != len)
+	if (rc == 0 && iocnt != len) {
+		DTRACE_PROBE1(short, size_t, iocnt);
 		rc = EIO;
+	}
+	if (rc != 0) {
+		DTRACE_PROBE1(error, int, rc);
+	}
 
 	return (rc);
 }
 
-static int smb_authsock_recv(ksocket_t so, void *buf, size_t len)
+static int
+smb_authsock_recv(ksocket_t so, void *buf, size_t len)
 {
 	int rc;
 	size_t iocnt = 0;
 
 	rc = ksocket_recv(so, buf, len, MSG_WAITALL, &iocnt, CRED());
-	if (rc == 0 && iocnt != len)
-		rc = EIO;
+	if (rc == 0) {
+		if (iocnt == 0) {
+			DTRACE_PROBE1(discon, struct sonode *, so);
+			rc = ENOTCONN;
+		} else if (iocnt != len) {
+			/* Should not happen with MSG_WAITALL */
+			DTRACE_PROBE1(short, size_t, iocnt);
+			rc = EIO;
+		}
+	}
+	if (rc != 0) {
+		DTRACE_PROBE1(error, int, rc);
+	}
 
 	return (rc);
 }
 
-int
-smb_authsock_close(ksocket_t so)
+void
+smb_authsock_close(smb_user_t *user)
 {
 
-	return (ksocket_close(so, CRED()));
+	ASSERT(MUTEX_HELD(&user->u_mutex));
+	if (user->u_authsock == NULL)
+		return;
+	(void) ksocket_close(user->u_authsock, CRED());
+	user->u_authsock = NULL;
+	smb_threshold_exit(&user->u_server->sv_ssetup_ct);
 }

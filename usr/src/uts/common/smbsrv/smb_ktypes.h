@@ -1956,6 +1956,7 @@ typedef struct smb_server {
 	volatile uint64_t	sv_nreq;
 	smb_srqueue_t		sv_srqueue;
 	smb_spool_t		sp_info;
+	smb_cmd_threshold_t	sv_ssetup_ct;
 	smb_cmd_threshold_t	sv_tcon_ct;
 	smb_cmd_threshold_t	sv_opipe_ct;
 	kstat_t			*sv_legacy_ksp;

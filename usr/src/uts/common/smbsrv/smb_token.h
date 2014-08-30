@@ -150,6 +150,13 @@ typedef struct smb_logon {
 #define	SMB_AUTHSVC_SOCKNAME	"/var/smb/lipc/smbauth"
 
 /*
+ * Maximum number of authentcation conversations at one time.
+ * Note this is _NOT_ the max. number of logged on users,
+ * which can be much larger.
+ */
+#define	SMB_AUTHSVC_MAXTHREAD	256
+
+/*
  * Messages to and from the local security authority
  * Type codes:
  */

@@ -112,8 +112,9 @@ smbd_dc_monitor(void *arg)
 	timestruc_t	delay;
 	int		i;
 
-	smbd_dc_update();
+	/* Wait for smb_dclocator_init() to complete. */
 	smbd_online_wait("smbd_dc_monitor");
+	smbd_dc_update();
 
 	while (smbd_online()) {
 		ds_not_responding = B_FALSE;

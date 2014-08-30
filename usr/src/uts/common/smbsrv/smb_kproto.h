@@ -601,7 +601,7 @@ void smb_request_wait(smb_request_t *);
  */
 int smb_authenticate_ext(smb_request_t *);
 int smb_authenticate_old(smb_request_t *);
-int smb_authsock_close(ksocket_t);
+void smb_authsock_close(smb_user_t *);
 
 /*
  * session functions (file smb_session.c)

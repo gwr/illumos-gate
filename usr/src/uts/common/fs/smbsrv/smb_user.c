@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc. All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc. All rights reserved.
  */
 
 /*
@@ -278,10 +278,7 @@ smb_user_logon(
 		return (-1);
 	}
 
-	if (user->u_authsock) {
-		(void) smb_authsock_close(user->u_authsock);
-		user->u_authsock = NULL;
-	}
+	smb_authsock_close(user);
 
 	user->u_state = SMB_USER_STATE_LOGGED_ON;
 	user->u_flags = flags;
@@ -314,10 +311,7 @@ smb_user_logoff(
 	ASSERT(user->u_refcnt);
 	switch (user->u_state) {
 	case SMB_USER_STATE_LOGGING_ON: {
-		if (user->u_authsock) {
-			(void) smb_authsock_close(user->u_authsock);
-			user->u_authsock = NULL;
-		}
+		smb_authsock_close(user);
 		user->u_state = SMB_USER_STATE_LOGGED_OFF;
 		smb_server_dec_users(user->u_server);
 		break;
@@ -537,6 +531,7 @@ smb_user_delete(void *arg)
 	SMB_USER_VALID(user);
 	ASSERT(user->u_refcnt == 0);
 	ASSERT(user->u_state == SMB_USER_STATE_LOGGED_OFF);
+	ASSERT(user->u_authsock == NULL);
 
 	session = user->u_session;
 	smb_llist_enter(&session->s_user_list, RW_WRITER);
@@ -553,8 +548,6 @@ smb_user_delete(void *arg)
 		crfree(user->u_cred);
 	if (user->u_privcred)
 		crfree(user->u_privcred);
-	if (user->u_authsock)
-		(void) smb_authsock_close(user->u_authsock);
 	smb_mem_free(user->u_name);
 	smb_mem_free(user->u_domain);
 	kmem_cache_free(smb_cache_user, user);
