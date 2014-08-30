@@ -20,7 +20,6 @@
  */
 /*
  * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <grp.h>
@@ -71,7 +70,7 @@ getbynam(ad_backend_ptr be, void *a)
 	nss_status_t	stat;
 	idmap_stat	idmaprc;
 	gid_t		gid;
-	int		flag, is_user, is_wuser;
+	int		is_user, is_wuser;
 
 	be->db_type = NSS_AD_DB_GROUP_BYNAME;
 
@@ -86,19 +85,12 @@ getbynam(ad_backend_ptr be, void *a)
 	dname++;
 
 	/*
-	 * All the idmap_get_... calls in here must tell idmapd to
-	 * avoid calling back into the name service or it might
-	 * call back through here endlessly.
-	 */
-	flag = IDMAP_REQ_FLG_NO_NAMESERVICE;
-
-	/*
 	 * Map the name to gid using idmap service.
 	 */
 	is_wuser = -1;
 	is_user = 0; /* Map name to gid */
 	idmaprc = idmap_get_w2u_mapping(NULL, NULL, name, dname,
-	    flag, &is_user, &is_wuser, &gid, NULL, NULL, NULL);
+	    0, &is_user, &is_wuser, &gid, NULL, NULL, NULL);
 	if (idmaprc != IDMAP_SUCCESS) {
 		RESET_ERRNO();
 		return ((nss_status_t)NSS_NOTFOUND);
@@ -126,21 +118,17 @@ getbygid(ad_backend_ptr be, void *a)
 	nss_XbyY_args_t		*argp = (nss_XbyY_args_t *)a;
 	char			*winname = NULL, *windomain = NULL;
 	nss_status_t		stat;
-	int			flag;
 
 	be->db_type = NSS_AD_DB_GROUP_BYGID;
 
 	stat = (nss_status_t)NSS_NOTFOUND;
 
-	/*
-	 * All the idmap_get_... calls in here must tell idmapd to
-	 * avoid calling back into the name service or it might
-	 * call back through here endlessly.
-	 */
-	flag = IDMAP_REQ_FLG_NO_NAMESERVICE;
+	/* nss_ad does not support non ephemeral gids */
+	if (argp->key.gid <= MAXUID)
+		goto out;
 
 	/* Map the given GID to a SID using the idmap service */
-	if (idmap_get_u2w_mapping(&argp->key.gid, NULL, flag,
+	if (idmap_get_u2w_mapping(&argp->key.gid, NULL, 0,
 	    0, NULL, NULL, NULL, &winname, &windomain,
 	    NULL, NULL) != 0) {
 		RESET_ERRNO();

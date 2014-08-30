@@ -20,7 +20,6 @@
  */
 /*
  * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <pwd.h>
@@ -320,19 +319,12 @@ getbyname(ad_backend_ptr be, void *a)
 	dname++;
 
 	/*
-	 * All the idmap_get_... calls in here must tell idmapd to
-	 * avoid calling back into the name service or it might
-	 * call back through here endlessly.
-	 */
-	flag = IDMAP_REQ_FLG_NO_NAMESERVICE;
-
-	/*
 	 * Map the given name to UID using idmap service. If idmap
 	 * call fails then this will save us doing AD discovery and
 	 * AD lookup here.
 	 */
-	if (strcasecmp(dname, WK_DOMAIN) == 0)
-		flag |= IDMAP_REQ_FLG_WK_OR_LOCAL_SIDS_ONLY;
+	flag = (strcasecmp(dname, WK_DOMAIN) == 0) ?
+	    IDMAP_REQ_FLG_WK_OR_LOCAL_SIDS_ONLY : 0;
 	is_wuser = -1;
 	is_user = 1;
 	if (idmap_get_w2u_mapping(NULL, NULL, name,
@@ -405,22 +397,19 @@ getbyuid(ad_backend_ptr be, void *a)
 	int			is_user, is_wuser;
 	gid_t			gid;
 	idmap_stat		idmaprc;
-	int			flag, ret, try_idmap;
+	int			ret, try_idmap;
 	nss_status_t		stat;
 
 	be->db_type = NSS_AD_DB_PASSWD_BYUID;
 
 	stat = (nss_status_t)NSS_NOTFOUND;
 
-	/*
-	 * All the idmap_get_... calls in here must tell idmapd to
-	 * avoid calling back into the name service or it might
-	 * call back through here endlessly.
-	 */
-	flag = IDMAP_REQ_FLG_NO_NAMESERVICE;
+	/* nss_ad does not support non ephemeral uids */
+	if (argp->key.uid <= MAXUID)
+		goto out;
 
 	/* Map the given UID to a SID using the idmap service */
-	if (idmap_get_u2w_mapping(&argp->key.uid, NULL, flag,
+	if (idmap_get_u2w_mapping(&argp->key.uid, NULL, 0,
 	    1, NULL, &sidprefix, &rid, &winname, &windomain,
 	    NULL, NULL) != 0) {
 		RESET_ERRNO();
@@ -456,7 +445,7 @@ getbyuid(ad_backend_ptr be, void *a)
 	is_user = 0;
 	is_wuser = -1;
 	idmaprc = idmap_get_w2u_mapping(NULL, NULL,
-	    winname, windomain, flag, &is_user, &is_wuser, &gid,
+	    winname, windomain, 0, &is_user, &is_wuser, &gid,
 	    NULL, NULL, NULL);
 
 	if (idmaprc != IDMAP_SUCCESS) {
