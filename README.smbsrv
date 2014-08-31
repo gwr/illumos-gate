@@ -15,3 +15,4 @@ Before first commit of SMB2 support.
 Before new DC locator etc.
 Before Kerberos inbound
 Before SMB3, max_protocol
+End marker
