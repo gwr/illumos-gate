@@ -128,11 +128,12 @@ mlsvc_join(smb_joininfo_t *info, smb_joinres_t *res)
 	 */
 	(void) smb_config_setbool(SMB_CI_DOMAIN_MEMB, B_FALSE);
 
-	/*
-	 * Use a NULL session while searching for a DC, and
-	 * while getting information about the domain.
-	 */
-	smb_ipc_set(MLSVC_ANON_USER, zero_hash);
+	if (info->domain_username[0] != '\0') {
+		(void) smb_auth_ntlm_hash(info->domain_passwd, passwd_hash);
+		smb_ipc_set(info->domain_username, passwd_hash);
+	} else {
+		smb_ipc_set(MLSVC_ANON_USER, zero_hash);
+	}
 
 	/*
 	 * Tentatively set the idmap domain to the one we're joining,
@@ -165,13 +166,6 @@ mlsvc_join(smb_joininfo_t *info, smb_joinres_t *res)
 	 */
 	if (info->domain_username[0] != '\0') {
 		/*
-		 * Doing "secure join", so authenticate as the
-		 * specified user (with admin. rights).
-		 */
-		(void) smb_auth_ntlm_hash(info->domain_passwd, passwd_hash);
-		smb_ipc_set(info->domain_username, passwd_hash);
-
-		/*
 		 * If enabled, try to join using AD Services.
 		 * The ADS code needs work.  Not enabled yet.
 		 */
@@ -199,9 +193,6 @@ mlsvc_join(smb_joininfo_t *info, smb_joinres_t *res)
 		/*
 		 * Doing "Unsecure join" (pre-created account)
 		 */
-		bzero(passwd_hash, sizeof (passwd_hash));
-		smb_ipc_set(MLSVC_ANON_USER, passwd_hash);
-
 		status = mlsvc_join_noauth(&dxi, machine_name, machine_pw);
 	}
 
