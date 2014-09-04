@@ -106,6 +106,10 @@
 			type='count'
 			value='604800' />
 		<propval
+			name='preferred_dc'
+			type='astring'
+			value='' />
+		<propval
 			name='rediscovery_interval'
 			type='count'
 			value='3600' />
