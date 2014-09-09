@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -102,6 +102,16 @@ smb_oplock_uninstall_fem(smb_node_t *node)
 }
 
 /*
+ * This provides a way to fully disable oplocks, i.e. for testing.
+ * You _really_ do _not_ want to turn this off, because if you do,
+ * the clients send you very small read requests, and a _lot_ more
+ * of them.  The skc_oplock_enable parameter can be used to enable
+ * or disable exclusive oplocks.  Disabling that can be helpful
+ * when there are clients not responding to oplock breaks.
+ */
+int smb_oplocks_enabled = 1;
+
+/*
  * smb_oplock_acquire
  *
  * Attempt to acquire an oplock. Clients will request EXCLUSIVE or BATCH,
@@ -142,7 +152,7 @@ smb_oplock_acquire(smb_request_t *sr, smb_node_t *node, smb_ofile_t *ofile)
 	tree = SMB_OFILE_GET_TREE(ofile);
 	session = SMB_OFILE_GET_SESSION(ofile);
 
-	if (!smb_tree_has_feature(tree, SMB_TREE_OPLOCKS) ||
+	if (smb_oplocks_enabled == 0 ||
 	    (op->op_oplock_level == SMB_OPLOCK_NONE) ||
 	    ((op->op_oplock_level == SMB_OPLOCK_BATCH) &&
 	    SMB_IS_STREAM(node))) {
@@ -156,8 +166,20 @@ smb_oplock_acquire(smb_request_t *sr, smb_node_t *node, smb_ofile_t *ofile)
 	mutex_enter(&ol->ol_mutex);
 	smb_oplock_wait(node);
 
+	/*
+	 * Even if there are no other opens, we might want to
+	 * grant only a Level II (shared) oplock so we avoid
+	 * ever granting exclusive oplocks.
+	 *
+	 * Borrowing the SMB_TREE_OPLOCKS flag to enable/disable
+	 * exclusive oplocks (for now).  See skc_oplock_enable,
+	 * which can now be taken as "exclusive oplock enable".
+	 * Should rename this parameter, and/or implement a new
+	 * multi-valued parameter for oplock enables.
+	 */
 	if ((node->n_open_count > 1) ||
 	    (node->n_opening_count > 1) ||
+	    !smb_tree_has_feature(tree, SMB_TREE_OPLOCKS) ||
 	    smb_vop_other_opens(node->vp, ofile->f_mode)) {
 		/*
 		 * There are other opens.
