@@ -55,6 +55,7 @@ extern MECH_OID g_stcMechOIDList [];
 // Parameters:
 //    [in]  nMechTokenLength        -  Length of the MechToken Element
 //    [in]  nMechListMICLength      -  Length of the MechListMIC Element
+//                                     (or negHints, if no MechToken)
 //    [in]  mechOID                 -  OID for MechList
 //    [in]  nReqFlagsAvailable      -  Is ContextFlags element available
 //    [out] pnTokenSize             -  Filled out with total size of token
@@ -88,7 +89,7 @@ int CalculateMinSpnegoInitTokenSize( long nMechTokenLength,
 
    // We will calculate this by walking the token backwards
 
-   // Start with MIC Element
+   // Start with MIC Element (or negHints)
    if ( nMechListMICLength > 0L )
    {
       nTempLength = ASNDerCalcElementLength( nMechListMICLength, NULL );
@@ -211,7 +212,7 @@ xEndTokenInitLength:
 //    [in]  ucContextFlags          -  ContextFlags value
 //    [in]  pbMechToken             -  Mech Token Binary Data
 //    [in]  ulMechTokenLen          -  Length of Mech Token
-//    [in]  pbMechListMIC           -  MechListMIC Binary Data
+//    [in]  pbMechListMIC           -  MechListMIC Binary Data (or negHints)
 //    [in]  ulMechListMICn          -  Length of MechListMIC
 //    [out] pbTokenData             -  Buffer to write token into.
 //    [in]  nTokenLength            -  Length of pbTokenData buffer
@@ -228,6 +229,15 @@ xEndTokenInitLength:
 //    number of bytes in DER encodings, we actually calculate the lengths
 //    backwards, so we always know how many bytes we will potentially be
 //    writing out.
+//
+//    This function is also used to create an SPNEGO "hint", as described in
+//    [MS-SPNG] sec. 2.2.1 negTokenInit2.  The "hint" looks almost identical
+//    to a NegTokenInit, but has a "negHints" field inserted before the MIC.
+//    A normal SPNEGO negTokenInit2 contains only the mech list and the
+//    negHints.  To avoid a giant copy/paste of this function, we pass the
+//    negHints as the MIC arg, and pass NULL as the MechToken to indicate
+//    that we're creating a Hint rather than an Init, and use the correct
+//    type when writing out the MIC (or negHints) element.
 //
 ////////////////////////////////////////////////////////////////////////////
 
@@ -253,17 +263,22 @@ int CreateSpnegoInitToken( SPNEGO_MECH_OID *pMechTypeList, long MechTypeCnt,
    // We will write the token out backwards to properly handle the cases
    // where the length bytes become adjustable
 
-   // Start with MIC Element
+   // Start with MIC Element (or negHints)
    if ( ulMechListMICLen > 0L )
    {
+      unsigned char ucType;
       nTempLength = ASNDerCalcElementLength( ulMechListMICLen, &nInternalLength );
 
-      // Decrease the pbWriteTokenData, now we know the length and
-      // write it out.
+      // Decrease the pbWriteTokenData, now we know the length and write it out.
+      // Note: When MechTokenLen == 0, we're writing a negTokenInit2 and the
+      // MIC arg is really negHints, written as a constructed sequence.
+      // Otherwise we're writing a negTokenInit, and the MIC is an OCTETSTRING.
+      ucType = (ulMechTokenLen == 0) ?
+         SPNEGO_CONSTRUCTED_SEQUENCE : OCTETSTRING;
 
       pbWriteTokenData -= nTempLength;
       nTempLength = ASNDerWriteElement( pbWriteTokenData, SPNEGO_NEGINIT_ELEMENT_MECHLISTMIC,
-                       SPNEGO_CONSTRUCTED_SEQUENCE, pbMechListMIC, ulMechListMICLen );
+                              ucType, pbMechListMIC, ulMechListMICLen );
 
       // Adjust Values and sanity check
       nTotalBytesWritten += nTempLength;
@@ -630,7 +645,7 @@ int CreateSpnegoTargToken( SPNEGO_MECH_OID MechType,
 
       pbWriteTokenData -= nTempLength;
       nTempLength = ASNDerWriteElement( pbWriteTokenData, SPNEGO_NEGTARG_ELEMENT_MECHLISTMIC,
-                       SPNEGO_CONSTRUCTED_SEQUENCE, pbMechListMIC, ulMechListMICLen );
+                              OCTETSTRING, pbMechListMIC, ulMechListMICLen );
 
       // Adjust Values and sanity check
       nTotalBytesWritten += nTempLength;
@@ -1373,17 +1388,29 @@ int InitSpnegoTokenElements( SPNEGO_TOKEN* pSpnegoToken, unsigned char* pbTokenD
                }
                break;
 
-               case SPNEGO_NEGINIT_ELEMENT_MECHLISTMIC:
+               case SPNEGO_NEGINIT_ELEMENT_MECHLISTMIC:  // xA3
                {
                   //
-                  // This is an SPNEGO_CONSTRUCTED_SEQUENCE containing a
-                  // GENERALSTR which contains a message integrity BLOB.
+                  // Don't yet know if this is a negTokenInit, or negTokenInit2.
+                  // Unfortunately, both have the same type: SPNEGO_TOKEN_INIT
+                  // If it's negTokenInit, this element should be an OCTETSTRING
+                  // containing the MIC.  If it's a negTokenInit2, this element
+                  // should be an SPNEGO_CONSTRUCTED_SEQUENCE containing the
+                  // negHints (GENERALSTR, ignored)
                   //
 
                   nReturn = InitSpnegoTokenElementFromBasicType( pbTokenData, nElementLength,
-                                                                 SPNEGO_CONSTRUCTED_SEQUENCE,
-                                                                 spnego_init_mechListMIC,
+                                                                 OCTETSTRING, spnego_init_mechListMIC,
                                                                  &pSpnegoToken->aElementArray[nCtr] );
+
+                  if (nReturn == SPNEGO_E_UNEXPECTED_TYPE) {
+                     // This is really a negHints element.  Check the type and length,
+                     // but otherwise just ignore it.
+                     long  elen, tlen;
+                     nReturn = ASNDerCheckToken( pbTokenData, SPNEGO_CONSTRUCTED_SEQUENCE,
+                                          nElementLength, nElementLength,
+                                          &elen, &tlen );
+                  }
                }
                break;
 
@@ -1437,13 +1464,12 @@ int InitSpnegoTokenElements( SPNEGO_TOKEN* pSpnegoToken, unsigned char* pbTokenD
                case SPNEGO_NEGTARG_ELEMENT_MECHLISTMIC:
                {
                   //
-                  // This is an SPNEGO_CONSTRUCTED_SEQUENCE containing a
-                  // GENERALSTR which contains a message integrity BLOB.
+                  // This is an OCTETSTRING, typically 16 bytes,
+                  // which contains a message integrity BLOB.
                   //
 
                   nReturn = InitSpnegoTokenElementFromBasicType( pbTokenData, nElementLength,
-                                                                 SPNEGO_CONSTRUCTED_SEQUENCE,
-                                                                 spnego_targ_mechListMIC,
+                                                                 OCTETSTRING, spnego_targ_mechListMIC,
                                                                  &pSpnegoToken->aElementArray[nCtr] );
                }
                break;
