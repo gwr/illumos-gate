@@ -113,7 +113,7 @@ smb2_setf_rename(smb_request_t *sr, smb_setinfo_t *si)
 	if (rc != 0)
 		return (NT_STATUS_INFO_LENGTH_MISMATCH);
 
-	if ((rootdir != 0) || (namelen == 0) || (namelen >= MAXNAMELEN)) {
+	if ((rootdir != 0) || (namelen == 0) || (namelen >= SMB_MAXPATHLEN)) {
 		return (NT_STATUS_INVALID_PARAMETER);
 	}
 
@@ -144,7 +144,7 @@ smb2_setf_link(smb_request_t *sr, smb_setinfo_t *si)
 	if (rc != 0)
 		return (NT_STATUS_INFO_LENGTH_MISMATCH);
 
-	if ((rootdir != 0) || (namelen == 0) || (namelen >= MAXNAMELEN)) {
+	if ((rootdir != 0) || (namelen == 0) || (namelen >= SMB_MAXPATHLEN)) {
 		return (NT_STATUS_INVALID_PARAMETER);
 	}
 

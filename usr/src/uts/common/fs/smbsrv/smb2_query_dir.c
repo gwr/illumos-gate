@@ -105,8 +105,10 @@ smb2_query_dir(smb_request_t *sr)
 
 	/*
 	 * If there's an input buffer (search pattern), decode it.
+	 * Two times MAXNAMELEN because it represents the UNICODE string
+	 * length in bytes.
 	 */
-	if (NameLength >= MAXNAMELEN) {
+	if (NameLength >= (2 * MAXNAMELEN)) {
 		status = NT_STATUS_OBJECT_PATH_INVALID;
 		goto errout;
 	}
