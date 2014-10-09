@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -449,6 +449,7 @@ smbstat_kstat_print(void)
 	smbstat_print_throughput();
 	smbstat_print_utilization();
 	smbstat_print_requests();
+	(void) fflush(stdout);
 }
 
 /*
@@ -775,7 +776,7 @@ smbstat_wrk_process(void)
 
 	curr = smbstat_wrk_current_snapshot();
 
-	if (curr->ws_maxthreads >= curr->ws_bnalloc)
+	if (curr->ws_bnalloc >= curr->ws_maxthreads)
 		smbstat_srv_info.si_sat = B_TRUE;
 	else
 		smbstat_srv_info.si_sat = B_FALSE;
@@ -933,7 +934,7 @@ smbstat_srv_process_throughput(
 	smbstat_srv_info.si_wrs += smbstat_sub_64(
 	    curr->ss_data.ks_reqs1[SMB_COM_WRITE_ANDX].kr_nreq,
 	    prev->ss_data.ks_reqs1[SMB_COM_WRITE_ANDX].kr_nreq);
-	smbstat_srv_info.si_rds += smbstat_sub_64(
+	smbstat_srv_info.si_wrs += smbstat_sub_64(
 	    curr->ss_data.ks_reqs2[SMB2_WRITE].kr_nreq,
 	    prev->ss_data.ks_reqs2[SMB2_WRITE].kr_nreq);
 	smbstat_srv_info.si_wrs /= smbstat_srv_info.si_etime;
