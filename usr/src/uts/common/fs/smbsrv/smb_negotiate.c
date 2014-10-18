@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -407,7 +407,8 @@ smb_com_negotiate(smb_request_t *sr)
 	secmode = session->secmode;
 	sesskey = session->sesskey;
 
-	(void) microtime(&negprot->ni_servertime);
+	negprot->ni_servertime.tv_sec = gethrestime_sec();
+	negprot->ni_servertime.tv_nsec = 0;
 	negprot->ni_tzcorrection = sr->sr_gmtoff / 60;
 	negprot->ni_maxmpxcount = sr->sr_cfg->skc_maxworkers;
 	negprot->ni_keylen = SMB_CHALLENGE_SZ;

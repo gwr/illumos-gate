@@ -205,17 +205,6 @@ smb2sr_newrq(smb_request_t *sr)
 	}
 
 	/*
-	 * XXX With SMB3 this is supposed to increment based on
-	 * the number of credits consumed by a request.  Todo
-	 */
-	if (sr->session->signing.flags & SMB_SIGNING_ENABLED) {
-		/* XXX MS-SMB2 is unclear on this. todo */
-		sr->session->signing.seqnum++;
-		sr->sr_seqnum = sr->session->signing.seqnum;
-		sr->reply_seqnum = sr->sr_seqnum;
-	}
-
-	/*
 	 * Submit the request to the task queue, which calls
 	 * smb2_dispatch_request when the workload permits.
 	 */
@@ -375,9 +364,74 @@ cmd_start:
 	sr->smb_data.chain_offset = sr->smb2_cmd_hdr + SMB2_HDR_SIZE;
 
 	/*
-	 * Default credit response.  Command handler may modify.
+	 * SMB2 credits determine how many simultaneous commands the
+	 * client may issue, and bounds the range of message IDs those
+	 * commands may use.  With multi-credit support, commands may
+	 * use ranges of message IDs, where the credits used by each
+	 * command are proportional to their data transfer size.
+	 *
+	 * Every command may request an increase or decrease of
+	 * the currently granted credits, based on the difference
+	 * between the credit request and the credit charge.
+	 * [MS-SMB2] 3.3.1.2 Algorithm for the Granting of Credits
+	 *
+	 * Most commands have credit_request=1, credit_charge=1,
+	 * which keeps the credit grant unchanged.
+	 *
+	 * All we're really doing here (for now) is reducing the
+	 * credit_response if the client requests a credit increase
+	 * that would take their credit over the maximum, and
+	 * limiting the decrease so they don't run out of credits.
+	 *
+	 * Later, this could do something dynamic based on load.
 	 */
+	if (sr->smb2_credit_charge == 0)
+		sr->smb2_credit_charge = 1;
 	sr->smb2_credit_response = sr->smb2_credit_request;
+	if (sr->smb2_credit_request != sr->smb2_credit_charge) {
+		uint16_t cur, d;
+
+		mutex_enter(&session->s_credits_mutex);
+		cur = session->s_cur_credits;
+
+		/* Apply the credit charge & request. */
+		cur -= sr->smb2_credit_charge;
+		cur += sr->smb2_credit_request;
+		if (cur & 0x8000) {
+			/*
+			 * underflow or overflow (bad charge/request)
+			 * leave credits unchanged (response=charge)
+			 */
+			cur = session->s_cur_credits;
+			sr->smb2_credit_response = sr->smb2_credit_charge;
+			DTRACE_PROBE1(smb2__credit__bad, smb_request_t, sr);
+		}
+
+		/*
+		 * If new credits would be below min,
+		 * grant additional credits.
+		 */
+		if (cur < SMB_PI_MIN_CREDITS) {
+			d = SMB_PI_MIN_CREDITS - cur;
+			cur = SMB_PI_MIN_CREDITS;
+			sr->smb2_credit_response += d;
+			DTRACE_PROBE1(smb2__credit__min, smb_request_t, sr);
+		}
+
+		/*
+		 * If new credits would be above max,
+		 * reduce the credit grant.
+		 */
+		if (cur > session->s_max_credits) {
+			d = cur - session->s_max_credits;
+			cur = session->s_max_credits;
+			sr->smb2_credit_response -= d;
+			DTRACE_PROBE1(smb2__credit__max, smb_request_t, sr);
+		}
+
+		session->s_cur_credits = cur;
+		mutex_exit(&session->s_credits_mutex);
+	}
 
 	/*
 	 * Common dispatch (for sync & async)

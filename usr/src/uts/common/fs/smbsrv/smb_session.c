@@ -660,6 +660,8 @@ smb_session_create(ksocket_t new_so, uint16_t port, smb_server_t *sv,
 
 	smb_session_genkey(session);
 
+	mutex_init(&session->s_credits_mutex, NULL, MUTEX_DEFAULT, NULL);
+
 	smb_slist_constructor(&session->s_req_list, sizeof (smb_request_t),
 	    offsetof(smb_request_t, sr_session_lnd));
 
@@ -725,8 +727,6 @@ smb_session_create(ksocket_t new_so, uint16_t port, smb_server_t *sv,
 	 */
 	session->newrq_func = smbsr_newrq_initial;
 
-	session->cur_credits = session->s_cfg.skc_initial_credits;
-	session->max_credits = session->s_cfg.skc_maximum_credits;
 	/* These may increase in SMB2 negotiate. */
 	session->cmd_max_bytes = smb_maxbufsize;
 	session->reply_max_bytes = smb_maxbufsize;
@@ -753,6 +753,8 @@ smb_session_delete(smb_session_t *session)
 
 	smb_rwx_destroy(&session->s_lock);
 	smb_net_txl_destructor(&session->s_txlst);
+
+	mutex_destroy(&session->s_credits_mutex);
 
 	smb_slist_destructor(&session->s_req_list);
 	smb_llist_destructor(&session->s_tree_list);
