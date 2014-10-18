@@ -32,20 +32,20 @@ uint32_t smb2_max_rwsize = (1<<16);
 uint32_t smb2_max_trans  = (1<<16);
 
 /*
- * Which SMB2 dialects do we support?
+ * Which SMB2 versions do we support?
  */
-static uint16_t smb2_dialects[] = {
+static uint16_t smb2_versions[] = {
 	0x202,	/* SMB 2.002 */
 	0x210,	/* SMB 2.1 */
 };
-static uint16_t smb2_ndialects = 2;
+static uint16_t smb2_nversions = 2;
 
 static boolean_t
-smb2_supported_dialect(uint16_t dialect)
+smb2_supported_version(uint16_t version)
 {
 	int i;
-	for (i = 0; i < smb2_ndialects; i++)
-		if (dialect == smb2_dialects[i])
+	for (i = 0; i < smb2_nversions; i++)
+		if (version == smb2_versions[i])
 			return (B_TRUE);
 	return (B_FALSE);
 }
@@ -148,9 +148,9 @@ smb2_newrq_negotiate(smb_request_t *sr)
 	smb_session_t *s = sr->session;
 	int i, rc;
 	uint16_t struct_size;
-	uint16_t best_dialect;
-	uint16_t dialect_cnt;
-	uint16_t cl_dialects[8];
+	uint16_t best_version;
+	uint16_t version_cnt;
+	uint16_t cl_versions[8];
 
 	sr->smb2_cmd_hdr = sr->command.chain_offset;
 	rc = smb2_decode_header(sr);
@@ -173,7 +173,7 @@ smb2_newrq_negotiate(smb_request_t *sr)
 	rc = smb_mbc_decodef(
 	    &sr->command, "www..l16.8.",
 	    &struct_size,	/* w */
-	    &dialect_cnt,	/* w */
+	    &version_cnt,	/* w */
 	    &s->secmode,	/* w */
 	    /* reserved 	(..) */
 	    &s->capabilities);	/* l */
@@ -181,34 +181,34 @@ smb2_newrq_negotiate(smb_request_t *sr)
 	    /* start_time	  8. */
 	if (rc != 0)
 		return (rc);
-	if (struct_size != 36 || dialect_cnt > 8)
+	if (struct_size != 36 || version_cnt > 8)
 		return (SDRC_DROP_VC);
 
 	/*
 	 * Decode SMB2 Negotiate (variable part)
 	 */
 	rc = smb_mbc_decodef(&sr->command,
-	    "#w", dialect_cnt, cl_dialects);
+	    "#w", version_cnt, cl_versions);
 	if (rc != 0)
 		return (SDRC_DROP_VC);
 
 	/*
-	 * Choose a dialect (SMB2 version).
+	 * Choose the best supported version.
 	 */
-	best_dialect = 0;
-	for (i = 0; i < dialect_cnt; i++)
-		if (smb2_supported_dialect(cl_dialects[i]) &&
-		    best_dialect < cl_dialects[i])
-			best_dialect = cl_dialects[i];
-	if (best_dialect == 0)
+	best_version = 0;
+	for (i = 0; i < version_cnt; i++)
+		if (smb2_supported_version(cl_versions[i]) &&
+		    best_version < cl_versions[i])
+			best_version = cl_versions[i];
+	if (best_version == 0)
 		return (SDRC_DROP_VC);
-	s->dialect = best_dialect;
+	s->dialect = best_version;
 
 	/* Allow normal SMB2 requests now. */
 	s->s_state = SMB_SESSION_STATE_NEGOTIATED;
 	s->newrq_func = smb2sr_newrq;
 
-	rc = smb2_negotiate_common(sr, best_dialect);
+	rc = smb2_negotiate_common(sr, best_version);
 	if (rc != 0)
 		return (SDRC_DROP_VC);
 
@@ -221,42 +221,72 @@ smb2_newrq_negotiate(smb_request_t *sr)
  * Do negotiation decisions, encode, send the reply.
  */
 static int
-smb2_negotiate_common(smb_request_t *sr, uint16_t dialect)
+smb2_negotiate_common(smb_request_t *sr, uint16_t version)
 {
-	static timestruc_t boot_time = { 1261440000L, 0 };
-	timestruc_t server_time;
+	timestruc_t boot_tv, now_tv;
 	smb_session_t *s = sr->session;
 	int rc;
 	uint16_t secmode;
 
-	/*
-	 * Negotiation itself
-	 */
-	secmode = SMB2_NEGOTIATE_SIGNING_ENABLED;
-	if (sr->sr_cfg->skc_signing_required)
-		secmode |= SMB2_NEGOTIATE_SIGNING_REQUIRED;
-	s->secmode = secmode;
-	s->cmd_max_bytes = smb2_tcp_rcvbuf;
-	s->reply_max_bytes = smb2_tcp_sndbuf;
-	(void) microtime(&server_time);
+	sr->smb2_status = 0;
 
 	/*
-	 * SMB2 header
+	 * Negotiation itself.  First the Security Mode.
+	 * The caller stashed the client's secmode in s->secmode,
+	 * which we validate, and then replace with the server's
+	 * secmode, which is all we care about after this.
 	 */
-	sr->smb2_status = 0;
-	sr->smb2_credit_response = s->s_cfg.skc_initial_credits;
-	sr->smb2_hdr_flags = SMB2_FLAGS_SERVER_TO_REDIR;
-	(void) smb2_encode_header(sr, B_FALSE);
+	secmode = SMB2_NEGOTIATE_SIGNING_ENABLED;
+	if (sr->sr_cfg->skc_signing_required) {
+		secmode |= SMB2_NEGOTIATE_SIGNING_REQUIRED;
+		/* Make sure client at least enables signing. */
+		if ((s->secmode & secmode) == 0) {
+			sr->smb2_status = NT_STATUS_INVALID_PARAMETER;
+		}
+	}
+	s->secmode = secmode;
+
+	s->cmd_max_bytes = smb2_tcp_rcvbuf;
+	s->reply_max_bytes = smb2_tcp_sndbuf;
+
+	/*
+	 * We need to grant some initial credits to the client.
+	 * Note that we keep max_credits small until the client
+	 * has done at least one successful session setup.
+	 *
+	 * Version 0x2FF is a special case because there will be
+	 * another negotiate, so we'll grant credits later.
+	 */
+	if (version == 0x2FF) {
+		sr->smb2_credit_response = 1;
+	} else {
+		s->s_cur_credits = s->s_cfg.skc_initial_credits;
+		s->s_max_credits = s->s_cur_credits;
+		sr->smb2_credit_response = s->s_cur_credits;
+	}
+
+	boot_tv.tv_sec = smb_get_boottime();
+	boot_tv.tv_nsec = 0;
+	now_tv.tv_sec = gethrestime_sec();
+	now_tv.tv_nsec = 0;
 
 	/*
 	 * SMB2 negotiate reply
 	 */
+	sr->smb2_hdr_flags = SMB2_FLAGS_SERVER_TO_REDIR;
+	(void) smb2_encode_header(sr, B_FALSE);
+	if (sr->smb2_status != 0) {
+		smb2sr_put_error(sr, sr->smb2_status);
+		smb2_send_reply(sr);
+		return (-1); /* will drop */
+	}
+
 	rc = smb_mbc_encodef(
 	    &sr->reply,
 	    "wwww#cllllTTwwl#c",
 	    65,	/* StructSize */	/* w */
 	    s->secmode,			/* w */
-	    dialect,			/* w */
+	    version,			/* w */
 	    0, /* reserved */		/* w */
 	    UUID_LEN,			/* # */
 	    &s->s_cfg.skc_machine_uuid, /* c */
@@ -264,8 +294,8 @@ smb2_negotiate_common(smb_request_t *sr, uint16_t dialect)
 	    smb2_max_trans,		/* l */
 	    smb2_max_rwsize,		/* l */
 	    smb2_max_rwsize,		/* l */
-	    &server_time,		/* T */
-	    &boot_time,			/* T */
+	    &now_tv,			/* T */
+	    &boot_tv,			/* T */
 	    128, /* SecBufOff */	/* w */
 	    sr->sr_cfg->skc_negtok_len,	/* w */
 	    0,	/* reserved */		/* l */
@@ -306,9 +336,15 @@ smb2_fsctl_vneginfo(smb_request_t *sr, smb_fsctl_t *fsctl)
 	int rc;
 
 	/*
-	 * We're supposed to parse the client's
-	 * VALIDATE_NEGOTIATE_INFO here, but it
-	 * appears to be unnecessary.
+	 * The spec. says to parse the VALIDATE_NEGOTIATE_INFO here
+	 * and verify that the original negotiate was not modified.
+	 * The only tampering we need worry about is secmode, and
+	 * we're not taking that from the client, so don't bother.
+	 *
+	 * One interesting requirement here is that we MUST reply
+	 * with exactly the same information as we returned in our
+	 * original reply to the SMB2 negotiate on this session.
+	 * If we don't the client closes the connection.
 	 */
 
 	rc = smb_mbc_encodef(

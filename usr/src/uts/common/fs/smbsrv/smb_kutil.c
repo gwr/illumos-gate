@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc. All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc. All rights reserved.
  */
 
 #include <sys/param.h>
@@ -183,18 +183,17 @@ smb_sattr_check(uint16_t dosattr, uint16_t sattr)
 	return (B_TRUE);
 }
 
-int
-microtime(timestruc_t *tvp)
+time_t
+smb_get_boottime(void)
 {
-	tvp->tv_sec = gethrestime_sec();
-	tvp->tv_nsec = 0;
-	return (0);
-}
+	extern time_t	boot_time;
+	zone_t *z = curzone;
 
-int32_t
-clock_get_milli_uptime()
-{
-	return (TICK_TO_MSEC(ddi_get_lbolt()));
+	/* Unfortunately, the GZ doesn't set zone_boot_time. */
+	if (z->zone_id == GLOBAL_ZONEID)
+		return (boot_time);
+
+	return (z->zone_boot_time);
 }
 
 /*

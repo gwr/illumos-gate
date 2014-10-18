@@ -109,14 +109,7 @@ extern	kmem_cache_t		*smb_cache_event;
 
 extern	kmem_cache_t		*smb_kshare_cache_vfs;
 
-int		fd_dealloc(int);
-
-off_t		lseek(int fildes, off_t offset, int whence);
-
-int		arpioctl(int cmd, void *data);
-int		microtime(timestruc_t *tvp);
-int		clock_get_uptime(void);
-
+time_t smb_get_boottime(void);
 int smb_server_lookup(smb_server_t **);
 void smb_server_release(smb_server_t *);
 

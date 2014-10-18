@@ -882,9 +882,9 @@ typedef struct smb_session {
 	int			native_os;
 	int			native_lm;
 
-	uint16_t		cur_credits;
-	uint16_t		max_credits;
-	/* uint32_t		... */
+	kmutex_t		s_credits_mutex;
+	uint16_t		s_cur_credits;
+	uint16_t		s_max_credits;
 
 	uint32_t		capabilities;
 	struct smb_sign		signing;

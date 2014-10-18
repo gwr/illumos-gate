@@ -15,6 +15,11 @@
 
 /*
  * Dispatch function for SMB2_SESSION_SETUP
+ *
+ * Note that the Capabilities supplied in this request are an inferior
+ * subset of those given to us previously in the SMB2 Negotiate request.
+ * We need to remember the full set of capabilities from SMB2 Negotiate,
+ * and therefore ignore the subset of capabilities supplied here.
  */
 
 #include <smbsrv/smb2_kproto.h>
@@ -22,11 +27,12 @@
 smb_sdrc_t
 smb2_session_setup(smb_request_t *sr)
 {
+	smb_session_t *s;
 	smb_arg_sessionsetup_t	*sinfo;
-	smb_session_t *s = sr->session;
 	uint16_t StructureSize;
 	uint8_t  Flags;
 	uint8_t  SecurityMode;
+	uint32_t Capabilities;	/* ignored - see above */
 	uint32_t Channel;
 	uint16_t SecBufOffset;
 	uint16_t SecBufLength;
@@ -36,19 +42,20 @@ smb2_session_setup(smb_request_t *sr)
 	int skip;
 	int rc = 0;
 
+	s = sr->session;
 	sinfo = smb_srm_zalloc(sr, sizeof (smb_arg_sessionsetup_t));
 	sr->sr_ssetup = sinfo;
 
 	rc = smb_mbc_decodef(
 	    &sr->smb_data, "wbbllwwq",
-	    &StructureSize,
-	    &Flags,
-	    &SecurityMode,
-	    &s->capabilities,
-	    &Channel,
-	    &SecBufOffset,
-	    &SecBufLength,
-	    &PrevSessionId);
+	    &StructureSize,	/* w */
+	    &Flags,		/* b */
+	    &SecurityMode,	/* b */
+	    &Capabilities,	/* l */
+	    &Channel,		/* l */
+	    &SecBufOffset,	/* w */
+	    &SecBufLength,	/* w */
+	    &PrevSessionId);	/* q */
 	if (rc)
 		return (SDRC_ERROR);
 
@@ -89,6 +96,10 @@ smb2_session_setup(smb_request_t *sr)
 			SessionFlags |= SMB2_SESSION_FLAG_IS_GUEST;
 		if (sr->uid_user->u_flags & SMB_USER_FLAG_ANON)
 			SessionFlags |= SMB2_SESSION_FLAG_IS_NULL;
+		/* Authenticated.  Let them use all their credits. */
+		mutex_enter(&s->s_credits_mutex);
+		s->s_max_credits = s->s_cfg.skc_maximum_credits;
+		mutex_exit(&s->s_credits_mutex);
 		break;
 
 	/*
