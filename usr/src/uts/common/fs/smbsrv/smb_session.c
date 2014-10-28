@@ -728,8 +728,8 @@ smb_session_create(ksocket_t new_so, uint16_t port, smb_server_t *sv,
 	session->newrq_func = smbsr_newrq_initial;
 
 	/* These may increase in SMB2 negotiate. */
-	session->cmd_max_bytes = smb_maxbufsize;
-	session->reply_max_bytes = smb_maxbufsize;
+	session->cmd_max_bytes = SMB_REQ_MAX_SIZE;
+	session->reply_max_bytes = SMB_REQ_MAX_SIZE;
 
 	session->s_magic = SMB_SESSION_MAGIC;
 	return (session);
