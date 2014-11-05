@@ -390,6 +390,7 @@ smb_auth_get_token(smb_request_t *sr)
 	uint32_t	rlen = 0;
 	uint32_t	privileges;
 	uint32_t	status;
+	int		rc;
 	bool_t		ok;
 
 	msg_hdr.lmh_msgtype = LSA_MTYPE_GETTOK;
@@ -451,9 +452,14 @@ smb_auth_get_token(smb_request_t *sr)
 	 */
 	if ((token->tkn_flags & (SMB_ATF_GUEST | SMB_ATF_ANON)) == 0) {
 		if (sr->session->dialect >= SMB_VERS_2_BASE) {
-			smb2_sign_begin(sr, token);
-		else
-			smb_sign_begin(sr, token);
+			rc = smb2_sign_begin(sr, token);
+		} else {
+			rc = smb_sign_begin(sr, token);
+		}
+		if (rc != 0) {
+			status = NT_STATUS_INTERNAL_ERROR;
+			goto errout;
+		}
 	}
 
 	smb_token_free(token);
