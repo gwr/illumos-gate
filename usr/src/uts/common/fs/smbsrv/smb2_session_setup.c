@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -58,6 +58,19 @@ smb2_session_setup(smb_request_t *sr)
 	    &PrevSessionId);	/* q */
 	if (rc)
 		return (SDRC_ERROR);
+
+	/*
+	 * SMB3 multi-channel features are not supported.
+	 * Once they are, this will check the dialect and
+	 * whether multi-channel was negotiated, i.e.
+	 *	if (sr->session->dialect < SMB_VERS_3_0 ||
+	 *	    s->IsMultiChannelCapable == False)
+	 *		return (error...)
+	 */
+	if (sr->smb2_hdr_flags & SMB2_SESSION_FLAG_BINDING) {
+		status = NT_STATUS_REQUEST_NOT_ACCEPTED;
+		goto errout;
+	}
 
 	/*
 	 * We're normally positioned at the security buffer now,
@@ -112,6 +125,7 @@ smb2_session_setup(smb_request_t *sr)
 		break;
 
 	default:
+errout:
 		SecBufLength = 0;
 		sr->smb2_status = status;
 		break;

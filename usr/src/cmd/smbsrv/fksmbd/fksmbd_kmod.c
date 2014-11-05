@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -61,11 +61,47 @@ static void
 fksmbd_adjust_config(smb_ioc_header_t *ioc_hdr)
 {
 	smb_ioc_cfg_t *ioc = (smb_ioc_cfg_t *)ioc_hdr;
+	char *s;
 
 	ioc->maxconnections = 10;
 	ioc->maxworkers = 20;
 	smbd_report("maxconnections=%d, maxworkers=%d",
 	    ioc->maxconnections, ioc->maxworkers);
+
+	if ((s = getenv("SMB_MAX_PROTOCOL")) != NULL) {
+		switch (s[0]) {
+		case '1':
+			ioc->max_protocol = SMB_VERS_1;
+			break;
+		case '2':
+			ioc->max_protocol = SMB_VERS_2_1;
+			break;
+		case '3':
+			ioc->max_protocol = SMB_VERS_3_0;
+			break;
+		default:
+			smbd_report("env SMB_MAX_PROTOCOL invalid");
+			break;
+		}
+	}
+	smbd_report("max_protocol=0x%x", ioc->max_protocol);
+
+	if ((s = getenv("SMB_SIGNING")) != NULL) {
+		switch (s[0]) {
+		case 'e':
+			ioc->signing_enable = 1;
+			break;
+		case 'r':
+			ioc->signing_enable = 1;
+			ioc->signing_required = 1;
+			break;
+		default:
+			smbd_report("env SMB_SIGNING invalid");
+			break;
+		}
+	}
+	smbd_report("signing: enable=%d, required=%d",
+	    ioc->signing_enable = 1, ioc->signing_required = 1);
 }
 
 boolean_t

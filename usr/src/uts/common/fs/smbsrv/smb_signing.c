@@ -99,7 +99,7 @@ int i;
  * NTLM response and store it in the signing structure.
  * This is what begins SMB signing.
  */
-void
+int
 smb_sign_begin(smb_request_t *sr, smb_token_t *token)
 {
 	smb_arg_sessionsetup_t *sinfo = sr->sr_ssetup;
@@ -113,14 +113,14 @@ smb_sign_begin(smb_request_t *sr, smb_token_t *token)
 	 * session key, in which case: just don't sign.
 	 */
 	if (token->tkn_ssnkey.val == NULL || token->tkn_ssnkey.len == 0)
-		return;
+		return (0);
 
 	/*
 	 * Signing may already have been setup by a prior logon,
 	 * in which case we're done here.
 	 */
 	if (sign->mackey != NULL)
-		return;
+		return (0);
 
 	/*
 	 * With extended security, the MAC key is the same as the
@@ -146,6 +146,8 @@ smb_sign_begin(smb_request_t *sr, smb_token_t *token)
 		if (session->secmode & NEGOTIATE_SECURITY_SIGNATURES_REQUIRED)
 			sign->flags |= SMB_SIGNING_CHECK;
 	}
+
+	return (0);
 }
 
 /*
