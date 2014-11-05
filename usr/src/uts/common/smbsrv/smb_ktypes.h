@@ -878,7 +878,14 @@ typedef struct smb_session {
 	uint16_t		s_max_credits;
 
 	uint32_t		capabilities;
-	struct smb_sign		signing;
+
+	struct smb_sign		signing;	/* SMB1 */
+
+	/* SMB2/SMB3 signing support */
+	void	*sign_mech;	/* mechanism info */
+	int	(*sign_calc)(struct smb_request *,
+			struct mbuf_chain *, uint8_t *);
+	void	(*sign_fini)(struct smb_session *);
 
 	ksocket_t		sock;
 
