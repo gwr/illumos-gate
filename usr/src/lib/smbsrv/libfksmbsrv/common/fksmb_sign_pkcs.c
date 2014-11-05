@@ -161,3 +161,73 @@ smb2_hmac_final(smb_sign_ctx_t ctx, uint8_t *digest16)
 
 	return (rv == CKR_OK ? 0 : -1);
 }
+
+/*
+ * SMB3 signing helpers:
+ * (getmech, init, update, final)
+ */
+
+int
+smb3_cmac_getmech(smb_sign_mech_t *mech)
+{
+	mech->mechanism = CKM_AES_CMAC;
+	mech->pParameter = NULL;
+	mech->ulParameterLen = 0;
+	return (0);
+}
+
+/*
+ * Start PKCS#11 session, load the key.
+ */
+int
+smb3_cmac_init(smb_sign_ctx_t *ctxp, smb_sign_mech_t *mech,
+    uint8_t *key, size_t key_len)
+{
+	CK_OBJECT_HANDLE hkey = 0;
+	CK_RV rv;
+
+	rv = SUNW_C_GetMechSession(mech->mechanism, ctxp);
+	if (rv != CKR_OK)
+		return (-1);
+
+	rv = SUNW_C_KeyToObject(*ctxp, mech->mechanism,
+	    key, key_len, &hkey);
+	if (rv != CKR_OK)
+		return (-1);
+
+	rv = C_SignInit(*ctxp, mech, hkey);
+	(void) C_DestroyObject(*ctxp, hkey);
+
+	return (rv == CKR_OK ? 0 : -1);
+}
+
+/*
+ * Digest one segment
+ */
+int
+smb3_cmac_update(smb_sign_ctx_t ctx, uint8_t *in, size_t len)
+{
+	CK_RV rv;
+
+	rv = C_SignUpdate(ctx, in, len);
+	if (rv != CKR_OK)
+		(void) C_CloseSession(ctx);
+
+	return (rv == CKR_OK ? 0 : -1);
+}
+
+/*
+ * Note, the SMB2 signature is just the AES CMAC digest.
+ * (both are 16 bytes long)
+ */
+int
+smb3_cmac_final(smb_sign_ctx_t ctx, uint8_t *digest)
+{
+	CK_ULONG len = SMB2_SIG_SIZE;
+	CK_RV rv;
+
+	rv = C_SignFinal(ctx, digest, &len);
+	(void) C_CloseSession(ctx);
+
+	return (rv == CKR_OK ? 0 : -1);
+}
