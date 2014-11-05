@@ -178,3 +178,81 @@ smb2_hmac_final(smb_sign_ctx_t ctx, uint8_t *digest16)
 
 	return (rv == CRYPTO_SUCCESS ? 0 : -1);
 }
+
+/*
+ * SMB3 signing helpers:
+ * (getmech, init, update, final)
+ */
+
+int
+smb3_cmac_getmech(smb_sign_mech_t *mech)
+{
+	crypto_mech_type_t t;
+
+	t = crypto_mech2id(SUN_CKM_AES_CMAC);
+	if (t == CRYPTO_MECH_INVALID)
+		return (-1);
+	mech->cm_type = t;
+	return (0);
+}
+
+/*
+ * Start the KCF session, load the key
+ */
+int
+smb3_cmac_init(smb_sign_ctx_t *ctxp, smb_sign_mech_t *mech,
+    uint8_t *key, size_t key_len)
+{
+	crypto_key_t ckey;
+	int rv;
+
+	bzero(&ckey, sizeof (ckey));
+	ckey.ck_format = CRYPTO_KEY_RAW;
+	ckey.ck_data = key;
+	ckey.ck_length = key_len * 8; /* in bits */
+
+	rv = crypto_mac_init(mech, &ckey, NULL, ctxp, NULL);
+
+	return (rv == CRYPTO_SUCCESS ? 0 : -1);
+}
+
+/*
+ * Digest one segment
+ */
+int
+smb3_cmac_update(smb_sign_ctx_t ctx, uint8_t *in, size_t len)
+{
+	crypto_data_t data;
+	int rv;
+
+	bzero(&data, sizeof (data));
+	data.cd_format = CRYPTO_DATA_RAW;
+	data.cd_length = len;
+	data.cd_raw.iov_base = (void *)in;
+	data.cd_raw.iov_len = len;
+
+	rv = crypto_mac_update(ctx, &data, 0);
+
+	return (rv == CRYPTO_SUCCESS ? 0 : -1);
+}
+
+/*
+ * Note, the SMB2 signature is just the AES CMAC digest.
+ * (both are 16 bytes long)
+ */
+int
+smb3_cmac_final(smb_sign_ctx_t ctx, uint8_t *digest16)
+{
+	crypto_data_t out;
+	int rv;
+
+	bzero(&out, sizeof (out));
+	out.cd_format = CRYPTO_DATA_RAW;
+	out.cd_length = SMB2_SIG_SIZE;
+	out.cd_raw.iov_len = SMB2_SIG_SIZE;
+	out.cd_raw.iov_base = (void *)digest16;
+
+	rv = crypto_mac_final(ctx, &out, 0);
+
+	return (rv == CRYPTO_SUCCESS ? 0 : -1);
+}

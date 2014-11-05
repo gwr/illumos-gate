@@ -57,6 +57,7 @@ uint32_t smb2_max_trans  = (1<<16);	/* 64KB */
 static uint16_t smb2_versions[] = {
 	0x202,	/* SMB 2.002 */
 	0x210,	/* SMB 2.1 */
+	0x300,	/* SMB 3.0 */
 };
 static uint16_t smb2_nversions =
     sizeof (smb2_versions) / sizeof (smb2_versions[0]);
