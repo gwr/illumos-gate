@@ -219,7 +219,7 @@ file.
 		<propval name='traverse_mounts' type='boolean'
 			value='true' override='true'/>
 		<propval name='smb2_enable' type='boolean'
-			value='true' override='true'/>
+			value='false' override='true'/>
 		<propval name='initial_credits' type='integer'
 			value='20' override='true'/>
 		<propval name='maximum_credits' type='integer'
