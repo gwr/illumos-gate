@@ -460,9 +460,8 @@ restart:
 		servers[i].priority = 0;
 		servers[i].weight = 100;
 		servers[i].port = defport;
-		if ((host = scf_value2string(name, value)) == NULL) {
-			goto destruction;
-		}
+		if ((host = scf_value2string(name, value)) == NULL)
+			continue;
 		if ((portstr = strchr(host, ':')) != NULL) {
 			*portstr++ = '\0';
 			servers[i].port = strtol(portstr,
@@ -472,10 +471,16 @@ restart:
 		}
 
 		/*
-		 * Ignore this server if the hostname is too long.
-		 * (continue without i++)
+		 * Ignore this server if the hostname is too long
+		 * or empty (continue without i++)
 		 */
 		len = strlen(host);
+		if (len == 0) {
+			if (DBG(CONFIG, 1)) {
+				idmapdlog(LOG_INFO, "%s host=\"\"", name);
+			}
+			continue;
+		}
 		if (len >= sizeof (servers->host)) {
 			idmapdlog(LOG_ERR, "Host name too long: %s", host);
 			idmapdlog(LOG_ERR, "ignoring %s value", name);
@@ -507,6 +512,13 @@ restart:
 	}
 	free(host);
 
+	if (i == 0) {
+		if (DBG(CONFIG, 1)) {
+			idmapdlog(LOG_INFO, "%s is empty", name);
+		}
+		free(servers);
+		servers = NULL;
+	}
 	*val = servers;
 
 	rc = 0;
