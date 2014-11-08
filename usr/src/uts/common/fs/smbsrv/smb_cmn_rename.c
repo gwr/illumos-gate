@@ -450,13 +450,6 @@ smb_make_link(smb_request_t *sr, smb_fqi_t *src_fqi, smb_fqi_t *dst_fqi)
 		return (NT_STATUS_FILE_IS_A_DIRECTORY);
 	}
 
-	/* if src and dest paths match we're done */
-	if (smb_strcasecmp(src_fqi->fq_path.pn_path,
-	    dst_fqi->fq_path.pn_path, 0) == 0) {
-		smb_rename_release_src(sr);
-		return (0);
-	}
-
 	/*
 	 * Find the destination dnode and last component.
 	 * May already be provided, i.e. when called via
