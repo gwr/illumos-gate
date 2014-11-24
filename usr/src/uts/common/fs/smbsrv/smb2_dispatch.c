@@ -329,39 +329,13 @@ cmd_start:
 	/*
 	 * Setup a shadow chain for this SMB2 command, starting
 	 * with the header and ending at either the next command
-	 * or the end of the message.  Note that we've already
-	 * decoded the header, so chain_offset is now positioned
-	 * at the end of the header.  The signing check needs the
-	 * entire SMB2 command, so we'll shadow starting at the
-	 * smb2_cmd_hdr offset.  After the signing check, we'll
-	 * move chain_offset up to the end of the header.
+	 * or the end of the message.  The signing check in the
+	 * dispatch function needs the entire SMB2 command. We'll
+	 * advance chain_offset up to the end of the header before
+	 * the command specific decoders.
 	 */
 	(void) MBC_SHADOW_CHAIN(&sr->smb_data, &sr->command,
 	    sr->smb2_cmd_hdr, msg_len);
-
-	/*
-	 * Verify SMB signature if signing is enabled and active now.
-	 * [MS-SMB2] 3.3.5.2.4 Verifying the Signature
-	 */
-	if ((sr->smb2_hdr_flags & SMB2_FLAGS_SIGNED) != 0) {
-		rc = smb2_sign_check_request(sr);
-		if (rc != 0) {
-			DTRACE_PROBE1(smb2__sign__check, smb_request_t, sr);
-			if (session->signing.flags & SMB_SIGNING_CHECK) {
-				smb2sr_put_error(sr, NT_STATUS_ACCESS_DENIED);
-				goto cmd_finish;
-			}
-		}
-	}
-
-	/*
-	 * Now that the signing check is done with smb_data,
-	 * advance past the SMB2 header we decoded above.
-	 * This leaves sr->smb_data correctly positioned
-	 * for command-specific decoding in the dispatch
-	 * function called next.
-	 */
-	sr->smb_data.chain_offset = sr->smb2_cmd_hdr + SMB2_HDR_SIZE;
 
 	/*
 	 * SMB2 credits determine how many simultaneous commands the
@@ -468,7 +442,6 @@ cmd_start:
 	 * (the offset to the next command).  Similarly set
 	 * smb2_next_reply as the offset to the next reply.
 	 */
-cmd_finish:
 	if (sr->smb2_next_command != 0) {
 		sr->command.chain_offset =
 		    sr->smb2_cmd_hdr + sr->smb2_next_command;
@@ -784,6 +757,58 @@ smb2sr_dispatch(smb_request_t *sr,
 			goto done;
 		}
 	}
+
+	/*
+	 * SMB2 signature verification, two parts:
+	 * (a) Require SMB2_FLAGS_SIGNED (for most request types)
+	 * (b) If SMB2_FLAGS_SIGNED is set, check the signature.
+	 * [MS-SMB2] 3.3.5.2.4 Verifying the Signature
+	 */
+
+	/*
+	 * No user session means no signature check.  That's OK,
+	 * i.e. for commands marked SDDF_SUPPRESS_UID above.
+	 * Note, this also means we won't sign the reply.
+	 */
+	if (sr->uid_user == NULL)
+		sr->smb2_hdr_flags &= ~SMB2_FLAGS_SIGNED;
+
+	/*
+	 * The SDDF_SUPPRESS_UID dispatch is set for requests that
+	 * don't need a UID (user).  These also don't require a
+	 * signature check here.
+	 *
+	 * Note: If async_func != NULL, we're handling a command that
+	 * went async. In that case, we've already checked the
+	 * signature, so there's no need to check it again.
+	 */
+	if ((sdd->sdt_flags & SDDF_SUPPRESS_UID) == 0 &&
+	    (session->signing.flags & SMB_SIGNING_CHECK) != 0 &&
+	    async_func == NULL) {
+		/*
+		 * This request type should be signed, and
+		 * we're configured to require signatures.
+		 */
+		if ((sr->smb2_hdr_flags & SMB2_FLAGS_SIGNED) == 0) {
+			smb2sr_put_error(sr, NT_STATUS_ACCESS_DENIED);
+			goto done;
+		}
+		rc = smb2_sign_check_request(sr);
+		if (rc != 0) {
+			DTRACE_PROBE1(smb2__sign__check, smb_request_t, sr);
+			smb2sr_put_error(sr, NT_STATUS_ACCESS_DENIED);
+			goto done;
+		}
+	}
+
+	/*
+	 * Now that the signing check is done with smb_data,
+	 * advance past the SMB2 header we decoded earlier.
+	 * This leaves sr->smb_data correctly positioned
+	 * for command-specific decoding in the dispatch
+	 * function called next.
+	 */
+	sr->smb_data.chain_offset = sr->smb2_cmd_hdr + SMB2_HDR_SIZE;
 
 	/*
 	 * The real work: call the SMB2 command handler.

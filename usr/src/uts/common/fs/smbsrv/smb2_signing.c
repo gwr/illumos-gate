@@ -73,8 +73,7 @@ smb2_sign_begin(smb_request_t *sr, smb_arg_sessionsetup_t *sinfo)
 {
 	smb_session_t *session = sr->session;
 	struct smb_sign *sign = &session->signing;
-
-	ASSERT(sign->mackey == NULL);
+	struct smb_key *sign_key = &sr->uid_user->sign_key;
 
 	/*
 	 * Don't turn on signing after anon or guest login.
@@ -85,12 +84,10 @@ smb2_sign_begin(smb_request_t *sr, smb_arg_sessionsetup_t *sinfo)
 		return;
 
 	/*
-	 * With extended security, the MAC key is the same as the
-	 * session key.
+	 * The MAC key is the same as the session key.
 	 */
-	sign->mackey_len = SMB_SSNKEY_LEN;
-	sign->mackey = kmem_alloc(sign->mackey_len, KM_SLEEP);
-	bcopy(sinfo->ssi_ssnkey, sign->mackey, SMB_SSNKEY_LEN);
+	sign_key->key_len = SMB_SSNKEY_LEN;
+	bcopy(sinfo->ssi_ssnkey, sign_key->key, SMB_SSNKEY_LEN);
 
 	sign->flags = 0;
 	if (session->secmode & SMB2_NEGOTIATE_SIGNING_ENABLED) {
@@ -123,7 +120,7 @@ smb2_sign_begin(smb_request_t *sr, smb_arg_sessionsetup_t *sinfo)
  */
 int
 smb2_sign_calc(struct mbuf_chain *mbc,
-    struct smb_sign *sign,
+    struct smb_key *sign_key,
     uint8_t *digest)
 {
 	sha2_hc_ctx_t hctx;
@@ -133,11 +130,11 @@ smb2_sign_calc(struct mbuf_chain *mbc,
 	int resid = mbc->max_bytes - offset;
 	int tlen;
 
-	if (sign->mackey == NULL)
+	if (sign_key->key_len == 0)
 		return (-1);
 
 	bzero(&hctx, sizeof (hctx));
-	if (smb2_hmac_sha256_init(&hctx, sign->mackey, sign->mackey_len))
+	if (smb2_hmac_sha256_init(&hctx, sign_key->key, sign_key->key_len))
 		return (-1);
 
 	/*
@@ -217,14 +214,14 @@ smb2_sign_check_request(smb_request_t *sr)
 	uint8_t req_sig[SMB2_SIG_SIZE];
 	uint8_t digest[SHA256_DIGEST_LENGTH];
 	struct mbuf_chain *mbc = &sr->smb_data;
-	struct smb_sign *sign = &sr->session->signing;
+	smb_user_t *u = sr->uid_user;
 	int sig_off;
 
 	/*
 	 * Don't check commands with a zero session ID.
 	 * [MS-SMB2] 3.3.4.1.1
 	 */
-	if (sr->smb_uid == 0)
+	if (sr->smb_uid == 0 || u == NULL)
 		return (0);
 
 	/* Get the request signature. */
@@ -233,7 +230,7 @@ smb2_sign_check_request(smb_request_t *sr)
 		return (-1);
 
 	/* Compute what we think it should be. */
-	if (smb2_sign_calc(mbc, sign, digest) != 0)
+	if (smb2_sign_calc(mbc, &u->sign_key, digest) != 0)
 		return (-1);
 
 	if (memcmp(digest, req_sig, SMB2_SIG_SIZE) != 0) {
@@ -256,8 +253,11 @@ smb2_sign_reply(smb_request_t *sr)
 {
 	uint8_t digest[SHA256_DIGEST_LENGTH];
 	struct mbuf_chain tmp_mbc;
-	struct smb_sign *sign = &sr->session->signing;
+	smb_user_t *u = sr->uid_user;
 	int hdr_off, msg_len;
+
+	if (u == NULL)
+		return;
 
 	msg_len = sr->reply.chain_offset - sr->smb2_reply_hdr;
 	(void) MBC_SHADOW_CHAIN(&tmp_mbc, &sr->reply,
@@ -266,7 +266,7 @@ smb2_sign_reply(smb_request_t *sr)
 	/*
 	 * Calculate MAC signature
 	 */
-	if (smb2_sign_calc(&tmp_mbc, sign, digest) != 0)
+	if (smb2_sign_calc(&tmp_mbc, &u->sign_key, digest) != 0)
 		return;
 
 	/*
