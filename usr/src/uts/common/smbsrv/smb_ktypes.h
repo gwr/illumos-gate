@@ -771,27 +771,18 @@ typedef struct tcon {
 
 #define	SMB_SESSION_OFILE_MAX			(16 * 1024)
 
-/*
- * When a connection is set up we need to remember both the client
- * (peer) IP address and the local IP address used to establish the
- * connection. When a client connects with a vc number of zero, we
- * are supposed to abort any existing connections with that client
- * (see notes in smb_negotiate.c and smb_session_setup_andx.c). For
- * servers with multiple network interfaces or IP aliases, however,
- * each interface has to be managed independently since the client
- * is not aware of the server configuration. We have to allow the
- * client to establish a connection on each interface with a vc
- * number of zero without aborting the other connections.
- *
- * ipaddr:       the client (peer) IP address for the session.
- * local_ipaddr: the local IP address used to connect to the server.
- */
-
+/* SMB1 signing */
 struct smb_sign {
 	unsigned int flags;
 	uint32_t seqnum;
 	uint_t mackey_len;
 	uint8_t *mackey;
+};
+
+/* SMB2 signing */
+struct smb_key {
+	uint_t key_len;
+	uint8_t key[SMB_SSNKEY_LEN];
 };
 
 #define	SMB_SIGNING_ENABLED	1
@@ -976,6 +967,8 @@ typedef struct smb_user {
 	uint32_t		u_privileges;
 	uint16_t		u_uid;
 	uint32_t		u_audit_sid;
+
+	struct smb_key		sign_key;	/* SMB2 signing */
 } smb_user_t;
 
 #define	SMB_TREE_MAGIC			0x54524545	/* 'TREE' */
