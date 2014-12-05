@@ -33,7 +33,8 @@ include ../../Makefile.cmd
 
 POFILE = 	$(PROG)_all.po
 
-LDLIBS +=	-ladutils -lnsl
+LDLIBS +=	-ladutils -lnsl -lumem
+LDFLAGS +=	-R'$$ORIGIN/../lib'
 
 INCS += -I. -I../../../lib/libadutils/common
 

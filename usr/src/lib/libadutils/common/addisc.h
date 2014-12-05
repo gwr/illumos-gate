@@ -84,6 +84,7 @@ typedef struct ad_disc_ds {
 	char site[AD_DISC_MAXHOSTNAME];
 	struct sockaddr_storage addr;
 	uint32_t flags;
+	uint32_t ttl;
 } ad_disc_ds_t;
 
 ad_disc_t ad_disc_init(void);

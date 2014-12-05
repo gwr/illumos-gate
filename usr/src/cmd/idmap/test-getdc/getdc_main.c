@@ -32,7 +32,7 @@ main(int argc, char *argv[])
 {
 	ad_disc_t ad_ctx = NULL;
 	boolean_t autodisc;
-	ad_disc_ds_t *ds;
+	ad_disc_ds_t *dc, *gc;
 	char *s;
 	int c;
 
@@ -61,26 +61,30 @@ main(int argc, char *argv[])
 
 	ad_disc_refresh(ad_ctx);
 
-	ds = ad_disc_get_DomainController(ad_ctx,
+	dc = ad_disc_get_DomainController(ad_ctx,
 	    AD_DISC_PREFER_SITE, &autodisc);
-	if (ds == NULL) {
+	if (dc == NULL) {
 		(void) printf("getdc failed\n");
 		return (1);
 	}
 	(void) printf("Found a DC:\n");
-	print_ds(ds);
+	print_ds(dc);
+	free(dc);
 
 	s = ad_disc_get_ForestName(ad_ctx, NULL);
 	(void) printf("Forest: %s\n", s);
+	free(s);
 
 	s = ad_disc_get_SiteName(ad_ctx, NULL);
 	(void) printf("Site: %s\n", s);
+	free(s);
 
-	ds = ad_disc_get_GlobalCatalog(ad_ctx,
+	gc = ad_disc_get_GlobalCatalog(ad_ctx,
 	    AD_DISC_PREFER_SITE, &autodisc);
-	if (ds != NULL) {
+	if (gc != NULL) {
 		(void) printf("Found a GC:\n");
-		print_ds(ds);
+		print_ds(gc);
+		free(gc);
 	}
 
 	ad_disc_done(ad_ctx);
