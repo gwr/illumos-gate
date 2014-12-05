@@ -75,8 +75,10 @@ struct _berelement {
 };
 
 extern int ldap_put_filter(BerElement *ber, char *);
-static ad_disc_ds_t *find_ds_by_addr(ad_disc_ds_t *dclist,
-    struct sockaddr_in6 *sin6);
+static void send_to_cds(ad_disc_cds_t *, char *, size_t, int);
+static ad_disc_cds_t *find_cds_by_addr(ad_disc_cds_t *, struct sockaddr_in6 *);
+static boolean_t addrmatch(struct addrinfo *, struct sockaddr_in6 *);
+static void save_ai(ad_disc_cds_t *, struct addrinfo *);
 
 static void
 cldap_escape_le64(char *buf, uint64_t val, int bytes)
@@ -252,9 +254,10 @@ decode_name(uchar_t *base, uchar_t *cp, char *str)
 	return ((tmp == NULL ? cp + 1 : tmp) - st);
 }
 
-int
-cldap_parse(ad_disc_t ctx, ad_disc_ds_t *dc, BerElement *ber)
+static int
+cldap_parse(ad_disc_t ctx, ad_disc_cds_t *cds, BerElement *ber)
 {
+	ad_disc_ds_t *dc = &cds->cds_ds;
 	uchar_t *base = NULL, *cp = NULL;
 	char val[512]; /* how big should val be? */
 	int l, msgid, rc = 0;
@@ -375,13 +378,13 @@ out:
  * Only return the "winner".  (We only want one DC/GC)
  */
 ad_disc_ds_t *
-ldap_ping(ad_disc_t ctx, ad_disc_ds_t *dclist, char *dname, int reqflags)
+ldap_ping(ad_disc_t ctx, ad_disc_cds_t *dclist, char *dname, int reqflags)
 {
 	struct sockaddr_in6 addr6;
 	socklen_t addrlen;
 	struct pollfd pingchk;
-	ad_disc_ds_t *send_ds;
-	ad_disc_ds_t *recv_ds = NULL;
+	ad_disc_cds_t *send_ds;
+	ad_disc_cds_t *recv_ds = NULL;
 	ad_disc_ds_t *ret_ds = NULL;
 	BerElement *req = NULL;
 	BerElement *res = NULL;
@@ -392,9 +395,6 @@ ldap_ping(ad_disc_t ctx, ad_disc_ds_t *dclist, char *dname, int reqflags)
 	int waitsec;
 	int r;
 	uint16_t msgid;
-
-	if (dclist == NULL)
-		return (dclist);
 
 	/* One plus a null entry. */
 	ret_ds = calloc(2, sizeof (ad_disc_ds_t));
@@ -443,39 +443,19 @@ try_again:
 		/*
 		 * If there is another candidate, send to it.
 		 */
-		if (send_ds->host[0] != '\0') {
-			/*
-			 * Build "to" address.
-			 */
-			(void) memset(&addr6, 0, sizeof (addr6));
-			if (send_ds->addr.ss_family == AF_INET6) {
-				(void) memcpy(&addr6, &send_ds->addr,
-				    sizeof (addr6));
-			} else if (send_ds->addr.ss_family == AF_INET) {
-				struct sockaddr_in *sin =
-				    (void *)&send_ds->addr;
-				addr6.sin6_family = AF_INET6;
-				IN6_INADDR_TO_V4MAPPED(
-				    &sin->sin_addr, &addr6.sin6_addr);
-			} else {
-				logger(LOG_ERR, "No addr for %s",
-				    send_ds->host);
-				send_ds++;
-				continue;
-			}
-			addr6.sin6_port = htons(LDAP_PORT);
-
-			/*
-			 * "Ping" this candidate.
-			 */
-			(void) sendto(fd, be->ber_buf, be_len, 0,
-			    (struct sockaddr *)&addr6, sizeof (addr6));
+		if (send_ds->cds_ds.host[0] != '\0') {
+			send_to_cds(send_ds, be->ber_buf, be_len, fd);
 			send_ds++;
 
 			/*
 			 * Wait 1/10 sec. before the next send.
 			 */
 			r = poll(&pingchk, 1, 100);
+#if 0 /* DEBUG */
+			/* Drop all responses 1st pass. */
+			if (waitsec == 5)
+				r = 0;
+#endif
 		} else {
 			/*
 			 * No more candidates to "ping", so
@@ -494,23 +474,16 @@ try_again:
 			r = recvfrom(fd, rbe->ber_buf, rbe_len, 0,
 			    (struct sockaddr *)&addr6, &addrlen);
 
-			recv_ds = find_ds_by_addr(dclist, &addr6);
-			if (recv_ds == NULL) {
-				char abuf[64];
-				const char *paddr;
-				paddr = inet_ntop(AF_INET6,
-				    &addr6.sin6_addr,
-				    abuf, sizeof (abuf));
-				logger(LOG_ERR, "Unsolicited response from %s",
-				    paddr);
+			recv_ds = find_cds_by_addr(dclist, &addr6);
+			if (recv_ds == NULL)
 				continue;
-			}
+
 			(void) cldap_parse(ctx, recv_ds, res);
-			if ((recv_ds->flags & reqflags) != reqflags) {
+			if ((recv_ds->cds_ds.flags & reqflags) != reqflags) {
 				logger(LOG_ERR, "Skip %s"
 				    "due to flags 0x%X",
-				    recv_ds->host,
-				    recv_ds->flags);
+				    recv_ds->cds_ds.host,
+				    recv_ds->cds_ds.flags);
 				recv_ds = NULL;
 			}
 		}
@@ -527,51 +500,178 @@ try_again:
 	ber_free(res, 1);
 	ber_free(req, 1);
 	(void) close(fd);
-	free(dclist);
 	return (ret_ds);
 
 fail:
 	ber_free(res, 1);
 	ber_free(req, 1);
 	(void) close(fd);
-	free(dclist);
 	free(ret_ds);
 	return (NULL);
 }
 
-static ad_disc_ds_t *
-find_ds_by_addr(ad_disc_ds_t *dclist, struct sockaddr_in6 *sin6from)
+/*
+ * Attempt a send of the LDAP request to all known addresses
+ * for this candidate server.
+ */
+static void
+send_to_cds(ad_disc_cds_t *send_cds, char *ber_buf, size_t be_len, int fd)
 {
-	ad_disc_ds_t *ds;
+	struct sockaddr_in6 addr6;
+	struct addrinfo *ai;
+	int err;
+
+	if (DBG(DISC, 2)) {
+		logger(LOG_DEBUG, "send to: %s", send_cds->cds_ds.host);
+	}
+
+	for (ai = send_cds->cds_ai; ai != NULL; ai = ai->ai_next) {
+
+		/*
+		 * Build the "to" address.
+		 */
+		(void) memset(&addr6, 0, sizeof (addr6));
+		if (ai->ai_family == AF_INET6) {
+			(void) memcpy(&addr6, ai->ai_addr, sizeof (addr6));
+		} else if (ai->ai_family == AF_INET) {
+			struct sockaddr_in *sin =
+			    (void *)ai->ai_addr;
+			addr6.sin6_family = AF_INET6;
+			IN6_INADDR_TO_V4MAPPED(&sin->sin_addr,
+			    &addr6.sin6_addr);
+		} else {
+			continue;
+		}
+		addr6.sin6_port = htons(LDAP_PORT);
+
+		/*
+		 * Send the "ping" to this address.
+		 */
+		err = sendto(fd, ber_buf, be_len, 0,
+		    (struct sockaddr *)&addr6, sizeof (addr6));
+		err = (err < 0) ? errno : 0;
+
+		if (DBG(DISC, 2)) {
+			char abuf[INET6_ADDRSTRLEN];
+			const char *pa;
+
+			pa = inet_ntop(AF_INET6,
+			    &addr6.sin6_addr,
+			    abuf, sizeof (abuf));
+			logger(LOG_ERR, "  > %s rc=%d",
+			    pa ? pa : "?", err);
+		}
+	}
+}
+
+/*
+ * We have a response from some address.  Find the candidate with
+ * this address.  In case a candidate had multiple addresses, we
+ * keep track of which the response came from.
+ */
+static ad_disc_cds_t *
+find_cds_by_addr(ad_disc_cds_t *dclist, struct sockaddr_in6 *sin6from)
+{
+	char abuf[INET6_ADDRSTRLEN];
+	ad_disc_cds_t *ds;
+	struct addrinfo *ai;
+	int eai;
+
+	if (DBG(DISC, 1)) {
+		eai = getnameinfo((void *)sin6from, sizeof (*sin6from),
+		    abuf, sizeof (abuf), NULL, 0, NI_NUMERICHOST);
+		if (eai != 0)
+			(void) strlcpy(abuf, "?", sizeof (abuf));
+		logger(LOG_DEBUG, "LDAP ping resp: addr=%s", abuf);
+	}
 
 	/*
 	 * Find the DS this response came from.
-	 * (don't accept unsolicited responses)
-	 *
+	 * (don't accept unexpected responses)
+	 */
+	for (ds = dclist; ds->cds_ds.host[0] != '\0'; ds++) {
+		ai = ds->cds_ai;
+		while (ai != NULL) {
+			if (addrmatch(ai, sin6from))
+				goto found;
+			ai = ai->ai_next;
+		}
+	}
+	if (DBG(DISC, 1)) {
+		logger(LOG_DEBUG, "  (unexpected)");
+	}
+	return (NULL);
+
+found:
+	if (DBG(DISC, 2)) {
+		logger(LOG_DEBUG, "  from %s", ds->cds_ds.host);
+	}
+	save_ai(ds, ai);
+	return (ds);
+}
+
+static boolean_t
+addrmatch(struct addrinfo *ai, struct sockaddr_in6 *sin6from)
+{
+
+	/*
 	 * Note: on a GC query, the ds->addr port numbers are
 	 * the GC port, and our from addr has the LDAP port.
 	 * Just compare the IP addresses.
 	 */
-	for (ds = dclist; ds->host[0] != '\0'; ds++) {
-		if (ds->addr.ss_family == AF_INET6) {
-			struct sockaddr_in6 *sin6p = (void *)&ds->addr;
 
-			if (!memcmp(&sin6from->sin6_addr, &sin6p->sin6_addr,
-			    sizeof (struct in6_addr)))
-				break;
-		}
-		if (ds->addr.ss_family == AF_INET) {
-			struct in6_addr in6;
-			struct sockaddr_in *sin4p = (void *)&ds->addr;
+	if (ai->ai_family == AF_INET6) {
+		struct sockaddr_in6 *sin6p = (void *)ai->ai_addr;
 
-			IN6_INADDR_TO_V4MAPPED(&sin4p->sin_addr, &in6);
-			if (!memcmp(&sin6from->sin6_addr, &in6,
-			    sizeof (struct in6_addr)))
-				break;
-		}
+		if (!memcmp(&sin6from->sin6_addr, &sin6p->sin6_addr,
+		    sizeof (struct in6_addr)))
+			return (B_TRUE);
 	}
-	if (ds->host[0] == '\0')
-		ds = NULL;
 
-	return (ds);
+	if (ai->ai_family == AF_INET) {
+		struct in6_addr in6;
+		struct sockaddr_in *sin4p = (void *)ai->ai_addr;
+
+		IN6_INADDR_TO_V4MAPPED(&sin4p->sin_addr, &in6);
+		if (!memcmp(&sin6from->sin6_addr, &in6,
+		    sizeof (struct in6_addr)))
+			return (B_TRUE);
+	}
+
+	return (B_FALSE);
+}
+
+static void
+save_ai(ad_disc_cds_t *cds, struct addrinfo *ai)
+{
+	ad_disc_ds_t *ds = &cds->cds_ds;
+	struct sockaddr_in *sin;
+	struct sockaddr_in6 *sin6;
+
+	/*
+	 * If this DS already saw a response, keep the first
+	 * address from which we received a response.
+	 */
+	if (ds->addr.ss_family != 0) {
+		if (DBG(DISC, 2))
+			logger(LOG_DEBUG, "already have an address");
+		return;
+	}
+
+	switch (ai->ai_family) {
+	case AF_INET:
+		sin = (void *)&ds->addr;
+		(void) memcpy(sin, ai->ai_addr, sizeof (*sin));
+		sin->sin_port = htons(ds->port);
+		break;
+
+	case AF_INET6:
+		sin6 = (void *)&ds->addr;
+		(void) memcpy(sin6, ai->ai_addr, sizeof (*sin6));
+		sin6->sin6_port = htons(ds->port);
+		break;
+
+	default:
+		logger(LOG_ERR, "bad AF %d", ai->ai_family);
+	}
 }

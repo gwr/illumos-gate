@@ -95,6 +95,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <ldap.h>
+#include <note.h>
 #include <sasl/sasl.h>
 #include <sys/u8_textprep.h>
 #include <syslog.h>
@@ -143,14 +144,21 @@
 	if (ad_disc_getnameinfo(b, l, s) != 0)		\
 		(void) strlcpy(b, "?", l)
 
+#define	DEBUG1STATUS(ctx, ...) do { \
+	if (DBG(DISC, 1)) \
+		logger(LOG_DEBUG, __VA_ARGS__); \
+	if (ctx->status_fp) { \
+		(void) fprintf(ctx->status_fp, __VA_ARGS__); \
+		(void) fprintf(ctx->status_fp, "\n"); \
+	} \
+	_NOTE(CONSTCOND) \
+} while (0)
+
 #define	is_fixed(item)					\
 	((item)->state == AD_STATE_FIXED)
 
 #define	is_changed(item, num, param) 			\
 	((item)->param_version[num] != (param)->version)
-
-static void save_addr(ad_disc_ds_t *, char *, uchar_t *, uint16_t, uint16_t);
-static void do_getaddrinfo(ad_disc_ds_t *);
 
 void * uuid_dup(void *);
 
@@ -186,34 +194,30 @@ do_res_ninit(ad_disc_t ctx)
 	return (0);
 }
 
-/* Private getnameinfo(3socket) variant tailored to our needs. */
+/*
+ * Private getnameinfo(3socket) variant tailored to our needs.
+ */
 int
 ad_disc_getnameinfo(char *obuf, int olen, struct sockaddr_storage *ss)
 {
-	struct sockaddr_in6 *sin6;
-	struct sockaddr_in *sin;
-	const char *p;
+	struct sockaddr *sa;
+	int eai, slen;
 
-	switch (ss->ss_family) {
+	sa = (void *)ss;
+	switch (sa->sa_family) {
 	case AF_INET:
-		sin = (void *)ss;
-		p = inet_ntop(AF_INET, &sin->sin_addr,
-		    obuf, olen);
+		slen = sizeof (struct sockaddr_in);
 		break;
 	case AF_INET6:
-		sin6 = (void *)ss;
-		p = inet_ntop(AF_INET6, &sin6->sin6_addr,
-		    obuf, olen);
+		slen = sizeof (struct sockaddr_in6);
 		break;
 	default:
-		p = NULL;
-		break;
+		return (EAI_FAMILY);
 	}
-	if (p == NULL) {
-		obuf[0] = '\0';
-		return (EAI_ADDRFAMILY);
-	}
-	return (0);
+
+	eai = getnameinfo(sa, slen, obuf, olen, NULL, 0, NI_NUMERICHOST);
+
+	return (eai);
 }
 
 static void
@@ -629,373 +633,6 @@ DN_to_DNS(const char *dn_name)
 }
 
 
-/* Compare SRC RRs; used with qsort() */
-static int
-srvcmp(ad_disc_ds_t *s1, ad_disc_ds_t *s2)
-{
-	if (s1->priority < s2->priority)
-		return (1);
-	else if (s1->priority > s2->priority)
-		return (-1);
-
-	if (s1->weight < s2->weight)
-		return (1);
-	else if (s1->weight > s2->weight)
-		return (-1);
-
-	return (0);
-}
-
-
-/*
- * Query or search the SRV RRs for a given name.
- *
- * If name == NULL then search (as in res_nsearch(3RESOLV), honoring any
- * search list/option), else query (as in res_nquery(3RESOLV)).
- *
- * The output TTL will be the one of the SRV RR with the lowest TTL.
- */
-ad_disc_ds_t *
-srv_query(res_state state, const char *svc_name, const char *dname,
-    char **rrname, uint32_t *ttl, ad_disc_ds_t *prefer)
-{
-	ad_disc_ds_t *srv;
-	ad_disc_ds_t *srv_res = NULL;
-	union {
-		HEADER hdr;
-		uchar_t buf[NS_MAXMSG];
-	} msg;
-	int len, cnt;
-	int qdcount, ancount, nscount, arcount;
-	uchar_t *ptr, *eom;
-	uchar_t *end;
-	uint16_t type;
-	/* LINTED  E_FUNC_SET_NOT_USED */
-	uint16_t class;
-	uint32_t rttl;
-	uint16_t size;
-	char namebuf[NS_MAXDNAME];
-
-	if (state == NULL)
-		return (NULL);
-
-	/* Set negative result TTL */
-	*ttl = 5 * 60;
-
-	/* query necessary resource records */
-
-	/* Search, querydomain or query */
-	if (rrname != NULL) {
-		*rrname = NULL;
-		if (DBG(DNS, 1))  {
-			logger(LOG_DEBUG, "Looking for SRV RRs '%s.*'",
-			    svc_name);
-		}
-		len = res_nsearch(state, svc_name, C_IN, T_SRV,
-		    msg.buf, sizeof (msg.buf));
-		if (len < 0) {
-			if (DBG(DNS, 0)) {
-				logger(LOG_DEBUG,
-				    "DNS search for '%s' failed (%s)",
-				    svc_name, hstrerror(state->res_h_errno));
-			}
-			return (NULL);
-		}
-	} else if (dname != NULL) {
-		if (DBG(DNS, 1)) {
-			logger(LOG_DEBUG, "Looking for SRV RRs '%s.%s' ",
-			    svc_name, dname);
-		}
-
-		len = res_nquerydomain(state, svc_name, dname, C_IN, T_SRV,
-		    msg.buf, sizeof (msg.buf));
-
-		if (len < 0) {
-			if (DBG(DNS, 0)) {
-				logger(LOG_DEBUG, "DNS: %s.%s: %s",
-				    svc_name, dname,
-				    hstrerror(state->res_h_errno));
-			}
-			return (NULL);
-		}
-	}
-
-	if (len > sizeof (msg.buf)) {
-		logger(LOG_ERR,
-		    "DNS query %ib message doesn't fit into %ib buffer",
-		    len, sizeof (msg.buf));
-		return (NULL);
-	}
-
-	/* parse the reply header */
-
-	ptr = msg.buf + sizeof (msg.hdr);
-	eom = msg.buf + len;
-	qdcount = ntohs(msg.hdr.qdcount);
-	ancount = ntohs(msg.hdr.ancount);
-	nscount = ntohs(msg.hdr.nscount);
-	arcount = ntohs(msg.hdr.arcount);
-
-	/* skip the question section */
-
-	len = ns_skiprr(ptr, eom, ns_s_qd, qdcount);
-	if (len < 0) {
-		logger(LOG_ERR, "DNS query invalid message format");
-		return (NULL);
-	}
-	ptr += len;
-
-	/*
-	 * Walk through the answer section, building the result array.
-	 * The array size is +2 because we (possibly) add the preferred
-	 * DC if it was not there, and an empty one (null termination).
-	 */
-
-	srv_res = calloc(ancount + 2, sizeof (ad_disc_ds_t));
-	if (srv_res == NULL) {
-		logger(LOG_ERR, "Out of memory");
-		return (NULL);
-	}
-
-	*ttl = (uint32_t)-1;
-
-	for (srv = srv_res, cnt = ancount;
-	    cnt > 0; --cnt, srv++) {
-
-		len = dn_expand(msg.buf, eom, ptr, namebuf,
-		    sizeof (namebuf));
-		if (len < 0) {
-			logger(LOG_ERR, "DNS query invalid message format");
-			goto err;
-		}
-		if (rrname != NULL && *rrname == NULL) {
-			*rrname = strdup(namebuf);
-			if (*rrname == NULL) {
-				logger(LOG_ERR, "Out of memory");
-				goto err;
-			}
-		}
-		ptr += len;
-		NS_GET16(type, ptr);
-		NS_GET16(class, ptr);
-		NS_GET32(rttl, ptr);
-		NS_GET16(size, ptr);
-		if ((end = ptr + size) > eom) {
-			logger(LOG_ERR, "DNS query invalid message format");
-			goto err;
-		}
-
-		if (type != T_SRV) {
-			ptr = end;
-			continue;
-		}
-
-		NS_GET16(srv->priority, ptr);
-		NS_GET16(srv->weight, ptr);
-		NS_GET16(srv->port, ptr);
-		len = dn_expand(msg.buf, eom, ptr, srv->host,
-		    sizeof (srv->host));
-		if (len < 0) {
-			logger(LOG_ERR, "DNS query invalid SRV record");
-			goto err;
-		}
-
-		if (rttl < *ttl)
-			*ttl = rttl;
-
-		if (prefer != NULL &&
-		    strcasecmp(prefer->host, srv->host) == 0) {
-			/* Force this element to be sorted first. */
-			srv->priority = 0;
-			srv->weight = 200;
-			prefer = NULL;
-		}
-
-		if (DBG(DNS, 1)) {
-			logger(LOG_DEBUG, "    %s", namebuf);
-			logger(LOG_DEBUG,
-			    "        ttl=%d pri=%d weight=%d %s:%d",
-			    rttl, srv->priority, srv->weight,
-			    srv->host, srv->port);
-		}
-
-		/* move ptr to the end of current record */
-		ptr = end;
-	}
-
-	if (prefer != NULL) {
-		/*
-		 * The preferred DC was not found in this DNS response,
-		 * so add it.  Again arrange for it to be sorted first.
-		 */
-		(void) memcpy(srv, prefer, sizeof (*srv));
-		srv->priority = 0;
-		srv->weight = 200;
-	}
-
-	/* skip the nameservers section (if any) */
-
-	len = ns_skiprr(ptr, eom, ns_s_ns, nscount);
-	if (len < 0) {
-		logger(LOG_ERR, "DNS query invalid message format");
-		goto err;
-	}
-	ptr += len;
-
-	/* walk through the additional records */
-	for (cnt = arcount; cnt > 0; --cnt) {
-
-		len = dn_expand(msg.buf, eom, ptr, namebuf,
-		    sizeof (namebuf));
-		if (len < 0) {
-			logger(LOG_ERR, "DNS query invalid message format");
-			goto err;
-		}
-		ptr += len;
-		NS_GET16(type, ptr);
-		NS_GET16(class, ptr);
-		NS_GET32(rttl, ptr);
-		NS_GET16(size, ptr);
-		if ((end = ptr + size) > eom) {
-			logger(LOG_ERR, "DNS query invalid message format");
-			goto err;
-		}
-
-		if (type == ns_t_a || type == ns_t_aaaa)
-			save_addr(srv_res, namebuf, ptr, size, type);
-
-		/* move ptr to the end of current record */
-		ptr = end;
-	}
-
-	/*
-	 * Do another pass over the array to check for missing addresses and
-	 * try resolving the names.  Normally, the DNS response from AD will
-	 * supply additional address records for all the SRV records.
-	 */
-	for (srv = srv_res; srv->host[0] != '\0'; srv++) {
-		if (srv->addr.ss_family == 0) {
-			do_getaddrinfo(srv);
-		}
-	}
-
-	/* sort list of candidates */
-	if (ancount > 1)
-		qsort(srv_res, ancount, sizeof (*srv_res),
-		    (int (*)(const void *, const void *))srvcmp);
-
-	return (srv_res);
-
-err:
-	free(srv_res);
-	if (rrname != NULL) {
-		free(*rrname);
-		*rrname = NULL;
-	}
-	return (NULL);
-}
-
-static void
-save_addr(ad_disc_ds_t *srv_res, char *name, uchar_t *data,
-    uint16_t dsize, uint16_t type)
-{
-	char buf[INET6_ADDRSTRLEN];
-	ad_disc_ds_t *srv;
-	sa_family_t af;
-	size_t asize;
-
-	if (type == ns_t_a) {
-		af = AF_INET;
-		asize = 4;
-	} else if (type == ns_t_aaaa) {
-		af = AF_INET6;
-		asize = 16;
-	} else {
-		logger(LOG_ERR, " invalid ns type %d", type);
-		return;
-	}
-	if (dsize < asize) {
-		logger(LOG_ERR, " invalid addr len %d", dsize);
-		return;
-	}
-
-	if (DBG(DNS, 1)) {
-		const char *ap;
-
-		ap = inet_ntop(af, data, buf, sizeof (buf));
-		logger(LOG_DEBUG, "    %s    %s    %s",
-		    (af == AF_INET) ? "A   " : "AAAA",
-		    (ap) ? ap : "?", name);
-	}
-
-	for (srv = srv_res; srv->host[0] != '\0'; srv++)
-		if (0 == strcmp(name, srv->host))
-			break;
-	if (srv->host[0] == '\0')
-		return;
-
-	/* If this host already has an address, we're done. */
-	if (srv->addr.ss_family != 0)
-		return;
-
-	if (type == ns_t_a) {
-		struct sockaddr_in *sin;
-
-		sin = (struct sockaddr_in *)&srv->addr;
-		sin->sin_family = af;
-		sin->sin_port = htons(srv->port);
-		(void) memcpy(&sin->sin_addr, data, asize);
-	}
-	if (type == ns_t_aaaa) {
-		struct sockaddr_in6 *sin6;
-
-		sin6 = (struct sockaddr_in6 *)&srv->addr;
-		sin6->sin6_family = af;
-		sin6->sin6_port = htons(srv->port);
-		(void) memcpy(&sin6->sin6_addr, data, asize);
-	}
-}
-
-static void
-do_getaddrinfo(ad_disc_ds_t *srv)
-{
-	struct addrinfo hints;
-	struct addrinfo *ai;
-	time_t t0, t1;
-	int err;
-
-	(void) memset(&hints, 0, sizeof (hints));
-	hints.ai_protocol = IPPROTO_TCP;
-	hints.ai_socktype = SOCK_STREAM;
-
-	/*
-	 * This getaddrinfo call may take a LONG time, i.e. if our
-	 * DNS servers are misconfigured or not responding.
-	 * We need something like getaddrinfo_a(), with a timeout.
-	 * For now, just log when this happens so we'll know
-	 * if these calls are taking a long time.
-	 */
-	if (DBG(DNS, 1))
-		logger(LOG_DEBUG, "getaddrinfo %s ...", srv->host);
-	t0 = time(NULL);
-	err = getaddrinfo(srv->host, NULL, &hints, &ai);
-	t1 = time(NULL);
-	if (DBG(DNS, 1))
-		logger(LOG_DEBUG, "getaddrinfo %s rc=%d", srv->host, err);
-	if (t1 > (t0 + 5)) {
-		logger(LOG_WARNING, "Lookup host (%s) took %u sec. "
-		    "(Check DNS settings)", srv->host, (int)(t1 - t0));
-	}
-	if (err != 0) {
-		logger(LOG_ERR, "No address for host: %s (%s)",
-		    srv->host, gai_strerror(err));
-		return;
-	}
-	(void) memcpy(&srv->addr, ai->ai_addr, ai->ai_addrlen);
-	freeaddrinfo(ai);
-}
-
-
 /*
  * A utility function to bind to a Directory server
  */
@@ -1189,7 +826,7 @@ ldap_lookup_domains_in_forest(LDAP **ld, ad_disc_ds_t *globalCatalogs)
 	int		nresults;
 	ad_disc_domainsinforest_t *domains = NULL;
 
-	if (DBG(DISC, 2))
+	if (DBG(DISC, 1))
 		logger(LOG_DEBUG, "Looking for domains in forest...");
 
 	if (*ld == NULL)
@@ -1418,15 +1055,78 @@ ad_disc_done(ad_disc_t ctx)
 	ctx->expires_not_after = now + MAXIMUM_TTL;
 }
 
+static void
+log_cds(ad_disc_t ctx, ad_disc_cds_t *cds)
+{
+	char buf[INET6_ADDRSTRLEN];
+	struct addrinfo *ai;
+
+	if (!DBG(DISC, 1) && ctx->status_fp == NULL)
+		return;
+
+	DEBUG1STATUS(ctx, "Candidate servers:");
+	if (cds->cds_ds.host[0] == '\0') {
+		DEBUG1STATUS(ctx, "  (empty list)");
+		return;
+	}
+
+	while (cds->cds_ds.host[0] != '\0') {
+
+		DEBUG1STATUS(ctx, "  %s  p=%d w=%d",
+		    cds->cds_ds.host,
+		    cds->cds_ds.priority,
+		    cds->cds_ds.weight);
+
+		ai = cds->cds_ai;
+		if (ai == NULL) {
+			DEBUG1STATUS(ctx, "    (no address)");
+			continue;
+		}
+		while (ai != NULL) {
+			int eai;
+
+			eai = getnameinfo(ai->ai_addr, ai->ai_addrlen,
+			    buf, sizeof (buf), NULL, 0, NI_NUMERICHOST);
+			if (eai != 0)
+				(void) strlcpy(buf, "?", sizeof (buf));
+
+			DEBUG1STATUS(ctx, "    %s", buf);
+			ai = ai->ai_next;
+		}
+		cds++;
+	}
+}
+
+static void
+log_ds(ad_disc_t ctx, ad_disc_ds_t *ds)
+{
+	char buf[INET6_ADDRSTRLEN];
+
+	if (!DBG(DISC, 1) && ctx->status_fp == NULL)
+		return;
+
+	DEBUG1STATUS(ctx, "Responding servers:");
+	if (ds->host[0] == '\0') {
+		DEBUG1STATUS(ctx, "  (empty list)");
+		return;
+	}
+
+	while (ds->host[0] != '\0') {
+
+		DEBUG1STATUS(ctx, "  %s", ds->host);
+		DO_GETNAMEINFO(buf, sizeof (buf), &ds->addr);
+		DEBUG1STATUS(ctx, "    %s", buf);
+
+		ds++;
+	}
+}
 
 /* Discover joined Active Directory domainName */
 static ad_item_t *
 validate_DomainName(ad_disc_t ctx)
 {
-	ad_disc_ds_t *domain_controller = NULL;
 	char *dname, *srvname;
-	uint32_t ttl = 0;
-	int len;
+	int len, rc;
 
 	if (is_valid(&ctx->domain_name))
 		return (&ctx->domain_name);
@@ -1434,23 +1134,21 @@ validate_DomainName(ad_disc_t ctx)
 
 	/* Try to find our domain by searching for DCs for it */
 	DO_RES_NINIT(ctx);
-	if (DBG(DISC, 2))
+	if (DBG(DISC, 1))
 		logger(LOG_DEBUG, "Looking for our AD domain name...");
-	domain_controller = srv_query(&ctx->res_state,
-	    LDAP_SRV_HEAD DC_SRV_TAIL,
-	    ctx->domain_name.value, &srvname, &ttl, NULL);
+	rc = srv_getdom(&ctx->res_state,
+	    LDAP_SRV_HEAD DC_SRV_TAIL, &srvname);
 
 	/*
 	 * If we can't find DCs by via res_nsearch() then there's no
 	 * point in trying anything else to discover the AD domain name.
 	 */
-	if (domain_controller == NULL) {
+	if (rc < 0) {
 		if (DBG(DISC, 1))
 			logger(LOG_DEBUG, "Can't find our domain name.");
 		return (NULL);
 	}
 
-	free(domain_controller);
 	/*
 	 * We have the FQDN of the SRV RR name, so now we extract the
 	 * domainname suffix from it.
@@ -1472,7 +1170,14 @@ validate_DomainName(ad_disc_t ctx)
 
 	if (DBG(DISC, 1))
 		logger(LOG_DEBUG, "Our domain name:  %s", dname);
-	update_item(&ctx->domain_name, dname, AD_STATE_AUTO, ttl);
+
+	/*
+	 * There is no "time to live" on the discovered domain,
+	 * so passing zero as TTL here, making it non-expiring.
+	 * Note that current consumers do not auto-discover the
+	 * domain name, though a future installer could.
+	 */
+	update_item(&ctx->domain_name, dname, AD_STATE_AUTO, 0);
 
 	return (&ctx->domain_name);
 }
@@ -1502,8 +1207,8 @@ ad_disc_get_DomainName(ad_disc_t ctx, boolean_t *auto_discovered)
 static ad_item_t *
 validate_DomainController(ad_disc_t ctx, enum ad_disc_req req)
 {
-	char buf[INET6_ADDRSTRLEN];
 	ad_disc_ds_t *dc = NULL;
+	ad_disc_cds_t *cdc = NULL;
 	boolean_t validate_global = B_FALSE;
 	boolean_t validate_site = B_FALSE;
 	ad_item_t *domain_name_item;
@@ -1512,8 +1217,6 @@ validate_DomainController(ad_disc_t ctx, enum ad_disc_req req)
 	char *site_name;
 	ad_item_t *prefer_dc_item;
 	ad_disc_ds_t *prefer_dc = NULL;
-	uint32_t ttl = 0;
-	int i;
 
 	/* If the values is fixed there will not be a site specific version */
 	if (is_fixed(&ctx->domain_controller))
@@ -1542,53 +1245,23 @@ validate_DomainController(ad_disc_t ctx, enum ad_disc_req req)
 		if (!is_valid(&ctx->domain_controller) ||
 		    is_changed(&ctx->domain_controller, PARAM1,
 		    domain_name_item)) {
-			if (DBG(DISC, 2)) {
-				logger(LOG_DEBUG, "Looking for DCs for %s",
-				    domain_name);
-			}
-			if (ctx->status_fp) {
-				(void) fprintf(ctx->status_fp,
-				    "DNS SRV query, dom=%s\n",
-				    domain_name);
-			}
+
 			/*
 			 * Lookup DNS SRV RR named
 			 * _ldap._tcp.dc._msdcs.<DomainName>
 			 */
+			DEBUG1STATUS(ctx, "DNS SRV query, dom=%s",
+			    domain_name);
 			DO_RES_NINIT(ctx);
-			dc = srv_query(&ctx->res_state,
+			cdc = srv_query(&ctx->res_state,
 			    LDAP_SRV_HEAD DC_SRV_TAIL,
-			    domain_name, NULL, &ttl, prefer_dc);
+			    domain_name, prefer_dc);
 
-			if (DBG(DISC, 1)) {
-				logger(LOG_DEBUG, "Candidate DCs for %s:",
-				    domain_name);
-			}
-			if (dc == NULL) {
-				if (DBG(DISC, 1))
-					logger(LOG_DEBUG, "    not found");
-				if (ctx->status_fp) {
-					(void) fprintf(ctx->status_fp,
-					    "    (no response)\n");
-				}
+			if (cdc == NULL) {
+				DEBUG1STATUS(ctx, "(no DNS response)");
 				return (NULL);
 			}
-
-			if (DBG(DISC, 1) || ctx->status_fp) {
-				for (i = 0; dc[i].host[0] != '\0'; i++) {
-					DO_GETNAMEINFO(buf, sizeof (buf),
-					    &dc[i].addr);
-					if (DBG(DISC, 1)) {
-						logger(LOG_DEBUG, "    %s %s",
-						    dc[i].host, buf);
-					}
-					if (ctx->status_fp) {
-						(void) fprintf(ctx->status_fp,
-						    "    %s %s\n",
-						    dc[i].host, buf);
-					}
-				}
-			}
+			log_cds(ctx, cdc);
 
 			/*
 			 * Filter out unresponsive servers, and
@@ -1596,45 +1269,20 @@ validate_DomainController(ad_disc_t ctx, enum ad_disc_req req)
 			 */
 			dc = ldap_ping(
 			    ctx,
-			    dc,
+			    cdc,
 			    domain_name,
 			    DS_DS_FLAG);
+			srv_free(cdc);
+			cdc = NULL;
 
-			if (DBG(DISC, 1)) {
-				logger(LOG_DEBUG, "Responding DCs for %s:",
-				    domain_name);
-			}
-			if (ctx->status_fp) {
-				(void) fprintf(ctx->status_fp, "LDAP ping\n");
-			}
 			if (dc == NULL) {
-				if (DBG(DISC, 1))
-					logger(LOG_DEBUG, "    not found");
-				if (ctx->status_fp) {
-					(void) fprintf(ctx->status_fp,
-					    "    (no response)\n");
-				}
+				DEBUG1STATUS(ctx, "(no LDAP response)");
 				return (NULL);
 			}
-
-			if (DBG(DISC, 1) || ctx->status_fp) {
-				for (i = 0; dc[i].host[0] != '\0'; i++) {
-					DO_GETNAMEINFO(buf, sizeof (buf),
-					    &dc[i].addr);
-					if (DBG(DISC, 1)) {
-						logger(LOG_DEBUG, "    %s %s",
-						    dc[i].host, buf);
-					}
-					if (ctx->status_fp) {
-						(void) fprintf(ctx->status_fp,
-						    "    %s %s\n",
-						    dc[i].host, buf);
-					}
-				}
-			}
+			log_ds(ctx, dc);
 
 			update_item(&ctx->domain_controller, dc,
-			    AD_STATE_AUTO, ttl);
+			    AD_STATE_AUTO, dc->ttl);
 			update_version(&ctx->domain_controller, PARAM1,
 			    domain_name_item);
 		}
@@ -1651,57 +1299,25 @@ validate_DomainController(ad_disc_t ctx, enum ad_disc_req req)
 		    is_changed(&ctx->site_domain_controller, PARAM2,
 		    site_name_item)) {
 			char rr_name[DNS_MAX_NAME];
-			if (DBG(DISC, 2)) {
-				logger(LOG_DEBUG,
-				    "Looking for DCs for %s in %s",
-				    domain_name, site_name);
-			}
-			if (ctx->status_fp) {
-				(void) fprintf(ctx->status_fp,
-				    "DNS SRV query, dom=%s, site=%s\n",
-				    domain_name, site_name);
-			}
+
 			/*
 			 * Lookup DNS SRV RR named
 			 * _ldap._tcp.<SiteName>._sites.dc._msdcs.<DomainName>
 			 */
+			DEBUG1STATUS(ctx, "DNS SRV query, dom=%s, site=%s",
+			    domain_name, site_name);
 			(void) snprintf(rr_name, sizeof (rr_name),
 			    LDAP_SRV_HEAD SITE_SRV_MIDDLE DC_SRV_TAIL,
 			    site_name);
 			DO_RES_NINIT(ctx);
-			dc = srv_query(&ctx->res_state, rr_name,
-			    domain_name, NULL, &ttl, prefer_dc);
+			cdc = srv_query(&ctx->res_state, rr_name,
+			    domain_name, prefer_dc);
 
-			if (DBG(DISC, 1)) {
-				logger(LOG_DEBUG,
-				    "Candidate DCs for %s in %s:",
-				    domain_name, site_name);
-			}
-			if (dc == NULL) {
-				if (DBG(DISC, 1))
-					logger(LOG_DEBUG, "    not found");
-				if (ctx->status_fp) {
-					(void) fprintf(ctx->status_fp,
-					    "    (no response)\n");
-				}
+			if (cdc == NULL) {
+				DEBUG1STATUS(ctx, "(no DNS response)");
 				return (NULL);
 			}
-
-			if (DBG(DISC, 1) || ctx->status_fp) {
-				for (i = 0; dc[i].host[0] != '\0'; i++) {
-					DO_GETNAMEINFO(buf, sizeof (buf),
-					    &dc[i].addr);
-					if (DBG(DISC, 1)) {
-						logger(LOG_DEBUG, "    %s %s",
-						    dc[i].host, buf);
-					}
-					if (ctx->status_fp) {
-						(void) fprintf(ctx->status_fp,
-						    "    %s %s\n",
-						    dc[i].host, buf);
-					}
-				}
-			}
+			log_cds(ctx, cdc);
 
 			/*
 			 * Filter out unresponsive servers, and
@@ -1709,46 +1325,20 @@ validate_DomainController(ad_disc_t ctx, enum ad_disc_req req)
 			 */
 			dc = ldap_ping(
 			    ctx,
-			    dc,
+			    cdc,
 			    domain_name,
 			    DS_DS_FLAG);
+			srv_free(cdc);
+			cdc = NULL;
 
-			if (DBG(DISC, 1)) {
-				logger(LOG_DEBUG,
-				    "Responding DCs for %s in %s:",
-				    domain_name, site_name);
-			}
-			if (ctx->status_fp) {
-				(void) fprintf(ctx->status_fp, "LDAP ping\n");
-			}
 			if (dc == NULL) {
-				if (DBG(DISC, 1))
-					logger(LOG_DEBUG, "    not found");
-				if (ctx->status_fp) {
-					(void) fprintf(ctx->status_fp,
-					    "    (no response)\n");
-				}
+				DEBUG1STATUS(ctx, "(no LDAP response)");
 				return (NULL);
 			}
-
-			if (DBG(DISC, 1) || ctx->status_fp) {
-				for (i = 0; dc[i].host[0] != '\0'; i++) {
-					DO_GETNAMEINFO(buf, sizeof (buf),
-					    &dc[i].addr);
-					if (DBG(DISC, 1)) {
-						logger(LOG_DEBUG, "    %s %s",
-						    dc[i].host, buf);
-					}
-					if (ctx->status_fp) {
-						(void) fprintf(ctx->status_fp,
-						    "    %s %s\n",
-						    dc[i].host, buf);
-					}
-				}
-			}
+			log_ds(ctx, dc);
 
 			update_item(&ctx->site_domain_controller, dc,
-			    AD_STATE_AUTO, ttl);
+			    AD_STATE_AUTO, dc->ttl);
 			update_version(&ctx->site_domain_controller, PARAM1,
 			    domain_name_item);
 			update_version(&ctx->site_domain_controller, PARAM2,
@@ -1912,8 +1502,8 @@ ad_disc_get_ForestName(ad_disc_t ctx, boolean_t *auto_discovered)
 static ad_item_t *
 validate_GlobalCatalog(ad_disc_t ctx, enum ad_disc_req req)
 {
-	char buf[INET6_ADDRSTRLEN];
 	ad_disc_ds_t *gc = NULL;
+	ad_disc_cds_t *cgc = NULL;
 	boolean_t validate_global = B_FALSE;
 	boolean_t validate_site = B_FALSE;
 	ad_item_t *dc_item;
@@ -1921,8 +1511,6 @@ validate_GlobalCatalog(ad_disc_t ctx, enum ad_disc_req req)
 	ad_item_t *site_name_item;
 	char *forest_name;
 	char *site_name;
-	uint32_t ttl = 0;
-	int i;
 
 	/* If the values is fixed there will not be a site specific version */
 	if (is_fixed(&ctx->global_catalog))
@@ -1954,16 +1542,9 @@ validate_GlobalCatalog(ad_disc_t ctx, enum ad_disc_req req)
 			if (dc_item != NULL) {
 				ad_disc_ds_t *ds = dc_item->value;
 				if ((ds->flags & DS_GC_FLAG) != 0) {
-					if (DBG(DISC, 1)) {
-						logger(LOG_DEBUG,
-						    "DC is also a GC for %s:",
-						    forest_name);
-					}
-					if (ctx->status_fp) {
-						(void) fprintf(ctx->status_fp,
-						    "DC is also a GC for %s\n",
-						    forest_name);
-					}
+					DEBUG1STATUS(ctx,
+					    "DC is also a GC for %s",
+					    forest_name);
 					gc = ds_dup(ds);
 					if (gc != NULL) {
 						gc->port = GC_PORT;
@@ -1972,53 +1553,22 @@ validate_GlobalCatalog(ad_disc_t ctx, enum ad_disc_req req)
 				}
 			}
 
-			if (DBG(DISC, 2)) {
-				logger(LOG_DEBUG, "Looking for GCs for %s",
-				    forest_name);
-			}
-			if (ctx->status_fp) {
-				(void) fprintf(ctx->status_fp,
-				    "DNS SRV query, forest=%s\n",
-				    forest_name);
-			}
 			/*
 			 * Lookup DNS SRV RR named:
 			 * _ldap._tcp.gc._msdcs.<ForestName>
 			 */
+			DEBUG1STATUS(ctx, "DNS SRV query, forest=%s",
+			    forest_name);
 			DO_RES_NINIT(ctx);
-			gc = srv_query(&ctx->res_state,
+			cgc = srv_query(&ctx->res_state,
 			    LDAP_SRV_HEAD GC_SRV_TAIL,
-			    forest_name, NULL, &ttl, NULL);
+			    forest_name, NULL);
 
-			if (DBG(DISC, 1)) {
-				logger(LOG_DEBUG, "Candidate GCs for %s:",
-				    forest_name);
-			}
-			if (gc == NULL) {
-				if (DBG(DISC, 1))
-					logger(LOG_DEBUG, "    not found");
-				if (ctx->status_fp) {
-					(void) fprintf(ctx->status_fp,
-					    "    (no response)\n");
-				}
+			if (cgc == NULL) {
+				DEBUG1STATUS(ctx, "(no DNS response)");
 				return (NULL);
 			}
-
-			if (DBG(DISC, 1) || ctx->status_fp) {
-				for (i = 0; gc[i].host[0] != '\0'; i++) {
-					DO_GETNAMEINFO(buf, sizeof (buf),
-					    &gc[i].addr);
-					if (DBG(DISC, 1)) {
-						logger(LOG_DEBUG, "    %s %s",
-						    gc[i].host, buf);
-					}
-					if (ctx->status_fp) {
-						(void) fprintf(ctx->status_fp,
-						    "    %s %s\n",
-						    gc[i].host, buf);
-					}
-				}
-			}
+			log_cds(ctx, cgc);
 
 			/*
 			 * Filter out unresponsive servers, and
@@ -2026,46 +1576,21 @@ validate_GlobalCatalog(ad_disc_t ctx, enum ad_disc_req req)
 			 */
 			gc = ldap_ping(
 			    NULL,
-			    gc,
+			    cgc,
 			    forest_name,
 			    DS_GC_FLAG);
+			srv_free(cgc);
+			cgc = NULL;
 
-			if (DBG(DISC, 1)) {
-				logger(LOG_DEBUG, "Responding GCs for %s:",
-				    forest_name);
-			}
-			if (ctx->status_fp) {
-				(void) fprintf(ctx->status_fp, "LDAP ping\n");
-			}
 			if (gc == NULL) {
-				if (DBG(DISC, 1))
-					logger(LOG_DEBUG, "    not found");
-				if (ctx->status_fp) {
-					(void) fprintf(ctx->status_fp,
-					    "    (no response)\n");
-				}
+				DEBUG1STATUS(ctx, "(no LDAP response)");
 				return (NULL);
 			}
-
-			if (DBG(DISC, 1) || ctx->status_fp) {
-				for (i = 0; gc[i].host[0] != '\0'; i++) {
-					DO_GETNAMEINFO(buf, sizeof (buf),
-					    &gc[i].addr);
-					if (DBG(DISC, 1)) {
-						logger(LOG_DEBUG, "    %s %s",
-						    gc[i].host, buf);
-					}
-					if (ctx->status_fp) {
-						(void) fprintf(ctx->status_fp,
-						    "    %s %s\n",
-						    gc[i].host, buf);
-					}
-				}
-			}
+			log_ds(ctx, gc);
 
 		update_global:
 			update_item(&ctx->global_catalog, gc,
-			    AD_STATE_AUTO, ttl);
+			    AD_STATE_AUTO, gc->ttl);
 			update_version(&ctx->global_catalog, PARAM1,
 			    forest_name_item);
 		}
@@ -2090,20 +1615,9 @@ validate_GlobalCatalog(ad_disc_t ctx, enum ad_disc_req req)
 			if (dc_item != NULL) {
 				ad_disc_ds_t *ds = dc_item->value;
 				if ((ds->flags & DS_GC_FLAG) != 0) {
-					if (DBG(DISC, 1)) {
-						logger(LOG_DEBUG,
-						    "DC is also a GC for %s"
-						    " in %s:",
-						    forest_name,
-						    site_name);
-					}
-					if (ctx->status_fp) {
-						(void) fprintf(ctx->status_fp,
-						    "DC is also a GC for %s"
-						    " in %s:\n",
-						    forest_name,
-						    site_name);
-					}
+					DEBUG1STATUS(ctx,
+					    "DC is also a GC for %s in %s",
+					    forest_name, site_name);
 					gc = ds_dup(ds);
 					if (gc != NULL) {
 						gc->port = GC_PORT;
@@ -2112,58 +1626,25 @@ validate_GlobalCatalog(ad_disc_t ctx, enum ad_disc_req req)
 				}
 			}
 
-			if (DBG(DISC, 2)) {
-				logger(LOG_DEBUG,
-				    "Looking for GCs for %s in %s",
-				    forest_name, site_name);
-			}
-			if (ctx->status_fp) {
-				(void) fprintf(ctx->status_fp,
-				    "DNS SRV query, forest=%s, site=%s\n",
-				    forest_name, site_name);
-			}
 			/*
 			 * Lookup DNS SRV RR named:
 			 * _ldap._tcp.<siteName>._sites.gc.
 			 *	_msdcs.<ForestName>
 			 */
+			DEBUG1STATUS(ctx, "DNS SRV query, forest=%s, site=%s",
+			    forest_name, site_name);
 			(void) snprintf(rr_name, sizeof (rr_name),
 			    LDAP_SRV_HEAD SITE_SRV_MIDDLE GC_SRV_TAIL,
 			    site_name);
 			DO_RES_NINIT(ctx);
-			gc = srv_query(&ctx->res_state, rr_name,
-			    forest_name, NULL, &ttl, NULL);
+			cgc = srv_query(&ctx->res_state, rr_name,
+			    forest_name, NULL);
 
-			if (DBG(DISC, 1)) {
-				logger(LOG_DEBUG,
-				    "Candidate GCs for %s in %s:",
-				    forest_name, site_name);
-			}
-			if (gc == NULL) {
-				if (DBG(DISC, 1))
-					logger(LOG_DEBUG, "    not found");
-				if (ctx->status_fp) {
-					(void) fprintf(ctx->status_fp,
-					    "    (no response)\n");
-				}
+			if (cgc == NULL) {
+				DEBUG1STATUS(ctx, "(no DNS response)");
 				return (NULL);
 			}
-
-			if (DBG(DISC, 1) || ctx->status_fp) {
-				for (i = 0; gc[i].host[0] != '\0'; i++) {
-					DO_GETNAMEINFO(buf, sizeof (buf),
-					    &gc[i].addr);
-					if (DBG(DISC, 1)) {
-						logger(LOG_DEBUG, "    %s %s",
-						    gc[i].host, buf);
-					}
-					if (ctx->status_fp) {
-						(void) fprintf(ctx->status_fp,
-						    "    %s %s\n",
-						    gc[i].host, buf);
-					}
-				}
-			}
+			log_cds(ctx, cgc);
 
 			/*
 			 * Filter out unresponsive servers, and
@@ -2171,48 +1652,21 @@ validate_GlobalCatalog(ad_disc_t ctx, enum ad_disc_req req)
 			 */
 			gc = ldap_ping(
 			    NULL,
-			    gc,
+			    cgc,
 			    forest_name,
 			    DS_GC_FLAG);
+			srv_free(cgc);
+			cgc = NULL;
 
-			if (DBG(DISC, 1)) {
-				logger(LOG_DEBUG,
-				    "Responding GCs for %s in %s:",
-				    forest_name, site_name);
-			}
-			if (ctx->status_fp) {
-				(void) fprintf(ctx->status_fp,
-				    "LDAP ping (GC)\n");
-			}
 			if (gc == NULL) {
-				if (DBG(DISC, 1))
-					logger(LOG_DEBUG, "    not found");
-				if (ctx->status_fp) {
-					(void) fprintf(ctx->status_fp,
-					    "    (no response)\n");
-				}
+				DEBUG1STATUS(ctx, "(no LDAP response)");
 				return (NULL);
 			}
-
-			if (DBG(DISC, 1) || ctx->status_fp) {
-				for (i = 0; gc[i].host[0] != '\0'; i++) {
-					DO_GETNAMEINFO(buf, sizeof (buf),
-					    &gc[i].addr);
-					if (DBG(DISC, 1)) {
-						logger(LOG_DEBUG, "    %s %s",
-						    gc[i].host, buf);
-					}
-					if (ctx->status_fp) {
-						(void) fprintf(ctx->status_fp,
-						    "    %s %s\n",
-						    gc[i].host, buf);
-					}
-				}
-			}
+			log_ds(ctx, gc);
 
 		update_site:
 			update_item(&ctx->site_global_catalog, gc,
-			    AD_STATE_AUTO, ttl);
+			    AD_STATE_AUTO, gc->ttl);
 			update_version(&ctx->site_global_catalog, PARAM1,
 			    forest_name_item);
 			update_version(&ctx->site_global_catalog, PARAM2,

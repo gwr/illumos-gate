@@ -27,7 +27,8 @@
 
 LIBRARY =	libadutils.a
 VERS =		.1
-OBJECTS =	adutils.o addisc.o adutils_threadfuncs.o ldap_ping.o
+OBJECTS =	adutils.o addisc.o adutils_threadfuncs.o \
+		ldap_ping.o srv_query.o
 
 include ../../Makefile.lib
 

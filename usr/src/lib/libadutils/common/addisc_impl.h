@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/types.h>
+#include <resolv.h>
 #include <ldap.h>
 #include <pthread.h>
 #include "addisc.h"
@@ -105,7 +106,18 @@ typedef struct ad_disc {
 	int		debug[AD_DEBUG_MAX+1];	/* Debug levels */
 } ad_disc;
 
-ad_disc_ds_t *ldap_ping(ad_disc_t, ad_disc_ds_t *, char *, int);
+/* Candidate Directory Servers (CDS) */
+typedef struct ad_disc_cds {
+	struct ad_disc_ds cds_ds;
+	struct addrinfo *cds_ai;
+} ad_disc_cds_t;
+
+ad_disc_ds_t *ldap_ping(ad_disc_t, ad_disc_cds_t *, char *, int);
+
+int srv_getdom(res_state, const char *, char **);
+ad_disc_cds_t *srv_query(res_state, const char *, const char *,
+    ad_disc_ds_t *);
+void srv_free(ad_disc_cds_t *);
 
 void auto_set_DomainGUID(ad_disc_t, uchar_t *);
 void auto_set_ForestName(ad_disc_t, char *);
