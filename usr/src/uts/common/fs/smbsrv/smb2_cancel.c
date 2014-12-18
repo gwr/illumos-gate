@@ -52,6 +52,7 @@ smb2sr_cancel_sync(smb_request_t *sr)
 {
 	struct smb_request *req;
 	struct smb_session *session = sr->session;
+	int cnt = 0;
 
 	smb_slist_enter(&session->s_req_list);
 	req = smb_slist_head(&session->s_req_list);
@@ -60,8 +61,13 @@ smb2sr_cancel_sync(smb_request_t *sr)
 		if ((req != sr) &&
 		    (req->smb2_messageid == sr->smb2_messageid)) {
 			smb_request_cancel(req);
+			cnt++;
 		}
 		req = smb_slist_next(&session->s_req_list, req);
+	}
+	if (cnt != 1) {
+		DTRACE_PROBE2(smb2__cancel__error,
+		    uint64_t, sr->smb2_messageid, int, cnt);
 	}
 	smb_slist_exit(&session->s_req_list);
 }
@@ -71,6 +77,7 @@ smb2sr_cancel_async(smb_request_t *sr)
 {
 	struct smb_request *req;
 	struct smb_session *session = sr->session;
+	int cnt = 0;
 
 	smb_slist_enter(&session->s_req_list);
 	req = smb_slist_head(&session->s_req_list);
@@ -79,8 +86,13 @@ smb2sr_cancel_async(smb_request_t *sr)
 		if ((req != sr) &&
 		    (req->smb2_async_id == sr->smb2_async_id)) {
 			smb_request_cancel(req);
+			cnt++;
 		}
 		req = smb_slist_next(&session->s_req_list, req);
+	}
+	if (cnt != 1) {
+		DTRACE_PROBE2(smb2__cancel__error,
+		    uint64_t, sr->smb2_async_id, int, cnt);
 	}
 	smb_slist_exit(&session->s_req_list);
 }
