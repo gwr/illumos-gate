@@ -855,7 +855,7 @@ smb2_decode_header(smb_request_t *sr)
 
 	if (sr->smb2_hdr_flags & SMB2_FLAGS_ASYNC_COMMAND) {
 		sr->smb2_async_id = pid |
-		    ((uint64_t)sr->smb_tid) << 32;
+		    ((uint64_t)tid) << 32;
 	} else {
 		sr->smb_pid = pid;
 		sr->smb_tid = (uint16_t)tid; /* XXX wide TIDs */
