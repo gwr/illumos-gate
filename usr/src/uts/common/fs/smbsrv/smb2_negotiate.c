@@ -101,11 +101,14 @@ smb1_negotiate_smb2(smb_request_t *sr)
 		break;
 	case DIALECT_SMB2XXX:	/* SMB 2.??? (wildcard vers) */
 		/*
-		 * Expecting an SMB2 negotiate next, so
-		 * keep the initial s->newrq_func.
+		 * Expecting an SMB2 negotiate next, so keep the
+		 * initial s->newrq_func.  Note that secmode is
+		 * fiction good enough to pass the signing check
+		 * in smb2_negotiate_common().  We'll check the
+		 * real secmode when the 2nd negotiate comes.
 		 */
 		smb2_version = 0x2FF;
-		s->secmode = 0;
+		s->secmode = SMB2_NEGOTIATE_SIGNING_ENABLED;
 		break;
 	default:
 		return (SDRC_DROP_VC);
