@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -867,6 +867,7 @@ typedef struct smb_session {
 	uint32_t		keep_alive;
 	uint64_t		opentime;
 	uint16_t		s_local_port;
+	uint16_t		s_remote_port;
 	smb_inaddr_t		ipaddr;
 	smb_inaddr_t		local_ipaddr;
 	int			dialect;
