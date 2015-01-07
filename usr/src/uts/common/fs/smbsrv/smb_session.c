@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <sys/atomic.h>
@@ -685,6 +685,7 @@ smb_session_create(ksocket_t new_so, uint16_t port, smb_server_t *sv,
 	struct sockaddr_in6	sin6;
 	smb_session_t		*session;
 	int64_t			now;
+	uint16_t		rport;
 
 	session = kmem_cache_alloc(smb_cache_session, KM_SLEEP);
 	bzero(session, sizeof (smb_session_t));
@@ -742,6 +743,7 @@ smb_session_create(ksocket_t new_so, uint16_t port, smb_server_t *sv,
 			bcopy(&sin.sin_addr,
 			    &session->ipaddr.au_addr.au_ipv4,
 			    sizeof (in_addr_t));
+			rport = sin.sin_port;
 		} else {
 			slen = sizeof (sin6);
 			(void) ksocket_getsockname(new_so,
@@ -755,10 +757,12 @@ smb_session_create(ksocket_t new_so, uint16_t port, smb_server_t *sv,
 			bcopy(&sin6.sin6_addr,
 			    &session->ipaddr.au_addr.au_ipv6,
 			    sizeof (in6_addr_t));
+			rport = sin6.sin6_port;
 		}
 		session->ipaddr.a_family = family;
 		session->local_ipaddr.a_family = family;
 		session->s_local_port = port;
+		session->s_remote_port = ntohs(rport);
 		session->sock = new_so;
 		(void) smb_inet_ntop(&session->ipaddr,
 		    session->ip_addr_str, INET6_ADDRSTRLEN);
