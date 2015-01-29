@@ -23,7 +23,7 @@
  * Copyright (c) 2012, Joyent, Inc. All rights reserved.
  * Copyright (c) 2011, 2014 by Delphix. All rights reserved.
  * Copyright (c) 2014 by Saso Kiselkov. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -222,6 +222,8 @@ uint64_t zfs_arc_max;
 uint64_t zfs_arc_min;
 uint64_t zfs_arc_meta_limit = 0;
 uint64_t zfs_arc_meta_min = 0;
+uint64_t zfs_arc_ddt_limit = 0;
+boolean_t zfs_arc_segregate_ddt = B_FALSE;
 int zfs_arc_grow_retry = 0;
 int zfs_arc_shrink_shift = 0;
 int zfs_arc_p_min_shift = 0;
@@ -274,10 +276,27 @@ typedef struct arc_state {
 	uint64_t arcs_lsize[ARC_BUFC_NUMTYPES];
 	/*
 	 * total amount of data in this state; this includes: evictable,
-	 * non-evictable, ARC_BUFC_DATA, and ARC_BUFC_METADATA.
+	 * non-evictable, ARC_BUFC_DATA, ARC_BUFC_METADATA and ARC_BUFC_DDT.
+	 * ARC_BUFC_DDT list is only populated when zfs_arc_segregate_ddt is
+	 * true.
 	 */
 	uint64_t arcs_size;
 } arc_state_t;
+
+/*
+ * We loop through these in l2arc_write_buffers() starting from
+ * PRIORITY_MFU_DDT until we reach PRIORITY_NUMTYPES or the buffer that we
+ * will be writing to L2ARC dev gets full.
+ */
+enum l2arc_priorities {
+	PRIORITY_MFU_DDT,
+	PRIORITY_MRU_DDT,
+	PRIORITY_MFU_META,
+	PRIORITY_MRU_META,
+	PRIORITY_MFU_DATA,
+	PRIORITY_MRU_DATA,
+	PRIORITY_NUMTYPES,
+};
 
 /* The 6 states: */
 static arc_state_t ARC_anon;
@@ -294,10 +313,14 @@ typedef struct arc_stats {
 	kstat_named_t arcstat_demand_data_misses;
 	kstat_named_t arcstat_demand_metadata_hits;
 	kstat_named_t arcstat_demand_metadata_misses;
+	kstat_named_t arcstat_demand_ddt_hits;
+	kstat_named_t arcstat_demand_ddt_misses;
 	kstat_named_t arcstat_prefetch_data_hits;
 	kstat_named_t arcstat_prefetch_data_misses;
 	kstat_named_t arcstat_prefetch_metadata_hits;
 	kstat_named_t arcstat_prefetch_metadata_misses;
+	kstat_named_t arcstat_prefetch_ddt_hits;
+	kstat_named_t arcstat_prefetch_ddt_misses;
 	kstat_named_t arcstat_mru_hits;
 	kstat_named_t arcstat_mru_ghost_hits;
 	kstat_named_t arcstat_mfu_hits;
@@ -358,6 +381,13 @@ typedef struct arc_stats {
 	 */
 	kstat_named_t arcstat_metadata_size;
 	/*
+	 * Number of bytes consumed by ARC buffers of type equal to
+	 * ARC_BUFC_DDT. This is consumed by buffers backing on disk data
+	 * that is used to store DDT (ZAP, ddt stats).
+	 * Only used if zfs_arc_segregate_ddt is true.
+	 */
+	kstat_named_t arcstat_ddt_size;
+	/*
 	 * Number of bytes consumed by various buffers and structures
 	 * not actually backed with ARC buffers. This includes bonus
 	 * buffers (allocated directly via zio_buf_* functions),
@@ -387,6 +417,13 @@ typedef struct arc_stats {
 	 */
 	kstat_named_t arcstat_anon_evictable_metadata;
 	/*
+	 * Number of bytes consumed by ARC buffers that meet the
+	 * following criteria: backing buffers of type ARC_BUFC_DDT,
+	 * residing in the arc_anon state, and are eligible for eviction
+	 * Only used if zfs_arc_segregate_ddt is true.
+	 */
+	kstat_named_t arcstat_anon_evictable_ddt;
+	/*
 	 * Total number of bytes consumed by ARC buffers residing in the
 	 * arc_mru state. This includes *all* buffers in the arc_mru
 	 * state; e.g. data, metadata, evictable, and unevictable buffers
@@ -407,6 +444,14 @@ typedef struct arc_stats {
 	 * (e.g. have no outstanding holds on the buffer).
 	 */
 	kstat_named_t arcstat_mru_evictable_metadata;
+	/*
+	 * Number of bytes consumed by ARC buffers that meet the
+	 * following criteria: backing buffers of type ARC_BUFC_DDT,
+	 * residing in the arc_mru state, and are eligible for eviction
+	 * (e.g. have no outstanding holds on the buffer).
+	 * Only used if zfs_arc_segregate_ddt is true.
+	 */
+	kstat_named_t arcstat_mru_evictable_ddt;
 	/*
 	 * Total number of bytes that *would have been* consumed by ARC
 	 * buffers in the arc_mru_ghost state. The key thing to note
@@ -430,6 +475,13 @@ typedef struct arc_stats {
 	 */
 	kstat_named_t arcstat_mru_ghost_evictable_metadata;
 	/*
+	 * Number of bytes that *would have been* consumed by ARC
+	 * buffers that are eligible for eviction, of type
+	 * ARC_BUFC_DDT, and linked off the arc_mru_ghost state.
+	 * Only used if zfs_arc_segregate_ddt is true.
+	 */
+	kstat_named_t arcstat_mru_ghost_evictable_ddt;
+	/*
 	 * Total number of bytes consumed by ARC buffers residing in the
 	 * arc_mfu state. This includes *all* buffers in the arc_mfu
 	 * state; e.g. data, metadata, evictable, and unevictable buffers
@@ -449,6 +501,13 @@ typedef struct arc_stats {
 	 */
 	kstat_named_t arcstat_mfu_evictable_metadata;
 	/*
+	 * Number of bytes consumed by ARC buffers that are eligible for
+	 * eviction, of type ARC_BUFC_DDT, and reside in the
+	 * arc_mfu state.
+	 * Only used if zfs_arc_segregate_ddt is true.
+	 */
+	kstat_named_t arcstat_mfu_evictable_ddt;
+	/*
 	 * Total number of bytes that *would have been* consumed by ARC
 	 * buffers in the arc_mfu_ghost state. See the comment above
 	 * arcstat_mru_ghost_size for more details.
@@ -466,6 +525,13 @@ typedef struct arc_stats {
 	 * ARC_BUFC_METADATA, and linked off the arc_mru_ghost state.
 	 */
 	kstat_named_t arcstat_mfu_ghost_evictable_metadata;
+	/*
+	 * Number of bytes that *would have been* consumed by ARC
+	 * buffers that are eligible for eviction, of type
+	 * ARC_BUFC_DDT, and linked off the arc_mru_ghost state.
+	 * Only used if zfs_arc_segregate_ddt is true.
+	 */
+	kstat_named_t arcstat_mfu_ghost_evictable_ddt;
 	kstat_named_t arcstat_l2_hits;
 	kstat_named_t arcstat_l2_misses;
 	kstat_named_t arcstat_l2_feeds;
@@ -498,6 +564,8 @@ typedef struct arc_stats {
 	kstat_named_t arcstat_meta_limit;
 	kstat_named_t arcstat_meta_max;
 	kstat_named_t arcstat_meta_min;
+	kstat_named_t arcstat_ddt_used;
+	kstat_named_t arcstat_ddt_limit;
 } arc_stats_t;
 
 static arc_stats_t arc_stats = {
@@ -507,10 +575,14 @@ static arc_stats_t arc_stats = {
 	{ "demand_data_misses",		KSTAT_DATA_UINT64 },
 	{ "demand_metadata_hits",	KSTAT_DATA_UINT64 },
 	{ "demand_metadata_misses",	KSTAT_DATA_UINT64 },
+	{ "demand_ddt_hits",		KSTAT_DATA_UINT64 },
+	{ "demand_ddt_misses",		KSTAT_DATA_UINT64 },
 	{ "prefetch_data_hits",		KSTAT_DATA_UINT64 },
 	{ "prefetch_data_misses",	KSTAT_DATA_UINT64 },
 	{ "prefetch_metadata_hits",	KSTAT_DATA_UINT64 },
 	{ "prefetch_metadata_misses",	KSTAT_DATA_UINT64 },
+	{ "prefetch_ddt_hits",		KSTAT_DATA_UINT64 },
+	{ "prefetch_ddt_misses",	KSTAT_DATA_UINT64 },
 	{ "mru_hits",			KSTAT_DATA_UINT64 },
 	{ "mru_ghost_hits",		KSTAT_DATA_UINT64 },
 	{ "mfu_hits",			KSTAT_DATA_UINT64 },
@@ -536,22 +608,28 @@ static arc_stats_t arc_stats = {
 	{ "hdr_size",			KSTAT_DATA_UINT64 },
 	{ "data_size",			KSTAT_DATA_UINT64 },
 	{ "metadata_size",		KSTAT_DATA_UINT64 },
+	{ "ddt_size",			KSTAT_DATA_UINT64 },
 	{ "other_size",			KSTAT_DATA_UINT64 },
 	{ "anon_size",			KSTAT_DATA_UINT64 },
 	{ "anon_evictable_data",	KSTAT_DATA_UINT64 },
 	{ "anon_evictable_metadata",	KSTAT_DATA_UINT64 },
+	{ "anon_evictable_ddt",		KSTAT_DATA_UINT64 },
 	{ "mru_size",			KSTAT_DATA_UINT64 },
 	{ "mru_evictable_data",		KSTAT_DATA_UINT64 },
 	{ "mru_evictable_metadata",	KSTAT_DATA_UINT64 },
+	{ "mru_evictable_ddt",		KSTAT_DATA_UINT64 },
 	{ "mru_ghost_size",		KSTAT_DATA_UINT64 },
 	{ "mru_ghost_evictable_data",	KSTAT_DATA_UINT64 },
 	{ "mru_ghost_evictable_metadata", KSTAT_DATA_UINT64 },
+	{ "mru_ghost_evictable_ddt",	KSTAT_DATA_UINT64 },
 	{ "mfu_size",			KSTAT_DATA_UINT64 },
 	{ "mfu_evictable_data",		KSTAT_DATA_UINT64 },
 	{ "mfu_evictable_metadata",	KSTAT_DATA_UINT64 },
+	{ "mfu_evictable_ddt",		KSTAT_DATA_UINT64 },
 	{ "mfu_ghost_size",		KSTAT_DATA_UINT64 },
 	{ "mfu_ghost_evictable_data",	KSTAT_DATA_UINT64 },
 	{ "mfu_ghost_evictable_metadata", KSTAT_DATA_UINT64 },
+	{ "mfu_ghost_evictable_ddt",	KSTAT_DATA_UINT64 },
 	{ "l2_hits",			KSTAT_DATA_UINT64 },
 	{ "l2_misses",			KSTAT_DATA_UINT64 },
 	{ "l2_feeds",			KSTAT_DATA_UINT64 },
@@ -583,7 +661,9 @@ static arc_stats_t arc_stats = {
 	{ "arc_meta_used",		KSTAT_DATA_UINT64 },
 	{ "arc_meta_limit",		KSTAT_DATA_UINT64 },
 	{ "arc_meta_max",		KSTAT_DATA_UINT64 },
-	{ "arc_meta_min",		KSTAT_DATA_UINT64 }
+	{ "arc_meta_min",		KSTAT_DATA_UINT64 },
+	{ "arc_ddt_used",		KSTAT_DATA_UINT64 },
+	{ "arc_ddt_limit",		KSTAT_DATA_UINT64 }
 };
 
 #define	ARCSTAT(stat)	(arc_stats.stat.value.ui64)
@@ -612,15 +692,15 @@ static arc_stats_t arc_stats = {
 #define	ARCSTAT_CONDSTAT(cond1, stat1, notstat1, cond2, stat2, notstat2, stat) \
 	if (cond1) {							\
 		if (cond2) {						\
-			ARCSTAT_BUMP(arcstat_##stat1##_##stat2##_##stat); \
+			ARCSTAT_BUMP(arcstat_##stat1##_##stat##_##stat2); \
 		} else {						\
-			ARCSTAT_BUMP(arcstat_##stat1##_##notstat2##_##stat); \
+			ARCSTAT_BUMP(arcstat_##stat1##_##stat##_##notstat2); \
 		}							\
 	} else {							\
 		if (cond2) {						\
-			ARCSTAT_BUMP(arcstat_##notstat1##_##stat2##_##stat); \
+			ARCSTAT_BUMP(arcstat_##notstat1##_##stat##_##stat2); \
 		} else {						\
-			ARCSTAT_BUMP(arcstat_##notstat1##_##notstat2##_##stat);\
+			ARCSTAT_BUMP(arcstat_##notstat1##_##stat##_##notstat2);\
 		}							\
 	}
 
@@ -649,6 +729,8 @@ static arc_state_t	*arc_l2c_only;
 #define	arc_meta_min	ARCSTAT(arcstat_meta_min) /* min size for metadata */
 #define	arc_meta_used	ARCSTAT(arcstat_meta_used) /* size of metadata */
 #define	arc_meta_max	ARCSTAT(arcstat_meta_max) /* max size of metadata */
+#define	arc_ddt_used	ARCSTAT(arcstat_ddt_used) /* ddt size in arc */
+#define	arc_ddt_limit	ARCSTAT(arcstat_ddt_limit) /* ddt in arc size limit */
 
 #define	L2ARC_IS_VALID_COMPRESS(_c_) \
 	((_c_) == ZIO_COMPRESS_LZ4 || (_c_) == ZIO_COMPRESS_EMPTY)
@@ -799,9 +881,12 @@ static arc_buf_hdr_t arc_eviction_hdr;
 #define	HDR_L2_EVICTED(hdr)	((hdr)->b_flags & ARC_FLAG_L2_EVICTED)
 #define	HDR_L2_WRITE_HEAD(hdr)	((hdr)->b_flags & ARC_FLAG_L2_WRITE_HEAD)
 
+#define	HDR_ISTYPE_DDT(hdr)	\
+	    ((hdr)->b_flags & ARC_FLAG_BUFC_DDT)
 #define	HDR_ISTYPE_METADATA(hdr)	\
 	    ((hdr)->b_flags & ARC_FLAG_BUFC_METADATA)
-#define	HDR_ISTYPE_DATA(hdr)	(!HDR_ISTYPE_METADATA(hdr))
+#define	HDR_ISTYPE_DATA(hdr)	(!HDR_ISTYPE_METADATA(hdr) && \
+	    !HDR_ISTYPE_DDT(hdr))
 
 #define	HDR_HAS_L1HDR(hdr)	((hdr)->b_flags & ARC_FLAG_HAS_L1HDR)
 #define	HDR_HAS_L2HDR(hdr)	((hdr)->b_flags & ARC_FLAG_HAS_L2HDR)
@@ -941,6 +1026,26 @@ static void l2arc_read_done(zio_t *);
 static boolean_t l2arc_compress_buf(arc_buf_hdr_t *);
 static void l2arc_decompress_zio(zio_t *, arc_buf_hdr_t *, enum zio_compress);
 static void l2arc_release_cdata_buf(arc_buf_hdr_t *);
+
+static void
+arc_update_hit_stat(arc_buf_hdr_t *hdr, boolean_t hit)
+{
+	boolean_t pf = !HDR_PREFETCH(hdr);
+	switch (arc_buf_type(hdr)) {
+	case ARC_BUFC_DATA:
+		ARCSTAT_CONDSTAT(pf, demand, prefetch, hit, hits, misses, data);
+		break;
+	case ARC_BUFC_METADATA:
+		ARCSTAT_CONDSTAT(pf, demand, prefetch, hit, hits, misses,
+		    metadata);
+		break;
+	case ARC_BUFC_DDT:
+		ARCSTAT_CONDSTAT(pf, demand, prefetch, hit, hits, misses, ddt);
+		break;
+	default:
+		break;
+	}
+}
 
 static uint64_t
 buf_hash(uint64_t spa, const dva_t *dva, uint64_t birth)
@@ -1425,7 +1530,9 @@ arc_buf_watch(arc_buf_t *buf)
 static arc_buf_contents_t
 arc_buf_type(arc_buf_hdr_t *hdr)
 {
-	if (HDR_ISTYPE_METADATA(hdr)) {
+	if (HDR_ISTYPE_DDT(hdr)) {
+		return (ARC_BUFC_DDT);
+	} else if (HDR_ISTYPE_METADATA(hdr)) {
 		return (ARC_BUFC_METADATA);
 	} else {
 		return (ARC_BUFC_DATA);
@@ -1441,6 +1548,8 @@ arc_bufc_to_flags(arc_buf_contents_t type)
 		return (0);
 	case ARC_BUFC_METADATA:
 		return (ARC_FLAG_BUFC_METADATA);
+	case ARC_BUFC_DDT:
+		return (ARC_FLAG_BUFC_DDT);
 	default:
 		break;
 	}
@@ -1659,8 +1768,9 @@ arc_change_state(arc_state_t *new_state, arc_buf_hdr_t *hdr,
 	 * L2 headers should never be on the L2 state list since they don't
 	 * have L1 headers allocated.
 	 */
-	ASSERT(multilist_is_empty(&arc_l2c_only->arcs_list[ARC_BUFC_DATA]) &&
-	    multilist_is_empty(&arc_l2c_only->arcs_list[ARC_BUFC_METADATA]));
+	ASSERT(multilist_is_empty(&arc_l2c_only->arcs_list[ARC_BUFC_DATA]));
+	ASSERT(multilist_is_empty(&arc_l2c_only->arcs_list[ARC_BUFC_METADATA]));
+	ASSERT(multilist_is_empty(&arc_l2c_only->arcs_list[ARC_BUFC_DDT]));
 }
 
 void
@@ -1675,6 +1785,9 @@ arc_space_consume(uint64_t space, arc_space_type_t type)
 	case ARC_SPACE_META:
 		ARCSTAT_INCR(arcstat_metadata_size, space);
 		break;
+	case ARC_SPACE_DDT:
+		ARCSTAT_INCR(arcstat_ddt_size, space);
+		break;
 	case ARC_SPACE_OTHER:
 		ARCSTAT_INCR(arcstat_other_size, space);
 		break;
@@ -1686,8 +1799,10 @@ arc_space_consume(uint64_t space, arc_space_type_t type)
 		break;
 	}
 
-	if (type != ARC_SPACE_DATA)
+	if (type == ARC_SPACE_META)
 		ARCSTAT_INCR(arcstat_meta_used, space);
+	else if (type == ARC_SPACE_DDT)
+		ARCSTAT_INCR(arcstat_ddt_used, space);
 
 	atomic_add_64(&arc_size, space);
 }
@@ -1704,6 +1819,9 @@ arc_space_return(uint64_t space, arc_space_type_t type)
 	case ARC_SPACE_META:
 		ARCSTAT_INCR(arcstat_metadata_size, -space);
 		break;
+	case ARC_SPACE_DDT:
+		ARCSTAT_INCR(arcstat_ddt_size, -space);
+		break;
 	case ARC_SPACE_OTHER:
 		ARCSTAT_INCR(arcstat_other_size, -space);
 		break;
@@ -1715,11 +1833,14 @@ arc_space_return(uint64_t space, arc_space_type_t type)
 		break;
 	}
 
-	if (type != ARC_SPACE_DATA) {
+	if (type == ARC_SPACE_META) {
 		ASSERT(arc_meta_used >= space);
 		if (arc_meta_max < arc_meta_used)
 			arc_meta_max = arc_meta_used;
 		ARCSTAT_INCR(arcstat_meta_used, -space);
+	} else if (type == ARC_SPACE_DDT) {
+		ASSERT(arc_ddt_used >= space);
+		ARCSTAT_INCR(arcstat_ddt_used, -space);
 	}
 
 	ASSERT(arc_size >= space);
@@ -1731,6 +1852,9 @@ arc_buf_alloc(spa_t *spa, int32_t size, void *tag, arc_buf_contents_t type)
 {
 	arc_buf_hdr_t *hdr;
 	arc_buf_t *buf;
+
+	if (type == ARC_BUFC_DDT && !zfs_arc_segregate_ddt)
+		type = ARC_BUFC_METADATA;
 
 	ASSERT3U(size, >, 0);
 	hdr = kmem_cache_alloc(hdr_full_cache, KM_PUSHPAGE);
@@ -1878,9 +2002,7 @@ arc_buf_add_ref(arc_buf_t *buf, void* tag)
 	arc_access(hdr, hash_lock);
 	mutex_exit(hash_lock);
 	ARCSTAT_BUMP(arcstat_hits);
-	ARCSTAT_CONDSTAT(!HDR_PREFETCH(hdr),
-	    demand, prefetch, !HDR_ISTYPE_METADATA(hdr),
-	    data, metadata, hits);
+	arc_update_hit_stat(hdr, B_TRUE);
 }
 
 static void
@@ -1988,7 +2110,10 @@ arc_buf_destroy(arc_buf_t *buf, boolean_t remove)
 		arc_cksum_verify(buf);
 		arc_buf_unwatch(buf);
 
-		if (type == ARC_BUFC_METADATA) {
+		if (type == ARC_BUFC_DDT) {
+			arc_buf_data_free(buf, zio_buf_free);
+			arc_space_return(size, ARC_SPACE_DDT);
+		} else if (type == ARC_BUFC_METADATA) {
 			arc_buf_data_free(buf, zio_buf_free);
 			arc_space_return(size, ARC_SPACE_META);
 		} else {
@@ -2664,36 +2789,49 @@ arc_adjust_impl(arc_state_t *state, uint64_t spa, int64_t bytes,
 }
 
 /*
- * Evict metadata buffers from the cache, such that arc_meta_used is
- * capped by the arc_meta_limit tunable.
+ * Depending on the value of adjust_ddt arg evict either DDT (B_TRUE)
+ * or metadata (B_TRUE) buffers.
+ * Evict metadata or DDT buffers from the cache, such that arc_meta_used or
+ * arc_ddt_used is capped by the arc_meta_limit or arc_ddt_limit tunable.
  */
 static uint64_t
-arc_adjust_meta(void)
+arc_adjust_meta_or_ddt(boolean_t adjust_ddt)
 {
 	uint64_t total_evicted = 0;
-	int64_t target;
+	int64_t target, over_limit;
+	arc_buf_contents_t type;
 
+	if (adjust_ddt) {
+		over_limit = arc_ddt_used - arc_ddt_limit;
+		type = ARC_BUFC_DDT;
+	} else {
+		over_limit = arc_meta_used - arc_meta_limit;
+		type = ARC_BUFC_METADATA;
+	}
 	/*
-	 * If we're over the meta limit, we want to evict enough
-	 * metadata to get back under the meta limit. We don't want to
+	 * If we're over the limit, we want to evict enough
+	 * to get back under the limit. We don't want to
 	 * evict so much that we drop the MRU below arc_p, though. If
 	 * we're over the meta limit more than we're over arc_p, we
 	 * evict some from the MRU here, and some from the MFU below.
 	 */
-	target = MIN((int64_t)(arc_meta_used - arc_meta_limit),
+	target = MIN(over_limit,
 	    (int64_t)(arc_anon->arcs_size + arc_mru->arcs_size - arc_p));
 
-	total_evicted += arc_adjust_impl(arc_mru, 0, target, ARC_BUFC_METADATA);
+	total_evicted += arc_adjust_impl(arc_mru, 0, target, type);
+
+	over_limit = adjust_ddt ? arc_ddt_used - arc_ddt_limit :
+	    arc_meta_used - arc_meta_limit;
 
 	/*
 	 * Similar to the above, we want to evict enough bytes to get us
-	 * below the meta limit, but not so much as to drop us below the
+	 * below the limit, but not so much as to drop us below the
 	 * space alloted to the MFU (which is defined as arc_c - arc_p).
 	 */
-	target = MIN((int64_t)(arc_meta_used - arc_meta_limit),
+	target = MIN(over_limit,
 	    (int64_t)(arc_mfu->arcs_size - (arc_c - arc_p)));
 
-	total_evicted += arc_adjust_impl(arc_mfu, 0, target, ARC_BUFC_METADATA);
+	total_evicted += arc_adjust_impl(arc_mfu, 0, target, type);
 
 	return (total_evicted);
 }
@@ -2701,8 +2839,8 @@ arc_adjust_meta(void)
 /*
  * Return the type of the oldest buffer in the given arc state
  *
- * This function will select a random sublist of type ARC_BUFC_DATA and
- * a random sublist of type ARC_BUFC_METADATA. The tail of each sublist
+ * This function will select a random sublists of type ARC_BUFC_DATA,
+ * ARC_BUFC_METADATA, and ARC_BUFC_DDT. The tail of each sublist
  * is compared, and the type which contains the "older" buffer will be
  * returned.
  */
@@ -2711,13 +2849,18 @@ arc_adjust_type(arc_state_t *state)
 {
 	multilist_t *data_ml = &state->arcs_list[ARC_BUFC_DATA];
 	multilist_t *meta_ml = &state->arcs_list[ARC_BUFC_METADATA];
+	multilist_t *ddt_ml = &state->arcs_list[ARC_BUFC_DDT];
 	int data_idx = multilist_get_random_index(data_ml);
 	int meta_idx = multilist_get_random_index(meta_ml);
+	int ddt_idx = multilist_get_random_index(ddt_ml);
 	multilist_sublist_t *data_mls;
 	multilist_sublist_t *meta_mls;
-	arc_buf_contents_t type;
+	multilist_sublist_t *ddt_mls;
+	arc_buf_contents_t type = ARC_BUFC_DATA; /* silence compiler warning */
 	arc_buf_hdr_t *data_hdr;
 	arc_buf_hdr_t *meta_hdr;
+	arc_buf_hdr_t *ddt_hdr;
+	clock_t	oldest;
 
 	/*
 	 * We keep the sublist lock until we're finished, to prevent
@@ -2725,6 +2868,7 @@ arc_adjust_type(arc_state_t *state)
 	 */
 	data_mls = multilist_sublist_lock(data_ml, data_idx);
 	meta_mls = multilist_sublist_lock(meta_ml, meta_idx);
+	ddt_mls = multilist_sublist_lock(ddt_ml, ddt_idx);
 
 	/*
 	 * These two loops are to ensure we skip any markers that
@@ -2743,17 +2887,66 @@ arc_adjust_type(arc_state_t *state)
 			break;
 	}
 
-	if (data_hdr == NULL && meta_hdr == NULL) {
+	for (ddt_hdr = multilist_sublist_tail(ddt_mls); ddt_hdr != NULL;
+	    ddt_hdr = multilist_sublist_prev(ddt_mls, ddt_hdr)) {
+		if (ddt_hdr->b_spa != 0)
+			break;
+	}
+
+	if (data_hdr == NULL && meta_hdr == NULL && ddt_hdr == NULL) {
 		type = ARC_BUFC_DATA;
-	} else if (data_hdr == NULL) {
+	} else if (data_hdr != NULL && meta_hdr != NULL && ddt_hdr != NULL) {
+		/* The headers can't be on the sublist without an L1 header */
+		ASSERT(HDR_HAS_L1HDR(data_hdr));
+		ASSERT(HDR_HAS_L1HDR(meta_hdr));
+		ASSERT(HDR_HAS_L1HDR(ddt_hdr));
+
+		oldest = data_hdr->b_l1hdr.b_arc_access;
+		type = ARC_BUFC_DATA;
+		if (oldest > meta_hdr->b_l1hdr.b_arc_access) {
+			oldest = meta_hdr->b_l1hdr.b_arc_access;
+			type = ARC_BUFC_METADATA;
+		}
+		if (oldest > ddt_hdr->b_l1hdr.b_arc_access) {
+			type = ARC_BUFC_DDT;
+		}
+	} else if (data_hdr == NULL && ddt_hdr == NULL) {
 		ASSERT3P(meta_hdr, !=, NULL);
 		type = ARC_BUFC_METADATA;
-	} else if (meta_hdr == NULL) {
+	} else if (meta_hdr == NULL && ddt_hdr == NULL) {
 		ASSERT3P(data_hdr, !=, NULL);
 		type = ARC_BUFC_DATA;
-	} else {
-		ASSERT3P(data_hdr, !=, NULL);
-		ASSERT3P(meta_hdr, !=, NULL);
+	} else if (meta_hdr == NULL && data_hdr == NULL) {
+		ASSERT3P(ddt_hdr, !=, NULL);
+		type = ARC_BUFC_DDT;
+	} else if (data_hdr != NULL && ddt_hdr != NULL) {
+		ASSERT3P(meta_hdr, ==, NULL);
+
+		/* The headers can't be on the sublist without an L1 header */
+		ASSERT(HDR_HAS_L1HDR(data_hdr));
+		ASSERT(HDR_HAS_L1HDR(ddt_hdr));
+
+		if (data_hdr->b_l1hdr.b_arc_access <
+		    ddt_hdr->b_l1hdr.b_arc_access) {
+			type = ARC_BUFC_DATA;
+		} else {
+			type = ARC_BUFC_DDT;
+		}
+	} else if (meta_hdr != NULL && ddt_hdr != NULL) {
+		ASSERT3P(data_hdr, ==, NULL);
+
+		/* The headers can't be on the sublist without an L1 header */
+		ASSERT(HDR_HAS_L1HDR(meta_hdr));
+		ASSERT(HDR_HAS_L1HDR(ddt_hdr));
+
+		if (meta_hdr->b_l1hdr.b_arc_access <
+		    ddt_hdr->b_l1hdr.b_arc_access) {
+			type = ARC_BUFC_METADATA;
+		} else {
+			type = ARC_BUFC_DDT;
+		}
+	} else if (meta_hdr != NULL && data_hdr != NULL) {
+		ASSERT3P(ddt_hdr, ==, NULL);
 
 		/* The headers can't be on the sublist without an L1 header */
 		ASSERT(HDR_HAS_L1HDR(data_hdr));
@@ -2765,8 +2958,12 @@ arc_adjust_type(arc_state_t *state)
 		} else {
 			type = ARC_BUFC_METADATA;
 		}
+	} else {
+		/* should never get here */
+		ASSERT(0);
 	}
 
+	multilist_sublist_unlock(ddt_mls);
 	multilist_sublist_unlock(meta_mls);
 	multilist_sublist_unlock(data_mls);
 
@@ -2787,7 +2984,13 @@ arc_adjust(void)
 	 * If we're over arc_meta_limit, we want to correct that before
 	 * potentially evicting data buffers below.
 	 */
-	total_evicted += arc_adjust_meta();
+	total_evicted += arc_adjust_meta_or_ddt(B_FALSE);
+
+	/*
+	 * If we're over arc_ddt_limit, we want to correct that before
+	 * potentially evicting data buffers below.
+	 */
+	total_evicted += arc_adjust_meta_or_ddt(B_TRUE);
 
 	/*
 	 * Adjust MRU size
@@ -2800,8 +3003,8 @@ arc_adjust(void)
 	 * arc_p here, and then evict more from the MFU below.
 	 */
 	target = MIN((int64_t)(arc_size - arc_c),
-	    (int64_t)(arc_anon->arcs_size + arc_mru->arcs_size + arc_meta_used -
-	    arc_p));
+	    (int64_t)(arc_anon->arcs_size + arc_mru->arcs_size + arc_meta_used +
+	    arc_ddt_used - arc_p));
 
 	/*
 	 * If we're below arc_meta_min, always prefer to evict data.
@@ -2822,8 +3025,8 @@ arc_adjust(void)
 		 */
 		target -= bytes;
 
-		total_evicted +=
-		    arc_adjust_impl(arc_mru, 0, target, ARC_BUFC_DATA);
+		bytes += arc_adjust_impl(arc_mru, 0, target, ARC_BUFC_DATA);
+		total_evicted += bytes;
 	} else {
 		bytes = arc_adjust_impl(arc_mru, 0, target, ARC_BUFC_DATA);
 		total_evicted += bytes;
@@ -2834,9 +3037,17 @@ arc_adjust(void)
 		 */
 		target -= bytes;
 
-		total_evicted +=
-		    arc_adjust_impl(arc_mru, 0, target, ARC_BUFC_METADATA);
+		bytes += arc_adjust_impl(arc_mru, 0, target, ARC_BUFC_METADATA);
+		total_evicted += bytes;
 	}
+
+	/*
+	 * If we couldn't evict our target number of bytes from
+	 * data and metadata, we try to get the rest from ddt.
+	 */
+	target -= bytes;
+	total_evicted +=
+	    arc_adjust_impl(arc_mru, 0, target, ARC_BUFC_DDT);
 
 	/*
 	 * Adjust MFU size
@@ -2858,8 +3069,8 @@ arc_adjust(void)
 		 */
 		target -= bytes;
 
-		total_evicted +=
-		    arc_adjust_impl(arc_mfu, 0, target, ARC_BUFC_DATA);
+		bytes += arc_adjust_impl(arc_mfu, 0, target, ARC_BUFC_DATA);
+		total_evicted += bytes;
 	} else {
 		bytes = arc_adjust_impl(arc_mfu, 0, target, ARC_BUFC_DATA);
 		total_evicted += bytes;
@@ -2870,9 +3081,17 @@ arc_adjust(void)
 		 */
 		target -= bytes;
 
-		total_evicted +=
-		    arc_adjust_impl(arc_mfu, 0, target, ARC_BUFC_METADATA);
+		bytes += arc_adjust_impl(arc_mfu, 0, target, ARC_BUFC_METADATA);
+		total_evicted += bytes;
 	}
+
+	/*
+	 * If we couldn't evict our target number of bytes from
+	 * data and metadata, we try to get the rest from ddt.
+	 */
+	target -= bytes;
+	total_evicted +=
+	    arc_adjust_impl(arc_mru, 0, target, ARC_BUFC_DDT);
 
 	/*
 	 * Adjust ghost lists
@@ -2892,8 +3111,13 @@ arc_adjust(void)
 
 	target -= bytes;
 
+	bytes += arc_adjust_impl(arc_mru_ghost, 0, target, ARC_BUFC_METADATA);
+	total_evicted += bytes;
+
+	target -= bytes;
+
 	total_evicted +=
-	    arc_adjust_impl(arc_mru_ghost, 0, target, ARC_BUFC_METADATA);
+	    arc_adjust_impl(arc_mru_ghost, 0, target, ARC_BUFC_DDT);
 
 	/*
 	 * We assume the sum of the mru list and mfu list is less than
@@ -2910,8 +3134,13 @@ arc_adjust(void)
 
 	target -= bytes;
 
+	bytes += arc_adjust_impl(arc_mfu_ghost, 0, target, ARC_BUFC_METADATA);
+	total_evicted += bytes;
+
+	target -= bytes;
+
 	total_evicted +=
-	    arc_adjust_impl(arc_mfu_ghost, 0, target, ARC_BUFC_METADATA);
+	    arc_adjust_impl(arc_mfu_ghost, 0, target, ARC_BUFC_DDT);
 
 	return (total_evicted);
 }
@@ -2949,17 +3178,14 @@ static taskq_t *arc_flush_taskq;
 static void
 arc_flush_impl(uint64_t guid, boolean_t retry)
 {
-	(void) arc_flush_state(arc_mru, guid, ARC_BUFC_DATA, retry);
-	(void) arc_flush_state(arc_mru, guid, ARC_BUFC_METADATA, retry);
+	arc_buf_contents_t arcs;
 
-	(void) arc_flush_state(arc_mfu, guid, ARC_BUFC_DATA, retry);
-	(void) arc_flush_state(arc_mfu, guid, ARC_BUFC_METADATA, retry);
-
-	(void) arc_flush_state(arc_mru_ghost, guid, ARC_BUFC_DATA, retry);
-	(void) arc_flush_state(arc_mru_ghost, guid, ARC_BUFC_METADATA, retry);
-
-	(void) arc_flush_state(arc_mfu_ghost, guid, ARC_BUFC_DATA, retry);
-	(void) arc_flush_state(arc_mfu_ghost, guid, ARC_BUFC_METADATA, retry);
+	for (arcs = ARC_BUFC_DATA; arcs < ARC_BUFC_NUMTYPES; ++arcs) {
+		(void) arc_flush_state(arc_mru, guid, arcs, retry);
+		(void) arc_flush_state(arc_mfu, guid, arcs, retry);
+		(void) arc_flush_state(arc_mru_ghost, guid, arcs, retry);
+		(void) arc_flush_state(arc_mfu_ghost, guid, arcs, retry);
+	}
 
 	arc_do_user_evicts();
 }
@@ -3536,7 +3762,10 @@ arc_get_data_buf(arc_buf_t *buf)
 		mutex_exit(&arc_reclaim_lock);
 	}
 
-	if (type == ARC_BUFC_METADATA) {
+	if (type == ARC_BUFC_DDT) {
+		buf->b_data = zio_buf_alloc(size);
+		arc_space_consume(size, ARC_SPACE_DDT);
+	} else if (type == ARC_BUFC_METADATA) {
 		buf->b_data = zio_buf_alloc(size);
 		arc_space_consume(size, ARC_SPACE_META);
 	} else {
@@ -3987,9 +4216,7 @@ top:
 			hdr->b_flags |= ARC_FLAG_L2COMPRESS;
 		mutex_exit(hash_lock);
 		ARCSTAT_BUMP(arcstat_hits);
-		ARCSTAT_CONDSTAT(!HDR_PREFETCH(hdr),
-		    demand, prefetch, !HDR_ISTYPE_METADATA(hdr),
-		    data, metadata, hits);
+		arc_update_hit_stat(hdr, B_TRUE);
 
 		if (done)
 			done(NULL, buf, private);
@@ -4005,7 +4232,7 @@ top:
 		if (hdr == NULL) {
 			/* this block is not in the cache */
 			arc_buf_hdr_t *exists = NULL;
-			arc_buf_contents_t type = BP_GET_BUFC_TYPE(bp);
+			arc_buf_contents_t type = bp_get_bufc_type(bp);
 			buf = arc_buf_alloc(spa, size, private, type);
 			hdr = buf->b_hdr;
 			if (!BP_IS_EMBEDDED(bp)) {
@@ -4106,9 +4333,7 @@ top:
 		DTRACE_PROBE4(arc__miss, arc_buf_hdr_t *, hdr, blkptr_t *, bp,
 		    uint64_t, size, zbookmark_phys_t *, zb);
 		ARCSTAT_BUMP(arcstat_misses);
-		ARCSTAT_CONDSTAT(!HDR_PREFETCH(hdr),
-		    demand, prefetch, !HDR_ISTYPE_METADATA(hdr),
-		    data, metadata, misses);
+		arc_update_hit_stat(hdr, B_FALSE);
 
 		if (vd != NULL && l2arc_ndev != 0 && !(l2arc_norw && devw)) {
 			/*
@@ -4746,15 +4971,11 @@ arc_tempreserve_space(uint64_t reserve, uint64_t txg)
 	 * Note: if two requests come in concurrently, we might let them
 	 * both succeed, when one of them should fail.  Not a huge deal.
 	 */
-
 	if (reserve + arc_tempreserve + anon_size > arc_c / 2 &&
 	    anon_size > arc_c / 4) {
-		dprintf("failing, arc_tempreserve=%lluK anon_meta=%lluK "
-		    "anon_data=%lluK tempreserve=%lluK arc_c=%lluK\n",
-		    arc_tempreserve>>10,
-		    arc_anon->arcs_lsize[ARC_BUFC_METADATA]>>10,
-		    arc_anon->arcs_lsize[ARC_BUFC_DATA]>>10,
-		    reserve>>10, arc_c>>10);
+		DTRACE_PROBE4(arc__tempreserve__space__throttle, uint64_t,
+		    arc_tempreserve, arc_state_t *, arc_anon, uint64_t,
+		    reserve, uint64_t, arc_c);
 		return (SET_ERROR(ERESTART));
 	}
 	atomic_add_64(&arc_tempreserve, reserve);
@@ -4763,11 +4984,13 @@ arc_tempreserve_space(uint64_t reserve, uint64_t txg)
 
 static void
 arc_kstat_update_state(arc_state_t *state, kstat_named_t *size,
-    kstat_named_t *evict_data, kstat_named_t *evict_metadata)
+    kstat_named_t *evict_data, kstat_named_t *evict_metadata,
+    kstat_named_t *evict_ddt)
 {
 	size->value.ui64 = state->arcs_size;
 	evict_data->value.ui64 = state->arcs_lsize[ARC_BUFC_DATA];
 	evict_metadata->value.ui64 = state->arcs_lsize[ARC_BUFC_METADATA];
+	evict_ddt->value.ui64 = state->arcs_lsize[ARC_BUFC_DDT];
 }
 
 static int
@@ -4781,23 +5004,28 @@ arc_kstat_update(kstat_t *ksp, int rw)
 		arc_kstat_update_state(arc_anon,
 		    &as->arcstat_anon_size,
 		    &as->arcstat_anon_evictable_data,
-		    &as->arcstat_anon_evictable_metadata);
+		    &as->arcstat_anon_evictable_metadata,
+		    &as->arcstat_anon_evictable_ddt);
 		arc_kstat_update_state(arc_mru,
 		    &as->arcstat_mru_size,
 		    &as->arcstat_mru_evictable_data,
-		    &as->arcstat_mru_evictable_metadata);
+		    &as->arcstat_mru_evictable_metadata,
+		    &as->arcstat_mru_evictable_ddt);
 		arc_kstat_update_state(arc_mru_ghost,
 		    &as->arcstat_mru_ghost_size,
 		    &as->arcstat_mru_ghost_evictable_data,
-		    &as->arcstat_mru_ghost_evictable_metadata);
+		    &as->arcstat_mru_ghost_evictable_metadata,
+		    &as->arcstat_mru_ghost_evictable_ddt);
 		arc_kstat_update_state(arc_mfu,
 		    &as->arcstat_mfu_size,
 		    &as->arcstat_mfu_evictable_data,
-		    &as->arcstat_mfu_evictable_metadata);
+		    &as->arcstat_mfu_evictable_metadata,
+		    &as->arcstat_mfu_evictable_ddt);
 		arc_kstat_update_state(arc_mfu_ghost,
 		    &as->arcstat_mfu_ghost_size,
 		    &as->arcstat_mfu_ghost_evictable_data,
-		    &as->arcstat_mfu_ghost_evictable_metadata);
+		    &as->arcstat_mfu_ghost_evictable_metadata,
+		    &as->arcstat_mfu_ghost_evictable_ddt);
 	}
 
 	return (0);
@@ -4849,6 +5077,7 @@ arc_init(void)
 #else
 	uint64_t allmem = (physmem * PAGESIZE) / 2;
 #endif
+	arc_buf_contents_t arcs;
 
 	mutex_init(&arc_reclaim_lock, NULL, MUTEX_DEFAULT, NULL);
 	cv_init(&arc_reclaim_thread_cv, NULL, CV_DEFAULT, NULL);
@@ -4893,8 +5122,14 @@ arc_init(void)
 	arc_c = arc_c_max;
 	arc_p = (arc_c >> 1);
 
+	/* limit ddt meta-data to 1/4 of the arc capacity */
+	arc_ddt_limit = arc_c_max / 4;
 	/* limit meta-data to 1/4 of the arc capacity */
 	arc_meta_limit = arc_c_max / 4;
+
+	/* Allow the tunable to override if it is reasonable */
+	if (zfs_arc_ddt_limit > 0 && zfs_arc_ddt_limit <= arc_c_max)
+		arc_ddt_limit = zfs_arc_ddt_limit;
 
 	/* Allow the tunable to override if it is reasonable */
 	if (zfs_arc_meta_limit > 0 && zfs_arc_meta_limit <= arc_c_max)
@@ -4941,46 +5176,33 @@ arc_init(void)
 	arc_l2c_only = &ARC_l2c_only;
 	arc_size = 0;
 
-	multilist_create(&arc_mru->arcs_list[ARC_BUFC_METADATA],
-	    sizeof (arc_buf_hdr_t),
-	    offsetof(arc_buf_hdr_t, b_l1hdr.b_arc_node),
-	    zfs_arc_num_sublists_per_state, arc_state_multilist_index_func);
-	multilist_create(&arc_mru->arcs_list[ARC_BUFC_DATA],
-	    sizeof (arc_buf_hdr_t),
-	    offsetof(arc_buf_hdr_t, b_l1hdr.b_arc_node),
-	    zfs_arc_num_sublists_per_state, arc_state_multilist_index_func);
-	multilist_create(&arc_mru_ghost->arcs_list[ARC_BUFC_METADATA],
-	    sizeof (arc_buf_hdr_t),
-	    offsetof(arc_buf_hdr_t, b_l1hdr.b_arc_node),
-	    zfs_arc_num_sublists_per_state, arc_state_multilist_index_func);
-	multilist_create(&arc_mru_ghost->arcs_list[ARC_BUFC_DATA],
-	    sizeof (arc_buf_hdr_t),
-	    offsetof(arc_buf_hdr_t, b_l1hdr.b_arc_node),
-	    zfs_arc_num_sublists_per_state, arc_state_multilist_index_func);
-	multilist_create(&arc_mfu->arcs_list[ARC_BUFC_METADATA],
-	    sizeof (arc_buf_hdr_t),
-	    offsetof(arc_buf_hdr_t, b_l1hdr.b_arc_node),
-	    zfs_arc_num_sublists_per_state, arc_state_multilist_index_func);
-	multilist_create(&arc_mfu->arcs_list[ARC_BUFC_DATA],
-	    sizeof (arc_buf_hdr_t),
-	    offsetof(arc_buf_hdr_t, b_l1hdr.b_arc_node),
-	    zfs_arc_num_sublists_per_state, arc_state_multilist_index_func);
-	multilist_create(&arc_mfu_ghost->arcs_list[ARC_BUFC_METADATA],
-	    sizeof (arc_buf_hdr_t),
-	    offsetof(arc_buf_hdr_t, b_l1hdr.b_arc_node),
-	    zfs_arc_num_sublists_per_state, arc_state_multilist_index_func);
-	multilist_create(&arc_mfu_ghost->arcs_list[ARC_BUFC_DATA],
-	    sizeof (arc_buf_hdr_t),
-	    offsetof(arc_buf_hdr_t, b_l1hdr.b_arc_node),
-	    zfs_arc_num_sublists_per_state, arc_state_multilist_index_func);
-	multilist_create(&arc_l2c_only->arcs_list[ARC_BUFC_METADATA],
-	    sizeof (arc_buf_hdr_t),
-	    offsetof(arc_buf_hdr_t, b_l1hdr.b_arc_node),
-	    zfs_arc_num_sublists_per_state, arc_state_multilist_index_func);
-	multilist_create(&arc_l2c_only->arcs_list[ARC_BUFC_DATA],
-	    sizeof (arc_buf_hdr_t),
-	    offsetof(arc_buf_hdr_t, b_l1hdr.b_arc_node),
-	    zfs_arc_num_sublists_per_state, arc_state_multilist_index_func);
+	for (arcs = ARC_BUFC_DATA; arcs < ARC_BUFC_NUMTYPES; ++arcs) {
+		multilist_create(&arc_mru->arcs_list[arcs],
+		    sizeof (arc_buf_hdr_t),
+		    offsetof(arc_buf_hdr_t, b_l1hdr.b_arc_node),
+		    zfs_arc_num_sublists_per_state,
+		    arc_state_multilist_index_func);
+		multilist_create(&arc_mru_ghost->arcs_list[arcs],
+		    sizeof (arc_buf_hdr_t),
+		    offsetof(arc_buf_hdr_t, b_l1hdr.b_arc_node),
+		    zfs_arc_num_sublists_per_state,
+		    arc_state_multilist_index_func);
+		multilist_create(&arc_mfu->arcs_list[arcs],
+		    sizeof (arc_buf_hdr_t),
+		    offsetof(arc_buf_hdr_t, b_l1hdr.b_arc_node),
+		    zfs_arc_num_sublists_per_state,
+		    arc_state_multilist_index_func);
+		multilist_create(&arc_mfu_ghost->arcs_list[arcs],
+		    sizeof (arc_buf_hdr_t),
+		    offsetof(arc_buf_hdr_t, b_l1hdr.b_arc_node),
+		    zfs_arc_num_sublists_per_state,
+		    arc_state_multilist_index_func);
+		multilist_create(&arc_l2c_only->arcs_list[arcs],
+		    sizeof (arc_buf_hdr_t),
+		    offsetof(arc_buf_hdr_t, b_l1hdr.b_arc_node),
+		    zfs_arc_num_sublists_per_state,
+		    arc_state_multilist_index_func);
+	}
 
 	arc_flush_taskq = taskq_create("arc_flush_tq",
 	    max_ncpus, minclsyspri, 1, zfs_flush_ntasks, TASKQ_DYNAMIC);
@@ -5029,6 +5251,7 @@ arc_init(void)
 void
 arc_fini(void)
 {
+	arc_buf_contents_t arcs;
 	mutex_enter(&arc_reclaim_lock);
 	arc_reclaim_thread_exit = TRUE;
 	/*
@@ -5070,15 +5293,12 @@ arc_fini(void)
 	mutex_destroy(&arc_user_evicts_lock);
 	cv_destroy(&arc_user_evicts_cv);
 
-	multilist_destroy(&arc_mru->arcs_list[ARC_BUFC_METADATA]);
-	multilist_destroy(&arc_mru_ghost->arcs_list[ARC_BUFC_METADATA]);
-	multilist_destroy(&arc_mfu->arcs_list[ARC_BUFC_METADATA]);
-	multilist_destroy(&arc_mfu_ghost->arcs_list[ARC_BUFC_METADATA]);
-	multilist_destroy(&arc_mru->arcs_list[ARC_BUFC_DATA]);
-	multilist_destroy(&arc_mru_ghost->arcs_list[ARC_BUFC_DATA]);
-	multilist_destroy(&arc_mfu->arcs_list[ARC_BUFC_DATA]);
-	multilist_destroy(&arc_mfu_ghost->arcs_list[ARC_BUFC_DATA]);
-
+	for (arcs = ARC_BUFC_DATA; arcs < ARC_BUFC_NUMTYPES; ++arcs) {
+		multilist_destroy(&arc_mru->arcs_list[arcs]);
+		multilist_destroy(&arc_mru_ghost->arcs_list[arcs]);
+		multilist_destroy(&arc_mfu->arcs_list[arcs]);
+		multilist_destroy(&arc_mfu_ghost->arcs_list[arcs]);
+	}
 	taskq_destroy(arc_flush_taskq);
 
 	buf_fini();
@@ -5577,33 +5797,40 @@ l2arc_read_done(zio_t *zio)
 
 /*
  * This is the list priority from which the L2ARC will search for pages to
- * cache.  This is used within loops (0..3) to cycle through lists in the
+ * cache.  This is used within loops to cycle through lists in the
  * desired order.  This order can have a significant effect on cache
  * performance.
  *
- * Currently the metadata lists are hit first, MFU then MRU, followed by
- * the data lists.  This function returns a locked list, and also returns
- * the lock pointer.
+ * Currently the ddt lists are hit first (MFU then MRU),
+ * followed by metadata then by the data lists.
+ * This function returns a locked list, and also returns the lock pointer.
  */
 static multilist_sublist_t *
-l2arc_sublist_lock(int list_num)
+l2arc_sublist_lock(enum l2arc_priorities prio)
 {
 	multilist_t *ml = NULL;
 	unsigned int idx;
 
-	ASSERT(list_num >= 0 && list_num <= 3);
+	ASSERT(prio >= PRIORITY_MFU_DDT);
+	ASSERT(prio < PRIORITY_NUMTYPES);
 
-	switch (list_num) {
-	case 0:
+	switch (prio) {
+	case PRIORITY_MFU_DDT:
+		ml = &arc_mfu->arcs_list[ARC_BUFC_DDT];
+		break;
+	case PRIORITY_MRU_DDT:
+		ml = &arc_mru->arcs_list[ARC_BUFC_DDT];
+		break;
+	case PRIORITY_MFU_META:
 		ml = &arc_mfu->arcs_list[ARC_BUFC_METADATA];
 		break;
-	case 1:
+	case PRIORITY_MRU_META:
 		ml = &arc_mru->arcs_list[ARC_BUFC_METADATA];
 		break;
-	case 2:
+	case PRIORITY_MFU_DATA:
 		ml = &arc_mfu->arcs_list[ARC_BUFC_DATA];
 		break;
-	case 3:
+	case PRIORITY_MRU_DATA:
 		ml = &arc_mru->arcs_list[ARC_BUFC_DATA];
 		break;
 	}
@@ -5858,6 +6085,7 @@ l2arc_write_buffers(spa_t *spa, l2arc_dev_t *dev, uint64_t target_sz,
 	boolean_t full;
 	l2arc_write_callback_t *cb;
 	zio_t *pio, *wzio;
+	enum l2arc_priorities try;
 	uint64_t guid = spa_load_guid(spa);
 	const boolean_t do_headroom_boost = *headroom_boost;
 
@@ -5882,7 +6110,7 @@ l2arc_write_buffers(spa_t *spa, l2arc_dev_t *dev, uint64_t target_sz,
 	/*
 	 * Copy buffers for L2ARC writing.
 	 */
-	for (int try = 0; try <= 3; try++) {
+	for (try = PRIORITY_MFU_DDT; try < PRIORITY_NUMTYPES; try++) {
 		multilist_sublist_t *mls = l2arc_sublist_lock(try);
 		uint64_t passed_sz = 0;
 

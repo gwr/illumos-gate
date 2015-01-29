@@ -22,6 +22,7 @@
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2012, 2014 by Delphix. All rights reserved.
  * Copyright (c) 2013 by Saso Kiselkov. All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc. All rights reserved.
  */
 
 #ifndef	_SYS_ARC_H
@@ -79,12 +80,20 @@ typedef enum arc_flags
 	ARC_FLAG_L2_WRITING		= 1 << 13,	/* write in progress */
 	ARC_FLAG_L2_EVICTED		= 1 << 14,	/* evicted during I/O */
 	ARC_FLAG_L2_WRITE_HEAD		= 1 << 15,	/* head of write list */
-	/* indicates that the buffer contains metadata (otherwise, data) */
-	ARC_FLAG_BUFC_METADATA		= 1 << 16,
+	/*
+	 * Below BUFC flags indicate that either the buffer contains
+	 * metadata or DDT metadata. If both of these are not set then the
+	 * buffer contains data.
+	 * ARC_FLAG_BUFC_DDT is only used when zfs_arc_segregate_ddt is true.
+	 * If this tunable is zero ARC_FLAG_BUFC_METADATA is used for both DDT
+	 * and regular metadata.
+	 */
+	ARC_FLAG_BUFC_METADATA		= 1 << 16,	/* metadata buf */
+	ARC_FLAG_BUFC_DDT		= 1 << 17,	/* DDT buf */
 
 	/* Flags specifying whether optional hdr struct fields are defined */
-	ARC_FLAG_HAS_L1HDR		= 1 << 17,
-	ARC_FLAG_HAS_L2HDR		= 1 << 18,
+	ARC_FLAG_HAS_L1HDR		= 1 << 18,
+	ARC_FLAG_HAS_L2HDR		= 1 << 19,
 
 	/*
 	 * The arc buffer's compression mode is stored in the top 7 bits of the
@@ -113,6 +122,7 @@ struct arc_buf {
 typedef enum arc_buf_contents {
 	ARC_BUFC_DATA,				/* buffer contains data */
 	ARC_BUFC_METADATA,			/* buffer contains metadata */
+	ARC_BUFC_DDT,				/* buffer contains ddt */
 	ARC_BUFC_NUMTYPES
 } arc_buf_contents_t;
 
@@ -122,11 +132,25 @@ typedef enum arc_buf_contents {
 typedef enum arc_space_type {
 	ARC_SPACE_DATA,
 	ARC_SPACE_META,
+	ARC_SPACE_DDT,
 	ARC_SPACE_HDRS,
 	ARC_SPACE_L2HDRS,
 	ARC_SPACE_OTHER,
 	ARC_SPACE_NUMTYPES
 } arc_space_type_t;
+
+static inline arc_buf_contents_t
+bp_get_bufc_type(const blkptr_t *bp)
+{
+	if ((BP_GET_TYPE(bp) == DMU_OT_DDT_ZAP ||
+	    BP_GET_TYPE(bp) == DMU_OT_DDT_STATS))
+		return (ARC_BUFC_DDT);
+
+	if ((BP_GET_LEVEL(bp) > 0) || (DMU_OT_IS_METADATA(BP_GET_TYPE(bp))))
+		return (ARC_BUFC_METADATA);
+
+	return (ARC_BUFC_DATA);
+}
 
 void arc_space_consume(uint64_t space, arc_space_type_t type);
 void arc_space_return(uint64_t space, arc_space_type_t type);

@@ -20,11 +20,11 @@
  */
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  * Copyright (c) 2012, 2014 by Delphix. All rights reserved.
  * Copyright (c) 2013 by Saso Kiselkov. All rights reserved.
  * Copyright (c) 2013, Joyent, Inc. All rights reserved.
  * Copyright (c) 2014 Spectra Logic Corporation, All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <sys/zfs_context.h>
@@ -322,6 +322,19 @@ dbuf_is_metadata(dmu_buf_impl_t *db)
 
 		return (is_metadata);
 	}
+}
+
+boolean_t
+dbuf_is_ddt(dmu_buf_impl_t *db)
+{
+	boolean_t is_ddt;
+
+	DB_DNODE_ENTER(db);
+	is_ddt = (DB_DNODE(db)->dn_type == DMU_OT_DDT_ZAP) ||
+	    (DB_DNODE(db)->dn_type == DMU_OT_DDT_STATS);
+	DB_DNODE_EXIT(db);
+
+	return (is_ddt);
 }
 
 void

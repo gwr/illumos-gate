@@ -22,8 +22,8 @@
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2012, 2014 by Delphix. All rights reserved.
  * Copyright (c) 2013 by Saso Kiselkov. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc. All rights reserved.
  * Copyright (c) 2014 Spectra Logic Corporation, All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc. All rights reserved.
  */
 
 #ifndef	_SYS_DBUF_H
@@ -324,11 +324,13 @@ void dbuf_init(void);
 void dbuf_fini(void);
 
 boolean_t dbuf_is_metadata(dmu_buf_impl_t *db);
+boolean_t dbuf_is_ddt(dmu_buf_impl_t *db);
 boolean_t dbuf_ddt_is_l2cacheable(dmu_buf_impl_t *db);
 boolean_t dbuf_meta_is_l2cacheable(dmu_buf_impl_t *db);
 
 #define	DBUF_GET_BUFC_TYPE(_db)	\
-	(dbuf_is_metadata(_db) ? ARC_BUFC_METADATA : ARC_BUFC_DATA)
+	(dbuf_is_ddt(_db) ? ARC_BUFC_DDT :\
+	(dbuf_is_metadata(_db) ? ARC_BUFC_METADATA : ARC_BUFC_DATA))
 
 #define	DBUF_IS_CACHEABLE(_db)						\
 	((_db)->db_objset->os_primary_cache == ZFS_CACHE_ALL ||		\
