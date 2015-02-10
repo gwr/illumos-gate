@@ -187,9 +187,7 @@ static void smb_tree_log(smb_request_t *, const char *, const char *, ...);
 static void smb_tree_close_odirs(smb_tree_t *, uint16_t);
 static smb_ofile_t *smb_tree_get_ofile(smb_tree_t *, smb_ofile_t *);
 static smb_odir_t *smb_tree_get_odir(smb_tree_t *, smb_odir_t *);
-#if 0
-static void smb_tree_set_execinfo(smb_request_t *, smb_shr_execinfo_t *, int);
-#endif
+static void smb_tree_set_execinfo(smb_tree_t *, smb_shr_execinfo_t *, int);
 static int smb_tree_enum_private(smb_tree_t *, smb_svcenum_t *);
 static int smb_tree_netinfo_encode(smb_tree_t *, uint8_t *, size_t, uint32_t *);
 static void smb_tree_netinfo_init(smb_tree_t *tree, smb_netconnectinfo_t *);
@@ -280,9 +278,7 @@ smb_tree_connect_core(smb_request_t *sr)
 void
 smb_tree_disconnect(smb_tree_t *tree, boolean_t do_exec)
 {
-#if 0
 	smb_shr_execinfo_t execinfo;
-#endif
 
 	ASSERT(tree->t_magic == SMB_TREE_MAGIC);
 
@@ -314,18 +310,12 @@ smb_tree_disconnect(smb_tree_t *tree, boolean_t do_exec)
 
 	mutex_exit(&tree->t_mutex);
 
-#if 0
-	/*
-	 * TODO: These userspace upcalls need to be redesigned--now that users
-	 *	 and trees are orthogonal.
-	 */
 	if (do_exec && (tree->t_state == SMB_TREE_STATE_DISCONNECTED) &&
 	    (tree->t_execflags & SMB_EXEC_UNMAP)) {
 
 		smb_tree_set_execinfo(tree, &execinfo, SMB_EXEC_UNMAP);
 		(void) smb_kshare_exec(tree->t_server, &execinfo);
 	}
-#endif
 }
 
 /*
@@ -665,6 +655,7 @@ smb_tree_connect_disk(smb_request_t *sr, smb_arg_tcon_t *tcon)
 	smb_tree_t		*tree;
 	int			rc;
 	uint32_t		access;
+	smb_shr_execinfo_t	execinfo;
 
 	ASSERT(user);
 	ASSERT(user->u_cred);
@@ -743,6 +734,18 @@ smb_tree_connect_disk(smb_request_t *sr, smb_arg_tcon_t *tcon)
 
 	if (tree == NULL)
 		return (NT_STATUS_INSUFF_SERVER_RESOURCES);
+
+	if (tree->t_execflags & SMB_EXEC_MAP) {
+		smb_tree_set_execinfo(tree, &execinfo, SMB_EXEC_MAP);
+
+		rc = smb_kshare_exec(tree->t_server, &execinfo);
+
+		if ((rc != 0) && (tree->t_execflags & SMB_EXEC_TERM)) {
+			smb_tree_disconnect(tree, B_FALSE);
+			smb_tree_release(tree);
+			return (NT_STATUS_ACCESS_DENIED);
+		}
+	}
 
 	sr->tid_tree = tree;
 	sr->smb_tid  = tree->t_tid;
@@ -1421,27 +1424,19 @@ smb_tree_close_odirs(smb_tree_t *tree, uint16_t pid)
 	}
 }
 
-#if 0
-/*
- * TODO: These userspace upcalls need to be redesigned--now that users and trees
- *	 are orthogonal.
- */
 static void
-smb_tree_set_execinfo(smb_request_t *sr, smb_shr_execinfo_t *exec,
+smb_tree_set_execinfo(smb_tree_t *tree, smb_shr_execinfo_t *exec,
     int exec_type)
 {
-	struct smb_tree		*tree = sr->tid_tree;
-
 	exec->e_sharename = tree->t_sharename;
-	exec->e_winname = sr->uid_user->u_name;
-	exec->e_userdom = sr->uid_user->u_domain;
+	exec->e_winname = tree->t_owner->u_name;
+	exec->e_userdom = tree->t_owner->u_domain;
 	exec->e_srv_ipaddr = tree->t_session->local_ipaddr;
 	exec->e_cli_ipaddr = tree->t_session->ipaddr;
 	exec->e_cli_netbiosname = tree->t_session->workstation;
-	exec->e_uid = crgetuid(sr->uid_user->u_cred);
+	exec->e_uid = crgetuid(tree->t_owner->u_cred);
 	exec->e_type = exec_type;
 }
-#endif
 
 /*
  * Private function to support smb_tree_enum.
