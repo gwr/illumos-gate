@@ -1080,7 +1080,6 @@ log_cds(ad_disc_t ctx, ad_disc_cds_t *cds)
 		ai = cds->cds_ai;
 		if (ai == NULL) {
 			DEBUG1STATUS(ctx, "    (no address)");
-			continue;
 		}
 		while (ai != NULL) {
 			int eai;
