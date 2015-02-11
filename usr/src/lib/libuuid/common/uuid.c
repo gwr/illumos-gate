@@ -199,12 +199,10 @@ gen_ethernet_address(uuid_node_t *system_node)
 		fill_random_bytes(node, 6);
 		(void) memcpy(system_node->nodeID, node, 6);
 		/*
-		 * use 8:0:20 with the multicast bit set
-		 * to avoid namespace collisions.
+		 * Use 8:... with the multicast bit set
+		 * to reduce namespace collisions.
 		 */
 		system_node->nodeID[0] = 0x88;
-		system_node->nodeID[1] = 0x00;
-		system_node->nodeID[2] = 0x20;
 	}
 }
 

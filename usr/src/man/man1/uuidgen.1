@@ -1,0 +1,50 @@
+.\"
+.\" This file and its contents are supplied under the terms of the
+.\" Common Development and Distribution License ("CDDL"), version 1.0.
+.\" You may only use this file in accordance with the terms of version
+.\" 1.0 of the CDDL.
+.\"
+.\" A full copy of the text of the CDDL should have accompanied this
+.\" source.  A copy of the CDDL is also available via the Internet at
+.\" http://www.illumos.org/license/CDDL.
+.\"
+.\"
+.\" Copyright 2015 Nexenta Systems, Inc.
+.\"
+.Dd "Feb 8, 2015"
+.Dt UUIDGEN 1
+.Os
+.Sh NAME
+.Nm uuidgen
+.Nd Generate a Universally Unique IDentifier (UUID)
+.Sh SYNOPSIS
+.Nm uuidgen
+.Op Fl r
+.Op Fl t
+.Oc
+.Sh DESCRIPTION
+The
+.Nm
+command generates a Universally Unique IDentifier (UUID)
+as described in
+.Nm uuid_generate() 
+and prints the new UUID on the standard output.
+.Sh OPTIONS
+.Bl -tag -width indent
+.It Fl r
+Generate a UUID using 
+.Nm uuid_generate_random()
+instead of
+.Nm uuid_generate() .
+This derives the new UUID from random data.
+.It Fl t
+Generate a UUID using
+.Nm uuid_generate_time()
+instead of 
+.Nm uuid_generate() .
+This uses the current time and either the
+Ethernet address (if available) or system node ID.
+.Sh SEE ALSO
+.Xr uuid_generate 3uuid ,
+.Xr uuid_generate_random 3uuid ,
+.Xr uuid_generate_time 3uuid

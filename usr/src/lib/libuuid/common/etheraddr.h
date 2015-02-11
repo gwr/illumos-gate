@@ -26,15 +26,11 @@
 #ifndef	_ETHERADDR_H
 #define	_ETHERADDR_H
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
-
 /*
  * Module:	etheraddr
  * Description:	This is the solaris-specific interface for retrieving
  *		the MAC (IEEE 802.3) node identifier, a.k.a. the ethernet
- *		address of the system.  Note that this can only get the
- *		ethernet address if the process running the code can open
- *		/dev/[whatever] read/write, e.g. you must be root.
+ *		address of the system.  Note, only tries SIOCGARP.
  */
 
 #ifdef	__cplusplus
@@ -46,14 +42,7 @@ extern "C" {
 #include <netinet/if_ether.h>
 #include <sys/uuid.h>
 
-typedef struct walker_arg {
-	uchar_t	wa_etheraddr[DLPI_PHYSADDR_MAX];
-	size_t	wa_etheraddrlen;
-	boolean_t	wa_addrvalid;
-} walker_arg_t;
-
 /* global function */
-int	arp_get(uuid_node_t *);
 int	get_ethernet_address(uuid_node_t *);
 
 #ifdef __cplusplus

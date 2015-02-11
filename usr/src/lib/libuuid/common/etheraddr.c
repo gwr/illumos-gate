@@ -21,9 +21,9 @@
 /*
  * Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
+ *
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
-
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -32,7 +32,6 @@
 #include <unistd.h>
 #include <uuid/uuid.h>
 #include <sys/sockio.h>
-#include <libdlpi.h>
 #include <sys/utsname.h>
 
 #include <netdb.h>
@@ -41,12 +40,10 @@
 
 #include "etheraddr.h"
 
-static boolean_t get_etheraddr(const char *linkname, void *arg);
-
 /*
  * get an individual arp entry
  */
-int
+static int
 arp_get(uuid_node_t *node)
 {
 	struct utsname name;
@@ -89,54 +86,56 @@ arp_get(uuid_node_t *node)
 }
 
 /*
+ * Fake up a valid Ethernet address based on gethostid().
+ * This is likely to be unique to this machine, and that's
+ * good enough for libuuid when we can't easily get our
+ * real Ethernet address.
+ */
+static int
+hostid_get(uuid_node_t *node)
+{
+	uint32_t hostid;
+
+	hostid = (uint32_t)gethostid();
+	if (hostid == 0 || hostid == ~0)
+		return (-1);
+	hostid = htonl(hostid);
+
+	/*
+	 * Like gen_ethernet_address(), use prefix:
+	 * 8:0:... with the multicast bit set.
+	 */
+	node->nodeID[0] = 0x88;
+	node->nodeID[1] = 0x00;
+	memcpy(node->nodeID + 2, &hostid, 4);
+
+	return (0);
+}
+
+/*
  * Name:	get_ethernet_address
  *
- * Description:	Obtains the system ethernet address.
+ * Description:	Obtains the system ethernet address, if possible.
  *
  * Returns:	0 on success, non-zero otherwise.  The system ethernet
  *		address is copied into the passed-in variable.
+ *
+ * Note:  This does NOT need to get the REAL Ethernet address.
+ * This library only needs something that looks like an Ethernet
+ * address and that's likely to be unique to this machine.  Also,
+ * we really don't want to drag in libdlpi (etc) here so this just
+ * tries an SIOCGARP ioctl, then a hostid-derived method.  If all
+ * methods here fail, the caller generates an Ethernet address.
  */
 int
 get_ethernet_address(uuid_node_t *node)
 {
-	walker_arg_t	state;
 
 	if (arp_get(node) == 0)
 		return (0);
 
-	/*
-	 * Try to get physical (ethernet) address from network interfaces.
-	 */
-	state.wa_addrvalid = B_FALSE;
-	dlpi_walk(get_etheraddr, &state, 0);
-	if (state.wa_addrvalid)
-		bcopy(state.wa_etheraddr, node, state.wa_etheraddrlen);
+	if (hostid_get(node) == 0)
+		return (0);
 
-	return (state.wa_addrvalid ? 0 : -1);
-}
-
-/*
- * Get the physical address via DLPI and update the flag to true upon success.
- */
-static boolean_t
-get_etheraddr(const char *linkname, void *arg)
-{
-	int		retval;
-	dlpi_handle_t	dh;
-	walker_arg_t	*statep = arg;
-
-	if (dlpi_open(linkname, &dh, 0) != DLPI_SUCCESS)
-		return (B_FALSE);
-
-	statep->wa_etheraddrlen = DLPI_PHYSADDR_MAX;
-	retval = dlpi_get_physaddr(dh, DL_CURR_PHYS_ADDR,
-	    statep->wa_etheraddr, &(statep->wa_etheraddrlen));
-
-	dlpi_close(dh);
-
-	if (retval == DLPI_SUCCESS) {
-		statep->wa_addrvalid = B_TRUE;
-		return (B_TRUE);
-	}
-	return (B_FALSE);
+	return (-1);
 }
