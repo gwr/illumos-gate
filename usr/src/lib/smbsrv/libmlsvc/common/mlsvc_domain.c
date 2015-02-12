@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <syslog.h>
@@ -44,6 +44,7 @@
 
 #include <smbsrv/smbinfo.h>
 #include <lsalib.h>
+#include <mlsvc.h>
 
 /*
  * DC Locator
@@ -66,8 +67,6 @@ static smb_dclocator_t smb_dclocator;
 static pthread_t smb_dclocator_thr;
 
 static void *smb_ddiscover_service(void *);
-static uint32_t smb_ddiscover_main(smb_dclocator_t *);
-static uint32_t smb_ddiscover_dns(char *, smb_domainex_t *);
 static uint32_t smb_ddiscover_qinfo(char *, char *, smb_domainex_t *);
 static void smb_ddiscover_enum_trusted(char *, char *, smb_domainex_t *);
 static uint32_t smb_ddiscover_use_config(char *, smb_domainex_t *);
@@ -294,6 +293,7 @@ smb_ddiscover_wait(void)
 static void *
 smb_ddiscover_service(void *arg)
 {
+	smb_domainex_t dxi;
 	smb_dclocator_t *sdl = arg;
 	uint32_t status;
 	boolean_t bad_dc;
@@ -312,11 +312,18 @@ smb_ddiscover_service(void *arg)
 			(void) cond_wait(&sdl->sdl_cv,
 			    &sdl->sdl_mtx);
 
+		if (!smb_config_getbool(SMB_CI_DOMAIN_MEMB)) {
+			sdl->sdl_status = NT_STATUS_INVALID_SERVER_STATE;
+			syslog(LOG_DEBUG, "smb_ddiscover_service: "
+			    "not a domain member");
+			goto wait_again;
+		}
+
 		/*
 		 * Want to know if these change below.
 		 * Note: mutex held here
 		 */
-	again:
+	find_again:
 		bad_dc = sdl->sdl_bad_dc;
 		sdl->sdl_bad_dc = B_FALSE;
 		if (bad_dc) {
@@ -339,10 +346,18 @@ smb_ddiscover_service(void *arg)
 		 * If our current DC gave us errors, force rediscovery.
 		 */
 		smb_ads_refresh(bad_dc);
-		status = smb_ddiscover_main(sdl);
 
+		/*
+		 * Search for the DC, save the result.
+		 */
+		bzero(&dxi, sizeof (dxi));
+		status = smb_ddiscover_main(sdl->sdl_domain, &dxi);
+		if (status == 0)
+			smb_domain_save();
 		(void) mutex_lock(&sdl->sdl_mtx);
 		sdl->sdl_status = status;
+		if (status == 0)
+			sdl->sdl_dci = dxi.d_dci;
 
 		/*
 		 * Run again if either of cfg_chg or bad_dc
@@ -352,14 +367,15 @@ smb_ddiscover_service(void *arg)
 		if (sdl->sdl_bad_dc) {
 			syslog(LOG_DEBUG, "smb_ddiscover_service "
 			    "restart because bad_dc was set");
-			goto again;
+			goto find_again;
 		}
 		if (sdl->sdl_cfg_chg) {
 			syslog(LOG_DEBUG, "smb_ddiscover_service "
 			    "restart because cfg_chg was set");
-			goto again;
+			goto find_again;
 		}
 
+	wait_again:
 		sdl->sdl_locate = B_FALSE;
 		sdl->sdl_bad_dc = B_FALSE;
 		sdl->sdl_cfg_chg = B_FALSE;
@@ -372,25 +388,21 @@ smb_ddiscover_service(void *arg)
 }
 
 /*
- * Discovers a domain controller for the specified domain either via
- * DNS or NetBIOS. After the domain controller is discovered successfully
- * primary and trusted domain infromation will be queried using RPC queries.
- * If the RPC queries fail, the domain information stored in SMF might be used
- * if the the discovered domain is the same as the previously joined domain.
- * If everything is successful domain cache will be updated with all the
- * obtained information.
+ * Discovers a domain controller for the specified domain via DNS.
+ * After the domain controller is discovered successfully primary and
+ * trusted domain infromation will be queried using RPC queries.
+ *
+ * Caller should zero out *dxi before calling, and after a
+ * successful return should call:  smb_domain_save()
  */
-static uint32_t
-smb_ddiscover_main(smb_dclocator_t *sdl)
+uint32_t
+smb_ddiscover_main(char *domain, smb_domainex_t *dxi)
 {
-	smb_domainex_t dxi;
 	uint32_t status;
 
-	bzero(&dxi, sizeof (smb_domainex_t));
-
-	if (sdl->sdl_domain[0] == '\0') {
+	if (domain[0] == '\0') {
 		syslog(LOG_DEBUG, "smb_ddiscover_main NULL domain");
-		return (NT_STATUS_INVALID_PARAMETER);
+		return (NT_STATUS_INTERNAL_ERROR);
 	}
 
 	if (smb_domain_start_update() != SMB_DOMAIN_SUCCESS) {
@@ -398,68 +410,59 @@ smb_ddiscover_main(smb_dclocator_t *sdl)
 		return (NT_STATUS_INTERNAL_ERROR);
 	}
 
-	status = smb_ddiscover_dns(sdl->sdl_domain, &dxi);
-	if (status == 0) {
-		sdl->sdl_dci = dxi.d_dci;
-		smb_domain_update(&dxi);
+	status = smb_ads_lookup_msdcs(domain, &dxi->d_dci);
+	if (status != 0) {
+		syslog(LOG_DEBUG, "smb_ddiscover_main can't find DC (%s)",
+		    xlate_nt_status(status));
+		goto out;
 	}
 
+	status = smb_ddiscover_qinfo(domain, dxi->d_dci.dc_name, dxi);
+	if (status != 0) {
+		syslog(LOG_DEBUG,
+		    "smb_ddiscover_main can't get domain info (%s)",
+		    xlate_nt_status(status));
+		goto out;
+	}
+
+	smb_domain_update(dxi);
+
+out:
 	smb_domain_end_update();
 
-	smb_domainex_free(&dxi);
+	/* Don't need the trusted domain list anymore. */
+	smb_domainex_free(dxi);
 
-	if (status == 0)
-		smb_domain_save();
-
-	return (status);
-}
-
-/*
- * Discovers a DC for the specified domain via DNS. If a DC is found
- * primary and trusted domains information will be queried.
- */
-static uint32_t
-smb_ddiscover_dns(char *domain, smb_domainex_t *dxi)
-{
-	uint32_t status;
-
-	status = smb_ads_lookup_msdcs(domain, &dxi->d_dci);
-	if (status != 0)
-		return (status);
-
-	status = smb_ddiscover_qinfo(domain, dxi->d_dci.dc_name, dxi);
 	return (status);
 }
 
 /*
  * Obtain primary and trusted domain information using LSA queries.
  *
- * Disconnect any existing connection with the domain controller.
- * This will ensure that no stale connection will be used, it will
- * also pickup any configuration changes in either side by trying
- * to establish a new connection.
- *
  * domain - either NetBIOS or fully-qualified domain name
  */
 static uint32_t
 smb_ddiscover_qinfo(char *domain, char *server, smb_domainex_t *dxi)
 {
-	uint32_t status;
+	uint32_t ret, tmp;
 
-	mlsvc_disconnect(server);
+	/* If we must return failure, use this first one. */
+	ret = lsa_query_dns_domain_info(server, domain, &dxi->d_primary);
+	if (ret == NT_STATUS_SUCCESS)
+		goto success;
+	tmp = smb_ddiscover_use_config(domain, dxi);
+	if (tmp == NT_STATUS_SUCCESS)
+		goto success;
+	tmp = lsa_query_primary_domain_info(server, domain, &dxi->d_primary);
+	if (tmp == NT_STATUS_SUCCESS)
+		goto success;
 
-	status = lsa_query_dns_domain_info(server, domain, &dxi->d_primary);
-	if (status != NT_STATUS_SUCCESS) {
-		status = smb_ddiscover_use_config(domain, dxi);
-		if (status != NT_STATUS_SUCCESS)
-			status = lsa_query_primary_domain_info(server, domain,
-			    &dxi->d_primary);
-	}
+	/* All of the above failed. */
+	return (ret);
 
-	if (status == NT_STATUS_SUCCESS)
-		smb_ddiscover_enum_trusted(domain, server, dxi);
-
-	return (status);
+success:
+	smb_ddiscover_enum_trusted(domain, server, dxi);
+	return (NT_STATUS_SUCCESS);
 }
 
 /*
@@ -516,6 +519,7 @@ static void
 smb_domainex_free(smb_domainex_t *dxi)
 {
 	free(dxi->d_trusted.td_domains);
+	dxi->d_trusted.td_domains = NULL;
 }
 
 static void

@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -42,14 +42,11 @@
 #include <smbsrv/libmlsvc.h>
 #include <smbsrv/ntaccess.h>
 #include <smbsrv/smbinfo.h>
+#include <smbsrv/netrauth.h>
 #include <libsmbrdr.h>
 #include <lsalib.h>
 #include <samlib.h>
-#include <smbsrv/netrauth.h>
-
-extern int netr_open(char *, char *, mlsvc_handle_t *);
-extern int netr_close(mlsvc_handle_t *);
-extern DWORD netlogon_auth(char *, mlsvc_handle_t *, DWORD);
+#include <mlsvc.h>
 
 static DWORD
 mlsvc_join_rpc(smb_domainex_t *dxi,
@@ -66,10 +63,12 @@ mlsvc_netlogon(char *server, char *domain)
 	mlsvc_handle_t netr_handle;
 	DWORD status;
 
-	if (netr_open(server, domain, &netr_handle) != 0) {
+	status = netr_open(server, domain, &netr_handle);
+	if (status != 0) {
 		syslog(LOG_NOTICE, "Failed to connect to %s "
-		    "for domain %s", server, domain);
-		return (NT_STATUS_CANT_ACCESS_DOMAIN_INFO);
+		    "for domain %s (%s)", server, domain,
+		    xlate_nt_status(status));
+		return (status);
 	}
 
 	status = netlogon_auth(server, &netr_handle, NETR_FLG_INIT);
@@ -107,6 +106,8 @@ mlsvc_join(smb_joininfo_t *info, smb_joinres_t *res)
 	smb_domain_t *di = &dxi.d_primary;
 	DWORD status;
 	int rc;
+
+	bzero(&dxi, sizeof (dxi));
 
 	/*
 	 * Domain join support: AD (Kerberos+LDAP) or MS-RPC?
@@ -146,28 +147,61 @@ mlsvc_join(smb_joininfo_t *info, smb_joinres_t *res)
 		syslog(LOG_NOTICE, "Failed to refresh idmap service");
 
 	/* Clear DNS local (ADS) lookup cache. */
-	/* XXX: or smb_ddiscover_refresh? */
 	smb_ads_refresh(B_FALSE);
 
 	/*
-	 * This tells the smb_ddiscover_service to go find the DC.
-	 * Does IPC to the DC Locator in idmap, fills in dxi.
+	 * Locate a DC for this domain.  Intentionally bypass the
+	 * ddiscover service here because we're still joining.
+	 * This also allows better reporting of any failures.
 	 */
-	if (!smb_locate_dc(info->domain_name, &dxi)) {
-		syslog(LOG_ERR, "smbd: failed locating "
-		    "domain controller for %s",
-		    info->domain_name);
-		status = NT_STATUS_DOMAIN_CONTROLLER_NOT_FOUND;
+	status = smb_ads_lookup_msdcs(info->domain_name, &dxi.d_dci);
+	if (status != NT_STATUS_SUCCESS) {
+		syslog(LOG_ERR,
+		    "smbd: failed to locate AD server for domain %s (%s)",
+		    info->domain_name, xlate_nt_status(status));
 		goto out;
 	}
 
 	/*
+	 * Found a DC.  Report what we found along with the return status
+	 * so that admin will know which AD server we were talking to.
+	 */
+	(void) strlcpy(res->dc_name, dxi.d_dci.dc_name, MAXHOSTNAMELEN);
+	syslog(LOG_INFO, "smbd: found AD server %s", dxi.d_dci.dc_name);
+
+	/*
+	 * Domain discovery needs to authenticate with the AD server.
+	 * Disconnect any existing connection with the domain controller
+	 * to make sure we won't use any prior authentication context
+	 * our redirector might have.
+	 */
+	mlsvc_disconnect(dxi.d_dci.dc_name);
+
+	/*
+	 * Get the domain policy info (domain SID etc).
+	 * Here too, bypass the smb_ddiscover_service.
+	 */
+	status = smb_ddiscover_main(info->domain_name, &dxi);
+	if (status != NT_STATUS_SUCCESS) {
+		syslog(LOG_ERR,
+		    "smbd: failed getting domain info for %s (%s)",
+		    info->domain_name, xlate_nt_status(status));
+		goto out;
+	}
+	/*
+	 * After a successful smbd_ddiscover_main() call
+	 * we should call smb_domain_save() to update the
+	 * data shown by smbadm list.  Do that at the end,
+	 * only if all goes well with joining the domain.
+	 */
+
+	/*
+	 * Create or update our machine account on the DC.
 	 * A non-null user means we do "secure join".
 	 */
 	if (info->domain_username[0] != '\0') {
 		/*
 		 * If enabled, try to join using AD Services.
-		 * The ADS code needs work.  Not enabled yet.
 		 */
 		status = NT_STATUS_UNSUCCESSFUL;
 		if (ads_enabled) {
@@ -216,7 +250,8 @@ mlsvc_join(smb_joininfo_t *info, smb_joinres_t *res)
 	}
 
 	/*
-	 * Store the new machine account password.
+	 * Store the new machine account password, and
+	 * SMB_CI_DOMAIN_MEMB etc.
 	 */
 	rc = smb_setdomainprops(NULL, dxi.d_dci.dc_name, machine_pw);
 	if (rc != 0) {
@@ -241,6 +276,7 @@ mlsvc_join(smb_joininfo_t *info, smb_joinres_t *res)
 	    di->di_u.di_dns.ddi_forest,
 	    di->di_u.di_dns.ddi_guid);
 	smb_ipc_commit();
+	smb_domain_save();
 
 	status = 0;
 
@@ -308,7 +344,7 @@ mlsvc_join_rpc(smb_domainex_t *dxi,
 	}
 	if (status != NT_STATUS_SUCCESS) {
 		syslog(LOG_NOTICE,
-		    "Create or open machine account: %s",
+		    "smbd: failed to open machine account (%s)",
 		    xlate_nt_status(status));
 		goto out_domain_handle;
 	}
@@ -321,7 +357,7 @@ mlsvc_join_rpc(smb_domainex_t *dxi,
 	status = netr_set_user_password(&user_handle, machine_pw);
 	if (status != NT_STATUS_SUCCESS) {
 		syslog(LOG_NOTICE,
-		    "Set machine account password: %s",
+		    "smbd: failed to set machine account password (%s)",
 		    xlate_nt_status(status));
 		goto out_user_handle;
 	}
