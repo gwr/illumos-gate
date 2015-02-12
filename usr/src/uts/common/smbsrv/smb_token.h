@@ -22,7 +22,7 @@
  * Copyright 2010 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  *
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #ifndef _SMB_TOKEN_H
@@ -42,16 +42,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/*
- * User Session Key
- *
- * This is part of the MAC key which is required for signing SMB messages.
- * See also: smb_session_key_xdr()
- */
-typedef struct smb_session_key {
-	uint8_t data[16];
-} smb_session_key_t;
 
 /*
  * 32-bit opaque buffer (non-null terminated strings)
@@ -112,7 +102,7 @@ typedef struct smb_token {
 	char		*tkn_domain_name;
 	uint32_t	tkn_flags;
 	uint32_t	tkn_audit_sid;
-	smb_session_key_t *tkn_session_key;
+	smb_buf32_t	tkn_ssnkey;
 	smb_posix_grps_t *tkn_posix_grps;
 } smb_token_t;
 

@@ -711,8 +711,6 @@ typedef enum {
 	SMB_SSNSETUP_NTLM012_EXTSEC
 } smb_ssnsetup_type_t;
 
-#define	SMB_SSNKEY_LEN 16
-
 typedef struct smb_arg_sessionsetup {
 	smb_ssnsetup_type_t ssi_type;
 	char		*ssi_user;
@@ -779,10 +777,12 @@ struct smb_sign {
 	void	*mech;	/* mechanism info */
 };
 
-/* SMB2 signing */
+/*
+ * SMB2 signing
+ */
 struct smb_key {
-	uint_t key_len;
-	uint8_t key[SMB_SSNKEY_LEN];
+	uint_t len;
+	uint8_t key[SMB2_SESSION_KEY_LEN];
 };
 
 #define	SMB_SIGNING_ENABLED	1
@@ -970,7 +970,8 @@ typedef struct smb_user {
 	uint16_t		u_uid;
 	uint32_t		u_audit_sid;
 
-	struct smb_key		sign_key;	/* SMB2 signing */
+	uint32_t		u_sign_flags;
+	struct smb_key		u_sign_key;	/* SMB2 signing */
 } smb_user_t;
 
 #define	SMB_TREE_MAGIC			0x54524545	/* 'TREE' */

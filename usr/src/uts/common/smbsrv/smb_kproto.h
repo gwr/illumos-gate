@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -578,7 +578,7 @@ int smb_sign_check_request(smb_request_t *);
 int smb_sign_check_secondary(smb_request_t *, unsigned int);
 void smb_sign_reply(smb_request_t *, mbuf_chain_t *);
 /* SMB2, but here because it's called from common code. */
-void smb2_sign_begin(smb_request_t *, smb_arg_sessionsetup_t *);
+void smb2_sign_begin(smb_request_t *, smb_token_t *);
 
 boolean_t smb_sattr_check(uint16_t, uint16_t);
 

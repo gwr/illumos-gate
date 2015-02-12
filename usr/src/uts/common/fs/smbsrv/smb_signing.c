@@ -44,7 +44,6 @@
 #include <sys/isa_defs.h>
 #include <sys/byteorder.h>
 
-#define	SSN_KEY_LEN	16
 #define	SMB_SIG_SIZE	8
 #define	SMB_SIG_OFFS	14
 #define	SMB_HDRLEN	32
@@ -123,6 +122,15 @@ smb_sign_begin(smb_request_t *sr, smb_token_t *token)
 	int rc;
 
 	/*
+	 * We should normally have a session key here because
+	 * our caller filters out Anonymous and Guest logons.
+	 * However, buggy clients could get us here without a
+	 * session key, in which case: just don't sign.
+	 */
+	if (token->tkn_ssnkey.val == NULL || token->tkn_ssnkey.len == 0)
+		return (0);
+
+	/*
 	 * Session-level initialization (once per session)
 	 */
 	smb_rwx_rwenter(&session->s_lock, RW_WRITER);
@@ -160,14 +168,13 @@ smb_sign_begin(smb_request_t *sr, smb_token_t *token)
 	 * the session key and the "NT response" we received.
 	 * (NB: no extended security yet)
 	 */
-
-	sign->mackey_len = SMB_SSNKEY_LEN + sinfo->ssi_ntpwlen;
+	sign->mackey_len = token->tkn_ssnkey.len + sinfo->ssi_ntpwlen;
 	sign->mackey = kmem_alloc(sign->mackey_len, KM_SLEEP);
-
-	bcopy(token->tkn_session_key, sign->mackey, SSN_KEY_LEN);
-	if (sinfo->ssi_ntpwlen > 0)
-		bcopy(sinfo->ssi_ntpwd, sign->mackey + SMB_SSNKEY_LEN,
+	bcopy(token->tkn_ssnkey.val, sign->mackey, token->tkn_ssnkey.len);
+	if (sinfo->ssi_ntpwlen > 0) {
+		bcopy(sinfo->ssi_ntpwd, sign->mackey + token->tkn_ssnkey.len,
 		    sinfo->ssi_ntpwlen);
+	}
 
 	session->signing.seqnum = 0;
 	sr->sr_seqnum = 2;

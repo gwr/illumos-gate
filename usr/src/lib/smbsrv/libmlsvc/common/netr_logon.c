@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -334,13 +334,14 @@ netr_setup_token(struct netr_validation_info3 *info3, smb_logon_t *user_info,
 	 * exclusively ored with the 16 byte UserSessionKey to recover
 	 * the the clear form.
 	 */
-	if ((token->tkn_session_key = malloc(SMBAUTH_SESSION_KEY_SZ)) == NULL)
+	if ((token->tkn_ssnkey.val = malloc(SMBAUTH_SESSION_KEY_SZ)) == NULL)
 		return (NT_STATUS_NO_MEMORY);
+	token->tkn_ssnkey.len = SMBAUTH_SESSION_KEY_SZ;
 	bzero(rc4key, SMBAUTH_SESSION_KEY_SZ);
 	bcopy(netr_info->session_key.key, rc4key, netr_info->session_key.len);
-	bcopy(info3->UserSessionKey.data, token->tkn_session_key,
+	bcopy(info3->UserSessionKey.data, token->tkn_ssnkey.val,
 	    SMBAUTH_SESSION_KEY_SZ);
-	rand_hash((unsigned char *)token->tkn_session_key,
+	rand_hash((unsigned char *)token->tkn_ssnkey.val,
 	    SMBAUTH_SESSION_KEY_SZ, rc4key, SMBAUTH_SESSION_KEY_SZ);
 
 	return (NT_STATUS_SUCCESS);
