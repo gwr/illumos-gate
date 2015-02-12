@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 
@@ -783,8 +783,8 @@ smb2sr_dispatch(smb_request_t *sr,
 	 * signature, so there's no need to check it again.
 	 */
 	if ((sdd->sdt_flags & SDDF_SUPPRESS_UID) == 0 &&
-	    (session->signing.flags & SMB_SIGNING_CHECK) != 0 &&
-	    async_func == NULL) {
+	    async_func == NULL && sr->uid_user != NULL &&
+	    (sr->uid_user->u_sign_flags & SMB_SIGNING_CHECK) != 0) {
 		/*
 		 * This request type should be signed, and
 		 * we're configured to require signatures.

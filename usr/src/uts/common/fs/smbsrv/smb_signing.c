@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 /*
  * These routines provide the SMB MAC signing for the SMB server.
@@ -45,7 +45,6 @@
 #include <sys/isa_defs.h>
 #include <sys/byteorder.h>
 
-#define	SMBAUTH_SESSION_KEY_SZ 16
 #define	SMB_SIG_SIZE	8
 #define	SMB_SIG_OFFS	14
 #define	SMB_HDRLEN	32
@@ -101,12 +100,27 @@ int i;
  * This is what begins SMB signing.
  */
 void
-smb_sign_begin(smb_request_t *sr, smb_arg_sessionsetup_t *sinfo)
+smb_sign_begin(smb_request_t *sr, smb_token_t *token)
 {
+	smb_arg_sessionsetup_t *sinfo = sr->sr_ssetup;
 	smb_session_t *session = sr->session;
 	struct smb_sign *sign = &session->signing;
 
-	ASSERT(sign->mackey == NULL);
+	/*
+	 * We should normally have a session key here because
+	 * our caller filters out Anonymous and Guest logons.
+	 * However, buggy clients could get us here without a
+	 * session key, in which case: just don't sign.
+	 */
+	if (token->tkn_ssnkey.val == NULL || token->tkn_ssnkey.len == 0)
+		return;
+
+	/*
+	 * Signing may already have been setup by a prior logon,
+	 * in which case we're done here.
+	 */
+	if (sign->mackey != NULL)
+		return;
 
 	/*
 	 * With extended security, the MAC key is the same as the
@@ -114,14 +128,13 @@ smb_sign_begin(smb_request_t *sr, smb_arg_sessionsetup_t *sinfo)
 	 * With non-extended security, it's the concatenation of
 	 * the session key and the "NT response" we received.
 	 */
-
-	sign->mackey_len = SMB_SSNKEY_LEN + sinfo->ssi_ntpwlen;
+	sign->mackey_len = token->tkn_ssnkey.len + sinfo->ssi_ntpwlen;
 	sign->mackey = kmem_alloc(sign->mackey_len, KM_SLEEP);
-
-	bcopy(sinfo->ssi_ssnkey, sign->mackey, SMB_SSNKEY_LEN);
-	if (sinfo->ssi_ntpwlen > 0)
-		bcopy(sinfo->ssi_ntpwd, sign->mackey + SMB_SSNKEY_LEN,
+	bcopy(token->tkn_ssnkey.val, sign->mackey, token->tkn_ssnkey.len);
+	if (sinfo->ssi_ntpwlen > 0) {
+		bcopy(sinfo->ssi_ntpwd, sign->mackey + token->tkn_ssnkey.len,
 		    sinfo->ssi_ntpwlen);
+	}
 
 	session->signing.seqnum = 0;
 	sr->sr_seqnum = 2;

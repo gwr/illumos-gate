@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -455,7 +455,9 @@ smbd_ntlmssp_authenticate(authsvc_context_t *ctx)
 		goto errout;
 	}
 
-	if (token->tkn_session_key != NULL) {
+	if (token->tkn_ssnkey.val != NULL &&
+	    token->tkn_ssnkey.len == SMBAUTH_HASH_SZ) {
+
 		/*
 		 * At this point, token->tkn_session_key is the
 		 * "Session Base Key" [MS-NLMP] 3.2.5.1.2
@@ -465,10 +467,10 @@ smbd_ntlmssp_authenticate(authsvc_context_t *ctx)
 		if (ntlm_v1x) {
 			smb_auth_ntlm2_kxkey(kxkey,
 			    be->srv_challenge, lm_resp,
-			    token->tkn_session_key->data);
+			    token->tkn_ssnkey.val);
 		} else {
 			/* KXKEY is the Session Base Key. */
-			(void) memcpy(kxkey, token->tkn_session_key->data,
+			(void) memcpy(kxkey, token->tkn_ssnkey.val,
 			    SMBAUTH_HASH_SZ);
 		}
 
@@ -478,12 +480,12 @@ smbd_ntlmssp_authenticate(authsvc_context_t *ctx)
 		 */
 		if (be->clnt_flags & NTLMSSP_NEGOTIATE_KEY_EXCH) {
 			/* RC4 args: result, key, data */
-			(void) smb_auth_RC4(token->tkn_session_key->data,
+			(void) smb_auth_RC4(token->tkn_ssnkey.val,
 			    SMBAUTH_HASH_SZ, kxkey, SMBAUTH_HASH_SZ,
 			    essn_key, hdr.h_essn_key.sb_length);
 		} else {
 			/* Final key is the KXKEY */
-			(void) memcpy(token->tkn_session_key->data, kxkey,
+			(void) memcpy(token->tkn_ssnkey.val, kxkey,
 			    SMBAUTH_HASH_SZ);
 		}
 	}

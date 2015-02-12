@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 /*
  * These routines provide the SMB MAC signing for the SMB2 server.
@@ -69,32 +69,36 @@ static void smb2_hmac_sha256_final(sha2_hc_ctx_t *, uint8_t *);
  * This is what begins SMB2 signing.
  */
 void
-smb2_sign_begin(smb_request_t *sr, smb_arg_sessionsetup_t *sinfo)
+smb2_sign_begin(smb_request_t *sr, smb_token_t *token)
 {
 	smb_session_t *session = sr->session;
-	struct smb_sign *sign = &session->signing;
-	struct smb_key *sign_key = &sr->uid_user->sign_key;
+	smb_user_t *user = sr->uid_user;
+	struct smb_key *sign_key = &user->u_sign_key;
 
 	/*
-	 * Don't turn on signing after anon or guest login.
-	 * (Wait for a "real" login.)
+	 * We should normally have a session key here because
+	 * our caller filters out Anonymous and Guest logons.
+	 * However, buggy clients could get us here without a
+	 * session key, in which case: just don't sign.
 	 */
-	if (sr->uid_user->u_flags &
-	    (SMB_USER_FLAG_GUEST | SMB_USER_FLAG_ANON))
+	if (token->tkn_ssnkey.val == NULL || token->tkn_ssnkey.len == 0)
 		return;
 
 	/*
-	 * The MAC key is the same as the session key.
+	 * SMB2 always uses "extended security", but note:
+	 * [MS-SMB2] 3.2.5.3.1 The SessionKey MUST be set to the
+	 * first 16 bytes of the cryptographic key from GSSAPI.
+	 * (Padded with zeros if the GSSAPI key is shorter.)
 	 */
-	sign_key->key_len = SMB_SSNKEY_LEN;
-	bcopy(sinfo->ssi_ssnkey, sign_key->key, SMB_SSNKEY_LEN);
+	sign_key->len = SMB2_SESSION_KEY_LEN;
+	bcopy(token->tkn_ssnkey.val, sign_key->key,
+	    MIN(token->tkn_ssnkey.len, sign_key->len));
 
-	sign->flags = 0;
-	if (session->secmode & SMB2_NEGOTIATE_SIGNING_ENABLED) {
-		sign->flags |= SMB_SIGNING_ENABLED;
-		if (session->secmode & SMB2_NEGOTIATE_SIGNING_REQUIRED)
-			sign->flags |= SMB_SIGNING_CHECK;
-	}
+	if (session->secmode & SMB2_NEGOTIATE_SIGNING_ENABLED)
+		user->u_sign_flags |= SMB_SIGNING_ENABLED;
+	if (session->secmode & SMB2_NEGOTIATE_SIGNING_REQUIRED)
+		user->u_sign_flags |=
+		    SMB_SIGNING_ENABLED | SMB_SIGNING_CHECK;
 
 	/*
 	 * If we just turned on signing, the current request
@@ -102,7 +106,7 @@ smb2_sign_begin(smb_request_t *sr, smb_arg_sessionsetup_t *sinfo)
 	 * SMB2_FLAGS_SIGNED (and not signed) but the response
 	 * is is supposed to be signed. [MS-SMB2] 3.3.5.5
 	 */
-	if (sign->flags & SMB_SIGNING_ENABLED)
+	if (user->u_sign_flags & SMB_SIGNING_ENABLED)
 		sr->smb2_hdr_flags |= SMB2_FLAGS_SIGNED;
 }
 
@@ -130,11 +134,11 @@ smb2_sign_calc(struct mbuf_chain *mbc,
 	int resid = mbc->max_bytes - offset;
 	int tlen;
 
-	if (sign_key->key_len == 0)
+	if (sign_key->len == 0)
 		return (-1);
 
 	bzero(&hctx, sizeof (hctx));
-	if (smb2_hmac_sha256_init(&hctx, sign_key->key, sign_key->key_len))
+	if (smb2_hmac_sha256_init(&hctx, sign_key->key, sign_key->len))
 		return (-1);
 
 	/*
@@ -230,7 +234,7 @@ smb2_sign_check_request(smb_request_t *sr)
 		return (-1);
 
 	/* Compute what we think it should be. */
-	if (smb2_sign_calc(mbc, &u->sign_key, digest) != 0)
+	if (smb2_sign_calc(mbc, &u->u_sign_key, digest) != 0)
 		return (-1);
 
 	if (memcmp(digest, req_sig, SMB2_SIG_SIZE) != 0) {
@@ -266,7 +270,7 @@ smb2_sign_reply(smb_request_t *sr)
 	/*
 	 * Calculate MAC signature
 	 */
-	if (smb2_sign_calc(&tmp_mbc, &u->sign_key, digest) != 0)
+	if (smb2_sign_calc(&tmp_mbc, &u->u_sign_key, digest) != 0)
 		return;
 
 	/*

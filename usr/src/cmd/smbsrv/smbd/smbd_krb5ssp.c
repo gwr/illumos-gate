@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -306,8 +306,8 @@ get_ssnkey(authsvc_context_t *ctx)
 {
 	krb5ssp_backend_t *be = ctx->ctx_backend;
 	gss_buffer_set_t data_set = GSS_C_NO_BUFFER_SET;
-	smb_session_key_t *ssn_key = NULL;
 	OM_uint32 major, minor;
+	size_t keylen;
 	uint32_t status = NT_STATUS_UNSUCCESSFUL;
 
 	major = gss_inquire_sec_context_by_oid(&minor,
@@ -328,19 +328,20 @@ get_ssnkey(authsvc_context_t *ctx)
 		smbd_report("krb5ssp: Session key is missing");
 		goto out;
 	}
-	if (data_set->elements[0].length < 16) {
+	if ((keylen = data_set->elements[0].length) < SMBAUTH_HASH_SZ) {
 		smbd_report("krb5ssp: Session key too short (%d)",
 		    data_set->elements[0].length);
 		goto out;
 	}
 
-	ssn_key = calloc(1, sizeof (*ssn_key));
-	if (ssn_key == NULL) {
+	ctx->ctx_token->tkn_ssnkey.val = malloc(keylen);
+	if (ctx->ctx_token->tkn_ssnkey.val == NULL) {
 		status = NT_STATUS_NO_MEMORY;
 		goto out;
 	}
-	bcopy(data_set->elements[0].value, ssn_key->data, 16);
-	ctx->ctx_token->tkn_session_key = ssn_key;
+	ctx->ctx_token->tkn_ssnkey.len = keylen;
+	bcopy(data_set->elements[0].value,
+	    ctx->ctx_token->tkn_ssnkey.val, keylen);
 	status = 0;
 
 out:
