@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -70,7 +70,7 @@ srvsvc_open(char *server, char *domain, char *username, mlsvc_handle_t *handle)
 	if (username == NULL)
 		username = MLSVC_ANON_USER;
 
-	if (ndr_rpc_bind(handle, server, domain, username, "SRVSVC") < 0)
+	if (ndr_rpc_bind(handle, server, domain, username, "SRVSVC") != 0)
 		return (-1);
 
 	return (0);

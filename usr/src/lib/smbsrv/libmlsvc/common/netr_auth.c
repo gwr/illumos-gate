@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -129,18 +129,20 @@ netlogon_auth(char *server, mlsvc_handle_t *netr_handle, DWORD flags)
  *
  * We store the remote server information, which is used to drive Windows
  * version specific behavior.
+ *
+ * Returns 0 or NT status
  */
-int
+DWORD
 netr_open(char *server, char *domain, mlsvc_handle_t *netr_handle)
 {
 	char user[SMB_USERNAME_MAXLEN];
+	DWORD status;
 
 	smb_ipc_get_user(user, SMB_USERNAME_MAXLEN);
 
-	if (ndr_rpc_bind(netr_handle, server, domain, user, "NETR") < 0)
-		return (-1);
+	status = ndr_rpc_bind(netr_handle, server, domain, user, "NETR");
 
-	return (0);
+	return (status);
 }
 
 /*

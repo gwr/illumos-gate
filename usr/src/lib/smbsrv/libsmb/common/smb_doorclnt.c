@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <assert.h>
@@ -203,6 +203,10 @@ smb_joinres_xdr(XDR *xdrs, smb_joinres_t *objp)
 		return (FALSE);
 
 	if (!xdr_int(xdrs, &objp->join_err))
+		return (FALSE);
+
+	if (!xdr_vector(xdrs, (char *)objp->dc_name, MAXHOSTNAMELEN,
+	    sizeof (char), (xdrproc_t)xdr_char))
 		return (FALSE);
 
 	return (TRUE);
