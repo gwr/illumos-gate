@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <syslog.h>
@@ -274,8 +274,9 @@ smbd_dc_update(void)
 	if (status != NT_STATUS_SUCCESS) {
 		syslog(LOG_NOTICE,
 		    "failed to establish NETLOGON credential chain");
-		syslog(LOG_NOTICE, " server=%s domain=%s",
-		    info.d_dci.dc_name, domain);
+		syslog(LOG_NOTICE, " with server %s for domain %s (%s)",
+		    info.d_dci.dc_name, domain,
+		    xlate_nt_status(status));
 	}
 }
 

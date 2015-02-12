@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #ifndef	_LIBSMB_H
@@ -232,6 +232,7 @@ typedef struct smb_joininfo {
 typedef struct smb_joinres {
 	uint32_t status;
 	int join_err;
+	char dc_name[MAXHOSTNAMELEN];
 } smb_joinres_t;
 
 /* APIs to communicate with SMB daemon via door calls */

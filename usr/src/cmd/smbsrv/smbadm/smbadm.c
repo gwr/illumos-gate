@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -647,44 +647,64 @@ smbadm_join_domain(const char *domain, const char *username, boolean_t prompt)
 
 	switch (jdres.status) {
 	case NT_STATUS_SUCCESS:
-		(void) printf(gettext("Successfully joined %s\n"),
-		    jdi.domain_name);
+		(void) printf(gettext(
+		    "Successfully joined domain %s using AD server %s\n"),
+		    jdi.domain_name, jdres.dc_name);
 		bzero(&jdi, sizeof (jdi));
 		smbadm_restart_service();
 		return (0);
 
-	case NT_STATUS_INVALID_COMPUTER_NAME:
-		(void) fprintf(stderr,
-		    gettext("failed to get the local system name\n"));
-		goto common;
-
 	case NT_STATUS_DOMAIN_CONTROLLER_NOT_FOUND:
-		(void) fprintf(stderr,
-		    gettext("failed to find any domain controllers for %s\n"),
+		/* See: smb_ads_lookup_msdcs */
+		(void) fprintf(stderr, gettext(
+		    "failed to find any AD servers for domain: %s\n"),
 		    jdi.domain_name);
 		goto common;
 
 	case NT_STATUS_BAD_NETWORK_PATH:
-		(void) fprintf(stderr,
-		    gettext("failed to resolve domain controller name\n"));
+		/* See: smbrdr_ctx_new / smb_ctx_resolve */
+		(void) fprintf(stderr, gettext(
+		    "failed to resolve address of AD server: %s\n"),
+		    jdres.dc_name);
 		goto common;
 
 	case NT_STATUS_NETWORK_ACCESS_DENIED:
+		/* See: smbrdr_ctx_new / smb_ctx_get_ssn */
+		(void) fprintf(stderr, gettext(
+		    "failed to authenticate with AD server: %s\n"),
+		    jdres.dc_name);
+		goto common;
+
 	case NT_STATUS_BAD_NETWORK_NAME:
-		(void) fprintf(stderr,
-		    gettext("failed connecting to domain controller\n"));
+		/*
+		 * See: smbrdr_ctx_new / smb_ctx_get_tree
+		 * and: ndr_rpc_bind / smb_fh_open
+		 */
+		(void) fprintf(stderr, gettext(
+		    "failed connecting to services on AD server: %s\n"),
+		    jdres.dc_name);
 		goto common;
 
 	default:
-		(void) fprintf(stderr, gettext("failed to join %s: %s\n"),
-		    jdi.domain_name, xlate_nt_status(jdres.status));
+		(void) fprintf(stderr, gettext(
+		    "failed to join domain %s\n"),
+		    jdi.domain_name);
+		if (jdres.dc_name[0] != '\0') {
+			(void) fprintf(stderr, gettext(
+			    "using AD server: %s\n"),
+			    jdres.dc_name);
+		}
+		/* FALLTHROUGH */
 	common:
-		if (jdres.join_err) {
+		if (jdres.join_err != 0) {
 			(void) fprintf(stderr, "%s\n",
 			    smb_ads_strerror(jdres.join_err));
+		} else if (jdres.status != 0) {
+			(void) fprintf(stderr, "(%s)\n",
+			    xlate_nt_status(jdres.status));
 		}
-		(void) fprintf(stderr, gettext("Please refer to the system log"
-		    " for more information.\n"));
+		(void) fprintf(stderr, gettext("Please refer to the "
+		    "service log for more information.\n"));
 		bzero(&jdi, sizeof (jdi));
 		return (1);
 	}
