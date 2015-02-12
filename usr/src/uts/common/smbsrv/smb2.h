@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #ifndef _SMB_SMB2_H
@@ -96,6 +96,13 @@ typedef enum {
  * [MS-SMB2 3.1.5.1]
  */
 #define	SMB2_FLAGS_SIGNED	0x00000008
+
+/*
+ * [MS-SMB2] 3.2.5.3.1 The SessionKey MUST be set to the
+ * first 16 bytes of the cryptographic key from GSSAPI.
+ * (Padded with zeros if the GSSAPI key is shorter.)
+ */
+#define	SMB2_SESSION_KEY_LEN	16
 
 /*
  * DFS_OPERATIONS

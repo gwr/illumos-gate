@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <unistd.h>
@@ -253,7 +253,7 @@ smb_token_destroy(smb_token_t *token)
 		free(token->tkn_posix_grps);
 		free(token->tkn_account_name);
 		free(token->tkn_domain_name);
-		free(token->tkn_session_key);
+		free(token->tkn_ssnkey.val);
 		bzero(token, sizeof (smb_token_t));
 		free(token);
 	}
@@ -581,9 +581,10 @@ smb_token_auth_local(smb_logon_t *user_info, smb_token_t *token,
 		return (NT_STATUS_PASSWORD_EXPIRED);
 	}
 
-	token->tkn_session_key = malloc(SMBAUTH_SESSION_KEY_SZ);
-	if (token->tkn_session_key == NULL)
+	token->tkn_ssnkey.val = malloc(SMBAUTH_SESSION_KEY_SZ);
+	if (token->tkn_ssnkey.val == NULL)
 		return (NT_STATUS_NO_MEMORY);
+	token->tkn_ssnkey.len = SMBAUTH_SESSION_KEY_SZ;
 
 	ok = smb_auth_validate(
 	    smbpw,
@@ -595,12 +596,13 @@ smb_token_auth_local(smb_logon_t *user_info, smb_token_t *token,
 	    user_info->lg_nt_password.len,
 	    user_info->lg_lm_password.val,
 	    user_info->lg_lm_password.len,
-	    (uchar_t *)token->tkn_session_key);
+	    token->tkn_ssnkey.val);
 	if (ok)
 		return (NT_STATUS_SUCCESS);
 
-	free(token->tkn_session_key);
-	token->tkn_session_key = NULL;
+	free(token->tkn_ssnkey.val);
+	token->tkn_ssnkey.val = NULL;
+	token->tkn_ssnkey.len = 0;
 
 	status = NT_STATUS_WRONG_PASSWORD;
 	syslog(LOG_NOTICE, "logon[%s\\%s]: %s",

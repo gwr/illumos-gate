@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -307,6 +307,7 @@ smb_authenticate_ext(smb_request_t *sr)
 		sinfo->ssi_oseclen = (uint16_t)rlen;
 		sinfo->ssi_osecblob = smb_srm_alloc(sr, sinfo->ssi_oseclen);
 		bcopy(rbuf, sinfo->ssi_osecblob, sinfo->ssi_oseclen);
+		sinfo->ssi_ntpwlen = 0;
 		/*
 		 * Get the final auth. token.
 		 */
@@ -382,7 +383,6 @@ smb_auth_get_token(smb_request_t *sr)
 {
 	smb_lsa_msg_hdr_t msg_hdr;
 	XDR		xdrs;
-	smb_arg_sessionsetup_t *sinfo = sr->sr_ssetup;
 	smb_user_t	*user = sr->uid_user;
 	smb_token_t	*token = NULL;
 	cred_t		*cr = NULL;
@@ -446,16 +446,14 @@ smb_auth_get_token(smb_request_t *sr)
 	crfree(cr);
 
 	/*
-	 * Save the session key, and (maybe) enable signing.
+	 * Save the session key, and (maybe) enable signing,
+	 * but only for real logon (not ANON or GUEST).
 	 */
-	if (token->tkn_session_key) {
-		bcopy(token->tkn_session_key, sinfo->ssi_ssnkey,
-		    SMB_SSNKEY_LEN);
-		if (sr->session->signing.mackey == NULL) {
-			if (sr->session->dialect >= 0x200)
-				smb2_sign_begin(sr, sinfo);
-			else
-				smb_sign_begin(sr, sinfo);
+	if ((token->tkn_flags & (SMB_ATF_GUEST | SMB_ATF_ANON)) == 0) {
+		if (sr->session->dialect >= 0x200) {
+			smb2_sign_begin(sr, token);
+		} else {
+			smb_sign_begin(sr, token);
 		}
 	}
 
