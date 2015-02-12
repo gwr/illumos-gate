@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -116,7 +116,7 @@ smbrdr_ctx_new(struct smb_ctx **ctx_p, char *server,
 	assert(user != NULL);
 
 	if (server[0] == '\0')
-		return (NT_STATUS_BAD_NETWORK_NAME);
+		return (NT_STATUS_INTERNAL_ERROR);
 
 	if ((err = smb_ctx_alloc(&ctx)) != 0)
 		return (NT_STATUS_NO_MEMORY);
