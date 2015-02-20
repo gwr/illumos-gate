@@ -1,8 +1,10 @@
 /* opensslconf.h */
 /* WARNING: Generated automatically from opensslconf.h.in by Configure. */
 
+#ifdef	OPENSSL_SUNW_PREFIX
 /* Rename all external symbols */
 #include <openssl/sunw_prefix.h>
+#endif
 
 /* OpenSSL was configured with the following options: */
 #ifndef OPENSSL_DOING_MAKEDEPEND
@@ -297,7 +299,7 @@
 #define CONFIG_HEADER_RC4_LOCL_H
 /* if this is defined data[i] is used instead of *data, this is a %20
  * speedup on x86 */
-#define RC4_INDEX
+#undef RC4_INDEX
 #endif
 
 #if defined(HEADER_BF_LOCL_H) && !defined(CONFIG_HEADER_BF_LOCL_H)
@@ -318,7 +320,7 @@
  * units.  It reduces register dependancies at the expense of 2 more
  * registers */
 #ifndef DES_RISC1
-#define DES_RISC1
+#undef DES_RISC1
 #endif
 
 #ifndef DES_RISC2
