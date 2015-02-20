@@ -23,8 +23,8 @@
 # Copyright (c) 1989, 2010, Oracle and/or its affiliates. All rights reserved.
 # Copyright (c) 2012 by Delphix. All rights reserved.
 # Copyright (c) 2012, Joyent, Inc. All rights reserved.
-# Copyright (c) 2013 Gary Mills
 # Copyright 2014 Garrett D'Amore <garrett@damore.org>
+# Copyright 2015 Gary Mills
 
 include ../Makefile.master
 
@@ -137,6 +137,7 @@ SUBDIRS += \
 	libsendfile	\
 	nametoaddr	\
 	ncad_addr	\
+	openssl		\
 	hbaapi		\
 	smhba		\
 	sun_fc		\
@@ -477,6 +478,7 @@ HDRSUBDIRS=		\
 	libzfs_jni	\
 	libzoneinfo	\
 	libzonestat	\
+	openssl		\
 	hal		\
 	policykit	\
 	lvm		\
@@ -588,7 +590,7 @@ libidmap:	libadutils libldap5 libavl libsldap libuutil
 libipadm:	libnsl libinetutil libsocket libdlpi libnvpair libdhcpagent \
 		libdladm libsecdb
 libiscsit:	libc libnvpair libstmf libuuid libnsl
-libkmf:		libcryptoutil pkcs11
+libkmf:		libcryptoutil pkcs11 openssl
 libm:		libc
 libm1:		libc libm
 libmvec:	libc libm
@@ -624,8 +626,9 @@ libtermcap:	libcurses
 libtsnet:	libnsl libtsol libsecdb
 libwrap:	libnsl libsocket
 libwanboot:	libnvpair libresolv libnsl libsocket libdevinfo libinetutil \
-		libdhcputil
+		libdhcputil openssl
 libwanbootutil:	libnsl
+openssl:	libnsl libsocket
 pam_modules:	libproject passwdutil smbsrv
 libscf:		libuutil libmd libgen libsmbios libnsl
 libinetsvc:	libscf
@@ -633,7 +636,7 @@ librestart:	libuutil libscf
 libsaveargs:	libdisasm
 ../cmd/sgs/libdl:	../cmd/sgs/libconv
 ../cmd/sgs/libelf:	../cmd/sgs/libconv
-pkcs11:		libcryptoutil
+pkcs11:		libcryptoutil openssl
 print:		libldap5
 udapl/udapl_tavor:	udapl/libdat
 libzfs:		libdevid libgen libnvpair libuutil \
