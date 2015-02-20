@@ -1,0 +1,20 @@
+--- openssl-1.0.1h/crypto/sparccpuid.S-orig	Thu Jun  5 04:41:30 2014
++++ openssl-1.0.1h/crypto/sparccpuid.S	Wed Nov  5 16:45:52 2014
+@@ -32,7 +32,7 @@
+ 	call	.walk.reg.wins
+ #endif
+ 	nop
+-	call	.PIC.zero.up
++	call	.pic.zero.up
+ 	mov	.zero-(.-4),%o0
+ 	ld	[%o0],%f0
+ 	ld	[%o0],%f1
+@@ -129,7 +129,7 @@
+ 	restore
+ 
+ .zero:	.long	0x0,0x0
+-.PIC.zero.up:
++.pic.zero.up:
+ 	retl
+ 	add	%o0,%o7,%o0
+ #ifdef DEBUG

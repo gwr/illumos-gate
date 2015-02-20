@@ -1,0 +1,116 @@
+#
+# CDDL HEADER START
+#
+# The contents of this file are subject to the terms of the
+# Common Development and Distribution License (the "License").
+# You may not use this file except in compliance with the License.
+#
+# You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
+# or http://www.opensolaris.org/os/licensing.
+# See the License for the specific language governing permissions
+# and limitations under the License.
+#
+# When distributing Covered Code, include this CDDL HEADER in each
+# file and include the License file at usr/src/OPENSOLARIS.LICENSE.
+# If applicable, add the following below this CDDL HEADER, with the
+# fields enclosed by brackets "[]" replaced with your own identifying
+# information: Portions Copyright [yyyy] [name of copyright owner]
+#
+# CDDL HEADER END
+#
+# Copyright (c) 2009, 2014, Oracle and/or its affiliates. All rights reserved.
+#
+
+
+Build Layout
+---
+
+This code is built over in: usr/src/{lib,cmd}/openssl
+See comments in the Makefiles over there.
+
+Those Makefiles were derived from the ones produced by:
+  ./Configure -DSOLARIS_OPENSSL -DNO_WINDOWS_BRAINDEATH \
+  --openssldir=/etc/openssl --prefix=/usr \
+  --install_prefix=$ROOT/proto \
+  no-ec no-ecdh no-ecdsa no-rc3 no-rc5 no-mdc2 no-idea no-hw_4758_cca \
+  no-hw_aep no-hw_atalla no-hw_chil no-hw_gmp no-hw_ncipher no-hw_nuron \
+  no-hw_padlock no-hw_sureware no-hw_ubsec no-hw_cswift enable-md2 \
+  no-seed no-whirlpool no-whrlpool \
+  --pk11-libname=/usr/lib/libpkcs11.so.1 \
+  --enginesdir=/lib/openssl/engines \
+  threads shared shared solaris-x86-cc-sunw
+
+When updating OpenSSL, run configure as shown above and check for
+changes in the lists of -D options, list of options, etc.
+
+Note that the opensslconf.h produced by Configure is patched so it
+can be used in both 32-bit and 64-bit builds.  We'd rather not run
+Configure here, so we store the patched opensslconf.h in files/.
+When updating openssl, be sure to update files/opensslconf.h
+by running Configure, then applying files/opensslconf.h.diff
+to that result.
+
+OpenSSL Version
+---
+
+This currently uses OpenSSL 1.0.1h with some updates
+from OpenSSL 1.0.2.  Mmost of this is directly from:
+  git@github.com:OpenIndiana/oi-userland.git
+which in turn came from:
+  https://hg.java.net/hg/solaris-userland~gate
+
+
+Differences from Oracle:
+
+Note Oracle does separate builds for fips/non-fips.
+We don't have any fips stuff, so only do non-fips.
+
+Some distros need the ability to "hide" the integrated
+OpenSSL in a way that allows the system administrator to
+install their own OpenSSL (or whatever).  To support that
+use case, the Makefiles over in usr/src know how to build
+OpenSSL either "hidden" (behind a sunw_ prefix) or build
+all of it exposed as usual, for distros that want that.
+See SUNW_OPENSSL in the Makefiles for details.
+
+
+Patches
+---
+
+[ All directly from the userland gate. ]
+
+08-6193522.patch
+Give CA.pl better defaults. See 6193522 for more information.
+
+11-6546806.patch
+Make sure the HMAC_CTX_init(3) man page gets delivered. See 6546806 for
+more information.
+
+14-manpage_openssl.patch
+Force openssl to install man pages into man[1357]openssl instead of man[1357].
+
+15-pkcs11_engine-0.9.8a.patch
+Patch which adds the pkcs11 engine. See also the engine/pkcs11
+sub-directory. 
+
+18-compiler_opts.patch
+Solaris or illumos specific configure changes.
+One only needs these to run ./configure for purposes of
+comparing what that creates against the usr/src Makefiles.
+
+20-remove_rpath.patch
+Prevent build binaries having an unnecessary runpath (/lib).
+
+23-noexstack.patch
+Build with non-executable stacks and non-executable data (x86).
+
+27-6978791.patch
+Modifies Makefile.shared so that libssl is built with -znodelete.
+
+28-enginesdir.patch
+Adds a new "enginesdir" option to the Configure script which allows a user to
+specify the engines directory.
+
+30_wanboot.patch:
+Wanboot specific patches.
+[ various minimizations for the standalone environment ]
