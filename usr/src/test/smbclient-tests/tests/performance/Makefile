@@ -1,4 +1,5 @@
 #
+#
 # This file and its contents are supplied under the terms of the
 # Common Development and Distribution License ("CDDL"), version 1.0.
 # You may only use this file in accordance with the terms of version
@@ -10,21 +11,11 @@
 #
 
 #
-# Copyright (c) 2012 by Delphix. All rights reserved.
-# Copyright 2014 Garrett D'Amore <garrett@damore.org>
 # Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
 #
 
 .PARALLEL:	$(SUBDIRS)
 
-SUBDIRS=	comstar-tests	\
-		libc-tests	\
-		lofi-tests	\
-		os-tests	\
-		sharefs-tests	\
-		smbclient-tests	\
-		test-runner	\
-		util-tests	\
-		zfs-tests
+SUBDIRS=	filebench
 
-include		Makefile.com
+include		$(SRC)/test/Makefile.com

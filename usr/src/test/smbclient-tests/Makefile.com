@@ -10,21 +10,10 @@
 #
 
 #
-# Copyright (c) 2012 by Delphix. All rights reserved.
-# Copyright 2014 Garrett D'Amore <garrett@damore.org>
 # Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
 #
 
-.PARALLEL:	$(SUBDIRS)
-
-SUBDIRS=	comstar-tests	\
-		libc-tests	\
-		lofi-tests	\
-		os-tests	\
-		sharefs-tests	\
-		smbclient-tests	\
-		test-runner	\
-		util-tests	\
-		zfs-tests
-
-include		Makefile.com
+ROOTOPTPKG=	$(ROOT)/opt/smbclient-tests
+ROOTBINDIR=	$(ROOTOPTPKG)/bin
+ROOTCONFDIR=	$(ROOTOPTPKG)/config
+ROOTINCDIR=	$(ROOTOPTPKG)/include

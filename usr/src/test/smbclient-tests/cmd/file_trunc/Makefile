@@ -10,21 +10,12 @@
 #
 
 #
-# Copyright (c) 2012 by Delphix. All rights reserved.
-# Copyright 2014 Garrett D'Amore <garrett@damore.org>
 # Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
 #
 
-.PARALLEL:	$(SUBDIRS)
+include		$(SRC)/cmd/Makefile.cmd
+include		../../Makefile.com
 
-SUBDIRS=	comstar-tests	\
-		libc-tests	\
-		lofi-tests	\
-		os-tests	\
-		sharefs-tests	\
-		smbclient-tests	\
-		test-runner	\
-		util-tests	\
-		zfs-tests
+PROG=		file_trunc
 
-include		Makefile.com
+include		../Makefile.cmd

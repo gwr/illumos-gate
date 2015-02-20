@@ -10,21 +10,26 @@
 #
 
 #
-# Copyright (c) 2012 by Delphix. All rights reserved.
-# Copyright 2014 Garrett D'Amore <garrett@damore.org>
 # Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
 #
 
-.PARALLEL:	$(SUBDIRS)
+include		$(SRC)/Makefile.master
+include		../../../Makefile.com
 
-SUBDIRS=	comstar-tests	\
-		libc-tests	\
-		lofi-tests	\
-		os-tests	\
-		sharefs-tests	\
-		smbclient-tests	\
-		test-runner	\
-		util-tests	\
-		zfs-tests
+ROOTTESTDIR=	$(ROOTOPTPKG)/tests/smbfs/create
 
-include		Makefile.com
+TESTS=		tc_create	\
+		tp_create_001	\
+		tp_create_002	\
+		tp_create_003	\
+		tp_create_004	\
+		tp_create_005	\
+		tp_create_006	\
+		tp_create_007	\
+		tp_create_008	\
+		tp_create_009	\
+		tp_create_010	\
+		tp_create_011	\
+		tp_create_012
+
+include		../../Makefile.tests

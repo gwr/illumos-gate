@@ -10,21 +10,20 @@
 #
 
 #
-# Copyright (c) 2012 by Delphix. All rights reserved.
-# Copyright 2014 Garrett D'Amore <garrett@damore.org>
 # Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
 #
 
-.PARALLEL:	$(SUBDIRS)
+include		$(SRC)/Makefile.master
+include		../../Makefile.com
 
-SUBDIRS=	comstar-tests	\
-		libc-tests	\
-		lofi-tests	\
-		os-tests	\
-		sharefs-tests	\
-		smbclient-tests	\
-		test-runner	\
-		util-tests	\
-		zfs-tests
+ROOTTESTDIR=	$(ROOTOPTPKG)/tests/nsmbrc
 
-include		Makefile.com
+TESTS=		tc_nsmbrc	\
+		tp_nsmbrc_001	\
+		tp_nsmbrc_002	\
+		tp_nsmbrc_003	\
+		tp_nsmbrc_004	\
+		tp_nsmbrc_005	\
+		tp_nsmbrc_006
+
+include		../Makefile.tests

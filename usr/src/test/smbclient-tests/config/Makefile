@@ -10,21 +10,31 @@
 #
 
 #
-# Copyright (c) 2012 by Delphix. All rights reserved.
-# Copyright 2014 Garrett D'Amore <garrett@damore.org>
 # Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
 #
 
-.PARALLEL:	$(SUBDIRS)
+include		$(SRC)/Makefile.master
+include		../Makefile.com
 
-SUBDIRS=	comstar-tests	\
-		libc-tests	\
-		lofi-tests	\
-		os-tests	\
-		sharefs-tests	\
-		smbclient-tests	\
-		test-runner	\
-		util-tests	\
-		zfs-tests
+CONFS=		config			\
+		fileio.prof		\
+		filemacro.prof		\
+		filemicro.prof		\
+		generic.func		\
+		randomread.prof		\
+		seqread.prof
 
-include		Makefile.com
+ROOTCONFS=	$(CONFS:%=$(ROOTCONFDIR)/%)
+$(ROOTCONFS) :=	FILEMODE = 0444
+
+all lint clean clobber:
+
+install:	$(ROOTCONFS)
+
+$(ROOTCONFS):	$(ROOTCONFDIR)
+
+$(ROOTCONFDIR):
+		$(INS.dir)
+
+$(ROOTCONFDIR)/%: %
+		$(INS.file)

@@ -10,21 +10,29 @@
 #
 
 #
-# Copyright (c) 2012 by Delphix. All rights reserved.
-# Copyright 2014 Garrett D'Amore <garrett@damore.org>
 # Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
 #
 
-.PARALLEL:	$(SUBDIRS)
+include		$(SRC)/Makefile.master
+include		../Makefile.com
 
-SUBDIRS=	comstar-tests	\
-		libc-tests	\
-		lofi-tests	\
-		os-tests	\
-		sharefs-tests	\
-		smbclient-tests	\
-		test-runner	\
-		util-tests	\
-		zfs-tests
+INCS=		services_common.ksh	\
+		smbmount_common.ksh	\
+		smbutil_common.ksh	\
+		utils_common.ksh	\
+		xattr_common.ksh
 
-include		Makefile.com
+ROOTINCS=	$(INCS:%=$(ROOTINCDIR)/%)
+$(ROOTINCS) :=	FILEMODE = 0444
+
+all lint clean clobber:
+
+install:	$(ROOTINCS)
+
+$(ROOTINCS):	$(ROOTINCDIR)
+
+$(ROOTINCDIR):
+		$(INS.dir)
+
+$(ROOTINCDIR)/%: %
+		$(INS.file)
