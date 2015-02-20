@@ -10,18 +10,20 @@
 #
 
 #
-# Copyright (c) 2012 by Delphix. All rights reserved.
-# Copyright 2014 Garrett D'Amore <garrett@damore.org>
+# Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
 #
 
-.PARALLEL:	$(SUBDIRS)
+include		$(SRC)/Makefile.master
+include		../../Makefile.com
 
-SUBDIRS = \
-	test-runner \
-	libc-tests \
-	os-tests \
-	smbclient-tests	\
-	util-tests \
-	zfs-tests
+ROOTTESTDIR=	$(ROOTOPTPKG)/tests/sharectl
 
-include		Makefile.com
+TESTS=		tc_sharectl	\
+		tp_sharectl_001	\
+		tp_sharectl_002	\
+		tp_sharectl_003	\
+		tp_sharectl_004	\
+		tp_sharectl_005	\
+		tp_sharectl_006
+
+include		../Makefile.tests
