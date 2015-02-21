@@ -97,7 +97,7 @@ check :=		TARGET= check
 #	cd pkg and do a 'make install'
 #
 
-all: mapfiles closedbins sgs .WAIT $(SUBDIRS) pkg
+all: mapfiles closedbins extsrc sgs .WAIT $(SUBDIRS) pkg
 
 #
 # The _msg build is a two-step process.  First, the _msg dependency
@@ -118,7 +118,7 @@ install: install1 install2 _msg stage-licenses
 stage-licenses: install2
 	@cd pkg; pwd; $(MAKE) stage-licenses
 
-install1: mapfiles closedbins sgs
+install1: mapfiles closedbins extsrc sgs
 
 install2: install1 $(SUBDIRS)
 
@@ -136,6 +136,7 @@ clobber_local:
 	@cd tools; pwd; $(MAKE) clobber
 	@cd common/mapfiles; pwd; $(MAKE) clobber
 	@cd msg; pwd; $(MAKE) clobber
+	@cd $(CODEMGR_WS)/external; pwd; $(MAKE) clobber
 
 closedbins: bldtools $(ROOTDIRS) FRC
 	@CLOSED_ROOT="$$ON_CLOSED_BINS/root_$(MACH)$${RELEASE_BUILD+-nd}"; \
@@ -153,6 +154,9 @@ closedbins: bldtools $(ROOTDIRS) FRC
 	( cd $(ROOT); $(CTFSTRIP) $$(cd $$CLOSED_ROOT; $(FIND) \
 	    ./kernel ./usr/kernel ./platform/*/kernel -type f -a -perm -u+x | \
 	    $(EGREP) -vf $(CODEMGR_WS)/exception_lists/closed-bins) )
+
+extsrc: FRC
+	cd $(CODEMGR_WS)/external && $(MAKE) all
 
 #
 # Declare what parts can be built in parallel
@@ -178,7 +182,7 @@ sgs: rootdirs .WAIT sysheaders userheaders .WAIT \
 # dependent on a number of constant mapfiles, the tools themselves are
 # required to build the generated mapfiles.
 #
-setup: closedbins bldtools sgs mapfiles
+setup: closedbins extsrc bldtools sgs mapfiles
 
 bldtools:
 	@cd tools; pwd; $(MAKE) install

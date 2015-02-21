@@ -15,10 +15,10 @@
 
 include ../Makefile.lib
 
-HDRS= \
+HDRS = \
 	aes.h \
-	asn1_mac.h \
 	asn1.h \
+	asn1_mac.h \
 	asn1t.h \
 	bio.h \
 	blowfish.h \
@@ -29,11 +29,11 @@ HDRS= \
 	cmac.h \
 	cms.h \
 	comp.h \
-	conf_api.h \
 	conf.h \
+	conf_api.h \
 	crypto.h \
-	des_old.h \
 	des.h \
+	des_old.h \
 	dh.h \
 	dsa.h \
 	dso.h \
@@ -59,7 +59,6 @@ HDRS= \
 	obj_mac.h \
 	objects.h \
 	ocsp.h \
-	opensslconf.h \
 	opensslv.h \
 	ossl_typ.h \
 	pem.h \
@@ -86,15 +85,18 @@ HDRS= \
 	tls1.h \
 	ts.h \
 	txt_db.h \
-	ui_compat.h \
 	ui.h \
+	ui_compat.h \
 	whrlpool.h \
-	x509_vfy.h \
 	x509.h \
-	x509v3.h \
+	x509_vfy.h \
+	x509v3.h
+
+# Special.  See external/openssl/files
+HDRS +=	opensslconf.h \
 	sunw_prefix.h
 
-HDRDIR =	include/openssl
+HDRDIR =	$(OPENSSLDIR)/include/openssl
 ROOTHDRDIR =    $(ROOT)/usr/include/openssl
 
 SUBDIRS = \
@@ -103,7 +105,7 @@ SUBDIRS = \
 	libpk11
 
 # Serialize
-libssl:	libcrypto
+libssl:		libcrypto
 libpk11:	libcrypto
 
 all 	:=	TARGET= all
@@ -114,7 +116,9 @@ lint :=		TARGET= lint
 
 .KEEP_STATE:
 
-all clean clobber install lint: $(SUBDIRS)
+all clean clobber lint: $(SUBDIRS)
+
+install: $(SUBDIRS) $(ROOTLIBDIR)/pkgconfig/openssl.pc
 
 install_h: $(ROOTHDRDIR) $(ROOTHDRS)
 
@@ -123,6 +127,9 @@ check:
 
 $(ROOTHDRDIR):
 	$(INS.dir)
+
+$(ROOTLIBDIR)/pkgconfig/% : %
+	$(INS.file)
 
 $(SUBDIRS): FRC
 	@cd $@; pwd; $(MAKE) $(TARGET)

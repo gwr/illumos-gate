@@ -1,0 +1,34 @@
+#
+# This file and its contents are supplied under the terms of the
+# Common Development and Distribution License ("CDDL"), version 1.0.
+# You may only use this file in accordance with the terms of version
+# 1.0 of the CDDL.
+#
+# A full copy of the text of the CDDL should have accompanied this
+# source.  A copy of the CDDL is also available via the Internet at
+# http://www.illumos.org/license/CDDL.
+#
+
+#
+# Copyright 2015 Gary Mills
+#
+
+#
+# List of object files used by the various libssl builds,
+# and pattern rules to compile them.
+#
+# SSL_SRC is defined by the Makefiles including this one.
+# SSL_OBJECTS is defined here for its use.
+#
+
+SSL_OBJ= \
+	s2_meth.o  s2_srvr.o  s2_clnt.o  s2_lib.o  s2_enc.o s2_pkt.o \
+	s3_meth.o  s3_srvr.o  s3_clnt.o  s3_lib.o  s3_enc.o s3_pkt.o s3_both.o s3_cbc.o \
+	s23_meth.o s23_srvr.o s23_clnt.o s23_lib.o          s23_pkt.o \
+	t1_meth.o   t1_srvr.o t1_clnt.o  t1_lib.o  t1_enc.o \
+	d1_meth.o   d1_srvr.o d1_clnt.o  d1_lib.o  d1_pkt.o \
+	d1_both.o d1_enc.o d1_srtp.o\
+	ssl_lib.o ssl_err2.o ssl_cert.o ssl_sess.o \
+	ssl_ciph.o ssl_stat.o ssl_rsa.o \
+	ssl_asn1.o ssl_txt.o ssl_algs.o \
+	bio_ssl.o ssl_err.o kssl.o tls_srp.o t1_reneg.o

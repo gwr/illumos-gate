@@ -13,14 +13,21 @@
 # Copyright 2015 Gary Mills
 #
 
-LBASE=	libpk11
-LPREF=  libsunw_pk11
-LIBRARY= $(LPREF).a
+LIBRARY= libpk11.a
+# This one should NOT be versioned with OpenSSL.
 VERS= .1
+
+# Also build the "private" library?
+# SUNW_DYNLIB=   libsunw_crypto.so.1
+# SUNW_LIBLINKS= libsunw_crypto.so
+
+# Common openssl CPPFLAGS
+include ../../Makefile.conf
 
 OBJECTS= e_pk11.o
 
 include ../../../Makefile.lib
+include ../../../Makefile.rootfs
 
 ROOTLIBDIR=	$(ROOT)/lib/openssl/engines
 ROOTLIBDIR64=	$(ROOT)/lib/openssl/engines/$(MACH64)
@@ -28,7 +35,6 @@ ROOTLIBDIR64=	$(ROOT)/lib/openssl/engines/$(MACH64)
 SRCS=	e_pk11.c
 
 SRCDIR=		../common
-INCDIR=		../../include
 
 # Build only a loadable module
 LIBS =		$(DYNLIB)
@@ -38,62 +44,25 @@ C99MODE=	$(C99_ENABLE)
 
 LDLIBS +=	-lcrypto -lc
 
-# Omit the prefix for the link target but retain it for the library file
-ROOTLINKS=	$(ROOTLIBDIR)/$(LBASE).so
-ROOTLINKS64=	$(ROOTLIBDIR64)/$(LBASE).so
-
-$(ROOTLINKS): $(ROOTLIBDIR)/$(LIBLINKS)$(VERS)
-	$(INS.liblink)
-
-$(ROOTLINKS64): $(ROOTLIBDIR64)/$(LIBLINKS)$(VERS)
-	$(INS.liblink64)
-
 CFLAGS	+=	$(CCVERBOSE)
-CPPFLAGS +=	-I$(INCDIR) -I$(SRCDIR)
+
+CPPFLAGS +=	-I$(SRCDIR)
+
+# NB: same as libcrypto
+CPPFLAGS +=	$(OPENSSL_CONF_CPPFLAGS)
 CPPFLAGS +=	\
-	-DOPENSSL_PIC \
-	-DOPENSSL_THREADS \
-	-D_REENTRANT \
-	-DDSO_DLFCN \
-	-DHAVE_DLFCN_H \
-	-DSOLARIS_OPENSSL \
-	-DNO_WINDOWS_BRAINDEATH \
-	-DOPENSSL_BN_ASM_MONT \
-	-DSHA1_ASM \
-	-DSHA256_ASM \
-	-DSHA512_ASM \
-	-DMD5_ASM \
-	-DAES_ASM \
-	-DGHASH_ASM
-CPPFLAGS +=	\
-	-DOPENSSL_NO_EC	\
-	-DOPENSSL_NO_EC_NISTP_64_GCC_128	\
-	-DOPENSSL_NO_ECDH	\
-	-DOPENSSL_NO_ECDSA	\
-	-DOPENSSL_NO_GMP	\
-	-DOPENSSL_NO_GOST	\
-	-DOPENSSL_NO_HW_4758_CCA	\
-	-DOPENSSL_NO_HW_AEP	\
-	-DOPENSSL_NO_HW_ATALLA	\
-	-DOPENSSL_NO_HW_CHIL	\
-	-DOPENSSL_NO_HW_CSWIFT	\
-	-DOPENSSL_NO_HW_GMP	\
-	-DOPENSSL_NO_HW_NCIPHER	\
-	-DOPENSSL_NO_HW_NURON	\
-	-DOPENSSL_NO_HW_PADLOCK	\
-	-DOPENSSL_NO_HW_SUREWARE	\
-	-DOPENSSL_NO_HW_UBSEC	\
-	-DOPENSSL_NO_IDEA	\
-	-DOPENSSL_NO_JPAKE	\
-	-DOPENSSL_NO_MDC2	\
-	-DOPENSSL_NO_RC3	\
-	-DOPENSSL_NO_RC5	\
-	-DOPENSSL_NO_RFC3779	\
-	-DOPENSSL_NO_SCTP	\
-	-DOPENSSL_NO_SEED	\
-	-DOPENSSL_NO_STORE	\
-	-DOPENSSL_NO_WHIRLPOOL	\
-	-DOPENSSL_NO_WHRLPOOL
+	-D_REENTRANT	\
+	-DAES_ASM	\
+	-DDSO_DLFCN	\
+	-DGHASH_ASM	\
+	-DHAVE_DLFCN_H	\
+	-DMD5_ASM	\
+	-DOPENSSL_BN_ASM_MONT	\
+	-DOPENSSL_PIC	\
+	-DOPENSSL_THREADS	\
+	-DSHA1_ASM	\
+	-DSHA256_ASM	\
+	-DSHA512_ASM
 
 CERRWARN += -erroff=E_NON_CONST_INIT
 
