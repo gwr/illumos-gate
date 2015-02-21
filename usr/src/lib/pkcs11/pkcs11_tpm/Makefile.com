@@ -73,7 +73,21 @@ TSSLIB=-L$(TSPILIBDIR)
 TSSLIB64=-L$(TSPILIBDIR)/$(MACH64)
 TSSINC=-I$(TSPIINCDIR)
 
-LDLIBS += $(TSSLIB) -L$(ADJUNCT_PROTO)/lib -lc -luuid -lmd -ltspi -lcrypto
+#
+# Note, libtspi comes from the closed-bins, which was built against
+# libcrypto.so.0.9.8 (and there's nothing we can do about that).
+# This means the -lcrypto here has to be that same (old) one,
+# so make those two library versions explicit here.
+#
+# Yes, this is ugly.  The alternatives are: Find open-source
+# replacements for the TPM stuff, or just rip it out.
+#
+LDLIBS += $(TSSLIB) -L$(ADJUNCT_PROTO)/lib -lc -luuid -lmd
+LDLIBS32 += $(ADJUNCT_PROTO)/usr/lib/libtspi.so.1
+LDLIBS32 += $(ADJUNCT_PROTO)/lib/libcrypto.so.0.9.8
+LDLIBS64 += $(ADJUNCT_PROTO)/usr/lib/$(MACH64)/libtspi.so.1
+LDLIBS64 += $(ADJUNCT_PROTO)/lib/$(MACH64)/libcrypto.so.0.9.8
+
 CPPFLAGS += -xCC -D_POSIX_PTHREAD_SEMANTICS $(TSSINC)
 CPPFLAGS64 += $(CPPFLAGS)
 C99MODE=        $(C99_ENABLE)

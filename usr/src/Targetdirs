@@ -140,6 +140,9 @@ DIRS= \
 	/etc/mail/cf/sh  \
 	/etc/net-snmp \
 	/etc/net-snmp/snmp \
+	/etc/openssl \
+	/etc/openssl/certs \
+	/etc/openssl/private \
 	/etc/opt  \
 	/etc/rc0.d  \
 	/etc/rc1.d  \
@@ -285,6 +288,7 @@ DIRS= \
 	/usr/lib/nfs \
 	/usr/net \
 	/usr/net/servers \
+	/usr/lib/pkgconfig \
 	/usr/lib/pool \
 	/usr/lib/python2.6 \
 	/usr/lib/python2.6/vendor-packages \
@@ -630,6 +634,8 @@ ROOTDIRS=	$(TARGETDIRS:%=$(ROOT)%)
 #
 # The default value for DIRMODE is specified in usr/src/Makefile.master.
 #
+
+$(ROOT)/etc/openssl/private := DIRMODE= 700
 
 $(ROOT)/var/adm \
 $(ROOT)/var/adm/sa :=		DIRMODE= 775
