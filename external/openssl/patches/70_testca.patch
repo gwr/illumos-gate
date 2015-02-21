@@ -1,0 +1,14 @@
+Without this fix, testca looks in the wrong places for certificates
+and never finds the ones created by earlier parts of the test.
+
+--- openssl-1.0.1h/test/testca~	Sat Feb 21 11:49:54 2015
++++ openssl-1.0.1h/test/testca	Sun Feb 22 03:08:36 2015
+@@ -30,7 +30,7 @@
+ fi
+ 
+ 
+-SSLEAY_CONFIG="-config ../apps/openssl.cnf"
++SSLEAY_CONFIG="-config CAss.cnf"
+ export SSLEAY_CONFIG
+ $SH ../apps/CA.sh -sign  <<EOF
+ y
