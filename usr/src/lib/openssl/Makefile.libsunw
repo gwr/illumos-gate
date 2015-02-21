@@ -1,0 +1,74 @@
+#
+# This file and its contents are supplied under the terms of the
+# Common Development and Distribution License ("CDDL"), version 1.0.
+# You may only use this file in accordance with the terms of version
+# 1.0 of the CDDL.
+#
+# A full copy of the text of the CDDL should have accompanied this
+# source.  A copy of the CDDL is also available via the Internet at
+# http://www.illumos.org/license/CDDL.
+#
+
+#
+# Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
+#
+
+#
+# Build the SUNW prefix PICS, DYNLIB
+# Copied PICS, DYNLIB etc from Makefile.lib
+#
+SUNW_PICS=	$(OBJECTS:%=sunw/%)
+.PARALLEL:	$(SUNW_PICS)
+
+CLEANFILES +=	$(SUNW_PICS)
+
+# Here is the magic to compile with OPENSSL_SUNW_PREFIX
+$(SUNW_PICS)  :=	CPPFLAGS +=	-DOPENSSL_SUNW_PREFIX
+
+# Had to copy these $(PICS) := assignments from Makefile.lib
+# Sorry, couldn't think of an easier way to get these...
+$(SUNW_PICS)  :=	sparc_CFLAGS += -xregs=no%appl $(sparc_C_PICFLAGS)
+$(SUNW_PICS)  :=	sparcv9_CFLAGS += -xregs=no%appl $(sparcv9_C_PICFLAGS)
+$(SUNW_PICS)  :=	i386_CFLAGS += $(i386_C_PICFLAGS)
+$(SUNW_PICS)  :=	amd64_CFLAGS += $(amd64_C_PICFLAGS)
+$(SUNW_PICS)  :=	CCFLAGS += $(CC_PICFLAGS)
+$(SUNW_PICS)  :=	CPPFLAGS += -DPIC -D_REENTRANT
+$(SUNW_PICS)  :=	sparcv9_CCFLAGS += -xregs=no%appl $(sparcv9_CC_PICFLAGS)
+$(SUNW_PICS)  :=	amd64_CCFLAGS += $(amd64_CC_PICFLAGS)
+$(SUNW_PICS)  :=	CFLAGS += $(CTF_FLAGS)
+$(SUNW_PICS)  :=	CFLAGS64 += $(CTF_FLAGS)
+$(SUNW_PICS)  :=	CTFCONVERT_POST = $(CTFCONVERT_O)
+
+# Copy a few $(DYNLIB) := assignments too.
+$(SUNW_DYNLIB) :=	DIR = sunw
+$(SUNW_DYNLIB) :=	HSONAME= -h$(SUNW_DYNLIB)
+$(SUNW_DYNLIB) :=	MAPFILES = ../mapfile-sunw
+$(SUNW_DYNLIB) :=	CTFMERGE_POST = $(CTFMERGE) $(CTFMRGFLAGS) \
+				-t -f -L VERSION -o $@ $(SUNW_PICS)
+
+# Build rule for SUNW_DYNLIB; like DYNLIB but special BUILD.SO
+# (See BUILD.SO in both Makefile.master / Makefile.master.64)
+# replacing PICS with SUNW_PICS.  NB: needs $(CFLAGS) for 64-bit.
+$(SUNW_DYNLIB): sunw .WAIT $$(SUNW_PICS)
+	$(CC) $(CFLAGS) -o $@ $(GSHARED) $(DYNFLAGS) $(SUNW_PICS) $(LDLIBS)
+	$(POST_PROCESS_SO)
+
+sunw:	# like pics
+	-@mkdir -p $@
+
+#
+# Install rules.   $(SUNW_DYNLIB) is in LIBS, so the normal
+# $(ROOTLIBS) rule takes care of that.  However LIBLINKS is
+# not setup for multiple targets, so add ROOTLINKS instead.
+#
+
+ROOTLINKS	+=	$(SUNW_LIBLINKS:%=$(ROOTLIBDIR)/%)
+ROOTLINKS64	+=	$(SUNW_LIBLINKS:%=$(ROOTLIBDIR64)/%)
+
+$(ROOTLIBDIR)/$(SUNW_LIBLINKS): $(ROOTLIBDIR)/$(SUNW_DYNLIB)
+	-$(RM) $@; $(SYMLINK) $(SUNW_DYNLIB) $@
+$(ROOTLIBDIR64)/$(SUNW_LIBLINKS): $(ROOTLIBDIR64)/$(SUNW_DYNLIB)
+	-$(RM) $@; $(SYMLINK) $(SUNW_DYNLIB) $@
+
+$(ROOTLIBDIR)/$(SUNW_DYNLIB)	:= FILEMODE= 755
+$(ROOTLIBDIR64)/$(SUNW_DYNLIB)	:= FILEMODE= 755

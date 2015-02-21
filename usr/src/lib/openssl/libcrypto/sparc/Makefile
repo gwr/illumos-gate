@@ -47,35 +47,6 @@ CPPFLAGS += -DOPENSSL_NO_INLINE_ASM \
 	-DBN_DIV2W \
 	-DB_ENDIAN
 
-# Let CPP rename external symbols
-pics/des_enc-sparc.o	:= CPPFLAGS += -DDES_ede3_cbc_encrypt=sunw_DES_ede3_cbc_encrypt
-pics/des_enc-sparc.o	:= CPPFLAGS += -DDES_ncbc_encrypt=sunw_DES_ncbc_encrypt
-pics/sparcv8.o	:= CPPFLAGS += -Dbn_mul_comba4=sunw_bn_mul_comba4
-pics/sparcv8.o	:= CPPFLAGS += -Dbn_mul_comba8=sunw_bn_mul_comba8
-pics/sparcv8.o	:= CPPFLAGS += -Dbn_sqr_comba4=sunw_bn_sqr_comba4
-pics/sparcv8.o	:= CPPFLAGS += -Dbn_sqr_comba8=sunw_bn_sqr_comba8
-pics/sparcv8.o	:= CPPFLAGS += -Dbn_add_words=sunw_bn_add_words
-pics/sparcv8.o	:= CPPFLAGS += -Dbn_div_words=sunw_bn_div_words
-pics/sparcv8.o	:= CPPFLAGS += -Dbn_mul_add_words=sunw_bn_mul_add_words
-pics/sparcv8.o	:= CPPFLAGS += -Dbn_mul_words=sunw_bn_mul_words
-pics/sparcv8.o	:= CPPFLAGS += -Dbn_sqr_words=sunw_bn_sqr_words
-pics/sparcv8.o	:= CPPFLAGS += -Dbn_sub_words=sunw_bn_sub_words
-pics/bn-sparcv9.o	:= CPPFLAGS += -Dbn_mul_comba4=sunw_bn_mul_comba4
-pics/bn-sparcv9.o	:= CPPFLAGS += -Dbn_mul_comba8=sunw_bn_mul_comba8
-pics/bn-sparcv9.o	:= CPPFLAGS += -Dbn_sqr_comba4=sunw_bn_sqr_comba4
-pics/bn-sparcv9.o	:= CPPFLAGS += -Dbn_sqr_comba8=sunw_bn_sqr_comba8
-pics/bn-sparcv9.o	:= CPPFLAGS += -Dbn_add_words=sunw_bn_add_words
-pics/bn-sparcv9.o	:= CPPFLAGS += -Dbn_div_words=sunw_bn_div_words
-pics/bn-sparcv9.o	:= CPPFLAGS += -Dbn_mul_add_words=sunw_bn_mul_add_words
-pics/bn-sparcv9.o	:= CPPFLAGS += -Dbn_mul_words=sunw_bn_mul_words
-pics/bn-sparcv9.o	:= CPPFLAGS += -Dbn_sqr_words=sunw_bn_sqr_words
-pics/bn-sparcv9.o	:= CPPFLAGS += -Dbn_sub_words=sunw_bn_sub_words
-pics/sparccpuid.o	:= CPPFLAGS += -DOPENSSL_cleanse=sunw_OPENSSL_cleanse
-pics/aes-sparcv9.o	:= CPPFLAGS += -DAES_encrypt=sunw_AES_encrypt
-pics/aes-sparcv9.o	:= CPPFLAGS += -DAES_decrypt=sunw_AES_decrypt
-pics/aest4-sparcv9.o	:= CPPFLAGS += -DAES_encrypt=sunw_AES_encrypt
-pics/aest4-sparcv9.o	:= CPPFLAGS += -DAES_decrypt=sunw_AES_decrypt
-
 # PERL script options
 PLFLAGS= -DB_ENDIAN -fpic
 # Other possible options

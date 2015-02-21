@@ -32,41 +32,14 @@ ENGINES_ASM_OBJ=
 include ../Makefile.com
 include ../../../Makefile.lib.64
 
-ASFLAGS += -m64 -xarch=sparcvis $(sparcv9_C_BIGPICFLAGS)
+ILSRCDIR = ../../inline-t4
+
+ASFLAGS += -xarch=sparcvis $(sparcv9_C_BIGPICFLAGS)
 
 sparcv9_C_PICFLAGS = $(sparcv9_C_BIGPICFLAGS)
 
 CPPFLAGS += -DPK11_LIB_LOCATION="/usr/lib/64/libpkcs11.so.1" \
 	-DB_ENDIAN
-
-# Let CPP rename external symbols
-pics/des_enc-sparc.o	:= CPPFLAGS += -DDES_ede3_cbc_encrypt=sunw_DES_ede3_cbc_encrypt
-pics/des_enc-sparc.o	:= CPPFLAGS += -DDES_ncbc_encrypt=sunw_DES_ncbc_encrypt
-pics/sparcv8.o	:= CPPFLAGS += -Dbn_mul_comba4=sunw_bn_mul_comba4
-pics/sparcv8.o	:= CPPFLAGS += -Dbn_mul_comba8=sunw_bn_mul_comba8
-pics/sparcv8.o	:= CPPFLAGS += -Dbn_sqr_comba4=sunw_bn_sqr_comba4
-pics/sparcv8.o	:= CPPFLAGS += -Dbn_sqr_comba8=sunw_bn_sqr_comba8
-pics/sparcv8.o	:= CPPFLAGS += -Dbn_add_words=sunw_bn_add_words
-pics/sparcv8.o	:= CPPFLAGS += -Dbn_div_words=sunw_bn_div_words
-pics/sparcv8.o	:= CPPFLAGS += -Dbn_mul_add_words=sunw_bn_mul_add_words
-pics/sparcv8.o	:= CPPFLAGS += -Dbn_mul_words=sunw_bn_mul_words
-pics/sparcv8.o	:= CPPFLAGS += -Dbn_sqr_words=sunw_bn_sqr_words
-pics/sparcv8.o	:= CPPFLAGS += -Dbn_sub_words=sunw_bn_sub_words
-pics/bn-sparcv9.o	:= CPPFLAGS += -Dbn_mul_comba4=sunw_bn_mul_comba4
-pics/bn-sparcv9.o	:= CPPFLAGS += -Dbn_mul_comba8=sunw_bn_mul_comba8
-pics/bn-sparcv9.o	:= CPPFLAGS += -Dbn_sqr_comba4=sunw_bn_sqr_comba4
-pics/bn-sparcv9.o	:= CPPFLAGS += -Dbn_sqr_comba8=sunw_bn_sqr_comba8
-pics/bn-sparcv9.o	:= CPPFLAGS += -Dbn_add_words=sunw_bn_add_words
-pics/bn-sparcv9.o	:= CPPFLAGS += -Dbn_div_words=sunw_bn_div_words
-pics/bn-sparcv9.o	:= CPPFLAGS += -Dbn_mul_add_words=sunw_bn_mul_add_words
-pics/bn-sparcv9.o	:= CPPFLAGS += -Dbn_mul_words=sunw_bn_mul_words
-pics/bn-sparcv9.o	:= CPPFLAGS += -Dbn_sqr_words=sunw_bn_sqr_words
-pics/bn-sparcv9.o	:= CPPFLAGS += -Dbn_sub_words=sunw_bn_sub_words
-pics/sparccpuid.o	:= CPPFLAGS += -DOPENSSL_cleanse=sunw_OPENSSL_cleanse
-pics/aes-sparcv9.o	:= CPPFLAGS += -DAES_encrypt=sunw_AES_encrypt
-pics/aes-sparcv9.o	:= CPPFLAGS += -DAES_decrypt=sunw_AES_decrypt
-pics/aest4-sparcv9.o	:= CPPFLAGS += -DAES_encrypt=sunw_AES_encrypt
-pics/aest4-sparcv9.o	:= CPPFLAGS += -DAES_decrypt=sunw_AES_decrypt
 
 # PERL script options
 PLFLAGS= -DB_ENDIAN -fpic -m64 -xarch=v9a
@@ -110,8 +83,8 @@ pics/sparcv9cap.o: $(SRCDIR)/sparcv9cap.c
 # 	$(PERL) asm/aest4-sparcv9.pl $(CFLAGS) > $@
 pics/aes-sparcv9.S: $(SRCDIR)/aes/asm/aes-sparcv9.pl
 	$(PERL) $(SRCDIR)/aes/asm/aes-sparcv9.pl $(PLFLAGS) > $@
-pics/aest4-sparcv9.S:	$(SRCDIR)/aes/asm/aest4-sparcv9.pl
-	$(PERL) $(SRCDIR)/aes/asm/aest4-sparcv9.pl $(PLFLAGS) > $@
+pics/aest4-sparcv9.S:	$(ILSRCDIR)/aest4-sparcv9.pl
+	$(PERL) $(ILSRCDIR)/aest4-sparcv9.pl $(PLFLAGS) > $@
 
 # bn/Makefile:
 # sparcv8.o:	asm/sparcv8.S
@@ -138,12 +111,12 @@ pics/sparcv9a-mont.s:	$(SRCDIR)/bn/asm/sparcv9a-mont.pl
 	$(PERL) $(SRCDIR)/bn/asm/sparcv9a-mont.pl $(PLFLAGS) > $@
 pics/sparcv9-mont.s:	$(SRCDIR)/bn/asm/sparcv9-mont.pl
 	$(PERL) $(SRCDIR)/bn/asm/sparcv9-mont.pl $(PLFLAGS)  > $@
-pics/vis3-mont.s:	$(SRCDIR)/bn/asm/vis3-mont.pl
-	$(PERL) $(SRCDIR)/bn/asm/vis3-mont.pl $(PLFLAGS) > $@
-pics/sparct4-mont.S:	$(SRCDIR)/bn/asm/sparct4-mont.pl
-	$(PERL) $(SRCDIR)/bn/asm/sparct4-mont.pl $(PLFLAGS) > $@
-pics/sparcv9-gf2m.S:	$(SRCDIR)/bn/asm/sparcv9-gf2m.pl
-	$(PERL) $(SRCDIR)/bn/asm/sparcv9-gf2m.pl $(PLFLAGS) > $@
+pics/vis3-mont.s:	$(ILSRCDIR)/vis3-mont.pl
+	$(PERL) $(ILSRCDIR)/vis3-mont.pl $(PLFLAGS) > $@
+pics/sparct4-mont.S:	$(ILSRCDIR)/sparct4-mont.pl
+	$(PERL) $(ILSRCDIR)/sparct4-mont.pl $(PLFLAGS) > $@
+pics/sparcv9-gf2m.S:	$(ILSRCDIR)/sparcv9-gf2m.pl
+	$(PERL) $(ILSRCDIR)/sparcv9-gf2m.pl $(PLFLAGS) > $@
 
 # des/Makefile:
 # des_enc-sparc.S:	asm/des_enc.m4
@@ -152,14 +125,14 @@ pics/sparcv9-gf2m.S:	$(SRCDIR)/bn/asm/sparcv9-gf2m.pl
 # 	$(PERL) asm/dest4-sparcv9.pl $(CFLAGS) > $@
 pics/des_enc-sparc.S:	$(SRCDIR)/des/asm/des_enc.m4
 	$(M4) -B 8192 $(SRCDIR)/des/asm/des_enc.m4 > $@
-pics/dest4-sparcv9.s:	$(SRCDIR)/des/asm/dest4-sparcv9.pl
-	$(PERL) $(SRCDIR)/des/asm/dest4-sparcv9.pl $(PLFLAGS) > $@
+pics/dest4-sparcv9.s:	$(ILSRCDIR)/dest4-sparcv9.pl
+	$(PERL) $(ILSRCDIR)/dest4-sparcv9.pl $(PLFLAGS) > $@
 
 # md5/Makefile:
 # md5-sparcv9.S:	asm/md5-sparcv9.pl
 # 	$(PERL) asm/md5-sparcv9.pl $@ $(CFLAGS)
-pics/md5-sparcv9.S:	$(SRCDIR)/md5/asm/md5-sparcv9.pl
-	$(PERL) $(SRCDIR)/md5/asm/md5-sparcv9.pl $@ $(PLFLAGS)
+pics/md5-sparcv9.S:	$(ILSRCDIR)/md5-sparcv9.pl
+	$(PERL) $(ILSRCDIR)/md5-sparcv9.pl $@ $(PLFLAGS)
 
 # modes/Makefile:
 # ghash-sparcv9.s:	asm/ghash-sparcv9.pl

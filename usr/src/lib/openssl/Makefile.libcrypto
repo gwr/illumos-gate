@@ -1,0 +1,415 @@
+#
+# This file and its contents are supplied under the terms of the
+# Common Development and Distribution License ("CDDL"), version 1.0.
+# You may only use this file in accordance with the terms of version
+# 1.0 of the CDDL.
+#
+# A full copy of the text of the CDDL should have accompanied this
+# source.  A copy of the CDDL is also available via the Internet at
+# http://www.illumos.org/license/CDDL.
+#
+
+#
+# Copyright 2015 Gary Mills
+#
+
+#
+# List of object files used by the various libcrypto builds,
+# and pattern rules to compile them.
+#
+# CRYPTOSRC is defined by the Makefiles including this one.
+# CRYPTO_OBJECTS is defined here for its use.
+#
+
+#
+# The following are defined before the include, i.e.:
+# CPUID_OBJ= mem_clr.o
+# BN_ASM= bn_asm.o
+# DES_ENC= des_enc.o
+# AES_ENC=aes_core.o aes_cbc.o
+# BF_ENC= bf_enc.o
+# CAST_ENC= c_enc.o
+# RC4_ENC= rc4_enc.o rc4_skey.o
+# RC5_ENC= rc5_enc.o
+# CMLL_ENC= camellia.o cmll_misc.o cmll_cbc.o
+
+#
+# These are from $(OPENSSLDIR)/crypto/*/Makefile
+#
+LIBOBJobjects= o_names.o obj_dat.o obj_lib.o obj_err.o obj_xref.o
+LIBOBJmd2=md2_dgst.o md2_one.o
+LIBOBJmd4=md4_dgst.o md4_one.o
+LIBOBJmd5=md5_dgst.o md5_one.o $(MD5_ASM_OBJ)
+LIBOBJsha=sha_dgst.o sha1dgst.o sha_one.o sha1_one.o sha256.o sha512.o $(SHA1_ASM_OBJ)
+LIBOBJhmac=hmac.o hm_ameth.o hm_pmeth.o
+LIBOBJripemd=rmd_dgst.o rmd_one.o $(RMD160_ASM_OBJ)
+LIBOBJdes= set_key.o  ecb_enc.o  cbc_enc.o \
+	      ecb3_enc.o cfb64enc.o cfb64ede.o cfb_enc.o  ofb64ede.o \
+	      enc_read.o enc_writ.o ofb64enc.o \
+	      ofb_enc.o  str2key.o  pcbc_enc.o qud_cksm.o rand_key.o \
+	      ${DES_ENC} \
+	      fcrypt.o xcbc_enc.o rpc_enc.o  cbc_cksm.o \
+	      ede_cbcm_enc.o des_old.o des_old2.o read2pwd.o
+LIBOBJaes=aes_misc.o aes_ecb.o aes_cfb.o aes_ofb.o aes_ctr.o aes_ige.o aes_wrap.o \
+       $(AES_ENC)
+LIBOBJrc2=rc2_ecb.o rc2_skey.o rc2_cbc.o rc2cfb64.o rc2ofb64.o
+LIBOBJrc4=$(RC4_ENC) rc4_utl.o
+LIBOBJbf=bf_skey.o bf_ecb.o $(BF_ENC) bf_cfb64.o bf_ofb64.o
+LIBOBJcast=c_skey.o c_ecb.o $(CAST_ENC) c_cfb64.o c_ofb64.o
+LIBOBJcamellia= cmll_ecb.o cmll_ofb.o cmll_cfb.o cmll_ctr.o cmll_utl.o $(CMLL_ENC)
+LIBOBJmodes= cbc128.o ctr128.o cts128.o cfb128.o ofb128.o gcm128.o \
+	      ccm128.o xts128.o $(MODES_ASM_OBJ)
+LIBOBJbn=	bn_add.o bn_div.o bn_exp.o bn_lib.o bn_ctx.o bn_mul.o bn_mod.o \
+	      bn_print.o bn_rand.o bn_shift.o bn_word.o bn_blind.o \
+	      bn_kron.o bn_sqrt.o bn_gcd.o bn_prime.o bn_err.o bn_sqr.o $(BN_ASM) \
+	      bn_recp.o bn_mont.o bn_mpi.o bn_exp2.o bn_gf2m.o bn_nist.o \
+	      bn_depr.o bn_const.o bn_x931p.o
+LIBOBJrsa= rsa_eay.o rsa_gen.o rsa_lib.o rsa_sign.o rsa_saos.o rsa_err.o \
+	      rsa_pk1.o rsa_ssl.o rsa_none.o rsa_oaep.o rsa_chk.o rsa_null.o \
+	      rsa_pss.o rsa_x931.o rsa_asn1.o rsa_depr.o rsa_ameth.o rsa_prn.o \
+	      rsa_pmeth.o rsa_crpt.o
+LIBOBJdsa= dsa_gen.o dsa_key.o dsa_lib.o dsa_asn1.o dsa_vrf.o dsa_sign.o \
+	      dsa_err.o dsa_ossl.o dsa_depr.o dsa_ameth.o dsa_pmeth.o dsa_prn.o
+LIBOBJdh= dh_asn1.o dh_gen.o dh_key.o dh_lib.o dh_check.o dh_err.o dh_depr.o \
+	      dh_ameth.o dh_pmeth.o dh_prn.o
+LIBOBJdso= dso_dl.o dso_dlfcn.o dso_err.o dso_lib.o dso_null.o \
+	      dso_openssl.o dso_win32.o dso_vms.o dso_beos.o
+LIBOBJengine= eng_err.o eng_lib.o eng_list.o eng_init.o eng_ctrl.o \
+	      eng_table.o eng_pkey.o eng_fat.o eng_all.o \
+	      tb_rsa.o tb_dsa.o tb_ecdsa.o tb_dh.o tb_ecdh.o tb_rand.o tb_store.o \
+	      tb_cipher.o tb_digest.o tb_pkmeth.o tb_asnmth.o \
+	      eng_openssl.o eng_cnf.o eng_dyn.o eng_cryptodev.o \
+	      eng_rsax.o eng_rdrand.o
+LIBOBJbuffer= buffer.o buf_str.o buf_err.o
+LIBOBJbio= bio_lib.o bio_cb.o bio_err.o \
+	      bss_mem.o bss_null.o bss_fd.o \
+	      bss_file.o bss_sock.o bss_conn.o \
+	      bf_null.o bf_buff.o b_print.o b_dump.o \
+	      b_sock.o bss_acpt.o bf_nbio.o bss_log.o bss_bio.o \
+	      bss_dgram.o
+LIBOBJstack=stack.o
+LIBOBJlhash=lhash.o lh_stats.o
+LIBOBJrand=md_rand.o randfile.o rand_lib.o rand_err.o rand_egd.o \
+	      rand_win.o rand_unix.o rand_os2.o rand_nw.o
+LIBOBJerr=err.o err_all.o err_prn.o
+LIBOBJevp=	encode.o digest.o evp_enc.o evp_key.o evp_acnf.o evp_cnf.o \
+	      e_des.o e_bf.o e_idea.o e_des3.o e_camellia.o\
+	      e_rc4.o e_aes.o names.o e_seed.o \
+	      e_xcbc_d.o e_rc2.o e_cast.o e_rc5.o \
+	      m_null.o m_md2.o m_md4.o m_md5.o m_sha.o m_sha1.o m_wp.o \
+	      m_dss.o m_dss1.o m_mdc2.o m_ripemd.o m_ecdsa.o\
+	      p_open.o p_seal.o p_sign.o p_verify.o p_lib.o p_enc.o p_dec.o \
+	      bio_md.o bio_b64.o bio_enc.o evp_err.o e_null.o \
+	      c_all.o c_allc.o c_alld.o evp_lib.o bio_ok.o \
+	      evp_pkey.o evp_pbe.o p5_crpt.o p5_crpt2.o \
+	      e_old.o pmeth_lib.o pmeth_fn.o pmeth_gn.o m_sigver.o evp_fips.o \
+	      e_aes_cbc_hmac_sha1.o e_rc4_hmac_md5.o
+LIBOBJasn1= a_object.o a_bitstr.o a_utctm.o a_gentm.o a_time.o a_int.o a_octet.o \
+	      a_print.o a_type.o a_set.o a_dup.o a_d2i_fp.o a_i2d_fp.o \
+	      a_enum.o a_utf8.o a_sign.o a_digest.o a_verify.o a_mbstr.o a_strex.o \
+	      x_algor.o x_val.o x_pubkey.o x_sig.o x_req.o x_attrib.o x_bignum.o \
+	      x_long.o x_name.o x_x509.o x_x509a.o x_crl.o x_info.o x_spki.o nsseq.o \
+	      x_nx509.o d2i_pu.o d2i_pr.o i2d_pu.o i2d_pr.o \
+	      t_req.o t_x509.o t_x509a.o t_crl.o t_pkey.o t_spki.o t_bitst.o \
+	      tasn_new.o tasn_fre.o tasn_enc.o tasn_dec.o tasn_utl.o tasn_typ.o \
+	      tasn_prn.o ameth_lib.o \
+	      f_int.o f_string.o n_pkey.o \
+	      f_enum.o x_pkey.o a_bool.o x_exten.o bio_asn1.o bio_ndef.o asn_mime.o \
+	      asn1_gen.o asn1_par.o asn1_lib.o asn1_err.o a_bytes.o a_strnid.o \
+	      evp_asn1.o asn_pack.o p5_pbe.o p5_pbev2.o p8_pkey.o asn_moid.o
+
+LIBOBJpem=	pem_sign.o pem_seal.o pem_info.o pem_lib.o pem_all.o pem_err.o \
+	      pem_x509.o pem_xaux.o pem_oth.o pem_pk8.o pem_pkey.o pvkfmt.o
+LIBOBJx509= x509_def.o x509_d2.o x509_r2x.o x509_cmp.o \
+	      x509_obj.o x509_req.o x509spki.o x509_vfy.o \
+	      x509_set.o x509cset.o x509rset.o x509_err.o \
+	      x509name.o x509_v3.o x509_ext.o x509_att.o \
+	      x509type.o x509_lu.o x_all.o x509_txt.o \
+	      x509_trs.o by_file.o by_dir.o x509_vpm.o
+LIBOBJx509v3= v3_bcons.o v3_bitst.o v3_conf.o v3_extku.o v3_ia5.o v3_lib.o \
+v3_prn.o v3_utl.o v3err.o v3_genn.o v3_alt.o v3_skey.o v3_akey.o v3_pku.o \
+v3_int.o v3_enum.o v3_sxnet.o v3_cpols.o v3_crld.o v3_purp.o v3_info.o \
+v3_ocsp.o v3_akeya.o v3_pmaps.o v3_pcons.o v3_ncons.o v3_pcia.o v3_pci.o \
+pcy_cache.o pcy_node.o pcy_data.o pcy_map.o pcy_tree.o pcy_lib.o \
+v3_asid.o v3_addr.o
+LIBOBJconf=	conf_err.o conf_lib.o conf_api.o conf_def.o conf_mod.o \
+	      conf_mall.o conf_sap.o
+LIBOBJtxt_db=txt_db.o
+LIBOBJpkcs7= pk7_asn1.o pk7_lib.o pkcs7err.o pk7_doit.o pk7_smime.o pk7_attr.o \
+	      pk7_mime.o bio_pk7.o
+LIBOBJpkcs12= p12_add.o p12_asn.o p12_attr.o p12_crpt.o p12_crt.o p12_decr.o \
+	      p12_init.o p12_key.o p12_kiss.o p12_mutl.o\
+	      p12_utl.o p12_npas.o pk12err.o p12_p8d.o p12_p8e.o
+LIBOBJcomp=	comp_lib.o comp_err.o \
+	      c_rle.o c_zlib.o
+LIBOBJocsp= ocsp_asn.o ocsp_ext.o ocsp_ht.o ocsp_lib.o ocsp_cl.o \
+	      ocsp_srv.o ocsp_prn.o ocsp_vfy.o ocsp_err.o
+LIBOBJui= ui_err.o ui_lib.o ui_openssl.o ui_util.o $(COMPATOBJ)
+LIBOBJkrb5= krb5_asn.o
+LIBOBJcms= cms_lib.o cms_asn1.o cms_att.o cms_io.o cms_smime.o cms_err.o \
+	      cms_sd.o cms_dd.o cms_cd.o cms_env.o cms_enc.o cms_ess.o \
+	      cms_pwri.o
+LIBOBJpqueue=pqueue.o
+LIBOBJts= ts_err.o ts_req_utils.o ts_req_print.o ts_rsp_utils.o ts_rsp_print.o \
+	      ts_rsp_sign.o ts_rsp_verify.o ts_verify_ctx.o ts_lib.o ts_conf.o \
+	      ts_asn1.o
+LIBOBJsrp=srp_lib.o srp_vfy.o
+LIBOBJcmac=cmac.o cm_ameth.o cm_pmeth.o
+
+LIBOBJcommon_uid= uid.o
+LIBOBJcommon= \
+        cryptlib.o mem.o mem_dbg.o cversion.o ex_data.o cpt_err.o ebcdic.o \
+	o_time.o o_str.o o_dir.o o_fips.o o_init.o fips_ers.o \
+	$(CPUID_OBJ) $(LIBOBJcommon_uid)
+
+# This make variable is intended for use in Makefiles including this.
+CRYPTO_OBJECTS= \
+	$(LIBOBJobjects) $(LIBOBJmd2) $(LIBOBJmd4) $(LIBOBJmd5) \
+	$(LIBOBJsha) $(LIBOBJhmac) $(LIBOBJripemd) $(LIBOBJdes) \
+	$(LIBOBJaes) $(LIBOBJrc2) $(LIBOBJrc4) $(LIBOBJbf) \
+	$(LIBOBJcast) $(LIBOBJcamellia) $(LIBOBJmodes) $(LIBOBJbn) \
+	$(LIBOBJrsa) $(LIBOBJdsa) $(LIBOBJdh) $(LIBOBJdso) \
+	$(LIBOBJengine) $(LIBOBJbuffer) $(LIBOBJbio) $(LIBOBJstack) \
+	$(LIBOBJlhash) $(LIBOBJrand) $(LIBOBJerr) $(LIBOBJevp) \
+	$(LIBOBJasn1) $(LIBOBJpem) $(LIBOBJx509) $(LIBOBJx509v3) \
+	$(LIBOBJconf) $(LIBOBJtxt_db) $(LIBOBJpkcs7) $(LIBOBJpkcs12) \
+	$(LIBOBJcomp) $(LIBOBJocsp) $(LIBOBJui) $(LIBOBJkrb5) \
+	$(LIBOBJcms) $(LIBOBJpqueue) $(LIBOBJts) $(LIBOBJsrp) \
+	$(LIBOBJcmac) $(LIBOBJcommon)
+
+
+#
+# Rules to build libcrypto objects
+#
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/objects/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/md2/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/md4/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/md5/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/md5/asm/%.s
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_A)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/sha/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/sha/asm/%.s
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_A)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/hmac/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/ripemd/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/ripemd/asm/%.s
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_A)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/des/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/des/asm/%.s
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_A)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/aes/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/aes/asm/%.s
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_A)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/rc2/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/rc4/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/rc4/asm/%.s
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_A)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/bf/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/bf/asm/%.s
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_A)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/cast/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/cast/asm/%.s
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_A)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/camellia/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/camellia/asm/%.s
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_A)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/modes/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/modes/asm/%.s
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_A)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/bn/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/bn/asm/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/bn/asm/%.s
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_A)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/rsa/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/dsa/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/dh/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/dso/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/engine/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/buffer/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/bio/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/stack/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/lhash/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/rand/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/err/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/evp/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/asn1/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/pem/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/x509/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/x509v3/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/conf/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/txt_db/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/pkcs7/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/pkcs12/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/comp/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/ocsp/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/ui/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/krb5/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/cms/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/pqueue/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/ts/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/srp/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/cmac/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)

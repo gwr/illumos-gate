@@ -1,8 +1,10 @@
 /* opensslconf.h */
 /* WARNING: Generated automatically from opensslconf.h.in by Configure. */
 
+#ifdef	OPENSSL_SUNW_PREFIX
 /* Rename all external symbols */
 #include <openssl/sunw_prefix.h>
+#endif
 
 /* OpenSSL was configured with the following options: */
 #ifndef OPENSSL_DOING_MAKEDEPEND
