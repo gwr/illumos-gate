@@ -1,0 +1,269 @@
+#
+# This file and its contents are supplied under the terms of the
+# Common Development and Distribution License ("CDDL"), version 1.0.
+# You may only use this file in accordance with the terms of version
+# 1.0 of the CDDL.
+#
+# A full copy of the text of the CDDL should have accompanied this
+# source.  A copy of the CDDL is also available via the Internet at
+# http://www.illumos.org/license/CDDL.
+#
+
+#
+# Copyright 2015 Gary Mills
+#
+
+CRYPTOSRC=	$(OPENSSLDIR)/crypto
+SSL_SRC=	$(OPENSSLDIR)/ssl
+
+#
+# Rules to build libssl objects
+#
+
+objs/%.o pics/%.o sunw/%.o: $(SSL_SRC)/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+#
+# Rules to build libcrypto objects
+#
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/objects/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/md2/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/md4/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/md5/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/md5/asm/%.s
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_A)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/sha/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/sha/asm/%.s
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_A)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/hmac/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/ripemd/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/ripemd/asm/%.s
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_A)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/des/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/des/asm/%.s
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_A)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/aes/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/aes/asm/%.s
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_A)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/rc2/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/rc4/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/rc4/asm/%.s
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_A)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/rc5/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/rc5/asm/%.s
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_A)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/bf/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/bf/asm/%.s
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_A)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/cast/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/cast/asm/%.s
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_A)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/camellia/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/camellia/asm/%.s
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_A)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/modes/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/modes/asm/%.s
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_A)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/bn/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/bn/asm/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/bn/asm/%.s
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_A)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/rsa/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/dsa/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/dh/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/dso/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/engine/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/buffer/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/bio/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/stack/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/lhash/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/rand/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/err/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/evp/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/asn1/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/pem/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/x509/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/x509v3/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/conf/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/txt_db/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/pkcs7/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/pkcs12/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/comp/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/ocsp/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/ui/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/krb5/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/cms/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/pqueue/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/ts/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/srp/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/cmac/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
+
+objs/%.o pics/%.o sunw/%.o: $(CRYPTOSRC)/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)
