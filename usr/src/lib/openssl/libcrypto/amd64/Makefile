@@ -32,11 +32,13 @@ ENGINES_ASM_OBJ=
 include ../Makefile.com
 include ../../../Makefile.lib.64
 
-ASFLAGS += -m64 $(amd64_C_BIGPICFLAGS)
+# Compiler '-xarch' flag. (default OK here)
+ASFLAGS += -xarch=amd64 $(amd64_C_BIGPICFLAGS)
 
 amd64_C_PICFLAGS = $(amd64_C_BIGPICFLAGS)
 
-CPPFLAGS += -DPK11_LIB_LOCATION="/usr/lib/64/libpkcs11.so.1" \
+CPPFLAGS += \
+	-DPK11_LIB_LOCATION="/usr/lib/64/libpkcs11.so.1" \
 	-DOPENSSL_BN_ASM_MONT5 \
 	-DBSAES_ASM \
 	-DL_ENDIAN \
@@ -44,85 +46,86 @@ CPPFLAGS += -DPK11_LIB_LOCATION="/usr/lib/64/libpkcs11.so.1" \
 	-DOPENSSL_IA32_SSE2 \
 	-DVPAES_ASM
 
-# Let CPP rename external symbols
-pics/x86_64cpuid.o	:= CPPFLAGS += -DOPENSSL_cleanse=sunw_OPENSSL_cleanse
-pics/aes-x86_64.o	:= CPPFLAGS += -Dprivate_AES_set_decrypt_key=sunw_private_AES_set_decrypt_key
-pics/aes-x86_64.o	:= CPPFLAGS += -Dprivate_AES_set_encrypt_key=sunw_private_AES_set_encrypt_key
-pics/aes-x86_64.o	:= CPPFLAGS += -DAES_encrypt=sunw_AES_encrypt
-pics/aes-x86_64.o	:= CPPFLAGS += -DAES_decrypt=sunw_AES_decrypt
-pics/rc4-x86_64.o	:= CPPFLAGS += -DRC4=sunw_RC4
+# Let CPP rename external symbols in sunw/*.o
+sunw/x86_64cpuid.o	:= CPPFLAGS += -DOPENSSL_cleanse=sunw_OPENSSL_cleanse
+sunw/aes-x86_64.o	:= CPPFLAGS += -Dprivate_AES_set_decrypt_key=sunw_private_AES_set_decrypt_key
+sunw/aes-x86_64.o	:= CPPFLAGS += -Dprivate_AES_set_encrypt_key=sunw_private_AES_set_encrypt_key
+sunw/aes-x86_64.o	:= CPPFLAGS += -DAES_encrypt=sunw_AES_encrypt
+sunw/aes-x86_64.o	:= CPPFLAGS += -DAES_decrypt=sunw_AES_decrypt
+sunw/rc4-x86_64.o	:= CPPFLAGS += -DRC4=sunw_RC4
 
 # Intermediate files
 CLEANFILES += \
-	pics/x86_64cpuid.S \
-	pics/md5-x86_64.s \
-	pics/sha1-x86_64.s \
-	pics/sha256-x86_64.s \
-	pics/sha512-x86_64.s \
-	pics/aes-x86_64.S \
-	pics/vpaes-x86_64.s \
-	pics/bsaes-x86_64.s \
-	pics/aesni-x86_64.s \
-	pics/aesni-sha1-x86_64.s \
-	pics/rc4-x86_64.S \
-	pics/rc4-x86_64.s \
-	pics/rc4-md5-x86_64.s \
-	pics/cmll-x86_64.s \
-	pics/ghash-x86_64.s \
-	pics/x86_64-mont.s \
-	pics/x86_64-mont5.s \
-	pics/x86_64-gf2m.s \
-	pics/modexp512-x86_64.s
+	x86_64cpuid.S \
+	md5-x86_64.s \
+	sha1-x86_64.s \
+	sha256-x86_64.s \
+	sha512-x86_64.s \
+	aes-x86_64.S \
+	vpaes-x86_64.s \
+	bsaes-x86_64.s \
+	aesni-x86_64.s \
+	aesni-sha1-x86_64.s \
+	rc4-x86_64.S \
+	rc4-x86_64.s \
+	rc4-md5-x86_64.s \
+	cmll-x86_64.s \
+	ghash-x86_64.s \
+	x86_64-mont.s \
+	x86_64-mont5.s \
+	x86_64-gf2m.s \
+	modexp512-x86_64.s
 
-pics/%.o: pics/%.S
-	$(COMPILE.S) -o $@ $<
+pics/%.o sunw/%.o: %.S
+	$(COMPILE.c) -o $@ $<
 	$(POST_PROCESS_A)
 
-pics/x86_64cpuid.S: $(SRCDIR)/x86_64cpuid.pl
+pics/%.o sunw/%.o: %.s
+	$(COMPILE.s) -o $@ $<
+	$(POST_PROCESS_A)
+
+x86_64cpuid.S: $(SRCDIR)/x86_64cpuid.pl
 	$(PERL) $(SRCDIR)/x86_64cpuid.pl void > $@
 
-pics/md5-x86_64.s:	$(SRCDIR)/md5/asm/md5-x86_64.pl
+md5-x86_64.s:	$(SRCDIR)/md5/asm/md5-x86_64.pl
 	$(PERL) $(SRCDIR)/md5/asm/md5-x86_64.pl void > $@
 
-pics/sha1-x86_64.s:	$(SRCDIR)/sha/asm/sha1-x86_64.pl
+sha1-x86_64.s:	$(SRCDIR)/sha/asm/sha1-x86_64.pl
 	$(PERL) $(SRCDIR)/sha/asm/sha1-x86_64.pl void > $@
-pics/sha256-x86_64.s:	$(SRCDIR)/sha/asm/sha512-x86_64.pl
+sha256-x86_64.s:	$(SRCDIR)/sha/asm/sha512-x86_64.pl
 	$(PERL) $(SRCDIR)/sha/asm/sha512-x86_64.pl void $@
-pics/sha512-x86_64.s:	$(SRCDIR)/sha/asm/sha512-x86_64.pl
+sha512-x86_64.s:	$(SRCDIR)/sha/asm/sha512-x86_64.pl
 	$(PERL) $(SRCDIR)/sha/asm/sha512-x86_64.pl void $@
 
-pics/aes-x86_64.S: $(SRCDIR)/aes/asm/aes-x86_64.pl
+aes-x86_64.S: $(SRCDIR)/aes/asm/aes-x86_64.pl
 	$(PERL) $(SRCDIR)/aes/asm/aes-x86_64.pl void > $@
-pics/vpaes-x86_64.s:	$(SRCDIR)/aes/asm/vpaes-x86_64.pl
+vpaes-x86_64.s:	$(SRCDIR)/aes/asm/vpaes-x86_64.pl
 	$(PERL) $(SRCDIR)/aes/asm/vpaes-x86_64.pl void > $@
-pics/bsaes-x86_64.s:	$(SRCDIR)/aes/asm/bsaes-x86_64.pl
+bsaes-x86_64.s:	$(SRCDIR)/aes/asm/bsaes-x86_64.pl
 	$(PERL) $(SRCDIR)/aes/asm/bsaes-x86_64.pl void > $@
-pics/aesni-x86_64.s:	$(SRCDIR)/aes/asm/aesni-x86_64.pl
+aesni-x86_64.s:	$(SRCDIR)/aes/asm/aesni-x86_64.pl
 	$(PERL) $(SRCDIR)/aes/asm/aesni-x86_64.pl void > $@
-pics/aesni-sha1-x86_64.s:	$(SRCDIR)/aes/asm/aesni-sha1-x86_64.pl
+aesni-sha1-x86_64.s:	$(SRCDIR)/aes/asm/aesni-sha1-x86_64.pl
 	$(PERL) $(SRCDIR)/aes/asm/aesni-sha1-x86_64.pl void > $@
 
-pics/rc4-x86_64.S: $(SRCDIR)/rc4/asm/rc4-x86_64.pl
+rc4-x86_64.S: $(SRCDIR)/rc4/asm/rc4-x86_64.pl
 	$(PERL) $(SRCDIR)/rc4/asm/rc4-x86_64.pl void > $@
-pics/rc4-md5-x86_64.s:	$(SRCDIR)/rc4/asm/rc4-md5-x86_64.pl
+rc4-md5-x86_64.s:	$(SRCDIR)/rc4/asm/rc4-md5-x86_64.pl
 	$(PERL) $(SRCDIR)/rc4/asm/rc4-md5-x86_64.pl void > $@
 
-pics/cmll-x86_64.s:  $(SRCDIR)/camellia/asm/cmll-x86_64.pl
+cmll-x86_64.s:  $(SRCDIR)/camellia/asm/cmll-x86_64.pl
 	$(PERL) $(SRCDIR)/camellia/asm/cmll-x86_64.pl void > $@
 
-pics/ghash-x86_64.s:	$(SRCDIR)/modes/asm/ghash-x86_64.pl
+ghash-x86_64.s:	$(SRCDIR)/modes/asm/ghash-x86_64.pl
 	$(PERL) $(SRCDIR)/modes/asm/ghash-x86_64.pl void > $@
 
-pics/x86_64-gcc.o:	$(SRCDIR)/bn/asm/x86_64-gcc.c
-	$(COMPILE.c) -o $@ $(SRCDIR)/bn/asm/x86_64-gcc.c
-	$(POST_PROCESS_O)
-pics/x86_64-mont.s:	$(SRCDIR)/bn/asm/x86_64-mont.pl
+x86_64-mont.s:	$(SRCDIR)/bn/asm/x86_64-mont.pl
 	$(PERL) $(SRCDIR)/bn/asm/x86_64-mont.pl void > $@
-pics/x86_64-mont5.s:	$(SRCDIR)/bn/asm/x86_64-mont5.pl
+x86_64-mont5.s:	$(SRCDIR)/bn/asm/x86_64-mont5.pl
 	$(PERL) $(SRCDIR)/bn/asm/x86_64-mont5.pl void > $@
-pics/x86_64-gf2m.s:	$(SRCDIR)/bn/asm/x86_64-gf2m.pl
+x86_64-gf2m.s:	$(SRCDIR)/bn/asm/x86_64-gf2m.pl
 	$(PERL) $(SRCDIR)/bn/asm/x86_64-gf2m.pl void > $@
-pics/modexp512-x86_64.s:	$(SRCDIR)/bn/asm/modexp512-x86_64.pl
+modexp512-x86_64.s:	$(SRCDIR)/bn/asm/modexp512-x86_64.pl
 	$(PERL) $(SRCDIR)/bn/asm/modexp512-x86_64.pl void > $@
 
 install: all $(ROOTLIBS64) $(ROOTLINKS64)
