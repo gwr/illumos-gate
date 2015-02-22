@@ -40,7 +40,7 @@ CPPFLAGS += -I$(CMNNETDIR)/dhcp -I$(TOPDIR)/common/net/wanboot/crypt \
 #
 # several objects need access to openssl headers, now in ../openssl
 #
-CPPFLAGS += -I..
+CPPFLAGS += -I$(SRC)/lib/openssl/include
 
 CERRWARN += -_gcc=-Wno-char-subscripts
 CERRWARN += -_gcc=-Wno-switch

@@ -74,6 +74,15 @@
  	}
  
  void CRYPTO_set_locking_callback(void (*func)(int mode,int type,
+@@ -719,7 +806,7 @@
+ unsigned long *OPENSSL_ia32cap_loc(void) { return NULL; }
+ #endif
+ int OPENSSL_NONPIC_relocated = 0;
+-#if !defined(OPENSSL_CPUID_SETUP) && !defined(OPENSSL_CPUID_OBJ)
++#if !defined(OPENSSL_CPUID_SETUP)
+ void OPENSSL_cpuid_setup(void) {}
+ #endif
+ 
 @@ -979,6 +979,10 @@
  	MessageBox (NULL,buf,_T("OpenSSL: FATAL"),MB_OK|MB_ICONSTOP);
  }

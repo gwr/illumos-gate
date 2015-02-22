@@ -102,7 +102,8 @@ ROOTHDRDIR =    $(ROOT)/usr/include/openssl
 SUBDIRS = \
 	libcrypto	\
 	libssl	\
-	libpk11
+	libpk11	\
+	wanboot
 
 # Serialize
 libssl:	libcrypto
