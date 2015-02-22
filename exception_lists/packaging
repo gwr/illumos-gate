@@ -1007,3 +1007,10 @@ lib/sparcv9/libsunw_crypto.so.1		sparc
 lib/sparcv9/libsunw_ssl.so		sparc
 lib/sparcv9/libsunw_ssl.so.1		sparc
 usr/include/openssl/sunw_prefix.h
+#
+# libopenssl-boot.a is just for wanboot
+# (always build it, to avoid "bit rot")
+#
+stand/lib/libopenssl-boot.a
+stand/lib/amd64/libopenssl-boot.a	i386
+stand/lib/sparcv9/libopenssl-boot.a	sparc

@@ -100,9 +100,12 @@
 
 #endif /* OPENSSL_DOING_MAKEDEPEND */
 
+#ifndef	_BOOT
 #ifndef OPENSSL_THREADS
 # define OPENSSL_THREADS
 #endif
+#endif
+
 #ifndef OPENSSL_NO_STATIC_ENGINE
 # define OPENSSL_NO_STATIC_ENGINE
 #endif

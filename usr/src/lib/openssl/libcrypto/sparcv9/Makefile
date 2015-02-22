@@ -37,8 +37,8 @@ include ../../../Makefile.lib.64
 
 ILSRCDIR = ../../inline-t4
 
-# sparc_CFLAGS += -xarch=sparcvis
-ASFLAGS += -m64 -xarch=sparcvis $(sparcv9_C_BIGPICFLAGS)
+# sparc_CFLAGS += -xarch=sparcv9
+ASFLAGS += -m64 -xarch=v9 $(sparcv9_C_BIGPICFLAGS)
 
 sparcv9_C_PICFLAGS = $(sparcv9_C_BIGPICFLAGS)
 

@@ -102,7 +102,8 @@ ROOTHDRDIR =    $(ROOT)/usr/include/openssl
 SUBDIRS = \
 	libcrypto	\
 	libssl	\
-	libpk11
+	libpk11	\
+	wanboot
 
 # Serialize
 libssl:	libcrypto
@@ -122,7 +123,8 @@ install: $(SUBDIRS) $(ROOTLIBDIR)/pkgconfig/openssl.pc
 
 install_h: $(ROOTHDRDIR) $(ROOTHDRS) \
 	$(ROOTHDRDIR)/opensslconf.h \
-	$(ROOTHDRDIR)/sunw_prefix.h
+	$(ROOTHDRDIR)/sunw_prefix.h \
+	$(HDRDIR)/opensslconf.h
 
 #
 # Perhaps should generate this using a patch applied to
@@ -130,6 +132,10 @@ install_h: $(ROOTHDRDIR) $(ROOTHDRS) \
 # This was edited for 32/64-bit support and committed.
 #
 $(ROOTHDRDIR)/%: libcrypto/common/%
+	$(INS.file)
+
+# Install our opensslconf.h here too
+$(HDRDIR)/%: libcrypto/common/%
 	$(INS.file)
 
 # Suppress header checking
