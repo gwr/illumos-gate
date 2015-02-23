@@ -337,6 +337,7 @@ DIRS= \
 	/usr/share/man/man1b \
 	/usr/share/man/man1c \
 	/usr/share/man/man1m \
+	/usr/share/man/man1openssl \
 	/usr/share/man/man2 \
 	/usr/share/man/man3 \
 	/usr/share/man/man3bsm \
@@ -374,6 +375,7 @@ DIRS= \
 	/usr/share/man/man3mvec \
 	/usr/share/man/man3nsl \
 	/usr/share/man/man3nvpair \
+	/usr/share/man/man3openssl \
 	/usr/share/man/man3pam \
 	/usr/share/man/man3papi \
 	/usr/share/man/man3perl \
@@ -403,12 +405,14 @@ DIRS= \
 	/usr/share/man/man3xnet \
 	/usr/share/man/man4 \
 	/usr/share/man/man5 \
+	/usr/share/man/man5openssl \
 	/usr/share/man/man7 \
 	/usr/share/man/man7d \
 	/usr/share/man/man7fs \
 	/usr/share/man/man7i \
 	/usr/share/man/man7ipp \
 	/usr/share/man/man7m \
+	/usr/share/man/man7openssl \
 	/usr/share/man/man7p \
         /usr/share/man/man9 \
 	/usr/share/man/man9e \
@@ -927,6 +931,8 @@ $(ROOT)/usr/lib/libcmdutils.so.1:=	REALPATH=../../lib/libcmdutils.so.1
 $(ROOT)/usr/lib/libcmdutils.so:=	REALPATH=../../lib/libcmdutils.so.1
 $(ROOT)/usr/lib/libcontract.so.1:=	REALPATH=../../lib/libcontract.so.1
 $(ROOT)/usr/lib/libcontract.so:=	REALPATH=../../lib/libcontract.so.1
+$(ROOT)/usr/lib/libcrypto.so.1.0.0:=	REALPATH=../../lib/libcrypto.so.1.0.0
+$(ROOT)/usr/lib/libcrypto.so:=		REALPATH=../../lib/libcrypto.so.1.0.0
 $(ROOT)/usr/lib/libcryptoutil.so.1:=	REALPATH=../../lib/libcryptoutil.so.1
 $(ROOT)/usr/lib/libcryptoutil.so:=	REALPATH=../../lib/libcryptoutil.so.1
 $(ROOT)/usr/lib/libctf.so.1:=		REALPATH=../../lib/libctf.so.1
@@ -1018,6 +1024,8 @@ $(ROOT)/usr/lib/libsendfile.so.1:=	REALPATH=../../lib/libsendfile.so.1
 $(ROOT)/usr/lib/libsendfile.so:=	REALPATH=../../lib/libsendfile.so.1
 $(ROOT)/usr/lib/libsocket.so.1:=	REALPATH=../../lib/libsocket.so.1
 $(ROOT)/usr/lib/libsocket.so:=		REALPATH=../../lib/libsocket.so.1
+$(ROOT)/usr/lib/libssl.so.1.0.0:=	REALPATH=../../lib/libssl.so.1.0.0
+$(ROOT)/usr/lib/libssl.so:=		REALPATH=../../lib/libssl.so.1.0.0
 $(ROOT)/usr/lib/libsysevent.so.1:=	REALPATH=../../lib/libsysevent.so.1
 $(ROOT)/usr/lib/libsysevent.so:=	REALPATH=../../lib/libsysevent.so.1
 $(ROOT)/usr/lib/libtermcap.so.1:=	REALPATH=../../lib/libtermcap.so.1
@@ -1204,6 +1212,10 @@ $(ROOT)/usr/lib/$(MACH64)/libcontract.so.1:= \
 	REALPATH=../../../lib/$(MACH64)/libcontract.so.1
 $(ROOT)/usr/lib/$(MACH64)/libcontract.so:= \
 	REALPATH=../../../lib/$(MACH64)/libcontract.so.1
+$(ROOT)/usr/lib/$(MACH64)/libcrypto.so.1.0.0:= \
+	REALPATH=../../../lib/$(MACH64)/libcrypto.so.1.0.0
+$(ROOT)/usr/lib/$(MACH64)/libcrypto.so:= \
+	REALPATH=../../../lib/$(MACH64)/libcrypto.so.1.0.0
 $(ROOT)/usr/lib/$(MACH64)/libctf.so.1:= \
 	REALPATH=../../../lib/$(MACH64)/libctf.so.1
 $(ROOT)/usr/lib/$(MACH64)/libctf.so:= \
@@ -1358,6 +1370,10 @@ $(ROOT)/usr/lib/$(MACH64)/libsocket.so.1:= \
 	REALPATH=../../../lib/$(MACH64)/libsocket.so.1
 $(ROOT)/usr/lib/$(MACH64)/libsocket.so:= \
 	REALPATH=../../../lib/$(MACH64)/libsocket.so.1
+$(ROOT)/usr/lib/$(MACH64)/libssl.so.1.0.0:= \
+	REALPATH=../../../lib/$(MACH64)/libssl.so.1.0.0
+$(ROOT)/usr/lib/$(MACH64)/libssl.so:= \
+	REALPATH=../../../lib/$(MACH64)/libssl.so.1.0.0
 $(ROOT)/usr/lib/$(MACH64)/libsysevent.so.1:= \
 	REALPATH=../../../lib/$(MACH64)/libsysevent.so.1
 $(ROOT)/usr/lib/$(MACH64)/libsysevent.so:= \
@@ -1566,6 +1582,8 @@ SYM.USRLIB= \
 	/usr/lib/libcmdutils.so.1 \
 	/usr/lib/libcontract.so \
 	/usr/lib/libcontract.so.1 \
+	/usr/lib/libcrypto.so \
+	/usr/lib/libcrypto.so.1.0.0 \
 	/usr/lib/libctf.so \
 	/usr/lib/libctf.so.1 \
 	/usr/lib/libcurses.so \
@@ -1649,6 +1667,8 @@ SYM.USRLIB= \
 	/usr/lib/libsendfile.so.1 \
 	/usr/lib/libsocket.so \
 	/usr/lib/libsocket.so.1 \
+	/usr/lib/libssl.so \
+	/usr/lib/libssl.so.1.0.0 \
 	/usr/lib/libsysevent.so \
 	/usr/lib/libsysevent.so.1 \
 	/usr/lib/libtermcap.so \
@@ -1821,6 +1841,8 @@ SYM.USRLIB64= \
 	/usr/lib/$(MACH64)/libcmdutils.so.1 \
 	/usr/lib/$(MACH64)/libcontract.so \
 	/usr/lib/$(MACH64)/libcontract.so.1 \
+	/usr/lib/$(MACH64)/libcrypto.so \
+	/usr/lib/$(MACH64)/libcrypto.so.1.0.0 \
 	/usr/lib/$(MACH64)/libctf.so \
 	/usr/lib/$(MACH64)/libctf.so.1 \
 	/usr/lib/$(MACH64)/libcurses.so \
@@ -1898,6 +1920,8 @@ SYM.USRLIB64= \
 	/usr/lib/$(MACH64)/libsendfile.so.1 \
 	/usr/lib/$(MACH64)/libsocket.so \
 	/usr/lib/$(MACH64)/libsocket.so.1 \
+	/usr/lib/$(MACH64)/libssl.so \
+	/usr/lib/$(MACH64)/libssl.so.1.0.0 \
 	/usr/lib/$(MACH64)/libsysevent.so \
 	/usr/lib/$(MACH64)/libsysevent.so.1 \
 	/usr/lib/$(MACH64)/libtermcap.so \

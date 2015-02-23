@@ -989,3 +989,21 @@ usr/lib/sparcv9/llib-lpcidb.ln		sparc
 usr/lib/libpcidb.so
 usr/lib/llib-lpcidb
 usr/lib/llib-lpcidb.ln
+
+#
+# Private version of openssl libraries
+# not (currently) packaged
+#
+lib/libsunw_crypto.so
+lib/libsunw_crypto.so.1
+lib/libsunw_ssl.so
+lib/libsunw_ssl.so.1
+lib/amd64/libsunw_crypto.so		i386
+lib/amd64/libsunw_crypto.so.1		i386
+lib/amd64/libsunw_ssl.so		i386
+lib/amd64/libsunw_ssl.so.1		i386
+lib/sparcv9/libsunw_crypto.so		sparc
+lib/sparcv9/libsunw_crypto.so.1		sparc
+lib/sparcv9/libsunw_ssl.so		sparc
+lib/sparcv9/libsunw_ssl.so.1		sparc
+usr/include/openssl/sunw_prefix.h
