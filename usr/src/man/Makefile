@@ -20,6 +20,7 @@ SUBDIRS=	man1		\
 		man1c		\
 		man1has		\
 		man1m		\
+		man1openssl	\
 		man2		\
 		man3		\
 		man3bsm		\
@@ -57,6 +58,7 @@ SUBDIRS=	man1		\
 		man3mvec	\
 		man3nsl		\
 		man3nvpair	\
+		man3openssl	\
 		man3pam		\
 		man3papi	\
 		man3perl	\
@@ -86,12 +88,14 @@ SUBDIRS=	man1		\
 		man3xnet	\
 		man4		\
 		man5		\
+		man5openssl	\
 		man7		\
 		man7d		\
 		man7fs		\
 		man7i		\
 		man7ipp		\
 		man7m		\
+		man7openssl	\
 		man7p		\
 		man9		\
 		man9e		\

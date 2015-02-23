@@ -1,0 +1,102 @@
+#
+# CDDL HEADER START
+#
+# The contents of this file are subject to the terms of the
+# Common Development and Distribution License (the "License").
+# You may not use this file except in compliance with the License.
+#
+# You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
+# or http://www.opensolaris.org/os/licensing.
+# See the License for the specific language governing permissions
+# and limitations under the License.
+#
+# When distributing Covered Code, include this CDDL HEADER in each
+# file and include the License file at usr/src/OPENSOLARIS.LICENSE.
+# If applicable, add the following below this CDDL HEADER, with the
+# fields enclosed by brackets "[]" replaced with your own identifying
+# information: Portions Copyright [yyyy] [name of copyright owner]
+#
+# CDDL HEADER END
+#
+# Copyright (c) 2011, Oracle and/or its affiliates. All rights reserved.
+#
+
+set name=pkg.fmri \
+    value=pkg:/library/security/openssl@$(OPENSSL_PKGVERS),$(BUILD_VERSION)
+set name=pkg.description \
+    value="OpenSSL is a full-featured toolkit implementing the Secure Sockets Layer (SSL v2/v3) and Transport Layer Security (TLS v1) protocols as well as a full-strength general purpose cryptography library."
+set name=pkg.summary \
+    value="OpenSSL - a Toolkit for Secure Sockets Layer (SSL v2/v3) and Transport Layer (TLS v1) protocols and general purpose cryptographic library"
+set name=info.classification \
+    value=org.opensolaris.category.2008:System/Security
+set name=variant.arch value=$(ARCH)
+
+# directories
+dir path=etc
+dir path=etc/openssl group=sys
+dir path=etc/openssl/certs group=sys
+dir path=etc/openssl/private group=sys mode=0700
+dir path=lib
+dir path=lib/$(ARCH64)
+dir path=lib/openssl group=bin
+dir path=lib/openssl/engines group=sys
+dir path=lib/openssl/engines/$(ARCH64) group=sys
+dir path=usr
+dir path=usr/bin
+dir path=usr/lib
+dir path=usr/lib/$(ARCH64)
+
+# configuration files
+file etc/openssl/openssl.cnf path=etc/openssl/openssl.cnf group=sys mode=0644 \
+    preserve=true
+
+# XXX Don't need this anymore, right?
+# file path=etc/openssl/openssl.cnf group=sys mode=0644
+#    original_name=SUNWopenssl:etc/sfw/openssl/openssl.cnf preserve=true
+
+# XXX Legacy package?
+# link path=etc/sfw/openssl target=../openssl
+
+# /lib files
+file path=lib/$(ARCH64)/libcrypto.so.1.0.0
+file path=lib/$(ARCH64)/libssl.so.1.0.0
+file path=lib/libcrypto.so.1.0.0
+file path=lib/libssl.so.1.0.0
+file path=lib/openssl/engines/$(ARCH64)/libpk11.so.1
+file path=lib/openssl/engines/libpk11.so.1
+
+# /usr
+file path=usr/bin/CA.pl group=bin mode=0555 owner=root
+file path=usr/bin/openssl group=bin mode=0555 owner=root
+
+# still needed?
+legacy pkg=SUNWopensslr desc="OpenSSL Libraries (Root)" \
+    name="OpenSSL Libraries (Root)"
+license openssl-1.0.1.license license="OpenSSL, SSLeay"
+
+# lib/*.so symlinks (in the main package)
+link path=lib/$(ARCH64)/libcrypto.so target=libcrypto.so.1.0.0
+link path=lib/$(ARCH64)/libssl.so target=libssl.so.1.0.0
+link path=lib/libcrypto.so target=libcrypto.so.1.0.0
+link path=lib/libssl.so target=libssl.so.1.0.0
+
+# These are not the usual compilation *.so links, but are the
+# names libopenssl uses to load this module.  Should probably
+# just install the *.so instead of *.so.1 (no symlinks).
+link path=lib/openssl/engines/$(ARCH64)/libpk11.so target=libpk11.so.1
+link path=lib/openssl/engines/64 target=$(ARCH64)
+link path=lib/openssl/engines/libpk11.so target=libpk11.so.1
+
+# usr/lib symlinks
+link path=usr/lib/$(ARCH64)/libcrypto.so \
+    target=../../../lib/$(ARCH64)/libcrypto.so.1.0.0
+link path=usr/lib/$(ARCH64)/libcrypto.so.1.0.0 \
+    target=../../../lib/$(ARCH64)/libcrypto.so.1.0.0
+link path=usr/lib/$(ARCH64)/libssl.so \
+    target=../../../lib/$(ARCH64)/libssl.so.1.0.0
+link path=usr/lib/$(ARCH64)/libssl.so.1.0.0 \
+    target=../../../lib/$(ARCH64)/libssl.so.1.0.0
+link path=usr/lib/libcrypto.so target=../../lib/libcrypto.so.1.0.0
+link path=usr/lib/libcrypto.so.1.0.0 target=../../lib/libcrypto.so.1.0.0
+link path=usr/lib/libssl.so target=../../lib/libssl.so.1.0.0
+link path=usr/lib/libssl.so.1.0.0 target=../../lib/libssl.so.1.0.0

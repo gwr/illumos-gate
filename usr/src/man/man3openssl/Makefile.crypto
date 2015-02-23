@@ -1,0 +1,1697 @@
+#
+# This file and its contents are supplied under the terms of the
+# Common Development and Distribution License ("CDDL"), version 1.0.
+# You may only use this file in accordance with the terms of version
+# 1.0 of the CDDL.
+#
+# A full copy of the text of the CDDL should have accompanied this
+# source.  A copy of the CDDL is also available via the Internet at
+# http://www.illumos.org/license/CDDL.
+#
+
+#
+# Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
+#
+
+# generated from OPENSSLdir/doc/crypto
+MANFILES_all_crypto= \
+	ASN1_OBJECT_new.3openssl \
+	ASN1_STRING_length.3openssl \
+	ASN1_STRING_new.3openssl \
+	ASN1_STRING_print_ex.3openssl \
+	ASN1_generate_nconf.3openssl \
+	BIO_ctrl.3openssl \
+	BIO_f_base64.3openssl \
+	BIO_f_buffer.3openssl \
+	BIO_f_cipher.3openssl \
+	BIO_f_md.3openssl \
+	BIO_f_null.3openssl \
+	BIO_f_ssl.3openssl \
+	BIO_find_type.3openssl \
+	BIO_new.3openssl \
+	BIO_new_CMS.3openssl \
+	BIO_push.3openssl \
+	BIO_read.3openssl \
+	BIO_s_accept.3openssl \
+	BIO_s_bio.3openssl \
+	BIO_s_connect.3openssl \
+	BIO_s_fd.3openssl \
+	BIO_s_file.3openssl \
+	BIO_s_mem.3openssl \
+	BIO_s_null.3openssl \
+	BIO_s_socket.3openssl \
+	BIO_set_callback.3openssl \
+	BIO_should_retry.3openssl \
+	BN_BLINDING_new.3openssl \
+	BN_CTX_new.3openssl \
+	BN_CTX_start.3openssl \
+	BN_add.3openssl \
+	BN_add_word.3openssl \
+	BN_bn2bin.3openssl \
+	BN_cmp.3openssl \
+	BN_copy.3openssl \
+	BN_generate_prime.3openssl \
+	BN_mod_inverse.3openssl \
+	BN_mod_mul_montgomery.3openssl \
+	BN_mod_mul_reciprocal.3openssl \
+	BN_new.3openssl \
+	BN_num_bytes.3openssl \
+	BN_rand.3openssl \
+	BN_set_bit.3openssl \
+	BN_swap.3openssl \
+	BN_zero.3openssl \
+	CMS_add0_cert.3openssl \
+	CMS_add1_recipient_cert.3openssl \
+	CMS_compress.3openssl \
+	CMS_decrypt.3openssl \
+	CMS_encrypt.3openssl \
+	CMS_final.3openssl \
+	CMS_get0_RecipientInfos.3openssl \
+	CMS_get0_SignerInfos.3openssl \
+	CMS_get0_type.3openssl \
+	CMS_get1_ReceiptRequest.3openssl \
+	CMS_sign.3openssl \
+	CMS_sign_add1_signer.3openssl \
+	CMS_sign_receipt.3openssl \
+	CMS_uncompress.3openssl \
+	CMS_verify.3openssl \
+	CMS_verify_receipt.3openssl \
+	CONF_modules_free.3openssl \
+	CONF_modules_load_file.3openssl \
+	CRYPTO_set_ex_data.3openssl \
+	DH_generate_key.3openssl \
+	DH_generate_parameters.3openssl \
+	DH_get_ex_new_index.3openssl \
+	DH_new.3openssl \
+	DH_set_method.3openssl \
+	DH_size.3openssl \
+	DSA_SIG_new.3openssl \
+	DSA_do_sign.3openssl \
+	DSA_dup_DH.3openssl \
+	DSA_generate_key.3openssl \
+	DSA_generate_parameters.3openssl \
+	DSA_get_ex_new_index.3openssl \
+	DSA_new.3openssl \
+	DSA_set_method.3openssl \
+	DSA_sign.3openssl \
+	DSA_size.3openssl \
+	ERR_GET_LIB.3openssl \
+	ERR_clear_error.3openssl \
+	ERR_error_string.3openssl \
+	ERR_get_error.3openssl \
+	ERR_load_crypto_strings.3openssl \
+	ERR_load_strings.3openssl \
+	ERR_print_errors.3openssl \
+	ERR_put_error.3openssl \
+	ERR_remove_state.3openssl \
+	ERR_set_mark.3openssl \
+	EVP_BytesToKey.3openssl \
+	EVP_DigestInit.3openssl \
+	EVP_DigestSignInit.3openssl \
+	EVP_DigestVerifyInit.3openssl \
+	EVP_EncryptInit.3openssl \
+	EVP_OpenInit.3openssl \
+	EVP_PKEY_CTX_ctrl.3openssl \
+	EVP_PKEY_CTX_new.3openssl \
+	EVP_PKEY_cmp.3openssl \
+	EVP_PKEY_decrypt.3openssl \
+	EVP_PKEY_derive.3openssl \
+	EVP_PKEY_encrypt.3openssl \
+	EVP_PKEY_get_default_digest.3openssl \
+	EVP_PKEY_keygen.3openssl \
+	EVP_PKEY_new.3openssl \
+	EVP_PKEY_print_private.3openssl \
+	EVP_PKEY_set1_RSA.3openssl \
+	EVP_PKEY_sign.3openssl \
+	EVP_PKEY_verify.3openssl \
+	EVP_PKEY_verify_recover.3openssl \
+	EVP_SealInit.3openssl \
+	EVP_SignInit.3openssl \
+	EVP_VerifyInit.3openssl \
+	OBJ_nid2obj.3openssl \
+	OPENSSL_Applink.3openssl \
+	OPENSSL_VERSION_NUMBER.3openssl \
+	OPENSSL_config.3openssl \
+	OPENSSL_ia32cap.3openssl \
+	OPENSSL_load_builtin_modules.3openssl \
+	OpenSSL_add_all_algorithms.3openssl \
+	PEM_write_bio_CMS_stream.3openssl \
+	PEM_write_bio_PKCS7_stream.3openssl \
+	PKCS12_create.3openssl \
+	PKCS12_parse.3openssl \
+	PKCS7_decrypt.3openssl \
+	PKCS7_encrypt.3openssl \
+	PKCS7_sign.3openssl \
+	PKCS7_sign_add_signer.3openssl \
+	PKCS7_verify.3openssl \
+	RAND_add.3openssl \
+	RAND_bytes.3openssl \
+	RAND_cleanup.3openssl \
+	RAND_egd.3openssl \
+	RAND_load_file.3openssl \
+	RAND_set_rand_method.3openssl \
+	RSA_blinding_on.3openssl \
+	RSA_check_key.3openssl \
+	RSA_generate_key.3openssl \
+	RSA_get_ex_new_index.3openssl \
+	RSA_new.3openssl \
+	RSA_padding_add_PKCS1_type_1.3openssl \
+	RSA_print.3openssl \
+	RSA_private_encrypt.3openssl \
+	RSA_public_encrypt.3openssl \
+	RSA_set_method.3openssl \
+	RSA_sign.3openssl \
+	RSA_sign_ASN1_OCTET_STRING.3openssl \
+	RSA_size.3openssl \
+	SMIME_read_CMS.3openssl \
+	SMIME_read_PKCS7.3openssl \
+	SMIME_write_CMS.3openssl \
+	SMIME_write_PKCS7.3openssl \
+	X509_NAME_ENTRY_get_object.3openssl \
+	X509_NAME_add_entry_by_txt.3openssl \
+	X509_NAME_get_index_by_NID.3openssl \
+	X509_NAME_print_ex.3openssl \
+	X509_STORE_CTX_get_error.3openssl \
+	X509_STORE_CTX_get_ex_new_index.3openssl \
+	X509_STORE_CTX_new.3openssl \
+	X509_STORE_CTX_set_verify_cb.3openssl \
+	X509_STORE_set_verify_cb_func.3openssl \
+	X509_VERIFY_PARAM_set_flags.3openssl \
+	X509_new.3openssl \
+	X509_verify_cert.3openssl \
+	bio.3openssl \
+	blowfish.3openssl \
+	bn.3openssl \
+	bn_internal.3openssl \
+	buffer.3openssl \
+	crypto.3openssl \
+	d2i_ASN1_OBJECT.3openssl \
+	d2i_DHparams.3openssl \
+	d2i_DSAPublicKey.3openssl \
+	d2i_PKCS8PrivateKey.3openssl \
+	d2i_RSAPublicKey.3openssl \
+	d2i_X509.3openssl \
+	d2i_X509_ALGOR.3openssl \
+	d2i_X509_CRL.3openssl \
+	d2i_X509_NAME.3openssl \
+	d2i_X509_REQ.3openssl \
+	d2i_X509_SIG.3openssl \
+	des.3openssl \
+	dh.3openssl \
+	dsa.3openssl \
+	ecdsa.3openssl \
+	engine.3openssl \
+	err.3openssl \
+	evp.3openssl \
+	hmac.3openssl \
+	i2d_CMS_bio_stream.3openssl \
+	i2d_PKCS7_bio_stream.3openssl \
+	lh_stats.3openssl \
+	lhash.3openssl \
+	md5.3openssl \
+	mdc2.3openssl \
+	pem.3openssl \
+	rand.3openssl \
+	rc4.3openssl \
+	ripemd.3openssl \
+	rsa.3openssl \
+	sha.3openssl \
+	threads.3openssl \
+	ui.3openssl \
+	ui_compat.3openssl \
+	x509.3openssl
+
+MANLINKS_ASN1_OBJECT_new= \
+	ASN1_OBJECT_free.3openssl
+$(MANLINKS_ASN1_OBJECT_new) := \
+	LINKSRC = ASN1_OBJECT_new.3openssl
+
+MANLINKS_ASN1_STRING_length= \
+	ASN1_STRING_dup.3openssl \
+	ASN1_STRING_cmp.3openssl \
+	ASN1_STRING_set.3openssl \
+	ASN1_STRING_length_set.3openssl \
+	ASN1_STRING_type.3openssl \
+	ASN1_STRING_data.3openssl
+$(MANLINKS_ASN1_STRING_length) := \
+	LINKSRC = ASN1_STRING_length.3openssl
+
+MANLINKS_ASN1_STRING_new= \
+	ASN1_STRING_type_new.3openssl \
+	ASN1_STRING_free.3openssl
+$(MANLINKS_ASN1_STRING_new) := \
+	LINKSRC = ASN1_STRING_new.3openssl
+
+MANLINKS_ASN1_STRING_print_ex= \
+	ASN1_STRING_print_ex_fp.3openssl
+$(MANLINKS_ASN1_STRING_print_ex) := \
+	LINKSRC = ASN1_STRING_print_ex.3openssl
+
+MANLINKS_ASN1_generate_nconf= \
+	ASN1_generate_v3.3openssl
+$(MANLINKS_ASN1_generate_nconf) := \
+	LINKSRC = ASN1_generate_nconf.3openssl
+
+MANLINKS_BIO_ctrl= \
+	BIO_callback_ctrl.3openssl \
+	BIO_ptr_ctrl.3openssl \
+	BIO_int_ctrl.3openssl \
+	BIO_reset.3openssl \
+	BIO_seek.3openssl \
+	BIO_tell.3openssl \
+	BIO_flush.3openssl \
+	BIO_eof.3openssl \
+	BIO_set_close.3openssl \
+	BIO_get_close.3openssl \
+	BIO_pending.3openssl \
+	BIO_wpending.3openssl \
+	BIO_ctrl_pending.3openssl \
+	BIO_ctrl_wpending.3openssl \
+	BIO_get_info_callback.3openssl \
+	BIO_set_info_callback.3openssl
+$(MANLINKS_BIO_ctrl) := \
+	LINKSRC = BIO_ctrl.3openssl
+
+MANLINKS_BIO_f_cipher= \
+	BIO_set_cipher.3openssl \
+	BIO_get_cipher_status.3openssl \
+	BIO_get_cipher_ctx.3openssl
+$(MANLINKS_BIO_f_cipher) := \
+	LINKSRC = BIO_f_cipher.3openssl
+
+MANLINKS_BIO_f_md= \
+	BIO_set_md.3openssl \
+	BIO_get_md.3openssl \
+	BIO_get_md_ctx.3openssl
+$(MANLINKS_BIO_f_md) := \
+	LINKSRC = BIO_f_md.3openssl
+
+MANLINKS_BIO_f_ssl= \
+	BIO_set_ssl.3openssl \
+	BIO_get_ssl.3openssl \
+	BIO_set_ssl_mode.3openssl \
+	BIO_set_ssl_renegotiate_bytes.3openssl \
+	BIO_get_num_renegotiates.3openssl \
+	BIO_set_ssl_renegotiate_timeout.3openssl \
+	BIO_new_ssl.3openssl \
+	BIO_new_ssl_connect.3openssl \
+	BIO_new_buffer_ssl_connect.3openssl \
+	BIO_ssl_copy_session_id.3openssl \
+	BIO_ssl_shutdown.3openssl
+$(MANLINKS_BIO_f_ssl) := \
+	LINKSRC = BIO_f_ssl.3openssl
+
+MANLINKS_BIO_find_type= \
+	BIO_next.3openssl
+$(MANLINKS_BIO_find_type) := \
+	LINKSRC = BIO_find_type.3openssl
+
+MANLINKS_BIO_new= \
+	BIO_set.3openssl \
+	BIO_free.3openssl \
+	BIO_vfree.3openssl \
+	BIO_free_all.3openssl
+$(MANLINKS_BIO_new) := \
+	LINKSRC = BIO_new.3openssl
+
+MANLINKS_BIO_push= \
+	BIO_pop.3openssl
+$(MANLINKS_BIO_push) := \
+	LINKSRC = BIO_push.3openssl
+
+MANLINKS_BIO_read= \
+	BIO_write.3openssl \
+	BIO_gets.3openssl \
+	BIO_puts.3openssl
+$(MANLINKS_BIO_read) := \
+	LINKSRC = BIO_read.3openssl
+
+MANLINKS_BIO_s_accept= \
+	BIO_set_accept_port.3openssl \
+	BIO_get_accept_port.3openssl \
+	BIO_set_nbio_accept.3openssl \
+	BIO_set_accept_bios.3openssl \
+	BIO_set_bind_mode.3openssl \
+	BIO_get_bind_mode.3openssl \
+	BIO_do_accept.3openssl
+$(MANLINKS_BIO_s_accept) := \
+	LINKSRC = BIO_s_accept.3openssl
+
+MANLINKS_BIO_s_bio= \
+	BIO_make_bio_pair.3openssl \
+	BIO_destroy_bio_pair.3openssl \
+	BIO_shutdown_wr.3openssl \
+	BIO_set_write_buf_size.3openssl \
+	BIO_get_write_buf_size.3openssl \
+	BIO_new_bio_pair.3openssl \
+	BIO_get_write_guarantee.3openssl \
+	BIO_ctrl_get_write_guarantee.3openssl \
+	BIO_get_read_request.3openssl \
+	BIO_ctrl_get_read_request.3openssl \
+	BIO_ctrl_reset_read_request.3openssl
+$(MANLINKS_BIO_s_bio) := \
+	LINKSRC = BIO_s_bio.3openssl
+
+MANLINKS_BIO_s_connect= \
+	BIO_set_conn_hostname.3openssl \
+	BIO_set_conn_port.3openssl \
+	BIO_set_conn_ip.3openssl \
+	BIO_set_conn_int_port.3openssl \
+	BIO_get_conn_hostname.3openssl \
+	BIO_get_conn_port.3openssl \
+	BIO_get_conn_ip.3openssl \
+	BIO_get_conn_int_port.3openssl \
+	BIO_set_nbio.3openssl \
+	BIO_do_connect.3openssl
+$(MANLINKS_BIO_s_connect) := \
+	LINKSRC = BIO_s_connect.3openssl
+
+MANLINKS_BIO_s_fd= \
+	BIO_set_fd.3openssl \
+	BIO_get_fd.3openssl \
+	BIO_new_fd.3openssl
+$(MANLINKS_BIO_s_fd) := \
+	LINKSRC = BIO_s_fd.3openssl
+
+MANLINKS_BIO_s_file= \
+	BIO_new_file.3openssl \
+	BIO_new_fp.3openssl \
+	BIO_set_fp.3openssl \
+	BIO_get_fp.3openssl \
+	BIO_read_filename.3openssl \
+	BIO_write_filename.3openssl \
+	BIO_append_filename.3openssl \
+	BIO_rw_filename.3openssl
+$(MANLINKS_BIO_s_file) := \
+	LINKSRC = BIO_s_file.3openssl
+
+MANLINKS_BIO_s_mem= \
+	BIO_set_mem_eof_return.3openssl \
+	BIO_get_mem_data.3openssl \
+	BIO_set_mem_buf.3openssl \
+	BIO_get_mem_ptr.3openssl \
+	BIO_new_mem_buf.3openssl
+$(MANLINKS_BIO_s_mem) := \
+	LINKSRC = BIO_s_mem.3openssl
+
+MANLINKS_BIO_s_socket= \
+	BIO_new_socket.3openssl
+$(MANLINKS_BIO_s_socket) := \
+	LINKSRC = BIO_s_socket.3openssl
+
+MANLINKS_BIO_set_callback= \
+	BIO_get_callback.3openssl \
+	BIO_set_callback_arg.3openssl \
+	BIO_get_callback_arg.3openssl \
+	BIO_debug_callback.3openssl
+$(MANLINKS_BIO_set_callback) := \
+	LINKSRC = BIO_set_callback.3openssl
+
+MANLINKS_BIO_should_retry= \
+	BIO_should_read.3openssl \
+	BIO_should_write.3openssl \
+	BIO_should_io_special.3openssl \
+	BIO_retry_type.3openssl \
+	BIO_get_retry_BIO.3openssl \
+	BIO_get_retry_reason.3openssl
+$(MANLINKS_BIO_should_retry) := \
+	LINKSRC = BIO_should_retry.3openssl
+
+MANLINKS_BN_BLINDING_new= \
+	BN_BLINDING_free.3openssl \
+	BN_BLINDING_update.3openssl \
+	BN_BLINDING_convert.3openssl \
+	BN_BLINDING_invert.3openssl \
+	BN_BLINDING_convert_ex.3openssl \
+	BN_BLINDING_invert_ex.3openssl \
+	BN_BLINDING_get_thread_id.3openssl \
+	BN_BLINDING_set_thread_id.3openssl \
+	BN_BLINDING_get_flags.3openssl \
+	BN_BLINDING_set_flags.3openssl \
+	BN_BLINDING_create_param.3openssl
+$(MANLINKS_BN_BLINDING_new) := \
+	LINKSRC = BN_BLINDING_new.3openssl
+
+MANLINKS_BN_CTX_new= \
+	BN_CTX_init.3openssl \
+	BN_CTX_free.3openssl
+$(MANLINKS_BN_CTX_new) := \
+	LINKSRC = BN_CTX_new.3openssl
+
+MANLINKS_BN_CTX_start= \
+	BN_CTX_get.3openssl \
+	BN_CTX_end.3openssl
+$(MANLINKS_BN_CTX_start) := \
+	LINKSRC = BN_CTX_start.3openssl
+
+MANLINKS_BN_add= \
+	BN_sub.3openssl \
+	BN_mul.3openssl \
+	BN_sqr.3openssl \
+	BN_div.3openssl \
+	BN_mod.3openssl \
+	BN_nnmod.3openssl \
+	BN_mod_add.3openssl \
+	BN_mod_sub.3openssl \
+	BN_mod_mul.3openssl \
+	BN_mod_sqr.3openssl \
+	BN_exp.3openssl \
+	BN_mod_exp.3openssl \
+	BN_gcd.3openssl
+$(MANLINKS_BN_add) := \
+	LINKSRC = BN_add.3openssl
+
+MANLINKS_BN_add_word= \
+	BN_sub_word.3openssl \
+	BN_mul_word.3openssl \
+	BN_div_word.3openssl \
+	BN_mod_word.3openssl
+$(MANLINKS_BN_add_word) := \
+	LINKSRC = BN_add_word.3openssl
+
+MANLINKS_BN_bn2bin= \
+	BN_bin2bn.3openssl \
+	BN_bn2hex.3openssl \
+	BN_bn2dec.3openssl \
+	BN_hex2bn.3openssl \
+	BN_dec2bn.3openssl \
+	BN_print.3openssl \
+	BN_print_fp.3openssl \
+	BN_bn2mpi.3openssl \
+	BN_mpi2bn.3openssl
+$(MANLINKS_BN_bn2bin) := \
+	LINKSRC = BN_bn2bin.3openssl
+
+MANLINKS_BN_cmp= \
+	BN_ucmp.3openssl \
+	BN_is_zero.3openssl \
+	BN_is_one.3openssl \
+	BN_is_word.3openssl \
+	BN_is_odd.3openssl
+$(MANLINKS_BN_cmp) := \
+	LINKSRC = BN_cmp.3openssl
+
+MANLINKS_BN_copy= \
+	BN_dup.3openssl
+$(MANLINKS_BN_copy) := \
+	LINKSRC = BN_copy.3openssl
+
+MANLINKS_BN_generate_prime= \
+	BN_is_prime.3openssl \
+	BN_is_prime_fasttest.3openssl
+$(MANLINKS_BN_generate_prime) := \
+	LINKSRC = BN_generate_prime.3openssl
+
+MANLINKS_BN_mod_mul_montgomery= \
+	BN_MONT_CTX_new.3openssl \
+	BN_MONT_CTX_init.3openssl \
+	BN_MONT_CTX_free.3openssl \
+	BN_MONT_CTX_set.3openssl \
+	BN_MONT_CTX_copy.3openssl \
+	BN_from_montgomery.3openssl \
+	BN_to_montgomery.3openssl
+$(MANLINKS_BN_mod_mul_montgomery) := \
+	LINKSRC = BN_mod_mul_montgomery.3openssl
+
+MANLINKS_BN_mod_mul_reciprocal= \
+	BN_div_recp.3openssl \
+	BN_RECP_CTX_new.3openssl \
+	BN_RECP_CTX_init.3openssl \
+	BN_RECP_CTX_free.3openssl \
+	BN_RECP_CTX_set.3openssl
+$(MANLINKS_BN_mod_mul_reciprocal) := \
+	LINKSRC = BN_mod_mul_reciprocal.3openssl
+
+MANLINKS_BN_new= \
+	BN_init.3openssl \
+	BN_clear.3openssl \
+	BN_free.3openssl \
+	BN_clear_free.3openssl
+$(MANLINKS_BN_new) := \
+	LINKSRC = BN_new.3openssl
+
+MANLINKS_BN_num_bytes= \
+	BN_num_bits.3openssl \
+	BN_num_bits_word.3openssl
+$(MANLINKS_BN_num_bytes) := \
+	LINKSRC = BN_num_bytes.3openssl
+
+MANLINKS_BN_rand= \
+	BN_pseudo_rand.3openssl
+$(MANLINKS_BN_rand) := \
+	LINKSRC = BN_rand.3openssl
+
+MANLINKS_BN_set_bit= \
+	BN_clear_bit.3openssl \
+	BN_is_bit_set.3openssl \
+	BN_mask_bits.3openssl \
+	BN_lshift.3openssl \
+	BN_lshift1.3openssl \
+	BN_rshift.3openssl \
+	BN_rshift1.3openssl
+$(MANLINKS_BN_set_bit) := \
+	LINKSRC = BN_set_bit.3openssl
+
+MANLINKS_BN_zero= \
+	BN_one.3openssl \
+	BN_value_one.3openssl \
+	BN_set_word.3openssl \
+	BN_get_word.3openssl
+$(MANLINKS_BN_zero) := \
+	LINKSRC = BN_zero.3openssl
+
+MANLINKS_CMS_add0_cert= \
+	CMS_add1_cert.3openssl \
+	CMS_get1_certs.3openssl \
+	CMS_add0_crl.3openssl \
+	CMS_get1_crls.3openssl
+$(MANLINKS_CMS_add0_cert) := \
+	LINKSRC = CMS_add0_cert.3openssl
+
+MANLINKS_CMS_add1_recipient_cert= \
+	CMS_add0_recipient_key.3openssl
+$(MANLINKS_CMS_add1_recipient_cert) := \
+	LINKSRC = CMS_add1_recipient_cert.3openssl
+
+MANLINKS_CMS_get0_RecipientInfos= \
+	CMS_RecipientInfo_type.3openssl \
+	CMS_RecipientInfo_ktri_get0_signer_id.3openssl \
+	CMS_RecipientInfo_ktri_cert_cmp.3openssl \
+	CMS_RecipientInfo_set0_pkey.3openssl \
+	CMS_RecipientInfo_kekri_get0_id.3openssl \
+	CMS_RecipientInfo_kekri_id_cmp.3openssl \
+	CMS_RecipientInfo_set0_key.3openssl \
+	CMS_RecipientInfo_decrypt.3openssl
+$(MANLINKS_CMS_get0_RecipientInfos) := \
+	LINKSRC = CMS_get0_RecipientInfos.3openssl
+
+MANLINKS_CMS_get0_SignerInfos= \
+	CMS_SignerInfo_get0_signer_id.3openssl \
+	CMS_SignerInfo_cert_cmp.3openssl \
+	CMS_set1_signer_certs.3openssl
+$(MANLINKS_CMS_get0_SignerInfos) := \
+	LINKSRC = CMS_get0_SignerInfos.3openssl
+
+MANLINKS_CMS_get0_type= \
+	CMS_set1_eContentType.3openssl \
+	CMS_get0_eContentType.3openssl
+$(MANLINKS_CMS_get0_type) := \
+	LINKSRC = CMS_get0_type.3openssl
+
+MANLINKS_CMS_get1_ReceiptRequest= \
+	CMS_ReceiptRequest_create0.3openssl \
+	CMS_add1_ReceiptRequest.3openssl \
+	CMS_ReceiptRequest_get0_values.3openssl
+$(MANLINKS_CMS_get1_ReceiptRequest) := \
+	LINKSRC = CMS_get1_ReceiptRequest.3openssl
+
+MANLINKS_CMS_sign_add1_signer= \
+	CMS_SignerInfo_sign.3openssl
+$(MANLINKS_CMS_sign_add1_signer) := \
+	LINKSRC = CMS_sign_add1_signer.3openssl
+
+MANLINKS_CONF_modules_free= \
+	CONF_modules_finish.3openssl \
+	CONF_modules_unload.3openssl
+$(MANLINKS_CONF_modules_free) := \
+	LINKSRC = CONF_modules_free.3openssl
+
+MANLINKS_CONF_modules_load_file= \
+	CONF_modules_load.3openssl
+$(MANLINKS_CONF_modules_load_file) := \
+	LINKSRC = CONF_modules_load_file.3openssl
+
+MANLINKS_CRYPTO_set_ex_data= \
+	CRYPTO_get_ex_data.3openssl
+$(MANLINKS_CRYPTO_set_ex_data) := \
+	LINKSRC = CRYPTO_set_ex_data.3openssl
+
+MANLINKS_DH_generate_key= \
+	DH_compute_key.3openssl
+$(MANLINKS_DH_generate_key) := \
+	LINKSRC = DH_generate_key.3openssl
+
+MANLINKS_DH_generate_parameters= \
+	DH_check.3openssl
+$(MANLINKS_DH_generate_parameters) := \
+	LINKSRC = DH_generate_parameters.3openssl
+
+MANLINKS_DH_get_ex_new_index= \
+	DH_set_ex_data.3openssl \
+	DH_get_ex_data.3openssl
+$(MANLINKS_DH_get_ex_new_index) := \
+	LINKSRC = DH_get_ex_new_index.3openssl
+
+MANLINKS_DH_new= \
+	DH_free.3openssl
+$(MANLINKS_DH_new) := \
+	LINKSRC = DH_new.3openssl
+
+MANLINKS_DH_set_method= \
+	DH_set_default_method.3openssl \
+	DH_get_default_method.3openssl \
+	DH_new_method.3openssl \
+	DH_OpenSSL.3openssl
+$(MANLINKS_DH_set_method) := \
+	LINKSRC = DH_set_method.3openssl
+
+MANLINKS_DSA_SIG_new= \
+	DSA_SIG_free.3openssl
+$(MANLINKS_DSA_SIG_new) := \
+	LINKSRC = DSA_SIG_new.3openssl
+
+MANLINKS_DSA_do_sign= \
+	DSA_do_verify.3openssl
+$(MANLINKS_DSA_do_sign) := \
+	LINKSRC = DSA_do_sign.3openssl
+
+MANLINKS_DSA_get_ex_new_index= \
+	DSA_set_ex_data.3openssl \
+	DSA_get_ex_data.3openssl
+$(MANLINKS_DSA_get_ex_new_index) := \
+	LINKSRC = DSA_get_ex_new_index.3openssl
+
+MANLINKS_DSA_new= \
+	DSA_free.3openssl
+$(MANLINKS_DSA_new) := \
+	LINKSRC = DSA_new.3openssl
+
+MANLINKS_DSA_set_method= \
+	DSA_set_default_method.3openssl \
+	DSA_get_default_method.3openssl \
+	DSA_new_method.3openssl \
+	DSA_OpenSSL.3openssl
+$(MANLINKS_DSA_set_method) := \
+	LINKSRC = DSA_set_method.3openssl
+
+MANLINKS_DSA_sign= \
+	DSA_sign_setup.3openssl \
+	DSA_verify.3openssl
+$(MANLINKS_DSA_sign) := \
+	LINKSRC = DSA_sign.3openssl
+
+MANLINKS_ERR_GET_LIB= \
+	ERR_GET_FUNC.3openssl \
+	ERR_GET_REASON.3openssl
+$(MANLINKS_ERR_GET_LIB) := \
+	LINKSRC = ERR_GET_LIB.3openssl
+
+MANLINKS_ERR_error_string= \
+	ERR_error_string_n.3openssl \
+	ERR_lib_error_string.3openssl \
+	ERR_func_error_string.3openssl \
+	ERR_reason_error_string.3openssl
+$(MANLINKS_ERR_error_string) := \
+	LINKSRC = ERR_error_string.3openssl
+
+MANLINKS_ERR_get_error= \
+	ERR_peek_error.3openssl \
+	ERR_peek_last_error.3openssl \
+	ERR_get_error_line.3openssl \
+	ERR_peek_error_line.3openssl \
+	ERR_peek_last_error_line.3openssl \
+	ERR_get_error_line_data.3openssl \
+	ERR_peek_error_line_data.3openssl \
+	ERR_peek_last_error_line_data.3openssl
+$(MANLINKS_ERR_get_error) := \
+	LINKSRC = ERR_get_error.3openssl
+
+MANLINKS_ERR_load_crypto_strings= \
+	SSL_load_error_strings.3openssl \
+	ERR_free_strings.3openssl
+$(MANLINKS_ERR_load_crypto_strings) := \
+	LINKSRC = ERR_load_crypto_strings.3openssl
+
+MANLINKS_ERR_load_strings= \
+	ERR_PACK.3openssl \
+	ERR_get_next_error_library.3openssl
+$(MANLINKS_ERR_load_strings) := \
+	LINKSRC = ERR_load_strings.3openssl
+
+MANLINKS_ERR_print_errors= \
+	ERR_print_errors_fp.3openssl
+$(MANLINKS_ERR_print_errors) := \
+	LINKSRC = ERR_print_errors.3openssl
+
+MANLINKS_ERR_put_error= \
+	ERR_add_error_data.3openssl
+$(MANLINKS_ERR_put_error) := \
+	LINKSRC = ERR_put_error.3openssl
+
+MANLINKS_ERR_set_mark= \
+	ERR_pop_to_mark.3openssl
+$(MANLINKS_ERR_set_mark) := \
+	LINKSRC = ERR_set_mark.3openssl
+
+MANLINKS_EVP_DigestInit= \
+	EVP_MD_CTX_init.3openssl \
+	EVP_MD_CTX_create.3openssl \
+	EVP_DigestInit_ex.3openssl \
+	EVP_DigestUpdate.3openssl \
+	EVP_DigestFinal_ex.3openssl \
+	EVP_MD_CTX_cleanup.3openssl \
+	EVP_MD_CTX_destroy.3openssl \
+	EVP_MAX_MD_SIZE.3openssl \
+	EVP_MD_CTX_copy_ex.3openssl \
+	EVP_MD_CTX_copy.3openssl \
+	EVP_MD_type.3openssl \
+	EVP_MD_pkey_type.3openssl \
+	EVP_MD_size.3openssl \
+	EVP_MD_block_size.3openssl \
+	EVP_MD_CTX_md.3openssl \
+	EVP_MD_CTX_size.3openssl \
+	EVP_MD_CTX_block_size.3openssl \
+	EVP_MD_CTX_type.3openssl \
+	EVP_md_null.3openssl \
+	EVP_md2.3openssl \
+	EVP_md5.3openssl \
+	EVP_sha.3openssl \
+	EVP_sha1.3openssl \
+	EVP_sha224.3openssl \
+	EVP_sha256.3openssl \
+	EVP_sha384.3openssl \
+	EVP_sha512.3openssl \
+	EVP_dss.3openssl \
+	EVP_dss1.3openssl \
+	EVP_mdc2.3openssl \
+	EVP_ripemd160.3openssl \
+	EVP_get_digestbyname.3openssl \
+	EVP_get_digestbynid.3openssl \
+	EVP_get_digestbyobj.3openssl
+$(MANLINKS_EVP_DigestInit) := \
+	LINKSRC = EVP_DigestInit.3openssl
+
+MANLINKS_EVP_DigestSignInit= \
+	EVP_DigestSignUpdate.3openssl \
+	EVP_DigestSignFinal.3openssl
+$(MANLINKS_EVP_DigestSignInit) := \
+	LINKSRC = EVP_DigestSignInit.3openssl
+
+MANLINKS_EVP_DigestVerifyInit= \
+	EVP_DigestVerifyUpdate.3openssl \
+	EVP_DigestVerifyFinal.3openssl
+$(MANLINKS_EVP_DigestVerifyInit) := \
+	LINKSRC = EVP_DigestVerifyInit.3openssl
+
+MANLINKS_EVP_EncryptInit= \
+	EVP_CIPHER_CTX_init.3openssl \
+	EVP_EncryptInit_ex.3openssl \
+	EVP_EncryptUpdate.3openssl \
+	EVP_EncryptFinal_ex.3openssl \
+	EVP_DecryptInit_ex.3openssl \
+	EVP_DecryptUpdate.3openssl \
+	EVP_DecryptFinal_ex.3openssl \
+	EVP_CipherInit_ex.3openssl \
+	EVP_CipherUpdate.3openssl \
+	EVP_CipherFinal_ex.3openssl \
+	EVP_CIPHER_CTX_set_key_length.3openssl \
+	EVP_CIPHER_CTX_ctrl.3openssl \
+	EVP_CIPHER_CTX_cleanup.3openssl \
+	EVP_EncryptFinal.3openssl \
+	EVP_DecryptInit.3openssl \
+	EVP_DecryptFinal.3openssl \
+	EVP_CipherInit.3openssl \
+	EVP_CipherFinal.3openssl \
+	EVP_get_cipherbyname.3openssl \
+	EVP_get_cipherbynid.3openssl \
+	EVP_get_cipherbyobj.3openssl \
+	EVP_CIPHER_nid.3openssl \
+	EVP_CIPHER_block_size.3openssl \
+	EVP_CIPHER_key_length.3openssl \
+	EVP_CIPHER_iv_length.3openssl \
+	EVP_CIPHER_flags.3openssl \
+	EVP_CIPHER_mode.3openssl \
+	EVP_CIPHER_type.3openssl \
+	EVP_CIPHER_CTX_cipher.3openssl \
+	EVP_CIPHER_CTX_nid.3openssl \
+	EVP_CIPHER_CTX_block_size.3openssl \
+	EVP_CIPHER_CTX_key_length.3openssl \
+	EVP_CIPHER_CTX_iv_length.3openssl \
+	EVP_CIPHER_CTX_get_app_data.3openssl \
+	EVP_CIPHER_CTX_set_app_data.3openssl \
+	EVP_CIPHER_CTX_type.3openssl \
+	EVP_CIPHER_CTX_flags.3openssl \
+	EVP_CIPHER_CTX_mode.3openssl \
+	EVP_CIPHER_param_to_asn1.3openssl \
+	EVP_CIPHER_asn1_to_param.3openssl \
+	EVP_CIPHER_CTX_set_padding.3openssl
+$(MANLINKS_EVP_EncryptInit) := \
+	LINKSRC = EVP_EncryptInit.3openssl
+
+MANLINKS_EVP_OpenInit= \
+	EVP_OpenUpdate.3openssl \
+	EVP_OpenFinal.3openssl
+$(MANLINKS_EVP_OpenInit) := \
+	LINKSRC = EVP_OpenInit.3openssl
+
+MANLINKS_EVP_PKEY_CTX_ctrl= \
+	EVP_PKEY_ctrl.3openssl \
+	EVP_PKEY_ctrl_str.3openssl
+$(MANLINKS_EVP_PKEY_CTX_ctrl) := \
+	LINKSRC = EVP_PKEY_CTX_ctrl.3openssl
+
+MANLINKS_EVP_PKEY_CTX_new= \
+	EVP_PKEY_CTX_new_id.3openssl \
+	EVP_PKEY_CTX_dup.3openssl \
+	EVP_PKEY_CTX_free.3openssl
+$(MANLINKS_EVP_PKEY_CTX_new) := \
+	LINKSRC = EVP_PKEY_CTX_new.3openssl
+
+MANLINKS_EVP_PKEY_cmp= \
+	EVP_PKEY_copy_parameters.3openssl \
+	EVP_PKEY_missing_parameters.3openssl \
+	EVP_PKEY_cmp_parameters.3openssl
+$(MANLINKS_EVP_PKEY_cmp) := \
+	LINKSRC = EVP_PKEY_cmp.3openssl
+
+MANLINKS_EVP_PKEY_decrypt= \
+	EVP_PKEY_decrypt_init.3openssl
+$(MANLINKS_EVP_PKEY_decrypt) := \
+	LINKSRC = EVP_PKEY_decrypt.3openssl
+
+MANLINKS_EVP_PKEY_derive= \
+	EVP_PKEY_derive_init.3openssl \
+	EVP_PKEY_derive_set_peer.3openssl
+$(MANLINKS_EVP_PKEY_derive) := \
+	LINKSRC = EVP_PKEY_derive.3openssl
+
+MANLINKS_EVP_PKEY_encrypt= \
+	EVP_PKEY_encrypt_init.3openssl
+$(MANLINKS_EVP_PKEY_encrypt) := \
+	LINKSRC = EVP_PKEY_encrypt.3openssl
+
+MANLINKS_EVP_PKEY_get_default_digest= \
+	EVP_PKEY_get_default_digest_nid.3openssl
+$(MANLINKS_EVP_PKEY_get_default_digest) := \
+	LINKSRC = EVP_PKEY_get_default_digest.3openssl
+
+MANLINKS_EVP_PKEY_keygen= \
+	EVP_PKEY_keygen_init.3openssl \
+	EVP_PKEY_paramgen_init.3openssl \
+	EVP_PKEY_paramgen.3openssl \
+	EVP_PKEY_CTX_set_cb.3openssl \
+	EVP_PKEY_CTX_get_cb.3openssl \
+	EVP_PKEY_CTX_get_keygen_info.3openssl \
+	EVP_PKEVP_PKEY_CTX_set_app_data.3openssl \
+	EVP_PKEY_CTX_get_app_data.3openssl
+$(MANLINKS_EVP_PKEY_keygen) := \
+	LINKSRC = EVP_PKEY_keygen.3openssl
+
+MANLINKS_EVP_PKEY_new= \
+	EVP_PKEY_free.3openssl
+$(MANLINKS_EVP_PKEY_new) := \
+	LINKSRC = EVP_PKEY_new.3openssl
+
+MANLINKS_EVP_PKEY_print_private= \
+	EVP_PKEY_print_public.3openssl \
+	EVP_PKEY_print_params.3openssl
+$(MANLINKS_EVP_PKEY_print_private) := \
+	LINKSRC = EVP_PKEY_print_private.3openssl
+
+MANLINKS_EVP_PKEY_set1_RSA= \
+	EVP_PKEY_set1_DSA.3openssl \
+	EVP_PKEY_set1_DH.3openssl \
+	EVP_PKEY_set1_EC_KEY.3openssl \
+	EVP_PKEY_get1_RSA.3openssl \
+	EVP_PKEY_get1_DSA.3openssl \
+	EVP_PKEY_get1_DH.3openssl \
+	EVP_PKEY_get1_EC_KEY.3openssl \
+	EVP_PKEY_assign_RSA.3openssl \
+	EVP_PKEY_assign_DSA.3openssl \
+	EVP_PKEY_assign_DH.3openssl \
+	EVP_PKEY_assign_EC_KEY.3openssl \
+	EVP_PKEY_type.3openssl
+$(MANLINKS_EVP_PKEY_set1_RSA) := \
+	LINKSRC = EVP_PKEY_set1_RSA.3openssl
+
+MANLINKS_EVP_PKEY_sign= \
+	EVP_PKEY_sign_init.3openssl
+$(MANLINKS_EVP_PKEY_sign) := \
+	LINKSRC = EVP_PKEY_sign.3openssl
+
+MANLINKS_EVP_PKEY_verify= \
+	EVP_PKEY_verify_init.3openssl
+$(MANLINKS_EVP_PKEY_verify) := \
+	LINKSRC = EVP_PKEY_verify.3openssl
+
+MANLINKS_EVP_PKEY_verify_recover= \
+	EVP_PKEY_verify_recover_init.3openssl
+$(MANLINKS_EVP_PKEY_verify_recover) := \
+	LINKSRC = EVP_PKEY_verify_recover.3openssl
+
+MANLINKS_EVP_SealInit= \
+	EVP_SealUpdate.3openssl \
+	EVP_SealFinal.3openssl
+$(MANLINKS_EVP_SealInit) := \
+	LINKSRC = EVP_SealInit.3openssl
+
+MANLINKS_EVP_SignInit= \
+	EVP_SignUpdate.3openssl \
+	EVP_SignFinal.3openssl
+$(MANLINKS_EVP_SignInit) := \
+	LINKSRC = EVP_SignInit.3openssl
+
+MANLINKS_EVP_VerifyInit= \
+	EVP_VerifyUpdate.3openssl \
+	EVP_VerifyFinal.3openssl
+$(MANLINKS_EVP_VerifyInit) := \
+	LINKSRC = EVP_VerifyInit.3openssl
+
+MANLINKS_OBJ_nid2obj= \
+	OBJ_nid2ln.3openssl \
+	OBJ_nid2sn.3openssl \
+	OBJ_obj2nid.3openssl \
+	OBJ_txt2nid.3openssl \
+	OBJ_ln2nid.3openssl \
+	OBJ_sn2nid.3openssl \
+	OBJ_cmp.3openssl \
+	OBJ_dup.3openssl \
+	OBJ_txt2obj.3openssl \
+	OBJ_obj2txt.3openssl \
+	OBJ_create.3openssl \
+	OBJ_cleanup.3openssl
+$(MANLINKS_OBJ_nid2obj) := \
+	LINKSRC = OBJ_nid2obj.3openssl
+
+MANLINKS_OPENSSL_VERSION_NUMBER= \
+	SSLeay.3openssl \
+	SSLeay_version.3openssl
+$(MANLINKS_OPENSSL_VERSION_NUMBER) := \
+	LINKSRC = OPENSSL_VERSION_NUMBER.3openssl
+
+MANLINKS_OPENSSL_config= \
+	OPENSSL_no_config.3openssl
+$(MANLINKS_OPENSSL_config) := \
+	LINKSRC = OPENSSL_config.3openssl
+
+MANLINKS_OpenSSL_add_all_algorithms= \
+	OpenSSL_add_all_ciphers.3openssl \
+	OpenSSL_add_all_digests.3openssl
+$(MANLINKS_OpenSSL_add_all_algorithms) := \
+	LINKSRC = OpenSSL_add_all_algorithms.3openssl
+
+MANLINKS_RAND_add= \
+	RAND_seed.3openssl \
+	RAND_status.3openssl \
+	RAND_event.3openssl \
+	RAND_screen.3openssl
+$(MANLINKS_RAND_add) := \
+	LINKSRC = RAND_add.3openssl
+
+MANLINKS_RAND_bytes= \
+	RAND_pseudo_bytes.3openssl
+$(MANLINKS_RAND_bytes) := \
+	LINKSRC = RAND_bytes.3openssl
+
+MANLINKS_RAND_load_file= \
+	RAND_write_file.3openssl \
+	RAND_file_name.3openssl
+$(MANLINKS_RAND_load_file) := \
+	LINKSRC = RAND_load_file.3openssl
+
+MANLINKS_RAND_set_rand_method= \
+	RAND_get_rand_method.3openssl \
+	RAND_SSLeay.3openssl
+$(MANLINKS_RAND_set_rand_method) := \
+	LINKSRC = RAND_set_rand_method.3openssl
+
+MANLINKS_RSA_blinding_on= \
+	RSA_blinding_off.3openssl
+$(MANLINKS_RSA_blinding_on) := \
+	LINKSRC = RSA_blinding_on.3openssl
+
+MANLINKS_RSA_get_ex_new_index= \
+	RSA_set_ex_data.3openssl \
+	RSA_get_ex_data.3openssl
+$(MANLINKS_RSA_get_ex_new_index) := \
+	LINKSRC = RSA_get_ex_new_index.3openssl
+
+MANLINKS_RSA_new= \
+	RSA_free.3openssl
+$(MANLINKS_RSA_new) := \
+	LINKSRC = RSA_new.3openssl
+
+MANLINKS_RSA_padding_add_PKCS1_type_1= \
+	RSA_padding_check_PKCS1_type_1.3openssl \
+	RSA_padding_add_PKCS1_type_2.3openssl \
+	RSA_padding_check_PKCS1_type_2.3openssl \
+	RSA_padding_add_PKCS1_OAEP.3openssl \
+	RSA_padding_check_PKCS1_OAEP.3openssl \
+	RSA_padding_add_SSLv23.3openssl \
+	RSA_padding_check_SSLv23.3openssl \
+	RSA_padding_add_none.3openssl \
+	RSA_padding_check_none.3openssl
+$(MANLINKS_RSA_padding_add_PKCS1_type_1) := \
+	LINKSRC = RSA_padding_add_PKCS1_type_1.3openssl
+
+MANLINKS_RSA_print= \
+	RSA_print_fp.3openssl \
+	DSAparams_print.3openssl \
+	DSAparams_print_fp.3openssl \
+	DSA_print.3openssl \
+	DSA_print_fp.3openssl \
+	DHparams_print.3openssl \
+	DHparams_print_fp.3openssl
+$(MANLINKS_RSA_print) := \
+	LINKSRC = RSA_print.3openssl
+
+MANLINKS_RSA_private_encrypt= \
+	RSA_public_decrypt.3openssl
+$(MANLINKS_RSA_private_encrypt) := \
+	LINKSRC = RSA_private_encrypt.3openssl
+
+MANLINKS_RSA_public_encrypt= \
+	RSA_private_decrypt.3openssl
+$(MANLINKS_RSA_public_encrypt) := \
+	LINKSRC = RSA_public_encrypt.3openssl
+
+MANLINKS_RSA_set_method= \
+	RSA_set_default_method.3openssl \
+	RSA_get_default_method.3openssl \
+	RSA_get_method.3openssl \
+	RSA_PKCS1_SSLeay.3openssl \
+	RSA_null_method.3openssl \
+	RSA_flags.3openssl \
+	RSA_new_method.3openssl
+$(MANLINKS_RSA_set_method) := \
+	LINKSRC = RSA_set_method.3openssl
+
+MANLINKS_RSA_sign= \
+	RSA_verify.3openssl
+$(MANLINKS_RSA_sign) := \
+	LINKSRC = RSA_sign.3openssl
+
+MANLINKS_RSA_sign_ASN1_OCTET_STRING= \
+	RSA_verify_ASN1_OCTET_STRING.3openssl
+$(MANLINKS_RSA_sign_ASN1_OCTET_STRING) := \
+	LINKSRC = RSA_sign_ASN1_OCTET_STRING.3openssl
+
+MANLINKS_X509_NAME_ENTRY_get_object= \
+	X509_NAME_ENTRY_get_data.3openssl \
+	X509_NAME_ENTRY_set_object.3openssl \
+	X509_NAME_ENTRY_set_data.3openssl \
+	X509_NAME_ENTRY_create_by_txt.3openssl \
+	X509_NAME_ENTRY_create_by_NID.3openssl \
+	X509_NAME_ENTRY_create_by_OBJ.3openssl
+$(MANLINKS_X509_NAME_ENTRY_get_object) := \
+	LINKSRC = X509_NAME_ENTRY_get_object.3openssl
+
+MANLINKS_X509_NAME_add_entry_by_txt= \
+	X509_NAME_add_entry_by_OBJ.3openssl \
+	X509_NAME_add_entry_by_NID.3openssl \
+	X509_NAME_add_entry.3openssl \
+	X509_NAME_delete_entry.3openssl
+$(MANLINKS_X509_NAME_add_entry_by_txt) := \
+	LINKSRC = X509_NAME_add_entry_by_txt.3openssl
+
+MANLINKS_X509_NAME_get_index_by_NID= \
+	X509_NAME_get_index_by_OBJ.3openssl \
+	X509_NAME_get_entry.3openssl \
+	X509_NAME_entry_count.3openssl \
+	X509_NAME_get_text_by_NID.3openssl \
+	X509_NAME_get_text_by_OBJ.3openssl
+$(MANLINKS_X509_NAME_get_index_by_NID) := \
+	LINKSRC = X509_NAME_get_index_by_NID.3openssl
+
+MANLINKS_X509_NAME_print_ex= \
+	X509_NAME_print_ex_fp.3openssl \
+	X509_NAME_print.3openssl \
+	X509_NAME_oneline.3openssl
+$(MANLINKS_X509_NAME_print_ex) := \
+	LINKSRC = X509_NAME_print_ex.3openssl
+
+MANLINKS_X509_STORE_CTX_get_error= \
+	X509_STORE_CTX_set_error.3openssl \
+	X509_STORE_CTX_get_error_depth.3openssl \
+	X509_STORE_CTX_get_current_cert.3openssl \
+	X509_STORE_CTX_get1_chain.3openssl \
+	X509_verify_cert_error_string.3openssl
+$(MANLINKS_X509_STORE_CTX_get_error) := \
+	LINKSRC = X509_STORE_CTX_get_error.3openssl
+
+MANLINKS_X509_STORE_CTX_get_ex_new_index= \
+	X509_STORE_CTX_set_ex_data.3openssl \
+	X509_STORE_CTX_get_ex_data.3openssl
+$(MANLINKS_X509_STORE_CTX_get_ex_new_index) := \
+	LINKSRC = X509_STORE_CTX_get_ex_new_index.3openssl
+
+MANLINKS_X509_STORE_CTX_new= \
+	X509_STORE_CTX_cleanup.3openssl \
+	X509_STORE_CTX_free.3openssl \
+	X509_STORE_CTX_init.3openssl \
+	X509_STORE_CTX_trusted_stack.3openssl \
+	X509_STORE_CTX_set_cert.3openssl \
+	X509_STORE_CTX_set_chain.3openssl \
+	X509_STORE_CTX_set0_crls.3openssl \
+	X509_STORE_CTX_get0_param.3openssl \
+	X509_STORE_CTX_set0_param.3openssl \
+	X509_STORE_CTX_set_default.3openssl
+$(MANLINKS_X509_STORE_CTX_new) := \
+	LINKSRC = X509_STORE_CTX_new.3openssl
+
+MANLINKS_X509_STORE_set_verify_cb_func= \
+	X509_STORE_set_verify_cb.3openssl
+$(MANLINKS_X509_STORE_set_verify_cb_func) := \
+	LINKSRC = X509_STORE_set_verify_cb_func.3openssl
+
+MANLINKS_X509_VERIFY_PARAM_set_flags= \
+	X509_VERIFY_PARAM_clear_flags.3openssl \
+	X509_VERIFY_PARAM_get_flags.3openssl \
+	X509_VERIFY_PARAM_set_purpose.3openssl \
+	X509_VERIFY_PARAM_set_trust.3openssl \
+	X509_VERIFY_PARAM_set_depth.3openssl \
+	X509_VERIFY_PARAM_get_depth.3openssl \
+	X509_VERIFY_PARAM_set_time.3openssl \
+	X509_VERIFY_PARAM_add0_policy.3openssl \
+	X509_VERIFY_PARAM_set1_policies.3openssl
+$(MANLINKS_X509_VERIFY_PARAM_set_flags) := \
+	LINKSRC = X509_VERIFY_PARAM_set_flags.3openssl
+
+MANLINKS_X509_new= \
+	X509_free.3openssl
+$(MANLINKS_X509_new) := \
+	LINKSRC = X509_new.3openssl
+
+MANLINKS_blowfish= \
+	BF_set_key.3openssl \
+	BF_encrypt.3openssl \
+	BF_decrypt.3openssl \
+	BF_ecb_encrypt.3openssl \
+	BF_cbc_encrypt.3openssl \
+	BF_cfb64_encrypt.3openssl \
+	BF_ofb64_encrypt.3openssl \
+	BF_options.3openssl
+$(MANLINKS_blowfish) := \
+	LINKSRC = blowfish.3openssl
+
+MANLINKS_bn_internal= \
+	bn_mul_words.3openssl \
+	bn_mul_add_words.3openssl \
+	bn_sqr_words.3openssl \
+	bn_div_words.3openssl \
+	bn_add_words.3openssl \
+	bn_sub_words.3openssl \
+	bn_mul_comba4.3openssl \
+	bn_mul_comba8.3openssl \
+	bn_sqr_comba4.3openssl \
+	bn_sqr_comba8.3openssl \
+	bn_cmp_words.3openssl \
+	bn_mul_normal.3openssl \
+	bn_mul_low_normal.3openssl \
+	bn_mul_recursive.3openssl \
+	bn_mul_part_recursive.3openssl \
+	bn_mul_low_recursive.3openssl \
+	bn_mul_high.3openssl \
+	bn_sqr_normal.3openssl \
+	bn_sqr_recursive.3openssl \
+	bn_expand.3openssl \
+	bn_wexpand.3openssl \
+	bn_expand2.3openssl \
+	bn_fix_top.3openssl \
+	bn_check_top.3openssl \
+	bn_print.3openssl \
+	bn_dump.3openssl \
+	bn_set_max.3openssl \
+	bn_set_high.3openssl \
+	bn_set_low.3openssl
+$(MANLINKS_bn_internal) := \
+	LINKSRC = bn_internal.3openssl
+
+MANLINKS_buffer= \
+	BUF_MEM_new.3openssl \
+	BUF_MEM_free.3openssl \
+	BUF_MEM_grow.3openssl \
+	BUF_strdup.3openssl
+$(MANLINKS_buffer) := \
+	LINKSRC = buffer.3openssl
+
+MANLINKS_d2i_ASN1_OBJECT= \
+	i2d_ASN1_OBJECT.3openssl
+$(MANLINKS_d2i_ASN1_OBJECT) := \
+	LINKSRC = d2i_ASN1_OBJECT.3openssl
+
+MANLINKS_d2i_DHparams= \
+	i2d_DHparams.3openssl
+$(MANLINKS_d2i_DHparams) := \
+	LINKSRC = d2i_DHparams.3openssl
+
+MANLINKS_d2i_DSAPublicKey= \
+	i2d_DSAPublicKey.3openssl \
+	d2i_DSAPrivateKey.3openssl \
+	i2d_DSAPrivateKey.3openssl \
+	d2i_DSA_PUBKEY.3openssl \
+	i2d_DSA_PUBKEY.3openssl \
+	d2i_DSA_SIG.3openssl \
+	i2d_DSA_SIG.3openssl
+$(MANLINKS_d2i_DSAPublicKey) := \
+	LINKSRC = d2i_DSAPublicKey.3openssl
+
+MANLINKS_d2i_PKCS8PrivateKey= \
+	d2i_PKCS8PrivateKey_bio.3openssl \
+	d2i_PKCS8PrivateKey_fp.3openssl \
+	i2d_PKCS8PrivateKey_bio.3openssl \
+	i2d_PKCS8PrivateKey_fp.3openssl \
+	i2d_PKCS8PrivateKey_nid_bio.3openssl \
+	i2d_PKCS8PrivateKey_nid_fp.3openssl
+$(MANLINKS_d2i_PKCS8PrivateKey) := \
+	LINKSRC = d2i_PKCS8PrivateKey.3openssl
+
+MANLINKS_d2i_RSAPublicKey= \
+	i2d_RSAPublicKey.3openssl \
+	d2i_RSAPrivateKey.3openssl \
+	i2d_RSAPrivateKey.3openssl \
+	d2i_RSA_PUBKEY.3openssl \
+	i2d_RSA_PUBKEY.3openssl \
+	i2d_Netscape_RSA.3openssl \
+	d2i_Netscape_RSA.3openssl
+$(MANLINKS_d2i_RSAPublicKey) := \
+	LINKSRC = d2i_RSAPublicKey.3openssl
+
+MANLINKS_d2i_X509= \
+	i2d_X509.3openssl \
+	d2i_X509_bio.3openssl \
+	d2i_X509_fp.3openssl \
+	i2d_X509_bio.3openssl \
+	i2d_X509_fp.3openssl
+$(MANLINKS_d2i_X509) := \
+	LINKSRC = d2i_X509.3openssl
+
+MANLINKS_d2i_X509_ALGOR= \
+	i2d_X509_ALGOR.3openssl
+$(MANLINKS_d2i_X509_ALGOR) := \
+	LINKSRC = d2i_X509_ALGOR.3openssl
+
+MANLINKS_d2i_X509_CRL= \
+	i2d_X509_CRL.3openssl \
+	d2i_X509_CRL_bio.3openssl \
+	d2i_509_CRL_fp.3openssl \
+	i2d_X509_CRL_bio.3openssl \
+	i2d_X509_CRL_fp.3openssl
+$(MANLINKS_d2i_X509_CRL) := \
+	LINKSRC = d2i_X509_CRL.3openssl
+
+MANLINKS_d2i_X509_NAME= \
+	i2d_X509_NAME.3openssl
+$(MANLINKS_d2i_X509_NAME) := \
+	LINKSRC = d2i_X509_NAME.3openssl
+
+MANLINKS_d2i_X509_REQ= \
+	i2d_X509_REQ.3openssl \
+	d2i_X509_REQ_bio.3openssl \
+	d2i_X509_REQ_fp.3openssl \
+	i2d_X509_REQ_bio.3openssl \
+	i2d_X509_REQ_fp.3openssl
+$(MANLINKS_d2i_X509_REQ) := \
+	LINKSRC = d2i_X509_REQ.3openssl
+
+MANLINKS_d2i_X509_SIG= \
+	i2d_X509_SIG.3openssl
+$(MANLINKS_d2i_X509_SIG) := \
+	LINKSRC = d2i_X509_SIG.3openssl
+
+MANLINKS_des= \
+	DES_random_key.3openssl \
+	DES_set_key.3openssl \
+	DES_key_sched.3openssl \
+	DES_set_key_checked.3openssl \
+	DES_set_key_unchecked.3openssl \
+	DES_set_odd_parity.3openssl \
+	DES_is_weak_key.3openssl \
+	DES_ecb_encrypt.3openssl \
+	DES_ecb2_encrypt.3openssl \
+	DES_ecb3_encrypt.3openssl \
+	DES_ncbc_encrypt.3openssl \
+	DES_cfb_encrypt.3openssl \
+	DES_ofb_encrypt.3openssl \
+	DES_pcbc_encrypt.3openssl \
+	DES_cfb64_encrypt.3openssl \
+	DES_ofb64_encrypt.3openssl \
+	DES_xcbc_encrypt.3openssl \
+	DES_ede2_cbc_encrypt.3openssl \
+	DES_ede2_cfb64_encrypt.3openssl \
+	DES_ede2_ofb64_encrypt.3openssl \
+	DES_ede3_cbc_encrypt.3openssl \
+	DES_ede3_cbcm_encrypt.3openssl \
+	DES_ede3_cfb64_encrypt.3openssl \
+	DES_ede3_ofb64_encrypt.3openssl \
+	DES_cbc_cksum.3openssl \
+	DES_quad_cksum.3openssl \
+	DES_string_to_key.3openssl \
+	DES_string_to_2keys.3openssl \
+	DES_fcrypt.3openssl \
+	DES_crypt.3openssl \
+	DES_enc_read.3openssl \
+	DES_enc_write.3openssl
+$(MANLINKS_des) := \
+	LINKSRC = des.3openssl
+
+MANLINKS_hmac= \
+	HMAC.3openssl \
+	HMAC_CTX_init.3openssl \
+	HMAC_Init.3openssl \
+	HMAC_Init_ex.3openssl \
+	HMAC_Update.3openssl \
+	HMAC_Final.3openssl \
+	HMAC_CTX_cleanup.3openssl \
+	HMAC_cleanup.3openssl
+$(MANLINKS_hmac) := \
+	LINKSRC = hmac.3openssl
+
+MANLINKS_lh_stats= \
+	lh_node_stats.3openssl \
+	lh_node_usage_stats.3openssl \
+	lh_stats_bio.3openssl \
+	lh_node_stats_bio.3openssl \
+	lh_node_usage_stats_bio.3openssl
+$(MANLINKS_lh_stats) := \
+	LINKSRC = lh_stats.3openssl
+
+MANLINKS_lhash= \
+	lh_new.3openssl \
+	lh_free.3openssl \
+	lh_insert.3openssl \
+	lh_delete.3openssl \
+	lh_retrieve.3openssl \
+	lh_doall.3openssl \
+	lh_doall_arg.3openssl \
+	lh_error.3openssl
+$(MANLINKS_lhash) := \
+	LINKSRC = lhash.3openssl
+
+MANLINKS_md5= \
+	MD2.3openssl \
+	MD4.3openssl \
+	MD5.3openssl \
+	MD2_Init.3openssl \
+	MD2_Update.3openssl \
+	MD2_Final.3openssl \
+	MD4_Init.3openssl \
+	MD4_Update.3openssl \
+	MD4_Final.3openssl \
+	MD5_Init.3openssl \
+	MD5_Update.3openssl \
+	MD5_Final.3openssl
+$(MANLINKS_md5) := \
+	LINKSRC = md5.3openssl
+
+MANLINKS_mdc2= \
+	MDC2.3openssl \
+	MDC2_Init.3openssl \
+	MDC2_Update.3openssl \
+	MDC2_Final.3openssl
+$(MANLINKS_mdc2) := \
+	LINKSRC = mdc2.3openssl
+
+MANLINKS_pem= \
+	PEM.3openssl \
+	PEM_read_bio_PrivateKey.3openssl \
+	PEM_read_PrivateKey.3openssl \
+	PEM_write_bio_PrivateKey.3openssl \
+	PEM_write_PrivateKey.3openssl \
+	PEM_write_bio_PKCS8PrivateKey.3openssl \
+	PEM_write_PKCS8PrivateKey.3openssl \
+	PEM_write_bio_PKCS8PrivateKey_nid.3openssl \
+	PEM_write_PKCS8PrivateKey_nid.3openssl \
+	PEM_read_bio_PUBKEY.3openssl \
+	PEM_read_PUBKEY.3openssl \
+	PEM_write_bio_PUBKEY.3openssl \
+	PEM_write_PUBKEY.3openssl \
+	PEM_read_bio_RSAPrivateKey.3openssl \
+	PEM_read_RSAPrivateKey.3openssl \
+	PEM_write_bio_RSAPrivateKey.3openssl \
+	PEM_write_RSAPrivateKey.3openssl \
+	PEM_read_bio_RSAPublicKey.3openssl \
+	PEM_read_RSAPublicKey.3openssl \
+	PEM_write_bio_RSAPublicKey.3openssl \
+	PEM_write_RSAPublicKey.3openssl \
+	PEM_read_bio_RSA_PUBKEY.3openssl \
+	PEM_read_RSA_PUBKEY.3openssl \
+	PEM_write_bio_RSA_PUBKEY.3openssl \
+	PEM_write_RSA_PUBKEY.3openssl \
+	PEM_read_bio_DSAPrivateKey.3openssl \
+	PEM_read_DSAPrivateKey.3openssl \
+	PEM_write_bio_DSAPrivateKey.3openssl \
+	PEM_write_DSAPrivateKey.3openssl \
+	PEM_read_bio_DSA_PUBKEY.3openssl \
+	PEM_read_DSA_PUBKEY.3openssl \
+	PEM_write_bio_DSA_PUBKEY.3openssl \
+	PEM_write_DSA_PUBKEY.3openssl \
+	PEM_read_bio_DSAparams.3openssl \
+	PEM_read_DSAparams.3openssl \
+	PEM_write_bio_DSAparams.3openssl \
+	PEM_write_DSAparams.3openssl \
+	PEM_read_bio_DHparams.3openssl \
+	PEM_read_DHparams.3openssl \
+	PEM_write_bio_DHparams.3openssl \
+	PEM_write_DHparams.3openssl \
+	PEM_read_bio_X509.3openssl \
+	PEM_read_X509.3openssl \
+	PEM_write_bio_X509.3openssl \
+	PEM_write_X509.3openssl \
+	PEM_read_bio_X509_AUX.3openssl \
+	PEM_read_X509_AUX.3openssl \
+	PEM_write_bio_X509_AUX.3openssl \
+	PEM_write_X509_AUX.3openssl \
+	PEM_read_bio_X509_REQ.3openssl \
+	PEM_read_X509_REQ.3openssl \
+	PEM_write_bio_X509_REQ.3openssl \
+	PEM_write_X509_REQ.3openssl \
+	PEM_write_bio_X509_REQ_NEW.3openssl \
+	PEM_write_X509_REQ_NEW.3openssl \
+	PEM_read_bio_X509_CRL.3openssl \
+	PEM_read_X509_CRL.3openssl \
+	PEM_write_bio_X509_CRL.3openssl \
+	PEM_write_X509_CRL.3openssl \
+	PEM_read_bio_PKCS7.3openssl \
+	PEM_read_PKCS7.3openssl \
+	PEM_write_bio_PKCS7.3openssl \
+	PEM_write_PKCS7.3openssl \
+	PEM_read_bio_NETSCAPE_CERT_SEQUENCE.3openssl \
+	PEM_read_NETSCAPE_CERT_SEQUENCE.3openssl \
+	PEM_write_bio_NETSCAPE_CERT_SEQUENCE.3openssl \
+	PEM_write_NETSCAPE_CERT_SEQUENCE.3openssl
+$(MANLINKS_pem) := \
+	LINKSRC = pem.3openssl
+
+MANLINKS_rc4= \
+	RC4_set_key.3openssl \
+	RC4.3openssl
+$(MANLINKS_rc4) := \
+	LINKSRC = rc4.3openssl
+
+MANLINKS_ripemd= \
+	RIPEMD160.3openssl \
+	RIPEMD160_Init.3openssl \
+	RIPEMD160_Update.3openssl \
+	RIPEMD160_Final.3openssl
+$(MANLINKS_ripemd) := \
+	LINKSRC = ripemd.3openssl
+
+MANLINKS_sha= \
+	SHA1.3openssl \
+	SHA1_Init.3openssl \
+	SHA1_Update.3openssl \
+	SHA1_Final.3openssl
+$(MANLINKS_sha) := \
+	LINKSRC = sha.3openssl
+
+MANLINKS_threads= \
+	CRYPTO_THREADID_set_callback.3openssl \
+	CRYPTO_THREADID_get_callback.3openssl \
+	CRYPTO_THREADID_current.3openssl \
+	CRYPTO_THREADID_cmp.3openssl \
+	CRYPTO_THREADID_cpy.3openssl \
+	CRYPTO_THREADID_hash.3openssl \
+	CRYPTO_set_locking_callback.3openssl \
+	CRYPTO_num_locks.3openssl \
+	CRYPTO_set_dynlock_create_callback.3openssl \
+	CRYPTO_set_dynlock_lock_callback.3openssl \
+	CRYPTO_set_dynlock_destroy_callback.3openssl \
+	CRYPTO_get_new_dynlockid.3openssl \
+	CRYPTO_destroy_dynlockid.3openssl \
+	CRYPTO_lock.3openssl
+$(MANLINKS_threads) := \
+	LINKSRC = threads.3openssl
+
+MANLINKS_ui= \
+	UI_new.3openssl \
+	UI_new_method.3openssl \
+	UI_free.3openssl \
+	UI_add_input_string.3openssl \
+	UI_dup_input_string.3openssl \
+	UI_add_verify_string.3openssl \
+	UI_dup_verify_string.3openssl \
+	UI_add_input_boolean.3openssl \
+	UI_dup_input_boolean.3openssl \
+	UI_add_info_string.3openssl \
+	UI_dup_info_string.3openssl \
+	UI_add_error_string.3openssl \
+	UI_dup_error_string.3openssl \
+	UI_construct_prompt.3openssl \
+	UI_add_user_data.3openssl \
+	UI_get0_user_data.3openssl \
+	UI_get0_result.3openssl \
+	UI_process.3openssl \
+	UI_ctrl.3openssl \
+	UI_set_default_method.3openssl \
+	UI_get_default_method.3openssl \
+	UI_get_method.3openssl \
+	UI_set_method.3openssl \
+	UI_OpenSSL.3openssl \
+	ERR_load_UI_strings.3openssl
+$(MANLINKS_ui) := \
+	LINKSRC = ui.3openssl
+
+MANLINKS_ui_compat= \
+	des_read_password.3openssl \
+	des_read_2passwords.3openssl \
+	des_read_pw_string.3openssl \
+	des_read_pw.3openssl
+$(MANLINKS_ui_compat) := \
+	LINKSRC = ui_compat.3openssl
+
+MANLINKS_all_crypto = \
+	$(MANLINKS_ASN1_OBJECT_new) \
+	$(MANLINKS_ASN1_STRING_length) \
+	$(MANLINKS_ASN1_STRING_new) \
+	$(MANLINKS_ASN1_STRING_print_ex) \
+	$(MANLINKS_ASN1_generate_nconf) \
+	$(MANLINKS_BIO_ctrl) \
+	$(MANLINKS_BIO_f_cipher) \
+	$(MANLINKS_BIO_f_md) \
+	$(MANLINKS_BIO_f_ssl) \
+	$(MANLINKS_BIO_find_type) \
+	$(MANLINKS_BIO_new) \
+	$(MANLINKS_BIO_push) \
+	$(MANLINKS_BIO_read) \
+	$(MANLINKS_BIO_s_accept) \
+	$(MANLINKS_BIO_s_bio) \
+	$(MANLINKS_BIO_s_connect) \
+	$(MANLINKS_BIO_s_fd) \
+	$(MANLINKS_BIO_s_file) \
+	$(MANLINKS_BIO_s_mem) \
+	$(MANLINKS_BIO_s_socket) \
+	$(MANLINKS_BIO_set_callback) \
+	$(MANLINKS_BIO_should_retry) \
+	$(MANLINKS_BN_BLINDING_new) \
+	$(MANLINKS_BN_CTX_new) \
+	$(MANLINKS_BN_CTX_start) \
+	$(MANLINKS_BN_add) \
+	$(MANLINKS_BN_add_word) \
+	$(MANLINKS_BN_bn2bin) \
+	$(MANLINKS_BN_cmp) \
+	$(MANLINKS_BN_copy) \
+	$(MANLINKS_BN_generate_prime) \
+	$(MANLINKS_BN_mod_mul_montgomery) \
+	$(MANLINKS_BN_mod_mul_reciprocal) \
+	$(MANLINKS_BN_new) \
+	$(MANLINKS_BN_num_bytes) \
+	$(MANLINKS_BN_rand) \
+	$(MANLINKS_BN_set_bit) \
+	$(MANLINKS_BN_zero) \
+	$(MANLINKS_CMS_add0_cert) \
+	$(MANLINKS_CMS_add1_recipient_cert) \
+	$(MANLINKS_CMS_get0_RecipientInfos) \
+	$(MANLINKS_CMS_get0_SignerInfos) \
+	$(MANLINKS_CMS_get0_type) \
+	$(MANLINKS_CMS_get1_ReceiptRequest) \
+	$(MANLINKS_CMS_sign_add1_signer) \
+	$(MANLINKS_CONF_modules_free) \
+	$(MANLINKS_CONF_modules_load_file) \
+	$(MANLINKS_CRYPTO_set_ex_data) \
+	$(MANLINKS_DH_generate_key) \
+	$(MANLINKS_DH_generate_parameters) \
+	$(MANLINKS_DH_get_ex_new_index) \
+	$(MANLINKS_DH_new) \
+	$(MANLINKS_DH_set_method) \
+	$(MANLINKS_DSA_SIG_new) \
+	$(MANLINKS_DSA_do_sign) \
+	$(MANLINKS_DSA_get_ex_new_index) \
+	$(MANLINKS_DSA_new) \
+	$(MANLINKS_DSA_set_method) \
+	$(MANLINKS_DSA_sign) \
+	$(MANLINKS_ERR_GET_LIB) \
+	$(MANLINKS_ERR_error_string) \
+	$(MANLINKS_ERR_get_error) \
+	$(MANLINKS_ERR_load_crypto_strings) \
+	$(MANLINKS_ERR_load_strings) \
+	$(MANLINKS_ERR_print_errors) \
+	$(MANLINKS_ERR_put_error) \
+	$(MANLINKS_ERR_set_mark) \
+	$(MANLINKS_EVP_DigestInit) \
+	$(MANLINKS_EVP_DigestSignInit) \
+	$(MANLINKS_EVP_DigestVerifyInit) \
+	$(MANLINKS_EVP_EncryptInit) \
+	$(MANLINKS_EVP_OpenInit) \
+	$(MANLINKS_EVP_PKEY_CTX_ctrl) \
+	$(MANLINKS_EVP_PKEY_CTX_new) \
+	$(MANLINKS_EVP_PKEY_cmp) \
+	$(MANLINKS_EVP_PKEY_decrypt) \
+	$(MANLINKS_EVP_PKEY_derive) \
+	$(MANLINKS_EVP_PKEY_encrypt) \
+	$(MANLINKS_EVP_PKEY_get_default_digest) \
+	$(MANLINKS_EVP_PKEY_keygen) \
+	$(MANLINKS_EVP_PKEY_new) \
+	$(MANLINKS_EVP_PKEY_print_private) \
+	$(MANLINKS_EVP_PKEY_set1_RSA) \
+	$(MANLINKS_EVP_PKEY_sign) \
+	$(MANLINKS_EVP_PKEY_verify) \
+	$(MANLINKS_EVP_PKEY_verify_recover) \
+	$(MANLINKS_EVP_SealInit) \
+	$(MANLINKS_EVP_SignInit) \
+	$(MANLINKS_EVP_VerifyInit) \
+	$(MANLINKS_OBJ_nid2obj) \
+	$(MANLINKS_OPENSSL_VERSION_NUMBER) \
+	$(MANLINKS_OPENSSL_config) \
+	$(MANLINKS_OpenSSL_add_all_algorithms) \
+	$(MANLINKS_RAND_add) \
+	$(MANLINKS_RAND_bytes) \
+	$(MANLINKS_RAND_load_file) \
+	$(MANLINKS_RAND_set_rand_method) \
+	$(MANLINKS_RSA_blinding_on) \
+	$(MANLINKS_RSA_get_ex_new_index) \
+	$(MANLINKS_RSA_new) \
+	$(MANLINKS_RSA_padding_add_PKCS1_type_1) \
+	$(MANLINKS_RSA_print) \
+	$(MANLINKS_RSA_private_encrypt) \
+	$(MANLINKS_RSA_public_encrypt) \
+	$(MANLINKS_RSA_set_method) \
+	$(MANLINKS_RSA_sign) \
+	$(MANLINKS_RSA_sign_ASN1_OCTET_STRING) \
+	$(MANLINKS_X509_NAME_ENTRY_get_object) \
+	$(MANLINKS_X509_NAME_add_entry_by_txt) \
+	$(MANLINKS_X509_NAME_get_index_by_NID) \
+	$(MANLINKS_X509_NAME_print_ex) \
+	$(MANLINKS_X509_STORE_CTX_get_error) \
+	$(MANLINKS_X509_STORE_CTX_get_ex_new_index) \
+	$(MANLINKS_X509_STORE_CTX_new) \
+	$(MANLINKS_X509_STORE_set_verify_cb_func) \
+	$(MANLINKS_X509_VERIFY_PARAM_set_flags) \
+	$(MANLINKS_X509_new) \
+	$(MANLINKS_blowfish) \
+	$(MANLINKS_bn_internal) \
+	$(MANLINKS_buffer) \
+	$(MANLINKS_d2i_ASN1_OBJECT) \
+	$(MANLINKS_d2i_DHparams) \
+	$(MANLINKS_d2i_DSAPublicKey) \
+	$(MANLINKS_d2i_PKCS8PrivateKey) \
+	$(MANLINKS_d2i_RSAPublicKey) \
+	$(MANLINKS_d2i_X509) \
+	$(MANLINKS_d2i_X509_ALGOR) \
+	$(MANLINKS_d2i_X509_CRL) \
+	$(MANLINKS_d2i_X509_NAME) \
+	$(MANLINKS_d2i_X509_REQ) \
+	$(MANLINKS_d2i_X509_SIG) \
+	$(MANLINKS_des) \
+	$(MANLINKS_hmac) \
+	$(MANLINKS_lh_stats) \
+	$(MANLINKS_lhash) \
+	$(MANLINKS_md5) \
+	$(MANLINKS_mdc2) \
+	$(MANLINKS_pem) \
+	$(MANLINKS_rc4) \
+	$(MANLINKS_ripemd) \
+	$(MANLINKS_sha) \
+	$(MANLINKS_threads) \
+	$(MANLINKS_ui) \
+	$(MANLINKS_ui_compat)

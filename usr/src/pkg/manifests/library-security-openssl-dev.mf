@@ -1,0 +1,136 @@
+#
+# CDDL HEADER START
+#
+# The contents of this file are subject to the terms of the
+# Common Development and Distribution License (the "License").
+# You may not use this file except in compliance with the License.
+#
+# You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
+# or http://www.opensolaris.org/os/licensing.
+# See the License for the specific language governing permissions
+# and limitations under the License.
+#
+# When distributing Covered Code, include this CDDL HEADER in each
+# file and include the License file at usr/src/OPENSOLARIS.LICENSE.
+# If applicable, add the following below this CDDL HEADER, with the
+# fields enclosed by brackets "[]" replaced with your own identifying
+# information: Portions Copyright [yyyy] [name of copyright owner]
+#
+# CDDL HEADER END
+#
+# Copyright (c) 2011, Oracle and/or its affiliates. All rights reserved.
+#
+
+set name=pkg.fmri \
+    value=pkg:/library/security/openssl/dev@$(OPENSSL_PKGVERS),$(BUILD_VERSION)
+set name=pkg.description \
+    value="OpenSSL is a full-featured toolkit implementing the Secure Sockets Layer (SSL v2/v3) and Transport Layer Security (TLS v1) protocols as well as a full-strength general purpose cryptography library."
+set name=pkg.summary \
+    value="OpenSSL - a Toolkit for Secure Sockets Layer (SSL v2/v3) and Transport Layer (TLS v1) protocols and general purpose cryptographic library"
+set name=info.classification \
+    value=org.opensolaris.category.2008:System/Security
+
+# dirs
+dir path=lib
+dir path=lib/$(ARCH64)
+dir path=lib/openssl group=bin
+dir path=lib/openssl/engines group=sys
+dir path=lib/openssl/engines/$(ARCH64) group=sys
+dir path=usr
+dir path=usr/include
+dir path=usr/include/openssl
+dir path=usr/lib
+dir path=usr/lib/pkgconfig
+
+# /lib (lint libs)
+file path=lib/$(ARCH64)/llib-lcrypto.ln
+file path=lib/$(ARCH64)/llib-lssl.ln
+file path=lib/llib-lcrypto
+file path=lib/llib-lcrypto.ln
+file path=lib/llib-lssl
+file path=lib/llib-lssl.ln
+
+# Header and pkg files.
+file path=usr/include/openssl/aes.h
+file path=usr/include/openssl/asn1.h
+file path=usr/include/openssl/asn1_mac.h
+file path=usr/include/openssl/asn1t.h
+file path=usr/include/openssl/bio.h
+file path=usr/include/openssl/blowfish.h
+file path=usr/include/openssl/bn.h
+file path=usr/include/openssl/buffer.h
+file path=usr/include/openssl/camellia.h
+file path=usr/include/openssl/cast.h
+file path=usr/include/openssl/cmac.h
+file path=usr/include/openssl/cms.h
+file path=usr/include/openssl/comp.h
+file path=usr/include/openssl/conf.h
+file path=usr/include/openssl/conf_api.h
+file path=usr/include/openssl/crypto.h
+file path=usr/include/openssl/des.h
+file path=usr/include/openssl/des_old.h
+file path=usr/include/openssl/dh.h
+file path=usr/include/openssl/dsa.h
+file path=usr/include/openssl/dso.h
+file path=usr/include/openssl/dtls1.h
+file path=usr/include/openssl/e_os2.h
+file path=usr/include/openssl/ebcdic.h
+file path=usr/include/openssl/ec.h
+file path=usr/include/openssl/ecdh.h
+file path=usr/include/openssl/ecdsa.h
+file path=usr/include/openssl/engine.h
+file path=usr/include/openssl/err.h
+file path=usr/include/openssl/evp.h
+file path=usr/include/openssl/hmac.h
+file path=usr/include/openssl/idea.h
+file path=usr/include/openssl/krb5_asn.h
+file path=usr/include/openssl/kssl.h
+file path=usr/include/openssl/lhash.h
+file path=usr/include/openssl/md2.h
+file path=usr/include/openssl/md4.h
+file path=usr/include/openssl/md5.h
+file path=usr/include/openssl/mdc2.h
+file path=usr/include/openssl/modes.h
+file path=usr/include/openssl/obj_mac.h
+file path=usr/include/openssl/objects.h
+file path=usr/include/openssl/ocsp.h
+file path=usr/include/openssl/opensslconf.h
+file path=usr/include/openssl/opensslv.h
+file path=usr/include/openssl/ossl_typ.h
+file path=usr/include/openssl/pem.h
+file path=usr/include/openssl/pem2.h
+file path=usr/include/openssl/pkcs12.h
+file path=usr/include/openssl/pkcs7.h
+file path=usr/include/openssl/pqueue.h
+file path=usr/include/openssl/rand.h
+file path=usr/include/openssl/rc2.h
+file path=usr/include/openssl/rc4.h
+file path=usr/include/openssl/ripemd.h
+file path=usr/include/openssl/rsa.h
+file path=usr/include/openssl/safestack.h
+file path=usr/include/openssl/seed.h
+file path=usr/include/openssl/sha.h
+file path=usr/include/openssl/srp.h
+file path=usr/include/openssl/srtp.h
+file path=usr/include/openssl/ssl.h
+file path=usr/include/openssl/ssl2.h
+file path=usr/include/openssl/ssl23.h
+file path=usr/include/openssl/ssl3.h
+file path=usr/include/openssl/stack.h
+file path=usr/include/openssl/symhacks.h
+file path=usr/include/openssl/tls1.h
+file path=usr/include/openssl/ts.h
+file path=usr/include/openssl/txt_db.h
+file path=usr/include/openssl/ui.h
+file path=usr/include/openssl/ui_compat.h
+file path=usr/include/openssl/whrlpool.h
+file path=usr/include/openssl/x509.h
+file path=usr/include/openssl/x509_vfy.h
+file path=usr/include/openssl/x509v3.h
+file path=usr/lib/pkgconfig/openssl.pc
+
+# openssl license
+license openssl-1.0.1.license license="OpenSSL, SSLeay"
+
+# Make sure the lib link targets exist.
+depend fmri=library/security/openssl type=require
