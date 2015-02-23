@@ -11,7 +11,7 @@
 
 #
 # Copyright 2011, Richard Lowe
-# Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+# Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
 #
 
 MANDOC=		$(ONBLD_TOOLS)/bin/${MACH}/mandoc
@@ -27,6 +27,8 @@ FILEMODE=	0444
 MANCHECKS=	$(MANFILES:%=%.check)
 ROOTMANFILES= 	$(MANFILES:%=$(ROOTMAN)/man$(MANSECT)/%)
 ROOTMANLINKS=	$(MANLINKS:%=$(ROOTMAN)/man$(MANSECT)/%)
+
+CLOBBERFILES +=	$(MANLINKS)
 
 $(ROOTMAN)/man$(MANSECT)/% $(ROOTHASMAN)/man$(MANSECT)/%: %
 		$(INS.file)
@@ -50,12 +52,12 @@ $(ROOTMANLINKS): $(MANLINKS)
 
 all:
 
-check:		$(MANCHECKS)
+check:		$$(MANCHECKS)
 
 clean:
 
 clobber:
-		$(RM) $(MANLINKS)
+		$(RM) $(CLOBBERFILES)
 
 .PARALLEL:
 
