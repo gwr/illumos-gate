@@ -54,6 +54,10 @@ changes in the lists of -D options, list of options, etc.
 Be sure to update files/opensslconf.h by running Configure, then
 applying files/opensslconf.h.diff to that result and commit.
 
+Also re-check the man pages and packages.  See:
+  $SRC/man/man3openssl/README
+  $SRC/pkg/manifests/library-security-openssl-man-gen.sh
+
 
 OpenSSL Version
 ---

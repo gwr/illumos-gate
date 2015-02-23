@@ -1,0 +1,85 @@
+#!/bin/sh
+#
+# This file and its contents are supplied under the terms of the
+# Common Development and Distribution License ("CDDL"), version 1.0.
+# You may only use this file in accordance with the terms of version
+# 1.0 of the CDDL.
+#
+# A full copy of the text of the CDDL should have accompanied this
+# source.  A copy of the CDDL is also available via the Internet at
+# http://www.illumos.org/license/CDDL.
+#
+
+#
+# Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
+#
+
+#
+# Script to generate Makefile.crypto and Makefile.ssl
+# There are a TON of symlinks to make for 3openssl,
+# and this partially automates writing the Makefiles.
+# Run it like this:
+#  sh README crypto 3openssl |diff -u Makefile.crypto -
+#  sh README ssl    3openssl |diff -u Makefile.ssl -
+#
+# This can also be used over in ../man1openssl
+#  sh ../man3openssl/README apps  1openssl
+# (though in that case the output was tweaked)
+
+dir="$1"
+sect="$2"
+
+[ -n "$1" -o -n "$2" ] || { echo "usage: $0 dir section"; exit 1; }
+
+OPENSSLDIR=${CODEMGR_WS}/external/openssl/openssl-1.0.1h
+extract=$OPENSSLDIR/util/extract-names.pl
+
+# Filter out exceptions done by hand.
+all_pod() {
+   ls -1 *.pod |
+   egrep -v '^(config|x509v3_config|des_modes).pod'
+}
+
+gen_src_names() {
+  echo "MANFILES_all_$1=\c"
+  for f in `all_pod`
+  do
+    b=`basename $f .pod`
+    echo " \\
+	$b.$2\c"
+  done
+  echo ""
+}
+
+gen_man_links() {
+  echo "
+MANLINKS_all_$1 =\c" > /tmp/manlinks$$
+  for f in `all_pod`
+  do
+    b=`basename $f .pod`
+    sec=`perl $extract <$f`
+    if [ -n "$sec" -a "$sec" != "$b" ] ; then
+      echo "
+MANLINKS_$b=\c"
+      for g in $sec ; do
+        [ "$g" = "$b" ] ||
+        echo " \\
+	$g.$2\c"
+      done
+      echo ""
+      echo '$(MANLINKS_'$b') := \\
+	LINKSRC = '$b.$2
+      echo ' \\
+	$(MANLINKS_'$b')\c' >> /tmp/manlinks$$
+    fi
+  done
+  echo "" >> /tmp/manlinks$$
+  cat /tmp/manlinks$$
+  rm /tmp/manlinks$$
+}
+
+sed -n '2,15p' < $0
+echo ""
+echo "# generated from OPENSSLdir/doc/$1"
+(cd ${OPENSSLDIR}/doc/$1 ; gen_src_names $1 $2 )
+(cd ${OPENSSLDIR}/doc/$1 ; gen_man_links $1 $2 )

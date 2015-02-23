@@ -35,6 +35,8 @@
 ./lib/libc_i18n.a
 ./lib/amd64/libc_i18n.a
 ./lib/sparcv9/libc_i18n.a
+./licenses/usr/src/common/openssl/LICENSE
+./licenses/usr/src/common/openssl/LICENSE.descrip
 ./platform/sun4v/kernel/drv/ncp.conf
 ./platform/sun4v/kernel/drv/n2cp.conf
 ./usr/has
