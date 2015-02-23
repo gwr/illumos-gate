@@ -336,6 +336,7 @@ DIRS= \
 	/usr/share/man/man1b \
 	/usr/share/man/man1c \
 	/usr/share/man/man1m \
+	/usr/share/man/man1openssl \
 	/usr/share/man/man2 \
 	/usr/share/man/man3 \
 	/usr/share/man/man3bsm \
@@ -373,6 +374,7 @@ DIRS= \
 	/usr/share/man/man3mvec \
 	/usr/share/man/man3nsl \
 	/usr/share/man/man3nvpair \
+	/usr/share/man/man3openssl \
 	/usr/share/man/man3pam \
 	/usr/share/man/man3papi \
 	/usr/share/man/man3perl \
@@ -402,12 +404,14 @@ DIRS= \
 	/usr/share/man/man3xnet \
 	/usr/share/man/man4 \
 	/usr/share/man/man5 \
+	/usr/share/man/man5openssl \
 	/usr/share/man/man7 \
 	/usr/share/man/man7d \
 	/usr/share/man/man7fs \
 	/usr/share/man/man7i \
 	/usr/share/man/man7ipp \
 	/usr/share/man/man7m \
+	/usr/share/man/man7openssl \
 	/usr/share/man/man7p \
         /usr/share/man/man9 \
 	/usr/share/man/man9e \
