@@ -26,12 +26,12 @@
 #ifndef _SA_STDDEF_H
 #define	_SA_STDDEF_H
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
-
 /*
  * Exported interfaces for standalone's subset of libc's <stddef.h>.
  * All standalone code *must* use this header rather than libc's.
  */
+
+#include <sys/isa_defs.h>
 
 #ifdef	__cplusplus
 extern "C" {
@@ -40,6 +40,24 @@ extern "C" {
 #ifndef	NULL
 #define	NULL    0
 #endif
+
+#if !defined(_PTRDIFF_T)
+#define	_PTRDIFF_T
+#if defined(_LP64) || defined(_I32LPx)
+typedef	long	ptrdiff_t;		/* pointer difference */
+#else
+typedef int	ptrdiff_t;		/* (historical version) */
+#endif
+#endif	/* !_PTRDIFF_T */
+
+#if !defined(_SIZE_T)
+#define	_SIZE_T
+#if defined(_LP64) || defined(_I32LPx)
+typedef unsigned long	size_t;		/* size of something in bytes */
+#else
+typedef unsigned int	size_t;		/* (historical version) */
+#endif
+#endif	/* !_SIZE_T */
 
 #ifndef offsetof
 #define	offsetof(s, m)  (size_t)(&(((s *)0)->m))

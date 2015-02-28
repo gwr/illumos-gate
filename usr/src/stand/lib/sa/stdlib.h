@@ -27,9 +27,6 @@
 #ifndef _SA_STDLIB_H
 #define	_SA_STDLIB_H
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
-
-
 /*
  * Exported interfaces for standalone's subset of libc's <stdlib.h>.
  * All standalone code *must* use this header rather than libc's.
@@ -41,6 +38,7 @@
 extern "C" {
 #endif
 
+extern int atoi(const char *);
 extern void *malloc(size_t);
 extern void *calloc(size_t, size_t);
 extern void *realloc(void *, size_t);

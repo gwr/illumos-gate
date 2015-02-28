@@ -27,8 +27,6 @@
 #ifndef _SA_STDIO_H
 #define	_SA_STDIO_H
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
-
 #include <sys/types.h>
 #include <stdarg.h>
 
@@ -48,6 +46,8 @@ extern "C" {
 #ifndef	EOF
 #define	EOF	(-1)
 #endif
+
+#define	BUFSIZ	1024
 
 /*
  * Flags to setvbuf() which we pretend to support.  We're always really _IONBF.
@@ -77,7 +77,10 @@ extern int	fflush(FILE *);
 extern int	ferror(FILE *);
 extern void	clearerr(FILE *);
 
+extern void	perror(const char *);
+
 extern char	*fgets(char *, int, FILE *);
+extern int	fputs(const char *, FILE *);
 extern FILE	*fopen(const char *, const char *);
 extern size_t	fread(void *, size_t, size_t, FILE *);
 extern int	fseek(FILE *, long, int);

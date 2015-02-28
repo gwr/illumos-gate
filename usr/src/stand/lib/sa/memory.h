@@ -24,11 +24,11 @@
  * Use is subject to license terms.
  */
 
-#ifndef _SA_STRING_H
-#define	_SA_STRING_H
+#ifndef _SA_MEMORY_H
+#define	_SA_MEMORY_H
 
 /*
- * Exported interfaces for standalone's subset of libc's <string.h>.
+ * Exported interfaces for standalone's subset of libc's <memory.h>.
  * All standalone code *must* use this header rather than libc's.
  */
 
@@ -38,38 +38,14 @@
 extern "C" {
 #endif
 
-#ifndef	NULL
-#define	NULL    0		/* defined here as per ISO C */
-#endif
-
 extern int	memcmp(const void *,  const void *, size_t);
 extern void	*memmove(void *, const void *, size_t);
 extern void	*memset(void *, int, size_t);
 extern void	*memcpy(void *, const void *, size_t);
 extern void	*memchr(const void *, int, size_t);
 
-extern int	strcasecmp(const char *, const char *);
-extern int	strncasecmp(const char *, const char *, size_t);
-extern int	strcmp(const char *, const char *);
-extern int	strncmp(const char *, const char *, size_t);
-extern size_t	strlen(const char *);
-extern char	*strcat(char *, const char *);
-extern char	*strncat(char *, const char *, size_t);
-extern size_t	strlcat(char *, const char *, size_t);
-extern char	*strcpy(char *, const char *);
-extern char	*strncpy(char *, const char *, size_t);
-extern size_t	strlcpy(char *, const char *, size_t);
-extern char	*strchr(const char *, int);
-extern char	*strrchr(const char *, int);
-extern char	*strstr(const char *, const char *);
-extern char	*strtok(char *, const char *);
-extern char	*strerror(int);
-extern char	*strdup(const char *);
-extern long	strtol(const char *, char **, int);
-extern unsigned long strtoul(const char *, char **, int);
-
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* _SA_STRING_H */
+#endif /* _SA_MEMORY_H */

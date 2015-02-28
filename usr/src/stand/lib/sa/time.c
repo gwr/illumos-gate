@@ -26,8 +26,6 @@
  * Time routines, snagged from libc.
  */
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
-
 #include <errno.h>
 #include <sys/types.h>
 #include <sys/bootvfs.h>
@@ -35,6 +33,7 @@
 #include <sys/promif.h>
 #include <stdio.h>
 #include <time.h>
+#include <tzfile.h>
 
 #define	CBUFSIZ 26
 
@@ -124,8 +123,8 @@ gmtime(const time_t *clock)
 		if (days < 0)
 			--newy;
 		days -= ((long)newy - (long)y) * DAYS_PER_NYEAR +
-			LEAPS_THRU_END_OF(newy > 0 ? newy - 1L : newy) -
-			LEAPS_THRU_END_OF(y > 0 ? y - 1L : y);
+		    LEAPS_THRU_END_OF(newy > 0 ? newy - 1L : newy) -
+		    LEAPS_THRU_END_OF(y > 0 ? y - 1L : y);
 		y = newy;
 	}
 
@@ -172,7 +171,8 @@ asctime(const struct tm *t)
 	static char cbuf[CBUFSIZ];
 
 	cp = cbuf;
-	for (ncp = Date; *cp++ = *ncp++; /* */);
+	for (ncp = Date; *cp++ = *ncp++; /* */)
+		;
 	ncp = Day + (3 * t->tm_wday);
 	cp = cbuf;
 	*cp++ = *ncp++;

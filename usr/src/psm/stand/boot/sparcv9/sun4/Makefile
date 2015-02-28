@@ -89,6 +89,12 @@ XRDIRS +=	../../sparc/common ../../common $(STANDLIBDIR) \
 		$(STANDSYSDIR) $(PROMDIRS) $(NAMESDIRS)
 XRPRUNE =	i86pc i386
 
+#############################
+# example of directories below:
+LIBNAME_DIR=../../../../../psm/stand/lib/names/sparcv9/sun4
+LIBSYS_DIR=/tank/ws/gwr/illumos-openssl/proto/root_sparc/stand/lib
+LIBPLAT_DIR=../../../../../psm/stand/lib/promif/sparcv9/ieee1275/sun4
+LIBPROM_DIR=../../../../../psm/stand/lib/promif/sparcv9/ieee1275/common
 
 #############################
 #
@@ -100,8 +106,8 @@ LIBWAN_LIBS     = \
 		libwanboot.a \
 		libnvpair.a libufs.a libhsfs.a libnfs.a \
 		libxdr.a libnames.a libsock.a libinet.a libtcp.a \
-		libscrypt.a libssl.a libcrypto.a \
-		libmd5.a libsa.a libprom.a libssl.a \
+		libscrypt.a libopenssl-boot.a \
+		libmd5.a libsa.a libprom.a \
 		$(LIBPLAT_LIBS)
 WAN_LIBS        = $(LIBWAN_LIBS:lib%.a=-l%)
 WAN_DIRS        = $(LIBNAME_DIR:%=-L%) $(LIBSYS_DIR:%=-L%)
