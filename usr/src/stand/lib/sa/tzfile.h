@@ -24,26 +24,31 @@
  * Use is subject to license terms.
  */
 
-#ifndef _SA_LIMITS_H
-#define	_SA_LIMITS_H
+#ifndef _SA_TZFILE_H
+#define	_SA_TZFILE_H
 
 /*
- * Exported interfaces for standalone's subset of libc's <limits.h>.
+ * Exported interfaces for standalone's subset of libc's <tzfile.h>.
  * All standalone code *must* use this header rather than libc's.
  */
 
-#include <sys/int_limits.h>
+#include <sys/types.h>
 
-#define	INT_MAX		2147483647	/* max value of an "int" */
-#define	UINT_MAX	4294967295U	/* max value of an "unsigned int" */
-#if defined(_LP64)
-#define	LONG_MAX	9223372036854775807L
-					/* max value of a "long int" */
-#define	ULONG_MAX	18446744073709551615UL
-					/* max of "unsigned long int" */
-#else	/* _ILP32 */
-#define	LONG_MAX	2147483647L	/* max value of a "long int" */
-#define	ULONG_MAX	4294967295UL	/* max of "unsigned long int" */
+#define	EPOCH_YEAR		1970
+#define	EPOCH_WDAY		4
+#define	SECS_PER_MIN		60
+#define	DAYS_PER_WEEK		7
+#define	DAYS_PER_NYEAR		365
+#define	DAYS_PER_LYEAR		366
+#define	MONS_PER_YEAR		12
+#define	SECS_PER_HOUR		(SECS_PER_MIN * 60)
+#define	SECS_PER_DAY		(SECS_PER_HOUR * 24)
+#define	TM_YEAR_BASE		1900
+
+#define	isleap(y) (((y) % 4) == 0 && (((y) % 100) != 0 || ((y) % 400) == 0))
+
+#ifdef __cplusplus
+}
 #endif
 
-#endif /* _SA_LIMITS_H */
+#endif /* _SA_TZFILE_H */

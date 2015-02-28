@@ -27,18 +27,19 @@ LIBRARY		= libsa.a
 LOCOBJS		= assert.o ctype.o errno.o libintl.o malloc.o memlist.o \
 		  standalloc.o stdio.o stdlib.o strdup.o strings.o \
 		  time.o unistd.o
-CMNOBJS		= cache.o diskread.o fsswitch.o promfs.o
 
-sparc_CMNUTILOBJS = memchr.o memmove.o
-CMNUTILOBJS	= $($(MACH)_CMNUTILOBJS) \
+sparc_CMNOBJS 	= promfs.o
+CMNOBJS		= cache.o diskread.o fsswitch.o $($(MACH)_CMNOBJS)
+
+CMNUTILOBJS	= memchr.o memmove.o \
 		  bsearch.o memcmp.o memcpy.o memset.o qsort.o \
 		  string.o strtol.o strtoul.o
 
-i386_MACHOBJS	= get.o map_prog.o
-sparc_MACHOBJS	= prom_misc.o
+i386_MACHOBJS	= # map_prog.o get.o 
+sparc_MACHOBJS	= promfs.o prom_misc.o
 MACHOBJS	= $($(MACH)_MACHOBJS)
 
-i386_ASMOBJS	= _setjmp.o samuldiv64.o
+i386_ASMOBJS	= # _setjmp.o samuldiv64.o
 sparc_ASMOBJS	= _setjmp.o
 ASMOBJS		= $($(MACH)_ASMOBJS)
 

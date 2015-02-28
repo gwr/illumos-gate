@@ -27,8 +27,6 @@
 #ifndef _SA_TIME_H
 #define	_SA_TIME_H
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
-
 /*
  * Exported interfaces for standalone's subset of libc's <time.h>.
  * All standalone code *must* use this header rather than libc's.
@@ -55,25 +53,8 @@ struct	tm {
 extern time_t time(time_t *);
 extern char *ctime(const time_t *t);
 extern struct tm *gmtime(const time_t *);
+extern struct tm *gmtime_r(const time_t *, struct tm *);
 extern struct tm *localtime(const time_t *);
-
-/*
- * The following silly #defines are actually ripped off from <tzfile.h>.
- * Since <tzfile.h> is not a documented header, it seemed better to just
- * inline them here rather than having a full-blown <tzfile.h> of our own.
- */
-#define	EPOCH_YEAR		1970
-#define	EPOCH_WDAY		4
-#define	SECS_PER_MIN		60
-#define	DAYS_PER_WEEK		7
-#define	DAYS_PER_NYEAR		365
-#define	DAYS_PER_LYEAR		366
-#define	MONS_PER_YEAR		12
-#define	SECS_PER_HOUR		(SECS_PER_MIN * 60)
-#define	SECS_PER_DAY		(SECS_PER_HOUR * 24)
-#define	TM_YEAR_BASE		1900
-
-#define	isleap(y) (((y) % 4) == 0 && (((y) % 100) != 0 || ((y) % 400) == 0))
 
 #ifdef __cplusplus
 }

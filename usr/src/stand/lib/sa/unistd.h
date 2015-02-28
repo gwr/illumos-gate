@@ -27,8 +27,6 @@
 #ifndef _SA_UNISTD_H
 #define	_SA_UNISTD_H
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
-
 /*
  * Exported interfaces for standalone's subset of libc's <unistd.h>.
  * All standalone code *must* use this header rather than libc's.
@@ -48,6 +46,8 @@ extern int	open(const char *, int);
 extern int	close(int);
 extern off_t	lseek(int, off_t, int);
 extern ssize_t	read(int, void *, size_t);
+extern ssize_t	write(int, const void *, size_t);
+extern int	ioctl(int, int, void *);
 extern pid_t	getpid(void);
 extern int	gethostname(char *, int);
 extern int	sethostname(char *, int);

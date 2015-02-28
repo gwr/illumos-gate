@@ -27,8 +27,6 @@
 #ifndef _SA_STDIO_H
 #define	_SA_STDIO_H
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
-
 #include <sys/types.h>
 #include <stdarg.h>
 
@@ -48,6 +46,8 @@ extern "C" {
 #ifndef	EOF
 #define	EOF	(-1)
 #endif
+
+#define	BUFSIZ	1024
 
 /*
  * Flags to setvbuf() which we pretend to support.  We're always really _IONBF.
@@ -77,7 +77,10 @@ extern int	fflush(FILE *);
 extern int	ferror(FILE *);
 extern void	clearerr(FILE *);
 
+extern void	perror(const char *);
+
 extern char	*fgets(char *, int, FILE *);
+extern int	fputs(const char *, FILE *);
 extern FILE	*fopen(const char *, const char *);
 extern size_t	fread(void *, size_t, size_t, FILE *);
 extern int	fseek(FILE *, long, int);
@@ -85,15 +88,22 @@ extern long	ftell(FILE *);
 extern size_t	fwrite(const void *, size_t, size_t, FILE *);
 extern int	setvbuf(FILE *, char *, int, size_t);
 
+/* Standalone printf/vprintf return void (unlike libc) */
 /* PRINTFLIKE1 */
 extern void	printf(const char *, ...);
+extern void	vprintf(const char *, va_list);
+
 /* PRINTFLIKE2 */
 extern int	fprintf(FILE *, const char *, ...);
+extern int	vfprintf(FILE *, const char *, va_list);
+
 /* PRINTFLIKE2 */
 extern int	sprintf(char *, const char *, ...);
+extern int	vsprintf(char *, const char *, va_list);
+
+/* Standalone snprintf/vsnprintf return size_t (unlike libc) */
 /* PRINTFLIKE3 */
 extern size_t	snprintf(char *, size_t, const char *, ...);
-extern int	vsprintf(char *, const char *, va_list);
 extern size_t	vsnprintf(char *, size_t, const char *, va_list);
 
 #ifdef __cplusplus

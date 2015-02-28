@@ -26,8 +26,6 @@
  * "buffered" i/o functions for the standalone environment. (ugh).
  */
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
-
 #include <sys/types.h>
 #include <sys/promif.h>
 #include <sys/varargs.h>
@@ -211,15 +209,34 @@ printf(const char *fmt, ...)
 	va_end(adx);
 }
 
-/*
- * Only writing to stderr or stdout is permitted.
- */
+void
+vprintf(const char *fmt, va_list ap)
+{
+	prom_vprintf(fmt, ap);
+}
+
 /* PRINTFLIKE2 */
 int
 fprintf(FILE *stream, const char *format, ...)
 {
-	int	nwritten;
 	va_list	va;
+	int	n;
+
+	va_start(va, format);
+	n = vfprintf(stream, format, va);
+	va_end(va);
+
+	return (n);
+}
+
+/*
+ * Only writing to stderr or stdout is permitted.
+ * Returns number of bytes written.
+ */
+int
+vfprintf(FILE *stream, const char *fmt, va_list ap)
+{
+	va_list	ap2;
 
 	if (!fcheck(stream, F_OPEN))
 		return (-1);
@@ -233,15 +250,10 @@ fprintf(FILE *stream, const char *format, ...)
 		return (-1);
 	}
 
-	va_start(va, format);
-	printf(format, va);
-	va_end(va);
+	va_copy(ap2, ap);
+	prom_vprintf(fmt, ap);
 
-	va_start(va, format);
-	nwritten = vsnprintf(NULL, 0, format, va);
-	va_end(va);
-
-	return (nwritten);
+	return (vsnprintf(NULL, 0, fmt, ap2));
 }
 
 size_t

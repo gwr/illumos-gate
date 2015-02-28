@@ -35,9 +35,6 @@
 #ifndef _SA_NETDB_H
 #define	_SA_NETDB_H
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
-
-
 /*
  * Exported interfaces for standalone's subset of libnsl's <netdb.h>.
  * All standalone code *must* use this header rather than libnsl's.
@@ -54,6 +51,13 @@ extern "C" {
 #define	NO_RECOVERY	3 /* Non recoverable errors, FORMERR, REFUSED, NOTIMP */
 #define	NO_DATA		4 /* Valid name, no data record of requested type */
 
+struct	servent {
+	char	*s_name;	/* official service name */
+	char	**s_aliases;	/* alias list */
+	int	s_port;		/* port # */
+	char	*s_proto;	/* protocol to use */
+};
+
 struct	hostent {
 	char	*h_name;	/* official name of host */
 	char	**h_aliases;	/* alias list */
@@ -66,6 +70,7 @@ struct	hostent {
 extern int h_errno;
 
 extern struct hostent *gethostbyname(const char *);
+extern struct servent *getservbyname(const char *, const char *);
 
 #ifdef __cplusplus
 }

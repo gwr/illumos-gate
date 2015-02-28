@@ -47,9 +47,9 @@
 #include "string.h"
 
 /*
- * We don't need these for x86 boot or kmdb.
+ * We don't need these for kmdb.
  */
-#if !defined(_KMDB) && (!defined(_BOOT) || defined(__sparc))
+#if !defined(_KMDB)
 
 #define	ADDCHAR(c)	if (bufp++ - buf < buflen) bufp[-1] = (c)
 
@@ -324,7 +324,7 @@ snprintf(char *buf, size_t buflen, const char *fmt, ...)
 	return (buflen);
 }
 
-#if defined(_BOOT) && defined(__sparc)
+#if defined(_BOOT)
 /*
  * The sprintf() and vsprintf() routines aren't shared with the kernel because
  * the DDI mandates that they return the buffer rather than its length.
@@ -348,9 +348,9 @@ vsprintf(char *buf, const char *fmt, va_list args)
 	(void) vsnprintf(buf, INT_MAX, fmt, args);
 	return (strlen(buf));
 }
-#endif /* _BOOT && __sparc */
+#endif /* _BOOT */
 
-#endif /* !_KMDB && (!_BOOT || __sparc) */
+#endif /* !_KMDB */
 
 char *
 strcat(char *s1, const char *s2)

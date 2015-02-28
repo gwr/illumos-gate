@@ -27,8 +27,6 @@
 /*	Copyright (c) 1988 AT&T */
 /*	All Rights Reserved */
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
-
 #include <sys/utsname.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -108,7 +106,7 @@ bool_t
 xdr_fhandle3(XDR *xdrs, fhandle3 *objp)
 {
 	return (xdr_bytes(xdrs, (char **)&objp->fhandle3_val,
-				(uint_t *)&objp->fhandle3_len, FHSIZE3));
+			(uint_t *)&objp->fhandle3_len, FHSIZE3));
 }
 
 bool_t
@@ -460,32 +458,6 @@ nfs4init(char *path, uint16_t nfs_port)
 							512 : nfs_readsize;
 
 	return (0);
-}
-
-static int
-atoi(const char *p)
-{
-	int n;
-	int c, neg = 0;
-
-	if (!isdigit(c = *p)) {
-		while (c == ' ' || c == '\t' || c == '\n')
-			c = *++p;
-		switch (c) {
-		case '-':
-			neg++;
-			/* FALLTHROUGH */
-		case '+':
-			c = *++p;
-		}
-		if (!isdigit(c))
-			return (0);
-	}
-	for (n = '0' - c; isdigit(c = *++p); ) {
-		n *= 10; /* two steps to avoid unnecessary overflow */
-		n += '0' - c; /* accum neg to avoid surprises at MAX */
-	}
-	return (neg ? n : -n);
 }
 
 /*

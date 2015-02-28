@@ -25,7 +25,6 @@
  *
  * sock_test.c.  Implementing a CLI for inetboot testing.
  */
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
 
 #include <sys/types.h>
 #include "socket_impl.h"
@@ -35,14 +34,12 @@
 #include <netinet/in_systm.h>
 #include <sys/promif.h>
 #include <sys/salib.h>
-#include <ctype.h>
 #include <errno.h>
 #include <netinet/in.h>
 #include "tcp_inet.h"
 #include "ipv4.h"
 #include <netinet/tcp.h>
 
-static int atoi(const char *);
 static int st_accept(void);
 static int st_bind(void);
 static int st_connect(void);
@@ -134,7 +131,6 @@ static int save_g_sock_fd = NO_OPENED_SOCKET;
 
 /* Boolean to decide if OBP network routines should be used. */
 static boolean_t use_obp = B_FALSE;
-
 
 /*
  * The following routines are wrappers for the real socket routines.  The
@@ -274,31 +270,6 @@ st_local_setsockopt(int sd, int level, int option, const void *optval,
 	} else {
 		return (0);
 	}
-}
-
-static int
-atoi(const char *p)
-{
-	int n;
-	int c = *p++, neg = 0;
-
-	while (isspace(c)) {
-		c = *p++;
-	}
-	if (!isdigit(c)) {
-		switch (c) {
-		case '-':
-			neg++;
-			/* FALLTHROUGH */
-		case '+':
-			c = *p++;
-		}
-	}
-	for (n = 0; isdigit(c); c = *p++) {
-		n *= 10; /* two steps to avoid unnecessary overflow */
-		n += '0' - c; /* accum neg to avoid surprises at MAX */
-	}
-	return (neg ? n : -n);
 }
 
 int
@@ -760,7 +731,7 @@ st_echo(void)
 		return (-1);
 	}
 	printf("@ Accepted connection: %s/%d\n", inet_ntoa(addr.sin_addr),
-		ntohs(addr.sin_port));
+	    ntohs(addr.sin_port));
 	(void) st_local_socket_close(listen_fd);
 
 	if ((buf = bkmem_zalloc(buf_len)) == NULL) {

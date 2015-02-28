@@ -27,7 +27,7 @@
 include Makefile.com
 
 i386_SUBDIRS =
-sparc_SUBDIRS =
+sparc_SUBDIRS = md5 nvpair scrypt wanboot
 SUBDIRS = fakeboot fs/hsfs fs/nfs fs/ufs inet sa sock tcpstubs xdr \
 	tcp $($(MACH)_SUBDIRS)
 

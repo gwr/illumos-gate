@@ -18,53 +18,46 @@
  *
  * CDDL HEADER END
  */
+
 /*
- * Copyright 2007 Sun Microsystems, Inc.  All rights reserved.
+ * Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
-#ifndef _SA_STDDEF_H
-#define	_SA_STDDEF_H
+/*	Copyright (c) 1988 AT&T	*/
+/*	  All Rights Reserved  	*/
+
+#ifndef	_SA_FCNTL_H
+#define	_SA_FCNTL_H
 
 /*
  * Exported interfaces for standalone's subset of libc's <stddef.h>.
  * All standalone code *must* use this header rather than libc's.
  */
 
-#include <sys/isa_defs.h>
+#include <sys/types.h>
+#include <sys/fcntl.h>
 
 #ifdef	__cplusplus
 extern "C" {
 #endif
 
-#ifndef	NULL
-#define	NULL    0
+#ifndef	SEEK_SET
+#define	SEEK_SET	0	/* Set file pointer to "offset" */
 #endif
 
-#if !defined(_PTRDIFF_T)
-#define	_PTRDIFF_T
-#if defined(_LP64) || defined(_I32LPx)
-typedef	long	ptrdiff_t;		/* pointer difference */
-#else
-typedef int	ptrdiff_t;		/* (historical version) */
+#ifndef	SEEK_CUR
+#define	SEEK_CUR	1	/* Set file pointer to current plus "offset" */
 #endif
-#endif	/* !_PTRDIFF_T */
 
-#if !defined(_SIZE_T)
-#define	_SIZE_T
-#if defined(_LP64) || defined(_I32LPx)
-typedef unsigned long	size_t;		/* size of something in bytes */
-#else
-typedef unsigned int	size_t;		/* (historical version) */
+#ifndef	SEEK_END
+#define	SEEK_END	2	/* Set file pointer to EOF plus "offset" */
 #endif
-#endif	/* !_SIZE_T */
 
-#ifndef offsetof
-#define	offsetof(s, m)  (size_t)(&(((s *)0)->m))
-#endif
+extern int open(const char *, int);
 
 #ifdef	__cplusplus
 }
 #endif
 
-#endif /* _SA_STDDEF_H */
+#endif	/* _SA_FCNTL_H */

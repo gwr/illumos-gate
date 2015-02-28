@@ -94,8 +94,10 @@ ASFLAGS =	-P -D__STDC__ -D_ASM
 # just enumerate the errors that -u turns off that we want turned off).
 #
 LINTFLAGS = -nmsF -erroff=E_BAD_PTR_CAST_ALIGN \
-	    -erroff=E_NAME_DECL_NOT_USED_DEF2 -erroff=E_NAME_DEF_NOT_USED2 \
+	    -erroff=E_NAME_DECL_NOT_USED_DEF2 \
+	    -erroff=E_NAME_DEF_NOT_USED2 \
 	    -erroff=E_STATIC_UNUSED
+LINTFLAGS64 = -m64 $(LINTFLAGS)
 
 #
 # CPPFLAGS values that *must* be included whenever linking with or

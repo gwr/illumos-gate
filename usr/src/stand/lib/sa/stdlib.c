@@ -24,10 +24,9 @@
  * Use is subject to license terms.
  */
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
-
 #include <sys/promif.h>
 #include <stddef.h>
+#include <ctype.h>
 
 /*
  * Trivial version of getenv() -- since standalone has no environment
@@ -47,4 +46,30 @@ void
 abort(void)
 {
 	prom_panic("fatal error; aborting");
+}
+
+int
+atoi(const char *p)
+{
+	int n;
+	int c, neg = 0;
+
+	if (!isdigit(c = *p)) {
+		while (isspace(c))
+			c = *++p;
+		switch (c) {
+		case '-':
+			neg++;
+			/* FALLTHROUGH */
+		case '+':
+			c = *++p;
+		}
+		if (!isdigit(c))
+			return (0);
+	}
+	for (n = '0' - c; isdigit(c = *++p); ) {
+		n *= 10; /* two steps to avoid unnecessary overflow */
+		n += '0' - c; /* accum neg to avoid surprises at MAX */
+	}
+	return (neg ? n : -n);
 }
