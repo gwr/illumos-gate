@@ -15,7 +15,20 @@ These are the changes made to the openssl.h that Configure creates.
  #ifdef  __cplusplus
  extern "C" {
  #endif
-@@ -214,7 +219,11 @@
+@@ -101,9 +106,12 @@
+ 
+ #endif /* OPENSSL_DOING_MAKEDEPEND */
+ 
++#ifndef	_BOOT
+ #ifndef OPENSSL_THREADS
+ # define OPENSSL_THREADS
+ #endif
++#endif
++
+ #ifndef OPENSSL_NO_STATIC_ENGINE
+ # define OPENSSL_NO_STATIC_ENGINE
+ #endif
+@@ -214,7 +222,11 @@
  
  #if !(defined(VMS) || defined(__VMS)) /* VMS uses logical names instead */
  #if defined(HEADER_CRYPTLIB_H) && !defined(OPENSSLDIR)
@@ -27,7 +40,7 @@ These are the changes made to the openssl.h that Configure creates.
  #define OPENSSLDIR "/etc/openssl"
  #endif
  #endif
-@@ -261,21 +270,39 @@
+@@ -261,21 +273,39 @@
  /* If this is set to 'unsigned int' on a DEC Alpha, this gives about a
   * %20 speed up (longs are 8 bytes, int's are 4). */
  #ifndef DES_LONG
@@ -45,7 +58,7 @@ These are the changes made to the openssl.h that Configure creates.
 + * OpenSSL revision 1.521 from 2005-12-15 in OpenSSL_1_0_0-stable branch changed
 + * 64 bit sparcv9 configuration from SIXTY_FOUR_BIT_LONG to BN_LLONG.
 + */
-+#if defined(__x86_64)
++#if defined(__x86_64) || defined(_BOOT)
 +#undef BN_LLONG
 +#else
  #define BN_LLONG

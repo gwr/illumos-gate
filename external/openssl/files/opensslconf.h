@@ -106,9 +106,12 @@ extern "C" {
 
 #endif /* OPENSSL_DOING_MAKEDEPEND */
 
+#ifndef	_BOOT
 #ifndef OPENSSL_THREADS
 # define OPENSSL_THREADS
 #endif
+#endif
+
 #ifndef OPENSSL_NO_STATIC_ENGINE
 # define OPENSSL_NO_STATIC_ENGINE
 #endif
@@ -284,7 +287,7 @@ extern "C" {
  * OpenSSL revision 1.521 from 2005-12-15 in OpenSSL_1_0_0-stable branch changed
  * 64 bit sparcv9 configuration from SIXTY_FOUR_BIT_LONG to BN_LLONG.
  */
-#if defined(__x86_64)
+#if defined(__x86_64) || defined(_BOOT)
 #undef BN_LLONG
 #else
 #define BN_LLONG

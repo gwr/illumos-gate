@@ -1,0 +1,201 @@
+
+Patches for standalone build (for wanboot)
+
+--- openssl-1.0.1m/crypto/cryptlib.c.~1~	Sat Mar 28 20:19:50 2015
++++ openssl-1.0.1m/crypto/cryptlib.c	Sat Mar 28 20:32:47 2015
+@@ -116,7 +116,9 @@
+ 
+ #include "cryptlib.h"
+ #include <openssl/safestack.h>
++#ifdef	OPENSSL_THREADS
+ #include <pthread.h>
++#endif
+ 
+ #if defined(OPENSSL_SYS_WIN32) || defined(OPENSSL_SYS_WIN16)
+ static double SSLeay_MSVC5_hack = 0.0; /* and for VC1.5 */
+@@ -185,7 +187,9 @@
+  */
+ static STACK_OF(CRYPTO_dynlock) *dyn_locks = NULL;
+ 
++#ifdef	OPENSSL_THREADS
+ static pthread_mutex_t *solaris_openssl_locks;
++#endif
+ 
+ static void (MS_FAR *locking_callback) (int mode, int type,
+                                         const char *file, int line) = 0;
+@@ -412,6 +416,7 @@
+ static void solaris_locking_callback(int mode, int type, const char *file,
+     int line)
+ 	{
++#ifdef	OPENSSL_THREADS
+ 	if (mode & CRYPTO_LOCK)
+ 		{
+ 		pthread_mutex_lock(&solaris_openssl_locks[type]);
+@@ -420,6 +425,7 @@
+ 		{
+ 		pthread_mutex_unlock(&solaris_openssl_locks[type]);
+ 		}
++#endif	/* OPENSSL_THREADS */
+ 	}
+ 
+ 
+@@ -452,6 +458,7 @@
+ 		return;
+ 		}
+ 
++#ifdef	OPENSSL_THREADS
+ 	/*
+ 	 * Set atfork handler so that child can setup its own mutexes and
+ 	 * locking callbacks when it is forked
+@@ -475,6 +482,7 @@
+ 		pthread_mutex_init(&solaris_openssl_locks[i], NULL);
+ 		}
+ 	locking_callback = solaris_locking_callback;
++#endif	/* OPENSSL_THREADS */
+ 
+ }
+ 
+--- openssl-1.0.1m/crypto/err/err_all.c.~1~	Thu Mar 19 09:19:00 2015
++++ openssl-1.0.1m/crypto/err/err_all.c	Sat Mar 28 22:45:22 2015
+@@ -148,7 +148,9 @@
+     ERR_load_X509V3_strings();
+     ERR_load_PKCS12_strings();
+     ERR_load_RAND_strings();
++#ifndef OPENSSL_NO_DSO
+     ERR_load_DSO_strings();
++#endif
+     ERR_load_TS_strings();
+ # ifndef OPENSSL_NO_ENGINE
+     ERR_load_ENGINE_strings();
+--- openssl-1.0.1m/crypto/evp/evp_key.c.~1~	Thu Mar 19 09:19:00 2015
++++ openssl-1.0.1m/crypto/evp/evp_key.c	Sat Mar 28 22:27:53 2015
+@@ -84,6 +84,7 @@
+         return (prompt_string);
+ }
+ 
++#ifndef        _BOOT
+ /*
+  * For historical reasons, the standard function for reading passwords is in
+  * the DES library -- if someone ever wants to disable DES, this function
+@@ -115,6 +116,7 @@
+     OPENSSL_cleanse(buff, BUFSIZ);
+     return ret;
+ }
++#endif /* !_BOOT */
+ 
+ int EVP_BytesToKey(const EVP_CIPHER *type, const EVP_MD *md,
+                    const unsigned char *salt, const unsigned char *data,
+--- openssl-1.0.1m/crypto/rand/rand_unix.c.~1~	Thu Mar 19 09:19:00 2015
++++ openssl-1.0.1m/crypto/rand/rand_unix.c	Sat Mar 28 20:51:42 2015
+@@ -307,11 +307,15 @@
+             do {
+                 int try_read = 0;
+ 
+-#   if defined(OPENSSL_SYS_BEOS_R5)
++#   if defined(OPENSSL_SYS_BEOS_R5) || defined(_BOOT)
+                 /*
+                  * select() is broken in BeOS R5, so we simply try to read
+                  * something and snooze if we couldn't
+                  */
++                /*
++                 * select() is not available when linking stand-alone
++                 * library for wanboot
++                 */
+                 try_read = 1;
+ 
+ #   elif defined(OPENSSL_SYS_LINUX)
+@@ -365,6 +369,7 @@
+                 } else
+                     r = -1;
+ 
++#ifndef        _BOOT
+                 /*
+                  * Some Unixen will update t in select(), some won't.  For
+                  * those who won't, or if we didn't use select() in the first
+@@ -377,13 +382,16 @@
+             while ((r > 0 ||
+                     (errno == EINTR || errno == EAGAIN)) && usec != 0
+                    && n < ENTROPY_NEEDED);
+-
++#else  /* _BOOT */
++			}
++		while (r > 0 && n < ENTROPY_NEEDED);
++#endif /* _BOOT */
+             close(fd);
+         }
+     }
+ #  endif                        /* defined(DEVRANDOM) */
+ 
+-#  ifdef DEVRANDOM_EGD
++#  if defined(DEVRANDOM_EGD) && !defined(_BOOT)
+     /*
+      * Use an EGD socket to read entropy from an EGD or PRNGD entropy
+      * collecting daemon.
+@@ -407,6 +415,7 @@
+     }
+ #  endif
+ 
++#ifndef        _BOOT
+     /* put in some default random data, we need more than just this */
+     l = curr_pid;
+     RAND_add(&l, sizeof(l), 0.0);
+@@ -415,6 +424,7 @@
+ 
+     l = time(NULL);
+     RAND_add(&l, sizeof(l), 0.0);
++#endif /* !_BOOT */ 
+ 
+ #  if defined(OPENSSL_SYS_BEOS)
+     {
+--- openssl-1.0.1m/e_os.h.~1~	Thu Mar 19 09:37:10 2015
++++ openssl-1.0.1m/e_os.h	Sat Mar 28 22:58:45 2015
+@@ -209,6 +209,16 @@
+ #   define readsocket(s,b,n)               recv((s),(b),(n),0)
+ #   define writesocket(s,b,n)              send((s),(b),(n),0)
+ #  endif
++# elif defined(_BOOT)
++#  include <netinet/in.h>
++extern int socket_read(int, void *, size_t, int);
++extern int socket_close(int);
++#  define get_last_socket_error() errno
++#  define clear_socket_error()	errno=0
++#  define ioctlsocket(a,b,c)	ioctl(a,b,c)
++#  define closesocket(s)	socket_close(s)
++#  define readsocket(s,b,n)	socket_read((s),(b),(n), 200)
++#  define writesocket(s,b,n)	send((s),(b),(n), 0)
+ # else
+ #  define get_last_socket_error() errno
+ #  define clear_socket_error()    errno=0
+--- openssl-1.0.1m/ssl/s3_clnt.c.~1~	Thu Mar 19 09:37:10 2015
++++ openssl-1.0.1m/ssl/s3_clnt.c	Sat Mar 28 23:21:41 2015
+@@ -668,8 +668,13 @@
+ 
+         p = s->s3->client_random;
+ 
++#ifndef        _BOOT
+         if (ssl_fill_hello_random(s, 0, p, SSL3_RANDOM_SIZE) <= 0)
+             goto err;
++#else
++        if (RAND_pseudo_bytes(p,SSL3_RANDOM_SIZE) <= 0)
++            goto err;
++#endif
+ 
+         /* Do the message type and length last */
+         d = p = &(buf[4]);
+--- openssl-1.0.1m/ssl/s3_lib.c.~1~	Thu Mar 19 09:37:10 2015
++++ openssl-1.0.1m/ssl/s3_lib.c	Sun Mar 29 00:02:23 2015
+@@ -3343,7 +3343,13 @@
+          * Apparently we're using a version-flexible SSL_METHOD (not at its
+          * highest protocol version).
+          */
+-        if (s->ctx->method->version == SSLv23_method()->version) {
++#ifdef	_BOOT
++/* Don't have SSLv23_method() in standalone */
++#define SSLv23_meth_vers	TLS1_2_VERSION
++#else
++#define SSLv23_meth_vers	SSLv23_method()->version
++#endif
++        if (s->ctx->method->version == SSLv23_meth_vers) {
+ #if TLS_MAX_VERSION != TLS1_2_VERSION
+ # error Code needs update for SSLv23_method() support beyond TLS1_2_VERSION.
+ #endif

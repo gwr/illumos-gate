@@ -102,7 +102,8 @@ ROOTHDRDIR =    $(ROOT)/usr/include/openssl
 SUBDIRS = \
 	libcrypto	\
 	libssl	\
-	libpk11
+	libpk11	\
+	wanboot
 
 # Serialize
 libssl:		libcrypto
@@ -121,6 +122,10 @@ all clean clobber lint: $(SUBDIRS)
 install: $(SUBDIRS) $(ROOTLIBDIR)/pkgconfig/openssl.pc
 
 install_h: $(ROOTHDRDIR) $(ROOTHDRS)
+
+# Install our opensslconf.h here too
+$(HDRDIR)/%: libcrypto/common/%
+	$(INS.file)
 
 # Suppress header checking
 check:
