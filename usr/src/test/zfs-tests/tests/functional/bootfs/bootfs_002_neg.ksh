@@ -51,6 +51,9 @@ function cleanup {
 	then
 		log_must $ZPOOL destroy $TESTPOOL
 	fi
+	if [[ -f $VDEV ]]; then
+		log_must $RM -f $VDEV
+	fi
 }
 
 
