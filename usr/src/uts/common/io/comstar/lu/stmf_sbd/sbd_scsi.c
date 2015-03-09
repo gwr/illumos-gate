@@ -116,6 +116,7 @@ static void sbd_handle_unmap_xfer(scsi_task_t *task, uint8_t *buf,
     uint32_t buflen);
 static void sbd_handle_unmap(scsi_task_t *task, stmf_data_buf_t *dbuf);
 uint8_t HardwareAcceleratedInit = 1;
+uint8_t sbd_unmap_enable = 1;
 
 extern void sbd_pgr_initialize_it(scsi_task_t *, sbd_it_data_t *);
 extern int sbd_pgr_reservation_conflict(scsi_task_t *, struct sbd_lu *sl);
@@ -2612,6 +2613,12 @@ sbd_handle_unmap(scsi_task_t *task, stmf_data_buf_t *dbuf)
 	sbd_lu_t *sl = (sbd_lu_t *)task->task_lu->lu_provider_private;
 	uint32_t cmd_xfer_len;
 
+	if (sbd_unmap_enable == 0) {
+		stmf_scsilib_send_status(task, STATUS_CHECK,
+		    STMF_SAA_INVALID_OPCODE);
+		return;
+	}
+
 	if (sl->sl_flags & SL_WRITE_PROTECTED) {
 		stmf_scsilib_send_status(task, STATUS_CHECK,
 		    STMF_SAA_WRITE_PROTECTED);
@@ -2982,7 +2989,7 @@ sbd_handle_inquiry(struct scsi_task *task, struct stmf_data_buf *initial_dbuf)
 		p[3] = page_length;
 		p[4] = 1;
 		p[5] = sbd_ats_max_nblks();
-		if (sl->sl_flags & SL_UNMAP_ENABLED) {
+		if ((sl->sl_flags & SL_UNMAP_ENABLED) && sbd_unmap_enable) {
 			p[20] = (stmf_sbd_unmap_max_nblks >> 24) & 0xff;
 			p[21] = (stmf_sbd_unmap_max_nblks >> 16) & 0xff;
 			p[22] = (stmf_sbd_unmap_max_nblks >> 8) & 0xff;
