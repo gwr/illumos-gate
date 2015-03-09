@@ -4232,7 +4232,7 @@ top:
 		if (hdr == NULL) {
 			/* this block is not in the cache */
 			arc_buf_hdr_t *exists = NULL;
-			arc_buf_contents_t type = bp_get_bufc_type(bp);
+			arc_buf_contents_t type = BP_GET_BUFC_TYPE(bp);
 			buf = arc_buf_alloc(spa, size, private, type);
 			hdr = buf->b_hdr;
 			if (!BP_IS_EMBEDDED(bp)) {

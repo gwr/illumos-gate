@@ -572,6 +572,12 @@ _NOTE(CONSTCOND) } while (0)
 	ASSERT(len < size);						\
 }
 
+#define	BP_GET_BUFC_TYPE(bp)						\
+    ((BP_GET_TYPE(bp) == DMU_OT_DDT_ZAP || \
+    BP_GET_TYPE(bp) == DMU_OT_DDT_STATS) ? ARC_BUFC_DDT : \
+    ((((BP_GET_LEVEL(bp) > 0) || (DMU_OT_IS_METADATA(BP_GET_TYPE(bp)))) ? \
+    ARC_BUFC_METADATA : ARC_BUFC_DATA)))
+
 
 typedef enum spa_import_type {
 	SPA_IMPORT_EXISTING,

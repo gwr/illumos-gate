@@ -139,19 +139,6 @@ typedef enum arc_space_type {
 	ARC_SPACE_NUMTYPES
 } arc_space_type_t;
 
-/*LINTED*/
-static inline arc_buf_contents_t bp_get_bufc_type(const blkptr_t *bp)
-{
-	if ((BP_GET_TYPE(bp) == DMU_OT_DDT_ZAP ||
-	    BP_GET_TYPE(bp) == DMU_OT_DDT_STATS))
-		return (ARC_BUFC_DDT);
-
-	if ((BP_GET_LEVEL(bp) > 0) || (DMU_OT_IS_METADATA(BP_GET_TYPE(bp))))
-		return (ARC_BUFC_METADATA);
-
-	return (ARC_BUFC_DATA);
-}
-
 void arc_space_consume(uint64_t space, arc_space_type_t type);
 void arc_space_return(uint64_t space, arc_space_type_t type);
 arc_buf_t *arc_buf_alloc(spa_t *spa, int size, void *tag,

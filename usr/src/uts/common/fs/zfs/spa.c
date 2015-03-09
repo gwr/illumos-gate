@@ -1965,7 +1965,7 @@ spa_load_verify_cb(spa_t *spa, zilog_t *zilog, const blkptr_t *bp,
 	 */
 	if (!spa_load_verify_metadata)
 		return (0);
-	if (bp_get_bufc_type(bp) == ARC_BUFC_DATA && !spa_load_verify_data)
+	if (BP_GET_BUFC_TYPE(bp) == ARC_BUFC_DATA && !spa_load_verify_data)
 		return (0);
 
 	zio_t *rio = arg;
