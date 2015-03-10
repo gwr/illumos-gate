@@ -22,8 +22,8 @@
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2011, 2014 by Delphix. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  * Copyright (c) 2013, Joyent, Inc. All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /* Portions Copyright 2010 Robert Milkowski */
@@ -237,6 +237,7 @@ typedef enum vdev_prop {
 	VDEV_PROP_PREFERRED_READ,
 	VDEV_PROP_COS,
 	VDEV_PROP_SPAREGROUP,
+	VDEV_PROP_L2ADDDT,
 	VDEV_NUM_PROPS
 } vdev_prop_t;
 
@@ -909,6 +910,7 @@ typedef enum zfs_ioc {
 	ZFS_IOC_VDEV_SET_STATE,
 	ZFS_IOC_VDEV_ATTACH,
 	ZFS_IOC_VDEV_DETACH,
+	ZFS_IOC_VDEV_SETL2ADDDT,
 	ZFS_IOC_VDEV_SETPATH,
 	ZFS_IOC_VDEV_SETFRU,
 	ZFS_IOC_OBJSET_STATS,

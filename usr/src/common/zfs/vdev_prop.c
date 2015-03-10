@@ -19,7 +19,7 @@
  * CDDL HEADER END
  */
 /*
- * Copyright 2013 Nexenta Systems, Inc. All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc. All rights reserved.
  */
 
 #include <sys/zio.h>
@@ -48,6 +48,17 @@ vdev_prop_get_table(void)
 void
 vdev_prop_init(void)
 {
+	static zprop_index_t boolean_table[] = {
+		{ "off",	0},
+		{ "on",		1},
+		{ NULL }
+	};
+
+	/* index properties */
+	zprop_register_index(VDEV_PROP_L2ADDDT, "l2arc_ddt", 0,
+	    PROP_DEFAULT, ZFS_TYPE_VDEV, "on | off",
+	    "<cache DDT on this L2ARC device>", boolean_table);
+
 	/* string properties */
 	zprop_register_string(VDEV_PROP_PATH, "path", NULL,
 	    PROP_READONLY, ZFS_TYPE_VDEV, "<path>", "PATH");

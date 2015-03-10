@@ -139,6 +139,18 @@ typedef enum arc_space_type {
 	ARC_SPACE_NUMTYPES
 } arc_space_type_t;
 
+/* see spa_misc.c and zio_ddt_write() */
+extern uint64_t zfs_ddt_bytecount_ceiling;
+typedef enum zfs_ddt_limit {
+	DDT_NO_LIMIT = 0,
+	DDT_LIMIT_TO_ARC = 1,
+	DDT_LIMIT_TO_L2ARC = 2,
+} zfs_ddt_limit_t;
+extern zfs_ddt_limit_t zfs_ddt_limit_type;
+extern boolean_t zfs_arc_segregate_ddt;
+extern uint64_t const * arc_ddt_evict_threshold;
+
+
 void arc_space_consume(uint64_t space, arc_space_type_t type);
 void arc_space_return(uint64_t space, arc_space_type_t type);
 arc_buf_t *arc_buf_alloc(spa_t *spa, int size, void *tag,

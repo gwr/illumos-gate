@@ -22,7 +22,7 @@
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2011, 2014 by Delphix. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc. All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc. All rights reserved.
  */
 
 #include <sys/sysmacros.h>
@@ -2293,6 +2293,8 @@ zio_ddt_ditto_write_done(zio_t *zio)
 	dde_exit(dde);
 }
 
+extern uint64_t zfs_ddts_msize;
+
 static int
 zio_ddt_write(zio_t *zio)
 {
@@ -2313,7 +2315,68 @@ zio_ddt_write(zio_t *zio)
 	ASSERT(BP_IS_HOLE(bp) || zio->io_bp_override);
 
 	dde = ddt_lookup(ddt, bp, B_TRUE);
-	ddp = &dde->dde_phys[p];
+
+	/*
+	 * If we're not using special tier, for each new DDE that's not on disk:
+	 * disable dedup if we have exhausted "allowed" DDT L2/ARC space
+	 */
+	if ((dde->dde_state & DDE_NEW) && zfs_ddt_limit_type != DDT_NO_LIMIT &&
+	    !spa->spa_usesc) {
+		if (zfs_ddt_bytecount_ceiling != 0 &&
+		    zfs_ddts_msize > zfs_ddt_bytecount_ceiling) {
+			/* need to limit DDT some in core bytecount */
+			dde->dde_state |= DDE_DONT_SYNC;
+		} else if (zfs_ddt_limit_type == DDT_LIMIT_TO_ARC) {
+			/* need to limit DDT to fit into ARC */
+			if (zfs_ddts_msize >
+			    *arc_ddt_evict_threshold) {
+				dde->dde_state |= DDE_DONT_SYNC;
+			}
+		} else if (zfs_ddt_limit_type == DDT_LIMIT_TO_L2ARC) {
+			/* need to limit DDT to fit into L2ARC DDT dev */
+			if (spa->spa_l2arc_ddt_devs_size == 0 &&
+			    zfs_ddts_msize > *arc_ddt_evict_threshold) {
+				/* no L2ARC DDT dev - keep DDT in ARC */
+				dde->dde_state |= DDE_DONT_SYNC;
+			} else if (spa_get_ddts_size(spa, B_TRUE) >
+			    spa->spa_l2arc_ddt_devs_size) {
+				dde->dde_state |= DDE_DONT_SYNC;
+			}
+		}
+
+		/* turn off dedup if we need to stop DDT growth */
+		if (dde->dde_state & DDE_DONT_SYNC) {
+			/*
+			 * do ordinary write by switching to the
+			 * regular write pipeline by disabling dedup
+			 */
+			zio_pop_transforms(zio);
+			zp->zp_dedup = zp->zp_dedup_verify = B_FALSE;
+			zio->io_stage = ZIO_STAGE_OPEN;
+			zio->io_pipeline = ZIO_WRITE_PIPELINE;
+			zio->io_bp_override = NULL;
+			BP_ZERO(bp);
+			dde_exit(dde);
+			/* notify that dedup is off */
+			if (spa->spa_dedup_percentage == 100) {
+				spa->spa_dedup_percentage = 0;
+				spa_event_notify(spa, NULL, ESC_ZFS_DEDUP_OFF);
+			}
+
+			return (ZIO_PIPELINE_CONTINUE);
+		}
+
+		/*
+		 * dedup is still on:
+		 * check if we need to notify that it's back on
+		 */
+		if (spa->spa_dedup_percentage == 0) {
+			spa->spa_dedup_percentage = 100;
+			spa_event_notify(spa, NULL, ESC_ZFS_DEDUP_ON);
+		}
+	}
+
+	ASSERT((dde->dde_state & DDE_DONT_SYNC) != DDE_DONT_SYNC);
 
 	if (zp->zp_dedup_verify && zio_ddt_collision(zio, ddt, dde)) {
 		/*
@@ -2335,6 +2398,7 @@ zio_ddt_write(zio_t *zio)
 		return (ZIO_PIPELINE_CONTINUE);
 	}
 
+	ddp = &dde->dde_phys[p];
 	ditto_copies = ddt_ditto_copies_needed(ddt, dde, ddp);
 	ASSERT(ditto_copies < SPA_DVAS_PER_BP);
 

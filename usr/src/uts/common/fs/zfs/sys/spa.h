@@ -573,10 +573,10 @@ _NOTE(CONSTCOND) } while (0)
 }
 
 #define	BP_GET_BUFC_TYPE(bp)						\
-    ((BP_GET_TYPE(bp) == DMU_OT_DDT_ZAP || \
-    BP_GET_TYPE(bp) == DMU_OT_DDT_STATS) ? ARC_BUFC_DDT : \
-    ((((BP_GET_LEVEL(bp) > 0) || (DMU_OT_IS_METADATA(BP_GET_TYPE(bp)))) ? \
-    ARC_BUFC_METADATA : ARC_BUFC_DATA)))
+	((BP_GET_TYPE(bp) == DMU_OT_DDT_ZAP || \
+	BP_GET_TYPE(bp) == DMU_OT_DDT_STATS) ? ARC_BUFC_DDT : \
+	((((BP_GET_LEVEL(bp) > 0) || (DMU_OT_IS_METADATA(BP_GET_TYPE(bp)))) ? \
+	ARC_BUFC_METADATA : ARC_BUFC_DATA)))
 
 
 typedef enum spa_import_type {
@@ -632,6 +632,7 @@ extern int spa_vdev_detach(spa_t *spa, uint64_t guid, uint64_t pguid,
     int replace_done);
 extern int spa_vdev_remove(spa_t *spa, uint64_t guid, boolean_t unspare);
 extern boolean_t spa_vdev_remove_active(spa_t *spa);
+extern int spa_vdev_setl2adddt(spa_t *spa, uint64_t guid, const char *newval);
 extern int spa_vdev_setpath(spa_t *spa, uint64_t guid, const char *newpath);
 extern int spa_vdev_setfru(spa_t *spa, uint64_t guid, const char *newfru);
 extern int spa_vdev_split_mirror(spa_t *spa, char *newname, nvlist_t *config,
@@ -639,7 +640,8 @@ extern int spa_vdev_split_mirror(spa_t *spa, char *newname, nvlist_t *config,
 
 extern int spa_load_vdev_props(spa_t *spa);
 
-extern int spa_vdev_prop_validate(spa_t *spa, nvlist_t *nvp);
+extern int spa_vdev_prop_validate(spa_t *spa, uint64_t vdev_guid,
+    nvlist_t *nvp);
 extern int spa_vdev_prop_set(spa_t *spa, uint64_t vdev_guid, nvlist_t *nvp);
 extern int spa_vdev_prop_get(spa_t *spa, uint64_t vdev_guid, nvlist_t **nvp);
 extern int spa_vdev_props_sync_task_do(spa_t *spa);
@@ -686,6 +688,10 @@ extern void spa_config_update(spa_t *spa, int what);
 /*
  * Miscellaneous SPA routines in spa_misc.c
  */
+
+/* dedup ceiling helper functions */
+extern uint64_t spa_get_ddts_size(spa_t *spa, boolean_t phys);
+extern int spa_get_l2arc_ddt_utilization(spa_t *spa);
 
 /* Namespace manipulation */
 extern spa_t *spa_lookup(const char *name);

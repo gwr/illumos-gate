@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #ifndef	_SYS_SYSEVENT_EVENTDEFS_H
@@ -267,6 +267,8 @@ extern "C" {
 #define	ESC_ZFS_NONE_WATERMARK		"ESC_ZFS_none_watermark"
 #define	ESC_ZFS_LOW_WATERMARK		"ESC_ZFS_low_watermark"
 #define	ESC_ZFS_HIGH_WATERMARK		"ESC_ZFS_high_watermark"
+#define	ESC_ZFS_DEDUP_OFF		"ESC_ZFS_dedup_off"
+#define	ESC_ZFS_DEDUP_ON		"ESC_ZFS_dedup_on"
 
 /*
  * datalink subclass definitions.

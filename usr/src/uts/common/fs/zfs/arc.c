@@ -121,6 +121,7 @@
  */
 
 #include <sys/spa.h>
+#include <sys/spa_impl.h>
 #include <sys/zio.h>
 #include <sys/zio_compress.h>
 #include <sys/zfs_context.h>
@@ -223,6 +224,20 @@ uint64_t zfs_arc_min;
 uint64_t zfs_arc_meta_limit = 0;
 uint64_t zfs_arc_meta_min = 0;
 uint64_t zfs_arc_ddt_limit = 0;
+/*
+ * Tunable to control "dedup ceiling"
+ * Possible values:
+ *  DDT_NO_LIMIT	- default behaviour, ie no ceiling
+ *  DDT_LIMIT_TO_ARC	- stop DDT growth if DDT is bigger than it's "ARC space"
+ *  DDT_LIMIT_TO_L2ARC	- stop DDT growth when DDT size is bigger than the
+ *			  L2ARC DDT dev(s) for that pool
+ */
+zfs_ddt_limit_t zfs_ddt_limit_type = DDT_NO_LIMIT;
+/*
+ * Alternative to the above way of controlling "dedup ceiling":
+ * Stop DDT growth when in core DDTs size is above the bellow tunable
+ */
+uint64_t zfs_ddt_bytecount_ceiling = 0;
 boolean_t zfs_arc_segregate_ddt = B_FALSE;
 int zfs_arc_grow_retry = 0;
 int zfs_arc_shrink_shift = 0;
@@ -533,11 +548,14 @@ typedef struct arc_stats {
 	 */
 	kstat_named_t arcstat_mfu_ghost_evictable_ddt;
 	kstat_named_t arcstat_l2_hits;
+	kstat_named_t arcstat_l2_ddt_hits;
 	kstat_named_t arcstat_l2_misses;
 	kstat_named_t arcstat_l2_feeds;
 	kstat_named_t arcstat_l2_rw_clash;
 	kstat_named_t arcstat_l2_read_bytes;
+	kstat_named_t arcstat_l2_ddt_read_bytes;
 	kstat_named_t arcstat_l2_write_bytes;
+	kstat_named_t arcstat_l2_ddt_write_bytes;
 	kstat_named_t arcstat_l2_writes_sent;
 	kstat_named_t arcstat_l2_writes_done;
 	kstat_named_t arcstat_l2_writes_error;
@@ -570,6 +588,7 @@ typedef struct arc_stats {
 
 static arc_stats_t arc_stats = {
 	{ "hits",			KSTAT_DATA_UINT64 },
+	{ "ddt_hits",			KSTAT_DATA_UINT64 },
 	{ "misses",			KSTAT_DATA_UINT64 },
 	{ "demand_data_hits",		KSTAT_DATA_UINT64 },
 	{ "demand_data_misses",		KSTAT_DATA_UINT64 },
@@ -635,7 +654,9 @@ static arc_stats_t arc_stats = {
 	{ "l2_feeds",			KSTAT_DATA_UINT64 },
 	{ "l2_rw_clash",		KSTAT_DATA_UINT64 },
 	{ "l2_read_bytes",		KSTAT_DATA_UINT64 },
+	{ "l2_ddt_read_bytes",		KSTAT_DATA_UINT64 },
 	{ "l2_write_bytes",		KSTAT_DATA_UINT64 },
+	{ "l2_ddt_write_bytes",		KSTAT_DATA_UINT64 },
 	{ "l2_writes_sent",		KSTAT_DATA_UINT64 },
 	{ "l2_writes_done",		KSTAT_DATA_UINT64 },
 	{ "l2_writes_error",		KSTAT_DATA_UINT64 },
@@ -731,6 +752,11 @@ static arc_state_t	*arc_l2c_only;
 #define	arc_meta_max	ARCSTAT(arcstat_meta_max) /* max size of metadata */
 #define	arc_ddt_used	ARCSTAT(arcstat_ddt_used) /* ddt size in arc */
 #define	arc_ddt_limit	ARCSTAT(arcstat_ddt_limit) /* ddt in arc size limit */
+
+/*
+ * Used int zio.c to optionally keep DDT cached in ARC
+ */
+uint64_t const *arc_ddt_evict_threshold;
 
 #define	L2ARC_IS_VALID_COMPRESS(_c_) \
 	((_c_) == ZIO_COMPRESS_LZ4 || (_c_) == ZIO_COMPRESS_EMPTY)
@@ -981,6 +1007,7 @@ static list_t L2ARC_dev_list;			/* device list */
 static list_t *l2arc_dev_list;			/* device list pointer */
 static kmutex_t l2arc_dev_mtx;			/* device list mutex */
 static l2arc_dev_t *l2arc_dev_last;		/* last device used */
+static l2arc_dev_t *l2arc_ddt_dev_last;		/* last DDT device used */
 static list_t L2ARC_free_on_write;		/* free after write buf list */
 static list_t *l2arc_free_on_write;		/* free after write list ptr */
 static kmutex_t l2arc_free_on_write_mtx;	/* mutex for list */
@@ -4352,6 +4379,8 @@ top:
 
 				DTRACE_PROBE1(l2arc__hit, arc_buf_hdr_t *, hdr);
 				ARCSTAT_BUMP(arcstat_l2_hits);
+				if (vdev_type_is_ddt(vd))
+					ARCSTAT_BUMP(arcstat_l2_ddt_hits);
 
 				cb = kmem_zalloc(sizeof (l2arc_read_callback_t),
 				    KM_SLEEP);
@@ -4392,6 +4421,9 @@ top:
 				DTRACE_PROBE2(l2arc__read, vdev_t *, vd,
 				    zio_t *, rzio);
 				ARCSTAT_INCR(arcstat_l2_read_bytes, b_asize);
+				if (vdev_type_is_ddt(vd))
+					ARCSTAT_INCR(arcstat_l2_ddt_read_bytes,
+					    b_asize);
 
 				if (*arc_flags & ARC_FLAG_NOWAIT) {
 					zio_nowait(rzio);
@@ -5130,6 +5162,8 @@ arc_init(void)
 	/* Allow the tunable to override if it is reasonable */
 	if (zfs_arc_ddt_limit > 0 && zfs_arc_ddt_limit <= arc_c_max)
 		arc_ddt_limit = zfs_arc_ddt_limit;
+	arc_ddt_evict_threshold =
+	    zfs_arc_segregate_ddt ? &arc_ddt_limit : &arc_meta_limit;
 
 	/* Allow the tunable to override if it is reasonable */
 	if (zfs_arc_meta_limit > 0 && zfs_arc_meta_limit <= arc_c_max)
@@ -5514,14 +5548,20 @@ l2arc_write_interval(clock_t began, uint64_t wanted, uint64_t wrote)
 	return (next);
 }
 
+typedef enum l2ad_feed {
+	L2ARC_FEED_ALL = 1,
+	L2ARC_FEED_DDT_DEV,
+	L2ARC_FEED_NON_DDT_DEV,
+} l2ad_feed_t;
+
 /*
  * Cycle through L2ARC devices.  This is how L2ARC load balances.
  * If a device is returned, this also returns holding the spa config lock.
  */
 static l2arc_dev_t *
-l2arc_dev_get_next(void)
+l2arc_dev_get_next(l2ad_feed_t feed_type)
 {
-	l2arc_dev_t *first, *next = NULL;
+	l2arc_dev_t *start = NULL, *next = NULL;
 
 	/*
 	 * Lock out the removal of spas (spa_namespace_lock), then removal
@@ -5535,30 +5575,55 @@ l2arc_dev_get_next(void)
 	if (l2arc_ndev == 0)
 		goto out;
 
-	first = NULL;
-	next = l2arc_dev_last;
-	do {
-		/* loop around the list looking for a non-faulted vdev */
-		if (next == NULL) {
+	if (feed_type == L2ARC_FEED_DDT_DEV)
+		next = l2arc_ddt_dev_last;
+	else
+		next = l2arc_dev_last;
+
+	/* figure out what the next device we look at should be */
+	if (next == NULL)
+		next = list_head(l2arc_dev_list);
+	else if (list_next(l2arc_dev_list, next) == NULL)
+		next = list_head(l2arc_dev_list);
+	else
+		next = list_next(l2arc_dev_list, next);
+	ASSERT(next);
+
+	/* loop through L2ARC devs looking for the one we need */
+	/* LINTED(E_CONSTANT_CONDITION) */
+	while (1) {
+		if (next == NULL) /* reached list end, start from beginning */
 			next = list_head(l2arc_dev_list);
-		} else {
-			next = list_next(l2arc_dev_list, next);
-			if (next == NULL)
-				next = list_head(l2arc_dev_list);
+
+		if (start == NULL) { /* save starting dev */
+			start = next;
+		} else if (start == next) { /* full loop completed - stop now */
+			next = NULL;
+			if (feed_type == L2ARC_FEED_DDT_DEV) {
+				l2arc_ddt_dev_last = NULL;
+				goto out;
+			} else {
+				break;
+			}
 		}
 
-		/* if we have come back to the start, bail out */
-		if (first == NULL)
-			first = next;
-		else if (next == first)
-			break;
-
-	} while (vdev_is_dead(next->l2ad_vdev));
-
-	/* if we were unable to find any usable vdevs, return NULL */
-	if (vdev_is_dead(next->l2ad_vdev))
-		next = NULL;
-
+		if (!vdev_is_dead(next->l2ad_vdev)) {
+			if (feed_type == L2ARC_FEED_DDT_DEV) {
+				if (vdev_type_is_ddt(next->l2ad_vdev)) {
+					l2arc_ddt_dev_last = next;
+					goto out;
+				}
+			} else if (feed_type == L2ARC_FEED_NON_DDT_DEV) {
+				if (!vdev_type_is_ddt(next->l2ad_vdev)) {
+					break;
+				}
+			} else {
+				ASSERT(feed_type == L2ARC_FEED_ALL);
+				break;
+			}
+		}
+		next = list_next(l2arc_dev_list, next);
+	}
 	l2arc_dev_last = next;
 
 out:
@@ -6076,7 +6141,7 @@ l2arc_evict(l2arc_dev_t *dev, uint64_t distance, boolean_t all)
  */
 static uint64_t
 l2arc_write_buffers(spa_t *spa, l2arc_dev_t *dev, uint64_t target_sz,
-    boolean_t *headroom_boost)
+    boolean_t *headroom_boost, l2ad_feed_t feed_type)
 {
 	arc_buf_hdr_t *hdr, *hdr_prev, *head;
 	uint64_t write_asize, write_psize, write_sz, headroom,
@@ -6164,6 +6229,15 @@ l2arc_write_buffers(spa_t *spa, l2arc_dev_t *dev, uint64_t target_sz,
 				full = B_TRUE;
 				mutex_exit(hash_lock);
 				break;
+			}
+
+			/* make sure buf we select corresponds to feed_type */
+			if ((feed_type == L2ARC_FEED_DDT_DEV &&
+			    arc_buf_type(hdr) != ARC_BUFC_DDT) ||
+			    (feed_type == L2ARC_FEED_NON_DDT_DEV &&
+			    arc_buf_type(hdr) == ARC_BUFC_DDT)) {
+					mutex_exit(hash_lock);
+					continue;
 			}
 
 			if (pio == NULL) {
@@ -6308,6 +6382,8 @@ l2arc_write_buffers(spa_t *spa, l2arc_dev_t *dev, uint64_t target_sz,
 	ASSERT3U(write_asize, <=, target_sz);
 	ARCSTAT_BUMP(arcstat_l2_writes_sent);
 	ARCSTAT_INCR(arcstat_l2_write_bytes, write_asize);
+	if (feed_type == L2ARC_FEED_DDT_DEV)
+		ARCSTAT_INCR(arcstat_l2_ddt_write_bytes, write_asize);
 	ARCSTAT_INCR(arcstat_l2_size, write_sz);
 	ARCSTAT_INCR(arcstat_l2_asize, write_asize);
 	vdev_space_update(dev->l2ad_vdev, write_asize, 0, 0);
@@ -6504,6 +6580,57 @@ l2arc_release_cdata_buf(arc_buf_hdr_t *hdr)
 
 }
 
+boolean_t
+l2arc_feed_dev(boolean_t *headroom_boost, l2ad_feed_t feed_type,
+    uint64_t *wrote)
+{
+	spa_t *spa;
+	l2arc_dev_t *dev;
+	uint64_t size;
+
+	/*
+	 * This selects the next l2arc device to write to, and in
+	 * doing so the next spa to feed from: dev->l2ad_spa.   This
+	 * will return NULL if there are now no l2arc devices or if
+	 * they are all faulted.
+	 *
+	 * If a device is returned, its spa's config lock is also
+	 * held to prevent device removal.  l2arc_dev_get_next()
+	 * will grab and release l2arc_dev_mtx.
+	 */
+	if ((dev = l2arc_dev_get_next(feed_type)) == NULL)
+		return (B_FALSE);
+
+	spa = dev->l2ad_spa;
+	ASSERT(spa != NULL);
+
+	/*
+	 * If the pool is read-only - skip it
+	 */
+	if (!spa_writeable(spa)) {
+		spa_config_exit(spa, SCL_L2ARC, dev);
+		return (B_FALSE);
+	}
+
+	ARCSTAT_BUMP(arcstat_l2_feeds);
+	size = l2arc_write_size();
+
+	/*
+	 * Evict L2ARC buffers that will be overwritten.
+	 * B_FALSE guarantees synchronous eviction.
+	 */
+	(void) l2arc_evict(dev, size, B_FALSE);
+
+	/*
+	 * Write ARC buffers.
+	 */
+	*wrote = l2arc_write_buffers(spa, dev, size, headroom_boost, feed_type);
+
+	spa_config_exit(spa, SCL_L2ARC, dev);
+
+	return (B_TRUE);
+}
+
 /*
  * This thread feeds the L2ARC at regular intervals.  This is the beating
  * heart of the L2ARC.
@@ -6512,11 +6639,10 @@ static void
 l2arc_feed_thread(void)
 {
 	callb_cpr_t cpr;
-	l2arc_dev_t *dev;
-	spa_t *spa;
-	uint64_t size, wrote;
+	uint64_t size, total_written = 0;
 	clock_t begin, next = ddi_get_lbolt();
 	boolean_t headroom_boost = B_FALSE;
+	l2ad_feed_t feed_type = L2ARC_FEED_ALL;
 
 	CALLB_CPR_INIT(&cpr, &l2arc_feed_thr_lock, callb_generic_cpr, FTAG);
 
@@ -6541,60 +6667,34 @@ l2arc_feed_thread(void)
 		begin = ddi_get_lbolt();
 
 		/*
-		 * This selects the next l2arc device to write to, and in
-		 * doing so the next spa to feed from: dev->l2ad_spa.   This
-		 * will return NULL if there are now no l2arc devices or if
-		 * they are all faulted.
-		 *
-		 * If a device is returned, its spa's config lock is also
-		 * held to prevent device removal.  l2arc_dev_get_next()
-		 * will grab and release l2arc_dev_mtx.
-		 */
-		if ((dev = l2arc_dev_get_next()) == NULL)
-			continue;
-
-		spa = dev->l2ad_spa;
-		ASSERT(spa != NULL);
-
-		/*
-		 * If the pool is read-only then force the feed thread to
-		 * sleep a little longer.
-		 */
-		if (!spa_writeable(spa)) {
-			next = ddi_get_lbolt() + 5 * l2arc_feed_secs * hz;
-			spa_config_exit(spa, SCL_L2ARC, dev);
-			continue;
-		}
-
-		/*
 		 * Avoid contributing to memory pressure.
 		 */
 		if (arc_reclaim_needed()) {
 			ARCSTAT_BUMP(arcstat_l2_abort_lowmem);
-			spa_config_exit(spa, SCL_L2ARC, dev);
 			continue;
 		}
 
-		ARCSTAT_BUMP(arcstat_l2_feeds);
+		/* try to write to DDT L2ARC device if any */
+		if (l2arc_feed_dev(&headroom_boost, L2ARC_FEED_DDT_DEV,
+		    &size)) {
+			total_written += size;
+			feed_type = L2ARC_FEED_NON_DDT_DEV;
+		}
 
-		size = l2arc_write_size();
-
-		/*
-		 * Evict L2ARC buffers that will be overwritten.
-		 * B_FALSE guarantees synchronous eviction.
-		 */
-		(void) l2arc_evict(dev, size, B_FALSE);
-
-		/*
-		 * Write ARC buffers.
-		 */
-		wrote = l2arc_write_buffers(spa, dev, size, &headroom_boost);
+		/* try to write to the regular L2ARC device if any */
+		if (l2arc_feed_dev(&headroom_boost, feed_type, &size)) {
+			total_written += size;
+			if (feed_type == L2ARC_FEED_NON_DDT_DEV)
+				total_written /= 2; /* avg written per device */
+		}
 
 		/*
 		 * Calculate interval between writes.
 		 */
-		next = l2arc_write_interval(begin, size, wrote);
-		spa_config_exit(spa, SCL_L2ARC, dev);
+		next = l2arc_write_interval(begin, l2arc_write_size(),
+		    total_written);
+
+		total_written = 0;
 	}
 
 	l2arc_thread_exit = 0;
@@ -6688,8 +6788,13 @@ l2arc_remove_vdev(vdev_t *vd)
 	 */
 	list_remove(l2arc_dev_list, remdev);
 	l2arc_dev_last = NULL;		/* may have been invalidated */
+	l2arc_ddt_dev_last = NULL;	/* may have been invalidated */
 	atomic_dec_64(&l2arc_ndev);
 	mutex_exit(&l2arc_dev_mtx);
+
+	if (vdev_type_is_ddt(remdev->l2ad_vdev))
+		atomic_add_64(&remdev->l2ad_spa->spa_l2arc_ddt_devs_size,
+		    -(vdev_get_min_asize(remdev->l2ad_vdev)));
 
 	/*
 	 * Clear all buflists and ARC references.  L2ARC device flush.

@@ -22,12 +22,11 @@
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
  * Portions Copyright 2011 Martin Matuska
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  * Copyright (c) 2014, Joyent, Inc. All rights reserved.
  * Copyright (c) 2011, 2014 by Delphix. All rights reserved.
  * Copyright (c) 2013 by Saso Kiselkov. All rights reserved.
  * Copyright (c) 2013 Steven Hartland. All rights reserved.
- * Copyright (c) 2014, Nexenta Systems, Inc. All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -2173,6 +2172,24 @@ zfs_ioc_vdev_split(zfs_cmd_t *zc)
 
 	return (error);
 }
+
+static int
+zfs_ioc_vdev_setl2adddt(zfs_cmd_t *zc)
+{
+	spa_t *spa;
+	int error;
+	uint64_t guid = zc->zc_guid;
+	char *l2ad_ddt = zc->zc_value;
+
+	error = spa_open(zc->zc_name, &spa, FTAG);
+	if (error != 0)
+		return (error);
+
+	error = spa_vdev_setl2adddt(spa, guid, l2ad_ddt);
+	spa_close(spa, FTAG);
+	return (error);
+}
+
 
 static int
 zfs_ioc_vdev_setpath(zfs_cmd_t *zc)
@@ -6475,6 +6492,8 @@ zfs_ioctl_init(void)
 	    zfs_ioc_vdev_attach);
 	zfs_ioctl_register_pool_modify(ZFS_IOC_VDEV_DETACH,
 	    zfs_ioc_vdev_detach);
+	zfs_ioctl_register_pool_modify(ZFS_IOC_VDEV_SETL2ADDDT,
+	    zfs_ioc_vdev_setl2adddt);
 	zfs_ioctl_register_pool_modify(ZFS_IOC_VDEV_SETPATH,
 	    zfs_ioc_vdev_setpath);
 	zfs_ioctl_register_pool_modify(ZFS_IOC_VDEV_SETFRU,

@@ -20,9 +20,9 @@
  */
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  * Copyright (c) 2011, 2014 by Delphix. All rights reserved.
  * Copyright (c) 2014 Spectra Logic Corporation, All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #ifndef _SYS_SPA_IMPL_H
@@ -300,6 +300,8 @@ struct spa {
 	uint64_t	spa_ddt_stat_object;	/* DDT statistics */
 	uint64_t	spa_dedup_ditto;	/* dedup ditto threshold */
 	uint64_t	spa_dedup_checksum;	/* default dedup checksum */
+	uint64_t	spa_ddt_msize;		/* ddt size in core, from ddo */
+	uint64_t	spa_ddt_dsize;		/* ddt size on disk, from ddo */
 	uint64_t	spa_dspace;		/* dspace in normal class */
 	kmutex_t	spa_vdev_top_lock;	/* dueling offline/remove */
 	kmutex_t	spa_proc_lock;		/* protects spa_proc* */
@@ -334,6 +336,9 @@ struct spa {
 	} spa_queue_stats[ZIO_PRIORITY_NUM_QUEUEABLE];
 
 	hrtime_t	spa_ccw_fail_time;	/* Conf cache write fail time */
+
+	/* total space on all L2ARC devices used for DDT (l2arc_ddt=on) */
+	uint64_t spa_l2arc_ddt_devs_size;
 
 	/* specialclass support */
 	boolean_t	spa_usesc;		/* enable special class */

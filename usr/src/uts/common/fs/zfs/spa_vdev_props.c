@@ -56,7 +56,7 @@ vdev_store_props(vdev_t *vdev, objset_t *mos, uint64_t obj, uint64_t offset,
 		return (size);
 	}
 
-	VERIFY(nvlist_alloc(&nvl, NV_UNIQUE_NAME, KM_SLEEP) == 0);
+	VERIFY0(nvlist_alloc(&nvl, NV_UNIQUE_NAME, KM_SLEEP));
 
 	for (p = ZIO_PRIORITY_SYNC_READ; p < ZIO_PRIORITY_NUM_QUEUEABLE; p++) {
 		uint64_t val = vdev->vdev_queue.vq_class[p].vqc_min_active;
@@ -64,32 +64,35 @@ vdev_store_props(vdev_t *vdev, objset_t *mos, uint64_t obj, uint64_t offset,
 
 		ASSERT(VDEV_PROP_MIN_VALID(prop_id));
 		propname = vdev_prop_to_name(prop_id);
-		VERIFY(nvlist_add_uint64(nvl, propname, val) == 0);
+		VERIFY0(nvlist_add_uint64(nvl, propname, val));
 
 		val = vdev->vdev_queue.vq_class[p].vqc_max_active;
 		prop_id = VDEV_ZIO_PRIO_TO_PROP_MAX(p);
 		ASSERT(VDEV_PROP_MAX_VALID(prop_id));
 		propname = vdev_prop_to_name(prop_id);
-		VERIFY(nvlist_add_uint64(nvl, propname, val) == 0);
+		VERIFY0(nvlist_add_uint64(nvl, propname, val));
 	}
 
 	propname = vdev_prop_to_name(VDEV_PROP_PREFERRED_READ);
-	VERIFY(0 == nvlist_add_uint64(nvl, propname,
+	VERIFY0(nvlist_add_uint64(nvl, propname,
 	    vdev->vdev_queue.vq_preferred_read));
 
 	if (vdev->vdev_queue.vq_cos) {
 		propname = vdev_prop_to_name(VDEV_PROP_COS);
-		VERIFY(0 == nvlist_add_uint64(nvl, propname,
+		VERIFY0(nvlist_add_uint64(nvl, propname,
 		    vdev->vdev_queue.vq_cos->cos_guid));
 	}
 
 	if (vdev->vdev_spare_group) {
 		propname = vdev_prop_to_name(VDEV_PROP_SPAREGROUP);
-		VERIFY(0 == nvlist_add_string(nvl, propname,
+		VERIFY0(nvlist_add_string(nvl, propname,
 		    vdev->vdev_spare_group));
 	}
 
-	VERIFY(nvlist_size(nvl, &nvsize, NV_ENCODE_XDR) == 0);
+	propname = vdev_prop_to_name(VDEV_PROP_L2ADDDT);
+	VERIFY0(nvlist_add_uint64(nvl, propname, vdev->vdev_l2ad_ddt));
+
+	VERIFY0(nvlist_size(nvl, &nvsize, NV_ENCODE_XDR));
 
 	size = P2ROUNDUP(nvsize, 8);
 	bufsize = sizeof (*vpph) + size;
@@ -98,8 +101,7 @@ vdev_store_props(vdev_t *vdev, objset_t *mos, uint64_t obj, uint64_t offset,
 	packed = buf + sizeof (*vpph);
 	if (size > nvsize)
 		bzero(packed + nvsize, size - nvsize);
-	VERIFY(nvlist_pack(nvl, &packed, &nvsize, NV_ENCODE_XDR,
-	    KM_SLEEP) == 0);
+	VERIFY0(nvlist_pack(nvl, &packed, &nvsize, NV_ENCODE_XDR, KM_SLEEP));
 
 	vpph->vpph_guid = vdev->vdev_guid;
 	vpph->vpph_nvsize = nvsize;
@@ -114,7 +116,7 @@ vdev_store_props(vdev_t *vdev, objset_t *mos, uint64_t obj, uint64_t offset,
 }
 
 /*
- * Get the properties from nvlist and put then in vdev object
+ * Get the properties from nvlist and put them in vdev object
  */
 static void
 vdev_parse_props(vdev_t *vdev, char *packed, uint64_t nvsize)
@@ -150,6 +152,16 @@ vdev_parse_props(vdev_t *vdev, char *packed, uint64_t nvsize)
 		propname = vdev_prop_to_name(prop_id);
 		if (nvlist_lookup_uint64(nvl, propname, &ival) == 0)
 			vdev->vdev_queue.vq_class[p].vqc_max_active = ival;
+	}
+
+	propname = vdev_prop_to_name(VDEV_PROP_L2ADDDT);
+	if (nvlist_lookup_uint64(nvl, propname, &ival) == 0) {
+		vdev->vdev_l2ad_ddt = ival;
+		/* on import may need to adjust per SPA DDT dev space count */
+		if (vdev->vdev_l2ad_ddt == 1) {
+			atomic_add_64(&vdev->vdev_spa->spa_l2arc_ddt_devs_size,
+			    vdev_get_min_asize(vdev));
+		}
 	}
 
 	propname = vdev_prop_to_name(VDEV_PROP_PREFERRED_READ);
@@ -204,6 +216,9 @@ spa_vdev_get_common(spa_t *spa, uint64_t guid, char **value,
 	vqc = vd->vdev_queue.vq_class;
 
 	switch (prop) {
+	case VDEV_PROP_L2ADDDT:
+		*oval = vd->vdev_l2ad_ddt;
+		break;
 	case VDEV_PROP_PATH:
 		if (vd->vdev_path != NULL) {
 			*value = vd->vdev_path;
@@ -277,6 +292,10 @@ spa_vdev_set_common(vdev_t *vd, const char *value,
 	boolean_t reset_cos = B_FALSE;
 	vdev_queue_class_t *vqc = vd->vdev_queue.vq_class;
 	zio_priority_t p;
+	int64_t ddt_devs_size;
+	nvlist_t *nvp;
+	int err;
+	const char *propname = vdev_prop_to_name(prop);
 
 	ASSERT(spa_writeable(spa));
 
@@ -285,7 +304,29 @@ spa_vdev_set_common(vdev_t *vd, const char *value,
 	if (!vd->vdev_ops->vdev_op_leaf)
 		return (spa_vdev_state_exit(spa, NULL, EINVAL));
 
+	VERIFY0(nvlist_alloc(&nvp, NV_UNIQUE_NAME, KM_SLEEP));
+	if (value == NULL)
+		VERIFY0(nvlist_add_uint64(nvp, propname, ival));
+	else
+		VERIFY0(nvlist_add_string(nvp, propname, value));
+	err = spa_vdev_prop_validate(spa, vd->vdev_guid, nvp);
+	nvlist_free(nvp);
+	if (err != 0)
+		return (spa_vdev_state_exit(spa, NULL, err));
+
 	switch (prop) {
+	case VDEV_PROP_L2ADDDT:
+		if (vd->vdev_l2ad_ddt != ival) {
+			vd->vdev_l2ad_ddt = ival;
+			ddt_devs_size = vdev_get_min_asize(vd);
+			if (ival == 0)
+				ddt_devs_size *= -1;
+			atomic_add_64(&vd->vdev_spa->spa_l2arc_ddt_devs_size,
+			    ddt_devs_size);
+			sync = B_TRUE;
+		}
+		break;
+
 	case VDEV_PROP_PATH:
 		if (vd->vdev_path == NULL) {
 			vd->vdev_path = spa_strdup(value);
@@ -403,6 +444,7 @@ spa_vdev_prop_set_nosync(vdev_t *vd, nvlist_t *nvp, boolean_t *needsyncp)
 			return (ENOTSUP);
 
 		switch (prop) {
+		case VDEV_PROP_L2ADDDT:
 		case VDEV_PROP_READ_MINACTIVE:
 		case VDEV_PROP_READ_MAXACTIVE:
 		case VDEV_PROP_AREAD_MINACTIVE:
@@ -426,16 +468,19 @@ spa_vdev_prop_set_nosync(vdev_t *vd, nvlist_t *nvp, boolean_t *needsyncp)
 
 		switch (proptype) {
 		case PROP_TYPE_STRING:
-			VERIFY(nvpair_value_string(elem, &strval) == 0);
+			VERIFY0(nvpair_value_string(elem, &strval));
 			break;
+
 		case PROP_TYPE_INDEX:
 		case PROP_TYPE_NUMBER:
-			VERIFY(nvpair_value_uint64(elem, &ival) == 0);
 			if (proptype == PROP_TYPE_INDEX) {
 				const char *unused;
-				VERIFY(vdev_prop_index_to_string(
-				    prop, ival, &unused) == 0);
+				VERIFY0(vdev_prop_index_to_string(
+				    prop, ival, &unused));
 			}
+			VERIFY0(nvpair_value_uint64(elem, &ival));
+			break;
+
 		}
 
 		error = spa_vdev_set_common(vd, strval, ival, prop);
@@ -469,10 +514,10 @@ spa_vdev_sync_props(void *arg1, dmu_tx_t *tx)
 		    SPA_CONFIG_BLOCKSIZE, DMU_OT_PACKED_NVLIST_SIZE,
 		    sizeof (uint64_t), tx)) > 0);
 
-		VERIFY(zap_update(mos,
+		VERIFY0(zap_update(mos,
 		    DMU_POOL_DIRECTORY_OBJECT,
 		    DMU_POOL_VDEV_PROPS,
-		    8, 1, &spa->spa_vdev_props_object, tx) == 0);
+		    8, 1, &spa->spa_vdev_props_object, tx));
 
 		spa_feature_incr(spa, SPA_FEATURE_VDEV_PROPS, tx);
 	}
@@ -499,7 +544,7 @@ spa_vdev_sync_props(void *arg1, dmu_tx_t *tx)
 		    spa->spa_vdev_props_object, size, tx);
 	}
 
-	VERIFY(0 == dmu_bonus_hold(mos, spa->spa_vdev_props_object, FTAG, &db));
+	VERIFY0(dmu_bonus_hold(mos, spa->spa_vdev_props_object, FTAG, &db));
 	dmu_buf_will_dirty(db, tx);
 
 	sizep = db->db_data;
@@ -539,7 +584,7 @@ spa_load_vdev_props(spa_t *spa)
 
 	mutex_enter(&spa->spa_vdev_props_lock);
 
-	VERIFY(0 == dmu_bonus_hold(mos, spa->spa_vdev_props_object, FTAG, &db));
+	VERIFY0(dmu_bonus_hold(mos, spa->spa_vdev_props_object, FTAG, &db));
 	bufsize = *(uint64_t *)db->db_data;
 	dmu_buf_rele(db, FTAG);
 
@@ -550,7 +595,7 @@ spa_load_vdev_props(spa_t *spa)
 	bufend = buf + bufsize;
 
 	/* read and unpack array of nvlists */
-	VERIFY(0 == dmu_read(mos, spa->spa_vdev_props_object,
+	VERIFY0(dmu_read(mos, spa->spa_vdev_props_object,
 	    0, bufsize, buf, DMU_READ_PREFETCH));
 
 	for (pbuf = buf; pbuf < bufend; pbuf += vpph->vpph_size) {
@@ -575,13 +620,13 @@ out:
  * Check properties (names, values) in this nvlist
  */
 int
-spa_vdev_prop_validate(spa_t *spa, nvlist_t *props)
+spa_vdev_prop_validate(spa_t *spa, uint64_t vdev_guid, nvlist_t *props)
 {
 	nvpair_t *elem;
 	int error = 0;
 
 	if (!spa_feature_is_enabled(spa, SPA_FEATURE_VDEV_PROPS))
-		return (ENOTSUP);
+		return (SET_ERROR(ENOTSUP));
 
 	elem = NULL;
 	while ((elem = nvlist_next_nvpair(props, elem)) != NULL) {
@@ -592,9 +637,19 @@ spa_vdev_prop_validate(spa_t *spa, nvlist_t *props)
 		propname = nvpair_name(elem);
 
 		if ((prop = vdev_name_to_prop(propname)) == ZPROP_INVAL)
-			return (EINVAL);
+			return (SET_ERROR(EINVAL));
 
 		switch (prop) {
+		case VDEV_PROP_L2ADDDT:
+			if (!spa_l2cache_exists(vdev_guid, NULL)) {
+				error = SET_ERROR(ENOTSUP);
+				break;
+			}
+			error = nvpair_value_uint64(elem, &ival);
+			if (!error && ival != 1 && ival != 0)
+				error = SET_ERROR(EINVAL);
+			break;
+
 		case VDEV_PROP_PATH:
 		case VDEV_PROP_FRU:
 		case VDEV_PROP_COS:
@@ -613,17 +668,17 @@ spa_vdev_prop_validate(spa_t *spa, nvlist_t *props)
 		case VDEV_PROP_SCRUB_MAXACTIVE:
 			error = nvpair_value_uint64(elem, &ival);
 			if (!error && ival > 1000)
-				error = EINVAL;
+				error = SET_ERROR(EINVAL);
 			break;
 
 		case VDEV_PROP_PREFERRED_READ:
 			error = nvpair_value_uint64(elem, &ival);
 			if (!error && ival > 10)
-				error = EINVAL;
+				error = SET_ERROR(EINVAL);
 			break;
 
 		default:
-			error = EINVAL;
+			error = SET_ERROR(EINVAL);
 		}
 
 		if (error)
@@ -643,7 +698,7 @@ spa_vdev_prop_set(spa_t *spa, uint64_t vdev_guid, nvlist_t *nvp)
 	vdev_t	*vd;
 	boolean_t need_sync = B_FALSE;
 
-	if ((error = spa_vdev_prop_validate(spa, nvp)) != 0)
+	if ((error = spa_vdev_prop_validate(spa, vdev_guid, nvp)) != 0)
 		return (error);
 
 	if ((vd = spa_lookup_by_guid(spa, vdev_guid, B_TRUE)) == NULL)
@@ -679,25 +734,45 @@ spa_vdev_prop_get(spa_t *spa, uint64_t vdev_guid, nvlist_t **nvp)
 	int err;
 	vdev_prop_t prop;
 
-	VERIFY(nvlist_alloc(nvp, NV_UNIQUE_NAME, KM_SLEEP) == 0);
+	VERIFY0(nvlist_alloc(nvp, NV_UNIQUE_NAME, KM_SLEEP));
 
 	for (prop = VDEV_PROP_PATH; prop < VDEV_NUM_PROPS; prop++) {
 		uint64_t ival;
 		char *strval = NULL;
 		const char *propname = vdev_prop_to_name(prop);
 
+		/* don't get L2ARC prop for non L2ARC dev, can't set anyway */
+		if (prop == VDEV_PROP_L2ADDDT &&
+		    !spa_l2cache_exists(vdev_guid, NULL))
+			continue;
+
 		if ((err = spa_vdev_get_common(spa, vdev_guid, &strval,
 		    &ival, prop)) != 0 && (err != ENOENT))
 			return (err);
 
 		if (strval != NULL) {
-			VERIFY(nvlist_add_string(*nvp, propname, strval) == 0);
+			VERIFY0(nvlist_add_string(*nvp, propname, strval));
 		} else if (err != ENOENT) {
-			VERIFY(nvlist_add_uint64(*nvp, propname, ival) == 0);
+			VERIFY0(nvlist_add_uint64(*nvp, propname, ival));
 		}
 	}
 
 	return (0);
+}
+
+int
+spa_vdev_setl2adddt(spa_t *spa, uint64_t guid, const char *newval)
+{
+	vdev_t *vdev;
+	uint64_t index;
+
+	if ((vdev = spa_lookup_by_guid(spa, guid, B_TRUE)) == NULL)
+		return (SET_ERROR(ENOENT));
+
+	if (vdev_prop_string_to_index(VDEV_PROP_L2ADDDT, newval, &index) != 0)
+		return (SET_ERROR(EINVAL));
+
+	return (spa_vdev_set_common(vdev, NULL, index, VDEV_PROP_L2ADDDT));
 }
 
 int

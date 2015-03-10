@@ -975,7 +975,8 @@ arc_print(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 		"mfu_ghost_size", "mfu_ghost_evictable_data",
 		"mfu_ghost_evictable_metadata", "mfu_ghost_evictable_ddt",
 		"evict_l2_cached", "evict_l2_eligible", "evict_l2_ineligible",
-		"l2_read_bytes", "l2_write_bytes", "l2_size", "l2_asize",
+		"l2_read_bytes", "l2_ddt_read_bytes", "l2_write_bytes",
+		"l2_ddt_write_bytes", "l2_size", "l2_asize",
 		"l2_hdr_size",
 		NULL
 	};

@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc. All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc. All rights reserved.
  */
 
 #ifndef _SYS_DDT_H
@@ -52,6 +52,17 @@ enum ddt_class {
 	DDT_CLASS_DUPLICATE,
 	DDT_CLASS_UNIQUE,
 	DDT_CLASSES
+};
+
+/*
+ * Tracks whether a DDE is loading or already loaded and
+ * which entries got removed from dedup path to support dedup ceiling
+ */
+enum dde_state {
+	DDE_LOADING	= (1 << 0),
+	DDE_LOADED	= (1 << 1),
+	DDE_NEW		= (1 << 2),
+	DDE_DONT_SYNC	= (1 << 3),
 };
 
 #define	DDT_TYPE_CURRENT		0
@@ -113,8 +124,7 @@ struct ddt_entry {
 	ddt_stat_t	dde_lkstat;
 	enum ddt_type	dde_type;
 	enum ddt_class	dde_class;
-	boolean_t	dde_loading;
-	boolean_t	dde_loaded;
+	uint8_t		dde_state;
 	kcondvar_t	dde_cv;
 	kmutex_t	dde_lock;
 	avl_node_t	dde_node;
