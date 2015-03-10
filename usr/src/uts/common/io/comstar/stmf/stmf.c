@@ -194,9 +194,10 @@ volatile int	stmf_default_task_timeout = 75;
  */
 volatile int	stmf_allow_modunload = 0;
 
-volatile int stmf_max_nworkers = 256;
-volatile int stmf_min_nworkers = 4;
-volatile int stmf_worker_scale_down_delay = 20;
+volatile uint8_t	stmf_enable_scaledown = 0;
+volatile int stmf_max_nworkers = 1024;
+volatile int stmf_min_nworkers = 128;
+volatile int stmf_worker_scale_down_delay = 90;
 
 /* === [ Debugging and fault injection ] === */
 #ifdef	DEBUG
@@ -6484,6 +6485,8 @@ worker_mgmt_trigger_change:
 		return;
 	}
 	/* At this point we know that we are decreasing the # of workers */
+	if (stmf_enable_scaledown == 0)
+		return;
 	stmf_nworkers_accepting_cmds = workers_needed;
 	stmf_nworkers_needed = workers_needed;
 	/* Signal the workers that its time to quit */
