@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -449,6 +449,7 @@ smbstat_kstat_print(void)
 	smbstat_print_throughput();
 	smbstat_print_utilization();
 	smbstat_print_requests();
+	(void) fflush(stdout);
 }
 
 /*
