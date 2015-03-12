@@ -30,6 +30,7 @@
 extern "C" {
 #endif
 
+#include <sys/types.h>
 struct register_lu_cmd;
 struct modify_lu_cmd;
 struct sbd_lu_attr;
@@ -210,8 +211,10 @@ typedef struct sbd_cmd {
 	uint32_t	len;		/* len left */
 	uint32_t	current_ro;	/* running relative offset */
 	uint8_t		*trans_data;	/* Any transient data */
+	uint8_t		cdb0;
 	ats_state_t	*ats_state;
 	uint32_t	rsvd;
+	uint32_t	seqno;
 } sbd_cmd_t;
 
 /*
@@ -328,7 +331,7 @@ void sbd_task_free(struct scsi_task *task);
 stmf_status_t sbd_abort(struct stmf_lu *lu, int abort_cmd, void *arg,
 							uint32_t flags);
 void sbd_task_start(struct scsi_task *task);
-void sbd_task_done(struct scsi_task *task);
+void sbd_task_done(struct scsi_task *task, uint8_t id);
 void sbd_task_poll(struct scsi_task *task);
 void sbd_dbuf_free(struct scsi_task *task, struct stmf_data_buf *dbuf);
 void sbd_ctl(struct stmf_lu *lu, int cmd, void *arg);

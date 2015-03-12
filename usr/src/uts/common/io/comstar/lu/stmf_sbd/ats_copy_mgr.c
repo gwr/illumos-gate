@@ -276,9 +276,23 @@ sbd_send_miscompare_status(struct scsi_task *task, uint32_t miscompare_off)
 	task->task_sense_data = sd;
 	task->task_sense_length = 18;
 	(void) stmf_send_scsi_status(task, STMF_IOF_LU_DONE);
-	sbd_task_done(task);
 }
 
+static void
+sbd_ats_release_resources(scsi_task_t *task, sbd_cmd_t *scmd)
+{
+	if (scmd->seqno != task->task_cmd_seq_no)
+		cmn_err(CE_WARN, "ats seqno mismatch");
+
+	if (((scmd->flags & SBD_SCSI_CMD_TRANS_DATA) != 0) &&
+	    (scmd->trans_data != NULL)) {
+		kmem_free(scmd->trans_data, scmd->trans_data_len);
+		scmd->trans_data = NULL;
+		scmd->trans_data_len = 0;
+		scmd->flags &= ~SBD_SCSI_CMD_TRANS_DATA;
+	}
+	sbd_ats_remove_by_task(task);
+}
 void
 sbd_handle_ats_xfer_completion(struct scsi_task *task, sbd_cmd_t *scmd,
     struct stmf_data_buf *dbuf, uint8_t dbuf_reusable)
@@ -294,6 +308,7 @@ sbd_handle_ats_xfer_completion(struct scsi_task *task, sbd_cmd_t *scmd,
 
 	if (dbuf->db_xfer_status != STMF_SUCCESS) {
 		scmd->flags |= SBD_SCSI_CMD_ABORT_REQUESTED;
+		sbd_ats_release_resources(task, scmd);
 		stmf_abort(STMF_QUEUE_TASK_ABORT, task,
 		    dbuf->db_xfer_status, NULL);
 		return;
@@ -306,7 +321,6 @@ sbd_handle_ats_xfer_completion(struct scsi_task *task, sbd_cmd_t *scmd,
 	    (scmd->nbufs == 0xff))  {
 		cmn_err(CE_NOTE, "sbd_handle_ats_xfer_completion:handled"
 		    "unexpected completion");
-		sbd_task_done(task);
 		return;
 	}
 
@@ -351,11 +365,19 @@ ATS_XFER_DONE:
 			return;
 		}
 		if (scmd->flags & SBD_SCSI_CMD_XFER_FAIL) {
+			sbd_ats_release_resources(task, scmd);
 			stmf_scsilib_send_status(task, STATUS_CHECK,
 			    STMF_SAA_WRITE_ERROR);
 		} else {
 			ret = sbd_compare_and_write(task, scmd,
 			    &miscompare_off);
+
+			/*
+			 * since stmf_scsilib_send_status may result in
+			 * the task being released clean up resources before
+			 * calling it.
+			 */
+			sbd_ats_release_resources(task, scmd);
 			if (ret != SBD_SUCCESS) {
 				if (ret != SBD_COMPARE_FAILED) {
 					stmf_scsilib_send_status(task,
@@ -368,13 +390,6 @@ ATS_XFER_DONE:
 				stmf_scsilib_send_status(task, STATUS_GOOD, 0);
 			}
 		}
-		ASSERT(scmd->nbufs == 0 &&
-		    (scmd->flags & SBD_SCSI_CMD_TRANS_DATA) &&
-		    scmd->trans_data != NULL);
-		kmem_free(scmd->trans_data, scmd->trans_data_len);
-		scmd->trans_data = NULL; /* force panic later if re-entered */
-		scmd->trans_data_len = 0;
-		scmd->flags &= ~SBD_SCSI_CMD_TRANS_DATA;
 		return;
 	}
 	sbd_do_ats_xfer(task, scmd, dbuf, dbuf_reusable);

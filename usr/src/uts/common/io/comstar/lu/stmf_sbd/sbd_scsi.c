@@ -456,7 +456,6 @@ sbd_do_sgl_read_xfer(struct scsi_task *task, sbd_cmd_t *scmd, int first_xfer)
 			/*
 			 * Completion from task_done will cleanup
 			 */
-			sbd_task_done(task);
 			return;
 		}
 		/*
@@ -580,7 +579,6 @@ sbd_handle_sgl_read_xfer_completion(struct scsi_task *task, sbd_cmd_t *scmd,
 			 * Status was sent along with data, so no status
 			 * completion will occur. Tell stmf we are done.
 			 */
-			sbd_task_done(task);
 			stmf_task_lu_done(task);
 			return;
 		}
@@ -1016,7 +1014,6 @@ sbd_handle_read(struct scsi_task *task, struct stmf_data_buf *initial_dbuf)
 			 * data is the equivalent of status just call
 			 * the process done
 			 */
-			sbd_task_done(task);
 		} else {
 			stmf_scsilib_send_status(task, STATUS_CHECK,
 			    STMF_SAA_READ_ERROR);
@@ -2327,6 +2324,24 @@ sbd_write_same_data(struct scsi_task *task, sbd_cmd_t *scmd)
 }
 
 static void
+sbd_write_same_release_resources(struct scsi_task *task, sbd_cmd_t *scmd)
+{
+	if (scmd->seqno != task->task_cmd_seq_no) {
+		cmn_err(CE_WARN, "%s sequence number mismatch %p",
+		    __func__, (void *)task);
+		sbd_dump_state(task);
+	}
+	if ((scmd->flags & SBD_SCSI_CMD_TRANS_DATA) &&
+	    scmd->trans_data != NULL) {
+		kmem_free(scmd->trans_data, scmd->trans_data_len);
+		scmd->trans_data = NULL;
+		scmd->trans_data_len = 0;
+		scmd->flags &= ~SBD_SCSI_CMD_TRANS_DATA;
+	}
+	sbd_ats_remove_by_task(task);
+}
+
+static void
 sbd_handle_write_same_xfer_completion(struct scsi_task *task, sbd_cmd_t *scmd,
     struct stmf_data_buf *dbuf, uint8_t dbuf_reusable)
 {
@@ -2340,6 +2355,7 @@ sbd_handle_write_same_xfer_completion(struct scsi_task *task, sbd_cmd_t *scmd,
 
 	if (dbuf->db_xfer_status != STMF_SUCCESS) {
 		scmd->flags |= SBD_SCSI_CMD_ABORT_REQUESTED;
+		sbd_write_same_release_resources(task, scmd);
 		stmf_abort(STMF_QUEUE_TASK_ABORT, task,
 		    dbuf->db_xfer_status, NULL);
 		return;
@@ -2359,7 +2375,6 @@ sbd_handle_write_same_xfer_completion(struct scsi_task *task, sbd_cmd_t *scmd,
 		scmd->flags &= ~SBD_SCSI_CMD_TRANS_DATA;
 		cmn_err(CE_NOTE, "sbd_handle_write_same_xfer_completion:"
 		    "handled unexpected completion");
-		sbd_task_done(task);
 		return;
 	}
 
@@ -2393,10 +2408,17 @@ write_same_xfer_done:
 		if (ATOMIC8_GET(scmd->nbufs) > 0)
 			return;
 		if (scmd->flags & SBD_SCSI_CMD_XFER_FAIL) {
+			sbd_write_same_release_resources(task, scmd);
 			stmf_scsilib_send_status(task, STATUS_CHECK,
 			    STMF_SAA_WRITE_ERROR);
 		} else {
 			ret = sbd_write_same_data(task, scmd);
+			/*
+			 * free the resources here because the task
+			 * may be freed as a side effect of calling
+			 * stmf_scsilib_send_status
+			 */
+			sbd_write_same_release_resources(task, scmd);
 			if (ret != SBD_SUCCESS) {
 				stmf_scsilib_send_status(task, STATUS_CHECK,
 				    STMF_SAA_WRITE_ERROR);
@@ -2404,16 +2426,6 @@ write_same_xfer_done:
 				stmf_scsilib_send_status(task, STATUS_GOOD, 0);
 			}
 		}
-		/*
-		 * Only way we should get here is via handle_write_same(),
-		 * and that should make the following assertion always pass.
-		 */
-		ASSERT((scmd->flags & SBD_SCSI_CMD_TRANS_DATA) &&
-		    scmd->trans_data != NULL);
-		kmem_free(scmd->trans_data, scmd->trans_data_len);
-		scmd->trans_data = NULL;
-		scmd->trans_data_len = 0;
-		scmd->flags &= ~SBD_SCSI_CMD_TRANS_DATA;
 		return;
 	}
 	sbd_do_write_same_xfer(task, scmd, dbuf, dbuf_reusable);
@@ -3669,8 +3681,6 @@ sbd_dbuf_xfer_done(struct scsi_task *task, struct stmf_data_buf *dbuf)
 void
 sbd_send_status_done(struct scsi_task *task)
 {
-	cmn_err(CE_PANIC,
-	    "sbd_send_status_done: this should not have been called");
 }
 
 void
@@ -3992,8 +4002,14 @@ sbd_handle_sync_cache(struct scsi_task *task,
 	stmf_scsilib_send_status(task, STATUS_GOOD, 0);
 }
 
+/*
+ * id is used for debugging.  In the event of a panic or warning id determines
+ * where sbd_task_done was called from.  Currently there are two values.
+ * 10 - is task completion
+ * 11 - is an abort.
+ */
 void
-sbd_task_done(scsi_task_t *task)
+sbd_task_done(scsi_task_t *task, uint8_t id)
 {
 	sbd_cmd_t	*scmd = (sbd_cmd_t *)task->task_lu_private;
 
@@ -4001,16 +4017,34 @@ sbd_task_done(scsi_task_t *task)
 		return;
 	}
 
+	/* TODO This might be good as debug code */
+	if (scmd->seqno != task->task_cmd_seq_no) {
+		/*
+		 * There are cases where the task_cmd_seq_no and sbd_seqno
+		 * may validly mismatch.  The first case is where the
+		 * seqno is 0.  This is the case where a command is being
+		 * aborted. Another case is when the command is not yet
+		 * active and is being discarded.  This can happen in the
+		 * case of a reset or abort.
+		 */
+		if ((scmd->seqno != 0) &&
+		    (((scmd->flags & SBD_SCSI_CMD_ABORT_REQUESTED) == 0) ||
+		    ((scmd->flags & SBD_SCSI_CMD_ACTIVE) != 0))) {
+			cmn_err(CE_WARN, "%s seq mismatch %d %p %x %x %x %x",
+			    __func__, id, (void *)task, scmd->cdb0, scmd->flags,
+			    scmd->seqno, task->task_cmd_seq_no);
+		}
+	}
+
 	/*
 	 * clean it up since the command completeions are being sent.
 	 */
 	scmd->flags &= ~SBD_SCSI_CMD_ACTIVE;
-	/* TODO This might be good as debug code */
 	if (((scmd->flags & SBD_SCSI_CMD_DONE) != 0) &&
 	    ((scmd->flags & SBD_SCSI_CMD_ABORT_REQUESTED) == 0)) {
-		cmn_err(CE_WARN, "multiple calls for sbd_task_done "
-		    "0x%x 0x%x %p", task->task_cdb[0], scmd->flags,
-		    (void *)task);
+		cmn_err(CE_WARN, "%s multiple calls for sbd_task_done "
+		    "%d 0x%x 0x%x %p", __func__, id,
+		    task->task_cdb[0], scmd->flags, (void *)task);
 	}
 
 	/*
@@ -4022,7 +4056,6 @@ sbd_task_done(scsi_task_t *task)
 	if ((scmd->flags & SBD_SCSI_CMD_ABORT_REQUESTED) != 0) {
 		if (scmd->trans_data != NULL) {
 			cmn_err(CE_WARN, "aborted task not cleaned up");
-			ASSERT(scmd->trans_data == NULL);
 			/* orphan the buffer? - this is a memory leak */
 			sbd_dump_state(task);
 		}
@@ -4035,8 +4068,6 @@ sbd_task_done(scsi_task_t *task)
 	if (((scmd->flags & SBD_SCSI_CMD_ATS_RELATED) != 0) &&
 	    ((scmd->flags & SBD_SCSI_CMD_DONE) != 0)) {
 		cmn_err(CE_WARN, "task not cleaned up");
-		ASSERT(((scmd->flags & SBD_SCSI_CMD_ATS_RELATED) == 0) ||
-		    ((scmd->flags & SBD_SCSI_CMD_DONE) == 0));
 		sbd_dump_state(task);
 	}
 
@@ -4071,8 +4102,9 @@ sbd_task_start(scsi_task_t *task)
 	 * on a debug system.
 	 */
 	if ((scmd->flags & SBD_SCSI_CMD_ATS_RELATED) != 0) {
-		cmn_err(CE_WARN, "start scmd ats related at start %p %x %p",
-		    (void *)task, scmd->flags, (void *)scmd->ats_state);
+		cmn_err(CE_WARN, "start scmd ats related at start %p %x %p %x",
+		    (void *)task, scmd->flags, (void *)scmd->ats_state,
+		    scmd->cdb0);
 		ASSERT((scmd->flags & SBD_SCSI_CMD_ATS_RELATED) == 0);
 		sbd_dump_state(task);
 		sbd_ats_remove_by_task(task); /* force off list */
@@ -4085,20 +4117,23 @@ sbd_task_start(scsi_task_t *task)
 	if (((scmd->flags & SBD_SCSI_CMD_TRANS_DATA) != 0) ||
 	    (scmd->trans_data != NULL)) {
 		if ((scmd->flags & SBD_SCSI_CMD_TRANS_DATA) != 0) {
-			cmn_err(CE_WARN, "start scmd trans_data set %p %x",
-			    (void *)task, scmd->flags);
+			cmn_err(CE_WARN, "start scmd trans_data set %p %x %x",
+			    (void *)task, scmd->flags, scmd->cdb0);
 		}
 		if (scmd->trans_data != NULL) {
 			cmn_err(CE_WARN, "scmd trans_data dangling pointer"
-			    " %p %x", (void *)task, scmd->flags);
+			    " %p %x %x", (void *)task, scmd->flags, scmd->cdb0);
 		}
 		ASSERT(((scmd->flags & SBD_SCSI_CMD_TRANS_DATA) == 0) &&
 		    (scmd->trans_data == NULL));
 		sbd_dump_state(task);
-		kmem_free(scmd->trans_data, scmd->trans_data_len);
+		if (scmd->trans_data_len > 0)
+			kmem_free(scmd->trans_data, scmd->trans_data_len);
 		scmd->flags &= ~SBD_SCSI_CMD_TRANS_DATA;
 	}
 	bzero(scmd, sizeof (*scmd));
 out:
+	scmd->seqno = task->task_cmd_seq_no;
+	scmd->cdb0 = task->task_cdb[0];
 	scmd->flags = SBD_SCSI_CMD_ACTIVE;
 }

@@ -4795,7 +4795,6 @@ stmf_send_status_done(scsi_task_t *task, stmf_status_t s, uint32_t iof)
 	    (stmf_i_scsi_task_t *)task->task_stmf_private;
 	stmf_worker_t *w = itask->itask_worker;
 	uint32_t new, old;
-	uint8_t free_it, queue_it;
 
 	stmf_task_audit(itask, TE_SEND_STATUS_DONE, iof, NULL);
 
@@ -4806,56 +4805,22 @@ stmf_send_status_done(scsi_task_t *task, stmf_status_t s, uint32_t iof)
 			mutex_exit(&w->worker_lock);
 			return;
 		}
-		free_it = 0;
-		if (iof & STMF_IOF_LPORT_DONE) {
-			new &= ~ITASK_KNOWN_TO_TGT_PORT;
-			free_it = 1;
+		if (old & ITASK_IN_WORKER_QUEUE) {
+			cmn_err(CE_PANIC, "status completion received"
+			    " when task is already in worker queue "
+			    " task = %p", (void *)task);
 		}
-		/*
-		 * If the task is known to LU then queue it. But if
-		 * it is already queued (multiple completions) then
-		 * just update the buffer information by grabbing the
-		 * worker lock. If the task is not known to LU,
-		 * completed/aborted, then see if we need to
-		 * free this task.
-		 */
-		if (old & ITASK_KNOWN_TO_LU) {
-			free_it = 0;
-			queue_it = 1;
-			if (old & ITASK_IN_WORKER_QUEUE) {
-				cmn_err(CE_PANIC, "status completion received"
-				    " when task is already in worker queue "
-				    " task = %p", (void *)task);
-			}
-			new |= ITASK_IN_WORKER_QUEUE;
-		} else {
-			queue_it = 0;
-		}
+		new |= ITASK_IN_WORKER_QUEUE;
 	} while (atomic_cas_32(&itask->itask_flags, old, new) != old);
 	task->task_completion_status = s;
 
-
-	if (queue_it) {
-		ASSERT(itask->itask_ncmds < ITASK_MAX_NCMDS);
-		itask->itask_cmd_stack[itask->itask_ncmds++] =
-		    ITASK_CMD_STATUS_DONE;
-		STMF_ENQUEUE_ITASK(w, itask);
-		if ((w->worker_flags & STMF_WORKER_ACTIVE) == 0)
-			cv_signal(&w->worker_cv);
-	}
+	ASSERT(itask->itask_ncmds < ITASK_MAX_NCMDS);
+	itask->itask_cmd_stack[itask->itask_ncmds++] =
+	    ITASK_CMD_STATUS_DONE;
+	STMF_ENQUEUE_ITASK(w, itask);
+	if ((w->worker_flags & STMF_WORKER_ACTIVE) == 0)
+		cv_signal(&w->worker_cv);
 	mutex_exit(&w->worker_lock);
-
-	if (free_it) {
-		if ((itask->itask_flags & (ITASK_KNOWN_TO_LU |
-		    ITASK_KNOWN_TO_TGT_PORT | ITASK_IN_WORKER_QUEUE |
-		    ITASK_BEING_ABORTED)) == 0) {
-			stmf_task_free(task);
-		} else {
-			cmn_err(CE_PANIC, "LU is done with the task but LPORT "
-			    " is not done, itask %p itask_flags %x",
-			    (void *)itask, itask->itask_flags);
-		}
-	}
 }
 
 void
@@ -5709,7 +5674,6 @@ void
 stmf_scsilib_send_status(scsi_task_t *task, uint8_t st, uint32_t saa)
 {
 	uint8_t sd[18];
-	stmf_lu_t *lu = task->task_lu;
 
 	task->task_scsi_status = st;
 	if (st == 2) {
@@ -5726,7 +5690,6 @@ stmf_scsilib_send_status(scsi_task_t *task, uint8_t st, uint32_t saa)
 		task->task_sense_length = 0;
 	}
 	(void) stmf_send_scsi_status(task, STMF_IOF_LU_DONE);
-	lu->lu_task_done(task);
 }
 
 uint32_t
@@ -6321,10 +6284,11 @@ out_itask_flag_loop:
 			lu->lu_dbuf_xfer_done(task, dbuf);
 			break;
 		case ITASK_CMD_STATUS_DONE:
-			lu->lu_send_status_done(task);
+			lu->lu_task_done(task, 10);
+			stmf_task_free(task);
 			break;
 		case ITASK_CMD_ABORT:
-			lu->lu_task_done(task);
+			lu->lu_task_done(task, 11);
 			if (abort_free) {
 				stmf_task_free(task);
 			} else {
@@ -6749,7 +6713,7 @@ stmf_dlun0_task_free(scsi_task_t *task)
 
 /* ARGSUSED */
 void
-stmf_dlun0_task_done(scsi_task_t *task)
+stmf_dlun0_task_done(scsi_task_t *task, uint8_t id)
 {
 }
 
