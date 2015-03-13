@@ -42,7 +42,11 @@ LIBS =		$(DYNLIB)
 # Needed for variadic macros
 C99MODE=	$(C99_ENABLE)
 
-LDLIBS +=	-lcrypto -lc
+LIBCRYPTO=	-lcrypto
+# The following is a comment unless building with sunw_openssl
+$(SUNW_OPENSSL) LIBCRYPTO=	-lsunw_crypto
+
+LDLIBS +=	$(LIBCRYPTO) -lc
 
 CFLAGS	+=	$(CCVERBOSE)
 
@@ -63,6 +67,9 @@ CPPFLAGS +=	\
 	-DSHA1_ASM	\
 	-DSHA256_ASM	\
 	-DSHA512_ASM
+
+# The following is a comment unless building with sunw_openssl
+$(SUNW_OPENSSL) CPPFLAGS	+=	-DOPENSSL_SUNW_PREFIX
 
 CERRWARN += -erroff=E_NON_CONST_INIT
 

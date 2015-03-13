@@ -37,11 +37,12 @@ KMFINC=		-I../../../include -I../../../ber_der/inc
 BERLIB=		-lkmf -lkmfberder
 BERLIB64=	$(BERLIB)
 
-OPENSSLLIBS=	$(BERLIB) -lcrypto -lcryptoutil -lc
-OPENSSLLIBS64=	$(BERLIB64) -lcrypto -lcryptoutil -lc
+LIBCRYPTO=	-lcrypto
+# The following is a comment unless building with sunw_openssl
+$(SUNW_OPENSSL) LIBCRYPTO=	-lsunw_crypto
 
-LINTSSLLIBS	= $(BERLIB) -lcrypto -lcryptoutil -lc
-LINTSSLLIBS64	= $(BERLIB64) -lcrypto -lcryptoutil -lc
+OPENSSLLIBS=	$(BERLIB) $(LIBCRYPTO) -lcryptoutil -lc
+OPENSSLLIBS64=	$(BERLIB64) $(LIBCRYPTO) -lcryptoutil -lc
 
 SRCDIR=		../common
 INCDIR=		../../include
@@ -50,14 +51,17 @@ CFLAGS		+=	$(CCVERBOSE)
 CPPFLAGS	+=	-D_REENTRANT $(KMFINC) \
 			-I$(INCDIR) -I$(ADJUNCT_PROTO)/usr/include/libxml2
 
+# The following is a comment unless building with sunw_openssl
+$(SUNW_OPENSSL) CPPFLAGS	+=	-DOPENSSL_SUNW_PREFIX
+
+LINTCHECKFLAGS	+=	-erroff=E_FUNC_RET_ALWAYS_IGNOR2 \
+			-erroff=E_SUPPRESSION_DIRECTIVE_UNUSED
+
 CERRWARN	+=	-_gcc=-Wno-unused-label
 CERRWARN	+=	-_gcc=-Wno-unused-value
 CERRWARN	+=	-_gcc=-Wno-uninitialized
 
 PICS=	$(OBJECTS:%=pics/%)
-
-lint:=	OPENSSLLIBS=	$(LINTSSLLIBS)
-lint:=	OPENSSLLIBS64=	$(LINTSSLLIBS64)
 
 LDLIBS32 	+=	$(OPENSSLLIBS)
 

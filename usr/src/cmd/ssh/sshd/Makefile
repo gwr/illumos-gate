@@ -75,7 +75,7 @@ LDLIBS += $(SSH_COMMON_LDLIBS) -lsocket \
 	-lpam \
 	-lbsm \
 	-lwrap \
-	-lcrypto \
+	$(LIBCRYPTO) \
 	-lgss \
 	-lcontract
 MAPFILES = $(MAPFILE.INT) $(MAPFILE.NGB)

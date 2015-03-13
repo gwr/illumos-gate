@@ -28,6 +28,8 @@ PROG=		p12split
 LDLIBS +=	-lwanboot -linetutil -lwanbootutil -lcrypto
 CPPFLAGS +=	-I$(CMNCRYPTDIR)
 
+LINTFLAGS	+=	-erroff=E_SUPPRESSION_DIRECTIVE_UNUSED
+
 all:		$(PROG)
 
 install:	all $(ROOTCMD)

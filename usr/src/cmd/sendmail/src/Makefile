@@ -44,9 +44,13 @@ SRCS=	$(OBJS:%.o=%.c)
 MAPFILES =	$(MAPFILE.INT) $(MAPFILE.NGB)
 LDFLAGS +=	$(MAPFILES:%=-M%)
 
+LIBSSL=	-lssl -lcrypto
+# The following is a comment unless building with sunw_openssl
+$(SUNW_OPENSSL) LIBSSL=	-lsunw_ssl -lsunw_crypto
+
 LDLIBS += 	../libsmutil/libsmutil.a ../libsm/libsm.a -lresolv -lsocket \
 		-lnsl ../db/libdb.a -lldap -lsldap -lwrap -lumem \
-		-lssl -lcrypto -lsasl
+		-lsasl $(LIBSSL)
 
 INCPATH=	-I. -I../include -I../db
 
@@ -56,6 +60,9 @@ SUNENVDEF=	-DSUN_EXTENSIONS -DVENDOR_DEFAULT=VENDOR_SUN \
 		-D_FFR_MAIL_MACRO
 
 CPPFLAGS = 	$(INCPATH) $(ENVDEF) $(SUNENVDEF) $(DBMDEF) $(CPPFLAGS.sm)
+
+# The following is a comment unless building with sunw_openssl
+$(SUNW_OPENSSL) CPPFLAGS	+=	-DOPENSSL_SUNW_PREFIX
 
 FILEMODE= 	2555
 

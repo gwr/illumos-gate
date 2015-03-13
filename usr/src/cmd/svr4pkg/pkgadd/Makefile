@@ -34,8 +34,15 @@ ROOTLINKS=   $(ROOTUSRSBIN)/pkgask
 
 include $(SRC)/cmd/svr4pkg/Makefile.svr4pkg
 
+# The following is a comment unless building with sunw_openssl
+$(SUNW_OPENSSL) CPPFLAGS	+=	-DOPENSSL_SUNW_PREFIX
+
+LIBCRYPTO=	-lcrypto
+# The following is a comment unless building with sunw_openssl
+$(SUNW_OPENSSL) LIBCRYPTO=	-lsunw_crypto
+
 LDLIBS	+=	-lpkg -linstzones -ladm
-LDLIBS	+=	-lcrypto -lwanboot
+LDLIBS	+=	-lwanboot $(LIBCRYPTO)
 
 .KEEP_STATE:
 

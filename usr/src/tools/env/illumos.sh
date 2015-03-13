@@ -236,6 +236,10 @@ export ENABLE_IPP_PRINTING=
 # don't want to bother providing the cups.h headers this needs.
 export ENABLE_SMB_PRINTING=
 
+# Uncomment this to build using private OpenSSL libraries
+# (with exported symbols hidden behind a "sunw_" prefix)
+# SUNW_OPENSSL=
+
 # If your distro uses certain versions of Perl, make sure either Makefile.master
 # contains your new defaults OR your .env file sets them.
 # These are how you would override for building on OmniOS r151012, for example.
