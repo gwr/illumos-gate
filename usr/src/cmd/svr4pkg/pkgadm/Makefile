@@ -35,7 +35,14 @@ OBJS=           addcert.o	\
 
 include $(SRC)/cmd/svr4pkg/Makefile.svr4pkg
 
-LDLIBS	+=	-lpkg -ladm -lcrypto -lgen
+# The following is a comment unless building with sunw_openssl
+$(SUNW_OPENSSL) CPPFLAGS	+=	-DOPENSSL_SUNW_PREFIX
+
+LIBCRYPTO=	-lcrypto
+# The following is a comment unless building with sunw_openssl
+$(SUNW_OPENSSL) LIBCRYPTO=	-lsunw_crypto
+
+LDLIBS	+=	-lpkg -ladm $(LIBCRYPTO) -lgen
 
 .KEEP_STATE:
 all:            $(PROG)

@@ -65,12 +65,20 @@ CPPFLAGS += 	-I$(SRC)/lib/krb5 \
 		-I$(SRC)/uts/common/gssapi/mechs/krb5/include \
 		-I$(SRC)
 
+# The following is a comment unless building with sunw_openssl
+$(SUNW_OPENSSL) CPPFLAGS	+=	-DOPENSSL_SUNW_PREFIX
+
 CERRWARN	+= -_gcc=-Wno-uninitialized
 CERRWARN	+= -_gcc=-Wno-unused-function
 
 CFLAGS +=	$(CCVERBOSE) -I..
 DYNFLAGS +=	$(KRUNPATH) $(KMECHLIB) -znodelete
-LDLIBS +=	-L $(ROOTLIBDIR) -lcrypto -lc
+
+LIBCRYPTO=	-lcrypto
+# The following is a comment unless building with sunw_openssl
+$(SUNW_OPENSSL) LIBCRYPTO=	-lsunw_crypto
+
+LDLIBS +=	-L $(ROOTLIBDIR) $(LIBCRYPTO) -lc
 
 ROOTLIBDIR= $(ROOT)/usr/lib/krb5/plugins/preauth
 

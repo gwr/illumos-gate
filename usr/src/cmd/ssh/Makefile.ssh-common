@@ -46,6 +46,11 @@ SSH_COMMON_LDLIBS = \
 	-L../libssh/$(MACH) -lssh \
 	-L../libopenbsd-compat/$(MACH) -lopenbsd-compat
 
+LIBCRYPTO=	-lcrypto
+# The following are comments unless building with sunw_openssl
+$(SUNW_OPENSSL) CPPFLAGS	+=	-DOPENSSL_SUNW_PREFIX
+$(SUNW_OPENSSL) LIBCRYPTO=	-lsunw_crypto
+
 $(PROG): $(MAPFILE.NGB)
 
 #

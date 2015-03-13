@@ -59,8 +59,13 @@ OBJECTS =	$(LOC_OBJS) $(COM_OBJS) $(DHCP_OBJS)
 include ../../Makefile.lib
 
 LIBS +=		$(LINTLIB)
+
+LIBSSL=	 -lssl -lcrypto
+# The following is a comment unless building with sunw_openssl
+$(SUNW_OPENSSL) LIBSSL=	-lsunw_ssl -lsunw_crypto
+
 LDLIBS +=	-lnvpair -lresolv -lnsl -lsocket -ldevinfo -ldhcputil \
-		-linetutil -lc -lcrypto -lssl
+		-linetutil -lc $(LIBSSL)
 CPPFLAGS =	-I$(SRC)/common/net/wanboot/crypt $(CPPFLAGS.master)
 CERRWARN +=	-_gcc=-Wno-switch
 CERRWARN +=	-_gcc=-Wno-parentheses
@@ -81,6 +86,9 @@ LINTFLAGS64 +=    -erroff=E_BAD_PTR_CAST_ALIGN
 
 CFLAGS +=	$(CCVERBOSE)
 CPPFLAGS +=	-I$(LOC_DIR) -I$(COM_DIR) -I$(DHCP_DIR)
+
+# The following is a comment unless building with sunw_openssl
+$(SUNW_OPENSSL) CPPFLAGS	+=	-DOPENSSL_SUNW_PREFIX
 
 .KEEP_STATE:
 
