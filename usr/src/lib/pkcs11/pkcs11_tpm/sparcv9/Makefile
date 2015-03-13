@@ -25,6 +25,7 @@
 include ../Makefile.com
 include $(SRC)/lib/Makefile.lib.64
 
-TSSLIB=$(TSSLIB64)
+# Suffix added to library paths
+LIB64=	/$(MACH64)
 
 install: all $(ROOTLIBS64) $(ROOTLINKS64) 

@@ -56,15 +56,21 @@ CLEANFILES +=   $(MSGFILES)
 
 # openssl forces us to ignore dubious pointer casts, thanks to its clever
 # use of macros for stack management.
-LINTFLAGS=      -umx -errtags \
-		-erroff=E_BAD_PTR_CAST_ALIGN,E_BAD_PTR_CAST
+LINTFLAGS=	-umx -errtags \
+		-erroff=E_BAD_PTR_CAST \
+		-erroff=E_BAD_PTR_CAST_ALIGN \
+		-erroff=E_SUPPRESSION_DIRECTIVE_UNUSED
+
 $(LINTLIB):=	SRCS = $(SRCDIR)/$(LINTSRC)
 
 
 LIBS = $(DYNLIB) $(LINTLIB)
 
+LIBSSL=	 -lssl -lcrypto
+# The following is a comment unless building with sunw_openssl
+$(SUNW_OPENSSL) LIBSSL=	-lsunw_ssl -lsunw_crypto
 
-LDLIBS +=	-lc -lssl -lwanboot -lcrypto -lscf -ladm
+LDLIBS +=	-lc -lwanboot $(LIBSSL) -lscf -ladm
 
 CFLAGS +=	$(CCVERBOSE)
 CERRWARN +=	-_gcc=-Wno-unused-label
@@ -74,6 +80,9 @@ CERRWARN +=	-_gcc=-Wno-clobbered
 CERRWARN +=	-_gcc=-Wno-switch
 CERRWARN +=	-_gcc=-Wno-unused-value
 CPPFLAGS +=	-I$(SRCDIR) -D_FILE_OFFSET_BITS=64
+
+# The following is a comment unless building with sunw_openssl
+$(SUNW_OPENSSL) CPPFLAGS	+=	-DOPENSSL_SUNW_PREFIX
 
 .KEEP_STATE:
 

@@ -103,6 +103,10 @@ __GNUC64=		$(__GNUC)
 ENABLE_IPP_PRINTING=	$(POUND_SIGN)
 ENABLE_SMB_PRINTING=	$(POUND_SIGN)
 
+# Build OpenSSL hidden with a "sunw_" prefix.
+# The env. sets to an empty string to enable.
+SUNW_OPENSSL=	  $(POUND_SIGN)
+
 # CLOSED is the root of the tree that contains source which isn't released
 # as open source
 CLOSED=		$(SRC)/../closed

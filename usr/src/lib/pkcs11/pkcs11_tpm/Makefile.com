@@ -64,16 +64,39 @@ POST_PROCESS_SO +=      ; $(ELFSIGN_CRYPTO)
 ROOTLIBDIR=$(ROOT)/usr/lib/security
 ROOTLIBDIR64=$(ROOT)/usr/lib/security/$(MACH64)
 
-LIBS=$(DYNLIB) $(DYNLIB64)
+LIBS=$(DYNLIB)
+
+#
+# libtspi is a closed binary from pkg:/library/security/trousers
+#
+# Note, the libtspi available to us was built against the old
+# libcrypto.so.0.9.8 (and there's nothing we can do about that).
+# This means the -lcrypto here has to be that same (old) one,
+# so make those two library versions explicit here.
+#
+# Yes, this is ugly.  The alternatives are: Find open-source
+# replacements for the TPM stuff, or just rip it out.
+#
+# Also, 64-bit Makefiles including this provide:
+#	LIB64=	/$(TSSLIB64)
 
 TSSROOT=$(ADJUNCT_PROTO)
-TSPILIBDIR=$(TSSROOT)/usr/lib
+TSPILIBDIR=$(TSSROOT)/usr/lib$(LIB64)
 TSPIINCDIR=$(TSSROOT)/usr/include
-TSSLIB=-L$(TSPILIBDIR)
-TSSLIB64=-L$(TSPILIBDIR)/$(MACH64)
+TSSLIB=$(TSPILIBDIR)/libtspi.so.1
 TSSINC=-I$(TSPIINCDIR)
 
-LDLIBS += $(TSSLIB) -L$(ADJUNCT_PROTO)/lib -lc -luuid -lmd -ltspi -lcrypto
+CRYPTO_LIBDIR=	$(TSSROOT)/lib$(LIB64)
+CRYPTO_INCDIR=	$(TSSROOT)/usr/include
+CRYPTOLIB=	$(CRYPTO_LIBDIR)/libcrypto.so.0.9.8
+
+# Don't pass the explicit library names to lint
+# Nolint libs for these, so just skip 'em.
+lint := TSSLIB=
+lint := CRYPTOLIB=
+
+LDLIBS += $(TSSLIB) $(CRYPTOLIB) -luuid -lmd -lc
+
 CPPFLAGS += -xCC -D_POSIX_PTHREAD_SEMANTICS $(TSSINC)
 CPPFLAGS64 += $(CPPFLAGS)
 C99MODE=        $(C99_ENABLE)
