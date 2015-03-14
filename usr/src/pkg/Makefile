@@ -216,9 +216,19 @@ CLOBBERFILES= $(PDIR) proto_list_$(PKGMACH) install-$(PKGMACH).out \
 # By default, PKGS will list all manifests.  To build and/or publish a
 # subset of packages, override this on the command line or in the
 # build environment and then reference (implicitly or explicitly) the all
-# or install targets.
+# or install targets.  Using ls -1 (that's a one) or print or echo to
+# get the list of manifests is a little hackish, but avoids having a
+# 900+ line file to explicitly list them all.
 #
-MANIFESTS :sh= (cd manifests; print *.mf)
+# We want some manifests to optionally built based on environment
+# options, so those are excluded and optionally added back in.
+#
+MANIFESTS :sh= (cd manifests; /usr/bin/ls -1 *.mf |\
+	/usr/bin/grep -v print-lp-ipp-ipp-listener.mf)
+
+# Conditionally add back lp-ipp
+$(ENABLE_IPP_PRINTING) MANIFESTS += print-lp-ipp-ipp-listener.mf
+
 PKGS= $(MANIFESTS:%.mf=%)
 DEP_PKGS= $(PKGS:%=$(PDIR)/%.dep)
 PROC_PKGS= $(PKGS:%=$(PDIR)/%.mog)
@@ -706,6 +716,12 @@ $(PKGS:%=%.pub) $(SYNTH_PKGS:%=%.pub): $(PDIR)/$$(@)
 # packages.
 #
 gendeps: $(PDIR)/gendeps
+
+#
+# This is a convenience target to show the list of packages
+#
+show_pkgs:
+	@echo PKGS=$(PKGS)
 
 #
 # These are convenience targets for cross-platform packaging.  If you
