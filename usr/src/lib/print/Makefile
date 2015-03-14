@@ -22,8 +22,6 @@
 # Copyright 2006 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
 #
-# ident	"%Z%%M%	%I%	%E% SMI"
-#
 
 SUBDIRS = \
 	libprint \
@@ -33,8 +31,9 @@ SUBDIRS = \
 	libipp-core \
 	libhttp-core \
 	libpapi-ipp \
-	libipp-listener \
-	mod_ipp
+	libipp-listener
+
+$(ENABLE_IPP_PRINTING) SUBDIRS += mod_ipp
 
 all :=                  TARGET = all
 clean :=                TARGET = clean
