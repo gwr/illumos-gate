@@ -105,7 +105,7 @@ function run_rsh_cmd
 	rhost=$1
 	rcmd=$2
 	
-	ssh  $rhost "$rcmd" > /tmp/stdout 2> /tmp/stderr
+	ssh -o "StrictHostKeyChecking no" $rhost "$rcmd" > /tmp/stdout 2> /tmp/stderr
 
 	echo $? > $CMD_RETVAL
 	cat /tmp/stdout > $CMD_STDOUT

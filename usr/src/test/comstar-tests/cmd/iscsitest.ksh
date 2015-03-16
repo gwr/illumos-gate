@@ -72,8 +72,11 @@ fi
 #
 # Two additional nif are needed
 #
-Nif=`ifconfig -a|egrep -v 'ether|inet|ipib|lo0' | cut -d: -f1|sort -u|wc -w`
-if [ $Nif -lt 3 ]; then
+IFC="ifconfig -a|egrep -v 'ether|inet|ipib|lo0' | cut -d: -f1|sort -u|wc -w"
+Lnif=`eval $IFC`
+Rnif=`ssh $Initiator "$IFC"`
+
+if [ $Lnif -lt 3 -o $Rnif -lt 3 ]; then
 	echo "Two additional network interfaces are required for testing"
 	exit 1
 fi
@@ -118,7 +121,7 @@ run_test -v TRANSPORT=$Transport \
 #
 # To run the entire test suite
 #
-#run_test comstar-tests iscsi
+run_test comstar-tests iscsi
 
 #
 # To run individual scenarios (itadm iscsi_auth iscsi_discovery...etc)
@@ -126,7 +129,6 @@ run_test -v TRANSPORT=$Transport \
 # run_test comstar-tests iscsi/auth:1
 # run_test comstar-tests iscsi/auth:1-2
 #
-run_test comstar-tests iscsi/auth:1-2
 
 #
 # Unconfigure

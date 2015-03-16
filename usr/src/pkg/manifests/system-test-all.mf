@@ -19,6 +19,7 @@ set name=pkg.summary value="All Available STC Tests"
 set name=info.classification \
     value=org.opensolaris.category.2008:Development/System
 set name=variant.arch value=$(ARCH)
+depend fmri=system/test/comstar type=require
 depend fmri=system/test/lofitest type=require
 depend fmri=system/test/sharefstest type=require
 depend fmri=system/test/zfstest type=require
