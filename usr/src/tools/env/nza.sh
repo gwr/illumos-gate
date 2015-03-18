@@ -235,13 +235,40 @@ export CW_NO_SHADOW=1
 #POST_NIGHTLY=
 
 # Uncomment this to disable support for SMB printing.
-# export ENABLE_SMB_PRINTING='#'
+export ENABLE_SMB_PRINTING='#'
 
 # Uncomment this to disable support for IPP printing.
-# export ENABLE_IPP_PRINTING='#'
+export ENABLE_IPP_PRINTING='#'
 
-# Uncomment the following variables and adjust the values to match the perl
-# version used for building.
-# export PERL_VERSION=5.16.1
-# export PERL_PKGVERS=-5161
-# export PERL_ARCH=i86pc-solaris-64int
+# Detect the values to match the perl version used for building.
+# This code can be avoided by setting the variables here. 
+if [ -z "$PERL_VERSION" ] ; then
+  for d in 5.16.1 5.16 5.14 5.12 5.10.0 5.10
+  do
+    if [ -d /usr/perl5/$d ] ; then
+      export PERL_VERSION=$d
+      break
+    fi
+  done
+fi
+
+if [ -z "$PERL_VERSION" ] ; then
+  echo "No perl?" 1>&2
+  exit 1
+fi
+
+if [ -z "$PERL_PKGVERS" ] ; then
+	PERL_PKGVERS=-$(echo $PERL_VERSION | tr -d '.')
+	export PERL_PKGVERS=$PERL_PKGVERS
+fi
+
+# Now PERL_ARCH.
+if [ -z "$PERL_ARCH" ] ; then
+	for a in i86pc-solaris-64int i86pc-solaris-thread-multi-64int i86pc-solaris-thread-multi-64
+	do
+  	  if [ -d /usr/perl5/$PERL_VERSION/lib/$a ] ; then
+    	  export PERL_ARCH=$a
+    	  break
+  	fi
+	done
+fi
