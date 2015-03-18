@@ -95,8 +95,7 @@ function iscsi_discovery_003
 
 	iscsiadm_verify ${ISCSI_IHOST} target
 
-	initiator_cleanup "${ISCSI_IHOST}"
-
 	tp_cleanup
+	initiator_cleanup "${ISCSI_IHOST}"
 }
 

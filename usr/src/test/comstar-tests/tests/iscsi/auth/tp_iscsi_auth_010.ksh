@@ -154,8 +154,8 @@ function iscsi_auth_010
 	# Verify device path and connections
 	iscsiadm_verify ${ISCSI_IHOST} lun # Second verify
 
-	initiator_cleanup "${ISCSI_IHOST}"
 	tp_cleanup
         clean_fs zdsk
+	initiator_cleanup "${ISCSI_IHOST}"
 
 }

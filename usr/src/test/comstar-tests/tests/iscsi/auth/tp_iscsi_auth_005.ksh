@@ -149,9 +149,9 @@ function iscsi_auth_005
 	# Verify the lun on initiator host
 	iscsiadm_verify ${ISCSI_IHOST} lun
 
-	initiator_cleanup "${ISCSI_IHOST}"
 	tp_cleanup
         clean_fs zdsk
+	initiator_cleanup "${ISCSI_IHOST}"
 
 }
 

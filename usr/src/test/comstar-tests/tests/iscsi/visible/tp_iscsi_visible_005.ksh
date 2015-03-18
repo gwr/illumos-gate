@@ -114,7 +114,7 @@ function tp_iscsi_visible_005
 	iscsiadm_modify POS "${ISCSI_IHOST}" discovery -t enable
 	iscsiadm_verify "${ISCSI_IHOST}" target 
 
-	initiator_cleanup "${ISCSI_IHOST}"
 	tp_cleanup
+	initiator_cleanup "${ISCSI_IHOST}"
 }
 
