@@ -235,9 +235,10 @@ uint64_t zfs_arc_ddt_limit = 0;
 zfs_ddt_limit_t zfs_ddt_limit_type = DDT_NO_LIMIT;
 /*
  * Alternative to the above way of controlling "dedup ceiling":
- * Stop DDT growth when in core DDTs size is above the bellow tunable
+ * Stop DDT growth when in core DDTs size is above the below tunable.
+ * This tunable overrides the zfs_ddt_limit_type tunable.
  */
-uint64_t zfs_ddt_bytecount_ceiling = 0;
+uint64_t zfs_ddt_byte_ceiling = 0;
 boolean_t zfs_arc_segregate_ddt = B_FALSE;
 int zfs_arc_grow_retry = 0;
 int zfs_arc_shrink_shift = 0;

@@ -2320,16 +2320,16 @@ zio_ddt_write(zio_t *zio)
 	 * If we're not using special tier, for each new DDE that's not on disk:
 	 * disable dedup if we have exhausted "allowed" DDT L2/ARC space
 	 */
-	if ((dde->dde_state & DDE_NEW) && zfs_ddt_limit_type != DDT_NO_LIMIT &&
-	    !spa->spa_usesc) {
-		if (zfs_ddt_bytecount_ceiling != 0 &&
-		    zfs_ddts_msize > zfs_ddt_bytecount_ceiling) {
-			/* need to limit DDT some in core bytecount */
-			dde->dde_state |= DDE_DONT_SYNC;
+	if ((dde->dde_state & DDE_NEW) && !spa->spa_usesc &&
+	    (zfs_ddt_limit_type != DDT_NO_LIMIT || zfs_ddt_byte_ceiling != 0)) {
+		if (zfs_ddt_byte_ceiling != 0) {
+			if (zfs_ddts_msize > zfs_ddt_byte_ceiling) {
+				/* need to limit DDT to an in core bytecount */
+				dde->dde_state |= DDE_DONT_SYNC;
+			}
 		} else if (zfs_ddt_limit_type == DDT_LIMIT_TO_ARC) {
 			/* need to limit DDT to fit into ARC */
-			if (zfs_ddts_msize >
-			    *arc_ddt_evict_threshold) {
+			if (zfs_ddts_msize > *arc_ddt_evict_threshold) {
 				dde->dde_state |= DDE_DONT_SYNC;
 			}
 		} else if (zfs_ddt_limit_type == DDT_LIMIT_TO_L2ARC) {
@@ -2375,8 +2375,7 @@ zio_ddt_write(zio_t *zio)
 			spa_event_notify(spa, NULL, ESC_ZFS_DEDUP_ON);
 		}
 	}
-
-	ASSERT((dde->dde_state & DDE_DONT_SYNC) != DDE_DONT_SYNC);
+	ASSERT(!(dde->dde_state & DDE_DONT_SYNC));
 
 	if (zp->zp_dedup_verify && zio_ddt_collision(zio, ddt, dde)) {
 		/*

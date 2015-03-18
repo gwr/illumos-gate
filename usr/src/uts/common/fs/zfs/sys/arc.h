@@ -140,7 +140,7 @@ typedef enum arc_space_type {
 } arc_space_type_t;
 
 /* see spa_misc.c and zio_ddt_write() */
-extern uint64_t zfs_ddt_bytecount_ceiling;
+extern uint64_t zfs_ddt_byte_ceiling;
 typedef enum zfs_ddt_limit {
 	DDT_NO_LIMIT = 0,
 	DDT_LIMIT_TO_ARC = 1,
