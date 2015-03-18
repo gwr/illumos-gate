@@ -12,6 +12,7 @@
 
 #
 # Copyright (c) 2013 by Delphix. All rights reserved.
+# Copyright 2015, Nexenta Systems Inc. All rights reserved.
 #
 
 .PARALLEL: $(SUBDIRS)
@@ -34,7 +35,6 @@ SUBDIRS = acl \
 	grow_replicas \
 	history \
 	inheritance \
-	interop \
 	inuse \
 	large_files \
 	largest_pool \
