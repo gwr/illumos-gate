@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -85,6 +85,7 @@ smb_nt_transact_notify_change(smb_request_t *sr, struct smb_xa *xa)
 	uint32_t		CompletionFilter;
 	unsigned char		WatchTree;
 	uint32_t		status;
+	hrtime_t		t1, t2;
 
 	if (smb_mbc_decodef(&xa->req_setup_mb, "lwb",
 	    &CompletionFilter, &sr->smb_fid, &WatchTree) != 0) {
@@ -97,7 +98,20 @@ smb_nt_transact_notify_change(smb_request_t *sr, struct smb_xa *xa)
 
 	smbsr_lookup_file(sr);
 
+	t1 = gethrtime();
 	status = smb_notify_common(sr, &xa->rep_data_mb, CompletionFilter);
+	t2 = gethrtime();
+
+	/*
+	 * We don't want to include the (indefinite) wait time of the
+	 * smb_notify_common() call in the SMB1 transact latency.
+	 * The easiest way to do that, without adding special case
+	 * logic to the common SMB1 dispatch handler is to adjust the
+	 * start time of this request to effectively subtract out the
+	 * time we were blocked in smb_notify_common().
+	 */
+	sr->sr_time_start += (t2 - t1);
+
 	if (status != 0)
 		smbsr_error(sr, status, 0, 0);
 

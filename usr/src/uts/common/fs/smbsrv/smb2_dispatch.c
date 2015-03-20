@@ -835,12 +835,27 @@ done:
 	ASSERT((sr->reply.chain_offset & 7) == 0);
 
 	/*
-	 * Record some statistics: latency, rx bytes, tx bytes
+	 * Record some statistics: latency, rx bytes, tx bytes.
+	 * Note that async commands get special treatment because
+	 * they come through here twice.  The first call does the
+	 * sync. part, and for that we want to record the latency,
+	 * as well as bytes received and transmitted.  The second
+	 * call is the async part, for which we record only the
+	 * bytes transmitted (because it does actually send again).
+	 * It doesn't make sense to measure latency on the async.
+	 * part of any call, because the waits are indefinite.
+	 * Also don't add bytes received on the async call, as
+	 * there is only one receive, and that was accounted for
+	 * during the sync. part of dispatch handling.
 	 */
-	smb_latency_add_sample(&sds->sdt_lat,
-	    gethrtime() - sr->sr_time_start);
-	atomic_add_64(&sds->sdt_rxb,
-	    (int64_t)(sr->command.chain_offset - sr->smb2_cmd_hdr));
+	if (async_func == NULL) {
+		/* Sync. part of dispatch */
+		smb_latency_add_sample(&sds->sdt_lat,
+		    gethrtime() - sr->sr_time_start);
+		atomic_add_64(&sds->sdt_rxb,
+		    (int64_t)(sr->command.chain_offset - sr->smb2_cmd_hdr));
+	}
+	/* Both sync. and async. */
 	atomic_add_64(&sds->sdt_txb,
 	    (int64_t)(sr->reply.chain_offset - sr->smb2_reply_hdr));
 
