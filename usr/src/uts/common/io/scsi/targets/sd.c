@@ -25,8 +25,8 @@
  *
  * Copyright (c) 2011 Bayard G. Bell.  All rights reserved.
  * Copyright (c) 2012 by Delphix. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  * Copyright 2012 DEY Storage Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 /*
  * Copyright 2011 cyril.galibern@opensvc.com
@@ -973,6 +973,7 @@ static int sd_pm_idletime = 1;
 #define	sd_event_callback		ssd_event_callback
 #define	sd_cache_control		ssd_cache_control
 #define	sd_get_write_cache_enabled	ssd_get_write_cache_enabled
+#define	sd_get_write_cache_changeable	ssd_get_write_cache_changeable
 #define	sd_get_nv_sup			ssd_get_nv_sup
 #define	sd_make_device			ssd_make_device
 #define	sdopen				ssdopen
@@ -1342,6 +1343,7 @@ static void  sd_event_callback(dev_info_t *, ddi_eventcookie_t, void *, void *);
 
 static int   sd_cache_control(sd_ssc_t *ssc, int rcd_flag, int wce_flag);
 static int   sd_get_write_cache_enabled(sd_ssc_t *ssc, int *is_enabled);
+static int   sd_get_write_cache_changeable(sd_ssc_t *ssc);
 static void  sd_get_nv_sup(sd_ssc_t *ssc);
 static dev_t sd_make_device(dev_info_t *devi);
 static void  sd_check_solid_state(sd_ssc_t *ssc);
@@ -8607,6 +8609,9 @@ sd_unit_attach(void *arg)
 	un->un_f_write_cache_enabled = (wc_enabled != 0);
 	mutex_exit(SD_MUTEX(un));
 
+	/* Check to see if the device allows to change the WCE bit */
+	sd_get_write_cache_changeable(ssc);
+
 	if ((un->un_f_rmw_type != SD_RMW_TYPE_RETURN_ERROR &&
 	    un->un_tgt_blocksize != DEV_BSIZE) ||
 	    un->un_f_enable_rmw) {
@@ -9967,6 +9972,91 @@ mode_sense_failed:
 		sd_ssc_assessment(ssc, SD_FMT_IGNORE);
 	}
 	kmem_free(header, buflen);
+	return (rval);
+}
+
+static int
+sd_get_write_cache_changeable(sd_ssc_t *ssc)
+{
+	struct mode_caching 	*mode_caching_page;
+	struct mode_header_grp2	*mhp;
+	uchar_t 		*header;
+	size_t 			buflen;
+	int hdrlen;
+	int bdlen;
+	struct sd_lun 		*un;
+	int rval;
+
+	ASSERT(ssc != NULL && ssc->ssc_un != NULL);
+	un = ssc->ssc_un;
+
+	if (sd_send_scsi_TEST_UNIT_READY(ssc, 0) != 0)
+		sd_ssc_assessment(ssc, SD_FMT_IGNORE);
+
+	if (un->un_f_cfg_is_atapi)
+		hdrlen = MODE_HEADER_LENGTH_GRP2;
+	else
+		hdrlen = MODE_HEADER_LENGTH;
+
+	buflen = hdrlen + MODE_BLK_DESC_LENGTH +
+	    sizeof (struct mode_cache_scsi3);
+
+	header = kmem_zalloc(buflen, KM_SLEEP);
+
+	/* see SPC-4 section 6.13 */
+
+	if (un->un_f_cfg_is_atapi)
+		rval = sd_send_scsi_MODE_SENSE(ssc, CDB_GROUP1, header, buflen,
+		    (MODEPAGE_CACHING | 0x40), SD_PATH_DIRECT);
+	else
+		rval = sd_send_scsi_MODE_SENSE(ssc, CDB_GROUP0, header, buflen,
+		    (MODEPAGE_CACHING | 0x40), SD_PATH_DIRECT);
+
+	if (rval) {
+		SD_ERROR(SD_LOG_ERROR, un, "Failed to retrieve mode page");
+		goto mode_sense_failed;
+	}
+
+	if (un->un_f_cfg_is_atapi) {
+		mhp = (struct mode_header_grp2 *)header;
+		bdlen = (mhp->bdesc_length_hi << 8) | mhp->bdesc_length_lo;
+	} else {
+		bdlen = ((struct mode_header *)header)->bdesc_length;
+	}
+
+	if (bdlen > MODE_BLK_DESC_LENGTH) {
+		sd_ssc_set_info(ssc, SSC_FLAGS_INVALID_DATA, 0,
+		    "sd_get_write_cache_changeble : Mode Sense returned invalid"
+		    " block descriptor length\n");
+		rval = EIO;
+		goto mode_sense_failed;
+	}
+
+	mode_caching_page = (struct mode_caching *)(header + hdrlen + bdlen);
+	if (mode_caching_page->mode_page.code != MODEPAGE_CACHING)  {
+		sd_ssc_set_info(ssc, SSC_FLAGS_INVALID_DATA, SD_LOG_COMMON,
+		    "sd_get_write_cache_changeble: Mode Sense caching page code"
+		    " mismatch %d\n", mode_caching_page->mode_page.code);
+		rval = EIO;
+		goto mode_sense_failed;
+	}
+
+	/* For a description of the actual mode page see SBC3 section 6.5.5. */
+	mutex_enter(SD_MUTEX(un));
+	un->un_f_cache_mode_changeable = mode_caching_page->wce;
+	mutex_exit(SD_MUTEX(un));
+
+mode_sense_failed:
+
+	kmem_free(header, buflen);
+
+	if (rval != 0) {
+		if (rval == EIO)
+			sd_ssc_assessment(ssc, SD_FMT_STATUS_CHECK);
+		else
+			sd_ssc_assessment(ssc, SD_FMT_IGNORE);
+	}
+
 	return (rval);
 }
 
@@ -23629,6 +23719,11 @@ skip_ready_valid:
 
 		int wce, sync_supported;
 		int cur_wce = 0;
+
+		if (!un->un_f_cache_mode_changeable) {
+			err = EINVAL;
+			break;
+		}
 
 		if (ddi_copyin((void *)arg, &wce, sizeof (wce), flag)) {
 			err = EFAULT;
