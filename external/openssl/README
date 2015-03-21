@@ -62,7 +62,7 @@ Also re-check the man pages and packages.  See:
 OpenSSL Version
 ---
 
-This currently uses OpenSSL 1.0.1h with some updates
+This currently uses OpenSSL 1.0.1m with some updates
 from OpenSSL 1.0.2.  Mmost of this is directly from:
   git@github.com:OpenIndiana/oi-userland.git
 which in turn came from:

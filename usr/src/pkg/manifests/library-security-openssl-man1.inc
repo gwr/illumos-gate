@@ -17,6 +17,7 @@
 
 file path=usr/share/man/man1openssl/CA.pl.1openssl
 file path=usr/share/man/man1openssl/asn1parse.1openssl
+file path=usr/share/man/man1openssl/c_rehash.1openssl
 file path=usr/share/man/man1openssl/ca.1openssl
 file path=usr/share/man/man1openssl/ciphers.1openssl
 file path=usr/share/man/man1openssl/cms.1openssl
@@ -60,6 +61,8 @@ file path=usr/share/man/man1openssl/verify.1openssl
 file path=usr/share/man/man1openssl/version.1openssl
 file path=usr/share/man/man1openssl/x509.1openssl
 
+link path=usr/share/man/man1openssl/dss1.1openssl \
+    target=dgst.1openssl
 link path=usr/share/man/man1openssl/md2.1openssl \
     target=dgst.1openssl
 link path=usr/share/man/man1openssl/md4.1openssl \
@@ -73,4 +76,12 @@ link path=usr/share/man/man1openssl/ripemd160.1openssl \
 link path=usr/share/man/man1openssl/sha.1openssl \
     target=dgst.1openssl
 link path=usr/share/man/man1openssl/sha1.1openssl \
+    target=dgst.1openssl
+link path=usr/share/man/man1openssl/sha224.1openssl \
+    target=dgst.1openssl
+link path=usr/share/man/man1openssl/sha256.1openssl \
+    target=dgst.1openssl
+link path=usr/share/man/man1openssl/sha384.1openssl \
+    target=dgst.1openssl
+link path=usr/share/man/man1openssl/sha512.1openssl \
     target=dgst.1openssl

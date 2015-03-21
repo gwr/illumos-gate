@@ -31,7 +31,7 @@ sect="$2"
 
 [ -n "$1" -o -n "$2" ] || { echo "usage: $0 dir section"; exit 1; }
 
-OPENSSLDIR=${CODEMGR_WS}/external/openssl/openssl-1.0.1h
+OPENSSLDIR=${CODEMGR_WS}/external/openssl/openssl-1.0.1m
 extract=$OPENSSLDIR/util/extract-names.pl
 
 # Filter out exceptions done by hand.

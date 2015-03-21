@@ -25,6 +25,7 @@ MANSECT= 	1openssl
 MANFILES= \
 	CA.pl.1openssl \
 	asn1parse.1openssl \
+	c_rehash.1openssl \
 	ca.1openssl \
 	ciphers.1openssl \
 	cms.1openssl \
@@ -69,13 +70,18 @@ MANFILES= \
 	x509.1openssl
 
 MANLINKS_dgst= \
-	md5.1openssl \
-	md4.1openssl \
-	md2.1openssl \
-	sha1.1openssl \
 	sha.1openssl \
+	sha1.1openssl \
 	mdc2.1openssl \
-	ripemd160.1openssl
+	ripemd160.1openssl \
+	sha224.1openssl \
+	sha256.1openssl \
+	sha384.1openssl \
+	sha512.1openssl \
+	md2.1openssl \
+	md4.1openssl \
+	md5.1openssl \
+	dss1.1openssl
 
 $(MANLINKS_dgst) := LINKSRC = dgst.1openssl
 

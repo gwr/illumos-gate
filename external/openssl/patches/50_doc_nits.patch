@@ -1,0 +1,18 @@
+
+Fix complaints from pod2man.pl
+(bad option in paragraph 103 of EVP_EncryptInit.pod:...)
+by reinserting S<...> style as found in 1.0.1h
+
+--- openssl-1.0.1m/doc/crypto/EVP_EncryptInit.pod.~1~	Thu Mar 19 09:37:10 2015
++++ openssl-1.0.1m/doc/crypto/EVP_EncryptInit.pod	Mon Mar 30 19:25:16 2015
+@@ -434,8 +434,8 @@
+ The ciphertext from the above example can be decrypted using the B<openssl>
+ utility with the command line (shown on two lines for clarity):
+  
+- openssl idea -d <filename
+-          -K 000102030405060708090A0B0C0D0E0F -iv 0102030405060708
++ S<openssl idea -d -in filename
++          -K 000102030405060708090A0B0C0D0E0F -iv 0102030405060708>
+ 
+ General encryption and decryption function example using FILE I/O and AES128
+ with a 128-bit key:
