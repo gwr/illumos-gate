@@ -1,8 +1,8 @@
 
 These are the changes made to the openssl.h that Configure creates.
 
---- opensslconf.h-orig-h	Sun Feb 22 01:13:56 2015
-+++ opensslconf.h	Sat Mar 28 14:54:54 2015
+--- opensslconf.h-orig-m	Sat Mar 28 00:36:31 2015
++++ opensslconf.h	Sat Mar 28 14:42:46 2015
 @@ -1,6 +1,11 @@
  /* opensslconf.h */
  /* WARNING: Generated automatically from opensslconf.h.in by Configure. */
@@ -12,10 +12,10 @@ These are the changes made to the openssl.h that Configure creates.
 +#include <openssl/sunw_prefix.h>
 +#endif
 +
- /* OpenSSL was configured with the following options: */
- #ifndef OPENSSL_DOING_MAKEDEPEND
- 
-@@ -205,7 +210,11 @@
+ #ifdef  __cplusplus
+ extern "C" {
+ #endif
+@@ -214,7 +219,11 @@
  
  #if !(defined(VMS) || defined(__VMS)) /* VMS uses logical names instead */
  #if defined(HEADER_CRYPTLIB_H) && !defined(OPENSSLDIR)
@@ -27,7 +27,7 @@ These are the changes made to the openssl.h that Configure creates.
  #define OPENSSLDIR "/etc/openssl"
  #endif
  #endif
-@@ -252,21 +261,39 @@
+@@ -261,21 +270,39 @@
  /* If this is set to 'unsigned int' on a DEC Alpha, this gives about a
   * %20 speed up (longs are 8 bytes, int's are 4). */
  #ifndef DES_LONG
