@@ -62,7 +62,7 @@ Also re-check the man pages and packages.  See:
 OpenSSL Version
 ---
 
-This currently uses OpenSSL 1.0.1h with some updates
+This currently uses OpenSSL 1.0.1m with some updates
 from OpenSSL 1.0.2.  Mmost of this is directly from:
   git@github.com:OpenIndiana/oi-userland.git
 which in turn came from:
@@ -90,3 +90,5 @@ All directly from the userland gate, except:
 09-x86gas-pl.patch	Add .hidden to fix gcc build
 10-sparccpuid.patch	Add fixes for .PIC relocations
 30_wanboot.patch	Skip! (not building wanboot)
+50_doc_nits.patch	Fix pod2man.pl warnings
+70_testca.patch		Fix unit test CA path

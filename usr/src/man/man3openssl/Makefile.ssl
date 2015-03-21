@@ -44,10 +44,12 @@ MANFILES_all_ssl= \
 	SSL_CTX_set_options.3openssl \
 	SSL_CTX_set_psk_client_callback.3openssl \
 	SSL_CTX_set_quiet_shutdown.3openssl \
+	SSL_CTX_set_read_ahead.3openssl \
 	SSL_CTX_set_session_cache_mode.3openssl \
 	SSL_CTX_set_session_id_context.3openssl \
 	SSL_CTX_set_ssl_version.3openssl \
 	SSL_CTX_set_timeout.3openssl \
+	SSL_CTX_set_tlsext_ticket_key_cb.3openssl \
 	SSL_CTX_set_tmp_dh_callback.3openssl \
 	SSL_CTX_set_tmp_rsa_callback.3openssl \
 	SSL_CTX_set_verify.3openssl \
@@ -251,6 +253,15 @@ MANLINKS_SSL_CTX_set_quiet_shutdown= \
 $(MANLINKS_SSL_CTX_set_quiet_shutdown) := \
 	LINKSRC = SSL_CTX_set_quiet_shutdown.3openssl
 
+MANLINKS_SSL_CTX_set_read_ahead= \
+	SSL_CTX_set_default_read_ahead.3openssl \
+	SSL_CTX_get_read_ahead.3openssl \
+	SSL_CTX_get_default_read_ahead.3openssl \
+	SSL_set_read_ahead.3openssl \
+	SSL_get_read_ahead.3openssl
+$(MANLINKS_SSL_CTX_set_read_ahead) := \
+	LINKSRC = SSL_CTX_set_read_ahead.3openssl
+
 MANLINKS_SSL_CTX_set_session_cache_mode= \
 	SSL_CTX_get_session_cache_mode.3openssl
 $(MANLINKS_SSL_CTX_set_session_cache_mode) := \
@@ -442,6 +453,7 @@ MANLINKS_all_ssl = \
 	$(MANLINKS_SSL_CTX_set_options) \
 	$(MANLINKS_SSL_CTX_set_psk_client_callback) \
 	$(MANLINKS_SSL_CTX_set_quiet_shutdown) \
+	$(MANLINKS_SSL_CTX_set_read_ahead) \
 	$(MANLINKS_SSL_CTX_set_session_cache_mode) \
 	$(MANLINKS_SSL_CTX_set_session_id_context) \
 	$(MANLINKS_SSL_CTX_set_ssl_version) \

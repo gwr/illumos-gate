@@ -62,6 +62,7 @@ MANFILES_all_crypto= \
 	BN_zero.3openssl \
 	CMS_add0_cert.3openssl \
 	CMS_add1_recipient_cert.3openssl \
+	CMS_add1_signer.3openssl \
 	CMS_compress.3openssl \
 	CMS_decrypt.3openssl \
 	CMS_encrypt.3openssl \
@@ -71,7 +72,6 @@ MANFILES_all_crypto= \
 	CMS_get0_type.3openssl \
 	CMS_get1_ReceiptRequest.3openssl \
 	CMS_sign.3openssl \
-	CMS_sign_add1_signer.3openssl \
 	CMS_sign_receipt.3openssl \
 	CMS_uncompress.3openssl \
 	CMS_verify.3openssl \
@@ -186,8 +186,10 @@ MANFILES_all_crypto= \
 	buffer.3openssl \
 	crypto.3openssl \
 	d2i_ASN1_OBJECT.3openssl \
+	d2i_CMS_ContentInfo.3openssl \
 	d2i_DHparams.3openssl \
 	d2i_DSAPublicKey.3openssl \
+	d2i_ECPrivateKey.3openssl \
 	d2i_PKCS8PrivateKey.3openssl \
 	d2i_RSAPublicKey.3openssl \
 	d2i_X509.3openssl \
@@ -573,6 +575,11 @@ MANLINKS_CMS_add1_recipient_cert= \
 $(MANLINKS_CMS_add1_recipient_cert) := \
 	LINKSRC = CMS_add1_recipient_cert.3openssl
 
+MANLINKS_CMS_add1_signer= \
+	CMS_SignerInfo_sign.3openssl
+$(MANLINKS_CMS_add1_signer) := \
+	LINKSRC = CMS_add1_signer.3openssl
+
 MANLINKS_CMS_get0_RecipientInfos= \
 	CMS_RecipientInfo_type.3openssl \
 	CMS_RecipientInfo_ktri_get0_signer_id.3openssl \
@@ -594,7 +601,8 @@ $(MANLINKS_CMS_get0_SignerInfos) := \
 
 MANLINKS_CMS_get0_type= \
 	CMS_set1_eContentType.3openssl \
-	CMS_get0_eContentType.3openssl
+	CMS_get0_eContentType.3openssl \
+	CMS_get0_content.3openssl
 $(MANLINKS_CMS_get0_type) := \
 	LINKSRC = CMS_get0_type.3openssl
 
@@ -604,11 +612,6 @@ MANLINKS_CMS_get1_ReceiptRequest= \
 	CMS_ReceiptRequest_get0_values.3openssl
 $(MANLINKS_CMS_get1_ReceiptRequest) := \
 	LINKSRC = CMS_get1_ReceiptRequest.3openssl
-
-MANLINKS_CMS_sign_add1_signer= \
-	CMS_SignerInfo_sign.3openssl
-$(MANLINKS_CMS_sign_add1_signer) := \
-	LINKSRC = CMS_sign_add1_signer.3openssl
 
 MANLINKS_CONF_modules_free= \
 	CONF_modules_finish.3openssl \
@@ -1230,6 +1233,11 @@ MANLINKS_d2i_ASN1_OBJECT= \
 $(MANLINKS_d2i_ASN1_OBJECT) := \
 	LINKSRC = d2i_ASN1_OBJECT.3openssl
 
+MANLINKS_d2i_CMS_ContentInfo= \
+	i2d_CMS_ContentInfo.3openssl
+$(MANLINKS_d2i_CMS_ContentInfo) := \
+	LINKSRC = d2i_CMS_ContentInfo.3openssl
+
 MANLINKS_d2i_DHparams= \
 	i2d_DHparams.3openssl
 $(MANLINKS_d2i_DHparams) := \
@@ -1245,6 +1253,12 @@ MANLINKS_d2i_DSAPublicKey= \
 	i2d_DSA_SIG.3openssl
 $(MANLINKS_d2i_DSAPublicKey) := \
 	LINKSRC = d2i_DSAPublicKey.3openssl
+
+MANLINKS_d2i_ECPrivateKey= \
+	i2d_ECPrivateKey.3openssl \
+	d2i_ECPrivate_key.3openssl
+$(MANLINKS_d2i_ECPrivateKey) := \
+	LINKSRC = d2i_ECPrivateKey.3openssl
 
 MANLINKS_d2i_PKCS8PrivateKey= \
 	d2i_PKCS8PrivateKey_bio.3openssl \
@@ -1591,11 +1605,11 @@ MANLINKS_all_crypto = \
 	$(MANLINKS_BN_zero) \
 	$(MANLINKS_CMS_add0_cert) \
 	$(MANLINKS_CMS_add1_recipient_cert) \
+	$(MANLINKS_CMS_add1_signer) \
 	$(MANLINKS_CMS_get0_RecipientInfos) \
 	$(MANLINKS_CMS_get0_SignerInfos) \
 	$(MANLINKS_CMS_get0_type) \
 	$(MANLINKS_CMS_get1_ReceiptRequest) \
-	$(MANLINKS_CMS_sign_add1_signer) \
 	$(MANLINKS_CONF_modules_free) \
 	$(MANLINKS_CONF_modules_load_file) \
 	$(MANLINKS_CRYPTO_set_ex_data) \
@@ -1672,8 +1686,10 @@ MANLINKS_all_crypto = \
 	$(MANLINKS_bn_internal) \
 	$(MANLINKS_buffer) \
 	$(MANLINKS_d2i_ASN1_OBJECT) \
+	$(MANLINKS_d2i_CMS_ContentInfo) \
 	$(MANLINKS_d2i_DHparams) \
 	$(MANLINKS_d2i_DSAPublicKey) \
+	$(MANLINKS_d2i_ECPrivateKey) \
 	$(MANLINKS_d2i_PKCS8PrivateKey) \
 	$(MANLINKS_d2i_RSAPublicKey) \
 	$(MANLINKS_d2i_X509) \

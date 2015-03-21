@@ -18,13 +18,13 @@ COMPONENT_NAME =	openssl
 # When updating to a new version of OpenSSL, you must update both
 # COMPONENT_VERSION here, and OPENSSL_VERSION, OPENSSL_PKGVERS
 # found in $SRC/Makefile.master (Yes, should improve on that.)
-COMPONENT_VERSION =	1.0.1h
+COMPONENT_VERSION =	1.0.1m
 
 COMPONENT_PROJECT_URL=	http://www.openssl.org/
 COMPONENT_SRC =		$(COMPONENT_NAME)-$(COMPONENT_VERSION)
 COMPONENT_ARCHIVE =	$(COMPONENT_SRC).tar.gz
 COMPONENT_ARCHIVE_HASH=	\
-    sha1:b2239599c8bf8f7fc48590a55205c26abe560bf8
+    sha1:4ccaf6e505529652f9fdafa01d1d8300bd9f3179
 
 COMPONENT_ARCHIVE_URL =	$(COMPONENT_PROJECT_URL)source/$(COMPONENT_ARCHIVE)
 
