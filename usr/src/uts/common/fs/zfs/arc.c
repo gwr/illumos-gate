@@ -232,14 +232,14 @@ uint64_t zfs_arc_ddt_limit = 0;
  *  DDT_LIMIT_TO_L2ARC	- stop DDT growth when DDT size is bigger than the
  *			  L2ARC DDT dev(s) for that pool
  */
-zfs_ddt_limit_t zfs_ddt_limit_type = DDT_NO_LIMIT;
+zfs_ddt_limit_t zfs_ddt_limit_type = DDT_LIMIT_TO_L2ARC;
 /*
  * Alternative to the above way of controlling "dedup ceiling":
  * Stop DDT growth when in core DDTs size is above the below tunable.
  * This tunable overrides the zfs_ddt_limit_type tunable.
  */
 uint64_t zfs_ddt_byte_ceiling = 0;
-boolean_t zfs_arc_segregate_ddt = B_FALSE;
+boolean_t zfs_arc_segregate_ddt = B_TRUE;
 int zfs_arc_grow_retry = 0;
 int zfs_arc_shrink_shift = 0;
 int zfs_arc_p_min_shift = 0;
