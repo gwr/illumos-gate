@@ -171,7 +171,6 @@ idm_conn_sm_fini(idm_conn_t *ic)
 	 * destroy it since there is no way to locate the object now.
 	 */
 	mutex_enter(&ic->ic_state_mutex);
-	IDM_SM_TIMER_CHECK(ic);
 	IDM_SM_TIMER_CLEAR(ic);
 	mutex_destroy(&ic->ic_state_mutex);
 }
