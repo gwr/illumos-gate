@@ -8610,7 +8610,7 @@ sd_unit_attach(void *arg)
 	mutex_exit(SD_MUTEX(un));
 
 	/* Check to see if the device allows to change the WCE bit */
-	sd_get_write_cache_changeable(ssc);
+	(void) sd_get_write_cache_changeable(ssc);
 
 	if ((un->un_f_rmw_type != SD_RMW_TYPE_RETURN_ERROR &&
 	    un->un_tgt_blocksize != DEV_BSIZE) ||
