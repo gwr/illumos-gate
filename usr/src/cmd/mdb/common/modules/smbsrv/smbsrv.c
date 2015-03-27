@@ -386,163 +386,12 @@ static const char *smb2_cmd_names[SMB2__NCMDS] = {
 	"smb2_invalid_cmd"
 };
 
-static int smb_dcmd_list(uintptr_t, uint_t, int, const mdb_arg_t *);
-static void smb_dcmd_list_help(void);
-static int smb_dcmd_server(uintptr_t, uint_t, int, const mdb_arg_t *);
-static void smb_dcmd_session_help(void);
-static int smb_dcmd_session(uintptr_t, uint_t, int, const mdb_arg_t *);
-static int smb_dcmd_request(uintptr_t, uint_t, int, const mdb_arg_t *);
-static void smb_dcmd_user_help(void);
-static int smb_dcmd_user(uintptr_t, uint_t, int, const mdb_arg_t *);
-static void smb_dcmd_tree_help(void);
-static int smb_dcmd_tree(uintptr_t, uint_t, int, const mdb_arg_t *);
-static int smb_dcmd_odir(uintptr_t, uint_t, int, const mdb_arg_t *);
-static int smb_dcmd_ofile(uintptr_t, uint_t, int, const mdb_arg_t *);
-static int smb_dcmd_kshare(uintptr_t, uint_t, int, const mdb_arg_t *);
-static int smb_kshare_walk_init(mdb_walk_state_t *);
-static int smb_kshare_walk_step(mdb_walk_state_t *);
-static int smb_dcmd_vfs(uintptr_t, uint_t, int, const mdb_arg_t *);
-static int smb_vfs_walk_init(mdb_walk_state_t *);
-static int smb_vfs_walk_step(mdb_walk_state_t *);
-static void smb_node_help(void);
-static int smb_dcmd_node(uintptr_t, uint_t, int, const mdb_arg_t *);
-static int smb_node_walk_init(mdb_walk_state_t *);
-static int smb_node_walk_step(mdb_walk_state_t *);
-static int smb_lock(uintptr_t, uint_t, int, const mdb_arg_t *);
-static int smb_oplock(uintptr_t, uint_t, int, const mdb_arg_t *);
-static int smb_oplock_grant(uintptr_t, uint_t, int, const mdb_arg_t *);
-static int smb_ace(uintptr_t, uint_t, int, const mdb_arg_t *);
-static int smb_ace_walk_init(mdb_walk_state_t *);
-static int smb_ace_walk_step(mdb_walk_state_t *);
-static int smb_acl(uintptr_t, uint_t, int, const mdb_arg_t *);
-static int smb_sd(uintptr_t, uint_t, int, const mdb_arg_t *);
-static int smb_sid(uintptr_t, uint_t, int, const mdb_arg_t *);
 static int smb_sid_print(uintptr_t);
-static int smb_fssd(uintptr_t, uint_t, int, const mdb_arg_t *);
 static int smb_dcmd_getopt(uint_t *, int, const mdb_arg_t *);
 static int smb_dcmd_setopt(uint_t, int, mdb_arg_t *);
 static int smb_obj_expand(uintptr_t, uint_t, const smb_exp_t *, ulong_t);
 static int smb_obj_list(const char *, uint_t, uint_t);
 static int smb_worker_findstack(uintptr_t);
-static int smb_stats(uintptr_t, uint_t, int, const mdb_arg_t *);
-
-/*
- * MDB module linkage information:
- *
- * We declare a list of structures describing our dcmds, a list of structures
- * describing our walkers and a function named _mdb_init to return a pointer
- * to our module information.
- */
-static const mdb_dcmd_t dcmds[] = {
-	{   "smblist",
-	    "[-seutfdwv]",
-	    "print tree of SMB objects",
-	    smb_dcmd_list,
-	    smb_dcmd_list_help },
-	{   "smbsrv",
-	    "[-seutfdwv]",
-	    "print smb_server information",
-	    smb_dcmd_server },
-	{   "smbshare",
-	    ":[-v]",
-	    "print smb_kshare_t information",
-	    smb_dcmd_kshare },
-	{   "smbvfs",
-	    ":[-v]",
-	    "print smb_vfs information",
-	    smb_dcmd_vfs },
-	{   "smbnode",
-	    "?[-vps]",
-	    "print smb_node_t information",
-	    smb_dcmd_node,
-	    smb_node_help },
-	{   "smbsess",
-	    "[-utfdwv]",
-	    "print smb_session_t information",
-	    smb_dcmd_session,
-	    smb_dcmd_session_help},
-	{   "smbreq",
-	    ":[-v]",
-	    "print smb_request_t information",
-	    smb_dcmd_request },
-	{   "smblock", ":[-v]",
-	    "print smb_lock_t information", smb_lock },
-	{   "smbuser",
-	    ":[-vdftq]",
-	    "print smb_user_t information",
-	    smb_dcmd_user,
-	    smb_dcmd_user_help },
-	{   "smbtree",
-	    ":[-vdf]",
-	    "print smb_tree_t information",
-	    smb_dcmd_tree,
-	    smb_dcmd_tree_help },
-	{   "smbodir",
-	    ":[-v]",
-	    "print smb_odir_t information",
-	    smb_dcmd_odir },
-	{   "smbofile",
-	    "[-v]",
-	    "print smb_file_t information",
-	    smb_dcmd_ofile },
-	{   "smboplock", NULL,
-	    "print smb_oplock_t information", smb_oplock },
-	{   "smboplockgrant", NULL,
-	    "print smb_oplock_grant_t information", smb_oplock_grant },
-	{   "smbstat", NULL,
-	    "print all smb dispatched requests statistics",
-	    smb_stats },
-	{   "smbace", "[-v]",
-	    "print smb_ace_t information", smb_ace },
-	{   "smbacl", "[-v]",
-	    "print smb_acl_t information", smb_acl },
-	{   "smbsid", "[-v]",
-	    "print smb_sid_t information", smb_sid },
-	{   "smbsd", "[-v]",
-	    "print smb_sd_t information", smb_sd },
-	{   "smbfssd", "[-v]",
-	    "print smb_fssd_t information", smb_fssd },
-	{ NULL }
-};
-
-static const mdb_walker_t walkers[] = {
-	{   "smbnode_walker",
-	    "walk list of smb_node_t structures",
-	    smb_node_walk_init,
-	    smb_node_walk_step,
-	    NULL,
-	    NULL },
-	{   "smbshare_walker",
-	    "walk list of smb_kshare_t structures",
-	    smb_kshare_walk_init,
-	    smb_kshare_walk_step,
-	    NULL,
-	    NULL },
-
-	{   "smbvfs_walker",
-	    "walk list of smb_vfs_t structures",
-	    smb_vfs_walk_init,
-	    smb_vfs_walk_step,
-	    NULL,
-	    NULL },
-	{   "smbace_walker",
-	    "walk list of smb_ace_t structures",
-	    smb_ace_walk_init,
-	    smb_ace_walk_step,
-	    NULL,
-	    NULL },
-	{ NULL }
-};
-
-static const mdb_modinfo_t modinfo = {
-	MDB_API_VERSION, dcmds, walkers
-};
-
-const mdb_modinfo_t *
-_mdb_init(void)
-{
-	return (&modinfo);
-}
 
 /*
  * *****************************************************************************
@@ -551,7 +400,7 @@ _mdb_init(void)
  */
 
 static void
-smb_dcmd_list_help(void)
+smblist_help(void)
 {
 	mdb_printf(
 	    "Displays the list of objects using an indented tree format.\n"
@@ -579,7 +428,7 @@ smb_dcmd_list_help(void)
  */
 /*ARGSUSED*/
 static int
-smb_dcmd_list(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
+smblist_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 {
 	GElf_Sym	sym;
 	uint_t		opts = 0;
@@ -646,7 +495,7 @@ static const smb_exp_t smb_server_exp[] =
  */
 /*ARGSUSED*/
 static int
-smb_dcmd_server(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
+smbsrv_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 {
 	uint_t		opts;
 	ulong_t		indent = 0;
@@ -735,7 +584,7 @@ static const smb_exp_t smb_session_exp[] =
 };
 
 static void
-smb_dcmd_session_help(void)
+smbsess_help(void)
 {
 	mdb_printf(
 	    "Display the contents of smb_session_t, with optional"
@@ -755,7 +604,7 @@ smb_dcmd_session_help(void)
  * smbsess dcmd - Print out the smb_session structure.
  */
 static int
-smb_dcmd_session(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
+smbsess_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 {
 	uint_t		opts;
 	ulong_t		indent = 0;
@@ -875,7 +724,7 @@ static const char *smb_request_state[SMB_REQ_STATE_SENTINEL] =
 	"%-?p %-?p %-14lld %-14lld %-16s %s\n"
 
 static int
-smb_dcmd_request(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
+smbreq_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 {
 	uint_t		opts;
 
@@ -1042,7 +891,7 @@ static const char *smb_user_state[SMB_USER_STATE_SENTINEL] =
 };
 
 static void
-smb_dcmd_user_help(void)
+smbuser_help(void)
 {
 	mdb_printf(
 	    "Display the contents of smb_user_t, with optional filtering.\n\n");
@@ -1054,7 +903,7 @@ smb_dcmd_user_help(void)
 }
 
 static int
-smb_dcmd_user(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
+smbuser_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 {
 	uint_t		opts;
 
@@ -1150,7 +999,7 @@ static const smb_exp_t smb_tree_exp[] =
 };
 
 static void
-smb_dcmd_tree_help(void)
+smbtree_help(void)
 {
 	mdb_printf(
 	    "Display the contents of smb_tree_t, with optional filtering.\n\n");
@@ -1164,7 +1013,7 @@ smb_dcmd_tree_help(void)
 }
 
 static int
-smb_dcmd_tree(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
+smbtree_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 {
 	uint_t		opts;
 	ulong_t		indent = 0;
@@ -1240,7 +1089,7 @@ static const char *smb_odir_state[SMB_ODIR_STATE_SENTINEL] =
 };
 
 static int
-smb_dcmd_odir(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
+smbodir_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 {
 	uint_t		opts;
 
@@ -1311,7 +1160,7 @@ static const char *smb_ofile_state[SMB_OFILE_STATE_SENTINEL] =
 };
 
 static int
-smb_dcmd_ofile(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
+smbofile_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 {
 	uint_t		opts;
 
@@ -1382,7 +1231,7 @@ struct smb_kshare_cb_args {
 	uint_t		opts;
 	char name[MAXNAMELEN];
 	char path[MAXPATHLEN];
-};	
+};
 
 static int
 smb_kshare_cb(uintptr_t addr, const void *data, void *varg)
@@ -1430,7 +1279,7 @@ smb_kshare_cb(uintptr_t addr, const void *data, void *varg)
  */
 /*ARGSUSED*/
 static int
-smb_dcmd_kshare(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
+smbshare_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 {
 	struct smb_kshare_cb_args *args;
 
@@ -1506,7 +1355,7 @@ struct smb_vfs_cb_args {
 	uint_t		opts;
 	vnode_t		vn;
 	char		path[MAXPATHLEN];
-};	
+};
 
 static int
 smb_vfs_cb(uintptr_t addr, const void *data, void *varg)
@@ -1554,7 +1403,7 @@ smb_vfs_cb(uintptr_t addr, const void *data, void *varg)
  */
 /*ARGSUSED*/
 static int
-smb_dcmd_vfs(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
+smbvfs_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 {
 	struct smb_vfs_cb_args *args;
 
@@ -1629,7 +1478,7 @@ smb_vfs_walk_step(mdb_walk_state_t *wsp)
  */
 
 static void
-smb_node_help(void)
+smbnode_help(void)
 {
 	mdb_printf(
 	    "Display the contents of smb_node_t, with optional filtering.\n\n");
@@ -1649,7 +1498,7 @@ smb_node_help(void)
  * smb_node dcmd - Print out smb_node structure.
  */
 static int
-smb_dcmd_node(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
+smbnode_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 {
 	smb_node_t	node;
 	int		rc;
@@ -1888,7 +1737,7 @@ smb_node_walk_step(mdb_walk_state_t *wsp)
  */
 
 static int
-smb_lock(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
+smblock_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 {
 	smb_lock_t	lock;
 	int		verbose = FALSE;
@@ -1985,7 +1834,8 @@ smb_lock(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
  */
 /*ARGSUSED*/
 static int
-smb_oplock_grant(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
+smboplockgrant_dcmd(uintptr_t addr, uint_t flags, int argc,
+    const mdb_arg_t *argv)
 {
 	smb_oplock_grant_t	grant;
 	char			 *level;
@@ -2030,7 +1880,7 @@ smb_oplock_grant(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
  */
 /*ARGSUSED*/
 static int
-smb_oplock(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
+smboplock_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 {
 	smb_oplock_t	oplock;
 	uintptr_t	list_addr;
@@ -2078,7 +1928,7 @@ smb_oplock(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
  */
 /*ARGSUSED*/
 static int
-smb_stats(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
+smbstat_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 {
 	smb_server_t	*sv;
 
@@ -2167,7 +2017,7 @@ static const mdb_bitmask_t ace_flag_bits[] = {
  * ::smbace
  */
 static int
-smb_ace(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
+smbace_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 {
 	smb_ace_t	ace;
 	int		verbose = FALSE;
@@ -2249,7 +2099,7 @@ smb_ace_walk_step(mdb_walk_state_t *wsp)
  * ::smbacl
  */
 static int
-smb_acl(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
+smbacl_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 {
 	smb_acl_t	acl;
 
@@ -2286,7 +2136,7 @@ smb_acl(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
  * ::smbsd
  */
 static int
-smb_sd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
+smbsd_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 {
 	smb_sd_t	sd;
 	int		rc;
@@ -2374,7 +2224,7 @@ smb_sd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
  */
 /*ARGSUSED*/
 static int
-smb_sid(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
+smbsid_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 {
 	/*
 	 * An smb_sid address is required.
@@ -2436,7 +2286,7 @@ smb_sid_print(uintptr_t addr)
  * ::smbfssd
  */
 static int
-smb_fssd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
+smbfssd_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 {
 	smb_fssd_t	fssd;
 	int		rc;
@@ -2614,4 +2464,129 @@ smb_worker_findstack(uintptr_t addr)
 	mdb_dec_indent(2);
 	mdb_printf("\n");
 	return (DCMD_OK);
+}
+
+/*
+ * MDB module linkage information:
+ *
+ * We declare a list of structures describing our dcmds, a list of structures
+ * describing our walkers and a function named _mdb_init to return a pointer
+ * to our module information.
+ */
+static const mdb_dcmd_t dcmds[] = {
+	{   "smblist",
+	    "[-seutfdwv]",
+	    "print tree of SMB objects",
+	    smblist_dcmd,
+	    smblist_help },
+	{   "smbsrv",
+	    "[-seutfdwv]",
+	    "print smb_server information",
+	    smbsrv_dcmd },
+	{   "smbshare",
+	    ":[-v]",
+	    "print smb_kshare_t information",
+	    smbshare_dcmd },
+	{   "smbvfs",
+	    ":[-v]",
+	    "print smb_vfs information",
+	    smbvfs_dcmd },
+	{   "smbnode",
+	    "?[-vps]",
+	    "print smb_node_t information",
+	    smbnode_dcmd,
+	    smbnode_help },
+	{   "smbsess",
+	    "[-utfdwv]",
+	    "print smb_session_t information",
+	    smbsess_dcmd,
+	    smbsess_help},
+	{   "smbreq",
+	    ":[-v]",
+	    "print smb_request_t information",
+	    smbreq_dcmd },
+	{   "smblock", ":[-v]",
+	    "print smb_lock_t information",
+	    smblock_dcmd },
+	{   "smbuser",
+	    ":[-vdftq]",
+	    "print smb_user_t information",
+	    smbuser_dcmd,
+	    smbuser_help },
+	{   "smbtree",
+	    ":[-vdf]",
+	    "print smb_tree_t information",
+	    smbtree_dcmd,
+	    smbtree_help },
+	{   "smbodir",
+	    ":[-v]",
+	    "print smb_odir_t information",
+	    smbodir_dcmd },
+	{   "smbofile",
+	    "[-v]",
+	    "print smb_file_t information",
+	    smbofile_dcmd },
+	{   "smboplock", NULL,
+	    "print smb_oplock_t information",
+	    smboplock_dcmd },
+	{   "smboplockgrant", NULL,
+	    "print smb_oplock_grant_t information",
+	    smboplockgrant_dcmd },
+	{   "smbstat", NULL,
+	    "print all smb dispatched requests statistics",
+	    smbstat_dcmd },
+	{   "smbace", "[-v]",
+	    "print smb_ace_t information",
+	    smbace_dcmd },
+	{   "smbacl", "[-v]",
+	    "print smb_acl_t information",
+	    smbacl_dcmd },
+	{   "smbsid", "[-v]",
+	    "print smb_sid_t information",
+	    smbsid_dcmd },
+	{   "smbsd", "[-v]",
+	    "print smb_sd_t information",
+	    smbsd_dcmd },
+	{   "smbfssd", "[-v]",
+	    "print smb_fssd_t information",
+	    smbfssd_dcmd },
+	{ NULL }
+};
+
+static const mdb_walker_t walkers[] = {
+	{   "smbnode_walker",
+	    "walk list of smb_node_t structures",
+	    smb_node_walk_init,
+	    smb_node_walk_step,
+	    NULL,
+	    NULL },
+	{   "smbshare_walker",
+	    "walk list of smb_kshare_t structures",
+	    smb_kshare_walk_init,
+	    smb_kshare_walk_step,
+	    NULL,
+	    NULL },
+	{   "smbvfs_walker",
+	    "walk list of smb_vfs_t structures",
+	    smb_vfs_walk_init,
+	    smb_vfs_walk_step,
+	    NULL,
+	    NULL },
+	{   "smbace_walker",
+	    "walk list of smb_ace_t structures",
+	    smb_ace_walk_init,
+	    smb_ace_walk_step,
+	    NULL,
+	    NULL },
+	{ NULL }
+};
+
+static const mdb_modinfo_t modinfo = {
+	MDB_API_VERSION, dcmds, walkers
+};
+
+const mdb_modinfo_t *
+_mdb_init(void)
+{
+	return (&modinfo);
 }
