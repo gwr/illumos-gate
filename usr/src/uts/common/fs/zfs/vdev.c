@@ -3380,3 +3380,19 @@ vdev_type_is_ddt(vdev_t *vd)
 	}
 	return (B_FALSE);
 }
+
+/* count leaf vdev(s) under the given vdev */
+uint_t
+vdev_count_leaf_vdevs(vdev_t *vd)
+{
+	uint_t cnt = 0;
+
+	if (vd->vdev_ops->vdev_op_leaf)
+		return (1);
+
+	/* if this is not a leaf vdev - visit children */
+	for (int c = 0; c < vd->vdev_children; c++)
+		cnt += vdev_count_leaf_vdevs(vd->vdev_child[c]);
+
+	return (cnt);
+}

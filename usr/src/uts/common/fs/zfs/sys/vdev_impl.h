@@ -363,6 +363,8 @@ extern vdev_ops_t vdev_missing_ops;
 extern vdev_ops_t vdev_hole_ops;
 extern vdev_ops_t vdev_spare_ops;
 
+extern uint_t vdev_count_leaf_vdevs(vdev_t *root);
+
 /*
  * Common size functions
  */
@@ -392,21 +394,6 @@ typedef struct vdev_buf {
 	buf_t	vb_buf;		/* buffer that describes the io */
 	zio_t	*vb_io;		/* pointer back to the original zio_t */
 } vdev_buf_t;
-
-/*
- * Deal with persisting and loading properties from persistent store
- */
-
-typedef struct vdev_props_phys_hdr {
-	uint64_t	vpph_guid;
-	uint64_t	vpph_nvsize;
-	uint64_t	vpph_size;
-} vdev_props_phys_hdr_t;
-
-typedef struct vdev_props_phys {
-	vdev_props_phys_hdr_t	vpp_hdr;
-	uint64_t		vpp_nvl_packed[1];
-} vdev_props_phys_t;
 
 #ifdef	__cplusplus
 }

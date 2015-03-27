@@ -33,30 +33,25 @@
  */
 
 /*
- * Store vdev properties at offset 'offset' in object 'obj' in MOS
+ * Add vdev properties for this vdev to nvl_array[index]
  */
-static uint64_t
-vdev_store_props(vdev_t *vdev, objset_t *mos, uint64_t obj, uint64_t offset,
-    dmu_tx_t *tx)
+static void
+vdev_add_props(vdev_t *vdev, nvlist_t *nvl_array[], uint_t *index)
 {
-	vdev_props_phys_hdr_t *vpph;
-	char *packed = NULL;
-	char *buf = NULL;
-	size_t size = 0;
-	size_t nvsize = 0;
-	size_t bufsize = 0;
-	nvlist_t *nvl;
 	const char *propname;
 	zio_priority_t p;
 
 	if (!vdev->vdev_ops->vdev_op_leaf) {
-		for (int c = 0; c < vdev->vdev_children; c++)
-			size += vdev_store_props(vdev->vdev_child[c], mos, obj,
-			    offset + size, tx);
-		return (size);
+		for (int c = 0; c < vdev->vdev_children; c++) {
+			vdev_add_props(vdev->vdev_child[c], nvl_array,
+			    index);
+		}
+		return;
 	}
 
-	VERIFY0(nvlist_alloc(&nvl, NV_UNIQUE_NAME, KM_SLEEP));
+	propname = vdev_prop_to_name(VDEV_PROP_GUID);
+	VERIFY0(nvlist_add_uint64(nvl_array[*index], propname,
+	    vdev->vdev_guid));
 
 	for (p = ZIO_PRIORITY_SYNC_READ; p < ZIO_PRIORITY_NUM_QUEUEABLE; p++) {
 		uint64_t val = vdev->vdev_queue.vq_class[p].vqc_min_active;
@@ -64,79 +59,53 @@ vdev_store_props(vdev_t *vdev, objset_t *mos, uint64_t obj, uint64_t offset,
 
 		ASSERT(VDEV_PROP_MIN_VALID(prop_id));
 		propname = vdev_prop_to_name(prop_id);
-		VERIFY0(nvlist_add_uint64(nvl, propname, val));
+		VERIFY0(nvlist_add_uint64(nvl_array[*index], propname, val));
 
 		val = vdev->vdev_queue.vq_class[p].vqc_max_active;
 		prop_id = VDEV_ZIO_PRIO_TO_PROP_MAX(p);
 		ASSERT(VDEV_PROP_MAX_VALID(prop_id));
 		propname = vdev_prop_to_name(prop_id);
-		VERIFY0(nvlist_add_uint64(nvl, propname, val));
+		VERIFY0(nvlist_add_uint64(nvl_array[*index], propname, val));
 	}
 
 	propname = vdev_prop_to_name(VDEV_PROP_PREFERRED_READ);
-	VERIFY0(nvlist_add_uint64(nvl, propname,
+	VERIFY0(nvlist_add_uint64(nvl_array[*index], propname,
 	    vdev->vdev_queue.vq_preferred_read));
 
 	if (vdev->vdev_queue.vq_cos) {
 		propname = vdev_prop_to_name(VDEV_PROP_COS);
-		VERIFY0(nvlist_add_uint64(nvl, propname,
+		VERIFY0(nvlist_add_uint64(nvl_array[*index], propname,
 		    vdev->vdev_queue.vq_cos->cos_guid));
 	}
 
 	if (vdev->vdev_spare_group) {
 		propname = vdev_prop_to_name(VDEV_PROP_SPAREGROUP);
-		VERIFY0(nvlist_add_string(nvl, propname,
+		VERIFY0(nvlist_add_string(nvl_array[*index], propname,
 		    vdev->vdev_spare_group));
 	}
 
 	propname = vdev_prop_to_name(VDEV_PROP_L2ADDDT);
-	VERIFY0(nvlist_add_uint64(nvl, propname, vdev->vdev_l2ad_ddt));
+	VERIFY0(nvlist_add_uint64(nvl_array[*index], propname,
+	    vdev->vdev_l2ad_ddt));
 
-	VERIFY0(nvlist_size(nvl, &nvsize, NV_ENCODE_XDR));
-
-	size = P2ROUNDUP(nvsize, 8);
-	bufsize = sizeof (*vpph) + size;
-	buf = kmem_alloc(bufsize, KM_SLEEP);
-	vpph = (vdev_props_phys_hdr_t *)buf;
-	packed = buf + sizeof (*vpph);
-	if (size > nvsize)
-		bzero(packed + nvsize, size - nvsize);
-	VERIFY0(nvlist_pack(nvl, &packed, &nvsize, NV_ENCODE_XDR, KM_SLEEP));
-
-	vpph->vpph_guid = vdev->vdev_guid;
-	vpph->vpph_nvsize = nvsize;
-	vpph->vpph_size = bufsize;
-
-	dmu_write(mos, obj, offset, bufsize, buf, tx);
-
-	kmem_free(buf, bufsize);
-	nvlist_free(nvl);
-
-	return (bufsize);
+	(*index)++;
 }
 
 /*
  * Get the properties from nvlist and put them in vdev object
  */
 static void
-vdev_parse_props(vdev_t *vdev, char *packed, uint64_t nvsize)
+vdev_parse_props(vdev_t *vdev, nvlist_t *nvl)
 {
 	uint64_t ival;
-	nvlist_t *nvl;
 	const char *propname;
 	char *sval;
-	int err;
 	zio_priority_t p;
 
 	ASSERT(vdev);
 
 	if (!vdev->vdev_ops->vdev_op_leaf)
 		return;
-
-	if ((err = nvlist_unpack(packed, nvsize, &nvl, KM_SLEEP)) != 0) {
-		cmn_err(CE_WARN, "Failed to unpack vdev props, err: %d\n", err);
-		return;
-	}
 
 	for (p = ZIO_PRIORITY_SYNC_READ; p < ZIO_PRIORITY_NUM_QUEUEABLE; p++) {
 		int prop_id = VDEV_ZIO_PRIO_TO_PROP_MIN(p);
@@ -190,8 +159,6 @@ vdev_parse_props(vdev_t *vdev, char *packed, uint64_t nvsize)
 	propname = vdev_prop_to_name(VDEV_PROP_SPAREGROUP);
 	if (nvlist_lookup_string(nvl, propname, &sval) == 0)
 		vdev->vdev_spare_group = spa_strdup(sval);
-
-	nvlist_free(nvl);
 }
 
 /*
@@ -223,6 +190,9 @@ spa_vdev_get_common(spa_t *spa, uint64_t guid, char **value,
 		if (vd->vdev_path != NULL) {
 			*value = vd->vdev_path;
 		}
+		break;
+	case VDEV_PROP_GUID:
+		*oval = guid;
 		break;
 	case VDEV_PROP_FRU:
 		if (vd->vdev_fru != NULL) {
@@ -416,6 +386,7 @@ spa_vdev_set_common(vdev_t *vd, const char *value,
 		}
 		break;
 
+	case VDEV_PROP_GUID:
 	default:
 		return (spa_vdev_state_exit(spa, NULL, ENOTSUP));
 	}
@@ -500,11 +471,22 @@ spa_vdev_sync_props(void *arg1, dmu_tx_t *tx)
 {
 	spa_t *spa = (spa_t *)arg1;
 	objset_t *mos = spa->spa_meta_objset;
-	uint64_t size = 0;
+	size_t size, nvsize;
 	uint64_t *sizep;
 	vdev_t *root_vdev;
 	vdev_t *top_vdev;
+	nvlist_t **nvl_array, *nvl;
 	dmu_buf_t *db;
+	char *buf;
+	uint_t index = 0;
+	uint_t vdev_cnt = vdev_count_leaf_vdevs(spa->spa_root_vdev) +
+	    spa->spa_l2cache.sav_count + spa->spa_spares.sav_count;
+
+	VERIFY0(nvlist_alloc(&nvl, NV_UNIQUE_NAME, KM_SLEEP));
+	nvl_array = kmem_alloc(vdev_cnt * sizeof (nvlist_t *), KM_SLEEP);
+
+	for (int i = 0; i < vdev_cnt; i++)
+		VERIFY0(nvlist_alloc(&nvl_array[i], NV_UNIQUE_NAME, KM_SLEEP));
 
 	mutex_enter(&spa->spa_vdev_props_lock);
 
@@ -523,26 +505,33 @@ spa_vdev_sync_props(void *arg1, dmu_tx_t *tx)
 	}
 
 	root_vdev = spa->spa_root_vdev;
-
 	/* process regular vdevs */
 	for (int c = 0; c < spa->spa_root_vdev->vdev_children; c++) {
 		top_vdev = root_vdev->vdev_child[c];
-		size += vdev_store_props(top_vdev, mos,
-		    spa->spa_vdev_props_object, size, tx);
+		vdev_add_props(top_vdev, nvl_array, &index);
 	}
 
 	/* process aux vdevs */
 	for (int i = 0; i < spa->spa_l2cache.sav_count; i++) {
 		vdev_t *vd = spa->spa_l2cache.sav_vdevs[i];
-		size += vdev_store_props(vd, mos,
-		    spa->spa_vdev_props_object, size, tx);
+		vdev_add_props(vd, nvl_array, &index);
 	}
 
 	for (int i = 0; i < spa->spa_spares.sav_count; i++) {
 		vdev_t *vd = spa->spa_spares.sav_vdevs[i];
-		size += vdev_store_props(vd, mos,
-		    spa->spa_vdev_props_object, size, tx);
+		vdev_add_props(vd, nvl_array, &index);
 	}
+	ASSERT3P(index, ==, vdev_cnt);
+
+	VERIFY0(nvlist_add_nvlist_array(nvl,
+	    DMU_POOL_VDEV_PROPS, nvl_array, vdev_cnt));
+
+	VERIFY0(nvlist_size(nvl, &nvsize, NV_ENCODE_XDR));
+	size = P2ROUNDUP(nvsize, 8);
+	buf = kmem_zalloc(size, KM_SLEEP);
+	VERIFY0(nvlist_pack(nvl, &buf, &size, NV_ENCODE_XDR, KM_SLEEP));
+
+	dmu_write(mos, spa->spa_vdev_props_object, 0, size, buf, tx);
 
 	VERIFY0(dmu_bonus_hold(mos, spa->spa_vdev_props_object, FTAG, &db));
 	dmu_buf_will_dirty(db, tx);
@@ -552,7 +541,15 @@ spa_vdev_sync_props(void *arg1, dmu_tx_t *tx)
 
 	dmu_buf_rele(db, FTAG);
 
+	kmem_free(buf, size);
+
 	mutex_exit(&spa->spa_vdev_props_lock);
+
+	for (int i = 0; i < vdev_cnt; i++)
+		nvlist_free(nvl_array[i]);
+
+	kmem_free(nvl_array, vdev_cnt * sizeof (nvlist_t *));
+	nvlist_free(nvl);
 }
 
 int
@@ -571,11 +568,11 @@ spa_load_vdev_props(spa_t *spa)
 	objset_t *mos = spa->spa_meta_objset;
 	vdev_t *vdev;
 	dmu_buf_t *db;
-	vdev_props_phys_hdr_t *vpph;
 	size_t bufsize = 0;
 	char *buf;
-	char *pbuf;
-	char *bufend;
+	uint_t nelem;
+	nvlist_t *nvl, **prop_array;
+	uint64_t vdev_guid;
 
 	ASSERT(spa);
 
@@ -592,24 +589,24 @@ spa_load_vdev_props(spa_t *spa)
 		goto out;
 
 	buf = kmem_alloc(bufsize, KM_SLEEP);
-	bufend = buf + bufsize;
+	VERIFY0(nvlist_alloc(&nvl, NV_UNIQUE_NAME, KM_SLEEP));
 
 	/* read and unpack array of nvlists */
 	VERIFY0(dmu_read(mos, spa->spa_vdev_props_object,
 	    0, bufsize, buf, DMU_READ_PREFETCH));
-
-	for (pbuf = buf; pbuf < bufend; pbuf += vpph->vpph_size) {
-		vpph = (vdev_props_phys_hdr_t *)pbuf;
-		char *packed = pbuf + sizeof (*vpph);
-		uint64_t nvsize = vpph->vpph_nvsize;
-
-		vdev = spa_lookup_by_guid(spa, vpph->vpph_guid, B_TRUE);
+	VERIFY0(nvlist_unpack(buf, bufsize, &nvl, KM_SLEEP));
+	VERIFY0(nvlist_lookup_nvlist_array(nvl,
+	    DMU_POOL_VDEV_PROPS, &prop_array, &nelem));
+	for (uint_t i = 0; i < nelem; i++) {
+		VERIFY0(nvlist_lookup_uint64(prop_array[i],
+		    vdev_prop_to_name(VDEV_PROP_GUID), &vdev_guid));
+		vdev = spa_lookup_by_guid(spa, vdev_guid, B_TRUE);
 		if (vdev == NULL)
 			continue;
-		vdev_parse_props(vdev, packed, nvsize);
+		vdev_parse_props(vdev, prop_array[i]);
 	}
+	nvlist_free(nvl);
 
-	kmem_free(buf, bufsize);
 out:
 	mutex_exit(&spa->spa_vdev_props_lock);
 
@@ -651,6 +648,7 @@ spa_vdev_prop_validate(spa_t *spa, uint64_t vdev_guid, nvlist_t *props)
 			break;
 
 		case VDEV_PROP_PATH:
+		case VDEV_PROP_GUID:
 		case VDEV_PROP_FRU:
 		case VDEV_PROP_COS:
 		case VDEV_PROP_SPAREGROUP:

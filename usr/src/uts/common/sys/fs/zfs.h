@@ -218,6 +218,8 @@ typedef enum {
  * same order as the corresponding zio_priority_t definitions as this order
  * is relied upon when processing in loops. See vdev_impl.h for the set of
  * macros that rely on this dependency.
+ * Also path must be the first entry in the enum as loops use it as a starting
+ * index.
  */
 typedef enum vdev_prop {
 	VDEV_PROP_PATH,
@@ -238,6 +240,7 @@ typedef enum vdev_prop {
 	VDEV_PROP_COS,
 	VDEV_PROP_SPAREGROUP,
 	VDEV_PROP_L2ADDDT,
+	VDEV_PROP_GUID,
 	VDEV_NUM_PROPS
 } vdev_prop_t;
 

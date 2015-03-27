@@ -70,6 +70,8 @@ vdev_prop_init(void)
 	    PROP_DEFAULT, ZFS_TYPE_VDEV, "<spare device group>", "SPRGRP");
 
 	/* default number properties */
+	zprop_register_number(VDEV_PROP_GUID, "guid", 0,
+	    PROP_READONLY, ZFS_TYPE_VDEV, "<vdev guid>", "GUID");
 	zprop_register_number(VDEV_PROP_READ_MINACTIVE, "read_minactive", 0,
 	    PROP_DEFAULT, ZFS_TYPE_VDEV, "<read min active (0..1000)>",
 	    "READ_MINACTIVE");
