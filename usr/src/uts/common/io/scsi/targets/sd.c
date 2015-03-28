@@ -54,6 +54,7 @@
 #include <sys/aio_req.h>
 #include <sys/fs/dv_node.h>
 #include <sys/dkioc_free_util.h>
+#include <sys/debug.h>
 
 #ifdef __lock_lint
 #define	_LP64
@@ -7900,6 +7901,18 @@ sdattach(dev_info_t *devi, ddi_attach_cmd_t cmd)
 	SD_TRACE(SD_LOG_ATTACH_DETACH, un,
 	    "sdattach: un:0x%p un_stats created\n", un);
 
+	un->un_lat_ksp = kstat_create(sd_label, instance, "io_latency",
+	    "io_latency", KSTAT_TYPE_RAW, sizeof (un_lat_stat_t),
+	    KSTAT_FLAG_PERSISTENT);
+
+	if (un->un_lat_ksp != NULL) {
+		un->un_lat_ksp->ks_lock = SD_MUTEX(un);
+		un->un_lat_stats = (un_lat_stat_t *)un->un_lat_ksp->ks_data;
+		kstat_install(un->un_lat_ksp);
+	} else {
+		un->un_lat_stats = NULL;
+	}
+
 	sd_create_errstats(un, instance);
 	if (un->un_errstats == NULL) {
 		goto create_errstats_failed;
@@ -8221,6 +8234,12 @@ create_errstats_failed:
 	if (un->un_stats != NULL) {
 		kstat_delete(un->un_stats);
 		un->un_stats = NULL;
+	}
+
+	if (un->un_lat_ksp != NULL) {
+		kstat_delete(un->un_lat_ksp);
+		un->un_lat_ksp = NULL;
+		un->un_lat_stats = NULL;
 	}
 
 	ddi_xbuf_attr_unregister_devinfo(un->un_xbuf_attr, devi);
@@ -9274,6 +9293,11 @@ no_attach_cleanup:
 	if (un->un_stats != NULL) {
 		kstat_delete(un->un_stats);
 		un->un_stats = NULL;
+	}
+	if (un->un_lat_ksp != NULL) {
+		kstat_delete(un->un_lat_ksp);
+		un->un_lat_stats = NULL;
+		un->un_lat_ksp = NULL;
 	}
 	if (un->un_errstats != NULL) {
 		kstat_delete(un->un_errstats);
@@ -17442,6 +17466,19 @@ sd_slow_io_ereport(struct scsi_pkt *pktp)
 	    NULL);
 }
 
+/* Clamp the value between 0..max using min as the offset */
+static int
+clamp_lat(int bucket, int min, int max)
+{
+
+	if (max < bucket)
+		bucket = max;
+	if (min > bucket)
+		bucket = min;
+
+	return (bucket - min);
+}
+
 /*
  *    Function: sdintr
  *
@@ -17459,6 +17496,8 @@ sdintr(struct scsi_pkt *pktp)
 	struct sd_lun	*un;
 	size_t		actual_len;
 	sd_ssc_t	*sscp;
+	hrtime_t	io_delta;
+	int 		bucket;
 
 	ASSERT(pktp != NULL);
 	bp = (struct buf *)pktp->pkt_private;
@@ -17498,10 +17537,20 @@ sdintr(struct scsi_pkt *pktp)
 	/* If the HBA driver did not set the stop time, set it now. */
 	if (pktp->pkt_stop == 0)
 		pktp->pkt_stop = gethrtime();
-	if ((pktp->pkt_stop - pktp->pkt_start) > un->un_slow_io_threshold) {
+	io_delta = pktp->pkt_stop - pktp->pkt_start;
+	if (io_delta > un->un_slow_io_threshold)
 		sd_slow_io_ereport(pktp);
-	}
+	if (un->un_lat_stats) {
+		un->un_lat_stats->l_nrequest++;
+		un->un_lat_stats->l_sum += io_delta;
 
+		/* Track the latency in usec and quantize by power of 2 */
+		bucket = clamp_lat(ddi_fls(io_delta / 1000),
+		    SD_LAT_MIN_USEC_SHIFT, SD_LAT_MAX_USEC_SHIFT - 1);
+		ASSERT3S(bucket, >=, 0);
+		ASSERT3S(bucket, <, ARRAY_SIZE(un->un_lat_stats->l_histogram));
+		un->un_lat_stats->l_histogram[bucket]++;
+	}
 
 #ifdef	SDDEBUG
 	if (bp == un->un_retry_bp) {

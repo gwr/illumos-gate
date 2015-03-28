@@ -235,6 +235,25 @@ typedef struct sd_blk_limits_s {
 	uint32_t	lim_unmap_gran_align;
 	uint64_t	lim_max_write_same_len;
 } sd_blk_limits_t;
+/*
+ * Latency is tracked in usec and is quantized by power of two starting at
+ * offset SD_LAT_MIN_USEC_SHIFT. Values below that offset will go in the first
+ * (0th) bucket. Similar, values above SD_LAT_MAX_USEC_SHIFT go in the
+ * (SD_LAT_MAX_USEC_SHIFT - 1) bucket.
+ *
+ * From observations, using SAS SSDs and rotational drives these values are
+ * sufficient for now.
+ */
+
+#define	SD_LAT_MIN_USEC_SHIFT 4
+#define	SD_LAT_MAX_USEC_SHIFT 24
+#define	SD_LAT_BUCKET_MAX (SD_LAT_MAX_USEC_SHIFT - SD_LAT_MIN_USEC_SHIFT)
+
+typedef struct un_lat_stat {
+	hrtime_t l_sum;					/* total latency  */
+	uint64_t l_nrequest;				/* number of requests */
+	uint64_t l_histogram[SD_LAT_BUCKET_MAX]; 	/* latency histogram */
+} un_lat_stat_t;
 
 /*
  * sd_lun: The main data structure for a scsi logical unit.
@@ -378,6 +397,8 @@ struct sd_lun {
 	struct	kstat	*un_pstats[NSDMAP];	/* partition statistics */
 	struct	kstat	*un_stats;		/* disk statistics */
 	kstat_t		*un_errstats;		/* for error statistics */
+	kstat_t 	*un_lat_ksp;		/* pointer to the raw kstat */
+	un_lat_stat_t	*un_lat_stats;		/* data from the above kstat */
 	uint64_t	un_exclopen;		/* exclusive open bitmask */
 	ddi_devid_t	un_devid;		/* device id */
 	uint_t		un_vpd_page_mask;	/* Supported VPD pages */
