@@ -15691,6 +15691,9 @@ got_pkt:
 
 		un->un_ncmds_in_transport++;
 		SD_UPDATE_KSTATS(un, statp, bp);
+		/* The start time MAY be overriden by the HBA driver. */
+		xp->xb_pktp->pkt_start = gethrtime();
+		xp->xb_pktp->pkt_stop = 0;
 
 		/*
 		 * Call scsi_transport() to send the command to the target.
@@ -17492,6 +17495,9 @@ sdintr(struct scsi_pkt *pktp)
 	un->un_in_callback++;
 
 	SD_UPDATE_KSTATS(un, kstat_runq_exit, bp);
+	/* If the HBA driver did not set the stop time, set it now. */
+	if (pktp->pkt_stop == 0)
+		pktp->pkt_stop = gethrtime();
 	if ((pktp->pkt_stop - pktp->pkt_start) > un->un_slow_io_threshold) {
 		sd_slow_io_ereport(pktp);
 	}
