@@ -1191,12 +1191,14 @@ fct_deregister_remote_port(fct_local_port_t *port, fct_remote_port_t *rp)
 	fct_i_remote_port_t	*irp   = RP_TO_IRP(rp);
 
 	if (irp->irp_snn) {
-		kmem_free(irp->irp_snn, strlen(irp->irp_snn) + 1);
+		kmem_free(irp->irp_snn, irp->irp_snn_len);
 		irp->irp_snn = NULL;
+		irp->irp_snn_len = 0;
 	}
 	if (irp->irp_spn) {
-		kmem_free(irp->irp_spn, strlen(irp->irp_spn) + 1);
+		kmem_free(irp->irp_spn, irp->irp_spn_len);
 		irp->irp_spn = NULL;
+		irp->irp_spn_len = 0;
 	}
 
 	if ((ret = port->port_deregister_remote_port(port, rp)) !=
@@ -2426,10 +2428,11 @@ fct_gsnn_cb(fct_i_cmd_t *icmd)
 		 */
 		sn = query_irp->irp_snn;
 		if (sn) {
-			kmem_free(sn, strlen(sn) + 1);
+			kmem_free(sn, query_irp->irp_snn_len);
 		}
 
 		query_irp->irp_snn = NULL;
+		query_irp->irp_snn_len = 0;
 		sn = kmem_zalloc(snlen + 1, KM_SLEEP);
 		(void) strncpy(sn, (char *)
 		    ICMD_TO_CT(icmd)->ct_resp_payload + 17, snlen);
@@ -2444,6 +2447,8 @@ fct_gsnn_cb(fct_i_cmd_t *icmd)
 		 * Update symbolic node name
 		 */
 		query_irp->irp_snn = sn;
+		if (sn != NULL)
+			query_irp->irp_snn_len = snlen + 1;
 		if ((query_irp->irp_flags & IRP_SCSI_SESSION_STARTED) &&
 		    (query_irp->irp_session)) {
 			query_irp->irp_session->ss_rport_alias =
@@ -2654,9 +2659,11 @@ fct_gspn_cb(fct_i_cmd_t *icmd)
 		if (spnlen > 0) {
 			if (query_irp->irp_spn) {
 				kmem_free(query_irp->irp_spn,
-				    strlen(query_irp->irp_spn) + 1);
+				    query_irp->irp_spn_len);
 			}
-			query_irp->irp_spn = kmem_zalloc(spnlen + 1, KM_SLEEP);
+			query_irp->irp_spn_len = spnlen + 1;
+			query_irp->irp_spn = kmem_zalloc(
+			    query_irp->irp_spn_len, KM_SLEEP);
 			(void) strncpy(query_irp->irp_spn,
 			    (char *)resp + 17, spnlen);
 		}
