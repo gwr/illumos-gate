@@ -20,6 +20,10 @@
 
 #define	INHERIT_ID	((uint16_t)-1)
 
+#define	DROP_USER	4
+#define	DROP_TREE	2
+#define	DROP_FILE	1
+
 /*
  * Saved state for a command that "goes async".  When a compound request
  * contains a command that may block indefinitely, the compound reply is
@@ -59,14 +63,12 @@ typedef struct smb2_async_req {
 	 * SMB2 header fields.
 	 */
 	uint16_t		ar_cmd_code;
+	uint16_t		ar_uid;
 	uint16_t		ar_tid;
 	uint32_t		ar_pid;
 	uint32_t		ar_hdr_flags;
 	uint64_t		ar_messageid;
 } smb2_async_req_t;
-
-static int smb2sr_dispatch(smb_request_t *,
-	smb_sdrc_t (*)(smb_request_t *));
 
 void smb2sr_do_async(smb_request_t *);
 smb_sdrc_t smb2_invalid_cmd(smb_request_t *);
@@ -216,7 +218,6 @@ smb2sr_newrq(smb_request_t *sr)
 	    smb_session_worker, sr, TQ_SLEEP);
 
 	return (0);
-
 }
 
 /*
@@ -245,10 +246,15 @@ smb2sr_newrq(smb_request_t *sr)
 void
 smb2sr_work(struct smb_request *sr)
 {
+	const smb_disp_entry_t	*sdd;
+	smb_disp_stats_t	*sds;
 	smb_session_t		*session;
 	uint32_t		msg_len;
-	int			rc;
+	uint16_t		cmd_idx;
+	int			rc = 0;
+	int			drop = 0;
 	boolean_t		disconnect = B_FALSE;
+	boolean_t		related;
 
 	session = sr->session;
 
@@ -276,21 +282,6 @@ smb2sr_work(struct smb_request *sr)
 
 cmd_start:
 	/*
-	 * Reserve space for the reply header, and save the offset.
-	 * The reply header will be overwritten later.  If we have
-	 * already exhausted the output space, then this client is
-	 * trying something funny.  Log it and kill 'em.
-	 */
-	sr->smb2_reply_hdr = sr->reply.chain_offset;
-	rc = smb_mbc_encodef(&sr->reply, "#.", SMB2_HDR_SIZE);
-	if (rc != 0) {
-		cmn_err(CE_WARN, "clnt %s excessive reply",
-		    session->ip_addr_str);
-		disconnect = B_TRUE;
-		goto cleanup;
-	}
-
-	/*
 	 * Decode the request header
 	 *
 	 * Most problems with decoding will result in the error
@@ -298,10 +289,44 @@ cmd_start:
 	 * prevents continuing, we'll close the connection.
 	 * [MS-SMB2] 3.3.5.2.6 Handling Incorrectly Formatted...
 	 */
+	drop = 0;
 	sr->smb2_status = 0;
 	sr->smb2_cmd_hdr = sr->command.chain_offset;
 	if ((rc = smb2_decode_header(sr)) != 0) {
 		cmn_err(CE_WARN, "clnt %s bad SMB2 header",
+		    session->ip_addr_str);
+		disconnect = B_TRUE;
+		goto cleanup;
+	}
+
+	/*
+	 * The SMB2_FLAGS_SERVER_TO_REDIR should only appear
+	 * in messages from the server back to the client.
+	 */
+	if ((sr->smb2_hdr_flags & SMB2_FLAGS_SERVER_TO_REDIR) != 0) {
+		cmn_err(CE_WARN, "clnt %s bad SMB2 flags",
+		    session->ip_addr_str);
+		disconnect = B_TRUE;
+		goto cleanup;
+	}
+	related = (sr->smb2_hdr_flags & SMB2_FLAGS_RELATED_OPERATIONS);
+
+	/*
+	 * In case we bail out with an error before we get to the
+	 * section that computes the credit grant, initialize the
+	 * response header fields so that credits won't change.
+	 */
+	sr->smb2_credit_response = sr->smb2_credit_charge;
+
+	/*
+	 * Reserve space for the reply header, and save the offset.
+	 * The reply header will be overwritten later.  If we have
+	 * already exhausted the output space, then this client is
+	 * trying something funny.  Log it and kill 'em.
+	 */
+	sr->smb2_reply_hdr = sr->reply.chain_offset;
+	if ((rc = smb2_encode_header(sr, B_FALSE)) != 0) {
+		cmn_err(CE_WARN, "clnt %s excessive reply",
 		    session->ip_addr_str);
 		disconnect = B_TRUE;
 		goto cleanup;
@@ -329,13 +354,174 @@ cmd_start:
 	/*
 	 * Setup a shadow chain for this SMB2 command, starting
 	 * with the header and ending at either the next command
-	 * or the end of the message.  The signing check in the
-	 * dispatch function needs the entire SMB2 command. We'll
-	 * advance chain_offset up to the end of the header before
-	 * the command specific decoders.
+	 * or the end of the message.  The signing check below
+	 * needs the entire SMB2 command.  After that's done, we
+	 * advance chain_offset to the end of the header where
+	 * the command specific handlers continue decoding.
 	 */
 	(void) MBC_SHADOW_CHAIN(&sr->smb_data, &sr->command,
 	    sr->smb2_cmd_hdr, msg_len);
+
+	/*
+	 * Validate the commmand code, get dispatch table entries.
+	 * [MS-SMB2] 3.3.5.2.6 Handling Incorrectly Formatted...
+	 *
+	 * The last slot in the dispatch table is used to handle
+	 * invalid commands.  Same for statistics.
+	 */
+	if (sr->smb2_cmd_code < SMB2_INVALID_CMD)
+		cmd_idx = sr->smb2_cmd_code;
+	else
+		cmd_idx = SMB2_INVALID_CMD;
+	sdd = &smb2_disp_table[cmd_idx];
+	sds = &session->s_server->sv_disp_stats2[cmd_idx];
+
+	/*
+	 * If this command is NOT "related" to the previous,
+	 * clear out the UID, TID, FID state that might be
+	 * left over from the previous command.
+	 *
+	 * If the command IS related, either the same ID or
+	 * the special INHERIT_ID keeps the user and/or tree
+	 * from the previous command in the compound.
+	 *
+	 * Replace INHERIT_ID with the real (inherited) ID here,
+	 * even though we might not actually inherit if other
+	 * contraints forced dropping the user or tree.
+	 *
+	 * Careful with the hierarchy here: user, tree, file.
+	 * If we drop the user, also drop the tree and file.
+	 * If we drop the tree, also drop the file.
+	 */
+	if (!related)
+		drop |= (DROP_USER | DROP_TREE | DROP_FILE);
+	if (related && sr->uid_user != NULL) {
+		if (sr->smb_uid == INHERIT_ID ||
+		    sr->smb_uid == sr->uid_user->u_uid)
+			sr->smb_uid = sr->uid_user->u_uid;
+		else
+			drop |= (DROP_USER | DROP_TREE | DROP_FILE);
+	}
+	if (related && sr->tid_tree != NULL) {
+		if (sr->smb_tid == INHERIT_ID ||
+		    sr->smb_tid == sr->tid_tree->t_tid)
+			sr->smb_tid = sr->tid_tree->t_tid;
+		else
+			drop |= (DROP_TREE | DROP_FILE);
+	}
+
+	/*
+	 * We won't know what FID the command might use until the
+	 * command-specific handler decodes it.  Similar logic in
+	 * smb2sr_lookup_fid takes care of dropping the old ofile
+	 * when we're not inheriting it.
+	 */
+
+	/*
+	 * Drop what needs to be dropped, carefully ordered to
+	 * avoid dangling references: file, tree, user
+	 */
+	if ((drop & DROP_FILE) != 0 &&
+	    sr->fid_ofile != NULL) {
+		smb_ofile_request_complete(sr->fid_ofile);
+		smb_ofile_release(sr->fid_ofile);
+		sr->fid_ofile = NULL;
+	}
+	if ((drop & DROP_TREE) != 0 &&
+	    sr->tid_tree != NULL) {
+		smb_tree_release(sr->tid_tree);
+		sr->tid_tree = NULL;
+	}
+	if ((drop & DROP_USER) != 0 &&
+	    sr->uid_user != NULL) {
+		smb_user_release(sr->uid_user);
+		sr->uid_user = NULL;
+		sr->user_cr = zone_kcred();
+	}
+
+	/*
+	 * Make sure we have a user and tree as needed
+	 * according to the flags for the this command.
+	 * Note that we may have inherited these.
+	 */
+	if ((sdd->sdt_flags & SDDF_SUPPRESS_UID) == 0) {
+		/*
+		 * This command requires a user session.
+		 */
+		if (sr->uid_user == NULL) {
+			sr->uid_user = smb_session_lookup_uid(session,
+			    sr->smb_uid);
+		}
+		if (sr->uid_user == NULL) {
+			/* [MS-SMB2] 3.3.5.2.9 Verifying the Session */
+			smb2sr_put_error(sr, NT_STATUS_USER_SESSION_DELETED);
+			goto cmd_done;
+		}
+		sr->user_cr = smb_user_getcred(sr->uid_user);
+	}
+
+	if ((sdd->sdt_flags & SDDF_SUPPRESS_TID) == 0) {
+		/*
+		 * This command requires a tree connection.
+		 */
+		if (sr->tid_tree == NULL) {
+			sr->tid_tree = smb_session_lookup_tree(session,
+			    sr->smb_tid);
+		}
+		if (sr->tid_tree == NULL) {
+			/* [MS-SMB2] 3.3.5.2.11 Verifying the Tree Connect */
+			smb2sr_put_error(sr, NT_STATUS_NETWORK_NAME_DELETED);
+			goto cmd_done;
+		}
+	}
+
+	/*
+	 * SMB2 signature verification, two parts:
+	 * (a) Require SMB2_FLAGS_SIGNED (for most request types)
+	 * (b) If SMB2_FLAGS_SIGNED is set, check the signature.
+	 * [MS-SMB2] 3.3.5.2.4 Verifying the Signature
+	 */
+
+	/*
+	 * No user session means no signature check.  That's OK,
+	 * i.e. for commands marked SDDF_SUPPRESS_UID above.
+	 * Note, this also means we won't sign the reply.
+	 */
+	if (sr->uid_user == NULL)
+		sr->smb2_hdr_flags &= ~SMB2_FLAGS_SIGNED;
+
+	/*
+	 * The SDDF_SUPPRESS_UID dispatch is set for requests that
+	 * don't need a UID (user).  These also don't require a
+	 * signature check here.
+	 */
+	if ((sdd->sdt_flags & SDDF_SUPPRESS_UID) == 0 &&
+	    sr->uid_user != NULL &&
+	    (sr->uid_user->u_sign_flags & SMB_SIGNING_CHECK) != 0) {
+		/*
+		 * This request type should be signed, and
+		 * we're configured to require signatures.
+		 */
+		if ((sr->smb2_hdr_flags & SMB2_FLAGS_SIGNED) == 0) {
+			smb2sr_put_error(sr, NT_STATUS_ACCESS_DENIED);
+			goto cmd_done;
+		}
+		rc = smb2_sign_check_request(sr);
+		if (rc != 0) {
+			DTRACE_PROBE1(smb2__sign__check, smb_request_t, sr);
+			smb2sr_put_error(sr, NT_STATUS_ACCESS_DENIED);
+			goto cmd_done;
+		}
+	}
+
+	/*
+	 * Now that the signing check is done with smb_data,
+	 * advance past the SMB2 header we decoded earlier.
+	 * This leaves sr->smb_data correctly positioned
+	 * for command-specific decoding in the dispatch
+	 * function called next.
+	 */
+	sr->smb_data.chain_offset = sr->smb2_cmd_hdr + SMB2_HDR_SIZE;
 
 	/*
 	 * SMB2 credits determine how many simultaneous commands the
@@ -408,9 +594,35 @@ cmd_start:
 	}
 
 	/*
-	 * Common dispatch (for sync & async)
+	 * The real work: call the SMB2 command handler.
 	 */
-	rc = smb2sr_dispatch(sr, NULL);
+	sr->sr_time_start = gethrtime();
+	/* NB: not using pre_op */
+	rc = (*sdd->sdt_function)(sr);
+	/* NB: not using post_op */
+
+	MBC_FLUSH(&sr->raw_data);
+
+cmd_done:
+	/*
+	 * Pad the reply to align(8) if necessary.
+	 */
+	if (sr->reply.chain_offset & 7) {
+		int padsz = 8 - (sr->reply.chain_offset & 7);
+		(void) smb_mbc_encodef(&sr->reply, "#.", padsz);
+	}
+	ASSERT((sr->reply.chain_offset & 7) == 0);
+
+	/*
+	 * Record some statistics: latency, rx bytes, tx bytes.
+	 */
+	smb_latency_add_sample(&sds->sdt_lat,
+	    gethrtime() - sr->sr_time_start);
+	atomic_add_64(&sds->sdt_rxb,
+	    (int64_t)(sr->command.chain_offset - sr->smb2_cmd_hdr));
+	atomic_add_64(&sds->sdt_txb,
+	    (int64_t)(sr->reply.chain_offset - sr->smb2_reply_hdr));
+
 	switch (rc) {
 	case SDRC_SUCCESS:
 		break;
@@ -423,7 +635,8 @@ cmd_start:
 		 * the code returning something else.
 		 */
 #ifdef	DEBUG
-		cmn_err(CE_NOTE, "smb2sr_dispatch -> 0x%x", rc);
+		cmn_err(CE_NOTE, "handler for %u returned 0x%x",
+		    sr->smb2_cmd_code, rc);
 #endif
 		/* FALLTHROUGH */
 	case SDRC_ERROR:
@@ -454,8 +667,8 @@ cmd_start:
 	/*
 	 * Overwrite the SMB2 header for the response of
 	 * this command (possibly part of a compound).
+	 * encode_header adds: SMB2_FLAGS_SERVER_TO_REDIR
 	 */
-	sr->smb2_hdr_flags |= SMB2_FLAGS_SERVER_TO_REDIR;
 	(void) smb2_encode_header(sr, B_TRUE);
 
 	if (sr->smb2_hdr_flags & SMB2_FLAGS_SIGNED)
@@ -472,9 +685,12 @@ cmd_start:
 
 	/*
 	 * If any of the requests "went async", process those now.
+	 * The async. function "keeps" this sr, changing its state
+	 * to completed and calling smb_request_free().
 	 */
 	if (sr->sr_async_req != NULL) {
 		smb2sr_do_async(sr);
+		return;
 	}
 
 cleanup:
@@ -492,7 +708,6 @@ cleanup:
 		smb_rwx_rwexit(&session->s_lock);
 	}
 
-
 	mutex_enter(&sr->sr_mutex);
 complete_unlock_free:
 	sr->sr_state = SMB_REQ_STATE_COMPLETED;
@@ -504,15 +719,24 @@ complete_unlock_free:
 /*
  * Dispatch an async request using saved information.
  * See smb2sr_save_async and [MS-SMB2] 3.3.4.2
+ *
+ * This is sort of a "lite" version of smb2sr_work.  Initialize the
+ * command and reply areas as they were when the command-speicific
+ * handler started (in case it needs to decode anything again).
+ * Call the async function, which builds the command-specific part
+ * of the response.  Finally, send the response and free the sr.
  */
 void
 smb2sr_do_async(smb_request_t *sr)
 {
-	smb2_async_req_t *ar;
-	int rc;
+	const smb_disp_entry_t	*sdd;
+	smb_disp_stats_t	*sds;
+	smb2_async_req_t	*ar;
+	int rc = 0;
 
 	/*
 	 * Restore what smb2_decode_header found.
+	 * (In lieu of decoding it again.)
 	 */
 	ar = sr->sr_async_req;
 	sr->smb2_cmd_hdr   = ar->ar_cmd_hdr;
@@ -522,13 +746,16 @@ smb2sr_do_async(smb_request_t *sr)
 	sr->smb2_messageid = ar->ar_messageid;
 	sr->smb_pid = ar->ar_pid;
 	sr->smb_tid = ar->ar_tid;
+	sr->smb_uid = ar->ar_uid;
 	sr->smb2_status = 0;
 
 	/*
 	 * Async requests don't grant credits, because any credits
 	 * should have gone out with the interim reply.
+	 * An async reply goes alone (no next reply).
 	 */
 	sr->smb2_credit_response = 0;
+	sr->smb2_next_reply = 0;
 
 	/*
 	 * Setup input mbuf_chain
@@ -543,33 +770,63 @@ smb2sr_do_async(smb_request_t *sr)
 	 */
 	MBC_FLUSH(&sr->reply);
 	sr->smb2_reply_hdr = sr->reply.chain_offset;
-	(void) smb_mbc_encodef(&sr->reply, "#.", SMB2_HDR_SIZE);
+	(void) smb2_encode_header(sr, B_FALSE);
+
+	VERIFY3U(sr->smb2_cmd_code, <, SMB2_INVALID_CMD);
+	sdd = &smb2_disp_table[sr->smb2_cmd_code];
+	sds = sr->session->s_server->sv_disp_stats2;
+	sds = &sds[sr->smb2_cmd_code];
 
 	/*
-	 * Call the common dispatch code, but override the
-	 * command handler function with the async handler
-	 * (ar->ar_func) which will be used instead of the
-	 * normal handler from the dispatch table.
-	 * The SMB signature was already checked.
+	 * Keep the UID, TID, ofile we have.
 	 */
-	rc = smb2sr_dispatch(sr, ar->ar_func);
+	if ((sdd->sdt_flags & SDDF_SUPPRESS_UID) == 0 &&
+	    sr->uid_user == NULL) {
+		smb2sr_put_error(sr, NT_STATUS_USER_SESSION_DELETED);
+		goto cmd_done;
+	}
+	if ((sdd->sdt_flags & SDDF_SUPPRESS_TID) == 0 &&
+	    sr->tid_tree == NULL) {
+		smb2sr_put_error(sr, NT_STATUS_NETWORK_NAME_DELETED);
+		goto cmd_done;
+	}
+
+	/*
+	 * Signature already verified
+	 * Credits handled...
+	 *
+	 * Just call the async handler function.
+	 */
+	rc = ar->ar_func(sr);
 	if (rc != 0 && sr->smb2_status == 0)
 		sr->smb2_status = NT_STATUS_INTERNAL_ERROR;
+
+cmd_done:
+	/*
+	 * Pad the reply to align(8) if necessary.
+	 */
+	if (sr->reply.chain_offset & 7) {
+		int padsz = 8 - (sr->reply.chain_offset & 7);
+		(void) smb_mbc_encodef(&sr->reply, "#.", padsz);
+	}
+	ASSERT((sr->reply.chain_offset & 7) == 0);
+
+	/*
+	 * Record some statistics: (just tx bytes here)
+	 */
+	atomic_add_64(&sds->sdt_txb,
+	    (int64_t)(sr->reply.chain_offset - sr->smb2_reply_hdr));
 
 	/*
 	 * Overwrite the SMB2 header for the response of
 	 * this command (possibly part of a compound).
+	 * The call adds: SMB2_FLAGS_SERVER_TO_REDIR
 	 */
-	sr->smb2_hdr_flags |= SMB2_FLAGS_SERVER_TO_REDIR;
-	sr->smb2_next_reply = 0;
 	(void) smb2_encode_header(sr, B_TRUE);
 
 	if (sr->smb2_hdr_flags & SMB2_FLAGS_SIGNED)
 		smb2_sign_reply(sr);
 
-	/*
-	 * An async reply goes alone (no compound).
-	 */
 	smb2_send_reply(sr);
 
 	/*
@@ -577,6 +834,12 @@ smb2sr_do_async(smb_request_t *sr)
 	 */
 	sr->sr_async_req = NULL;
 	kmem_free(ar, sizeof (*ar));
+
+	mutex_enter(&sr->sr_mutex);
+	sr->sr_state = SMB_REQ_STATE_COMPLETED;
+	mutex_exit(&sr->sr_mutex);
+
+	smb_request_free(sr);
 }
 
 /*
@@ -615,8 +878,14 @@ smb2sr_go_async(smb_request_t *sr,
 
 	/*
 	 * Place an interim response in the compound reply.
-	 * The interim reply gets the async flag, as does
-	 * the final reply (via the saved ar_hdr_flags).
+	 *
+	 * Turn on the "async" flag for both the (synchronous)
+	 * interim response and the (later) async response,
+	 * by storing that in flags before coping into ar.
+	 *
+	 * The "related" flag should always be off for the
+	 * async part because we're no longer operating on a
+	 * sequence of commands when we execute that.
 	 */
 	sr->smb2_hdr_flags |= SMB2_FLAGS_ASYNC_COMMAND;
 	sr->smb2_async_id = (uintptr_t)ar;
@@ -626,10 +895,12 @@ smb2sr_go_async(smb_request_t *sr,
 	ar->ar_cmd_len = sr->smb_data.max_bytes - sr->smb2_cmd_hdr;
 
 	ar->ar_cmd_code = sr->smb2_cmd_code;
-	ar->ar_hdr_flags = sr->smb2_hdr_flags;
+	ar->ar_hdr_flags = sr->smb2_hdr_flags &
+	    ~SMB2_FLAGS_RELATED_OPERATIONS;
 	ar->ar_messageid = sr->smb2_messageid;
 	ar->ar_pid = sr->smb_pid;
 	ar->ar_tid = sr->smb_tid;
+	ar->ar_uid = sr->smb_uid;
 
 	sr->sr_async_req = ar;
 
@@ -637,229 +908,6 @@ smb2sr_go_async(smb_request_t *sr,
 	sr->smb2_hdr_flags &= ~SMB2_FLAGS_SIGNED;
 
 	return (NT_STATUS_PENDING);
-}
-
-/*
- * This is the common dispatch function for SMB2, used for both
- * synchronous and asynchronous requests.  In the async case,
- * this runs twice: once for the initial processing where the
- * initial handler returns NT_STATUS_PENDING, and then a second
- * time (with async_func != NULL) for the "real work".
- * Note the async_func == NULL for "normal" calls, and the
- * handler function is taken from the dispatch table.
- */
-static int
-smb2sr_dispatch(smb_request_t *sr,
-	smb_sdrc_t	(*async_func)(smb_request_t *))
-{
-	const smb_disp_entry_t	*sdd;
-	smb_disp_stats_t	*sds;
-	smb_session_t		*session;
-	smb_server_t		*server;
-	boolean_t		related;
-	int			rc = 0;
-
-	session = sr->session;
-	server = session->s_server;
-
-	/*
-	 * Validate the commmand code, get dispatch table entries.
-	 * [MS-SMB2] 3.3.5.2.6 Handling Incorrectly Formatted...
-	 *
-	 * The last slot in the dispatch table is used to handle
-	 * invalid commands.  Same for statistics.
-	 */
-	if (sr->smb2_cmd_code < SMB2_INVALID_CMD) {
-		sdd = &smb2_disp_table[sr->smb2_cmd_code];
-		sds = &server->sv_disp_stats2[sr->smb2_cmd_code];
-	} else {
-		sdd = &smb2_disp_table[SMB2_INVALID_CMD];
-		sds = &server->sv_disp_stats2[SMB2_INVALID_CMD];
-	}
-
-	if (sr->smb2_hdr_flags & SMB2_FLAGS_SERVER_TO_REDIR) {
-		smb2sr_put_error(sr, NT_STATUS_INVALID_PARAMETER);
-		goto done;
-	}
-
-	/*
-	 * If this command is NOT "related" to the previous,
-	 * clear out the UID, TID, FID state that might be
-	 * left over from the previous command.
-	 *
-	 * Also, if the command IS related, but is declining to
-	 * inherit the previous UID or TID, then clear out the
-	 * previous session or tree now.  This simplifies the
-	 * inheritance logic below.  Similar logic for FIDs
-	 * happens in smb2sr_lookup_fid()
-	 */
-	related = (sr->smb2_hdr_flags & SMB2_FLAGS_RELATED_OPERATIONS);
-	if (!related &&
-	    sr->fid_ofile != NULL) {
-		smb_ofile_request_complete(sr->fid_ofile);
-		smb_ofile_release(sr->fid_ofile);
-		sr->fid_ofile = NULL;
-	}
-	if ((!related || sr->smb_tid != INHERIT_ID) &&
-	    sr->tid_tree != NULL) {
-		smb_tree_release(sr->tid_tree);
-		sr->tid_tree = NULL;
-	}
-	if ((!related || sr->smb_uid != INHERIT_ID) &&
-	    sr->uid_user != NULL) {
-		smb_user_release(sr->uid_user);
-		sr->uid_user = NULL;
-	}
-
-	/*
-	 * Make sure we have a user and tree as needed
-	 * according to the flags for the this command.
-	 * In a compound, a "related" command may inherit
-	 * the UID, TID, and FID from previous commands
-	 * using the special INHERIT_ID (all ones).
-	 */
-
-	if ((sdd->sdt_flags & SDDF_SUPPRESS_UID) == 0) {
-		/*
-		 * This command requires a user session.
-		 */
-		if (related && sr->smb_uid == INHERIT_ID &&
-		    sr->uid_user != NULL) {
-			sr->smb_uid = sr->uid_user->u_uid;
-		} else {
-			ASSERT3P(sr->uid_user, ==, NULL);
-			sr->uid_user = smb_session_lookup_uid(session,
-			    sr->smb_uid);
-		}
-		if (sr->uid_user == NULL) {
-			/* [MS-SMB2] 3.3.5.2.9 Verifying the Session */
-			smb2sr_put_error(sr, NT_STATUS_USER_SESSION_DELETED);
-			goto done;
-		}
-		sr->user_cr = smb_user_getcred(sr->uid_user);
-	}
-
-	if ((sdd->sdt_flags & SDDF_SUPPRESS_TID) == 0) {
-		/*
-		 * This command requires a tree connection.
-		 */
-		if (related && sr->smb_tid == INHERIT_ID &&
-		    sr->tid_tree != NULL) {
-			sr->smb_tid = sr->tid_tree->t_tid;
-		} else {
-			ASSERT3P(sr->tid_tree, ==, NULL);
-			sr->tid_tree = smb_session_lookup_tree(session,
-			    sr->smb_tid);
-		}
-		if (sr->tid_tree == NULL) {
-			/* [MS-SMB2] 3.3.5.2.11 Verifying the Tree Connect */
-			smb2sr_put_error(sr, NT_STATUS_NETWORK_NAME_DELETED);
-			goto done;
-		}
-	}
-
-	/*
-	 * SMB2 signature verification, two parts:
-	 * (a) Require SMB2_FLAGS_SIGNED (for most request types)
-	 * (b) If SMB2_FLAGS_SIGNED is set, check the signature.
-	 * [MS-SMB2] 3.3.5.2.4 Verifying the Signature
-	 */
-
-	/*
-	 * No user session means no signature check.  That's OK,
-	 * i.e. for commands marked SDDF_SUPPRESS_UID above.
-	 * Note, this also means we won't sign the reply.
-	 */
-	if (sr->uid_user == NULL)
-		sr->smb2_hdr_flags &= ~SMB2_FLAGS_SIGNED;
-
-	/*
-	 * The SDDF_SUPPRESS_UID dispatch is set for requests that
-	 * don't need a UID (user).  These also don't require a
-	 * signature check here.
-	 *
-	 * Note: If async_func != NULL, we're handling a command that
-	 * went async. In that case, we've already checked the
-	 * signature, so there's no need to check it again.
-	 */
-	if ((sdd->sdt_flags & SDDF_SUPPRESS_UID) == 0 &&
-	    async_func == NULL && sr->uid_user != NULL &&
-	    (sr->uid_user->u_sign_flags & SMB_SIGNING_CHECK) != 0) {
-		/*
-		 * This request type should be signed, and
-		 * we're configured to require signatures.
-		 */
-		if ((sr->smb2_hdr_flags & SMB2_FLAGS_SIGNED) == 0) {
-			smb2sr_put_error(sr, NT_STATUS_ACCESS_DENIED);
-			goto done;
-		}
-		rc = smb2_sign_check_request(sr);
-		if (rc != 0) {
-			DTRACE_PROBE1(smb2__sign__check, smb_request_t, sr);
-			smb2sr_put_error(sr, NT_STATUS_ACCESS_DENIED);
-			goto done;
-		}
-	}
-
-	/*
-	 * Now that the signing check is done with smb_data,
-	 * advance past the SMB2 header we decoded earlier.
-	 * This leaves sr->smb_data correctly positioned
-	 * for command-specific decoding in the dispatch
-	 * function called next.
-	 */
-	sr->smb_data.chain_offset = sr->smb2_cmd_hdr + SMB2_HDR_SIZE;
-
-	/*
-	 * The real work: call the SMB2 command handler.
-	 */
-	sr->sr_time_start = gethrtime();
-	if (async_func != NULL) {
-		rc = (*async_func)(sr);
-	} else {
-		/* NB: not using pre_op */
-		rc = (*sdd->sdt_function)(sr);
-		/* NB: not using post_op */
-	}
-
-	MBC_FLUSH(&sr->raw_data);
-
-done:
-	/*
-	 * Pad the reply to align(8) if necessary.
-	 */
-	if (sr->reply.chain_offset & 7) {
-		int padsz = 8 - (sr->reply.chain_offset & 7);
-		(void) smb_mbc_encodef(&sr->reply, "#.", padsz);
-	}
-	ASSERT((sr->reply.chain_offset & 7) == 0);
-
-	/*
-	 * Record some statistics: latency, rx bytes, tx bytes.
-	 * Note that async commands get special treatment because
-	 * they come through here twice.  The first call does the
-	 * sync. part, and for that we want to record the latency,
-	 * as well as bytes received and transmitted.  The second
-	 * call is the async part, for which we record only the
-	 * bytes transmitted (because it does actually send again).
-	 * It doesn't make sense to measure latency on the async.
-	 * part of any call, because the waits are indefinite.
-	 * Also don't add bytes received on the async call, as
-	 * there is only one receive, and that was accounted for
-	 * during the sync. part of dispatch handling.
-	 */
-	if (async_func == NULL) {
-		/* Sync. part of dispatch */
-		smb_latency_add_sample(&sds->sdt_lat,
-		    gethrtime() - sr->sr_time_start);
-		atomic_add_64(&sds->sdt_rxb,
-		    (int64_t)(sr->command.chain_offset - sr->smb2_cmd_hdr));
-	}
-	/* Both sync. and async. */
-	atomic_add_64(&sds->sdt_txb,
-	    (int64_t)(sr->reply.chain_offset - sr->smb2_reply_hdr));
-
-	return (rc);
 }
 
 int
@@ -909,6 +957,7 @@ smb2_encode_header(smb_request_t *sr, boolean_t overwrite)
 {
 	uint64_t ssnid = sr->smb_uid;
 	uint64_t pid_tid_aid; /* pid+tid, or async id */
+	uint32_t reply_hdr_flags;
 	int rc;
 
 	if (sr->smb2_hdr_flags & SMB2_FLAGS_ASYNC_COMMAND) {
@@ -917,6 +966,7 @@ smb2_encode_header(smb_request_t *sr, boolean_t overwrite)
 		pid_tid_aid = sr->smb_pid |
 		    ((uint64_t)sr->smb_tid) << 32;
 	}
+	reply_hdr_flags = sr->smb2_hdr_flags | SMB2_FLAGS_SERVER_TO_REDIR;
 
 	if (overwrite) {
 		rc = smb_mbc_poke(&sr->reply,
@@ -927,7 +977,7 @@ smb2_encode_header(smb_request_t *sr, boolean_t overwrite)
 		    sr->smb2_status,		/* l */
 		    sr->smb2_cmd_code,		/* w */
 		    sr->smb2_credit_response,	/* w */
-		    sr->smb2_hdr_flags,		/* l */
+		    reply_hdr_flags,		/* l */
 		    sr->smb2_next_reply,	/* l */
 		    sr->smb2_messageid,		/* q */
 		    pid_tid_aid,		/* q */
@@ -941,7 +991,7 @@ smb2_encode_header(smb_request_t *sr, boolean_t overwrite)
 		    sr->smb2_status,		/* l */
 		    sr->smb2_cmd_code,		/* w */
 		    sr->smb2_credit_response,	/* w */
-		    sr->smb2_hdr_flags,		/* l */
+		    reply_hdr_flags,		/* l */
 		    sr->smb2_next_reply,	/* l */
 		    sr->smb2_messageid,		/* q */
 		    pid_tid_aid,		/* q */
@@ -1039,29 +1089,33 @@ smb2sr_put_error_data(smb_request_t *sr, uint32_t status, mbuf_chain_t *mbc)
  * smb2sr_lookup_fid
  *
  * Setup sr->fid_ofile, either inherited from a related command,
- * or obtained via FID lookup.
+ * or obtained via FID lookup.  Similar inheritance logic as in
+ * smb2sr_work.
  */
 uint32_t
 smb2sr_lookup_fid(smb_request_t *sr, smb2fid_t *fid)
 {
 	boolean_t related = sr->smb2_hdr_flags &
 	    SMB2_FLAGS_RELATED_OPERATIONS;
+	boolean_t drop_ofile = B_FALSE;
 
-	if ((!related || fid->temporal != ~0LL) &&
-	    sr->fid_ofile != NULL) {
+	if (!related)
+		drop_ofile = B_TRUE;
+	if (related && sr->fid_ofile != NULL) {
+		if (fid->temporal == ~0LL ||
+		    fid->temporal == sr->fid_ofile->f_fid)
+			sr->smb_fid = sr->fid_ofile->f_fid;
+		else
+			drop_ofile = B_TRUE;
+	}
+	if (drop_ofile && sr->fid_ofile != NULL) {
 		smb_ofile_request_complete(sr->fid_ofile);
 		smb_ofile_release(sr->fid_ofile);
 		sr->fid_ofile = NULL;
 	}
-
-	if (related && fid->temporal == ~0LL &&
-	    sr->fid_ofile != NULL) {
-		sr->smb_fid = sr->fid_ofile->f_fid;
-	} else {
-		ASSERT(sr->fid_ofile == NULL);
+	if (sr->fid_ofile == NULL) {
 		sr->smb_fid = (uint16_t)fid->temporal;
-		sr->fid_ofile = smb_ofile_lookup_by_fid(sr,
-		    sr->smb_fid);
+		sr->fid_ofile = smb_ofile_lookup_by_fid(sr, sr->smb_fid);
 	}
 	if (sr->fid_ofile == NULL)
 		return (NT_STATUS_FILE_CLOSED);
