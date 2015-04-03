@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -236,7 +236,12 @@ smb_ofile_open(
 		ASSERT(ftype == SMB_FTYPE_DISK); /* Regular file, not a pipe */
 		ASSERT(node);
 
-		if (of->f_granted_access == FILE_EXECUTE)
+		/*
+		 * Note that the common open path often adds bits like
+		 * READ_CONTROL, so the logic "is this open exec-only"
+		 * needs to look at only the FILE_DATA_ALL bits.
+		 */
+		if ((of->f_granted_access & FILE_DATA_ALL) == FILE_EXECUTE)
 			of->f_flags |= SMB_OFLAGS_EXECONLY;
 
 		bzero(&attr, sizeof (smb_attr_t));
