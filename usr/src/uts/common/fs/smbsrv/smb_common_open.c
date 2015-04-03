@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -61,15 +61,11 @@ static boolean_t smb_open_overwrite(smb_arg_open_t *);
  *               FILE_WRITE_ATTRIBUTES, FILE_WRITE_EA, and FILE_APPEND_DATA
  *
  * GENERIC_EXECUTE	STANDARD_RIGHTS_EXECUTE, SYNCHRONIZE, and FILE_EXECUTE.
- *
- * Careful, we have to emulate some Windows behavior here.
- * When requested access == zero, you get READ_CONTROL.
- * MacOS 10.7 depends on this.
  */
-uint32_t
+static uint32_t
 smb_access_generic_to_file(uint32_t desired_access)
 {
-	uint32_t access = READ_CONTROL;
+	uint32_t access = 0;
 
 	if (desired_access & GENERIC_ALL)
 		return (FILE_ALL_ACCESS & ~SYNCHRONIZE);
@@ -353,7 +349,17 @@ smb_open_subr(smb_request_t *sr)
 		break;
 
 	case STYPE_IPC:
+		/*
+		 * Security descriptors for pipes are not implemented,
+		 * so just setup a reasonable access mask.
+		 */
+		op->desired_access = (READ_CONTROL | SYNCHRONIZE |
+		    FILE_READ_DATA | FILE_READ_ATTRIBUTES |
+		    FILE_WRITE_DATA | FILE_APPEND_DATA);
 
+		/*
+		 * Limit the number of open pipe instances.
+		 */
 		if ((rc = smb_threshold_enter(&sv->sv_opipe_ct)) != 0) {
 			status = RPC_NT_SERVER_TOO_BUSY;
 			return (status);
@@ -584,6 +590,17 @@ smb_open_subr(smb_request_t *sr)
 			smb_fsop_eaccess(sr, sr->user_cr, node, &max_allowed);
 			op->desired_access |= max_allowed;
 		}
+		/*
+		 * According to MS "dochelp" mail in Mar 2015, any handle
+		 * on which read or write access is granted implicitly
+		 * gets "read attributes", even if it was not requested.
+		 * This avoids unexpected access failures later that
+		 * would happen if these were not granted.
+		 */
+		if ((op->desired_access & FILE_DATA_ALL) != 0) {
+			op->desired_access |= (READ_CONTROL |
+			    FILE_READ_ATTRIBUTES);
+		}
 
 		/*
 		 * Oplock break is done prior to sharing checks as the break
@@ -770,6 +787,15 @@ smb_open_subr(smb_request_t *sr)
 			smb_fsop_eaccess(sr, sr->user_cr, node, &max_allowed);
 			op->desired_access |= max_allowed;
 		}
+		/*
+		 * We created created this object (we own it) so
+		 * grant read/write attributes on this handle,
+		 * even if that was not requested.  This avoids
+		 * unexpected access failures later that would
+		 * happen if these were not granted.
+		 */
+		op->desired_access |= (READ_CONTROL |
+		    FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES);
 	}
 
 	status = NT_STATUS_SUCCESS;
