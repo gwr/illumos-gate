@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -34,8 +35,7 @@
 #        2. smbutil can resolve the smb NETBIOS name
 #
 
-smbutil002() {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id="smbutil002"
 tc_desc="Test smbutil status, smbutil lookup"
@@ -79,4 +79,3 @@ else
 fi
 
 cti_pass "${tc_id}: PASS"
-}

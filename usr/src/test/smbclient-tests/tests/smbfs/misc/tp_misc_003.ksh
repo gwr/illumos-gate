@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -36,8 +37,7 @@
 #	4. read the file (from step 2)
 #
 
-misc003() {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id="misc003"
 tc_desc=" Verify reconnect after connection loss."
@@ -112,4 +112,3 @@ cti_execute_cmd "rm -rf $TMNT/*"
 
 smbmount_clean $TMNT
 cti_pass "$tc_id: PASS"
-}

@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -38,8 +39,7 @@
 #	5. List the xattr namespace successfully, checking for deletion
 #
 
-function xattr_001 {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id=xattr_001
 tc_desc="Verify creating,reading and writing xattrs on smbfs works as expected"
@@ -82,4 +82,3 @@ cti_execute_cmd "cd -"
 
 smbmount_clean $TMNT
 cti_pass "$tc_id: PASS"
-}

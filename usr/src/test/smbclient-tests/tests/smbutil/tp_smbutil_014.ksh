@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -34,8 +35,7 @@
 #	2. smbutil logoutall and smbutil login -c can get right message
 #
 
-smbutil014() {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id="smbutil014"
 tc_desc="Verify smbutil logoutall can work"
@@ -112,4 +112,3 @@ else
 fi
 
 cti_pass "${tc_id}: PASS"
-}

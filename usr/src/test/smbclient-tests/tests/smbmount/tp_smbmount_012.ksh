@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -38,8 +39,7 @@
 #        5. cd /PUBLIC get permisson deny
 #
 
-smbmount012() {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id="smbmount012"
 tc_desc="dirperms=xxx worked well "
@@ -102,4 +102,3 @@ fi
 smbmount_clean $TMNT
 
 cti_pass "${tc_id}: PASS"
-}

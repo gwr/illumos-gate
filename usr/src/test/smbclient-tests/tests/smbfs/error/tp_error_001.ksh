@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -35,8 +36,7 @@
 #	 3. The "ln -s" can get the right message
 #
 
-error001() {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id="error001"
 tc_desc=" Verify link error on the smbfs"
@@ -113,4 +113,3 @@ cti_execute_cmd "cd -"
 
 smbmount_clean $TMNT
 cti_pass "${tc_id}: PASS"
-}

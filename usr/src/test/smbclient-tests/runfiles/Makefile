@@ -10,20 +10,29 @@
 #
 
 #
-# Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
+# Copyright (c) 2012 by Delphix. All rights reserved.
 #
 
-include		$(SRC)/Makefile.master
-include		../../Makefile.com
+include $(SRC)/Makefile.master
 
-ROOTTESTDIR=	$(ROOTOPTPKG)/tests/nsmbrc
+SRCS = default.run perf-regression.run
 
-TESTS=	\
-		tp_nsmbrc_001	\
-		tp_nsmbrc_002	\
-		tp_nsmbrc_003	\
-		tp_nsmbrc_004	\
-		tp_nsmbrc_005	\
-		tp_nsmbrc_006
+ROOTOPTPKG = $(ROOT)/opt/smbclient-tests
+RUNFILES = $(ROOTOPTPKG)/runfiles
 
-include		../Makefile.tests
+CMDS = $(SRCS:%=$(RUNFILES)/%)
+$(CMDS) := FILEMODE = 0444
+
+all: $(SRCS)
+
+install: $(CMDS)
+
+clean lint clobber:
+
+$(CMDS): $(RUNFILES) $(SRCS)
+
+$(RUNFILES):
+	$(INS.dir)
+
+$(RUNFILES)/%: %
+	$(INS.file)

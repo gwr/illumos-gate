@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -38,8 +39,7 @@
 #	6. verify $TUSER1 ACE is there
 #
 
-acl004() {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id="acl004"
 tc_desc="Verify we can modify an ACL (add user ACE)"
@@ -178,4 +178,3 @@ smbmount_clean $TMNT
 smbmount_clean $TMNT2
 
 cti_pass "${tc_id}: PASS"
-}

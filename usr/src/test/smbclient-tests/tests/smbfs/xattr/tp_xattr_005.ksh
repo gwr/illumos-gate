@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -35,8 +36,7 @@
 #	3. Verify we're unable to list the ../ directory
 #
 
-function xattr_005 {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id=xattr_005
 tc_desc="Verify special . and .. dirs work as expected for xattrs"
@@ -160,4 +160,3 @@ cti_execute_cmd "rm -rf $TDIR/*"
 
 smbmount_clean $TMNT
 cti_pass "$tc_id: PASS"
-}

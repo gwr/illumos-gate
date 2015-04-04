@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -34,8 +35,7 @@
 #       2. mv can get the right message
 #
 
-mvtest005() {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id="mvtest005"
 tc_desc=" Verify can mv dir between server and client"
@@ -97,4 +97,3 @@ cti_execute_cmd "rm -rf $TDIR/*"
 
 smbmount_clean $TMNT
 cti_pass "${tc_id}: PASS"
-}

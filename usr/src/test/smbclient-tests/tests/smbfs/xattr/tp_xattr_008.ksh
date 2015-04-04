@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -36,8 +37,7 @@
 #	   doesn't get copied
 #
 
-function xattr_008 {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id=xattr_008
 tc_desc="Verify basic applications work with xattrs: cpio cp find mv pax tar"
@@ -304,4 +304,3 @@ cti_execute_cmd "cd -"
 
 smbmount_clean $TMNT
 cti_pass "$tc_id: PASS"
-}

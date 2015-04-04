@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -35,8 +36,7 @@
 #	3. smbutil logout and smbutil login can get the right message
 #
 
-smbutil005() {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id="smbutil005"
 tc_desc="Verify smbutil logout could work"
@@ -120,4 +120,3 @@ else
 fi
 
 cti_pass "${tc_id}: PASS"
-}

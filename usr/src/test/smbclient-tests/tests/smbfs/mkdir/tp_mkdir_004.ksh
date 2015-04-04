@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -34,8 +35,7 @@
 #       2. mkdir and rmdir can get the right message
 #
 
-mkdir004() {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id="mkdir004"
 tc_desc=" Verify can muti dir operation on the smbfs"
@@ -130,4 +130,3 @@ cti_execute_cmd "rm -rf $TMNT/*"
 smbmount_clean $TMNT
 
 cti_pass "${tc_id}: PASS"
-}

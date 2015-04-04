@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -36,8 +37,7 @@
 #	4. verify everyone line is there
 #
 
-acl003() {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id="acl003"
 tc_desc="Verify we can modify an ACL (add everyone ACE)"
@@ -126,4 +126,3 @@ cti_execute_cmd "rm $TMNT/$tc_id"
 smbmount_clean $TMNT
 
 cti_pass "${tc_id}: PASS"
-}

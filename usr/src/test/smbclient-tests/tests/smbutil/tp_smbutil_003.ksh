@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -35,8 +36,7 @@
 #	3. Verify smbutil view can authenticate
 #
 
-smbutil003() {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id="smbutil003"
 tc_desc="Verify smbutil login works"
@@ -89,4 +89,3 @@ fi
 smbutil logoutall
 
 cti_pass "${tc_id}: PASS"
-}

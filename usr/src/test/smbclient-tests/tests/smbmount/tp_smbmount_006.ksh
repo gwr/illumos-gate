@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -37,8 +38,7 @@
 #	5. mount failed
 #
 
-smbmount006() {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id="smbmount006"
 tc_desc=" Verify mutil user mount failed on the same plan"
@@ -87,4 +87,3 @@ fi
 
 smbmount_clean $TMNT
 cti_pass "${tc_id}: PASS"
-}

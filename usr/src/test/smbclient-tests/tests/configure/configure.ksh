@@ -29,17 +29,9 @@
 # or those set in the tetexec.cfg file.
 #
 
-iclist="ic1 ic2 ic3 ic4 ic5 ic6"
-ic1="testdir_create"
-ic2="testdir_delete"
-ic3="user_create"
-ic4="user_delete"
-ic5="smbsrv_setup"
-ic6="smbsrv_cleanup"
-
-. ${CTI_SUITE}/config/config
-. ${CTI_SUITE}/include/utils_common.ksh
-. ${CTI_SUITE}/include/services_common.ksh
+. ${STF_SUITE}/config/config
+. ${STF_SUITE}/include/utils_common.ksh
+. ${STF_SUITE}/include/services_common.ksh
 
 #
 # NAME
@@ -280,5 +272,6 @@ smbsrv_cleanup() {
 	cti_pass PASS
 }
 
-. ${CTI_ROOT}/lib/ctiutils.ksh
-. ${TET_ROOT}/lib/ksh/tcm.ksh
+. ${STF_TOOLS}/contrib/include/ctilib.shlib
+#XXX . ${CTI_ROOT}/lib/ctiutils.ksh
+#XXX . ${TET_ROOT}/lib/ksh/tcm.ksh

@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -34,8 +35,7 @@
 #       2. cp and diff can get the right message
 #
 
-cptest004() {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id="cptest004"
 tc_desc="Verify can cp 3g files on the smbfs"
@@ -135,4 +135,3 @@ if [[ -n "$STC_QUICK" ]] ; then
 fi
 
 cti_pass "${tc_id}: PASS"
-}

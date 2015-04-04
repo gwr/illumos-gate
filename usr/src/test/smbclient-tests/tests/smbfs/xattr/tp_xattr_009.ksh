@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -36,8 +37,7 @@
 #	5. Verify that xattrs should not be have
 #
 
-function xattr_009 {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id=xattr_009
 tc_desc="Verify can create many xattrs on a file"
@@ -118,4 +118,3 @@ cti_execute_cmd "cd -"
 
 smbmount_clean $TMNT
 cti_pass "$tc_id: PASS"
-}

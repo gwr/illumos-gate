@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -37,8 +38,7 @@
 #	4. cd /mnt; mkdir d; ls -l a get 755 permisson
 #
 
-smbmount011() {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id="smbmount011"
 tc_desc="fileperm=xxx worked well "
@@ -111,4 +111,3 @@ fi
 smbmount_clean $TMNT
 
 cti_pass "${tc_id}: PASS"
-}

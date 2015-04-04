@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -34,8 +35,7 @@
 #       2. mv and diff can get the right message
 #
 
-mvtest001() {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id="mvtest001"
 tc_desc=" Verify can mv files on the smbfs"
@@ -109,4 +109,3 @@ cti_execute_cmd "rm $TDIR/test_file_mv"
 
 smbmount_clean $TMNT
 cti_pass "${tc_id}: PASS"
-}

@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -35,8 +36,7 @@
 #	3. cp and diff can get right message
 #
 
-smbmount010() {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id="smbmount010"
 tc_desc="smbmount can work well with smbutil login"
@@ -117,4 +117,3 @@ smbmount_clean $TMNT
 smbutil logout -a
 
 cti_pass "${tc_id}: PASS"
-}

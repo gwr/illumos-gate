@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -39,8 +40,7 @@
 #	7. verify $TUSER1 owns it
 #
 
-acl005() {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id="acl005"
 tc_desc="Verify we can take ownership (chown)"
@@ -189,4 +189,3 @@ smbmount_clean $TMNT
 smbmount_clean $TMNT2
 
 cti_pass "${tc_id}: PASS"
-}

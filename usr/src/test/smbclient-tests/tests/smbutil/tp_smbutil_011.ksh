@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -33,8 +34,7 @@
 #	1. smbutil failed with incorrect password
 #
 
-smbutil011() {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id="smbutil011"
 tc_desc=" Verify smbutil  can failed with wrong passwd"
@@ -62,4 +62,3 @@ else
 fi
 
 cti_pass "${tc_id}: PASS"
-}

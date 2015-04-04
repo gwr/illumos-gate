@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -34,8 +35,7 @@
 #       2. tar and rm can get the right message
 #
 
-create011() {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id="create011"
 tc_desc="Verify can create files on the smbfs"
@@ -45,6 +45,9 @@ if [[ $STC_CIFS_CLIENT_DEBUG == 1 ]] || \
 	[[ *:${STC_CIFS_CLIENT_DEBUG}:* == *:$tc_id:* ]]; then
     set -x
 fi
+
+# reference dir for copy (ro)
+refdir=/kernel/misc
 
 server=$(server_name) || return
 
@@ -64,8 +67,8 @@ fi
 cti_execute_cmd "rm -rf $TMNT/*"
 cti_execute_cmd "cd $TMNT"
 
-cti_execute_cmd "tar cf $TDIR/kernel.tar /kernel"
-cti_execute_cmd "tar cf kernel.tar /kernel"
+cti_execute_cmd "tar cf $TDIR/kernel.tar $refdir"
+cti_execute_cmd "tar cf kernel.tar $refdir"
 if [[ $? != 0 ]]; then
 	cti_fail "FAIL: the tar cf command is failed "
 	return
@@ -86,4 +89,3 @@ cti_execute_cmd "cd -"
 
 smbmount_clean $TMNT
 cti_pass "${tc_id}: PASS"
-}

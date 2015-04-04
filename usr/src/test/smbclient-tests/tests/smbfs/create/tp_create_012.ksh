@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -34,8 +35,7 @@
 #       2. create and rm can get the right message
 #
 
-create012() {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id="create012"
 tc_desc="Verify can create files on the smbfs"
@@ -89,4 +89,3 @@ sleep 10
 
 smbmount_clean $TMNT
 cti_pass "${tc_id}: PASS"
-}

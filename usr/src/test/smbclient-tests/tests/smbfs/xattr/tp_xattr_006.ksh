@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -35,8 +36,7 @@
 #	3. Verify we're unable to create a hard link
 #
 
-function xattr_006 {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id=xattr_006
 tc_desc="Verify links between xattr and normal file namespace fail"
@@ -100,4 +100,3 @@ cti_execute_cmd "cd -"
 
 smbmount_clean $TMNT
 cti_pass "$tc_id: PASS"
-}

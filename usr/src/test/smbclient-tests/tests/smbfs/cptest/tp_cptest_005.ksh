@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -34,8 +35,7 @@
 #       2. cp -r can get the right message
 #
 
-cptest005() {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id="cptest005"
 tc_desc="Verify can cp dir between server and client side"
@@ -112,4 +112,3 @@ cti_execute_cmd "cd -"
 smbmount_clean $TMNT
 
 cti_pass "${tc_id}: PASS"
-}

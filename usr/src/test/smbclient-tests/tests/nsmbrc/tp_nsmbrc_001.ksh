@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -37,8 +38,7 @@
 #	4. run "smbutil view user@server and get the failure"
 #	
 
-nsmbrc001() {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id="nsmbrc001"
 tc_desc="Verify minauth can work in default"
@@ -69,4 +69,3 @@ fi
 rm -f ~root/.nsmbrc
 
 cti_pass "${tc_id}: PASS"
-}

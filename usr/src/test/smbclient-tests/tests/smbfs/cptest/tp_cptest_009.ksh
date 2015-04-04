@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -34,8 +35,7 @@
 #       2. create, cp and diff can get the right message
 #
 
-cptest009() {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id="cptest009"
 tc_desc="Verify can cp files on the smbfs"
@@ -93,4 +93,3 @@ cti_execute_cmd "rm -rf $TMNT/*"
 
 smbmount_clean $TMNT
 cti_pass "${tc_id}: PASS"
-}

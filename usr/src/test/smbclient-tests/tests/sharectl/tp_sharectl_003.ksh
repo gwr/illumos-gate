@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -37,8 +38,7 @@
 #       3. sharectl, smbutil and mount can get right message
 #
 
-sharectl003() {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id="sharectl003"
 tc_desc="Verify password can work"
@@ -116,4 +116,3 @@ smbmount_clean $TMNT
 sharectl delsect  $SERVER:$TUSER smbfs
 
 cti_pass "${tc_id}: PASS"
-}

@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -34,8 +35,7 @@
 #        2. smbutil can get the right message
 #
 
-smbutil001() {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id="smbutil001"
 tc_desc="Verify smbutil can handle error arg"
@@ -86,4 +86,3 @@ if [[ -f core ]]; then
 fi
 
 cti_pass "${tc_id}: PASS"
-}

@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -38,8 +39,7 @@
 #	6. verify extracted ACL matches original
 #
 
-acl002() {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id="acl002"
 tc_desc="Verify we can save/restore ACLs with cpio"
@@ -135,4 +135,3 @@ cti_execute_cmd "rm $TMNT/$tc_id"
 smbmount_clean $TMNT
 
 cti_pass "${tc_id}: PASS"
-}

@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -35,8 +36,7 @@
 #	3. Verify that various mknods fails inside the xattr namespace
 #
 
-function xattr_007 {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id=xattr_007
 tc_desc="Verify mkdir and various mknods fail inside the xattr namespace"
@@ -115,4 +115,3 @@ cti_execute_cmd "cd -"
 
 smbmount_clean $TMNT
 cti_pass "$tc_id: PASS"
-}

@@ -118,7 +118,8 @@ no_tested() {
 #
 server_name() {
 	if [[ -z $SRV ]]; then
-		tet_result UNRESOLVED
+		cti_report "SRV not set"
+		cti_result UNRESOLVED
 		return 1
 	fi
 	server=$SRV

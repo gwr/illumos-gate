@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -34,8 +35,7 @@
 #       2. mv and diff can get the right message
 #
 
-mvtest004() {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id="mvtest004"
 tc_desc=" Verify can mv large file on the smbfs"
@@ -127,4 +127,3 @@ if [[ -n "$STC_QUICK" ]] ; then
 fi
 
 cti_pass "${tc_id}: PASS"
-}

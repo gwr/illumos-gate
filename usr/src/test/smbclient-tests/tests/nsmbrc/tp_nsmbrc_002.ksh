@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -35,8 +36,7 @@
 #       3. password works fine
 #
 
-nsmbrc002() {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id="nsmbrc002"
 tc_desc="Verify password can work in nsmbrc"
@@ -92,4 +92,3 @@ fi
 rm -f ~root/.nsmbrc
 
 cti_pass "${tc_id}: PASS"
-}

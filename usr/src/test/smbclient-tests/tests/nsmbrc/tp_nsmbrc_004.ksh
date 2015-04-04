@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -35,8 +36,7 @@
 #       3. smbutil can get right messages
 #
 
-nsmbrc004() {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id="nsmbrc004"
 tc_desc=" Verify minauth can work on SERVER section"
@@ -74,4 +74,3 @@ fi
 rm -f ~root/.nsmbrc
 
 cti_pass "${tc_id}: PASS"
-}

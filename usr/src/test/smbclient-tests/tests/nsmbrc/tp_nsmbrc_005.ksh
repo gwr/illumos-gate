@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -36,8 +37,7 @@
 #       4. smbutil and mount can get the right message
 #
 
-nsmbrc005() {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id="nsmbrc005"
 tc_desc=" Verify user and domain in user section can work"
@@ -92,4 +92,3 @@ rm -f ~root/.nsmbrc
 smbmount_clean $TMNT
 
 cti_pass "${tc_id}: PASS"
-}

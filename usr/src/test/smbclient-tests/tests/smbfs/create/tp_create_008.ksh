@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -34,8 +35,7 @@
 #       2. create and rm can get the right message
 #
 
-create008() {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id="create008"
 tc_desc="Verify can create 1.5g files on the smbfs"
@@ -114,4 +114,3 @@ if [[ -n "$STC_QUICK" ]] ; then
 fi
 
 cti_pass "${tc_id}: PASS"
-}

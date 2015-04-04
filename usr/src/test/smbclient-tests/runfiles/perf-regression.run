@@ -10,25 +10,17 @@
 #
 
 #
-# Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
+# Copyright (c) 2015, 2016 by Delphix. All rights reserved.
 #
 
-include		$(SRC)/Makefile.master
-include		../Makefile.com
+[DEFAULT]
+pre = setup
+quiet = False
+pre_user = root
+timeout = 0
+post = cleanup
+outputdir = /var/tmp/test_results
 
-TETSCEN=	tet_scen
-
-ROOTTETSCEN=	$(TETSCEN:%=$(ROOTOPTPKG)/%)
-$(ROOTTETSCEN) := FILEMODE = 0444
-
-all:		$(TETSCEN)
-
-install:	$(ROOTOPTPKG) $(ROOTTETSCEN)
-
-clean lint clobber:
-
-$(ROOTOPTPKG):
-		$(INS.dir)
-
-$(ROOTOPTPKG)/%: %
-		$(INS.file)
+[/opt/smbclient-tests/tests/performance/filebench]
+tests = ['tp_filebench_001', 'tp_filebench_002', 'tp_filebench_003',
+	'tp_filebench_004', 'tp_filebench_005']

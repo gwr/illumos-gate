@@ -1,4 +1,5 @@
-#! /usr/bin/ksh
+#!/usr/bin/ksh
+
 #
 # This file and its contents are supplied under the terms of the
 # Common Development and Distribution License ("CDDL"), version 1.0.
@@ -11,29 +12,38 @@
 #
 
 #
+# Copyright (c) 2012 by Delphix. All rights reserved.
+#
 
 #
 # Define necessary environments and config variables here
-# prior to invoke TET test runner 'run_test'
+# prior to invoking the test runner
 #
-export TET_ROOT=/opt/SUNWstc-tetlite
-export CTI_ROOT=$TET_ROOT/contrib/ctitools
-export TET_SUITE_ROOT=/opt
-PATH=$PATH:$CTI_ROOT/bin
+
+export STF_SUITE="/opt/smbclient-tests"
+export STF_TOOLS="/opt/test-runner/stf"
+runner="/opt/test-runner/bin/run"
+
+runfile=$STF_SUITE/runfiles/default.run
+
+PATH=/usr/bin:/usr/sbin:/sbin:$STF_SUITE/bin:$PATH
 export PATH
-export SCRATCH_DIR=/var/tmp
 
-#
-# To run entire suite
-#
-run_test smbclient-tests
+while getopts c:q c; do
+	case $c in
+	'c')
+		runfile=$OPTARG
+		[[ -f $runfile ]] || fail "Cannot read file: $runfile"
+		;;
+	'q')
+		quiet='-q'
+		;;
+	esac
+done
+shift $((OPTIND - 1))
 
-#
-# To run component
-#
-#run_test smbclient-tests smbmount
+. $STF_SUITE/include/default_cfg.ksh
 
-#
-# To run individual testcase
-#
-#run_test smbclient-tests smbmount:10
+$runner $quiet -c $runfile
+
+exit $?

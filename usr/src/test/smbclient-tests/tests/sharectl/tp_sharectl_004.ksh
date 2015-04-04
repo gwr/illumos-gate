@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -35,8 +36,7 @@
 #       3. sharectl and smbutil can get right message
 #
 
-sharectl004() {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id="sharectl004"
 tc_desc="Verify minauth can work on user section"
@@ -80,4 +80,3 @@ fi
 sharectl delsect $SERVER smbfs
 
 cti_pass "${tc_id}: PASS"
-}

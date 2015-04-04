@@ -1,3 +1,4 @@
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -34,8 +35,7 @@
 #       2. cp and diff can get the right message
 #
 
-cptest007() {
-tet_result PASS
+. $STF_SUITE/include/libtest.ksh
 
 tc_id="cptest007"
 tc_desc=" Verify can cp muti dir/files between server and local"
@@ -119,4 +119,3 @@ cti_execute_cmd "rm -rf $TMNT/*"
 smbmount_clean $TMNT
 
 cti_pass "${tc_id}: PASS"
-}
