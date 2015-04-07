@@ -324,6 +324,7 @@ static arc_state_t ARC_l2c_only;
 
 typedef struct arc_stats {
 	kstat_named_t arcstat_hits;
+	kstat_named_t arcstat_ddt_hits;
 	kstat_named_t arcstat_misses;
 	kstat_named_t arcstat_demand_data_hits;
 	kstat_named_t arcstat_demand_data_misses;
@@ -651,6 +652,7 @@ static arc_stats_t arc_stats = {
 	{ "mfu_ghost_evictable_metadata", KSTAT_DATA_UINT64 },
 	{ "mfu_ghost_evictable_ddt",	KSTAT_DATA_UINT64 },
 	{ "l2_hits",			KSTAT_DATA_UINT64 },
+	{ "l2_ddt_hits",		KSTAT_DATA_UINT64 },
 	{ "l2_misses",			KSTAT_DATA_UINT64 },
 	{ "l2_feeds",			KSTAT_DATA_UINT64 },
 	{ "l2_rw_clash",		KSTAT_DATA_UINT64 },
@@ -2030,6 +2032,8 @@ arc_buf_add_ref(arc_buf_t *buf, void* tag)
 	arc_access(hdr, hash_lock);
 	mutex_exit(hash_lock);
 	ARCSTAT_BUMP(arcstat_hits);
+	if(HDR_ISTYPE_DDT(hdr))
+		ARCSTAT_BUMP(arcstat_ddt_hits);
 	arc_update_hit_stat(hdr, B_TRUE);
 }
 
@@ -4244,6 +4248,8 @@ top:
 			hdr->b_flags |= ARC_FLAG_L2COMPRESS;
 		mutex_exit(hash_lock);
 		ARCSTAT_BUMP(arcstat_hits);
+		if(HDR_ISTYPE_DDT(hdr))
+			ARCSTAT_BUMP(arcstat_ddt_hits);
 		arc_update_hit_stat(hdr, B_TRUE);
 
 		if (done)
