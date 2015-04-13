@@ -2332,12 +2332,13 @@ zio_ddt_write(zio_t *zio)
 			}
 		} else if (zfs_ddt_limit_type == DDT_LIMIT_TO_L2ARC) {
 			/* need to limit DDT to fit into L2ARC DDT dev */
-			if (spa->spa_l2arc_ddt_devs_size == 0 &&
-			    zfs_ddts_msize > *arc_ddt_evict_threshold) {
+			if (spa->spa_l2arc_ddt_devs_size != 0) {
+				if (spa_get_ddts_size(spa, B_TRUE) >
+				    spa->spa_l2arc_ddt_devs_size) {
+					dde->dde_state |= DDE_DONT_SYNC;
+				}
+			} else if (zfs_ddts_msize > *arc_ddt_evict_threshold) {
 				/* no L2ARC DDT dev - keep DDT in ARC */
-				dde->dde_state |= DDE_DONT_SYNC;
-			} else if (spa_get_ddts_size(spa, B_TRUE) >
-			    spa->spa_l2arc_ddt_devs_size) {
 				dde->dde_state |= DDE_DONT_SYNC;
 			}
 		}
