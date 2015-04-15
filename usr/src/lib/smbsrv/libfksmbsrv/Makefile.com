@@ -186,8 +186,6 @@ include ../../Makefile.lib
 # Force SOURCEDEBUG
 CSOURCEDEBUGFLAGS	= -g
 CCSOURCEDEBUGFLAGS	= -g
-CTFCVTFLAGS 	+= -g
-CTFMRGFLAGS 	+= -g
 STRIP_STABS 	= :
 
 

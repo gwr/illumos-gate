@@ -112,6 +112,8 @@ for lib in \
 do
   (cd $SRC/lib/$lib && $make $targ)
 done
+  # Should fix the Makefile here so all_h or install_h works.
+  (cd $SRC/lib/libzpool/$cpu && $make ../common/zfs.h)
 }
 
 ################################################################
@@ -122,6 +124,46 @@ do_kern() {
   *) targ=$1 ;;
   esac
   (cd $SRC/uts/$x/zfs && $make $targ)
+}
+
+################################################################
+#
+# Build all libraries used by the other targets in here.
+#
+# Run this once (at least) in each new workspace where you
+# will run "make-zfs install", if you want to avoid linking
+# against the libraries from your build host.
+#
+do_deplibs() {
+
+# install all the lib headers
+if [ "$1" = install ] ; then
+  (cd $SRC/lib && $make install_h)
+fi
+
+# Wow, building libc takes a while.  Really want that?
+for lib in \
+	libc \
+	libavl \
+	libnvpair \
+	libsec \
+	libcmdutils \
+	libdevinfo \
+	libuutil \
+	libbrand \
+	libzonecfg \
+	libinetutil \
+	libdladm \
+	libdlpi \
+	libdiskmgt \
+	libumem \
+	libdisasm \
+	libidmap \
+	libdevid \
+	libsaveargs
+do
+  (cd $SRC/lib/$lib && $make $1)
+done
 }
 
 ################################################################
@@ -146,13 +188,15 @@ done
 ################################################################
 
 do_cmds() {
-  
+
 for cmd in \
   availdevs \
+  isaexec \
   fstyp \
   zdb \
   zfs \
   zhack \
+  zinject \
   zpool \
   ztest \
   zstreamdump \
@@ -165,14 +209,18 @@ case $1 in
 install)
   # mount programs need fslib.o
   (cd $SRC/cmd/fs.d/zfs && $make $1)
+  # Build just the ZFS devfsadm module
+  (cd $SRC/cmd/devfsadm/$cpu && $make SUNW_zfs_link.so \
+    ${ROOT}/usr/lib/devfsadm/linkmod \
+    ${ROOT}/usr/lib/devfsadm/linkmod/SUNW_zfs_link.so )
   ;;
 clean|clobber)
   (cd $SRC/cmd/fs.d/zfs && $make clobber)
   (cd $SRC/cmd/fs.d && $make ${1}_local)
+  (cd $SRC/cmd/devfsadm && $make $1)
   ;;
 esac
 
-(cd $SRC/cmd/devfsadm && $make $1)
 (cd $SRC/cmd/syseventd/modules/zfs_mod && $make $1)
 
 # Build the MDB modules, WITH the linktest
@@ -200,6 +248,30 @@ done
 }
 
 ################################################################
+
+do_mans() {
+
+  case "$1" in
+  install)
+    (cd $SRC/man/man1m && make \
+      $ROOT/usr/share/man/man1m/zdb.1m \
+      $ROOT/usr/share/man/man1m/zfs.1m \
+      $ROOT/usr/share/man/man1m/zpool.1m )
+    (cd $SRC/man/man5 && make \
+      $ROOT/usr/share/man/man5/zpool-features.5 )
+    ;;
+  lint)
+    (cd $SRC/man/man1m && make zdb.1m.check zfs.1m.check zpool.1m.check)
+    (cd $SRC/man/man5 && make zpool-features.5.check)
+    ;;
+  *)
+    (cd $SRC/man/man1m && make $1)
+    (cd $SRC/man/man5 && make $)
+    ;;
+  esac
+}
+
+################################################################
 # This builds $SRC/TAGS (and cscope.files) in a helpful order.
 
 do_tags() {
@@ -210,9 +282,12 @@ do_tags() {
 	find lib/libzfs -name '*.[ch]' -print |sort
 	find cmd/zpool -name '*.[ch]' -print |sort
 	find cmd/zfs -name '*.[ch]' -print |sort
+	find cmd/zdb -name '*.[ch]' -print |sort
 	find cmd/zhack -name '*.[ch]' -print |sort
+	find cmd/zinject -name '*.[ch]' -print |sort
 	find cmd/ztest -name '*.[ch]' -print |sort
 	find common/zfs -name '*.[ch]' -print |sort
+	echo cmd/mdb/common/modules/zfs/zfs.c
 	) > $SRC/cscope.files
 
 	(cd $SRC ;
@@ -236,6 +311,8 @@ lib/$arch64/libzfs.so.1
 lib/$arch64/libzfs_core.so.1
 lib/libzfs.so.1
 lib/libzfs_core.so.1
+usr/bin/$arch32/ztest
+usr/bin/$arch64/ztest
 usr/lib/$arch64/libzfs_jni.so.1
 usr/lib/$arch64/libzpool.so.1
 usr/lib/devfsadm/linkmod/SUNW_zfs_link.so
@@ -255,9 +332,16 @@ usr/lib/zfs/pyzfs.py
 usr/lib/zfs/pyzfs.pyc
 usr/sbin/$arch32/zdb
 usr/sbin/$arch64/zdb
+usr/sbin/$arch32/zhack
+usr/sbin/$arch64/zhack
+usr/sbin/$arch32/zinject
+usr/sbin/$arch64/zinject
 usr/sbin/zstreamdump
+usr/share/man/man1m/zdb.1m
+usr/share/man/man1m/zfs.1m
+usr/share/man/man1m/zpool.1m
+usr/share/man/man5/zpool-features.5
 "
-
 	(cd $ROOT && tar cfj ../../zfs-${git_rev}.tar.bz2 $files)
 }
 
@@ -272,31 +356,40 @@ set -x
 for arg
 do
   case "$arg" in
-  build|install)
-    arg=install
+  install)
     build_tools
     set -e
     do_hdrs $arg
     do_kern $arg
     do_libs $arg
     do_cmds $arg
+    do_mans $arg
     ;;
   lint)
     do_kern $arg
     do_libs $arg
     do_cmds $arg
+    do_mans $arg
     ;;
   clean)
+    do_mans $arg
     do_cmds $arg
     do_libs $arg
     do_kern $arg
     ;;
   clobber)
+    do_mans $arg
     do_cmds $arg
     do_libs $arg
     do_kern $arg
     do_hdrs $arg
     clobber_tools
+    ;;
+  deplibs)
+    build_tools
+    set -e
+    do_hdrs install
+    do_deplibs install
     ;;
   tags)
     do_tags
@@ -305,7 +398,7 @@ do
     do_tar
     ;;
   *)
-    echo "Usage: $0 {build|lint|clean|clobber|tags}";
+    echo "Usage: $0 {install|lint|clean|clobber|deplibs|tags|tar}";
     exit 1;
     ;;
   esac

@@ -21,6 +21,7 @@
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2013 Nexenta Systems, Inc. All rights reserved.
+ * Copyright (c) 2014 by Delphix. All rights reserved.
  */
 
 #ifndef _SYS_ZIO_CHECKSUM_H
@@ -35,13 +36,13 @@ extern "C" {
 /*
  * Signature for checksum functions.
  */
-typedef void zio_checksum_t(const void *data, uint64_t size, zio_cksum_t *zcp);
+typedef void zio_checksum_func_t(const void *, uint64_t, zio_cksum_t *);
 
 /*
  * Information about each checksum function.
  */
 typedef struct zio_checksum_info {
-	zio_checksum_t	*ci_func[2]; /* checksum function for each byteorder */
+	zio_checksum_func_t *ci_func[2]; /* checksum function per byteorder */
 	int		ci_correctable;	/* number of correctable bits	*/
 	int		ci_eck;		/* uses zio embedded checksum? */
 	int		ci_dedup;	/* strong enough for dedup? */
@@ -62,8 +63,8 @@ extern zio_checksum_info_t zio_checksum_table[ZIO_CHECKSUM_FUNCTIONS];
 /*
  * Checksum routines.
  */
-extern zio_checksum_t zio_checksum_SHA256;
-extern zio_checksum_t zio_checksum_SHA1CRC32;
+extern zio_checksum_func_t zio_checksum_SHA256;
+extern zio_checksum_func_t zio_checksum_SHA1CRC32;
 extern void zio_parallel_checksum_init(void);
 extern void zio_parallel_checksum_fini(void);
 extern int zio_parallel_checksum_fsm(zio_t *, enum zio_checksum,
