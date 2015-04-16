@@ -203,7 +203,7 @@ ONBLD_BIN="${ONBLD_TOOLS}/bin"
 # it in /usr/java, but if /usr/jdk/instances/openjdk7 exists it will be used
 # instead.
 if [ -d /usr/jdk/instances/openjdk1.7.0 ]; then
-    export JAVA_ROOT=/usr/jdk/instances/openjdk1.7.0
+	export JAVA_ROOT=/usr/jdk/instances/openjdk1.7.0
 fi
 
 # help lint find the proper note.h file
@@ -211,6 +211,11 @@ export ONLY_LINT_DEFS=-I${SPRO_ROOT}/sunstudio12.1/prod/include/lint
 
 # Causes GCC to be used as the main compiler
 export __GNUC=""
+
+# Check for customized GCC location and set GCC_ROOT accordingly.
+if [ -d /opt/gcc-4.4.4 ] ; then
+	export GCC_ROOT=/opt/gcc-4.4.4
+fi
 
 # Turns off shadow compiler when set to 1
 export CW_NO_SHADOW=1
@@ -243,18 +248,17 @@ export ENABLE_IPP_PRINTING='#'
 # Detect the values to match the perl version used for building.
 # This code can be avoided by setting the variables here. 
 if [ -z "$PERL_VERSION" ] ; then
-  for d in 5.16.1 5.16 5.14 5.12 5.10.0 5.10
-  do
-    if [ -d /usr/perl5/$d ] ; then
-      export PERL_VERSION=$d
-      break
-    fi
-  done
+	for d in 5.16.1 5.16 5.14 5.12 5.10.0 5.10 ; do
+		if [ -d /usr/perl5/$d ] ; then
+			export PERL_VERSION=$d
+			break
+		fi
+	done
 fi
 
 if [ -z "$PERL_VERSION" ] ; then
-  echo "No perl?" 1>&2
-  exit 1
+	echo "No perl?" 1>&2
+	exit 1
 fi
 
 if [ -z "$PERL_PKGVERS" ] ; then
@@ -264,11 +268,11 @@ fi
 
 # Now PERL_ARCH.
 if [ -z "$PERL_ARCH" ] ; then
-	for a in i86pc-solaris-64int i86pc-solaris-thread-multi-64int i86pc-solaris-thread-multi-64
-	do
-  	  if [ -d /usr/perl5/$PERL_VERSION/lib/$a ] ; then
-    	  export PERL_ARCH=$a
-    	  break
-  	fi
+	for a in i86pc-solaris-64int i86pc-solaris-thread-multi-64int \
+	    i86pc-solaris-thread-multi-64 ; do
+		if [ -d /usr/perl5/$PERL_VERSION/lib/$a ] ; then
+			export PERL_ARCH=$a
+			break
+		fi
 	done
 fi
