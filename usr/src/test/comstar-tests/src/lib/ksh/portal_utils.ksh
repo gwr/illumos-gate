@@ -59,13 +59,19 @@ function discover_portal_info
 		run_rsh_cmd $host_name "$cmd"
 		typeset ip_addr=`get_cmd_stdout | awk '/inet/{print $2}'`
 		typeset ip_state
-		typeset ip_phy=`dladm show-phys $interface|sed -n "2p"|awk '{print $2}'`
 		get_cmd_stdout | grep "UP,BROADCAST" >/dev/null 2>&1 
 		if [ $? -eq 0 ];then
 			ip_state="up"
 		else
 			ip_state="down"
 		fi
+
+		#
+		# Now get ip_phy
+		#
+		typeset cmd="dladm show-phys $interface"
+		run_rsh_cmd $host_name "$cmd"
+		typeset ip_phy=`get_cmd_stdout | sed -n "2p"|awk '{print $2}'`
 
 		# Host IP address can not be used for iscsi test address
 		if [ "$ip_addr" = "$host_name" ];then
