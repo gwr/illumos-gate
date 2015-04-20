@@ -1854,6 +1854,12 @@ spa_deadman_synctime(spa_t *spa)
 	return (spa->spa_deadman_synctime);
 }
 
+spa_force_trim_t
+spa_get_force_trim(spa_t *spa)
+{
+	return (spa->spa_force_trim);
+}
+
 uint64_t
 dva_get_dsize_sync(spa_t *spa, const dva_t *dva)
 {

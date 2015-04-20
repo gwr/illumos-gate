@@ -323,6 +323,7 @@ struct spa {
 	uint64_t	spa_deadman_calls;	/* number of deadman calls */
 	hrtime_t	spa_sync_starttime;	/* starting time fo spa_sync */
 	uint64_t	spa_deadman_synctime;	/* deadman expiration timer */
+	uint64_t	spa_force_trim;		/* zfs_trim behavior on spa */
 
 	/*
 	 * spa_iokstat_lock protects spa_iokstat and

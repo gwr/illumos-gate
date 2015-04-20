@@ -598,6 +598,22 @@ typedef enum spa_import_type {
 	SPA_IMPORT_ASSEMBLE
 } spa_import_type_t;
 
+/*
+ * zio_trim() behavior on a given spa:
+ * - auto: issue TRIM iff the device supports it
+ * - on: always issue TRIM, even if support is not indicated
+ * - off: never issue TRIM, even is support is indicated
+ * In addition to these, the global zfs_trim boolean_t serves as the
+ * master mode switch. If zfs_trim == B_TRUE, "spa_force_trim" is
+ * consulted. If zfs_trim == B_FALSE, TRIM is globally disabled,
+ * regardless of the spa_force_trim setting.
+ */
+typedef enum {
+	SPA_FORCE_TRIM_AUTO,	/* default */
+	SPA_FORCE_TRIM_ON,
+	SPA_FORCE_TRIM_OFF
+} spa_force_trim_t;
+
 /* state manipulation functions */
 extern int spa_open(const char *pool, spa_t **, void *tag);
 extern int spa_open_rewind(const char *pool, spa_t **, void *tag,
@@ -803,6 +819,7 @@ extern uint64_t spa_bootfs(spa_t *spa);
 extern uint64_t spa_delegation(spa_t *spa);
 extern objset_t *spa_meta_objset(spa_t *spa);
 extern uint64_t spa_deadman_synctime(spa_t *spa);
+extern spa_force_trim_t spa_get_force_trim(spa_t *spa);
 
 /* Miscellaneous support routines */
 extern void spa_activate_mos_feature(spa_t *spa, const char *feature,

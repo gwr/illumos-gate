@@ -606,6 +606,13 @@ spa_prop_validate(spa_t *spa, nvlist_t *props)
 			}
 			break;
 
+		case ZPOOL_PROP_FORCETRIM:
+			error = nvpair_value_uint64(elem, &intval);
+			if (!error && (intval < SPA_FORCE_TRIM_AUTO ||
+			    intval > SPA_FORCE_TRIM_OFF))
+				error = SET_ERROR(EINVAL);
+			break;
+
 		case ZPOOL_PROP_CACHEFILE:
 			if ((error = nvpair_value_string(elem, &strval)) != 0)
 				break;
@@ -2732,6 +2739,7 @@ spa_load_impl(spa_t *spa, uint64_t pool_guid, nvlist_t *config,
 		spa_prop_find(spa, ZPOOL_PROP_AUTOEXPAND, &spa->spa_autoexpand);
 		spa_prop_find(spa, ZPOOL_PROP_DEDUPDITTO,
 		    &spa->spa_dedup_ditto);
+		spa_prop_find(spa, ZPOOL_PROP_FORCETRIM, &spa->spa_force_trim);
 
 		spa_prop_find(spa, ZPOOL_PROP_HIWATERMARK, &spa->spa_hiwat);
 		spa_prop_find(spa, ZPOOL_PROP_LOWATERMARK, &spa->spa_lowat);
@@ -3834,6 +3842,7 @@ spa_create(const char *pool, nvlist_t *nvroot, nvlist_t *props,
 	    zpool_prop_default_numeric(ZPOOL_PROP_DEDUP_LO_BEST_EFFORT);
 	spa->spa_dedup_hi_best_effort =
 	    zpool_prop_default_numeric(ZPOOL_PROP_DEDUP_HI_BEST_EFFORT);
+	spa->spa_force_trim = zpool_prop_default_numeric(ZPOOL_PROP_FORCETRIM);
 
 	mp->spa_enable_meta_placement_selection =
 	    zpool_prop_default_numeric(ZPOOL_PROP_META_PLACEMENT);
@@ -6377,6 +6386,9 @@ spa_sync_props(void *arg, dmu_tx_t *tx)
 				break;
 			case ZPOOL_PROP_FAILUREMODE:
 				spa->spa_failmode = intval;
+				break;
+			case ZPOOL_PROP_FORCETRIM:
+				spa->spa_force_trim = intval;
 				break;
 			case ZPOOL_PROP_AUTOEXPAND:
 				spa->spa_autoexpand = intval;

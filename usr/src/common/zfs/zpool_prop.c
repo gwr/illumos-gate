@@ -72,6 +72,13 @@ zpool_prop_init(void)
 		{ NULL }
 	};
 
+	static zprop_index_t forcetrim_table[] = {
+		{ "auto",	SPA_FORCE_TRIM_AUTO },
+		{ "on",		SPA_FORCE_TRIM_ON },
+		{ "off",	SPA_FORCE_TRIM_OFF },
+		{ NULL }
+	};
+
 	/* string properties */
 	zprop_register_string(ZPOOL_PROP_ALTROOT, "altroot", NULL, PROP_DEFAULT,
 	    ZFS_TYPE_POOL, "<path>", "ALTROOT");
@@ -161,6 +168,9 @@ zpool_prop_init(void)
 	zprop_register_index(ZPOOL_PROP_FAILUREMODE, "failmode",
 	    ZIO_FAILURE_MODE_WAIT, PROP_DEFAULT, ZFS_TYPE_POOL,
 	    "wait | continue | panic", "FAILMODE", failuremode_table);
+	zprop_register_index(ZPOOL_PROP_FORCETRIM, "forcetrim",
+	    SPA_FORCE_TRIM_AUTO, PROP_DEFAULT, ZFS_TYPE_POOL,
+	    "auto | on | off", "FORCETRIM", forcetrim_table);
 
 	/* special device status (enabled/disabled) */
 	zprop_register_index(ZPOOL_PROP_ENABLESPECIAL, "enablespecial", 0,

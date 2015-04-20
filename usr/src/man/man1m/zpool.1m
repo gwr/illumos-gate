@@ -842,6 +842,49 @@ Prints out a message to the console and generates a system crash dump.
 .sp
 .ne 2
 .na
+\fB\fBforcetrim\fR=\fBauto\fR | \fBon\fR | \fBoff\fR\fR
+.ad
+.sp .6
+.RS 4n
+Controls whether the underlying vdevs of the pool are notified when
+space is freed using the device-type-specific command set (TRIM here
+being a general placeholder term rather than referring to just the SATA
+TRIM command). This is frequently used on backing storage devices which
+support thin provisioning or pre-erasure of blocks on flash media.
+.sp
+.ne 2
+.na
+\fB\fBauto\fR\fR
+.ad
+.RS 12n
+This is the default setting and means TRIM commands (or equivalent) are
+only issued when a vdev indicates support for thin-provisioning.
+.RE
+
+.sp
+.ne 2
+.na
+\fB\fBon\fR\fR
+.ad
+.RS 12n
+Force sending TRIM commands even if the device didn't indicate support
+for it.
+.RE
+
+.sp
+.ne 2
+.na
+\fB\fBoff\fR\fR
+.ad
+.RS 12n
+Disable sending TRIM commands, even if the device indicated support for
+it.
+.RE
+.RE
+
+.sp
+.ne 2
+.na
 \fB\fBfeature@\fR\fIfeature_name\fR=\fBenabled\fR\fR
 .ad
 .RS 4n

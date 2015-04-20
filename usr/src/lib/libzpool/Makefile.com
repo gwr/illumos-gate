@@ -31,7 +31,7 @@ include $(NZA_MAKEDEFS)
 
 # include the list of ZFS sources
 include ../../../uts/common/Makefile.files
-KERNEL_OBJS = kernel.o taskq.o util.o
+KERNEL_OBJS = kernel.o taskq.o util.o dkioc_free_util.o
 DTRACE_OBJS = zfs.o
 
 OBJECTS=$(ZFS_COMMON_OBJS) $(ZFS_SHARED_OBJS) $(KERNEL_OBJS)
@@ -109,3 +109,7 @@ pics/%.o: ../common/%.d $(PICS)
 
 ../common/%.h: ../common/%.d
 	$(DTRACE) -xnolibs -h -s $< -o $@
+
+pics/%.o: ../../../uts/common/os/%.c
+	$(COMPILE.c) -o $@ $<
+	$(POST_PROCESS_O)

@@ -27,6 +27,8 @@
 #ifndef	_STMF_SBD_H
 #define	_STMF_SBD_H
 
+#include <sys/dkio.h>
+
 #ifdef	__cplusplus
 extern "C" {
 #endif
@@ -303,7 +305,7 @@ sbd_status_t sbd_write_lu_info(sbd_lu_t *sl);
 sbd_status_t sbd_flush_data_cache(sbd_lu_t *sl, int fsync_done);
 sbd_status_t sbd_wcd_set(int wcd, sbd_lu_t *sl);
 void sbd_wcd_get(int *wcd, sbd_lu_t *sl);
-int sbd_unmap(sbd_lu_t *, uint64_t, uint64_t);
+int sbd_unmap(sbd_lu_t *sl, dkioc_free_list_t *dfl);
 
 void sbd_handle_short_write_transfers(scsi_task_t *, stmf_data_buf_t *,
     uint32_t);
