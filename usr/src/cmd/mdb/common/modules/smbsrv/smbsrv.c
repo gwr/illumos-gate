@@ -399,6 +399,8 @@ static int smb_dcmd_tree(uintptr_t, uint_t, int, const mdb_arg_t *);
 static int smb_dcmd_odir(uintptr_t, uint_t, int, const mdb_arg_t *);
 static int smb_dcmd_ofile(uintptr_t, uint_t, int, const mdb_arg_t *);
 static int smb_dcmd_kshare(uintptr_t, uint_t, int, const mdb_arg_t *);
+static int smb_kshare_walk_init(mdb_walk_state_t *);
+static int smb_kshare_walk_step(mdb_walk_state_t *);
 static int smb_dcmd_vfs(uintptr_t, uint_t, int, const mdb_arg_t *);
 static int smb_vfs_walk_init(mdb_walk_state_t *);
 static int smb_vfs_walk_step(mdb_walk_state_t *);
@@ -441,12 +443,12 @@ static const mdb_dcmd_t dcmds[] = {
 	    "[-seutfdwv]",
 	    "print smb_server information",
 	    smb_dcmd_server },
-	{   "smbshares",
-	    "[-v]",
+	{   "smbshare",
+	    ":[-v]",
 	    "print smb_kshare_t information",
 	    smb_dcmd_kshare },
 	{   "smbvfs",
-	    "[-v]",
+	    ":[-v]",
 	    "print smb_vfs information",
 	    smb_dcmd_vfs },
 	{   "smbnode",
@@ -510,6 +512,13 @@ static const mdb_walker_t walkers[] = {
 	    smb_node_walk_step,
 	    NULL,
 	    NULL },
+	{   "smbshare_walker",
+	    "walk list of smb_kshare_t structures",
+	    smb_kshare_walk_init,
+	    smb_kshare_walk_step,
+	    NULL,
+	    NULL },
+
 	{   "smbvfs_walker",
 	    "walk list of smb_vfs_t structures",
 	    smb_vfs_walk_init,
@@ -1369,78 +1378,86 @@ smb_dcmd_ofile(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
  * *****************************************************************************
  */
 
-static int
-smb_kshare_cb(uintptr_t addr, const void *data, void *arg)
-{
-	uint_t *opts = arg;
-	uintptr_t ta, sa;
-	char name[32];
-	char path[64];
-	_NOTE(ARGUNUSED(data));
+struct smb_kshare_cb_args {
+	uint_t		opts;
+	char name[MAXNAMELEN];
+	char path[MAXPATHLEN];
+};	
 
-	if (*opts & SMB_OPT_VERBOSE) {
+static int
+smb_kshare_cb(uintptr_t addr, const void *data, void *varg)
+{
+	struct smb_kshare_cb_args *args = varg;
+	const smb_kshare_t *shr = data;
+
+	if (args->opts & SMB_OPT_VERBOSE) {
 		mdb_arg_t	argv;
 
 		argv.a_type = MDB_TYPE_STRING;
 		argv.a_un.a_str = "smb_kshare_t";
 		/* Don't fail the walk if this fails. */
+		mdb_printf("%-?p ", addr);
 		mdb_call_dcmd("print", addr, 0, 1, &argv);
-	} else {
-		/*
-		 * Summary line for a kshare
-		 * Don't fail the walk if any of these fail.
-		 */
-		ta = addr + OFFSETOF(smb_kshare_t, shr_name);
-		if (mdb_vread(&sa, sizeof (sa), ta) < 0 ||
-		    mdb_readstr(name, sizeof (name), sa) <= 0)
-			strcpy(name, "?");
-
-		ta = addr + OFFSETOF(smb_kshare_t, shr_path);
-		if (mdb_vread(&sa, sizeof (sa), ta) < 0 ||
-		    mdb_readstr(path, sizeof (path), sa) <= 0)
-			strcpy(path, "?");
-
-		mdb_printf("%-?p ", addr);	/* smb_kshare_t */
-		mdb_printf("%-16s ", name);
-		mdb_printf("%-s", path);
-		mdb_printf("\n");
+		return (WALK_NEXT);
 	}
+
+	/*
+	 * Summary line for an smb_kshare_t
+	 * Don't fail the walk if any of these fail.
+	 *
+	 * Get the shr_name and shr_path strings.
+	 */
+	if (mdb_readstr(args->name, sizeof (args->name),
+	    (uintptr_t)shr->shr_name) <= 0)
+		strcpy(args->name, "?");
+
+	if (mdb_readstr(args->path, sizeof (args->path),
+	    (uintptr_t)shr->shr_path) <= 0)
+		strcpy(args->path, "?");
+
+	mdb_printf("%-?p ", addr);	/* smb_kshare_t */
+	mdb_printf("%-16s ", args->name);
+	mdb_printf("%-s\n", args->path);
 
 	return (WALK_NEXT);
 }
 
 /*
- * ::smbshares
+ * ::smbshare
  *
- * dcmd - Print out smb_kshare structures.
+ * smbshare dcmd - Print out smb_kshare structures.
  *	requires addr of an smb_server_t
  */
 /*ARGSUSED*/
 static int
 smb_dcmd_kshare(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 {
-	uint_t		opts = 0;
+	struct smb_kshare_cb_args *args;
 
+	args = mdb_zalloc(sizeof (*args), UM_SLEEP | UM_GC);
 	if (mdb_getopts(argc, argv,
-	    'v', MDB_OPT_SETBITS, SMB_OPT_VERBOSE, &opts,
+	    'v', MDB_OPT_SETBITS, SMB_OPT_VERBOSE, &args->opts,
 	    NULL) != argc)
 		return (DCMD_USAGE);
 
 	if (!(flags & DCMD_ADDRSPEC))
 		return (DCMD_USAGE);
-	addr += OFFSETOF(smb_server_t, sv_export.e_share_avl.avl_tree);
 
 	if (DCMD_HDRSPEC(flags)) {
-		mdb_printf(
-		    "%<b>%<u>"
-		    "%-?s "
-		    "%-16s "
-		    "%-s"
-		    "%</u>%</b>\n",
-		    "smb_kshare_t", "name", "path");
+		if ((args->opts & SMB_OPT_VERBOSE) != 0) {
+			mdb_printf("%<b>%<u>SMB kshares list:%</u>%</b>\n");
+		} else {
+			mdb_printf(
+			    "%<b>%<u>"
+			    "%-?s "
+			    "%-16s "
+			    "%-s"
+			    "%</u>%</b>\n",
+			    "smb_kshare_t", "name", "path");
+		}
 	}
 
-	if (mdb_pwalk("avl", smb_kshare_cb, &opts, addr) == -1) {
+	if (mdb_pwalk("smbshare_walker", smb_kshare_cb, args, addr) == -1) {
 		mdb_warn("cannot walk smb_kshare avl");
 		return (DCMD_ERR);
 	}
@@ -1449,75 +1466,127 @@ smb_dcmd_kshare(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 }
 
 /*
+ * Initialize the smb_kshare_t walker to point to the smb_export
+ * in the specified smb_server_t instance.  (no global walks)
+ */
+static int
+smb_kshare_walk_init(mdb_walk_state_t *wsp)
+{
+
+	if (wsp->walk_addr == NULL) {
+		mdb_printf("require address of an smb_server_t\n");
+		return (WALK_ERR);
+	}
+
+	wsp->walk_addr +=
+	    OFFSETOF(smb_server_t, sv_export.e_share_avl.avl_tree);
+
+	if (mdb_layered_walk("avl", wsp) == -1) {
+		mdb_warn("failed to walk list of smb_kshare_t");
+		return (WALK_ERR);
+	}
+
+	return (WALK_NEXT);
+}
+
+static int
+smb_kshare_walk_step(mdb_walk_state_t *wsp)
+{
+	return (wsp->walk_callback(wsp->walk_addr, wsp->walk_layer,
+	    wsp->walk_cbdata));
+}
+
+/*
  * *****************************************************************************
  * ******************************** smb_vfs_t **********************************
  * *****************************************************************************
  */
 
+struct smb_vfs_cb_args {
+	uint_t		opts;
+	vnode_t		vn;
+	char		path[MAXPATHLEN];
+};	
+
+static int
+smb_vfs_cb(uintptr_t addr, const void *data, void *varg)
+{
+	struct smb_vfs_cb_args *args = varg;
+	const smb_vfs_t *sf = data;
+
+	if (args->opts & SMB_OPT_VERBOSE) {
+		mdb_arg_t	argv;
+
+		argv.a_type = MDB_TYPE_STRING;
+		argv.a_un.a_str = "smb_vfs_t";
+		/* Don't fail the walk if this fails. */
+		mdb_printf("%-?p ", addr);
+		mdb_call_dcmd("print", addr, 0, 1, &argv);
+		return (WALK_NEXT);
+	}
+
+	/*
+	 * Summary line for an smb_vfs_t
+	 * Don't fail the walk if any of these fail.
+	 *
+	 * Get the vnode v_path string if we can.
+	 */
+	strcpy(args->path, "?");
+	if (mdb_vread(&args->vn, sizeof (args->vn),
+	    (uintptr_t)sf->sv_rootvp) == sizeof (args->vn))
+		(void) mdb_readstr(args->path, sizeof (args->path),
+		    (uintptr_t)args->vn.v_path);
+
+	mdb_printf("%-?p ", addr);
+	mdb_printf("%-10d ", sf->sv_refcnt);
+	mdb_printf("%-?p ", sf->sv_vfsp);
+	mdb_printf("%-?p ", sf->sv_rootvp);
+	mdb_printf("%-s\n", args->path);
+
+	return (WALK_NEXT);
+}
+
 /*
  * ::smbvfs
  *
  * smbvfs dcmd - Prints out smb_vfs structures.
+ *	requires addr of an smb_server_t
  */
 /*ARGSUSED*/
 static int
 smb_dcmd_vfs(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 {
-	int		verbose = FALSE;
-	smb_vfs_t	*sf;
-	vnode_t		*vn;
-	char		*path;
+	struct smb_vfs_cb_args *args;
 
+	args = mdb_zalloc(sizeof (*args), UM_SLEEP | UM_GC);
 	if (mdb_getopts(argc, argv,
-	    'v', MDB_OPT_SETBITS, TRUE, &verbose,
+	    'v', MDB_OPT_SETBITS, SMB_OPT_VERBOSE, &args->opts,
 	    NULL) != argc)
 		return (DCMD_USAGE);
 
-	/*
-	 * If no smb_vfs address was specified on the command line, we can
-	 * print out all smb_vfs by invoking the smb_vfs walker, using
-	 * this dcmd itself as the callback.
-	 */
-	if (!(flags & DCMD_ADDRSPEC)) {
-		if (mdb_walk_dcmd("smbvfs_walker", "smbvfs",
-		    argc, argv) == -1) {
-			mdb_warn("failed to walk 'smb_vfs'");
-			return (DCMD_ERR);
-		}
-		return (DCMD_OK);
-	}
+	if (!(flags & DCMD_ADDRSPEC))
+		return (DCMD_USAGE);
 
 	if (DCMD_HDRSPEC(flags)) {
-		mdb_printf(
-		    "%<b>%<u>"
-		    "%-?s "
-		    "%-10s "
-		    "%-16s "
-		    "%-16s"
-		    "%-s"
-		    "%</u>%</b>\n",
-		    "SMB_VFS", "REFCNT", "VFS", "VNODE", "ROOT");
+		if ((args->opts & SMB_OPT_VERBOSE) != 0) {
+			mdb_printf("%<b>%<u>SMB VFS list:%</u>%</b>\n");
+		} else {
+			mdb_printf(
+			    "%<b>%<u>"
+			    "%-?s "
+			    "%-10s "
+			    "%-16s "
+			    "%-16s"
+			    "%-s"
+			    "%</u>%</b>\n",
+			    "SMB_VFS", "REFCNT", "VFS", "VNODE", "ROOT");
+		}
 	}
 
-	sf = mdb_alloc(sizeof (*sf), UM_SLEEP | UM_GC);
-	if (mdb_vread(sf, sizeof (*sf), addr) == -1) {
-		mdb_warn("failed to read smb_vfs at %p", addr);
+	if (mdb_pwalk("smbvfs_walker", smb_vfs_cb, args, addr) == -1) {
+		mdb_warn("cannot walk smb_vfs list");
 		return (DCMD_ERR);
 	}
-
-	vn = mdb_alloc(sizeof (*vn), UM_SLEEP | UM_GC);
-	if (mdb_vread(vn, sizeof (*vn),
-	    (uintptr_t)sf->sv_rootvp) == -1) {
-		mdb_warn("failed to read vnode at %p", sf->sv_rootvp);
-		return (DCMD_ERR);
-	}
-
-	path = mdb_zalloc(MAXPATHLEN, UM_SLEEP | UM_GC);
-	(void) mdb_vread(path, MAXPATHLEN, (uintptr_t)vn->v_path);
-
-	mdb_printf(
-	    "%-?p %-10d %-?p %-?p %-s\n", addr, sf->sv_refcnt,
-	    sf->sv_vfsp, sf->sv_rootvp, path);
 
 	return (DCMD_OK);
 }
@@ -1539,7 +1608,7 @@ smb_vfs_walk_init(mdb_walk_state_t *wsp)
 	    OFFSETOF(smb_server_t, sv_export.e_vfs_list.ll_list);
 
 	if (mdb_layered_walk("list", wsp) == -1) {
-		mdb_warn("failed to walk list of VFS");
+		mdb_warn("failed to walk list of smb_vfs_t");
 		return (WALK_ERR);
 	}
 
