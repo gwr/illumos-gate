@@ -103,6 +103,10 @@ UNREF_OBJ	unreferenced object=.*/libnetsnmphelpers\.so\..*
 # libm.so.2 dependency
 UNUSED_OBJ	unused object=.*MACH(libm)/libm_hwcap1\.so\.2
 
+# libnetsnmphelpers.so is empty in some net-snmp versions
+UNUSED_OBJ	unused object=.*/libnetsnmphelpers\.so\..*
+UNREF_OBJ	unreferenced object=.*/libsnmphelpers\.so\..*
+
 # Unused runpaths due to dlopen() use
 UNUSED_RPATH	/usr/lib/fs/autofs.*\ from\ .automountd
 UNUSED_RPATH	/etc/ppp/plugins.*\ from\ .*pppd
