@@ -23,10 +23,11 @@ dir path=opt/comstar-tests
 dir path=opt/comstar-tests/bin
 dir path=opt/comstar-tests/config
 dir path=opt/comstar-tests/include
-dir path=opt/comstar-tests/include/tet
 dir path=opt/comstar-tests/lib
 dir path=opt/comstar-tests/tests
 dir path=opt/comstar-tests/tests/configure
+dir path=opt/comstar-tests/tests/framework
+dir path=opt/comstar-tests/tests/framework/smf
 dir path=opt/comstar-tests/tests/iscsi
 dir path=opt/comstar-tests/tests/iscsi/auth
 dir path=opt/comstar-tests/tests/iscsi/discovery
@@ -37,6 +38,96 @@ dir path=opt/comstar-tests/tests/iscsi/io/mpxio_enable
 dir path=opt/comstar-tests/tests/iscsi/smf
 dir path=opt/comstar-tests/tests/iscsi/tgmember
 dir path=opt/comstar-tests/tests/iscsi/visible
+dir path=opt/comstar-tests/tests/itadm
+dir path=opt/comstar-tests/tests/itadm/create_initiator
+dir path=opt/comstar-tests/tests/itadm/create_initiator/data
+dir path=opt/comstar-tests/tests/itadm/create_initiator/n_syntax
+dir path=opt/comstar-tests/tests/itadm/create_initiator/p_syntax
+dir path=opt/comstar-tests/tests/itadm/create_target
+dir path=opt/comstar-tests/tests/itadm/create_target/data
+dir path=opt/comstar-tests/tests/itadm/create_target/n_syntax
+dir path=opt/comstar-tests/tests/itadm/create_target/p_syntax
+dir path=opt/comstar-tests/tests/itadm/create_tpg
+dir path=opt/comstar-tests/tests/itadm/create_tpg/data
+dir path=opt/comstar-tests/tests/itadm/create_tpg/n_syntax
+dir path=opt/comstar-tests/tests/itadm/create_tpg/p_syntax
+dir path=opt/comstar-tests/tests/itadm/delete_initiator
+dir path=opt/comstar-tests/tests/itadm/delete_initiator/n_syntax
+dir path=opt/comstar-tests/tests/itadm/delete_initiator/p_syntax
+dir path=opt/comstar-tests/tests/itadm/delete_target
+dir path=opt/comstar-tests/tests/itadm/delete_target/data
+dir path=opt/comstar-tests/tests/itadm/delete_target/n_syntax
+dir path=opt/comstar-tests/tests/itadm/delete_target/p_syntax
+dir path=opt/comstar-tests/tests/itadm/delete_tpg
+dir path=opt/comstar-tests/tests/itadm/delete_tpg/data
+dir path=opt/comstar-tests/tests/itadm/delete_tpg/n_syntax
+dir path=opt/comstar-tests/tests/itadm/delete_tpg/p_syntax
+dir path=opt/comstar-tests/tests/itadm/list_defaults
+dir path=opt/comstar-tests/tests/itadm/list_defaults/p_syntax
+dir path=opt/comstar-tests/tests/itadm/list_initiator
+dir path=opt/comstar-tests/tests/itadm/list_initiator/n_syntax
+dir path=opt/comstar-tests/tests/itadm/list_initiator/p_syntax
+dir path=opt/comstar-tests/tests/itadm/list_target
+dir path=opt/comstar-tests/tests/itadm/list_target/n_syntax
+dir path=opt/comstar-tests/tests/itadm/list_target/p_syntax
+dir path=opt/comstar-tests/tests/itadm/list_tpg
+dir path=opt/comstar-tests/tests/itadm/list_tpg/data
+dir path=opt/comstar-tests/tests/itadm/list_tpg/n_syntax
+dir path=opt/comstar-tests/tests/itadm/list_tpg/p_syntax
+dir path=opt/comstar-tests/tests/itadm/modify_defaults
+dir path=opt/comstar-tests/tests/itadm/modify_defaults/n_syntax
+dir path=opt/comstar-tests/tests/itadm/modify_defaults/p_syntax
+dir path=opt/comstar-tests/tests/itadm/modify_initiator
+dir path=opt/comstar-tests/tests/itadm/modify_initiator/n_syntax
+dir path=opt/comstar-tests/tests/itadm/modify_initiator/p_syntax
+dir path=opt/comstar-tests/tests/itadm/modify_target
+dir path=opt/comstar-tests/tests/itadm/modify_target/data
+dir path=opt/comstar-tests/tests/itadm/modify_target/n_syntax
+dir path=opt/comstar-tests/tests/itadm/modify_target/p_syntax
+dir path=opt/comstar-tests/tests/libstmf
+dir path=opt/comstar-tests/tests/libstmf/add_to_host_group
+dir path=opt/comstar-tests/tests/libstmf/add_to_target_group
+dir path=opt/comstar-tests/tests/libstmf/add_view_entry
+dir path=opt/comstar-tests/tests/libstmf/clear_provider_data
+dir path=opt/comstar-tests/tests/libstmf/create_host_group
+dir path=opt/comstar-tests/tests/libstmf/create_target_group
+dir path=opt/comstar-tests/tests/libstmf/delete_host_group
+dir path=opt/comstar-tests/tests/libstmf/delete_target_group
+dir path=opt/comstar-tests/tests/libstmf/devid_from_iscsi_name
+dir path=opt/comstar-tests/tests/libstmf/devid_from_wwn
+dir path=opt/comstar-tests/tests/libstmf/get_host_group_list
+dir path=opt/comstar-tests/tests/libstmf/get_host_group_members
+dir path=opt/comstar-tests/tests/libstmf/get_logical_unit_list
+dir path=opt/comstar-tests/tests/libstmf/get_logical_unit_properties
+dir path=opt/comstar-tests/tests/libstmf/get_provider_data
+dir path=opt/comstar-tests/tests/libstmf/get_state
+dir path=opt/comstar-tests/tests/libstmf/get_target_group_list
+dir path=opt/comstar-tests/tests/libstmf/get_target_group_members
+dir path=opt/comstar-tests/tests/libstmf/get_target_list
+dir path=opt/comstar-tests/tests/libstmf/get_target_properties
+dir path=opt/comstar-tests/tests/libstmf/get_view_entry_list
+dir path=opt/comstar-tests/tests/libstmf/offline_logical_unit
+dir path=opt/comstar-tests/tests/libstmf/offline_target
+dir path=opt/comstar-tests/tests/libstmf/online_logical_unit
+dir path=opt/comstar-tests/tests/libstmf/online_target
+dir path=opt/comstar-tests/tests/libstmf/remove_from_host_group
+dir path=opt/comstar-tests/tests/libstmf/remove_from_target_group
+dir path=opt/comstar-tests/tests/libstmf/remove_view_entry
+dir path=opt/comstar-tests/tests/libstmf/set_provider_data
+dir path=opt/comstar-tests/tests/sbdadm
+dir path=opt/comstar-tests/tests/sbdadm/create
+dir path=opt/comstar-tests/tests/sbdadm/delete
+dir path=opt/comstar-tests/tests/sbdadm/import
+dir path=opt/comstar-tests/tests/sbdadm/list
+dir path=opt/comstar-tests/tests/sbdadm/modify
+dir path=opt/comstar-tests/tests/stmfadm
+dir path=opt/comstar-tests/tests/stmfadm/add
+dir path=opt/comstar-tests/tests/stmfadm/create
+dir path=opt/comstar-tests/tests/stmfadm/delete
+dir path=opt/comstar-tests/tests/stmfadm/list
+dir path=opt/comstar-tests/tests/stmfadm/offline
+dir path=opt/comstar-tests/tests/stmfadm/online
+dir path=opt/comstar-tests/tests/stmfadm/remove
 file path=opt/comstar-tests/README.ISCSI mode=0444
 file path=opt/comstar-tests/bin/br_port_offline mode=0555
 file path=opt/comstar-tests/bin/br_port_online mode=0555
@@ -59,10 +150,7 @@ file path=opt/comstar-tests/config/fcoe_disko.cfg mode=0444
 file path=opt/comstar-tests/config/fcoe_test_config.tmpl mode=0444
 file path=opt/comstar-tests/config/iscsi_disko.cfg mode=0444
 file path=opt/comstar-tests/config/iscsi_test_config.tmpl mode=0444
-file path=opt/comstar-tests/include/libfcoetest.h mode=0444
 file path=opt/comstar-tests/include/libstmftest.h mode=0444
-file path=opt/comstar-tests/include/tet/commontest.h mode=0444
-file path=opt/comstar-tests/include/tet/tet_api.h mode=0444
 file path=opt/comstar-tests/lib/comstar_cmd mode=0444
 file path=opt/comstar-tests/lib/comstar_common mode=0444
 file path=opt/comstar-tests/lib/comstar_fault mode=0444
@@ -103,6 +191,12 @@ file path=opt/comstar-tests/lib/stmfadm_verify mode=0444
 file path=opt/comstar-tests/lib/switch_fault mode=0444
 file path=opt/comstar-tests/lib/syntax_auto mode=0444
 file path=opt/comstar-tests/tests/configure/iscsi_configure mode=0555
+file path=opt/comstar-tests/tests/framework/smf/tc_stmf_smf mode=0555
+file path=opt/comstar-tests/tests/framework/smf/tp_stmf_smf_001 mode=0555
+file path=opt/comstar-tests/tests/framework/smf/tp_stmf_smf_002 mode=0555
+file path=opt/comstar-tests/tests/framework/smf/tp_stmf_smf_003 mode=0555
+file path=opt/comstar-tests/tests/framework/smf/tp_stmf_smf_004 mode=0555
+file path=opt/comstar-tests/tests/framework/smf/tp_stmf_smf_005 mode=0555
 file path=opt/comstar-tests/tests/iscsi/auth/tc_iscsi_auth mode=0555
 file path=opt/comstar-tests/tests/iscsi/auth/tp_iscsi_auth_001 mode=0555
 file path=opt/comstar-tests/tests/iscsi/auth/tp_iscsi_auth_002 mode=0555
@@ -198,6 +292,734 @@ file path=opt/comstar-tests/tests/iscsi/visible/tp_iscsi_visible_011 mode=0555
 file path=opt/comstar-tests/tests/iscsi/visible/tp_iscsi_visible_012 mode=0555
 file path=opt/comstar-tests/tests/iscsi/visible/tp_iscsi_visible_013 mode=0555
 file path=opt/comstar-tests/tests/iscsi/visible/tp_iscsi_visible_014 mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/create_initiator/data/tc_itadm_create_initiator_data \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/create_initiator/data/tp_itadm_create_initiator_data_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/create_initiator/n_syntax/tc_itadm_create_initiator_n_syntax \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/create_initiator/n_syntax/tp_itadm_create_initiator_n_syntax_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/create_initiator/p_syntax/tc_itadm_create_initiator_p_syntax \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/create_initiator/p_syntax/tp_itadm_create_initiator_p_syntax_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/create_target/data/tc_itadm_create_target_data \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/create_target/data/tp_itadm_create_target_data_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/create_target/data/tp_itadm_create_target_data_002 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/create_target/data/tp_itadm_create_target_data_003 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/create_target/data/tp_itadm_create_target_data_004 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/create_target/n_syntax/tc_itadm_create_target_n_syntax \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/create_target/n_syntax/tp_itadm_create_target_n_syntax_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/create_target/p_syntax/tc_itadm_create_target_p_syntax \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/create_target/p_syntax/tp_itadm_create_target_p_syntax_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/create_tpg/data/tc_itadm_create_tpg_data \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/create_tpg/data/tp_itadm_create_tpg_data_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/create_tpg/data/tp_itadm_create_tpg_data_002 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/create_tpg/data/tp_itadm_create_tpg_data_003 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/create_tpg/n_syntax/tc_itadm_create_tpg_n_syntax \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/create_tpg/n_syntax/tp_itadm_create_tpg_n_syntax_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/create_tpg/p_syntax/tc_itadm_create_tpg_p_syntax \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/create_tpg/p_syntax/tp_itadm_create_tpg_p_syntax_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/delete_initiator/n_syntax/tc_itadm_delete_initiator_n_syntax \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/delete_initiator/n_syntax/tp_itadm_delete_initiator_n_syntax_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/delete_initiator/p_syntax/tc_itadm_delete_initiator_p_syntax \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/delete_initiator/p_syntax/tp_itadm_delete_initiator_p_syntax_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/delete_target/data/tc_itadm_delete_target_data \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/delete_target/data/tp_itadm_delete_target_data_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/delete_target/data/tp_itadm_delete_target_data_002 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/delete_target/data/tp_itadm_delete_target_data_003 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/delete_target/data/tp_itadm_delete_target_data_004 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/delete_target/data/tp_itadm_delete_target_data_005 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/delete_target/n_syntax/tc_itadm_delete_target_n_syntax \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/delete_target/n_syntax/tp_itadm_delete_target_n_syntax_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/delete_target/p_syntax/tc_itadm_delete_target_p_syntax \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/delete_target/p_syntax/tp_itadm_delete_target_p_syntax_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/delete_tpg/data/tc_itadm_delete_tpg_data \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/delete_tpg/data/tp_itadm_delete_tpg_data_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/delete_tpg/data/tp_itadm_delete_tpg_data_002 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/delete_tpg/n_syntax/tc_itadm_delete_tpg_n_syntax \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/delete_tpg/n_syntax/tp_itadm_delete_tpg_n_syntax_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/delete_tpg/p_syntax/tc_itadm_delete_tpg_p_syntax \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/delete_tpg/p_syntax/tp_itadm_delete_tpg_p_syntax_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/list_defaults/p_syntax/tc_itadm_list_defaults_p_syntax \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/list_defaults/p_syntax/tp_itadm_list_defaults_p_syntax_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/list_initiator/n_syntax/tc_itadm_list_initiator_n_syntax \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/list_initiator/n_syntax/tp_itadm_list_initiator_n_syntax_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/list_initiator/p_syntax/tc_itadm_list_initiator_p_syntax \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/list_initiator/p_syntax/tp_itadm_list_initiator_p_syntax_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/list_target/n_syntax/tc_itadm_list_target_n_syntax \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/list_target/n_syntax/tp_itadm_list_target_n_syntax_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/list_target/p_syntax/tc_itadm_list_target_p_syntax \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/list_target/p_syntax/tp_itadm_list_target_p_syntax_001 \
+    mode=0555
+file path=opt/comstar-tests/tests/itadm/list_tpg/data/tc_itadm_list_tpg_data \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/list_tpg/data/tp_itadm_list_tpg_data_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/list_tpg/n_syntax/tc_itadm_list_tpg_n_syntax \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/list_tpg/n_syntax/tp_itadm_list_tpg_n_syntax_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/list_tpg/p_syntax/tc_itadm_list_tpg_p_syntax \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/list_tpg/p_syntax/tp_itadm_list_tpg_p_syntax_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/modify_defaults/n_syntax/tc_itadm_modify_defaults_n_syntax \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/modify_defaults/n_syntax/tp_itadm_modify_defaults_n_syntax_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/modify_defaults/p_syntax/tc_itadm_modify_defaults_p_syntax \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/modify_defaults/p_syntax/tp_itadm_modify_defaults_p_syntax_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/modify_initiator/n_syntax/tc_itadm_modify_initiator_n_syntax \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/modify_initiator/n_syntax/tp_itadm_modify_initiator_n_syntax_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/modify_initiator/p_syntax/tc_itadm_modify_initiator_p_syntax \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/modify_initiator/p_syntax/tp_itadm_modify_initiator_p_syntax_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/modify_target/data/tc_itadm_modify_target_data \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/modify_target/data/tp_itadm_modify_target_data_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/modify_target/n_syntax/tc_itadm_modify_target_n_syntax \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/modify_target/n_syntax/tp_itadm_modify_target_n_syntax_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/modify_target/p_syntax/tc_itadm_modify_target_p_syntax \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/itadm/modify_target/p_syntax/tp_itadm_modify_target_p_syntax_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/add_to_host_group/tc_add_to_host_group \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/add_to_host_group/tp_add_to_host_group_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/add_to_host_group/tp_add_to_host_group_002 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/add_to_host_group/tp_add_to_host_group_003 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/add_to_host_group/tp_add_to_host_group_004 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/add_to_target_group/tc_add_to_target_group \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/add_to_target_group/tp_add_to_target_group_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/add_to_target_group/tp_add_to_target_group_002 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/add_to_target_group/tp_add_to_target_group_003 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/add_to_target_group/tp_add_to_target_group_004 \
+    mode=0555
+file path=opt/comstar-tests/tests/libstmf/add_view_entry/tc_add_view_entry \
+    mode=0555
+file path=opt/comstar-tests/tests/libstmf/add_view_entry/tp_add_view_entry_001 \
+    mode=0555
+file path=opt/comstar-tests/tests/libstmf/add_view_entry/tp_add_view_entry_002 \
+    mode=0555
+file path=opt/comstar-tests/tests/libstmf/add_view_entry/tp_add_view_entry_003 \
+    mode=0555
+file path=opt/comstar-tests/tests/libstmf/add_view_entry/tp_add_view_entry_004 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/clear_provider_data/tc_clear_provider_data \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/clear_provider_data/tp_clear_pdata_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/clear_provider_data/tp_clear_pdata_002 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/clear_provider_data/tp_clear_pdata_003 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/create_host_group/tc_create_host_group \
+    mode=0555
+file path=opt/comstar-tests/tests/libstmf/create_host_group/tp_create_hg_001 \
+    mode=0555
+file path=opt/comstar-tests/tests/libstmf/create_host_group/tp_create_hg_002 \
+    mode=0555
+file path=opt/comstar-tests/tests/libstmf/create_host_group/tp_create_hg_003 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/create_target_group/tc_create_target_group \
+    mode=0555
+file path=opt/comstar-tests/tests/libstmf/create_target_group/tp_create_tg_001 \
+    mode=0555
+file path=opt/comstar-tests/tests/libstmf/create_target_group/tp_create_tg_002 \
+    mode=0555
+file path=opt/comstar-tests/tests/libstmf/create_target_group/tp_create_tg_003 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/delete_host_group/tc_delete_host_group \
+    mode=0555
+file path=opt/comstar-tests/tests/libstmf/delete_host_group/tp_delete_hg_001 \
+    mode=0555
+file path=opt/comstar-tests/tests/libstmf/delete_host_group/tp_delete_hg_002 \
+    mode=0555
+file path=opt/comstar-tests/tests/libstmf/delete_host_group/tp_delete_hg_003 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/delete_target_group/tc_delete_target_group \
+    mode=0555
+file path=opt/comstar-tests/tests/libstmf/delete_target_group/tp_delete_tg_001 \
+    mode=0555
+file path=opt/comstar-tests/tests/libstmf/delete_target_group/tp_delete_tg_002 \
+    mode=0555
+file path=opt/comstar-tests/tests/libstmf/delete_target_group/tp_delete_tg_003 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/devid_from_iscsi_name/tc_devid_from_iscsi_name \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/devid_from_iscsi_name/tp_devid_from_in_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/devid_from_iscsi_name/tp_devid_from_in_002 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/devid_from_iscsi_name/tp_devid_from_in_003 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/devid_from_iscsi_name/tp_devid_from_in_004 \
+    mode=0555
+file path=opt/comstar-tests/tests/libstmf/devid_from_wwn/tc_devid_from_wwn \
+    mode=0555
+file path=opt/comstar-tests/tests/libstmf/devid_from_wwn/tp_devid_from_wwn_001 \
+    mode=0555
+file path=opt/comstar-tests/tests/libstmf/devid_from_wwn/tp_devid_from_wwn_002 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_host_group_list/tc_get_host_group_list \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_host_group_list/tp_get_host_group_list_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_host_group_list/tp_get_host_group_list_002 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_host_group_list/tp_get_host_group_list_003 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_host_group_members/tc_get_host_group_members \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_host_group_members/tp_get_hg_members_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_host_group_members/tp_get_hg_members_002 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_host_group_members/tp_get_hg_members_003 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_host_group_members/tp_get_hg_members_004 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_logical_unit_list/tc_get_logical_unit_list \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_logical_unit_list/tp_get_lu_list_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_logical_unit_list/tp_get_lu_list_002 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_logical_unit_list/tp_get_lu_list_003 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_logical_unit_properties/tc_get_logical_unit_properties \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_logical_unit_properties/tp_get_lu_properties_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_logical_unit_properties/tp_get_lu_properties_002 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_logical_unit_properties/tp_get_lu_properties_003 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_provider_data/tc_get_provider_data \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_provider_data/tp_get_provider_data_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_provider_data/tp_get_provider_data_002 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_provider_data/tp_get_provider_data_003 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_provider_data/tp_get_provider_data_004 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_provider_data/tp_get_provider_data_005 \
+    mode=0555
+file path=opt/comstar-tests/tests/libstmf/get_state/tc_get_state mode=0555
+file path=opt/comstar-tests/tests/libstmf/get_state/tp_get_state_001 mode=0555
+file path=opt/comstar-tests/tests/libstmf/get_state/tp_get_state_002 mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_target_group_list/tc_get_target_group_list \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_target_group_list/tp_get_target_group_list_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_target_group_list/tp_get_target_group_list_002 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_target_group_list/tp_get_target_group_list_003 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_target_group_members/tc_get_target_group_members \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_target_group_members/tp_get_tg_members_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_target_group_members/tp_get_tg_members_002 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_target_group_members/tp_get_tg_members_003 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_target_group_members/tp_get_tg_members_004 \
+    mode=0555
+file path=opt/comstar-tests/tests/libstmf/get_target_list/tc_get_target_list \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_target_list/tp_get_target_list_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_target_list/tp_get_target_list_002 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_target_properties/tc_get_target_properties \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_target_properties/tp_get_target_properties_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_target_properties/tp_get_target_properties_002 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_target_properties/tp_get_target_properties_003 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_target_properties/tp_get_target_properties_004 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_view_entry_list/tc_get_view_entry_list \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_view_entry_list/tp_get_view_entry_list_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_view_entry_list/tp_get_view_entry_list_002 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_view_entry_list/tp_get_view_entry_list_003 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/get_view_entry_list/tp_get_view_entry_list_004 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/offline_logical_unit/tc_offline_logical_unit \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/offline_logical_unit/tp_offline_logical_unit_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/offline_logical_unit/tp_offline_logical_unit_002 \
+    mode=0555
+file path=opt/comstar-tests/tests/libstmf/offline_target/tc_offline_target \
+    mode=0555
+file path=opt/comstar-tests/tests/libstmf/offline_target/tp_offline_target_001 \
+    mode=0555
+file path=opt/comstar-tests/tests/libstmf/offline_target/tp_offline_target_002 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/online_logical_unit/tc_online_logical_unit \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/online_logical_unit/tp_online_logical_unit_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/online_logical_unit/tp_online_logical_unit_002 \
+    mode=0555
+file path=opt/comstar-tests/tests/libstmf/online_target/tc_online_target \
+    mode=0555
+file path=opt/comstar-tests/tests/libstmf/online_target/tp_online_target_001 \
+    mode=0555
+file path=opt/comstar-tests/tests/libstmf/online_target/tp_online_target_002 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/remove_from_host_group/tc_remove_from_host_group \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/remove_from_host_group/tp_remove_from_hg_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/remove_from_host_group/tp_remove_from_hg_002 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/remove_from_host_group/tp_remove_from_hg_003 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/remove_from_host_group/tp_remove_from_hg_004 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/remove_from_target_group/tc_remove_from_target_group \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/remove_from_target_group/tp_remove_from_tg_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/remove_from_target_group/tp_remove_from_tg_002 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/remove_from_target_group/tp_remove_from_tg_003 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/remove_from_target_group/tp_remove_from_tg_004 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/remove_view_entry/tc_remove_view_entry \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/remove_view_entry/tp_remove_view_entry_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/remove_view_entry/tp_remove_view_entry_002 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/remove_view_entry/tp_remove_view_entry_003 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/remove_view_entry/tp_remove_view_entry_004 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/libstmf/set_provider_data/tc_set_provider_data \
+    mode=0555
+file path=opt/comstar-tests/tests/libstmf/set_provider_data/tp_set_pdata_001 \
+    mode=0555
+file path=opt/comstar-tests/tests/libstmf/set_provider_data/tp_set_pdata_002 \
+    mode=0555
+file path=opt/comstar-tests/tests/libstmf/set_provider_data/tp_set_pdata_003 \
+    mode=0555
+file path=opt/comstar-tests/tests/libstmf/set_provider_data/tp_set_pdata_004 \
+    mode=0555
+file path=opt/comstar-tests/tests/libstmf/set_provider_data/tp_set_pdata_005 \
+    mode=0555
+file path=opt/comstar-tests/tests/sbdadm/create/tc_create_sbdadm mode=0555
+file path=opt/comstar-tests/tests/sbdadm/create/tp_create_sbdadm_001 mode=0555
+file path=opt/comstar-tests/tests/sbdadm/create/tp_create_sbdadm_002 mode=0555
+file path=opt/comstar-tests/tests/sbdadm/create/tp_create_sbdadm_003 mode=0555
+file path=opt/comstar-tests/tests/sbdadm/create/tp_create_sbdadm_004 mode=0555
+file path=opt/comstar-tests/tests/sbdadm/create/tp_create_sbdadm_005 mode=0555
+file path=opt/comstar-tests/tests/sbdadm/create/tp_create_sbdadm_006 mode=0555
+file path=opt/comstar-tests/tests/sbdadm/create/tp_create_sbdadm_007 mode=0555
+file path=opt/comstar-tests/tests/sbdadm/create/tp_create_sbdadm_008 mode=0555
+file path=opt/comstar-tests/tests/sbdadm/create/tp_create_sbdadm_009 mode=0555
+file path=opt/comstar-tests/tests/sbdadm/delete/tc_delete_sbdadm mode=0555
+file path=opt/comstar-tests/tests/sbdadm/delete/tp_delete_sbdadm_001 mode=0555
+file path=opt/comstar-tests/tests/sbdadm/delete/tp_delete_sbdadm_002 mode=0555
+file path=opt/comstar-tests/tests/sbdadm/delete/tp_delete_sbdadm_003 mode=0555
+file path=opt/comstar-tests/tests/sbdadm/delete/tp_delete_sbdadm_004 mode=0555
+file path=opt/comstar-tests/tests/sbdadm/import/tc_import_sbdadm mode=0555
+file path=opt/comstar-tests/tests/sbdadm/import/tp_import_sbdadm_001 mode=0555
+file path=opt/comstar-tests/tests/sbdadm/import/tp_import_sbdadm_002 mode=0555
+file path=opt/comstar-tests/tests/sbdadm/import/tp_import_sbdadm_003 mode=0555
+file path=opt/comstar-tests/tests/sbdadm/import/tp_import_sbdadm_004 mode=0555
+file path=opt/comstar-tests/tests/sbdadm/import/tp_import_sbdadm_005 mode=0555
+file path=opt/comstar-tests/tests/sbdadm/list/tc_list_sbdadm mode=0555
+file path=opt/comstar-tests/tests/sbdadm/list/tp_list_sbdadm_001 mode=0555
+file path=opt/comstar-tests/tests/sbdadm/list/tp_list_sbdadm_002 mode=0555
+file path=opt/comstar-tests/tests/sbdadm/modify/tc_modify_sbdadm mode=0555
+file path=opt/comstar-tests/tests/sbdadm/modify/tp_modify_sbdadm_001 mode=0555
+file path=opt/comstar-tests/tests/sbdadm/modify/tp_modify_sbdadm_002 mode=0555
+file path=opt/comstar-tests/tests/sbdadm/modify/tp_modify_sbdadm_003 mode=0555
+file path=opt/comstar-tests/tests/sbdadm/modify/tp_modify_sbdadm_004 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/add/tc_add_stmfadm mode=0555
+file path=opt/comstar-tests/tests/stmfadm/add/tp_add_stmfadm_001 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/add/tp_add_stmfadm_002 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/add/tp_add_stmfadm_003 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/add/tp_add_stmfadm_004 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/add/tp_add_stmfadm_005 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/add/tp_add_stmfadm_006 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/add/tp_add_stmfadm_007 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/add/tp_add_stmfadm_008 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/add/tp_add_stmfadm_009 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/add/tp_add_stmfadm_010 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/add/tp_add_stmfadm_011 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/add/tp_add_stmfadm_012 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/add/tp_add_stmfadm_013 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/add/tp_add_stmfadm_014 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/add/tp_add_stmfadm_015 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/add/tp_add_stmfadm_016 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/add/tp_add_stmfadm_017 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/add/tp_add_stmfadm_018 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/add/tp_add_stmfadm_019 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/add/tp_add_stmfadm_020 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/add/tp_add_stmfadm_021 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/add/tp_add_stmfadm_022 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/add/tp_add_stmfadm_023 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/add/tp_add_stmfadm_024 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/add/tp_add_stmfadm_025 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/add/tp_add_stmfadm_026 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/create/tc_create_stmfadm mode=0555
+file path=opt/comstar-tests/tests/stmfadm/create/tp_create_stmfadm_001 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/create/tp_create_stmfadm_002 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/create/tp_create_stmfadm_003 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/create/tp_create_stmfadm_004 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/create/tp_create_stmfadm_005 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/create/tp_create_stmfadm_006 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/create/tp_create_stmfadm_007 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/create/tp_create_stmfadm_008 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/delete/tc_delete_stmfadm mode=0555
+file path=opt/comstar-tests/tests/stmfadm/delete/tp_delete_stmfadm_001 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/delete/tp_delete_stmfadm_002 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/delete/tp_delete_stmfadm_003 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/delete/tp_delete_stmfadm_004 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/delete/tp_delete_stmfadm_005 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/delete/tp_delete_stmfadm_006 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/delete/tp_delete_stmfadm_007 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/delete/tp_delete_stmfadm_008 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/list/tc_list_stmfadm mode=0555
+file path=opt/comstar-tests/tests/stmfadm/list/tp_list_stmfadm_001 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/list/tp_list_stmfadm_002 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/list/tp_list_stmfadm_003 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/list/tp_list_stmfadm_004 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/list/tp_list_stmfadm_005 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/list/tp_list_stmfadm_006 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/list/tp_list_stmfadm_007 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/list/tp_list_stmfadm_008 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/list/tp_list_stmfadm_009 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/list/tp_list_stmfadm_010 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/list/tp_list_stmfadm_011 mode=0555
+file path=opt/comstar-tests/tests/stmfadm/offline/tc_offline_stmfadm mode=0555
+file path=opt/comstar-tests/tests/stmfadm/offline/tp_offline_stmfadm_001 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/offline/tp_offline_stmfadm_002 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/offline/tp_offline_stmfadm_003 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/offline/tp_offline_stmfadm_004 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/offline/tp_offline_stmfadm_005 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/offline/tp_offline_stmfadm_006 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/offline/tp_offline_stmfadm_007 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/offline/tp_offline_stmfadm_008 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/offline/tp_offline_stmfadm_009 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/offline/tp_offline_stmfadm_010 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/offline/tp_offline_stmfadm_011 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/offline/tp_offline_stmfadm_012 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/offline/tp_offline_stmfadm_013 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/offline/tp_offline_stmfadm_014 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/offline/tp_offline_stmfadm_015 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/offline/tp_offline_stmfadm_016 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/offline/tp_offline_stmfadm_017 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/offline/tp_offline_stmfadm_018 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/offline/tp_offline_stmfadm_019 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/offline/tp_offline_stmfadm_020 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/online/tc_online_stmfadm mode=0555
+file path=opt/comstar-tests/tests/stmfadm/online/tp_online_stmfadm_001 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/online/tp_online_stmfadm_002 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/online/tp_online_stmfadm_003 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/online/tp_online_stmfadm_004 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/remove/tc_remove_stmfadm mode=0555
+file path=opt/comstar-tests/tests/stmfadm/remove/tp_remove_stmfadm_001 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/remove/tp_remove_stmfadm_002 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/remove/tp_remove_stmfadm_003 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/remove/tp_remove_stmfadm_004 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/remove/tp_remove_stmfadm_005 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/remove/tp_remove_stmfadm_006 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/remove/tp_remove_stmfadm_007 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/remove/tp_remove_stmfadm_008 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/remove/tp_remove_stmfadm_009 \
+    mode=0555
+file path=opt/comstar-tests/tests/stmfadm/remove/tp_remove_stmfadm_010 \
+    mode=0555
 file path=opt/comstar-tests/tet_scen mode=0444
 license cr_Sun license=cr_Sun
 license lic_CDDL license=lic_CDDL

@@ -19,7 +19,7 @@ include $(SRC)/Makefile.master
 ROOTOPTPKG = $(ROOT)/opt/comstar-tests
 COMSTARINC = $(ROOTOPTPKG)/include
 
-FILES = libfcoetest.h  libstmftest.h
+FILES = libstmftest.h
 
 HDRS = $(FILES:%=$(COMSTARINC)/%)
 $(HDRS) := FILEMODE = 0444
@@ -35,7 +35,3 @@ $(COMSTARINC):
 
 $(COMSTARINC)/%: %
 	$(INS.file)
-
-SUBDIRS = tet
-
-include $(SRC)/test/Makefile.com

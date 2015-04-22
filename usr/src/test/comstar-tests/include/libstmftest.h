@@ -22,6 +22,8 @@
 /*
  * Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
+ *
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #ifndef _LIBSTMFTEST_H
@@ -69,9 +71,6 @@ extern "C" {
 /* maximum length of an option argument */
 #define	MAXOPTARGLEN   256
 
-/* globals */
-char *cmdName;
-
 /*
  * This structure is passed into the caller's callback function and
  * will contain a list of all options entered and their associated
@@ -82,9 +81,19 @@ typedef struct _cmdOptions {
 	char optarg[MAXOPTARGLEN + 1];
 } cmdOptions_t;
 
-int waitForOffline();
-int waitForOnline();
-void guidToAscii(stmfGuid *guid, char *guidAsciiBuf);
+ 
+__attribute__ ((always_inline))
+static void guidToAscii(stmfGuid *guid, char *guidAsciiBuf) {
+	(void) snprintf(guidAsciiBuf, 33,
+	"%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x"
+	"%02x%02x%02x%02x%02x%02x",
+	guid->guid[0], guid->guid[1], guid->guid[2],
+	guid->guid[3], guid->guid[4], guid->guid[5],
+	guid->guid[6], guid->guid[7], guid->guid[8],
+	guid->guid[9], guid->guid[10], guid->guid[11],
+	guid->guid[12], guid->guid[13], guid->guid[14],
+	guid->guid[15]);
+}
 
 
 #ifdef	__cplusplus

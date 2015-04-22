@@ -23,6 +23,8 @@
 # Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
 #
+# Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
+#
 
 # NAME
 #       comstar_startup_fcoe_target()
@@ -248,6 +250,7 @@ function build_interface
 #
 function comstar_startup_fc_target
 {
+	targ_typ=$1
 	comstar_startup
 	if [ $? -ne 0 ];then
 		cti_uninitiated "comstar framework is not ready, aborting"
@@ -265,6 +268,15 @@ function comstar_startup_fc_target
 			return 1
 		fi		
 	done
+
+	#
+	# Return here if we are not dealing with FC
+	# otherwise continue startup for FC
+	#
+	if [ "$targ_typ" != "fc" ]; then
+		return 0
+	fi
+
 	typeset fc_loaded=0
 	typeset fc_modules="qlt emlxs"
 	cti_report "check for fc related modules $fc_modules"
