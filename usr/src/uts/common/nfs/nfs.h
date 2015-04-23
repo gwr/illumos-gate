@@ -20,7 +20,7 @@
  */
 
 /*
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  * Copyright (c) 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2013 by Delphix. All rights reserved.
  */
@@ -2314,6 +2314,8 @@ extern void	rfs4_hold_deleg_policy(void);
 extern void	rfs4_rele_deleg_policy(void);
 
 extern int	do_xattr_exists_check(vnode_t *, ulong_t *, cred_t *);
+
+extern int protect_zfs_mntpt(vnode_t *);
 
 extern ts_label_t *nfs_getflabel(vnode_t *, struct exportinfo *);
 extern boolean_t do_rfs_label_check(bslabel_t *, vnode_t *, int,

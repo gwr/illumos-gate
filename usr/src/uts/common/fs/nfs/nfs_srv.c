@@ -1807,6 +1807,12 @@ rfs_create(struct nfscreatargs *args, struct nfsdiropres *dr,
 		return;
 	}
 
+	if (protect_zfs_mntpt(dvp) != 0) {
+		VN_RELE(dvp);
+		dr->dr_status = NFSERR_ACCES;
+		return;
+	}
+
 	/*
 	 * This is a completely gross hack to make mknod
 	 * work over the wire until we can wack the protocol
@@ -2186,6 +2192,13 @@ rfs_rename(struct nfsrnmargs *args, enum nfsstat *status,
 		return;
 	}
 
+	if (protect_zfs_mntpt(tovp) != 0) {
+		VN_RELE(tovp);
+		VN_RELE(fromvp);
+		*status = NFSERR_ACCES;
+		return;
+	}
+
 	/*
 	 * Check for a conflict with a non-blocking mandatory share reservation.
 	 */
@@ -2330,6 +2343,13 @@ rfs_link(struct nfslinkargs *args, enum nfsstat *status,
 		return;
 	}
 
+	if (protect_zfs_mntpt(tovp) != 0) {
+		VN_RELE(tovp);
+		VN_RELE(fromvp);
+		*status = NFSERR_ACCES;
+		return;
+	}
+
 	error = VOP_LINK(tovp, fromvp, args->la_to.da_name, cr, NULL, 0);
 
 	/*
@@ -2352,7 +2372,7 @@ rfs_link_getfh(struct nfslinkargs *args)
 
 /*
  * Symbolicly link to a file.
- * Create a file (to) with the given attributes which is a symbolic link
+ * Create a file (from) with the given attributes which is a symbolic link
  * to the given path name (to).
  */
 void
@@ -2397,6 +2417,12 @@ rfs_symlink(struct nfsslargs *args, enum nfsstat *status,
 	if (!(va.va_mask & AT_MODE)) {
 		VN_RELE(vp);
 		*status = NFSERR_INVAL;
+		return;
+	}
+
+	if (protect_zfs_mntpt(vp) != 0) {
+		VN_RELE(vp);
+		*status = NFSERR_ACCES;
 		return;
 	}
 
@@ -2489,6 +2515,12 @@ rfs_mkdir(struct nfscreatargs *args, struct nfsdiropres *dr,
 	if (!(va.va_mask & AT_MODE)) {
 		VN_RELE(vp);
 		dr->dr_status = NFSERR_INVAL;
+		return;
+	}
+
+	if (protect_zfs_mntpt(vp) != 0) {
+		VN_RELE(vp);
+		dr->dr_status = NFSERR_ACCES;
 		return;
 	}
 
