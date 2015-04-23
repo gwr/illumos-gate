@@ -450,7 +450,7 @@ smb_auth_get_token(smb_request_t *sr)
 	 * but only for real logon (not ANON or GUEST).
 	 */
 	if ((token->tkn_flags & (SMB_ATF_GUEST | SMB_ATF_ANON)) == 0) {
-		if (sr->session->dialect >= 0x200) {
+		if (sr->session->dialect >= SMB_VERS_2_BASE) {
 			smb2_sign_begin(sr, token);
 		} else {
 			smb_sign_begin(sr, token);

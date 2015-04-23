@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc. All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc. All rights reserved.
  */
 
 #include <smbsrv/smb_kproto.h>
@@ -218,7 +218,7 @@ smb_pathname_reduce(
 
 	if (SMB_TREE_IS_DFSROOT(sr)) {
 		int is_dfs;
-		if (sr->session->dialect >= 0x200)
+		if (sr->session->dialect >= SMB_VERS_2_BASE)
 			is_dfs = sr->smb2_hdr_flags &
 			    SMB2_FLAGS_DFS_OPERATIONS;
 		else
@@ -236,7 +236,7 @@ smb_pathname_reduce(
 
 	if (sr != NULL) {
 		boolean_t chk_vss;
-		if (sr->session->dialect >= 0x200)
+		if (sr->session->dialect >= SMB_VERS_2_BASE)
 			chk_vss = sr->arg.open.create_timewarp;
 		else
 			chk_vss = (sr->smb_flg2 &
