@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -316,11 +316,13 @@ smb1_newrq_negotiate(smb_request_t *sr)
 smb_sdrc_t
 smb_pre_negotiate(smb_request_t *sr)
 {
+	smb_kmod_cfg_t		*skc;
 	smb_arg_negotiate_t	*negprot;
 	int			dialect;
 	int			pos;
 	int			rc = 0;
 
+	skc = &sr->session->s_cfg;
 	negprot = smb_srm_zalloc(sr, sizeof (smb_arg_negotiate_t));
 	negprot->ni_index = -1;
 	sr->sr_negprot = negprot;
@@ -338,8 +340,8 @@ smb_pre_negotiate(smb_request_t *sr)
 		/*
 		 * Conditionally recognize the SMB2 dialects.
 		 */
-		if ((dialect >= DIALECT_SMB2002) &&
-		    sr->sr_server->sv_cfg.skc_smb2_enable == 0)
+		if (dialect >= DIALECT_SMB2002 &&
+		    skc->skc_max_protocol < SMB_VERS_2_BASE)
 			continue;
 
 		if (negprot->ni_dialect < dialect) {

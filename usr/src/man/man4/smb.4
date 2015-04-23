@@ -316,6 +316,18 @@ The UID of the Unix user.
 .sp
 .ne 2
 .na
+\fB\fBmax_protocol\fR\fR
+.ad
+.sp .6
+.RS 4n
+Specifies the maximum SMB protocol level that the SMB service
+should allow clients to negotiate.  The default value is \fB2.1\fR.
+Valid settings include: \fB1\fR, \fB2.1\fR, \fB3.0\fR
+.RE
+
+.sp
+.ne 2
+.na
 \fB\fBmax_workers\fR\fR
 .ad
 .sp .6
@@ -420,8 +432,6 @@ the server. The \fBsigning_required\fR setting is only taken into account when
 \fBsigning_enabled\fR is \fBtrue\fR. Valid values are \fBtrue\fR and
 \fBfalse\fR. The default value is \fBfalse\fR.
 .RE
-
-.\" There is also: smb2_enable, but the next commit removes it.
 
 .sp
 .ne 2

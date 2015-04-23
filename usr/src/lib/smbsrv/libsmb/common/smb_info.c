@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <sys/types.h>
@@ -100,7 +100,7 @@ smb_load_kconfig(smb_kmod_cfg_t *kcfg)
 	kcfg->skc_oplock_enable = smb_config_getbool(SMB_CI_OPLOCK_ENABLE);
 	kcfg->skc_sync_enable = smb_config_getbool(SMB_CI_SYNC_ENABLE);
 	kcfg->skc_traverse_mounts = smb_config_getbool(SMB_CI_TRAVERSE_MOUNTS);
-	kcfg->skc_smb2_enable = smb_config_getbool(SMB_CI_SMB2_ENABLE);
+	kcfg->skc_max_protocol = smb_config_get_max_protocol();
 	kcfg->skc_secmode = smb_config_get_secmode();
 
 	rc = smb_config_getnum(SMB_CI_MAXIMUM_CREDITS, &citem);

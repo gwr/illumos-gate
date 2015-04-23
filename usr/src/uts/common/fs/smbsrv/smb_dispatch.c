@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -1038,7 +1038,7 @@ smbsr_status(smb_request_t *sr, DWORD status, uint16_t errcls, uint16_t errcode)
 	 * vector into a wrapper function that we can watch for...
 	 * (and track down with dtrace:)
 	 */
-	if (sr->session->dialect >= 0x200) {
+	if (sr->session->dialect >= SMB_VERS_2_BASE) {
 		smbsr_status_smb2(sr, status);
 		return;
 	}
