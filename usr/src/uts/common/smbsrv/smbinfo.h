@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #ifndef	_SMBSRV_SMBINFO_H
@@ -140,7 +140,7 @@ typedef struct smb_kmod_cfg {
 	int32_t skc_ipv6_enable;
 	int32_t skc_print_enable;
 	int32_t skc_traverse_mounts;
-	uint32_t skc_smb2_enable;
+	uint32_t skc_max_protocol;	/* SMB_VERS_... */
 	uint32_t skc_execflags;
 	uint32_t skc_negtok_len;
 	smb_version_t skc_version;
@@ -204,6 +204,16 @@ const char *smbnative_lm_str(smb_version_t *);
 #define	AUTH_USER_GRANT			0x00000000
 #define	AUTH_GUEST_GRANT		0x00000001
 #define	AUTH_IPC_ONLY_GRANT		0x00000002
+
+/*
+ * Defined SMB1, SMB2(+) protocol versions, as returned by
+ * smb_config_get_max_protocol()
+ */
+#define	SMB_VERS_1		1	/* arbitrary value < 0x200 */
+#define	SMB_VERS_2_BASE		0x200	/* for (SMB2 or higher?) tests */
+#define	SMB_VERS_2_002		0x202	/* "2.002" */
+#define	SMB_VERS_2_1		0x210	/* "2.1" */
+#define	SMB_VERS_3_0		0x300	/* "3.0" */
 
 #ifdef __cplusplus
 }
