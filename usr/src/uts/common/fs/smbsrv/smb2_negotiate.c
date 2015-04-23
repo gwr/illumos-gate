@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -50,18 +50,24 @@ uint32_t smb2_max_rwsize = (1<<20);	/* 1MB */
 uint32_t smb2_max_trans  = (1<<16);	/* 64KB */
 
 /*
- * Which SMB2 versions do we support?
+ * List of all SMB2 versions we implement.  Note that the
+ * highest version we support may be limited by the
+ * _cfg.skc_max_protocol setting.
  */
 static uint16_t smb2_versions[] = {
 	0x202,	/* SMB 2.002 */
 	0x210,	/* SMB 2.1 */
 };
-static uint16_t smb2_nversions = 2;
+static uint16_t smb2_nversions =
+    sizeof (smb2_versions) / sizeof (smb2_versions[0]);
 
 static boolean_t
-smb2_supported_version(uint16_t version)
+smb2_supported_version(smb_session_t *s, uint16_t version)
 {
 	int i;
+
+	if (version > s->s_cfg.skc_max_protocol)
+		return (B_FALSE);
 	for (i = 0; i < smb2_nversions; i++)
 		if (version == smb2_versions[i])
 			return (B_TRUE);
@@ -183,12 +189,6 @@ smb2_newrq_negotiate(smb_request_t *sr)
 		return (SDRC_DROP_VC);
 
 	/*
-	 * Conditionally enable SMB2
-	 */
-	if (sr->sr_server->sv_cfg.skc_smb2_enable == 0)
-		return (SDRC_DROP_VC);
-
-	/*
 	 * Decode SMB2 Negotiate (fixed-size part)
 	 */
 	rc = smb_mbc_decodef(
@@ -214,11 +214,13 @@ smb2_newrq_negotiate(smb_request_t *sr)
 		return (SDRC_DROP_VC);
 
 	/*
-	 * Choose the best supported version.
+	 * The client offers an array of protocol versions it
+	 * supports, which we have decoded into cl_versions[].
+	 * We walk the array and pick the highest supported.
 	 */
 	best_version = 0;
 	for (i = 0; i < version_cnt; i++)
-		if (smb2_supported_version(cl_versions[i]) &&
+		if (smb2_supported_version(s, cl_versions[i]) &&
 		    best_version < cl_versions[i])
 			best_version = cl_versions[i];
 	if (best_version == 0)

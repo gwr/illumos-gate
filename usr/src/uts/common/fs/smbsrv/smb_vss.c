@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -161,7 +161,7 @@ smb_vss_lookup_nodes(smb_request_t *sr, smb_node_t *root_node,
 	ASSERT(tnode->vp);
 	ASSERT(tnode->vp->v_vfsp);
 
-	smb1 = (sr->session->dialect < 0x200);
+	smb1 = (sr->session->dialect < SMB_VERS_2_BASE);
 	if (smb1) {
 		const char *p;
 

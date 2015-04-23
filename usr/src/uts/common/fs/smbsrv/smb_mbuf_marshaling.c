@@ -22,7 +22,7 @@
  * Copyright 2010 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  *
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -184,7 +184,7 @@ smb_mbc_vdecodef(mbuf_chain_t *mbc, const char *fmt, va_list ap)
 		switch (c) {
 		case '%':
 			sr = va_arg(ap, struct smb_request *);
-			if (sr->session->dialect >= 0x200) {
+			if (sr->session->dialect >= SMB_VERS_2_BASE) {
 				unicode = 1;
 				break;
 			}
@@ -555,7 +555,7 @@ smb_mbc_vencodef(mbuf_chain_t *mbc, const char *fmt, va_list ap)
 		switch (c) {
 		case '%':
 			sr = va_arg(ap, struct smb_request *);
-			if (sr->session->dialect >= 0x200) {
+			if (sr->session->dialect >= SMB_VERS_2_BASE) {
 				unicode = 1;
 				break;
 			}
