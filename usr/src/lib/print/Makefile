@@ -23,6 +23,8 @@
 # Use is subject to license terms.
 #
 
+include $(SRC)/Makefile.master
+
 SUBDIRS = \
 	libprint \
 	libpapi-common \
@@ -33,7 +35,7 @@ SUBDIRS = \
 	libpapi-ipp \
 	libipp-listener
 
-$(ENABLE_IPP_PRINTING) SUBDIRS +=	mod_ipp
+$(ENABLE_IPP_PRINTING) SUBDIRS += mod_ipp
 
 all :=                  TARGET = all
 clean :=                TARGET = clean
@@ -41,8 +43,6 @@ clobber :=              TARGET = clobber
 install :=              TARGET = install
 install_h :=              TARGET = install_h
 lint :=                 TARGET = lint
-
-include $(SRC)/Makefile.master
 
 TEXT_DOMAIN=	SUNW_OST_OSLIB
 POFILE= print-lib.po
@@ -90,4 +90,3 @@ libipp-core:		libpapi-common
 libpapi-ipp:		libpapi-common libipp-core libhttp-core
 libipp-listener:	libpapi-dynamic libipp-core
 mod_ipp:		libipp-listener
-

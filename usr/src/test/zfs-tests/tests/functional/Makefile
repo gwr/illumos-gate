@@ -11,7 +11,7 @@
 #
 
 #
-# Copyright (c) 2013 by Delphix. All rights reserved.
+# Copyright (c) 2013, 2014 by Delphix. All rights reserved.
 # Copyright 2015, Nexenta Systems Inc. All rights reserved.
 #
 
@@ -34,6 +34,7 @@ SUBDIRS = acl \
 	grow_pool \
 	grow_replicas \
 	history \
+	holes \
 	inheritance \
 	inuse \
 	large_files \

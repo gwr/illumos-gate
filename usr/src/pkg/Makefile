@@ -218,31 +218,34 @@ CLOBBERFILES= $(PDIR) proto_list_$(PKGMACH) install-$(PKGMACH).out \
 # By default, PKGS will list all manifests.  To build and/or publish a
 # subset of packages, override this on the command line or in the
 # build environment and then reference (implicitly or explicitly) the all
-# or install targets.
+# or install targets.  Using ls -1 (that's a one) or print or echo to
+# get the list of manifests is a little hackish, but avoids having a
+# 900+ line file to explicitly list them all.
 #
-$(ENABLE_IPP_PRINTING)DISABLE_IPP_PRINTING = $(POUND_SIGN)
-
-$(DISABLE_IPP_PRINTING)REMOVE_MANIFESTS +=	\
-	-e 's/print-lp-ipp-ipp-listener.mf//'
-
-$(NZA_OPEN_ONLY)REMOVE_MANIFESTS +=		\
-	-e 's/driver-isal.mf//'			\
-	-e 's/network-aoe-target.mf//'
-
+# We want some manifests to optionally built based on environment
+# options, so those are excluded and optionally added back in.
+# We also want a relatively easy way to add files to the list of
+# manifests given special treatment.  Add any other special ones
+# to the SPECIAL_MANIFESTS vaiable.  It can contain wildcards in
+# regexp form, i.e. SUNW.* as one useful example.
 #
-# Construct a command sequence to list all manifests
-#
-LIST_MANIFESTS = cd manifests;
+SPECIAL_MANIFESTS = \
+	print-lp-ipp-ipp-listener.mf \
+	driver-isal.mf \
+	network-aoe-target.mf
 
-# Copy nza-closed manifests over
-$(NZA_KMODS)LIST_MANIFESTS += 						\
-	cp ../../../nza-closed/pkg/manifests/driver-isal.mf .;		\
-	cp ../../../nza-closed/pkg/manifests/network-aoe-target.mf .;	\
+LIST_MANIFESTS_CMD = (cd manifests ; /usr/bin/ls -1 *.mf |\
+	$(SED) $(SPECIAL_MANIFESTS:%=-e '/^%$$/d') )
+MANIFESTS = $(LIST_MANIFESTS_CMD:sh)
 
-# list manifests, remove some
-LIST_MANIFESTS += print *.mf | sed ${REMOVE_MANIFESTS}
+# Conditionally add back lp-ipp, isal, and AoE
+$(ENABLE_IPP_PRINTING) MANIFESTS += print-lp-ipp-ipp-listener.mf
+$(ENABLE_NZA_CLOSED) MANIFESTS += driver-isal.mf network-aoe-target.mf
 
-MANIFESTS = ${LIST_MANIFESTS:sh}
+$(ENABLE_NZA_CLOSED) NZA_CLOSED_MANIFESTS:sh= (		\
+	cd manifests;						\
+	cp ../../../nza-closed/pkg/manifests/driver-isal.mf .;	\
+	cp ../../../nza-closed/pkg/manifests/network-aoe-target.mf .)
 
 PKGS= $(MANIFESTS:%.mf=%)
 DEP_PKGS= $(PKGS:%=$(PDIR)/%.dep)
