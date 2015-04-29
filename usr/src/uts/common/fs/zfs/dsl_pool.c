@@ -135,6 +135,12 @@ uint64_t zfs_delay_scale = 1000 * 1000 * 1000 / 2000;
 hrtime_t zfs_throttle_delay = MSEC2NSEC(10);
 hrtime_t zfs_throttle_resolution = MSEC2NSEC(10);
 
+/*
+ * Tunable to control max number of tasks available for processing of
+ * deferred deletes.
+ */
+int zfs_vn_rele_max_tasks = 256;
+
 int
 dsl_pool_open_special_dir(dsl_pool_t *dp, const char *name, dsl_dir_t **ddp)
 {
@@ -178,7 +184,7 @@ dsl_pool_open_impl(spa_t *spa, uint64_t txg)
 	cv_init(&dp->dp_spaceavail_cv, NULL, CV_DEFAULT, NULL);
 
 	dp->dp_vnrele_taskq = taskq_create("zfs_vn_rele_taskq", 1, minclsyspri,
-	    1, 4, 0);
+	    1, zfs_vn_rele_max_tasks, TASKQ_DYNAMIC);
 
 	return (dp);
 }

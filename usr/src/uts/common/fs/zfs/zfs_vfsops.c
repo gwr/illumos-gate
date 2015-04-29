@@ -1059,8 +1059,8 @@ zfsvfs_setup(zfsvfs_t *zfsvfs, boolean_t mounting)
 			if (taskq_dispatch(dsl_pool_vnrele_taskq(
 			    spa_get_dsl(zfsvfs->z_os->os_spa)),
 			    (void (*)(void *))zfs_unlinked_drain, zfsvfs,
-			    TQ_SLEEP) == NULL) {
-				cmn_err(CE_NOTE,
+			    TQ_NOSLEEP) == NULL) {
+				cmn_err(CE_WARN,
 				    "async zfs_unlinked_drain dispatch failed");
 				zfs_unlinked_drain(zfsvfs);
 			}
