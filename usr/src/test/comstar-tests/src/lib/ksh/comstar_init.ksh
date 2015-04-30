@@ -257,7 +257,8 @@ function comstar_startup_fc_target
 		cti_deleteall "comstar framework missed!"
 		return 1
 	fi	
-	typeset sorted_modules="fct stmf_sbd stmf"
+
+	typeset sorted_modules="stmf_sbd stmf"
 	cti_report "check for $sorted_modules modules"
 	for module in $sorted_modules
 	do
@@ -278,7 +279,7 @@ function comstar_startup_fc_target
 	fi
 
 	typeset fc_loaded=0
-	typeset fc_modules="qlt emlxs"
+	typeset fc_modules="fct qlt emlxs"
 	cti_report "check for fc related modules $fc_modules"
 	for module in $fc_modules
 	do
