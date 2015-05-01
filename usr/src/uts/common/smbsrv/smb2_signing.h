@@ -23,6 +23,10 @@
 #include <security/pkcs11.h>
 #endif
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define	SHA256_DIGEST_LENGTH	32	/* SHA256 digest length in bytes */
 #define	SMB2_SIG_SIZE	16
 
@@ -52,5 +56,9 @@ int smb3_cmac_getmech(smb2_sign_mech_t *);
 int smb3_cmac_init(smb2_sign_ctx_t *, smb2_sign_mech_t *, uint8_t *, size_t);
 int smb3_cmac_update(smb2_sign_ctx_t, uint8_t *, size_t);
 int smb3_cmac_final(smb2_sign_ctx_t, uint8_t *);
+
+#ifdef	__cplusplus
+}
+#endif
 
 #endif /* _SMB2_SIGNING_H_ */
