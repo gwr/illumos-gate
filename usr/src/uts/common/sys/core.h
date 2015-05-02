@@ -20,6 +20,8 @@
  * CDDL HEADER END
  */
 /*
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
+ *
  * Copyright 2004 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
@@ -27,10 +29,9 @@
 #ifndef	_SYS_CORE_H
 #define	_SYS_CORE_H
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
-
 #ifndef _KERNEL
 #include <sys/reg.h>
+#include <sys/privregs.h>
 #endif /* _KERNEL */
 
 #include <sys/exechdr.h>
@@ -63,9 +64,9 @@ struct core {
 	int	c_dsize;		/* Data size (bytes) */
 	int	c_ssize;		/* Stack size (bytes) */
 	char	c_cmdname[CORE_NAMELEN + 1]; /* Command name */
-	struct	fpu c_fpu;		/* external FPU state */
+	struct	_fpu	c_fpu;		/* external FPU state */
 #if defined(__sparc)
-	struct	fq c_fpu_q[MAXFPQ];	/* fpu exception queue */
+	struct	_fq c_fpu_q[MAXFPQ];	/* fpu exception queue */
 #endif
 	int	c_ucode;		/* Exception no. from u_code */
 };
