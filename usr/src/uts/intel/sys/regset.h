@@ -39,7 +39,15 @@
 extern "C" {
 #endif
 
-#if !defined(_XPG4_2) || defined(__EXTENSIONS__)
+/*
+ * Note that regset.h is exposed in lots of code via sys/ucontext.h and
+ * sys/procset.h - sys/wait.h - stdlib.h or sys/signal.h - signal.h.
+ * We really should not pollute the name space with all the defines
+ * that give names to register indices in the greg array, but we have
+ * lots of C code that expects them.  That code now needs to define
+ * _REGSET_NAMES (asm code still gets these by default)
+ */
+#if defined(_ASM) || defined(_REGSET_NAMES)
 
 /*
  * The names and offsets defined here should be specified by the
@@ -134,7 +142,7 @@ extern "C" {
 
 #endif	/* __i386 */
 
-#endif	/* !defined(_XPG4_2) || defined(__EXTENSIONS__) */
+#endif	/* defined(_ASM) || defined(_REGSET_NAMES) */
 
 /*
  * A gregset_t is defined as an array type for compatibility with the reference
@@ -146,7 +154,7 @@ extern "C" {
 #else
 #define	_NGREG	19
 #endif
-#if !defined(_XPG4_2) || defined(__EXTENSIONS__)
+#if defined(_ASM) || defined(_REGSET_NAMES)
 #define	NGREG	_NGREG
 #endif
 
@@ -177,16 +185,15 @@ typedef	greg64_t gregset64_t[_NGREG64];
 
 #endif	/* _SYSCALL32 */
 
-#if !defined(_XPG4_2) || defined(__EXTENSIONS__)
-
 /*
  * Floating point definitions.
  */
 
+#if 1 /* defined(_KERNEL)? unfortunately pbc.h ... */
 /*
  * This structure is written to memory by an 'fnsave' instruction
  */
-struct fnsave_state {
+struct _fnsave_state {
 	uint16_t	f_fcw;
 	uint16_t	__f_ign0;
 	uint16_t	f_fsw;
@@ -209,7 +216,7 @@ struct fnsave_state {
  * Note the variant behaviour of this instruction between long mode
  * and legacy environments!
  */
-struct fxsave_state {
+struct _fxsave_state {
 	uint16_t	fx_fcw;
 	uint16_t	fx_fsw;
 	uint16_t	fx_fctw;	/* compressed tag word */
@@ -245,19 +252,36 @@ struct fxsave_state {
  * This structure is written to memory by an 'xsave' instruction.
  * First 512 byte is compatible with the format of an 'fxsave' area.
  */
-struct xsave_state {
-	struct fxsave_state	xs_fxsave;
+struct _xsave_state {
+	struct _fxsave_state	xs_fxsave;
 	uint64_t		xs_xstate_bv;	/* 512 */
 	uint64_t		xs_rsv_mbz[2];
 	uint64_t		xs_reserved[5];
 	upad128_t		xs_ymm[16];	/* avx - 576 */
 };	/* 832 bytes, asserted in fpnoextflt() */
 
+/*
+ * Kernel's FPU save area
+ */
+typedef struct {
+	union _kfpu_u {
+		struct _fxsave_state kfpu_fx;
+#if defined(__i386)
+		struct _fnsave_state kfpu_fn;
+#endif
+		struct _xsave_state kfpu_xs;
+	} kfpu_u;
+	uint32_t kfpu_status;		/* saved at #mf exception */
+	uint32_t kfpu_xstatus;		/* saved at #xm exception */
+} kfpu_t;
+
+#endif	/* _KERNEL */
+
 #if defined(__amd64)
 
-typedef struct fpu {
+typedef struct _fpu {
 	union {
-		struct fpchip_state {
+		struct _fpchip_state {
 			uint16_t cw;
 			uint16_t sw;
 			uint8_t  fctw;
@@ -289,9 +313,9 @@ typedef struct fpu {
  * It also allows SSE/SSE2 state to be accessed on machines that
  * possess such hardware capabilities.
  */
-typedef struct fpu {
+typedef struct _fpu {
 	union {
-		struct fpchip_state {
+		struct _fpchip_state {
 			uint32_t state[27];	/* 287/387 saved state */
 			uint32_t status;	/* saved at exception */
 			uint32_t mxcsr;		/* SSE control and status */
@@ -299,7 +323,7 @@ typedef struct fpu {
 			uint32_t __pad[2];	/* align to 128-bits */
 			upad128_t xmm[8];	/* %xmm0-%xmm7 */
 		} fpchip_state;
-		struct fp_emul_space {		/* for emulator(s) */
+		struct _fp_emul_space {		/* for emulator(s) */
 			uint8_t	fp_emul[246];
 			uint8_t	fp_epad[2];
 		} fp_emul_space;
@@ -309,6 +333,7 @@ typedef struct fpu {
 
 /*
  * (This structure definition is specified in the i386 ABI supplement)
+ * XXX: Can we just delete this?
  */
 typedef struct __old_fpu {
 	union {
@@ -350,29 +375,14 @@ typedef struct fpu32 {
 
 #endif	/* _SYSCALL32 */
 
-/*
- * Kernel's FPU save area
- */
-typedef struct {
-	union _kfpu_u {
-		struct fxsave_state kfpu_fx;
-#if defined(__i386)
-		struct fnsave_state kfpu_fn;
-#endif
-		struct xsave_state kfpu_xs;
-	} kfpu_u;
-	uint32_t kfpu_status;		/* saved at #mf exception */
-	uint32_t kfpu_xstatus;		/* saved at #xm exception */
-} kfpu_t;
-
 #if defined(__amd64)
-#define	NDEBUGREG	16
+#define	_NDEBUGREG	16
 #else
-#define	NDEBUGREG	8
+#define	_NDEBUGREG	8
 #endif
 
 typedef struct dbregset {
-	unsigned long	debugreg[NDEBUGREG];
+	unsigned long	debugreg[_NDEBUGREG];
 } dbregset_t;
 
 /*
@@ -394,105 +404,11 @@ typedef struct {
 #endif	/* _SYSCALL32 */
 
 #endif	/* _ASM */
-#endif /* !defined(_XPG4_2) || defined(__EXTENSIONS__) */
 
 /*
- * The version of privregs.h that is used on implementations that run on
- * processors that support the AMD64 instruction set is deliberately not
- * imported here.
- *
- * The amd64 'struct regs' definition may -not- compatible with either
- * 32-bit or 64-bit core file contents, nor with the ucontext.  As a result,
- * the 'regs' structure cannot be used portably by applications, and should
- * only be used by the kernel implementation.
- *
- * The inclusion of the i386 version of privregs.h allows for some limited
- * source compatibility with 32-bit applications who expect to use
- * 'struct regs' to match the context of a 32-bit core file, or a ucontext_t.
- *
- * Note that the ucontext_t actually describes the general register in terms
- * of the gregset_t data type, as described in this file.  Note also
- * that the core file content is defined by core(4) in terms of data types
- * defined by procfs -- see proc(4).
+ * Removed include sys/privregs.h
+ * Removed 2nd copy of mcontext for XPG4v2
  */
-#if defined(__i386) && \
-	(!defined(_KERNEL) && !defined(_XPG4_2) || defined(__EXTENSIONS__))
-#include <sys/privregs.h>
-#endif	/* __i386 (!_KERNEL && !_XPG4_2 || __EXTENSIONS__) */
-
-/*
- * The following is here for XPG4.2 standards compliance.
- * regset.h is included in ucontext.h for the definition of
- * mcontext_t, all of which breaks XPG4.2 namespace.
- */
-
-#if defined(_XPG4_2) && !defined(__EXTENSIONS__) && !defined(_ASM)
-
-/*
- * The following is here for UNIX 95 compliance (XPG Issue 4, Version 2
- * System Interfaces and Headers). The structures included here are identical
- * to those visible elsewhere in this header except that the structure
- * element names have been changed in accordance with the X/Open namespace
- * rules.  Specifically, depending on the name and scope, the names have
- * been prepended with a single or double underscore (_ or __).  See the
- * structure definitions in the non-X/Open namespace for more detailed
- * comments describing each of these structures.
- */
-
-#if defined(__amd64)
-
-typedef struct __fpu {
-	union {
-		struct __fpchip_state {
-			uint16_t __fx_cw;
-			uint16_t __fx_sw;
-			uint16_t __fx_ctw;
-			uint16_t __fx_op;
-			uint64_t __fx_rip;
-			uint64_t __fx_rdp;
-			uint32_t __fx_mxcsr;
-			uint32_t __fx_mxcsr_mask;
-			union {
-				uint16_t __fpr_16[5];
-				upad128_t __fpr_pad;
-			} __fx_st[8];
-			upad128_t __fx_xmm[16];
-			upad128_t __fx_ign2[6];
-			uint32_t __status;
-			uint32_t __xstatus;
-		} __fpchip_state;
-		uint32_t	__f_fpregs[130];
-	} __fp_reg_set;
-} fpregset_t;
-
-#else	/* __i386 */
-
-typedef struct __fpu {
-	union {
-		struct __fpchip_state {
-			uint32_t __state[27];	/* 287/387 saved state */
-			uint32_t __status;	/* saved at exception */
-			uint32_t __mxcsr;	/* SSE control and status */
-			uint32_t __xstatus;	/* SSE mxcsr at exception */
-			uint32_t __pad[2];	/* align to 128-bits */
-			upad128_t __xmm[8];	/* %xmm0-%xmm7 */
-		} __fpchip_state;
-		struct __fp_emul_space {	/* for emulator(s) */
-			uint8_t	 __fp_emul[246];
-			uint8_t	 __fp_epad[2];
-		} __fp_emul_space;
-		uint32_t	__f_fpregs[95];	/* union of the above */
-	} __fp_reg_set;
-} fpregset_t;
-
-#endif	/* __i386 */
-
-typedef struct {
-	gregset_t	__gregs;	/* general register set */
-	fpregset_t	__fpregs;	/* floating point register set */
-} mcontext_t;
-
-#endif /* _XPG4_2 && !__EXTENSIONS__ && !_ASM */
 
 #ifdef	__cplusplus
 }

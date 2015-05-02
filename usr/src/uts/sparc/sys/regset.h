@@ -30,8 +30,6 @@
 #ifndef	_SYS_REGSET_H
 #define	_SYS_REGSET_H
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"	/* SVr4.0 1.1	*/
-
 #include <sys/feature_tests.h>
 
 #if !defined(_ASM)
@@ -43,11 +41,19 @@ extern "C" {
 #endif
 
 /*
+ * Note that regset.h is exposed in lots of code via sys/ucontext.h and
+ * sys/procset.h - sys/wait.h - stdlib.h or sys/signal.h - signal.h.
+ * We really should not pollute the name space with all the defines
+ * that give names to register indices in the greg array, but we have
+ * lots of C code that expects them.  That code now needs to define
+ * _REGSET_NAMES (asm code still gets these by default)
+ */
+#if defined(_ASM) || defined(_REGSET_NAMES)
+
+/*
  * Location of the users' stored registers relative to R0.
  * Usage is as an index into a gregset_t array or as u.u_ar0[XX].
  */
-#if !defined(_XPG4_2) || defined(__EXTENSIONS__)
-
 #if defined(__sparcv9)
 #define	REG_CCR (0)
 #if defined(_SYSCALL32)
@@ -87,7 +93,8 @@ extern "C" {
 #define	REG_SP	REG_O6
 #define	REG_R0	REG_O0
 #define	REG_R1	REG_O1
-#endif /* !defined(_XPG4_2) || defined(__EXTENSIONS__) */
+
+#endif	/* defined(_ASM) || defined(_REGSET_NAMES) */
 
 /*
  * A gregset_t is defined as an array type for compatibility with the reference
@@ -102,7 +109,7 @@ extern "C" {
 #else	/* __sparcv9 */
 #define	_NGREG	19
 #endif	/* __sparcv9 */
-#if !defined(_XPG4_2) || defined(__EXTENSIONS__)
+#if defined(_ASM) || defined(_REGSET_NAMES)
 #define	NGREG	_NGREG
 #endif
 
@@ -133,7 +140,6 @@ typedef greg64_t gregset64_t[_NGREG64];
 
 #endif	/* _SYSCALL32 */
 
-#if !defined(_XPG4_2) || defined(__EXTENSIONS__)
 /*
  * The following structures define how a register window can appear on the
  * stack. This structure is available (when required) through the `gwins'
@@ -141,9 +147,9 @@ typedef greg64_t gregset64_t[_NGREG64];
  * maximum number of outstanding regiters window defined in the SPARC
  * architecture (*not* implementation).
  */
-#define	SPARC_MAXREGWINDOW	31	/* max windows in SPARC arch. */
+#define	_SPARC_MAXREGWINDOW	31	/* max windows in SPARC arch. */
 
-struct rwindow {
+struct	_rwindow {
 	greg_t	rw_local[8];		/* locals */
 	greg_t	rw_in[8];		/* ins */
 };
@@ -161,8 +167,8 @@ struct rwindow64 {
 };
 
 #if defined(_KERNEL)
-extern	void	rwindow_nto32(struct rwindow *, struct rwindow32 *);
-extern	void	rwindow_32ton(struct rwindow32 *, struct rwindow *);
+extern	void	rwindow_nto32(struct _rwindow *, struct rwindow32 *);
+extern	void	rwindow_32ton(struct rwindow32 *, struct _rwindow *);
 #endif
 
 #endif	/* _SYSCALL32 */
@@ -170,7 +176,7 @@ extern	void	rwindow_32ton(struct rwindow32 *, struct rwindow *);
 #define	rw_fp	rw_in[6]		/* frame pointer */
 #define	rw_rtn	rw_in[7]		/* return address */
 
-typedef struct gwindows {
+typedef struct _gwindows {
 	int		wbcnt;
 	greg_t		*spbuf[SPARC_MAXREGWINDOW];
 	struct rwindow	wbuf[SPARC_MAXREGWINDOW];
@@ -197,7 +203,7 @@ typedef struct gwindows64 {
  * Floating point definitions.
  */
 
-#define	MAXFPQ	16	/* max # of fpu queue entries currently supported */
+#define	_MAXFPQ	16	/* max # of fpu queue entries currently supported */
 
 /*
  * struct fq defines the minimal format of a floating point instruction queue
@@ -207,15 +213,15 @@ typedef struct gwindows64 {
  * implementation should not be used applications designed to be ABI conformant.
  */
 
-struct fpq {
+struct _fpq {
 	unsigned int *fpq_addr;		/* address */
 	unsigned int fpq_instr;		/* instruction */
 };
 
-struct fq {
+struct _fq {
 	union {				/* FPU inst/addr queue */
 		double whole;
-		struct fpq fpq;
+		struct _fpq fpq;
 	} FQu;
 };
 
@@ -248,25 +254,15 @@ struct fq32 {
  * with the processor state, fpu_qcnt will be zeo and fpu_q will be NULL.
  */
 
-/*
- * The following #define's are obsolete and may be removed in a future release.
- * The corresponding integer types should be used instead (i.e. uint64_t).
- */
-#define	FPU_REGS_TYPE		uint32_t
-#define	FPU_DREGS_TYPE		uint64_t
-#define	V7_FPU_FSR_TYPE		uint32_t
-#define	V9_FPU_FSR_TYPE		uint64_t
-#define	V9_FPU_FPRS_TYPE	uint32_t
-
 #if defined(__sparcv9)
 
-struct fpu {
+struct _fpu {
 	union {					/* FPU floating point regs */
 		uint32_t	fpu_regs[32];	/* 32 singles */
 		double		fpu_dregs[32];	/* 32 doubles */
 		long double	fpu_qregs[16];	/* 16 quads */
 	} fpu_fr;
-	struct fq	*fpu_q;			/* ptr to array of FQ entries */
+	struct _fq	*fpu_q;			/* ptr to array of FQ entries */
 	uint64_t	fpu_fsr;		/* FPU status register */
 	uint8_t		fpu_qcnt;		/* # of entries in saved FQ */
 	uint8_t		fpu_q_entrysize;	/* # of bytes per FQ entry */
@@ -275,12 +271,12 @@ struct fpu {
 
 #else	/* __sparcv9 */
 
-struct fpu {
+struct _fpu {
 	union {					/* FPU floating point regs */
 		uint32_t	fpu_regs[32];	/* 32 singles */
 		double		fpu_dregs[16];	/* 16 doubles */
 	} fpu_fr;
-	struct fq	*fpu_q;			/* ptr to array of FQ entries */
+	struct _fq	*fpu_q;			/* ptr to array of FQ entries */
 	uint32_t	fpu_fsr;		/* FPU status register */
 	uint8_t		fpu_qcnt;		/* # of entries in saved FQ */
 	uint8_t		fpu_q_entrysize;	/* # of bytes per FQ entry */
@@ -289,7 +285,7 @@ struct fpu {
 
 #endif	/* __sparcv9 */
 
-typedef struct fpu	fpregset_t;
+typedef struct _fpu	fpregset_t;
 
 #if defined(_SYSCALL32)
 
@@ -346,7 +342,7 @@ typedef struct {
 	caddr_t		xrs_ptr;	/* ptr to extra reg state */
 } xrs_t;
 
-#define	XRS_ID			0x78727300	/* the string "xrs" */
+#define	_XRS_ID			0x78727300	/* the string "xrs" */
 
 #if defined(_SYSCALL32)
 
@@ -387,7 +383,7 @@ typedef	int64_t	asrset_t[16];	/* %asr16 - > %asr31 */
  */
 typedef struct {
 	gregset_t	gregs;	/* general register set */
-	gwindows_t	*gwins;	/* POSSIBLE pointer to register windows */
+	struct _gwindows *gwins; /* POSSIBLE pointer to register windows */
 	fpregset_t	fpregs;	/* floating point register set */
 	xrs_t		xrs;	/* POSSIBLE extra register state association */
 #if defined(__sparcv9)
@@ -410,191 +406,12 @@ typedef struct {
 
 #endif /* _SYSCALL32 */
 
-#endif /* !defined(_XPG4_2) || defined(__EXTENSIONS__) */
 #endif	/* _ASM */
 
 /*
- * The version of privregs.h that is used on implementations that run
- * on processors that support the V9 instruction set is deliberately not
- * imported here.
- *
- * The V9 'struct regs' definition is -not- compatible with either 32-bit
- * or 64-bit core file contents, nor with the ucontext.  As a result, the
- * 'regs' structure cannot be used portably by applications, and should
- * only be used by the kernel implementation.
- *
- * The inclusion of the SPARC V7 version of privregs.h allows for some
- * limited source compatibility with 32-bit applications who expect to use
- * 'struct regs' to match the content of a 32-bit core file, or a ucontext_t.
- *
- * Note that the ucontext_t actually describes the general registers in
- * terms of the gregset_t data type, as described in this file.  Note also
- * that the core file content is defined by core(4) in terms of data types
- * defined by procfs -- see proc(4).
+ * Removed include sys/privregs.h
+ * Removed 2nd copy of fpu definitions for XPG4v2
  */
-#if !defined(__sparcv9)
-#if !defined(_KERNEL) && !defined(_XPG4_2) || defined(__EXTENSIONS__)
-#include <v7/sys/privregs.h>
-#endif	/* !_KERNEL && !_XPG4_2 || __EXTENSIONS__ */
-#endif	/* __sparcv9 */
-
-/*
- * The following is here for XPG4.2 standards compliance.
- * regset.h is included in ucontext.h for the definition of
- * mcontext_t, all of which breaks XPG4.2 namespace.
- */
-
-#if defined(_XPG4_2) && !defined(__EXTENSIONS__)
-/*
- * The following is here for UNIX 95 compliance (XPG Issue 4, Version 2
- * System Interfaces and Headers. The structures included here are identical
- * to those visible elsewhere in this header except that the structure
- * element names have been changed in accordance with the X/Open namespace
- * rules.  Specifically, depending on the name and scope, the names have
- * been prepended with a single or double underscore (_ or __).  See the
- * structure definitions in the non-X/Open namespace for more detailed
- * comments describing each of these structures.
- */
-
-#ifndef	_ASM
-
-/*
- * The following structures define how a register window can appear on the
- * stack.
- */
-#define	_SPARC_MAXREGWINDOW	31		/* max windows in SPARC arch. */
-
-struct	__rwindow {
-	greg_t	__rw_local[8];		/* locals */
-	greg_t	__rw_in[8];		/* ins */
-};
-
-#define	__rw_fp		__rw_in[6]		/* frame pointer */
-#define	__rw_rtn	__rw_in[7]		/* return address */
-
-struct __gwindows {
-	int		__wbcnt;
-	greg_t		*__spbuf[_SPARC_MAXREGWINDOW];
-	struct __rwindow	__wbuf[_SPARC_MAXREGWINDOW];
-};
-
-typedef struct __gwindows	gwindows_t;
-
-/*
- * The fq structure defines the minimal format of a floating point
- * instruction queue entry.
- */
-
-struct __fpq {
-	unsigned int *__fpq_addr;	/* address */
-	unsigned int __fpq_instr;	/* instruction */
-};
-
-struct __fq {
-	union {				/* FPU inst/addr queue */
-		double __whole;
-		struct __fpq __fpq;
-	} _FQu;
-};
-
-/*
- * The fpu structure is the floating point processor state.
- */
-
-/*
- * The following #define's are obsolete and may be removed in a future release.
- * The corresponding integer types should be used instead (i.e. uint64_t).
- */
-#define	_FPU_REGS_TYPE		uint32_t
-#define	_FPU_DREGS_TYPE		uint64_t
-#define	_V7_FPU_FSR_TYPE	uint32_t
-#define	_V9_FPU_FSR_TYPE	uint64_t
-#define	_V9_FPU_FPRS_TYPE	uint32_t
-
-#if defined(__sparcv9)
-
-/*
- * SPARC Version 9 floating point
- */
-
-struct __fpu {
-	union {					/* FPU floating point regs */
-		uint32_t	__fpu_regs[32];		/* 32 singles */
-		double		__fpu_dregs[32];	/* 32 doubles */
-		long double	__fpu_qregs[16];	/* 16 quads */
-	} __fpu_fr;
-	struct __fq	*__fpu_q;		/* ptr to array of FQ entries */
-	uint64_t	__fpu_fsr;	/* FPU status register */
-	uint8_t		__fpu_qcnt;		/* # of entries in saved FQ */
-	uint8_t		__fpu_q_entrysize;	/* # of bytes per FQ entry */
-	uint8_t		__fpu_en;		/* flag signifying fpu in use */
-};
-
-#else	/* __sparcv9 */
-
-/*
- * SPARC Version 7 and 8 floating point
- */
-
-struct __fpu {
-	union {					/* FPU floating point regs */
-		uint32_t	__fpu_regs[32];		/* 32 singles */
-		double		__fpu_dregs[16];	/* 16 doubles */
-	} __fpu_fr;
-	struct __fq	*__fpu_q;		/* ptr to array of FQ entries */
-	uint32_t	__fpu_fsr;	/* FPU status register */
-	uint8_t		__fpu_qcnt;		/* # of entries in saved FQ */
-	uint8_t		__fpu_q_entrysize;	/* # of bytes per FQ entry */
-	uint8_t		__fpu_en;		/* flag signifying fpu in use */
-};
-
-#endif	/* __sparcv9 */
-
-typedef struct __fpu	fpregset_t;
-
-/*
- * The xrs_t structure is for associating extra register state with
- * the ucontext structure and is kept within the uc_mcontext filler area.
- */
-typedef struct {
-	unsigned int	__xrs_id;	/* indicates xrs_ptr validity */
-	caddr_t		__xrs_ptr;	/* ptr to extra reg state */
-} xrs_t;
-
-#define	_XRS_ID			0x78727300	/* the string "xrs" */
-
-#if defined(__sparcv9)
-
-/*
- * Ancillary State Registers
- *
- * The SPARC V9 architecture defines 25 ASRs, numbered from 7 through 31.
- * ASRs 16 through 31 are available to user programs, though the meaning
- * and content of these registers is implementation dependent.
- */
-typedef	int64_t	asrset_t[16];	/* %asr16 - > %asr31 */
-
-#endif	/* __sparcv9 */
-
-/*
- * Structure mcontext defines the complete hardware machine state.
- */
-typedef struct {
-	gregset_t	__gregs; /* general register set */
-	gwindows_t	*__gwins; /* POSSIBLE pointer to register windows */
-	fpregset_t	__fpregs; /* floating point register set */
-	xrs_t		__xrs;	/* POSSIBLE extra register state association */
-#if defined(__sparcv9)
-	asrset_t	__asrs;		/* ancillary registers */
-	long		__filler[4];	/* room for expansion */
-#else	/* __sparcv9 */
-	long		__filler[19];
-#endif	/* __sparcv9 */
-} mcontext_t;
-
-#endif	/* _ASM */
-#endif /* defined(_XPG4_2) && !defined(__EXTENSIONS__) */
-
 
 #ifdef	__cplusplus
 }
