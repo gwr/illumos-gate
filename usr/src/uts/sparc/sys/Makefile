@@ -41,6 +41,7 @@ HDRS=  \
 	machlock.h	\
 	machsig.h	\
 	machtypes.h	\
+	mcontext.h	\
 	old_procfs.h	\
 	pcb.h		\
 	procfs_isa.h	\
