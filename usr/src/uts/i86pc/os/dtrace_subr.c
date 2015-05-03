@@ -28,6 +28,8 @@
  * Copyright (c) 2011, Joyent, Inc. All rights reserved.
  */
 
+#define	_REGSET_NAMES 1
+
 #include <sys/dtrace.h>
 #include <sys/fasttrap.h>
 #include <sys/x_call.h>

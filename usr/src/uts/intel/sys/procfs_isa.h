@@ -69,7 +69,7 @@ typedef	uchar_t instr_t;
 #define	NPRGREG		_NGREG
 #define	prgreg_t	greg_t
 #define	prgregset_t	gregset_t
-#define	prfpregset	fpu
+#define	prfpregset	_fpu
 #define	prfpregset_t	fpregset_t
 
 #if defined(_SYSCALL32)

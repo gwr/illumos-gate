@@ -27,6 +27,8 @@
 /*	Copyright (c) 1984, 1986, 1987, 1988, 1989 AT&T	*/
 /*	  All Rights Reserved  	*/
 
+#define	_REGSET_NAMES 1
+
 #include <sys/types.h>
 #include <sys/t_lock.h>
 #include <sys/param.h>

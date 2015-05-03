@@ -26,6 +26,8 @@
 
 /*	Copyright (c) 1984, 1986, 1987, 1988, 1989 AT&T	*/
 
+#define	_REGSET_NAMES 1
+
 #include <sys/param.h>
 #include <sys/types.h>
 #include <sys/sysmacros.h>
