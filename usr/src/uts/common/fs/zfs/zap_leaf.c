@@ -362,7 +362,7 @@ zap_leaf_array_match(zap_leaf_t *l, zap_name_t *zn,
 	}
 
 	ASSERT(zn->zn_key_intlen == 1);
-	if (zn->zn_matchtype == MT_FIRST) {
+	if (zn->zn_matchtype & MT_FIRST) {
 		char *thisname = kmem_alloc(array_numints, KM_SLEEP);
 		boolean_t match;
 
@@ -420,7 +420,7 @@ zap_leaf_lookup(zap_leaf_t *l, zap_name_t *zn, zap_entry_handle_t *zeh)
 		 * normalized zap objects, so this will find the
 		 * lowest-cd match for MT_FIRST.
 		 */
-		ASSERT(zn->zn_matchtype == MT_EXACT ||
+		ASSERT((zn->zn_matchtype & MT_EXACT) ||
 		    (zap_leaf_phys(l)->l_hdr.lh_flags & ZLF_ENTRIES_CDSORTED));
 		if (zap_leaf_array_match(l, zn, le->le_name_chunk,
 		    le->le_name_numints)) {

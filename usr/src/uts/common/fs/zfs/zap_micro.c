@@ -132,7 +132,7 @@ zap_hash(zap_name_t *zn)
 }
 
 static int
-zap_normalize(zap_t *zap, const char *name, char *namenorm)
+zap_normalize(zap_t *zap, const char *name, char *namenorm, int normflags)
 {
 	size_t inlen, outlen;
 	int err;
@@ -144,8 +144,8 @@ zap_normalize(zap_t *zap, const char *name, char *namenorm)
 
 	err = 0;
 	(void) u8_textprep_str((char *)name, &inlen, namenorm, &outlen,
-	    zap->zap_normflags | U8_TEXTPREP_IGNORE_NULL |
-	    U8_TEXTPREP_IGNORE_INVALID, U8_UNICODE_LATEST, &err);
+	    normflags | U8_TEXTPREP_IGNORE_NULL | U8_TEXTPREP_IGNORE_INVALID,
+	    U8_UNICODE_LATEST, &err);
 
 	return (err);
 }
@@ -155,10 +155,11 @@ zap_match(zap_name_t *zn, const char *matchname)
 {
 	ASSERT(!(zap_getflags(zn->zn_zap) & ZAP_FLAG_UINT64_KEY));
 
-	if (zn->zn_matchtype == MT_FIRST) {
+	if (zn->zn_matchtype & MT_FIRST) {
 		char norm[ZAP_MAXNAMELEN];
 
-		if (zap_normalize(zn->zn_zap, matchname, norm) != 0)
+		if (zap_normalize(zn->zn_zap, matchname, norm,
+		    zn->zn_normflags) != 0)
 			return (B_FALSE);
 
 		return (strcmp(zn->zn_key_norm, norm) == 0);
@@ -184,15 +185,30 @@ zap_name_alloc(zap_t *zap, const char *key, matchtype_t mt)
 	zn->zn_key_orig = key;
 	zn->zn_key_orig_numints = strlen(zn->zn_key_orig) + 1;
 	zn->zn_matchtype = mt;
+	zn->zn_normflags = zap->zap_normflags;
+
+	/*
+	 * If we're dealing with a case sensitive lookup on a mixed or
+	 * insensitive fs, remove U8_TEXTPREP_TOUPPER or the lookup
+	 * will fold case to all caps overriding the lookup request.
+	 */
+	if (mt & MT_CASE)
+		zn->zn_normflags &= ~U8_TEXTPREP_TOUPPER;
+
 	if (zap->zap_normflags) {
-		if (zap_normalize(zap, key, zn->zn_normbuf) != 0) {
+		/*
+		 * We *must* use zap_normflags because this normalization is
+		 * what the hash is computed from.
+		 */
+		if (zap_normalize(zap, key, zn->zn_normbuf,
+		    zap->zap_normflags) != 0) {
 			zap_name_free(zn);
 			return (NULL);
 		}
 		zn->zn_key_norm = zn->zn_normbuf;
 		zn->zn_key_norm_numints = strlen(zn->zn_key_norm) + 1;
 	} else {
-		if (mt != MT_EXACT) {
+		if (!(mt & MT_EXACT)) {
 			zap_name_free(zn);
 			return (NULL);
 		}
@@ -201,6 +217,19 @@ zap_name_alloc(zap_t *zap, const char *key, matchtype_t mt)
 	}
 
 	zn->zn_hash = zap_hash(zn);
+
+	if (zap->zap_normflags) {
+		/*
+		 * We *must* use zn_normflags because this normalization is
+		 * what the matching is based on.  (Not the hash!)
+		 */
+		if (zap_normalize(zap, key, zn->zn_normbuf,
+		    zn->zn_normflags) != 0) {
+			zap_name_free(zn);
+			return (NULL);
+		}
+	}
+
 	return (zn);
 }
 
