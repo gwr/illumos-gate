@@ -1020,6 +1020,9 @@ CPPFLAGS=	-D_REENTRANT -D$(MACH64) -D__$(MACH64) $(THREAD_DEBUG) \
 ASFLAGS=	$(AS_PICFLAGS) -P -D__STDC__ -D_ASM $(CPPFLAGS) \
 		$(amd64_AS_XARCH)
 
+# Many files in libc need ... (see regset.h)
+CPPFLAGS += -D_REGSET_NAMES
+
 # As a favor to the dtrace syscall provider, libc still calls the
 # old syscall traps that have been obsoleted by the *at() interfaces.
 # Delete this to compile libc using only the new *at() system call traps
@@ -1220,10 +1223,11 @@ $(ASSYMDEP_OBJS:%=pics/%): assym.h
 # assym.h build rules
 
 GENASSYM_C = genassym.c
+GENASSYM_CPPFLAGS = -Iinc -I$(LIBCDIR)/inc \
+		 -D_REGSET_NAMES $(CPPFLAGS.native)
 
 genassym: $(GENASSYM_C)
-	$(NATIVECC) -Iinc -I$(LIBCDIR)/inc $(CPPFLAGS.native)	\
-		-o $@ $(GENASSYM_C)
+	$(NATIVECC) $(GENASSYM_CPPFLAGS) -o $@ $(GENASSYM_C)
 
 OFFSETS = $(LIBCDIR)/$(MACH)/offsets.in
 
