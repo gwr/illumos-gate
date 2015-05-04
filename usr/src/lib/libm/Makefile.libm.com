@@ -44,7 +44,9 @@ CFLAGS64	+= $(C_PICFLAGS) $(XSTRCONST) $(LM_IL)
 sparc_CFLAGS	+= -Wa,-xarch=v8plus
 
 CPPFLAGS	+= -I$(LIBMSRC)/C \
-		-I$(LIBMSRC)/$(LDBLDIR) -I$(LIBMDIR)/$(TARGET_ARCH)/src
+		-I$(LIBMSRC)/$(LDBLDIR) \
+		-I$(LIBMDIR)/$(TARGET_ARCH)/src \
+		-D_REGSET_NAMES
 
 # GCC needs __C99FEATURES__ such that the implementations of isunordered,
 # isgreaterequal, islessequal, etc, exist.  This is basically equivalent to
