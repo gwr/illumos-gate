@@ -876,7 +876,7 @@ struct smb_proto_option_defs {
 } smb_proto_options[] = {
 	{ SMB_CI_SYS_CMNT, 0, MAX_VALUE_BUFLEN,
 	    string_length_check_validator, SMB_REFRESH_REFRESH },
-	{ SMB_CI_MAX_WORKERS, 64, 1024, range_check_validator,
+	{ SMB_CI_MAX_WORKERS, 64, 16384, range_check_validator,
 	    SMB_REFRESH_REFRESH },
 	{ SMB_CI_NETBIOS_ENABLE, 0, 0, true_false_validator,
 	    SMB_REFRESH_REFRESH },
