@@ -592,6 +592,7 @@ smb_node_root_init(smb_server_t *sv, smb_node_t **svrootp)
 
 	return (error);
 }
+
 /*
  * Helper function for smb_node_set_delete_on_close(). Assumes node is a dir.
  * Return 0 if this is an empty dir. Otherwise return a NT_STATUS code.

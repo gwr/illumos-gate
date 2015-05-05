@@ -53,9 +53,12 @@ extern "C" {
 #include <sys/list.h>
 
 typedef struct zone {
+	char		*zone_name;	/* zone's configuration name */
 	zoneid_t	zone_id;	/* ID of zone */
 	struct proc	*zone_zsched;	/* Dummy kernel "zsched" process */
 	time_t		zone_boot_time;
+	struct vnode	*zone_rootvp;	/* zone's root vnode */
+	char		*zone_rootpath;	/* Path to zone's root + '/' */
 	int fake_zone[10];
 } zone_t;
 
