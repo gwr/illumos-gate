@@ -53,6 +53,7 @@ DTRACE_INC_64	= -I$(UTSBASE)/sparc/v9
 CFLAGS += $(CCVERBOSE)
 CPPFLAGS += $(DTRACE_INC_$(CLASS))
 CPPFLAGS += -I$(SRC)/common/util
+CPPFLAGS	+= -D_REGSET_NAMES
 
 DTRACE_XAS_32	= -xarch=v8plus
 DTRACE_XAS_64	= -xarch=v9

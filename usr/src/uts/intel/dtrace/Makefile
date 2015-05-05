@@ -50,6 +50,7 @@ CERRWARN	+= -_gcc=-Wno-type-limits
 CERRWARN	+= -_gcc=-Wno-uninitialized
 
 CPPFLAGS	+= -I$(SRC)/common/util
+CPPFLAGS	+= -D_REGSET_NAMES
 
 ALL_TARGET	= $(BINARY) $(SRC_CONFILE)
 LINT_TARGET	= $(MODULE).lint
