@@ -242,7 +242,15 @@ smb_kdoor_chkhdr(smb_doorarg_t *da, smb_doorhdr_t *hdr)
 		return (B_FALSE);
 	}
 
-	if (hdr->dh_door_rc != SMB_DOP_SUCCESS) {
+	switch (hdr->dh_door_rc) {
+	case SMB_DOP_SUCCESS:
+		break;
+
+	/* SMB_DOP_EMPTYBUF is a "normal" error (silent). */
+	case SMB_DOP_EMPTYBUF:
+		return (B_FALSE);
+
+	default:
 		cmn_err(CE_WARN, "smb_kdoor_chkhdr[%s]: call failed: %u",
 		    da->da_opname, hdr->dh_door_rc);
 		return (B_FALSE);

@@ -217,13 +217,25 @@ _fini(void)
  */
 /* ARGSUSED */
 static int
-smb_drv_open(dev_t *devp, int flag, int otyp, cred_t *credp)
+smb_drv_open(dev_t *devp, int flag, int otyp, cred_t *cr)
 {
+	zoneid_t zid;
+
 	/*
 	 * Check caller's privileges.
 	 */
-	if (secpolicy_smb(credp) != 0)
+	if (secpolicy_smb(cr) != 0)
 		return (EPERM);
+
+	/*
+	 * We need a unique minor per zone otherwise an smbd in any other
+	 * zone will keep this minor open and we won't get a close call.
+	 * The zone ID is good enough as a minor number.
+	 */
+	zid = crgetzoneid(cr);
+	if (zid < 0)
+		return (ENODEV);
+	*devp = makedevice(getmajor(*devp), zid);
 
 	/*
 	 * Start SMB service state machine

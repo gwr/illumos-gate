@@ -399,6 +399,15 @@ smb_server_create(void)
 
 	sv = kmem_zalloc(sizeof (smb_server_t), KM_SLEEP);
 
+	sv->sv_magic = SMB_SERVER_MAGIC;
+	sv->sv_state = SMB_SERVER_STATE_CREATED;
+	sv->sv_zid = zid;
+	sv->sv_pid = ddi_get_pid();
+
+	mutex_init(&sv->sv_mutex, NULL, MUTEX_DEFAULT, NULL);
+	cv_init(&sv->sv_cv, NULL, CV_DEFAULT, NULL);
+	cv_init(&sv->sp_info.sp_cv, NULL, CV_DEFAULT, NULL);
+
 	smb_llist_constructor(&sv->sv_event_list, sizeof (smb_event_t),
 	    offsetof(smb_event_t, se_lnd));
 
@@ -417,16 +426,11 @@ smb_server_create(void)
 	smb_thread_init(&sv->si_thread_timers, "smb_timers",
 	    smb_server_timers, sv, smbsrv_timer_pri);
 
-	sv->sv_pid = ddi_get_pid();
 	smb_srqueue_init(&sv->sv_srqueue);
 
 	smb_kdoor_init(sv);
 	smb_kshare_init(sv);
 	smb_server_kstat_init(sv);
-
-	mutex_init(&sv->sv_mutex, NULL, MUTEX_DEFAULT, NULL);
-	cv_init(&sv->sv_cv, NULL, CV_DEFAULT, NULL);
-	cv_init(&sv->sp_info.sp_cv, NULL, CV_DEFAULT, NULL);
 
 	smb_threshold_init(&sv->sv_ssetup_ct, SMB_SSETUP_CMD,
 	    smb_ssetup_threshold, smb_ssetup_timeout);
@@ -434,10 +438,6 @@ smb_server_create(void)
 	    smb_tcon_threshold, smb_tcon_timeout);
 	smb_threshold_init(&sv->sv_opipe_ct, SMB_OPIPE_CMD,
 	    smb_opipe_threshold, smb_opipe_timeout);
-
-	sv->sv_state = SMB_SERVER_STATE_CREATED;
-	sv->sv_magic = SMB_SERVER_MAGIC;
-	sv->sv_zid = zid;
 
 	smb_llist_insert_tail(&smb_servers, sv);
 	smb_llist_exit(&smb_servers);
@@ -587,6 +587,9 @@ smb_server_start(smb_ioc_start_t *ioc)
 	switch (sv->sv_state) {
 	case SMB_SERVER_STATE_CONFIGURED:
 
+		if ((rc = smb_server_fsop_start(sv)) != 0)
+			break;
+
 		if ((rc = smb_kshare_start(sv)) != 0)
 			break;
 
@@ -610,9 +613,6 @@ smb_server_start(smb_ioc_start_t *ioc)
 			rc = ENOMEM;
 			break;
 		}
-
-		if (rc = smb_server_fsop_start(sv))
-			break;
 
 #ifdef	_KERNEL
 		ASSERT(sv->sv_lmshrd == NULL);
@@ -1244,7 +1244,7 @@ static void
 smb_server_kstat_init(smb_server_t *sv)
 {
 
-	sv->sv_ksp = kstat_create_zone(SMBSRV_KSTAT_MODULE, sv->sv_zid,
+	sv->sv_ksp = kstat_create_zone(SMBSRV_KSTAT_MODULE, 0,
 	    SMBSRV_KSTAT_STATISTICS, SMBSRV_KSTAT_CLASS, KSTAT_TYPE_RAW,
 	    sizeof (smbsrv_kstats_t), 0, sv->sv_zid);
 
@@ -1260,7 +1260,7 @@ smb_server_kstat_init(smb_server_t *sv)
 		cmn_err(CE_WARN, "SMB Server: Statistics unavailable");
 	}
 
-	sv->sv_legacy_ksp = kstat_create_zone(SMBSRV_KSTAT_MODULE, sv->sv_zid,
+	sv->sv_legacy_ksp = kstat_create_zone(SMBSRV_KSTAT_MODULE, 0,
 	    SMBSRV_KSTAT_NAME, SMBSRV_KSTAT_CLASS, KSTAT_TYPE_NAMED,
 	    sizeof (smb_server_legacy_kstat_t) / sizeof (kstat_named_t),
 	    0, sv->sv_zid);
@@ -1421,7 +1421,6 @@ smb_server_shutdown(smb_server_t *sv)
 	sv->sv_lmshrd = NULL;
 
 	smb_export_stop(sv);
-	smb_server_fsop_stop(sv);
 
 	if (sv->sv_session != NULL) {
 		/*
@@ -1447,6 +1446,7 @@ smb_server_shutdown(smb_server_t *sv)
 	}
 
 	smb_kshare_stop(sv);
+	smb_server_fsop_stop(sv);
 }
 
 /*
@@ -1669,7 +1669,8 @@ smb_server_receiver(void *arg)
  * smb_server_lookup
  *
  * This function finds the server associated with the zone of the
- * caller.  Note: does not work from dynamic taskq threads!
+ * caller.  Note: requires a fix in the dynamic taskq code:
+ * 1501 taskq_create_proc ... TQ_DYNAMIC puts tasks in p0
  */
 int
 smb_server_lookup(smb_server_t **psv)
@@ -1956,7 +1957,7 @@ smb_server_fsop_start(smb_server_t *sv)
 {
 	int	error;
 
-	error = smb_node_root_init(rootdir, sv, &sv->si_root_smb_node);
+	error = smb_node_root_init(sv, &sv->si_root_smb_node);
 	if (error != 0)
 		sv->si_root_smb_node = NULL;
 

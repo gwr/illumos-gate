@@ -24,6 +24,7 @@ struct cred {
 };
 
 cred_t cred0;
+cred_t *kcred = &cred0;
 
 cred_t *
 _curcred(void)
@@ -54,5 +55,5 @@ crgetuid(const cred_t *cr)
 cred_t *
 zone_kcred(void)
 {
-	return (&cred0);
+	return (kcred);
 }

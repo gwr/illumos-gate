@@ -75,6 +75,7 @@ SYMBOL_VERSION SUNWprivate_1.1 {
 
 	hz;
 
+	kcred;
 	kiconv;
 	kiconv_close;
 	kiconv_open;
@@ -183,6 +184,7 @@ SYMBOL_VERSION SUNWprivate_1.1 {
 	vcmn_err;
 	vmem_qcache_reap;
 	vpanic;
+	zone0;
 	zone_kcred;
 	zthread_create;
 	zthread_exit;

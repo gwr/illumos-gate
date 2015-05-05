@@ -494,7 +494,7 @@ smb_node_t *smb_stream_node_lookup(smb_request_t *, cred_t *,
 void smb_node_ref(smb_node_t *);
 void smb_node_release(smb_node_t *);
 void smb_node_rename(smb_node_t *, smb_node_t *, smb_node_t *, char *);
-int smb_node_root_init(vnode_t *, smb_server_t *, smb_node_t **);
+int smb_node_root_init(smb_server_t *, smb_node_t **);
 void smb_node_add_lock(smb_node_t *, smb_lock_t *);
 void smb_node_destroy_lock(smb_node_t *, smb_lock_t *);
 void smb_node_destroy_lock_by_ofile(smb_node_t *, smb_ofile_t *);

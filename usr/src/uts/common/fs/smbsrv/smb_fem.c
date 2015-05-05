@@ -171,7 +171,7 @@ smb_fem_fcn_uninstall(smb_node_t *node)
 {
 	if (smb_fcn_ops == NULL)
 		return;
-	(void) fem_uninstall(node->vp, smb_fcn_ops, (void *)node);
+	VERIFY0(fem_uninstall(node->vp, smb_fcn_ops, (void *)node));
 }
 
 int
@@ -191,7 +191,7 @@ smb_fem_oplock_uninstall(smb_node_t *node)
 {
 	if (smb_oplock_ops == NULL)
 		return;
-	(void) fem_uninstall(node->vp, smb_oplock_ops, (void *)node);
+	VERIFY0(fem_uninstall(node->vp, smb_oplock_ops, (void *)node));
 }
 
 /*

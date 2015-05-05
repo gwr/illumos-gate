@@ -122,6 +122,7 @@ static void smb_node_init_system(smb_node_t *);
 
 static kmem_cache_t	*smb_node_cache = NULL;
 static smb_llist_t	smb_node_hash_table[SMBND_HASH_MASK+1];
+static smb_node_t	*smb_root_node;
 
 /*
  * smb_node_init
@@ -134,7 +135,11 @@ static smb_llist_t	smb_node_hash_table[SMBND_HASH_MASK+1];
 void
 smb_node_init(void)
 {
-	int	i;
+	smb_attr_t	attr;
+	smb_llist_t	*node_hdr;
+	smb_node_t	*node;
+	uint32_t	hashkey;
+	int		i;
 
 	if (smb_node_cache != NULL)
 		return;
@@ -147,6 +152,21 @@ smb_node_init(void)
 		smb_llist_constructor(&smb_node_hash_table[i],
 		    sizeof (smb_node_t), offsetof(smb_node_t, n_lnd));
 	}
+
+	/*
+	 * The node cache is shared by all zones, so the smb_root_node
+	 * must represent the real (global zone) rootdir.
+	 * Note intentional use of kcred here.
+	 */
+	attr.sa_mask = SMB_AT_ALL;
+	VERIFY0(smb_vop_getattr(rootdir, NULL, &attr, 0, kcred));
+	node_hdr = smb_node_get_hash(&rootdir->v_vfsp->vfs_fsid, &attr,
+	    &hashkey);
+	node = smb_node_alloc("/", rootdir, node_hdr, hashkey);
+	smb_llist_enter(node_hdr, RW_WRITER);
+	smb_llist_insert_head(node_hdr, node);
+	smb_llist_exit(node_hdr);
+	smb_root_node = node;	/* smb_node_release in smb_node_fini */
 }
 
 /*
@@ -159,6 +179,11 @@ void
 smb_node_fini(void)
 {
 	int	i;
+
+	if (smb_root_node != NULL) {
+		smb_node_release(smb_root_node);
+		smb_root_node = NULL;
+	}
 
 	if (smb_node_cache == NULL)
 		return;
@@ -544,36 +569,30 @@ smb_node_rename(
 	}
 }
 
+/*
+ * Find/create an SMB node for the root of this zone and store it
+ * in *svrootp.  Also create nodes leading to this directory.
+ */
 int
-smb_node_root_init(vnode_t *vp, smb_server_t *sv, smb_node_t **root)
+smb_node_root_init(smb_server_t *sv, smb_node_t **svrootp)
 {
-	smb_attr_t	attr;
+	zone_t		*zone = curzone;
 	int		error;
-	uint32_t	hashkey;
-	smb_llist_t	*node_hdr;
-	smb_node_t	*node;
 
-	attr.sa_mask = SMB_AT_ALL;
-	error = smb_vop_getattr(vp, NULL, &attr, 0, zone_kcred());
-	if (error) {
-		/*
-		 * NB: This is rootvp. We did not VN_HOLD, so no vn_rele
-		 */
-		return (error);
-	}
+	ASSERT(zone->zone_id == sv->sv_zid);
+	if (smb_root_node == NULL)
+		return (ENOENT);
 
-	node_hdr = smb_node_get_hash(&vp->v_vfsp->vfs_fsid, &attr, &hashkey);
+	/*
+	 * We're getting smb nodes below the zone root here,
+	 * so need to use kcred, not zone_kcred().
+	 */
+	error = smb_pathname(NULL, zone->zone_rootpath, 0,
+	    smb_root_node, smb_root_node, NULL, svrootp, kcred);
 
-	node = smb_node_alloc(ROOTVOL, vp, node_hdr, hashkey);
-
-	sv->si_root_smb_node = node;
-	smb_node_audit(node);
-	smb_llist_enter(node_hdr, RW_WRITER);
-	smb_llist_insert_head(node_hdr, node);
-	smb_llist_exit(node_hdr);
-	*root = node;
-	return (0);
+	return (error);
 }
+
 /*
  * Helper function for smb_node_set_delete_on_close(). Assumes node is a dir.
  * Return 0 if this is an empty dir. Otherwise return a NT_STATUS code.
