@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -35,20 +35,10 @@
 #include <strings.h>
 #include <string.h>
 #include <thread.h>
-#include <time.h>
 
 #include <smbsrv/libsmb.h>
 #include <smbsrv/libmlrpc.h>
 #include <smbsrv/ntaccess.h>
-
-/*
- * Fragment size (5680: NT style).
- */
-#define	NDR_FRAG_SZ		5680
-
-#define	NDR_GROW_SIZE		(8 * 1024)
-#define	NDR_GROW_MASK		(NDR_GROW_SIZE - 1)
-#define	NDR_ALIGN_BUF(S)	(((S) + NDR_GROW_SIZE) & ~NDR_GROW_MASK)
 
 #define	NDR_PIPE_SEND(np, buf, len) \
 	((np)->np_send)((np), (buf), (len))
@@ -258,7 +248,7 @@ ndr_recv_frag(ndr_xa_t *mxa)
 	ndr_decode_frag_hdr(nds, hdr);
 	ndr_show_hdr(hdr);
 	if (hdr->frag_length < NDR_RSP_HDR_SIZE ||
-	    hdr->frag_length > NDR_FRAG_SZ)
+	    hdr->frag_length > mxa->pipe->np_max_xmit_frag)
 		return (NDR_DRC_FAULT_DECODE_FAILED);
 
 	if (nds->pdu_scan_offset == 0) {
@@ -615,25 +605,37 @@ ndr_reply_prepare_hdr(ndr_xa_t *mxa)
 
 	switch (mxa->ptype) {
 	case NDR_PTYPE_BIND:
+		/*
+		 * Compute the maximum fragment sizes for xmit/recv
+		 * and store in the pipe endpoint.  Note "xmit" is
+		 * client-to-server; "recv" is server-to-client.
+		 */
+		if (mxa->pipe->np_max_xmit_frag >
+		    mxa->recv_hdr.bind_hdr.max_xmit_frag)
+			mxa->pipe->np_max_xmit_frag =
+			    mxa->recv_hdr.bind_hdr.max_xmit_frag;
+		if (mxa->pipe->np_max_recv_frag >
+		    mxa->recv_hdr.bind_hdr.max_recv_frag)
+			mxa->pipe->np_max_recv_frag =
+			    mxa->recv_hdr.bind_hdr.max_recv_frag;
+
 		hdr->ptype = NDR_PTYPE_BIND_ACK;
 		mxa->send_hdr.bind_ack_hdr.max_xmit_frag =
-		    mxa->recv_hdr.bind_hdr.max_xmit_frag;
+		    mxa->pipe->np_max_xmit_frag;
 		mxa->send_hdr.bind_ack_hdr.max_recv_frag =
-		    mxa->recv_hdr.bind_hdr.max_recv_frag;
-		mxa->send_hdr.bind_ack_hdr.assoc_group_id =
-		    mxa->recv_hdr.bind_hdr.assoc_group_id;
-
-		if (mxa->send_hdr.bind_ack_hdr.assoc_group_id == 0)
-			mxa->send_hdr.bind_ack_hdr.assoc_group_id = time(0);
+		    mxa->pipe->np_max_recv_frag;
 
 		/*
-		 * Save the maximum fragment sizes
-		 * for use with subsequent requests.
+		 * We're supposed to assign a unique "assoc group"
+		 * (identifies this connection for the client).
+		 * Using the pipe address is adequate.
 		 */
-		mxa->pipe->np_max_xmit_frag =
-		    mxa->recv_hdr.bind_hdr.max_xmit_frag;
-		mxa->pipe->np_max_recv_frag =
-		    mxa->recv_hdr.bind_hdr.max_recv_frag;
+		mxa->send_hdr.bind_ack_hdr.assoc_group_id =
+		    mxa->recv_hdr.bind_hdr.assoc_group_id;
+		if (mxa->send_hdr.bind_ack_hdr.assoc_group_id == 0)
+			mxa->send_hdr.bind_ack_hdr.assoc_group_id =
+			    (DWORD)(uintptr_t)mxa->pipe;
+
 		break;
 
 	case NDR_PTYPE_REQUEST:
@@ -737,7 +739,7 @@ ndr_send_reply(ndr_xa_t *mxa)
 	unsigned long pdu_data_size;
 	unsigned long frag_data_size;
 
-	frag_size = NDR_FRAG_SZ;
+	frag_size = mxa->pipe->np_max_recv_frag;
 	pdu_size = nds->pdu_size;
 	pdu_buf = nds->pdu_base_addr;
 
@@ -781,16 +783,8 @@ ndr_send_reply(ndr_xa_t *mxa)
 
 	/*
 	 * Multiple fragment response.
-	 */
-	hdr->pfc_flags = NDR_PFC_FIRST_FRAG;
-	hdr->frag_length = frag_size;
-	mxa->send_hdr.response_hdr.alloc_hint = pdu_size - NDR_RSP_HDR_SIZE;
-	nds->pdu_scan_offset = 0;
-	(void) ndr_encode_pdu_hdr(mxa);
-	(void) NDR_PIPE_SEND(mxa->pipe, pdu_buf, frag_size);
-
-	/*
-	 * We need to update the 24-byte header in subsequent fragments.
+	 *
+	 * We need to update the RPC header for every fragment.
 	 *
 	 * pdu_data_size:	total data remaining to be handled
 	 * frag_size:		total fragment size including header
@@ -800,29 +794,45 @@ ndr_send_reply(ndr_xa_t *mxa)
 	pdu_data_size = pdu_size - NDR_RSP_HDR_SIZE;
 	frag_data_size = frag_size - NDR_RSP_HDR_SIZE;
 
-	while (pdu_data_size) {
-		mxa->send_hdr.response_hdr.alloc_hint -= frag_data_size;
-		pdu_data_size -= frag_data_size;
-		pdu_buf += frag_data_size;
+	/*
+	 * Send the first frag.
+	 */
+	hdr->pfc_flags = NDR_PFC_FIRST_FRAG;
+	hdr->frag_length = frag_size;
+	mxa->send_hdr.response_hdr.alloc_hint = pdu_data_size;
+	nds->pdu_scan_offset = 0;
+	(void) ndr_encode_pdu_hdr(mxa);
+	(void) NDR_PIPE_SEND(mxa->pipe, pdu_buf, frag_size);
+	pdu_data_size -= frag_data_size;
+	pdu_buf += frag_data_size;
 
-		if (pdu_data_size <= frag_data_size) {
-			frag_data_size = pdu_data_size;
-			frag_size = frag_data_size + NDR_RSP_HDR_SIZE;
-			hdr->pfc_flags = NDR_PFC_LAST_FRAG;
-		} else {
-			hdr->pfc_flags = 0;
-		}
+	/*
+	 * Send "middle" (full-sized) fragments...
+	 */
+	hdr->pfc_flags = 0;
+	while (pdu_data_size > frag_data_size) {
 
 		hdr->frag_length = frag_size;
+		mxa->send_hdr.response_hdr.alloc_hint = pdu_data_size;
 		nds->pdu_scan_offset = 0;
 		(void) ndr_encode_pdu_hdr(mxa);
 		bcopy(nds->pdu_base_addr, pdu_buf, NDR_RSP_HDR_SIZE);
-
 		(void) NDR_PIPE_SEND(mxa->pipe, pdu_buf, frag_size);
-
-		if (hdr->pfc_flags & NDR_PFC_LAST_FRAG)
-			break;
+		pdu_data_size -= frag_data_size;
+		pdu_buf += frag_data_size;
 	}
+
+	/*
+	 * Last frag (pdu_data_size <= frag_data_size)
+	 */
+	hdr->pfc_flags = NDR_PFC_LAST_FRAG;
+	frag_size = pdu_data_size + NDR_RSP_HDR_SIZE;
+	hdr->frag_length = frag_size;
+	mxa->send_hdr.response_hdr.alloc_hint = pdu_data_size;
+	nds->pdu_scan_offset = 0;
+	(void) ndr_encode_pdu_hdr(mxa);
+	bcopy(nds->pdu_base_addr, pdu_buf, NDR_RSP_HDR_SIZE);
+	(void) NDR_PIPE_SEND(mxa->pipe, pdu_buf, frag_size);
 
 	return (0);
 }
