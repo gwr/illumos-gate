@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -52,6 +52,8 @@ static int pipe_recv(ndr_pipe_t *, void *, size_t);
 mutex_t  pipesvc_mutex = DEFAULTMUTEX;
 int pipesvc_workers_max = 500;
 int pipesvc_workers_cur = 0;
+
+uint16_t pipe_max_msgsize = SMB_PIPE_MAX_MSGSIZE;
 
 /*
  * Allow more opens on SRVSVC because that's used by many clients
@@ -99,6 +101,8 @@ np_new(struct pipe_listener *pl, int fid)
 	np->np_send = pipe_send;
 	np->np_recv = pipe_recv;
 	np->np_fid = fid;
+	np->np_max_xmit_frag = pipe_max_msgsize;
+	np->np_max_recv_frag = pipe_max_msgsize;
 
 	return (np);
 }
@@ -347,19 +351,26 @@ out_free_np:
 	return (NULL);
 }
 
+/*
+ * These are the transport get/put callback functions provided
+ * via the ndr_pipe_t object to the libmlrpc`ndr_pipe_worker.
+ * These are called only with known PDU sizes and should
+ * loop as needed to transfer the entire message.
+ */
 static int
 pipe_recv(ndr_pipe_t *np, void *buf, size_t len)
 {
-	int rc;
+	int x;
 
-	if (len == 0)
-		return (0);
-
-	rc = recv(np->np_fid, buf, len, MSG_WAITALL);
-	if (rc < 0)
-		return (errno);
-	if (rc != len)
-		return (EIO);
+	while (len > 0) {
+		x = recv(np->np_fid, buf, len, 0);
+		if (x < 0)
+			return (errno);
+		if (x == 0)
+			return (EIO);
+		buf = (char *)buf + x;
+		len -= x;
+	}
 
 	return (0);
 }
@@ -367,16 +378,17 @@ pipe_recv(ndr_pipe_t *np, void *buf, size_t len)
 static int
 pipe_send(ndr_pipe_t *np, void *buf, size_t len)
 {
-	int rc;
+	int x;
 
-	if (len == 0)
-		return (0);
-
-	rc = send(np->np_fid, buf, len, 0);
-	if (rc < 0)
-		return (errno);
-	if (rc != len)
-		return (EIO);
+	while (len > 0) {
+		x = send(np->np_fid, buf, len, 0);
+		if (x < 0)
+			return (errno);
+		if (x == 0)
+			return (EIO);
+		buf = (char *)buf + x;
+		len -= x;
+	}
 
 	return (0);
 }

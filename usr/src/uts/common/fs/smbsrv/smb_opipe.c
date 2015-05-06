@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -307,7 +307,7 @@ smb_opipe_write(smb_request_t *sr, struct uio *uio)
 	smb_opipe_t *opipe;
 	ksocket_t sock;
 	size_t sent = 0;
-	int rc;
+	int rc = 0;
 
 	ofile = sr->fid_ofile;
 	ASSERT(ofile->f_ftype == SMB_FTYPE_MESG_PIPE);
@@ -326,9 +326,16 @@ smb_opipe_write(smb_request_t *sr, struct uio *uio)
 	msghdr.msg_iov = uio->uio_iov;
 	msghdr.msg_iovlen = uio->uio_iovcnt;
 
-	rc = ksocket_sendmsg(sock, &msghdr, 0, &sent, ofile->f_cr);
-	if (rc == 0)
+	/*
+	 * This should block until we've sent it all,
+	 * or given up due to errors (pipe closed).
+	 */
+	while (uio->uio_resid > 0) {
+		rc = ksocket_sendmsg(sock, &msghdr, 0, &sent, ofile->f_cr);
+		if (rc != 0)
+			break;
 		uio->uio_resid -= sent;
+	}
 
 	ksocket_rele(sock);
 
@@ -341,10 +348,6 @@ smb_opipe_write(smb_request_t *sr, struct uio *uio)
  * This interface may be called from smb_opipe_transact (write, read)
  * or from smb_read / smb2_read to get the rest of an RPC response.
  * The response data (and length) are returned via the uio.
- *
- * If there's more data than the caller asked for, return E2BIG,
- * which callers convert to NT_STATUS_BUFFER_OVERFLOW, etc.
- * That's a magic non-error to tell clients to read again.
  */
 int
 smb_opipe_read(smb_request_t *sr, struct uio *uio)
@@ -373,6 +376,11 @@ smb_opipe_read(smb_request_t *sr, struct uio *uio)
 	msghdr.msg_iov = uio->uio_iov;
 	msghdr.msg_iovlen = uio->uio_iovcnt;
 
+	/*
+	 * This should block only if there's no data.
+	 * A single call to recvmsg does just that.
+	 * (Intentionaly no recv loop here.)
+	 */
 	rc = ksocket_recvmsg(sock, &msghdr, 0,
 	    &recvcnt, ofile->f_cr);
 	if (rc != 0)
@@ -385,19 +393,35 @@ smb_opipe_read(smb_request_t *sr, struct uio *uio)
 	}
 	uio->uio_resid -= recvcnt;
 
-	/*
-	 * If we filled the user's buffer,
-	 * find out if there's more data.
-	 */
-	if (uio->uio_resid == 0) {
-		int rc2, nread, trval;
-		rc2 = ksocket_ioctl(sock, FIONREAD, (intptr_t)&nread,
-		    &trval, ofile->f_cr);
-		if (rc2 == 0 && nread != 0)
-			rc = E2BIG;	/* more data */
-	}
-
 out:
+	ksocket_rele(sock);
+
+	return (rc);
+}
+
+int
+smb_opipe_ioctl(smb_request_t *sr, int cmd, void *arg, int *rvalp)
+{
+	smb_ofile_t *ofile;
+	smb_opipe_t *opipe;
+	ksocket_t sock;
+	int rc;
+
+	ofile = sr->fid_ofile;
+	ASSERT(ofile->f_ftype == SMB_FTYPE_MESG_PIPE);
+	opipe = ofile->f_pipe;
+	SMB_OPIPE_VALID(opipe);
+
+	mutex_enter(&opipe->p_mutex);
+	sock = opipe->p_socket;
+	if (sock != NULL)
+		ksocket_hold(sock);
+	mutex_exit(&opipe->p_mutex);
+	if (sock == NULL)
+		return (EBADF);
+
+	rc = ksocket_ioctl(sock, cmd, (intptr_t)arg, rvalp, ofile->f_cr);
+
 	ksocket_rele(sock);
 
 	return (rc);
@@ -502,18 +526,7 @@ smb_opipe_transceive(smb_request_t *sr, smb_fsctl_t *fsctl)
 	mb = smb_mbuf_allocate(&vdb.vdb_uio);
 
 	rc = smb_opipe_read(sr, &vdb.vdb_uio);
-	switch (rc) {
-	case 0:
-		status = 0;
-		break;
-	case E2BIG:
-		/*
-		 * Note: E2BIG is not a real error.  It just
-		 * tells us there's more data to be read.
-		 */
-		status = NT_STATUS_BUFFER_OVERFLOW;
-		break;
-	default:
+	if (rc != 0) {
 		m_freem(mb);
 		return (smb_errno2status(rc));
 	}
@@ -521,6 +534,24 @@ smb_opipe_transceive(smb_request_t *sr, smb_fsctl_t *fsctl)
 	len = fsctl->MaxOutputResp - vdb.vdb_uio.uio_resid;
 	smb_mbuf_trim(mb, len);
 	MBC_ATTACH_MBUF(fsctl->out_mbc, mb);
+
+	/*
+	 * If the output buffer holds a partial pipe message,
+	 * we're supposed to return NT_STATUS_BUFFER_OVERFLOW.
+	 * As we don't have message boundary markers, the best
+	 * we can do is return that status when we have ALL of:
+	 *	Output buffer was < SMB_PIPE_MAX_MSGSIZE
+	 *	We filled the output buffer (resid==0)
+	 *	There's more data (ioctl FIONREAD)
+	 */
+	status = NT_STATUS_SUCCESS;
+	if (fsctl->MaxOutputResp < SMB_PIPE_MAX_MSGSIZE &&
+	    vdb.vdb_uio.uio_resid == 0) {
+		int nread = 0, trval;
+		rc = smb_opipe_ioctl(sr, FIONREAD, &nread, &trval);
+		if (rc == 0 && nread != 0)
+			status = NT_STATUS_BUFFER_OVERFLOW;
+	}
 
 	return (status);
 }

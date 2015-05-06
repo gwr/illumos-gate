@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #ifndef	_SMBSRV_SMB_XDR_H
@@ -70,6 +70,13 @@ typedef struct smb_pipehdr {
 } smb_pipehdr_t;
 
 #define	SMB_PIPE_HDR_MAGIC	0x50495045	/* PIPE */
+
+/*
+ * Maximum message size for SMB named pipes.
+ * Should be less than PIPE_BUF (5120).
+ * Use the same value Windows does.
+ */
+#define	SMB_PIPE_MAX_MSGSIZE	4280
 
 /*
  * Door up-call stuff shared with smbd
