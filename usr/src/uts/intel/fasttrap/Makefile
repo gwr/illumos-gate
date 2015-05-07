@@ -40,7 +40,7 @@ LINT_TARGET	= $(MODULE).lint
 INSTALL_TARGET	= $(BINARY) $(ROOTMODULE) $(ROOTLINK) $(ROOT_CONFFILE)
 
 CFLAGS		+= $(CCVERBOSE)
-CPPFLAGS	+= -I$(SRC)/common
+CPPFLAGS	+= -I$(SRC)/common -D_REGSET_NAMES
 LDFLAGS		+= -dy -Ndrv/dtrace
 
 CERRWARN	+= -_gcc=-Wno-uninitialized
