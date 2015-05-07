@@ -87,6 +87,8 @@ fksmbd_adjust_config(smb_ioc_header_t *ioc_hdr)
 	smbd_report("max_protocol=0x%x", ioc->max_protocol);
 
 	if ((s = getenv("SMB_SIGNING")) != NULL) {
+		ioc->signing_enable = 0;
+		ioc->signing_required = 0;
 		switch (s[0]) {
 		case 'e':
 			ioc->signing_enable = 1;
@@ -101,7 +103,7 @@ fksmbd_adjust_config(smb_ioc_header_t *ioc_hdr)
 		}
 	}
 	smbd_report("signing: enable=%d, required=%d",
-	    ioc->signing_enable = 1, ioc->signing_required = 1);
+	    ioc->signing_enable, ioc->signing_required);
 }
 
 boolean_t
