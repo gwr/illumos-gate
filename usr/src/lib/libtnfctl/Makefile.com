@@ -72,7 +72,9 @@ LDLIBS +=	-lc -lelf
 
 # Uncomment the following line for a debug build
 # COPTFLAG =	-g -DDEBUG $(CCVERBOSE)
-CPPFLAGS +=	-I$(SRC)/lib/libtnfprobe -D_REENTRANT -I$(SRC)/cmd/sgs/include
+CPPFLAGS +=	-I$(SRC)/lib/libtnfprobe \
+		-I$(SRC)/cmd/sgs/include \
+		-D_REENTRANT -D_REGSET_NAMES
 
 LINTFLAGS +=	-y
 
