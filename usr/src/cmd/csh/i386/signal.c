@@ -12,8 +12,6 @@
  * specifies the terms and conditions for redistribution.
  */
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
-
 /*
  * 4.3BSD signal compatibility functions
  *
@@ -24,6 +22,8 @@
  *	for (i = 0; i < NSIG; i++)
  *		mask |= sigmask(i)
  */
+
+#define	_REGSET_NAMES	/* see <sys/regset.h> */
 
 #include <sys/types.h>
 #include <sys/siginfo.h>
