@@ -19,6 +19,8 @@
  * CDDL HEADER END
  */
 /*
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
+ *
  * Copyright (c) 1989, 2010, Oracle and/or its affiliates. All rights reserved.
  */
 /*	Copyright (c) 1990, 1991 UNIX System Laboratories, Inc. */
