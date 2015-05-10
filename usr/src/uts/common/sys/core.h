@@ -20,14 +20,14 @@
  * CDDL HEADER END
  */
 /*
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
+ *
  * Copyright 2004 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
 #ifndef	_SYS_CORE_H
 #define	_SYS_CORE_H
-
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
 
 #ifndef _KERNEL
 #include <sys/reg.h>

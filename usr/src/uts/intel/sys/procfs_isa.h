@@ -27,8 +27,6 @@
 #ifndef _SYS_PROCFS_ISA_H
 #define	_SYS_PROCFS_ISA_H
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
-
 /*
  * Instruction Set Architecture specific component of <sys/procfs.h>
  * i386 version

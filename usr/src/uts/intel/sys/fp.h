@@ -19,6 +19,8 @@
  * CDDL HEADER END
  */
 /*
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
+ *
  * Copyright (c) 1992, 2010, Oracle and/or its affiliates. All rights reserved.
  */
 
@@ -168,7 +170,6 @@ extern "C" {
 	"\20\20fz\17ru\16rd\15pm\14um\13om\12zm\11dm"	\
 	"\10im\7daz\6pe\5ue\4oe\3ze\2de\1ie"
 
-#if 1 /* XXX defined(_KERNEL)? unfortunately pbc.h needs it */
 /*
  * This structure is written to memory by an 'fnsave' instruction
  */
@@ -253,8 +254,6 @@ typedef struct {
 	uint32_t kfpu_status;		/* saved at #mf exception */
 	uint32_t kfpu_xstatus;		/* saved at #xm exception */
 } kfpu_t;
-
-#endif	/* _KERNEL */
 
 extern int fp_kind;		/* kind of fp support			*/
 extern int fp_save_mech;	/* fp save/restore mechanism		*/
