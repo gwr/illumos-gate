@@ -700,8 +700,6 @@ typedef struct smb_arg_negotiate {
 	timestruc_t	ni_servertime;
 } smb_arg_negotiate_t;
 
-#define	SMB_SSNKEY_LEN 16
-
 typedef struct smb_arg_sessionsetup {
 	char		*ssi_user;
 	char		*ssi_domain;
@@ -712,7 +710,6 @@ typedef struct smb_arg_sessionsetup {
 	uint16_t	ssi_maxmpxcount;
 	uint32_t	ssi_capabilities;
 	boolean_t	ssi_guest;
-	uint8_t		ssi_ssnkey[SMB_SSNKEY_LEN];
 } smb_arg_sessionsetup_t;
 
 typedef struct tcon {
@@ -768,6 +765,7 @@ struct smb_sign {
 	uint32_t seqnum;
 	uint_t mackey_len;
 	uint8_t *mackey;
+	void	*mech;	/* mechanism info */
 };
 
 #define	SMB_SIGNING_ENABLED	1
@@ -915,6 +913,7 @@ typedef struct smb_session {
 
 	uint32_t		capabilities;
 	struct smb_sign		signing;
+	void			(*sign_fini)(struct smb_session *);
 
 	ksocket_t		sock;
 

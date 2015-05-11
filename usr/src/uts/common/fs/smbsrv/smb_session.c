@@ -709,6 +709,9 @@ smb_session_delete(smb_session_t *session)
 
 	session->s_magic = 0;
 
+	if (session->sign_fini != NULL)
+		session->sign_fini(session);
+
 	smb_rwx_destroy(&session->s_lock);
 	smb_net_txl_destructor(&session->s_txlst);
 

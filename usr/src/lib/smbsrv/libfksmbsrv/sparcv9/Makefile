@@ -30,4 +30,6 @@ MACH_LDLIBS +=	-L$(ROOT)/usr/lib/smbsrv/$(MACH64)
 include ../Makefile.com
 include ../../../Makefile.lib.64
 
+sparcv9_C_PICFLAGS= $(sparcv9_C_BIGPICFLAGS)
+
 install: all $(ROOTLIBS64) $(ROOTLINKS64) $(ROOTLINT64)

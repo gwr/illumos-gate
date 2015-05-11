@@ -326,15 +326,6 @@ smb_authenticate_core(smb_request_t *sr, smb_arg_sessionsetup_t *sinfo)
 		}
 	}
 
-	/*
-	 * Save the session key, and (maybe) enable signing.
-	 */
-	if (token->tkn_session_key) {
-		bcopy(token->tkn_session_key, sinfo->ssi_ssnkey,
-		    SMB_SSNKEY_LEN);
-		smb_sign_init(sr, sinfo);
-	}
-
 	if ((cr = smb_cred_create(token)) == NULL) {
 		smb_token_free(token);
 		smbsr_error(sr, 0, ERRDOS, ERROR_INVALID_HANDLE);
@@ -346,8 +337,15 @@ smb_authenticate_core(smb_request_t *sr, smb_arg_sessionsetup_t *sinfo)
 	user = smb_user_login(sr->session, cr,
 	    token->tkn_domain_name, token->tkn_account_name,
 	    token->tkn_flags, privileges, token->tkn_audit_sid);
-
 	crfree(cr);
+
+	/*
+	 * Save the session key, and (maybe) enable signing,
+	 * but only for real logon (not ANON or GUEST).
+	 */
+	if ((token->tkn_flags & (SMB_ATF_GUEST | SMB_ATF_ANON)) == 0)
+		(void) smb_sign_begin(sr, token);
+
 	smb_token_free(token);
 
 	if (user == NULL) {
