@@ -40,8 +40,7 @@
 
 #include <sys/uio.h>
 #include <smbsrv/smb_kproto.h>
-#include <smbsrv/msgbuf.h>
-#include <sys/md5.h>
+#include <smbsrv/smb_signing.h>
 #include <sys/isa_defs.h>
 #include <sys/byteorder.h>
 
@@ -55,42 +54,63 @@
 #define	htolel(x)	BSWAP_32(x)
 #endif
 
-int
-smb_sign_calc(struct mbuf_chain *mbc,
-    struct smb_sign *sign,
-    uint32_t seqnum,
-    unsigned char *mac_sign);
+static int
+smb_sign_calc(smb_request_t *sr, struct mbuf_chain *mbc,
+    uint32_t seqnum, unsigned char *sig);
 
 #ifdef DEBUG
-static void
-smb_sign_find_seqnum(
-    uint32_t seqnum,
-    struct smb_sign *sign,
-    struct mbuf_chain *command,
-    unsigned char *mac_sig,
-    unsigned char *sr_sig,
-    boolean_t *found)
-{
-int start_seqnum;
-int i;
+uint32_t smb_sign_debug_search = 10;
 
-	/* Debug code to hunt for the sequence number */
-	*found = B_FALSE;
-	start_seqnum = seqnum - 10;
-	if (start_seqnum < 0)
-		start_seqnum = 0;
-	for (i = start_seqnum; i <= start_seqnum + 20; i++) {
-		(void) smb_sign_calc(command, sign, i, mac_sig);
+/*
+ * Debug code to search +/- for the correct sequence number.
+ * If found, correct sign->seqnum and return 0, else return -1
+ */
+static int
+smb_sign_find_seqnum(
+    smb_request_t *sr,
+    struct mbuf_chain *mbc,
+    unsigned char *mac_sig,
+    unsigned char *sr_sig)
+{
+	struct smb_sign *sign = &sr->session->signing;
+	uint32_t i, t;
+
+	for (i = 1; i < smb_sign_debug_search; i++) {
+		t = sr->sr_seqnum + i;
+		(void) smb_sign_calc(sr, mbc, t, mac_sig);
 		if (memcmp(mac_sig, sr_sig, SMB_SIG_SIZE) == 0) {
-			sign->seqnum = i;
-			*found = B_TRUE;
-			break;
+			goto found;
 		}
-		cmn_err(CE_WARN, "smb_sign_find_seqnum: seqnum:%d mismatch", i);
+		t = sr->sr_seqnum - i;
+		(void) smb_sign_calc(sr, mbc, t, mac_sig);
+		if (memcmp(mac_sig, sr_sig, SMB_SIG_SIZE) == 0) {
+			goto found;
+		}
 	}
-	cmn_err(CE_WARN, "smb_sign_find_seqnum: found=%d", *found);
+	cmn_err(CE_WARN, "smb_sign_find_seqnum: failed after %d", i);
+	return (-1);
+
+found:
+	cmn_err(CE_WARN, "smb_sign_find_seqnum: found! %d <- %d",
+	    sign->seqnum, t);
+	sign->seqnum = t;
+	return (0);
 }
 #endif
+
+/*
+ * Called during session destroy.
+ */
+static void
+smb_sign_fini(smb_session_t *s)
+{
+	smb_sign_mech_t *mech;
+
+	if ((mech = s->sign_mech) != NULL) {
+		kmem_free(mech, sizeof (*mech));
+		s->sign_mech = NULL;
+	}
+}
 
 /*
  * smb_sign_begin
@@ -105,6 +125,8 @@ smb_sign_begin(smb_request_t *sr, smb_token_t *token)
 	smb_arg_sessionsetup_t *sinfo = sr->sr_ssetup;
 	smb_session_t *session = sr->session;
 	struct smb_sign *sign = &session->signing;
+	smb_sign_mech_t *mech;
+	int rc;
 
 	/*
 	 * We should normally have a session key here because
@@ -116,13 +138,37 @@ smb_sign_begin(smb_request_t *sr, smb_token_t *token)
 		return (0);
 
 	/*
+	 * Session-level initialization (once per session)
+	 */
+	smb_rwx_rwenter(&session->s_lock, RW_WRITER);
+
+	/*
 	 * Signing may already have been setup by a prior logon,
 	 * in which case we're done here.
 	 */
-	if (sign->mackey != NULL)
+	if (sign->mackey != NULL) {
+		smb_rwx_rwexit(&session->s_lock);
 		return (0);
+	}
 
 	/*
+	 * Get the mech handle
+	 */
+	if (session->sign_mech == NULL) {
+		mech = kmem_zalloc(sizeof (*mech), KM_SLEEP);
+		rc = smb_md5_getmech(mech);
+		if (rc != 0) {
+			kmem_free(mech, sizeof (*mech));
+			smb_rwx_rwexit(&session->s_lock);
+			return (rc);
+		}
+		session->sign_mech = mech;
+		session->sign_fini = smb_sign_fini;
+	}
+
+	/*
+	 * Compute and store the signing (MAC) key.
+	 *
 	 * With extended security, the MAC key is the same as the
 	 * session key (and we'll have sinfo->ssi_ntpwlen == 0).
 	 * With non-extended security, it's the concatenation of
@@ -147,6 +193,7 @@ smb_sign_begin(smb_request_t *sr, smb_token_t *token)
 			sign->flags |= SMB_SIGNING_CHECK;
 	}
 
+	smb_rwx_rwexit(&session->s_lock);
 	return (0);
 }
 
@@ -171,21 +218,22 @@ smb_sign_begin(smb_request_t *sr, smb_token_t *token)
  *
  *	SMBMsg is the SMB message containing the sequence number.
  *
- * Return 0 if  success else -1
+ * Return 0 if success
  *
  */
-int
-smb_sign_calc(struct mbuf_chain *mbc,
-    struct smb_sign *sign,
-    uint32_t seqnum,
-    unsigned char *mac_sign)
+static int
+smb_sign_calc(smb_request_t *sr, struct mbuf_chain *mbc,
+    uint32_t seqnum, unsigned char *mac_sign)
 {
-	MD5_CTX md5;
+	smb_session_t *s = sr->session;
+	struct smb_sign *sign = &s->signing;
+	smb_sign_ctx_t ctx = 0;
 	uchar_t digest[MD5_DIGEST_LENGTH];
 	uchar_t *hdrp;
 	struct mbuf *mbuf = mbc->chain;
 	int offset = mbc->chain_offset;
 	int size;
+	int rc;
 
 	/*
 	 * This union is a little bit of trickery to:
@@ -207,10 +255,16 @@ smb_sign_calc(struct mbuf_chain *mbc,
 		} s;
 	} smbhdr;
 
-	MD5Init(&md5);
+	if (s->sign_mech == NULL || sign->mackey == NULL)
+		return (-1);
+
+	if ((rc = smb_md5_init(&ctx, s->sign_mech)) != 0)
+		return (rc);
 
 	/* Digest the MAC Key */
-	MD5Update(&md5, sign->mackey, sign->mackey_len);
+	rc = smb_md5_update(ctx, sign->mackey, sign->mackey_len);
+	if (rc != 0)
+		return (rc);
 
 	/*
 	 * Make an aligned copy of the SMB header,
@@ -222,7 +276,10 @@ smb_sign_calc(struct mbuf_chain *mbc,
 		return (-1);
 	smbhdr.s.sig[0] = htolel(seqnum);
 	smbhdr.s.sig[1] = 0;
-	MD5Update(&md5, &smbhdr.r.raw, size);
+
+	rc = smb_md5_update(ctx, &smbhdr.r.raw, size);
+	if (rc != 0)
+		return (rc);
 
 	/*
 	 * Digest the rest of the SMB packet, starting at the data
@@ -233,18 +290,24 @@ smb_sign_calc(struct mbuf_chain *mbc,
 		offset -= mbuf->m_len;
 		mbuf = mbuf->m_next;
 	}
-	if (mbuf != NULL && (mbuf->m_len - offset) > 0) {
-		MD5Update(&md5, &mbuf->m_data[offset], mbuf->m_len - offset);
+	if (mbuf != NULL && (size = (mbuf->m_len - offset)) > 0) {
+		rc = smb_md5_update(ctx, &mbuf->m_data[offset], size);
+		if (rc != 0)
+			return (rc);
 		offset = 0;
 		mbuf = mbuf->m_next;
 	}
 	while (mbuf != NULL) {
-		MD5Update(&md5, mbuf->m_data, mbuf->m_len);
+		rc = smb_md5_update(ctx, mbuf->m_data, mbuf->m_len);
+		if (rc != 0)
+			return (rc);
 		mbuf = mbuf->m_next;
 	}
-	MD5Final(digest, &md5);
-	bcopy(digest, mac_sign, SMB_SIG_SIZE);
-	return (0);
+	rc = smb_md5_final(ctx, digest);
+	if (rc == 0)
+		bcopy(digest, mac_sign, SMB_SIG_SIZE);
+
+	return (rc);
 }
 
 
@@ -264,11 +327,8 @@ smb_sign_calc(struct mbuf_chain *mbc,
 int
 smb_sign_check_request(smb_request_t *sr)
 {
-	struct mbuf_chain command = sr->command;
+	struct mbuf_chain mbc = sr->command;
 	unsigned char mac_sig[SMB_SIG_SIZE];
-	struct smb_sign *sign = &sr->session->signing;
-	int rtn = 0;
-	boolean_t found = B_TRUE;
 
 	/*
 	 * Don't check secondary transactions - we dont know the sequence
@@ -280,32 +340,31 @@ smb_sign_check_request(smb_request_t *sr)
 		return (0);
 
 	/* Reset the offset to begining of header */
-	command.chain_offset = sr->orig_request_hdr;
+	mbc.chain_offset = sr->orig_request_hdr;
 
 	/* calculate mac signature */
-	if (smb_sign_calc(&command, sign, sr->sr_seqnum, mac_sig) != 0)
+	if (smb_sign_calc(sr, &mbc, sr->sr_seqnum, mac_sig) != 0)
 		return (-1);
 
 	/* compare the signatures */
-	if (memcmp(mac_sig, sr->smb_sig, SMB_SIG_SIZE) != 0) {
-		DTRACE_PROBE2(smb__signing__req, smb_request_t, sr,
-		    smb_sign_t *, sr->smb_sig);
-		cmn_err(CE_NOTE, "smb_sign_check_request: bad signature");
-		/*
-		 * check nearby sequence numbers in debug mode
-		 */
-#ifdef	DEBUG
-		if (smb_sign_debug)
-			smb_sign_find_seqnum(sr->sr_seqnum, sign,
-			    &command, mac_sig, sr->smb_sig, &found);
-		else
-#endif
-			found = B_FALSE;
-
-		if (found == B_FALSE)
-			rtn = -1;
+	if (memcmp(mac_sig, sr->smb_sig, SMB_SIG_SIZE) == 0) {
+		/* They match! OK, we're done. */
+		return (0);
 	}
-	return (rtn);
+
+	DTRACE_PROBE2(smb__signature__mismatch, smb_request_t, sr,
+	    unsigned char *, mac_sig);
+	cmn_err(CE_NOTE, "smb_sign_check_request: bad signature");
+
+	/*
+	 * check nearby sequence numbers in debug mode
+	 */
+#ifdef	DEBUG
+	if (smb_sign_debug) {
+		return (smb_sign_find_seqnum(sr, &mbc, mac_sig, sr->smb_sig));
+	}
+#endif
+	return (-1);
 }
 
 /*
@@ -319,17 +378,15 @@ smb_sign_check_request(smb_request_t *sr)
 int
 smb_sign_check_secondary(smb_request_t *sr, unsigned int reply_seqnum)
 {
-	struct mbuf_chain command = sr->command;
+	struct mbuf_chain mbc = sr->command;
 	unsigned char mac_sig[SMB_SIG_SIZE];
-	struct smb_sign *sign = &sr->session->signing;
 	int rtn = 0;
 
 	/* Reset the offset to begining of header */
-	command.chain_offset = sr->orig_request_hdr;
+	mbc.chain_offset = sr->orig_request_hdr;
 
 	/* calculate mac signature */
-	if (smb_sign_calc(&command, sign, reply_seqnum - 1,
-	    mac_sig) != 0)
+	if (smb_sign_calc(sr, &mbc, reply_seqnum - 1, mac_sig) != 0)
 		return (-1);
 
 
@@ -354,22 +411,21 @@ smb_sign_check_secondary(smb_request_t *sr, unsigned int reply_seqnum)
 void
 smb_sign_reply(smb_request_t *sr, struct mbuf_chain *reply)
 {
-	struct mbuf_chain resp;
-	struct smb_sign *sign = &sr->session->signing;
-	unsigned char signature[SMB_SIG_SIZE];
+	struct mbuf_chain mbc;
+	unsigned char mac[SMB_SIG_SIZE];
 
 	if (reply)
-		resp = *reply;
+		mbc = *reply;
 	else
-		resp = sr->reply;
+		mbc = sr->reply;
 
 	/* Reset offset to start of reply */
-	resp.chain_offset = 0;
+	mbc.chain_offset = 0;
 
 	/*
 	 * Calculate MAC signature
 	 */
-	if (smb_sign_calc(&resp, sign, sr->reply_seqnum, signature) != 0) {
+	if (smb_sign_calc(sr, &mbc, sr->reply_seqnum, mac) != 0) {
 		cmn_err(CE_WARN, "smb_sign_reply: error in smb_sign_calc");
 		return;
 	}
@@ -377,6 +433,6 @@ smb_sign_reply(smb_request_t *sr, struct mbuf_chain *reply)
 	/*
 	 * Put signature in the response
 	 */
-	(void) smb_mbc_poke(&resp, SMB_SIG_OFFS, "#c",
-	    SMB_SIG_SIZE, signature);
+	(void) smb_mbc_poke(&mbc, SMB_SIG_OFFS, "#c",
+	    SMB_SIG_SIZE, mac);
 }

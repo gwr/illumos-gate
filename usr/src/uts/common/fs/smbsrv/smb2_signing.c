@@ -39,8 +39,8 @@
  */
 
 #include <sys/uio.h>
-#include <smbsrv/smb2_kproto.h>
-#include <smbsrv/smb2_signing.h>
+#include <smbsrv/smb_kproto.h>
+#include <smbsrv/smb_signing.h>
 #include <sys/isa_defs.h>
 #include <sys/byteorder.h>
 #include <sys/cmn_err.h>
@@ -49,10 +49,10 @@
 #define	SMB2_SIG_SIZE	16
 
 typedef struct mac_ops {
-	int (*mac_init)(smb2_sign_ctx_t *, smb2_sign_mech_t *,
+	int (*mac_init)(smb_sign_ctx_t *, smb_sign_mech_t *,
 			uint8_t *, size_t);
-	int (*mac_update)(smb2_sign_ctx_t, uint8_t *, size_t);
-	int (*mac_final)(smb2_sign_ctx_t, uint8_t *);
+	int (*mac_update)(smb_sign_ctx_t, uint8_t *, size_t);
+	int (*mac_final)(smb_sign_ctx_t, uint8_t *);
 } mac_ops_t;
 
 static int smb2_sign_calc_common(smb_request_t *, struct mbuf_chain *,
@@ -89,7 +89,7 @@ smb2_sign_calc(smb_request_t *sr,
 static void
 smb2_sign_fini(smb_session_t *s)
 {
-	smb2_sign_mech_t *mech;
+	smb_sign_mech_t *mech;
 
 	if ((mech = s->sign_mech) != NULL) {
 		kmem_free(mech, sizeof (*mech));
@@ -134,9 +134,9 @@ smb2_sign_begin(smb_request_t *sr, smb_token_t *token)
 	smb_session_t *s = sr->session;
 	smb_user_t *u = sr->uid_user;
 	struct smb_key *sign_key = &u->u_sign_key;
-	int (*get_mech)(smb2_sign_mech_t *);
+	int (*get_mech)(smb_sign_mech_t *);
 	int (*sign_calc)(smb_request_t *, struct mbuf_chain *, uint8_t *);
-	smb2_sign_mech_t *mech;
+	smb_sign_mech_t *mech;
 	int rc;
 
 	/*
@@ -235,7 +235,7 @@ smb2_sign_calc_common(smb_request_t *sr, struct mbuf_chain *mbc,
     uint8_t *digest, mac_ops_t *ops)
 {
 	uint8_t tmp_hdr[SMB2_HDR_SIZE];
-	smb2_sign_ctx_t ctx = 0;
+	smb_sign_ctx_t ctx = 0;
 	smb_session_t *s = sr->session;
 	smb_user_t *u = sr->uid_user;
 	struct smb_key *sign_key = &u->u_sign_key;
@@ -447,8 +447,8 @@ static int
 smb3_do_kdf(void *outbuf, smb_buf32_t *ssnkey)
 {
 	uint8_t digest32[SHA256_DIGEST_LENGTH];
-	smb2_sign_mech_t mech;
-	smb2_sign_ctx_t hctx = 0;
+	smb_sign_mech_t mech;
+	smb_sign_ctx_t hctx = 0;
 	int kdf_len;
 	int rc;
 

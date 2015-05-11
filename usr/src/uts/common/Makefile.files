@@ -1249,6 +1249,7 @@ SMBSRV_OBJS +=	$(SMBSRV_SHARED_OBJS)			\
 		smb_session.o				\
 		smb_session_setup_andx.o		\
 		smb_set_fileinfo.o			\
+		smb_sign_kcf.o				\
 		smb_signing.o				\
 		smb_thread.o				\
 		smb_tree.o				\
@@ -1289,7 +1290,6 @@ SMBSRV_OBJS +=	$(SMBSRV_SHARED_OBJS)			\
 		smb2_setinfo_fs.o \
 		smb2_setinfo_quota.o \
 		smb2_setinfo_sec.o \
-		smb2_sign_kcf.o \
 		smb2_signing.o \
 		smb2_tree_connect.o \
 		smb2_tree_disconn.o \
