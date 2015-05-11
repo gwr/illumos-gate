@@ -774,7 +774,6 @@ struct smb_sign {
 	uint32_t seqnum;
 	uint_t mackey_len;
 	uint8_t *mackey;
-	void	*mech;	/* mechanism info */
 };
 
 /*
@@ -879,7 +878,9 @@ typedef struct smb_session {
 	uint16_t		s_max_credits;
 
 	uint32_t		capabilities;
-	struct smb_sign		signing;
+
+	struct smb_sign		signing;	/* SMB1 */
+	void			*sign_mech;	/* mechanism info */
 	void			(*sign_fini)(struct smb_session *);
 
 	ksocket_t		sock;
