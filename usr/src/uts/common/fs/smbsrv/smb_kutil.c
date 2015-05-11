@@ -1669,18 +1669,10 @@ smb_threshold_fini(smb_cmd_threshold_t *ct)
 }
 
 /*
- * This threshold mechanism can be used to limit the number of simultaneous
- * requests, which serves to limit the stress that can be applied to the
- * service and also allows the service to respond to requests before the
- * client times out and reports that the server is not responding,
- *
- * If the number of requests exceeds the threshold, new requests will be
- * stalled until the number drops back to the threshold.  Stalled requests
- * will be notified as appropriate, in which case 0 will be returned.
- * If the timeout expires before the request is notified, a non-zero errno
- * value will be returned.
- *
- * To avoid a flood of messages, the message rate is throttled as well.
+ * This threshold mechanism is used to limit the number of simultaneous
+ * named pipe connections, concurrent authentication conversations, etc.
+ * Requests that would take us over the threshold wait until either the
+ * resources are available (return zero) or timeout (return error).
  */
 int
 smb_threshold_enter(smb_cmd_threshold_t *ct)

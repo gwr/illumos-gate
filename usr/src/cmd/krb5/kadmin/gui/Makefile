@@ -23,8 +23,6 @@
 # Copyright 2005 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
 #
-# Copyright 2014 PALO, Richard. All rights reserved.
-#
 
 include $(SRC)/Makefile.master
 include $(SRC)/cmd/Makefile.cmd

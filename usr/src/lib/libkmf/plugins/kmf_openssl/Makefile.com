@@ -43,6 +43,11 @@ OPENSSLLIBS64=	$(BERLIB64) -lcrypto -lcryptoutil -lc
 LINTSSLLIBS	= $(BERLIB) -lcrypto -lcryptoutil -lc
 LINTSSLLIBS64	= $(BERLIB64) -lcrypto -lcryptoutil -lc
 
+# Because of varying openssl implementations, we need to not have lint
+# complain if we're being liberal in our suppression directives.
+LINTFLAGS	+=	-erroff=E_SUPPRESSION_DIRECTIVE_UNUSED
+LINTFLAGS64	+=	-erroff=E_SUPPRESSION_DIRECTIVE_UNUSED
+
 SRCDIR=		../common
 INCDIR=		../../include
 
@@ -53,8 +58,6 @@ CPPFLAGS	+=	-D_REENTRANT $(KMFINC) \
 CERRWARN	+=	-_gcc=-Wno-unused-label
 CERRWARN	+=	-_gcc=-Wno-unused-value
 CERRWARN	+=	-_gcc=-Wno-uninitialized
-
-LINTCHECKFLAGS	+=	-erroff=E_SUPPRESSION_DIRECTIVE_UNUSED
 
 PICS=	$(OBJECTS:%=pics/%)
 

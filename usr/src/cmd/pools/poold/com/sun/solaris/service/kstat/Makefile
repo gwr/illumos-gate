@@ -23,8 +23,6 @@
 # Copyright 2003 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
 #
-# Copyright 2014 PALO, Richard. All rights reserved.
-#
 # cmd/pools/poold/com/sun/solaris/service/kstat/Makefile
 
 include $(SRC)/cmd/Makefile.cmd

@@ -23,8 +23,6 @@
 # Copyright (c) 1999-2001 by Sun Microsystems, Inc.
 # All rights reserved.
 #
-# Copyright 2014 PALO, Richard. All rights reserved.
-#
 
 include ../../../../../Makefile.master
 include ../../../../Makefile.cmd

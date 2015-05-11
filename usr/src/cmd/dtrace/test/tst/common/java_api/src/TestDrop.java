@@ -22,8 +22,6 @@
 /*
  * Copyright 2007 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
- *
- * Copyright 2014 PALO, Richard. All rights reserved.
  */
 import java.util.*;
 import java.util.concurrent.atomic.*;

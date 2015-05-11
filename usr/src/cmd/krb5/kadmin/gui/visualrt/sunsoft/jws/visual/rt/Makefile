@@ -23,8 +23,6 @@
 # Copyright (c) 1999-2000 by Sun Microsystems, Inc.
 # All rights reserved.
 #
-# Copyright 2014 PALO, Richard. All rights reserved.
-#
 
 include $(SRC)/Makefile.master
 JAVAFLAGS = -source 1.5 -target 1.6 -nowarn -O
