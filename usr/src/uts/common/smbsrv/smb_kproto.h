@@ -543,7 +543,7 @@ int smb_try_grow(smb_request_t *sr, int64_t new_size);
 unsigned short smb_worker_getnum();
 
 /* SMB signing routines smb_signing.c */
-void smb_sign_init(smb_request_t *, smb_arg_sessionsetup_t *);
+int smb_sign_begin(smb_request_t *, smb_token_t *);
 int smb_sign_check_request(smb_request_t *);
 int smb_sign_check_secondary(smb_request_t *, unsigned int);
 void smb_sign_reply(smb_request_t *, mbuf_chain_t *);
