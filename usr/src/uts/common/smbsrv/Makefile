@@ -53,13 +53,13 @@ HDRS=	alloc.h			\
 	smb_ktypes.h		\
 	smb_privilege.h		\
 	smb_share.h		\
+	smb_signing.h		\
 	smb_token.h		\
 	smb_vops.h		\
 	smb_xdr.h		\
 	smbinfo.h		\
 	smb2.h			\
 	smb2_kproto.h		\
-	smb2_signing.h		\
 	string.h		\
 	svrapi.h		\
 	winioctl.h		\

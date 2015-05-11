@@ -880,9 +880,9 @@ typedef struct smb_session {
 	uint32_t		capabilities;
 
 	struct smb_sign		signing;	/* SMB1 */
+	void	*sign_mech;	/* mechanism info */
 
 	/* SMB2/SMB3 signing support */
-	void	*sign_mech;	/* mechanism info */
 	int	(*sign_calc)(struct smb_request *,
 			struct mbuf_chain *, uint8_t *);
 	void	(*sign_fini)(struct smb_session *);
