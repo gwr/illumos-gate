@@ -795,15 +795,15 @@ smb_session_delete(smb_session_t *session)
 
 	ASSERT(session->s_magic == SMB_SESSION_MAGIC);
 
+	if (session->sign_fini != NULL)
+		session->sign_fini(session);
+
 	if (session->signing.mackey != NULL) {
 		kmem_free(session->signing.mackey,
 		    session->signing.mackey_len);
 	}
 
 	session->s_magic = 0;
-
-	if (session->sign_fini != NULL)
-		session->sign_fini(session);
 
 	smb_rwx_destroy(&session->s_lock);
 	smb_net_txl_destructor(&session->s_txlst);
