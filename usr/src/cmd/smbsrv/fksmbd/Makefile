@@ -52,8 +52,8 @@ SRCS=	${OBJS_SMBD:%.o=../smbd/%.c} \
 include ../../Makefile.cmd
 include ../../Makefile.ctf
 
-# hack hack - need our sys first
-DTS_ERRNO += -I../../../lib/smbsrv/libfksmbsrv/common/
+# Note: need our sys includes _before_ ENVCPPFLAGS, proto etc.
+CPPFLAGS.first += -I../../../lib/smbsrv/libfksmbsrv/common
 
 INCS += -I../smbd
 INCS +=	-I../../../uts/common

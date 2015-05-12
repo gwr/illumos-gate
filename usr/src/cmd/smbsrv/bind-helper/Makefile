@@ -26,8 +26,6 @@ ROOTLIBSMBSRVPROG = $(PROG:%=$(ROOTLIBSMBSRVDIR)/%)
 
 .KEEP_STATE:
 
-# CERRWARN += -_gcc=-Wno-uninitialized
-
 all:		$(PROG)
 
 clean:

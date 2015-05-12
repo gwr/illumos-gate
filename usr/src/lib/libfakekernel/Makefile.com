@@ -49,9 +49,8 @@ $(LINTLIB) :=	SRCS = $(SRCDIR)/$(LINTSRC)
 C99MODE =       -xc99=%all
 C99LMODE =      -Xc99=%all
 
-# hack hack - need our sys first
-DTS_ERRNO += -I../common
-INCS += -I$(SRC)/common/smbsrv
+# Note: need our sys includes _before_ ENVCPPFLAGS, proto etc.
+CPPFLAGS.first += -I../common
 
 CFLAGS +=	$(CCVERBOSE)
 CPPFLAGS += $(INCS) -D_REENTRANT -D_FAKE_KERNEL
@@ -63,8 +62,6 @@ LINTCHECKFLAGS += -erroff=E_INCONS_VAL_TYPE_DECL2
 LINTCHECKFLAGS += -erroff=E_INCONS_VAL_TYPE_USED2
 
 LDLIBS += -lumem -lcryptoutil -lsocket -lc
-
-# CERRWARN += -_cc=-erroff=E_ASSIGNMENT_TYPE_MISMATCH
 
 .KEEP_STATE:
 
