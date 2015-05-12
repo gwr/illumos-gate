@@ -38,6 +38,7 @@ _curproc(void)
 }
 
 zone_t zone0 = {
+	.zone_name = "global",
 	.zone_zsched = &p0, 0
 };
 

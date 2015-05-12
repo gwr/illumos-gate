@@ -82,6 +82,10 @@ fksmbsrv_vfs_init(void)
 		/* extra hold for rootvp */
 		vn_hold(vp);
 		rootdir = vp;
+
+		/* VFS stuff in global zone struct. */
+		zone0.zone_rootvp = rootdir;
+		zone0.zone_rootpath = "/";
 	}
 
 	return (0);

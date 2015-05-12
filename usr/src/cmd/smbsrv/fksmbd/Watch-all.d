@@ -60,6 +60,7 @@ pid$target:libsmb.so.1::entry
  * smb_mbtowc, mbc_marshal_...
  */
 pid$target::fop__getxvattr:entry,
+pid$target::fop__setxvattr:entry,
 pid$target::smb_mbc_vdecodef:entry,
 pid$target::smb_mbc_vencodef:entry,
 pid$target::smb_msgbuf_decode:entry,
@@ -71,7 +72,12 @@ pid$target::smb_wcequiv_strlen:entry
   self->mask++;
 }
 
+/*
+ * Now inverses of above, unwind order.
+ */
+
 pid$target::fop__getxvattr:return,
+pid$target::fop__setxvattr:return,
 pid$target::smb_mbc_vdecodef:return,
 pid$target::smb_mbc_vencodef:return,
 pid$target::smb_msgbuf_decode:return,
