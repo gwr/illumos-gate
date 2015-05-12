@@ -43,7 +43,6 @@
 #include <netdb.h>
 #include <net/route.h>
 #include <arpa/inet.h>
-#include <sqlite/sqlite.h>
 
 #include <sys/socket.h>
 #include <sys/sockio.h>
