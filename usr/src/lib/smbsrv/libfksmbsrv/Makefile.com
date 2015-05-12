@@ -152,9 +152,9 @@ CCSOURCEDEBUGFLAGS	= -g
 STRIP_STABS 	= :
 
 
-# hack hack - need our sys first
-DTS_ERRNO += -I../../../libfakekernel/common
-DTS_ERRNO += -I../common
+# Note: need our sys includes _before_ ENVCPPFLAGS, proto etc.
+CPPFLAGS.first += -I../../../libfakekernel/common
+CPPFLAGS.first += -I../common
 
 INCS += -I$(SRC)/uts/common
 INCS += -I$(SRC)/common/smbsrv
