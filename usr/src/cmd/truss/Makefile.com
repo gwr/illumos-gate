@@ -44,7 +44,7 @@ CERRWARN	+= -_gcc=-Wno-switch
 C99MODE=	$(C99_ENABLE)
 
 LDLIBS	+= -lproc -lrtld_db -lc_db -lnsl -lsocket -ltsol -lnvpair
-CPPFLAGS += -D_REENTRANT -D_LARGEFILE64_SOURCE=1
+CPPFLAGS += -D_REENTRANT -D_LARGEFILE64_SOURCE=1 -D_REGSET_NAMES
 CPPFLAGS += -I$(SRC)/uts/common/fs/zfs
 
 .KEEP_STATE:
