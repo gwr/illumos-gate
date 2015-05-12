@@ -43,6 +43,7 @@ include ../../../../Makefile.cmd
 CPPFLAGS += -I$(SRC)/lib/libumem/common
 CPPFLAGS += -I$(SRC)/lib/libc/inc
 CPPFLAGS += -I$(MODSRCS_DIR)
+CPPFLAGS += -D_REGSET_NAMES
 
 include ../../Makefile.sparcv7
 include ../../../Makefile.module
