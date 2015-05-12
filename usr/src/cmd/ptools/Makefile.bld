@@ -88,6 +88,7 @@ OBJS_pmadvise =		pmap_common.o
 SRCS_pmadvise =		$(PMAP)/pmap_common.c
 
 CPPFLAGS +=	$(CPPFLAGS_$(PROG))
+CPPFLAGS +=	-D_REGSET_NAMES
 OBJS +=		$(OBJS_$(PROG))
 SRCS +=		$(SRCS_$(PROG))
 
