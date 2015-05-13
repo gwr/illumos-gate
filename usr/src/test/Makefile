@@ -21,6 +21,7 @@ SUBDIRS=	comstar-tests	\
 		libc-tests	\
 		lofi-tests	\
 		os-tests	\
+		ndmp-tests	\
 		sharefs-tests	\
 		smbclient-tests	\
 		test-runner	\
