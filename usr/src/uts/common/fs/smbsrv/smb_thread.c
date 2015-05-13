@@ -185,7 +185,6 @@ smb_thread_stop(smb_thread_t *thread)
 		if (!thread->sth_kill) {
 			thread->sth_kill = B_TRUE;
 			cv_broadcast(&thread->sth_cv);
-			/* XXX: tsignal(thread->sth_th, SIGTERM); */
 			while (thread->sth_state != SMB_THREAD_STATE_EXITING)
 				cv_wait(&thread->sth_cv, &thread->sth_mtx);
 			mutex_exit(&thread->sth_mtx);
@@ -197,7 +196,7 @@ smb_thread_stop(smb_thread_t *thread)
 			cv_broadcast(&thread->sth_cv);
 			break;
 		}
-		/*FALLTHRU*/
+		/* FALLTHROUGH */
 
 	case SMB_THREAD_STATE_EXITING:
 		if (thread->sth_kill) {

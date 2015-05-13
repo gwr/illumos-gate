@@ -426,9 +426,10 @@ smb_fem_oplock_open(
 	int		rc = 0;
 
 	if (ct != &smb_ct) {
-		flags = (mode & (FWRITE|FTRUNC)) ?
-		    SMB_OPLOCK_BREAK_TO_NONE :
-		    SMB_OPLOCK_BREAK_TO_LEVEL_II;
+		if (mode & (FWRITE|FTRUNC))
+			flags = SMB_OPLOCK_BREAK_TO_NONE;
+		else
+			flags = SMB_OPLOCK_BREAK_TO_LEVEL_II;
 		rc = smb_fem_oplock_break(arg, ct, flags);
 	}
 	if (rc == 0)
@@ -512,9 +513,10 @@ smb_fem_oplock_rwlock(
 	int		rc = 0;
 
 	if (ct != &smb_ct) {
-		flags = (write_lock) ?
-		    SMB_OPLOCK_BREAK_TO_NONE :
-		    SMB_OPLOCK_BREAK_TO_LEVEL_II;
+		if (write_lock)
+			flags = SMB_OPLOCK_BREAK_TO_NONE;
+		else
+			flags = SMB_OPLOCK_BREAK_TO_LEVEL_II;
 		rc = smb_fem_oplock_break(arg, ct, flags);
 	}
 	if (rc == 0)

@@ -107,7 +107,10 @@ smb_shr_load(void *args)
 
 	/*
 	 * Not loading the real shares in fksmbd because that
-	 * tries to enable network/smb/server
+	 * tries to enable the network/smb/server service.
+	 * Also, we won't generally have access to everything
+	 * in the real shares, because fksmbd runs (only) with
+	 * the credentials of the user who runs it.
 	 */
 	new_share("test", "/var/smb/test", "fksmbd test share",
 	    SMB_SHRF_GUEST_OK);

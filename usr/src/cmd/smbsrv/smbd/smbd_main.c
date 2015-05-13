@@ -669,9 +669,9 @@ smbd_online_wait(const char *text)
 static int
 smbd_already_running(void)
 {
-	door_info_t info;
+	door_info_t	info;
 	char 		*door_name;
-	int door;
+	int		door;
 
 	door_name = getenv("SMBD_DOOR_NAME");
 	if (door_name == NULL)
@@ -812,10 +812,6 @@ smbd_load_shares(void)
 		smbd_report("unable to load disk shares: %s", strerror(errno));
 }
 
-/*
- * Later, keep this thread around (just one thread)
- * and "kick it" when we get a refresh.
- */
 static void *
 smbd_share_loader(void *args)
 {

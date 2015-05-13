@@ -127,12 +127,13 @@ SYMBOL_VERSION SUNWprivate_1.1 {
 	mutex_enter;
 	mutex_exit;
 	mutex_owned;
-	#mutex_owner;  # See mutex.c
+	mutex_owner;
 	mutex_tryenter;
 
 	nsec_per_tick;
 
 	ovbcopy;
+	p0;
 	panic;
 	panicargs;
 	panicstr;

@@ -37,6 +37,7 @@ void	abort(void) __NORETURN;
 
 char *volatile panicstr;
 va_list  panicargs;
+char panicbuf[512];
 
 volatile int aok;
 
@@ -97,16 +98,25 @@ fakekernel_cprintf(const char *fmt, va_list adx, int flags,
 	fakekernel_putlog(bufp, len, flags);
 }
 
+/*
+ * "User-level crash dump", if you will.
+ */
 void
 vpanic(const char *fmt, va_list adx)
 {
+	va_list tmpargs;
 
 	panicstr = (char *)fmt;
 	va_copy(panicargs, adx);
 
-	fakekernel_cprintf(fmt, adx, SL_FATAL, "fatal: ", "\n");
+	va_copy(tmpargs, adx);
+	fakekernel_cprintf(fmt, tmpargs, SL_FATAL, "fatal: ", "\n");
 
-	abort();	/* think of it as a "user-level crash dump" */
+	/* Call libc`assfail() so that mdb ::status works */
+	(void) vsnprintf(panicbuf, sizeof (panicbuf), fmt, adx);
+	assfail(panicbuf, "(panic)", 0);
+
+	abort();	/* avoid "noreturn" warnings */
 }
 
 void

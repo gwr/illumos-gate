@@ -58,7 +58,6 @@ static int smbd_opipe_exec(uint32_t fid);
  * smbsrv: smb_opipe_door_call()
  *
  * Very similar to smbd_opipe_dispatch()
- * XXX Factor out a common part?
  */
 int
 fksmbd_opipe_dispatch(door_arg_t *da)

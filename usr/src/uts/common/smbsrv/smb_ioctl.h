@@ -90,9 +90,9 @@ typedef	struct smb_ioc_start {
 	int		lmshrd;
 	int		udoor;
 	/* These are used only by libfksmbsrv */
-	void *opipe_func;
-	void *lmshr_func;
-	void *udoor_func;
+	void		*opipe_func;
+	void		*lmshr_func;
+	void		*udoor_func;
 } smb_ioc_start_t;
 
 typedef	struct smb_ioc_event {
