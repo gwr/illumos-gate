@@ -624,7 +624,7 @@ smb_server_start(smb_ioc_start_t *ioc)
 			break;
 		}
 #else	/* _KERNEL */
-		/* XXX - skip the kshare_door for now. */
+		/* Fake kernel does not use the kshare_door */
 		fksmb_kdoor_open(sv, ioc->udoor_func);
 		fksmb_opipe_door_open(sv, ioc->opipe_func);
 #endif	/* _KERNEL */

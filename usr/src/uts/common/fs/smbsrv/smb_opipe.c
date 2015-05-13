@@ -39,7 +39,7 @@
 	(((OPIPE)->p_hdr.dh_magic == SMB_OPIPE_HDR_MAGIC) && \
 	((OPIPE)->p_hdr.dh_fid))
 
-extern volatile uint32_t smb_fids; /* XXX */
+extern volatile uint32_t smb_fids;
 #define	SMB_UNIQ_FID()	atomic_inc_32_nv(&smb_fids)
 
 static int smb_opipe_do_open(smb_request_t *, smb_opipe_t *);

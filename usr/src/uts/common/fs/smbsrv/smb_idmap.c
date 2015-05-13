@@ -18,10 +18,36 @@
  *
  * CDDL HEADER END
  */
-
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc. All rights reserved.
+ * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ */
+
+/*
+ * SMB server interface to idmap
+ * (smb_idmap_get..., smb_idmap_batch_...)
+ *
+ * There are three implementations of this interface:
+ *	uts/common/fs/smbsrv/smb_idmap.c (smbsrv kmod)
+ *	lib/smbsrv/libfksmbsrv/common/fksmb_idmap.c (libfksmbsrv)
+ *	lib/smbsrv/libsmb/common/smb_idmap.c (libsmb)
+ *
+ * There are enough differences (relative to the code size)
+ * that it's more trouble than it's worth to merge them.
+ *
+ * This one differs from the others in that it:
+ *	calls kernel (kidmap_...) interfaces
+ *	domain SIDs are shared, not strdup'ed
+ */
+
+/*
+ * SMB ID mapping
+ *
+ * Solaris ID mapping service (aka Winchester) works with domain SIDs
+ * and RIDs where domain SIDs are in string format. CIFS service works
+ * with binary SIDs understandable by CIFS clients. A layer of SMB ID
+ * mapping functions are implemeted to hide the SID conversion details
+ * and also hide the handling of array of batch mapping requests.
  */
 
 #include <sys/param.h>
@@ -42,65 +68,7 @@
 #include <sys/sid.h>
 #include <sys/priv_names.h>
 
-/*
- * SMB ID mapping
- *
- * Solaris ID mapping service (aka Winchester) works with domain SIDs
- * and RIDs where domain SIDs are in string format. CIFS service works
- * with binary SIDs understandable by CIFS clients. A layer of SMB ID
- * mapping functions are implemeted to hide the SID conversion details
- * and also hide the handling of array of batch mapping requests.
- *
- * IMPORTANT NOTE The Winchester API requires a zone. Because CIFS server
- * currently only runs in the global zone the global zone is specified.
- * This needs to be fixed when the CIFS server supports zones.
- */
-
 static int smb_idmap_batch_binsid(smb_idmap_batch_t *sib);
-
-/*
- * smb_idmap_getid
- *
- * Maps the given Windows SID to a Solaris ID using the
- * simple mapping API.
- */
-idmap_stat
-smb_idmap_getid(smb_sid_t *sid, uid_t *id, int *idtype)
-{
-	smb_idmap_t sim;
-	char sidstr[SMB_SID_STRSZ];
-
-	smb_sid_tostr(sid, sidstr);
-	if (smb_sid_splitstr(sidstr, &sim.sim_rid) != 0)
-		return (IDMAP_ERR_SID);
-	sim.sim_domsid = sidstr;
-	sim.sim_id = id;
-
-	switch (*idtype) {
-	case SMB_IDMAP_USER:
-		sim.sim_stat = kidmap_getuidbysid(global_zone, sim.sim_domsid,
-		    sim.sim_rid, sim.sim_id);
-		break;
-
-	case SMB_IDMAP_GROUP:
-		sim.sim_stat = kidmap_getgidbysid(global_zone, sim.sim_domsid,
-		    sim.sim_rid, sim.sim_id);
-		break;
-
-	case SMB_IDMAP_UNKNOWN:
-		sim.sim_stat = kidmap_getpidbysid(global_zone, sim.sim_domsid,
-		    sim.sim_rid, sim.sim_id, &sim.sim_idtype);
-		break;
-
-	default:
-		ASSERT(0);
-		return (IDMAP_ERR_ARG);
-	}
-
-	*idtype = sim.sim_idtype;
-
-	return (sim.sim_stat);
-}
 
 /*
  * smb_idmap_getsid
@@ -150,6 +118,50 @@ smb_idmap_getsid(uid_t id, int idtype, smb_sid_t **sid)
 	smb_sid_free(sim.sim_sid);
 	if (*sid == NULL)
 		sim.sim_stat = IDMAP_ERR_INTERNAL;
+
+	return (sim.sim_stat);
+}
+
+/*
+ * smb_idmap_getid
+ *
+ * Maps the given Windows SID to a Unix ID using the
+ * simple mapping API.
+ */
+idmap_stat
+smb_idmap_getid(smb_sid_t *sid, uid_t *id, int *idtype)
+{
+	smb_idmap_t sim;
+	char sidstr[SMB_SID_STRSZ];
+
+	smb_sid_tostr(sid, sidstr);
+	if (smb_sid_splitstr(sidstr, &sim.sim_rid) != 0)
+		return (IDMAP_ERR_SID);
+	sim.sim_domsid = sidstr;
+	sim.sim_id = id;
+
+	switch (*idtype) {
+	case SMB_IDMAP_USER:
+		sim.sim_stat = kidmap_getuidbysid(global_zone, sim.sim_domsid,
+		    sim.sim_rid, sim.sim_id);
+		break;
+
+	case SMB_IDMAP_GROUP:
+		sim.sim_stat = kidmap_getgidbysid(global_zone, sim.sim_domsid,
+		    sim.sim_rid, sim.sim_id);
+		break;
+
+	case SMB_IDMAP_UNKNOWN:
+		sim.sim_stat = kidmap_getpidbysid(global_zone, sim.sim_domsid,
+		    sim.sim_rid, sim.sim_id, &sim.sim_idtype);
+		break;
+
+	default:
+		ASSERT(0);
+		return (IDMAP_ERR_ARG);
+	}
+
+	*idtype = sim.sim_idtype;
 
 	return (sim.sim_stat);
 }
@@ -331,40 +343,6 @@ smb_idmap_batch_getsid(idmap_get_handle_t *idmaph, smb_idmap_t *sim,
 }
 
 /*
- * smb_idmap_batch_binsid
- *
- * Convert sidrids to binary sids
- *
- * Returns 0 if successful and non-zero upon failure.
- */
-static int
-smb_idmap_batch_binsid(smb_idmap_batch_t *sib)
-{
-	smb_sid_t *sid;
-	smb_idmap_t *sim;
-	int i;
-
-	if (sib->sib_flags & SMB_IDMAP_SID2ID)
-		/* This operation is not required */
-		return (0);
-
-	sim = sib->sib_maps;
-	for (i = 0; i < sib->sib_nmap; sim++, i++) {
-		ASSERT(sim->sim_domsid);
-		if (sim->sim_domsid == NULL)
-			return (1);
-
-		if ((sid = smb_sid_fromstr(sim->sim_domsid)) == NULL)
-			return (1);
-
-		sim->sim_sid = smb_sid_splice(sid, sim->sim_rid);
-		smb_sid_free(sid);
-	}
-
-	return (0);
-}
-
-/*
  * smb_idmap_batch_getmappings
  *
  * trigger ID mapping service to get the mappings for queued
@@ -396,4 +374,38 @@ smb_idmap_batch_getmappings(smb_idmap_batch_t *sib)
 		idm_stat = IDMAP_ERR_OTHER;
 
 	return (idm_stat);
+}
+
+/*
+ * smb_idmap_batch_binsid
+ *
+ * Convert sidrids to binary sids
+ *
+ * Returns 0 if successful and non-zero upon failure.
+ */
+static int
+smb_idmap_batch_binsid(smb_idmap_batch_t *sib)
+{
+	smb_sid_t *sid;
+	smb_idmap_t *sim;
+	int i;
+
+	if (sib->sib_flags & SMB_IDMAP_SID2ID)
+		/* This operation is not required */
+		return (0);
+
+	sim = sib->sib_maps;
+	for (i = 0; i < sib->sib_nmap; sim++, i++) {
+		ASSERT(sim->sim_domsid);
+		if (sim->sim_domsid == NULL)
+			return (1);
+
+		if ((sid = smb_sid_fromstr(sim->sim_domsid)) == NULL)
+			return (1);
+
+		sim->sim_sid = smb_sid_splice(sid, sim->sim_rid);
+		smb_sid_free(sid);
+	}
+
+	return (0);
 }

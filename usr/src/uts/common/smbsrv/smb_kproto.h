@@ -61,13 +61,13 @@ extern "C" {
  */
 #ifndef	_KERNEL
 #undef	DTRACE_SMB_1
-#define	DTRACE_SMB_1(a, b, c)	((void)c)
+#define	DTRACE_SMB_1(a, b, c)			((void)c)
 #undef	DTRACE_SMB_2
-#define	DTRACE_SMB_2(a, b, c, d, e)	((void)c, (void)e)
+#define	DTRACE_SMB_2(a, b, c, d, e)		((void)c, (void)e)
 #undef	DTRACE_PROBE1
-#define	DTRACE_PROBE1(a, b, c)	((void)c)
+#define	DTRACE_PROBE1(a, b, c)			((void)c)
 #undef	DTRACE_PROBE2
-#define	DTRACE_PROBE2(a, b, c, d, e)	((void)c, (void)e)
+#define	DTRACE_PROBE2(a, b, c, d, e)		((void)c, (void)e)
 #undef	DTRACE_PROBE3
 #define	DTRACE_PROBE3(a, b, c, d, e, f, g)	((void)c, (void)e, (void)g)
 #endif	/* _KERNEL */

@@ -18,29 +18,28 @@
 # Helper program to run fksmbd (user-space smbd for debugging)
 # using binaries from the proto area.
 
-[ -n "$CODEMGR_WS" ] || {
-  echo "Need a buildenv to set CODEMGR_WS=..."
+[ -n "$ROOT" ] || {
+  echo "Need a bldenv to set ROOT=..."
   exit 1;
 }
 
 if [[ ! -w /var/smb || ! -w /var/run/smb ]]
 then
   echo "Need to create/chown/chmod /var/smb /var/run/smb"
-  echo 'mkdir -p /var/run/smb'
-  echo 'chown -R $USER /var/smb /var/run/smb'
-  echo 'chmod -R a+rw  /var/smb /var/run/smb'
+  echo "mkdir -p /var/run/smb"
+  echo "chown -R $USER /var/smb /var/run/smb"
+  echo "chmod -R a+rw  /var/smb /var/run/smb"
   exit 1;
 fi
 
 export SMBD_DOOR_NAME="/tmp/fksmbd_door"
 export SMB_SHARE_DNAME="/tmp/fksmbshare_door"
 
-ROOT=${CODEMGR_WS}/proto/root_i386
 LD_LIBRARY_PATH=$ROOT/usr/lib/smbsrv:$ROOT/usr/lib:$ROOT/lib
 export LD_LIBRARY_PATH
 
 # normally runs with cwd=/ but this is more careful
-cd /tmp
+cd /var/smb
 
 # run with the passed options
 exec $ROOT/usr/lib/smbsrv/fksmbd "$@"

@@ -51,8 +51,8 @@ static umem_cache_t *ksocket_cache = NULL;
 
 /*
  * NB: you can't cast this into a sonode like you can with a normal
- * ksocket_t.  That's not a problem for smbsrv, but we might need to
- * drop a struct sonode at the top of this struct someday later on...
+ * ksocket_t, but no correct code should ever do that anywway.
+ * The ksocket_t type is opaque to prevent exactly that.
  */
 struct __ksocket {
 	uint32_t kso_magic;

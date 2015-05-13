@@ -201,7 +201,7 @@ smbd_spool_copyfile(smb_inaddr_t *ipaddr, char *username, char *path,
 	char		uri[HTTP_MAX_URI];	/* printer-uri attribute */
 	char		new_jobname[SMBD_PJOBLEN];
 	smbd_printjob_t	pjob;
-	char 		clientname[INET6_ADDRSTRLEN];
+	char		clientname[INET6_ADDRSTRLEN];
 	struct stat 	sbuf;
 	int		rc = 1;
 
