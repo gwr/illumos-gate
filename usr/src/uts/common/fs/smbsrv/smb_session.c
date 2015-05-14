@@ -33,6 +33,9 @@
 #include <smbsrv/string.h>
 #include <inet/tcp.h>
 
+/* How many iovec we'll handle as a local array (no allocation) */
+#define	SMB_LOCAL_IOV_MAX	16
+
 #define	SMB_NEW_KID()	atomic_inc_64_nv(&smb_kids)
 
 static volatile uint64_t smb_kids;
@@ -47,8 +50,9 @@ static int  smbsr_newrq_initial(smb_request_t *);
 
 static void smb_session_cancel(smb_session_t *);
 static int smb_session_reader(smb_session_t *);
-static int smb_session_xprt_puthdr(smb_session_t *, smb_xprt_t *,
-    uint8_t *, size_t);
+static int smb_session_xprt_puthdr(smb_session_t *,
+    uint8_t msg_type, uint32_t msg_len,
+    uint8_t *dst, size_t dstlen);
 static smb_tree_t *smb_session_get_tree(smb_session_t *, smb_tree_t *);
 static void smb_session_logoff(smb_session_t *);
 static void smb_request_init_command_mbuf(smb_request_t *sr);
@@ -111,58 +115,94 @@ smb_session_correct_keep_alive_values(smb_llist_t *ll, uint32_t new_keep_alive)
 
 /*
  * Send a session message - supports SMB-over-NBT and SMB-over-TCP.
+ * If an mbuf chain is provided (optional), it will be freed and
+ * set to NULL -- unconditionally!  (error or not)
  *
- * The mbuf chain is copied into a contiguous buffer so that the whole
- * message is submitted to smb_sosend as a single request.  This should
- * help Ethereal/Wireshark delineate the packets correctly even though
- * TCP_NODELAY has been set on the socket.
- *
- * If an mbuf chain is provided, it will be freed and set to NULL here.
+ * Builds a I/O vector (uio/iov) to do the send from mbufs, plus one
+ * segment for the 4-byte NBT header.
  */
 int
-smb_session_send(smb_session_t *session, uint8_t type, mbuf_chain_t *mbc)
+smb_session_send(smb_session_t *session, uint8_t nbt_type, mbuf_chain_t *mbc)
 {
-	smb_txreq_t	*txr;
-	smb_xprt_t	hdr;
+	uio_t		uio;
+	iovec_t		local_iov[SMB_LOCAL_IOV_MAX];
+	iovec_t		*alloc_iov = NULL;
+	int		alloc_sz = 0;
+	mbuf_t		*m;
+	uint8_t		nbt_hdr[NETBIOS_HDR_SZ];
+	uint32_t	nbt_len;
+	int		i, nseg;
 	int		rc;
 
 	switch (session->s_state) {
 	case SMB_SESSION_STATE_DISCONNECTED:
 	case SMB_SESSION_STATE_TERMINATED:
-		if ((mbc != NULL) && (mbc->chain != NULL)) {
-			m_freem(mbc->chain);
-			mbc->chain = NULL;
-			mbc->flags = 0;
-		}
-		return (ENOTCONN);
+		rc = ENOTCONN;
+		goto out;
 	default:
 		break;
 	}
 
-	txr = smb_net_txr_alloc();
+	/*
+	 * Setup the IOV.  First, count the number of IOV segments
+	 * (plus one for the NBT header) and decide whether we
+	 * need to allocate an iovec or can use local_iov;
+	 */
+	bzero(&uio, sizeof (uio));
+	nseg = 1;
+	m = (mbc != NULL) ? mbc->chain : NULL;
+	while (m != NULL) {
+		nseg++;
+		m = m->m_next;
+	}
+	if (nseg <= SMB_LOCAL_IOV_MAX) {
+		uio.uio_iov = local_iov;
+	} else {
+		alloc_sz = nseg * sizeof (iovec_t);
+		alloc_iov = kmem_alloc(alloc_sz, KM_SLEEP);
+		uio.uio_iov = alloc_iov;
+	}
+	uio.uio_iovcnt = nseg;
+	uio.uio_segflg = UIO_SYSSPACE;
+	uio.uio_extflg = UIO_COPY_DEFAULT;
 
+	/*
+	 * Build the iov list, meanwhile computing the length of
+	 * the SMB payload (to put in the NBT header).
+	 */
+	uio.uio_iov[0].iov_base = (void *)nbt_hdr;
+	uio.uio_iov[0].iov_len = sizeof (nbt_hdr);
+	i = 1;
+	nbt_len = 0;
+	m = (mbc != NULL) ? mbc->chain : NULL;
+	while (m != NULL) {
+		uio.uio_iov[i].iov_base = m->m_data;
+		uio.uio_iov[i++].iov_len = m->m_len;
+		nbt_len += m->m_len;
+		m = m->m_next;
+	}
+	ASSERT3S(i, ==, nseg);
+
+	/*
+	 * Set the NBT header, set uio_resid
+	 */
+	uio.uio_resid = nbt_len + NETBIOS_HDR_SZ;
+	rc = smb_session_xprt_puthdr(session, nbt_type, nbt_len,
+	    nbt_hdr, NETBIOS_HDR_SZ);
+	if (rc != 0)
+		goto out;
+
+	rc = smb_net_send_uio(session, &uio);
+
+out:
+	if (alloc_iov != NULL)
+		kmem_free(alloc_iov, alloc_sz);
 	if ((mbc != NULL) && (mbc->chain != NULL)) {
-		rc = mbc_moveout(mbc, (caddr_t)&txr->tr_buf[NETBIOS_HDR_SZ],
-		    sizeof (txr->tr_buf) - NETBIOS_HDR_SZ, &txr->tr_len);
-		if (rc != 0) {
-			smb_net_txr_free(txr);
-			return (rc);
-		}
+		m_freem(mbc->chain);
+		mbc->chain = NULL;
+		mbc->flags = 0;
 	}
-
-	hdr.xh_type = type;
-	hdr.xh_length = (uint32_t)txr->tr_len;
-
-	rc = smb_session_xprt_puthdr(session, &hdr, txr->tr_buf,
-	    NETBIOS_HDR_SZ);
-
-	if (rc != 0) {
-		smb_net_txr_free(txr);
-		return (rc);
-	}
-	txr->tr_len += NETBIOS_HDR_SZ;
-	smb_server_add_txb(session->s_server, (int64_t)txr->tr_len);
-	return (smb_net_txr_send(session->sock, &session->s_txlst, txr));
+	return (rc);
 }
 
 /*
@@ -312,30 +352,40 @@ smb_session_xprt_gethdr(smb_session_t *session, smb_xprt_t *ret_hdr)
 
 /*
  * Encode a transport session packet header into a 4-byte buffer.
- * See smb_xprt_t definition for header format information.
  */
 static int
-smb_session_xprt_puthdr(smb_session_t *session, smb_xprt_t *hdr,
+smb_session_xprt_puthdr(smb_session_t *session,
+    uint8_t msg_type, uint32_t msg_length,
     uint8_t *buf, size_t buflen)
 {
-	if (session == NULL || hdr == NULL ||
-	    buf == NULL || buflen < NETBIOS_HDR_SZ) {
+	if (buf == NULL || buflen < NETBIOS_HDR_SZ) {
 		return (-1);
 	}
 
 	switch (session->s_local_port) {
 	case IPPORT_NETBIOS_SSN:
-		buf[0] = hdr->xh_type;
-		buf[1] = ((hdr->xh_length >> 16) & 1);
-		buf[2] = (hdr->xh_length >> 8) & 0xff;
-		buf[3] = hdr->xh_length & 0xff;
+		/* Per RFC 1001, 1002: msg. len < 128KB */
+		if (msg_length >= (1 << 17))
+			return (-1);
+		buf[0] = msg_type;
+		buf[1] = ((msg_length >> 16) & 1);
+		buf[2] = (msg_length >> 8) & 0xff;
+		buf[3] = msg_length & 0xff;
 		break;
 
 	case IPPORT_SMB:
-		buf[0] = hdr->xh_type;
-		buf[1] = (hdr->xh_length >> 16) & 0xff;
-		buf[2] = (hdr->xh_length >> 8) & 0xff;
-		buf[3] = hdr->xh_length & 0xff;
+		/*
+		 * SMB over TCP is like NetBIOS but the one byte
+		 * message type is always zero, and the length
+		 * part is three bytes.  It could actually use
+		 * longer messages, but this is conservative.
+		 */
+		if (msg_length >= (1 << 24))
+			return (-1);
+		buf[0] = msg_type;
+		buf[1] = (msg_length >> 16) & 0xff;
+		buf[2] = (msg_length >> 8) & 0xff;
+		buf[3] = msg_length & 0xff;
 		break;
 
 	default:

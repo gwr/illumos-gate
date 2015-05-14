@@ -23,13 +23,31 @@
 static int smb2_negotiate_common(smb_request_t *, uint16_t);
 
 uint32_t smb2srv_capabilities =
-	SMB2_CAP_DFS; /* XXX: more to come */
+	SMB2_CAP_DFS |
+	SMB2_CAP_LARGE_MTU;
 
-/* No, these should not be easy to "tune". */
-uint32_t smb2_tcp_sndbuf = (1<<20);
-uint32_t smb2_tcp_rcvbuf = (1<<20);
-uint32_t smb2_max_rwsize = (1<<16);
-uint32_t smb2_max_trans  = (1<<16);
+/*
+ * These are not intended as customer tunables, but dev. & test folks
+ * might want to adjust them (with caution).
+ *
+ * smb2_tcp_bufsize is the TCP buffer size, applied to the network socket
+ * with setsockopt SO_SNDBUF, SO_RCVBUF.  These set the TCP window size.
+ * This is also used as a "sanity limit" for internal send/reply message
+ * allocations.  Note that with compounding SMB2 messages may contain
+ * multiple requests/responses.  This size should be large enough for
+ * at least a few SMB2 requests, and at least 2X smb2_max_rwsize.
+ *
+ * smb2_max_rwsize is what we put in the SMB2 negotiate response to tell
+ * the client the largest read and write request size we'll support.
+ * One megabyte is a compromise between efficiency on fast networks
+ * and memory consumption (for the buffers) on the server side.
+ *
+ * smb2_max_trans is the largest "transact" send or receive, which is
+ * used for directory listings and info set/get operations.
+ */
+uint32_t smb2_tcp_bufsize = (1<<22);	/* 4MB */
+uint32_t smb2_max_rwsize = (1<<20);	/* 1MB */
+uint32_t smb2_max_trans  = (1<<16);	/* 64KB */
 
 /*
  * List of all SMB2 versions we implement.  Note that the
@@ -252,8 +270,8 @@ smb2_negotiate_common(smb_request_t *sr, uint16_t version)
 	}
 	s->secmode = secmode;
 
-	s->cmd_max_bytes = smb2_tcp_rcvbuf;
-	s->reply_max_bytes = smb2_tcp_sndbuf;
+	s->cmd_max_bytes = smb2_tcp_bufsize;
+	s->reply_max_bytes = smb2_tcp_bufsize;
 
 	/*
 	 * We need to grant some initial credits to the client.
@@ -311,11 +329,11 @@ smb2_negotiate_common(smb_request_t *sr, uint16_t version)
 	smb2_send_reply(sr);
 
 	(void) ksocket_setsockopt(s->sock, SOL_SOCKET,
-	    SO_SNDBUF, (const void *)&smb2_tcp_sndbuf,
-	    sizeof (smb2_tcp_sndbuf), CRED());
+	    SO_SNDBUF, (const void *)&smb2_tcp_bufsize,
+	    sizeof (smb2_tcp_bufsize), CRED());
 	(void) ksocket_setsockopt(s->sock, SOL_SOCKET,
-	    SO_RCVBUF, (const void *)&smb2_tcp_rcvbuf,
-	    sizeof (smb2_tcp_rcvbuf), CRED());
+	    SO_RCVBUF, (const void *)&smb2_tcp_bufsize,
+	    sizeof (smb2_tcp_bufsize), CRED());
 
 	return (rc);
 }

@@ -378,7 +378,7 @@ smbsrv_pcap_dump(struct mbuf_chain *mbc, int32_t smb_len,
 	 * to the pcap file, for exactly smb_len bytes.
 	 */
 	dump_state.rem_len = smb_len;
-	dump_state.tbuf_size = CLBYTES;
+	dump_state.tbuf_size = 0x1000; /* abitrary */
 	dump_state.tbuf = mdb_alloc(dump_state.tbuf_size, UM_SLEEP);
 	rc = mdb_pwalk("smb_mbuf_walker", smb_req_pcap_m,
 	    &dump_state, (uintptr_t)mbc->chain);

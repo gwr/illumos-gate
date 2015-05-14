@@ -338,8 +338,8 @@ typedef struct {
 typedef struct {
 	uint32_t	tl_magic;
 	kmutex_t	tl_mutex;
+	kcondvar_t	tl_wait_cv;
 	boolean_t	tl_active;
-	list_t		tl_list;
 } smb_txlst_t;
 
 /*
