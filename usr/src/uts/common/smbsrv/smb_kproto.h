@@ -402,13 +402,9 @@ ksocket_t smb_socreate(int domain, int type, int protocol);
 void smb_soshutdown(ksocket_t so);
 void smb_sodestroy(ksocket_t so);
 int smb_sorecv(ksocket_t so, void *msg, size_t len);
-void smb_net_init(void);
-void smb_net_fini(void);
 void smb_net_txl_constructor(smb_txlst_t *);
 void smb_net_txl_destructor(smb_txlst_t *);
-smb_txreq_t *smb_net_txr_alloc(void);
-void smb_net_txr_free(smb_txreq_t *);
-int smb_net_txr_send(ksocket_t, smb_txlst_t *, smb_txreq_t *);
+int smb_net_send_uio(smb_session_t *, struct uio *);
 
 /*
  * SMB RPC interface
