@@ -306,7 +306,6 @@ smb_server_g_init(void)
 	smb_kshare_g_init();
 	smb_codepage_init();
 	smb_mbc_init();		/* smb_mbc_cache */
-	smb_net_init();		/* smb_txr_cache */
 	smb_node_init();	/* smb_node_cache, lists */
 
 	smb_cache_request = kmem_cache_create("smb_request_cache",
@@ -362,7 +361,6 @@ smb_server_g_fini(void)
 	kmem_cache_destroy(smb_cache_event);
 
 	smb_node_fini();
-	smb_net_fini();
 	smb_mbc_fini();
 	smb_kshare_g_fini();
 

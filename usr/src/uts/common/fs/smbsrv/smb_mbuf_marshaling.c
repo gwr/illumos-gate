@@ -1145,6 +1145,12 @@ mbc_marshal_put_unicode_string(mbuf_chain_t *mbc, char *ascii, int repc)
 	return (0);
 }
 
+static int /*ARGSUSED*/
+uiorefnoop(caddr_t p, int size, int adj)
+{
+	return (0);
+}
+
 static int
 mbc_marshal_put_uio(mbuf_chain_t *mbc, struct uio *uio)
 {
@@ -1158,7 +1164,7 @@ mbc_marshal_put_uio(mbuf_chain_t *mbc, struct uio *uio)
 	for (i = 0; i < iov_cnt; i++) {
 		MGET(m, M_WAIT, MT_DATA);
 		m->m_ext.ext_buf = iov->iov_base;
-		m->m_ext.ext_ref = mclrefnoop;
+		m->m_ext.ext_ref = uiorefnoop;
 		m->m_data = m->m_ext.ext_buf;
 		m->m_flags |= M_EXT;
 		m->m_len = m->m_ext.ext_size = iov->iov_len;
