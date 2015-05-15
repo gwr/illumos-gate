@@ -220,7 +220,7 @@ cbc_decrypt_contiguous_blocks(cbc_ctx_t *ctx, char *data, size_t length,
 		lastp = (uint8_t *)OTHER((uint64_t *)lastp, ctx);
 
 		if (out != NULL) {
-			(void) crypto_put_output_data(lastp, out, block_size);
+			(void) crypto_put_output_data(blockp, out, block_size);
 			/* update offset */
 			out->cd_offset += block_size;
 
