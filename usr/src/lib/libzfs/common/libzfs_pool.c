@@ -3289,7 +3289,7 @@ path_to_devid(const char *path)
 	ddi_devid_t devid;
 	char *minor, *ret;
 
-	if ((fd = open(path, O_RDONLY)) < 0)
+	if ((fd = open(path, O_RDONLY | O_NDELAY)) < 0)
 		return (NULL);
 
 	minor = NULL;
