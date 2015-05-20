@@ -1016,8 +1016,10 @@ sprint_str(char **buf, const char *str, size_t width)
 	newbuf = safe_malloc(newsz);
 
 	if (opt_scripted) {
-		(void) snprintf(newbuf, newsz, "%s%s\t",
-		    *buf != NULL ? *buf : "", str);
+		(void) snprintf(newbuf, newsz, "%s%s%s",
+		    *buf != NULL ? *buf : "",
+		    *buf != NULL ? "\t" : "",
+		    str);
 	} else {
 		(void) snprintf(newbuf, newsz, "%s%-*s ",
 		    *buf != NULL ? *buf : "", width, str);
