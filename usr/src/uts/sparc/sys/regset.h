@@ -99,7 +99,7 @@ extern "C" {
  * maximum number of outstanding regiters window defined in the SPARC
  * architecture (*not* implementation).
  */
-#define	_SPARC_MAXREGWINDOW	31	/* max windows in SPARC arch. */
+#define	SPARC_MAXREGWINDOW	31	/* max windows in SPARC arch. */
 
 struct	_rwindow {
 	greg_t	rw_local[8];		/* locals */
@@ -131,7 +131,7 @@ extern	void	rwindow_32ton(struct rwindow32 *, struct _rwindow *);
 typedef struct _gwindows {
 	int		wbcnt;
 	greg_t		*spbuf[SPARC_MAXREGWINDOW];
-	struct rwindow	wbuf[SPARC_MAXREGWINDOW];
+	struct _rwindow	wbuf[SPARC_MAXREGWINDOW];
 } gwindows_t;
 
 #if defined(_SYSCALL32)
