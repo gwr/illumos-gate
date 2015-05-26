@@ -59,7 +59,7 @@ extern "C" {
  * kernel.  If they're being used in kernel code, re-define them out of
  * existence for their counterparts in libfksmbsrv
  */
-#ifndef	_KERNEL
+#if !defined(_KERNEL) || defined(_FAKE_KERNEL)
 #undef	DTRACE_SMB_1
 #define	DTRACE_SMB_1(a, b, c)			((void)c)
 #undef	DTRACE_SMB_2
@@ -847,12 +847,12 @@ char *smb_srm_strdup(smb_request_t *, const char *);
 void smb_export_start(smb_server_t *);
 void smb_export_stop(smb_server_t *);
 
-#ifdef	_KERNEL
+#if defined(_KERNEL) && !defined(_FAKE_KERNEL)
 struct __door_handle;
 struct __door_handle *smb_kshare_door_init(int);
 void smb_kshare_door_fini(struct __door_handle *);
 int smb_kshare_upcall(struct __door_handle *, void *, boolean_t);
-#endif	/* _KERNEL */
+#endif	/* _KERNEL && !_FAKE_KERNEL */
 
 void smb_kshare_g_init(void);
 void smb_kshare_g_fini(void);

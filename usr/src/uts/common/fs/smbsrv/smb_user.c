@@ -366,7 +366,7 @@ smb_user_release(
 boolean_t
 smb_user_is_admin(smb_user_t *user)
 {
-#ifdef	_KERNEL
+#if !defined(_FAKE_KERNEL)
 	char		sidstr[SMB_SID_STRSZ];
 	ksidlist_t	*ksidlist;
 	ksid_t		ksid1;
@@ -381,7 +381,7 @@ smb_user_is_admin(smb_user_t *user)
 	if (SMB_USER_IS_ADMIN(user))
 		return (B_TRUE);
 
-#ifdef	_KERNEL
+#if !defined(_FAKE_KERNEL)
 	bzero(&ksid1, sizeof (ksid_t));
 	(void) strlcpy(sidstr, ADMINISTRATORS_SID, SMB_SID_STRSZ);
 	ASSERT(smb_sid_splitstr(sidstr, &ksid1.ks_rid) == 0);
@@ -537,7 +537,7 @@ smb_user_getprivcred(smb_user_t *user)
 	return ((user->u_privcred)? user->u_privcred : user->u_cred);
 }
 
-#ifdef	_KERNEL
+#if !defined(_FAKE_KERNEL)
 /*
  * Assign the user cred and privileges.
  *

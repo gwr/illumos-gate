@@ -69,6 +69,7 @@ typedef struct ftrace_data {
 } ftrace_data_t;
 
 struct cyc_cpu;
+struct _kcpc_ctx;
 struct nvlist;
 
 /*
@@ -165,7 +166,7 @@ typedef struct cpu {
 	uint_t		cpu_deadman_countdown;	/* used by deadman() */
 
 	kmutex_t	cpu_cpc_ctxlock; /* protects context for idle thread */
-	kcpc_ctx_t	*cpu_cpc_ctx;	/* performance counter context */
+	struct _kcpc_ctx *cpu_cpc_ctx;	/* performance counter context */
 
 	/*
 	 * Configuration information for the processor_info system call.

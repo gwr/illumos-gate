@@ -26,11 +26,11 @@
 #include <sys/file.h>
 #include <sys/pathname.h>
 #include <sys/sysmacros.h>
+#include <sys/stat.h>
 #include <sys/vfs.h>
 #include <sys/vnode.h>
-#include <sys/avl.h>
-#include <sys/stat.h>
 #include <sys/mode.h>
+#include <sys/avl.h>
 
 #include <fcntl.h>
 #include <unistd.h>

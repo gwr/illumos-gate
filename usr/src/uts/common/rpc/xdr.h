@@ -18,10 +18,10 @@
  *
  * CDDL HEADER END
  *
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
+ *
  * Copyright 2010 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
- *
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  */
 /* Copyright (c) 1983, 1984, 1985, 1986, 1987, 1988, 1989 AT&T */
 /* All Rights Reserved */
@@ -41,7 +41,7 @@
 
 #include <sys/byteorder.h>	/* For all ntoh* and hton*() kind of macros */
 #include <rpc/types.h>	/* For all ntoh* and hton*() kind of macros */
-#if !defined(_KERNEL) && !defined(_FAKE_KERNEL)
+#ifndef _KERNEL
 #include <stdio.h> /* defines FILE *, used in ANSI C function prototypes */
 #else	/* _KERNEL */
 #include <sys/stream.h>
@@ -127,7 +127,7 @@ typedef struct XDR {
  */
 struct xdr_ops {
 #ifdef __STDC__
-#if !defined(_KERNEL)
+#if !defined(_KERNEL) || defined(_FAKE_KERNEL)
 		bool_t	(*x_getlong)(struct XDR *, long *);
 		/* get a long from underlying stream */
 		bool_t	(*x_putlong)(struct XDR *, long *);
@@ -146,14 +146,14 @@ struct xdr_ops {
 		void	(*x_destroy)(struct XDR *);
 		/* free privates of this xdr_stream */
 		bool_t	(*x_control)(struct XDR *, int, void *);
-#if defined(_LP64) || defined(_KERNEL)
+#if defined(_LP64) || (defined(_KERNEL) && !defined(_FAKE_KERNEL))
 		bool_t	(*x_getint32)(struct XDR *, int32_t *);
 		/* get a int from underlying stream */
 		bool_t	(*x_putint32)(struct XDR *, int32_t *);
 		/* put an int to " */
 #endif /* _LP64 || _KERNEL */
-#else
-#if !defined(_KERNEL)
+#else	/* __STDC__ */
+#if !defined(_KERNEL) || defined(_FAKE_KERNEL)
 		bool_t	(*x_getlong)();	/* get a long from underlying stream */
 		bool_t	(*x_putlong)();	/* put a long to " */
 #endif /* KERNEL */
@@ -165,7 +165,7 @@ struct xdr_ops {
 				/* buf quick ptr to buffered data */
 		void	(*x_destroy)();	/* free privates of this xdr_stream */
 		bool_t	(*x_control)();
-#if defined(_LP64) || defined(_KERNEL)
+#if defined(_LP64) || (defined(_KERNEL) && !defined(_FAKE_KERNEL))
 		bool_t	(*x_getint32)();
 		bool_t	(*x_putint32)();
 #endif /* _LP64 || defined(_KERNEL) */
@@ -181,7 +181,7 @@ struct xdr_ops {
  * uint_t	 len;
  * uint_t	 pos;
  */
-#if !defined(_KERNEL)
+#if !defined(_KERNEL) || defined(_FAKE_KERNEL)
 #define	XDR_GETLONG(xdrs, longp)			\
 	(*(xdrs)->x_ops->x_getlong)(xdrs, longp)
 #define	xdr_getlong(xdrs, longp)			\
@@ -194,7 +194,7 @@ struct xdr_ops {
 #endif /* KERNEL */
 
 
-#if !defined(_LP64) && !defined(_KERNEL)
+#if !defined(_LP64) && (!defined(_KERNEL) || defined(_FAKE_KERNEL))
 
 /*
  * For binary compatability on ILP32 we do not change the shape
@@ -335,7 +335,7 @@ struct xdr_discrim {
 #define	IXDR_GET_U_INT32(buf)		((uint32_t)IXDR_GET_INT32(buf))
 #define	IXDR_PUT_U_INT32(buf, v)	IXDR_PUT_INT32((buf), ((int32_t)(v)))
 
-#if !defined(_KERNEL) && !defined(_LP64)
+#if !defined(_LP64) && (!defined(_KERNEL) || defined(_FAKE_KERNEL))
 
 #define	IXDR_GET_LONG(buf)		((long)ntohl((ulong_t)*(buf)++))
 #define	IXDR_PUT_LONG(buf, v)		(*(buf)++ = (long)htonl((ulong_t)v))
@@ -558,7 +558,7 @@ typedef struct xdr_bytesrec xdr_bytesrec;
  * These are the public routines for the various implementations of
  * xdr streams.
  */
-#if !defined(_KERNEL) && !defined(_FAKE_KERNEL)
+#ifndef _KERNEL
 #ifdef __STDC__
 extern void   xdrmem_create(XDR *, const caddr_t, const uint_t, const enum
 xdr_op);

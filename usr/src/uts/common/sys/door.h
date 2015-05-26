@@ -59,6 +59,7 @@ extern "C" {
 
 #if defined(_KERNEL)
 #include <sys/mutex.h>
+#include <sys/thread.h>
 #include <sys/vnode.h>
 #include <sys/door_impl.h>
 #endif /* defined(_KERNEL) */

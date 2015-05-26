@@ -54,7 +54,7 @@ static void smb_kshare_csc_flags(smb_kshare_t *, const char *);
 
 static boolean_t smb_export_isready(smb_server_t *);
 
-#ifdef	_KERNEL
+#if !defined(_FAKE_KERNEL)
 static int smb_kshare_chk_dsrv_status(int, smb_dr_ctx_t *);
 #endif	/* _KERNEL */
 
@@ -65,7 +65,7 @@ static const smb_avl_nops_t smb_kshare_avlops = {
 	smb_kshare_destroy
 };
 
-#ifdef	_KERNEL
+#if !defined(_FAKE_KERNEL)
 /*
  * This function is not MultiThread safe. The caller has to make sure only one
  * thread calls this function.
@@ -1203,7 +1203,7 @@ smb_export_isready(smb_server_t *sv)
 	return (ready);
 }
 
-#ifdef	_KERNEL
+#if !defined(_FAKE_KERNEL)
 /*
  * Return 0 upon success. Otherwise > 0
  */

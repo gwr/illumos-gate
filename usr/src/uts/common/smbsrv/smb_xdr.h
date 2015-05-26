@@ -43,7 +43,7 @@ extern "C" {
 #include <smbsrv/smb_dfs.h>
 #include <smbsrv/wintypes.h>
 
-#if defined(_KERNEL) || defined(_FAKE_KERNEL)
+#if defined(_KERNEL)
 #define	xdr_int8_t	xdr_char
 #define	xdr_uint8_t	xdr_u_char
 #define	xdr_int16_t	xdr_short

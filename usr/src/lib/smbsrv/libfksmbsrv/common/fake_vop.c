@@ -10,9 +10,8 @@
  */
 
 /*
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
-
 
 #include <sys/types.h>
 #include <sys/param.h>
@@ -25,20 +24,23 @@
 #include <sys/pathname.h>
 #include <sys/vfs.h>
 #include <sys/vnode.h>
-#include <sys/stat.h>
-#include <sys/mode.h>
-#include <sys/conf.h>
-#include <sys/sysmacros.h>
-#include <sys/cmn_err.h>
-#include <sys/systm.h>
 #include <sys/kmem.h>
 #include <sys/debug.h>
-#include <sys/atomic.h>
+
+/*
+ * Mixing the kernel and user-level APIs here gets tricky.
+ */
+#undef	_KERNEL		/* Consume the user-level API here. */
+
+#include <sys/stat.h>
+#include <sys/mode.h>
 #include <sys/acl.h>
 #include <sys/flock.h>
 #include <sys/nbmlock.h>
 #include <sys/fcntl.h>
 #include <sys/poll.h>
+#include <sys/time.h>
+#include <sys/atomic.h>
 
 #include <errno.h>
 #include <fcntl.h>
@@ -47,6 +49,8 @@
 #include "vncache.h"
 
 #define	O_RWMASK	(O_WRONLY | O_RDWR) /* == 3 */
+
+int futimesat(int, const char *, const struct timeval *);
 
 int fop_shrlock_enable = 0;
 
@@ -244,11 +248,11 @@ fop_getattr(
 	caller_context_t *ct)
 {
 	int error;
-	struct stat buf;
+	struct stat st;
 
-	if (fstat(vp->v_fd, &buf) == -1)
+	if (fstat(vp->v_fd, &st) == -1)
 		return (errno);
-	error = stat_to_vattr(&buf, vap);
+	error = stat_to_vattr(&st, vap);
 
 	if (vap->va_mask & AT_XVATTR)
 		(void) fop__getxvattr(vp, (xvattr_t *)vap);
@@ -1180,6 +1184,9 @@ ushort_t vttoif_tab[] = {
 	S_IFDOOR, 0, S_IFSOCK, S_IFPORT, 0
 };
 
+#define	IFTOVT(M)	(iftovt_tab[((M) & S_IFMT) >> 12])
+#define	VTTOIF(T)	(vttoif_tab[(int)(T)])
+
 /*
  * stat_to_vattr()
  *
@@ -1188,57 +1195,57 @@ ushort_t vttoif_tab[] = {
  */
 
 int
-stat_to_vattr(const struct stat *buf, vattr_t *vap)
+stat_to_vattr(const struct stat *st, vattr_t *vap)
 {
 
 	if (vap->va_mask & AT_TYPE)
-		vap->va_type = IFTOVT(buf->st_mode);
+		vap->va_type = IFTOVT(st->st_mode);
 
 	if (vap->va_mask & AT_MODE)
-		vap->va_mode = buf->st_mode;
+		vap->va_mode = st->st_mode;
 
 	if (vap->va_mask & AT_UID)
-		vap->va_uid = buf->st_uid;
+		vap->va_uid = st->st_uid;
 
 	if (vap->va_mask & AT_GID)
-		vap->va_gid = buf->st_gid;
+		vap->va_gid = st->st_gid;
 
 	if (vap->va_mask & AT_FSID)
-		vap->va_fsid = buf->st_dev;
+		vap->va_fsid = st->st_dev;
 
 	if (vap->va_mask & AT_NODEID)
-		vap->va_nodeid = buf->st_ino;
+		vap->va_nodeid = st->st_ino;
 
 	if (vap->va_mask & AT_NLINK)
-		vap->va_nlink = buf->st_nlink;
+		vap->va_nlink = st->st_nlink;
 
 	if (vap->va_mask & AT_SIZE)
-		vap->va_size = (u_offset_t)buf->st_size;
+		vap->va_size = (u_offset_t)st->st_size;
 
 	if (vap->va_mask & AT_ATIME) {
-		vap->va_atime.tv_sec  = buf->st_atim.tv_sec;
-		vap->va_atime.tv_nsec = buf->st_atim.tv_nsec;
+		vap->va_atime.tv_sec  = st->st_atim.tv_sec;
+		vap->va_atime.tv_nsec = st->st_atim.tv_nsec;
 	}
 
 	if (vap->va_mask & AT_MTIME) {
-		vap->va_mtime.tv_sec  = buf->st_mtim.tv_sec;
-		vap->va_mtime.tv_nsec = buf->st_mtim.tv_nsec;
+		vap->va_mtime.tv_sec  = st->st_mtim.tv_sec;
+		vap->va_mtime.tv_nsec = st->st_mtim.tv_nsec;
 	}
 
 	if (vap->va_mask & AT_CTIME) {
-		vap->va_ctime.tv_sec  = buf->st_ctim.tv_sec;
-		vap->va_ctime.tv_nsec = buf->st_ctim.tv_nsec;
+		vap->va_ctime.tv_sec  = st->st_ctim.tv_sec;
+		vap->va_ctime.tv_nsec = st->st_ctim.tv_nsec;
 	}
 
 	if (vap->va_mask & AT_RDEV)
-		vap->va_rdev = buf->st_rdev;
+		vap->va_rdev = st->st_rdev;
 
 	if (vap->va_mask & AT_BLKSIZE)
-		vap->va_blksize = (uint_t)buf->st_blksize;
+		vap->va_blksize = (uint_t)st->st_blksize;
 
 
 	if (vap->va_mask & AT_NBLOCKS)
-		vap->va_nblocks = (u_longlong_t)buf->st_blocks;
+		vap->va_nblocks = (u_longlong_t)st->st_blocks;
 
 	if (vap->va_mask & AT_SEQ)
 		vap->va_seq = 0;
@@ -1264,8 +1271,7 @@ vn_hold(vnode_t *vp)
 void
 vn_rele(vnode_t *vp)
 {
-	if (vp->v_count == 0)
-		cmn_err(CE_PANIC, "vn_rele: vnode ref count 0");
+	VERIFY3U(vp->v_count, !=, 0);
 	mutex_enter(&vp->v_lock);
 	if (vp->v_count == 1) {
 		mutex_exit(&vp->v_lock);

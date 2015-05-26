@@ -84,6 +84,7 @@ typedef struct _disp {
 #define	MAXCLSYSPRI	99
 #define	MINCLSYSPRI	60
 
+struct lgrp_ld;
 
 /*
  * Global scheduling variables.

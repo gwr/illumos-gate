@@ -65,6 +65,7 @@ int priv_policy(const cred_t *, int, boolean_t, int, const char *);
 boolean_t priv_policy_only(const cred_t *, int, boolean_t);
 boolean_t priv_policy_choice(const cred_t *, int, boolean_t);
 
+struct contract;
 struct kipc_perm;
 struct vfs;
 struct proc;

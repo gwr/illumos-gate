@@ -54,7 +54,7 @@ struct _krwlock {
 };
 typedef struct _krwlock krwlock_t;
 
-#if defined(_KERNEL) || defined(_FAKE_KERNEL)
+#if defined(_KERNEL)
 
 #define	RW_READ_HELD(x)		(rw_read_held((x)))
 #define	RW_WRITE_HELD(x)	(rw_write_held((x)))

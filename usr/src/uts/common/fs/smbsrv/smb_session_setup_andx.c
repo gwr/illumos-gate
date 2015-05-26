@@ -35,7 +35,7 @@
 static int smb_authenticate(smb_request_t *, smb_arg_sessionsetup_t *);
 static int smb_authenticate_core(smb_request_t *, smb_arg_sessionsetup_t *);
 static uint32_t smb_priv_xlate(smb_token_t *);
-#ifdef	_KERNEL
+#if !defined(_FAKE_KERNEL)
 static void smb_cred_set_sid(smb_id_t *id, ksid_t *ksid);
 static ksidlist_t *smb_cred_set_sidlist(smb_ids_t *token_grps);
 #endif	/* _KERNEL */
@@ -360,7 +360,7 @@ smb_authenticate_core(smb_request_t *sr, smb_arg_sessionsetup_t *sinfo)
 	return (0);
 }
 
-#ifdef	_KERNEL
+#if !defined(_FAKE_KERNEL)
 /*
  * Allocate a Solaris cred and initialize it based on the access token.
  *

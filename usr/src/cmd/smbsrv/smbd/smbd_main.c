@@ -58,6 +58,7 @@
 #include <smbsrv/libmlsvc.h>
 #include "smbd.h"
 
+#define	SECSPERMIN			60
 #define	SMBD_ONLINE_WAIT_INTERVAL	10
 #define	SMBD_REFRESH_INTERVAL		10
 #define	SMB_DBDIR "/var/smb"

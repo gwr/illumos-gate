@@ -53,7 +53,7 @@ C99LMODE =      -Xc99=%all
 CPPFLAGS.first += -I../common
 
 CFLAGS +=	$(CCVERBOSE)
-CPPFLAGS += $(INCS) -D_REENTRANT -D_FAKE_KERNEL
+CPPFLAGS += $(INCS) -D_REENTRANT -D_KERNEL -D_FAKE_KERNEL
 CPPFLAGS += -D_FILE_OFFSET_BITS=64
 
 # Could make this $(NOT_RELEASE_BUILD) but as the main purpose of

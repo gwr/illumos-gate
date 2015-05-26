@@ -74,7 +74,7 @@
  *    owner: full access
  *    SYSTEM: full access
  */
-#ifdef	_KERNEL
+#if !defined(_FAKE_KERNEL)
 static const ace_t const default_dacl[DEFAULT_DACL_ACENUM] = {
 	{ (uid_t)-1, ACE_ALL_PERMS, 0, ACE_ACCESS_ALLOWED_ACE_TYPE },
 	{ IDMAP_WK_LOCAL_SYSTEM_GID, ACE_ALL_PERMS, ACE_IDENTIFIER_GROUP,
@@ -92,7 +92,7 @@ static const ace_t const default_dacl[DEFAULT_DACL_ACENUM] = {
 
 static idmap_stat smb_fsacl_getsids(smb_idmap_batch_t *, acl_t *);
 static acl_t *smb_fsacl_null_empty(boolean_t);
-#ifdef	_KERNEL
+#if !defined(_FAKE_KERNEL)
 static int smb_fsacl_inheritable(acl_t *, int);
 static void smb_ace_inherit(ace_t *, ace_t *, int, uid_t, gid_t);
 #endif	/* _KERNEL */
@@ -709,7 +709,7 @@ smb_fsacl_split(acl_t *zacl, acl_t **dacl, acl_t **sacl, int which_acl)
  * which the generic information has been mapped.
  */
 
-#ifdef	_KERNEL
+#if !defined(_FAKE_KERNEL)
 /*
  * smb_fsacl_inherit
  *
@@ -1014,7 +1014,7 @@ smb_fsacl_to_vsa(acl_t *acl_info, vsecattr_t *vsecattr, int *aclbsize)
 	return (error);
 }
 
-#ifdef	_KERNEL
+#if !defined(_FAKE_KERNEL)
 /*
  * smb_fsacl_inheritable
  *
@@ -1185,7 +1185,7 @@ smb_ace_len(smb_ace_t *ace)
 	    smb_sid_len(ace->se_sid));
 }
 
-#ifdef	_KERNEL
+#if !defined(_FAKE_KERNEL)
 static void
 smb_ace_inherit(ace_t *dir_zace, ace_t *zace, int is_dir, uid_t uid, gid_t gid)
 {
