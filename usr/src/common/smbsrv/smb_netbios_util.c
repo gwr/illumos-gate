@@ -19,13 +19,12 @@
  * CDDL HEADER END
  */
 /*
+ * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
  * Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
- *
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
-#if defined(_KERNEL) || defined(_FAKE_KERNEL)
+#ifdef _KERNEL
 #include <sys/types.h>
 #include <sys/sunddi.h>
 #else

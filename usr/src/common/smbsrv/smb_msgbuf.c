@@ -21,8 +21,6 @@
 /*
  * Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
- *
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -35,7 +33,7 @@
 #include <sys/types.h>
 #include <sys/varargs.h>
 #include <sys/byteorder.h>
-#if !defined(_KERNEL) && !defined(_FAKE_KERNEL)
+#ifndef _KERNEL
 #include <stdlib.h>
 #include <syslog.h>
 #include <string.h>
@@ -163,7 +161,7 @@ smb_msgbuf_term(smb_msgbuf_t *mb)
 	while (item) {
 		tmp = item;
 		item = item->next;
-#if !defined(_KERNEL) && !defined(_FAKE_KERNEL)
+#ifndef _KERNEL
 		free(tmp);
 #else
 		kmem_free(tmp, tmp->size);
@@ -647,7 +645,7 @@ smb_msgbuf_malloc(smb_msgbuf_t *mb, size_t size)
 
 	size += sizeof (smb_msgbuf_mlist_t);
 
-#if !defined(_KERNEL) && !defined(_FAKE_KERNEL)
+#ifndef _KERNEL
 	if ((item = malloc(size)) == NULL)
 		return (NULL);
 #else

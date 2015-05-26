@@ -21,8 +21,6 @@
 /*
  * Copyright 2010 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
- *
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -30,7 +28,7 @@
  * LanMan names to values.
  */
 
-#if defined(_KERNEL) || defined(_FAKE_KERNEL)
+#ifdef _KERNEL
 #include <sys/types.h>
 #include <sys/sunddi.h>
 #else

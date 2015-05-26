@@ -19,13 +19,12 @@
  * CDDL HEADER END
  */
 /*
+ * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
  * Copyright 2010 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
- *
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
-#if defined(_KERNEL) || defined(_FAKE_KERNEL)
+#ifdef _KERNEL
 #include <sys/types.h>
 #include <sys/sunddi.h>
 #else
@@ -443,7 +442,7 @@ smb_unc_init(const char *path, smb_unc_t *unc)
 
 	bzero(unc, sizeof (smb_unc_t));
 
-#if defined(_KERNEL) || defined(_FAKE_KERNEL)
+#ifdef _KERNEL
 	unc->unc_buf = smb_mem_strdup(path);
 #else
 	if ((unc->unc_buf = strdup(path)) == NULL)
@@ -494,7 +493,7 @@ smb_unc_free(smb_unc_t *unc)
 	if (unc == NULL)
 		return;
 
-#if defined(_KERNEL) || defined(_FAKE_KERNEL)
+#ifdef _KERNEL
 	smb_mem_free(unc->unc_buf);
 #else
 	free(unc->unc_buf);

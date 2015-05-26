@@ -21,15 +21,13 @@
 /*
  * Copyright 2010 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
- *
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
  * Legacy encode/decode routines for door clients and servers.
  */
 
-#if !defined(_KERNEL) && !defined(_FAKE_KERNEL)
+#ifndef _KERNEL
 #include <errno.h>
 #include <string.h>
 #include <strings.h>
@@ -154,7 +152,7 @@ smb_dr_get_string(smb_dr_ctx_t *ctx)
 					*(buf + len) = '\0';
 				}
 			} else {
-#if !defined(_KERNEL) && !defined(_FAKE_KERNEL)
+#ifndef _KERNEL
 				ctx->status = errno;
 #else
 				ctx->status = ENOMEM;

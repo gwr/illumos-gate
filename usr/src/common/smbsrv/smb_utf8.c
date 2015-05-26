@@ -21,8 +21,6 @@
 /*
  * Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
- *
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -50,7 +48,7 @@
  * October 1996
  */
 
-#if defined(_KERNEL) || defined(_FAKE_KERNEL)
+#ifdef _KERNEL
 #include <sys/types.h>
 #include <sys/sunddi.h>
 #else
@@ -212,7 +210,7 @@ smb_wcstombs(char *mbstring, const smb_wchar_t *wcstring, size_t nbytes)
 {
 	char *start = mbstring;
 	const smb_wchar_t *wcp = wcstring;
-	smb_wchar_t wide_char = 0;
+	smb_wchar_t wide_char;
 	char buf[4];
 	size_t len;
 

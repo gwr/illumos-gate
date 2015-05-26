@@ -21,15 +21,13 @@
 /*
  * Copyright 2010 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
- *
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
  * NT Token library (kernel/user)
  */
 
-#if defined(_KERNEL) || defined(_FAKE_KERNEL)
+#ifdef _KERNEL
 #include <sys/types.h>
 #include <sys/cmn_err.h>
 #include <sys/kmem.h>
@@ -95,7 +93,7 @@ smb_token_valid(smb_token_t *token)
 	return (B_TRUE);
 }
 
-#if !defined(_KERNEL) && !defined(_FAKE_KERNEL)
+#ifndef _KERNEL
 /*
  * Encode: structure -> flat buffer (buffer size)
  * Pre-condition: obj is non-null.
