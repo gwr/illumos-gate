@@ -22,8 +22,6 @@
 /*
  * Copyright 2010 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
- *
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #ifndef _SYS_SID_H
@@ -31,7 +29,7 @@
 
 #include <sys/types.h>
 #include <sys/avl.h>
-#if defined(_KERNEL) || defined(_FAKE_KERNEL)
+#ifdef _KERNEL
 #include <sys/zone.h>
 #endif
 
@@ -55,7 +53,7 @@ extern "C" {
 #define	SIDSYS_SID2ID	0
 #define	SIDSYS_ID2SID	1
 
-#if defined(_KERNEL) || defined(_FAKE_KERNEL)
+#ifdef _KERNEL
 #define	KSIDLIST_MEM(n)	(sizeof (ksidlist_t) + ((n) - 1) * sizeof (ksid_t))
 
 /* Domains are stored in AVL trees so we can share them among SIDs */
@@ -124,7 +122,7 @@ ksiddomain_t *ksid_lookupdomain(const char *);
 
 ksidlist_t *kcrsid_gidstosids(zone_t *, int, gid_t *);
 
-#else /* _KERNEL */
+#else
 
 int allocids(int, int, uid_t *, int, gid_t *);
 int __idmap_reg(int);

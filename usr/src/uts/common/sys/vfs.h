@@ -20,7 +20,6 @@
  */
 /*
  * Copyright (c) 1988, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*	Copyright (c) 1983, 1984, 1985, 1986, 1987, 1988, 1989 AT&T	*/
@@ -429,7 +428,7 @@ enum {
  */
 #define	VFSSP_VERBATIM	0x1	/* do not prefix the supplied path */
 
-#if defined(_KERNEL) || defined(_FAKE_KERNEL)
+#if defined(_KERNEL)
 
 /*
  * Private vfs data, NOT to be used by a file system implementation.

@@ -27,13 +27,13 @@
  * Copyright 2004 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  *
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2012 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #ifndef _SYS_CMN_ERR_H
 #define	_SYS_CMN_ERR_H
 
-#if !defined(_ASM) && (defined(_KERNEL) || defined(_FAKE_KERNEL))
+#if defined(_KERNEL) && !defined(_ASM)
 #include <sys/va_list.h>
 #endif
 
@@ -51,7 +51,9 @@ extern "C" {
 #define	CE_PANIC	3	/* panic		*/
 #define	CE_IGNORE	4	/* print nothing	*/
 
-#if !defined(_ASM) && (defined(_KERNEL) || defined(_FAKE_KERNEL))
+#ifndef _ASM
+
+#ifdef _KERNEL
 
 /*PRINTFLIKE2*/
 extern void cmn_err(int, const char *, ...)
@@ -109,7 +111,8 @@ extern void panic(const char *, ...)
 extern void vpanic(const char *, __va_list)
     __KVPRINTFLIKE(1) __NORETURN;
 
-#endif /* !_ASM && _KERNEL ... */
+#endif /* _KERNEL */
+#endif /* !_ASM */
 
 #ifdef	__cplusplus
 }
