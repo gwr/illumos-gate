@@ -610,7 +610,7 @@ smb_server_start(smb_ioc_start_t *ioc)
 			break;
 		}
 
-#ifdef	_KERNEL
+#if !defined(_FAKE_KERNEL)
 		ASSERT(sv->sv_lmshrd == NULL);
 		sv->sv_lmshrd = smb_kshare_door_init(ioc->lmshrd);
 		if (sv->sv_lmshrd == NULL)
@@ -997,7 +997,7 @@ smb_server_sharevp(smb_server_t *sv, const char *shr_path, vnode_t **vp)
 	return (0);
 }
 
-#ifdef	_KERNEL
+#if !defined(_FAKE_KERNEL)
 /*
  * This is a special interface that will be utilized by ZFS to cause a share to
  * be added/removed.
@@ -1415,7 +1415,7 @@ smb_server_shutdown(smb_server_t *sv)
 
 	smb_opipe_door_close(sv);
 	smb_kdoor_close(sv);
-#ifdef	_KERNEL
+#if !defined(_FAKE_KERNEL)
 	smb_kshare_door_fini(sv->sv_lmshrd);
 #endif	/* _KERNEL */
 	sv->sv_lmshrd = NULL;

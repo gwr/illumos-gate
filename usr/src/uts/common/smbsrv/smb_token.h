@@ -128,7 +128,7 @@ typedef struct smb_logon {
 int smb_logon_xdr();
 int smb_token_xdr();
 
-#if defined(_KERNEL) || defined(_FAKE_KERNEL)
+#if defined(_KERNEL)
 void smb_token_free(smb_token_t *);
 #else /* _KERNEL */
 smb_token_t *smb_logon(smb_logon_t *);

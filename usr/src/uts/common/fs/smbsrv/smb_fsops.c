@@ -40,7 +40,7 @@ static int smb_fsop_create_stream(smb_request_t *, cred_t *, smb_node_t *,
 static int smb_fsop_create_file(smb_request_t *, cred_t *, smb_node_t *,
     char *, int, smb_attr_t *, smb_node_t **);
 
-#ifdef	_KERNEL
+#if !defined(_FAKE_KERNEL)
 static int smb_fsop_create_with_sd(smb_request_t *, cred_t *, smb_node_t *,
     char *, smb_attr_t *, smb_node_t **, smb_fssd_t *);
 static int smb_fsop_sdinherit(smb_request_t *, smb_node_t *, smb_fssd_t *);
@@ -117,7 +117,7 @@ smb_fsop_close(smb_node_t *node, int mode, cred_t *cred)
 	smb_vop_close(node->vp, mode, cred);
 }
 
-#ifdef	_KERNEL
+#if !defined(_FAKE_KERNEL)
 static int
 smb_fsop_create_with_sd(smb_request_t *sr, cred_t *cr,
     smb_node_t *dnode, char *name,
@@ -447,7 +447,7 @@ smb_fsop_create_file(smb_request_t *sr, cred_t *cr,
 	vnode_t		*vp;
 	int		rc;
 
-#ifdef	_KERNEL
+#if !defined(_FAKE_KERNEL)
 	smb_fssd_t	fs_sd;
 	uint32_t	secinfo;
 	uint32_t	status;
@@ -538,7 +538,7 @@ smb_fsop_mkdir(
 	int flags = 0;
 	int rc;
 
-#ifdef	_KERNEL
+#if !defined(_FAKE_KERNEL)
 	smb_fssd_t fs_sd;
 	uint32_t secinfo;
 	uint32_t status;
@@ -592,7 +592,7 @@ smb_fsop_mkdir(
 	if (SMB_TREE_IS_CASEINSENSITIVE(sr))
 		flags = SMB_IGNORE_CASE;
 
-#ifdef	_KERNEL
+#if !defined(_FAKE_KERNEL)
 	if (op->sd) {
 		/*
 		 * SD sent by client in Windows format. Needs to be
@@ -2362,7 +2362,7 @@ smb_fsop_sdwrite(smb_request_t *sr, cred_t *cr, smb_node_t *snode,
 	return (error);
 }
 
-#ifdef	_KERNEL
+#if !defined(_FAKE_KERNEL)
 /*
  * smb_fsop_sdinherit
  *

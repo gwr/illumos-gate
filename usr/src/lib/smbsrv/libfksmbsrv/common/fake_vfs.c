@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <sys/types.h>
@@ -24,14 +24,16 @@
 #include <sys/pathname.h>
 #include <sys/vfs.h>
 #include <sys/vnode.h>
-#include <sys/stat.h>
-#include <sys/mode.h>
-#include <sys/conf.h>
-#include <sys/sysmacros.h>
-#include <sys/cmn_err.h>
-#include <sys/systm.h>
 #include <sys/kmem.h>
 #include <sys/debug.h>
+
+/*
+ * Mixing the kernel and user-level APIs here gets tricky.
+ */
+#undef	_KERNEL		/* Consume the user-level API here. */
+
+#include <sys/stat.h>
+#include <sys/mode.h>
 #include <sys/acl.h>
 #include <sys/nbmlock.h>
 #include <sys/fcntl.h>
@@ -159,7 +161,7 @@ fsop_statfs(vfs_t *vfsp, statvfs64_t *sp)
 	if ((vp = rootdir) == NULL)
 		return (ENXIO);
 
-	rc = fstatvfs(vp->v_fd, (statvfs_t *)sp);
+	rc = fstatvfs64(vp->v_fd, sp);
 	if (rc == -1) {
 		rc = errno;
 	}

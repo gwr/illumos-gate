@@ -29,7 +29,7 @@
 extern "C" {
 #endif
 
-#ifdef _KERNEL
+#if defined(_KERNEL) && !defined(_FAKE_KERNEL)
 #include <sys/vnode.h>
 #include <sys/vfs.h>
 #include <nfs/nfs.h>
@@ -124,7 +124,7 @@ typedef struct {
 	data_type_t	x_data_type;
 } xattr_entry_t;
 
-#ifdef _KERNEL
+#if defined(_KERNEL) && !defined(_FAKE_KERNEL)
 #define	XATTR_MAXFIDSZ	NFS_FHMAXDATA
 
 typedef struct {
@@ -138,7 +138,7 @@ typedef struct {
 
 int xattr_dir_vget(vfs_t *, vnode_t **, fid_t *);
 int xattr_sysattr_casechk(char *name);
-#endif
+#endif	/* _KERNEL */
 
 int attr_count(void);
 const char *attr_to_name(f_attr_t);

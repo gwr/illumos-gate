@@ -29,6 +29,7 @@
 #include <syslog.h>
 #include <libshare.h>
 #include <unistd.h>
+#include <note.h>
 
 #include <smbsrv/libsmb.h>
 #include <smbsrv/libsmbns.h>

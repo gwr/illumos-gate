@@ -19,6 +19,8 @@
 #include <sys/proc.h>
 #include <sys/zone.h>
 
+#undef	_KERNEL		/* Consume the user-level API here. */
+
 #include <sys/poll.h>
 
 #include <time.h>

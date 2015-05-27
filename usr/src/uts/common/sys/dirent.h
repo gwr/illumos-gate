@@ -93,7 +93,7 @@ typedef struct dirent64 {
  */
 #define	MAXGETDENTS_SIZE	(64 * 1024)
 
-#if !defined(_KERNEL)
+#if !defined(_KERNEL) || defined(_FAKE_KERNEL)
 
 /*
  * large file compilation environment setup

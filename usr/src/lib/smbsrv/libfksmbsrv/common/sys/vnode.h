@@ -51,10 +51,10 @@
 #include <sys/kmem.h>
 #include <sys/list.h>
 #include <sys/avl.h>
-#ifdef	_KERNEL
+#if defined(_KERNEL) && !defined(_FAKE_KERNEL)
 #include <sys/rwstlock.h>
 #include <sys/buf.h>
-#endif	/* _KERNEL */
+#endif	/* _KERNEL && !_FAKE_KERNEL */
 
 #ifdef	__cplusplus
 extern "C" {
@@ -235,7 +235,6 @@ typedef struct vnode {
 	struct stdata	*v_stream;	/* associated stream */
 	enum vtype	v_type;		/* vnode type */
 	dev_t		v_rdev;		/* device (VCHR, VBLK) */
-	struct vnode	*v_xattrdir;	/* unnamed extended attr dir (GFS) */
 
 	/* PRIVATE FIELDS BELOW - DO NOT USE */
 
@@ -243,6 +242,7 @@ typedef struct vnode {
 	char		*v_path;	/* cached path */
 	uint_t		v_rdcnt;	/* open for read count  (VREG only) */
 	uint_t		v_wrcnt;	/* open for write count (VREG only) */
+	struct vnode	*v_xattrdir;	/* unnamed extended attr dir (GFS) */
 
 	/* Private to the fake vnode impl. */
 
@@ -277,7 +277,7 @@ typedef struct vnode {
 
 #define	IS_SWAPVP(vp)	(((vp)->v_flag & (VISSWAP | VSWAPLIKE)) != 0)
 
-#if defined(_KERNEL)
+#if defined(_KERNEL) && !defined(_FAKE_KERNEL)
 typedef struct vn_vfslocks_entry {
 	rwstlock_t ve_lock;
 	void *ve_vpvfs;
@@ -286,7 +286,7 @@ typedef struct vn_vfslocks_entry {
 	char pad[64 - sizeof (rwstlock_t) - 2 * sizeof (void *) - \
 	    sizeof (uint32_t)];
 } vn_vfslocks_entry_t;
-#endif	/* _KERNEL */
+#endif	/* _KERNEL && !_FAKE_KERNEL */
 
 /*
  * The following two flags are used to lock the v_vfsmountedhere field
@@ -806,7 +806,7 @@ struct as;
 struct pollhead;
 struct taskq;
 
-#if defined(_KERNEL) || defined(_FAKE_KERNEL)
+#ifdef	_KERNEL
 
 /*
  * VNODE_OPS defines all the vnode operations.  It is used to define
@@ -1197,7 +1197,7 @@ extern int	fop_retzcbuf(vnode_t *, xuio_t *, cred_t *, caller_context_t *);
 /*
  * Public vnode manipulation functions.
  */
-#if defined(_KERNEL) || defined(_FAKE_KERNEL)
+#ifdef	_KERNEL
 
 vnode_t *vn_alloc(int);
 void	vn_reinit(vnode_t *);
@@ -1271,7 +1271,7 @@ int	vn_vfswlock_held(struct vnode *vp);
 vnode_t *specvp(struct vnode *vp, dev_t dev, vtype_t type, struct cred *cr);
 vnode_t *makespecvp(dev_t dev, vtype_t type);
 
-#if defined(_KERNEL)
+#if defined(_KERNEL) && !defined(_FAKE_KERNEL)
 vn_vfslocks_entry_t *vn_vfslocks_getlock(void *);
 void	vn_vfslocks_rele(vn_vfslocks_entry_t *);
 #endif

@@ -53,7 +53,7 @@
 extern "C" {
 #endif
 
-#ifdef	_KERNEL
+#if defined(_KERNEL) && !defined(_FAKE_KERNEL)
 
 /*
  * cb_ops:	Leaf device drivers or bus nexus drivers supporting

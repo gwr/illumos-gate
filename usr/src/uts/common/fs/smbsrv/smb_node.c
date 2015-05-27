@@ -1284,7 +1284,7 @@ smb_node_destroy_audit_buf(smb_node_t *node)
 static void
 smb_node_audit(smb_node_t *node)
 {
-#ifdef	_KERNEL
+#if !defined(_FAKE_KERNEL)
 	smb_audit_buf_node_t	*abn;
 	smb_audit_record_node_t	*anr;
 
@@ -1726,9 +1726,9 @@ smb_node_getattr(smb_request_t *sr, smb_node_t *node, cred_t *cr,
 }
 
 
-#ifndef	_KERNEL
-extern int reparse_vnode_parse(vnode_t *vp, nvlist_t *nvl); /* XXX */
-#endif	/* _KERNEL */
+#ifdef _FAKE_KERNEL
+extern int reparse_vnode_parse(vnode_t *vp, nvlist_t *nvl);
+#endif
 
 /*
  * Check to see if the node represents a reparse point.

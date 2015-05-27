@@ -157,7 +157,7 @@ typedef struct statvfs64_32 {
 #define	ST_NOSUID	0x02	/* does not support setuid/setgid semantics */
 #define	ST_NOTRUNC	0x04	/* does not truncate long file names */
 
-#if !defined(_KERNEL)
+#if !defined(_KERNEL) || defined(_FAKE_KERNEL)
 /*
  * large file compilation environment setup
  */

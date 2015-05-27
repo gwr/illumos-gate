@@ -63,7 +63,7 @@ extern "C" {
  * stat structure, used by stat(2) and fstat(2)
  */
 
-#if defined(_KERNEL)
+#if defined(_KERNEL) && !defined(_FAKE_KERNEL)
 
 	/* Expanded stat structure */
 
@@ -479,7 +479,7 @@ struct stat64_32 {
 #define	UTIME_OMIT	-2L
 #endif	/* defined(__EXTENSIONS__) ... */
 
-#if !defined(_KERNEL) || defined(_BOOT)
+#if !defined(_KERNEL) || defined(_BOOT) || defined(_FAKE_KERNEL)
 
 #if !defined(__XOPEN_OR_POSIX) || (_POSIX_C_SOURCE > 2) || \
 	defined(_XPG4_2) || defined(__EXTENSIONS__)

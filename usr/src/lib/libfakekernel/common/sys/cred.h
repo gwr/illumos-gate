@@ -49,7 +49,7 @@ extern "C" {
 
 typedef struct cred cred_t;
 
-#if defined(_KERNEL) || defined(_FAKE_KERNEL)
+#if defined(_KERNEL)
 
 cred_t *_curcred(void);
 #define	CRED()		(_curcred())	/* current cred_t pointer */

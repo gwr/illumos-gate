@@ -43,6 +43,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <note.h>
 
 #include <smbsrv/smbinfo.h>
 #include <smbsrv/smb_ioctl.h>

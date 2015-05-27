@@ -53,7 +53,6 @@
 #include <sys/sysmacros.h>
 #include <sys/debug.h>
 #include <sys/dirent.h>
-#include <c2/audit.h>
 #include <sys/zone.h>
 #include <sys/dnlc.h>
 #include <sys/fs/snode.h>

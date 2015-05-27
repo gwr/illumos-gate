@@ -16,7 +16,7 @@
 #ifndef _SMB_SIGNING_H_
 #define	_SMB_SIGNING_H_
 
-#ifdef	_KERNEL
+#if defined(_KERNEL) && !defined(_FAKE_KERNEL)
 #include <sys/crypto/api.h>
 #else
 #include <security/cryptoki.h>
@@ -25,7 +25,7 @@
 
 #define	MD5_DIGEST_LENGTH	16	/* MD5 digest length in bytes */
 
-#ifdef	_KERNEL
+#if defined(_KERNEL) && !defined(_FAKE_KERNEL)
 /* KCF variant */
 typedef crypto_mechanism_t	smb_sign_mech_t;
 typedef crypto_context_t	smb_sign_ctx_t;
