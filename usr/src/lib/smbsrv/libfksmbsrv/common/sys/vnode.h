@@ -235,7 +235,6 @@ typedef struct vnode {
 	struct stdata	*v_stream;	/* associated stream */
 	enum vtype	v_type;		/* vnode type */
 	dev_t		v_rdev;		/* device (VCHR, VBLK) */
-	struct vnode	*v_xattrdir;	/* unnamed extended attr dir (GFS) */
 
 	/* PRIVATE FIELDS BELOW - DO NOT USE */
 
@@ -243,6 +242,7 @@ typedef struct vnode {
 	char		*v_path;	/* cached path */
 	uint_t		v_rdcnt;	/* open for read count  (VREG only) */
 	uint_t		v_wrcnt;	/* open for write count (VREG only) */
+	struct vnode	*v_xattrdir;	/* unnamed extended attr dir (GFS) */
 
 	/* Private to the fake vnode impl. */
 

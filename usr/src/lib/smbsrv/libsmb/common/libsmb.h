@@ -35,9 +35,7 @@ extern "C" {
 #include <sys/list.h>
 #include <sys/avl.h>
 #include <arpa/inet.h>
-#include <net/if.h>
-#include <inet/tcp.h>
-#include <uuid/uuid.h>
+#include <net/if.h>	/* LIFNAMSIZ */
 #include <netdb.h>
 #include <stdlib.h>
 #include <libscf.h>

@@ -195,6 +195,7 @@ void strident_canon(char *, size_t);
 int getsubopt(char **optionsp, char * const *tokens, char **valuep);
 char *append_subopt(const char *, size_t, char *, const char *);
 #ifndef	_FAKE_KERNEL
+/* conflicts with libc definition */
 int ffs(uintmax_t);
 #endif
 int copyin(const void *, void *, size_t);
@@ -250,6 +251,7 @@ void suword64_noerr(void *, uint64_t);
 #endif
 
 #if !defined(_BOOT) && !defined(_FAKE_KERNEL)
+/* conflicts with libc definition */
 int setjmp(label_t *) __RETURNS_TWICE;
 extern void longjmp(label_t *)
 	__NORETURN;
@@ -433,11 +435,12 @@ char *strncat(char *, const char *, size_t);
 char *strcpy(char *, const char *);
 char *strncpy(char *, const char *, size_t);
 
-extern size_t strlcpy(char *, const char *, size_t);
-extern size_t strspn(const char *, const char *);
-extern size_t strcspn(const char *, const char *);
-extern char *strdup(const char *);
-extern void strfree(char *);
+/* These 5 are also in sunddi.h */
+size_t strlcpy(char *, const char *, size_t);
+size_t strspn(const char *, const char *);
+size_t strcspn(const char *, const char *);
+char *strdup(const char *);
+void strfree(char *);
 
 /* Need to be consistent with <string.h> C++ definitions */
 #if __cplusplus >= 199711L

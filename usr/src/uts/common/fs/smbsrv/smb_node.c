@@ -1727,7 +1727,7 @@ smb_node_getattr(smb_request_t *sr, smb_node_t *node, cred_t *cr,
 
 
 #ifndef	_KERNEL
-extern int reparse_vnode_parse(vnode_t *vp, nvlist_t *nvl); /* XXX */
+extern int reparse_vnode_parse(vnode_t *vp, nvlist_t *nvl);
 #endif	/* _KERNEL */
 
 /*

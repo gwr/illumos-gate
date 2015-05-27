@@ -159,7 +159,7 @@ fsop_statfs(vfs_t *vfsp, statvfs64_t *sp)
 	if ((vp = rootdir) == NULL)
 		return (ENXIO);
 
-	rc = fstatvfs(vp->v_fd, (statvfs_t *)sp);
+	rc = fstatvfs64(vp->v_fd, sp);
 	if (rc == -1) {
 		rc = errno;
 	}

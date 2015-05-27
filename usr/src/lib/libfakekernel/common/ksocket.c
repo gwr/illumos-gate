@@ -25,20 +25,16 @@
  */
 
 #include <sys/types.h>
-#include <sys/time.h>
 #include <sys/systm.h>
+#include <sys/cred.h>
 #include <sys/errno.h>
 #include <sys/socket.h>
 #include <sys/ksocket.h>
 #include <sys/debug.h>
-#include <sys/cmn_err.h>
 #include <sys/kmem.h>
 #include <unistd.h>
-
 #include <errno.h>
 #include <umem.h>
-
-static umem_cache_t *ksocket_cache = NULL;
 
 #define	_KSOCKET_MAGIC 0xabcdef09
 
@@ -51,7 +47,7 @@ static umem_cache_t *ksocket_cache = NULL;
 
 /*
  * NB: you can't cast this into a sonode like you can with a normal
- * ksocket_t, but no correct code should ever do that anywway.
+ * ksocket_t, but no correct code should ever do that anyway.
  * The ksocket_t type is opaque to prevent exactly that.
  */
 struct __ksocket {
@@ -62,6 +58,8 @@ struct __ksocket {
 	kmutex_t kso_lock;
 	kcondvar_t kso_closing_cv;
 };
+
+static umem_cache_t *ksocket_cache = NULL;
 
 /*ARGSUSED*/
 static int
@@ -523,8 +521,7 @@ ksocket_rele(ksocket_t ks)
 	/*
 	 * When so_count equals 1 means no thread working on this ksocket
 	 */
-	if (ks->kso_count < 2)
-		cmn_err(CE_PANIC, "ksocket_rele: sonode ref count 0 or 1");
+	VERIFY3U(ks->kso_count, >, 1);
 
 	if (!mutex_owned(&ks->kso_lock)) {
 		mutex_enter(&ks->kso_lock);

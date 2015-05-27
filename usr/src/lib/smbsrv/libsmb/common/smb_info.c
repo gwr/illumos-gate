@@ -581,14 +581,14 @@ smb_get_nameservers(smb_inaddr_t *ips, int sz)
 		if (i >= sz)
 			break;
 		ips[i].a_family = AF_INET;
-		bcopy(&set[i].sin.sin_addr, &ips[i].a_ipv4, INADDRSZ);
+		bcopy(&set[i].sin.sin_addr, &ips[i].a_ipv4, NS_INADDRSZ);
 		if (inet_ntop(AF_INET, &ips[i].a_ipv4, ipstr,
 		    INET_ADDRSTRLEN)) {
 			syslog(LOG_DEBUG, "Found %s name server\n", ipstr);
 			continue;
 		}
 		ips[i].a_family = AF_INET6;
-		bcopy(&set[i].sin.sin_addr, &ips[i].a_ipv6, IPV6_ADDR_LEN);
+		bcopy(&set[i].sin.sin_addr, &ips[i].a_ipv6, NS_IN6ADDRSZ);
 		if (inet_ntop(AF_INET6, &ips[i].a_ipv6, ipstr,
 		    INET6_ADDRSTRLEN)) {
 			syslog(LOG_DEBUG, "Found %s name server\n", ipstr);

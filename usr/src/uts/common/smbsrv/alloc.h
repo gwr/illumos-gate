@@ -54,7 +54,6 @@ extern "C" {
  */
 
 #include <sys/types.h>
-#include <sys/sysmacros.h>
 
 #if !defined(_KERNEL) && !defined(_FAKE_KERNEL)
 #include <stdlib.h>

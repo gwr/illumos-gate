@@ -29,6 +29,7 @@
 #include <string.h>
 #else
 #include <sys/types.h>
+#include <sys/systm.h>
 #include <sys/sunddi.h>
 #endif
 #include <smbsrv/string.h>
