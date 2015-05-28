@@ -7632,9 +7632,11 @@ l2arc_spa_rebuild_start(spa_t *spa)
 		ASSERT(dev != NULL);
 		if (dev->l2ad_rebuild && !dev->l2ad_rebuild_cancel) {
 			VERIFY3U(dev->l2ad_rebuild_did, ==, 0);
+#ifdef	_KERNEL
 			dev->l2ad_rebuild_did = thread_create(NULL, 0,
 			    l2arc_dev_rebuild_start, dev, 0, &p0, TS_RUN,
 			    minclsyspri)->t_did;
+#endif
 		}
 	}
 	mutex_exit(&l2arc_dev_mtx);
