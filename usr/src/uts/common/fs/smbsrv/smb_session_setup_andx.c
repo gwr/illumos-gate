@@ -184,12 +184,9 @@ part2:
 
 done:
 	if (rc != 0) {
-		char ipaddr_buf[INET6_ADDRSTRLEN];
-		(void) smb_inet_ntop(&sr->session->ipaddr, ipaddr_buf,
-		    SMB_IPSTRLEN(sr->session->ipaddr.a_family));
 		cmn_err(CE_NOTE,
 		    "SmbSessonSetupX: client %s invalid request",
-		    ipaddr_buf);
+		    sr->session->ip_addr_str);
 	}
 
 	DTRACE_SMB_2(op__SessionSetupX__start, smb_request_t *, sr,

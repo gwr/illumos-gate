@@ -56,7 +56,6 @@ static int smb_session_xprt_puthdr(smb_session_t *,
 static smb_tree_t *smb_session_get_tree(smb_session_t *, smb_tree_t *);
 static void smb_session_logoff(smb_session_t *);
 static void smb_request_init_command_mbuf(smb_request_t *sr);
-void dump_smb_inaddr(smb_inaddr_t *ipaddr);
 static void smb_session_genkey(smb_session_t *);
 
 void
@@ -331,8 +330,8 @@ smb_session_xprt_gethdr(smb_session_t *session, smb_xprt_t *ret_hdr)
 		ret_hdr->xh_type = buf[0];
 
 		if (ret_hdr->xh_type != 0) {
-			cmn_err(CE_WARN, "invalid type (%u)", ret_hdr->xh_type);
-			dump_smb_inaddr(&session->ipaddr);
+			cmn_err(CE_WARN, "invalid NBT type (%u) from %s",
+			    ret_hdr->xh_type, session->ip_addr_str);
 			return (EPROTO);
 		}
 
@@ -343,7 +342,6 @@ smb_session_xprt_gethdr(smb_session_t *session, smb_xprt_t *ret_hdr)
 
 	default:
 		cmn_err(CE_WARN, "invalid port %u", session->s_local_port);
-		dump_smb_inaddr(&session->ipaddr);
 		return (EPROTO);
 	}
 
@@ -390,7 +388,6 @@ smb_session_xprt_puthdr(smb_session_t *session,
 
 	default:
 		cmn_err(CE_WARN, "invalid port %u", session->s_local_port);
-		dump_smb_inaddr(&session->ipaddr);
 		return (-1);
 	}
 
@@ -1311,12 +1308,6 @@ smb_session_logoff(smb_session_t *session)
 void
 smb_session_getclient(smb_session_t *sn, char *buf, size_t buflen)
 {
-	char		ipbuf[INET6_ADDRSTRLEN];
-	smb_inaddr_t	*ipaddr;
-
-	ASSERT(sn);
-	ASSERT(buf);
-	ASSERT(buflen);
 
 	*buf = '\0';
 
@@ -1325,9 +1316,7 @@ smb_session_getclient(smb_session_t *sn, char *buf, size_t buflen)
 		return;
 	}
 
-	ipaddr = &sn->ipaddr;
-	if (smb_inet_ntop(ipaddr, ipbuf, SMB_IPSTRLEN(ipaddr->a_family)))
-		(void) strlcpy(buf, ipbuf, buflen);
+	(void) strlcpy(buf, sn->ip_addr_str, buflen);
 }
 
 /*
@@ -1343,19 +1332,13 @@ smb_session_getclient(smb_session_t *sn, char *buf, size_t buflen)
 boolean_t
 smb_session_isclient(smb_session_t *sn, const char *client)
 {
-	char		buf[INET6_ADDRSTRLEN];
-	smb_inaddr_t	*ipaddr;
 
 	client += strspn(client, "\\");
 
 	if (smb_strcasecmp(client, sn->workstation, 0) == 0)
 		return (B_TRUE);
 
-	ipaddr = &sn->ipaddr;
-	if (smb_inet_ntop(ipaddr, buf, SMB_IPSTRLEN(ipaddr->a_family)) == NULL)
-		return (B_FALSE);
-
-	if (smb_strcasecmp(client, buf, 0) == 0)
+	if (smb_strcasecmp(client, sn->ip_addr_str, 0) == 0)
 		return (B_TRUE);
 
 	return (B_FALSE);
@@ -1447,17 +1430,6 @@ smb_request_free(smb_request_t *sr)
 	cv_destroy(&sr->sr_ncr.nc_cv);
 	mutex_destroy(&sr->sr_mutex);
 	kmem_cache_free(smb_cache_request, sr);
-}
-
-void
-dump_smb_inaddr(smb_inaddr_t *ipaddr)
-{
-	char ipstr[INET6_ADDRSTRLEN];
-
-	if (smb_inet_ntop(ipaddr, ipstr, SMB_IPSTRLEN(ipaddr->a_family)))
-		cmn_err(CE_WARN, "error ipstr=%s", ipstr);
-	else
-		cmn_err(CE_WARN, "error converting ip address");
 }
 
 boolean_t
