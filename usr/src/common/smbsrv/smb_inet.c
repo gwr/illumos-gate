@@ -95,5 +95,21 @@ smb_inet_iszero(smb_inaddr_t *ipaddr)
 const char *
 smb_inet_ntop(smb_inaddr_t *addr, char *buf, int size)
 {
+#ifdef _KERNEL
+	/*
+	 * Until uts/common/inet/ip/inet_ntop.c is fixed so it
+	 * no longer uses leading zeros printing IPv4 addresses,
+	 * we need to handle IPv4 ourselves.  If we leave the
+	 * leading zeros, Windows clients get errors trying to
+	 * resolve those address strings to names.
+	 */
+	if (addr->a_family == AF_INET) {
+		uint8_t *p = (void *) &addr->a_ipv4;
+		(void) snprintf(buf, size, "%d.%d.%d.%d",
+		    p[0], p[1], p[2], p[3]);
+		return (buf);
+	}
+#endif
+
 	return ((char *)inet_ntop(addr->a_family, (char *)addr, buf, size));
 }
