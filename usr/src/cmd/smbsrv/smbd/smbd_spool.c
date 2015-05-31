@@ -29,6 +29,7 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/atomic.h>
 #include <strings.h>
 #include <syslog.h>
 #include <signal.h>
