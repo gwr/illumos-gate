@@ -33,18 +33,18 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 
-#if !defined(_KERNEL) && !defined(_FAKE_KERNEL)
+#if !defined(_KERNEL)
 #include <errno.h>
 #include <string.h>
 #include <strings.h>
 #include <arpa/inet.h>
-#else	/* !_KERNEL && !_FAKE_KERNEL */
+#else	/* !_KERNEL */
 #include <sys/errno.h>
 #include <sys/sunddi.h>
 /* Don't want the rest of what's in inet/ip.h */
 extern char	*inet_ntop(int, const void *, char *, int);
 extern int	inet_pton(int, char *, void *);
-#endif	/* !_KERNEL && !_FAKE_KERNEL */
+#endif	/* !_KERNEL */
 
 #include <smbsrv/smb_inet.h>
 
@@ -101,5 +101,11 @@ smb_inet_iszero(smb_inaddr_t *ipaddr)
 const char *
 smb_inet_ntop(smb_inaddr_t *addr, char *buf, int size)
 {
-	return ((char *)inet_ntop(addr->a_family, (char *)addr, buf, size));
+	/* Lint avoidance. */
+#if !defined(_KERNEL)
+	size_t sz = (size_t)size;
+#else
+	int sz = size;
+#endif
+	return ((char *)inet_ntop(addr->a_family, addr, buf, sz));
 }
