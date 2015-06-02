@@ -150,7 +150,7 @@ smbd_opipe_exec(uint32_t fid)
 
 	*arg = fid;
 
-	(void)ndr_pipe_transact(arg);
+	(void) ndr_pipe_transact(arg);
 
 	return (0);
 }

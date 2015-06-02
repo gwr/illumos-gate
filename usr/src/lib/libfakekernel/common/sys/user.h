@@ -39,4 +39,3 @@ typedef struct user user_t;
 #endif
 
 #endif	/* _SYS_USER_H */
-
