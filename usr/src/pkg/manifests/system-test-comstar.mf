@@ -26,6 +26,13 @@ dir path=opt/comstar-tests/include
 dir path=opt/comstar-tests/lib
 dir path=opt/comstar-tests/tests
 dir path=opt/comstar-tests/tests/configure
+dir path=opt/comstar-tests/tests/fc
+dir path=opt/comstar-tests/tests/fc/fault
+dir path=opt/comstar-tests/tests/fc/fault/forcelip
+dir path=opt/comstar-tests/tests/fc/fault/stmfoffline
+dir path=opt/comstar-tests/tests/fc/fault/tgtcablepull
+dir path=opt/comstar-tests/tests/fc/fcinfo
+dir path=opt/comstar-tests/tests/fc/visible
 dir path=opt/comstar-tests/tests/framework
 dir path=opt/comstar-tests/tests/framework/smf
 dir path=opt/comstar-tests/tests/iscsi
@@ -128,12 +135,14 @@ dir path=opt/comstar-tests/tests/stmfadm/list
 dir path=opt/comstar-tests/tests/stmfadm/offline
 dir path=opt/comstar-tests/tests/stmfadm/online
 dir path=opt/comstar-tests/tests/stmfadm/remove
+file path=opt/comstar-tests/README.FC mode=0444
 file path=opt/comstar-tests/README.ISCSI mode=0444
 file path=opt/comstar-tests/bin/br_port_offline mode=0555
 file path=opt/comstar-tests/bin/br_port_online mode=0555
 file path=opt/comstar-tests/bin/br_switch_reset mode=0555
 file path=opt/comstar-tests/bin/cn_port_offline mode=0555
 file path=opt/comstar-tests/bin/cn_port_online mode=0555
+file path=opt/comstar-tests/bin/fctest mode=0555
 file path=opt/comstar-tests/bin/iscsitest mode=0555
 file path=opt/comstar-tests/bin/link_reset_port mode=0555
 file path=opt/comstar-tests/bin/modify_chap_secret_ksh mode=0555
@@ -190,7 +199,52 @@ file path=opt/comstar-tests/lib/stmfadm_info mode=0444
 file path=opt/comstar-tests/lib/stmfadm_verify mode=0444
 file path=opt/comstar-tests/lib/switch_fault mode=0444
 file path=opt/comstar-tests/lib/syntax_auto mode=0444
+file path=opt/comstar-tests/tests/configure/fc_configure mode=0555
 file path=opt/comstar-tests/tests/configure/iscsi_configure mode=0555
+file path=opt/comstar-tests/tests/fc/fault/forcelip/tc_forcelip_fault \
+    mode=0555
+file path=opt/comstar-tests/tests/fc/fault/forcelip/tp_forcelip_fault_001 \
+    mode=0555
+file path=opt/comstar-tests/tests/fc/fault/forcelip/tp_forcelip_fault_002 \
+    mode=0555
+file path=opt/comstar-tests/tests/fc/fault/stmfoffline/tc_stmfoffline_fault \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/fc/fault/stmfoffline/tp_stmfoffline_fault_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/fc/fault/stmfoffline/tp_stmfoffline_fault_002 \
+    mode=0555
+file path=opt/comstar-tests/tests/fc/fault/tgtcablepull/tc_tgtcablepull_fault \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/fc/fault/tgtcablepull/tp_tgtcablepull_fault_001 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/fc/fault/tgtcablepull/tp_tgtcablepull_fault_002 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/fc/fault/tgtcablepull/tp_tgtcablepull_fault_003 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/fc/fault/tgtcablepull/tp_tgtcablepull_fault_004 \
+    mode=0555
+file \
+    path=opt/comstar-tests/tests/fc/fault/tgtcablepull/tp_tgtcablepull_fault_005 \
+    mode=0555
+file path=opt/comstar-tests/tests/fc/fcinfo/tc_fcinfo mode=0555
+file path=opt/comstar-tests/tests/fc/fcinfo/tp_fcinfo_001 mode=0555
+file path=opt/comstar-tests/tests/fc/fcinfo/tp_fcinfo_002 mode=0555
+file path=opt/comstar-tests/tests/fc/fcinfo/tp_fcinfo_003 mode=0555
+file path=opt/comstar-tests/tests/fc/fcinfo/tp_fcinfo_004 mode=0555
+file path=opt/comstar-tests/tests/fc/visible/tc_visible_fc mode=0555
+file path=opt/comstar-tests/tests/fc/visible/tp_visible_fc_001 mode=0555
+file path=opt/comstar-tests/tests/fc/visible/tp_visible_fc_002 mode=0555
+file path=opt/comstar-tests/tests/fc/visible/tp_visible_fc_003 mode=0555
+file path=opt/comstar-tests/tests/fc/visible/tp_visible_fc_004 mode=0555
+file path=opt/comstar-tests/tests/fc/visible/tp_visible_fc_005 mode=0555
+file path=opt/comstar-tests/tests/fc/visible/tp_visible_fc_006 mode=0555
+file path=opt/comstar-tests/tests/fc/visible/tp_visible_fc_007 mode=0555
 file path=opt/comstar-tests/tests/framework/smf/tc_stmf_smf mode=0555
 file path=opt/comstar-tests/tests/framework/smf/tp_stmf_smf_001 mode=0555
 file path=opt/comstar-tests/tests/framework/smf/tp_stmf_smf_002 mode=0555

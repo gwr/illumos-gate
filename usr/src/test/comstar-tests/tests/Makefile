@@ -16,6 +16,6 @@
 .PARALLEL: $(SUBDIRS)
 
 #SUBDIRS = configure fc fcoe framework iscsi itadm sbdadm stmfadm libstmf
-SUBDIRS = configure framework iscsi itadm sbdadm stmfadm libstmf
+SUBDIRS = configure framework iscsi itadm sbdadm stmfadm libstmf fc
 
 include $(SRC)/test/Makefile.com

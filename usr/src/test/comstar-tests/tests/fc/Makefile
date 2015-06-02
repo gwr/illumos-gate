@@ -1,3 +1,4 @@
+
 #
 # This file and its contents are supplied under the terms of the
 # Common Development and Distribution License ("CDDL"), version 1.0.
@@ -8,29 +9,13 @@
 # source.  A copy of the CDDL is also available via the Internet at
 # http://www.illumos.org/license/CDDL.
 #
-
 #
 # Copyright (c) 2012 by Delphix. All rights reserved.
 # Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
 #
 
-include $(SRC)/Makefile.master
+.PARALLEL: $(SUBDIRS)
 
-ROOTOPTPKG = $(ROOT)/opt/comstar-tests
+SUBDIRS = fault fcinfo visible
 
-FILES = README.ISCSI README.FC
-
-DOCS = $(FILES:%=$(ROOTOPTPKG)/%)
-$(DOCS) := FILEMODE = 0444
-
-all: $(FILES)
-
-install: $(ROOTOPTPKG) $(DOCS)
-
-clean lint clobber:
-
-$(ROOTOPTPKG):
-	$(INS.dir)
-
-$(ROOTOPTPKG)/%: %
-	$(INS.file)
+include $(SRC)/test/Makefile.com

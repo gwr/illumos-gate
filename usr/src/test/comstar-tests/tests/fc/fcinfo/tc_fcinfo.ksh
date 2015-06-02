@@ -1,3 +1,4 @@
+#! /usr/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -23,32 +24,41 @@
 # Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
 #
-# Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
+
+
+tet_startup=startup
+tet_cleanup=cleanup
+iclist="ic1 ic2 ic3 ic4"
+ic1="tp_fcinfo_001"
+ic2="tp_fcinfo_002"
+ic3="tp_fcinfo_003"
+ic4="tp_fcinfo_004"
+
+function startup
+{
+	cti_report "Checking environment and runability"
+	create_comstar_logdir
+}
+
+function cleanup
+{
+	cti_report "Cleaning up after tests"
+}
+
+# test purpose for comstar related fcinfo commands
+. ./tp_fcinfo_001
+. ./tp_fcinfo_002
+. ./tp_fcinfo_003
+. ./tp_fcinfo_004
+#
+# Source in the common utilities and tools that are used by the test purposes
+# and test case.
 #
 
+. ${CTI_SUITE}/lib/comstar_common
+
 #
-# This conf file contains the a list of the options
-# for running diskomizer for the fc test suite.
-# Refer to http://diskomizer.eng/latest/Options-64.html
-# for modifying these and/or other options.
+# Source in the cti and tet required utilities and tools.
 #
-NPROCS=2
-OBSCURE_O_EXCL=1
-RTHREADS=100
-WTHREADS=100
-WRTHREADS=100
-DISK_IO_SIZES=64K, 128K, 256K
-START_READS_PERCENTAGE=1
-SHARED_MEMORY_ALLOCATOR=BEST
-EXPERT_NUMBER_OF_READ_BUFFERS=1
-EXPERT_NUMBER_OF_WRITE_BUFFERS=1
-CHECKER=FULL
-MAX_READ_RETRIES=5
-MAX_WRITE_RETRIES=5
-SYSLOG_FACILITY=DAEMON
-DEBUG_ALLOW_COREDUMP=1
-WORKINGDIR=/tmp/log
-BACKGROUND=1
-SYSLOG_LOG_UPTO_PRIORITY=INFO
-HOW_OFTEN_TO_REPORT=100
-SECONDS_TO_RUN=0
+. ${CTI_ROOT}/lib/ctiutils.ksh
+. ${TET_ROOT}/lib/ksh/tcm.ksh

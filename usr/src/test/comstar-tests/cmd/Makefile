@@ -18,7 +18,7 @@ include $(SRC)/Makefile.master
 ROOTOPTPKG = $(ROOT)/opt/comstar-tests
 ROOTBIN = $(ROOTOPTPKG)/bin
 
-PROGS = iscsitest
+PROGS = fctest iscsitest
 
 CMDS = $(PROGS:%=$(ROOTBIN)/%)
 $(CMDS) := FILEMODE = 0555

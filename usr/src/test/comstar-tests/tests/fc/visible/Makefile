@@ -8,29 +8,30 @@
 # source.  A copy of the CDDL is also available via the Internet at
 # http://www.illumos.org/license/CDDL.
 #
-
-#
 # Copyright (c) 2012 by Delphix. All rights reserved.
 # Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
 #
-
 include $(SRC)/Makefile.master
 
 ROOTOPTPKG = $(ROOT)/opt/comstar-tests
+TESTDIR = $(ROOTOPTPKG)/tests/fc/visible
 
-FILES = README.ISCSI README.FC
+PROGS = tc_visible_fc tp_visible_fc_001 tp_visible_fc_002 \
+	tp_visible_fc_003 tp_visible_fc_004 tp_visible_fc_005 \
+	tp_visible_fc_006 tp_visible_fc_007
+	
 
-DOCS = $(FILES:%=$(ROOTOPTPKG)/%)
-$(DOCS) := FILEMODE = 0444
+CMDS = $(PROGS:%=$(TESTDIR)/%)
+$(CMDS) := FILEMODE = 0555
 
-all: $(FILES)
+all lint clean clobber:
 
-install: $(ROOTOPTPKG) $(DOCS)
+install: $(CMDS)
 
-clean lint clobber:
+$(CMDS): $(TESTDIR)
 
-$(ROOTOPTPKG):
+$(TESTDIR):
 	$(INS.dir)
 
-$(ROOTOPTPKG)/%: %
-	$(INS.file)
+$(TESTDIR)/%: %.ksh
+	$(INS.rename)

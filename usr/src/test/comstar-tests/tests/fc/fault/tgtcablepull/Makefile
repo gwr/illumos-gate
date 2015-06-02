@@ -8,29 +8,30 @@
 # source.  A copy of the CDDL is also available via the Internet at
 # http://www.illumos.org/license/CDDL.
 #
-
-#
 # Copyright (c) 2012 by Delphix. All rights reserved.
 # Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
 #
-
 include $(SRC)/Makefile.master
 
 ROOTOPTPKG = $(ROOT)/opt/comstar-tests
+TESTDIR = $(ROOTOPTPKG)/tests/fc/fault/tgtcablepull
 
-FILES = README.ISCSI README.FC
+PROGS = tc_tgtcablepull_fault tp_tgtcablepull_fault_001 \
+	tp_tgtcablepull_fault_002 tp_tgtcablepull_fault_003 \
+	tp_tgtcablepull_fault_004 tp_tgtcablepull_fault_005
+	
 
-DOCS = $(FILES:%=$(ROOTOPTPKG)/%)
-$(DOCS) := FILEMODE = 0444
+CMDS = $(PROGS:%=$(TESTDIR)/%)
+$(CMDS) := FILEMODE = 0555
 
-all: $(FILES)
+all lint clean clobber:
 
-install: $(ROOTOPTPKG) $(DOCS)
+install: $(CMDS)
 
-clean lint clobber:
+$(CMDS): $(TESTDIR)
 
-$(ROOTOPTPKG):
+$(TESTDIR):
 	$(INS.dir)
 
-$(ROOTOPTPKG)/%: %
-	$(INS.file)
+$(TESTDIR)/%: %.ksh
+	$(INS.rename)

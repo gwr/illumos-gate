@@ -8,29 +8,29 @@
 # source.  A copy of the CDDL is also available via the Internet at
 # http://www.illumos.org/license/CDDL.
 #
-
-#
 # Copyright (c) 2012 by Delphix. All rights reserved.
 # Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
 #
-
 include $(SRC)/Makefile.master
 
 ROOTOPTPKG = $(ROOT)/opt/comstar-tests
+TESTDIR = $(ROOTOPTPKG)/tests/fc/fault/stmfoffline
 
-FILES = README.ISCSI README.FC
+PROGS = tc_stmfoffline_fault tp_stmfoffline_fault_001 \
+	tp_stmfoffline_fault_002
+	
 
-DOCS = $(FILES:%=$(ROOTOPTPKG)/%)
-$(DOCS) := FILEMODE = 0444
+CMDS = $(PROGS:%=$(TESTDIR)/%)
+$(CMDS) := FILEMODE = 0555
 
-all: $(FILES)
+all lint clean clobber:
 
-install: $(ROOTOPTPKG) $(DOCS)
+install: $(CMDS)
 
-clean lint clobber:
+$(CMDS): $(TESTDIR)
 
-$(ROOTOPTPKG):
+$(TESTDIR):
 	$(INS.dir)
 
-$(ROOTOPTPKG)/%: %
-	$(INS.file)
+$(TESTDIR)/%: %.ksh
+	$(INS.rename)

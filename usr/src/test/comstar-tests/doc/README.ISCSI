@@ -90,7 +90,7 @@ Test suite configuration must be done as root.
   	(Example: -v "BDEVS=\"/dev/dsk/c0t1d0s2 /dev/dsk/c0t2d0s2\"")
   -v "RDEVS=\"<Raw disk device separated by space>\"" \ 
   	(Example: -v "RDEVS=\"/dev/rdsk/c0t1d0s2 /dev/rdsk/c0t2d0s2\"")
-  comstar iscsi_configure
+  comstar-tests iscsi_configure
 
 The configuration file will be created as a result of the arguments specified 
 in the run_test command line.  
@@ -146,28 +146,28 @@ The test suite execution is required to be done as root.
 
 To run the entire test suite do the following.
 
-# run_test comstar iscsi
+# run_test comstar-tests iscsi
 
 To execute individual scenarios (itadm iscsi_auth iscsi_discovery iscsi_io
 iscsi_fs iscsi_smf iscsi_visible)
 
-# run_test comstar <scenario>
+# run_test comstar-tests <scenario>
 
-# run_test comstar itadm
+# run_test comstar-tests itadm
 
 To execute Test Purposes within a scenario :
 
-# run_test comstar iscsi/<test case dir>:<test purpose number>
+# run_test comstar-tests iscsi/<test case dir>:<test purpose number>
 
-# run_test comstar iscsi/auth:1
-# run_test comstar iscsi/auth:1-2
-# run_test comstar iscsi/auth:1,2
+# run_test comstar-tests iscsi/auth:1
+# run_test comstar-tests iscsi/auth:1-2
+# run_test comstar-tests iscsi/auth:1,2
 
 Test case directories are iscsi,itadm
 
 TEST SUITE UNCONFIGURE :
 ======================
 
-# run_test comstar iscsi_unconfigure
+# run_test comstar-tests iscsi_unconfigure
 
 

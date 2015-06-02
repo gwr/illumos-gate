@@ -17,7 +17,7 @@ ROOTOPTPKG = $(ROOT)/opt/comstar-tests
 TESTDIR = $(ROOTOPTPKG)/tests/configure
 
 #PROGS = iscsi_configure fc_configure fcoe_configure
-PROGS = iscsi_configure
+PROGS = iscsi_configure fc_configure
 	
 
 CMDS = $(PROGS:%=$(TESTDIR)/%)

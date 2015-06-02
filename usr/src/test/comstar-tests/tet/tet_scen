@@ -23,26 +23,19 @@
 # Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
 #
+# Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
+#
 
 all
 	^comstar
 	^fc_target
 	^iscsi_target
-	^iser_target
 fc
 	^comstar
 	^fc_target
-fcoe
-	^fcadm
-	^libfcoe
-	^fcoe_smf
-	^fcoe_fault
-	^fcoe_visible
 
 iscsi
 	^iscsi_target
-iser
-	^iser_target
 
 comstar
 	^framework
@@ -171,21 +164,6 @@ fc_fault
 	^fc_fault_stmfoffline
 	^fc_fault_tgtcablepull
 
-fcadm
-	^fcadm_create
-	^fcadm_delete
-	^fcadm_list
-
-fcoe_fault
-	^fcoe_fault_forcelip
-	^fcoe_fault_tgtoffline
-	^fcoe_fault_stmfoffline
-	^fcoe_fault_tgtcablepull
-libfcoe
-	^create_port
-	^delete_port
-	^get_port_list
-
 iscsi_target
 	^itadm
 	^iscsi_auth
@@ -262,48 +240,6 @@ fc_configure
         
 fc_unconfigure
         /tests/configure/fc_configure{2}
-
-fcoe_configure
-        /tests/configure/fcoe_configure{1}
-        
-fcoe_unconfigure
-        /tests/configure/fcoe_configure{2}
-
-fcadm_create
-	/tests/fcoe/fcadm/create/tc_fcoe_fcadm_create
-
-fcadm_list
-	/tests/fcoe/fcadm/list/tc_fcoe_fcadm_list
-
-fcadm_delete
-	/tests/fcoe/fcadm/delete/tc_fcoe_fcadm_delete
-
-fcoe_fault_forcelip
-	/tests/fcoe/fault/forcelip/tc_fcoe_forcelip_fault
-
-fcoe_smf
-	/tests/fcoe/smf/tc_fcoe_smf
-
-fcoe_fault_tgtoffline
-	/tests/fcoe/fault/tgtoffline/tc_fcoe_tgtoffline_fault
-
-fcoe_fault_stmfoffline
-	/tests/fcoe/fault/stmfoffline/tc_fcoe_stmfoffline_fault
-
-fcoe_fault_tgtcablepull
-	/tests/fcoe/fault/tgtcablepull/tc_fcoe_tgtcablepull_fault
-
-fcoe_visible
-	/tests/fcoe/visible/tc_visible_fcoe
-
-create_port
-	/tests/fcoe/libfcoe/create_port/tc_create_port
-
-delete_port
-	/tests/fcoe/libfcoe/delete_port/tc_delete_port
-
-get_port_list	
-	/tests/fcoe/libfcoe/get_port_list/tc_get_port_list
 
 stress_load
 	/tests/fc/manual/load_max_lun{1}
@@ -510,6 +446,3 @@ iscsi_visible
 
 iscsi_tgmember
 	/tests/iscsi/tgmember/tc_tg_member
-
-iser_target
-	^iscsi_target

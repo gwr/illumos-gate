@@ -19,10 +19,16 @@
 # Define necessary environments and config variables here
 # prior to invoke TET test runner 'run_test'
 #
-# Test wrapper for COMSTAR iSCSI tests
+# Test wrapper for COMSTAR FC test
+# FC switch is a must to run the test
+# The following switch port variable need to be set
+#
+#	FC_TARGET_SWITCH_PORT 
+#
+# FC_TARGET_SWITCH_PORT=<FC Switch Model:FC Switch IP:Admin:Passwd:Port1,Port2>
+# Example: FC_TARGET_SWITCH_PORT=QLOGIC:127.0.0.1:admin:password:1,2
 #
 # Initiator and free disks on target are required 
-# Two additional NIF are required on both target and initiator
 #
 export TET_ROOT=/opt/SUNWstc-tetlite
 export CTI_ROOT=$TET_ROOT/contrib/ctitools
@@ -32,10 +38,11 @@ PATH=$PATH:$CTI_ROOT/bin
 export PATH
 
 usage() {
-	echo "Usage: $0 ip disk"
+	echo "Usage: $0 ip switch disk"
 	echo "Where"
-	echo "   ip	Initiator IP address"
-	echo "   disk	c0t0d0s0 c0t1d0s0"
+	echo "    ip	Initiator IP address"
+	echo "switch	In form of \"Model:IP:Admin:Passwd:port\""
+	echo "  disk	c0t0d0s0 c0t1d0s0"
 	exit 1
 }
 
@@ -47,12 +54,15 @@ if [ `id -u` -ne 0 ]; then
 	exit 1
 fi
 
-if [ $# -lt 1 ]; then
+#
+# At least one disk is required
+#
+if [ $# -lt 3 ]; then
 	usage
 fi
 
 #
-# Heart beat check on initiator exit if fails
+# Check heart beat on initiator exit if fails
 #
 INITIATOR=$1		# Initiator IP
 ping $INITIATOR 5
@@ -61,25 +71,34 @@ if [ $? != 0 ]; then
 	exit 1
 fi
 
-shift
+#
+# Check FC HBA port mode on target and initiator
+#
+fcinfo hba-port|grep 'Port Mode'|nawk '{print $3}'|grep Target
+Tres=$?
+IHBA="fcinfo hba-port|grep 'Port Mode'|nawk '{print \$3}'|grep Initiator"
+ssh $INITIATOR "$IHBA"
+Ires=$?
+
+if [ $Tres -ne 0 -o $Ires -ne 0 ]; then
+	print Check FC HBA port configuration on the systems
+	exit 1
+fi
+
+#
+# FC switch
+# There is no easy direct way to validate the switch info
+# But test will fail if the info entered is not correct
+#
+FC_SW=$2
+NF=`echo $FC_SW | nawk -F":" '{print NF}'`
+if [ $NF -lt 5 ]; then
+	echo "Invalid FC switch info"
+	exit 1
+fi
+
+shift 2
 DISKS=$@
-
-if [ `echo $DISKS|wc -w` -lt 3 ]; then
-	echo "At least three free disk slices are required"
-	exit 1
-fi
-
-#
-# Two additional nif are needed
-#
-IFC="ifconfig -a|egrep -v 'ether|inet|ipib|lo0' | cut -d: -f1|sort -u|wc -w"
-Lnif=`eval $IFC`
-Rnif=`ssh $INITIATOR "$IFC"`
-
-if [ $Lnif -lt 3 -o $Rnif -lt 3 ]; then
-	echo "Two additional network interfaces are required for testing"
-	exit 1
-fi
 
 #
 # Initiator needs to have diskomizer package installed
@@ -91,18 +110,16 @@ if [ $? -ne 0 ]; then
 fi
 
 #
-# Required configurations
+# FC target should have other port provider disabled
+# to avoid unexpected test results
 #
-HOST=`hostname`
-TRANS=SOCKETS	# SOCKETS or ALL can be specified
-TARG=`getent hosts $HOST|awk '{print $1}'`	# Target IP
-ISNS=$Target		# We don't support iSNS, use target IP
-BLKDEVS=
-RAWDEVS=
+svcadm disable iscsi/target
 
 #
 # Construct block and raw devices
 #
+BLKDEVS=
+RAWDEVS=
 for d in $DISKS; do
 	BLKDEVS="$BLKDEVS/dev/dsk/$d "
 	RAWDEVS="$RAWDEVS/dev/rdsk/$d "
@@ -111,26 +128,27 @@ done
 #
 # Configure
 #
-run_test -v TRANSPORT=$TRANS \
-	-v ISCSI_THOST=$TARG \
-	-v ISCSI_IHOST=$INITIATOR \
-	-v ISNS_HOST=$ISNS \
+# fc target host topology in fabric switch is a must
+# QLOGIC and BROCADE fabric switches are supported
+#
+run_test -v FC_IHOST=$INITIATOR \
 	-v "BDEVS=\"$BLKDEVS\"" \
-	-v "RDEVS=\"$RAWDEVS\"" comstar-tests iscsi_configure
+	-v "RDEVS=\"$RAWDEVS\"" \
+	-v FC_TARGET_SWITCH_PORT=$FC_SW \
+	comstar-tests fc_configure
 
 #
 # To run the entire test suite
 #
-run_test comstar-tests iscsi
+run_test comstar-tests fc
 
 #
 # To run individual scenarios (itadm iscsi_auth iscsi_discovery...etc)
 #
-# run_test comstar-tests iscsi/auth:1
-# run_test comstar-tests iscsi/auth:1-2
-#
+# run_test comstar-tests fc/visible:1
+# run_test comstar-tests fc/visible:1-2
 
 #
 # Unconfigure
 #
-run_test comstar-tests iscsi_unconfigure
+run_test comstar-tests fc_unconfigure
