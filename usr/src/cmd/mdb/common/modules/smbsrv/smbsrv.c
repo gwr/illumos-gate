@@ -26,6 +26,7 @@
 
 #include <mdb/mdb_modapi.h>
 #include <mdb/mdb_ks.h>
+#include <mdb/mdb_ctf.h>
 #include <sys/thread.h>
 #include <sys/taskq.h>
 #include <smbsrv/smb_vops.h>
@@ -397,6 +398,7 @@ static int smb_obj_expand(uintptr_t, uint_t, const smb_exp_t *, ulong_t);
 static int smb_obj_list(const char *, uint_t, uint_t);
 static int smb_worker_findstack(uintptr_t);
 static void smb_inaddr_ntop(smb_inaddr_t *, char *, size_t);
+static void get_enum(char *, size_t, const char *, int, const char *);
 
 typedef int (*dump_func_t)(struct mbuf_chain *, int32_t,
     smb_inaddr_t *, uint16_t, smb_inaddr_t *, uint16_t,
@@ -478,15 +480,6 @@ smblist_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
  * *****************************************************************************
  */
 
-static const char *smb_server_state[SMB_SERVER_STATE_SENTINEL] =
-{
-	"CREATED",
-	"CONFIGURED",
-	"RUNNING",
-	"STOPPING",
-	"DELETING"
-};
-
 /*
  * List of objects that can be expanded under a server structure.
  */
@@ -523,7 +516,7 @@ smbsrv_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 	if (((opts & SMB_OPT_WALK) && (opts & SMB_OPT_SERVER)) ||
 	    !(opts & SMB_OPT_WALK)) {
 		smb_server_t	*sv;
-		const char	*state;
+		char		state[40];
 
 		sv = mdb_alloc(sizeof (smb_server_t), UM_SLEEP | UM_GC);
 		if (mdb_vread(sv, sizeof (smb_server_t), addr) == -1) {
@@ -549,10 +542,9 @@ smbsrv_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 				    "%</u>%</b>\n",
 				    "SERVER", "ZONE", "STATE");
 
-			if (sv->sv_state >= SMB_SERVER_STATE_SENTINEL)
-				state = "UNKNOWN";
-			else
-				state = smb_server_state[sv->sv_state];
+			get_enum(state, sizeof (state),
+			    "smb_server_state_t", sv->sv_state,
+			    "SMB_SERVER_STATE_");
 
 			mdb_printf("%-?p %-4d %-32s \n",
 			    addr, sv->sv_zid, state);
@@ -568,16 +560,6 @@ smbsrv_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
  * ***************************** smb_session_t *********************************
  * *****************************************************************************
  */
-
-static const char *smb_session_state[SMB_SESSION_STATE_SENTINEL] =
-{
-	"INITIALIZED",
-	"DISCONNECTED",
-	"CONNECTED",
-	"ESTABLISHED",
-	"NEGOTIATED",
-	"TERMINATED"
-};
 
 /*
  * List of objects that can be expanded under a session structure.
@@ -637,7 +619,7 @@ smbsess_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 		char	lipaddr[INET6_ADDRSTRLEN];
 		int	ipaddrstrlen = INET6_ADDRSTRLEN;
 		smb_session_t	*se;
-		const char	*state;
+		char		state[40];
 
 		indent = SMB_DCMD_INDENT;
 
@@ -646,10 +628,10 @@ smbsess_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 			mdb_warn("failed to read smb_session at %p", addr);
 			return (DCMD_ERR);
 		}
-		if (se->s_state >= SMB_SESSION_STATE_SENTINEL)
-			state = "INVALID";
-		else
-			state = smb_session_state[se->s_state];
+
+		get_enum(state, sizeof (state),
+		    "smb_session_state_t", se->s_state,
+		    "SMB_SESSION_STATE_");
 
 		if (se->ipaddr.a_family == AF_INET)
 			ipaddrstrlen = INET_ADDRSTRLEN;
@@ -699,20 +681,6 @@ smbsess_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
  * *****************************************************************************
  */
 
-static const char *smb_request_state[SMB_REQ_STATE_SENTINEL] =
-{
-	"FREE",
-	"INITIALIZING",
-	"SUBMITTED",
-	"ACTIVE",
-	"WAITING_EVENT",
-	"EVENT_OCCURRED",
-	"WAITING_LOCK",
-	"COMPLETED",
-	"CANCELED",
-	"CLEANED_UP"
-};
-
 #define	SMB_REQUEST_BANNER	\
 	"%<b>%<u>%-?s %-?s %-14s %-14s %-16s %-32s%</u>%</b>\n"
 #define	SMB_REQUEST_FORMAT	\
@@ -735,7 +703,7 @@ smbreq_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 	if (((opts & SMB_OPT_WALK) && (opts & SMB_OPT_REQUEST)) ||
 	    !(opts & SMB_OPT_WALK)) {
 		smb_request_t	*sr;
-		const char	*state;
+		char		state[40];
 		const char	*cur_cmd_name;
 		uint_t		cur_cmd_code;
 		uint64_t	waiting;
@@ -771,10 +739,9 @@ smbreq_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 		running /= NANOSEC;
 #endif	/* _KERNEL */
 
-		if (sr->sr_state >= SMB_REQ_STATE_SENTINEL)
-			state = "INVALID";
-		else
-			state = smb_request_state[sr->sr_state];
+		get_enum(state, sizeof (state),
+		    "smb_req_state_t", sr->sr_state,
+		    "SMB_REQ_STATE_");
 
 		if (sr->smb2_cmd_code != 0) {
 			/* SMB2 request */
@@ -1080,14 +1047,6 @@ smb_req_dump_m(uintptr_t m_addr, const void *data, void *arg)
  * *****************************************************************************
  */
 
-static const char *smb_user_state[SMB_USER_STATE_SENTINEL] =
-{
-	"LOGGING_ON",
-	"LOGGED_ON",
-	"LOGGING_OFF",
-	"LOGGED_OFF"
-};
-
 static void
 smbuser_help(void)
 {
@@ -1138,12 +1097,11 @@ smbuser_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 			    user->u_name_len, (uintptr_t)user->u_name);
 
 		if (opts & SMB_OPT_VERBOSE) {
-			const char	*state;
+			char		state[40];
 
-			if (user->u_state >= SMB_USER_STATE_SENTINEL)
-				state = "INVALID";
-			else
-				state = smb_user_state[user->u_state];
+			get_enum(state, sizeof (state),
+			    "smb_user_state_t", user->u_state,
+			    "SMB_USER_STATE_");
 
 			mdb_printf("%<b>%<u>SMB user information (%p):"
 			    "%</u>%</b>\n", addr);
@@ -1174,13 +1132,6 @@ smbuser_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
  * ****************************** smb_tree_t ***********************************
  * *****************************************************************************
  */
-
-static const char *smb_tree_state[SMB_TREE_STATE_SENTINEL] =
-{
-	"CONNECTED",
-	"DISCONNECTING",
-	"DISCONNECTED"
-};
 
 /*
  * List of objects that can be expanded under a tree structure.
@@ -1238,12 +1189,11 @@ smbtree_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 			return (DCMD_ERR);
 		}
 		if (opts & SMB_OPT_VERBOSE) {
-			const char	*state;
+			char		state[40];
 
-			if (tree->t_state >= SMB_TREE_STATE_SENTINEL)
-				state = "INVALID";
-			else
-				state = smb_tree_state[tree->t_state];
+			get_enum(state, sizeof (state),
+			    "smb_tree_state_t", tree->t_state,
+			    "SMB_TREE_STATE_");
 
 			mdb_printf("%<b>%<u>SMB tree information (%p):"
 			    "%</u>%</b>\n\n", addr);
@@ -1278,14 +1228,6 @@ smbtree_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
  * *****************************************************************************
  */
 
-static const char *smb_odir_state[SMB_ODIR_STATE_SENTINEL] =
-{
-	"OPEN",
-	"IN_USE",
-	"CLOSING",
-	"CLOSED"
-};
-
 static int
 smbodir_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 {
@@ -1311,12 +1253,11 @@ smbodir_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 			return (DCMD_ERR);
 		}
 		if (opts & SMB_OPT_VERBOSE) {
-			const char	*state;
+			char		state[40];
 
-			if (od->d_state >= SMB_ODIR_STATE_SENTINEL)
-				state = "INVALID";
-			else
-				state = smb_odir_state[od->d_state];
+			get_enum(state, sizeof (state),
+			    "smb_odir_state_t", od->d_state,
+			    "SMB_ODIR_STATE_");
 
 			mdb_printf(
 			    "%<b>%<u>SMB odir information (%p):%</u>%</b>\n\n",
@@ -1350,13 +1291,6 @@ smbodir_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
  * *****************************************************************************
  */
 
-static const char *smb_ofile_state[SMB_OFILE_STATE_SENTINEL] =
-{
-	"OPEN",
-	"CLOSING",
-	"CLOSED"
-};
-
 static int
 smbofile_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 {
@@ -1382,12 +1316,11 @@ smbofile_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 			return (DCMD_ERR);
 		}
 		if (opts & SMB_OPT_VERBOSE) {
-			const char	*state;
+			char		state[40];
 
-			if (of->f_state >= SMB_OFILE_STATE_SENTINEL)
-				state = "INVALID";
-			else
-				state = smb_ofile_state[of->f_state];
+			get_enum(state, sizeof (state),
+			    "smb_ofile_state_t", of->f_state,
+			    "SMB_OFILE_STATE_");
 
 			mdb_printf(
 			    "%<b>%<u>SMB ofile information (%p):%</u>%</b>\n\n",
@@ -2765,6 +2698,34 @@ smb_inaddr_ntop(smb_inaddr_t *ina, char *buf, size_t sz)
 		(void) mdb_snprintf(buf, sz, "(?)");
 		break;
 	}
+}
+
+/*
+ * Get the name for an enum value
+ */
+static void
+get_enum(char *out, size_t size, const char *type_str, int val,
+    const char *prefix)
+{
+	mdb_ctf_id_t type_id;
+	const char *cp;
+
+	if (mdb_ctf_lookup_by_name(type_str, &type_id) != 0)
+		goto errout;
+	if (mdb_ctf_type_resolve(type_id, &type_id) != 0)
+		goto errout;
+	if ((cp = mdb_ctf_enum_name(type_id, val)) == NULL)
+		goto errout;
+	if (prefix != NULL) {
+		size_t len = strlen(prefix);
+		if (strncmp(cp, prefix, len) == 0)
+			cp += len;
+	}
+	(void) strncpy(out, cp, size);
+	return;
+
+errout:
+	mdb_snprintf(out, size, "? (%d)", val);
 }
 
 /*
