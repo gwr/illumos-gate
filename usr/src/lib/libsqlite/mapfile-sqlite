@@ -74,7 +74,7 @@ SYMBOL_VERSION ILLUMOS_sqlite_2.8.15 {
 	sqlite_encoding;
 };
 
-SYMBOL_VERSION SUNWprivate {	# private libwombat symbols
+SYMBOL_VERSION SUNWprivate {
     global:
 	sqlite_temp_directory;
 	sqliteIsNumber;

@@ -29,7 +29,7 @@ include ../Makefile.cmd
 
 include $(SRC)/lib/Makefile.lib
 
-SQLITEHDRDIR=	$(ROOTHDRDIR)/sqlite
+SQLITEHDRDIR=	$(ROOTHDRDIR)/sqlite-sys
 
 ROOTLIBSVCBIN=	$(ROOT)/lib/svc/bin
 ROOTSQLITE=	$(PROG:%=$(ROOTLIBSVCBIN)/%)
@@ -40,7 +40,7 @@ $(OBJS) :=	CTFCONVERT_POST = $(CTFCONVERT_O)
 
 CERRWARN +=	-_gcc=-Wno-empty-body
 
-LDLIBS +=	-lsqlite
+LDLIBS +=	-lsqlite-sys
 
 .KEEP_STATE:
 

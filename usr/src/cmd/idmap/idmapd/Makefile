@@ -96,7 +96,7 @@ LINTFLAGS += -xerroff=E_NAME_USED_NOT_DEF2
 
 CFLAGS += $(CCVERBOSE)
 LDLIBS += \
-	-lsqlite \
+	-lsqlite-sys \
 	-lsecdb \
 	-lsocket \
 	-lnsl \

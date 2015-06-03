@@ -43,13 +43,14 @@
 #include <netdb.h>
 #include <net/route.h>
 #include <arpa/inet.h>
-#include <sqlite/sqlite.h>
+#include <sqlite-sys/sqlite.h>
 
 #include <sys/socket.h>
 #include <sys/sockio.h>
 #include <sys/systeminfo.h>
 
 #include <smbsrv/libsmb.h>
+#include <sqlite-sys/sqlite.h>
 
 #define	SMB_NIC_DB_NAME		"/var/smb/smbhosts.db"
 #define	SMB_NIC_DB_TIMEOUT	3000		/* in millisecond */

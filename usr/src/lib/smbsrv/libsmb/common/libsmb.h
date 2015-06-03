@@ -668,6 +668,9 @@ typedef struct smb_gsid {
 	uint16_t gs_type;
 } smb_gsid_t;
 
+struct sqlite_vm;
+struct sqlite;
+
 typedef struct smb_giter {
 	struct sqlite_vm	*sgi_vm;
 	struct sqlite		*sgi_db;

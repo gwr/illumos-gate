@@ -48,7 +48,8 @@ $(NATIVE_BUILD)OBJS = $(MYOBJS:%.o=%-native.o)
 
 ROOTCMDDIR=	$(ROOT)/lib/svc/bin
 
-MYCPPFLAGS = -I. -I../common -I../../../common/svc -I$(ROOT)/usr/include/sqlite -D_REENTRANT
+MYCPPFLAGS = -I. -I../common -I../../../common/svc \
+	-I$(ROOT)/usr/include/sqlite-sys -D_REENTRANT
 CPPFLAGS += $(MYCPPFLAGS)
 CFLAGS	+= $(CCVERBOSE)
 CERRWARN += -_gcc=-Wno-parentheses
@@ -85,7 +86,7 @@ DIRMODE = 0755
 FILEMODE = 0555
 
 OBJSQLITE =
-LIBSQLITE = -lsqlite
+LIBSQLITE = -lsqlite-sys
 $(NATIVE_BUILD)OBJSQLITE = $(ROOT)/lib/libsqlite-native.o
 $(NATIVE_BUILD)LIBSQLITE =
 

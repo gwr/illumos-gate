@@ -20,11 +20,12 @@
  */
 
 /*
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
+ */
+
+/*
  * Copyright 2010 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
- */
-/*
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -286,7 +287,7 @@ struct svc_globals {
 int rdma_check = 0;
 
 /*
- * This allows to disable flow control in svc_queuereq().
+ * This allows disabling flow control in svc_queuereq().
  */
 volatile int svc_flowcontrol_disable = 0;
 
@@ -2090,23 +2091,23 @@ svc_msgsize(mblk_t *mp)
  * transport.
  *
  * On input the xprt->xp_full determines whether the flow control is currently
- * off (FALSE) or on (TRUE). If it is off we do tests to see whether we should
+ * off (FALSE) or on (TRUE).  If it is off we do tests to see whether we should
  * turn it on, and vice versa.
  *
- * There are two conditions considered for the flow control. Both conditions
- * have the low and the high watermark. Once the high watermark is reached in
- * EITHER condition the flow control is turned on. For turning the flow control
- * off BOTH conditions must be below the low watermark.
+ * There are two conditions considered for the flow control.  Both conditions
+ * have the low and the high watermark.  Once the high watermark is reached in
+ * EITHER condition the flow control is turned on.  For turning the flow
+ * control off BOTH conditions must be below the low watermark.
  *
  * Condition #1 - Number of requests queued:
  *
  * The max number of threads working on the pool is roughly pool->p_maxthreads.
  * Every thread could handle up to pool->p_max_same_xprt requests from one
- * transport before it moves to another transport. See svc_poll() for details.
+ * transport before it moves to another transport.  See svc_poll() for details.
  * In case all threads in the pool are working on a transport they will handle
  * no more than enough_reqs (pool->p_maxthreads * pool->p_max_same_xprt)
- * requests in one shot from that transport. We are turning the flow control on
- * once the high watermark is reached for a transport so that the underlying
+ * requests in one shot from that transport.  We are turning the flow control
+ * on once the high watermark is reached for a transport so that the underlying
  * queue knows the rate of incoming requests is higher than we are able to
  * handle.
  *
@@ -2115,18 +2116,18 @@ svc_msgsize(mblk_t *mp)
  *
  * Condition #2 - Length of the data payload for the queued messages/requests:
  *
- * We want to prevent a particular pool to exhaust the memory, so once the
+ * We want to prevent a particular pool exhausting the memory, so once the
  * total length of queued requests for the whole pool reaches the high
- * watermark we are starting to turn on the flow control for significant memory
- * consumers (individual transports). To have the implementation simple enough,
- * this condition is not exact, because we count only the data part of the
- * queued requests and we ignore the overhead around. For our purposes this
- * should be enough. We should also consider that up to pool->p_maxthreads
+ * watermark we start to turn on the flow control for significant memory
+ * consumers (individual transports).  To keep the implementation simple
+ * enough, this condition is not exact, because we count only the data part of
+ * the queued requests and we ignore the overhead.  For our purposes this
+ * should be enough.  We should also consider that up to pool->p_maxthreads
  * threads for the pool might work on large requests (this is not counted for
- * this condition). We need to leave some space for rest of the system and for
- * other big memory consumers (like ZFS). Also, after the flow control is
- * turned on (on cots transports) we can start to accumulate few MBs in queues
- * for each transport.
+ * this condition).  We need to leave some space for rest of the system and for
+ * other big memory consumers (like ZFS).  Also, after the flow control is
+ * turned on (on cots transports) we can start to accumulate a few megabytes in
+ * queues for each transport.
  *
  * Usually, the big memory consumers are NFS WRITE requests, so we do not
  * expect to see this condition met for other than NFS pools.
@@ -2135,19 +2136,19 @@ svc_msgsize(mblk_t *mp)
  * The low watermark: 1/6 of available memory
  *
  * Once the high watermark is reached we turn the flow control on only for
- * transports with over-aliquot portion of memory consumed. The aliquot portion
- * of memory for a transport is calculated as:
+ * transports exceeding a per-transport memory limit.  The per-transport
+ * fraction of memory is calculated as:
  *
  * the high watermark / number of transports
  *
- * For transports with less than the aliquot portion of memory consumed the
- * flow control is not turned on, so they are not blocked by few "hungry"
- * transports. Because of this, the total memory consumption for the particular
- * pool might grow up to 2 * the high watermark.
+ * For transports with less than the per-transport fraction of memory consumed,
+ * the flow control is not turned on, so they are not blocked by a few "hungry"
+ * transports.  Because of this, the total memory consumption for the
+ * particular pool might grow up to 2 * the high watermark.
  *
  * The individual transports are unblocked once their consumption is below:
  *
- * aliquot portion of memory / 2
+ * per-transport fraction of memory / 2
  *
  * or once the total memory consumption for the whole pool falls below the low
  * watermark.

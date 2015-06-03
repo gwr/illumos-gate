@@ -3,7 +3,9 @@
 # Use is subject to license terms.
 #
 
-LIBRARY = libsqlite.a
+# Make the SO name unlikely to conflict with any other
+# libsqlite that might also be found on the system.
+LIBRARY = libsqlite-sys.a
 
 VERS = .2.8.15
 OBJECTS = \

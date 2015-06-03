@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2011, 2014 by Delphix. All rights reserved.
+ * Copyright (c) 2011, 2015 by Delphix. All rights reserved.
  * Copyright (c) 2014 Spectra Logic Corporation, All rights reserved.
  * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
@@ -680,6 +680,9 @@ spa_add(const char *name, nvlist_t *config, const char *altroot)
 
 	spa->spa_perfmon.perfmon_thread = NULL;
 	spa->spa_perfmon.perfmon_thr_exit = B_FALSE;
+
+	spa->spa_min_ashift = INT_MAX;
+	spa->spa_max_ashift = 0;
 
 	/*
 	 * As a pool is being created, treat all features as disabled by

@@ -16,7 +16,7 @@ ENCODING  = ISO8859
 SRCDIR=	src
 
 HDRS=           sqlite.h sqlite-misc.h
-ROOTHDRDIR=     $(ROOT)/usr/include/sqlite
+ROOTHDRDIR=     $(ROOT)/usr/include/sqlite-sys
 ROOTHDRS=       $(HDRS:%=$(ROOTHDRDIR)/%)
 CHECKHDRS=      $(HDRS:%.h=%.check)
 CLOBBERFILES +=	sqlite.h
