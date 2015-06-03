@@ -108,18 +108,16 @@ function iscsi_fs_006
 
 	build_tpgt_portals $ISCSI_THOST 1
 
-	#
-	# Current initiator code can panic with multiple
+	# NEX-3307 initiator code can panic with multiple
 	# targets created into 1 tpg.  Keep 1-1 
-	# 
-	#typeset index=0
-	#while [ $index -lt $TARGET_MAX ]
-	#do
-	#	itadm_create POS target -t 1
-	#	(( index+=1 ))
-	#done
+	#itadm_create POS target -t 1
 
-	itadm_create POS target -t 1
+	typeset index=0
+	while [ $index -lt $TARGET_MAX ]
+	do
+		itadm_create POS target -t 1
+		(( index+=1 ))
+	done
 
 	iscsiadm_modify POS $ISCSI_IHOST discovery -t disable
         iscsiadm_add POS $ISCSI_IHOST discovery-address $ISCSI_THOST

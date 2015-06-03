@@ -304,7 +304,7 @@ function list_disko_iscsi_lun
 	# if the initiator is mpxio_disabled, I/O running should be
 	# run through only one of the target ports and portals
 	check_enable_mpxio $HOSTNAME
-	if [ $? -eq 1 ];then
+	if [ $? -eq 0 ];then
 		cmd="$ISCSIADM list target -S"
 		run_rsh_cmd $HOSTNAME "$cmd"
 	else

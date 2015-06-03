@@ -102,8 +102,9 @@ function iscsi_mpxiod_007
 		(( idx+=1 ))
 	done
 
-	iscsiadm_setup_static
-        iscsiadm_modify POS $ISCSI_IHOST discovery -s enable
+	iscsiadm_modify POS $ISCSI_IHOST discovery -t disable
+	iscsiadm_add POS $ISCSI_IHOST discovery-address $ISCSI_THOST
+	iscsiadm_modify POS $ISCSI_IHOST discovery -t enable
 
 	iscsi_target_port_online_offline $ISCSI_THOST $FT_SNOOZE $TS_MAX_ITER
 
@@ -113,9 +114,9 @@ function iscsi_mpxiod_007
 	msgfile_mark $ISCSI_THOST STOP $tc_id
         msgfile_extract $ISCSI_THOST $tc_id
 
-        host_reboot $ISCSI_IHOST -r
 	env_iscsi_cleanup
 	initiator_cleanup $ISCSI_IHOST
+        host_reboot $ISCSI_IHOST -r
 
 }
 

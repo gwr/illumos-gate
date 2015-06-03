@@ -108,14 +108,12 @@ function iscsi_fs_007
 
 	build_tpgt_1portal $ISCSI_THOST
 
-	#
-	# Current initiator code can panic with 1 target
+	# NEX-3307 initiator code can panic with 1 target
 	# tagged with multiple tpg.  Keep 1-1 
-	#
-	#typeset tpg_list=$(get_tpgt_list)
-	#itadm_create POS target -t ${tpg_list}
+	#itadm_create POS target -t `get_tpgt_list|nawk -F',' '{print $1}'`
 
-	itadm_create POS target -t `get_tpgt_list|nawk -F',' '{print $1}'`
+	typeset tpg_list=$(get_tpgt_list)
+	itadm_create POS target -t ${tpg_list}
 
 	iscsiadm_modify POS $ISCSI_IHOST discovery -t disable
         iscsiadm_add POS $ISCSI_IHOST discovery-address $ISCSI_THOST

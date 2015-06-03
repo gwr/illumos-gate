@@ -104,8 +104,9 @@ function iscsi_mpxiod_001
 	itadm_create POS target -n ${IQN_TARGET}.${TARGET[0]} -t $tpg_list
 	itadm_create POS target -n ${IQN_TARGET}.${TARGET[1]} -t $tpg_list
 
-	iscsiadm_setup_static
-        iscsiadm_modify POS $ISCSI_IHOST discovery -s enable
+	iscsiadm_modify POS $ISCSI_IHOST discovery -t disable
+	iscsiadm_add POS $ISCSI_IHOST discovery-address $ISCSI_THOST
+	iscsiadm_modify POS $ISCSI_IHOST discovery -t enable
 
         start_disko $ISCSI_IHOST
 
@@ -121,9 +122,9 @@ function iscsi_mpxiod_001
 	msgfile_mark $ISCSI_THOST STOP $tc_id
         msgfile_extract $ISCSI_THOST $tc_id
 
-        host_reboot $ISCSI_IHOST -r
 	env_iscsi_cleanup 
 	initiator_cleanup $ISCSI_IHOST
+        host_reboot $ISCSI_IHOST -r
 
 }
 
