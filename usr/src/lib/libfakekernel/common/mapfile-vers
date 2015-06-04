@@ -146,7 +146,7 @@ SYMBOL_VERSION SUNWprivate_1.1 {
 	rw_enter;
 	rw_exit;
 	rw_init;
-	#rw_iswriter;
+	#rw_iswriter;	# missing, but not currently needed
 	rw_lock_held;
 	rw_owner;
 	rw_read_held;
@@ -156,7 +156,7 @@ SYMBOL_VERSION SUNWprivate_1.1 {
 
 	scalehrtime;
 
-	#sema_held;
+	#sema_held;	# call the libc version directly
 	sema_p;
 	sema_p_sig;
 	sema_tryp;
