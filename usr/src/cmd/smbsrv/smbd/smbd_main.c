@@ -104,7 +104,7 @@ main(int argc, char *argv[])
 	struct rlimit		rl;
 	int			orig_limit;
 
-#ifdef	_FAKE
+#ifdef	FKSMBD
 	fksmbd_init();
 #endif
 	smbd.s_pname = basename(argv[0]);
@@ -114,16 +114,16 @@ main(int argc, char *argv[])
 		return (SMF_EXIT_ERR_FATAL);
 
 	if ((uid = getuid()) != smbd.s_uid) {
-#ifdef	_FAKE
+#ifdef	FKSMBD
 		/* Can't manipulate privileges in daemonize. */
 		if (smbd.s_fg == 0) {
 			smbd.s_fg = 1;
 			smbd_report("user %d (forced -f)", uid);
 		}
-#else	/* _FAKE */
+#else	/* FKSMBD */
 		smbd_report("user %d: %s", uid, strerror(EPERM));
 		return (SMF_EXIT_ERR_FATAL);
-#endif	/* _FAKE */
+#endif	/* FKSMBD */
 	}
 
 	if (is_system_labeled()) {

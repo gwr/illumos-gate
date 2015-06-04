@@ -156,8 +156,7 @@ SYMBOL_VERSION SUNWprivate_1.1 {
 
 	scalehrtime;
 
-	# sema_...
-	#sema_held;	# Just call libc
+	#sema_held;
 	sema_p;
 	sema_p_sig;
 	sema_tryp;

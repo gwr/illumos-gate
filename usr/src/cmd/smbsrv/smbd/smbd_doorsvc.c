@@ -109,7 +109,7 @@ static smbd_doorsvc_t smbd_doorsvc;
 static int smbd_door_fd = -1;
 static int smbd_door_cookie = 0x534D4244;	/* SMBD */
 static smbd_door_t smbd_door_sdh;
-static char* smbd_door_name = NULL;
+static char *smbd_door_name = NULL;
 
 static void smbd_door_dispatch(void *, char *, size_t, door_desc_t *, uint_t);
 static int smbd_door_dispatch_async(smbd_arg_t *);
