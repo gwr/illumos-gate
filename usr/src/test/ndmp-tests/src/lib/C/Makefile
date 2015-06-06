@@ -29,6 +29,7 @@ LDLIB = 	$(LIBDIR)/libndmpprototest.a
 INCPATH=	-I. -I../../include -I$(LIBDIR)
 
 CPPFLAGS = 	$(INCPATH)
+C99MODE =	$(C99_ENABLE)
 
 FILEMODE= 	2555
 
