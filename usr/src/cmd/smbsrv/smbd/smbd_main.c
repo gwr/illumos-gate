@@ -473,8 +473,10 @@ smbd_service_init(void)
 		return (-1);
 	}
 
+#ifndef	FKSMBD
 	/* Upgrade SMF settings, if necessary. */
 	smb_config_upgrade();
+#endif
 
 	smb_codepage_init();
 
