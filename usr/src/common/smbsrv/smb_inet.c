@@ -29,17 +29,23 @@
  * This file was originally generated using rpcgen.
  */
 
-#if !defined(_KERNEL) && !defined(_FAKE_KERNEL)
-#include <string.h>
-#include <stdlib.h>
-#endif /* !_KERNEL && !_FAKE_KERNEL */
-#if !defined(_KERNEL)
-#include <arpa/inet.h>
-#endif /* !_KERNEL */
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <inet/tcp.h>
+
+#if !defined(_KERNEL)
+#include <errno.h>
+#include <string.h>
+#include <strings.h>
+#include <arpa/inet.h>
+#else	/* !_KERNEL */
+#include <sys/errno.h>
+#include <sys/sunddi.h>
+/* Don't want the rest of what's in inet/ip.h */
+extern char	*inet_ntop(int, const void *, char *, int);
+extern int	inet_pton(int, char *, void *);
+#endif	/* !_KERNEL */
+
 #include <smbsrv/smb_inet.h>
 
 const struct in6_addr ipv6addr_any = IN6ADDR_ANY_INIT;
@@ -54,7 +60,7 @@ smb_inet_equal(smb_inaddr_t *ip1, smb_inaddr_t *ip2)
 
 	if ((ip1->a_family == AF_INET6) &&
 	    (ip2->a_family == AF_INET6) &&
-	    (!memcmp(&ip1->a_ipv6, &ip2->a_ipv6, IPV6_ADDR_LEN)))
+	    (!memcmp(&ip1->a_ipv6, &ip2->a_ipv6, sizeof (in6_addr_t))))
 		return (B_TRUE);
 	else
 		return (B_FALSE);
@@ -70,7 +76,7 @@ smb_inet_same_subnet(smb_inaddr_t *ip1, smb_inaddr_t *ip2, uint32_t v4mask)
 
 	if ((ip1->a_family == AF_INET6) &&
 	    (ip2->a_family == AF_INET6) &&
-	    (!memcmp(&ip1->a_ipv6, &ip2->a_ipv6, IPV6_ADDR_LEN)))
+	    (!memcmp(&ip1->a_ipv6, &ip2->a_ipv6, sizeof (in6_addr_t))))
 		return (B_TRUE);
 	else
 		return (B_FALSE);
@@ -86,7 +92,7 @@ smb_inet_iszero(smb_inaddr_t *ipaddr)
 		return (B_TRUE);
 
 	if ((ipaddr->a_family == AF_INET6) &&
-	    !memcmp(&ipaddr->a_ipv6, ipsz, IPV6_ADDR_LEN))
+	    !memcmp(&ipaddr->a_ipv6, ipsz, sizeof (in6_addr_t)))
 		return (B_TRUE);
 	else
 		return (B_FALSE);
@@ -95,7 +101,12 @@ smb_inet_iszero(smb_inaddr_t *ipaddr)
 const char *
 smb_inet_ntop(smb_inaddr_t *addr, char *buf, int size)
 {
-#ifdef _KERNEL
+	/* Lint avoidance. */
+#if !defined(_KERNEL)
+	size_t sz = (size_t)size;
+#else	/* _KERNEL */
+	int sz = size;
+
 	/*
 	 * Until uts/common/inet/ip/inet_ntop.c is fixed so it
 	 * no longer uses leading zeros printing IPv4 addresses,
@@ -109,7 +120,7 @@ smb_inet_ntop(smb_inaddr_t *addr, char *buf, int size)
 		    p[0], p[1], p[2], p[3]);
 		return (buf);
 	}
-#endif
+#endif	/* _KERNEL */
 
-	return ((char *)inet_ntop(addr->a_family, (char *)addr, buf, size));
+	return ((char *)inet_ntop(addr->a_family, addr, buf, sz));
 }

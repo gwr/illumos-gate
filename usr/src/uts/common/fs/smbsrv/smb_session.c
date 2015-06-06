@@ -31,7 +31,7 @@
 #include <smbsrv/netbios.h>
 #include <smbsrv/smb2_kproto.h>
 #include <smbsrv/string.h>
-#include <inet/tcp.h>
+#include <netinet/tcp.h>
 
 /* How many iovec we'll handle as a local array (no allocation) */
 #define	SMB_LOCAL_IOV_MAX	16

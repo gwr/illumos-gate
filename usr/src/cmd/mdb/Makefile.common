@@ -24,7 +24,7 @@
 # MDB modules used for debugging user processes that every ISA's build
 # subdirectory will need to build.
 #
- 
+
 COMMON_MODULES_PROC = \
 	dof \
 	libavl \

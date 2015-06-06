@@ -38,6 +38,7 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <strings.h>
+#include <note.h>
 #include <smbsrv/smb_door.h>
 #include <smbsrv/smb_xdr.h>
 #include <smbsrv/smb_token.h>
@@ -425,8 +426,7 @@ smbd_door_dispatch_op(void *thread_arg)
 void
 smbd_door_init(smbd_door_t *sdh, const char *name)
 {
-	/* NB: this has nothing to do with SMBD_DOOR_NAME */
-	(void) strlcpy(sdh->sd_name, name, SMBD_DOOR_NAMESZ);
+	(void) strlcpy(sdh->sd_name, name, sizeof (sdh->sd_name));
 }
 
 void

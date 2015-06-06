@@ -30,6 +30,7 @@
 #include <syslog.h>
 #else	/* !_KERNEL && !_FAKE_KERNEL */
 #include <sys/types.h>
+#include <sys/systm.h>
 #include <sys/sunddi.h>
 #endif	/* !_KERNEL && !_FAKE_KERNEL */
 

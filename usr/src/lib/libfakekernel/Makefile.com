@@ -49,22 +49,22 @@ $(LINTLIB) :=	SRCS = $(SRCDIR)/$(LINTSRC)
 C99MODE =       -xc99=%all
 C99LMODE =      -Xc99=%all
 
-# hack hack - need our sys first
-DTS_ERRNO += -I../common
-INCS += -I$(SRC)/common/smbsrv
+# Note: need our sys includes _before_ ENVCPPFLAGS, proto etc.
+CPPFLAGS.first += -I../common
 
 CFLAGS +=	$(CCVERBOSE)
 CPPFLAGS += $(INCS) -D_REENTRANT -D_FAKE_KERNEL
 CPPFLAGS += -D_FILE_OFFSET_BITS=64
-${NOT_RELEASE_BUILD} CPPFLAGS += -DDEBUG
+
+# Could make this $(NOT_RELEASE_BUILD) but as the main purpose of
+# this library is for debugging, let's always define DEBUG here.
+CPPFLAGS += -DDEBUG
 
 LINTCHECKFLAGS += -erroff=E_INCONS_ARG_DECL2
 LINTCHECKFLAGS += -erroff=E_INCONS_VAL_TYPE_DECL2
 LINTCHECKFLAGS += -erroff=E_INCONS_VAL_TYPE_USED2
 
 LDLIBS += -lumem -lcryptoutil -lsocket -lc
-
-# CERRWARN += -_cc=-erroff=E_ASSIGNMENT_TYPE_MISMATCH
 
 .KEEP_STATE:
 

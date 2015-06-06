@@ -29,6 +29,7 @@
 
 pri_t minclsyspri = 60;
 
+/* Some kernel code takes the address of this. */
 proc_t p0;
 
 proc_t *

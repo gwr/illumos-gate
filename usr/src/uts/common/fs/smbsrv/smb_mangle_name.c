@@ -377,10 +377,10 @@ smb_unmangle(smb_node_t *dnode, char *name, char *namebuf,
 	vnode_t		*vp;
 	union {
 		char		*u_bufptr;
-		struct edirent	*u_edp;
-		struct dirent64	*u_dp;
+		edirent_t	*u_edp;
+		dirent64_t	*u_dp;
 	} u;
-#define	bufptr	u.u_bufptr
+#define	bufptr		u.u_bufptr
 #define	edp		u.u_edp
 #define	dp		u.u_dp
 

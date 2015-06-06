@@ -24,11 +24,21 @@
  */
 
 /*
- * This file is somewhere between:
- * $SRC/lib/smbsrv/libsmb/common/smb_idmap.c
- * $SRC/uts/common/fs/smbsrv/smb_idmap.c
+ * SMB server interface to idmap
+ * (smb_idmap_get..., smb_idmap_batch_...)
  *
- * Could try to unify all three.
+ * There are three implementations of this interface:
+ *	uts/common/fs/smbsrv/smb_idmap.c (smbsrv kmod)
+ *	lib/smbsrv/libfksmbsrv/common/fksmb_idmap.c (libfksmbsrv)
+ *	lib/smbsrv/libsmb/common/smb_idmap.c (libsmb)
+ *
+ * There are enough differences (relative to the code size)
+ * that it's more trouble than it's worth to merge them.
+ *
+ * This one differs from the others in that it:
+ *	calls idmap interfaces (libidmap)
+ *	uses kmem_... interfaces (libfakekernel)
+ *	uses cmn_err instead of syslog, etc.
  */
 
 #include <sys/param.h>
@@ -246,6 +256,7 @@ smb_idmap_batch_getid(idmap_get_handle_t *idmaph, smb_idmap_t *sim,
 
 	default:
 		stat = IDMAP_ERR_ARG;
+		break;
 	}
 
 	/* This was copied by idmap_get_Xbysid. */

@@ -291,7 +291,7 @@ smb_door_call(uint32_t cmd, void *req_data, xdrproc_t req_xdr,
 	smb_doorarg_t	da;
 	int		fd;
 	int		rc;
-	char 		*door_name;
+	char		*door_name;
 
 	bzero(&da, sizeof (smb_doorarg_t));
 	da.da_opcode = cmd;

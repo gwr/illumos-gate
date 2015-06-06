@@ -198,6 +198,7 @@ void strident_canon(char *, size_t);
 int getsubopt(char **optionsp, char * const *tokens, char **valuep);
 char *append_subopt(const char *, size_t, char *, const char *);
 #ifndef	_FAKE_KERNEL
+/* conflicts with libc definition */
 int ffs(uintmax_t);
 #endif
 int copyin(const void *, void *, size_t);
@@ -253,6 +254,7 @@ void suword64_noerr(void *, uint64_t);
 #endif
 
 #if !defined(_BOOT) && !defined(_FAKE_KERNEL)
+/* conflicts with libc definition */
 int setjmp(label_t *) __RETURNS_TWICE;
 extern void longjmp(label_t *)
 	__NORETURN;

@@ -306,8 +306,7 @@ set -x
 for arg
 do
   case "$arg" in
-  build|install)
-    arg=install
+  install)
     build_tools
     set -e
     do_hdrs $arg
@@ -343,7 +342,7 @@ do
     do_tar
     ;;
   *)
-    echo "Usage: $0 {build|lint|clean|clobber|tags|tar}";
+    echo "Usage: $0 {install|lint|clean|clobber|tags|tar}";
     exit 1;
     ;;
   esac

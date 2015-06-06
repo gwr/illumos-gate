@@ -58,6 +58,7 @@
 #include <smbsrv/libmlsvc.h>
 #include "smbd.h"
 
+#define	SECSPERMIN			60
 #define	SMBD_ONLINE_WAIT_INTERVAL	10
 #define	SMBD_REFRESH_INTERVAL		10
 #define	SMB_DBDIR "/var/smb"
@@ -103,7 +104,7 @@ main(int argc, char *argv[])
 	struct rlimit		rl;
 	int			orig_limit;
 
-#ifdef	_FAKE
+#ifdef	FKSMBD
 	fksmbd_init();
 #endif
 	smbd.s_pname = basename(argv[0]);
@@ -113,16 +114,16 @@ main(int argc, char *argv[])
 		return (SMF_EXIT_ERR_FATAL);
 
 	if ((uid = getuid()) != smbd.s_uid) {
-#ifdef	_FAKE
+#ifdef	FKSMBD
 		/* Can't manipulate privileges in daemonize. */
 		if (smbd.s_fg == 0) {
 			smbd.s_fg = 1;
 			smbd_report("user %d (forced -f)", uid);
 		}
-#else	/* _FAKE */
+#else	/* FKSMBD */
 		smbd_report("user %d: %s", uid, strerror(EPERM));
 		return (SMF_EXIT_ERR_FATAL);
-#endif	/* _FAKE */
+#endif	/* FKSMBD */
 	}
 
 	if (is_system_labeled()) {
@@ -685,9 +686,9 @@ smbd_online_wait(const char *text)
 static int
 smbd_already_running(void)
 {
-	door_info_t info;
+	door_info_t	info;
 	char 		*door_name;
-	int door;
+	int		door;
 
 	door_name = getenv("SMBD_DOOR_NAME");
 	if (door_name == NULL)
@@ -830,10 +831,6 @@ smbd_load_shares(void)
 		smbd_report("unable to load disk shares: %s", strerror(errno));
 }
 
-/*
- * Later, keep this thread around (just one thread)
- * and "kick it" when we get a refresh.
- */
 static void *
 smbd_share_loader(void *args)
 {

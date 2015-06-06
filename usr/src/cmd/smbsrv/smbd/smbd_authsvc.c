@@ -30,6 +30,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <stdio.h>
+#include <note.h>
 #include <net/if.h>
 #include <net/route.h>
 #include <sys/sockio.h>

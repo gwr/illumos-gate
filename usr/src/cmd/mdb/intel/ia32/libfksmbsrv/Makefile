@@ -38,9 +38,9 @@ include ../../../Makefile.module
 MODSRCS_DIR = ../../../common/modules/smbsrv
 GENUNIX_DIR = ../../../common/modules/genunix
 
-# hack hack - need our sys includes first
-DTS_ERRNO += -I../../../../../lib/smbsrv/libfksmbsrv/common
-DTS_ERRNO += -I../../../../../lib/libfakekernel/common
+# Note: need our sys includes _before_ ENVCPPFLAGS, proto etc.
+CPPFLAGS.first += -I../../../../../lib/smbsrv/libfksmbsrv/common
+CPPFLAGS.first += -I../../../../../lib/libfakekernel/common
 
 CPPFLAGS += -I../../../../../uts/common
 

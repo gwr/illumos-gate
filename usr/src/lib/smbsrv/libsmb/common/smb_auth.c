@@ -28,6 +28,7 @@
 #include <strings.h>
 #include <stdlib.h>
 #include <syslog.h>
+#include <sys/md5.h>
 #include <smbsrv/string.h>
 #include <smbsrv/libsmb.h>
 #include <netsmb/spnego.h>	/* libsmbfs */

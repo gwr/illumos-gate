@@ -36,10 +36,6 @@
 extern "C" {
 #endif
 
-#if !defined(_KERNEL) && !defined(_FAKE_KERNEL)
-#include <inet/tcp.h>
-#include <arpa/inet.h>
-#endif /* !_KERNEL */
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
