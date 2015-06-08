@@ -14,7 +14,7 @@
  */
 
 /*
- * Copyright 2012 Nexenta Systems, Inc. All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <sys/kmem.h>
@@ -115,26 +115,22 @@ vmxnet3s_m_getstat(void *data, uint_t stat, uint64_t *val)
 		*val = 0;
 		break;
 	case MAC_STAT_RBYTES:
-		*val = rxstats->lrobytes +
-		    rxstats->ucastb +
+		*val = rxstats->ucastb +
 		    rxstats->mcastb +
 		    rxstats->bcastb;
 		break;
 	case MAC_STAT_IPACKETS:
-		*val = rxstats->lropkts +
-		    rxstats->ucastp +
+		*val = rxstats->ucastp +
 		    rxstats->mcastp +
 		    rxstats->bcastp;
 		break;
 	case MAC_STAT_OBYTES:
-		*val = txstats->tsob +
-		    txstats->ucastb +
+		*val = txstats->ucastb +
 		    txstats->mcastb +
 		    txstats->bcastb;
 		break;
 	case MAC_STAT_OPACKETS:
-		*val = txstats->tsop +
-		    txstats->ucastp +
+		*val = txstats->ucastp +
 		    txstats->mcastp +
 		    txstats->bcastp;
 		break;
