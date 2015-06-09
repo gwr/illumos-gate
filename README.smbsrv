@@ -14,3 +14,4 @@ Before extended security
 Before Kerberos inbound
 Before new DC locator etc.
 Before first commit of SMB2 support.
+Before SMB3, max_protocol
