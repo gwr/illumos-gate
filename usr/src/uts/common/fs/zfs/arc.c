@@ -6650,19 +6650,11 @@ top:
 	mutex_exit(&dev->l2ad_mtx);
 }
 
-/*
- * Asynchronous task for eviction of all the buffers for this L2ARC device
- * The task is dispatched in l2arc_evict()
- */
-typedef struct {
-	l2arc_dev_t *dev;
-} l2arc_evict_data_t;
-
 static void
 l2arc_evict_task(void *arg)
 {
-	l2arc_evict_data_t *d = (l2arc_evict_data_t *)arg;
-	ASSERT(d && d->dev);
+	l2arc_dev_t *dev = arg;
+	ASSERT(dev);
 
 	/*
 	 * Evict l2arc buffers asynchronously; we need to keep the device
@@ -6674,17 +6666,15 @@ l2arc_evict_task(void *arg)
 	 * reference this same in-core structure. Also remove the vdev link
 	 * since further use of it as l2arc device is prohibited.
 	 */
-	d->dev->l2ad_vdev = NULL;
-	l2arc_evict_impl(d->dev, 0LL, B_TRUE);
+	dev->l2ad_vdev = NULL;
+	l2arc_evict_impl(dev, 0LL, B_TRUE);
 
 	/* Same cleanup as in the synchronous path */
-	list_destroy(&d->dev->l2ad_buflist);
-	mutex_destroy(&d->dev->l2ad_mtx);
-	refcount_destroy(&d->dev->l2ad_alloc);
-	kmem_free(d->dev->l2ad_dev_hdr, d->dev->l2ad_dev_hdr_asize);
-	kmem_free(d->dev, sizeof (l2arc_dev_t));
-	/* Task argument cleanup */
-	kmem_free(arg, sizeof (l2arc_evict_data_t));
+	list_destroy(&dev->l2ad_buflist);
+	mutex_destroy(&dev->l2ad_mtx);
+	refcount_destroy(&dev->l2ad_alloc);
+	kmem_free(dev->l2ad_dev_hdr, dev->l2ad_dev_hdr_asize);
+	kmem_free(dev, sizeof (l2arc_dev_t));
 }
 
 boolean_t zfs_l2arc_async_evict = B_TRUE;
@@ -6705,18 +6695,12 @@ l2arc_evict(l2arc_dev_t *dev, uint64_t distance, boolean_t all)
 	 *  at pool export time, schedule asynchronous task
 	 */
 	if (all && zfs_l2arc_async_evict) {
-		l2arc_evict_data_t *arg =
-		    kmem_alloc(sizeof (l2arc_evict_data_t), KM_SLEEP);
-		arg->dev = dev;
-
 		if ((taskq_dispatch(arc_flush_taskq, l2arc_evict_task,
-		    arg, TQ_NOSLEEP) == NULL)) {
+		    dev, TQ_NOSLEEP) == NULL)) {
 			/*
 			 * Failed to dispatch asynchronous task
-			 * cleanup, evict synchronously, avoid adjusting
-			 * vdev space second time
+			 * cleanup, evict synchronously
 			 */
-			kmem_free(arg, sizeof (l2arc_evict_data_t));
 			l2arc_evict_impl(dev, distance, all);
 		} else {
 			/*
