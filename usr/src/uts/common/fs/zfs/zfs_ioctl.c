@@ -6162,8 +6162,6 @@ zfs_ioc_pool_stats_nvl(const char *poolname, nvlist_t *innvl, nvlist_t *outnvl)
 static nvlist_t *
 objset_stats2nv(dmu_objset_stats_t *stat)
 {
-	char *origin;
-	size_t len;
 	nvlist_t *statlist  = fnvlist_alloc();
 
 	fnvlist_add_uint64(statlist, "dds_num_clones", stat->dds_num_clones);
@@ -6174,11 +6172,7 @@ objset_stats2nv(dmu_objset_stats_t *stat)
 	fnvlist_add_uint8(statlist, "dds_is_snapshot", stat->dds_is_snapshot);
 	fnvlist_add_uint8(statlist, "dds_inconsistent",
 	    stat->dds_inconsistent);
-
-	len = strlen(stat->dds_origin) + 1;
-	origin = kmem_alloc(len, KM_SLEEP);
-	(void) strcpy(origin, stat->dds_origin);
-	fnvlist_add_string(statlist, "dds_origin", origin);
+	fnvlist_add_string(statlist, "dds_origin", stat->dds_origin);
 
 	return (statlist);
 }
@@ -6188,13 +6182,11 @@ static int
 objset_render(objset_t *os, nvlist_t *outnvl)
 {
 	int error = 0;
-	nvlist_t *props, *statlist;
-	dmu_objset_stats_t *stats;
+	nvlist_t *props = NULL, *statlist = NULL;
+	dmu_objset_stats_t stats;
 
-	stats = kmem_alloc(sizeof (*stats), KM_SLEEP);
-	dmu_objset_fast_stat(os, stats);
+	dmu_objset_fast_stat(os, &stats);
 
-	props = fnvlist_alloc();
 	if ((error = dsl_prop_get_all(os, &props)) == 0) {
 		dmu_objset_stats(os, props);
 		/*
@@ -6204,7 +6196,7 @@ objset_render(objset_t *os, nvlist_t *outnvl)
 		 * inconsistent.  So this is a bit of a workaround...
 		 * XXX reading with out owning
 		 */
-		if (!stats->dds_inconsistent &&
+		if (!stats.dds_inconsistent &&
 		    dmu_objset_type(os) == DMU_OST_ZVOL) {
 			error = zvol_get_stats(os, props);
 			if (error == EIO)
@@ -6212,14 +6204,13 @@ objset_render(objset_t *os, nvlist_t *outnvl)
 			VERIFY0(error);
 		}
 		fnvlist_add_nvlist(outnvl, "props", props);
-		statlist = objset_stats2nv(stats);
+		statlist = objset_stats2nv(&stats);
 		fnvlist_add_nvlist(outnvl, "stats", statlist);
 		nvlist_free(statlist);
 	}
 
 out:
 	nvlist_free(props);
-	kmem_free(stats, sizeof (*stats));
 	return (error);
 }
 
