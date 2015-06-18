@@ -20,16 +20,16 @@
  */
 
 /*
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
+ */
+
+/*
  * Copyright 2007 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
 /*	Copyright (c) 1984, 1986, 1987, 1988, 1989 AT&T */
 /*	All Rights Reserved */
-
-/*
- * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
- */
 
 #include <sys/flock_impl.h>
 #include <sys/vfs.h>
@@ -40,6 +40,10 @@
 #include <sys/nbmlock.h>
 #include <sys/cred.h>
 #include <sys/policy.h>
+#include <sys/list.h>
+#include <sys/sysmacros.h>
+#include <sys/socket.h>
+#include <inet/ip.h>
 
 /*
  * The following four variables are for statistics purposes and they are
@@ -158,10 +162,32 @@ struct flock_globals {
 
 zone_key_t flock_zone_key;
 
+/*
+ * Support for the remote stale lock detection
+ *
+ * The sysid_to_host_translator_lock readers/writer lock protects
+ * sysid_to_host_translator_list.
+ *
+ * The sysid_to_host_translator_list is a list of sysid to host name translator
+ * functions.  The new translators are added using the public
+ * flk_add_sysid_to_host_translator() call.
+ *
+ * The stale_lock_timeout is in seconds and it determines the interval for the
+ * remote stale lock checking.  When set to 0, the remote stale lock checking
+ * is disabled.
+ */
+struct sysid_to_host_translator_entry {
+	sysid_to_host_translator_t translator;
+	list_node_t node;
+};
+static krwlock_t sysid_to_host_translator_lock;
+static list_t sysid_to_host_translator_list;
+volatile int stale_lock_timeout = 3600;		/* one hour, in seconds */
+
 static void create_flock(lock_descriptor_t *, flock64_t *);
 static lock_descriptor_t	*flk_get_lock(void);
 static void	flk_free_lock(lock_descriptor_t	*lock);
-static void	flk_get_first_blocking_lock(lock_descriptor_t *request);
+static void	flk_get_first_blocking_lock(lock_descriptor_t *);
 static int flk_process_request(lock_descriptor_t *);
 static int flk_add_edge(lock_descriptor_t *, lock_descriptor_t *, int, int);
 static edge_t *flk_get_edge(void);
@@ -275,8 +301,7 @@ reclock(vnode_t		*vp,
 	if ((lckdat->l_type == F_UNLCK) ||
 	    !((cmd & INOFLCK) || (cmd & SETFLCK))) {
 		lock_request = &stack_lock_request;
-		(void) bzero((caddr_t)lock_request,
-		    sizeof (lock_descriptor_t));
+		bzero(lock_request, sizeof (lock_descriptor_t));
 
 		/*
 		 * following is added to make the assertions in
@@ -653,6 +678,14 @@ flk_init(void)
 			nlm_reg_status[i] = FLK_NLM_UNKNOWN;
 		}
 	}
+
+	mutex_init(&flock_lock, NULL, MUTEX_DEFAULT, NULL);
+	mutex_init(&nlm_reg_lock, NULL, MUTEX_DEFAULT, NULL);
+
+	rw_init(&sysid_to_host_translator_lock, NULL, RW_DEFAULT, NULL);
+	list_create(&sysid_to_host_translator_list,
+	    sizeof (struct sysid_to_host_translator_entry),
+	    offsetof(struct sysid_to_host_translator_entry, node));
 }
 
 /*
@@ -712,13 +745,15 @@ flk_get_lock(void)
 void
 flk_free_lock(lock_descriptor_t	*lock)
 {
+	ASSERT(lock->l_blocker >= 0);
+
 	ASSERT(IS_DEAD(lock));
 	if (IS_REFERENCED(lock)) {
 		lock->l_state |= DELETED_LOCK;
 		return;
 	}
 	flk_lock_frees++;
-	kmem_free((void *)lock, sizeof (lock_descriptor_t));
+	kmem_free(lock, sizeof (lock_descriptor_t));
 }
 
 void
@@ -755,6 +790,264 @@ flk_set_state(lock_descriptor_t *lock, int new_state)
 		cl_flk_state_transition_notify(lock, lock->l_status, new_state);
 	}
 	lock->l_status = new_state;
+}
+
+/*
+ * Support for the remote stale lock detection
+ */
+
+void
+flk_add_sysid_to_host_translator(sysid_to_host_translator_t tr)
+{
+	struct sysid_to_host_translator_entry *te;
+
+	te = kmem_alloc(sizeof (struct sysid_to_host_translator_entry),
+	    KM_SLEEP);
+
+	te->translator = tr;
+
+	rw_enter(&sysid_to_host_translator_lock, RW_WRITER);
+	list_insert_head(&sysid_to_host_translator_list, te);
+	rw_exit(&sysid_to_host_translator_lock);
+}
+
+static void
+translate_sysid_to_host(zoneid_t zoneid, sysid_t sysid, char *host, size_t hlen,
+    const char **type)
+{
+	struct sockaddr sa;
+	struct sysid_to_host_translator_entry *te;
+
+	/* Some defaults in a case the translation will fail */
+	*type = "?";
+	(void) strlcpy(host, "?", hlen);
+
+	rw_enter(&sysid_to_host_translator_lock, RW_READER);
+
+	for (te = list_head(&sysid_to_host_translator_list); te != NULL;
+	    te = list_next(&sysid_to_host_translator_list, te)) {
+
+		if (te->translator(zoneid, sysid, &sa, type) != 0) {
+			rw_exit(&sysid_to_host_translator_lock);
+
+			switch (sa.sa_family) {
+			case AF_INET:
+				(void) inet_ntop(AF_INET,
+				    &((struct sockaddr_in *)&sa)->sin_addr,
+				    host, hlen);
+				break;
+			case AF_INET6:
+				(void) inet_ntop(AF_INET6,
+				    &((struct sockaddr_in6 *)&sa)->sin6_addr,
+				    host, hlen);
+				break;
+			default:
+				break;
+			}
+
+			return;
+		}
+	}
+
+	rw_exit(&sysid_to_host_translator_lock);
+}
+
+static char *
+get_vnode_path(vnode_t *vp)
+{
+	size_t len;
+	char *ret;
+
+	mutex_enter(&vp->v_lock);
+	if (vp->v_path == NULL) {
+		mutex_exit(&vp->v_lock);
+		return (NULL);
+	}
+	len = strlen(vp->v_path) + 1;
+	mutex_exit(&vp->v_lock);
+
+	ret = kmem_alloc(len, KM_SLEEP);
+
+	mutex_enter(&vp->v_lock);
+	if (vp->v_path == NULL || strlen(vp->v_path) + 1 != len) {
+		mutex_exit(&vp->v_lock);
+		kmem_free(ret, len);
+		return (NULL);
+	}
+	bcopy(vp->v_path, ret, len);
+	mutex_exit(&vp->v_lock);
+
+	return (ret);
+}
+
+static void
+flk_stale_lock_check(lock_descriptor_t *lock)
+{
+	char *path;
+
+	char host[INET6_ADDRSTRLEN];		/* host name */
+	const char *type;			/* host type */
+
+	/* temporary variables for the cmn_err() call */
+	char *p, *t;		/* path, lock type */
+	pid_t pid;		/* pid */
+	void *v;		/* vnode */
+	u_offset_t s, e;	/* start, end */
+
+	ASSERT(MUTEX_HELD(&lock->l_graph->gp_mutex));
+
+	/*
+	 * Either not a remote lock, or the stale lock checking is disabled, or
+	 * the lock is already reported.
+	 */
+	if (IS_LOCAL(lock) || stale_lock_timeout == 0 || lock->l_blocker < 0)
+		return;
+
+	/* Seen first time? */
+	if (lock->l_blocker == 0) {
+		lock->l_blocker = gethrtime();
+		return;
+	}
+
+	/* Old enough? */
+	if ((gethrtime() - lock->l_blocker) / NANOSEC < stale_lock_timeout)
+		return;
+
+	translate_sysid_to_host(lock->l_zoneid, lock->l_flock.l_sysid, host,
+	    sizeof (host), &type);
+	path = get_vnode_path(lock->l_vnode);
+
+	pid = lock->l_flock.l_pid;
+	v = (void *)lock->l_vnode;
+	p = path == NULL ? "?" : path;
+	t = lock->l_type == F_WRLCK ? "WR" : "RD";
+	s = lock->l_start;
+	e = lock->l_end;
+
+	/* Report the blocker as stale */
+	cmn_err(CE_NOTE, "!Stale lock (host: %s (%s), pid: %d, vnode: %p, "
+	    "path: %s, %sLCK: %llu:%llu)", host, type, pid, v, p, t, s, e);
+
+	if (path != NULL)
+		strfree(path);
+
+	/* Mark this blocker as reported */
+	lock->l_blocker = -lock->l_blocker;
+}
+
+static void
+flk_stale_lock_shrink(lock_descriptor_t *lock, lock_descriptor_t *new)
+{
+	char *path;
+
+	char host[INET6_ADDRSTRLEN];		/* host name */
+	const char *type;			/* host type */
+
+	/* temporary variables for the cmn_err() call */
+	char *p, *t;		/* path, lock type */
+	pid_t pid;		/* pid */
+	void *v;		/* vnode */
+	u_offset_t s, e;	/* start, end */
+	u_offset_t ns, ne;	/* new start, new end */
+
+	ASSERT(MUTEX_HELD(&lock->l_graph->gp_mutex));
+
+	translate_sysid_to_host(lock->l_zoneid, lock->l_flock.l_sysid, host,
+	    sizeof (host), &type);
+	path = get_vnode_path(lock->l_vnode);
+
+	pid = lock->l_flock.l_pid;
+	v = (void *)lock->l_vnode;
+	p = path == NULL ? "?" : path;
+	t = lock->l_type == F_WRLCK ? "WR" : "RD";
+	s = lock->l_start;
+	e = lock->l_end;
+	ns = new->l_start;
+	ne = new->l_end;
+
+	cmn_err(CE_NOTE, "!Stale lock SHRINK (host: %s (%s), pid: %d, "
+	    "vnode: %p, path: %s, %sLCK: %llu:%llu -> %llu:%llu)", host, type,
+	    pid, v, p, t, s, e, ns, ne);
+
+	if (path != NULL)
+		strfree(path);
+}
+
+static void
+flk_stale_lock_split(lock_descriptor_t *lock, lock_descriptor_t *new1,
+    lock_descriptor_t *new2)
+{
+	char *path;
+
+	char host[INET6_ADDRSTRLEN];		/* host name */
+	const char *type;			/* host type */
+
+	/* temporary variables for the cmn_err() call */
+	char *p, *t;		/* path, lock type */
+	pid_t pid;		/* pid */
+	void *v;		/* vnode */
+	u_offset_t s, e;	/* start, end */
+	u_offset_t n1s, n1e;	/* new1 start, new1 end */
+	u_offset_t n2s, n2e;	/* new2 start, new2 end */
+
+	ASSERT(MUTEX_HELD(&lock->l_graph->gp_mutex));
+
+	translate_sysid_to_host(lock->l_zoneid, lock->l_flock.l_sysid, host,
+	    sizeof (host), &type);
+	path = get_vnode_path(lock->l_vnode);
+
+	pid = lock->l_flock.l_pid;
+	v = (void *)lock->l_vnode;
+	p = path == NULL ? "?" : path;
+	t = lock->l_type == F_WRLCK ? "WR" : "RD";
+	s = lock->l_start;
+	e = lock->l_end;
+	n1s = new1->l_start;
+	n1e = new1->l_end;
+	n2s = new2->l_start;
+	n2e = new2->l_end;
+
+	cmn_err(CE_NOTE, "!Stale lock SPLIT (host: %s (%s), pid: %d, "
+	    "vnode: %p, path: %s, %sLCK: %llu:%llu -> %llu:%llu and %llu:%llu)",
+	    host, type, pid, v, p, t, s, e, n1s, n1e, n2s, n2e);
+
+	if (path != NULL)
+		strfree(path);
+}
+
+static void
+flk_stale_lock_release(lock_descriptor_t *lock)
+{
+	char *path;
+
+	char host[INET6_ADDRSTRLEN];		/* host name */
+	const char *type;			/* host type */
+
+	/* temporary variables for the cmn_err() call */
+	char *p, *t;		/* path, lock type */
+	pid_t pid;		/* pid */
+	void *v;		/* vnode */
+	u_offset_t s, e;	/* start, end */
+
+	ASSERT(MUTEX_HELD(&lock->l_graph->gp_mutex));
+
+	translate_sysid_to_host(lock->l_zoneid, lock->l_flock.l_sysid, host,
+	    sizeof (host), &type);
+	path = get_vnode_path(lock->l_vnode);
+
+	pid = lock->l_flock.l_pid;
+	v = (void *)lock->l_vnode;
+	p = path == NULL ? "?" : path;
+	t = lock->l_type == F_WRLCK ? "WR" : "RD";
+	s = lock->l_start;
+	e = lock->l_end;
+
+	cmn_err(CE_NOTE, "!Stale lock RELEASE (host: %s (%s), pid: %d, "
+	    "vnode: %p, path: %s, %sLCK: %llu:%llu)", host, type, pid, v, p, t,
+	    s, e);
+
+	if (path != NULL)
+		strfree(path);
 }
 
 /*
@@ -796,12 +1089,13 @@ flk_process_request(lock_descriptor_t *request)
 
 	SET_LOCK_TO_FIRST_ACTIVE_VP(gp, lock, vp);
 
-
 	if (lock) {
 		do {
 			if (BLOCKS(lock, request)) {
-				if (!request_will_wait)
+				if (!request_will_wait) {
+					flk_stale_lock_check(lock);
 					return (EAGAIN);
+				}
 				request_blocked_by_active = 1;
 				break;
 			}
@@ -819,8 +1113,9 @@ flk_process_request(lock_descriptor_t *request)
 	}
 
 	if (!request_blocked_by_active) {
-			lock_descriptor_t *lk[1];
-			lock_descriptor_t *first_glock = NULL;
+		lock_descriptor_t *lk[1];
+		lock_descriptor_t *first_glock = NULL;
+
 		/*
 		 * Shall we grant this?! NO!!
 		 * What about those locks that were just granted and still
@@ -877,7 +1172,8 @@ flk_process_request(lock_descriptor_t *request)
 		if (lock) {
 			do {
 				if (IS_GRANTED(lock)) {
-				flk_recompute_dependencies(lock, lk, 1, 0);
+					flk_recompute_dependencies(lock, lk, 1,
+					    0);
 				}
 				lock = lock->l_prev;
 			} while ((lock->l_vnode == vp));
@@ -939,13 +1235,14 @@ block:
 		} while (lock->l_vnode == vp);
 	}
 
-/*
- * found_covering_lock == 2 iff at this point 'request' has paths
- * to all locks that blocks 'request'. found_covering_lock == 1 iff at this
- * point 'request' has paths to all locks that blocks 'request' whose owners
- * are not same as the one that covers 'request' (covered_by above) and
- * we can have locks whose owner is same as covered_by in the active list.
- */
+	/*
+	 * found_covering_lock == 2 iff at this point 'request' has paths to
+	 * all locks that blocks 'request'. found_covering_lock == 1 iff at
+	 * this point 'request' has paths to all locks that blocks 'request'
+	 * whose owners are not same as the one that covers 'request'
+	 * (covered_by above) and we can have locks whose owner is same as
+	 * covered_by in the active list.
+	 */
 
 	if (request_blocked_by_active && found_covering_lock != 2) {
 		SET_LOCK_TO_FIRST_ACTIVE_VP(gp, lock, vp);
@@ -1018,20 +1315,18 @@ flk_execute_request(lock_descriptor_t *request)
 
 	SET_LOCK_TO_FIRST_ACTIVE_VP(gp, lock, vp);
 
-	if (lock == NULL && request->l_type == F_UNLCK)
-		return (0);
-	if (lock == NULL) {
-		flk_insert_active_lock(request);
-		return (0);
+	if (lock != NULL) {
+		/*
+		 * There are some active locks so check for relations
+		 */
+		do {
+			lock1 = lock->l_next;
+			if (SAME_OWNER(request, lock)) {
+				done_searching = flk_relation(lock, request);
+			}
+			lock = lock1;
+		} while (lock->l_vnode == vp && !done_searching);
 	}
-
-	do {
-		lock1 = lock->l_next;
-		if (SAME_OWNER(request, lock)) {
-			done_searching = flk_relation(lock, request);
-		}
-		lock = lock1;
-	} while (lock->l_vnode == vp && !done_searching);
 
 	/*
 	 * insert in active queue
@@ -1296,10 +1591,11 @@ flk_free_edge(edge_t *ep)
 }
 
 /*
- * Check the relationship of request with lock and perform the
- * recomputation of dependencies, break lock if required, and return
- * 1 if request cannot have any more relationship with the next
+ * Check the relationship of 'request' with 'lock' and perform the
+ * recomputation of dependencies, break 'lock' if required, and return
+ * 1 if 'request' cannot have any more relationship with the next
  * active locks.
+ *
  * The 'lock' and 'request' are compared and in case of overlap we
  * delete the 'lock' and form new locks to represent the non-overlapped
  * portion of original 'lock'. This function has side effects such as
@@ -1310,13 +1606,14 @@ static int
 flk_relation(lock_descriptor_t *lock, lock_descriptor_t *request)
 {
 	int lock_effect;
-	lock_descriptor_t *lock1, *lock2;
 	lock_descriptor_t *topology[3];
 	int nvertex = 0;
 	int i;
 	edge_t	*ep;
-	graph_t	*gp = (lock->l_graph);
+	graph_t	*gp = lock->l_graph;
+	boolean_t mergeable;
 
+	ASSERT(request->l_blocker == 0);
 
 	CHECK_SLEEPING_LOCKS(gp);
 	CHECK_ACTIVE_LOCKS(gp);
@@ -1336,143 +1633,100 @@ flk_relation(lock_descriptor_t *lock, lock_descriptor_t *request)
 	else
 		lock_effect = FLK_STAY_SAME;
 
+	/*
+	 * The 'lock' and 'request' are merged only in a case the effect of
+	 * both locks is same (FLK_STAY_SAME) and their blocker status
+	 * (l_blocker) is same as well.  We do not merge 'lock' and 'request'
+	 * with different l_blocker values because such merge might affect the
+	 * stale lock detection.  It might cause either false positives, or
+	 * miss some stale locks.
+	 */
+	mergeable = lock_effect == FLK_STAY_SAME &&
+	    lock->l_blocker == request->l_blocker;
+
 	if (lock->l_end < request->l_start) {
-		if (lock->l_end == request->l_start - 1 &&
-		    lock_effect == FLK_STAY_SAME) {
-			topology[0] = request;
+		/* If the 'lock' is just next to 'request', try to merge them */
+		if (lock->l_end == request->l_start - 1 && mergeable) {
 			request->l_start = lock->l_start;
-			nvertex = 1;
 			goto recompute;
-		} else {
-			return (0);
 		}
+
+		/* Otherwise, they do not overlap, so return immediately */
+		return (0);
 	}
 
-	if (lock->l_start > request->l_end) {
-		if (request->l_end == lock->l_start - 1 &&
-		    lock_effect == FLK_STAY_SAME) {
-			topology[0] = request;
+	if (request->l_end < lock->l_start) {
+		/* If the 'request' is just next to 'lock', try to merge them */
+		if (request->l_end == lock->l_start - 1 && mergeable) {
 			request->l_end = lock->l_end;
-			nvertex = 1;
 			goto recompute;
+		}
+
+		/* Otherwise, they do not overlap, so return immediately */
+		return (1);
+	}
+
+	/*
+	 * Here we are sure the 'lock' and 'request' overlaps, so the 'request'
+	 * will replace the 'lock' (either fully, or at least partially).
+	 */
+
+	/*
+	 * If the 'request' does not fully cover the 'lock' at the start,
+	 * either move the start of the 'request' to cover the 'lock', or split
+	 * the 'lock'.
+	 */
+	if (lock->l_start < request->l_start) {
+		if (mergeable) {
+			request->l_start = lock->l_start;
 		} else {
-			return (1);
+			lock_descriptor_t *new_lock = flk_get_lock();
+
+			COPY(new_lock, lock);
+			new_lock->l_end = request->l_start - 1;
+
+			topology[nvertex++] = new_lock;
 		}
 	}
 
+	/*
+	 * If the 'request' does not fully cover the 'lock' at the end, either
+	 * move the end of the 'request' to cover the 'lock', or split the
+	 * 'lock'.
+	 */
 	if (request->l_end < lock->l_end) {
-		if (request->l_start > lock->l_start) {
-			if (lock_effect == FLK_STAY_SAME) {
-				request->l_start = lock->l_start;
-				request->l_end = lock->l_end;
-				topology[0] = request;
-				nvertex = 1;
-			} else {
-				lock1 = flk_get_lock();
-				lock2 = flk_get_lock();
-				COPY(lock1, lock);
-				COPY(lock2, lock);
-				lock1->l_start = lock->l_start;
-				lock1->l_end = request->l_start - 1;
-				lock2->l_start = request->l_end + 1;
-				lock2->l_end = lock->l_end;
-				topology[0] = lock1;
-				topology[1] = lock2;
-				topology[2] = request;
-				nvertex = 3;
-			}
-		} else if (request->l_start < lock->l_start) {
-			if (lock_effect == FLK_STAY_SAME) {
-				request->l_end = lock->l_end;
-				topology[0] = request;
-				nvertex = 1;
-			} else {
-				lock1 = flk_get_lock();
-				COPY(lock1, lock);
-				lock1->l_start = request->l_end + 1;
-				topology[0] = lock1;
-				topology[1] = request;
-				nvertex = 2;
-			}
-		} else  {
-			if (lock_effect == FLK_STAY_SAME) {
-				request->l_start = lock->l_start;
-				request->l_end = lock->l_end;
-				topology[0] = request;
-				nvertex = 1;
-			} else {
-				lock1 = flk_get_lock();
-				COPY(lock1, lock);
-				lock1->l_start = request->l_end + 1;
-				topology[0] = lock1;
-				topology[1] = request;
-				nvertex = 2;
-			}
-		}
-	} else if (request->l_end > lock->l_end) {
-		if (request->l_start > lock->l_start)  {
-			if (lock_effect == FLK_STAY_SAME) {
-				request->l_start = lock->l_start;
-				topology[0] = request;
-				nvertex = 1;
-			} else {
-				lock1 = flk_get_lock();
-				COPY(lock1, lock);
-				lock1->l_end = request->l_start - 1;
-				topology[0] = lock1;
-				topology[1] = request;
-				nvertex = 2;
-			}
-		} else if (request->l_start < lock->l_start)  {
-			topology[0] = request;
-			nvertex = 1;
+		if (mergeable) {
+			request->l_end = lock->l_end;
 		} else {
-			topology[0] = request;
-			nvertex = 1;
+			lock_descriptor_t *new_lock = flk_get_lock();
+
+			COPY(new_lock, lock);
+			new_lock->l_start = request->l_end + 1;
+
+			topology[nvertex++] = new_lock;
 		}
-	} else {
-		if (request->l_start > lock->l_start) {
-			if (lock_effect == FLK_STAY_SAME) {
-				request->l_start = lock->l_start;
-				topology[0] = request;
-				nvertex = 1;
-			} else {
-				lock1 = flk_get_lock();
-				COPY(lock1, lock);
-				lock1->l_end = request->l_start - 1;
-				topology[0] = lock1;
-				topology[1] = request;
-				nvertex = 2;
-			}
-		} else if (request->l_start < lock->l_start) {
-			topology[0] = request;
-			nvertex = 1;
-		} else {
-			if (lock_effect !=  FLK_UNLOCK) {
-				topology[0] = request;
-				nvertex = 1;
-			} else {
-				flk_delete_active_lock(lock, 0);
-				flk_wakeup(lock, 1);
-				flk_free_lock(lock);
-				CHECK_SLEEPING_LOCKS(gp);
-				CHECK_ACTIVE_LOCKS(gp);
-				return (1);
-			}
-		}
+	}
+
+	/*
+	 * Log the blocker change
+	 */
+	if (nvertex > 0 && lock->l_blocker < 0) {
+		if (nvertex == 1)
+			flk_stale_lock_shrink(lock, topology[0]);
+		if (nvertex == 2)
+			flk_stale_lock_split(lock, topology[0], topology[1]);
+
+		lock->l_blocker = 0;
 	}
 
 recompute:
-
 	/*
 	 * For unlock we don't send the 'request' to for recomputing
 	 * dependencies because no lock will add an edge to this.
 	 */
+	if (lock_effect != FLK_UNLOCK)
+		topology[nvertex++] = request;
 
-	if (lock_effect == FLK_UNLOCK) {
-		topology[nvertex-1] = NULL;
-		nvertex--;
-	}
 	for (i = 0; i < nvertex; i++) {
 		topology[i]->l_state |= RECOMPUTE_LOCK;
 		topology[i]->l_color = NO_COLOR;
@@ -1484,7 +1738,6 @@ recompute:
 	 * we remove the adjacent edges for all vertices' to this vertex
 	 * 'lock'.
 	 */
-
 	ep = FIRST_IN(lock);
 	while (ep != HEAD(lock)) {
 		ADJ_LIST_REMOVE(ep);
@@ -1494,7 +1747,6 @@ recompute:
 	flk_delete_active_lock(lock, 0);
 
 	/* We are ready for recomputing the dependencies now */
-
 	flk_recompute_dependencies(lock, topology, nvertex, 1);
 
 	for (i = 0; i < nvertex; i++) {
@@ -1502,14 +1754,12 @@ recompute:
 		topology[i]->l_color = NO_COLOR;
 	}
 
-
 	if (lock_effect == FLK_UNLOCK) {
 		nvertex++;
 	}
 	for (i = 0; i < nvertex - 1; i++) {
 		flk_insert_active_lock(topology[i]);
 	}
-
 
 	if (lock_effect == FLK_DOWNGRADE || lock_effect == FLK_UNLOCK) {
 		flk_wakeup(lock, 0);
@@ -1589,6 +1839,12 @@ flk_delete_active_lock(lock_descriptor_t *lock, int free_lock)
 
 	ASSERT((vp->v_filocks != NULL));
 
+	if (lock->l_blocker < 0) {
+		/* Log the blocker release */
+		flk_stale_lock_release(lock);
+		lock->l_blocker = 0;
+	}
+
 	if (vp->v_filocks == (struct filock *)lock) {
 		vp->v_filocks = (struct filock *)
 		    ((lock->l_next->l_vnode == vp) ? lock->l_next :
@@ -1635,7 +1891,7 @@ flk_insert_sleeping_lock(lock_descriptor_t *request)
 /*
  * Cancelling a sleeping lock implies removing a vertex from the
  * dependency graph and therefore we should recompute the dependencies
- * of all vertices that have a path  to this vertex, w.r.t. all
+ * of all vertices that have a path to this vertex, w.r.t. all
  * vertices reachable from this vertex.
  */
 
@@ -1757,7 +2013,7 @@ flk_cancel_sleeping_lock(lock_descriptor_t *request, int remove_from_queue)
 	 * free the topology
 	 */
 	if (nvertex)
-		kmem_free((void *)topology,
+		kmem_free(topology,
 		    (nvertex * sizeof (lock_descriptor_t *)));
 	/*
 	 * Possibility of some locks unblocked now
@@ -2678,7 +2934,7 @@ chklock(
 	int 		fmode,
 	caller_context_t *ct)
 {
-	register int	i;
+	int		i;
 	struct flock64 	bf;
 	int 		error = 0;
 
@@ -3005,7 +3261,7 @@ static void
 flk_free_proc_edge(proc_edge_t *pep)
 {
 	ASSERT(pep->refcount == 0);
-	kmem_free((void *)pep, sizeof (proc_edge_t));
+	kmem_free(pep, sizeof (proc_edge_t));
 	flk_proc_edge_frees++;
 }
 
@@ -3737,7 +3993,6 @@ unlock_lockmgr_granted(struct flock_globals *fg)
 	}
 }
 
-
 /*
  * Wait until a lock is granted, cancelled, or interrupted.
  */
@@ -3746,12 +4001,38 @@ static void
 wait_for_lock(lock_descriptor_t *request)
 {
 	graph_t *gp = request->l_graph;
+	vnode_t *vp = request->l_vnode;
 
 	ASSERT(MUTEX_HELD(&gp->gp_mutex));
 
 	while (!(IS_GRANTED(request)) && !(IS_CANCELLED(request)) &&
 	    !(IS_INTERRUPTED(request))) {
-		if (!cv_wait_sig(&request->l_cv, &gp->gp_mutex)) {
+		lock_descriptor_t *lock;
+
+		if (stale_lock_timeout == 0) {
+			/* The stale lock detection is disabled */
+			if (cv_wait_sig(&request->l_cv, &gp->gp_mutex) == 0) {
+				flk_set_state(request, FLK_INTERRUPTED_STATE);
+				request->l_state |= INTERRUPTED_LOCK;
+			}
+
+			continue;
+		}
+
+		SET_LOCK_TO_FIRST_ACTIVE_VP(gp, lock, vp);
+
+		if (lock != NULL) {
+			do {
+				if (BLOCKS(lock, request)) {
+					flk_stale_lock_check(lock);
+					break;
+				}
+				lock = lock->l_next;
+			} while (lock->l_vnode == vp);
+		}
+
+		if (cv_timedwait_sig(&request->l_cv, &gp->gp_mutex,
+		    ddi_get_lbolt() + SEC_TO_TICK(stale_lock_timeout)) == 0) {
 			flk_set_state(request, FLK_INTERRUPTED_STATE);
 			request->l_state |= INTERRUPTED_LOCK;
 		}
@@ -3809,7 +4090,7 @@ flk_convert_lock_data(vnode_t *vp, flock64_t *flp,
 		break;
 	case 2:		/* SEEK_END */
 		vattr.va_mask = AT_SIZE;
-		if (error = VOP_GETATTR(vp, &vattr, 0, CRED(), NULL))
+		if ((error = VOP_GETATTR(vp, &vattr, 0, CRED(), NULL)) != 0)
 			return (error);
 		*start = (u_offset_t)(flp->l_start + vattr.va_size);
 		break;
@@ -3842,7 +4123,7 @@ flk_convert_lock_data(vnode_t *vp, flock64_t *flp,
  * frlock routines to check data before contacting the server.  The
  * server must support semantics that aren't as restrictive as
  * the UNIX API, so the NFS client is required to check.
- * The maximum is now passed in by the caller.
+ * The maximum is passed in by the caller.
  */
 
 int
@@ -3850,7 +4131,7 @@ flk_check_lock_data(u_offset_t start, u_offset_t end, offset_t max)
 {
 	/*
 	 * The end (length) for local locking should never be greater
-	 * than MAXEND. However, the representation for
+	 * than max. However, the representation for
 	 * the entire file is MAX_U_OFFSET_T.
 	 */
 	if ((start > max) ||

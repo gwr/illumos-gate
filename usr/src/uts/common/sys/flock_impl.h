@@ -19,6 +19,11 @@
  *
  * CDDL HEADER END
  */
+
+/*
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
+ */
+
 /*
  * Copyright 2004 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
@@ -26,8 +31,6 @@
 
 #ifndef _SYS_FLOCK_IMPL_H
 #define	_SYS_FLOCK_IMPL_H
-
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
 
 #include <sys/types.h>
 #include <sys/fcntl.h>		/* flock definition */
@@ -44,6 +47,7 @@
 #include <sys/systm.h>
 #include <sys/vnode.h>
 #include <sys/share.h>		/* just to get GETSYSID def */
+#include <sys/time.h>
 
 #ifdef	__cplusplus
 extern "C" {
@@ -68,21 +72,24 @@ struct lock_descriptor {
 	struct	lock_descriptor	*l_stack1;	/* for stack operations */
 	struct 	lock_descriptor *l_dstack;	/* stack for debug functions */
 	struct	edge		*l_sedge;	/* start edge for graph alg. */
-			int	l_index; 	/* used for barrier count */
-		struct	graph	*l_graph;	/* graph this belongs to */
-		vnode_t		*l_vnode;	/* vnode being locked */
-			int	l_type;		/* type of lock */
-			int	l_state;	/* state described below */
-		u_offset_t	l_start;	/* start offset */
-		u_offset_t	l_end;		/* end offset */
-		flock64_t	l_flock;	/* original flock request */
-			int	l_color;	/* color used for graph alg */
-		kcondvar_t	l_cv;		/* wait condition for lock */
-		int		pvertex;	/* index to proc vertex */
-			int	l_status;	/* status described below */
-		flk_nlm_status_t l_nlm_state;	/* state of NLM server */
-		flk_callback_t	*l_callbacks;	/* callbacks, or NULL */
-		zoneid_t	l_zoneid;	/* zone of request */
+	int			l_index; 	/* used for barrier count */
+	struct	graph		*l_graph;	/* graph this belongs to */
+	vnode_t			*l_vnode;	/* vnode being locked */
+	int			l_type;		/* type of lock */
+	int			l_state;	/* state described below */
+	u_offset_t		l_start;	/* start offset */
+	u_offset_t		l_end;		/* end offset */
+	flock64_t		l_flock;	/* original flock request */
+	int			l_color;	/* color used for graph alg */
+	kcondvar_t		l_cv;		/* wait condition for lock */
+	int			pvertex;	/* index to proc vertex */
+	int			l_status;	/* status described below */
+	flk_nlm_status_t	l_nlm_state;	/* state of NLM server */
+	flk_callback_t		*l_callbacks;	/* callbacks, or NULL */
+	zoneid_t		l_zoneid;	/* zone of request */
+	hrtime_t		l_blocker;	/* time when this lock */
+						/* started to prevent other */
+						/* locks from being set */
 };
 
 typedef struct 	lock_descriptor	lock_descriptor_t;
@@ -397,6 +404,7 @@ extern void cl_flk_state_transition_notify(lock_descriptor_t *lock,
 (lock1)->l_flock = (lock2)->l_flock; \
 (lock1)->l_zoneid = (lock2)->l_zoneid; \
 (lock1)->pvertex = (lock2)->pvertex; \
+(lock1)->l_blocker = (lock2)->l_blocker; \
 }
 
 /*

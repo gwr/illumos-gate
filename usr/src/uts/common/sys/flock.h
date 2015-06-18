@@ -19,6 +19,11 @@
  *
  * CDDL HEADER END
  */
+
+/*
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
+ */
+
 /*	Copyright (c) 1984, 1986, 1987, 1988, 1989 AT&T	*/
 /*	  All Rights Reserved  	*/
 
@@ -26,9 +31,6 @@
 /*
  * Copyright 2004 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
- */
-/*
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #ifndef _SYS_FLOCK_H
@@ -259,6 +261,14 @@ void	cl_flk_remove_locks_by_sysid(int sysid);
 int	cl_flk_has_remote_locks_for_nlmid(struct vnode *vp, int nlmid);
 void	cl_flk_change_nlm_state_to_unknown(int nlmid);
 void	cl_flk_delete_pxfs_locks(struct vfs *vfsp, int pxfsid);
+
+/* Support for the remote stale lock detection */
+struct sockaddr;
+
+typedef int (*sysid_to_host_translator_t)(zoneid_t, sysid_t, struct sockaddr *,
+    const char **);
+
+void	flk_add_sysid_to_host_translator(sysid_to_host_translator_t);
 #endif /* _KERNEL */
 
 #ifdef	__cplusplus

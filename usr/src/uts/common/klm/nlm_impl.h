@@ -28,7 +28,7 @@
  */
 
 /*
- * Copyright 2012 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  * Copyright (c) 2012 by Delphix. All rights reserved.
  */
 
@@ -45,6 +45,7 @@
 #include <sys/queue.h>
 #include <sys/modhash.h>
 #include <sys/avl.h>
+#include <sys/socket.h>
 
 #define	RPC_MSGOUT(args...)	cmn_err(CE_NOTE, args)
 #define	NLM_ERR(...)		cmn_err(CE_NOTE, __VA_ARGS__)
@@ -529,6 +530,7 @@ void nlm_rpc_cache_destroy(struct nlm_host *);
 void nlm_globals_register(struct nlm_globals *);
 void nlm_globals_unregister(struct nlm_globals *);
 sysid_t nlm_sysid_alloc(void);
+int nlm_sysid_to_host(zoneid_t, sysid_t, struct sockaddr *, const char **);
 
 /*
  * Client reclamation/cancelation

@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  * Copyright (c) 2012 by Delphix. All rights reserved.
  */
 
@@ -136,8 +136,10 @@ _init()
 	zone_key_create(&flock_zone_key, flk_zone_init, NULL, flk_zone_fini);
 
 	retval = mod_install(&modlinkage);
-	if (retval == 0)
+	if (retval == 0) {
+		flk_add_sysid_to_host_translator(nlm_sysid_to_host);
 		return (0);
+	}
 
 	/*
 	 * mod_install failed! undo above, reverse order

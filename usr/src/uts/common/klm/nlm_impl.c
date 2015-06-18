@@ -26,8 +26,8 @@
  */
 
 /*
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  * Copyright (c) 2012 by Delphix. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -2275,6 +2275,41 @@ nlm_svc_add_ep(struct file *fp, const char *netid, struct knetconfig *knc)
 
 	(void) nlm_knc_to_netid(knc);
 	return (0);
+}
+
+int
+nlm_sysid_to_host(zoneid_t zoneid, sysid_t sysid, struct sockaddr *sa,
+    const char **type)
+{
+	struct nlm_globals *g;
+	struct nlm_host *host;
+	zone_t *zone;
+
+	zone = zone_find_by_id(zoneid);
+	if (zone == NULL)
+		return (0);
+
+	g = zone_getspecific(nlm_zone_key, zone);
+
+	host = nlm_host_find_by_sysid(g, sysid);
+	if (host == NULL) {
+		zone_rele(zone);
+		return (0);
+	}
+
+	if (strcmp(host->nh_knc.knc_protofmly, NC_INET) == 0)
+		bcopy(host->nh_addr.buf, sa, sizeof (struct sockaddr_in));
+	else if (strcmp(host->nh_knc.knc_protofmly, NC_INET6) == 0)
+		bcopy(host->nh_addr.buf, sa, sizeof (struct sockaddr_in6));
+	else
+		sa->sa_family = AF_UNSPEC;
+
+	nlm_host_release(g, host);
+	zone_rele(zone);
+
+	*type = "NLM";
+
+	return (1);
 }
 
 /*
