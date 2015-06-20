@@ -192,14 +192,13 @@ smb_net_send_uio(smb_session_t *s, struct uio *uio)
 	 * or given up due to errors (socket closed).
 	 */
 	bzero(&msg, sizeof (msg));
+	msg.msg_iov = uio->uio_iov;
+	msg.msg_iovlen = uio->uio_iovcnt;
 	while (uio->uio_resid > 0) {
-		msg.msg_iov = uio->uio_iov;
-		msg.msg_iovlen = uio->uio_iovcnt;
-		sent = 0;
 		rc = ksocket_sendmsg(s->sock, &msg, 0, &sent, CRED());
 		if (rc != 0)
 			break;
-		uioskip(uio, sent);
+		uio->uio_resid -= sent;
 	}
 
 	mutex_enter(&txl->tl_mutex);
