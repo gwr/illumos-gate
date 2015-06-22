@@ -1353,8 +1353,8 @@ zfs_set_fuid_feature(zfsvfs_t *zfsvfs)
 	zfsvfs->z_use_sa = USE_SA(zfsvfs->z_version, zfsvfs->z_os);
 }
 
-static int
-zfs_domount(vfs_t *vfsp, char *osname)
+int
+zfs_domount(vfs_t *vfsp, const char *osname)
 {
 	dev_t mount_dev;
 	uint64_t recordsize, fsid_guid;

@@ -351,6 +351,9 @@ zfs_prop_init(void)
 	zprop_register_index(ZFS_PROP_CANMOUNT, "canmount", ZFS_CANMOUNT_ON,
 	    PROP_DEFAULT, ZFS_TYPE_FILESYSTEM, "on | off | noauto",
 	    "CANMOUNT", canmount_table);
+	zprop_register_index(ZFS_PROP_SMARTFOLDERS, "smartfolders", 0,
+	    PROP_DEFAULT, ZFS_TYPE_FILESYSTEM, "on | off", "SMARTFOLDERS",
+	    boolean_table);
 
 	/* readonly index properties */
 	zprop_register_index(ZFS_PROP_MOUNTED, "mounted", 0, PROP_READONLY,

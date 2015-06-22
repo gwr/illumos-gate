@@ -1443,6 +1443,7 @@ ZFS_COMMON_OBJS +=		\
 	zfs_fm.o		\
 	zfs_fuid.o		\
 	zfs_sa.o		\
+	zfs_smartfolder.o	\
 	zfs_znode.o		\
 	zil.o			\
 	zio.o			\

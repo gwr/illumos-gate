@@ -3220,7 +3220,7 @@ zfs_fill_zplprops_impl(objset_t *os, uint64_t zplver,
 	return (0);
 }
 
-static int
+int
 zfs_fill_zplprops(const char *dataset, nvlist_t *createprops,
     nvlist_t *zplprops, boolean_t *is_ci)
 {
@@ -4751,6 +4751,9 @@ zfs_ioc_recv_impl(char *tofs, char *tosnap, char *origin, nvlist_t *recvprops,
 	nvlist_t *recv_delayprops = NULL;
 	nvlist_t *origprops = NULL; /* existing properties */
 	nvlist_t *origrecvd = NULL; /* existing received properties */
+	char *origin = NULL;
+	char *tosnap;
+	char tofs[MAXNAMELEN];
 	boolean_t first_recvd_props = B_FALSE;
 	file_t *input_fp;
 
