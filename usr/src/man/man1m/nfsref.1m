@@ -26,7 +26,7 @@
 .Os
 .Sh NAME
 .Nm nfsref
-.Nd administers NFS referrals, and with options, other types of referrals.
+.Nd administers NFS referrals, and with options, other types of referrals
 .Sh SYNOPSIS
 .Nm
 .Op Fl t Ar type
@@ -52,16 +52,38 @@ for this type looks like:
 .Ar hostname Ns : Ns Ar /pathname
 .It Sy SMB-DFS
 This referral type is administered only through the
-.Xr SMB 4
-service.  The actual format of a referral
-.Ar location
-for
-.Sy SMB-DFS
-is a concatentation of many fields separated by colons,
-much too long and complex to create "by hand".
+.Xr smb 4
+service.
 .El
-The default referral type is
+.Pp
+The default referral
+.Ar type
+is
 .Sy nfs-basic .
+.Pp
+The
+.Nm
+.Cm add
+command creates a reparse point at
+.Ar path
+(if it does not already exist) and sets the NFS referral data to point to the
+.Ar locations
+specified.
+.Pp
+The
+.Nm
+.Cm remove
+command removes the referral data from the specified
+.Ar path .
+If there are no referral types remaining in the reparse point
+.Ar path ,
+then the reparse point is removed.
+.Pp
+The
+.Nm
+.Cm lookup
+command shows the referral data in the reparse point specified by
+.Ar path .
 .Sh Examples
 .Bl -tag -width ""
 .It Sy Example 1 No Creating an NFS Referral
@@ -70,7 +92,7 @@ The following command creates an NFS referral at the path
 on the current system, pointing to the NFS export
 .Em /export/data
 on the server
-.Em bigserver
+.Em bigserver .
 .Bd -literal
 % nfsref add /local/myref bigserver:/export/data
 .Ed
