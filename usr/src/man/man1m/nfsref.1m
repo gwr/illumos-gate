@@ -1,0 +1,88 @@
+.\"
+.\" CDDL HEADER START
+.\"
+.\" The contents of this file are subject to the terms of the
+.\" Common Development and Distribution License (the "License").
+.\" You may not use this file except in compliance with the License.
+.\"
+.\" You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
+.\" or http://www.opensolaris.org/os/licensing.
+.\" See the License for the specific language governing permissions
+.\" and limitations under the License.
+.\"
+.\" When distributing Covered Code, include this CDDL HEADER in each
+.\" file and include the License file at usr/src/OPENSOLARIS.LICENSE.
+.\" If applicable, add the following below this CDDL HEADER, with the
+.\" fields enclosed by brackets "[]" replaced with your own identifying
+.\" information: Portions Copyright [yyyy] [name of copyright owner]
+.\"
+.\" CDDL HEADER END
+.\"
+.\"
+.\" Copyright 2015 Nexenta Systems, Inc.  All Rights Reserved.
+.\"
+.Dd July 27, 2015
+.Dt NFSREF 1M
+.Os
+.Sh NAME
+.Nm nfsref
+.Nd administers NFS referrals, and with options, other types of referrals.
+.Sh SYNOPSIS
+.Nm
+.Op Fl t Ar type
+.Cm add
+.Ar path Ar location Oo Ar location Ns ... Oc
+.Nm
+.Op Fl t Ar type
+.Cm remove
+.Ar path
+.Nm
+.Op Fl t Ar type
+.Cm lookup
+.Ar path
+.Sh DESCRIPTION
+Referrals can be thought of as symbolic links with the ability to point into the exported filesystem of some other server, or a list of such locations where there are replicas and you don't care which you refer to.  The client "follows" the referral to a server that actually has the data.
+
+Referrals have types based on the protocol used to ask for the referral.  The currently implemented set of referral types includes:
+.Bl -tag -width "nfs-basic"
+.It Sy nfs-basic
+An NFS version 4.0 (or later) referral.  The syntax of a
+.Ar location
+for this type looks like:
+.Ar hostname Ns : Ns Ar /pathname
+.It Sy SMB-DFS
+This referral type is administered only through the
+.Xr SMB 4
+service.  The actual format of a referral
+.Ar location
+for
+.Sy SMB-DFS
+is a concatentation of many fields separated by colons,
+much too long and complex to create "by hand".
+.El
+The default referral type is
+.Sy nfs-basic .
+.Sh Examples
+.Bl -tag -width ""
+.It Sy Example 1 No Creating an NFS Referral
+The following command creates an NFS referral at the path
+.Em /local/myref
+on the current system, pointing to the NFS export
+.Em /export/data
+on the server
+.Em bigserver
+.Bd -literal
+% nfsref add /local/myref bigserver:/export/data
+.Ed
+.It Sy Example 2 No Removing an NFS Referral
+The following command Removes an NFS referral at the path
+.Em /local/myref
+on the current system.
+.Bd -literal
+% nfsref remove /local/myref
+.Ed
+.El
+.\" todo...
+.\" .Sh SEE ALSO
+.\" .Xr reparsed 1M,
+.\" .Xr libreparse 3LIB

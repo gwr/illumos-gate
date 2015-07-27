@@ -355,6 +355,7 @@ _MANFILES=	6to4relay.1m		\
 		nfsd.1m			\
 		nfslogd.1m		\
 		nfsmapid.1m		\
+		nfsref.1m		\
 		nfsstat.1m		\
 		nlsadmin.1m		\
 		nscadm.1m		\
