@@ -26,7 +26,7 @@
 .Os
 .Sh NAME
 .Nm nfsref
-.Nd administers NFS referrals, and with options, other types of referrals
+.Nd administers NFS referrals
 .Sh SYNOPSIS
 .Nm
 .Op Fl t Ar type
@@ -41,9 +41,13 @@
 .Cm lookup
 .Ar path
 .Sh DESCRIPTION
-Referrals can be thought of as symbolic links with the ability to point into the exported filesystem of some other server, or a list of such locations where there are replicas and you don't care which you refer to.  The client "follows" the referral to a server that actually has the data.
+Referrals can be thought of as symbolic links with the ability to point
+into the exported filesystem of some other server, or a list of such
+locations where there are replicas and you don't care which you refer to.
+The client "follows" the referral to a server that actually has the data.
 
-Referrals have types based on the protocol used to ask for the referral.  The currently implemented set of referral types includes:
+Referrals have types based on the protocol used to ask for the referral.
+The currently implemented set of referral types includes:
 .Bl -tag -width "nfs-basic"
 .It Sy nfs-basic
 An NFS version 4.0 (or later) referral.  The syntax of a
@@ -97,7 +101,7 @@ on the server
 % nfsref add /local/myref bigserver:/export/data
 .Ed
 .It Sy Example 2 No Removing an NFS Referral
-The following command Removes an NFS referral at the path
+The following command removes the referral at the path
 .Em /local/myref
 on the current system.
 .Bd -literal
