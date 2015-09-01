@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <smbsrv/smb_kproto.h>
@@ -623,11 +623,9 @@ uint32_t
 smb_query_stream_info(smb_request_t *sr, mbuf_chain_t *mbc,
 	smb_queryinfo_t *qinfo)
 {
-	char *stream_name;
 	uint32_t next_offset;
 	uint32_t stream_nlen;
 	uint32_t pad;
-	u_offset_t datasz, allocsz;
 	smb_streaminfo_t *sinfo, *sinfo_next;
 	int rc = 0;
 	boolean_t done = B_FALSE;
@@ -636,7 +634,6 @@ smb_query_stream_info(smb_request_t *sr, mbuf_chain_t *mbc,
 	uint32_t status = 0;
 
 	smb_node_t *fnode = qinfo->qi_node;
-	smb_attr_t *attr = &qinfo->qi_attr;
 
 	ASSERT(fnode);
 	if (SMB_IS_STREAM(fnode)) {
@@ -648,8 +645,6 @@ smb_query_stream_info(smb_request_t *sr, mbuf_chain_t *mbc,
 
 	sinfo = kmem_alloc(sizeof (smb_streaminfo_t), KM_SLEEP);
 	sinfo_next = kmem_alloc(sizeof (smb_streaminfo_t), KM_SLEEP);
-	datasz = attr->sa_vattr.va_size;
-	allocsz = attr->sa_allocsz;
 
 	status = smb_odir_openat(sr, fnode, &od);
 	switch (status) {
@@ -668,34 +663,6 @@ smb_query_stream_info(smb_request_t *sr, mbuf_chain_t *mbc,
 		rc = smb_odir_read_streaminfo(sr, od, sinfo, &eos);
 		if ((rc != 0) || (eos))
 			done = B_TRUE;
-	}
-
-	/* If not a directory, encode an entry for the unnamed stream. */
-	if (qinfo->qi_isdir == 0) {
-		stream_name = "::$DATA";
-		stream_nlen = smb_ascii_or_unicode_strlen(sr, stream_name);
-		next_offset = SMB_STREAM_ENCODE_FIXED_SZ + stream_nlen +
-		    smb_ascii_or_unicode_null_len(sr);
-
-		/* Can unnamed stream fit in response buffer? */
-		if (MBC_ROOM_FOR(mbc, next_offset) == 0) {
-			done = B_TRUE;
-			status = NT_STATUS_BUFFER_OVERFLOW;
-		} else {
-			/* Can first named stream fit in rsp buffer? */
-			if (!done && !smb_stream_fits(sr, mbc, sinfo->si_name,
-			    next_offset)) {
-				done = B_TRUE;
-				status = NT_STATUS_BUFFER_OVERFLOW;
-			}
-
-			if (done)
-				next_offset = 0;
-
-			(void) smb_mbc_encodef(mbc, "%llqqu", sr,
-			    next_offset, stream_nlen, datasz, allocsz,
-			    stream_name);
-		}
 	}
 
 	/*
