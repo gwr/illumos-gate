@@ -417,6 +417,8 @@ smb_request_init_command_mbuf(smb_request_t *sr)
 void
 smb_request_cancel(smb_request_t *sr)
 {
+	void (*cancel_method)(smb_request_t *) = NULL;
+
 	mutex_enter(&sr->sr_mutex);
 	switch (sr->sr_state) {
 
@@ -424,7 +426,7 @@ smb_request_cancel(smb_request_t *sr)
 	case SMB_REQ_STATE_SUBMITTED:
 	case SMB_REQ_STATE_ACTIVE:
 	case SMB_REQ_STATE_CLEANED_UP:
-		sr->sr_state = SMB_REQ_STATE_CANCELED;
+		sr->sr_state = SMB_REQ_STATE_CANCELLED;
 		break;
 
 	case SMB_REQ_STATE_WAITING_EVENT:
@@ -432,15 +434,22 @@ smb_request_cancel(smb_request_t *sr)
 	case SMB_REQ_STATE_WAITING_AUTH:
 	case SMB_REQ_STATE_WAITING_PIPE:
 		/*
-		 * This request is waiting in change notify.
+		 * These are states that have a cancel_method.
+		 * Make the state change now, to ensure that
+		 * we call cancel_method exactly once.  Do the
+		 * method call below, after we drop sr_mutex.
+		 * When the cancelled request thread resumes,
+		 * it should re-take sr_mutex and set sr_state
+		 * to CANCELLED, then return STATUS_CANCELLED.
 		 */
-		sr->sr_state = SMB_REQ_STATE_CANCELED;
-		cv_signal(&sr->sr_ncr.nc_cv);
+		sr->sr_state = SMB_REQ_STATE_CANCEL_PENDING;
+		cancel_method = sr->cancel_method;
+		VERIFY(cancel_method != NULL);
 		break;
 
 	case SMB_REQ_STATE_EVENT_OCCURRED:
 	case SMB_REQ_STATE_COMPLETED:
-	case SMB_REQ_STATE_CANCELED:
+	case SMB_REQ_STATE_CANCELLED:
 		/*
 		 * No action required for these states since the request
 		 * is completing.
@@ -452,6 +461,10 @@ smb_request_cancel(smb_request_t *sr)
 		SMB_PANIC();
 	}
 	mutex_exit(&sr->sr_mutex);
+
+	if (cancel_method != NULL) {
+		cancel_method(sr);
+	}
 }
 
 /*
