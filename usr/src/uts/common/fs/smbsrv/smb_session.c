@@ -427,23 +427,10 @@ smb_request_cancel(smb_request_t *sr)
 		sr->sr_state = SMB_REQ_STATE_CANCELED;
 		break;
 
-	case SMB_REQ_STATE_WAITING_LOCK:
-		/*
-		 * This request is waiting on a lock.  Wakeup everything
-		 * waiting on the lock so that the relevant thread regains
-		 * control and notices that is has been canceled.  The
-		 * other lock request threads waiting on this lock will go
-		 * back to sleep when they discover they are still blocked.
-		 */
-		sr->sr_state = SMB_REQ_STATE_CANCELED;
-
-		ASSERT(sr->sr_awaiting != NULL);
-		mutex_enter(&sr->sr_awaiting->l_mutex);
-		cv_broadcast(&sr->sr_awaiting->l_cv);
-		mutex_exit(&sr->sr_awaiting->l_mutex);
-		break;
-
 	case SMB_REQ_STATE_WAITING_EVENT:
+	case SMB_REQ_STATE_WAITING_LOCK:
+	case SMB_REQ_STATE_WAITING_AUTH:
+	case SMB_REQ_STATE_WAITING_PIPE:
 		/*
 		 * This request is waiting in change notify.
 		 */
