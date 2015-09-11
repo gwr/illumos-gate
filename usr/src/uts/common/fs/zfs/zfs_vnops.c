@@ -2059,8 +2059,8 @@ zfs_mkdir(vnode_t *dvp, char *dirname, vattr_t *vap, vnode_t **vpp, cred_t *cr,
 	zfs_acl_ids_t   acl_ids;
 	boolean_t	fuid_dirtied;
 	boolean_t	waited = B_FALSE;
-	boolean_t	create_smartfolder = B_FALSE;
-	char		*buf = NULL;
+	char		*path = NULL;
+	char		*smartname = NULL;
 
 	ASSERT(vap->va_type == VDIR);
 
@@ -2196,20 +2196,22 @@ top:
 
 	dmu_tx_commit(tx);
 	if (zfs_smartfolder_enabled(zfsvfs->z_os)) {
-		int err;
-
-		buf = kmem_alloc(MAXPATHLEN, KM_SLEEP);
-		if ((err = vnodetopath(NULL, dvp, buf, MAXPATHLEN, cr)) == 0) {
-			if ((err = zfs_get_smartname(zfsvfs->z_os, dirname,
-			    buf)) == 0)
-				create_smartfolder = B_TRUE;
+		path = kmem_alloc(MAXPATHLEN, KM_SLEEP);
+		smartname = kmem_alloc(MAXPATHLEN, KM_SLEEP);
+		if (vnodetopath(NULL, dvp, path, MAXPATHLEN, cr) == 0) {
+			if (zfs_get_smartname(zfsvfs->z_os, dirname, path,
+			    smartname) == 0)
+				ASSERT3P(smartname, !=, NULL);
 		}
 	}
 
-	if (create_smartfolder)
-		(void) zfs_create_smartfolder(*vpp, cr, buf, flags);
-	if (buf)
-		kmem_free(buf, MAXPATHLEN);
+	if (path) {
+		if (smartname != NULL)
+			(void) zfs_create_smartfolder(*vpp, cr, path, smartname,
+			    flags);
+		kmem_free(smartname, MAXPATHLEN);
+		kmem_free(path, MAXPATHLEN);
+	}
 
 	zfs_dirent_unlock(dl);
 

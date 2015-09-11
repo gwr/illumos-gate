@@ -21,9 +21,10 @@ struct vnode;
 struct cred;
 
 boolean_t zfs_smartfolder_enabled(objset_t *os);
-int zfs_get_smartname(objset_t *os, const const char *dirname, char *path);
+int zfs_get_smartname(objset_t *os, const const char *dirname, char *path,
+    char *smartname);
 int zfs_create_smartfolder(struct vnode *vn, struct cred *cr,
-    const char *smartpath, int flags);
+    const char *smartpath, const char *smartname, int flags);
 
 #ifdef	__cplusplus
 }

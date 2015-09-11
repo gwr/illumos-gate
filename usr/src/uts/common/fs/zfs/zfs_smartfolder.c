@@ -27,7 +27,6 @@ int zfs_smartfolder_kcred;
 boolean_t
 zfs_smartfolder_enabled(objset_t *os)
 {
-	int err;
 	uint64_t val;
 	dsl_pool_t *dp = os->os_dsl_dataset->ds_dir->dd_pool;
 
@@ -36,8 +35,7 @@ zfs_smartfolder_enabled(objset_t *os)
 
 	dsl_pool_config_enter(dp, FTAG);
 
-	if ((err = dsl_prop_get_int_ds(dmu_objset_ds(os), "smartfolders", &val))
-	    != 0) {
+	if (dsl_prop_get_int_ds(dmu_objset_ds(os), "smartfolders", &val) != 0) {
 		dsl_pool_config_exit(dp, FTAG);
 		return (B_FALSE);
 	}
@@ -50,40 +48,45 @@ zfs_smartfolder_enabled(objset_t *os)
  * buf must contain parent dir path
  */
 int
-zfs_get_smartname(objset_t *os, const const char *dirname,
-    char *path)
+zfs_get_smartname(objset_t *os, const char *dirname, char *path,
+    char *smartname)
 {
-	size_t len;
-	char *dsname;
+	size_t len, slen, dlen;
+	char *p;
 
 	ASSERT3P(os, !=, NULL);
 	ASSERT3P(dirname, !=, NULL);
 	ASSERT3P(path, !=, NULL);
+	ASSERT3P(smartname, !=, NULL);
 	ASSERT3S(path[0], ==, '/');
 
 	if (!zfs_smartfolder)
 		return (ENOTSUP);
 
-	if ((dsname = kmem_alloc(MAXPATHLEN, KM_SLEEP)) == NULL)
-		return (ENOMEM);
+	if (smartname == NULL)
+		return (EINVAL);
 
-	dsl_dataset_name(os->os_dsl_dataset, dsname);
+	dsl_dataset_name(os->os_dsl_dataset, smartname);
 
 	DTRACE_PROBE2(xxx_smartfolder,
-	    char *, dsname,
+	    char *, smartname,
 	    char *, path);
 
-	/* skip leading slash '/' */
-	if (strcmp(dsname, path + 1) != 0) {
-		kmem_free(dsname, MAXPATHLEN);
+	len = strnlen(path, MAXPATHLEN);
+	slen = strnlen(smartname, MAXPATHLEN);
+	dlen = strnlen(dirname, MAXPATHLEN);
+
+	if ((len + dlen + 1 >= MAXPATHLEN) ||
+	    (slen + dlen + 1 >= MAXPATHLEN))
 		return (EINVAL);
-	}
 
-	len = strlen(dsname);
-	path[len + 1] = '/';
-	(void) strcpy(path + 2 + len, dirname);
+	p = path + len;
+	*p++ = '/';
+	(void) strcpy(p, dirname);
+	p = smartname + slen;
+	*p++ = '/';
+	(void) strcpy(p, dirname);
 
-	kmem_free(dsname, MAXPATHLEN);
 	return (0);
 }
 
@@ -106,8 +109,8 @@ extern int zfs_fill_zplprops(const char *dataset, nvlist_t *createprops,
  * ARGSUSED
  */
 int
-zfs_create_smartfolder(struct vnode *vn, struct cred *cr, const char *smartpath,
-    int flags)
+zfs_create_smartfolder(struct vnode *vn, struct cred *cr,
+    const char *smartpath, const char *smartname, int flags)
 {
 	int err;
 #ifdef	_KERNEL
@@ -115,10 +118,9 @@ zfs_create_smartfolder(struct vnode *vn, struct cred *cr, const char *smartpath,
 	struct mounta ma;
 	struct vfs *vfs;
 	objset_t *os;
-	const char *dsname = smartpath + 1; /* skip leading slash */
 	boolean_t is_insensitive;
 
-	if ((err = dmu_objset_hold(dsname, FTAG, &os)) == 0) {
+	if ((err = dmu_objset_hold(smartname, FTAG, &os)) == 0) {
 		dmu_objset_rele(os, FTAG);
 		return (EEXIST);
 	}
@@ -126,17 +128,14 @@ zfs_create_smartfolder(struct vnode *vn, struct cred *cr, const char *smartpath,
 	VERIFY(nvlist_alloc(&zct.zct_zplprops,
 	    NV_UNIQUE_NAME, KM_SLEEP) == 0);
 
-	if ((err = zfs_fill_zplprops(dsname, NULL, zct.zct_zplprops,
+	if ((err = zfs_fill_zplprops(smartname, NULL, zct.zct_zplprops,
 	    &is_insensitive)) != 0) {
 		nvlist_free(zct.zct_zplprops);
 		return (err);
 	}
 
-	if ((err = dmu_objset_create(dsname, DMU_OST_ZFS,
-/*
- *	    (flags & FIGNORECASE ?  DS_FLAG_CI_DATASET : 0),
- */
-	    (is_insensitive ?  DS_FLAG_CI_DATASET : 0),
+	if ((err = dmu_objset_create(smartname, DMU_OST_ZFS,
+	    (flags & FIGNORECASE ?  DS_FLAG_CI_DATASET : 0),
 	    zfs_create_cb, &zct)) != 0) {
 		nvlist_free(zct.zct_zplprops);
 		return (err);
@@ -144,7 +143,7 @@ zfs_create_smartfolder(struct vnode *vn, struct cred *cr, const char *smartpath,
 
 	nvlist_free(zct.zct_zplprops);
 
-	ma.spec = (char *)dsname;
+	ma.spec = (char *)smartname;
 	ma.dir = (char *)smartpath;
 /*
  *	ma.flags = MS_SYSSPACE | MS_NOMNTTAB;
