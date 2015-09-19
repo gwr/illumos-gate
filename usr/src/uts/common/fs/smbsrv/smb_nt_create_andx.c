@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -227,6 +227,9 @@ smb_post_nt_create_andx(smb_request_t *sr)
 	}
 }
 
+/*
+ * A lot like smb_nt_transact_create
+ */
 smb_sdrc_t
 smb_com_nt_create_andx(struct smb_request *sr)
 {
@@ -234,7 +237,7 @@ smb_com_nt_create_andx(struct smb_request *sr)
 	smb_attr_t		*ap = &op->fqi.fq_fattr;
 	smb_ofile_t		*of;
 	int			rc;
-	unsigned char		DirFlag;
+	uint8_t			DirFlag;
 	uint32_t		status;
 
 	if ((op->create_options & FILE_DELETE_ON_CLOSE) &&
@@ -294,47 +297,11 @@ smb_com_nt_create_andx(struct smb_request *sr)
 	case STYPE_PRINTQ:
 		if (op->create_options & FILE_DELETE_ON_CLOSE)
 			smb_ofile_set_delete_on_close(of);
-
 		DirFlag = smb_node_is_dir(of->f_node) ? 1 : 0;
-		rc = smbsr_encode_result(sr, 34, 0, "bb.wbwlTTTTlqqwwbw",
-		    34,
-		    sr->andx_com,
-		    0x67,
-		    op->op_oplock_level,
-		    sr->smb_fid,
-		    op->action_taken,
-		    &ap->sa_crtime,
-		    &ap->sa_vattr.va_atime,
-		    &ap->sa_vattr.va_mtime,
-		    &ap->sa_vattr.va_ctime,
-		    op->dattr & FILE_ATTRIBUTE_MASK,
-		    ap->sa_allocsz,
-		    ap->sa_vattr.va_size,
-		    op->ftype,
-		    op->devstate,
-		    DirFlag,
-		    0);
 		break;
 
 	case STYPE_IPC:
-		rc = smbsr_encode_result(sr, 34, 0, "bb.wbwlqqqqlqqwwbw",
-		    34,
-		    sr->andx_com,
-		    0x67,
-		    0,
-		    sr->smb_fid,
-		    op->action_taken,
-		    0LL,
-		    0LL,
-		    0LL,
-		    0LL,
-		    FILE_ATTRIBUTE_NORMAL,
-		    0x1000LL,
-		    0LL,
-		    op->ftype,
-		    op->devstate,
-		    0,
-		    0);
+		DirFlag = 0;
 		break;
 
 	default:
@@ -342,6 +309,59 @@ smb_com_nt_create_andx(struct smb_request *sr)
 		    ERRDOS, ERROR_INVALID_FUNCTION);
 		goto errout;
 	}
+
+	if (op->nt_flags & NT_CREATE_FLAG_EXTENDED_RESPONSE) {
+		uint32_t MaxAccess = 0;
+		if (of->f_node != NULL) {
+			smb_fsop_eaccess(sr, of->f_cr, of->f_node, &MaxAccess);
+		}
+		MaxAccess |= of->f_granted_access;
+
+		rc = smbsr_encode_result(
+		    sr, 50, 0, "bb.wbwlTTTTlqqwwb16.qllw",
+		    50,		/* word count	   (b) */
+		    sr->andx_com,		/* (b.) */
+		    0x87,	/* andx offset	   (w) */
+		    op->op_oplock_level,	/* (b) */
+		    sr->smb_fid,		/* (w) */
+		    op->action_taken,		/* (l) */
+		    &ap->sa_crtime,		/* (T) */
+		    &ap->sa_vattr.va_atime,	/* (T) */
+		    &ap->sa_vattr.va_mtime,	/* (T) */
+		    &ap->sa_vattr.va_ctime,	/* (T) */
+		    op->dattr & FILE_ATTRIBUTE_MASK, /* (l) */
+		    ap->sa_allocsz,		/* (q) */
+		    ap->sa_vattr.va_size,	/* (q) */
+		    op->ftype,			/* (w) */
+		    op->devstate,		/* (w) */
+		    DirFlag,			/* (b) */
+		    /* volume guid		  (16.) */
+		    op->fileid,			/* (q) */
+		    MaxAccess,			/* (l) */
+		    0,		/* guest access	   (l) */
+		    0);		/* byte count	   (w) */
+	} else {
+		rc = smbsr_encode_result(
+		    sr, 34, 0, "bb.wbwlTTTTlqqwwbw",
+		    34,		/* word count	   (b) */
+		    sr->andx_com,		/* (b.) */
+		    0x67,	/* andx offset	   (w) */
+		    op->op_oplock_level,	/* (b) */
+		    sr->smb_fid,		/* (w) */
+		    op->action_taken,		/* (l) */
+		    &ap->sa_crtime,		/* (T) */
+		    &ap->sa_vattr.va_atime,	/* (T) */
+		    &ap->sa_vattr.va_mtime,	/* (T) */
+		    &ap->sa_vattr.va_ctime,	/* (T) */
+		    op->dattr & FILE_ATTRIBUTE_MASK, /* (l) */
+		    ap->sa_allocsz,		/* (q) */
+		    ap->sa_vattr.va_size,	/* (q) */
+		    op->ftype,			/* (w) */
+		    op->devstate,		/* (w) */
+		    DirFlag,			/* (b) */
+		    0);		/* byte count	   (w) */
+	}
+
 	if (rc == 0)
 		return (SDRC_SUCCESS);
 

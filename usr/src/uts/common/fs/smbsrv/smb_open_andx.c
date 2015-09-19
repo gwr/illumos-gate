@@ -24,6 +24,7 @@
  */
 
 #include <smbsrv/smb_kproto.h>
+#include <smbsrv/smb_fsops.h>
 #include <smbsrv/smb_vops.h>
 
 int smb_open_dsize_check = 0;
@@ -374,10 +375,11 @@ smb_sdrc_t
 smb_com_open_andx(smb_request_t *sr)
 {
 	struct open_param	*op = &sr->arg.open;
+	smb_attr_t		*ap = &op->fqi.fq_fattr;
 	smb_ofile_t		*of;
 	uint32_t		status;
+	uint32_t		mtime_sec;
 	uint16_t		file_attr;
-	smb_attr_t		attr;
 	int rc;
 
 	op->desired_access = smb_omode_to_amask(op->omode);
@@ -419,51 +421,66 @@ smb_com_open_andx(smb_request_t *sr)
 		op->action_taken &= ~SMB_OACT_LOCK;
 
 	file_attr = op->dattr & FILE_ATTRIBUTE_MASK;
-	bzero(&attr, sizeof (attr));
+	mtime_sec = smb_time_gmt_to_local(sr, ap->sa_vattr.va_mtime.tv_sec);
 
 	switch (sr->tid_tree->t_res_type & STYPE_MASK) {
 	case STYPE_DISKTREE:
 	case STYPE_PRINTQ:
-		attr.sa_mask = SMB_AT_MTIME;
-		rc = smb_node_getattr(sr, of->f_node, of->f_cr, of, &attr);
-		if (rc != 0) {
-			smbsr_errno(sr, rc);
-			goto errout;
-		}
-
-		rc = smbsr_encode_result(sr, 15, 0,
-		    "bb.wwwllwwwwl2.w",
-		    15,
-		    sr->andx_com, VAR_BCC,
-		    sr->smb_fid,
-		    file_attr,
-		    smb_time_gmt_to_local(sr, attr.sa_vattr.va_mtime.tv_sec),
-		    (uint32_t)op->dsize,
-		    op->omode, op->ftype,
-		    op->devstate,
-		    op->action_taken, op->fileid,
-		    0);
 		break;
 
 	case STYPE_IPC:
-		rc = smbsr_encode_result(sr, 15, 0,
-		    "bb.wwwllwwwwl2.w",
-		    15,
-		    sr->andx_com, VAR_BCC,
-		    sr->smb_fid,
-		    file_attr,
-		    0L,
-		    0L,
-		    op->omode, op->ftype,
-		    op->devstate,
-		    op->action_taken, op->fileid,
-		    0);
+		mtime_sec = 0;
 		break;
 
 	default:
 		smbsr_error(sr, NT_STATUS_INVALID_DEVICE_REQUEST,
 		    ERRDOS, ERROR_INVALID_FUNCTION);
 		goto errout;
+	}
+
+	if (op->nt_flags & NT_CREATE_FLAG_EXTENDED_RESPONSE) {
+		uint32_t MaxAccess = 0;
+		if (of->f_node != NULL) {
+			smb_fsop_eaccess(sr, of->f_cr, of->f_node, &MaxAccess);
+		}
+		MaxAccess |= of->f_granted_access;
+
+		rc = smbsr_encode_result(
+		    sr, 19, 0, "bb.wwwllwwwwl2.llw",
+		    19,		/* word count	   (b) */
+		    sr->andx_com,		/* (b.) */
+		    VAR_BCC,	/* andx offset	   (w) */
+		    sr->smb_fid,		/* (w) */
+		    file_attr,			/* (w) */
+		    mtime_sec,			/* (l) */
+		    (uint32_t)op->dsize,	/* (l) */
+		    op->omode,			/* (w) */
+		    op->ftype,			/* (w) */
+		    op->devstate,		/* (w) */
+		    op->action_taken,		/* (w) */
+		    0,		/* legacy fileid   (l) */
+		    /* reserved			  (2.) */
+		    MaxAccess,			/* (l) */
+		    0,		/* guest access	   (l) */
+		    0);		/* byte count	   (w) */
+
+	} else {
+		rc = smbsr_encode_result(
+		    sr, 15, 0, "bb.wwwllwwwwl2.w",
+		    15,		/* word count	   (b) */
+		    sr->andx_com,		/* (b.) */
+		    VAR_BCC,	/* andx offset	   (w) */
+		    sr->smb_fid,		/* (w) */
+		    file_attr,			/* (w) */
+		    mtime_sec,			/* (l) */
+		    (uint32_t)op->dsize,	/* (l) */
+		    op->omode,			/* (w) */
+		    op->ftype,			/* (w) */
+		    op->devstate,		/* (w) */
+		    op->action_taken,		/* (w) */
+		    0,		/* legacy fileid   (l) */
+		    /* reserved			  (2.) */
+		    0);		/* byte count	   (w) */
 	}
 
 	if (rc == 0)

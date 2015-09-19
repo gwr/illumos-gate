@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -136,15 +136,18 @@ smb_post_nt_transact_create(smb_request_t *sr, smb_xa_t *xa)
 		smb_ofile_release(sr->arg.open.dir);
 }
 
+/*
+ * A lot like smb_com_nt_create_andx
+ */
 smb_sdrc_t
 smb_nt_transact_create(smb_request_t *sr, smb_xa_t *xa)
 {
-	struct open_param *op = &sr->arg.open;
-	uint8_t			DirFlag;
-	smb_attr_t		attr;
+	struct open_param	*op = &sr->arg.open;
+	smb_attr_t		*ap = &op->fqi.fq_fattr;
 	smb_ofile_t		*of;
-	uint32_t		status;
 	int			rc;
+	uint8_t			DirFlag;
+	uint32_t		status;
 
 	if ((op->create_options & FILE_DELETE_ON_CLOSE) &&
 	    !(op->desired_access & DELETE)) {
@@ -203,50 +206,11 @@ smb_nt_transact_create(smb_request_t *sr, smb_xa_t *xa)
 	case STYPE_PRINTQ:
 		if (op->create_options & FILE_DELETE_ON_CLOSE)
 			smb_ofile_set_delete_on_close(of);
-
 		DirFlag = smb_node_is_dir(of->f_node) ? 1 : 0;
-		bzero(&attr, sizeof (attr));
-		attr.sa_mask = SMB_AT_ALL;
-		rc = smb_node_getattr(sr, of->f_node, of->f_cr, of, &attr);
-		if (rc != 0) {
-			smbsr_errno(sr, rc);
-			goto errout;
-		}
-
-		rc = smb_mbc_encodef(&xa->rep_param_mb, "b.wllTTTTlqqwwb",
-		    op->op_oplock_level,
-		    sr->smb_fid,
-		    op->action_taken,
-		    0,	/* EaErrorOffset */
-		    &attr.sa_crtime,
-		    &attr.sa_vattr.va_atime,
-		    &attr.sa_vattr.va_mtime,
-		    &attr.sa_vattr.va_ctime,
-		    op->dattr & FILE_ATTRIBUTE_MASK,
-		    attr.sa_allocsz,
-		    attr.sa_vattr.va_size,
-		    op->ftype,
-		    op->devstate,
-		    DirFlag);
 		break;
 
 	case STYPE_IPC:
-		bzero(&attr, sizeof (smb_attr_t));
-		rc = smb_mbc_encodef(&xa->rep_param_mb, "b.wllTTTTlqqwwb",
-		    0,
-		    sr->smb_fid,
-		    op->action_taken,
-		    0,	/* EaErrorOffset */
-		    &attr.sa_crtime,
-		    &attr.sa_vattr.va_atime,
-		    &attr.sa_vattr.va_mtime,
-		    &attr.sa_vattr.va_ctime,
-		    op->dattr,
-		    0x1000LL,
-		    0LL,
-		    op->ftype,
-		    op->devstate,
-		    0);
+		DirFlag = 0;
 		break;
 
 	default:
@@ -254,7 +218,57 @@ smb_nt_transact_create(smb_request_t *sr, smb_xa_t *xa)
 		    ERRDOS, ERROR_INVALID_FUNCTION);
 		goto errout;
 	}
-	return (SDRC_SUCCESS);
+
+	if (op->nt_flags & NT_CREATE_FLAG_EXTENDED_RESPONSE) {
+		uint32_t MaxAccess = 0;
+		if (of->f_node != NULL) {
+			smb_fsop_eaccess(sr, of->f_cr, of->f_node, &MaxAccess);
+		}
+		MaxAccess |= of->f_granted_access;
+
+		rc = smb_mbc_encodef(
+		    &xa->rep_param_mb, "bbwllTTTTlqqwwb16.qll",
+		    op->op_oplock_level,	/* (b) */
+		    1,		/* ResponseType	   (b) */
+		    sr->smb_fid,		/* (w) */
+		    op->action_taken,		/* (l) */
+		    0,		/* EaErrorOffset   (l) */
+		    &ap->sa_crtime,		/* (T) */
+		    &ap->sa_vattr.va_atime,	/* (T) */
+		    &ap->sa_vattr.va_mtime,	/* (T) */
+		    &ap->sa_vattr.va_ctime,	/* (T) */
+		    op->dattr & FILE_ATTRIBUTE_MASK, /* (l) */
+		    ap->sa_allocsz,		/* (q) */
+		    ap->sa_vattr.va_size,	/* (q) */
+		    op->ftype,			/* (w) */
+		    op->devstate,		/* (w) */
+		    DirFlag,			/* (b) */
+		    /* volume guid		  (16.) */
+		    op->fileid,			/* (q) */
+		    MaxAccess,			/* (l) */
+		    0);		/* guest access	   (l) */
+	} else {
+		rc = smb_mbc_encodef(
+		    &xa->rep_param_mb, "bbwllTTTTlqqwwb",
+		    op->op_oplock_level,	/* (b) */
+		    0,		/* ResponseType	   (b) */
+		    sr->smb_fid,		/* (w) */
+		    op->action_taken,		/* (l) */
+		    0,		/* EaErrorOffset   (l) */
+		    &ap->sa_crtime,		/* (T) */
+		    &ap->sa_vattr.va_atime,	/* (T) */
+		    &ap->sa_vattr.va_mtime,	/* (T) */
+		    &ap->sa_vattr.va_ctime,	/* (T) */
+		    op->dattr & FILE_ATTRIBUTE_MASK, /* (l) */
+		    ap->sa_allocsz,		/* (q) */
+		    ap->sa_vattr.va_size,	/* (q) */
+		    op->ftype,			/* (w) */
+		    op->devstate,		/* (w) */
+		    DirFlag);			/* (b) */
+	}
+
+	if (rc == 0)
+		return (SDRC_SUCCESS);
 
 errout:
 	smb_ofile_close(of, 0);

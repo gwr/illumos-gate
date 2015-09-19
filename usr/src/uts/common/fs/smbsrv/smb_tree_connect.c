@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc. All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc. All rights reserved.
  */
 
 #include <smbsrv/smb_kproto.h>
@@ -307,17 +307,27 @@ smb_sdrc_t
 smb_com_tree_connect_andx(smb_request_t *sr)
 {
 	smb_arg_tcon_t	*tcon = &sr->sr_tcon;
+	smb_tree_t	*tree;
 	char		*service;
 	uint32_t	status;
 	int		rc;
+
+	if (tcon->flags & SMB_TCONX_DISCONECT_TID) {
+		tree = smb_session_lookup_tree(sr->session, sr->smb_tid);
+		if (tree != NULL) {
+			smb_session_cancel_requests(sr->session, tree, sr);
+			smb_tree_disconnect(tree, B_TRUE);
+		}
+	}
 
 	status = smb_tree_connect(sr);
 	if (status) {
 		smb_tcon_puterror(sr, status);
 		return (SDRC_ERROR);
 	}
+	tree = sr->tid_tree;
 
-	switch (sr->tid_tree->t_res_type & STYPE_MASK) {
+	switch (tree->t_res_type & STYPE_MASK) {
 	case STYPE_IPC:
 		service = "IPC";
 		break;
@@ -336,8 +346,8 @@ smb_com_tree_connect_andx(smb_request_t *sr)
 		    VAR_BCC,
 		    VAR_BCC,
 		    service,
-		    sr->tid_tree->t_typename);
-	} else {
+		    tree->t_typename);
+	} else if ((tcon->flags & SMB_TCONX_EXTENDED_RESPONSE) == 0) {
 		rc = smbsr_encode_result(sr, 3, VAR_BCC, "bb.wwws%u",
 		    (char)3,		/* wct */
 		    sr->andx_com,
@@ -346,7 +356,20 @@ smb_com_tree_connect_andx(smb_request_t *sr)
 		    VAR_BCC,
 		    service,
 		    sr,
-		    sr->tid_tree->t_typename);
+		    tree->t_typename);
+
+	} else {
+		rc = smbsr_encode_result(sr, 7, VAR_BCC, "bb.wwllws%u",
+		    (char)7,		/* wct (b) */
+		    sr->andx_com,	/* AndXcmd (b) */
+		    (short)72,		/* AndXoff (w) */
+		    tcon->optional_support,	/* (w) */
+		    tree->t_access,		/* (l) */
+		    0,		/*    guest_access (l) */
+		    VAR_BCC,		/* (w) */
+		    service,		/* (s) */
+		    sr,			/* (%) */
+		    tree->t_typename);	/* (u) */
 	}
 
 	return ((rc == 0) ? SDRC_SUCCESS : SDRC_ERROR);
