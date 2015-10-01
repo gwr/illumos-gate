@@ -25,12 +25,29 @@
 #endif
 
 #include <sys/types.h>
+#ifndef	NATIVE
 #include <locale.h>
 #include <xlocale.h>
+#endif
 #include "setlocale.h"
 #include "runetype.h"
 
 /* private locale structures */
+
+/*
+ * This header is also needed to build cmd/localedef "native".  In
+ * normal builds, these duplicate defines in head/iso/locale_iso.h
+ * and do so on purpose - to verify that they're the same.  In a
+ * "native" build, the build host may have something else in its
+ * locale.h, which the native build is careful to avoid.
+ */
+#define	LC_CTYPE	0
+#define	LC_NUMERIC	1
+#define	LC_TIME		2
+#define	LC_COLLATE	3
+#define	LC_MONETARY	4
+#define	LC_MESSAGES	5
+#define	LC_ALL		6
 
 /*
  * Because some locale data is rather ahem.. large, we would like to keep
@@ -44,6 +61,7 @@
  * your life as bootstrapping locale data from files is quite expensive.
  */
 
+#ifndef	NATIVE
 #define	NLOCDATA	4
 struct locdata {
 	char		l_lname[ENCODING_LEN+1];	/* locale name */
@@ -104,4 +122,5 @@ extern struct locdata	__posix_ctype_locdata;
 extern struct locdata	__posix_collate_locdata;
 extern locale_t ___global_locale;
 
+#endif	/* NATIVE */
 #endif	/* _LOCALEIMPL_H_ */

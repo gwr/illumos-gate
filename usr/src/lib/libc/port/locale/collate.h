@@ -32,7 +32,6 @@
 
 #include <sys/types.h>
 #include <limits.h>
-#include <locale.h>
 #include "localeimpl.h"
 
 #define	COLLATE_STR_LEN		24		/* should be 64-bit multiple */
@@ -114,6 +113,7 @@ struct lc_collate {
 	collate_subst_t	*lc_subst_table[COLL_WEIGHTS_MAX];
 };
 
+#ifndef	NATIVE
 void	_collate_lookup(const struct lc_collate *, const wchar_t *,
     int *, int *, int, const int **);
 size_t	_collate_wxfrm(const struct lc_collate *, const wchar_t *,
@@ -121,4 +121,5 @@ size_t	_collate_wxfrm(const struct lc_collate *, const wchar_t *,
 size_t	_collate_sxfrm(const wchar_t *, char *, size_t, locale_t);
 int	_collate_range_cmp(wchar_t, wchar_t, locale_t);
 
+#endif	/* NATIVE */
 #endif /* !_COLLATE_H_ */
