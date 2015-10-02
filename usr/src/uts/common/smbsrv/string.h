@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2012 Nexenta Systems, Inc. All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc. All rights reserved.
  */
 
 #ifndef	_SMBSRV_STRING_H
@@ -133,6 +133,9 @@ int smb_wctomb(char *, smb_wchar_t);
 
 size_t smb_wcequiv_strlen(const char *);
 size_t smb_sbequiv_strlen(const char *);
+
+int smb_oemtombs(char *, const uint8_t *, int);
+int smb_mbstooem(uint8_t *, const char *, int);
 
 int smb_stombs(char *, char *, int);
 int smb_mbstos(char *, const char *);

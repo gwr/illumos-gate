@@ -22,7 +22,7 @@
  * Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  *
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -275,7 +275,7 @@ smb_wcequiv_strlen(const char *mbs)
 
 /*
  * Returns the number of bytes that would be written if the multi-
- * byte string mbs was converted to a single byte character string,
+ * byte string mbs was converted to an OEM character string,
  * not counting the terminating null character.
  */
 size_t
@@ -290,10 +290,13 @@ smb_sbequiv_strlen(const char *mbs)
 		if (nbytes == ((size_t)-1))
 			return ((size_t)-1);
 
-		if (wide_char & 0xFF00)
-			len += sizeof (smb_wchar_t);
-		else
-			++len;
+		/*
+		 * Assume OEM characters are 1-byte (for now).
+		 * That's true for cp850, which is the only
+		 * codeset this currently supports.  See:
+		 * smb_oem.c : smb_oem_codeset
+		 */
+		++len;
 
 		mbs += nbytes;
 	}
