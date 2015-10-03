@@ -46,7 +46,7 @@ typedef struct pcb {
 	uint_t	pcb_instr;	/* /proc: instruction at stop */
 	enum { XREGNONE = 0, XREGPRESENT, XREGMODIFIED }
 		pcb_xregstat;	/* state of contents of pcb_xregs */
-	struct	_rwindow pcb_xregs; /* locals+ins fetched/set via /proc */
+	struct	rwindow pcb_xregs; /* locals+ins fetched/set via /proc */
 	int	pcb_step;	/* used while single-stepping */
 	caddr_t	pcb_tracepc;	/* used while single-stepping */
 } pcb_t;

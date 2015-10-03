@@ -31,7 +31,6 @@
 
 #ifndef _KERNEL
 #include <sys/reg.h>
-#include <sys/privregs.h>
 #endif /* _KERNEL */
 
 #include <sys/exechdr.h>
@@ -66,7 +65,7 @@ struct core {
 	char	c_cmdname[CORE_NAMELEN + 1]; /* Command name */
 	struct	_fpu	c_fpu;		/* external FPU state */
 #if defined(__sparc)
-	struct	_fq c_fpu_q[MAXFPQ];	/* fpu exception queue */
+	struct	_fq c_fpu_q[_MAXFPQ];	/* fpu exception queue */
 #endif
 	int	c_ucode;		/* Exception no. from u_code */
 };

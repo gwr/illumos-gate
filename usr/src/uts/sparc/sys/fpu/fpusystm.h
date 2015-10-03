@@ -39,7 +39,7 @@ extern "C" {
 
 #ifdef _KERNEL
 
-struct fpu;
+struct _fpu;
 struct regs;
 
 #if !defined(DEBUG) && !defined(NEED_FPU_EXISTS)

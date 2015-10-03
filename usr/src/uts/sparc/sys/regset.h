@@ -90,6 +90,7 @@ extern "C" {
 #ifndef	_ASM
 
 #define	NGREG	_NGREG
+#define	MAXFPQ	_MAXFPQ
 
 /*
  * The following structures define how a register window can appear on the
@@ -100,7 +101,7 @@ extern "C" {
  */
 #define	SPARC_MAXREGWINDOW	31	/* max windows in SPARC arch. */
 
-struct	_rwindow {
+struct	rwindow {
 	greg_t	rw_local[8];		/* locals */
 	greg_t	rw_in[8];		/* ins */
 };
@@ -118,8 +119,8 @@ struct rwindow64 {
 };
 
 #if defined(_KERNEL)
-extern	void	rwindow_nto32(struct _rwindow *, struct rwindow32 *);
-extern	void	rwindow_32ton(struct rwindow32 *, struct _rwindow *);
+extern	void	rwindow_nto32(struct rwindow *, struct rwindow32 *);
+extern	void	rwindow_32ton(struct rwindow32 *, struct rwindow *);
 #endif
 
 #endif	/* _SYSCALL32 */
@@ -130,7 +131,7 @@ extern	void	rwindow_32ton(struct rwindow32 *, struct _rwindow *);
 typedef struct _gwindows {
 	int		wbcnt;
 	greg_t		*spbuf[SPARC_MAXREGWINDOW];
-	struct _rwindow	wbuf[SPARC_MAXREGWINDOW];
+	struct rwindow	wbuf[SPARC_MAXREGWINDOW];
 } gwindows_t;
 
 #if defined(_SYSCALL32)
@@ -149,7 +150,19 @@ typedef struct gwindows64 {
 
 #endif	/* _SYSCALL32 */
 
-#endif	/* _ASM */
+/*
+ * The following #define's are obsolete and may be removed in a future release.
+ * The corresponding integer types should be used instead (i.e. uint64_t).
+ */
+#define	FPU_REGS_TYPE		uint32_t
+#define	FPU_DREGS_TYPE		uint64_t
+#define	V7_FPU_FSR_TYPE		uint32_t
+#define	V9_FPU_FSR_TYPE		uint64_t
+#define	V9_FPU_FPRS_TYPE	uint32_t
+
+#define	XRS_ID			_XRS_ID
+
+#endif	/* !_ASM */
 
 #ifdef	__cplusplus
 }
