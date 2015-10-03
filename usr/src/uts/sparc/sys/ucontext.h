@@ -107,7 +107,7 @@ typedef struct ucontext32 {
 
 #ifdef _KERNEL
 extern void ucontext_32ton(const ucontext32_t *, ucontext_t *,
-    const struct fq32 *, struct fq *);
+    const struct fq32 *, struct _fq *);
 extern void fpuregset_nto32(const fpregset_t *, fpregset32_t *, struct fq32 *);
 #endif
 
