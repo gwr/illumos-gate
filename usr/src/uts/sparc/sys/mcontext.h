@@ -95,7 +95,7 @@ typedef greg64_t gregset64_t[_NGREG64];
 #define	_MAXFPQ	16	/* max # of fpu queue entries currently supported */
 
 /*
- * struct fq defines the minimal format of a floating point instruction queue
+ * struct _fq defines the minimal format of a floating point instruction queue
  * entry. The size of entries in the floating point queue are implementation
  * dependent. The union FQu is guarenteed to be the first field in any ABI
  * conformant system implementation. Any additional fields provided by an
@@ -209,7 +209,7 @@ typedef struct {
 	} fpu_fr;
 	uint64_t	fpu_fsr;		/* FPU status register */
 	uint32_t	 fpu_fprs;		/* fprs register */
-	struct fq	*fpu_q;
+	struct _fq	*fpu_q;
 	uint8_t		fpu_qcnt;
 	uint8_t		fpu_q_entrysize;
 	uint8_t		fpu_en;			/* flag signifying fpu in use */

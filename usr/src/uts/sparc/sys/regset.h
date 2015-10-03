@@ -90,6 +90,7 @@ extern "C" {
 #ifndef	_ASM
 
 #define	NGREG	_NGREG
+#define	MAXFPQ	_MAXFPQ
 
 /*
  * The following structures define how a register window can appear on the
@@ -100,7 +101,7 @@ extern "C" {
  */
 #define	SPARC_MAXREGWINDOW	31	/* max windows in SPARC arch. */
 
-struct	_rwindow {
+struct	rwindow {
 	greg_t	rw_local[8];		/* locals */
 	greg_t	rw_in[8];		/* ins */
 };
@@ -118,8 +119,8 @@ struct rwindow64 {
 };
 
 #if defined(_KERNEL)
-extern	void	rwindow_nto32(struct _rwindow *, struct rwindow32 *);
-extern	void	rwindow_32ton(struct rwindow32 *, struct _rwindow *);
+extern	void	rwindow_nto32(struct rwindow *, struct rwindow32 *);
+extern	void	rwindow_32ton(struct rwindow32 *, struct rwindow *);
 #endif
 
 #endif	/* _SYSCALL32 */
@@ -130,7 +131,7 @@ extern	void	rwindow_32ton(struct rwindow32 *, struct _rwindow *);
 typedef struct _gwindows {
 	int		wbcnt;
 	greg_t		*spbuf[SPARC_MAXREGWINDOW];
-	struct _rwindow	wbuf[SPARC_MAXREGWINDOW];
+	struct rwindow	wbuf[SPARC_MAXREGWINDOW];
 } gwindows_t;
 
 #if defined(_SYSCALL32)
@@ -149,7 +150,44 @@ typedef struct gwindows64 {
 
 #endif	/* _SYSCALL32 */
 
-#endif	/* _ASM */
+/*
+ * The following #define's are obsolete and may be removed in a future release.
+ * The corresponding integer types should be used instead (i.e. uint64_t).
+ */
+#define	FPU_REGS_TYPE		uint32_t
+#define	FPU_DREGS_TYPE		uint64_t
+#define	V7_FPU_FSR_TYPE		uint32_t
+#define	V9_FPU_FSR_TYPE		uint64_t
+#define	V9_FPU_FPRS_TYPE	uint32_t
+
+#define	XRS_ID			_XRS_ID
+
+#endif	/* !_ASM */
+
+/*
+ * The version of privregs.h that is used on implementations that run
+ * on processors that support the V9 instruction set is deliberately not
+ * imported here.
+ *
+ * The V9 'struct regs' definition is -not- compatible with either 32-bit
+ * or 64-bit core file contents, nor with the ucontext.  As a result, the
+ * 'regs' structure cannot be used portably by applications, and should
+ * only be used by the kernel implementation.
+ *
+ * The inclusion of the SPARC V7 version of privregs.h allows for some
+ * limited source compatibility with 32-bit applications who expect to use
+ * 'struct regs' to match the content of a 32-bit core file, or a ucontext_t.
+ *
+ * Note that the ucontext_t actually describes the general registers in
+ * terms of the gregset_t data type, as described in mcontex.h.  Note also
+ * that the core file content is defined by core(4) in terms of data types
+ * defined by procfs -- see proc(4).
+ */
+#if !defined(__sparcv9)
+#if !defined(_KERNEL) && !defined(_XPG4_2) || defined(__EXTENSIONS__)
+#include <v7/sys/privregs.h>
+#endif	/* !_KERNEL && !_XPG4_2 || __EXTENSIONS__ */
+#endif	/* __sparcv9 */
 
 #ifdef	__cplusplus
 }

@@ -36,6 +36,7 @@
 #include <ucontext.h>
 #include <sys/types.h>
 #include <sys/stack.h>
+#include <sys/regset.h>
 
 #include <kmdb/kmdb_context_impl.h>
 #include <mdb/mdb_kreg.h>
