@@ -30,7 +30,7 @@
 
 /*
  * Essential struct definitions for mcontext_t needed by ucontext.h
- * These were formerly in regset.h, which now includes this.
+ * These were formerly in regset.h, which now includes this file.
  */
 
 #ifndef	_SYS_MCONTEXT_H
@@ -45,10 +45,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/*
- * Defines of names for regset indices - see regset.h
- */
 
 /*
  * A gregset_t is defined as an array type for compatibility with the reference
@@ -89,12 +85,7 @@ typedef	greg64_t gregset64_t[_NGREG64];
 #endif	/* _SYSCALL32 */
 
 /*
- * Floating point definitions.  Previously, regset.h
- * declared these twice: with and without underscores,
- * one for XPG4v2 and later, and another for before.
- * Now always declare struct _fpu (XPG4v2 way).
- *
- * XXX: regset.h has fnsave_state, fxsave_state, xsave_state...
+ * Floating point definitions.
  */
 
 #if defined(__amd64)
@@ -151,8 +142,6 @@ typedef struct _fpu {
 	} fp_reg_set;
 } fpregset_t;
 
-/* regset.h had __old_fpregset_t */
-
 #endif	/* __i386 */
 
 #if defined(_SYSCALL32)
@@ -176,11 +165,6 @@ typedef struct fpu32 {
 #endif	/* _SYSCALL32 */
 
 /*
- * fp.h has kernel FPU save area stuff
- * _NDEBUGREG dbregset_t
- */
-
-/*
  * Structure mcontext defines the complete hardware machine state.
  * (This structure is specified in the i386 ABI suppl.)
  */
@@ -199,13 +183,6 @@ typedef struct {
 #endif	/* _SYSCALL32 */
 
 #endif	/* _ASM */
-
-/*
- * regset.h has old privregs.h stuff
- * and XPG4v2 compliant structs with underscore prefixes...
- * ... which we probably don't need anymore now that
- * mcontext.h factors this stuff out.
- */
 
 #ifdef	__cplusplus
 }
