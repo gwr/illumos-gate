@@ -135,27 +135,16 @@ extern "C" {
 
 #endif	/* __i386 */
 
-/*
- * _NGREG in mcontext.h
- */
 #define	NGREG	_NGREG
 
 #if !defined(_ASM)
 
-/*
- * greg_t gregset_t etc. in sys/mcontext.h
- */
-
-/*
- * struct fpu, fpregset_t etc. in sys/mcontext.h
- */
-
 #ifdef	__i386
 /*
  * (This structure definition is specified in the i386 ABI supplement)
- * XXX: Can we get rid of this?  It's apparently used just one place:
- * $SRC/uts/intel/ia32/os/fpu.c, in an assertion that:
- * sizeof (struct _fpu) == sizeof (struct __old_fpu)
+ * It's likely we can just get rid of the struct __old_fpu or maybe
+ * move it to $SRC/uts/intel/ia32/os/fpu.c which appears to be the
+ * only place that uses it.  See: www.illumos.org/issues/6284
  */
 typedef struct __old_fpu {
 	union {
@@ -176,12 +165,6 @@ typedef struct __old_fpu {
 } __old_fpregset_t;
 #endif	/* __i386 */
 
-/*
- * struct fxsave_state, struct xsave_state, kfpu_u, in sys/fp.h
- */
-
-/* struct fpu32, fpregset32_t in mcontext.h */
-
 #if defined(__amd64)
 #define	_NDEBUGREG	16
 #else
@@ -192,16 +175,7 @@ typedef struct dbregset {
 	unsigned long	debugreg[_NDEBUGREG];
 } dbregset_t;
 
-/*
- * mcontext_t in mcontext.h
- */
-
 #endif	/* _ASM */
-
-/*
- * Removed include sys/privregs.h
- * Removed 2nd copy of mcontext for XPG4v2
- */
 
 #ifdef	__cplusplus
 }

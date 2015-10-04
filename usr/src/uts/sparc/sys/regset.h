@@ -89,7 +89,6 @@ extern "C" {
 
 #ifndef	_ASM
 
-/* _NGREG, gregset_t mcontext.h */
 #define	NGREG	_NGREG
 
 /*
@@ -150,11 +149,7 @@ typedef struct gwindows64 {
 
 #endif	/* _SYSCALL32 */
 
-/* fpu, fpregset_t mcontext.h */
-
 #endif	/* _ASM */
-
-/* Removed 2nd copy of fpu definitions for XPG4v2 */
 
 #ifdef	__cplusplus
 }

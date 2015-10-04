@@ -29,6 +29,11 @@
  * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
+/*
+ * Essential struct definitions for mcontext_t needed by ucontext.h
+ * These were formerly in regset.h, which now includes this file.
+ */
+
 #ifndef	_SYS_MCONTEXT_H
 #define	_SYS_MCONTEXT_H
 
@@ -41,10 +46,6 @@
 #ifdef	__cplusplus
 extern "C" {
 #endif
-
-/*
- * Defines for indices into the gregset_t array: regset.h
- */
 
 /*
  * A gregset_t is defined as an array type for compatibility with the reference
@@ -86,8 +87,6 @@ typedef	greg32_t gregset32_t[_NGREG32];
 typedef greg64_t gregset64_t[_NGREG64];
 
 #endif	/* _SYSCALL32 */
-
-/* register window stuff - regset.h */
 
 /*
  * Floating point definitions.
