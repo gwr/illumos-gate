@@ -164,6 +164,31 @@ typedef struct gwindows64 {
 
 #endif	/* !_ASM */
 
+/*
+ * The version of privregs.h that is used on implementations that run
+ * on processors that support the V9 instruction set is deliberately not
+ * imported here.
+ *
+ * The V9 'struct regs' definition is -not- compatible with either 32-bit
+ * or 64-bit core file contents, nor with the ucontext.  As a result, the
+ * 'regs' structure cannot be used portably by applications, and should
+ * only be used by the kernel implementation.
+ *
+ * The inclusion of the SPARC V7 version of privregs.h allows for some
+ * limited source compatibility with 32-bit applications who expect to use
+ * 'struct regs' to match the content of a 32-bit core file, or a ucontext_t.
+ *
+ * Note that the ucontext_t actually describes the general registers in
+ * terms of the gregset_t data type, as described in mcontex.h.  Note also
+ * that the core file content is defined by core(4) in terms of data types
+ * defined by procfs -- see proc(4).
+ */
+#if !defined(__sparcv9)
+#if !defined(_KERNEL) && !defined(_XPG4_2) || defined(__EXTENSIONS__)
+#include <v7/sys/privregs.h>
+#endif	/* !_KERNEL && !_XPG4_2 || __EXTENSIONS__ */
+#endif	/* __sparcv9 */
+
 #ifdef	__cplusplus
 }
 #endif
