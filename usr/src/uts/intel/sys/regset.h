@@ -177,6 +177,30 @@ typedef struct dbregset {
 
 #endif	/* _ASM */
 
+/*
+ * The version of privregs.h that is used on implementations that run on
+ * processors that support the AMD64 instruction set is deliberately not
+ * imported here.
+ *
+ * The amd64 'struct regs' definition may -not- compatible with either
+ * 32-bit or 64-bit core file contents, nor with the ucontext.  As a result,
+ * the 'regs' structure cannot be used portably by applications, and should
+ * only be used by the kernel implementation.
+ *
+ * The inclusion of the i386 version of privregs.h allows for some limited
+ * source compatibility with 32-bit applications who expect to use
+ * 'struct regs' to match the context of a 32-bit core file, or a ucontext_t.
+ *
+ * Note that the ucontext_t actually describes the general register in terms
+ * of the gregset_t data type, as described in this file.  Note also
+ * that the core file content is defined by core(4) in terms of data types
+ * defined by procfs -- see proc(4).
+ */
+#if defined(__i386) && \
+	(!defined(_KERNEL) && !defined(_XPG4_2) || defined(__EXTENSIONS__))
+#include <sys/privregs.h>
+#endif	/* __i386 (!_KERNEL && !_XPG4_2 || __EXTENSIONS__) */
+
 #ifdef	__cplusplus
 }
 #endif
