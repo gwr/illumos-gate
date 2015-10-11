@@ -146,8 +146,8 @@ include ../../../Makefile.lib
 include ../../Makefile.lib
 
 # Force SOURCEDEBUG
-CSOURCEDEBUGFLAGS	= -g
-CCSOURCEDEBUGFLAGS	= -g
+COPTFLAG	= -g -xs
+COPTFLAG64	= -g -xs
 STRIP_STABS 	= :
 
 
