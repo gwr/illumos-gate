@@ -75,6 +75,9 @@ static int smb_session_xprt_puthdr(smb_session_t *,
 static void smb_session_disconnect_trees(smb_session_t	*);
 static void smb_request_init_command_mbuf(smb_request_t *sr);
 static void smb_session_genkey(smb_session_t *);
+static int smb_session_kstat_update(kstat_t *, int);
+void session_stats_init(smb_server_t *, smb_session_t *);
+void session_stats_fini(smb_session_t *);
 
 /*
  * This (legacy) code is in support of an "idle timeout" feature,
@@ -818,8 +821,112 @@ smb_session_create(ksocket_t new_so, uint16_t port, smb_server_t *sv,
 	session->cmd_max_bytes = SMB_REQ_MAX_SIZE;
 	session->reply_max_bytes = SMB_REQ_MAX_SIZE;
 
+	session_stats_init(sv, session);
+
 	session->s_magic = SMB_SESSION_MAGIC;
+
 	return (session);
+}
+
+void
+session_stats_init(smb_server_t *sv, smb_session_t *ss)
+{
+	static const char	*kr_names[] = SMBSRV_CLSH__NAMES;
+	char			ks_name[KSTAT_STRLEN];
+	char			*ipaddr_str = ss->ip_addr_str;
+	smbsrv_clsh_kstats_t	*ksr;
+	int			idx;
+
+	/* Don't include the special internal session (sv->sv_session). */
+	if (ss->sock == NULL)
+		return;
+
+	/*
+	 * If ipv6_enable is set to true, IPv4 addresses will be prefixed
+	 * with ::ffff: (IPv4-mapped IPv6 address), strip it.
+	 */
+	if (strncasecmp(ipaddr_str, "::ffff:", 7) == 0)
+		ipaddr_str += 7;
+
+	/*
+	 * Create raw kstats for sessions with a name composed as:
+	 * cl/$IPADDR  and instance ss->s_kid
+	 * These will look like: smbsrv:0:cl/10.10.0.5
+	 */
+	(void) snprintf(ks_name, sizeof (ks_name), "cl/%s", ipaddr_str);
+
+	ss->s_ksp = kstat_create_zone(SMBSRV_KSTAT_MODULE, ss->s_kid,
+	    ks_name, SMBSRV_KSTAT_CLASS, KSTAT_TYPE_RAW,
+	    sizeof (smbsrv_clsh_kstats_t), 0, sv->sv_zid);
+
+	if (ss->s_ksp == NULL)
+		return;
+
+	ss->s_ksp->ks_update = smb_session_kstat_update;
+	ss->s_ksp->ks_private = ss;
+
+	/*
+	 * In-line equivalent of smb_dispatch_stats_init
+	 */
+	ksr = (smbsrv_clsh_kstats_t *)ss->s_ksp->ks_data;
+	for (idx = 0; idx < SMBSRV_CLSH__NREQ; idx++) {
+		smb_latency_init(&ss->s_stats[idx].sdt_lat);
+		(void) strlcpy(ksr->ks_clsh[idx].kr_name, kr_names[idx],
+		    KSTAT_STRLEN);
+	}
+
+	kstat_install(ss->s_ksp);
+}
+
+void
+session_stats_fini(smb_session_t *ss)
+{
+	int	idx;
+
+	for (idx = 0; idx < SMBSRV_CLSH__NREQ; idx++)
+		smb_latency_destroy(&ss->s_stats[idx].sdt_lat);
+}
+
+/*
+ * Update the kstat data from our private stats.
+ */
+static int
+smb_session_kstat_update(kstat_t *ksp, int rw)
+{
+	smb_session_t *session;
+	smb_disp_stats_t *sds;
+	smbsrv_clsh_kstats_t	*clsh;
+	smb_kstat_req_t	*ksr;
+	int i;
+
+	if (rw == KSTAT_WRITE)
+		return (EACCES);
+
+	session = ksp->ks_private;
+	SMB_SESSION_VALID(session);
+	sds = session->s_stats;
+
+	clsh = (smbsrv_clsh_kstats_t *)ksp->ks_data;
+	ksr = clsh->ks_clsh;
+
+	for (i = 0; i < SMBSRV_CLSH__NREQ; i++, ksr++, sds++) {
+		ksr->kr_rxb = sds->sdt_rxb;
+		ksr->kr_txb = sds->sdt_txb;
+		mutex_enter(&sds->sdt_lat.ly_mutex);
+		ksr->kr_nreq = sds->sdt_lat.ly_a_nreq;
+		ksr->kr_sum = sds->sdt_lat.ly_a_sum;
+		ksr->kr_a_mean = sds->sdt_lat.ly_a_mean;
+		ksr->kr_a_stddev = sds->sdt_lat.ly_a_stddev;
+		ksr->kr_d_mean = sds->sdt_lat.ly_d_mean;
+		ksr->kr_d_stddev = sds->sdt_lat.ly_d_stddev;
+		sds->sdt_lat.ly_d_mean = 0;
+		sds->sdt_lat.ly_d_nreq = 0;
+		sds->sdt_lat.ly_d_stddev = 0;
+		sds->sdt_lat.ly_d_sum = 0;
+		mutex_exit(&sds->sdt_lat.ly_mutex);
+	}
+
+	return (0);
 }
 
 void
@@ -827,6 +934,12 @@ smb_session_delete(smb_session_t *session)
 {
 
 	ASSERT(session->s_magic == SMB_SESSION_MAGIC);
+
+	if (session->s_ksp != NULL) {
+		kstat_delete(session->s_ksp);
+		session->s_ksp = NULL;
+		session_stats_fini(session);
+	}
 
 	if (session->enc_mech != NULL)
 		smb3_encrypt_fini(session);
