@@ -168,9 +168,9 @@ smb_disp_table[SMB_COM_NUM] = {
 	{ "SmbSetInformation", SMB_SDT_OPS(set_information),	/* 0x09 009 */
 	    0x09, PC_NETWORK_PROGRAM_1_0 },
 	{ "SmbRead", SMB_SDT_OPS(read),				/* 0x0A 010 */
-	    0x0A, PC_NETWORK_PROGRAM_1_0 },
+	    0x0A, PC_NETWORK_PROGRAM_1_0, SDDF_READOP },
 	{ "SmbWrite", SMB_SDT_OPS(write),			/* 0x0B 011 */
-	    0x0B, PC_NETWORK_PROGRAM_1_0 },
+	    0x0B, PC_NETWORK_PROGRAM_1_0, SDDF_WRITEOP },
 	{ "SmbLockByteRange", SMB_SDT_OPS(lock_byte_range),	/* 0x0C 012 */
 	    0x0C, PC_NETWORK_PROGRAM_1_0 },
 	{ "SmbUnlockByteRange", SMB_SDT_OPS(unlock_byte_range),	/* 0x0D 013 */
@@ -187,9 +187,9 @@ smb_disp_table[SMB_COM_NUM] = {
 	{ "SmbSeek", SMB_SDT_OPS(seek),				/* 0x12 018 */
 	    0x12, PC_NETWORK_PROGRAM_1_0 },
 	{ "SmbLockAndRead", SMB_SDT_OPS(lock_and_read),		/* 0x13 019 */
-	    0x13, LANMAN1_0 },
+	    0x13, LANMAN1_0, SDDF_READOP},
 	{ "SmbWriteAndUnlock", SMB_SDT_OPS(write_and_unlock),	/* 0x14 020 */
-	    0x14, LANMAN1_0 },
+	    0x14, LANMAN1_0, SDDF_WRITEOP },
 	{ "Invalid", SMB_SDT_OPS(invalid), 0x15, 0 },		/* 0x15	021 */
 	{ "Invalid", SMB_SDT_OPS(invalid), 0x16, 0 },		/* 0x16 022 */
 	{ "Invalid", SMB_SDT_OPS(invalid), 0x17, 0 },		/* 0x17 023 */
@@ -225,13 +225,13 @@ smb_disp_table[SMB_COM_NUM] = {
 	{ "SmbEcho", SMB_SDT_OPS(echo),				/* 0x2B 043 */
 	    0x2B, LANMAN1_0, SDDF_SUPPRESS_TID | SDDF_SUPPRESS_UID },
 	{ "SmbWriteAndClose", SMB_SDT_OPS(write_and_close),	/* 0x2C 044 */
-	    0x2C, LANMAN1_0 },
+	    0x2C, LANMAN1_0, SDDF_WRITEOP },
 	{ "SmbOpenX", SMB_SDT_OPS(open_andx),			/* 0x2D 045 */
 	    0x2D, LANMAN1_0 },
 	{ "SmbReadX", SMB_SDT_OPS(read_andx),			/* 0x2E 046 */
-	    0x2E, LANMAN1_0 },
+	    0x2E, LANMAN1_0, SDDF_READOP },
 	{ "SmbWriteX", SMB_SDT_OPS(write_andx),			/* 0x2F 047 */
-	    0x2F, LANMAN1_0 },
+	    0x2F, LANMAN1_0, SDDF_WRITEOP },
 	{ "Invalid", SMB_SDT_OPS(invalid), 0x30, 0 },	/* 0x30 048 */
 	{ "SmbCloseAndTreeDisconnect",
 	    SMB_SDT_OPS(close_and_tree_disconnect),		/* 0x31 049 */
@@ -410,7 +410,7 @@ smb_disp_table[SMB_COM_NUM] = {
 	{ "SmbOpenPrintFile", SMB_SDT_OPS(open_print_file),	/* 0xC0 192 */
 	    0xC0, PC_NETWORK_PROGRAM_1_0, 0 },
 	{ "SmbWritePrintFile", SMB_SDT_OPS(write_print_file),	/* 0xC1 193 */
-	    0xC1, PC_NETWORK_PROGRAM_1_0, 0 },
+	    0xC1, PC_NETWORK_PROGRAM_1_0, SDDF_WRITEOP },
 	{ "SmbClosePrintFile", SMB_SDT_OPS(close_print_file),	/* 0xC2 194 */
 	    0xC2, PC_NETWORK_PROGRAM_1_0, 0 },
 	{ "SmbGetPrintQueue", SMB_SDT_OPS(get_print_queue),	/* 0xC3 195 */
@@ -645,6 +645,8 @@ smb1sr_work(struct smb_request *sr)
 	boolean_t		disconnect = B_FALSE;
 	smb_session_t		*session;
 	smb_server_t		*server;
+	int32_t			txbase;
+	uint32_t		rxbytes;
 	uint32_t		byte_count;
 	uint32_t		max_bytes;
 	uint16_t		pid_hi, pid_lo;
@@ -744,10 +746,6 @@ andx_more:
 		goto report_error;
 	}
 
-	atomic_add_64(&sds->sdt_rxb,
-	    (int64_t)(sr->smb_wct * 2 + sr->smb_bcc + 1));
-	sr->sr_txb = sr->reply.chain_offset;
-
 	/*
 	 * Ignore smb_bcc if CAP_LARGE_READX/CAP_LARGE_WRITEX
 	 * and this is SmbReadX/SmbWriteX since this enables
@@ -764,6 +762,10 @@ andx_more:
 		/* ordinary case */
 		byte_count = (uint32_t)sr->smb_bcc;
 	}
+
+	/* Save these for kstat updates below. */
+	rxbytes = byte_count + 1 + 2 * sr->smb_wct;
+	txbase = sr->reply.chain_offset;
 
 	(void) MBC_SHADOW_CHAIN(&sr->smb_data, &sr->command,
 	    sr->command.chain_offset, byte_count);
@@ -842,11 +844,45 @@ andx_more:
 		smbsr_cleanup(sr);
 	}
 
-	smb_server_inc_req(server);
-	smb_latency_add_sample(&sds->sdt_lat, gethrtime() - sr->sr_time_start);
+	/* Record latency and rx/tx bytes per:  server, session, share. */
+	{
+		hrtime_t	dt;
+		int64_t		rxb, txb;
+		smb_disp_stats_t	*client_sds;	/* session */
+		smb_disp_stats_t	*share_sds;  /* kshare */
+		int	cmd_type;
 
-	atomic_add_64(&sds->sdt_txb,
-	    (int64_t)(sr->reply.chain_offset - sr->sr_txb));
+		if (sdd->sdt_flags & SDDF_READOP) {
+			cmd_type = SMBSRV_CLSH_READ;
+		} else if (sdd->sdt_flags & SDDF_WRITEOP) {
+			cmd_type = SMBSRV_CLSH_WRITE;
+		} else {
+			cmd_type = SMBSRV_CLSH_OTHER;
+		}
+
+		dt = gethrtime() - sr->sr_time_start;
+		rxb = (int64_t)rxbytes;
+		txb = (int64_t)(sr->reply.chain_offset - txbase);
+
+		smb_server_inc_req(server);
+		smb_latency_add_sample(&sds->sdt_lat, dt);
+		atomic_add_64(&sds->sdt_rxb, rxb);
+		atomic_add_64(&sds->sdt_txb, txb);
+
+		client_sds = &session->s_stats[cmd_type];
+		smb_latency_add_sample(&client_sds->sdt_lat, dt);
+		atomic_add_64(&client_sds->sdt_rxb, rxb);
+		atomic_add_64(&client_sds->sdt_txb, txb);
+
+		if ((sr->tid_tree != NULL) &&
+		    (sr->tid_tree->t_kshare != NULL)) {
+			share_sds =
+			    &sr->tid_tree->t_kshare->shr_stats[cmd_type];
+			smb_latency_add_sample(&share_sds->sdt_lat, dt);
+			atomic_add_64(&share_sds->sdt_rxb, rxb);
+			atomic_add_64(&share_sds->sdt_txb, txb);
+		}
+	}
 
 	switch (sdrc) {
 	case SDRC_SUCCESS:

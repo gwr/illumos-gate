@@ -691,6 +691,11 @@ typedef struct smb_node {
 
 #define	SMB_SHARE_MAGIC		0x4B534852	/* KSHR */
 
+typedef struct _smb_named_stats {
+	kstat_named_t	kn[KSTAT_STRLEN];
+	char		name[MAXNAMELEN];
+} smb_named_stats_t;
+
 typedef struct smb_kshare {
 	uint32_t	shr_magic;
 	avl_node_t	shr_link;
@@ -713,7 +718,13 @@ typedef struct smb_kshare {
 	smb_node_t	*shr_root_node;
 	smb_node_t	*shr_ca_dir;
 	void		*shr_import_busy;
+	kstat_t		*shr_ksp;
+	struct {
+		kstat_t			*ksns;
+		smb_named_stats_t	ks_data;
+	} stats;
 	smb_cfg_val_t	shr_encrypt; /* Share.EncryptData */
+	smb_disp_stats_t	shr_stats[SMBSRV_CLSH__NREQ];
 } smb_kshare_t;
 
 
@@ -976,6 +987,8 @@ typedef struct smb_session {
 	uint16_t		smb_max_mpx;
 	smb_srqueue_t		*s_srqueue;
 	uint64_t		start_time;
+	kstat_t			*s_ksp;
+	smb_disp_stats_t	s_stats[SMBSRV_CLSH__NREQ];
 	unsigned char		MAC_key[44];
 	char			ip_addr_str[INET6_ADDRSTRLEN];
 	uint8_t			clnt_uuid[16];
@@ -1124,6 +1137,7 @@ typedef struct smb_tree {
 	 */
 	smb_user_t		*t_owner;
 	smb_node_t		*t_snode;
+	smb_kshare_t		*t_kshare;
 
 	smb_llist_t		t_ofile_list;
 	smb_idpool_t		t_fid_pool;
@@ -1894,7 +1908,6 @@ typedef struct smb_request {
 	hrtime_t		sr_time_submitted;
 	hrtime_t		sr_time_active;
 	hrtime_t		sr_time_start;
-	int32_t			sr_txb;
 	uint32_t		sr_seqnum;
 
 	union {
@@ -2002,9 +2015,14 @@ typedef struct smb_xa {
 } smb_xa_t;
 
 
+/*
+ * SMB dispatch command flags.
+ */
 #define	SDDF_NO_FLAGS			0
 #define	SDDF_SUPPRESS_TID		0x0001
 #define	SDDF_SUPPRESS_UID		0x0002
+#define	SDDF_READOP			0x0004
+#define	SDDF_WRITEOP			0x0008
 
 /*
  * SMB dispatch return codes.

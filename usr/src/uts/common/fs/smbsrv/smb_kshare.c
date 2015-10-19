@@ -52,6 +52,10 @@ static int smb_kshare_export(smb_server_t *, smb_kshare_t *);
 static int smb_kshare_unexport(smb_server_t *, const char *);
 static int smb_kshare_export_trans(smb_server_t *, char *, char *, char *);
 static void smb_kshare_csc_flags(smb_kshare_t *, const char *);
+static int smb_named_kstat_update(kstat_t *ks, int rw);
+static int smb_kshare_kstat_update(kstat_t *, int);
+void kshare_stats_init(smb_server_t *, smb_kshare_t *);
+void kshare_stats_fini(smb_kshare_t *);
 
 static boolean_t smb_export_isready(smb_server_t *);
 
@@ -730,6 +734,8 @@ smb_kshare_export(smb_server_t *sv, smb_kshare_t *shr)
 		return (rc);
 	}
 
+	kshare_stats_init(sv, shr);
+
 	/*
 	 * For CA shares, find or create the CA handle dir,
 	 * and (if restarted) import persistent handles.
@@ -746,6 +752,178 @@ smb_kshare_export(smb_server_t *sv, smb_kshare_t *shr)
 	}
 
 	return (rc);
+}
+
+
+/*
+ * Following a pattern somewhat similar to smb_server_kstat_init,
+ * but organized a little differently.
+ */
+void
+kshare_stats_init(smb_server_t *sv, smb_kshare_t *ks)
+{
+	static const char	*kr_names[] = SMBSRV_CLSH__NAMES;
+	char			ks_name[KSTAT_STRLEN];
+	smbsrv_clsh_kstats_t	*ksr;
+	int			idx;
+	smb_named_stats_t	*smbnsp;
+	kstat_t			*kstat = NULL;
+	int			namelen;
+
+	/*
+	 * Most share names are short, and we'd like to allow consumers like
+	 * the smbstat command to compose the kstat names for short share names
+	 * directly.  In the (rare) case where we have longer share names, we
+	 * need an indirection scheme to get around the limited (31 chars) size
+	 * of kstat names. So for share names 24 chars or shorter, we compose
+	 * the kstat name directly as "smbsrv:0:sh/sharename" and when the share
+	 * name is longer, compose the kstat name using an arbitrary
+	 * (but unique) identifier like: "smbsrv:0:sh/:ffffff0009560a98".  To
+	 * find the unique identifier given a (long) share name, the consumer
+	 * has to enumerate the (fake) "smbsrvshr" kstat module, looking for the
+	 * kstat with the sharename element matching the one they want.  Both
+	 * direct and indirect names are instantiated under the "smbsrvshr"
+	 * module, so a consumer that wants all the share kstats could always
+	 * lookup the kstat names using the indirection scheme if that's easier.
+	 * (Nothing forces the consumer to directly compose kstat names when the
+	 * share name happens to be short -- they can always enumerate to find
+	 * it.)
+	 *
+	 * SMB share names are not allowed to contain a colon.  The naming
+	 * scheme here uses a colon at the beginning of what would otherwise be
+	 * the share name part of the kstat name to indicate that this name uses
+	 * the "indirection" scheme.  With indirection, the part after the colon
+	 * is an arbitrary (but unique per share) identifier of some other
+	 * kstat, and a consumer needs to fetch that kstat to get the real share
+	 * name.
+	 */
+	namelen = strlen(ks->shr_name);
+	if (namelen <= 24) {
+		(void) snprintf(ks_name, sizeof (ks_name), "sh/%s",
+		    ks->shr_name);
+
+		kstat = kstat_hold_byname("smbsrvshr", 0, ks_name, sv->sv_zid);
+	}
+
+	if (namelen > 24 || kstat != NULL) {
+		(void) snprintf(ks_name, sizeof (ks_name), "sh/:%p",
+		    (void *)ks);
+
+		if (kstat != NULL)
+			kstat_rele(kstat);
+	}
+
+	ks->shr_ksp = kstat_create_zone(SMBSRV_KSTAT_MODULE, 0,
+	    ks_name, SMBSRV_KSTAT_CLASS, KSTAT_TYPE_RAW,
+	    sizeof (smbsrv_clsh_kstats_t), 0, sv->sv_zid);
+
+	if (ks->shr_ksp == NULL)
+		return;
+
+	ks->stats.ksns = kstat_create_zone("smbsrvshr", 0,
+	    ks_name, SMBSRV_KSTAT_CLASS, KSTAT_TYPE_NAMED,
+	    0, KSTAT_FLAG_VIRTUAL, sv->sv_zid);
+
+	if (ks->stats.ksns == NULL) {
+		kstat_delete(ks->shr_ksp);
+		ks->shr_ksp = NULL;
+		return;
+	}
+
+	ks->shr_ksp->ks_update = smb_kshare_kstat_update;
+	ks->shr_ksp->ks_private = ks;
+
+	/*
+	 * In-line equivalent of smb_dispatch_stats_init
+	 */
+	ksr = (smbsrv_clsh_kstats_t *)ks->shr_ksp->ks_data;
+	for (idx = 0; idx < SMBSRV_CLSH__NREQ; idx++) {
+		smb_latency_init(&ks->shr_stats[idx].sdt_lat);
+		(void) strlcpy(ksr->ks_clsh[idx].kr_name, kr_names[idx],
+		    KSTAT_STRLEN);
+	}
+
+	/*
+	 * SMB named kstats setup for > KSTAT_STRLEN name to short name mapping.
+	 */
+	smbnsp = &ks->stats.ks_data;
+	ks->stats.ksns->ks_data = &ks->stats.ks_data;
+	ks->stats.ksns->ks_data_size = sizeof (ks->stats.ks_data);
+	ks->stats.ksns->ks_ndata = 1;
+	kstat_named_init(smbnsp->kn, "share name",
+	    KSTAT_DATA_STRING);
+	ks->stats.ksns->ks_update = smb_named_kstat_update;
+	ks->stats.ksns->ks_private = (void *)ks;
+
+	kstat_install(ks->shr_ksp);
+	kstat_install(ks->stats.ksns);
+}
+
+void
+kshare_stats_fini(smb_kshare_t *ks)
+{
+	int idx;
+
+	for (idx = 0; idx < SMBSRV_CLSH__NREQ; idx++)
+		smb_latency_destroy(&ks->shr_stats[idx].sdt_lat);
+}
+
+static int
+smb_named_kstat_update(kstat_t *ks, int rw)
+{
+	smb_kshare_t		*smbksp = (smb_kshare_t *)ks->ks_private;
+	smb_named_stats_t	*smbnsp = &smbksp->stats.ks_data;
+
+	if (rw == KSTAT_READ) {
+		(void) strlcpy(smbnsp->name, smbksp->shr_name,
+		    sizeof (smbnsp->name));
+
+		kstat_named_setstr(&smbnsp->kn[0],
+		    (const char *)smbksp->shr_name);
+	}
+	return (0);
+}
+
+/*
+ * Update the kstat data from our private stats.
+ */
+static int
+smb_kshare_kstat_update(kstat_t *ksp, int rw)
+{
+	smb_kshare_t *kshare;
+	smb_disp_stats_t *sds;
+	smbsrv_clsh_kstats_t	*clsh;
+	smb_kstat_req_t	*ksr;
+	int i;
+
+	if (rw == KSTAT_WRITE)
+		return (EACCES);
+
+	kshare = ksp->ks_private;
+	ASSERT(kshare->shr_magic == SMB_SHARE_MAGIC);
+	sds = kshare->shr_stats;
+
+	clsh = (smbsrv_clsh_kstats_t *)ksp->ks_data;
+	ksr = clsh->ks_clsh;
+
+	for (i = 0; i < SMBSRV_CLSH__NREQ; i++, ksr++, sds++) {
+		ksr->kr_rxb = sds->sdt_rxb;
+		ksr->kr_txb = sds->sdt_txb;
+		mutex_enter(&sds->sdt_lat.ly_mutex);
+		ksr->kr_nreq = sds->sdt_lat.ly_a_nreq;
+		ksr->kr_sum = sds->sdt_lat.ly_a_sum;
+		ksr->kr_a_mean = sds->sdt_lat.ly_a_mean;
+		ksr->kr_a_stddev = sds->sdt_lat.ly_a_stddev;
+		ksr->kr_d_mean = sds->sdt_lat.ly_d_mean;
+		ksr->kr_d_stddev = sds->sdt_lat.ly_d_stddev;
+		sds->sdt_lat.ly_d_mean = 0;
+		sds->sdt_lat.ly_d_nreq = 0;
+		sds->sdt_lat.ly_d_stddev = 0;
+		sds->sdt_lat.ly_d_sum = 0;
+		mutex_exit(&sds->sdt_lat.ly_mutex);
+	}
+
+	return (0);
 }
 
 /*
@@ -935,7 +1113,6 @@ smb_kshare_decode(nvlist_t *share)
 
 	if ((shr->shr_flags & SMB_SHRF_AUTOHOME) == SMB_SHRF_AUTOHOME)
 		shr->shr_autocnt = 1;
-
 	return (shr);
 }
 
@@ -1034,6 +1211,16 @@ smb_kshare_destroy(void *p)
 
 	ASSERT(shr);
 	ASSERT(shr->shr_magic == SMB_SHARE_MAGIC);
+
+	if (shr->shr_ksp != NULL) {
+		kstat_delete(shr->shr_ksp);
+		shr->shr_ksp = NULL;
+		kshare_stats_fini(shr);
+	}
+
+	if (shr->stats.ksns != NULL) {
+		kstat_delete(shr->stats.ksns);
+	}
 
 	if (shr->shr_ca_dir != NULL)
 		smb_node_release(shr->shr_ca_dir);

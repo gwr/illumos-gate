@@ -291,7 +291,18 @@ smb_tree_connect_core(smb_request_t *sr)
 	}
 
 out:
-	smb_kshare_release(sr->sr_server, si);
+	/*
+	 * On return from smb_tree_connect_* sr->tid_tree is filled in
+	 * and valid for all share types.  We can't call smb_kshare_release
+	 * until we disconnect the tree or we will invalidate the reference
+	 * we have here.
+	 */
+	if (sr->tid_tree != NULL) {
+		sr->tid_tree->t_kshare = si;
+	} else {
+		smb_kshare_release(sr->sr_server, si);
+	}
+
 	sr->sr_tcon.si = NULL;
 
 	return (status);
@@ -1019,6 +1030,11 @@ smb_tree_dealloc(void *arg)
 	mutex_exit(&tree->t_mutex);
 
 	tree->t_magic = (uint32_t)~SMB_TREE_MAGIC;
+
+	if (tree->t_kshare != NULL) {
+		smb_kshare_release(tree->t_server, tree->t_kshare);
+		tree->t_kshare = NULL;
+	}
 
 	if (tree->t_snode)
 		smb_node_release(tree->t_snode);
