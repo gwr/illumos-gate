@@ -405,6 +405,18 @@ smb2_record_stats(smb_request_t *sr, smb_disp_stats_t *sds, boolean_t tx_only)
 	hrtime_t	dt;
 	int64_t		rxb;
 	int64_t		txb;
+	smb_disp_stats_t	*client_sds;
+	smb_disp_stats_t	*share_sds;
+	int			cmd_type;
+	smb_session_t *session = sr->session;
+
+	if (sr->smb2_cmd_code == SMB2_READ) {
+		cmd_type = SMBSRV_CLSH_READ;
+	} else if (sr->smb2_cmd_code == SMB2_WRITE) {
+		cmd_type = SMBSRV_CLSH_WRITE;
+	} else {
+		cmd_type = SMBSRV_CLSH_OTHER;
+	}
 
 	dt = gethrtime() - sr->sr_time_start;
 	rxb = (int64_t)(sr->command.chain_offset - sr->smb2_cmd_hdr);
@@ -416,6 +428,24 @@ smb2_record_stats(smb_request_t *sr, smb_disp_stats_t *sds, boolean_t tx_only)
 		atomic_add_64(&sds->sdt_rxb, rxb);
 	}
 	atomic_add_64(&sds->sdt_txb, txb);
+
+	client_sds = &session->s_stats[cmd_type];
+	if (!tx_only) {
+		smb_latency_add_sample(&client_sds->sdt_lat, dt);
+		atomic_add_64(&client_sds->sdt_rxb, rxb);
+	}
+	atomic_add_64(&client_sds->sdt_txb, txb);
+
+	if ((sr->tid_tree != NULL) &&
+	    (sr->tid_tree->t_kshare != NULL)) {
+		share_sds =
+		    &sr->tid_tree->t_kshare->shr_stats[cmd_type];
+		if (!tx_only) {
+			smb_latency_add_sample(&share_sds->sdt_lat, dt);
+			atomic_add_64(&share_sds->sdt_rxb, rxb);
+		}
+		atomic_add_64(&share_sds->sdt_txb, txb);
+	}
 }
 
 /*
