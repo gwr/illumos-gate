@@ -157,15 +157,18 @@ SYMBOL_VERSION SUNWprivate_1.1 {
 
 	kstat_create;
 	kstat_create_zone;
-	kstat_named_init;
 	kstat_delete;
+	kstat_hold_byname;
 	kstat_install;
+	kstat_named_init;
+	kstat_named_setstr;
 	kstat_waitq_enter;
 	kstat_waitq_exit;
 	kstat_runq_enter;
 	kstat_runq_exit;
 	kstat_waitq_to_runq;
 	kstat_runq_back_to_waitq;
+	kstat_rele;
 
 	msec_per_tick;
 
