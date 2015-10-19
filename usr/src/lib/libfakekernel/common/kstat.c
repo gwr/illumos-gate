@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2016 Nexenta Systems, Inc.  All rights reserved.
  * Copyright 2017 RackTop Systems.
  */
 
@@ -38,6 +38,11 @@ kstat_create(const char *ks_module, int ks_instance, const char *ks_name,
 /*ARGSUSED*/
 void
 kstat_named_init(kstat_named_t *knp, const char *name, uchar_t type)
+{}
+
+/*ARGSUSED*/
+void
+kstat_named_setstr(kstat_named_t *knp, const char *src)
 {}
 
 /*ARGSUSED*/
@@ -78,4 +83,17 @@ kstat_waitq_to_runq(kstat_io_t *kiop)
 /*ARGSUSED*/
 void
 kstat_runq_back_to_waitq(kstat_io_t *kiop)
+{}
+
+/*ARGSUSED*/
+kstat_t *
+kstat_hold_byname(const char *ks_module, int ks_instance, const char *ks_name,
+    zoneid_t ks_zoneid)
+{
+	return (NULL);
+}
+
+/*ARGSUSED*/
+void
+kstat_rele(kstat_t *ksp)
 {}
