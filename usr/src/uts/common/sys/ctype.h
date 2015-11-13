@@ -66,61 +66,69 @@ extern "C" {
 	(_c) == '\r' || \
 	(_c) == '\n')
 
-static __GNU_INLINE boolean_t	/* LINTED E_STATIC_UNUSED */
+#ifdef __lint
+/* Hide the inlines from lint */
+
+extern boolean_t isdigit(char);
+extern boolean_t isxdigit(char);
+extern boolean_t islower(char);
+extern boolean_t isupper(char);
+extern boolean_t isalpha(char);
+extern boolean_t isalnum(char);
+extern boolean_t isprint(char);
+extern boolean_t isspace(char);
+
+#else	/* __lint */
+
+extern __GNU_INLINE boolean_t
 isdigit(char c)
 {
 	return (ISDIGIT(c));
 }
-#pragma inline(isdigit)
 
-static __GNU_INLINE boolean_t	/* LINTED E_STATIC_UNUSED */
+extern __GNU_INLINE boolean_t
 isxdigit(char c)
 {
 	return (ISXDIGIT(c));
 }
-#pragma inline(isxdigit)
 
-static __GNU_INLINE boolean_t	/* LINTED E_STATIC_UNUSED */
+extern __GNU_INLINE boolean_t
 islower(char c)
 {
 	return (ISLOWER(c));
 }
-#pragma inline(islower)
 
-static __GNU_INLINE boolean_t	/* LINTED E_STATIC_UNUSED */
+extern __GNU_INLINE boolean_t
 isupper(char c)
 {
 	return (ISUPPER(c));
 }
-#pragma inline(isupper)
 
-static __GNU_INLINE boolean_t	/* LINTED E_STATIC_UNUSED */
+extern __GNU_INLINE boolean_t
 isalpha(char c)
 {
 	return (ISALPHA(c));
 }
-#pragma inline(isalpha)
 
-static __GNU_INLINE boolean_t	/* LINTED E_STATIC_UNUSED */
+extern __GNU_INLINE boolean_t
 isalnum(char c)
 {
 	return (ISALNUM(c));
 }
-#pragma inline(isalnum)
 
-static __GNU_INLINE boolean_t	/* LINTED E_STATIC_UNUSED */
+extern __GNU_INLINE boolean_t
 isprint(char c)
 {
 	return (ISPRINT(c));
 }
-#pragma inline(isprint)
 
-static __GNU_INLINE boolean_t	/* LINTED E_STATIC_UNUSED */
+extern __GNU_INLINE boolean_t
 isspace(char c)
 {
 	return (ISSPACE(c));
 }
-#pragma inline(isspace)
+
+#endif	/* __lint */
 
 #ifdef	__cplusplus
 }
