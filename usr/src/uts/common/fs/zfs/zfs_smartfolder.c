@@ -18,7 +18,7 @@
 #include "sys/mount.h"
 #include <sys/nvpair.h>
 
-int zfs_smartfolder;
+int zfs_smartfolder = 1; /* enabled */
 int zfs_smartfolder_kcred;
 
 /*
