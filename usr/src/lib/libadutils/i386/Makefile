@@ -24,5 +24,8 @@
 #
 
 include ../Makefile.com
+include ../../Makefile.nss
+
+LDLIBS +=	-L$(ADJUNCT_PROTO)$(NSS_LDPATH)
 
 install: all $(ROOTLIBS) $(ROOTLINKS) $(ROOTLINT)

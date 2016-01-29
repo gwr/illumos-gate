@@ -29,6 +29,9 @@ MACH_LDLIBS +=	-L$(ROOT)/usr/lib/smbsrv/$(MACH64)
 
 include ../Makefile.com
 include ../../../Makefile.lib.64
+include ../../../Makefile.nss
+
+LDLIBS +=	-L$(ADJUNCT_PROTO)$(NSS_LDPATH64)
 
 DYNFLAGS +=	-R/usr/lib/smbsrv/$(MACH64)
 

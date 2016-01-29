@@ -28,6 +28,9 @@
 # ident	"%Z%%M%	%I%	%E% SMI"
 
 include ../Makefile.com
+include ../../../Makefile.nss
+
+LDLIBS +=	-L$(ADJUNCT_PROTO)$(NSS_LDPATH)
 
 DYNFLAGS	+= $(ROOT)/usr/lib/passwdutil.so.1
 
