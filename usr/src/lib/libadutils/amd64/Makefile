@@ -25,5 +25,8 @@
 
 include ../Makefile.com
 include ../../Makefile.lib.64 
+include ../../Makefile.nss
+
+LDLIBS +=	-L$(ADJUNCT_PROTO)$(NSS_LDPATH64)
 
 install: all $(ROOTLIBS64) $(ROOTLINKS64) 
