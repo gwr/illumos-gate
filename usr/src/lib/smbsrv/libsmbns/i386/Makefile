@@ -26,6 +26,9 @@
 #
 
 include ../Makefile.com
+include ../../../Makefile.nss
+
+LDLIBS +=	-L$(ADJUNCT_PROTO)$(NSS_LDPATH)
 
 DYNFLAGS +=	-R/usr/lib/smbsrv
 

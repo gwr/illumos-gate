@@ -28,6 +28,9 @@
 
 include ../Makefile.com
 include ../../../Makefile.lib.64
+include ../../../Makefile.nss
+
+LDLIBS +=	-L$(ADJUNCT_PROTO)$(NSS_LDPATH64)
 
 DYNFLAGS += $(ROOT)/usr/lib/$(MACH64)/passwdutil.so.1
 
