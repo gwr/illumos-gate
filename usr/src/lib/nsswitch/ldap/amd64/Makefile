@@ -28,6 +28,9 @@
 
 include		../Makefile.com
 include		$(SRC)/lib/Makefile.lib.64
+include		$(SRC)/lib/Makefile.nss
+
+LDLIBS +=	-L$(ADJUNCT_PROTO)$(NSS_LDPATH64)
 
 LIBS =		$(DYNLIB1)
 
