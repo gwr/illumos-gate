@@ -1,5 +1,5 @@
 /*
- * Copyright 2009-2015 RackTop Systems LLC and/or its affiliates.
+ * Copyright 2009-2016 RackTop Systems LLC and/or its affiliates.
  * http://www.racktopsystems.com
  *
  * The methods and techniques utilized herein are considered TRADE SECRETS
@@ -11,20 +11,17 @@
 #ifndef	_SYS_ZFS_SMARTFOLDER_H
 #define	_SYS_ZFS_SMARTFOLDER_H
 
-#include <sys/dmu.h>
-
 #ifdef	__cplusplus
 extern "C" {
 #endif
 
+struct zfsvfs;
 struct vnode;
 struct cred;
 
-boolean_t zfs_smartfolder_enabled(objset_t *os);
-int zfs_get_smartname(objset_t *os, const const char *dirname, char *path,
-    char *smartname);
-int zfs_create_smartfolder(struct vnode *vn, struct cred *cr,
-    const char *smartpath, const char *smartname, int flags);
+int zfs_smartfolder_enabled(struct zfsvfs *zfsvfs);
+int zfs_create_smartfolder(struct zfsvfs *zfsvfs, struct vnode *dvp,
+    struct vnode *vp, const char *dirname, int flags, struct cred *cr);
 
 #ifdef	__cplusplus
 }

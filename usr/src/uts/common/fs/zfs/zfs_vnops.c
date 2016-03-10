@@ -2195,23 +2195,10 @@ top:
 	zfs_acl_ids_free(&acl_ids);
 
 	dmu_tx_commit(tx);
-	if (zfs_smartfolder_enabled(zfsvfs->z_os)) {
-		path = kmem_alloc(MAXPATHLEN, KM_SLEEP);
-		smartname = kmem_alloc(MAXPATHLEN, KM_SLEEP);
-		if (vnodetopath(NULL, dvp, path, MAXPATHLEN, cr) == 0) {
-			if (zfs_get_smartname(zfsvfs->z_os, dirname, path,
-			    smartname) == 0)
-				ASSERT3P(smartname, !=, NULL);
-		}
-	}
 
-	if (path) {
-		if (smartname != NULL)
-			(void) zfs_create_smartfolder(*vpp, cr, path, smartname,
-			    flags);
-		kmem_free(smartname, MAXPATHLEN);
-		kmem_free(path, MAXPATHLEN);
-	}
+	if (zfs_smartfolder_enabled(zfsvfs))
+		(void) zfs_create_smartfolder(zfsvfs, dvp, *vpp, dirname,
+		    flags, cr);
 
 	zfs_dirent_unlock(dl);
 
