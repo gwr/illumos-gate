@@ -478,6 +478,7 @@ COMMON_SUBDIRS=		\
 	zpool		\
 	zlook		\
 	zonestat	\
+	zsmartsvc	\
 	zstreamdump	\
 	ztest
 

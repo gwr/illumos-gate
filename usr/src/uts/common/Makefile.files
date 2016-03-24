@@ -1444,6 +1444,7 @@ ZFS_COMMON_OBJS +=		\
 	zfs_fuid.o		\
 	zfs_sa.o		\
 	zfs_smartfolder.o	\
+	zfs_smartfolder_exp.o	\
 	zfs_znode.o		\
 	zil.o			\
 	zio.o			\

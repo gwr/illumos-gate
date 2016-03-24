@@ -9,6 +9,7 @@
  */
 
 #include "sys/zfs_smartfolder.h"
+#include "sys/zfs_smartfolder_exp.h"
 #include "sys/zfs_znode.h"
 #include "sys/dmu_objset.h"
 #include "sys/dsl_dataset.h"
@@ -18,26 +19,30 @@
 #include "sys/mount.h"
 #include <sys/nvpair.h>
 
+#ifdef	_KERNEL
+#include <sys/zfs_vfsops.h>
+#endif
+
 int zfs_smartfolder = 1; /* enabled */
 int zfs_smartfolder_kcred;
-int zfs_smartfolder_nomount;
+
+#define	ZFS_MAXPROPLEN	MAXPATHLEN
 
 /*
  * ARGSUSED
  */
 int
-zfs_smartfolder_enabled(zfsvfs_t *zfsvfs)
+zfs_smartfolder_enabled(dsl_dataset_t *ds)
 {
 	uint64_t val;
-	objset_t *os = zfsvfs->z_os;
-	dsl_pool_t *dp = os->os_dsl_dataset->ds_dir->dd_pool;
+	dsl_pool_t *dp = ds->ds_dir->dd_pool;
 
 	if (!zfs_smartfolder)
 		return (B_FALSE);
 
 	dsl_pool_config_enter(dp, FTAG);
 
-	if (dsl_prop_get_int_ds(dmu_objset_ds(os), "smartfolders", &val) != 0) {
+	if (dsl_prop_get_int_ds(ds, "smartfolders", &val) != 0) {
 		dsl_pool_config_exit(dp, FTAG);
 		return (0);
 	}
@@ -46,6 +51,33 @@ zfs_smartfolder_enabled(zfsvfs_t *zfsvfs)
 
 	dsl_pool_config_exit(dp, FTAG);
 	return (val != 0);
+}
+
+static int
+zfs_get_sharenfssmb(dsl_dataset_t *ds, char *sharenfs, char *sharesmb)
+{
+	int err;
+	dsl_pool_t *dp = ds->ds_dir->dd_pool;
+
+	dsl_pool_config_enter(dp, FTAG);
+
+	if ((err = dsl_prop_get_ds(ds, "sharenfs", 1, ZFS_MAXPROPLEN, sharenfs,
+	    NULL)) != 0) {
+		dsl_pool_config_exit(dp, FTAG);
+		return (err);
+	}
+
+	if ((err = dsl_prop_get_ds(ds, "sharesmb", 1, ZFS_MAXPROPLEN, sharesmb,
+	    NULL)) != 0) {
+		dsl_pool_config_exit(dp, FTAG);
+		return (err);
+	}
+
+	DTRACE_PROBE2(xxx_smartfolder_share, const char *, sharenfs,
+	    const char *, sharesmb);
+
+	dsl_pool_config_exit(dp, FTAG);
+	return (0);
 }
 
 /*
@@ -103,7 +135,7 @@ extern int zfs_fill_zplprops(const char *dataset, nvlist_t *createprops,
  * ARGSUSED
  */
 int
-zfs_create_smartfolder(zfsvfs_t *zfsvfs, struct vnode *dvp, struct vnode *vp,
+zfs_create_smartfolder(struct zfsvfs *zfsvfs, struct vnode *dvp, struct vnode *vp,
     const char *dirname, int flags, struct cred *cr)
 {
 	int err;
@@ -115,11 +147,14 @@ zfs_create_smartfolder(zfsvfs_t *zfsvfs, struct vnode *dvp, struct vnode *vp,
 	boolean_t is_insensitive;
 	char *ppath, *path;
 	char *smartname;
+	char *sharenfs, *sharesmb;
 	refstr_t *mntpt;
 
 	ppath = kmem_alloc(MAXPATHLEN, KM_SLEEP);
 	path = kmem_alloc(MAXPATHLEN, KM_SLEEP);
 	smartname = kmem_alloc(MAXPATHLEN, KM_SLEEP);
+	sharenfs = kmem_alloc(MAXPATHLEN, KM_SLEEP);
+	sharesmb = kmem_alloc(MAXPATHLEN, KM_SLEEP);
 
 	if (zfsvfs->z_vfs->vfs_mntpt == NULL) {
 		err = ENOENT;
@@ -135,7 +170,6 @@ zfs_create_smartfolder(zfsvfs_t *zfsvfs, struct vnode *dvp, struct vnode *vp,
 
 	mntpt = vfs_getmntpoint(zfsvfs->z_vfs);
 	if ((strcmp(refstr_value(mntpt), ppath) != 0)) {
-		DTRACE_PROBE();
 		err = ENOTSUP;
 		refstr_rele(mntpt);
 		goto out;
@@ -145,13 +179,17 @@ zfs_create_smartfolder(zfsvfs_t *zfsvfs, struct vnode *dvp, struct vnode *vp,
 	refstr_rele(mntpt);
 
 	/* Need to check if dataset is mounted and parent dir == mountpoint */
-
 	if ((err = zfs_get_smartname(zfsvfs->z_os, dirname, smartname)) != 0)
 		goto out;
 
 	if ((err = dmu_objset_hold(smartname, FTAG, &os)) == 0) {
 		dmu_objset_rele(os, FTAG);
 		err = EEXIST;
+		goto out;
+	}
+
+	if ((err = zfs_get_sharenfssmb(dmu_objset_ds(zfsvfs->z_os), sharenfs,
+	    sharesmb)) != 0) {
 		goto out;
 	}
 
@@ -182,13 +220,19 @@ zfs_create_smartfolder(zfsvfs_t *zfsvfs, struct vnode *dvp, struct vnode *vp,
 	ma.optptr = NULL;
 	ma.optlen = 0;
 
-	if (zfs_smartfolder_nomount)
-		goto out;
-
-	err = domount("zfs", &ma, vp, (zfs_smartfolder_kcred ? kcred : cr),
-	    &vfs);
-	VFS_RELE(vfs);
+	if ((err = domount("zfs", &ma, vp, (zfs_smartfolder_kcred ? kcred : cr),
+	    &vfs)) == 0) {
+		if (sharenfs[0] != '\0')
+			err = create_nfs_share(smartname, path, sharenfs,
+			    kcred);
+/*
+ *			    (zfs_smartfolder_kcred ? kcred : cr));
+ */
+		VFS_RELE(vfs);
+	}
 out:
+	kmem_free(sharesmb, MAXPATHLEN);
+	kmem_free(sharenfs, MAXPATHLEN);
 	kmem_free(smartname, MAXPATHLEN);
 	kmem_free(path, MAXPATHLEN);
 	kmem_free(ppath, MAXPATHLEN);

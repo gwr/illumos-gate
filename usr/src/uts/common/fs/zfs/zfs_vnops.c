@@ -2196,14 +2196,14 @@ top:
 
 	dmu_tx_commit(tx);
 
-	if (zfs_smartfolder_enabled(zfsvfs))
-		(void) zfs_create_smartfolder(zfsvfs, dvp, *vpp, dirname,
-		    flags, cr);
-
 	zfs_dirent_unlock(dl);
 
 	if (zfsvfs->z_os->os_sync == ZFS_SYNC_ALWAYS)
 		zil_commit(zilog, 0);
+
+	if (zfs_smartfolder_enabled(dmu_objset_ds(zfsvfs->z_os)))
+		(void) zfs_create_smartfolder(zfsvfs, dvp, *vpp, dirname,
+		    flags, cr);
 
 	ZFS_EXIT(zfsvfs);
 	return (0);

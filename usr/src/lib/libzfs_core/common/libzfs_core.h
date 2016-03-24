@@ -86,6 +86,12 @@ int lzc_send(const char *, const char *, int, enum lzc_send_flags);
 int lzc_send_resume(const char *, const char *, int,
     enum lzc_send_flags, uint64_t, uint64_t);
 int lzc_send_space(const char *, const char *, enum lzc_send_flags, uint64_t *);
+int lzc_send_resumesuspend(const char *, const char *, int,
+    enum lzc_send_flags, struct dmu_position *, struct dmu_position *);
+/*
+ * XXX smartfolder
+int lzc_send_space(const char *, const char *, uint64_t *); */
+int lzc_smartdoor(int);
 
 struct dmu_replay_record;
 

@@ -212,6 +212,7 @@
 #include <sys/vdev_initialize.h>
 #include <sys/vdev_trim.h>
 #include <sys/dsl_crypt.h>
+#include <sys/zfs_smartfolder.h>
 
 #include "zfs_namecheck.h"
 #include "zfs_prop.h"
@@ -6698,6 +6699,34 @@ zfs_ioctl_register_dataset_modify(zfs_ioc_t ioc, zfs_ioc_legacy_func_t *func,
 	    DATASET_NAME, B_TRUE, POOL_CHECK_SUSPENDED | POOL_CHECK_READONLY);
 }
 
+
+door_handle_t smartfolder_dh;
+
+/*
+ * innvl: "door": int32
+ */
+static int
+zfs_ioc_smartfolder_door(const char *poolname, nvlist_t *innvl,
+    nvlist_t *outnvl)
+{
+	door_handle_t dh;
+	int did;
+
+	if (nvlist_lookup_int32(innvl, "door", &did) != 0)
+		return (SET_ERROR(EINVAL));
+
+	DTRACE_PROBE1(smartfolder_did, int32_t, did);
+
+	if ((dh = door_ki_lookup(did)) == NULL) {
+		cmn_err(CE_WARN, "Failed to find smart door");
+		return (SET_ERROR(EINVAL));
+	}
+	door_ki_rele(dh);
+
+	smartfolder_dh = dh;
+	return (0);
+}
+
 static void
 zfs_ioctl_init(void)
 {
@@ -6745,6 +6774,10 @@ zfs_ioctl_init(void)
 	    zfs_ioc_destroy_snaps, zfs_secpolicy_destroy_snaps, POOL_NAME,
 	    POOL_CHECK_SUSPENDED | POOL_CHECK_READONLY, B_TRUE, B_TRUE,
 	    zfs_keys_destroy_snaps, ARRAY_SIZE(zfs_keys_destroy_snaps));
+
+	zfs_ioctl_register("smartfolder_door", ZFS_IOC_SMARTFOLDER_DOOR,
+	    zfs_ioc_smartfolder_door, zfs_secpolicy_none, NO_NAME,
+	    POOL_CHECK_NONE, B_FALSE, B_FALSE);
 
 	zfs_ioctl_register("hold", ZFS_IOC_HOLD,
 	    zfs_ioc_hold, zfs_secpolicy_hold, POOL_NAME,
@@ -7483,8 +7516,10 @@ _init(void)
 	zfs_init();
 	zvol_init();
 	zfs_ioctl_init();
+	zfs_smartfolder_init();
 
 	if ((error = mod_install(&modlinkage)) != 0) {
+		zfs_smartfolder_fini();
 		zvol_fini();
 		zfs_fini();
 		spa_fini();
@@ -7513,6 +7548,7 @@ _fini(void)
 	if ((error = mod_remove(&modlinkage)) != 0)
 		return (error);
 
+	zfs_smartfolder_fini();
 	zvol_fini();
 	zfs_fini();
 	spa_fini();

@@ -15,11 +15,14 @@
 extern "C" {
 #endif
 
+struct dsl_dataset;
 struct zfsvfs;
 struct vnode;
 struct cred;
 
-int zfs_smartfolder_enabled(struct zfsvfs *zfsvfs);
+int zfs_smartfolder_init(void);
+void zfs_smartfolder_fini(void);
+int zfs_smartfolder_enabled(struct dsl_dataset *ds);
 int zfs_create_smartfolder(struct zfsvfs *zfsvfs, struct vnode *dvp,
     struct vnode *vp, const char *dirname, int flags, struct cred *cr);
 
