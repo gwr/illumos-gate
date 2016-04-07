@@ -2059,8 +2059,6 @@ zfs_mkdir(vnode_t *dvp, char *dirname, vattr_t *vap, vnode_t **vpp, cred_t *cr,
 	zfs_acl_ids_t   acl_ids;
 	boolean_t	fuid_dirtied;
 	boolean_t	waited = B_FALSE;
-	char		*path = NULL;
-	char		*smartname = NULL;
 
 	ASSERT(vap->va_type == VDIR);
 

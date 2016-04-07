@@ -52,15 +52,12 @@ zfs_smartfolder_fini(void)
 #endif
 }
 
-/*
- * ARGSUSED
- */
+/* ARGSUSED */
 int
 create_nfs_share(char *dsname, char *path, char *sharenfs, struct cred *cr)
 {
 #ifdef	_KERNEL
 	smartfolder_exp_data_t *sed;
-	int err;
 
 	ASSERT3P(dsname, !=, NULL);
 	ASSERT3P(path, !=, NULL);
@@ -69,9 +66,9 @@ create_nfs_share(char *dsname, char *path, char *sharenfs, struct cred *cr)
 	if ((sed = kmem_alloc(sizeof (*sed), KM_SLEEP)) == NULL)
 		return (ENOMEM);
 
-	strncpy(sed->sed_dsname, dsname, sizeof (sed->sed_dsname));
-	strncpy(sed->sed_path, path, sizeof (sed->sed_path));
-	strncpy(sed->sed_sharenfs, sharenfs, sizeof (sed->sed_sharenfs));
+	(void) strncpy(sed->sed_dsname, dsname, sizeof (sed->sed_dsname));
+	(void) strncpy(sed->sed_path, path, sizeof (sed->sed_path));
+	(void) strncpy(sed->sed_sharenfs, sharenfs, sizeof (sed->sed_sharenfs));
 	sed->sed_sharesmb[0] = '\0';
 
 	if (taskq_dispatch(sfe_taskq, create_nfs_share_task, sed,

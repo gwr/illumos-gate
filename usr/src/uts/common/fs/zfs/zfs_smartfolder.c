@@ -86,7 +86,7 @@ zfs_get_sharenfssmb(dsl_dataset_t *ds, char *sharenfs, char *sharesmb)
 static int
 zfs_get_smartname(objset_t *os, const char *dirname, char *smartname)
 {
-	size_t len, slen, dlen;
+	size_t len, dlen;
 
 	ASSERT3P(os, !=, NULL);
 	ASSERT3P(dirname, !=, NULL);

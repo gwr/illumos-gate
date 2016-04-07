@@ -6705,6 +6705,7 @@ door_handle_t smartfolder_dh;
 /*
  * innvl: "door": int32
  */
+/* ARGSUSED */
 static int
 zfs_ioc_smartfolder_door(const char *poolname, nvlist_t *innvl,
     nvlist_t *outnvl)
@@ -7516,7 +7517,7 @@ _init(void)
 	zfs_init();
 	zvol_init();
 	zfs_ioctl_init();
-	zfs_smartfolder_init();
+	(void) zfs_smartfolder_init();
 
 	if ((error = mod_install(&modlinkage)) != 0) {
 		zfs_smartfolder_fini();
