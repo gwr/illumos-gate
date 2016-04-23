@@ -340,11 +340,6 @@ smb2_create(smb_request_t *sr)
 			op->dh_vers = SMB2_DURABLE_V1;
 	}
 
-	if (cctx.cc_in_flags & CCTX_EA_BUFFER) {
-		status = NT_STATUS_EAS_NOT_SUPPORTED;
-		goto cmd_done;
-	}
-
 	/*
 	 * ImpersonationLevel (spec. says validate + ignore)
 	 * SmbCreateFlags (spec. says ignore)
@@ -765,7 +760,21 @@ smb2_decode_create_ctx(smb_request_t *sr, smb2_create_ctx_t *cc)
 		switch (cc_name.i) {
 			uint64_t nttime;
 
+		case SMB2_CREATE_EA_BUFFER:		/* ("ExtA") */
+			/*
+			 * FILE_FULL_EA_INFORMATION
+			 * See: [MS-FSCC] 2.4.15
+			 */
+			if (smb_ea_decode_feainfo(sr, &op->ea,
+			    &cce->cce_mbc) != 0)
+				goto errout;
+			break;
+
 		case SMB2_CREATE_SD_BUFFER:		/* ("SecD") */
+			/*
+			 * Self-relative SECURITY_DESCRIPTOR.
+			 * See: [MS-DTYP] 2.4.6
+			 */
 			op->sd = kmem_alloc(sizeof (smb_sd_t), KM_SLEEP);
 			if (smb_decode_sd(&cce->cce_mbc, op->sd) != 0)
 				goto errout;

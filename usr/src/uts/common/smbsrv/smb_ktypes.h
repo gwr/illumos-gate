@@ -61,6 +61,7 @@ extern "C" {
 
 struct __door_handle;	/* <sys/door.h> */
 struct edirent;		/* <sys/extdirent.h> */
+struct nvpair;		/* <sys/nvpair.h> */
 
 struct smb_disp_entry;
 struct smb_request;
@@ -1566,6 +1567,13 @@ typedef struct {
 	uint16_t errcode;
 } smb_error_t;
 
+typedef struct smb_ea_args {
+	struct nvpair *ea_get_list;
+	struct nvpair *ea_full_list;
+	uint32_t	ea_list_bytes;	/* size on disk (and on wire) */
+	uint16_t	ea_err_off;	/* where we failed parsing */
+} smb_ea_args_t;
+
 typedef struct open_param {
 	smb_fqi_t	fqi;
 	uint16_t	omode;
@@ -1600,6 +1608,7 @@ typedef struct open_param {
 	void		*create_ctx;
 	uint8_t		op_oplock_level;	/* requested/granted level */
 	boolean_t	op_oplock_levelII;	/* TRUE if levelII supported */
+	smb_ea_args_t	ea;
 	smb_dh_vers_t	dh_vers;
 	smb2fid_t	dh_fileid;		/* for durable reconnect */
 	uint8_t		create_guid[16];
