@@ -719,6 +719,17 @@ create:
 		}
 
 		/*
+		 * EA's (not yet)
+		 *
+		 * If we find a non-empty EA list, return the special
+		 * error telling the caller this FS does not suport EAs.
+		 */
+		if (op->ea.ea_list_bytes != 0) {
+			smb_node_release(dnode);
+			return (NT_STATUS_EAS_NOT_SUPPORTED);
+		}
+
+		/*
 		 * lock the parent dir node in case another create
 		 * request to the same parent directory comes in.
 		 */

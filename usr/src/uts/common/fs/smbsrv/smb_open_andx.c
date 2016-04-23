@@ -519,20 +519,14 @@ smb_com_trans2_open2(smb_request_t *sr, smb_xa_t *xa)
 		return (SDRC_ERROR);
 
 	/*
-	 * The data part of this transaction may contain an EA list.
+	 * The data part of this transaction may contain an EA list,
+	 * which we decode into op->ea.flist for use in common_open.
+	 * Note: sets op->ea.err_off when decode fails.
 	 * See: SMB_FEA_LIST ExtendedAttributeList
-	 *
-	 * If we find a non-empty EA list payload, return the special
-	 * error that tells the caller this FS does not suport EAs.
-	 *
-	 * Note: the first word is the size of the whole data segment,
-	 * INCLUDING the size of that length word.  That means if
-	 * the length word specifies a size less than four, it's
-	 * invalid (and probably a client trying something fishy).
 	 */
-	rc = smb_mbc_decodef(&xa->req_data_mb, "l", &ea_list_size);
-	if (rc == 0 && ea_list_size > 4) {
-		smbsr_status(sr, NT_STATUS_EAS_NOT_SUPPORTED, 0, 0);
+	if (xa->req_data_mb.max_bytes >= 4 &&
+	    smb_ea_decode_fealist(sr, &op->ea, &xa->req_data_mb) != 0) {
+		smbsr_status(sr, status, 0, 0);
 		return (SDRC_ERROR);
 	}
 
@@ -591,8 +585,8 @@ smb_com_trans2_open2(smb_request_t *sr, smb_xa_t *xa)
 	    op->devstate,
 	    op->action_taken,
 	    op->fileid,
-	    (uint16_t)0,	/* EA error offset */
-	    (uint32_t)0);	/* EA list length */
+	    op->ea.err_off,
+	    op->ea.list_len);
 
 	return (SDRC_SUCCESS);
 }
