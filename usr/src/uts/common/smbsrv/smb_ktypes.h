@@ -1411,6 +1411,7 @@ typedef struct smb_fileinfo {
 	char		fi_shortname[SMB_SHORTNAMELEN];
 	uint32_t	fi_cookie;	/* Dir offset (of next entry) */
 	uint32_t	fi_dosattr;	/* DOS attributes */
+	uint32_t	fi_easize;	/* Extended Attributes size */
 	uint64_t	fi_nodeid;	/* file system node id */
 	uint64_t	fi_size;	/* file size in bytes */
 	uint64_t	fi_alloc_size;	/* allocation size in bytes */
@@ -1516,6 +1517,7 @@ typedef struct smb_queryinfo {
 	uint32_t qi_Flags;
 	mbuf_chain_t in_data;
 	smb_attr_t	qi_attr;
+	uint32_t	qi_easize;
 	uint32_t	qi_namelen;
 	char		qi_shortname[SMB_SHORTNAMELEN];
 	char		qi_name[MAXPATHLEN];

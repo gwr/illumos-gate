@@ -176,12 +176,14 @@ smb2_setf_seek(smb_request_t *sr, smb_setinfo_t *si)
 
 /*
  * FileFullEaInformation
- * We could put EAs in a named stream...
+ * Data is: FILE_FULL_EA_INFORMATION
  */
 /* ARGSUSED */
 static uint32_t
 smb2_setf_full_ea(smb_request_t *sr, smb_setinfo_t *si)
 {
+	/* XXX: todo ... if (smb_ea_support)... */
+	/* smb_ea_set_fulleainfo() */
 	return (NT_STATUS_EAS_NOT_SUPPORTED);
 }
 

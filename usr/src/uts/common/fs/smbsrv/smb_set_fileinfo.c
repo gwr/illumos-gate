@@ -76,6 +76,7 @@ static uint32_t smb_set_fileinfo(smb_request_t *, smb_setinfo_t *, int);
 static uint32_t smb_set_information(smb_request_t *, smb_setinfo_t *);
 static uint32_t smb_set_information2(smb_request_t *, smb_setinfo_t *);
 static uint32_t smb_set_standard_info(smb_request_t *, smb_setinfo_t *);
+static uint32_t smb_set_ea_info(smb_request_t *, smb_setinfo_t *);
 static uint32_t smb_set_rename_info(smb_request_t *sr, smb_setinfo_t *);
 
 /*
@@ -341,7 +342,7 @@ smb_set_fileinfo(smb_request_t *sr, smb_setinfo_t *sinfo, int infolev)
 		break;
 
 	case SMB_INFO_SET_EAS:
-		status = NT_STATUS_EAS_NOT_SUPPORTED;
+		status = smb_set_ea_info(sr, sinfo);
 		break;
 
 	case SMB_SET_FILE_BASIC_INFO:
@@ -508,6 +509,18 @@ smb_set_standard_info(smb_request_t *sr, smb_setinfo_t *sinfo)
 		status = smb_errno2status(rc);
 
 	return (status);
+}
+
+/*
+ * SMB_INFO_SET_EAS
+ * Data is an SMB_FEA_LIST
+ */
+static uint32_t
+smb_set_ea_info(smb_request_t *sr, smb_setinfo_t *sinfo)
+{
+	/* XXX: todo ... if (smb_ea_support)... */
+	/* smb_ea_set_fealist() */
+	return (NT_STATUS_EAS_NOT_SUPPORTED);
 }
 
 /*

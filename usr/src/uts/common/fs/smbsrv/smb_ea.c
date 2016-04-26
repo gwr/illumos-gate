@@ -349,9 +349,14 @@ getfeas(FSI_PATHID *pathid, FSI_EAOPS *eaopsp)
 	return (0);
 }
 
+int smb_ea_maxfsize = 0x10000; /* 64k */
+
 /*
  * Read the nvlist (packed form) from the named stream (snode),
  * creating an nvlist (**nvlp)
+ *
+ * XXX: Somewhere needs to sanity check the EA names.
+ * XXX: must not contain "\"*+,/:;<=>?[\\]|"
  */
 uint32_t
 smb_ea_stream_read(smb_request_t *sr, smb_node_t *snode, nvlist_t **nvlp)
