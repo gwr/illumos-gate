@@ -983,6 +983,15 @@ smb_fsop_getattr(smb_request_t *sr, cred_t *cr, smb_node_t *snode,
 		attr->sa_dosattr |= FILE_ATTRIBUTE_DIRECTORY;
 	}
 
+	/*
+	 * Get the size of the "::$EA" stream, if EA support
+	 * and we're not getting attributes for a stream.
+	 */
+	if (smb_ea_support && unnamed_node == NULL)
+		attr->sa_easize = smb_ea_getsize(snode->vp);
+	else
+		attr->sa_easize = 0;
+
 	return (rc);
 }
 

@@ -316,6 +316,7 @@ smb_vop_getattr(vnode_t *vp, vnode_t *unnamed_vp, smb_attr_t *ret_attr,
 	else
 		use_vp = vp;
 
+	/* XXX: Could skip xvattr if not asked for dosattr or create time */
 	if (vfs_has_feature(use_vp->v_vfsp, VFSFT_XVATTR)) {
 		xva_init(&tmp_xvattr);
 		xoap = xva_getxoptattr(&tmp_xvattr);
@@ -1076,6 +1077,7 @@ smb_vop_stream_lookup(
 	char *name;
 	int error, tmpflgs;
 
+	/* XXX: CREATE_XATTR_DIR seems wrong here, and wasteful */
 	if ((error = smb_vop_lookup_xattrdir(fvp, xattrdirvpp,
 	    LOOKUP_XATTR | CREATE_XATTR_DIR, cr)) != 0)
 		return (error);
