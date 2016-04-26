@@ -838,7 +838,7 @@ smb_trans2_find_mbc_encode(smb_request_t *sr, smb_xa_t *xa,
 		    dsize32,
 		    asize32,
 		    fileinfo->fi_dosattr,
-		    0L,		/* EA Size */
+		    fileinfo->fi_easize,
 		    namelen);
 		break;
 
@@ -868,7 +868,7 @@ smb_trans2_find_mbc_encode(smb_request_t *sr, smb_xa_t *xa,
 		    fileinfo->fi_alloc_size,
 		    fileinfo->fi_dosattr,
 		    namelen,
-		    0L);
+		    fileinfo->fi_easize);
 		break;
 
 	case SMB_FIND_FILE_ID_FULL_DIRECTORY_INFO:
@@ -883,7 +883,7 @@ smb_trans2_find_mbc_encode(smb_request_t *sr, smb_xa_t *xa,
 		    fileinfo->fi_alloc_size,
 		    fileinfo->fi_dosattr,
 		    namelen,
-		    0L,
+		    fileinfo->fi_easize,
 		    fileinfo->fi_nodeid);
 		break;
 
@@ -909,7 +909,7 @@ smb_trans2_find_mbc_encode(smb_request_t *sr, smb_xa_t *xa,
 		    fileinfo->fi_alloc_size,
 		    fileinfo->fi_dosattr,
 		    namelen,
-		    0L,
+		    fileinfo->fi_easize,
 		    shortlen,
 		    buf83);
 
@@ -940,7 +940,7 @@ smb_trans2_find_mbc_encode(smb_request_t *sr, smb_xa_t *xa,
 		    fileinfo->fi_alloc_size,
 		    fileinfo->fi_dosattr,
 		    namelen,
-		    0L,
+		    fileinfo->fi_easize,
 		    shortlen,
 		    buf83,
 		    fileinfo->fi_nodeid);

@@ -413,7 +413,7 @@ smb_query_encode_response(smb_request_t *sr, smb_xa_t *xa,
 		    smb_time_gmt_to_local(sr, qinfo->qi_atime.tv_sec),
 		    smb_time_gmt_to_local(sr, qinfo->qi_mtime.tv_sec),
 		    smb_size32(datasz), smb_size32(allocsz), dattr, 0);
-	break;
+		break;
 
 	case SMB_FILE_ACCESS_INFORMATION:
 		ASSERT(sr->fid_ofile);
@@ -422,29 +422,22 @@ smb_query_encode_response(smb_request_t *sr, smb_xa_t *xa,
 		break;
 
 	case SMB_INFO_STANDARD:
+	case SMB_INFO_QUERY_EA_SIZE:
 		(void) smb_mbc_encodef(&xa->rep_param_mb, "w", 0);
-		(void) smb_mbc_encodef(&xa->rep_data_mb,
-		    ((sr->session->native_os == NATIVE_OS_WIN95) ?
-		    "YYYllw" : "yyyllw"),
+		(void) smb_mbc_encodef(&xa->rep_data_mb, "yyyllw",
 		    smb_time_gmt_to_local(sr, qinfo->qi_crtime.tv_sec),
 		    smb_time_gmt_to_local(sr, qinfo->qi_atime.tv_sec),
 		    smb_time_gmt_to_local(sr, qinfo->qi_mtime.tv_sec),
 		    smb_size32(datasz), smb_size32(allocsz), dattr);
-		break;
-
-	case SMB_INFO_QUERY_EA_SIZE:
-		(void) smb_mbc_encodef(&xa->rep_param_mb, "w", 0);
-		(void) smb_mbc_encodef(&xa->rep_data_mb,
-		    ((sr->session->native_os == NATIVE_OS_WIN95) ?
-		    "YYYllwl" : "yyyllwl"),
-		    smb_time_gmt_to_local(sr, qinfo->qi_crtime.tv_sec),
-		    smb_time_gmt_to_local(sr, qinfo->qi_atime.tv_sec),
-		    smb_time_gmt_to_local(sr, qinfo->qi_mtime.tv_sec),
-		    smb_size32(datasz), smb_size32(allocsz), dattr, 0);
+		if (infolev == SMB_INFO_QUERY_EA_SIZE) {
+			(void) smb_mbc_encodef(&xa->rep_data_mb, "l",
+			    qinfo->qi_easize);
+		}
 		break;
 
 	case SMB_INFO_QUERY_ALL_EAS:
 	case SMB_INFO_QUERY_EAS_FROM_LIST:
+		/* XXX: SMB_FEA_LIST */
 		(void) smb_mbc_encodef(&xa->rep_param_mb, "w", 0);
 		(void) smb_mbc_encodef(&xa->rep_data_mb, "l", 0);
 		break;
@@ -482,7 +475,8 @@ smb_query_encode_response(smb_request_t *sr, smb_xa_t *xa,
 	case SMB_QUERY_FILE_EA_INFO:
 	case SMB_FILE_EA_INFORMATION:
 		(void) smb_mbc_encodef(&xa->rep_param_mb, "w", 0);
-		(void) smb_mbc_encodef(&xa->rep_data_mb, "l", 0);
+		(void) smb_mbc_encodef(&xa->rep_data_mb, "l",
+		    qinfo->qi_easize);
 		break;
 
 	case SMB_QUERY_FILE_NAME_INFO:
@@ -495,6 +489,8 @@ smb_query_encode_response(smb_request_t *sr, smb_xa_t *xa,
 	case SMB_QUERY_FILE_ALL_INFO:
 	case SMB_FILE_ALL_INFORMATION:
 		/*
+		 * Combines: basic, standard, ea, name
+		 *
 		 * There is a 6-byte pad between Attributes and AllocationSize,
 		 * and a 2-byte pad after the Directory field.
 		 */
@@ -510,7 +506,7 @@ smb_query_encode_response(smb_request_t *sr, smb_xa_t *xa,
 		    qinfo->qi_attr.sa_vattr.va_nlink,
 		    qinfo->qi_delete_on_close,
 		    qinfo->qi_isdir,
-		    0);
+		    qinfo->qi_easize);
 
 		(void) smb_mbc_encodef(&xa->rep_data_mb, "%lu",
 		    sr, qinfo->qi_namelen, qinfo->qi_name);
@@ -826,6 +822,7 @@ smb_query_fileinfo(smb_request_t *sr, smb_node_t *node, uint16_t infolev,
 	/*
 	 * populate name, namelen and shortname ONLY for the information
 	 * levels that require these fields
+	 * XXX  Ditto EA size
 	 */
 	switch (infolev) {
 	case SMB_QUERY_FILE_ALL_INFO:

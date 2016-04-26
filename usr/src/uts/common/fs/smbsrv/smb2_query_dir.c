@@ -54,6 +54,7 @@ typedef struct smb2_find_args {
 	uint16_t fa_fixedsize;	/* size of fixed part of a returned entry */
 	uint32_t fa_lastkey;	/* Last resume key */
 	int fa_last_entry;	/* offset of last entry */
+	boolean_t fa_get_easize;
 
 	/* Normal info, per dir. entry */
 	smb_fileinfo_t fa_fi;
@@ -357,6 +358,14 @@ smb2_find_entries(smb_request_t *sr, smb_odir_t *od, smb2_find_args_t *args)
 			break;
 		}
 
+		/* XXX If EAsize needed, get it... */
+		switch (args->fa_infoclass) {
+		case FileFullDirectoryInformation:
+		case FileIdFullDirectoryInformation:
+		case FileBothDirectoryInformation:
+		case FileIdBothDirectoryInformation:
+		case FileIdBothDirectoryInformation:	/* 37 */
+
 		if (args->fa_infoclass == FileIdMacOsDirectoryInformation)
 			(void) smb2_aapl_get_macinfo(sr, od,
 			    &args->fa_fi, &args->fa_mi, tbuf, tbuflen);
@@ -501,7 +510,7 @@ smb2_find_mbc_encode(smb_request_t *sr, smb2_find_args_t *args)
 		    fileinfo->fi_alloc_size,
 		    fileinfo->fi_dosattr,
 		    namelen,
-		    0L);	/* EaSize */
+		    fileinfo->fi_easize);
 		break;
 
 	/* See also: SMB_FIND_FILE_ID_FULL_DIRECTORY_INFO */
@@ -518,7 +527,7 @@ smb2_find_mbc_encode(smb_request_t *sr, smb2_find_args_t *args)
 		    fileinfo->fi_alloc_size,
 		    fileinfo->fi_dosattr,
 		    namelen,
-		    0L,		/* EaSize */
+		    fileinfo->fi_easize,
 		    0L,		/* reserved */
 		    fileinfo->fi_nodeid);
 		break;
@@ -542,7 +551,7 @@ smb2_find_mbc_encode(smb_request_t *sr, smb2_find_args_t *args)
 		    fileinfo->fi_alloc_size,
 		    fileinfo->fi_dosattr,
 		    namelen,
-		    0L,		/* EaSize */
+		    fileinfo->fi_easize,
 		    shortlen,
 		    buf83);
 
@@ -568,7 +577,7 @@ smb2_find_mbc_encode(smb_request_t *sr, smb2_find_args_t *args)
 		    fileinfo->fi_alloc_size,	/* q */
 		    fileinfo->fi_dosattr,	/* l */
 		    namelen,			/* l */
-		    0L,		/* EaSize	   l */
+		    fileinfo->fi_easize,	/* l */
 		    shortlen,			/* b. */
 		    buf83,			/* 24c */
 		    /* reserved			   .. */
