@@ -1161,6 +1161,7 @@ smb_odir_single_fileinfo(smb_request_t *sr, smb_odir_t *od,
     smb_fileinfo_t *fileinfo)
 {
 	int		rc;
+	cred_t		*kcr = zone_kcred();
 	smb_node_t	*fnode, *tgt_node;
 	smb_attr_t	attr;
 	ino64_t		fid;
@@ -1204,7 +1205,7 @@ smb_odir_single_fileinfo(smb_request_t *sr, smb_odir_t *od,
 
 	bzero(&attr, sizeof (attr));
 	attr.sa_mask = SMB_AT_ALL;
-	rc = smb_node_getattr(NULL, fnode, zone_kcred(), NULL, &attr);
+	rc = smb_node_getattr(NULL, fnode, kcr, NULL, &attr);
 	if (rc != 0) {
 		smb_node_release(fnode);
 		return (rc);
@@ -1217,7 +1218,7 @@ smb_odir_single_fileinfo(smb_request_t *sr, smb_odir_t *od,
 		smb_node_release(fnode);
 		fnode = tgt_node;
 		attr.sa_mask = SMB_AT_ALL;
-		rc = smb_node_getattr(NULL, fnode, zone_kcred(), NULL, &attr);
+		rc = smb_node_getattr(NULL, fnode, kcr, NULL, &attr);
 		if (rc != 0) {
 			smb_node_release(fnode);
 			return (rc);
@@ -1244,8 +1245,12 @@ smb_odir_single_fileinfo(smb_request_t *sr, smb_odir_t *od,
 	(void) strlcpy(fileinfo->fi_name, name, sizeof (fileinfo->fi_name));
 
 	/* XXX if (od->d_flags & SMB_ODIR_FLAG_EASIZE)? */
-	(void) smb_node_geteasize(NULL, fnode, cr, NULL,
-	    &fileinfo->fi_easize);
+	if ((od->d_flags & SMB_ODIR_FLAG_XATTR) != 0) {
+		/* No EAs on named streams. */
+		fileinfo->fi_easize = 0;
+	} else {
+		(void) smb_node_geteasize(NULL, fnode, kcr, NULL,
+		    &fileinfo->fi_easize);
 
 	fileinfo->fi_dosattr = attr.sa_dosattr;
 	fileinfo->fi_nodeid = attr.sa_vattr.va_nodeid;
@@ -1366,8 +1371,13 @@ smb_odir_wildcard_fileinfo(smb_request_t *sr, smb_odir_t *od,
 	(void) strlcpy(fileinfo->fi_name, name, sizeof (fileinfo->fi_name));
 
 	/* XXX if (od->d_flags & SMB_ODIR_FLAG_EASIZE)? */
-	(void) smb_node_geteasize(NULL, fnode, cr, NULL,
-	    &fileinfo->fi_easize);
+	if ((od->d_flags & SMB_ODIR_FLAG_XATTR) != 0) {
+		/* No EAs on named streams. */
+		fileinfo->fi_easize = 0;
+	} else {
+		(void) smb_ea_getsize(NULL, fnode, cr, NULL,
+		    &fileinfo->fi_easize);
+	}
 
 	fileinfo->fi_cookie = (uint32_t)od->d_offset;
 	fileinfo->fi_dosattr = attr.sa_dosattr;

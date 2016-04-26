@@ -981,6 +981,13 @@ smb_fsop_getattr(smb_request_t *sr, cred_t *cr, smb_node_t *snode,
 	if ((rc == 0) && smb_node_is_dfslink(snode)) {
 		/* a DFS link should be treated as a directory */
 		attr->sa_dosattr |= FILE_ATTRIBUTE_DIRECTORY;
+
+		/*
+		 * XXX - Also get easize here?
+		 *   smb_vop_stream_lookup(fnode->vp, sname, &vp, od_name,
+		 *	&xattrdirvp, flags, root_node->vp, cr);
+		 * ...
+		 */
 	}
 
 	return (rc);
@@ -1916,6 +1923,10 @@ smb_fsop_lookup(
 
 	if ((flags & SMB_FOLLOW_LINKS) && (vp->v_type == VLNK) &&
 	    ((attr.sa_dosattr & FILE_ATTRIBUTE_REPARSE_POINT) == 0)) {
+		/*
+		 * XXX Consider doing smb_vop_getattr here and
+		 * have smb_vop_lookup no longer get attrs
+		 */
 		rc = smb_pathname(sr, od_name, FOLLOW, root_node, dnode,
 		    &lnk_dnode, &lnk_target_node, cr);
 

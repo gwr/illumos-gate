@@ -551,8 +551,10 @@ smb_trans2_find_entries(smb_request_t *sr, smb_xa_t *xa, smb_odir_t *od,
 	 * SMB_INFO_QUERY_EA_SIZE, but only including files
 	 * that have an EA in the provided list.
 	 */
-	if (args->fa_infolev == SMB_INFO_QUERY_EAS_FROM_LIST)
+	if (args->fa_infolev == SMB_INFO_QUERY_EAS_FROM_LIST) {
+		/* XXX - todo */
 		return (0);
+	}
 
 	if ((maxcount = args->fa_maxcount) == 0)
 		maxcount = 1;

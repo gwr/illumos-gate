@@ -54,7 +54,7 @@ typedef struct smb2_find_args {
 	uint16_t fa_fixedsize;	/* size of fixed part of a returned entry */
 	uint32_t fa_lastkey;	/* Last resume key */
 	int fa_last_entry;	/* offset of last entry */
-	boolean_t fa_get_easize;
+	boolean_t fa_need_easize;
 
 	/* Normal info, per dir. entry */
 	smb_fileinfo_t fa_fi;
@@ -168,21 +168,27 @@ smb2_query_dir(smb_request_t *sr)
 	switch (args.fa_infoclass) {
 	case FileDirectoryInformation:		/* 1 */
 		args.fa_fixedsize = 64;
+		args.fa_need_easize = B_FALSE;
 		break;
 	case FileFullDirectoryInformation:	/* 2 */
 		args.fa_fixedsize = 68;
+		args.fa_need_easize = B_TRUE;
 		break;
 	case FileBothDirectoryInformation:	/* 3 */
 		args.fa_fixedsize = 94;
+		args.fa_need_easize = B_TRUE;
 		break;
 	case FileNamesInformation:		/* 12 */
 		args.fa_fixedsize = 12;
+		args.fa_need_easize = B_FALSE;
 		break;
 	case FileIdBothDirectoryInformation:	/* 37 */
 		args.fa_fixedsize = 96;
+		args.fa_need_easize = B_TRUE;
 		break;
 	case FileIdFullDirectoryInformation:	/* 38 */
 		args.fa_fixedsize = 84;
+		args.fa_need_easize = B_TRUE;
 		break;
 	default:
 		status = NT_STATUS_INVALID_INFO_CLASS;
@@ -200,6 +206,8 @@ smb2_query_dir(smb_request_t *sr)
 	    args.fa_infoclass == FileIdBothDirectoryInformation) {
 		args.fa_infoclass = FileIdMacOsDirectoryInformation;
 		args.fa_fixedsize = 96; /* yes, same size */
+		/* Unlike "IdBoth", this does not use fi_easize */
+		args.fa_need_easize = B_FALSE;
 	}
 
 	args.fa_maxcount = args.fa_maxdata / (args.fa_fixedsize + 4);
@@ -358,13 +366,12 @@ smb2_find_entries(smb_request_t *sr, smb_odir_t *od, smb2_find_args_t *args)
 			break;
 		}
 
-		/* XXX If EAsize needed, get it... */
-		switch (args->fa_infoclass) {
-		case FileFullDirectoryInformation:
-		case FileIdFullDirectoryInformation:
-		case FileBothDirectoryInformation:
-		case FileIdBothDirectoryInformation:
-		case FileIdBothDirectoryInformation:	/* 37 */
+		if (args->fa_need_easize) {
+			/* XXX: Do this in smb_odir_read_fileinfo? */
+			(void) smb2_ea_odir_getsize(sr, od, &args->fa_fi);
+		} else {
+			args->fa_fi.fi_easize = 0;
+		}
 
 		if (args->fa_infoclass == FileIdMacOsDirectoryInformation)
 			(void) smb2_aapl_get_macinfo(sr, od,
