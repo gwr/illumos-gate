@@ -1119,10 +1119,17 @@ smb_fsop_rename(
 	 */
 
 	rc = smb_vop_lookup(from_dnode->vp, from_name, &from_vp, NULL,
-	    flags, &ret_flags, NULL, &from_attr, cr);
-
+	    flags, &ret_flags, NULL, cr);
 	if (rc != 0)
 		return (rc);
+
+	bzero(&from_attr, sizeof (from_attr));
+	from_attr.sa_mask = SMB_AT_DOSATTR;
+	rc = smb_vop_getattr(from_vp, NULL, &from_attr, 0, cr);
+	if (rc != 0) {
+		VN_RELE(from_vp);
+		return (rc);
+	}
 
 	if (from_attr.sa_dosattr & FILE_ATTRIBUTE_REPARSE_POINT) {
 		VN_RELE(from_vp);
@@ -1874,7 +1881,7 @@ smb_fsop_lookup(
 	od_name = kmem_alloc(MAXNAMELEN, KM_SLEEP);
 
 	rc = smb_vop_lookup(dnode->vp, name, &vp, od_name, flags,
-	    &ret_flags, root_node ? root_node->vp : NULL, &attr, cr);
+	    &ret_flags, root_node ? root_node->vp : NULL, cr);
 
 	if (rc != 0) {
 		if (!SMB_TREE_SUPPORTS_SHORTNAMES(sr) ||
@@ -1903,8 +1910,7 @@ smb_fsop_lookup(
 			flags &= ~SMB_IGNORE_CASE;
 
 		rc = smb_vop_lookup(dnode->vp, longname, &vp, od_name,
-		    flags, &ret_flags, root_node ? root_node->vp : NULL, &attr,
-		    cr);
+		    flags, &ret_flags, root_node ? root_node->vp : NULL, cr);
 
 		kmem_free(longname, MAXNAMELEN);
 
@@ -1912,6 +1918,15 @@ smb_fsop_lookup(
 			kmem_free(od_name, MAXNAMELEN);
 			return (rc);
 		}
+	}
+
+	bzero(&attr, sizeof (attr));
+	attr.sa_mask = SMB_AT_DOSATTR;
+	rc = smb_vop_getattr(vp, NULL, &attr, 0, cr);
+	if (rc != 0) {
+		VN_RELE(vp);
+		kmem_free(od_name, MAXNAMELEN);
+		return (rc);
 	}
 
 	if ((flags & SMB_FOLLOW_LINKS) && (vp->v_type == VLNK) &&

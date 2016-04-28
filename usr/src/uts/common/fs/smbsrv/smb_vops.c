@@ -582,7 +582,6 @@ smb_vop_lookup(
     int			flags,
     int			*direntflags,
     vnode_t		*rootvp,
-    smb_attr_t		*attr,
     cred_t		*cr)
 {
 	int error = 0;
@@ -654,12 +653,6 @@ smb_vop_lookup(
 				smb_vop_catia_v4tov5(np, od_name, MAXNAMELEN);
 			else
 				(void) strlcpy(od_name, np, MAXNAMELEN);
-		}
-
-		if (attr != NULL) {
-			attr->sa_mask = SMB_AT_ALL;
-			(void) smb_vop_getattr(*vpp, NULL, attr, 0,
-			    zone_kcred());
 		}
 	}
 
@@ -1103,7 +1096,7 @@ smb_vop_stream_lookup(
 	name = kmem_zalloc(MAXNAMELEN, KM_SLEEP);
 
 	if ((error = smb_vop_lookup(*xattrdirvpp, solaris_stream_name, vpp,
-	    name, flags, &tmpflgs, rootvp, NULL, cr)) != 0) {
+	    name, flags, &tmpflgs, rootvp, cr)) != 0) {
 		VN_RELE(*xattrdirvpp);
 	} else {
 		(void) strlcpy(od_name, &(name[SMB_STREAM_PREFIX_LEN]),

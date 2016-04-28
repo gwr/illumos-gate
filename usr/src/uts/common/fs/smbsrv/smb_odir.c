@@ -1193,7 +1193,7 @@ smb_odir_single_fileinfo(smb_request_t *sr, smb_odir_t *od,
 
 		rc = smb_vop_lookup(od->d_dnode->vp, fnode->od_name, &vp,
 		    NULL, lookup_flags, &flags, od->d_tree->t_snode->vp,
-		    NULL, od->d_cred);
+		    od->d_cred);
 		if (rc != 0)
 			return (rc);
 		VN_RELE(vp);
