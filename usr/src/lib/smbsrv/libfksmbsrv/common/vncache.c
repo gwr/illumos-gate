@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2016 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <sys/types.h>
@@ -60,6 +60,7 @@ vn_cache_constructor(void *buf, void *cdrarg, int kmflags)
 	bzero(vp, sizeof (*vp));
 
 	mutex_init(&vp->v_lock, NULL, MUTEX_DEFAULT, NULL);
+	mutex_init(&vp->v_vsd_lock, NULL, MUTEX_DEFAULT, NULL);
 	vp->v_fd = -1;
 
 	return (0);
@@ -74,6 +75,7 @@ vn_cache_destructor(void *buf, void *cdrarg)
 	vp = buf;
 
 	mutex_destroy(&vp->v_lock);
+	mutex_destroy(&vp->v_vsd_lock);
 }
 
 /*
@@ -93,6 +95,8 @@ vn_recycle(vnode_t *vp)
 		strfree(vp->v_path);
 		vp->v_path = NULL;
 	}
+
+	vp->v_vsd1 = NULL;	/* vsd_free() */
 }
 
 
@@ -147,9 +151,12 @@ vn_free(vnode_t *vp)
 		strfree(vp->v_path);
 		vp->v_path = NULL;
 	}
+
 	ASSERT(vp->v_fd != -1);
 	(void) close(vp->v_fd);
 	vp->v_fd = -1;
+
+	vp->v_vsd1 = NULL;	/* vsd_free() */
 
 	kmem_cache_free(vn_cache, vp);
 }
