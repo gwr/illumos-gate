@@ -122,6 +122,7 @@ static void smb_node_init_system(smb_node_t *);
 static kmem_cache_t	*smb_node_cache = NULL;
 static smb_llist_t	smb_node_hash_table[SMBND_HASH_MASK+1];
 static smb_node_t	*smb_root_node;
+static uint_t		smbsrv_vsd_key = 0;
 
 /*
  * smb_node_init
@@ -151,10 +152,12 @@ smb_node_init(void)
 		    sizeof (smb_node_t), offsetof(smb_node_t, n_lnd));
 	}
 
+	vsd_create(&smbsrv_vsd_key, NULL);
+
 	/*
 	 * The node cache is shared by all zones, so the smb_root_node
 	 * must represent the real (global zone) rootdir.
-	 * Note intentional use of kcred here.
+	 * Note intentional use of kcred here (not zone_kcred())
 	 */
 	node_hdr = smb_node_get_hash(rootdir, &hashkey);
 	node = smb_node_alloc("/", rootdir, node_hdr, hashkey);
@@ -214,6 +217,8 @@ smb_node_fini(void)
 	for (i = 0; i <= SMBND_HASH_MASK; i++) {
 		smb_llist_destructor(&smb_node_hash_table[i]);
 	}
+
+	vsd_destroy(&smbsrv_vsd_key);
 	kmem_cache_destroy(smb_node_cache);
 	smb_node_cache = NULL;
 }
@@ -258,6 +263,47 @@ smb_node_lookup(
 	int			error;
 	krw_t			lock_mode;
 	vnode_t			*unnamed_vp = NULL;
+
+	/*
+	 * First look for an existing node using the
+	 * vnode-specific data (VSD) interface.	
+	 */
+	mutex_enter(&vp->v_vsd_lock);
+	node = vsd_get(vp, smbsrv_vsd_key);
+	mutex_exit(&vp->v_vsd_lock);
+
+	if (node != NULL) {
+		mutex_enter(&node->n_mutex);
+		DTRACE_PROBE1(smb_node_vsd_found, smb_node_t *, node);
+		switch (node->n_state) {
+		case SMB_NODE_STATE_AVAILABLE:
+			/* The node was found. */
+			node->n_refcnt++;
+			if ((node->n_dnode == NULL) &&
+			    (dnode != NULL) &&
+			    (node != dnode) &&
+			    (strcmp(od_name, "..") != 0) &&
+			    (strcmp(od_name, ".") != 0)) {
+				VALIDATE_DIR_NODE(dnode, node);
+				node->n_dnode = dnode;
+				smb_node_ref(dnode);
+			}
+
+			smb_node_audit(node);
+			mutex_exit(&node->n_mutex);
+			return (node);
+
+		default:
+			ASSERT(0);
+			/* FALLTHROUGH */
+		case SMB_NODE_STATE_DESTROYING:
+			/* Handle as if not found. */
+			break;
+		}
+		mutex_exit(&node->n_mutex);
+	}		
+	
+
 
 	/*
 	 * smb_vop_getattr() is called here instead of smb_fsop_getattr(),
@@ -354,7 +400,10 @@ smb_node_lookup(
 		break;
 	}
 	node = smb_node_alloc(od_name, vp, node_hdr, hashkey);
-	smb_node_init_reparse(node, &attr);
+	/* XXX: vsd_set() here? */
+
+	if ((attr->sa_dosattr & FILE_ATTRIBUTE_REPARSE_POINT) != 0)
+		smb_node_init_reparse(node, &attr);
 
 	if (op)
 		node->flags |= smb_is_executable(op->fqi.fq_last_comp);
@@ -1193,6 +1242,11 @@ smb_node_alloc(
 	node->n_state = SMB_NODE_STATE_AVAILABLE;
 	node->n_magic = SMB_NODE_MAGIC;
 
+	/* XXX: Here? or callers? */
+	mutex_enter(&vp->v_vsd_lock);
+	(void) vsd_set(vp, smbsrv_vsd_key, node);
+	mutex_exit(&vp->v_vsd_lock);
+
 	return (node);
 }
 
@@ -1202,7 +1256,15 @@ smb_node_alloc(
 static void
 smb_node_free(smb_node_t *node)
 {
+	vnode_t *vp;
+
 	SMB_NODE_VALID(node);
+	vp = node->vp;
+
+	/* XXX: Here? or callers? */
+	mutex_enter(&vp->v_vsd_lock);
+	(void) vsd_set(vp, smbsrv_vsd_key, NULL);
+	mutex_exit(&vp->v_vsd_lock);
 
 	node->n_magic = 0;
 	VERIFY(!list_link_active(&node->n_lnd));
@@ -1720,9 +1782,6 @@ smb_node_init_reparse(smb_node_t *node, smb_attr_t *attr)
 	nvlist_t *nvl;
 	nvpair_t *rec;
 	char *rec_type;
-
-	if ((attr->sa_dosattr & FILE_ATTRIBUTE_REPARSE_POINT) == 0)
-		return;
 
 	if ((nvl = reparse_init()) == NULL)
 		return;
