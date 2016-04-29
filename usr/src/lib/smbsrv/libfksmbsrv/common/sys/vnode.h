@@ -22,6 +22,7 @@
 /*
  * Copyright (c) 1988, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2013, Joyent, Inc. All rights reserved.
+ * Copyright 2016 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*	Copyright (c) 1983, 1984, 1985, 1986, 1987, 1988, 1989 AT&T	*/
@@ -242,6 +243,8 @@ typedef struct vnode {
 	char		*v_path;	/* cached path */
 	uint_t		v_rdcnt;	/* open for read count  (VREG only) */
 	uint_t		v_wrcnt;	/* open for write count (VREG only) */
+	kmutex_t	v_vsd_lock;	/* protects v_vsd field */
+	void		 *v_vsd1;	/* vnode specific data */
 	struct vnode	*v_xattrdir;	/* unnamed extended attr dir (GFS) */
 
 	/* Private to the fake vnode impl. */
