@@ -106,7 +106,7 @@ static smb_node_t *smb_node_alloc(char *, vnode_t *, smb_llist_t *, uint32_t);
 static void smb_node_free(smb_node_t *);
 static int smb_node_constructor(void *, void *, int);
 static void smb_node_destructor(void *, void *);
-static smb_llist_t *smb_node_get_hash(fsid_t *, smb_attr_t *, uint32_t *);
+static smb_llist_t *smb_node_get_hash(vnode_t *, uint32_t *);
 
 static void smb_node_init_reparse(smb_node_t *, smb_attr_t *);
 static void smb_node_init_system(smb_node_t *);
@@ -134,7 +134,6 @@ static smb_node_t	*smb_root_node;
 void
 smb_node_init(void)
 {
-	smb_attr_t	attr;
 	smb_llist_t	*node_hdr;
 	smb_node_t	*node;
 	uint32_t	hashkey;
@@ -157,10 +156,7 @@ smb_node_init(void)
 	 * must represent the real (global zone) rootdir.
 	 * Note intentional use of kcred here.
 	 */
-	attr.sa_mask = SMB_AT_ALL;
-	VERIFY0(smb_vop_getattr(rootdir, NULL, &attr, 0, kcred));
-	node_hdr = smb_node_get_hash(&rootdir->v_vfsp->vfs_fsid, &attr,
-	    &hashkey);
+	node_hdr = smb_node_get_hash(rootdir, &hashkey);
 	node = smb_node_alloc("/", rootdir, node_hdr, hashkey);
 	smb_llist_enter(node_hdr, RW_WRITER);
 	smb_llist_insert_head(node_hdr, node);
@@ -296,7 +292,9 @@ smb_node_lookup(
 		fsid = vp->v_vfsp->vfs_fsid;
 	}
 
-	node_hdr = smb_node_get_hash(&fsid, &attr, &hashkey);
+	/* XXX: Don't need &attr now... */
+
+	node_hdr = smb_node_get_hash(vp, &hashkey);
 	lock_mode = RW_READER;
 
 	smb_llist_enter(node_hdr, lock_mode);
@@ -1325,11 +1323,11 @@ smb_node_audit(smb_node_t *node)
 }
 
 static smb_llist_t *
-smb_node_get_hash(fsid_t *fsid, smb_attr_t *attr, uint32_t *phashkey)
+smb_node_get_hash(vnode_t *vp, uint32_t *phashkey)
 {
 	uint32_t	hashkey;
 
-	hashkey = fsid->val[0] + attr->sa_vattr.va_nodeid;
+	hashkey = (uintptr_t)vp;
 	hashkey += (hashkey >> 24) + (hashkey >> 16) + (hashkey >> 8);
 	*phashkey = hashkey;
 	return (&smb_node_hash_table[(hashkey & SMBND_HASH_MASK)]);
