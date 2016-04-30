@@ -128,6 +128,13 @@ vsd_create(uint_t *keyp, void (*dtor)(void *))
 	mutex_exit(&vsd_lock);
 }
 
+void
+vsd_destroy(uint_t *keyp)
+{
+	VERIFY(*keyp == vsd_key);
+	*keyp = 0;
+}
+
 /*
  * Quickly return the per vnode value that was stored with the specified key
  * Assumes the caller is protecting key from vsd_create and vsd_destroy

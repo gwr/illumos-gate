@@ -108,7 +108,7 @@ static int smb_node_constructor(void *, void *, int);
 static void smb_node_destructor(void *, void *);
 static smb_llist_t *smb_node_get_hash(vnode_t *, uint32_t *);
 
-static void smb_node_init_reparse(smb_node_t *, smb_attr_t *);
+static void smb_node_init_reparse(smb_node_t *);
 static void smb_node_init_system(smb_node_t *);
 
 #define	VALIDATE_DIR_NODE(_dir_, _node_) \
@@ -161,9 +161,14 @@ smb_node_init(void)
 	 */
 	node_hdr = smb_node_get_hash(rootdir, &hashkey);
 	node = smb_node_alloc("/", rootdir, node_hdr, hashkey);
+
 	smb_llist_enter(node_hdr, RW_WRITER);
+	mutex_enter(&rootdir->v_vsd_lock);
+	(void) vsd_set(rootdir, smbsrv_vsd_key, node);
+	mutex_exit(&rootdir->v_vsd_lock);
 	smb_llist_insert_head(node_hdr, node);
 	smb_llist_exit(node_hdr);
+
 	smb_root_node = node;	/* smb_node_release in smb_node_fini */
 }
 
@@ -244,190 +249,154 @@ smb_node_fini(void)
  * See smb_node_release() for details on the release of these references.
  */
 
-/*ARGSUSED*/
 smb_node_t *
 smb_node_lookup(
     struct smb_request	*sr,
     struct open_param	*op,
-    cred_t		*cred,
+    cred_t		*cr,
     vnode_t		*vp,
     char		*od_name,
     smb_node_t		*dnode,
     smb_node_t		*unode)
 {
+	_NOTE(ARGUNUSED(sr,op,cr))
 	smb_llist_t		*node_hdr;
 	smb_node_t		*node;
-	smb_attr_t		attr;
-	uint32_t		hashkey = 0;
-	fsid_t			fsid;
-	int			error;
-	krw_t			lock_mode;
+	smb_node_t		*other;
 	vnode_t			*unnamed_vp = NULL;
+	uint32_t		hashkey = 0;
 
-	/*
-	 * First look for an existing node using the
-	 * vnode-specific data (VSD) interface.	
-	 */
-	mutex_enter(&vp->v_vsd_lock);
-	node = vsd_get(vp, smbsrv_vsd_key);
-	mutex_exit(&vp->v_vsd_lock);
-
-	if (node != NULL) {
-		mutex_enter(&node->n_mutex);
-		DTRACE_PROBE1(smb_node_vsd_found, smb_node_t *, node);
-		switch (node->n_state) {
-		case SMB_NODE_STATE_AVAILABLE:
-			/* The node was found. */
-			node->n_refcnt++;
-			if ((node->n_dnode == NULL) &&
-			    (dnode != NULL) &&
-			    (node != dnode) &&
-			    (strcmp(od_name, "..") != 0) &&
-			    (strcmp(od_name, ".") != 0)) {
-				VALIDATE_DIR_NODE(dnode, node);
-				node->n_dnode = dnode;
-				smb_node_ref(dnode);
-			}
-
-			smb_node_audit(node);
-			mutex_exit(&node->n_mutex);
-			return (node);
-
-		default:
-			ASSERT(0);
-			/* FALLTHROUGH */
-		case SMB_NODE_STATE_DESTROYING:
-			/* Handle as if not found. */
-			break;
-		}
-		mutex_exit(&node->n_mutex);
-	}		
-	
-
-
-	/*
-	 * smb_vop_getattr() is called here instead of smb_fsop_getattr(),
-	 * because the node may not yet exist.  We also do not want to call
-	 * it with the list lock held.
-	 */
-
-	if (unode)
+	VERIFY(dnode != NULL);
+	if (unode != NULL)
 		unnamed_vp = unode->vp;
 
 	/*
-	 * This getattr is performed on behalf of the server
-	 * that's why kcred is used not the user's cred
+	 * First look for an existing node using the
+	 * vnode-specific data (VSD) interface.
 	 */
-	attr.sa_mask = SMB_AT_ALL;
-	error = smb_vop_getattr(vp, unnamed_vp, &attr, 0, zone_kcred());
-	if (error)
-		return (NULL);
-
-	if (sr && sr->tid_tree) {
-		/*
-		 * The fsid for a file is that of the tree, even
-		 * if the file resides in a different mountpoint
-		 * under the share.
-		 */
-		fsid = SMB_TREE_FSID(sr->tid_tree);
-	} else {
-		/*
-		 * This should be getting executed only for the
-		 * tree root smb_node.
-		 */
-		fsid = vp->v_vfsp->vfs_fsid;
+	mutex_enter(&vp->v_vsd_lock);
+	node = vsd_get(vp, smbsrv_vsd_key);
+	if (node != NULL) {
+		mutex_enter(&node->n_mutex);
+		if (node->n_state == SMB_NODE_STATE_AVAILABLE) {
+			node->n_refcnt++;
+			DTRACE_PROBE1(smb_node_found1, smb_node_t *, node);
+			smb_node_audit(node);
+			mutex_exit(&node->n_mutex);
+			mutex_exit(&vp->v_vsd_lock);
+			return (node);
+		}
+		/* Node is being destroyed.  Ignore it. */
+		node = NULL;
 	}
+	mutex_exit(&vp->v_vsd_lock);
 
-	/* XXX: Don't need &attr now... */
-
+	/*
+	 * Did not find an existing node.  Allocate a new one and
+	 * fill it in.  As usual, do the allocation etc. without
+	 * locks held, then take locks and either insert or free.
+	 */
 	node_hdr = smb_node_get_hash(vp, &hashkey);
-	lock_mode = RW_READER;
-
-	smb_llist_enter(node_hdr, lock_mode);
-	for (;;) {
-		node = list_head(&node_hdr->ll_list);
-		while (node) {
-			ASSERT(node->n_magic == SMB_NODE_MAGIC);
-			ASSERT(node->n_hash_bucket == node_hdr);
-			if ((node->n_hashkey == hashkey) && (node->vp == vp)) {
-				mutex_enter(&node->n_mutex);
-				DTRACE_PROBE1(smb_node_lookup_hit,
-				    smb_node_t *, node);
-				switch (node->n_state) {
-				case SMB_NODE_STATE_AVAILABLE:
-					/* The node was found. */
-					node->n_refcnt++;
-					if ((node->n_dnode == NULL) &&
-					    (dnode != NULL) &&
-					    (node != dnode) &&
-					    (strcmp(od_name, "..") != 0) &&
-					    (strcmp(od_name, ".") != 0)) {
-						VALIDATE_DIR_NODE(dnode, node);
-						node->n_dnode = dnode;
-						smb_node_ref(dnode);
-					}
-
-					smb_node_audit(node);
-					mutex_exit(&node->n_mutex);
-					smb_llist_exit(node_hdr);
-					return (node);
-
-				case SMB_NODE_STATE_DESTROYING:
-					/*
-					 * Although the node exists it is about
-					 * to be destroyed. We act as it hasn't
-					 * been found.
-					 */
-					mutex_exit(&node->n_mutex);
-					break;
-				default:
-					/*
-					 * Although the node exists it is in an
-					 * unknown state. We act as it hasn't
-					 * been found.
-					 */
-					ASSERT(0);
-					mutex_exit(&node->n_mutex);
-					break;
-				}
-			}
-			node = smb_llist_next(node_hdr, node);
-		}
-		if ((lock_mode == RW_READER) && smb_llist_upgrade(node_hdr)) {
-			lock_mode = RW_WRITER;
-			continue;
-		}
-		break;
-	}
 	node = smb_node_alloc(od_name, vp, node_hdr, hashkey);
-	/* XXX: vsd_set() here? */
 
-	if ((attr->sa_dosattr & FILE_ATTRIBUTE_REPARSE_POINT) != 0)
-		smb_node_init_reparse(node, &attr);
+	/*
+	 * Pointer to parent dir.
+	 */
+	ASSERT(dnode->n_dnode != node);
+	smb_node_ref(dnode);
+	node->n_dnode = dnode;
 
-	if (op)
-		node->flags |= smb_is_executable(op->fqi.fq_last_comp);
-
-	if (dnode) {
-		smb_node_ref(dnode);
-		node->n_dnode = dnode;
-		ASSERT(dnode->n_dnode != node);
-		ASSERT((dnode->vp->v_xattrdir) ||
-		    (dnode->vp->v_type == VDIR));
-	}
-
-	if (unode) {
+	/*
+	 * For streams, pointer to the "unnamed" ($DATA) stream.
+	 */
+	if (unode != NULL) {
+		/*
+		 * Creating a named stream node.  The dnode should be
+		 * the xattrdir under the unode.
+		 */
 		smb_node_ref(unode);
 		node->n_unode = unode;
+		/* Parent is the xattr dir */
+		ASSERT(dnode->vp->v_xattrdir);
+	} else {
+		/* Otherwise normal containing dir. */
+		ASSERT(dnode->vp->v_type == VDIR);
 	}
 
-	smb_node_init_system(node);
+	if (smb_is_executable(od_name))
+		node->flags |= NODE_FLAGS_EXECUTABLE;
 
-	DTRACE_PROBE1(smb_node_lookup_miss, smb_node_t *, node);
-	smb_node_audit(node);
-	smb_llist_insert_head(node_hdr, node);
+	smb_node_init_system(node); /* NODE_FLAGS_SYSTEM */
+
+	if (vp->v_type == VLNK) {
+		/* May set: NODE_FLAGS_REPARSE, NODE_FLAGS_DFSLINK */
+		smb_node_init_reparse(node);
+	}
+
+	/*
+	 * Take locks, then see if someone else inserted the new node
+	 * since we last looked.  If so, that's: (other)
+	 */
+	smb_llist_enter(node_hdr, RW_WRITER);
+	mutex_enter(&vp->v_vsd_lock);
+	other = vsd_get(vp, smbsrv_vsd_key);
+	if (other != NULL) {
+		/*
+		 * Someone else created the smb_node
+		 */
+		mutex_enter(&other->n_mutex);
+		if (other->n_state == SMB_NODE_STATE_AVAILABLE) {
+			other->n_refcnt++;
+			DTRACE_PROBE1(smb_node_found2, smb_node_t *, other);
+			smb_node_audit(other);
+			mutex_exit(&other->n_mutex);
+			/* will return other & free node */
+		} else {
+			mutex_exit(&other->n_mutex);
+			other = NULL;
+			/* will insert & return node */
+		}
+	}
+
+	/* Holding: node_hdr(w), v_vsd_lock */
+
+	if (other == NULL) {
+		/*
+		 * We will install & return the new node.  Do the
+		 * probe & audit before others can see it.
+		 */
+		DTRACE_PROBE1(smb_node_created, smb_node_t *, node);
+		smb_node_audit(node);
+
+		vsd_set(vp, smbsrv_vsd_key, node);
+		mutex_exit(&vp->v_vsd_lock);
+		smb_llist_insert_head(node_hdr, node);
+		smb_llist_exit(node_hdr);
+		return (node);
+	}
+
+	/*
+	 * We lost the create race.  Destroy the new node we
+	 * created and return (other).
+	 */
+	mutex_exit(&vp->v_vsd_lock);
 	smb_llist_exit(node_hdr);
-	return (node);
+
+	/*
+	 * We lost the create race, so destroy the node
+	 * created above, and return (other).
+	 */
+	if (node->n_unode != NULL) {
+		smb_node_release(node->n_unode);
+		node->n_unode = NULL;
+	}
+	if (node->n_dnode != NULL) {
+		smb_node_release(node->n_dnode);
+		node->n_dnode = NULL;
+	}
+	smb_node_free(node);
+
+	return (other);
 }
 
 /*
@@ -515,50 +484,71 @@ smb_node_ref(smb_node_t *node)
 void
 smb_node_release(smb_node_t *node)
 {
+	smb_llist_t	*node_hdr = node->n_hash_bucket;
+	vnode_t		*vp = node->vp;
+
 	SMB_NODE_VALID(node);
 
 	mutex_enter(&node->n_mutex);
+	smb_node_audit(node);
 	ASSERT(node->n_refcnt);
 	DTRACE_PROBE1(smb_node_release, smb_node_t *, node);
-	if (--node->n_refcnt == 0) {
-		switch (node->n_state) {
-
-		case SMB_NODE_STATE_AVAILABLE:
-			node->n_state = SMB_NODE_STATE_DESTROYING;
-			mutex_exit(&node->n_mutex);
-
-			smb_llist_enter(node->n_hash_bucket, RW_WRITER);
-			smb_llist_remove(node->n_hash_bucket, node);
-			smb_llist_exit(node->n_hash_bucket);
-
-			/*
-			 * Check if the file was deleted
-			 */
-			if (node->flags & NODE_FLAGS_DELETE_ON_CLOSE) {
-				smb_node_delete_on_close(node);
-			}
-
-			if (node->n_dnode) {
-				ASSERT(node->n_dnode->n_magic ==
-				    SMB_NODE_MAGIC);
-				smb_node_release(node->n_dnode);
-			}
-
-			if (node->n_unode) {
-				ASSERT(node->n_unode->n_magic ==
-				    SMB_NODE_MAGIC);
-				smb_node_release(node->n_unode);
-			}
-
-			smb_node_free(node);
-			return;
-
-		default:
-			SMB_PANIC();
-		}
+	if (--node->n_refcnt > 0) {
+		mutex_exit(&node->n_mutex);
+		return;
 	}
-	smb_node_audit(node);
+		
+	ASSERT(node->n_state == SMB_NODE_STATE_AVAILABLE);
+	node->n_state = SMB_NODE_STATE_DESTROYING;
 	mutex_exit(&node->n_mutex);
+
+	/*
+	 * Note lock order:
+	 *	node hash list
+	 *	v_vsd_lock
+	 *	n_mutex
+	 */
+	smb_llist_enter(node_hdr, RW_WRITER);
+	mutex_enter(&vp->v_vsd_lock);
+	mutex_enter(&node->n_mutex);
+
+	/*
+	 * No new references should have been added after we
+	 * set the node state to "destroying".
+	 */
+	ASSERT(node->n_refcnt == 0);
+
+	/*
+	 * We dropped the locks, so the vnode's VSD could have
+	 * changed.  If the VSD still points to this node, then
+	 * clear it out so smb_node_lookup won't later try to do
+	 * mutex enter to get a new ref, etc.
+	 */
+	if (vsd_get(vp, smbsrv_vsd_key) == node)
+		vsd_set(vp, smbsrv_vsd_key, NULL);
+
+	mutex_exit(&node->n_mutex);
+	mutex_exit(&vp->v_vsd_lock);
+
+	smb_llist_remove(node_hdr, node);
+	smb_llist_exit(node_hdr);
+
+	/*
+	 * Check if the file was deleted
+	 */
+	if (node->flags & NODE_FLAGS_DELETE_ON_CLOSE) {
+		smb_node_delete_on_close(node);
+	}
+
+	if (node->n_dnode) {
+		smb_node_release(node->n_dnode);
+	}
+
+	if (node->n_unode) {
+		smb_node_release(node->n_unode);
+	}
+
+	smb_node_free(node);
 }
 
 void
@@ -1242,11 +1232,6 @@ smb_node_alloc(
 	node->n_state = SMB_NODE_STATE_AVAILABLE;
 	node->n_magic = SMB_NODE_MAGIC;
 
-	/* XXX: Here? or callers? */
-	mutex_enter(&vp->v_vsd_lock);
-	(void) vsd_set(vp, smbsrv_vsd_key, node);
-	mutex_exit(&vp->v_vsd_lock);
-
 	return (node);
 }
 
@@ -1260,11 +1245,6 @@ smb_node_free(smb_node_t *node)
 
 	SMB_NODE_VALID(node);
 	vp = node->vp;
-
-	/* XXX: Here? or callers? */
-	mutex_enter(&vp->v_vsd_lock);
-	(void) vsd_set(vp, smbsrv_vsd_key, NULL);
-	mutex_exit(&vp->v_vsd_lock);
 
 	node->n_magic = 0;
 	VERIFY(!list_link_active(&node->n_lnd));
@@ -1777,11 +1757,21 @@ extern int reparse_vnode_parse(vnode_t *vp, nvlist_t *nvl);
  * If yes, whether the reparse point contains a DFS link.
  */
 static void
-smb_node_init_reparse(smb_node_t *node, smb_attr_t *attr)
+smb_node_init_reparse(smb_node_t *node)
 {
+	smb_attr_t attr;
 	nvlist_t *nvl;
 	nvpair_t *rec;
 	char *rec_type;
+	int rc;
+
+	bzero(&attr, sizeof (attr));
+	attr.sa_mask = SMB_AT_DOSATTR;
+	rc = smb_fsop_getattr(NULL, zone_kcred(), node, &attr);
+	if (rc != 0)
+		return;
+	if ((attr.sa_dosattr & FILE_ATTRIBUTE_REPARSE_POINT) == 0)
+		return;
 
 	if ((nvl = reparse_init()) == NULL)
 		return;
