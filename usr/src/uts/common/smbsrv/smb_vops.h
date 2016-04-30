@@ -47,7 +47,7 @@
 extern "C" {
 #endif
 
-#define	XATTR_DIR "xattr_dir"
+#define	XATTR_DIR ":"
 
 #define	SMB_STREAM_PREFIX "SUNWsmb"
 #define	SMB_STREAM_PREFIX_LEN (sizeof (SMB_STREAM_PREFIX) - 1)

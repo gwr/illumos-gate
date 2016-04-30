@@ -229,6 +229,45 @@ smb_node_fini(void)
 }
 
 /*
+ * Helper function for smb_vop_getattr, which needs to get the
+ * smb_node_t for some vnode if we have one, but doesn't want to
+ * create one if we don't.  If found, takes a ref.
+ *
+ * Same as the first part of smb_node_lookup()
+ */
+smb_node_t *
+smb_node_find_by_vp(vnode_t *vp)
+{
+	smb_llist_t		*node_hdr;
+	smb_node_t		*node;
+	uint32_t		hashkey = 0;
+
+	/*
+	 * Just look for an existing node using the
+	 * vnode-specific data (VSD) interface.
+	 */
+	mutex_enter(&vp->v_vsd_lock);
+	node = vsd_get(vp, smbsrv_vsd_key);
+	if (node != NULL) {
+		mutex_enter(&node->n_mutex);
+		if (node->n_state == SMB_NODE_STATE_AVAILABLE) {
+			node->n_refcnt++;
+			DTRACE_PROBE1(smb_node_found, smb_node_t *, node);
+			smb_node_audit(node);
+			mutex_exit(&node->n_mutex);
+			mutex_exit(&vp->v_vsd_lock);
+			return (node);
+		}
+		/* Node is being destroyed.  Ignore it. */
+		node = NULL;
+	}
+	mutex_exit(&vp->v_vsd_lock);
+
+	return (node);
+}
+
+/*
+ * XXX: Maybe rename this to: smb_node_get if the args change...
  * smb_node_lookup()
  *
  * NOTE: This routine should only be called by the file system interface layer,
