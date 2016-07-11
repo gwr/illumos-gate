@@ -21,6 +21,8 @@
 /*
  * Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
+ *
+ * Copyright 2016 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #ifndef _ACLUTILS_H
@@ -128,6 +130,7 @@ extern int acl_addentries(acl_t *, acl_t *, int);
 extern int acl_removeentries(acl_t *, acl_t *, int, int);
 extern int acl_modifyentries(acl_t *, acl_t *, int);
 extern void acl_printacl(acl_t *, int, int);
+extern void acl_printacl2(acl_t *, int, int);
 extern char *acl_strerror(int);
 extern acl_t *acl_dup(acl_t *);
 extern int acl_type(acl_t *);
@@ -140,6 +143,7 @@ extern int yyparse(void);
 extern void yyreset(void);
 extern void yycleanup(void);
 extern acl_t *acl_to_aclp(enum acl_type, void *, int);
+extern int sid_string_by_id(uid_t, boolean_t, char **, boolean_t);
 extern int sid_to_id(char *, boolean_t, uid_t *);
 
 #ifdef	__cplusplus
