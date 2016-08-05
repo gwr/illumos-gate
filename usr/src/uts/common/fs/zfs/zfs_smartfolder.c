@@ -25,6 +25,7 @@
 
 int zfs_smartfolder = 1; /* enabled */
 int zfs_smartfolder_kcred;
+int zfs_smartfolder_nohidden = 1;
 
 #define	ZFS_MAXPROPLEN	MAXPATHLEN
 
@@ -149,6 +150,9 @@ zfs_create_smartfolder(struct zfsvfs *zfsvfs, struct vnode *dvp, struct vnode *v
 	char *smartname;
 	char *sharenfs, *sharesmb;
 	refstr_t *mntpt;
+
+	if (zfs_smartfolder_nohidden && dirname[0] == '.')
+		return (EINVAL);
 
 	ppath = kmem_alloc(MAXPATHLEN, KM_SLEEP);
 	path = kmem_alloc(MAXPATHLEN, KM_SLEEP);
