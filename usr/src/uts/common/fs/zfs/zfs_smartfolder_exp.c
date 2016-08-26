@@ -22,6 +22,7 @@ static void create_nfs_share_task(void *arg);
 
 static taskq_t *sfe_taskq;
 #ifdef	_KERNEL
+extern kmutex_t sfdh_lock;
 extern door_handle_t smartfolder_dh;
 #endif
 
@@ -92,11 +93,18 @@ create_nfs_share_task(void *arg)
 	smartfolder_exp_data_t *sed = arg;
 	smartfolder_exp_res_t ser;
 	door_arg_t door_args;
+	door_handle_t sfdh;
 
+	mutex_enter(&sfdh_lock);
 	if (smartfolder_dh == NULL) {
 		cmn_err(CE_WARN, "smart door handle is NULL");
-		return;
+		mutex_exit(&sfdh_lock);
+		goto out;
 	}
+
+	sfdh = smartfolder_dh;
+	door_ki_hold(sfdh);
+	mutex_exit(&sfdh_lock);
 
 	door_args.data_ptr = (char *)sed;
 	door_args.data_size = sizeof (*sed);
@@ -105,14 +113,12 @@ create_nfs_share_task(void *arg)
 	door_args.rbuf = (char *)&ser;
 	door_args.rsize = sizeof (struct smartfolder_exp_res);
 
-	door_ki_hold(smartfolder_dh);
-
-	if ((err = door_ki_upcall(smartfolder_dh, &door_args)) != 0) {
+	if ((err = door_ki_upcall(sfdh, &door_args)) != 0) {
 		cmn_err(CE_WARN, "Failed to make smartfold door_ki_upcall: %d",
 		    err);
 	}
 
-	door_ki_rele(smartfolder_dh);
+	door_ki_rele(sfdh);
 
 out:
 	kmem_free(sed, sizeof (*sed));
