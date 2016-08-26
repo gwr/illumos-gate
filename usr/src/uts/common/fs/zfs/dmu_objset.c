@@ -1245,14 +1245,15 @@ dmu_objset_create_sync(void *arg, dmu_tx_t *tx)
 }
 
 int
-dmu_objset_create(const char *name, dmu_objset_type_t type, uint64_t flags,
-    dsl_crypto_params_t *dcp, dmu_objset_create_sync_func_t func, void *arg)
+dmu_objset_create_cred(const char *name, dmu_objset_type_t type, uint64_t flags,
+    dsl_crypto_params_t *dcp, dmu_objset_create_sync_func_t func, void *arg,
+    cred_t *cr)
 {
 	dmu_objset_create_arg_t doca;
 	dsl_crypto_params_t tmp_dcp = { 0 };
 
 	doca.doca_name = name;
-	doca.doca_cred = CRED();
+	doca.doca_cred = cr;
 	doca.doca_flags = flags;
 	doca.doca_userfunc = func;
 	doca.doca_userarg = arg;
@@ -1271,6 +1272,13 @@ dmu_objset_create(const char *name, dmu_objset_type_t type, uint64_t flags,
 	return (dsl_sync_task(name,
 	    dmu_objset_create_check, dmu_objset_create_sync, &doca,
 	    6, ZFS_SPACE_CHECK_NORMAL));
+}
+
+int
+dmu_objset_create(const char *name, dmu_objset_type_t type, uint64_t flags,
+    void (*func)(objset_t *os, void *arg, cred_t *cr, dmu_tx_t *tx), void *arg)
+{
+	return (dmu_objset_create_cred(name, type, flags, func, arg, CRED()));
 }
 
 typedef struct dmu_objset_clone_arg {

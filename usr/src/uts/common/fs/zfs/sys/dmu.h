@@ -334,6 +334,8 @@ void dmu_objset_disown(objset_t *os, boolean_t key_required, void *tag);
 int dmu_objset_open_ds(struct dsl_dataset *ds, objset_t **osp);
 
 void dmu_objset_evict_dbufs(objset_t *os);
+int dmu_objset_create_cred(const char *, dmu_objset_type_t, uint64_t,
+    void (*)(objset_t *os, void *, cred_t *, dmu_tx_t *), void *, cred_t *);
 int dmu_objset_create(const char *name, dmu_objset_type_t type, uint64_t flags,
     struct dsl_crypto_params *dcp, dmu_objset_create_sync_func_t func,
     void *arg);

@@ -206,9 +206,9 @@ zfs_create_smartfolder(struct zfsvfs *zfsvfs, struct vnode *dvp, struct vnode *v
 		goto out;
 	}
 
-	if ((err = dmu_objset_create(smartname, DMU_OST_ZFS,
+	if ((err = dmu_objset_create_cred(smartname, DMU_OST_ZFS,
 	    (flags & FIGNORECASE ?  DS_FLAG_CI_DATASET : 0),
-	    zfs_create_cb, &zct)) != 0) {
+	    zfs_create_cb, &zct, cr)) != 0) {
 		nvlist_free(zct.zct_zplprops);
 		goto out;
 	}
