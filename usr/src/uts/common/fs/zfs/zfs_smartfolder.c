@@ -24,7 +24,6 @@
 #endif
 
 int zfs_smartfolder = 1; /* enabled */
-int zfs_smartfolder_kcred;
 int zfs_smartfolder_nohidden = 1;
 
 #define	ZFS_MAXPROPLEN	MAXPATHLEN
@@ -224,14 +223,10 @@ zfs_create_smartfolder(struct zfsvfs *zfsvfs, struct vnode *dvp, struct vnode *v
 	ma.optptr = NULL;
 	ma.optlen = 0;
 
-	if ((err = domount("zfs", &ma, vp, (zfs_smartfolder_kcred ? kcred : cr),
-	    &vfs)) == 0) {
+	if ((err = domount("zfs", &ma, vp, kcred, &vfs)) == 0) {
 		if (sharenfs[0] != '\0')
 			err = create_nfs_share(smartname, path, sharenfs,
 			    kcred);
-/*
- *			    (zfs_smartfolder_kcred ? kcred : cr));
- */
 		VFS_RELE(vfs);
 	}
 out:
