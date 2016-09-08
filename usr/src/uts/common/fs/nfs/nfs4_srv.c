@@ -1759,7 +1759,15 @@ rfs4_op_create(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 			vap->va_mode = 0700;	/* default: owner rwx only */
 			vap->va_mask |= AT_MODE;
 		}
+		/*
+		 * Lock was held in rfs4_compound.
+		 * Need release the lock as zfs_mkdir calls create_nfs_share
+		 * if 'smartfolder' is on.
+		 * */
+		rw_exit(&exported_lock);
 		error = VOP_MKDIR(dvp, name, vap, &vp, cr, NULL, 0, NULL);
+		rw_enter(&exported_lock, RW_READER);
+
 		if (error)
 			break;
 
