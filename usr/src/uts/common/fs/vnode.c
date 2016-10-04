@@ -1692,6 +1692,14 @@ top:
 		goto out;
 	}
 
+	/*
+	 * Make sure "from" vp is not a mount point
+	 */
+	if (vn_mountedvfs(fvp) != NULL) {
+		error = EBUSY;
+		goto out;
+	}
+
 	if (auditing && tdvp != NULL)
 		audit_setfsat_path(3);
 	if (error = lookuppnat(&tpn, NULL, NO_FOLLOW, &tovp, &targvp, tdvp)) {
