@@ -1693,9 +1693,11 @@ top:
 	}
 
 	/*
-	 * Make sure "from" vp is not a mount point
+	 * Make sure "from" vp is not a mount point.
+	 * Note, lookup did traverse() already, so
+	 * we'll be looking at the mounted FS.
 	 */
-	if (vn_mountedvfs(fvp) != NULL) {
+	if ((fvp->v_flag & VROOT) != 0) {
 		error = EBUSY;
 		goto out;
 	}
