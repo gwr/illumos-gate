@@ -1695,9 +1695,10 @@ top:
 	/*
 	 * Make sure "from" vp is not a mount point.
 	 * Note, lookup did traverse() already, so
-	 * we'll be looking at the mounted FS.
+	 * we'll be looking at the mounted FS root.
+	 * (but allow files like mnttab)
 	 */
-	if ((fvp->v_flag & VROOT) != 0) {
+	if ((fvp->v_flag & VROOT) != 0 && fvp->v_type == VDIR) {
 		error = EBUSY;
 		goto out;
 	}
