@@ -648,6 +648,11 @@ MISC_KMODS	+= uathfw
 MISC_KMODS	+= klmmod klmops
 
 #
+# NFSv4 HA misc module
+#
+MISC_KMODS += cl_bootstrap
+
+#
 #	Software Cryptographic Providers (/kernel/crypto):
 #
 CRYPTO_KMODS	+= aes
