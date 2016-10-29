@@ -632,7 +632,8 @@ cpupm_state_change(cpu_t *cp, int level, int state)
 		state_domain = mach_state->ms_tstate.cma_domain;
 		break;
 	default:
-		break;
+		cmn_err(CE_NOTE, "cpupm_state_change: state %d?", state);
+		return;
 	}
 
 	switch (state_domain->pm_type) {
