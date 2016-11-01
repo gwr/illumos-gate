@@ -939,6 +939,7 @@ file path=usr/lib/class/TS/TSpriocntl mode=0555
 file path=usr/lib/devfsadm/linkmod/SUNW_audio_link.so group=sys
 file path=usr/lib/devfsadm/linkmod/SUNW_cfg_link.so group=sys
 file path=usr/lib/devfsadm/linkmod/SUNW_disk_link.so group=sys
+$(i386_ONLY)path=usr/lib/devfsadm/linkmod/SUNW_drm_link.so group=sys
 file path=usr/lib/devfsadm/linkmod/SUNW_fssnap_link.so group=sys
 file path=usr/lib/devfsadm/linkmod/SUNW_ieee1394_link.so group=sys
 file path=usr/lib/devfsadm/linkmod/SUNW_lofi_link.so group=sys
