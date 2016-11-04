@@ -171,6 +171,7 @@ done
 do_libs() {
 
 for lib in \
+  libmd \
   libavl \
   libcmdutils \
   libuutil \
