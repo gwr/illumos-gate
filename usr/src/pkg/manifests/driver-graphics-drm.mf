@@ -35,6 +35,7 @@ set name=pkg.description \
 set name=pkg.summary value="DRM Kernel Drivers"
 set name=info.classification \
     value=org.opensolaris.category.2008:Drivers/Display
+set name=org.opensolaris.noincorp value=true
 set name=variant.arch value=i386
 dir path=kernel group=sys
 dir path=kernel/drv group=sys
@@ -75,7 +76,9 @@ file path=kernel/drv/$(ARCH64)/i915 group=sys
 file path=kernel/drv/$(ARCH64)/radeon group=sys
 file path=kernel/drv/i915 group=sys
 file path=kernel/drv/radeon group=sys
+file path=kernel/misc/$(ARCH64)/agpmaster group=sys mode=0755
 file path=kernel/misc/$(ARCH64)/drm group=sys mode=0755
+file path=kernel/misc/agpmaster group=sys mode=0755
 file path=kernel/misc/drm group=sys mode=0755
 file path=usr/lib/devfsadm/linkmod/SUNW_drm_link_i386.so group=sys
 file path=usr/share/man/man7d/i915.7d
