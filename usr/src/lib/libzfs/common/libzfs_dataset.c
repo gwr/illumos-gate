@@ -2039,6 +2039,7 @@ get_numeric_property(zfs_handle_t *zhp, zfs_prop_t prop, zprop_source_t *src,
 	case ZFS_PROP_SNAPSHOT_LIMIT:
 	case ZFS_PROP_FILESYSTEM_COUNT:
 	case ZFS_PROP_SNAPSHOT_COUNT:
+	case ZFS_PROP_QOS_LIMIT:
 		*val = getprop_uint64(zhp, prop, source);
 
 		if (*source == NULL) {
@@ -2444,6 +2445,7 @@ zfs_prop_get(zfs_handle_t *zhp, zfs_prop_t prop, char *propbuf, size_t proplen,
 	case ZFS_PROP_SNAPSHOT_LIMIT:
 	case ZFS_PROP_FILESYSTEM_COUNT:
 	case ZFS_PROP_SNAPSHOT_COUNT:
+	case ZFS_PROP_QOS_LIMIT:
 
 		if (get_numeric_property(zhp, prop, src, &source, &val) != 0)
 			return (-1);
