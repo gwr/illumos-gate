@@ -22,6 +22,7 @@
 /*
  * Copyright 2016 Nexenta Systems, Inc.  All rights reserved.
  * Copyright (c) 1989, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012, 2016 by Delphix. All rights reserved.
  */
 
 /*	Copyright (c) 1984, 1986, 1987, 1988, 1989 AT&T	*/
@@ -37,10 +38,6 @@
  * contributors.
  */
 
-/*
- * Copyright (c) 2012 by Delphix. All rights reserved.
- */
-
 #include <stdio.h>
 #include <stdio_ext.h>
 #include <stdlib.h>
@@ -53,6 +50,7 @@
 #include <unistd.h>
 #include <netdb.h>
 #include <rpc/rpc.h>
+#include <rpc/svc.h>
 #include <netinet/in.h>
 #include <sys/param.h>
 #include <sys/resource.h>
@@ -70,6 +68,7 @@
 #include <limits.h>
 #include <rpcsvc/daemon_utils.h>
 #include <priv_utils.h>
+#include "smfcfg.h"
 #include "sm_statd.h"
 
 
@@ -528,6 +527,7 @@ main(int argc, char *argv[])
 	int mode;
 	int sz;
 	int pipe_fd = -1;
+	int ret;
 	int connmaxrec = RPC_MAXDATASIZE;
 	struct netconfig *nconf;
 	NCONF_HANDLE *nc;
@@ -539,7 +539,14 @@ main(int argc, char *argv[])
 	if (init_hostname() < 0)
 		exit(1);
 
-	while ((c = getopt(argc, argv, "Dd:a:G:p:rU:P:")) != EOF)
+	ret = nfs_smf_get_iprop("statd_port", &statd_port,
+	    DEFAULT_INSTANCE, SCF_TYPE_INTEGER, STATD);
+	if (ret != SA_OK) {
+		syslog(LOG_ERR, "Reading of statd_port from SMF "
+		    "failed, using default value");
+	}
+
+	while ((c = getopt(argc, argv, "Dd:a:G:p:P:rU:")) != EOF)
 		switch (c) {
 		case 'd':
 			(void) sscanf(optarg, "%d", &debug);
@@ -601,23 +608,23 @@ main(int argc, char *argv[])
 				pathix++;
 			} else {
 				(void) fprintf(stderr,
-				"statd: -p pathname is too long.\n");
+				    "statd: -p pathname is too long.\n");
+			}
+			break;
+		case 'P':
+			(void) sscanf(optarg, "%d", &statd_port);
+			if (statd_port < 1 || statd_port > UINT16_MAX) {
+				(void) fprintf(stderr,
+				    "statd: -P port invalid.\n");
+				statd_port = 0;
 			}
 			break;
 		case 'r':
 			regfiles_only = 1;
 			break;
-		case 'P':
-			(void) sscanf(optarg, "%d", &statd_port);
-			if (statd_port & ~0xFFFF) {
-				(void) fprintf(stderr,
-				"statd: -P port invalid.\n");
-				statd_port = 0;
-			}
-			break;
 		default:
 			(void) fprintf(stderr,
-			"statd [-d level] [-D]\n");
+			    "statd [-d level] [-D]\n");
 			return (1);
 		}
 

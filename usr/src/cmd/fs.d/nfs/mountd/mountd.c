@@ -22,6 +22,7 @@
 /*
  * Copyright 2016 Nexenta Systems, Inc.  All rights reserved.
  * Copyright (c) 1989, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012, 2016 by Delphix. All rights reserved.
  */
 
 /*	Copyright (c) 1983, 1984, 1985, 1986, 1987, 1988, 1989 AT&T	*/
@@ -488,7 +489,14 @@ main(int argc, char *argv[])
 		    "failed, using default value");
 	}
 
-	while ((c = getopt(argc, argv, "vrm:")) != EOF) {
+	ret = nfs_smf_get_iprop("mountd_port", &mountd_port,
+	    DEFAULT_INSTANCE, SCF_TYPE_INTEGER, NFSD);
+	if (ret != SA_OK) {
+		syslog(LOG_ERR, "Reading of mountd_port from SMF "
+		    "failed, using default value");
+	}
+
+	while ((c = getopt(argc, argv, "vrm:p:")) != EOF) {
 		switch (c) {
 		case 'v':
 			verbose++;
@@ -504,6 +512,15 @@ main(int argc, char *argv[])
 				break;
 			}
 			max_threads = tmp;
+			break;
+		case 'p':
+			if (convert_int(&tmp, optarg) != 0 || tmp < 1 ||
+			    tmp > UINT16_MAX) {
+				(void) fprintf(stderr, "%s: invalid port "
+				    "number\n", argv[0]);
+				break;
+			}
+			mountd_port = tmp;
 			break;
 		default:
 			fprintf(stderr, "usage: mountd [-v] [-r]\n");
@@ -666,6 +683,11 @@ main(int argc, char *argv[])
 	 */
 	if (max_threads > 0 && !rpc_control(RPC_SVC_THRMAX_SET, &max_threads)) {
 		fprintf(stderr, "unable to set max_threads\n");
+		exit(1);
+	}
+
+	if (mountd_port < 0 || mountd_port > UINT16_MAX) {
+		fprintf(stderr, "unable to use specified port\n");
 		exit(1);
 	}
 
