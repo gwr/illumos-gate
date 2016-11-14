@@ -20,8 +20,8 @@
  */
 
 /*
+ * Copyright 2016 Nexenta Systems, Inc.  All rights reserved.
  * Copyright (c) 1989, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*	Copyright (c) 1988 AT&T */
@@ -86,6 +86,10 @@ extern mutex_t xprtlist_lock;
 
 static SVCXPRT * svc_tli_create_common(int, const struct netconfig *,
     const struct t_bind *, uint_t, uint_t, boolean_t);
+
+static SVCXPRT *svc_tp_create_bind(void (*dispatch)(),
+    const rpcprog_t, const rpcvers_t,
+    const struct netconfig *, const struct t_bind *);
 
 boolean_t
 is_multilevel(rpcprog_t prognum)
@@ -174,13 +178,52 @@ svc_create(void (*dispatch)(), const rpcprog_t prognum, const rpcvers_t versnum,
 }
 
 /*
+ * svc_tp_create_addr()
+ * Variant of svc_tp_create() that allows specifying just the
+ * the binding address, for convenience.
+ */
+SVCXPRT *
+svc_tp_create_addr(void (*dispatch)(), const rpcprog_t prognum,
+    const rpcvers_t versnum, const struct netconfig *nconf,
+    const struct netbuf *addr)
+{
+	struct t_bind bind;
+	struct t_bind *bindp = NULL;
+
+	if (addr != NULL) {
+
+		bind.addr = *addr;
+		if (!rpc_control(__RPC_SVC_LSTNBKLOG_GET, &bind.qlen)) {
+			syslog(LOG_ERR,
+			    "svc_tp_create: can't get listen backlog");
+			return (NULL);
+		}
+		bindp = &bind;
+	}
+
+	/*
+	 * When bindp == NULL, this is the same as svc_tp_create().
+	 */
+	return (svc_tp_create_bind(dispatch, prognum, versnum,
+	    nconf, bindp));
+}
+
+/*
  * The high level interface to svc_tli_create().
  * It tries to create a server for "nconf" and registers the service
  * with the rpcbind. It calls svc_tli_create();
  */
 SVCXPRT *
 svc_tp_create(void (*dispatch)(), const rpcprog_t prognum,
-			const rpcvers_t versnum, const struct netconfig *nconf)
+    const rpcvers_t versnum, const struct netconfig *nconf)
+{
+	return (svc_tp_create_bind(dispatch, prognum, versnum, nconf, NULL));
+}
+
+static SVCXPRT *
+svc_tp_create_bind(void (*dispatch)(), const rpcprog_t prognum,
+    const rpcvers_t versnum, const struct netconfig *nconf,
+    const struct t_bind *bindaddr)
 {
 	SVCXPRT *xprt;
 	boolean_t anon_mlp = B_FALSE;
@@ -194,7 +237,8 @@ svc_tp_create(void (*dispatch)(), const rpcprog_t prognum,
 	/* Some programs need to allocate MLP for multilevel services */
 	if (is_system_labeled() && is_multilevel(prognum))
 		anon_mlp = B_TRUE;
-	xprt = svc_tli_create_common(RPC_ANYFD, nconf, NULL, 0, 0, anon_mlp);
+	xprt = svc_tli_create_common(RPC_ANYFD, nconf, bindaddr, 0, 0,
+	    anon_mlp);
 	if (xprt == NULL)
 		return (NULL);
 
@@ -363,6 +407,14 @@ svc_tli_create_common(const int ofd, const struct netconfig *nconf,
 			}
 		}
 		if (bindaddr) {
+			/*
+			 * Services that specify a bind address typically
+			 * use a fixed service (IP port) so we need to set
+			 * SO_REUSEADDR to prevent bind errors on restart.
+			 */
+			if (bindaddr->addr.len != 0)
+				(void) __rpc_tli_set_options(fd, SOL_SOCKET,
+				    SO_REUSEADDR, 1);
 			if (t_bind(fd, (struct t_bind *)bindaddr, tres) == -1) {
 				char errorstr[100];
 
