@@ -20,7 +20,7 @@
  */
 
 /*
- * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2016 Nexenta Systems, Inc.  All rights reserved.
  * Copyright (c) 1989, 2010, Oracle and/or its affiliates. All rights reserved.
  */
 
@@ -49,6 +49,7 @@
 #include <string.h>
 #include <syslog.h>
 #include <netconfig.h>
+#include <netdir.h>
 #include <unistd.h>
 #include <netdb.h>
 #include <rpc/rpc.h>
@@ -99,6 +100,7 @@ static char statd_home[MAXPATHLEN];
 
 int debug;
 int regfiles_only = 0;		/* 1 => use symlinks in statmon, 0 => don't */
+int statmon_port = 0;		/* Typically 1110 */
 char hostname[MAXHOSTNAMELEN];
 
 /*
@@ -457,6 +459,64 @@ thr_statd_merges(void)
 	(void) mutex_unlock(&merges_lock);
 }
 
+/*
+ * This function is called for each configured network type to
+ * bind and register our RPC service programs.
+ *
+ * On TCP or UDP, we may want to bind SM_PROG on a specific port
+ * (when statmon_port is specified) in which case we'll use the
+ * variant of svc_tp_create() that lets us pass a bind address.
+ */
+static void
+sm_svc_tp_create(struct netconfig *nconf)
+{
+	char port_str[8];
+	struct nd_hostserv hs;
+	struct nd_addrlist *al = NULL;
+	struct netbuf *addr = NULL;
+	SVCXPRT *xprt = NULL;
+
+	/*
+	 * If statmon_port is set and this is an inet transport,
+	 * bind this service on the specified port.
+	 */
+	if (statmon_port != 0 &&
+	    (strcmp(nconf->nc_protofmly, NC_INET) == 0 ||
+	    strcmp(nconf->nc_protofmly, NC_INET6) == 0)) {
+		int err;
+
+		snprintf(port_str, sizeof (port_str), "%u",
+		    (unsigned short)statmon_port);
+
+		hs.h_host = HOST_ANY;
+		hs.h_serv = port_str;
+		err = netdir_getbyname((struct netconfig *)nconf, &hs, &al);
+		if (err == 0 && al != NULL) {
+			xprt = svc_tp_create_addr(sm_prog_1, SM_PROG, SM_VERS,
+			    nconf, al->n_addrs);
+			netdir_free(al, ND_ADDRLIST);
+		}
+	} else {
+		/* Non-inet transport.  Default bind. */
+		xprt = svc_tp_create(sm_prog_1, SM_PROG, SM_VERS, nconf);
+	}
+	if (xprt == NULL) {
+		syslog(LOG_ERR, "statd: unable to create (SM_PROG, SM_VERS) "
+		    "for netconfig %s", nconf->nc_netid);
+		return;
+	}
+
+	/*
+	 * Also register the NSM_ADDR program on this
+	 * transport handle (same dispatch function).
+	 */
+	if (!svc_reg(xprt, NSM_ADDR_PROGRAM, NSM_ADDR_V1, sm_prog_1, nconf)) {
+		syslog(LOG_ERR, "statd: failed to register "
+		    "(NSM_ADDR_PROGRAM, NSM_ADDR_V1) for "
+		    "netconfig %s", nconf->nc_netid);
+	}
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -469,6 +529,8 @@ main(int argc, char *argv[])
 	int sz;
 	int pipe_fd = -1;
 	int connmaxrec = RPC_MAXDATASIZE;
+	struct netconfig *nconf;
+	NCONF_HANDLE *nc;
 
 	addrix = 0;
 	pathix = 0;
@@ -477,7 +539,7 @@ main(int argc, char *argv[])
 	if (init_hostname() < 0)
 		exit(1);
 
-	while ((c = getopt(argc, argv, "Dd:a:G:p:rU:")) != EOF)
+	while ((c = getopt(argc, argv, "Dd:a:G:p:rU:P:")) != EOF)
 		switch (c) {
 		case 'd':
 			(void) sscanf(optarg, "%d", &debug);
@@ -544,6 +606,14 @@ main(int argc, char *argv[])
 			break;
 		case 'r':
 			regfiles_only = 1;
+			break;
+		case 'P':
+			(void) sscanf(optarg, "%d", &statmon_port);
+			if (statmon_port & ~0xFFFF) {
+				(void) fprintf(stderr,
+				"statd: -P port invalid.\n");
+				statmon_port = 0;
+			}
 			break;
 		default:
 			(void) fprintf(stderr,
@@ -636,16 +706,29 @@ main(int argc, char *argv[])
 		syslog(LOG_INFO, "unable to set maximum RPC record size");
 	}
 
-	if (!svc_create(sm_prog_1, SM_PROG, SM_VERS, "netpath")) {
-		syslog(LOG_ERR, "statd: unable to create (SM_PROG, SM_VERS) "
-		    "for netpath.");
-		exit(1);
+	/*
+	 * Enumerate network transports and create service listeners
+	 * as appropriate for each.
+	 */
+	if ((nc = setnetconfig()) == NULL) {
+		syslog(LOG_ERR, "setnetconfig failed: %m");
+		return (-1);
 	}
+	while ((nconf = getnetconfig(nc)) != NULL) {
 
-	if (!svc_create(sm_prog_1, NSM_ADDR_PROGRAM, NSM_ADDR_V1, "netpath")) {
-		syslog(LOG_ERR, "statd: unable to create (NSM_ADDR_PROGRAM, "
-		    "NSM_ADDR_V1) for netpath.");
+		/*
+		 * Skip things like tpi_raw, invisible...
+		 */
+		if ((nconf->nc_flag & NC_VISIBLE) == 0)
+			continue;
+		if (nconf->nc_semantics != NC_TPI_CLTS &&
+		    nconf->nc_semantics != NC_TPI_COTS &&
+		    nconf->nc_semantics != NC_TPI_COTS_ORD)
+			continue;
+
+		sm_svc_tp_create(nconf);
 	}
+	(void) endnetconfig(nc);
 
 	/*
 	 * Make sure /var/statmon and any alternate (-p) statmon
@@ -825,7 +908,7 @@ one_statmon_owner(const char *dir)
 /*ARGSUSED3*/
 static int
 nftw_owner(const char *path, const struct stat *statp, int info,
-	struct FTW *ftw)
+    struct FTW *ftw)
 {
 	if (!(info == FTW_F || info == FTW_D))
 		return (0);
