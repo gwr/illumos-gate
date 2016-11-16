@@ -507,6 +507,14 @@ mappedread(vnode_t *vp, int nbytes, uio_t *uio)
 }
 
 /*
+ * Shortest time we'll attempt to cv_wait (below), in nSec.
+ * This should be no less than the minimum time it normally takes
+ * to block a thread and wake back up after the timeout fires.
+ * Guessing 10 uSec. for now.
+ */
+static hrtime_t zfs_qos_shortest_wait = 10000;
+
+/*
  * ZFS Quality of Service (QoS) I/O throttling
  * See "Token Bucket" on Wikipedia
  *
@@ -527,13 +535,14 @@ zfs_qos_throttle(zfsvfs_t *zfsvfs, ssize_t iosize)
 
 	/*
 	 * If another thread is already waiting, we must queue up behind them.
-	 * We'll wait up to 1 sec here, and normally will resume by cv_signal.
+	 * We'll wait up to 1 sec here.  We normally will resume by cv_signal,
+	 * so we don't need fine timer resolution on this wait.
 	 */
 	if (qos->qos_token_bucket < 0) {
 		qos->qos_waiters++;
 		(void)cv_timedwait_hires(
 			&qos->qos_wait_cv, &qos->qos_lock,
-			NANOSEC, TR_NANOSEC, 0);
+			NANOSEC, TR_CLOCK_TICK, 0);
 		qos->qos_waiters--;
 	}
 
@@ -550,7 +559,7 @@ zfs_qos_throttle(zfsvfs_t *zfsvfs, ssize_t iosize)
 	 * Add "tokens" for time since last update,
 	 * being careful about possible overflow.
 	 */
-	refill = delta * qos->qos_rate_cap / NANOSEC;
+	refill = (delta * qos->qos_rate_cap) / NANOSEC;
 	if (refill < 0 || refill > qos->qos_rate_cap)
 		refill = qos->qos_rate_cap; /* overflow */
 	qos->qos_token_bucket += refill;
@@ -560,9 +569,11 @@ zfs_qos_throttle(zfsvfs_t *zfsvfs, ssize_t iosize)
 	/*
 	 * Withdraw tokens for the current I/O.* If this makes us overdrawn,
 	 * wait an amount of time proportionate to the overdraft.  However,
-	 * as a sanity measure, never wait more than 1 sec.  Leave the bucket
-	 * negative while we wait so other threads know to queue up.
-	 * In here, "refill" is the debt we're waiting to pay off.
+	 * as a sanity measure, never wait more than 1 sec, and never try to
+	 * wait less than the time it normally takes to block and reschedule.
+	 *
+	 * Leave the bucket negative while we wait so other threads know to
+	 * queue up. In here, "refill" is the debt we're waiting to pay off.
 	 */
 	qos->qos_token_bucket -= iosize;
 	if (qos->qos_token_bucket < 0) {
@@ -570,12 +581,14 @@ zfs_qos_throttle(zfsvfs_t *zfsvfs, ssize_t iosize)
 		refill = -qos->qos_token_bucket;
 		DTRACE_PROBE2(zfs_qos_over, zfsvfs_t *, zfsvfs, int64_t, refill);
 
-		delta = refill * NANOSEC / qos->qos_rate_cap;
-		if (delta > NANOSEC)
-			delta = NANOSEC;
-		(void)cv_timedwait_hires(
-			&qos->qos_wait_cv, &qos->qos_lock,
-			delta, TR_NANOSEC, 0);
+		delta = (refill * NANOSEC) / qos->qos_rate_cap;
+		delta = MIN(delta, NANOSEC);
+
+		if (delta > zfs_qos_shortest_wait) {
+			(void)cv_timedwait_hires(
+				&qos->qos_wait_cv, &qos->qos_lock,
+				delta, TR_NANOSEC, 0);
+		}
 
 		qos->qos_token_bucket += refill;
 	}
