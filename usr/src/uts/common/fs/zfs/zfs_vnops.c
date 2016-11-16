@@ -510,9 +510,9 @@ mappedread(vnode_t *vp, int nbytes, uio_t *uio)
  * Shortest time we'll attempt to cv_wait (below), in nSec.
  * This should be no less than the minimum time it normally takes
  * to block a thread and wake back up after the timeout fires.
- * Guessing 10 uSec. for now.
+ * Guessing 10 uSec. for now.  This can be tuned as needed.
  */
-static hrtime_t zfs_qos_shortest_wait = 10000;
+hrtime_t zfs_qos_shortest_wait = 10000;
 
 /*
  * ZFS Quality of Service (QoS) I/O throttling
