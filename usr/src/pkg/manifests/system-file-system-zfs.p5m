@@ -44,6 +44,8 @@ file \
     path=etc/sysevent/config/SUNW,EC_zfs,ESC_ZFS_bootfs_vdev_attach,sysevent.conf \
     group=sys
 dir  path=etc/zfs group=sys
+dir  path=etc/zfs/zpool.d group=sys
+file path=etc/zfs/zpool.d/upath group=sys mode=0555
 dir  path=kernel group=sys
 dir  path=kernel/drv group=sys
 dir  path=kernel/drv/$(ARCH64) group=sys

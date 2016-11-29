@@ -120,6 +120,7 @@
 .Op Ar device Ns ...
 .Nm
 .Cm iostat
+.Op Fl c Ar script Ns Oo , Ns Ar script Oc Ns ...
 .Op Oo Fl lq Oc | Ns Fl rw
 .Op Fl T Sy u Ns | Ns Sy d
 .Op Fl ghHLnpPvy
@@ -189,6 +190,7 @@
 .Ar pool newpool
 .Nm
 .Cm status
+.Op Fl c Ar script Ns Oo , Ns Ar script Oc Ns ...
 .Op Fl DigLpPstvx
 .Op Fl T Sy u Ns | Ns Sy d
 .Oo Ar pool Oc Ns ...
@@ -1648,6 +1650,7 @@ Wait until the devices have finished initializing before returning.
 .It Xo
 .Nm
 .Cm iostat
+.Op Fl c Ar script Ns Oo , Ns Ar script Oc Ns ...
 .Op Oo Fl lq Oc | Ns Fl rw
 .Op Fl T Sy u Ns | Ns Sy d
 .Op Fl ghHLnpPvy
@@ -1691,6 +1694,22 @@ To get the raw values, use the
 .Fl p
 flag.
 .Bl -tag -width Ds
+.It Fl c Ar script Ns Oo , Ns Ar script Oc Ns ...
+Run each named executable for every leaf vdev and append its output as custom
+columns.
+Scripts are found using
+.Ev ZPOOL_SCRIPTS_PATH ,
+then
+.Pa $HOME/.zpool.d ,
+then
+.Pa /etc/zfs/zpool.d .
+Names containing a slash are rejected.
+With no
+.Ar script
+argument, list available scripts and their help text.
+See
+.Sx ZPOOL STATUS AND IOSTAT SCRIPTS
+for the output format and security controls.
 .It Fl T Sy u Ns | Ns Sy d
 Display a time stamp.
 Specify
@@ -2170,6 +2189,7 @@ and automatically import it.
 .It Xo
 .Nm
 .Cm status
+.Op Fl c Ar script Ns Oo , Ns Ar script Oc Ns ...
 .Op Fl DigLpPstvx
 .Op Fl T Sy u Ns | Ns Sy d
 .Oo Ar pool Oc Ns ...
@@ -2188,6 +2208,22 @@ and the estimated time to completion.
 Both of these are only approximate, because the amount of data in the pool and
 the other workloads on the system can change.
 .Bl -tag -width Ds
+.It Fl c Ar script Ns Oo , Ns Ar script Oc Ns ...
+Run each named executable for every leaf vdev and append its output as custom
+columns.
+Scripts are found using
+.Ev ZPOOL_SCRIPTS_PATH ,
+then
+.Pa $HOME/.zpool.d ,
+then
+.Pa /etc/zfs/zpool.d .
+Names containing a slash are rejected.
+With no
+.Ar script
+argument, list available scripts and their help text.
+See
+.Sx ZPOOL STATUS AND IOSTAT SCRIPTS
+for the output format and security controls.
 .It Fl D
 Display a histogram of deduplication statistics, showing the allocated
 .Pq physically present on disk
@@ -2602,7 +2638,65 @@ data        23.9G  14.6G  9.30G    48%         -    61%  1.00x  ONLINE  -
     c1t3d0      -      -      -      -         -
 .Ed
 .El
+.Sh ZPOOL STATUS AND IOSTAT SCRIPTS
+The
+.Fl c
+option of
+.Nm zpool Cm status
+and
+.Nm zpool Cm iostat
+runs each selected script once per leaf vdev.
+The script receives no arguments and is executed with a restricted
+.Ev PATH .
+The following variables describe the vdev:
+.Bl -tag -width "VDEV_UPATH"
+.It Ev VDEV_PATH
+The path recorded in the pool configuration.
+.It Ev VDEV_UPATH
+The canonical path produced by
+.Xr realpath 3C
+from
+.Ev VDEV_PATH ,
+or an empty string if the path cannot be resolved.
+.El
+.Pp
+A script may print one or more
+.Sy column=value
+lines.
+Named columns from all selected scripts are appended to the command output.
+A script that prints an unnamed value contributes only its first output line.
+Empty named values are displayed as
+.Sy - .
+When invoked with
+.Fl h ,
+a bundled script prints a short description used by the script-listing form of
+.Fl c .
+.Pp
+Script execution is disabled when
+.Ev ZPOOL_SCRIPTS_ENABLED
+is set to a false value.
+Execution with real or effective UID 0 is disabled unless
+.Ev ZPOOL_SCRIPTS_AS_ROOT
+is set to a true value.
 .Sh ENVIRONMENT VARIABLES
+.Bl -tag -width "ZPOOL_SCRIPTS_AS_ROOT"
+.It Ev ZPOOL_SCRIPTS_AS_ROOT
+Permit
+.Nm
+to run
+.Fl c
+scripts with real or effective UID 0 when set to
+.Sy yes ,
+.Sy on ,
+or a non-zero number.
+.It Ev ZPOOL_SCRIPTS_ENABLED
+Disable
+.Fl c
+script execution when set to a false value.
+.It Ev ZPOOL_SCRIPTS_PATH
+A colon-separated list of directories to search instead of
+.Pa $HOME/.zpool.d:/etc/zfs/zpool.d .
+.El
 .Bl -tag -width "ZPOOL_VDEV_NAME_GUID"
 .It Ev ZPOOL_VDEV_NAME_GUID
 Cause

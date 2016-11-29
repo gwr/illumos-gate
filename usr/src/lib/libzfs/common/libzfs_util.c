@@ -44,6 +44,8 @@
 #include <sys/mnttab.h>
 #include <sys/mntent.h>
 #include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #include <libcmdutils.h>
 
 #include <libzfs.h>
@@ -55,6 +57,150 @@
 #include "zfeature_common.h"
 #include <zfs_fletcher.h>
 #include <libzutil.h>
+
+static int
+libzfs_read_stdout_from_fd(int fd, char ***lines)
+{
+	FILE *fp;
+	char *line = NULL;
+	char **result = NULL;
+	size_t len = 0;
+	int count = 0;
+
+	if ((fp = fdopen(fd, "r")) == NULL) {
+		(void) close(fd);
+		*lines = NULL;
+		return (0);
+	}
+
+	while (getline(&line, &len, fp) != -1) {
+		char **tmp;
+		size_t linelen = strlen(line);
+
+		if (linelen != 0 && line[linelen - 1] == '\n')
+			line[linelen - 1] = '\0';
+
+		tmp = realloc(result, sizeof (*result) * (count + 1));
+		if (tmp == NULL)
+			break;
+		result = tmp;
+		if ((result[count] = strdup(line)) == NULL)
+			break;
+		count++;
+	}
+
+	free(line);
+	(void) fclose(fp);
+	*lines = result;
+	return (count);
+}
+
+static int
+libzfs_run_process_impl(const char *path, char **argv, char **env, int flags,
+    char ***lines, int *lines_cnt)
+{
+	pid_t pid;
+	int error, devnull_fd;
+	int link[2] = { -1, -1 };
+
+	if (lines != NULL) {
+		*lines = NULL;
+		*lines_cnt = 0;
+		if (pipe2(link, O_CLOEXEC) == -1)
+			return (-EPIPE);
+	}
+
+	if ((pid = fork()) == 0) {
+		devnull_fd = open("/dev/null", O_WRONLY | O_CLOEXEC);
+		if (devnull_fd < 0)
+			_exit(127);
+
+		if (lines != NULL) {
+			(void) close(link[0]);
+			if (dup2(link[1], STDOUT_FILENO) == -1)
+				_exit(127);
+			(void) close(link[1]);
+		} else if (!(flags & STDOUT_VERBOSE)) {
+			(void) dup2(devnull_fd, STDOUT_FILENO);
+		}
+
+		if (!(flags & STDERR_VERBOSE))
+			(void) dup2(devnull_fd, STDERR_FILENO);
+		(void) close(devnull_fd);
+
+		if (flags & NO_DEFAULT_PATH) {
+			if (env == NULL)
+				(void) execv(path, argv);
+			else
+				(void) execve(path, argv, env);
+		} else {
+			if (env == NULL)
+				(void) execvp(path, argv);
+			else
+				(void) execvpe(path, argv, env);
+		}
+		_exit(127);
+	}
+
+	if (pid < 0) {
+		if (lines != NULL) {
+			(void) close(link[0]);
+			(void) close(link[1]);
+		}
+		return (-1);
+	}
+
+	if (lines != NULL) {
+		(void) close(link[1]);
+		*lines_cnt = libzfs_read_stdout_from_fd(link[0], lines);
+	}
+
+	while ((error = waitpid(pid, &devnull_fd, 0)) == -1 && errno == EINTR)
+		;
+	if (error < 0 || !WIFEXITED(devnull_fd))
+		return (-1);
+
+	return (WEXITSTATUS(devnull_fd));
+}
+
+int
+libzfs_run_process(const char *path, char **argv, int flags)
+{
+	return (libzfs_run_process_impl(path, argv, NULL, flags, NULL, NULL));
+}
+
+int
+libzfs_run_process_get_stdout(const char *path, char **argv, char **env,
+    char ***lines, int *lines_cnt)
+{
+	return (libzfs_run_process_impl(path, argv, env, 0, lines, lines_cnt));
+}
+
+int
+libzfs_run_process_get_stdout_nopath(const char *path, char **argv, char **env,
+    char ***lines, int *lines_cnt)
+{
+	return (libzfs_run_process_impl(path, argv, env, NO_DEFAULT_PATH,
+	    lines, lines_cnt));
+}
+
+void
+libzfs_free_str_array(char **strs, int count)
+{
+	while (--count >= 0)
+		free(strs[count]);
+	free(strs);
+}
+
+boolean_t
+libzfs_envvar_is_set(const char *envvar)
+{
+	char *env = getenv(envvar);
+
+	return (env != NULL && (strtoul(env, NULL, 0) > 0 ||
+	    (strncasecmp(env, "YES", 3) == 0 && strnlen(env, 4) == 3) ||
+	    (strncasecmp(env, "ON", 2) == 0 && strnlen(env, 3) == 2)));
+}
 
 int
 libzfs_errno(libzfs_handle_t *hdl)

@@ -1931,6 +1931,12 @@ file \
 file \
     path=opt/zfs-tests/tests/functional/cli_root/zpool_status/zpool_status_002_pos \
     mode=0555
+file \
+    path=opt/zfs-tests/tests/functional/cli_root/zpool_status/zpool_status_003_pos \
+    mode=0555
+file \
+    path=opt/zfs-tests/tests/functional/cli_root/zpool_status/zpool_status_004_pos \
+    mode=0555
 dir  path=opt/zfs-tests/tests/functional/cli_root/zpool_sync
 file path=opt/zfs-tests/tests/functional/cli_root/zpool_sync/cleanup mode=0555
 file path=opt/zfs-tests/tests/functional/cli_root/zpool_sync/setup mode=0555
@@ -2361,6 +2367,12 @@ file \
     mode=0555
 file \
     path=opt/zfs-tests/tests/functional/cli_user/zpool_iostat/zpool_iostat_004_pos \
+    mode=0555
+file \
+    path=opt/zfs-tests/tests/functional/cli_user/zpool_iostat/zpool_iostat_005_pos \
+    mode=0555
+file \
+    path=opt/zfs-tests/tests/functional/cli_user/zpool_iostat/zpool_iostat_006_pos \
     mode=0555
 dir  path=opt/zfs-tests/tests/functional/cli_user/zpool_list
 file path=opt/zfs-tests/tests/functional/cli_user/zpool_list/cleanup mode=0555

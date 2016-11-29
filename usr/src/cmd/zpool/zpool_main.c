@@ -358,6 +358,7 @@ get_usage(zpool_help_t idx)
 		    "\t    [--rewind-to-checkpoint] <pool | id> [newpool]\n"));
 	case HELP_IOSTAT:
 		return (gettext("\tiostat "
+		    "[-c [script1,script2,...]] "
 		    "[[-lq]|[-rw]] [-T d | u] [-ghHLpPvy]\n"
 		    "\t    [[pool] ...]|[pool vdev ...]|[vdev ...]]"
 		    " [[-n] interval [count]]\n"));
@@ -389,6 +390,7 @@ get_usage(zpool_help_t idx)
 		    "[<device> ...]\n"));
 	case HELP_STATUS:
 		return (gettext("\tstatus "
+		    "[-c [script1,script2,...]] "
 		    "[-igLpPsvxD] [-T d|u] [pool] ... "
 		    "[interval [count]]\n"));
 	case HELP_UPGRADE:
@@ -1744,7 +1746,55 @@ typedef struct status_cbdata {
 	boolean_t	cb_print_slow_ios;
 	boolean_t	cb_print_vdev_init;
 	boolean_t	cb_print_vdev_trim;
+	vdev_cmd_data_list_t *vcdl;
 } status_cbdata_t;
+
+static boolean_t
+is_blank_str(const char *str)
+{
+	while (str != NULL && *str != '\0') {
+		if (!isblank((unsigned char)*str))
+			return (B_FALSE);
+		str++;
+	}
+	return (B_TRUE);
+}
+
+static void
+zpool_print_cmd(vdev_cmd_data_list_t *vcdl, const char *pool, const char *path)
+{
+	for (int i = 0; i < vcdl->count; i++) {
+		vdev_cmd_data_t *data = &vcdl->data[i];
+
+		if (strcmp(data->path, path) != 0 ||
+		    strcmp(data->pool, pool) != 0)
+			continue;
+
+		for (int j = 0; j < vcdl->uniq_cols_cnt; j++) {
+			const char *val = NULL;
+
+			for (int k = 0; k < data->cols_cnt; k++) {
+				if (strcmp(data->cols[k],
+				    vcdl->uniq_cols[j]) == 0) {
+					val = data->lines[k];
+					break;
+				}
+			}
+			if (is_blank_str(val))
+				val = "-";
+			(void) printf("%*s", vcdl->uniq_cols_width[j], val);
+			if (j < vcdl->uniq_cols_cnt - 1)
+				(void) printf("  ");
+		}
+
+		for (int j = data->cols_cnt; j < data->lines_cnt; j++) {
+			if (vcdl->uniq_cols_cnt > 0)
+				(void) printf("  ");
+			(void) printf("%s", data->lines[j]);
+		}
+		break;
+	}
+}
 
 /*
  * Print vdev initialization status for leaves
@@ -1862,6 +1912,7 @@ print_status_config(zpool_handle_t *zhp, status_cbdata_t *cb, const char *name,
 	vdev_stat_t *vs;
 	char rbuf[6], wbuf[6], cbuf[6];
 	char *vname;
+	char *path;
 	uint64_t notpresent;
 	spare_cbdata_t spare_cb;
 	const char *state;
@@ -1927,7 +1978,6 @@ print_status_config(zpool_handle_t *zhp, status_cbdata_t *cb, const char *name,
 
 	if (nvlist_lookup_uint64(nv, ZPOOL_CONFIG_NOT_PRESENT,
 	    &notpresent) == 0) {
-		char *path;
 		verify(nvlist_lookup_string(nv, ZPOOL_CONFIG_PATH, &path) == 0);
 		(void) printf("  was %s", path);
 	} else if (vs->vs_aux != 0) {
@@ -2020,6 +2070,12 @@ print_status_config(zpool_handle_t *zhp, status_cbdata_t *cb, const char *name,
 		} else if (vs->vs_resilver_deferred) {
 			(void) printf(gettext("  (awaiting resilver)"));
 		}
+	}
+
+	if (cb->vcdl != NULL &&
+	    nvlist_lookup_string(nv, ZPOOL_CONFIG_PATH, &path) == 0) {
+		(void) printf("  ");
+		zpool_print_cmd(cb->vcdl, zpool_get_name(zhp), path);
 	}
 
 	/* Display vdev initialization and trim status for leaves */
@@ -3281,6 +3337,7 @@ typedef struct iostat_cbdata {
 	boolean_t cb_literal;
 	boolean_t cb_scripted;
 	zpool_list_t *cb_list;
+	vdev_cmd_data_list_t *vcdl;
 } iostat_cbdata_t;
 
 /*  iostat labels */
@@ -3323,6 +3380,24 @@ static const name_and_columns_t iostat_bottom_labels[][IOSTAT_MAX_LABELS] =
 	[IOS_RQ_HISTO] = {{"ind"}, {"agg"}, {"ind"}, {"agg"}, {"ind"}, {"agg"},
 	    {"ind"}, {"agg"}, {"ind"}, {"agg"}, {"ind"}, {"agg"}, {NULL}},
 };
+
+static void
+print_cmd_columns(vdev_cmd_data_list_t *vcdl, boolean_t use_dashes)
+{
+	if (vcdl == NULL || vcdl->count == 0)
+		return;
+
+	for (int i = 0; i < vcdl->uniq_cols_cnt; i++) {
+		(void) printf("  ");
+		if (use_dashes) {
+			for (int j = 0; j < vcdl->uniq_cols_width[i]; j++)
+				(void) printf("-");
+		} else {
+			(void) printf("%*s", vcdl->uniq_cols_width[i],
+			    vcdl->uniq_cols[i]);
+		}
+	}
+}
 
 static const char *histo_to_title[] = {
 	[IOS_L_HISTO] = "latency",
@@ -3566,10 +3641,12 @@ print_iostat_header_impl(iostat_cbdata_t *cb, unsigned int force_column_width,
 	printf("%-*s", namewidth, title);
 
 	print_iostat_labels(cb, force_column_width, iostat_bottom_labels);
+	print_cmd_columns(cb->vcdl, B_FALSE);
 
 	printf("\n");
 
 	print_iostat_separator_impl(cb, force_column_width);
+	print_cmd_columns(cb->vcdl, B_TRUE);
 
 	printf("\n");
 }
@@ -4112,6 +4189,15 @@ print_vdev_stats(zpool_handle_t *zhp, const char *name, nvlist_t *oldnv,
 		print_iostat_histos(cb, oldnv, newnv, scale, name);
 	}
 
+	if (cb->vcdl != NULL) {
+		char *path;
+		if (nvlist_lookup_string(newnv, ZPOOL_CONFIG_PATH,
+		    &path) == 0) {
+			printf("  ");
+			zpool_print_cmd(cb->vcdl, zpool_get_name(zhp), path);
+		}
+	}
+
 	if (!(cb->cb_flags & IOS_ANYHISTO_M))
 		printf("\n");
 
@@ -4288,6 +4374,7 @@ print_iostat(zpool_handle_t *zhp, void *data)
 	if ((ret != 0) && !(cb->cb_flags & IOS_ANYHISTO_M) &&
 	    !cb->cb_scripted && cb->cb_verbose && !cb->cb_vdev_names_count) {
 		print_iostat_separator(cb);
+		print_cmd_columns(cb->vcdl, B_TRUE);
 		printf("\n");
 	}
 
@@ -4668,6 +4755,88 @@ fsleep(float sec)
 	(void) nanosleep(&req, NULL);
 }
 
+static void
+print_zpool_script_help(const char *name, const char *path)
+{
+	char *argv[] = { (char *)path, "-h", NULL };
+	char **lines = NULL;
+	int lines_cnt = 0;
+
+	if (libzfs_run_process_get_stdout_nopath(path, argv, NULL, &lines,
+	    &lines_cnt) != 0)
+		goto out;
+
+	for (int i = 0; i < lines_cnt; i++) {
+		if (!is_blank_str(lines[i]))
+			(void) printf("  %-14s  %s\n", name, lines[i]);
+	}
+
+out:
+	libzfs_free_str_array(lines, lines_cnt);
+}
+
+static void
+print_zpool_dir_scripts(const char *dirpath)
+{
+	DIR *dir;
+	struct dirent *ent;
+
+	if ((dir = opendir(dirpath)) == NULL)
+		return;
+
+	while ((ent = readdir(dir)) != NULL) {
+		char fullpath[MAXPATHLEN];
+		struct stat st;
+		int len;
+
+		len = snprintf(fullpath, sizeof (fullpath), "%s/%s", dirpath,
+		    ent->d_name);
+		if (len < 0 || len >= sizeof (fullpath))
+			continue;
+		if (stat(fullpath, &st) == 0 && S_ISREG(st.st_mode) &&
+		    (st.st_mode & S_IXUSR) != 0)
+			print_zpool_script_help(ent->d_name, fullpath);
+	}
+	(void) closedir(dir);
+}
+
+static void
+print_zpool_script_list(const char *subcommand)
+{
+	char *sp, *dir, *lasts;
+
+	(void) printf(gettext("Available 'zpool %s -c' commands:\n"),
+	    subcommand);
+	if ((sp = zpool_get_cmd_search_path()) == NULL)
+		return;
+
+	for (dir = strtok_r(sp, ":", &lasts); dir != NULL;
+	    dir = strtok_r(NULL, ":", &lasts))
+		print_zpool_dir_scripts(dir);
+	free(sp);
+}
+
+static boolean_t
+zpool_scripts_allowed(void)
+{
+	if (getenv("ZPOOL_SCRIPTS_ENABLED") != NULL &&
+	    !libzfs_envvar_is_set("ZPOOL_SCRIPTS_ENABLED")) {
+		(void) fprintf(stderr, gettext(
+		    "Can't run -c, disabled by ZPOOL_SCRIPTS_ENABLED.\n"));
+		return (B_FALSE);
+	}
+
+	if ((getuid() == 0 || geteuid() == 0) &&
+	    !libzfs_envvar_is_set("ZPOOL_SCRIPTS_AS_ROOT")) {
+		(void) fprintf(stderr, gettext(
+		    "Can't run -c with root privileges unless "
+		    "ZPOOL_SCRIPTS_AS_ROOT is set.\n"));
+		return (B_FALSE);
+	}
+
+	return (B_TRUE);
+}
+
 /*
  * Terminal height, in rows. Returns -1 if stdout is not connected to a TTY or
  * if we were unable to determine its size.
@@ -4711,10 +4880,12 @@ get_namewidth_iostat(zpool_handle_t *zhp, void *data)
 }
 
 /*
- * zpool iostat [-ghHLpPvy] [[-lq]|[-r|-w]] [-n name] [-T d|u]
+ * zpool iostat [-c script1[,script2...]] [-ghHLpPvy]
+ *		[[-lq]|[-r|-w]] [-n name] [-T d|u]
  *		[[ pool ...]|[pool vdev ...]|[vdev ...]]
  *		[interval [count]]
  *
+ *	-c	Run script(s) for each vdev.
  *	-g	Display guid for individual vdev name.
  *	-L	Follow links when resolving vdev path name.
  *	-P	Display full path for vdev name.
@@ -4755,6 +4926,7 @@ zpool_do_iostat(int argc, char **argv)
 	boolean_t full_name = B_FALSE;
 	boolean_t headers_once = B_FALSE;
 	iostat_cbdata_t cb = { 0 };
+	char *cmd = NULL;
 
 	/* Used for printing error message */
 	const char flag_to_arg[] = {[IOS_LATENCY] = 'l', [IOS_QUEUES] = 'q',
@@ -4763,8 +4935,19 @@ zpool_do_iostat(int argc, char **argv)
 	uint64_t unsupported_flags;
 
 	/* check options */
-	while ((c = getopt(argc, argv, "gLPT:vyhplqrwnH")) != -1) {
+	while ((c = getopt(argc, argv, "c:gLPT:vyhplqrwnH")) != -1) {
 		switch (c) {
+		case 'c':
+			if (cmd != NULL) {
+				(void) fprintf(stderr,
+				    gettext("Can't set -c flag twice\n"));
+				return (1);
+			}
+			if (!zpool_scripts_allowed())
+				return (1);
+			cmd = optarg;
+			verbose = B_TRUE;
+			break;
 		case 'g':
 			guid = B_TRUE;
 			break;
@@ -4808,8 +4991,15 @@ zpool_do_iostat(int argc, char **argv)
 			usage(B_FALSE);
 			break;
 		case '?':
-			(void) fprintf(stderr, gettext("invalid option '%c'\n"),
-			    optopt);
+			if (optopt == 'c') {
+				if (!zpool_scripts_allowed())
+					return (1);
+				print_zpool_script_list("iostat");
+				exit(0);
+			} else {
+				(void) fprintf(stderr,
+				    gettext("invalid option '%c'\n"), optopt);
+			}
 			usage(B_FALSE);
 		}
 	}
@@ -4900,10 +5090,10 @@ zpool_do_iostat(int argc, char **argv)
 		return (1);
 	}
 
-	if ((l_histo || rq_histo) && (queues || latency)) {
+	if ((l_histo || rq_histo) && (cmd != NULL || latency || queues)) {
 		pool_list_free(list);
 		(void) fprintf(stderr,
-		    gettext("[-r|-w] isn't allowed with [-q|-l]\n"));
+		    gettext("[-r|-w] isn't allowed with [-c|-l|-q]\n"));
 		usage(B_FALSE);
 		return (1);
 	}
@@ -5004,6 +5194,13 @@ zpool_do_iostat(int argc, char **argv)
 			if (winheight < 0)
 				headers_once = B_TRUE;
 
+			if (!skip && cmd != NULL &&
+			    !(cb.cb_flags & IOS_ANYHISTO_M)) {
+				cb.vcdl = all_pools_for_each_vdev_run(argc,
+				    argv, cmd, g_zfs, cb.cb_vdev_names,
+				    cb.cb_vdev_names_count, cb.cb_name_flags);
+			}
+
 			/*
 			 * If it's the first time and we're not skipping it,
 			 * or either skip or verbose mode, print the header.
@@ -5040,8 +5237,12 @@ zpool_do_iostat(int argc, char **argv)
 			    cb.cb_vdev_names_count)) &&
 			    !cb.cb_scripted) {
 				print_iostat_separator(&cb);
+				print_cmd_columns(cb.vcdl, B_TRUE);
 				printf("\n");
 			}
+
+			free_vdev_cmd_data_list(cb.vcdl);
+			cb.vcdl = NULL;
 		}
 
 		/*
@@ -7465,6 +7666,7 @@ status_callback(zpool_handle_t *zhp, void *data)
 
 		if (cbp->cb_print_slow_ios)
 			(void) printf(" %5s", gettext("SLOW"));
+		print_cmd_columns(cbp->vcdl, B_FALSE);
 
 		(void) printf("\n");
 
@@ -7529,8 +7731,10 @@ status_callback(zpool_handle_t *zhp, void *data)
 }
 
 /*
- * zpool status [-igLpPstvx] [-T d|u] [pool] ... [interval [count]]
+ * zpool status [-c script1[,script2...]] [-igLpPstvx] [-T d|u]
+ *		[pool] ... [interval [count]]
  *
+ *	-c	Run script(s) for each vdev.
  *	-i	Display vdev initialization status.
  *	-g	Display guid for individual vdev name.
  *	-L	Follow links when resolving vdev path name.
@@ -7553,10 +7757,21 @@ zpool_do_status(int argc, char **argv)
 	float interval = 0;
 	unsigned long count = 0;
 	status_cbdata_t cb = { 0 };
+	char *cmd = NULL;
 
 	/* check options */
-	while ((c = getopt(argc, argv, "igLpPsvxDtT:")) != -1) {
+	while ((c = getopt(argc, argv, "c:igLpPsvxDtT:")) != -1) {
 		switch (c) {
+		case 'c':
+			if (cmd != NULL) {
+				(void) fprintf(stderr,
+				    gettext("Can't set -c flag twice\n"));
+				return (1);
+			}
+			if (!zpool_scripts_allowed())
+				return (1);
+			cmd = optarg;
+			break;
 		case 'i':
 			cb.cb_print_vdev_init = B_TRUE;
 			break;
@@ -7591,8 +7806,15 @@ zpool_do_status(int argc, char **argv)
 			get_timestamp_arg(*optarg);
 			break;
 		case '?':
-			(void) fprintf(stderr, gettext("invalid option '%c'\n"),
-			    optopt);
+			if (optopt == 'c') {
+				if (!zpool_scripts_allowed())
+					return (1);
+				print_zpool_script_list("status");
+				exit(0);
+			} else {
+				(void) fprintf(stderr,
+				    gettext("invalid option '%c'\n"), optopt);
+			}
 			usage(B_FALSE);
 		}
 	}
@@ -7612,8 +7834,16 @@ zpool_do_status(int argc, char **argv)
 		if (timestamp_fmt != NODATE)
 			print_timestamp(timestamp_fmt);
 
+		if (cmd != NULL) {
+			cb.vcdl = all_pools_for_each_vdev_run(argc, argv, cmd,
+			    g_zfs, NULL, 0, cb.cb_name_flags);
+		}
+
 		ret = for_each_pool(argc, argv, B_TRUE, NULL,
 		    status_callback, &cb);
+
+		free_vdev_cmd_data_list(cb.vcdl);
+		cb.vcdl = NULL;
 
 		if (argc == 0 && cb.cb_count == 0)
 			(void) printf(gettext("no pools available\n"));

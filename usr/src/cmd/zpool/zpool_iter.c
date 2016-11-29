@@ -312,11 +312,335 @@ for_each_vdev_cb(zpool_handle_t *zhp, nvlist_t *nv, pool_vdev_iter_f func,
 int
 for_each_vdev(zpool_handle_t *zhp, pool_vdev_iter_f func, void *data)
 {
-	nvlist_t *config, *nvroot;
+	nvlist_t *config, *nvroot = NULL;
 
 	if ((config = zpool_get_config(zhp, NULL)) != NULL) {
 		verify(nvlist_lookup_nvlist(config, ZPOOL_CONFIG_VDEV_TREE,
 		    &nvroot) == 0);
 	}
+	if (nvroot == NULL)
+		return (0);
 	return (for_each_vdev_cb(zhp, nvroot, func, data));
+}
+
+/*
+ * Find the unique command-output columns and their display widths.
+ */
+static void
+process_unique_cmd_columns(vdev_cmd_data_list_t *vcdl)
+{
+	char **uniq_cols = NULL;
+	int *uniq_cols_width;
+	int cnt = 0;
+
+	for (int i = 0; i < vcdl->count; i++) {
+		vdev_cmd_data_t *data = &vcdl->data[i];
+
+		for (int j = 0; j < data->cols_cnt; j++) {
+			int k;
+
+			for (k = 0; k < cnt; k++) {
+				if (strcmp(data->cols[j], uniq_cols[k]) == 0)
+					break;
+			}
+			if (k == cnt) {
+				char **tmp = realloc(uniq_cols,
+				    sizeof (*uniq_cols) * (cnt + 1));
+
+				if (tmp == NULL)
+					zpool_no_memory();
+				uniq_cols = tmp;
+				uniq_cols[cnt++] = data->cols[j];
+			}
+		}
+	}
+
+	if (cnt == 0) {
+		vcdl->uniq_cols = uniq_cols;
+		return;
+	}
+
+	uniq_cols_width = safe_malloc(sizeof (*uniq_cols_width) * cnt);
+	for (int i = 0; i < cnt; i++) {
+		uniq_cols_width[i] = strlen(uniq_cols[i]);
+		for (int j = 0; j < vcdl->count; j++) {
+			vdev_cmd_data_t *data = &vcdl->data[j];
+
+			for (int k = 0; k < data->cols_cnt; k++) {
+				if (strcmp(data->cols[k], uniq_cols[i]) == 0) {
+					uniq_cols_width[i] =
+					    MAX(uniq_cols_width[i],
+					    strlen(data->lines[k]));
+				}
+			}
+		}
+	}
+
+	vcdl->uniq_cols = uniq_cols;
+	vcdl->uniq_cols_cnt = cnt;
+	vcdl->uniq_cols_width = uniq_cols_width;
+}
+
+/*
+ * Save one output value.  Named output may contain several column=value
+ * lines; unnamed output contributes only its first line.
+ */
+static int
+vdev_process_cmd_output(vdev_cmd_data_t *data, char *line)
+{
+	char *col = NULL;
+	char *val = line;
+	char *coldup = NULL;
+	char *valdup;
+	char *equals;
+	char **tmp;
+
+	if (line == NULL)
+		return (1);
+
+	if ((equals = strchr(line, '=')) != NULL) {
+		*equals = '\0';
+		col = line;
+		val = equals + 1;
+	}
+
+	if (col != NULL) {
+		for (int i = 0; i < data->cols_cnt; i++) {
+			if (strcmp(col, data->cols[i]) == 0)
+				return (0);
+		}
+	}
+
+	if ((valdup = strdup(val)) == NULL)
+		zpool_no_memory();
+	if (col != NULL && (coldup = strdup(col)) == NULL)
+		zpool_no_memory();
+
+	if (col != NULL) {
+		tmp = realloc(data->cols,
+		    (data->cols_cnt + 1) * sizeof (*data->cols));
+		if (tmp == NULL)
+			zpool_no_memory();
+		data->cols = tmp;
+	}
+
+	tmp = realloc(data->lines,
+	    (data->lines_cnt + 1) * sizeof (*data->lines));
+	if (tmp == NULL)
+		zpool_no_memory();
+	data->lines = tmp;
+
+	data->lines[data->lines_cnt++] = valdup;
+	if (col != NULL)
+		data->cols[data->cols_cnt++] = coldup;
+
+	return (col == NULL);
+}
+
+static void
+vdev_run_cmd(vdev_cmd_data_t *data, char *cmd)
+{
+	char *argv[2] = { cmd, NULL };
+	char *env[4] = {
+	    "PATH=/bin:/sbin:/usr/bin:/usr/sbin", NULL, NULL, NULL
+	};
+	char **lines = NULL;
+	int lines_cnt = 0;
+	int i;
+
+	if (asprintf(&env[1], "VDEV_PATH=%s",
+	    data->path != NULL ? data->path : "") == -1) {
+		env[1] = NULL;
+		zpool_no_memory();
+	}
+	if (asprintf(&env[2], "VDEV_UPATH=%s",
+	    data->upath != NULL ? data->upath : "") == -1) {
+		env[2] = NULL;
+		zpool_no_memory();
+	}
+
+	if (libzfs_run_process_get_stdout_nopath(cmd, argv, env, &lines,
+	    &lines_cnt) != 0)
+		goto out;
+
+	for (i = 0; i < lines_cnt; i++) {
+		if (vdev_process_cmd_output(data, lines[i]) != 0)
+			break;
+	}
+
+out:
+	libzfs_free_str_array(lines, lines_cnt);
+	free(env[1]);
+	free(env[2]);
+}
+
+char *
+zpool_get_cmd_search_path(void)
+{
+	const char *env;
+	char *sp = NULL;
+
+	if ((env = getenv("ZPOOL_SCRIPTS_PATH")) != NULL) {
+		if ((sp = strdup(env)) == NULL)
+			zpool_no_memory();
+	} else if ((env = getenv("HOME")) != NULL) {
+		if (asprintf(&sp, "%s/.zpool.d:%s", env,
+		    ZPOOL_SCRIPTS_DIR) == -1)
+			zpool_no_memory();
+	} else if (asprintf(&sp, "%s", ZPOOL_SCRIPTS_DIR) == -1) {
+		zpool_no_memory();
+	}
+	return (sp);
+}
+
+static void
+vdev_run_cmds(void *cb_cmd_data)
+{
+	vdev_cmd_data_t *data = cb_cmd_data;
+	char *cmddup, *cmd, *lasts;
+
+	if ((cmddup = strdup(data->cmd)) == NULL)
+		zpool_no_memory();
+
+	for (cmd = strtok_r(cmddup, ",", &lasts); cmd != NULL;
+	    cmd = strtok_r(NULL, ",", &lasts)) {
+		char *sp, *dir, *dirlasts;
+		char fullpath[MAXPATHLEN];
+
+		if (strchr(cmd, '/') != NULL)
+			continue;
+
+		if ((sp = zpool_get_cmd_search_path()) == NULL)
+			continue;
+
+		for (dir = strtok_r(sp, ":", &dirlasts); dir != NULL;
+		    dir = strtok_r(NULL, ":", &dirlasts)) {
+			int len = snprintf(fullpath, sizeof (fullpath), "%s/%s",
+			    dir, cmd);
+
+			if (len < 0 || len >= sizeof (fullpath))
+				continue;
+			if (access(fullpath, X_OK) == 0) {
+				vdev_run_cmd(data, fullpath);
+				break;
+			}
+		}
+		free(sp);
+	}
+	free(cmddup);
+}
+
+static int
+for_each_vdev_run_cb(zpool_handle_t *zhp, nvlist_t *nv, void *cb_vcdl)
+{
+	vdev_cmd_data_list_t *vcdl = cb_vcdl;
+	vdev_cmd_data_t *data, *tmp;
+	char *path;
+	boolean_t match = B_FALSE;
+
+	if (nvlist_lookup_string(nv, ZPOOL_CONFIG_PATH, &path) != 0)
+		return (0);
+
+	for (int i = 0; i < vcdl->count; i++) {
+		if (strcmp(vcdl->data[i].path, path) == 0 &&
+		    strcmp(vcdl->data[i].pool, zpool_get_name(zhp)) == 0)
+			return (0);
+	}
+
+	for (int i = 0; i < vcdl->vdev_names_count; i++) {
+		char *vname = zpool_vdev_name(vcdl->g_zfs, zhp, nv,
+		    vcdl->cb_name_flags);
+
+		if (strcmp(vcdl->vdev_names[i], vname) == 0)
+			match = B_TRUE;
+		free(vname);
+		if (match)
+			break;
+	}
+	if (!match && vcdl->vdev_names_count != 0)
+		return (0);
+
+	tmp = realloc(vcdl->data,
+	    sizeof (*vcdl->data) * (vcdl->count + 1));
+	if (tmp == NULL)
+		zpool_no_memory();
+	vcdl->data = tmp;
+	data = &vcdl->data[vcdl->count];
+	bzero(data, sizeof (*data));
+
+	if ((data->pool = strdup(zpool_get_name(zhp))) == NULL)
+		zpool_no_memory();
+	if ((data->path = strdup(path)) == NULL)
+		zpool_no_memory();
+	data->upath = realpath(path, NULL);
+	data->cmd = vcdl->cmd;
+
+	vcdl->count++;
+	return (0);
+}
+
+static int
+all_pools_for_each_vdev_gather_cb(zpool_handle_t *zhp, void *cb_vcdl)
+{
+	return (for_each_vdev(zhp, for_each_vdev_run_cb, cb_vcdl));
+}
+
+static void
+all_pools_for_each_vdev_run_vcdl(vdev_cmd_data_list_t *vcdl)
+{
+	/*
+	 * Parallel execution is process job control.  A native implementation
+	 * should launch and reap a bounded set of helpers rather than dedicate
+	 * threads to waiting for them.
+	 */
+	for (int i = 0; i < vcdl->count; i++)
+		vdev_run_cmds(&vcdl->data[i]);
+}
+
+vdev_cmd_data_list_t *
+all_pools_for_each_vdev_run(int argc, char **argv, char *cmd,
+    libzfs_handle_t *hdl, char **vdev_names, int vdev_names_count,
+    int cb_name_flags)
+{
+	vdev_cmd_data_list_t *vcdl;
+
+	vcdl = safe_malloc(sizeof (*vcdl));
+	vcdl->cmd = cmd;
+	vcdl->g_zfs = hdl;
+	vcdl->vdev_names = vdev_names;
+	vcdl->vdev_names_count = vdev_names_count;
+	vcdl->cb_name_flags = cb_name_flags;
+
+	(void) for_each_pool(argc, argv, B_TRUE, NULL,
+	    all_pools_for_each_vdev_gather_cb, vcdl);
+	all_pools_for_each_vdev_run_vcdl(vcdl);
+	process_unique_cmd_columns(vcdl);
+
+	return (vcdl);
+}
+
+void
+free_vdev_cmd_data_list(vdev_cmd_data_list_t *vcdl)
+{
+	if (vcdl == NULL)
+		return;
+
+	free(vcdl->uniq_cols);
+	free(vcdl->uniq_cols_width);
+
+	for (int i = 0; i < vcdl->count; i++) {
+		vdev_cmd_data_t *data = &vcdl->data[i];
+
+		free(data->path);
+		free(data->pool);
+		free(data->upath);
+		for (int j = 0; j < data->lines_cnt; j++)
+			free(data->lines[j]);
+		free(data->lines);
+		for (int j = 0; j < data->cols_cnt; j++)
+			free(data->cols[j]);
+		free(data->cols);
+	}
+	free(vcdl->data);
+	free(vcdl);
 }

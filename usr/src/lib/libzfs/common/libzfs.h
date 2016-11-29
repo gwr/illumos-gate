@@ -820,6 +820,18 @@ extern int zfs_deleg_share_nfs(libzfs_handle_t *, char *, char *, char *,
 
 extern int zfs_nicestrtonum(libzfs_handle_t *, const char *, uint64_t *);
 
+#define	STDOUT_VERBOSE	0x01
+#define	STDERR_VERBOSE	0x02
+#define	NO_DEFAULT_PATH	0x04
+
+extern int libzfs_run_process(const char *, char **, int);
+extern int libzfs_run_process_get_stdout(const char *, char **, char **,
+    char ***, int *);
+extern int libzfs_run_process_get_stdout_nopath(const char *, char **, char **,
+    char ***, int *);
+extern void libzfs_free_str_array(char **, int);
+extern boolean_t libzfs_envvar_is_set(const char *);
+
 /*
  * Given a device or file, determine if it is part of a pool.
  */

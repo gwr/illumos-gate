@@ -69,8 +69,13 @@ SYMBOL_VERSION SUNWprivate_1.1 {
 	libzfs_fru_notself;
 	libzfs_fru_refresh;
 	libzfs_init;
+	libzfs_envvar_is_set;
+	libzfs_free_str_array;
 	libzfs_mnttab_cache;
 	libzfs_print_on_error;
+	libzfs_run_process;
+	libzfs_run_process_get_stdout;
+	libzfs_run_process_get_stdout_nopath;
 $if _ELF64
 	spa_feature_table		{
 					  ASSERT = {

@@ -32,6 +32,9 @@
 extern "C" {
 #endif
 
+/* Path to scripts you can run with "zpool status/iostat -c" */
+#define	ZPOOL_SCRIPTS_DIR "/etc/zfs/zpool.d"
+
 /*
  * Basic utility functions
  */
@@ -42,6 +45,8 @@ extern uint64_t array64_max(uint64_t array[], unsigned int len);
 extern int highbit64(uint64_t i);
 extern int lowbit64(uint64_t i);
 extern int isnumber(char *str);
+
+extern char *zpool_get_cmd_search_path(void);
 
 /*
  * Virtual device functions
@@ -62,6 +67,34 @@ extern int for_each_pool(int, char **, boolean_t unavail, zprop_list_t **,
 /* Vdev list functions */
 typedef int (*pool_vdev_iter_f)(zpool_handle_t *, nvlist_t *, void *);
 extern int for_each_vdev(zpool_handle_t *, pool_vdev_iter_f, void *);
+
+typedef struct vdev_cmd_data {
+	char		**lines;
+	int		lines_cnt;
+	char		**cols;
+	int		cols_cnt;
+	char		*path;
+	char		*upath;
+	char		*pool;
+	char		*cmd;
+} vdev_cmd_data_t;
+
+typedef struct vdev_cmd_data_list {
+	char			*cmd;
+	unsigned int		count;
+	libzfs_handle_t		*g_zfs;
+	char			**vdev_names;
+	int			vdev_names_count;
+	int			cb_name_flags;
+	vdev_cmd_data_t		*data;
+	char			**uniq_cols;
+	int			uniq_cols_cnt;
+	int			*uniq_cols_width;
+} vdev_cmd_data_list_t;
+
+extern vdev_cmd_data_list_t *all_pools_for_each_vdev_run(int, char **,
+    char *, libzfs_handle_t *, char **, int, int);
+extern void free_vdev_cmd_data_list(vdev_cmd_data_list_t *);
 
 typedef struct zpool_list zpool_list_t;
 
