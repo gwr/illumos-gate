@@ -758,6 +758,9 @@ spa_add(const char *name, nvlist_t *config, const char *altroot)
 	spa->spa_max_ashift = 0;
 	spa->spa_min_alloc = INT_MAX;
 
+	/* Reset cached value */
+	spa->spa_dedup_dspace = ~0ULL;
+
 	/*
 	 * As a pool is being created, treat all features as disabled by
 	 * setting SPA_FEATURE_DISABLED for all entries in the feature
@@ -1809,7 +1812,14 @@ spa_get_worst_case_asize(spa_t *spa, uint64_t lsize)
 uint64_t
 spa_get_slop_space(spa_t *spa)
 {
-	uint64_t space = spa_get_dspace(spa);
+	if (spa->spa_dedup_dspace == ~0ULL)
+		spa_update_dspace(spa);
+
+	/*
+	 * Deduplicated space is only logically used, so it should not
+	 * increase the physical-space reservation.
+	 */
+	uint64_t space = spa_get_dspace(spa) - spa->spa_dedup_dspace;
 	uint64_t slop = MIN(space >> spa_slop_shift, spa_max_slop);
 
 	return (MAX(slop, MIN(space >> 1, spa_min_slop)));

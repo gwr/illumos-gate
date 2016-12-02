@@ -479,7 +479,7 @@ ddt_get_dedup_histogram(spa_t *spa, ddt_histogram_t *ddh)
 {
 	for (enum zio_checksum c = 0; c < ZIO_CHECKSUM_FUNCTIONS; c++) {
 		ddt_t *ddt = spa->spa_ddt[c];
-		for (enum ddt_type type = 0; type < DDT_TYPES; type++) {
+		for (enum ddt_type type = 0; type < DDT_TYPES && ddt; type++) {
 			for (enum ddt_class class = 0; class < DDT_CLASSES;
 			    class++) {
 				ddt_histogram_add(ddh,
@@ -503,10 +503,17 @@ ddt_get_dedup_stats(spa_t *spa, ddt_stat_t *dds_total)
 uint64_t
 ddt_get_dedup_dspace(spa_t *spa)
 {
-	ddt_stat_t dds_total = { 0 };
+	ddt_stat_t dds_total;
 
+	if (spa->spa_dedup_dspace != ~0ULL)
+		return (spa->spa_dedup_dspace);
+
+	bzero(&dds_total, sizeof (ddt_stat_t));
+
+	/* Calculate and cache the stats */
 	ddt_get_dedup_stats(spa, &dds_total);
-	return (dds_total.dds_ref_dsize - dds_total.dds_dsize);
+	spa->spa_dedup_dspace = dds_total.dds_ref_dsize - dds_total.dds_dsize;
+	return (spa->spa_dedup_dspace);
 }
 
 uint64_t
@@ -866,6 +873,7 @@ ddt_load(spa_t *spa)
 		 */
 		bcopy(ddt->ddt_histogram, &ddt->ddt_histogram_cache,
 		    sizeof (ddt->ddt_histogram));
+		spa->spa_dedup_dspace = ~0ULL;
 	}
 
 	return (0);
@@ -1116,6 +1124,7 @@ ddt_sync_table(ddt_t *ddt, dmu_tx_t *tx, uint64_t txg)
 
 	bcopy(ddt->ddt_histogram, &ddt->ddt_histogram_cache,
 	    sizeof (ddt->ddt_histogram));
+	spa->spa_dedup_dspace = ~0ULL;
 }
 
 void
