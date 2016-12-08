@@ -34,7 +34,6 @@
 #include <unistd.h>
 #include <user_attr.h>
 #include <auth_attr.h>
-#include <userdefs.h>
 #include <deflt.h>
 #include <sys/stat.h>
 #include <sys/param.h>

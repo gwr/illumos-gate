@@ -33,7 +33,6 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <stdio.h>
-#include <userdefs.h>
 #include <grp.h>
 #include <libcmdutils.h>
 

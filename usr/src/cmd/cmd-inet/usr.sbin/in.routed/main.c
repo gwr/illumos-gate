@@ -43,7 +43,6 @@
 #include <signal.h>
 #include <fcntl.h>
 #include <sys/file.h>
-#include <userdefs.h>
 #include <sys/stat.h>
 
 #define	IN_ROUTED_VERSION	"2.22"
