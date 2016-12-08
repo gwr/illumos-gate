@@ -168,6 +168,7 @@ SUBDIRS +=				\
 	libnls		\
 	libnsctl	\
 	libnwam		\
+	liboamcmd	\
 	libpam		\
 	libpcidb	\
 	libpctx		\
@@ -627,6 +628,7 @@ libmapid:	libresolv2 libscf
 libndmp:	libscf
 libnisdb:	libldap5
 libnwam:	libscf libbsm libdladm
+liboamcmd:	libproject
 libpcp:		libumem libdevinfo
 libpctx:	libproc
 libpkg:		libwanboot libscf libadm

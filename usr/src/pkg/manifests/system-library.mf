@@ -287,6 +287,7 @@ file path=lib/libmp.so.2
 file path=lib/libnsl.so.1
 file path=lib/libnvpair.so.1
 file path=lib/libnwam.so.1
+file path=lib/liboamcmd.so.1
 file path=lib/libpam.so.1
 file path=lib/libproc.so.1
 file path=lib/libpthread.so.1

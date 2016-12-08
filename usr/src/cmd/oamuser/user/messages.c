@@ -21,6 +21,7 @@
 /*	Copyright (c) 1984, 1986, 1987, 1988, 1989 AT&T	*/
 /*	  All Rights Reserved  	*/
 
+#include "errmsg.h"
 
 /*
  * Copyright (c) 2013 Gary Mills
@@ -106,3 +107,11 @@ char *errmsgs[] = {
 };
 
 int lasterrmsg = sizeof (errmsgs) / sizeof (char *);
+
+#pragma init(user_errmsg_init)
+int
+user_errmsg_init(void)
+{
+	errmsg_init(errmsgs, lasterrmsg);
+	return (0);
+}

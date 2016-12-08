@@ -36,9 +36,16 @@
 #include	<stdarg.h>
 #include	"users.h"
 
-extern	char	*errmsgs[];
-extern	int	lasterrmsg;
-extern	char	*cmdname;
+static char	**errmsgs;
+static int	lasterrmsg;
+extern const char *__progname;
+
+void
+errmsg_init(char **msgv, int nmsg)
+{
+	errmsgs = msgv;
+	lasterrmsg = nmsg;
+}
 
 /*
  *	synopsis: errmsg(msgid, (arg1, ..., argN))
@@ -52,7 +59,7 @@ errmsg(int msgid, ...)
 	va_start(args, msgid);
 
 	if (msgid >= 0 && msgid < lasterrmsg) {
-		(void) fprintf(stderr, "UX: %s: ", cmdname);
+		(void) fprintf(stderr, "UX: %s: ", __progname);
 		(void) vfprintf(stderr, errmsgs[ msgid ], args);
 	}
 
@@ -63,36 +70,36 @@ void
 warningmsg(int what, char *name)
 {
 	if ((what & WARN_NAME_TOO_LONG) != 0) {
-		(void) fprintf(stderr, "UX: %s: ", cmdname);
+		(void) fprintf(stderr, "UX: %s: ", __progname);
 		(void) fprintf(stderr, "%s name too long.\n", name);
 	}
 	if ((what & WARN_BAD_GROUP_NAME) != 0) {
-		(void) fprintf(stderr, "UX: %s: ", cmdname);
+		(void) fprintf(stderr, "UX: %s: ", __progname);
 		(void) fprintf(stderr, "%s name should be all lower case"
 			" or numeric.\n", name);
 	}
 	if ((what & WARN_BAD_PROJ_NAME) != 0) {
-		(void) fprintf(stderr, "UX: %s: ", cmdname);
+		(void) fprintf(stderr, "UX: %s: ", __progname);
 		(void) fprintf(stderr, "%s name should be all lower case"
 			" or numeric.\n", name);
 	}
 	if ((what & WARN_BAD_LOGNAME_CHAR) != 0) {
-		(void) fprintf(stderr, "UX: %s: ", cmdname);
+		(void) fprintf(stderr, "UX: %s: ", __progname);
 		(void) fprintf(stderr, "%s name should be all alphanumeric,"
 			" '-', '_', or '.'\n", name);
 	}
 	if ((what & WARN_BAD_LOGNAME_FIRST) != 0) {
-		(void) fprintf(stderr, "UX: %s: ", cmdname);
+		(void) fprintf(stderr, "UX: %s: ", __progname);
 		(void) fprintf(stderr, "%s name first character"
 			" should be alphabetic.\n", name);
 	}
 	if ((what & WARN_NO_LOWERCHAR) != 0) {
-		(void) fprintf(stderr, "UX: %s: ", cmdname);
+		(void) fprintf(stderr, "UX: %s: ", __progname);
 		(void) fprintf(stderr, "%s name should have at least one "
 			"lower case character.\n", name);
 	}
 	if ((what & WARN_LOGGED_IN) != 0) {
-		(void) fprintf(stderr, "UX: %s: ", cmdname);
+		(void) fprintf(stderr, "UX: %s: ", __progname);
 		(void) fprintf(stderr, "%s is currently logged in, some changes"
 			" may not take effect until next login.\n", name);
 	}

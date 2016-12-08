@@ -81,27 +81,28 @@ typedef struct parsent {
 	const char *uakey;	/* user_attr key, if defined */
 } parsent_t;
 
-static const parsent_t tab[] = {
-	{ GIDSTR,	sizeof (GIDSTR) - 1,	INT,	DEFOFF(defgroup) },
-	{ GNAMSTR,	sizeof (GNAMSTR) - 1,	STR,	DEFOFF(defgname) },
-	{ PARSTR,	sizeof (PARSTR) - 1,	STR,	DEFOFF(defparent) },
-	{ SKLSTR,	sizeof (SKLSTR) - 1,	STR,	DEFOFF(defskel) },
-	{ SHELLSTR,	sizeof (SHELLSTR) - 1,	STR,	DEFOFF(defshell) },
-	{ INACTSTR,	sizeof (INACTSTR) - 1,	INT,	DEFOFF(definact) },
-	{ EXPIRESTR,	sizeof (EXPIRESTR) - 1,	STR,	DEFOFF(defexpire) },
-	{ AUTHSTR,	sizeof (AUTHSTR) - 1,	STR,	DEFOFF(defauth),
+static const parsent_t tab[] = {						/* defaults */
+	{ RIDSTR,	sizeof (RIDSTR) - 1,	INT,	DEFOFF(defrid) },	/* DEFRID */
+	{ GIDSTR,	sizeof (GIDSTR) - 1,	INT,	DEFOFF(defgroup) },	/* DEFGROUP */
+	{ GNAMSTR,	sizeof (GNAMSTR) - 1,	STR,	DEFOFF(defgname) },	/* DEFGNAME */
+	{ PARSTR,	sizeof (PARSTR) - 1,	STR,	DEFOFF(defparent) },	/* DEFPARENT */
+	{ SKLSTR,	sizeof (SKLSTR) - 1,	STR,	DEFOFF(defskel) },	/* DEFSKL */
+	{ SHELLSTR,	sizeof (SHELLSTR) - 1,	STR,	DEFOFF(defshell) },	/* DEFSHL, DEFROLESHL */
+	{ INACTSTR,	sizeof (INACTSTR) - 1,	INT,	DEFOFF(definact) },	/* DEFINACT */
+	{ EXPIRESTR,	sizeof (EXPIRESTR) - 1,	STR,	DEFOFF(defexpire) },	/* DEFEXPIRE */
+	{ AUTHSTR,	sizeof (AUTHSTR) - 1,	STR,	DEFOFF(defauth),	/* DEFAUTH */
 		USERATTR_AUTHS_KW },
-	{ ROLESTR,	sizeof (ROLESTR) - 1,	STR,	DEFOFF(defrole),
-		USERATTR_ROLES_KW },
-	{ PROFSTR,	sizeof (PROFSTR) - 1,	STR,	DEFOFF(defprof),
+	{ PROFSTR,	sizeof (PROFSTR) - 1,	STR,	DEFOFF(defprof),	/* DEFPROF, DEFROLEPROF */
 		USERATTR_PROFILES_KW },
-	{ PROJSTR,	sizeof (PROJSTR) - 1,	PROJID,	DEFOFF(defproj) },
-	{ PROJNMSTR,	sizeof (PROJNMSTR) - 1,	STR,	DEFOFF(defprojname) },
-	{ LIMPRSTR,	sizeof (LIMPRSTR) - 1,	STR,	DEFOFF(deflimpriv),
+	{ ROLESTR,	sizeof (ROLESTR) - 1,	STR,	DEFOFF(defrole),	/* DEFROLE */
+		USERATTR_ROLES_KW },
+	{ PROJSTR,	sizeof (PROJSTR) - 1,	PROJID,	DEFOFF(defproj) },	/* DEFPROJ */
+	{ PROJNMSTR,	sizeof (PROJNMSTR) - 1,	STR,	DEFOFF(defprojname) },	/* DEFPROJNAME */
+	{ LIMPRSTR,	sizeof (LIMPRSTR) - 1,	STR,	DEFOFF(deflimpriv),	/* DEFLIMPRIV */
 		USERATTR_LIMPRIV_KW },
-	{ DFLTPRSTR,	sizeof (DFLTPRSTR) - 1,	STR,	DEFOFF(defdfltpriv),
+	{ DFLTPRSTR,	sizeof (DFLTPRSTR) - 1,	STR,	DEFOFF(defdfltpriv),	/* DEFDFLTPRIV */
 		USERATTR_DFLTPRIV_KW },
-	{ LOCK_AFTER_RETRIESSTR,	sizeof (LOCK_AFTER_RETRIESSTR) - 1,
+	{ LOCK_AFTER_RETRIESSTR,	sizeof (LOCK_AFTER_RETRIESSTR) - 1,	/* DEFLOCK_AFTER_RETRIES */
 		STR,	DEFOFF(deflock_after_retries),
 		USERATTR_LOCK_AFTER_RETRIES_KW },
 };

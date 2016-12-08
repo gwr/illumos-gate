@@ -19,31 +19,49 @@
 # CDDL HEADER END
 #
 #
-# Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
+# Copyright 2006 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
 #
 
-PROG= passwd
-DEFAULTFILES= passwd.dfl
+include ../Makefile.lib
 
-include ../Makefile.cmd
+SUBDIRS = $(MACH)
+# Not bothering with 64-bit libs for this.
+# $(BUILD64)SUBDIRS += $(MACH64)
 
-passwd := LDLIBS += $(ROOT)/usr/lib/passwdutil.so.1 
-lint := LDLIBS += -lpasswdutil
-LDFLAGS += $(ZIGNORE)
-LDLIBS += -loamcmd -lbsm -lpam -lnsl
+DATEFILE= 	ugdates
+DATEFILESRC= 	ugdates.dat
+TXT= 		$(DATEFILESRC)
 
-FILEMODE = 06555
-XGETFLAGS += -a -x $(PROG).xcl
+ROOTUSRSADM=	$(ROOT)/usr/sadm
+ROOTUSRSADMFILE=$(DATEFILE:%=$(ROOTUSRSADM)/%)
+
+all :=		TARGET= all
+clean :=	TARGET= clean
+clobber :=	TARGET= clobber
+install :=	TARGET= install
+lint :=		TARGET= lint
 
 .KEEP_STATE:
 
-all: $(PROG)
+all clean clobber lint: $(SUBDIRS)
+install: install_local  $(SUBDIRS)
 
-install: all $(ROOTPROG) $(ROOTETCDEFAULTFILES)
+install_local: $(ROOTUSRSADMFILE)
 
-clean:
+install_h:
 
-lint:	lint_PROG
+check:
+
+$(SUBDIRS): FRC
+	@cd $@; pwd; $(MAKE) $(TARGET)
+
+$(ROOTUSRSADM)/%: %
+	$(INS.file)
+
+$(DATEFILE):	$(DATEFILESRC)
+	$(GREP) -v "^#ident" $(DATEFILESRC) > $(DATEFILE)
+
+FRC:
 
 include ../Makefile.targ

@@ -26,8 +26,7 @@
 /*	Copyright (c) 1984, 1986, 1987, 1988, 1989 AT&T	*/
 /*	  All Rights Reserved  	*/
 
-
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
+#include "errmsg.h"
 
 char *errmsgs[] = {
 	"WARNING: gid %ld is reserved.\n",
@@ -45,3 +44,11 @@ char *errmsgs[] = {
 };
 
 int lasterrmsg = sizeof (errmsgs) / sizeof (char *);
+
+#pragma init(group_errmsg_init)
+int
+group_errmsg_init(void)
+{
+	errmsg_init(errmsgs, lasterrmsg);
+	return (0);
+}

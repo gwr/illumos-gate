@@ -30,8 +30,6 @@ DEFAULTFILES= useradd.dfl
 
 include ../../Makefile.cmd
 
-GREP=		grep
-
 USERADD= 	useradd
 USERDEL= 	userdel
 USERMOD= 	usermod
@@ -44,7 +42,6 @@ SBINPROG=	$(USERADD)   $(USERDEL)   $(USERMOD)
 #	Removing sysadm: deleted $(SYSADMPROG) from this target.
 #
 PROG=		$(SBINPROG)
-PRODUCT=	$(PROG)
 
 ADD_OBJ=	useradd.o     homedir.o        groups.o     call_pass.o \
 		userdefs.o    messages.o       val_lgrp.o   funcs.o \
@@ -62,10 +59,9 @@ OBJECTS=	$(ADD_OBJ)     $(DEL_OBJ)    $(MOD_OBJ)
 
 SRCS=		$(OBJECTS:.o=.c)
 
-LIBDIR=		../lib
-LIBUSRGRP=	$(LIBDIR)/lib.a
+LIBDIR=		../../../lib/liboamcmd/common
+LIBUSRGRP=	-loamcmd
 LIBADM=		-ladm
-LOCAL=		../inc
 HERE=		.
 LINTFLAGS=	-u
 
@@ -73,7 +69,7 @@ ROOTSKEL=	$(ROOTETC)/skel
 INSSBINPROG=	$(SBINPROG:%=$(ROOTUSRSBIN)/%)
 INSSKELFILE=	$(SKELFILE:%=$(ROOTSKEL)/%)
 
-CPPFLAGS=	-I$(HERE) -I$(LOCAL) $(CPPFLAGS.master)
+CPPFLAGS=	-I$(HERE) -I$(LIBDIR) $(CPPFLAGS.master)
 CERRWARN +=	-_gcc=-Wno-implicit-function-declaration
 
 $(INSSBINPROG)  := FILEMODE = 0555
@@ -81,23 +77,22 @@ $(INSSYSADMPROG):= FILEMODE = 0500
 $(INSSKELFILE)  := FILEMODE = 0644
 
 $(USERADD) :=	OBJS = $(ADD_OBJ)
-$(USERADD) :=	LIBS = $(LIBUSRGRP)
-$(USERADD) :=	LDLIBS += -lcmdutils
+$(USERADD) :=	LDLIBS += $(LIBUSRGRP) -lcmdutils
 
 $(USERDEL) :=	OBJS = $(DEL_OBJ)
-$(USERDEL) :=	LIBS = $(LIBUSRGRP)
+$(USERDEL) :=	LDLIBS += $(LIBUSRGRP)
 
 $(USERMOD) :=	OBJS = $(MOD_OBJ)
-$(USERMOD) :=	LIBS = $(LIBUSRGRP)
+$(USERMOD) :=	LDLIBS += $(LIBUSRGRP)
 
 LDLIBS +=	-lbsm -lnsl -lsecdb -lproject -lzfs -ltsol
 
 .PARALLEL: $(OBJECTS)
 
-all:	$(PRODUCT)
+all:		$(PROG)
 
-$(PROG):	$$(OBJS) $$(LIBS)
-	$(LINK.c) $(OBJS) -o $@ $(LIBS) $(LDLIBS)
+$(PROG):	$$(OBJS)
+	$(LINK.c) $(OBJS) -o $@ $(LDLIBS)
 	$(POST_PROCESS)
 
 $(USERADD):	$(ADD_OBJ)

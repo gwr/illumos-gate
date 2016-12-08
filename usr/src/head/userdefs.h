@@ -44,26 +44,14 @@ extern "C" {
  * use is not encouraged.
  */
 
-/* User/group default values */
-#define	DEFGID		99	/* max reserved group id */
-#define	DEFRID		99
-#define	DEFPROJ		3
-#define	DEFPROJNAME	"default"
-#define	DEFGROUP	1
-#define	DEFGNAME	"other"
-#define	DEFPARENT	"/home"
-#define	DEFSKL		"/etc/skel"
-#define	DEFSHL		"/bin/sh"
-#define	DEFROLESHL	"/bin/pfsh"
-#define	DEFINACT	0
-#define	DEFEXPIRE	""
-#define	DEFAUTH		""
-#define	DEFPROF		""
-#define	DEFROLEPROF	"All"
-#define	DEFROLE		""
-#define	DEFLIMPRIV	""
-#define	DEFDFLTPRIV	""
-#define	DEFLOCK_AFTER_RETRIES	""
+/* Defaults file */
+#define	DEFFILE		"/usr/sadm/defadduser"
+#define	DEFROLEFILE	"/usr/sadm/defaddrole"
+#define	GROUP		"/etc/group"
+
+/* various limits */
+#define	MAXGLEN		9	/* max length of group name */
+#define	MAXDLEN		80	/* max length of a date string */
 
 /* Defaults file keywords */
 #define	RIDSTR		"defrid="
@@ -85,14 +73,57 @@ extern "C" {
 #define	FHEADER_ROLE	"#	Default values for roleadd.  Changed "
 #define	LOCK_AFTER_RETRIESSTR	"deflock_after_retries="
 
-/* Defaults file */
-#define	DEFFILE		"/usr/sadm/defadduser"
-#define	DEFROLEFILE	"/usr/sadm/defaddrole"
-#define	GROUP		"/etc/group"
+extern const char *_userdefs_str(const char *);
+extern int _userdefs_int(const char *);
 
-/* various limits */
-#define	MAXGLEN		9	/* max length of group name */
-#define	MAXDLEN		80	/* max length of a date string */
+/*
+ * User/group default values
+ * These are constants _only_ when compiling liboamcmd
+ */
+#ifdef _USERDEFS_INTERNAL
+#define	DEFRID		99	/* max reserved group id */
+#define	DEFGROUP	1
+#define	DEFGNAME	"other"
+#define	DEFPARENT	"/home"
+#define	DEFSKL		"/etc/skel"
+#define	DEFSHL		"/bin/sh"
+#define	DEFROLESHL	"/bin/pfsh"
+#define	DEFINACT	0
+#define	DEFEXPIRE	""
+#define	DEFAUTH		""
+#define	DEFPROF		""
+#define	DEFROLEPROF	"All"
+#define	DEFROLE		""
+#define	DEFPROJ		3
+#define	DEFPROJNAME	"default"
+#define	DEFLIMPRIV	""
+#define	DEFDFLTPRIV	""
+#define	DEFLOCK_AFTER_RETRIES	""
+#else	/* _USERDEFS_INTERNAL */
+/* Get these from liboamcmd */
+#define	DEFRID		_userdefs_int(RIDSTR)
+#define	DEFGROUP	_userdefs_int(GIDSTR)
+#define	DEFGNAME	_userdefs_str(GNAMSTR)
+#define	DEFPARENT	_userdefs_str(PARSTR)
+#define	DEFSKL		_userdefs_str(SKLSTR)
+#define	DEFSHL		_userdefs_str(SHELLSTR)
+#define	DEFROLESHL	_userdefs_str("ROLESHL")
+#define	DEFINACT	_userdefs_int(INACTSTR)
+#define	DEFEXPIRE	_userdefs_str(EXPIRESTR)
+#define	DEFAUTH		_userdefs_str(AUTHSTR)
+#define	DEFPROF		_userdefs_str(PROFSTR)
+#define	DEFROLEPROF	_userdefs_str("ROLEPROF")
+#define	DEFROLE		_userdefs_str(ROLESTR)
+#define	DEFPROJ		_userdefs_int(PROJSTR)
+#define	DEFPROJNAME	_userdefs_str(PROJNMSTR)
+#define	DEFLIMPRIV	_userdefs_str(LIMPRSTR)
+#define	DEFDFLTPRIV	_userdefs_str(DFLTPRSTR)
+#define	DEFLOCK_AFTER_RETRIES	_userdefs_str(LOCK_AFTER_RETRIESSTR)
+#endif	/* _USERDEFS_INTERNAL */
+
+/* DEFGID is an alias for DEFRID.  Misleading... Not DEFGROUP? */
+#define	DEFGID		DEFRID		/* XXX delete this? */
+
 
 /* defaults structure */
 struct userdefs {

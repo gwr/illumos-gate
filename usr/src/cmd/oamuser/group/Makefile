@@ -43,15 +43,14 @@ MOD_OBJ=	groupmod.o    mod_group.o   messages.o
 OBJECTS=	$(ADD_OBJ)    $(DEL_OBJ)    $(MOD_OBJ)
 SRCS=		$(OBJECTS:.o=.c)
 
-LIBDIR=		../lib
-LIBUSRGRP=	$(LIBDIR)/lib.a
-LOCAL=		../inc
+LIBDIR=		../../../lib/liboamcmd/common
+LIBUSRGRP=	-loamcmd
 HERE=		.
 LINTFLAGS=	-u
 
 INSSBINPROG=	$(SBINPROG:%=$(ROOTUSRSBIN)/%)
 
-CPPFLAGS=	-I$(HERE) -I$(LOCAL) $(CPPFLAGS.master)
+CPPFLAGS=	-I$(HERE) -I$(LIBDIR) $(CPPFLAGS.master)
 FILEMODE= 	0555
 
 $(GROUPADD) :=	OBJS = $(ADD_OBJ)
@@ -63,9 +62,9 @@ $(GROUPDEL) :=	LDLIBS += $(LIBUSRGRP)
 $(GROUPMOD) :=	OBJS = $(MOD_OBJ)
 $(GROUPMOD) :=	LDLIBS += $(LIBUSRGRP)
 
-all: 		$(PROG)
+all:		$(PROG)
 
-$(PROG):	$$(OBJS) $(LIBUSRGRP)
+$(PROG):	$$(OBJS)
 	$(LINK.c) $(OBJS) -o $@ $(LDLIBS)
 	$(POST_PROCESS)
 

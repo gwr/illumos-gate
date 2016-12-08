@@ -20,25 +20,10 @@
 # CDDL HEADER END
 #
 #
-# Copyright 1990-2002 Sun Microsystems, Inc.  All rights reserved.
+# Copyright 2003 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
 #
 
-include ../Makefile.cmd
+include ../Makefile.com
 
-SUBDIRS= group user
-
-all:=		TARGET= all
-install:=	TARGET= install
-clean:=		TARGET= clean
-clobber:=	TARGET= clobber
-lint:=		TARGET= lint
-
-.KEEP_STATE:
-
-all install clean clobber lint: $(SUBDIRS)
-
-$(SUBDIRS): FRC
-	@cd $@; pwd; $(MAKE) $(TARGET)
-
-FRC:
+install: all $(ROOTLIBS) $(ROOTLINKS) $(ROOTLINT)

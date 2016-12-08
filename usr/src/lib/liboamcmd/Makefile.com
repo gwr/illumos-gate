@@ -23,13 +23,11 @@
 # Use is subject to license terms.
 #
 
-LIBRARY= 	lib.a
-
-DATEFILE= 	ugdates
-DATEFILESRC= 	ugdates.dat
-TXT= 		$(DATEFILESRC)
+LIBRARY= 	liboamcmd.a
+VERS=		.1
 
 OBJECTS= 	putgrent.o \
+		defaults.o \
 		errmsg.o \
 		file.o \
 		vgid.o \
@@ -45,51 +43,44 @@ OBJECTS= 	putgrent.o \
 		vprojname.o
 
 # include library definitions
-include ../../Makefile.cmd
-include ../../../lib/Makefile.lib
+include ../../Makefile.lib
 
-SRCDIR =	.
+SRCDIR =	../common
 
-GREP= 		grep
-FILEMODE=	$(LIBFILEMODE)
+LIBS=		$(DYNLIB) $(LINTLIB)
 
-PRODUCT=	$(LIBRARY) $(DATEFILE)
+LINTOUT =	lint.out
 
-# Must retain `lib', since default expands to nothing
-LLINTLIB=	llib-l$(LIBRARY:lib%.a=lib).ln
+LINTSRC =	$(LINTLIB:%.ln=%)
+ROOTLINTDIR =	$(ROOTLIBDIR)
+ROOTLINT =	$(LINTSRC:%=$(ROOTLINTDIR)/%)
 
 CLEANFILES=	$(LLINTLIB)
 CLOBBERFILES=	$(DATEFILE)
 
-GENERAL=	../inc
-CPPFLAGS=	-I. -I$(GENERAL) $(CPPFLAGS.master)
+CPPFLAGS=	-I. -I$(SRCDIR) $(CPPFLAGS.master)
+CPPFLAGS +=	-D_USERDEFS_INTERNAL
 CERRWARN +=	-_gcc=-Wno-parentheses
 CERRWARN +=	-_gcc=-Wno-type-limits
 CERRWARN +=	-_gcc=-Wno-unused-variable
+LDLIBS +=	-lproject -lc
+
 ARFLAGS=	cr
 AROBJS=		`$(LORDER) $(OBJS) | $(TSORT)`
 LINTFLAGS=	-u
 
-ROOTUSRSADM=	$(ROOT)/usr/sadm
-ROOTUSRSADMFILE=$(DATEFILE:%=$(ROOTUSRSADM)/%)
+$(LINTLIB) :=	SRCS = ../common/llib-loamcmd
 
-CLOBBERFILES += $(LIBRARY)
+# CLOBBERFILES += $(LIBRARY)
 
 .KEEP_STATE:
 
-all:		$(PRODUCT) $(TXT)
+all:		$(LIBS)
 
-$(DATEFILE):	$(DATEFILESRC)
-	$(GREP) -v "^#ident" $(DATEFILESRC) > $(DATEFILE)
-
-install:	all $(DATEFILE) $(ROOTUSRSADMFILE)
-
-$(ROOTUSRSADM)/%: %
-	$(INS.file)
-
-lint:		$(LLINTLIB)
+lint:		lintcheck
 
 $(LLINTLIB):	$(SRCS)
 	$(LINT.c) -o $(LIBRARY:lib%.a=lib) $(SRCS) > $(LINTOUT) 2>&1
 
-include ../../../lib/Makefile.targ
+# include library targets
+include ../../Makefile.targ
