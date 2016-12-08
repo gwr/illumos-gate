@@ -28,7 +28,10 @@ dir path=opt/util-tests/tests/dis
 dir path=opt/util-tests/tests/dis/i386
 dir path=opt/util-tests/tests/dis/sparc
 dir path=opt/util-tests/tests/libnvpair_json
+dir path=opt/util-tests/tests/libuserdefs
 file path=opt/util-tests/README mode=0444
+file path=opt/util-tests/bin/oamu_defs mode=0555
+file path=opt/util-tests/bin/oamu_uakey mode=0555
 file path=opt/util-tests/bin/print_json mode=0555
 file path=opt/util-tests/bin/utiltest mode=0555
 file path=opt/util-tests/runfiles/default.run mode=0444
@@ -154,6 +157,9 @@ file path=opt/util-tests/tests/libnvpair_json/json_05_strings mode=0555
 file path=opt/util-tests/tests/libnvpair_json/json_06_nested mode=0555
 file path=opt/util-tests/tests/libnvpair_json/json_07_nested_arrays mode=0555
 file path=opt/util-tests/tests/libnvpair_json/json_common mode=0555
+file path=opt/util-tests/tests/libuserdefs/oamu_01 mode=0555
+file path=opt/util-tests/tests/libuserdefs/oamu_02 mode=0555
+file path=opt/util-tests/tests/libuserdefs/oamu_03 mode=0555
 file path=opt/util-tests/tests/printf_test mode=0555
 file path=opt/util-tests/tests/xargs_test mode=0555
 license lic_CDDL license=lic_CDDL

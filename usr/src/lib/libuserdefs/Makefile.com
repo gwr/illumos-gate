@@ -23,27 +23,36 @@
 # Use is subject to license terms.
 #
 
-PROG= passwd
-DEFAULTFILES= passwd.dfl
+LIBRARY= 	libuserdefs.a
+VERS=		.1
 
-include ../Makefile.cmd
+OBJECTS= 	defaults.o
 
-passwd := LDLIBS += $(ROOT)/usr/lib/passwdutil.so.1 
-lint := LDLIBS += -lpasswdutil
-LDFLAGS += $(ZIGNORE)
-LDLIBS += -luserdefs -lbsm -lpam -lnsl
+include ../../Makefile.lib
 
-FILEMODE = 06555
-XGETFLAGS += -a -x $(PROG).xcl
+LIBS=		$(DYNLIB) $(LINTLIB)
+
+SRCDIR=		../common
+
+LINTOUT =	lint.out
+
+LINTSRC =	$(LINTLIB:%.ln=%)
+ROOTLINTDIR =	$(ROOTLIBDIR)
+ROOTLINT =	$(LINTSRC:%=$(ROOTLINTDIR)/%)
+
+CPPFLAGS=	-I. -I$(SRCDIR) $(CPPFLAGS.master)
+LDLIBS +=	-lc
+
+LINTFLAGS=	-u
+LINTFLAGS +=	-erroff=E_BAD_PTR_CAST_ALIGN
+LINTFLAGS64 +=	-erroff=E_BAD_PTR_CAST_ALIGN
+
+$(LINTLIB) :=	SRCS= $(SRCDIR)/$(LINTSRC)
 
 .KEEP_STATE:
 
-all: $(PROG)
+all:		$(LIBS)
 
-install: all $(ROOTPROG) $(ROOTETCDEFAULTFILES)
+lint:		lintcheck
 
-clean:
-
-lint:	lint_PROG
-
-include ../Makefile.targ
+include ../../Makefile.targ

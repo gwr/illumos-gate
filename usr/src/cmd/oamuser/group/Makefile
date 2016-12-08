@@ -55,13 +55,13 @@ CPPFLAGS=	-I$(HERE) -I$(LOCAL) $(CPPFLAGS.master)
 FILEMODE= 	0555
 
 $(GROUPADD) :=	OBJS = $(ADD_OBJ)
-$(GROUPADD) :=	LDLIBS += $(LIBUSRGRP) -lcmdutils
+$(GROUPADD) :=	LDLIBS += $(LIBUSRGRP) -luserdefs -lcmdutils
 
 $(GROUPDEL) :=	OBJS = $(DEL_OBJ)
 $(GROUPDEL) :=	LDLIBS += $(LIBUSRGRP)
 
 $(GROUPMOD) :=	OBJS = $(MOD_OBJ)
-$(GROUPMOD) :=	LDLIBS += $(LIBUSRGRP)
+$(GROUPMOD) :=	LDLIBS += $(LIBUSRGRP) -luserdefs
 
 all: 		$(PROG)
 

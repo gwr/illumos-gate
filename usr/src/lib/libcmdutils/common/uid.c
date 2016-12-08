@@ -34,7 +34,6 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <stdio.h>
-#include <userdefs.h>
 #include <pwd.h>
 #include <libcmdutils.h>
 

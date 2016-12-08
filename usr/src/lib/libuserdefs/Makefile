@@ -19,31 +19,33 @@
 # CDDL HEADER END
 #
 #
-# Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
+# Copyright 2006 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
 #
 
-PROG= passwd
-DEFAULTFILES= passwd.dfl
+include ../Makefile.lib
 
-include ../Makefile.cmd
+SUBDIRS = $(MACH)
+# Not bothering with 64-bit libs for this.
+# $(BUILD64)SUBDIRS += $(MACH64)
 
-passwd := LDLIBS += $(ROOT)/usr/lib/passwdutil.so.1 
-lint := LDLIBS += -lpasswdutil
-LDFLAGS += $(ZIGNORE)
-LDLIBS += -luserdefs -lbsm -lpam -lnsl
-
-FILEMODE = 06555
-XGETFLAGS += -a -x $(PROG).xcl
+all :=		TARGET= all
+clean :=	TARGET= clean
+clobber :=	TARGET= clobber
+install :=	TARGET= install
+lint :=		TARGET= lint
 
 .KEEP_STATE:
 
-all: $(PROG)
+all install clean clobber lint: $(SUBDIRS)
 
-install: all $(ROOTPROG) $(ROOTETCDEFAULTFILES)
+install_h:
 
-clean:
+check:
 
-lint:	lint_PROG
+$(SUBDIRS): FRC
+	@cd $@; pwd; $(MAKE) $(TARGET)
+
+FRC:
 
 include ../Makefile.targ
