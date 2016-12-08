@@ -20,44 +20,12 @@
  * CDDL HEADER END
  */
 /*
- * Copyright 1999,2002-2003 Sun Microsystems, Inc.  All rights reserved.
+ * Copyright 2004 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
-#ifndef	_FUNCS_H
-#define	_FUNCS_H
+/* LINTLIBRARY */
+/* PROTOLIB1 */
 
-#ifdef	__cplusplus
-extern "C" {
-#endif
-
-#define	CMD_PREFIX_USER	"user"
-
-#define	AUTH_SEP	","
-#define	PROF_SEP	","
-#define	ROLE_SEP	","
-
-#define	MAX_TYPE_LENGTH	64
-
-char *getusertype(char *cmdname);
-
-int is_role(char *usertype);
-
-struct userdefs;
-void import_def(struct userdefs *ud);
-void update_def(struct userdefs *ud);
-void change_key(const char *, char *);
-void addkey_args(char **, int *);
-char *getsetdefval(const char *, char *);
-
-extern int nkeys;
-
-/* create_home() or rm_files() flags */
-#define	MANAGE_ZFS_OPT	"MANAGE_ZFS="
-#define	MANAGE_ZFS	1
-
-#ifdef	__cplusplus
-}
-#endif
-
-#endif	/* _FUNCS_H */
+#include <sys/types.h>
+#include <userdefs.h>

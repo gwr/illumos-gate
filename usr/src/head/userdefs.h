@@ -20,6 +20,8 @@
  * CDDL HEADER END
  */
 /*
+ * Copyright 2016 Gordon W. Ross
+ *
  * Copyright 2004 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
@@ -31,9 +33,8 @@
 #ifndef	_USERDEFS_H
 #define	_USERDEFS_H
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"	/* SVr4.0 1.7.1.1 */
-
 #include <project.h>
+#include <stdio_tag.h>
 
 #ifdef	__cplusplus
 extern "C" {
@@ -42,28 +43,31 @@ extern "C" {
 /*
  * The definitions in this file are local to the OA&M subsystem.  General
  * use is not encouraged.
+ *
+ * Default values are taken from (in precedence order)
+ *	/etc/default/add{user,role}
+ *	/usr/sadm/defadd{user,role}
+ *	(compiled-in values)
+ *
+ * Note that the "old" default locations may be used as a
+ * "vendor" (or distro.) override of the compiled-in defaults.
+ * If an administrator runs "useradd -D ...", those values are
+ * stored in /etc/default/add*,  which overrides all others.
  */
 
-/* User/group default values */
-#define	DEFGID		99	/* max reserved group id */
-#define	DEFRID		99
-#define	DEFPROJ		3
-#define	DEFPROJNAME	"default"
-#define	DEFGROUP	1
-#define	DEFGNAME	"other"
-#define	DEFPARENT	"/home"
-#define	DEFSKL		"/etc/skel"
-#define	DEFSHL		"/bin/sh"
-#define	DEFROLESHL	"/bin/pfsh"
-#define	DEFINACT	0
-#define	DEFEXPIRE	""
-#define	DEFAUTH		""
-#define	DEFPROF		""
-#define	DEFROLEPROF	"All"
-#define	DEFROLE		""
-#define	DEFLIMPRIV	""
-#define	DEFDFLTPRIV	""
-#define	DEFLOCK_AFTER_RETRIES	""
+/* Defaults files */
+#define	DEFFILE		"/etc/default/adduser"
+#define	DEFROLEFILE	"/etc/default/addrole"
+
+/* Old defaults files */
+#define	ODEFFILE	"/usr/sadm/defadduser"
+#define	ODEFROLEFILE	"/usr/sadm/defaddrole"
+
+#define	GROUP		"/etc/group"
+
+/* various limits */
+#define	MAXGLEN		9	/* max length of group name */
+#define	MAXDLEN		80	/* max length of a date string */
 
 /* Defaults file keywords */
 #define	RIDSTR		"defrid="
@@ -85,15 +89,6 @@ extern "C" {
 #define	FHEADER_ROLE	"#	Default values for roleadd.  Changed "
 #define	LOCK_AFTER_RETRIESSTR	"deflock_after_retries="
 
-/* Defaults file */
-#define	DEFFILE		"/usr/sadm/defadduser"
-#define	DEFROLEFILE	"/usr/sadm/defaddrole"
-#define	GROUP		"/etc/group"
-
-/* various limits */
-#define	MAXGLEN		9	/* max length of group name */
-#define	MAXDLEN		80	/* max length of a date string */
-
 /* defaults structure */
 struct userdefs {
 	int defrid;		/* highest reserved uid */
@@ -112,8 +107,65 @@ struct userdefs {
 	char *deflimpriv;	/* default limitpriv */
 	char *defdfltpriv;	/* default defaultpriv */
 	char *deflock_after_retries;	/* default lock_after_retries */
-
 };
+
+extern struct userdefs *_get_userdefs(void);
+extern struct userdefs *_get_roledefs(void);
+
+extern void fread_defs(FILE *fp, struct userdefs *, boolean_t);
+extern int fwrite_roledefs(struct __FILE *, struct userdefs *);
+extern int fwrite_userdefs(struct __FILE *, struct userdefs *);
+
+extern char *userdef_get_by_uakey(struct userdefs *, const char *);
+void userdef_set_by_uakey(struct userdefs *, const char *, char *);
+
+/*
+ * User/group default values
+ * These are constants _only_ when compiling libuserdefs
+ */
+#ifdef _USERDEFS_INTERNAL
+#define	DEFRID		99	/* max reserved group id */
+#define	DEFGROUP	1
+#define	DEFGNAME	"other"
+#define	DEFPARENT	"/home"
+#define	DEFSKL		"/etc/skel"
+#define	DEFSHL		"/bin/sh"
+#define	DEFROLESHL	"/bin/pfsh"
+#define	DEFINACT	0
+#define	DEFEXPIRE	""
+#define	DEFAUTH		""
+#define	DEFPROF		""
+#define	DEFROLEPROF	"All"
+#define	DEFROLE		""
+#define	DEFPROJ		3
+#define	DEFPROJNAME	"default"
+#define	DEFLIMPRIV	""
+#define	DEFDFLTPRIV	""
+#define	DEFLOCK_AFTER_RETRIES	""
+#else	/* _USERDEFS_INTERNAL */
+/* Get these from libuserdefs */
+#define	DEFRID		(_get_userdefs()->defrid)
+#define	DEFGROUP	(_get_userdefs()->defgroup)
+#define	DEFGNAME	(_get_userdefs()->defgname)
+#define	DEFPARENT	(_get_userdefs()->defparent)
+#define	DEFSKL		(_get_userdefs()->defskel)
+#define	DEFSHL		(_get_userdefs()->defshell)
+#define	DEFROLESHL	(_get_roledefs()->defshell)	/* ROLE */
+#define	DEFINACT	(_get_userdefs()->definact)
+#define	DEFEXPIRE	(_get_userdefs()->defexpire)
+#define	DEFAUTH		(_get_userdefs()->defauth)
+#define	DEFPROF		(_get_userdefs()->defprof
+#define	DEFROLEPROF	(_get_roledefs()->defprof)	/* ROLE */
+#define	DEFROLE		(_get_userdefs()->defrole)
+#define	DEFPROJ		(_get_userdefs()->defproj)
+#define	DEFPROJNAME	(_get_userdefs()->defprogname)
+#define	DEFLIMPRIV	(_get_userdefs()->deflimpriv)
+#define	DEFDFLTPRIV	(_get_userdefs()->defdfltpriv)
+#define	DEFLOCK_AFTER_RETRIES	(_get_userdefs()->deflock_after_retries)
+#endif	/* _USERDEFS_INTERNAL */
+
+/* DEFGID is an alias for DEFRID.  Misleading... (!= DEFGROUP) */
+#define	DEFGID		DEFRID		/* XXX delete this? */
 
 /* exit() values for user/group commands */
 

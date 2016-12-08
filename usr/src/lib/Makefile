@@ -223,6 +223,7 @@ SUBDIRS +=				\
 	libtsol		\
 	libumem		\
 	libunistat	\
+	libuserdefs	\
 	libuuid		\
 	libuutil	\
 	libvolmgt	\
