@@ -46,7 +46,6 @@ ROOTMODULE	= $(ROOT_DRV_DIR)/$(MODULE)
 VGATEXT_FONT	= 8859-1
 VGATEXT_SRC	= $(UTSBASE)/intel/io/vgatext
 
-LDFLAGS +=	-dy -Nmisc/agpmaster
 #
 #	Include common rules.
 #
