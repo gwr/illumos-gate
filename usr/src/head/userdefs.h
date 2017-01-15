@@ -31,9 +31,8 @@
 #ifndef	_USERDEFS_H
 #define	_USERDEFS_H
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"	/* SVr4.0 1.7.1.1 */
-
 #include <project.h>
+#include <stdio_tag.h>
 
 #ifdef	__cplusplus
 extern "C" {
@@ -73,8 +72,34 @@ extern "C" {
 #define	FHEADER_ROLE	"#	Default values for roleadd.  Changed "
 #define	LOCK_AFTER_RETRIESSTR	"deflock_after_retries="
 
-extern const char *_userdefs_str(const char *);
-extern int _userdefs_int(const char *);
+/* defaults structure */
+struct userdefs {
+	int defrid;		/* highest reserved uid */
+	int defgroup;		/* default group id */
+	char *defgname;		/* default group name */
+	char *defparent;	/* default base directory for new logins */
+	char *defskel;		/* default skel directory */
+	char *defshell;		/* default shell */
+	int definact;		/* default inactive */
+	char *defexpire;		/* default expire date */
+	char *defauth;		/* default authorization */
+	char *defprof;		/* default profile */
+	char *defrole;		/* default role */
+	projid_t defproj;	/* default project id */
+	char *defprojname;	/* default project name */
+	char *deflimpriv;	/* default limitpriv */
+	char *defdfltpriv;	/* default defaultpriv */
+	char *deflock_after_retries;	/* default lock_after_retries */
+};
+
+extern struct userdefs *_get_userdefs(void);
+extern struct userdefs *_get_roledefs(void);
+
+extern int fwrite_roledefs(struct __FILE *, struct userdefs *);
+extern int fwrite_userdefs(struct __FILE *, struct userdefs *);
+
+extern char *userdef_get_by_uakey(struct userdefs *, const char *);
+void userdef_set_by_uakey(struct userdefs *, const char *, char *);
 
 /*
  * User/group default values
@@ -101,50 +126,28 @@ extern int _userdefs_int(const char *);
 #define	DEFLOCK_AFTER_RETRIES	""
 #else	/* _USERDEFS_INTERNAL */
 /* Get these from liboamcmd */
-#define	DEFRID		_userdefs_int(RIDSTR)
-#define	DEFGROUP	_userdefs_int(GIDSTR)
-#define	DEFGNAME	_userdefs_str(GNAMSTR)
-#define	DEFPARENT	_userdefs_str(PARSTR)
-#define	DEFSKL		_userdefs_str(SKLSTR)
-#define	DEFSHL		_userdefs_str(SHELLSTR)
-#define	DEFROLESHL	_userdefs_str("ROLESHL")
-#define	DEFINACT	_userdefs_int(INACTSTR)
-#define	DEFEXPIRE	_userdefs_str(EXPIRESTR)
-#define	DEFAUTH		_userdefs_str(AUTHSTR)
-#define	DEFPROF		_userdefs_str(PROFSTR)
-#define	DEFROLEPROF	_userdefs_str("ROLEPROF")
-#define	DEFROLE		_userdefs_str(ROLESTR)
-#define	DEFPROJ		_userdefs_int(PROJSTR)
-#define	DEFPROJNAME	_userdefs_str(PROJNMSTR)
-#define	DEFLIMPRIV	_userdefs_str(LIMPRSTR)
-#define	DEFDFLTPRIV	_userdefs_str(DFLTPRSTR)
-#define	DEFLOCK_AFTER_RETRIES	_userdefs_str(LOCK_AFTER_RETRIESSTR)
+#define	DEFRID		(_get_userdefs()->defrid)
+#define	DEFGROUP	(_get_userdefs()->defgroup)
+#define	DEFGNAME	(_get_userdefs()->defgname)
+#define	DEFPARENT	(_get_userdefs()->defparent)
+#define	DEFSKL		(_get_userdefs()->defskel)
+#define	DEFSHL		(_get_userdefs()->defshell)
+#define	DEFROLESHL	(_get_roledefs()->defshell)	/* ROLE */
+#define	DEFINACT	(_get_userdefs()->definact)
+#define	DEFEXPIRE	(_get_userdefs()->defexpire)
+#define	DEFAUTH		(_get_userdefs()->defauth)
+#define	DEFPROF		(_get_userdefs()->defprof
+#define	DEFROLEPROF	(_get_roledefs()->defprof)	/* ROLE */
+#define	DEFROLE		(_get_userdefs()->defrole)
+#define	DEFPROJ		(_get_userdefs()->defproj)
+#define	DEFPROJNAME	(_get_userdefs()->defprogname)
+#define	DEFLIMPRIV	(_get_userdefs()->deflimpriv)
+#define	DEFDFLTPRIV	(_get_userdefs()->defdfltpriv)
+#define	DEFLOCK_AFTER_RETRIES	(_get_userdefs()->deflock_after_retries)
 #endif	/* _USERDEFS_INTERNAL */
 
-/* DEFGID is an alias for DEFRID.  Misleading... Not DEFGROUP? */
+/* DEFGID is an alias for DEFRID.  Misleading... (!= DEFGROUP) */
 #define	DEFGID		DEFRID		/* XXX delete this? */
-
-
-/* defaults structure */
-struct userdefs {
-	int defrid;		/* highest reserved uid */
-	int defgroup;		/* default group id */
-	char *defgname;		/* default group name */
-	char *defparent;	/* default base directory for new logins */
-	char *defskel;		/* default skel directory */
-	char *defshell;		/* default shell */
-	int definact;		/* default inactive */
-	char *defexpire;		/* default expire date */
-	char *defauth;		/* default authorization */
-	char *defprof;		/* default profile */
-	char *defrole;		/* default role */
-	projid_t defproj;	/* default project id */
-	char *defprojname;	/* default project name */
-	char *deflimpriv;	/* default limitpriv */
-	char *defdfltpriv;	/* default defaultpriv */
-	char *deflock_after_retries;	/* default lock_after_retries */
-
-};
 
 /* exit() values for user/group commands */
 

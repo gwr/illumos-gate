@@ -27,8 +27,8 @@ LIBRARY= 	liboamcmd.a
 VERS=		.1
 
 OBJECTS= 	putgrent.o \
-		defaults.o \
 		errmsg.o \
+		defaults.o \
 		file.o \
 		vgid.o \
 		vgname.o \

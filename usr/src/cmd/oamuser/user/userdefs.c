@@ -55,178 +55,34 @@
 		(void) fprintf(fptr, "\n"); \
 	}
 
-#define	SKIPWS(ptr)	while (*ptr && (*ptr == ' ' || *ptr == '\t')) ptr++
-
-static char *dup_to_nl(char *);
-
-static struct userdefs defaults = {
-	DEFRID, DEFGROUP, DEFGNAME, DEFPARENT, DEFSKL,
-	DEFSHL, DEFINACT, DEFEXPIRE, DEFAUTH, DEFPROF,
-	DEFROLE, DEFPROJ, DEFPROJNAME, DEFLIMPRIV,
-	DEFDFLTPRIV, DEFLOCK_AFTER_RETRIES
-};
-
-#define	INT	0
-#define	STR	1
-#define	PROJID	2
-
-#define	DEFOFF(field)		offsetof(struct userdefs, field)
-#define	FIELD(up, pe, type)	(*(type *)((char *)(up) + (pe)->off))
-
-typedef struct parsent {
-	const char *name;	/* deffoo= */
-	const size_t nmsz;	/* length of def= string (excluding \0) */
-	const int type;		/* type of entry */
-	const ptrdiff_t off;	/* offset in userdefs structure */
-	const char *uakey;	/* user_attr key, if defined */
-} parsent_t;
-
-static const parsent_t tab[] = {						/* defaults */
-	{ RIDSTR,	sizeof (RIDSTR) - 1,	INT,	DEFOFF(defrid) },	/* DEFRID */
-	{ GIDSTR,	sizeof (GIDSTR) - 1,	INT,	DEFOFF(defgroup) },	/* DEFGROUP */
-	{ GNAMSTR,	sizeof (GNAMSTR) - 1,	STR,	DEFOFF(defgname) },	/* DEFGNAME */
-	{ PARSTR,	sizeof (PARSTR) - 1,	STR,	DEFOFF(defparent) },	/* DEFPARENT */
-	{ SKLSTR,	sizeof (SKLSTR) - 1,	STR,	DEFOFF(defskel) },	/* DEFSKL */
-	{ SHELLSTR,	sizeof (SHELLSTR) - 1,	STR,	DEFOFF(defshell) },	/* DEFSHL, DEFROLESHL */
-	{ INACTSTR,	sizeof (INACTSTR) - 1,	INT,	DEFOFF(definact) },	/* DEFINACT */
-	{ EXPIRESTR,	sizeof (EXPIRESTR) - 1,	STR,	DEFOFF(defexpire) },	/* DEFEXPIRE */
-	{ AUTHSTR,	sizeof (AUTHSTR) - 1,	STR,	DEFOFF(defauth),	/* DEFAUTH */
-		USERATTR_AUTHS_KW },
-	{ PROFSTR,	sizeof (PROFSTR) - 1,	STR,	DEFOFF(defprof),	/* DEFPROF, DEFROLEPROF */
-		USERATTR_PROFILES_KW },
-	{ ROLESTR,	sizeof (ROLESTR) - 1,	STR,	DEFOFF(defrole),	/* DEFROLE */
-		USERATTR_ROLES_KW },
-	{ PROJSTR,	sizeof (PROJSTR) - 1,	PROJID,	DEFOFF(defproj) },	/* DEFPROJ */
-	{ PROJNMSTR,	sizeof (PROJNMSTR) - 1,	STR,	DEFOFF(defprojname) },	/* DEFPROJNAME */
-	{ LIMPRSTR,	sizeof (LIMPRSTR) - 1,	STR,	DEFOFF(deflimpriv),	/* DEFLIMPRIV */
-		USERATTR_LIMPRIV_KW },
-	{ DFLTPRSTR,	sizeof (DFLTPRSTR) - 1,	STR,	DEFOFF(defdfltpriv),	/* DEFDFLTPRIV */
-		USERATTR_DFLTPRIV_KW },
-	{ LOCK_AFTER_RETRIESSTR,	sizeof (LOCK_AFTER_RETRIESSTR) - 1,	/* DEFLOCK_AFTER_RETRIES */
-		STR,	DEFOFF(deflock_after_retries),
-		USERATTR_LOCK_AFTER_RETRIES_KW },
-};
-
-#define	NDEF	(sizeof (tab) / sizeof (parsent_t))
-
-FILE *defptr;		/* default file - fptr */
-
-static const parsent_t *
-scan(char **start_p)
-{
-	static int ind = NDEF - 1;
-	char *cur_p = *start_p;
-	int lastind = ind;
-
-	if (!*cur_p || *cur_p == '\n' || *cur_p == '#')
-		return (NULL);
-
-	/*
-	 * The magic in this loop is remembering the last index when
-	 * reentering the function; the entries above are also used to
-	 * order the output to the default file.
-	 */
-	do {
-		ind++;
-		ind %= NDEF;
-
-		if (strncmp(cur_p, tab[ind].name, tab[ind].nmsz) == 0) {
-			*start_p = cur_p + tab[ind].nmsz;
-			return (&tab[ind]);
-		}
-	} while (ind != lastind);
-
-	return (NULL);
-}
-
 /*
  * getusrdef - access the user defaults file.  If it doesn't exist,
- *		then returns default values of (values in userdefs.h):
- *		defrid = 100
- *		defgroup = 1
- *		defgname = other
- *		defparent = /home
- *		defskel	= /usr/sadm/skel
- *		defshell = /bin/sh
- *		definact = 0
- *		defexpire = 0
- *		defauth = 0
- *		defprof = 0
- *		defrole = 0
- *
- *	If getusrdef() is unable to access the defaults file, it
- *	returns a NULL pointer.
- *
- * 	If user defaults file exists, then getusrdef uses values
- *  in it to override the above values.
+ *		then returns compiled-in default values.
  */
 
 struct userdefs *
 getusrdef(char *usertype)
 {
-	char instr[512], *ptr;
-	const parsent_t *pe;
+	struct userdefs *ud;
 
-	if (is_role(usertype)) {
-		if ((defptr = fopen(DEFROLEFILE, "r")) == NULL) {
-			defaults.defshell = DEFROLESHL;
-			defaults.defprof = DEFROLEPROF;
-			return (&defaults);
-		}
-	} else {
-		if ((defptr = fopen(DEFFILE, "r")) == NULL)
-			return (&defaults);
-	}
+	if (is_role(usertype))
+		ud = _get_roledefs();
+	else
+		ud = _get_userdefs();
 
-	while (fgets(instr, sizeof (instr), defptr) != NULL) {
-		ptr = instr;
-
-		SKIPWS(ptr);
-
-		if (*ptr == '#')
-			continue;
-
-		pe = scan(&ptr);
-
-		if (pe != NULL) {
-			switch (pe->type) {
-			case INT:
-				FIELD(&defaults, pe, int) =
-					(int)strtol(ptr, NULL, 10);
-				break;
-			case PROJID:
-				FIELD(&defaults, pe, projid_t) =
-					(projid_t)strtol(ptr, NULL, 10);
-				break;
-			case STR:
-				FIELD(&defaults, pe, char *) = dup_to_nl(ptr);
-				break;
-			}
-		}
-	}
-
-	(void) fclose(defptr);
-
-	return (&defaults);
-}
-
-static char *
-dup_to_nl(char *from)
-{
-	char *res = strdup(from);
-
-	char *p = strchr(res, '\n');
-	if (p)
-		*p = '\0';
-
-	return (res);
+	return (ud);
 }
 
 void
 dispusrdef(FILE *fptr, unsigned flags, char *usertype)
 {
-	struct userdefs *deflts = getusrdef(usertype);
+	struct userdefs *deflts;
 	int outcount = 0;
+
+	if (is_role(usertype))
+		deflts = _get_roledefs();
+	else
+		deflts = _get_userdefs();
 
 	/* Print out values */
 
@@ -316,118 +172,45 @@ dispusrdef(FILE *fptr, unsigned flags, char *usertype)
 int
 putusrdef(struct userdefs *defs, char *usertype)
 {
-	time_t timeval;		/* time value from time */
-	int i;
-	ptrdiff_t skip;
-	char *hdr;
-
-	/*
-	 * file format is:
-	 * #<tab>Default values for adduser.  Changed mm/dd/yy hh:mm:ss.
-	 * defgroup=m	(m=default group id)
-	 * defgname=str1	(str1=default group name)
-	 * defparent=str2	(str2=default base directory)
-	 * definactive=x	(x=default inactive)
-	 * defexpire=y		(y=default expire)
-	 * defproj=z		(z=numeric project id)
-	 * defprojname=str3	(str3=default project name)
-	 * ... etc ...
-	 */
+	FILE *fp = NULL;	/* default file - fptr */
+	boolean_t locked = B_FALSE;
+	int res;
+	int ex = EX_UPDATE;
 
 	if (is_role(usertype)) {
-		if ((defptr = fopen(DEFROLEFILE, "w")) == NULL) {
-			errmsg(M_FAILED);
-			return (EX_UPDATE);
-		}
+		fp = fopen(DEFROLEFILE, "w");
 	} else {
-		if ((defptr = fopen(DEFFILE, "w")) == NULL) {
-			errmsg(M_FAILED);
-			return (EX_UPDATE);
-		}
+		fp = fopen(DEFFILE, "w");
+	}
+	if (fp == NULL) {
+		errmsg(M_FAILED);
+		goto out;
 	}
 
-	if (lockf(fileno(defptr), F_LOCK, 0) != 0) {
+	if (lockf(fileno(fp), F_LOCK, 0) != 0) {
 		/* print error if can't lock whole of DEFFILE */
 		errmsg(M_UPDATE, "created");
-		return (EX_UPDATE);
+		goto out;
 	}
+	locked = B_TRUE;
 
 	if (is_role(usertype)) {
-		/* If it's a role, we must skip the defrole field */
-		skip = offsetof(struct userdefs, defrole);
-		hdr = FHEADER_ROLE;
+		res = fwrite_roledefs(fp, defs);
 	} else {
-		skip = -1;
-		hdr = FHEADER;
+		res = fwrite_userdefs(fp, defs);
 	}
-
-	/* get time */
-	timeval = time(NULL);
-
-	/* write it to file */
-	if (fprintf(defptr, "%s%s\n", hdr, ctime(&timeval)) <= 0) {
+	if (res <= 0) {
 		errmsg(M_UPDATE, "created");
-		return (EX_UPDATE);
+		goto out;
+	}
+	ex = EX_SUCCESS;
+
+out:
+	if (fp != NULL) {
+		if (locked)
+			(void) lockf(fileno(fp), F_ULOCK, 0);
+		(void) fclose(fp);
 	}
 
-	for (i = 0; i < NDEF; i++) {
-		int res = 0;
-
-		if (tab[i].off == skip)
-			continue;
-
-		switch (tab[i].type) {
-		case INT:
-			res = fprintf(defptr, "%s%d\n", tab[i].name,
-					FIELD(defs, &tab[i], int));
-			break;
-		case STR:
-			res = fprintf(defptr, "%s%s\n", tab[i].name,
-					FIELD(defs, &tab[i], char *));
-			break;
-		case PROJID:
-			res = fprintf(defptr, "%s%d\n", tab[i].name,
-					(int)FIELD(defs, &tab[i], projid_t));
-			break;
-		}
-
-		if (res <= 0) {
-			errmsg(M_UPDATE, "created");
-			return (EX_UPDATE);
-		}
-	}
-
-	(void) lockf(fileno(defptr), F_ULOCK, 0);
-	(void) fclose(defptr);
-
-	return (EX_SUCCESS);
-}
-
-/* Export command line keys to defaults for useradd -D */
-void
-update_def(struct userdefs *ud)
-{
-	int i;
-
-	for (i = 0; i < NDEF; i++) {
-		char *val;
-		if (tab[i].uakey != NULL &&
-		    (val = getsetdefval(tab[i].uakey, NULL)) != NULL)
-			FIELD(ud, &tab[i], char *) = val;
-	}
-}
-
-/* Import default keys for ordinary useradd */
-void
-import_def(struct userdefs *ud)
-{
-	int i;
-
-	for (i = 0; i < NDEF; i++) {
-		if (tab[i].uakey != NULL && tab[i].type == STR) {
-			char *val = FIELD(ud, &tab[i], char *);
-			if (val == getsetdefval(tab[i].uakey, val))
-				nkeys ++;
-		}
-	}
+	return (ex);
 }

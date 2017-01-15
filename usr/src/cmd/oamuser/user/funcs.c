@@ -98,6 +98,33 @@ static ua_key_t keys[] = {
 
 #define	NKEYS	(sizeof (keys)/sizeof (ua_key_t))
 
+/* Import default keys for ordinary useradd */
+void
+import_def(struct userdefs *ud)
+{
+	int i;
+
+	/* Don't import the user type (skip i = 0) */
+	for (i = 1; i < NKEYS; i++) {
+		if (keys[i].newvalue == NULL)
+			keys[i].newvalue =
+				userdef_get_by_uakey(ud, keys[i].key);
+	}
+}
+
+/* Export command line keys to defaults for useradd -D */
+void
+update_def(struct userdefs *ud)
+{
+	int i;
+
+	for (i = 0; i < NKEYS; i++) {
+		if (keys[i].newvalue != NULL)
+			userdef_set_by_uakey(ud, keys[i].key,
+			    keys[i].newvalue);
+	}
+}
+
 /*
  * Change a key, there are three different call sequences:
  *
