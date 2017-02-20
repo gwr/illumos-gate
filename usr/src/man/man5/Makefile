@@ -83,6 +83,7 @@ _MANFILES=	Intro.5				\
 		ib.5				\
 		ike.config.5			\
 		ike.preshared.5			\
+		inotify.5			\
 		ipf.5				\
 		ipmon.5				\
 		ipnat.5				\

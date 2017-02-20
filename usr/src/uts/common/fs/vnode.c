@@ -2587,6 +2587,7 @@ vnevent_rename_src(vnode_t *vp, vnode_t *dvp, char *name, caller_context_t *ct)
 	if (vp == NULL || vp->v_femhead == NULL) {
 		return;
 	}
+	(void) VOP_VNEVENT(dvp, VE_RENAME_SRC_DIR, vp, name, ct);
 	(void) VOP_VNEVENT(vp, VE_RENAME_SRC, dvp, name, ct);
 }
 
@@ -2601,12 +2602,13 @@ vnevent_rename_dest(vnode_t *vp, vnode_t *dvp, char *name,
 }
 
 void
-vnevent_rename_dest_dir(vnode_t *vp, caller_context_t *ct)
+vnevent_rename_dest_dir(vnode_t *vp, vnode_t *nvp, char *name,
+    caller_context_t *ct)
 {
 	if (vp == NULL || vp->v_femhead == NULL) {
 		return;
 	}
-	(void) VOP_VNEVENT(vp, VE_RENAME_DEST_DIR, NULL, NULL, ct);
+	(void) VOP_VNEVENT(vp, VE_RENAME_DEST_DIR, nvp, name, ct);
 }
 
 void

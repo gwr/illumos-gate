@@ -38,7 +38,7 @@
  */
 
 /*
- * Copyright (c) 2013, Joyent, Inc. All rights reserved.
+ * Copyright (c) 2014, Joyent, Inc. All rights reserved.
  * Copyright 2022 Oxide Computer Company
  */
 
@@ -8074,8 +8074,9 @@ link_call:
 	 * vnode if it already existed.
 	 */
 	if (error == 0) {
-		vnode_t *tvp;
+		vnode_t *tvp, *tovp;
 		rnode4_t *trp;
+
 		/*
 		 * Notify the vnode. Each links is represented by
 		 * a different vnode, in nfsv4.
@@ -8088,23 +8089,20 @@ link_call:
 			vnevent_rename_dest(tvp, ndvp, nnm, ct);
 		}
 
-		/*
-		 * if the source and destination directory are not the
-		 * same notify the destination directory.
-		 */
-		if (VTOR4(odvp) != VTOR4(ndvp)) {
-			trp = VTOR4(ndvp);
-			tvp = ndvp;
-			if (IS_SHADOW(ndvp, trp))
-				tvp = RTOV4(trp);
-			vnevent_rename_dest_dir(tvp, ct);
-		}
-
 		trp = VTOR4(ovp);
-		tvp = ovp;
+		tovp = ovp;
 		if (IS_SHADOW(ovp, trp))
-			tvp = RTOV4(trp);
+			tovp = RTOV4(trp);
+
 		vnevent_rename_src(tvp, odvp, onm, ct);
+
+		trp = VTOR4(ndvp);
+		tvp = ndvp;
+
+		if (IS_SHADOW(ndvp, trp))
+			tvp = RTOV4(trp);
+
+		vnevent_rename_dest_dir(tvp, tovp, nnm, ct);
 	}
 
 	if (nvp) {

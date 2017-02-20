@@ -285,6 +285,7 @@ CHKHDRS=			\
 	ieeefp.h		\
 	id_space.h		\
 	ilstr.h			\
+	inotify.h		\
 	instance.h		\
 	int_const.h		\
 	int_fmtio.h		\
