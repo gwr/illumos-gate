@@ -59,7 +59,6 @@ CLEANFILES=	$(LLINTLIB)
 CLOBBERFILES=	$(DATEFILE)
 
 CPPFLAGS=	-I. -I$(SRCDIR) $(CPPFLAGS.master)
-CPPFLAGS +=	-D_USERDEFS_INTERNAL
 CERRWARN +=	-_gcc=-Wno-parentheses
 CERRWARN +=	-_gcc=-Wno-type-limits
 CERRWARN +=	-_gcc=-Wno-unused-variable
@@ -67,7 +66,10 @@ LDLIBS +=	-lproject -lc
 
 ARFLAGS=	cr
 AROBJS=		`$(LORDER) $(OBJS) | $(TSORT)`
+
 LINTFLAGS=	-u
+LINTFLAGS +=	-erroff=E_BAD_PTR_CAST_ALIGN
+LINTFLAGS64 +=	-erroff=E_BAD_PTR_CAST_ALIGN
 
 $(LINTLIB) :=	SRCS = ../common/llib-loamcmd
 

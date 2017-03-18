@@ -27,8 +27,6 @@
 /*	  All Rights Reserved  	*/
 
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
-
 #include <stdio.h>
 #include <grp.h>
 #include <unistd.h>
@@ -58,7 +56,7 @@ putgrent(struct group *grpstr, FILE *to)
 		if (grpstr->gr_gid == 0) {
 			(void) fprintf(to, ":");
 		} else {
-			(void) fprintf(to, "%ld:", grpstr->gr_gid);
+			(void) fprintf(to, "%d:", (int)grpstr->gr_gid);
 		}
 
 		memptr = grpstr->gr_mem;
@@ -76,8 +74,8 @@ putgrent(struct group *grpstr, FILE *to)
 		 * otherwise write out all the fields in the group structure
 		 *
 		 */
-		(void) fprintf(to, "%s:%s:%ld:", grpstr->gr_name,
-			grpstr->gr_passwd, grpstr->gr_gid);
+		(void) fprintf(to, "%s:%s:%d:", grpstr->gr_name,
+			grpstr->gr_passwd, (int)grpstr->gr_gid);
 
 		memptr = grpstr->gr_mem;
 

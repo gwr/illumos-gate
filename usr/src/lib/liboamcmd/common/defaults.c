@@ -47,6 +47,7 @@
 #include	<sys/types.h>
 #include	<stdio.h>
 #include	<string.h>
+#define	_USERDEFS_INTERNAL 1
 #include	<userdefs.h>
 #include	<user_attr.h>
 #include	<limits.h>
@@ -59,7 +60,6 @@
 
 static char *dup_to_nl(char *);
 static int fwrite_defs(FILE *, struct userdefs *, char *, ptrdiff_t);
-static void fread_defs(FILE *fp, struct userdefs *ud, boolean_t role);
 
 static struct userdefs defaults = {
 	DEFRID, DEFGROUP, DEFGNAME, DEFPARENT, DEFSKL,
@@ -174,7 +174,6 @@ struct userdefs *
 _get_roledefs()
 {
 	FILE *fp;
-	int r;
 
 	fp = fopen(DEFROLEFILE, "r");
 	if (fp == NULL)
@@ -182,7 +181,7 @@ _get_roledefs()
 
 	fread_defs(fp, &roledefs, B_TRUE);
 
-	fclose(fp);
+	(void) fclose(fp);
 
 	return (&roledefs);
 }
@@ -191,7 +190,6 @@ struct userdefs *
 _get_userdefs()
 {
 	FILE *fp;
-	int r;
 
 	fp = fopen(DEFFILE, "r");
 	if (fp == NULL)
@@ -199,12 +197,12 @@ _get_userdefs()
 
 	fread_defs(fp, &defaults, B_FALSE);
 
-	fclose(fp);
+	(void) fclose(fp);
 
 	return (&defaults);
 }
 
-static void
+void
 fread_defs(FILE *fp, struct userdefs *ud, boolean_t role)
 {
 	char instr[512], *ptr;

@@ -24,8 +24,6 @@
  * Use is subject to license terms.
  */
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
-
 #include	<sys/types.h>
 #include 	<limits.h>
 #include	<stdio.h>
@@ -39,7 +37,6 @@
 int
 valid_projid(projid_t projid, struct project *pptr, void *buf, size_t len)
 {
-	struct project pbuf;
 	struct project *t_pptr;
 
 	if (projid < 0)
@@ -48,7 +45,8 @@ valid_projid(projid_t projid, struct project *pptr, void *buf, size_t len)
 	if (projid > MAXPROJID)
 		return (TOOBIG);
 
-	if (t_pptr = getprojbyid(projid, pptr, buf, len))
+	t_pptr = getprojbyid(projid, pptr, buf, len);
+	if (t_pptr != NULL)
 		return (NOTUNIQUE);
 
 	return (UNIQUE);

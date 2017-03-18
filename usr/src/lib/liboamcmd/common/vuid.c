@@ -23,8 +23,6 @@
 /*	  All Rights Reserved  	*/
 
 
-#ident	"%Z%%M%	%I%	%E% SMI"       /* SVr4.0 1.2 */
-
 #include	<sys/types.h>
 #include	<stdio.h>
 #include	<pwd.h>
@@ -47,7 +45,7 @@ struct passwd **pptr;
 {
 	register struct passwd *t_pptr;
 
-	if( uid <= 0 ) return( INVALID );
+	if( (int)uid <= 0 ) return( INVALID );
 	if( uid <= DEFRID ) {
 		if( pptr ) *pptr = getpwuid( uid );
 

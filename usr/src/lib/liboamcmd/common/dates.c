@@ -27,8 +27,6 @@
 /*	Copyright (c) 1984, 1986, 1987, 1988, 1989 AT&T	*/
 /*	  All Rights Reserved  	*/
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
-
 #include <time.h>
 
 extern int putenv();
@@ -42,7 +40,7 @@ time_t
 p_getdate( string )
 char *string;
 {
-	struct tm *tmptr, *getdate();
+	struct tm *tmptr;
 	time_t rtime;
 
 	if ( !mask_defined ) {

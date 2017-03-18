@@ -28,8 +28,6 @@
 /*	  All Rights Reserved  	*/
 
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
-
 /*LINTLIBRARY*/
 
 #include	<stdio.h>
@@ -60,6 +58,7 @@ errmsg(int msgid, ...)
 
 	if (msgid >= 0 && msgid < lasterrmsg) {
 		(void) fprintf(stderr, "UX: %s: ", __progname);
+		/* LINTED E_SEC_PRINTF_VAR_FMT */
 		(void) vfprintf(stderr, errmsgs[ msgid ], args);
 	}
 

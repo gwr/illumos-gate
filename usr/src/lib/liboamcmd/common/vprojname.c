@@ -24,8 +24,6 @@
  * Use is subject to license terms.
  */
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
-
 /*LINTLIBRARY*/
 
 #include	<sys/types.h>
@@ -66,7 +64,8 @@ valid_projname(char *project, struct project *pptr, void *buf, size_t blen,
 	if (badchar != 0)
 		*warning = *warning | WARN_BAD_PROJ_NAME;
 
-	if ((t_pptr = getprojbyname(project, pptr, buf, blen)) != NULL)
+	t_pptr = getprojbyname(project, pptr, buf, blen);
+	if (t_pptr != NULL)
 		return (NOTUNIQUE);
 
 	return (UNIQUE);

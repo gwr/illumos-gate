@@ -23,8 +23,6 @@
 /*	  All Rights Reserved  	*/
 
 
-#ident	"%Z%%M%	%I%	%E% SMI"       /* SVr4.0 1.4 */
-
 #include	<sys/types.h>
 #include	<stdio.h>
 #include	<grp.h>
@@ -51,7 +49,7 @@ struct group **gptr;
 {
 	register struct group *t_gptr;
 
-	if( gid < 0 ) return( INVALID );
+	if( (int)gid < 0 ) return( INVALID );
 
 	if( gid > MAXUID ) return( TOOBIG );
 

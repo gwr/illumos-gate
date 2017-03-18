@@ -95,6 +95,7 @@ struct userdefs {
 extern struct userdefs *_get_userdefs(void);
 extern struct userdefs *_get_roledefs(void);
 
+extern void fread_defs(FILE *fp, struct userdefs *, boolean_t);
 extern int fwrite_roledefs(struct __FILE *, struct userdefs *);
 extern int fwrite_userdefs(struct __FILE *, struct userdefs *);
 

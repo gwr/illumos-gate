@@ -24,8 +24,6 @@
  * All rights reserved.
  */
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
-
 #include <stdio.h>
 #include <project.h>
 #include <unistd.h>
@@ -39,7 +37,7 @@ putprojent(struct project *projstr, FILE *to)
 	char **memptr;		/* member vector pointer */
 
 	(void) fprintf(to, "%s:%d:%s:", projstr->pj_name,
-	    projstr->pj_projid, projstr->pj_comment);
+	    (int)projstr->pj_projid, projstr->pj_comment);
 
 	/*
 	 * do user names first
