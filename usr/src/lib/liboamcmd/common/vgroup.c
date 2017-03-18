@@ -28,8 +28,6 @@
 /*	  All Rights Reserved  	*/
 
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"	/* SVr4.0 1.2 */
-
 /*LINTLIBRARY*/
 
 #include	<sys/types.h>
@@ -41,8 +39,6 @@
 #include	<sys/param.h>
 #include	<users.h>
 #include	<userdefs.h>
-
-extern int valid_gid(gid_t, struct group **);
 
 static int isalldigit(char *);
 

@@ -47,6 +47,7 @@ SYMBOL_VERSION SUNWprivate_1.1 {
 	check_perm;
 	errmsg;
 	errmsg_init;
+	fread_defs;
 	fwrite_roledefs;
 	fwrite_userdefs;
 	p_getdate;

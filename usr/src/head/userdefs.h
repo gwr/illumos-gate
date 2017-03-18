@@ -41,11 +41,23 @@ extern "C" {
 /*
  * The definitions in this file are local to the OA&M subsystem.  General
  * use is not encouraged.
+ *
+ * Default values are taken from (in precedence order)
+ * /etc/default/add*, /usr/sadm/defadd*, compiled-in values.
+ *
+ * Note that the "old" default locations are now used as a way
+ * for distributions to override the compiled-in defaults.
+ * If an administrator runs "useradd -D ...", those values are
+ * stored in /etc/default/add*,  which overrides the others.
  */
 
-/* Defaults file */
-#define	DEFFILE		"/usr/sadm/defadduser"
-#define	DEFROLEFILE	"/usr/sadm/defaddrole"
+/* Old defaults files */
+#define	ODEFFILE	"/usr/sadm/defadduser"
+#define	ODEFROLEFILE	"/usr/sadm/defaddrole"
+
+/* Defaults files */
+#define	DEFFILE		"/etc/default/adduser"
+#define	DEFROLEFILE	"/etc/default/addrole"
 #define	GROUP		"/etc/group"
 
 /* various limits */

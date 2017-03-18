@@ -42,12 +42,11 @@ OBJECTS= 	putgrent.o \
 		vprojid.o \
 		vprojname.o
 
-# include library definitions
 include ../../Makefile.lib
 
-SRCDIR =	../common
-
 LIBS=		$(DYNLIB) $(LINTLIB)
+
+SRCDIR=		../common
 
 LINTOUT =	lint.out
 
@@ -55,25 +54,17 @@ LINTSRC =	$(LINTLIB:%.ln=%)
 ROOTLINTDIR =	$(ROOTLIBDIR)
 ROOTLINT =	$(LINTSRC:%=$(ROOTLINTDIR)/%)
 
-CLEANFILES=	$(LLINTLIB)
-CLOBBERFILES=	$(DATEFILE)
-
 CPPFLAGS=	-I. -I$(SRCDIR) $(CPPFLAGS.master)
 CERRWARN +=	-_gcc=-Wno-parentheses
 CERRWARN +=	-_gcc=-Wno-type-limits
 CERRWARN +=	-_gcc=-Wno-unused-variable
 LDLIBS +=	-lproject -lc
 
-ARFLAGS=	cr
-AROBJS=		`$(LORDER) $(OBJS) | $(TSORT)`
-
 LINTFLAGS=	-u
 LINTFLAGS +=	-erroff=E_BAD_PTR_CAST_ALIGN
 LINTFLAGS64 +=	-erroff=E_BAD_PTR_CAST_ALIGN
 
-$(LINTLIB) :=	SRCS = ../common/llib-loamcmd
-
-# CLOBBERFILES += $(LIBRARY)
+$(LINTLIB) :=	SRCS= $(SRCDIR)/$(LINTSRC)
 
 .KEEP_STATE:
 
@@ -81,8 +72,4 @@ all:		$(LIBS)
 
 lint:		lintcheck
 
-$(LLINTLIB):	$(SRCS)
-	$(LINT.c) -o $(LIBRARY:lib%.a=lib) $(SRCS) > $(LINTOUT) 2>&1
-
-# include library targets
 include ../../Makefile.targ

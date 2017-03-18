@@ -78,11 +78,16 @@
 /*
  * interfaces available from the library
  */
-extern int valid_login(char *, struct passwd **, int *);
+extern int valid_expire(char *string, time_t *expire);
 extern int valid_gname(char *, struct group **, int *);
 extern int valid_group(char *, struct group **, int *);
+extern int valid_login(char *, struct passwd **, int *);
 extern int valid_project(char *, struct project *, void *buf, size_t, int *);
+extern int valid_projid(projid_t, struct project *, void *buf, size_t len);
 extern int valid_projname(char *, struct project *, void *buf, size_t, int *);
+extern int valid_uid(uid_t uid, struct passwd **pptr);
+extern int valid_gid(gid_t gid, struct group **gptr);
+
 extern void warningmsg(int, char *);
 extern void putgrent(struct group *, FILE *);
 

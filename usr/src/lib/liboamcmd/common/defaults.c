@@ -56,25 +56,73 @@
 #include	<time.h>
 #include	<unistd.h>
 
+#define	STR_SZ	512
 #define	SKIPWS(ptr)	while (*ptr && (*ptr == ' ' || *ptr == '\t')) ptr++
 
-static char *dup_to_nl(char *);
+static char *zap_nl(char *);
 static int fwrite_defs(FILE *, struct userdefs *, char *, ptrdiff_t);
 
-static struct userdefs defaults = {
-	DEFRID, DEFGROUP, DEFGNAME, DEFPARENT, DEFSKL,
-	DEFSHL, DEFINACT, DEFEXPIRE, DEFAUTH, DEFPROF,
-	DEFROLE, DEFPROJ, DEFPROJNAME, DEFLIMPRIV,
-	DEFDFLTPRIV, DEFLOCK_AFTER_RETRIES
+static char user_defgname[STR_SZ]  = DEFGNAME;
+static char user_defparent[STR_SZ] = DEFPARENT;
+static char user_defskel[STR_SZ]   = DEFSKL;
+static char user_defshell[STR_SZ]  = DEFSHL;
+static char user_defexpire[STR_SZ] = DEFEXPIRE;
+static char user_defauth[STR_SZ]   = DEFAUTH;
+static char user_defprof[STR_SZ]   = DEFPROF;
+static char user_defrole[STR_SZ]   = DEFROLE;
+static char user_defprojname[STR_SZ] = DEFPROJNAME;
+static char user_deflimpriv[STR_SZ]  = DEFLIMPRIV;
+static char user_defdfltpriv[STR_SZ] = DEFDFLTPRIV;
+static char user_deflock_a_r[STR_SZ] = DEFLOCK_AFTER_RETRIES;
+
+static struct userdefs userdefs = {
+	DEFRID,
+	DEFGROUP,
+	user_defgname,
+	user_defparent,
+	user_defskel,
+	user_defshell,
+	DEFINACT,
+	user_defexpire,
+	user_defauth,
+	user_defprof,
+	user_defrole,
+	DEFPROJ,
+	user_defprojname,
+	user_deflimpriv,
+	user_defdfltpriv,
+	user_deflock_a_r
 };
 
+static char role_defgname[STR_SZ]  = DEFGNAME;
+static char role_defparent[STR_SZ] = DEFPARENT;
+static char role_defskel[STR_SZ]   = DEFSKL;
+static char role_defshell[STR_SZ]  = DEFROLESHL;	/* role! */
+static char role_defexpire[STR_SZ] = DEFEXPIRE;
+static char role_defauth[STR_SZ]   = DEFAUTH;
+static char role_defprof[STR_SZ]   = DEFROLEPROF;	/* role! */
+static char role_defprojname[STR_SZ] = DEFPROJNAME;
+static char role_deflimpriv[STR_SZ]  = DEFLIMPRIV;
+static char role_defdfltpriv[STR_SZ] = DEFDFLTPRIV;
+static char role_deflock_a_r[STR_SZ] = DEFLOCK_AFTER_RETRIES;
+
 static struct userdefs roledefs = {
-	DEFRID, DEFGROUP, DEFGNAME, DEFPARENT, DEFSKL,
-	DEFROLESHL,	/* role! */
-	DEFINACT, DEFEXPIRE, DEFAUTH,
-	DEFROLEPROF,	/* role! */
-	DEFROLE, DEFPROJ, DEFPROJNAME, DEFLIMPRIV,
-	DEFDFLTPRIV, DEFLOCK_AFTER_RETRIES
+	DEFRID,
+	DEFGROUP,
+	role_defgname,
+	role_defparent,
+	role_defskel,
+	role_defshell,
+	DEFINACT,
+	role_defexpire,
+	role_defauth,
+	role_defprof,
+	"",		/* not changeable */
+	DEFPROJ,
+	role_defprojname,
+	role_deflimpriv,
+	role_defdfltpriv,
+	role_deflock_a_r
 };
 
 #define	INT	0
@@ -92,7 +140,8 @@ typedef struct parsent {
 	const char *uakey;	/* user_attr key, if defined */
 } parsent_t;
 
-static const parsent_t tab[] = {						/* defaults */
+/* BEGIN CSTYLED */
+static const parsent_t tab[] = {
 	{ RIDSTR,	sizeof (RIDSTR) - 1,	INT,	DEFOFF(defrid) },	/* DEFRID */
 	{ GIDSTR,	sizeof (GIDSTR) - 1,	INT,	DEFOFF(defgroup) },	/* DEFGROUP */
 	{ GNAMSTR,	sizeof (GNAMSTR) - 1,	STR,	DEFOFF(defgname) },	/* DEFGNAME */
@@ -117,6 +166,7 @@ static const parsent_t tab[] = {						/* defaults */
 		STR,	DEFOFF(deflock_after_retries),
 		USERATTR_LOCK_AFTER_RETRIES_KW },
 };
+/* END CSTYLED */
 
 #define	NDEF	(sizeof (tab) / sizeof (parsent_t))
 
@@ -167,45 +217,72 @@ scan(char **start_p)
  *	returns a NULL pointer.
  *
  * 	If user defaults file exists, then getusrdef uses values
- *  in it to override the above values.
+ *	in it to override the above values.
+ *
+ *	Note that the userdefs_loaded, roledefs_loaded flags are
+ *	more than an optimization.  Once we've return the struct
+ *	to the caller, they may change any of the string members
+ *	with pointers to constant strings etc.  If we were to run
+ *	fread_defs() after that, it could segv trying to copy the
+ *	strings from the scanner onto those constant strings.
  */
+
+static int roledefs_loaded = 0;
 
 struct userdefs *
 _get_roledefs()
 {
 	FILE *fp;
 
-	fp = fopen(DEFROLEFILE, "r");
-	if (fp == NULL)
-		return (&roledefs);
+	if (roledefs_loaded == 0) {
 
-	fread_defs(fp, &roledefs, B_TRUE);
+		fp = fopen(ODEFROLEFILE, "r");
+		if (fp != NULL) {
+			fread_defs(fp, &roledefs, B_TRUE);
+			(void) fclose(fp);
+		}
 
-	(void) fclose(fp);
+		fp = fopen(DEFROLEFILE, "r");
+		if (fp != NULL) {
+			fread_defs(fp, &roledefs, B_TRUE);
+			(void) fclose(fp);
+		}
 
+		roledefs_loaded = 1;
+	}
 	return (&roledefs);
 }
+
+static int userdefs_loaded = 0;
 
 struct userdefs *
 _get_userdefs()
 {
 	FILE *fp;
 
-	fp = fopen(DEFFILE, "r");
-	if (fp == NULL)
-		return (&defaults);
+	if (userdefs_loaded == 0) {
 
-	fread_defs(fp, &defaults, B_FALSE);
+		fp = fopen(ODEFFILE, "r");
+		if (fp != NULL) {
+			fread_defs(fp, &userdefs, B_FALSE);
+			(void) fclose(fp);
+		}
 
-	(void) fclose(fp);
+		fp = fopen(DEFFILE, "r");
+		if (fp != NULL) {
+			fread_defs(fp, &userdefs, B_FALSE);
+			(void) fclose(fp);
+		}
 
-	return (&defaults);
+		userdefs_loaded = 1;
+	}
+	return (&userdefs);
 }
 
 void
 fread_defs(FILE *fp, struct userdefs *ud, boolean_t role)
 {
-	char instr[512], *ptr;
+	char instr[STR_SZ], *ptr;
 	const parsent_t *pe;
 
 	while (fgets(instr, sizeof (instr), fp) != NULL) {
@@ -219,21 +296,32 @@ fread_defs(FILE *fp, struct userdefs *ud, boolean_t role)
 		pe = scan(&ptr);
 
 		if (pe != NULL) {
-			/* If a role, should not see defrole, but... */
+			/*
+			 * If reading a role file, should not see defrole,
+			 * but in case we do, just skip it.
+			 */
 			if (role && pe->off == DEFOFF(defrole))
 				continue;
 
 			switch (pe->type) {
 			case INT:
-				FIELD(&defaults, pe, int) =
+				FIELD(ud, pe, int) =
 					(int)strtol(ptr, NULL, 10);
 				break;
 			case PROJID:
-				FIELD(&defaults, pe, projid_t) =
+				FIELD(ud, pe, projid_t) =
 					(projid_t)strtol(ptr, NULL, 10);
 				break;
 			case STR:
-				FIELD(&defaults, pe, char *) = dup_to_nl(ptr);
+				/*
+				 * Copy into static storage here (avoiding
+				 * strdup) so _get_userdefs() doesn't leak.
+				 * In here we know the userdefs struct has
+				 * all STR struct members pointing to our
+				 * static buffers of size STR_SZ.
+				 */
+				(void)strlcpy(FIELD(ud, pe, char *),
+				    zap_nl(ptr), STR_SZ);
 				break;
 			}
 		}
@@ -241,15 +329,13 @@ fread_defs(FILE *fp, struct userdefs *ud, boolean_t role)
 }
 
 static char *
-dup_to_nl(char *from)
+zap_nl(char *s)
 {
-	char *res = strdup(from);
-
-	char *p = strchr(res, '\n');
-	if (p)
+	char *p = strchr(s, '\n');
+	if (p != NULL)
 		*p = '\0';
 
-	return (res);
+	return (s);
 }
 
 extern int
@@ -367,7 +453,14 @@ userdef_set_by_uakey(struct userdefs *ud, const char *key, char *val)
 	for (i = 0; i < NDEF; i++) {
 		if (tab[i].uakey != NULL &&
 		    tab[i].type == STR &&
-		    strcmp(tab[i].uakey, key) == 0)
+		    strcmp(tab[i].uakey, key) == 0) {
+			/*
+			 * Don't strlcpy here because the calling program
+			 * may have changed the struct member to point to
+			 * something other than our static buffers.
+			 * If this leaks, it's the caller's fault.
+			 */
 			FIELD(ud, &tab[i], char *) = val;
+		}
 	}
 }

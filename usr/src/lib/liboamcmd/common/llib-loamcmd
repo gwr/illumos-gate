@@ -27,8 +27,9 @@
 /* LINTLIBRARY */
 /* PROTOLIB1 */
 
-#include <userdefs.h>
 #include <sys/types.h>
+#include <userdefs.h>
+#include "users.h"
 
 struct userdefs;
 
