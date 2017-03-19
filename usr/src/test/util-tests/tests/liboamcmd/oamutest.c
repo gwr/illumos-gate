@@ -27,6 +27,7 @@
 
 extern const char *__progname;
 boolean_t rflag = B_FALSE;
+int vflag;
 
 int
 main(int argc, char **argv)
@@ -34,7 +35,7 @@ main(int argc, char **argv)
 	struct userdefs *ud;
 	int c, i, errs = 0;
 
-	while ((c = getopt(argc, argv, "r")) != EOF) {
+	while ((c = getopt(argc, argv, "rv")) != EOF) {
 		switch (c) {
 		case 'r': /* role */
 			rflag = B_TRUE;
@@ -46,17 +47,21 @@ main(int argc, char **argv)
 		}
 	}
 
-	(void) printf("# Defaults:\n");
 	if (rflag) {
 		ud = _get_roledefs();
-		fwrite_roledefs(stdout, ud);
 	} else {
 		ud = _get_userdefs();
-		fwrite_userdefs(stdout, ud);
 	}
 
-	if (optind == argc)
-		return (0);
+	if (vflag) {
+		(void) printf("# Defaults:\n");
+		if (rflag) {
+			fwrite_roledefs(stdout, ud);
+		} else {
+			fwrite_userdefs(stdout, ud);
+		}
+		(void) printf("\n");
+	}
 
 	for (i = optind; i < argc; i++) {
 		FILE *fp;
@@ -71,7 +76,6 @@ main(int argc, char **argv)
 		}
 	}
 
-	(void) printf("# Final:\n");
 	if (rflag) {
 		fwrite_roledefs(stdout, ud);
 	} else {

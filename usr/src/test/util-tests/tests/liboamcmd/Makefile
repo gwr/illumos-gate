@@ -10,25 +10,34 @@
 #
 
 #
+# Copyright (c) 2014 Joyent, Inc.
 # Copyright 2016 Gordon W. Ross
 #
 
 # OAM User Test program
-PROG=		oamut
+PROG=		oamutest
+TESTS=		oamu_01 oamu_02
 
-include ../../../cmd/Makefile.cmd
+include $(SRC)/cmd/Makefile.cmd
 
-OBJECTS=	oamut.o
-CPPFLAGS=	-I. -I../common $(CPPFLAGS.master)
-LDLIBS +=	-loamcmd
+ROOTOPTPKG = $(ROOT)/opt/util-tests
+ROOTCMDDIR = $(ROOTOPTPKG)/bin
+TESTDIR    = $(ROOTOPTPKG)/tests/liboamcmd
+ROOTTESTS  = $(TESTS:%=$(TESTDIR)/%)
 
-all:		$(PROG)
+OBJS = $(PROG:%=%.o)
+SRCS = $(OBJS:%.o=%.c)
 
-$(PROG):	$(OBJECTS)
-	$(LINK.c) $(OBJECTS) -o $@ $(LDLIBS)
+LDLIBS += -loamcmd
+
+all: $(PROG)
+
+$(PROG): $(OBJS)
+	$(LINK.c) $(OBJS) -o $@ $(LDLIBS)
 	$(POST_PROCESS)
 
-install: $(PROG)
+install: $(ROOTCMD) $(ROOTTESTS)
+$(ROOTTESTS) : $(TESTDIR)
 
 clean:
 	$(RM) $(OBJECTS)
@@ -37,4 +46,10 @@ lint:	lint_PROG
 
 .KEEP_STATE:
 
-include ../../../cmd/Makefile.targ
+$(TESTDIR)/%: %.ksh
+	$(INS.rename)
+
+$(TESTDIR):
+	$(INS.dir)
+
+include $(SRC)/cmd/Makefile.targ
