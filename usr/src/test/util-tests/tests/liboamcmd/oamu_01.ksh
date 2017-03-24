@@ -1,7 +1,7 @@
 #!/bin/ksh
 
 errs=
-OAMUT=$ROOT/opt/util-tests/bin/oamutest
+OAMUT=$ROOT/opt/util-tests/bin/oamu_defs
 if [ -n "$ROOT" ] ; then
   export LD_LIBRARY_PATH=$ROOT/usr/lib
 fi

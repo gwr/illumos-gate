@@ -15,7 +15,7 @@
 #
 
 # OAM User Test program
-PROG=		oamutest
+PROG=		oamu_defs
 TESTS=		oamu_01 oamu_02
 
 include $(SRC)/cmd/Makefile.cmd
