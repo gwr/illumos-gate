@@ -43,6 +43,9 @@ char *getusertype(char *cmdname);
 
 int is_role(char *usertype);
 
+struct userdefs;
+void import_def(struct userdefs *ud);
+void update_def(struct userdefs *ud);
 void change_key(const char *, char *);
 void addkey_args(char **, int *);
 char *getsetdefval(const char *, char *);

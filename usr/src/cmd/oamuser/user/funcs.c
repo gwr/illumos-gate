@@ -77,7 +77,7 @@ static const char *check_idlecmd(const char *);
 static const char *check_idletime(const char *);
 static const char *check_auditflags(const char *);
 
-int nkeys;
+int nkeys; /* how many times change_key set a value */
 
 static ua_key_t keys[] = {
 	/* First entry is always set correctly in main() */
@@ -97,6 +97,7 @@ static ua_key_t keys[] = {
 };
 
 #define	NKEYS	(sizeof (keys)/sizeof (ua_key_t))
+
 
 /* Import default keys for ordinary useradd */
 void

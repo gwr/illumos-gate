@@ -31,8 +31,6 @@
 #ifndef	_USERDISP_H
 #define	_USERDISP_H
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
-
 #ifdef	__cplusplus
 extern "C" {
 #endif
@@ -56,6 +54,10 @@ extern "C" {
 #define	D_ALL	(D_GROUP | D_BASEDIR | D_RID | D_SKEL | D_SHELL \
 	| D_INACT | D_EXPIRE | D_AUTH | D_PROF | D_ROLE | D_PROJ | \
 	D_LPRIV | D_DPRIV | D_LOCK)
+
+extern struct userdefs *getusrdef();
+extern void dispusrdef();
+extern int putusrdef(struct userdefs *, char *);
 
 #ifdef	__cplusplus
 }

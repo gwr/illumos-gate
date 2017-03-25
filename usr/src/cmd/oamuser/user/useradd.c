@@ -84,19 +84,13 @@
  *
  */
 
-extern struct userdefs *getusrdef();
-extern void dispusrdef();
-
 static void cleanup();
 
-extern int check_perm(), valid_expire();
-extern int putusrdef(), valid_uid();
+extern int check_perm();
 extern int call_passmgmt(), edit_group(), create_home();
 extern int edit_project();
 extern int **valid_lgroup();
 extern projid_t **valid_lproject();
-extern void update_def(struct userdefs *);
-extern void import_def(struct userdefs *);
 extern int get_default_zfs_flags();
 
 static uid_t uid;			/* new uid */
