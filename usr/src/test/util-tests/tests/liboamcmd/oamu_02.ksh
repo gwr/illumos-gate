@@ -1,7 +1,21 @@
 #!/bin/ksh
+#
+# This file and its contents are supplied under the terms of the
+# Common Development and Distribution License ("CDDL"), version 1.0.
+# You may only use this file in accordance with the terms of version
+# 1.0 of the CDDL.
+#
+# A full copy of the text of the CDDL should have accompanied this
+# source.  A copy of the CDDL is also available via the Internet at
+# http://www.illumos.org/license/CDDL.
+#
+
+#
+# Copyright 2017 Gordon W. Ross
+#
 
 errs=
-OAMUT=$ROOT/opt/util-tests/bin/oamu_defs
+DEFS=$ROOT/opt/util-tests/bin/oamu_defs
 if [ -n "$ROOT" ] ; then
   export LD_LIBRARY_PATH=$ROOT/usr/lib
 fi
@@ -51,7 +65,7 @@ deflock_after_retries=' > role.tst
 #
 
 # Override compiled-in role defaults
-$OAMUT -r role.def |tail +2 > role1.out
+$DEFS -r role.def |tail +2 > role1.out
 if cmp -s role.def role1.out ; then
     echo "PASS: role1.out"
 else
@@ -60,7 +74,7 @@ else
 fi
 
 # Override role.def values
-$OAMUT -r role.def role.tst |tail +2 > role2.out
+$DEFS -r role.def role.tst |tail +2 > role2.out
 if cmp -s role.tst role2.out ; then
     echo "PASS: role2.out"
 else

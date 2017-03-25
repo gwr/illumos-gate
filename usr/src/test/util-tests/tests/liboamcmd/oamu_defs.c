@@ -10,24 +10,24 @@
  */
 
 /*
- * Copyright 2016 Gordon W. Ross
+ * Copyright 2017 Gordon W. Ross
  */
 
 /*
- * OAM User Test program
+ * OAM User Test program: read/write defaults
  */
 
 #include	<sys/types.h>
 #include	<stdio.h>
 #include	<string.h>
-#include	<userdefs.h>
 #include	<stdlib.h>
 #include	<stddef.h>
 #include	<getopt.h>
+#include	<userdefs.h>
 
 extern const char *__progname;
 boolean_t rflag = B_FALSE;
-int vflag;
+int vflag = 0;
 
 int
 main(int argc, char **argv)
@@ -40,8 +40,11 @@ main(int argc, char **argv)
 		case 'r': /* role */
 			rflag = B_TRUE;
 			break;
+		case 'v': /* verbose */
+			vflag++;
+			break;
 		case '?':
-			(void) fprintf(stderr, "usage: %s [-r] [file [file...]]\n",
+			(void) fprintf(stderr, "usage: %s [-rv] [file [file...]]\n",
 				__progname);
 			break;
 		}
@@ -56,9 +59,9 @@ main(int argc, char **argv)
 	if (vflag) {
 		(void) printf("# Defaults:\n");
 		if (rflag) {
-			fwrite_roledefs(stdout, ud);
+			(void) fwrite_roledefs(stdout, ud);
 		} else {
-			fwrite_userdefs(stdout, ud);
+			(void) fwrite_userdefs(stdout, ud);
 		}
 		(void) printf("\n");
 	}
@@ -77,9 +80,9 @@ main(int argc, char **argv)
 	}
 
 	if (rflag) {
-		fwrite_roledefs(stdout, ud);
+		(void) fwrite_roledefs(stdout, ud);
 	} else {
-		fwrite_userdefs(stdout, ud);
+		(void) fwrite_userdefs(stdout, ud);
 	}
 
 	return ((errs == 0) ? 0 : 1);

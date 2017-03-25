@@ -11,12 +11,12 @@
 
 #
 # Copyright (c) 2014 Joyent, Inc.
-# Copyright 2016 Gordon W. Ross
+# Copyright 2017 Gordon W. Ross
 #
 
 # OAM User Test program
-PROG=		oamu_defs
-TESTS=		oamu_01 oamu_02
+PROG=		oamu_defs oamu_uakey
+TESTS=		oamu_01 oamu_02 oamu_03
 
 include $(SRC)/cmd/Makefile.cmd
 
@@ -25,31 +25,28 @@ ROOTCMDDIR = $(ROOTOPTPKG)/bin
 TESTDIR    = $(ROOTOPTPKG)/tests/liboamcmd
 ROOTTESTS  = $(TESTS:%=$(TESTDIR)/%)
 
-OBJS = $(PROG:%=%.o)
-SRCS = $(OBJS:%.o=%.c)
-
 LDLIBS += -loamcmd
 
 all: $(PROG)
 
-$(PROG): $(OBJS)
-	$(LINK.c) $(OBJS) -o $@ $(LDLIBS)
-	$(POST_PROCESS)
-
 install: $(ROOTCMD) $(ROOTTESTS)
 $(ROOTTESTS) : $(TESTDIR)
+$(ROOTCMD) : $(PROG)
 
 clean:
-	$(RM) $(OBJECTS)
 
-lint:	lint_PROG
-
-.KEEP_STATE:
+# lint_PROG doesn't handle multiple programs...
+lint:
+	for p in $(PROG); do \
+	$(LINT.c) $$p.c $(LDLIBS) ;\
+	done
 
 $(TESTDIR)/%: %.ksh
 	$(INS.rename)
 
 $(TESTDIR):
 	$(INS.dir)
+
+.KEEP_STATE:
 
 include $(SRC)/cmd/Makefile.targ
