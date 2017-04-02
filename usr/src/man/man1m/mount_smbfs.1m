@@ -165,6 +165,23 @@ See the \fBmount\fR(1M) man page for the list of supported
 Sets the file system-specific properties. You can specify more than one
 name-value pair as a list of comma-separated pairs. No spaces are permitted in
 the list. The properties are as follows:
+
+.sp
+.ne 2
+.na
+\fB\fBacl\fR|\fBnoacl\fR\fR
+.ad
+.sp .6
+.RS 4n
+Enable (or disable) presentation of Access Control Lists (ACLs)
+on files and directories under this \fBsmbfs\fR(7FS) mount.
+The default comes from the \fBsharectl\fR(1M) property
+\fBdef_acl\fR (normaly \fBfalse\fR).
+Enabling this option is not advised unless the system is joined
+to an Active Directory domain and using \fBldap\fR(1M) to
+present ACL identities from the joined domain.
+.RE
+
 .sp
 .ne 2
 .na
