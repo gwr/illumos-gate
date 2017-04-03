@@ -163,7 +163,7 @@ sn_inactive(smbnode_t *np)
 	vnode_t		*vp;
 
 	/*
-	 * Flush and invalidate all pages
+	 * Flush and invalidate all pages (done by caller)
 	 * Free any held credentials and caches...
 	 * etc.  (See NFS code)
 	 */
@@ -184,9 +184,7 @@ sn_inactive(smbnode_t *np)
 	mutex_exit(&np->r_statelock);
 
 	vp = SMBTOV(np);
-	if (vn_has_cached_data(vp)) {
-		smbfs_invalidate_pages(vp, (u_offset_t) 0, oldcr);
-	}
+	ASSERT(vn_has_cached_data(vp) == 0);
 
 	if (ovsa.vsa_aclentp != NULL)
 		kmem_free(ovsa.vsa_aclentp, ovsa.vsa_aclentsz);
@@ -294,10 +292,10 @@ smbfs_node_findcreate(
 	vp = SMBTOV(np);
 	if (!newnode) {
 		/*
-		 * Found an existing node.
-		 * Maybe purge caches...
+		 * Found an existing node.  When it went inactive,
+		 * XXX it should have lost all cached data...
 		 */
-		smbfs_cache_check(vp, fap);
+		ASSERT(vn_has_cached_data(vp) == 0);
 	}
 	smbfs_attrcache_fa(vp, fap);
 
@@ -1050,50 +1048,73 @@ sn_destroy_node(smbnode_t *np)
  */
 /*ARGSUSED*/
 void
-smbfs_rflush(struct vfs *vfsp, cred_t *cr) {
+smbfs_rflush(struct vfs *vfsp, cred_t *cr)
+{
+	smbmntinfo_t *mi = VFTOSMI(vfsp);
+	smbnode_t *np;
+	vnode_t *vp, **vplist;
+	long num, cnt;
 
-    smbmntinfo_t *mi;
-    smbnode_t *np;
-    vnode_t *vp;
+	if (vfsp == NULL) {
+		/* XXX - Supposed to flush ALL smbfs mounts... */
+		return;
+	}
 
-    long num, cnt;
+	/*
+	 * Check to see whether there is anything to do.
+	 */
+	num = avl_numnodes(&mi->smi_hash_avl);
+	if (num == 0)
+		return;
 
-    vnode_t **vplist;
+	/*
+	 * Allocate a slot for all currently active rnodes on the
+	 * supposition that they all may need flushing.
+	 */
+	vplist = kmem_alloc(num * sizeof (*vplist), KM_SLEEP);
+	cnt = 0;
 
-    if(vfsp == NULL)
-        return;
+	/*
+	 * Walk the AVL tree looking for rnodes with page
+	 * lists associated with them.  Make a list of these
+	 * files.
+	 */
+	rw_enter(&mi->smi_hash_lk, RW_READER);
+	for (np = avl_first(&mi->smi_hash_avl); np != NULL;
+	     np = avl_walk(&mi->smi_hash_avl, np, AVL_AFTER)) {
+		vp = SMBTOV(np);
+		/*
+		 * Don't bother sync'ing a vp if it
+		 * is part of virtual swap device or
+		 * if VFS is read-only
+		 */
+		if (IS_SWAPVP(vp) || vn_is_readonly(vp))
+			continue;
+		/*
+		 * If the vnode has pages and is marked as either
+		 * dirty or mmap'd, hold and add this vnode to the
+		 * list of vnodes to flush.
+		 */
+		if (vn_has_cached_data(vp) &&
+		    ((np->r_flags & RDIRTY) || np->r_mapcnt > 0)) {
+			VN_HOLD(vp);
+			vplist[cnt++] = vp;
+			if (cnt == num)
+				break;
+		}
+	}
+	rw_exit(&mi->smi_hash_lk);
 
-    mi = VFTOSMI(vfsp);
+	/*
+	 * Flush and release all of the files on the list.
+	 */
+	while (cnt-- > 0) {
+		vp = vplist[cnt];
+		(void) VOP_PUTPAGE(vp, (u_offset_t)0, 0, B_ASYNC, cr, NULL);
+		VN_RELE(vp);
+	}
 
-    cnt = 0;
-
-    num = mi->smi_hash_avl.avl_numnodes;
-
-    vplist = kmem_alloc(num * sizeof (vnode_t*), KM_SLEEP);
-
-    rw_enter(&mi->smi_hash_lk, RW_READER);
-    for (np = avl_first(&mi->smi_hash_avl); np != NULL;
-            np = avl_walk(&mi->smi_hash_avl, np, AVL_AFTER)) {
-        vp = SMBTOV(np);
-        if (vn_is_readonly(vp))
-            continue;
-
-        if (vn_has_cached_data(vp) && (np->r_flags & RDIRTY || np->r_mapcnt > 0)) {
-            VN_HOLD(vp);
-            vplist[cnt++] = vp;
-            if (cnt == num)
-                break;
-        }
-    }
-    rw_exit(&mi->smi_hash_lk);
-
-    while (cnt-- > 0) {
-        vp = vplist[cnt];
-        (void) VOP_PUTPAGE(vp, 0, 0, 0, cr, NULL);
-        VN_RELE(vp);
-    }
-
-    kmem_free(vplist, num * sizeof (vnode_t*));
+	kmem_free(vplist, num * sizeof (vnode_t*));
 }
 
 /* access cache (nfs_subr.c) not used here */
