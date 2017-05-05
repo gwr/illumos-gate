@@ -45,7 +45,7 @@ main(void)
 	assert(buf != MAP_FAILED);
 	memset(buf, 'a', mapsz);
 
-	ret = memcntl(buf + clroff, clrsz, MC_INHERIT_ZERO, 0, 0, 0);
+	ret = memcntl((char *)buf + clroff, clrsz, MC_INHERIT_ZERO, 0, 0, 0);
 	assert(ret == 0);
 
 	child = fork();

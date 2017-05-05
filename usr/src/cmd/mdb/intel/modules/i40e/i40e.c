@@ -14,6 +14,7 @@
  */
 
 #include <sys/mdb_modapi.h>
+#define _I40E_PROTOTYPE_H_ /* hack hack... */
 #include "i40e_sw.h"
 
 #define	RSRC_MAX	0x13

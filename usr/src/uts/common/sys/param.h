@@ -156,7 +156,9 @@ extern "C" {
  * Fundamental constants of the implementation--cannot be changed easily.
  */
 
+#if !defined(_ASM)
 #define	NBPW	sizeof (int)	/* number of bytes in an integer */
+#endif	/* _ASM */
 
 #define	CMASK	022		/* default mask for file creation */
 #define	CDLIMIT	(1L<<11)	/* default max write address */
