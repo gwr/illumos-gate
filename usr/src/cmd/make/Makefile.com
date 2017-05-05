@@ -13,6 +13,7 @@
 
 MAKE_INCLUDE= $(SRC)/cmd/make/include
 CFLAGS += $(CCVERBOSE)
+CFLAGS += -xCC
 CPPFLAGS += -I$(MAKE_INCLUDE) $(MAKE_DEFS)
 
 # So that it's set even for the libraries we build

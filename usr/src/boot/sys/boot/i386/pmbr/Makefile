@@ -22,7 +22,7 @@ ROOT_BOOT = $(ROOT)/boot
 
 PROG=	pmbr
 
-#AS=	$(GNU_ROOT)/bin/gas
+AS=	$(GNU_ROOT)/bin/gas
 LD=	$(GNU_ROOT)/bin/gld
 STRIP=				# no strip is needed
 FILEMODE=0444

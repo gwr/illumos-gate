@@ -21,8 +21,10 @@ pics/%.o: $(SRC)/lib/commpage/common/%.c
 	$(COMPILE.c) -o $@ $<
 	$(POST_PROCESS_O)
 
+# Can't build cp_subr with studio, so force an expansion of
+# $(COMPILE.s) using AS=.../aw
 pics/%.o: $(SRC)/lib/commpage/$(TARGET_ARCH)/%.s $(COMMPAGE_OFFSETS_H)
-	$(COMPILE.s) -o $@ $<
+	$(ONBLD_TOOLS)/bin/$(MACH)/aw $(ASFLAGS) $(AS_CPPFLAGS) -o $@ $<
 	$(POST_PROCESS_O)
 
 $(COMMPAGE_OFFSETS_H): $(COMMPAGE_OFFSETS_SRC)

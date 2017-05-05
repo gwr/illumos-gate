@@ -30,6 +30,7 @@ PROG	= mbh_patch
 
 include ../Makefile.tools
 
+C99MODE=	$(C99_ENABLE)
 CPPFLAGS += -I../../uts/common
 
 .KEEP_STATE:

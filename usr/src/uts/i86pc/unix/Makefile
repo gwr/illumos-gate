@@ -64,7 +64,7 @@ GENUNIX_DIR	= ../../intel/$(GENUNIX)
 
 LIBOPTS		= -L $(GENUNIX_DIR)/$(OBJS_DIR) -l $(GENUNIX)
 
-COMMP_CTF_SRC	= $(OBJS_DIR)/comm_page_ctf.c
+COMMP_CTF_SRC	= $(OBJS_DIR)/comm_page_ctf.i
 
 CTFEXTRAOBJS	= $(OBJS_DIR)/vers.o $(OBJS_DIR)/comm_page_ctf.o
 
@@ -219,12 +219,24 @@ $(DBOOT_O):	$(DBOOT_BIN)
 $(DBOOT_OBJS_DIR):
 	-@mkdir -p $@ 2> /dev/null
 
+# If we just use $(COMPILE.cpp) here then studio puts the
+# $(INLINES) in the output, which needs to be plain C code.
+# So instead, expand $(COMPILE.cpp) leaving out $(CFLAGS)
 $(COMMP_CTF_SRC):	$(UTSBASE)/i86pc/ml/comm_page.s
-	$(COMPILE.cpp) -D_GENCTF -o $@ $(UTSBASE)/i86pc/ml/comm_page.s
+	@echo "$(COMPILE.cpp) ..."
+	$(CC) -E -C $(CPPFLAGS) -D_GENCTF \
+	  $(UTSBASE)/i86pc/ml/comm_page.s > $@
 
 $(OBJS_DIR)/comm_page_ctf.o:	$(COMMP_CTF_SRC)
-	$(COMPILE.c) -o $@ $<
+	$(COMPILE.c) -o $@ $(COMMP_CTF_SRC)
 	$(CTFCONVERT_O)
+
+# Can't build cp_subr with studio, so force an expansion of
+# $(COMPILE.s) using AS=.../aw
+$(OBJS_DIR)/comm_page.o: $(UTSBASE)/i86pc/ml/comm_page.s
+	@echo "$(COMPILE.s) ..."
+	$(ONBLD_TOOLS)/bin/$(MACH)/aw $(ASFLAGS) $(AS_CPPFLAGS) -o $@ \
+	  $(UTSBASE)/i86pc/ml/comm_page.s
 
 #
 # dboot is built as an intermediate target in dboot.o, so just make
