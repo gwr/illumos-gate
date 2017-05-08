@@ -30,6 +30,7 @@ extern "C" {
 #endif
 
 #include <sys/socket.h>
+#include <sys/stream.h>  /* XXX: was by sys/socket.h */
 
 /*
  * Generation count
