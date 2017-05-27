@@ -33,6 +33,8 @@
 #include <stdlib.h>
 #include <pthread.h>
 
+extern char *__progname;
+
 static void *
 server(void *varg)
 {
@@ -62,12 +64,92 @@ server(void *varg)
 			    strerror(errno));
 			exit(1);
 		}
+		if (ret == 0) {
+			printf("SERVER: got HUP\n");
+			break;
+		}
 
 		printf("SERVER:%s\n", (char *)msg.msg_iov->iov_base);
 		fflush(stdout);
 	}
 
-	exit(0);
+	close(sock);
+	return (NULL);
+}
+
+void
+runtest(int sotype)
+{
+	int sfds[2];
+	int sock;
+	int ret;
+	unsigned int i;
+
+	/* Create socketpair */
+	ret = socketpair(AF_UNIX, sotype, 0, sfds);
+	if (ret == -1) {
+		fprintf(stderr, "%s - socketpair fail %s\n",
+		    __progname, strerror(errno));
+		exit(1);
+	}
+
+	/* Set up the server.  It closes sfds[0] when done. */
+	ret = pthread_create(NULL, NULL, server, sfds);
+	if (ret == -1) {
+		fprintf(stderr, "%s - thread create fail %s\n",
+		    __progname, strerror(errno));
+		exit(1);
+	}
+
+	sleep(1);
+
+	/* "Server" is sfds[0], "client" is sfds[1] */
+	sock = sfds[1];
+
+	/* Send some messages */
+	for (i = 0; i < 3; i++) {
+		struct iovec iov;
+		struct msghdr msg;
+		uint8_t buf[4096];
+
+		memcpy(buf, "TEST0", sizeof ("TEST0"));
+		buf[4] = '0' + i;
+
+		printf("CLIENT:%s\n", buf);
+
+		iov = (struct iovec) {
+			.iov_base = buf,
+			.iov_len = sizeof (buf),
+		};
+
+		msg = (struct msghdr) {
+			.msg_iov = &iov,
+			.msg_iovlen = 1,
+		};
+
+		ret = sendmsg(sock, &msg, 0);
+
+		if (ret == -1) {
+			fprintf(stderr, "%s - sendmsg fail %s\n",
+			    __progname, strerror(errno));
+			exit(1);
+		}
+
+		fflush(stdout);
+		sleep(1);
+	}
+
+	/*
+	 * Tell sever to terminate
+	 */
+	if (sotype == SOCK_STREAM) {
+		printf("CLIENT: close\n");
+		close(sock);
+	} else {
+		printf("CLIENT: send 0\n");
+		send(sock, "", 0, 0);
+	}
+	sleep(1);
 }
 
 /*
@@ -82,9 +164,6 @@ int
 main(int argc, char **argv)
 {
 	int ret;
-	int sfds[2];
-	int sock;
-	unsigned int i;
 
 	if (argc > 1) {
 		ret = strlcpy(testdir, argv[1], sizeof (testdir));
@@ -109,60 +188,11 @@ main(int argc, char **argv)
 	}
 	(void) unlink(addr.sun_path);
 
-	/* Create socketpair */
-	ret = socketpair(AF_UNIX, SOCK_STREAM, 0, sfds);
-	if (ret == -1) {
-		fprintf(stderr, "%s - socketpair fail %s\n",
-		    argv[0], strerror(errno));
-		exit(1);
-	}
+	printf("%s SOCK_STREAM test...\n", argv[0]);
+	runtest(SOCK_STREAM);
 
-	/* Set up the server. */
-	ret = pthread_create(NULL, NULL, server, sfds);
-	if (ret == -1) {
-		fprintf(stderr, "%s - thread create fail %s\n",
-		    argv[0], strerror(errno));
-		exit(1);
-	}
+	printf("%s SOCK_DGRAM test...\n", argv[0]);
+	runtest(SOCK_DGRAM);
 
-	sleep(1);
-
-	/* "Server" is sfds[0], "client" is sfds[1] */
-	sock = sfds[1];
-
-	/* Send some messages */
-	for (i = 0; i < 5; i++) {
-		struct iovec iov;
-		struct msghdr msg;
-		uint8_t buf[4096];
-
-		memcpy(buf, "TEST0", sizeof ("TEST0"));
-		buf[4] = '0' + i;
-
-		printf("CLIENT:%s\n", buf);
-
-		iov = (struct iovec) {
-			.iov_base = buf,
-			.iov_len = sizeof (buf),
-		};
-
-		msg = (struct msghdr) {
-			.msg_iov = &iov,
-			.msg_iovlen = 1,
-		};
-
-		ret = sendmsg(sock, &msg, 0);
-
-		if (ret == -1) {
-			fprintf(stderr, "%s - sendmsg fail %s\n",
-			    argv[0], strerror(errno));
-			exit(1);
-		}
-
-		fflush(stdout);
-		sleep(1);
-	}
-
-	close(sock);
 	return (0);
 }
