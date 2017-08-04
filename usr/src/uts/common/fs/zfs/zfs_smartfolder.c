@@ -138,7 +138,7 @@ int
 zfs_create_smartfolder(struct zfsvfs *zfsvfs, struct vnode *dvp, struct vnode *vp,
     const char *dirname, int flags, struct cred *cr)
 {
-	int err;
+	int err = EINVAL;
 #ifdef	_KERNEL
 	zfs_creat_t zct = { 0 };
 	struct mounta ma;
@@ -151,7 +151,7 @@ zfs_create_smartfolder(struct zfsvfs *zfsvfs, struct vnode *dvp, struct vnode *v
 	refstr_t *mntpt;
 
 	if (zfs_smartfolder_nohidden && dirname[0] == '.')
-		return (EINVAL);
+		return (err);
 
 	ppath = kmem_alloc(MAXPATHLEN, KM_SLEEP);
 	path = kmem_alloc(MAXPATHLEN, KM_SLEEP);
