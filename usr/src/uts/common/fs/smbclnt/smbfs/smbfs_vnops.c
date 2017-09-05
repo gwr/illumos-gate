@@ -153,6 +153,7 @@ static int	smbfs_getapage(vnode_t *, u_offset_t, size_t, uint_t *,
 			enum seg_rw, cred_t *);
 static int	smbfs_putapage(vnode_t *, page_t *, u_offset_t *, size_t *,
 			int, cred_t *);
+static void	smbfs_delmap_callback(struct as *, void *, uint_t);
 
 
 /* XXX: nfs3_sync_pageio, nfs3_delmap_callback ... */
@@ -442,7 +443,7 @@ smbfs_close(vnode_t *vp, int flag, int count, offset_t offset, cred_t *cr,
 	 * For now, always do this synchronously. XXX B_ASYNC?
 	 */
 	if ((flag & FWRITE) && vn_has_cached_data(vp)) {
-		error = smbfs_putpage(vp, (offset_t)0, 0, B_ASYNC, cr, ct);
+		error = smbfs_putpage(vp, (offset_t)0, 0, 0, cr, ct);
 		if (error == EAGAIN)
 			error = 0;
 		/* XXX NFS r_error business? */
@@ -2027,6 +2028,10 @@ smbfs_inactive(vnode_t *vp, cred_t *cr, caller_context_t *ct)
 		}
 		smbfs_invalidate_pages(vp, (u_offset_t)0, cr);
 	}
+	/*
+	 * XXX This vnode should have lost all cached data.
+	 */
+	ASSERT(vn_has_cached_data(vp) == 0);
 
 	/*
 	 * Defend against the possibility that higher-level callers
@@ -3042,7 +3047,6 @@ smbfsrename(vnode_t *odvp, vnode_t *ovp, vnode_t *ndvp, char *nnm,
 	} /* nvp */
 
 	smbfs_attrcache_remove(onp);
-
 	error = smbfs_smb_rename(onp, ndnp, nnm, strlen(nnm), scred);
 
 	/*
@@ -4335,7 +4339,8 @@ smbfs_map(vnode_t *vp, offset_t off, struct as *as, caddr_t *addrp,
 	 *
 	 * Since we are not protecting r_inmap by any lock, we do not
 	 * hold any lock when we decrement it. We atomically decrement
-	 * r_inmap after we release r_lkserlock.  XXX OK?
+	 * r_inmap after we release r_lkserlock.  Not that rwlock is
+	 * re-entered as writer in smbfs_addmap (called via as_map).
 	 */
 
 	if (smbfs_rw_enter_sig(&np->r_rwlock, RW_WRITER, SMBINTR(vp)))
@@ -4343,7 +4348,7 @@ smbfs_map(vnode_t *vp, offset_t off, struct as *as, caddr_t *addrp,
 	atomic_inc_uint(&np->r_inmap);
 	smbfs_rw_exit(&np->r_rwlock);
 
-	if (smbfs_rw_enter_sig(&np->r_lkserlock, RW_READER, SMBINTR(vp))) {
+	if (smbfs_rw_enter_sig(&np->r_lkserlock, RW_WRITER, SMBINTR(vp))) {
 		atomic_dec_uint(&np->r_inmap);
 		return (EINTR);
 	}
@@ -4399,17 +4404,40 @@ smbfs_addmap(vnode_t *vp, offset_t off, struct as *as, caddr_t addr,
 	cred_t *cr, caller_context_t *ct)
 {
 	smbnode_t *np = VTOSMB(vp);
+	boolean_t inc_fidrefs = B_FALSE;
 
 	/*
-	 * XXX When r_mapcnt goes from zero to ++,
+	 * When r_mapcnt goes from zero to non-zero,
 	 * increment n_fidrefs
 	 */
-	atomic_add_long((ulong_t *)&np->r_mapcnt, btopr(len));
+	mutex_enter(&np->r_statelock);
+	if (np->r_mapcnt == 0)
+		inc_fidrefs = B_TRUE;
+	np->r_mapcnt += btopr(len);
+	mutex_exit(&np->r_statelock);
+
+	if (inc_fidrefs) {
+		(void) smbfs_rw_enter_sig(&np->r_lkserlock, RW_WRITER, 0);
+		np->n_fidrefs++;
+		smbfs_rw_exit(&np->r_lkserlock);
+	}
 
 	return (0);
 }
 
 /* nfs3_delmap */
+
+typedef struct smbfs_delmap_args {
+	vnode_t			*vp;
+	cred_t			*cr;
+	offset_t		off;
+	caddr_t			addr;
+	size_t			len;
+	uint_t			prot;
+	uint_t			maxprot;
+	uint_t			flags;
+	boolean_t		dec_fidrefs;
+} smbfs_delmap_args_t;
 
 /* ARGSUSED */
 static int 
@@ -4417,25 +4445,84 @@ smbfs_delmap(vnode_t *vp, offset_t off, struct as *as, caddr_t addr,
 	size_t len, uint_t prot, uint_t maxprot, uint_t flags,
 	cred_t *cr, caller_context_t *ct)
 {
-	smbnode_t      *np = VTOSMB(vp);
+	smbnode_t *np = VTOSMB(vp);
+	smbfs_delmap_args_t	*dmapp;
+	int error;
 
-	atomic_add_long((ulong_t *)&np->r_mapcnt, -btopr(len));
+	dmapp = kmem_zalloc(sizeof (*dmapp), KM_SLEEP);
+
+	dmapp->vp = vp;
+	dmapp->off = off;
+	dmapp->addr = addr;
+	dmapp->len = len;
+	dmapp->prot = prot;
+	dmapp->maxprot = maxprot;
+	dmapp->flags = flags;
+	dmapp->cr = cr;
+	dmapp->dec_fidrefs = B_FALSE;
 
 	/*
-	 * XXX When r_mapcnt returns to zero, 
-	 * call smbfs_rele_fid();
-	 *
-	 * XXX Do we need to use as_add_callback() like NFS
-	 * to handle our (possible) OtW smbfs_rele_fid?
-	 * Perhaps better to just make sure that won't block
-	 * when the connection is down...
-	 *
-	 * And if we need to schedule I/O, maybe use a taskq?
+	 * When r_mapcnt returns to zero, decrement n_fidrefs,
+	 * and maybe call smbfs_rele_fid();
 	 */
+	mutex_enter(&np->r_statelock);
+	np->r_mapcnt -= btopr(len);
+	ASSERT(np->r_mapcnt >= 0);
+	if (np->r_mapcnt == 0)
+		dmapp->dec_fidrefs = B_TRUE;
+	mutex_exit(&np->r_statelock);
+
+	error = as_add_callback(as, smbfs_delmap_callback, dmapp,
+	    AS_UNMAP_EVENT, addr, len, KM_SLEEP);
+	if (error != 0) {
+		/*
+		 * So sad, no callback is coming.
+		 * XXX: Is this error path OK?
+		 */
+		cmn_err(CE_NOTE, "smbfs_delmap(%p) "
+		    "as_add_callback err=%d",
+		    (void *)vp, error);
+
+		if (dmapp->dec_fidrefs) {
+			struct smb_cred scred;
+
+			(void) smbfs_rw_enter_sig(&np->r_lkserlock,
+			    RW_WRITER, 0);
+			smb_credinit(&scred, dmapp->cr);
+
+			smbfs_rele_fid(np, &scred);
+
+			smb_credrele(&scred);
+			smbfs_rw_exit(&np->r_lkserlock);
+		}
+		kmem_free(dmapp, sizeof (*dmapp));
+	}
+
+	return (0);
+}
+
+/* nfs3_delmap_callback() */
+
+/*
+ * Remove some pages from an mmap'd vnode.  Flush and
+ * commit all of the pages associated with this file.
+ */
+/* ARGSUSED */
+static void
+smbfs_delmap_callback(struct as *as, void *arg, uint_t event)
+{
+	vnode_t			*vp;
+	smbnode_t		*np;
+	smbmntinfo_t		*smi;
+	smbfs_delmap_args_t	*dmapp = (smbfs_delmap_args_t *)arg;
+
+	vp = dmapp->vp;
+	np = VTOSMB(vp);
+	smi = VTOSMI(vp);
+
+	/* Decremented r_mapcnt in smbfs_delmap */
 
 	/*
-	 * Start code like: nfs3_delmap_callback()
-	 *
 	 * Initiate a page flush and potential commit if there are
 	 * pages, the file system was not mounted readonly, the segment
 	 * was mapped shared, and the pages themselves were writeable.
@@ -4444,7 +4531,7 @@ smbfs_delmap(vnode_t *vp, offset_t off, struct as *as, caddr_t addr,
 	 * unmount smbfs
 	 */
 	if (vn_has_cached_data(vp) && !vn_is_readonly(vp) &&
-	    flags == MAP_SHARED && (maxprot & PROT_WRITE)) {
+	    dmapp->flags == MAP_SHARED && (dmapp->maxprot & PROT_WRITE)) {
 		mutex_enter(&np->r_statelock);
 		np->r_flags |= RDIRTY;
 		mutex_exit(&np->r_statelock);
@@ -4456,14 +4543,28 @@ smbfs_delmap(vnode_t *vp, offset_t off, struct as *as, caddr_t addr,
 		 *
 		 * Jilinxpd had this in smbfs_close
 		 */
-		(void) smbfs_putpage(vp, off, len, 0, cr, ct);
+		(void) smbfs_putpage(vp, dmapp->off, dmapp->len, 0,
+		    dmapp->cr, NULL);
 	}
 
 	/*
-	 * XXX Should check for r_mapcnt == 0 and do OtW close.
+	 * If r_mapcnt went to zero, drop our FID ref now.
+	 * On the last fidref, this does an OtW close.
 	 */
+	if (dmapp->dec_fidrefs) {
+		struct smb_cred scred;
 
-	return (0);
+		(void) smbfs_rw_enter_sig(&np->r_lkserlock, RW_WRITER, 0);
+		smb_credinit(&scred, dmapp->cr);
+
+		smbfs_rele_fid(np, &scred);
+
+		smb_credrele(&scred);
+		smbfs_rw_exit(&np->r_lkserlock);
+	}
+
+	(void) as_delete_callback(as, arg);
+	kmem_free(dmapp, sizeof (*dmapp));
 }
 
 /* nfs3_pageio(), nfs3_dispose() */

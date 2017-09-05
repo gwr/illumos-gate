@@ -184,7 +184,9 @@ sn_inactive(smbnode_t *np)
 	mutex_exit(&np->r_statelock);
 
 	vp = SMBTOV(np);
-	ASSERT(vn_has_cached_data(vp) == 0);
+	if (vn_has_cached_data(vp)) {
+		ASSERT3P(vp,==,NULL);
+	}
 
 	if (ovsa.vsa_aclentp != NULL)
 		kmem_free(ovsa.vsa_aclentp, ovsa.vsa_aclentsz);
@@ -290,13 +292,6 @@ smbfs_node_findcreate(
 	 * dealing with any cache impact, etc.
 	 */
 	vp = SMBTOV(np);
-	if (!newnode) {
-		/*
-		 * Found an existing node.  When it went inactive,
-		 * XXX it should have lost all cached data...
-		 */
-		ASSERT(vn_has_cached_data(vp) == 0);
-	}
 	smbfs_attrcache_fa(vp, fap);
 
 	/*
@@ -1050,15 +1045,19 @@ sn_destroy_node(smbnode_t *np)
 void
 smbfs_rflush(struct vfs *vfsp, cred_t *cr)
 {
-	smbmntinfo_t *mi = VFTOSMI(vfsp);
+	smbmntinfo_t *mi;
 	smbnode_t *np;
 	vnode_t *vp, **vplist;
 	long num, cnt;
 
 	if (vfsp == NULL) {
-		/* XXX - Supposed to flush ALL smbfs mounts... */
+		/*
+		 * XXX - Supposed to flush ALL smbfs mounts...
+		 * Could use smi_globals_t list of mounts.
+		 */
 		return;
 	}
+	mi = VFTOSMI(vfsp);
 
 	/*
 	 * Check to see whether there is anything to do.
