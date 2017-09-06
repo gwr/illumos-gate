@@ -29,4 +29,10 @@
 #define	BINM_WHATIS "whatis"
 #define	BINM_MAKEWHATIS "man -w"
 
+/* For the tools build */
+#ifdef	_NATIVE
+extern void *reallocarray(void *, size_t, size_t);
+extern void *recallocarray(void *, size_t, size_t, size_t);
+extern long long strtonum(const char *, long long, long long, const char **);
+#endif
 #endif /* MANDOC_CONFIG_H */

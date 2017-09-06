@@ -25,7 +25,9 @@ OBJS +=		fts.o \
 		recallocarray.o \
 		strtonum.o
 
-CPPFLAGS +=	-I. -include fts.h
+# -include is GCC specific, ya know...
+#CPPFLAGS +=	-I. -include config.h -include fts.h
+CPPFLAGS +=	-I. -D_NATIVE
 CPPFLAGS +=	-I$(NATIVE_ADJUNCT)/include
 LDFLAGS +=	-L$(NATIVE_ADJUNCT)/lib -R$(NATIVE_ADJUNCT)/lib
 
