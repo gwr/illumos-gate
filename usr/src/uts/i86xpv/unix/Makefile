@@ -202,6 +202,10 @@ $(DBOOT_O):	$(DBOOT_BIN)
 $(DBOOT_OBJS_DIR):
 	-@mkdir -p $@ 2> /dev/null
 
+# Can't build float.s with studio, so force an expansion of
+# $(COMPILE.s) using AS=.../aw
+$(OBJS_DIR)/float.o := AS=$(ONBLD_TOOLS)/bin/$(MACH)/aw
+
 #
 #	Special rules for generating assym.h for inclusion in assembly files.
 #

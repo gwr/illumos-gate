@@ -233,10 +233,10 @@ $(OBJS_DIR)/comm_page_ctf.o:	$(COMMP_CTF_SRC)
 
 # Can't build cp_subr with studio, so force an expansion of
 # $(COMPILE.s) using AS=.../aw
-$(OBJS_DIR)/comm_page.o: $(UTSBASE)/i86pc/ml/comm_page.s
-	@echo "$(COMPILE.s) ..."
-	$(ONBLD_TOOLS)/bin/$(MACH)/aw $(ASFLAGS) $(AS_CPPFLAGS) -o $@ \
-	  $(UTSBASE)/i86pc/ml/comm_page.s
+$(OBJS_DIR)/comm_page.o := AS=$(ONBLD_TOOLS)/bin/$(MACH)/aw
+
+# Same for float.s
+$(OBJS_DIR)/float.o := AS=$(ONBLD_TOOLS)/bin/$(MACH)/aw
 
 #
 # dboot is built as an intermediate target in dboot.o, so just make
