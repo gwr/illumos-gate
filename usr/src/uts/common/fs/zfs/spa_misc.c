@@ -297,20 +297,24 @@ boolean_t zfs_recover = B_FALSE;
 boolean_t zfs_free_leak_on_eio = B_FALSE;
 
 /*
- * Expiration time in milliseconds. This value has two meanings. First it is
- * used to determine when the spa_deadman() logic should fire. By default the
- * spa_deadman() will fire if spa_sync() has not completed in 1000 seconds.
- * Secondly, the value determines if an I/O is considered "hung". Any I/O that
- * has not completed in zfs_deadman_synctime_ms is considered "hung" resulting
- * in a system panic.
+ * A pool sync or ZIO which exceeds its respective timeout is considered
+ * hung. The check interval controls how often an already-expired sync is
+ * examined for hung leaf I/O.
  */
-uint64_t zfs_deadman_synctime_ms = 1000000ULL;
+uint64_t zfs_deadman_synctime_ms = 600000ULL;
+uint64_t zfs_deadman_ziotime_ms = 300000ULL;
 
 /*
  * Check time in milliseconds. This defines the frequency at which we check
  * for hung I/O.
  */
-uint64_t zfs_deadman_checktime_ms = 5000ULL;
+uint64_t zfs_deadman_checktime_ms = 60000ULL;
+
+/*
+ * Deadman failure behavior. This uses the native numeric ZIO failure-mode
+ * constants so it remains tunable through /etc/system and mdb.
+ */
+uint64_t zfs_deadman_failmode = ZIO_FAILURE_MODE_WAIT;
 
 /*
  * Override the zfs deadman behavior via /etc/system. By default the
@@ -595,19 +599,24 @@ spa_deadman(void *arg)
 {
 	spa_t *spa = arg;
 
-	/*
-	 * Disable the deadman timer if the pool is suspended.
-	 */
-	if (spa_suspended(spa)) {
-		VERIFY(cyclic_reprogram(spa->spa_deadman_cycid, CY_INFINITY));
+	/* Disable the deadman if the pool is suspended. */
+	if (spa_suspended(spa))
 		return;
-	}
 
 	zfs_dbgmsg("slow spa_sync: started %llu seconds ago, calls %llu",
 	    (gethrtime() - spa->spa_sync_starttime) / NANOSEC,
 	    ++spa->spa_deadman_calls);
 	if (zfs_deadman_enabled)
-		vdev_deadman(spa->spa_root_vdev);
+		vdev_deadman(spa->spa_root_vdev, FTAG);
+
+	/*
+	 * XXX: FixMe
+	 * spa_sync() can cancel the active task ID while this callback
+	 * publishes its replacement, then overwrite the replacement with zero.
+	 */
+	spa->spa_deadman_tqid = taskq_dispatch_delay(system_delay_taskq,
+	    spa_deadman, spa, TQ_SLEEP, ddi_get_lbolt() +
+	    MSEC_TO_TICK(zfs_deadman_checktime_ms));
 }
 
 int
@@ -629,8 +638,6 @@ spa_add(const char *name, nvlist_t *config, const char *altroot)
 {
 	spa_t *spa;
 	spa_config_dirent_t *dp;
-	cyc_handler_t hdlr;
-	cyc_time_t when;
 
 	ASSERT(MUTEX_HELD(&spa_namespace_lock));
 
@@ -671,24 +678,6 @@ spa_add(const char *name, nvlist_t *config, const char *altroot)
 	spa->spa_proc = &p0;
 	spa->spa_proc_state = SPA_PROC_NONE;
 	spa->spa_trust_config = B_TRUE;
-
-	hdlr.cyh_func = spa_deadman;
-	hdlr.cyh_arg = spa;
-	hdlr.cyh_level = CY_LOW_LEVEL;
-
-	spa->spa_deadman_synctime = MSEC2NSEC(zfs_deadman_synctime_ms);
-
-	/*
-	 * This determines how often we need to check for hung I/Os after
-	 * the cyclic has already fired. Since checking for hung I/Os is
-	 * an expensive operation we don't want to check too frequently.
-	 * Instead wait for 5 seconds before checking again.
-	 */
-	when.cyt_interval = MSEC2NSEC(zfs_deadman_checktime_ms);
-	when.cyt_when = CY_INFINITY;
-	mutex_enter(&cpu_lock);
-	spa->spa_deadman_cycid = cyclic_add(&hdlr, &when);
-	mutex_exit(&cpu_lock);
 
 	zfs_refcount_create(&spa->spa_refcount);
 	spa_config_lock_init(spa);
@@ -825,12 +814,6 @@ spa_remove(spa_t *spa)
 	nvlist_free(spa->spa_label_features);
 	nvlist_free(spa->spa_load_info);
 	spa_config_set(spa, NULL);
-
-	mutex_enter(&cpu_lock);
-	if (spa->spa_deadman_cycid != CYCLIC_NONE)
-		cyclic_remove(spa->spa_deadman_cycid);
-	mutex_exit(&cpu_lock);
-	spa->spa_deadman_cycid = CYCLIC_NONE;
 
 	zfs_refcount_destroy(&spa->spa_refcount);
 
@@ -1857,6 +1840,25 @@ spa_get_failmode(spa_t *spa)
 	return (spa->spa_failmode);
 }
 
+uint64_t
+spa_get_deadman_failmode(spa_t *spa)
+{
+	(void) spa;
+
+	/*
+	 * XXX: FixMe
+	 * Define how this global policy interacts with the pool failmode.
+	 */
+	switch (zfs_deadman_failmode) {
+	case ZIO_FAILURE_MODE_WAIT:
+	case ZIO_FAILURE_MODE_CONTINUE:
+	case ZIO_FAILURE_MODE_PANIC:
+		return (zfs_deadman_failmode);
+	default:
+		return (ZIO_FAILURE_MODE_WAIT);
+	}
+}
+
 boolean_t
 spa_suspended(spa_t *spa)
 {
@@ -2010,7 +2012,15 @@ spa_prev_software_version(spa_t *spa)
 uint64_t
 spa_deadman_synctime(spa_t *spa)
 {
-	return (spa->spa_deadman_synctime);
+	(void) spa;
+	return (MSEC2NSEC(zfs_deadman_synctime_ms));
+}
+
+uint64_t
+spa_deadman_ziotime(spa_t *spa)
+{
+	(void) spa;
+	return (MSEC2NSEC(zfs_deadman_ziotime_ms));
 }
 
 spa_autotrim_t

@@ -176,6 +176,7 @@ typedef struct ztest_shared_opts {
 	uint64_t zo_metaslab_force_ganging;
 	int zo_mmp_test;
 	int zo_special_vdevs;
+	int zo_dump_dbgmsg;
 } ztest_shared_opts_t;
 
 static const ztest_shared_opts_t ztest_opts_defaults = {
@@ -224,8 +225,8 @@ static ztest_shared_ds_t *ztest_shared_ds;
 #define	ZTEST_GET_SHARED_DS(d) (&ztest_shared_ds[d])
 
 #define	BT_MAGIC	0x123456789abcdefULL
-#define	MAXFAULTS() \
-	(MAX(zs->zs_mirrors, 1) * (ztest_opts.zo_raidz_parity + 1) - 1)
+#define	MAXFAULTS(zs) \
+	(MAX((zs)->zs_mirrors, 1) * (ztest_opts.zo_raidz_parity + 1) - 1)
 
 enum ztest_io_type {
 	ZTEST_IO_WRITE_TAG,
@@ -484,6 +485,7 @@ static kmutex_t ztest_checkpoint_lock;
 static krwlock_t ztest_name_lock;
 
 static boolean_t ztest_dump_core = B_TRUE;
+static boolean_t ztest_dbgmsg_ready;
 static boolean_t ztest_exiting;
 
 /* Global commit callback list */
@@ -513,6 +515,31 @@ _umem_logging_init(void)
 	return ("fail,contents"); /* $UMEM_LOGGING setting */
 }
 
+static void
+dump_debug_buffer(void)
+{
+	if (!ztest_opts.zo_dump_dbgmsg || !ztest_dbgmsg_ready)
+		return;
+
+	(void) printf("\n");
+	(void) fflush(stdout);
+	zfs_dbgmsg_print("ztest");
+}
+
+static void
+ztest_kernel_init(int mode)
+{
+	kernel_init(mode);
+	ztest_dbgmsg_ready = B_TRUE;
+}
+
+static void
+ztest_kernel_fini(void)
+{
+	ztest_dbgmsg_ready = B_FALSE;
+	kernel_fini();
+}
+
 #define	FATAL_MSG_SZ	1024
 
 char *fatal_msg;
@@ -537,8 +564,12 @@ fatal(int do_perror, char *message, ...)
 	}
 	(void) fprintf(stderr, "%s\n", buf);
 	fatal_msg = buf;			/* to ease debugging */
+
+	dump_debug_buffer();
+
 	if (ztest_dump_core)
 		abort();
+
 	exit(3);
 }
 
@@ -635,6 +666,7 @@ usage(boolean_t requested)
 	    "\t[-C vdev class state (default: random)] special=on|off|random\n"
 	    "\t[-o variable=value] ... set global variable to an unsigned\n"
 	    "\t    32-bit integer value\n"
+	    "\t[-G] dump the zfs_dbgmsg buffer before an error exit\n"
 	    "\t[-h] (print help)\n"
 	    "",
 	    zo->zo_pool,
@@ -710,7 +742,7 @@ process_options(int argc, char **argv)
 	bcopy(&ztest_opts_defaults, zo, sizeof (*zo));
 
 	while ((opt = getopt(argc, argv,
-	    "v:s:a:m:r:R:d:t:g:i:k:p:f:MVET:P:hF:B:C:o:")) != EOF) {
+	    "v:s:a:m:r:R:d:t:g:i:k:p:f:MVET:P:hF:B:C:o:G")) != EOF) {
 		value = 0;
 		switch (opt) {
 		case 'v':
@@ -806,6 +838,9 @@ process_options(int argc, char **argv)
 		case 'o':
 			if (set_global_var(optarg) != 0)
 				usage(B_FALSE);
+			break;
+		case 'G':
+			zo->zo_dump_dbgmsg = 1;
 			break;
 		case 'h':
 			usage(B_TRUE);
@@ -5668,7 +5703,7 @@ ztest_fault_inject(ztest_ds_t *zd, uint64_t id)
 		return;
 	}
 
-	maxfaults = MAXFAULTS();
+	maxfaults = MAXFAULTS(zs);
 	leaves = MAX(zs->zs_mirrors, 1) * ztest_opts.zo_raidz;
 	mirror_save = zs->zs_mirrors;
 	mutex_exit(&ztest_vdev_lock);
@@ -6413,13 +6448,16 @@ ztest_deadman_thread(void *arg)
 {
 	ztest_shared_t *zs = arg;
 	spa_t *spa = ztest_spa;
-	hrtime_t delta, total = 0;
+	hrtime_t delay, last_run = gethrtime();
 
-	for (;;) {
-		delta = zs->zs_thread_stop - zs->zs_thread_start +
-		    MSEC2NSEC(zfs_deadman_synctime_ms);
+	delay = zs->zs_thread_stop - zs->zs_thread_start +
+	    MSEC2NSEC(zfs_deadman_synctime_ms);
 
-		(void) poll(NULL, 0, (int)NSEC2MSEC(delta));
+	while (!ztest_exiting) {
+		if (gethrtime() < last_run + delay) {
+			(void) poll(NULL, 0, 1000);
+			continue;
+		}
 
 		/*
 		 * If the pool is suspended then fail immediately. Otherwise,
@@ -6431,14 +6469,23 @@ ztest_deadman_thread(void *arg)
 			fatal(0, "aborting test after %llu seconds because "
 			    "pool has transitioned to a suspended state.",
 			    zfs_deadman_synctime_ms / 1000);
-			return (NULL);
 		}
-		vdev_deadman(spa->spa_root_vdev);
+		vdev_deadman(spa->spa_root_vdev, FTAG);
 
-		total += zfs_deadman_synctime_ms/1000;
+		if (gethrtime() >
+		    zs->zs_proc_stop + MSEC2NSEC(zfs_deadman_synctime_ms)) {
+			fatal(0, "aborting test after %llu seconds because "
+			    "the process is overdue for termination.",
+			    (gethrtime() - zs->zs_proc_start) / NANOSEC);
+		}
+
 		(void) printf("ztest has been running for %lld seconds\n",
-		    total);
+		    (gethrtime() - zs->zs_proc_start) / NANOSEC);
+		last_run = gethrtime();
+		delay = MSEC2NSEC(zfs_deadman_checktime_ms);
 	}
+
+	return (NULL);
 }
 
 static void
@@ -6635,7 +6682,7 @@ ztest_run(ztest_shared_t *zs)
 	thread_t *tid;
 	spa_t *spa;
 	objset_t *os;
-	thread_t resume_tid;
+	thread_t resume_tid, deadman_tid;
 	int error;
 
 	ztest_exiting = B_FALSE;
@@ -6665,7 +6712,7 @@ ztest_run(ztest_shared_t *zs)
 	/*
 	 * Open our pool.
 	 */
-	kernel_init(FREAD | FWRITE);
+	ztest_kernel_init(FREAD | FWRITE);
 	VERIFY0(spa_open(ztest_opts.zo_pool, &spa, FTAG));
 	metaslab_preload_limit = ztest_random(20) + 1;
 	ztest_spa = spa;
@@ -6682,16 +6729,6 @@ ztest_run(ztest_shared_t *zs)
 	spa->spa_dedup_ditto = 2 * ZIO_DEDUPDITTO_MIN;
 
 	/*
-	 * We don't expect the pool to suspend unless maxfaults == 0,
-	 * in which case ztest_fault_inject() temporarily takes away
-	 * the only valid replica.
-	 */
-	if (MAXFAULTS() == 0)
-		spa->spa_failmode = ZIO_FAILURE_MODE_WAIT;
-	else
-		spa->spa_failmode = ZIO_FAILURE_MODE_PANIC;
-
-	/*
 	 * Create a thread to periodically resume suspended I/O.
 	 */
 	VERIFY(thr_create(0, 0, ztest_resume_thread, spa, THR_BOUND,
@@ -6701,7 +6738,7 @@ ztest_run(ztest_shared_t *zs)
 	 * Create a deadman thread to abort() if we hang.
 	 */
 	VERIFY(thr_create(0, 0, ztest_deadman_thread, zs, THR_BOUND,
-	    NULL) == 0);
+	    &deadman_tid) == 0);
 
 	/*
 	 * Verify that we can safely inquire about any object,
@@ -6762,9 +6799,10 @@ ztest_run(ztest_shared_t *zs)
 
 	umem_free(tid, ztest_opts.zo_threads * sizeof (thread_t));
 
-	/* Kill the resume thread */
+	/* Kill the resume and deadman threads. */
 	ztest_exiting = B_TRUE;
 	VERIFY(thr_join(resume_tid, NULL, NULL) == 0);
+	VERIFY(thr_join(deadman_tid, NULL, NULL) == 0);
 	ztest_resume(spa);
 
 	/*
@@ -6799,7 +6837,7 @@ ztest_run(ztest_shared_t *zs)
 		ztest_spa_import_export(name, ztest_opts.zo_pool);
 	}
 
-	kernel_fini();
+	ztest_kernel_fini();
 
 	list_destroy(&zcl.zcl_callbacks);
 
@@ -6820,7 +6858,7 @@ ztest_freeze(void)
 	if (ztest_opts.zo_verbose >= 3)
 		(void) printf("testing spa_freeze()...\n");
 
-	kernel_init(FREAD | FWRITE);
+	ztest_kernel_init(FREAD | FWRITE);
 	VERIFY3U(0, ==, spa_open(ztest_opts.zo_pool, &spa, FTAG));
 	VERIFY3U(0, ==, ztest_dataset_open(0));
 	ztest_spa = spa;
@@ -6882,12 +6920,12 @@ ztest_freeze(void)
 	 */
 	ztest_dataset_close(0);
 	spa_close(spa, FTAG);
-	kernel_fini();
+	ztest_kernel_fini();
 
 	/*
 	 * Open and close the pool and dataset to induce log replay.
 	 */
-	kernel_init(FREAD | FWRITE);
+	ztest_kernel_init(FREAD | FWRITE);
 	VERIFY3U(0, ==, spa_open(ztest_opts.zo_pool, &spa, FTAG));
 	ASSERT(spa_freeze_txg(spa) == UINT64_MAX);
 	VERIFY3U(0, ==, ztest_dataset_open(0));
@@ -6897,7 +6935,7 @@ ztest_freeze(void)
 	ztest_reguid(NULL, 0);
 
 	spa_close(spa, FTAG);
-	kernel_fini();
+	ztest_kernel_fini();
 }
 
 void
@@ -6957,7 +6995,7 @@ ztest_import(ztest_shared_t *zs)
 	mutex_init(&ztest_vdev_lock, NULL, MUTEX_DEFAULT, NULL);
 	rw_init(&ztest_name_lock, NULL, USYNC_THREAD, NULL);
 
-	kernel_init(FREAD | FWRITE);
+	ztest_kernel_init(FREAD | FWRITE);
 
 	searchdirs[0] = ztest_opts.zo_dir;
 	args.paths = nsearch;
@@ -6975,7 +7013,7 @@ ztest_import(ztest_shared_t *zs)
 	    1ULL << spa->spa_root_vdev->vdev_child[0]->vdev_ms_shift;
 	spa_close(spa, FTAG);
 
-	kernel_fini();
+	ztest_kernel_fini();
 
 	if (!ztest_opts.zo_mmp_test) {
 		ztest_run_zdb(ztest_opts.zo_pool);
@@ -7001,7 +7039,7 @@ ztest_init(ztest_shared_t *zs)
 	mutex_init(&ztest_checkpoint_lock, NULL, USYNC_THREAD, NULL);
 	rw_init(&ztest_name_lock, NULL, USYNC_THREAD, NULL);
 
-	kernel_init(FREAD | FWRITE);
+	ztest_kernel_init(FREAD | FWRITE);
 
 	/*
 	 * Create the storage pool.
@@ -7013,6 +7051,16 @@ ztest_init(ztest_shared_t *zs)
 	nvroot = make_vdev_root(NULL, NULL, NULL, ztest_opts.zo_vdev_size, 0,
 	    NULL, ztest_opts.zo_raidz, zs->zs_mirrors, 1);
 	props = make_random_props();
+
+	/*
+	 * We don't expect the pool to suspend unless maxfaults is zero,
+	 * when ztest_fault_inject() temporarily removes the only replica.
+	 */
+	VERIFY0(nvlist_add_uint64(props,
+	    zpool_prop_to_name(ZPOOL_PROP_FAILUREMODE),
+	    MAXFAULTS(zs) != 0 ?
+	    ZIO_FAILURE_MODE_PANIC : ZIO_FAILURE_MODE_WAIT));
+
 	for (int i = 0; i < SPA_FEATURES; i++) {
 		char buf[1024];
 
@@ -7039,7 +7087,7 @@ ztest_init(ztest_shared_t *zs)
 
 	spa_close(spa, FTAG);
 
-	kernel_fini();
+	ztest_kernel_fini();
 
 	if (!ztest_opts.zo_mmp_test) {
 		ztest_run_zdb(ztest_opts.zo_pool);
@@ -7251,6 +7299,8 @@ main(int argc, char **argv)
 
 	dprintf_setup(&argc, argv);
 	zfs_deadman_synctime_ms = 300000;
+	zfs_deadman_checktime_ms = 30000;
+	zfs_deadman_failmode = ZIO_FAILURE_MODE_PANIC;
 	/*
 	 * As two-word space map entries may not come up often (especially
 	 * if pool and vdev sizes are small) we want to force at least some
@@ -7262,8 +7312,12 @@ main(int argc, char **argv)
 	 * Verify that even extensively damaged split blocks with many
 	 * segments can be reconstructed in a reasonable amount of time
 	 * when reconstruction is known to be possible.
+	 *
+	 * The lower this value is, the more damage is injected and the more
+	 * time ztest spends recovering it. One in 100 exercises recovery
+	 * without crowding out other test paths.
 	 */
-	zfs_reconstruct_indirect_damage_fraction = 4;
+	zfs_reconstruct_indirect_damage_fraction = 100;
 
 	ztest_fd_rand = open("/dev/urandom", O_RDONLY);
 	ASSERT3S(ztest_fd_rand, >=, 0);
@@ -7279,7 +7333,9 @@ main(int argc, char **argv)
 	} else {
 		ztest_fd_data = atoi(fd_data_str);
 		setup_data();
-		bcopy(ztest_shared_opts, &ztest_opts, sizeof (ztest_opts));
+		bcopy(&ztest_opts_defaults, &ztest_opts, sizeof (ztest_opts));
+		bcopy(ztest_shared_opts, &ztest_opts,
+		    MIN(sizeof (ztest_opts), ztest_shared_hdr->zh_opts_size));
 	}
 	ASSERT3U(ztest_opts.zo_datasets, ==, ztest_shared_hdr->zh_ds_count);
 

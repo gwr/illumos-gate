@@ -27,6 +27,7 @@
 .\" ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 .\" POSSIBILITY OF SUCH DAMAGE.
 .\"/
+.\" Copyright 2026 RackTop Systems Inc.
 .Dd March 30, 2022
 .Dt ZTEST 8
 .Os
@@ -35,7 +36,7 @@
 .Nd ZFS stress test utility
 .Sh SYNOPSIS
 .Nm
-.Op Fl EhV
+.Op Fl EGhV
 .Op Fl a Ar shift
 .Op Fl B Ar path
 .Op Fl d Ar datasets
@@ -120,6 +121,8 @@ use existing pool instead of creating new one
 .It Fl F Ar loops
 freezeloops (default: 50) max loops in
 .Fn spa_freeze
+.It Fl G
+dump the ZFS debug message buffer before exiting due to an error
 .It Fl f Ar path
 dir (default:
 .Pa /tmp )

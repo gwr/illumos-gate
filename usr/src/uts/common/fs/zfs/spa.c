@@ -1252,6 +1252,8 @@ spa_deactivate(spa_t *spa)
 	list_destroy(&spa->spa_evicting_os_list);
 	list_destroy(&spa->spa_state_dirty_list);
 
+	taskq_cancel_id(system_delay_taskq, spa->spa_deadman_tqid);
+
 	for (int t = 0; t < ZIO_TYPES; t++) {
 		for (int q = 0; q < ZIO_TASKQ_TYPES; q++) {
 			spa_taskqs_fini(spa, t, q);
@@ -8647,8 +8649,10 @@ spa_sync(spa_t *spa, uint64_t txg)
 	dmu_tx_t *tx = dmu_tx_create_assigned(dp, txg);
 
 	spa->spa_sync_starttime = gethrtime();
-	VERIFY(cyclic_reprogram(spa->spa_deadman_cycid,
-	    spa->spa_sync_starttime + spa->spa_deadman_synctime));
+	taskq_cancel_id(system_delay_taskq, spa->spa_deadman_tqid);
+	spa->spa_deadman_tqid = taskq_dispatch_delay(system_delay_taskq,
+	    spa_deadman, spa, TQ_SLEEP, ddi_get_lbolt() +
+	    NSEC_TO_TICK(spa_deadman_synctime(spa)));
 
 	/*
 	 * If we are upgrading to SPA_VERSION_RAIDZ_DEFLATE this txg,
@@ -8702,7 +8706,8 @@ spa_sync(spa_t *spa, uint64_t txg)
 	spa_sync_rewrite_vdev_config(spa, tx);
 	dmu_tx_commit(tx);
 
-	VERIFY(cyclic_reprogram(spa->spa_deadman_cycid, CY_INFINITY));
+	taskq_cancel_id(system_delay_taskq, spa->spa_deadman_tqid);
+	spa->spa_deadman_tqid = 0;
 
 	/*
 	 * Clear the dirty config list.

@@ -378,10 +378,9 @@ struct spa {
 	uint64_t	spa_feat_enabled_txg_obj; /* Feature enabled txg */
 	/* cache feature refcounts */
 	uint64_t	spa_feat_refcount_cache[SPA_FEATURES];
-	cyclic_id_t	spa_deadman_cycid;	/* cyclic id */
+	taskqid_t	spa_deadman_tqid;	/* task id */
 	uint64_t	spa_deadman_calls;	/* number of deadman calls */
 	hrtime_t	spa_sync_starttime;	/* starting time fo spa_sync */
-	uint64_t	spa_deadman_synctime;	/* deadman expiration timer */
 	uint64_t	spa_all_vdev_zaps;	/* ZAP of per-vd ZAP obj #s */
 	spa_avz_action_t	spa_avz_action;	/* destroy/rebuild AVZ? */
 	uint64_t	spa_autotrim;		/* automatic background trim? */

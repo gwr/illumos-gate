@@ -4569,12 +4569,12 @@ vdev_split(vdev_t *vd)
 }
 
 void
-vdev_deadman(vdev_t *vd)
+vdev_deadman(vdev_t *vd, char *tag)
 {
 	for (int c = 0; c < vd->vdev_children; c++) {
 		vdev_t *cvd = vd->vdev_child[c];
 
-		vdev_deadman(cvd);
+		vdev_deadman(cvd, tag);
 	}
 
 	if (vd->vdev_ops->vdev_op_leaf) {
@@ -4586,21 +4586,18 @@ vdev_deadman(vdev_t *vd)
 			zio_t *fio;
 			uint64_t delta;
 
+			zfs_dbgmsg("slow vdev: %s has %lu active IOs",
+			    vd->vdev_path, avl_numnodes(&vq->vq_active_tree));
+
 			/*
 			 * Look at the head of all the pending queues,
 			 * if any I/O has been outstanding for longer than
-			 * the spa_deadman_synctime we panic the system.
+			 * the spa_deadman_synctime invoke the deadman logic.
 			 */
 			fio = avl_first(&vq->vq_active_tree);
 			delta = gethrtime() - fio->io_timestamp;
-			if (delta > spa_deadman_synctime(spa)) {
-				vdev_dbgmsg(vd, "SLOW IO: zio timestamp "
-				    "%lluns, delta %lluns, last io %lluns",
-				    fio->io_timestamp, (u_longlong_t)delta,
-				    vq->vq_io_complete_ts);
-				fm_panic("I/O to pool '%s' appears to be "
-				    "hung.", spa_name(spa));
-			}
+			if (delta > spa_deadman_synctime(spa))
+				zio_deadman(fio, tag);
 		}
 		mutex_exit(&vq->vq_lock);
 	}

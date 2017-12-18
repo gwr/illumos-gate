@@ -2400,6 +2400,10 @@ dir  path=opt/zfs-tests/tests/functional/ctime
 file path=opt/zfs-tests/tests/functional/ctime/cleanup mode=0555
 file path=opt/zfs-tests/tests/functional/ctime/ctime_001_pos mode=0555
 file path=opt/zfs-tests/tests/functional/ctime/setup mode=0555
+dir  path=opt/zfs-tests/tests/functional/deadman
+file path=opt/zfs-tests/tests/functional/deadman/deadman.cfg mode=0444
+file path=opt/zfs-tests/tests/functional/deadman/deadman_sync mode=0555
+file path=opt/zfs-tests/tests/functional/deadman/deadman_zio mode=0555
 dir  path=opt/zfs-tests/tests/functional/delegate
 file path=opt/zfs-tests/tests/functional/delegate/cleanup mode=0555
 file path=opt/zfs-tests/tests/functional/delegate/delegate.cfg mode=0444
