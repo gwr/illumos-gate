@@ -136,7 +136,7 @@ extern int zfs_fill_zplprops(const char *dataset, nvlist_t *createprops,
  */
 int
 zfs_create_smartfolder(struct zfsvfs *zfsvfs, struct vnode *dvp, struct vnode *vp,
-    const char *dirname, int flags, struct cred *cr)
+    const char *dirname, int flags, struct cred *cr, struct caller_context *ct)
 {
 	int err = EINVAL;
 #ifdef	_KERNEL
@@ -224,9 +224,12 @@ zfs_create_smartfolder(struct zfsvfs *zfsvfs, struct vnode *dvp, struct vnode *v
 	ma.optlen = 0;
 
 	if ((err = domount("zfs", &ma, vp, kcred, &vfs)) == 0) {
-		if (sharenfs[0] != '\0')
+		if (sharenfs[0] != '\0') {
+			bool usetaskq = ct && ct->cc_flags & CC_HELDEXPLOCK;
+
 			err = create_nfs_share(smartname, path, sharenfs,
-			    kcred);
+			    kcred, usetaskq);
+		}
 		VFS_RELE(vfs);
 	}
 out:

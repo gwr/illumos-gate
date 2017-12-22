@@ -15,10 +15,13 @@
 #include <nfs/nfssys.h>
 #include <sharefs/share.h>
 #include <sys/door.h>
+#include <sys/taskq.h>
 #include <sys/zfs_smartfolder_exp.h>
 
+static void create_nfs_share_task(void *arg);
 static void door_share_call(smartfolder_exp_data_t *);
 
+static taskq_t *sfe_taskq;
 #ifdef	_KERNEL
 extern kmutex_t sfdh_lock;
 extern door_handle_t smartfolder_dh;
@@ -30,6 +33,13 @@ extern door_handle_t smartfolder_dh;
 int
 zfs_smartfolder_init(void)
 {
+#ifdef	_KERNEL
+	if (sfe_taskq == NULL && (sfe_taskq =
+	    taskq_create("smartfolder_exp_taskq",
+	    max_ncpus, minclsyspri, 1, max_ncpus, TASKQ_DYNAMIC)) == NULL) {
+		return (ENOMEM);
+	}
+#endif
 	return (0);
 }
 
@@ -39,11 +49,15 @@ zfs_smartfolder_init(void)
 void
 zfs_smartfolder_fini(void)
 {
+#ifdef	_KERNEL
+	taskq_destroy(sfe_taskq);
+#endif
 }
 
 /* ARGSUSED */
 int
-create_nfs_share(char *dsname, char *path, char *sharenfs, struct cred *cr)
+create_nfs_share(char *dsname, char *path, char *sharenfs, struct cred *cr,
+    bool use_taskq)
 {
 #ifdef	_KERNEL
 	smartfolder_exp_data_t *sed;
@@ -60,10 +74,24 @@ create_nfs_share(char *dsname, char *path, char *sharenfs, struct cred *cr)
 	(void) strncpy(sed->sed_sharenfs, sharenfs, sizeof (sed->sed_sharenfs));
 	sed->sed_sharesmb[0] = '\0';
 
-	door_share_call(sed);
+	if (use_taskq) {
+		if (taskq_dispatch(sfe_taskq, create_nfs_share_task, sed,
+		    TQ_SLEEP) == NULL) {
+			kmem_free(sed, sizeof (*sed));
+			return (ENOMEM);
+		}
+	} else {
+		door_share_call(sed);
+	}
 #endif
 
 	return (0);
+}
+
+static void
+create_nfs_share_task(void *arg)
+{
+	door_share_call(arg);
 }
 
 static void

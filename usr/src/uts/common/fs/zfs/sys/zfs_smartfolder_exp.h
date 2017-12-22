@@ -30,7 +30,10 @@ typedef struct smartfolder_exp_res {
 } smartfolder_exp_res_t;
 
 #ifdef	_KERNEL
-int create_nfs_share(char *smartname, char *path, char *sharenfs, struct cred *cr);
+#include <sys/stdbool.h>
+
+int create_nfs_share(char *smartname, char *path, char *sharenfs, struct cred *cr,
+    bool use_taskq);
 #endif
 
 #ifdef	__cplusplus

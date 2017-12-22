@@ -2201,7 +2201,7 @@ top:
 
 	if (zfs_smartfolder_enabled(dmu_objset_ds(zfsvfs->z_os)))
 		(void) zfs_create_smartfolder(zfsvfs, dvp, *vpp, dirname,
-		    flags, cr);
+		    flags, cr, ct);
 
 	ZFS_EXIT(zfsvfs);
 	return (0);

@@ -1616,6 +1616,7 @@ rfs4_op_create(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 	int syncval = 0;
 	struct nfs4_svgetit_arg sarg;
 	struct nfs4_ntov_table ntov;
+	caller_context_t ct;
 	struct statvfs64 sb;
 	nfsstat4 status;
 	struct sockaddr *ca;
@@ -1760,14 +1761,17 @@ rfs4_op_create(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 			vap->va_mask |= AT_MODE;
 		}
 		/*
-		 * Lock was held in rfs4_compound.
-		 * Need release the lock as zfs_mkdir calls create_nfs_share
-		 * if 'smartfolder' is on.
-		 * */
-		rw_exit(&exported_lock);
-		error = VOP_MKDIR(dvp, name, vap, &vp, cr, NULL, 0, NULL);
-		rw_enter(&exported_lock, RW_READER);
+		 * 'exported_lock' was held in rfs4_compound. Inform lower
+		 * layer about held lock to avoid deadlock when 'smartfolder'
+		 * creates a share. Deadlock will occur if sharing is done in
+		 * the current thread.
+		 */
+		ct.cc_sysid = 0;
+		ct.cc_pid = 0;
+		ct.cc_caller_id = nfs4_srv_caller_id;
+		ct.cc_flags = CC_DONTBLOCK | CC_HELDEXPLOCK;
 
+		error = VOP_MKDIR(dvp, name, vap, &vp, cr, &ct, 0, NULL);
 		if (error)
 			break;
 
