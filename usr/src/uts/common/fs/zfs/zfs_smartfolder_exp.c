@@ -18,11 +18,11 @@
 #include <sys/taskq.h>
 #include <sys/zfs_smartfolder_exp.h>
 
+#ifdef	_KERNEL
 static void create_nfs_share_task(void *arg);
 static void door_share_call(smartfolder_exp_data_t *);
 
 static taskq_t *sfe_taskq;
-#ifdef	_KERNEL
 extern kmutex_t sfdh_lock;
 extern door_handle_t smartfolder_dh;
 #endif
@@ -54,12 +54,13 @@ zfs_smartfolder_fini(void)
 #endif
 }
 
+#ifdef	_KERNEL
+
 /* ARGSUSED */
 int
 create_nfs_share(char *dsname, char *path, char *sharenfs, struct cred *cr,
     bool use_taskq)
 {
-#ifdef	_KERNEL
 	smartfolder_exp_data_t *sed;
 
 	ASSERT3P(dsname, !=, NULL);
@@ -83,7 +84,6 @@ create_nfs_share(char *dsname, char *path, char *sharenfs, struct cred *cr,
 	} else {
 		door_share_call(sed);
 	}
-#endif
 
 	return (0);
 }
@@ -97,7 +97,6 @@ create_nfs_share_task(void *arg)
 static void
 door_share_call(smartfolder_exp_data_t *sed)
 {
-#ifdef	_KERNEL
 	int err;
 	smartfolder_exp_res_t ser;
 	door_arg_t door_args;
@@ -130,5 +129,6 @@ door_share_call(smartfolder_exp_data_t *sed)
 
 out:
 	kmem_free(sed, sizeof (*sed));
-#endif
 }
+
+#endif	/* _KERNEL */
