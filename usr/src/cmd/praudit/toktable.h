@@ -272,6 +272,8 @@ extern int	ip_addr_ex_token();
 extern int	socket_ex_token();
 extern int	tid_token();
 
+extern int	access_mask_token();
+extern int	wsid_token();
 #ifdef __cplusplus
 }
 #endif
