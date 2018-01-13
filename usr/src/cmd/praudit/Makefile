@@ -25,6 +25,9 @@
 # Use is subject to license terms.
 #
 # Copyright (c) 2018, Joyent, Inc.
+# Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
+#
+#
 
 XLATEDIR = $(SRC)/lib/libbsm/common
 
@@ -47,7 +50,7 @@ CERRWARN += -_gcc=-Wno-uninitialized
 
 SMOFF += signed
 
-LDLIBS += -lbsm -lnsl -lpam -ltsol
+LDLIBS += -lbsm -lnsl -lpam -ltsol -lidmap
 
 .KEEP_STATE:
 
