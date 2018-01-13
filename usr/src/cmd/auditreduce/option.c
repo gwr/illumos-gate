@@ -22,7 +22,7 @@
  * Copyright 2010 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  *
- * Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2020 Nexenta by DDN, Inc. All rights reserved.
  */
 
 /*
@@ -1310,8 +1310,8 @@ static int
 proc_wsid(char *optstr)
 {
 	size_t	length = strlen(optstr);
-	if ((length < 1) || (length > 256) ||
-	    strncmp(optstr, "S-1-", 4) != 0) { /* SMB_SID_STRSZ */
+	if ((length < 1) || (length > AU_SID_STRSZ) ||
+	    strncmp(optstr, "S-1-", 4) != 0) {
 		(void) snprintf(errbuf, ERRBUF_SZ,
 		    gettext("bad Windows SID: %s"), optstr);
 		error_str = errbuf;
