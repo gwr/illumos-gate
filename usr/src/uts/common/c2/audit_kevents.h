@@ -349,7 +349,7 @@ extern "C" {
 #define	AUE_AUDITON_GETAMASK	310	/* =aa */
 #define	AUE_AUDITON_SETAMASK	311	/* =as */
 #define	AUE_PSECFLAGS		312	/* =pm psecflags */
-#define	AUE_SACL		313	/* =sa SACL auditing (reserved) */
+#define	AUE_SACL		313	/* =sa SACL auditing */
 
 /* NOTE: update MAX_KEVENTS below if events are added. */
 #define	MAX_KEVENTS		313
