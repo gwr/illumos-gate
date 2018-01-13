@@ -247,6 +247,9 @@ smbd_logon_audit(smb_token_t *token, smb_inaddr_t *ipaddr, char *username,
 
 		smbd_audit_link(entry);
 		token->tkn_audit_sid = entry->sa_audit_sid;
+		adt_get_auid(ah, &token->tkn_auid);
+		adt_get_mask(ah, &token->tkn_amask);
+		adt_get_asid(ah, &token->tkn_asid);
 	}
 
 	return (B_TRUE);

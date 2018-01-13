@@ -32,6 +32,7 @@ LIBRARY =	libfksmbsrv.a
 VERS =		.1
 
 OBJS_LOCAL = \
+		fksmb_audit.o \
 		fksmb_cred.o \
 		fksmb_encrypt_pkcs.o \
 		fksmb_fem.o \
