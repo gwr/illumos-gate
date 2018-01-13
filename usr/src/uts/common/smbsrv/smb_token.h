@@ -22,7 +22,7 @@
  * Copyright 2010 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  *
- * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #ifndef _SMB_TOKEN_H
@@ -31,6 +31,12 @@
 #include <smbsrv/smb_inet.h>
 #include <smbsrv/smb_privilege.h>
 #include <smbsrv/smb_sid.h>
+
+#if defined(_KERNEL) || defined(_FAKE_KERNEL)
+#include <c2/audit.h>
+#else
+#include <bsm/audit.h>
+#endif
 
 /*
  * Don't want <smbsrv/netrauth.h> in here, but
@@ -66,7 +72,7 @@ typedef struct smb_buf32 {
  *
  * SMB_ATF_GUEST	Token belongs to guest user
  * SMB_ATF_ANON		Token belongs to anonymous user
- * 			and it's only good for IPC Connection.
+ *			and it's only good for IPC Connection.
  * SMB_ATF_POWERUSER	Token belongs to a Power User member
  * SMB_ATF_BACKUPOP	Token belongs to a Power User member
  * SMB_ATF_ADMIN	Token belongs to a Domain Admins member
@@ -104,6 +110,9 @@ typedef struct smb_token {
 	uint32_t	tkn_audit_sid;
 	smb_buf32_t	tkn_ssnkey;
 	smb_posix_grps_t *tkn_posix_grps;
+	au_id_t		tkn_auid;
+	au_mask_t	tkn_amask;
+	au_asid_t	tkn_asid;
 } smb_token_t;
 
 /*
