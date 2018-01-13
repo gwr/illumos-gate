@@ -95,6 +95,7 @@ then
   (cd $SRC/uts/common/sys && $make -k $targ)
   (cd $SRC/uts/common/smb && $make -k $targ)
   (cd $SRC/uts/common/smbsrv && $make -k $targ)
+  (cd $SRC/uts/common/c2 && $make -k $targ)
 fi
 
 if [ "$targ" = lint ]
