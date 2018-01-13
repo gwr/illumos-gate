@@ -23,7 +23,7 @@
  * Use is subject to license terms.
  *
  * Copyright 2012 Milan Jurik. All rights reserved.
- * Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2020 Nexenta by DDN, Inc. All rights reserved.
  */
 
 
@@ -2041,7 +2041,7 @@ wsid_token(adr_t *adr)
 		char *sid;
 
 		get_string(adr, &sid);
-		if (strncmp(wsid, sid, 256) == 0) /* SMB_SID_STRSZ */
+		if (strncmp(wsid, sid, AU_SID_STRSZ) == 0)
 			checkflags |= M_OBJECT;
 		free(sid);
 	} else {

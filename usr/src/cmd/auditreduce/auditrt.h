@@ -22,7 +22,7 @@
  * Copyright 2010 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  *
- * Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2020 Nexenta by DDN, Inc. All rights reserved.
  */
 
 #ifndef _AUDITRT_H
@@ -252,6 +252,11 @@ extern int	filenum;	/* number of files total */
  * Global variable, class of current record being processed.
  */
 extern int	global_class;
+
+/*
+ * SMB_SID_STRSZ - see uts/common/smbsrv/smb_sid.h
+ */
+#define	AU_SID_STRSZ	256
 
 #ifdef	__cplusplus
 }
