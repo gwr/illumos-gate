@@ -165,6 +165,7 @@ smb2_aapl_get_macinfo(smb_request_t *sr, smb_odir_t *od,
 
 	bzero(mi, sizeof (*mi));
 
+	/* XXX: Avoid creating smb nodes while listing a dir? */
 	rc = smb_fsop_lookup(sr, od->d_cred, SMB_CASE_SENSITIVE,
 	    od->d_tree->t_snode, od->d_dnode, fileinfo->fi_name, &fnode);
 	if (rc != 0)
@@ -177,6 +178,7 @@ smb2_aapl_get_macinfo(smb_request_t *sr, smb_odir_t *od,
 	 * mi_rforksize
 	 * Get length of stream: "AFP_Resource"
 	 * Return size=zero if not found.
+	 * XXX: use smb_vop_stream_lookup?
 	 */
 	(void) snprintf(tbuf, tbuflen, "%s:AFP_Resource", fileinfo->fi_name);
 	rc = smb_fsop_lookup_name(sr, kcr, 0, sr->tid_tree->t_snode,
