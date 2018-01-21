@@ -657,7 +657,8 @@ smb_vop_lookup(
 		}
 
 		if (attr != NULL) {
-			attr->sa_mask = SMB_AT_ALL;
+			// XXX Review, make sure callers set sa_mask
+			// attr->sa_mask = SMB_AT_ALL;	// XXX
 			(void) smb_vop_getattr(*vpp, NULL, attr, 0,
 			    zone_kcred());
 		}

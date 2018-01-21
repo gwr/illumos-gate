@@ -679,8 +679,9 @@ smb_odir_read_streaminfo(smb_request_t *sr, smb_odir_t *od,
 	int		rc;
 	cred_t		*kcr;
 	smb_odirent_t	*odirent;
-	smb_node_t	*fnode;
+	vnode_t		*fvp;
 	smb_attr_t	attr;
+	int		ret_flags;
 
 	ASSERT(sr);
 	ASSERT(sr->sr_magic == SMB_REQ_MAGIC);
@@ -712,7 +713,6 @@ smb_odir_read_streaminfo(smb_request_t *sr, smb_odir_t *od,
 	}
 
 	odirent = kmem_alloc(sizeof (smb_odirent_t), KM_SLEEP);
-	bzero(&attr, sizeof (attr));
 
 	for (;;) {
 		bzero(sinfo, sizeof (smb_streaminfo_t));
@@ -724,7 +724,9 @@ smb_odir_read_streaminfo(smb_request_t *sr, smb_odir_t *od,
 			continue;
 		}
 
-		/* XXX: Avoid creating smb nodes while listing a dir */
+		bzero(&attr, sizeof (attr));
+
+#if 0		/* XXX: Avoid creating smb nodes while listing a dir */
 		rc = smb_fsop_lookup(sr, od->d_cred, 0, od->d_tree->t_snode,
 		    od->d_dnode, odirent->od_name, &fnode);
 		if (rc == 0) {
@@ -737,6 +739,16 @@ smb_odir_read_streaminfo(smb_request_t *sr, smb_odir_t *od,
 			rc = smb_node_getattr(NULL, fnode, kcr, NULL, &attr);
 			smb_node_release(fnode);
 		}
+#else
+		fvp = NULL;
+		attr.sa_mask = SMB_AT_SIZE | SMB_AT_ALLOCSZ;
+
+		rc = smb_vop_lookup(od->d_dnode->vp, odirent->od_name, &fvp,
+		    NULL, 0, &ret_flags, od->d_tree->t_snode->vp, &attr, kcr);
+		if (rc == 0) {
+			VN_RELE(fvp);
+		}
+#endif
 
 		if (rc == 0) {
 			(void) strlcpy(sinfo->si_name,

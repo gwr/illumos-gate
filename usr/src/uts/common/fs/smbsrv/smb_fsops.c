@@ -1873,6 +1873,11 @@ smb_fsop_lookup(
 
 	od_name = kmem_alloc(MAXNAMELEN, KM_SLEEP);
 
+	bzero(&attr, sizeof (attr));
+
+	/* Attributes needed below? */
+	attr.sa_mask = SMB_AT_DOSATTR | ...?;
+
 	rc = smb_vop_lookup(dnode->vp, name, &vp, od_name, flags,
 	    &ret_flags, root_node ? root_node->vp : NULL, &attr, cr);
 
