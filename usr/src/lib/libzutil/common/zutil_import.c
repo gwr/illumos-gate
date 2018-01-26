@@ -1148,6 +1148,28 @@ zpool_open_func(void *arg)
 	rn->rn_num_labels = num_labels;
 }
 
+static void
+zpool_find_import_add_slice(libpc_handle_t *hdl, avl_tree_t *cache, int dfd,
+    const char *name)
+{
+	avl_index_t where;
+	rdsk_node_t *slice;
+
+	slice = zutil_alloc(hdl, sizeof (rdsk_node_t));
+	slice->rn_name = zutil_strdup(hdl, name);
+	slice->rn_avl = cache;
+	slice->rn_dfd = dfd;
+	slice->rn_hdl = hdl;
+	slice->rn_nozpool = B_FALSE;
+
+	if (avl_find(cache, slice, &where) == NULL) {
+		avl_insert(cache, slice, where);
+	} else {
+		free(slice->rn_name);
+		free(slice);
+	}
+}
+
 /*
  * Given a list of directories to search, find all pools stored on disk.  This
  * includes partial pools which are not available to import.  If no args are
@@ -1186,13 +1208,57 @@ zpool_find_import_impl(libpc_handle_t *hdl, importargs_t *iarg)
 	 */
 	for (i = 0; i < dirs; i++) {
 		tpool_t *t;
+		struct stat64 statbuf;
 		char rdsk[MAXPATHLEN];
+		char dirbuf[MAXPATHLEN];
+		const char *name = NULL;
 		int dfd;
+		boolean_t scan_dir;
 		boolean_t config_failed = B_FALSE;
-		DIR *dirp;
+		DIR *dirp = NULL;
 
-		/* use realpath to normalize the path */
-		if (realpath(dir[i], path) == 0) {
+		if (stat64(dir[i], &statbuf) != 0) {
+			if (errno == ENOENT)
+				continue;
+
+			(void) zutil_error_fmt(hdl, EZFS_BADPATH,
+			    dgettext(TEXT_DOMAIN, "cannot open '%s'"), dir[i]);
+			goto error;
+		}
+
+		scan_dir = S_ISDIR(statbuf.st_mode);
+		if (scan_dir) {
+			(void) strlcpy(dirbuf, dir[i], sizeof (dirbuf));
+		} else {
+			const char *slash;
+			size_t dirlen;
+
+			slash = strrchr(dir[i], '/');
+			if (slash == NULL) {
+				name = dir[i];
+				(void) strlcpy(dirbuf, ".", sizeof (dirbuf));
+			} else {
+				name = slash + 1;
+				dirlen = slash - dir[i];
+				if (dirlen == 0) {
+					(void) strlcpy(dirbuf, "/",
+					    sizeof (dirbuf));
+				} else {
+					if (dirlen >= sizeof (dirbuf)) {
+						(void) zutil_error_fmt(hdl,
+						    EZFS_BADPATH, dgettext(
+						    TEXT_DOMAIN,
+						    "cannot open '%s'"), dir[i]);
+						goto error;
+					}
+					(void) memcpy(dirbuf, dir[i], dirlen);
+					dirbuf[dirlen] = '\0';
+				}
+			}
+		}
+
+		/* use realpath to normalize the directory */
+		if (realpath(dirbuf, path) == NULL) {
 			(void) zutil_error_fmt(hdl, EZFS_BADPATH,
 			    dgettext(TEXT_DOMAIN, "cannot open '%s'"), dir[i]);
 			goto error;
@@ -1212,8 +1278,10 @@ zpool_find_import_impl(libpc_handle_t *hdl, importargs_t *iarg)
 		else
 			(void) strlcpy(rdsk, path, sizeof (rdsk));
 
-		if ((dfd = open64(rdsk, O_RDONLY)) < 0 ||
-		    (dirp = fdopendir(dfd)) == NULL) {
+		dfd = open64(rdsk, O_RDONLY);
+		if (dfd >= 0 && scan_dir)
+			dirp = fdopendir(dfd);
+		if (dfd < 0 || (scan_dir && dirp == NULL)) {
 			if (dfd >= 0)
 				(void) close(dfd);
 			zutil_error_aux(hdl, strerror(errno));
@@ -1228,35 +1296,24 @@ zpool_find_import_impl(libpc_handle_t *hdl, importargs_t *iarg)
 		/*
 		 * This is not MT-safe, but we have no MT consumers of libzutil
 		 */
-		while ((dp = readdir64(dirp)) != NULL) {
-			char *name = dp->d_name;
-			avl_index_t where;
+		if (scan_dir) {
+			while ((dp = readdir64(dirp)) != NULL) {
+				name = dp->d_name;
 
-			if (name[0] == '.' &&
-			    (name[1] == 0 || (name[1] == '.' && name[2] == 0)))
-				continue;
+				if (name[0] == '.' && (name[1] == 0 ||
+				    (name[1] == '.' && name[2] == 0)))
+					continue;
 
-			slice = zutil_alloc(hdl, sizeof (rdsk_node_t));
-			slice->rn_name = name;
-			slice->rn_avl = &slice_cache;
-			slice->rn_dfd = dfd;
-			slice->rn_hdl = hdl;
-			slice->rn_nozpool = B_FALSE;
-			/*
-			 * readdir(3C) buffers several directory entries per
-			 * actual read operation. It is possible that if
-			 * directory entries appear between reading one chunk
-			 * and the next, that the same entry name can end up
-			 * being returned more than once. We need to check that
-			 * this entry doesn't already exist before adding it to
-			 * the tree.
-			 */
-			if (avl_find(&slice_cache, slice, &where) == NULL) {
-				slice->rn_name = zutil_strdup(hdl, name);
-				avl_insert(&slice_cache, slice, where);
-			} else {
-				free(slice);
+				/*
+				 * readdir(3C) buffers several directory entries
+				 * per actual read operation.  Check for names
+				 * returned more than once.
+				 */
+				zpool_find_import_add_slice(hdl, &slice_cache,
+				    dfd, name);
 			}
+		} else {
+			zpool_find_import_add_slice(hdl, &slice_cache, dfd, name);
 		}
 		/*
 		 * create a thread pool to do all of this in parallel;
@@ -1315,7 +1372,10 @@ zpool_find_import_impl(libpc_handle_t *hdl, importargs_t *iarg)
 		}
 		avl_destroy(&slice_cache);
 
-		(void) closedir(dirp);
+		if (dirp != NULL)
+			(void) closedir(dirp);
+		else
+			(void) close(dfd);
 
 		if (config_failed)
 			goto error;
