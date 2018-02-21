@@ -32,7 +32,7 @@ cpu=`uname -p`
 case $cpu in
 i386)
 	x=intel
-	mdb_arch="ia32 amd64"
+	mdb_arch="amd64"
 	arch64=amd64
 	;;
 sparc)
