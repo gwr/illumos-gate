@@ -257,7 +257,7 @@ void smbfs_attr_touchdir(struct smbnode *dnp);
 void smbfs_attrcache_fa(vnode_t *vp, struct smbfattr *fap);
 
 int smbfs_validate_caches(struct vnode *vp, cred_t *cr);
-void smbfs_purge_caches(struct vnode *vp, int flags, cred_t *cr);
+void smbfs_purge_caches(struct vnode *vp, cred_t *cr);
 
 void smbfs_addfree(struct smbnode *sp);
 void smbfs_rmhash(struct smbnode *);

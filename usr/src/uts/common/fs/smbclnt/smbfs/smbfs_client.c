@@ -161,10 +161,13 @@ smbfs_validate_caches(
 
 /*
  * Purge all of the various data caches.
+ *
+ * Here NFS also had a flags arg to control what gets flushed.
+ * We only have the page cache, so no flags arg.
  */
 /* ARGSUSED */
 void
-smbfs_purge_caches(struct vnode *vp, int flags, cred_t *cr)
+smbfs_purge_caches(struct vnode *vp, cred_t *cr)
 {
 
 	/*
@@ -234,7 +237,7 @@ smbfs_cache_check(
 	mutex_exit(&np->r_statelock);
 
 	if (purge_data)
-		smbfs_purge_caches(vp, 0, cr);
+		smbfs_purge_caches(vp, cr);
 }
 
 /*
