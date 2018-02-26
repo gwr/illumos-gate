@@ -44,6 +44,7 @@
 #include <sys/kmem.h>
 #include <sys/sunddi.h>
 #include <sys/sysmacros.h>
+#include <sys/fcntl.h>
 
 #include <netsmb/smb_osdep.h>
 
@@ -1107,6 +1108,73 @@ smbfs_rflush(struct vfs *vfsp, cred_t *cr)
 }
 
 /* Here NFS has access cache stuff (nfs_subr.c) not used here */
+
+/*
+ * Set or Clear direct I/O flag
+ * VOP_RWLOCK() is held for write access to prevent a race condition
+ * which would occur if a process is in the middle of a write when
+ * directio flag gets set. It is possible that all pages may not get flushed.
+ * From nfs_common.c
+ */
+
+/* ARGSUSED */
+int
+smbfs_directio(vnode_t *vp, int cmd, cred_t *cr)
+{
+	int	error = 0;
+	smbnode_t	*np;
+
+	np = VTOSMB(vp);
+
+	if (cmd == DIRECTIO_ON) {
+
+		if (np->r_flags & RDIRECTIO)
+			return (0);
+
+		/*
+		 * Flush the page cache.
+		 */
+
+		(void) VOP_RWLOCK(vp, V_WRITELOCK_TRUE, NULL);
+
+		if (np->r_flags & RDIRECTIO) {
+			VOP_RWUNLOCK(vp, V_WRITELOCK_TRUE, NULL);
+			return (0);
+		}
+
+		/* Here NFS also checks ->r_awcount */
+		if (vn_has_cached_data(vp) &&
+		    (np->r_flags & RDIRTY) != 0) {
+			error = VOP_PUTPAGE(vp, (offset_t)0, (uint_t)0,
+			    B_INVAL, cr, NULL);
+			if (error) {
+				if (error == ENOSPC || error == EDQUOT) {
+					mutex_enter(&np->r_statelock);
+					if (!np->r_error)
+						np->r_error = error;
+					mutex_exit(&np->r_statelock);
+				}
+				VOP_RWUNLOCK(vp, V_WRITELOCK_TRUE, NULL);
+				return (error);
+			}
+		}
+
+		mutex_enter(&np->r_statelock);
+		np->r_flags |= RDIRECTIO;
+		mutex_exit(&np->r_statelock);
+		VOP_RWUNLOCK(vp, V_WRITELOCK_TRUE, NULL);
+		return (0);
+	}
+
+	if (cmd == DIRECTIO_OFF) {
+		mutex_enter(&np->r_statelock);
+		np->r_flags &= ~RDIRECTIO;	/* disable direct mode */
+		mutex_exit(&np->r_statelock);
+		return (0);
+	}
+
+	return (EINVAL);
+}
 
 static kmutex_t smbfs_newnum_lock;
 static uint32_t smbfs_newnum_val = 0;

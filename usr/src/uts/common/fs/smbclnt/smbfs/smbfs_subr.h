@@ -239,6 +239,8 @@ void smbfs_destroy_table(struct vfs *vfsp);
 void smbfs_rflush(struct vfs *vfsp, cred_t *cr);
 void smbfs_flushall(cred_t *cr);
 
+int smbfs_directio(vnode_t *vp, int cmd, cred_t *cr);
+
 uint32_t smbfs_newnum(void);
 int smbfs_newname(char *buf, size_t buflen);
 
