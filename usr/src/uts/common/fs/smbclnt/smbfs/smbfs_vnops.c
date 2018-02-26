@@ -1327,11 +1327,9 @@ smbfs_ioctl(vnode_t *vp, int cmd, intptr_t arg, int flag,
 	case _FIO_SEEK_HOLE:
 #endif
 
-#if 0	/* From the NFS code. Do we need this? */
 	case _FIODIRECTIO:
 		error = smbfs_directio(vp, (int)arg, cr);
 		break;
-#endif
 
 		/*
 		 * Allow get/set with "raw" security descriptor (SD) data.
