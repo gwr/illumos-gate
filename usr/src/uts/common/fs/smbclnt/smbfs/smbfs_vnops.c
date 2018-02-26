@@ -161,7 +161,7 @@ static void	smbfs_delmap_callback(struct as *, void *, uint_t);
  */
 #define	NFS_EOF			-98
 
-/* XXX when we get OtW locks, make this real. */
+/* When implementing OtW locks, make this a real function. */
 #define	smbfs_lm_has_sleep(vp) 0
 
 /*
@@ -442,7 +442,7 @@ smbfs_close(vnode_t *vp, int flag, int count, offset_t offset, cred_t *cr,
 		error = smbfs_putpage(vp, (offset_t)0, 0, 0, cr, ct);
 		if (error == EAGAIN)
 			error = 0;
-		/* NFS r_error business... */
+		/* NFS has r_error business... */
 	}
 
 	/*
@@ -652,7 +652,7 @@ smbfs_read(vnode_t *vp, struct uio *uiop, int ioflag, cred_t *cr,
 		if (error)
 			break;
 
-		/* NFS waits for RINCACHEPURGE ... */
+		/* Here NFS waits for RINCACHEPURGE ... */
 
 		if (vpm_enable) {
 			/*
@@ -753,7 +753,7 @@ smbfs_write(vnode_t *vp, struct uio *uiop, int ioflag, cred_t *cr,
 	if (ioflag & FAPPEND) {
 
 		/*
-		 * NFS: Must serialize if appending.
+		 * Here NFS would serialize if appending.
 		 * (have nfs_rw_lock_held writer here)
 		 */
 
@@ -865,7 +865,7 @@ smbfs_fwrite:
 		last_resid = uiop->uio_resid;
 		last_off = uiop->uio_loffset;
 
-		/* NFS Throttle creation of dirty pages. */
+		/* Here NFS throttles creation of dirty pages. */
 
 		/*
 		 * Touch the page and fault it in if it is not in core
@@ -1286,7 +1286,10 @@ smbfs_bio(struct buf *bp, int sync, cred_t *cr)
 	return (error);
 }
 
-/* nfs3write, nfs3read - we use smb_rwuio */
+/*
+ * Here NFS has: nfs3write, nfs3read
+ * We use smb_rwuio instead.
+ */
 
 /* ARGSUSED */
 static int
@@ -3526,8 +3529,10 @@ out:
 	return (error);
 }
 
-/* nfs3_bio - We use smb_rwuio instead. */
-
+/*
+ * Here NFS has: nfs3_bio
+ * We use smb_rwuio instead.
+ */
 
 /* ARGSUSED */
 static int
@@ -3659,7 +3664,7 @@ retry:
 	 * Don't create dirty pages faster than they
 	 * can be cleaned ... (etc. see nfs)
 	 *
-	 * NFS also tests:
+	 * Here NFS also tests:
 	 *  (mi->mi_max_threads != 0 &&
 	 *  rp->r_awcount > 2 * mi->mi_max_threads)
 	 */
@@ -3669,7 +3674,7 @@ retry:
 	}
 
 	/*
-	 * If we are getting called as a side effect of an nfs_write()
+	 * If we are getting called as a side effect of a write
 	 * operation the local file size might not be extended yet.
 	 * In this case we want to be able to return pages of zeroes.
 	 */
@@ -3689,7 +3694,7 @@ retry:
 		goto retry;
 	case ESTALE:
 		/*
-		 * NFS: PURGE_STALE_FH(error, vp, cr);
+		 * Here NFS has: PURGE_STALE_FH(error, vp, cr);
 		 * In-line here as we only use it once,
 		 * and it's a bit long.
 		 */
@@ -3699,8 +3704,8 @@ retry:
 			np->r_error = (error);
 		mutex_exit(&np->r_statelock);
 		if (vn_has_cached_data(vp))
-			smbfs_invalidate_pages((vp), (u_offset_t)0, (cr));
-		smbfs_purge_caches((vp), 0, (cr));
+			smbfs_invalidate_pages(vp, (u_offset_t)0, cr);
+		smbfs_purge_caches(vp, 0, cr);
 		break;
 	}
 
@@ -3759,13 +3764,13 @@ reread:
 	blkoff = lbn * bsize;
 
 	/*
-	 * NFS queues up readahead work here.
+	 * Here NFS queues up readahead work.
 	 */
 
 again:
 	if ((pagefound = page_exists(vp, off)) == NULL) {
 		if (pl == NULL) {
-			(void)0; /* Todo: nfs_async_readahead(); */
+			(void)0; /* Todo: smbfs_async_readahead(); */
 		} else if (rw == S_CREATE) {
 			/*
 			 * Block for this page is not allocated, or the offset
@@ -3868,7 +3873,7 @@ again:
 			bp_mapout(bp);
 			pageio_done(bp);
 
-			/* NFS3 updates all pp->p_fsdata */
+			/* Here NFS3 updates all pp->p_fsdata */
 
 			if (error == NFS_EOF) {
 				/*
@@ -3926,7 +3931,10 @@ again:
 	return (error);
 }
 
-/* nfs3_readahead (not yet) */
+/*
+ * Here NFS has: nfs3_readahead
+ * No read-ahead in smbfs yet.
+ */
 
 /*
  * Flags are composed of {B_INVAL, B_FREE, B_DONTNEED, B_FORCE}
@@ -3965,9 +3973,9 @@ smbfs_putpage(vnode_t *vp, offset_t off, size_t len, int flags, cred_t *cr,
 	if (vp->v_flag & VNOMAP)
 		return (ENOSYS);
 
-	/* NFS does rp->r_count (++/--) stuff. */
+	/* Here NFS does rp->r_count (++/--) stuff. */
 
-	/* Beginning of nfs_putpages part. */
+	/* Beginning of code from nfs_putpages. */
 	
 	if (!vn_has_cached_data(vp))
 		return (0);
@@ -3995,7 +4003,7 @@ smbfs_putpage(vnode_t *vp, offset_t off, size_t len, int flags, cred_t *cr,
 		 * RDIRTY bit must get cleared before the flush so that
 		 * we don't lose this information.
 		 *
-		 * NFS has B_ASYNC vs sync stuff here.
+		 * Here NFS has B_ASYNC vs sync stuff.
 		 */
 		if (off == (u_offset_t)0 &&
 		    (np->r_flags & RDIRTY)) {
@@ -4129,25 +4137,25 @@ smbfs_putapage(vnode_t *vp, page_t *pp, u_offset_t *offp, size_t *lenp,
 		io_len = lbn_off + bsize - io_off;
 	}
 	/*
-	 * The RMODINPROGRESS flag makes sure that nfs(3)_bio() sees a
+	 * The RMODINPROGRESS flag makes sure that smbfs_bio() sees a
 	 * consistent value of r_size. RMODINPROGRESS is set in writerp().
 	 * When RMODINPROGRESS is set it indicates that a uiomove() is in
 	 * progress and the r_size has not been made consistent with the
 	 * new size of the file. When the uiomove() completes the r_size is
 	 * updated and the RMODINPROGRESS flag is cleared.
 	 *
-	 * The RMODINPROGRESS flag makes sure that nfs(3)_bio() sees a
+	 * The RMODINPROGRESS flag makes sure that smbfs_bio() sees a
 	 * consistent value of r_size. Without this handshaking, it is
-	 * possible that nfs(3)_bio() picks  up the old value of r_size
+	 * possible that smbfs_bio() picks  up the old value of r_size
 	 * before the uiomove() in writerp() completes. This will result
-	 * in the write through nfs(3)_bio() being dropped.
+	 * in the write through smbfs_bio() being dropped.
 	 *
 	 * More precisely, there is a window between the time the uiomove()
 	 * completes and the time the r_size is updated. If a VOP_PUTPAGE()
 	 * operation intervenes in this window, the page will be picked up,
 	 * because it is dirty (it will be unlocked, unless it was
 	 * pagecreate'd). When the page is picked up as dirty, the dirty
-	 * bit is reset (pvn_getdirty()). In nfs(3)write(), r_size is
+	 * bit is reset (pvn_getdirty()). In smbfs_write(), r_size is
 	 * checked. This will still be the old size. Therefore the page will
 	 * not be written out. When segmap_release() calls VOP_PUTPAGE(),
 	 * the page will be found to be clean and the write will be dropped.
@@ -4161,8 +4169,8 @@ smbfs_putapage(vnode_t *vp, page_t *pp, u_offset_t *offp, size_t *lenp,
 			/*
 			 * A write is in progress for this region of the file.
 			 * If we did not detect RMODINPROGRESS here then this
-			 * path through nfs_putapage() would eventually go to
-			 * nfs(3)_bio() and may not write out all of the data
+			 * path through smbfs_putapage() would eventually go to
+			 * smbfs_bio() and may not write out all of the data
 			 * in the pages. We end up losing data. So we decide
 			 * to set the modified bit on each page in the page
 			 * list and mark the rnode with RDIRTY. This write
@@ -4188,9 +4196,10 @@ smbfs_putapage(vnode_t *vp, page_t *pp, u_offset_t *offp, size_t *lenp,
 	}
 
 	/*
-	 * NFS3 handles (flags & B_ASYNC) here...
+	 * Here NFS handles (flags & B_ASYNC)
 	 * (See nfs_async_putapage())
-	 * Now inline: nfs3_sync_putapage()
+	 *
+	 * This code section from: nfs3_sync_putapage()
 	 */
 
 	flags |= B_WRITE;
@@ -4239,7 +4248,7 @@ smbfs_putapage(vnode_t *vp, page_t *pp, u_offset_t *offp, size_t *lenp,
 		pvn_write_done(pp, flags);
 	}
 
-	/* Back to nfs3_putapage */
+	/* Now more code from: nfs3_putapage */
 
 	if (offp)
 		*offp = io_off;
@@ -4251,7 +4260,7 @@ smbfs_putapage(vnode_t *vp, page_t *pp, u_offset_t *offp, size_t *lenp,
 
 /*
  * NFS has this in nfs_client.c (shared by v2,v3,...)
- * Here so smbfs_putapage can be file scope.
+ * We have it here so smbfs_putapage can be file scope.
  */
 void 
 smbfs_invalidate_pages(vnode_t *vp, u_offset_t off, cred_t *cr)
@@ -4270,7 +4279,7 @@ smbfs_invalidate_pages(vnode_t *vp, u_offset_t off, cred_t *cr)
 		if (!(np->r_flags & RSTALE))
 			np->r_error = 0;
 	}
-	/* NFSv3 only np->r_truncaddr = off; */
+	/* Here NFSv3 has np->r_truncaddr = off; */
 	mutex_exit(&np->r_statelock);
 
 	(void) pvn_vplist_dirty(vp, off, smbfs_putapage,
@@ -4331,10 +4340,10 @@ smbfs_map(vnode_t *vp, offset_t off, struct as *as, caddr_t *addrp,
 	/*
 	 * Atomically increment r_inmap after acquiring r_rwlock. The
 	 * idea here is to acquire r_rwlock to block read/write and
-	 * not to protect r_inmap. r_inmap will inform nfs3_read/write()
-	 * that we are in nfs3_map(). Now, r_rwlock is acquired in order
+	 * not to protect r_inmap. r_inmap will inform sbfs_read/write()
+	 * that we are in smbfs_map(). Now, r_rwlock is acquired in order
 	 * and we can prevent the deadlock that would have occurred
-	 * when nfs3_addmap() would have acquired it out of order.
+	 * when smbfs_addmap() would have acquired it out of order.
 	 *
 	 * Since we are not protecting r_inmap by any lock, we do not
 	 * hold any lock when we decrement it. We atomically decrement
@@ -4394,7 +4403,7 @@ done:
 	return (error);
 }
 
-/* nfs3_addmap */
+/* Here NFS has: nfs3_addmap */
 
 /* ARGSUSED */
 static int 
@@ -4424,7 +4433,7 @@ smbfs_addmap(vnode_t *vp, offset_t off, struct as *as, caddr_t addr,
 	return (0);
 }
 
-/* nfs3_delmap */
+/* Here NFS has: nfs3_delmap */
 
 typedef struct smbfs_delmap_args {
 	vnode_t			*vp;
@@ -4500,7 +4509,7 @@ smbfs_delmap(vnode_t *vp, offset_t off, struct as *as, caddr_t addr,
 	return (0);
 }
 
-/* nfs3_delmap_callback() */
+/* Here NFS has: nfs3_delmap_callback() */
 
 /*
  * Remove some pages from an mmap'd vnode.  Flush and
@@ -4561,7 +4570,7 @@ smbfs_delmap_callback(struct as *as, void *arg, uint_t event)
 	kmem_free(dmapp, sizeof (*dmapp));
 }
 
-/* nfs3_pageio(), nfs3_dispose() */
+/* Here NFS has: nfs3_pageio(), nfs3_dispose() */
 
 /* misc. ******************************************************** */
 

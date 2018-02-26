@@ -168,7 +168,7 @@ smbfs_purge_caches(struct vnode *vp, int flags, cred_t *cr)
 {
 
 	/*
-	 * NFS: Purge the DNLC for this vp,
+	 * Here NFS has: Purge the DNLC for this vp,
 	 * Clear any readdir state bits,
 	 * the readlink response cache, ...
 	 */
@@ -180,11 +180,15 @@ smbfs_purge_caches(struct vnode *vp, int flags, cred_t *cr)
 		(void) VOP_PUTPAGE(vp, (u_offset_t)0, 0, B_INVAL, cr, NULL);
 	}
 
-	/* NFS: Flush the readdir response cache. */
+	/*
+	 * Here NFS has: Flush the readdir response cache.
+	 * No readdir cache in smbfs.
+	 */
 }
 
 /*
- * NFS: nfs_purge_rddir_cache()
+ * Here NFS has:
+ * nfs_purge_rddir_cache()
  * nfs3_cache_post_op_attr()
  * nfs3_cache_post_op_vattr()
  * nfs3_cache_wcc_data()
@@ -234,26 +238,10 @@ smbfs_cache_check(
 }
 
 /*
- * Set attributes cache for given vnode using vnode attributes.
- * From NFS: nfs_attrcache_va
- */
-#if 0 	/* not yet (not sure if we need this) */
-void
-smbfs_attrcache_va(vnode_t *vp, struct vattr *vap)
-{
-	smbfattr_t fa;
-	smbnode_t *np;
-
-	vattr_to_fattr(vp, vap, &fa);
-	smbfs_attrcache_fa(vp, &fa);
-}
-#endif	/* not yet */
-
-/*
  * Set attributes cache for given vnode using SMB fattr
  * and update the attribute cache timeout.
  *
- * From NFS: nfs_attrcache, nfs_attrcache_va
+ * Based on NFS: nfs_attrcache, nfs_attrcache_va
  */
 void
 smbfs_attrcache_fa(vnode_t *vp, struct smbfattr *fap)
@@ -349,8 +337,12 @@ smbfs_attrcache_fa(vnode_t *vp, struct smbfattr *fap)
 		np->r_size = newsize;
 	}
 
-	/* nfs_setswaplike(vp, va); for mmap? */
-	/* NFS: np->r_flags &= ~RWRITEATTR; */
+	/*
+	 * Here NFS has:
+	 * nfs_setswaplike(vp, va);
+	 * np->r_flags &= ~RWRITEATTR;
+	 * (not needed here)
+	 */
 
 	np->n_flag &= ~NATTRCHANGED;
 	mutex_exit(&np->r_statelock);
@@ -406,7 +398,7 @@ smbfs_getattr_otw(vnode_t *vp, struct smbfattr *fap, cred_t *cr)
 	np = VTOSMB(vp);
 
 	/*
-	 * NFS uses the ACL rpc here (if smi_flags & SMI_ACL)
+	 * Here NFS uses the ACL RPC (if smi_flags & SMI_ACL)
 	 * With SMB, getting the ACL is a significantly more
 	 * expensive operation, so we do that only when asked
 	 * for the uid/gid.  See smbfsgetattr().
@@ -424,7 +416,7 @@ smbfs_getattr_otw(vnode_t *vp, struct smbfattr *fap, cred_t *cr)
 	smbfs_rw_exit(&np->r_lkserlock);
 
 	if (error) {
-		/* NFS had: PURGE_STALE_FH(error, vp, cr) */
+		/* Here NFS has: PURGE_STALE_FH(error, vp, cr) */
 		smbfs_attrcache_remove(np);
 		if (error == ENOENT || error == ENOTDIR) {
 			/*
@@ -438,7 +430,7 @@ smbfs_getattr_otw(vnode_t *vp, struct smbfattr *fap, cred_t *cr)
 	}
 
 	/*
-	 * NFS: nfs_cache_fattr(vap, fa, vap, t, cr);
+	 * Here NFS has: nfs_cache_fattr(vap, fa, vap, t, cr);
 	 * which did: fattr_to_vattr, nfs_attr_cache.
 	 * We cache the fattr form, so just do the
 	 * cache check and store the attributes.
@@ -450,7 +442,7 @@ smbfs_getattr_otw(vnode_t *vp, struct smbfattr *fap, cred_t *cr)
 }
 
 /*
- * Return either cached or remote attributes. If get remote attr
+ * Return either cached or remote attributes. If we get remote attrs,
  * use them to check and invalidate caches, then cache the new attributes.
  *
  * From NFS: nfsgetattr()
@@ -598,18 +590,17 @@ smbfattr_to_xvattr(struct smbfattr *fa, struct vattr *vap)
 	}
 }
 
-/* nfs_async_... */
-
 /*
- * writerp(),
- * nfs_putpages()
- * nfs_invalidate_pages()
- * All in smbfs_vnops.c
- */
-
-/*
- * nfs_printfhandle()
- * nfs_write_error()
+ * Here NFS has:
+ *	nfs_async_... stuff
+ * which we're not using (no async I/O), and:
+ *	writerp(),
+ *	nfs_putpages()
+ *	nfs_invalidate_pages()
+ * which we have in smbfs_vnops.c, and
+ *	nfs_printfhandle()
+ *	nfs_write_error()
+ * not needed here.
  */
 
 /*
