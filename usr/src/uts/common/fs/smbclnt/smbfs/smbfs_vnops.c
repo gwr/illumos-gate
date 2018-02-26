@@ -3690,7 +3690,7 @@ retry:
 
 	switch (error) {
 	case NFS_EOF:
-		smbfs_purge_caches(vp, 0, cr);
+		smbfs_purge_caches(vp, cr);
 		goto retry;
 	case ESTALE:
 		/*
@@ -3705,7 +3705,7 @@ retry:
 		mutex_exit(&np->r_statelock);
 		if (vn_has_cached_data(vp))
 			smbfs_invalidate_pages(vp, (u_offset_t)0, cr);
-		smbfs_purge_caches(vp, 0, cr);
+		smbfs_purge_caches(vp, cr);
 		break;
 	}
 
