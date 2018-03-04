@@ -1071,7 +1071,7 @@ smbfs_rflush(struct vfs *vfsp, cred_t *cr)
 	 */
 	rw_enter(&mi->smi_hash_lk, RW_READER);
 	for (np = avl_first(&mi->smi_hash_avl); np != NULL;
-	     np = avl_walk(&mi->smi_hash_avl, np, AVL_AFTER)) {
+	    np = avl_walk(&mi->smi_hash_avl, np, AVL_AFTER)) {
 		vp = SMBTOV(np);
 		/*
 		 * Don't bother sync'ing a vp if it
@@ -1104,7 +1104,7 @@ smbfs_rflush(struct vfs *vfsp, cred_t *cr)
 		VN_RELE(vp);
 	}
 
-	kmem_free(vplist, num * sizeof (vnode_t*));
+	kmem_free(vplist, num * sizeof (vnode_t *));
 }
 
 /* Here NFS has access cache stuff (nfs_subr.c) not used here */

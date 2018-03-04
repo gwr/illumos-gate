@@ -636,7 +636,7 @@ smbfs_read(vnode_t *vp, struct uio *uiop, int ioflag, cred_t *cr,
 			error = ESTALE;
 		else
 			error = smb_rwuio(ssp, np->n_fid, UIO_READ,
-					  uiop, &scred, smb_timo_read);
+			    uiop, &scred, smb_timo_read);
 
 		smb_credrele(&scred);
 		smbfs_rw_exit(&np->r_lkserlock);
@@ -712,21 +712,19 @@ smbfs_write(vnode_t *vp, struct uio *uiop, int ioflag, cred_t *cr,
 {
 	struct smb_cred scred;
 	struct vattr    va;
-	smbnode_t      *np;
-	smbmntinfo_t   *smi;
-	smb_share_t    *ssp;
-	offset_t        endoff, limit;
-	ssize_t         past_limit;
-	int             error, timo;
-
-	caddr_t         base;
-	u_offset_t      off;
-	size_t          n;
+	smbnode_t	*np;
+	smbmntinfo_t	*smi;
+	smb_share_t	*ssp;
+	offset_t	endoff, limit;
+	ssize_t		past_limit;
+	int		error, timo;
+	caddr_t		base;
+	u_offset_t	off;
+	size_t		n;
 	int		on;
-	uint_t          flags;
-
-	u_offset_t      last_off;
-	size_t          last_resid;
+	uint_t		flags;
+	u_offset_t	last_off;
+	size_t		last_resid;
 	uint_t		bsize;
 
 	np = VTOSMB(vp);
@@ -843,13 +841,13 @@ smbfs_fwrite:
 			error = ESTALE;
 		else
 			error = smb_rwuio(ssp, np->n_fid, UIO_WRITE,
-					  uiop, &scred, timo);
+			    uiop, &scred, timo);
 
 		if (error == 0) {
 			mutex_enter(&np->r_statelock);
 			np->n_flag |= (NFLUSHWIRE | NATTRCHANGED);
-			if (uiop->uio_loffset > (offset_t) np->r_size)
-				np->r_size = (len_t) uiop->uio_loffset;
+			if (uiop->uio_loffset > (offset_t)np->r_size)
+				np->r_size = (len_t)uiop->uio_loffset;
 			mutex_exit(&np->r_statelock);
 			if (ioflag & (FSYNC | FDSYNC)) {
 				/* Don't error the I/O if this fails. */
@@ -1014,22 +1012,22 @@ bottom:
  */
 
 int
-smbfs_writenp(smbnode_t * np, caddr_t base, int tcount, struct uio *uio,
+smbfs_writenp(smbnode_t *np, caddr_t base, int tcount, struct uio *uio,
     int pgcreated)
 {
-	int             pagecreate;
-	int             n;
-	int             saved_n;
-	caddr_t         saved_base;
-	u_offset_t      offset;
-	int             error;
-	int             sm_error;
-	vnode_t        *vp = SMBTOV(np);
+	int		pagecreate;
+	int		n;
+	int		saved_n;
+	caddr_t		saved_base;
+	u_offset_t	offset;
+	int		error;
+	int		sm_error;
+	vnode_t		*vp = SMBTOV(np);
 
 	ASSERT(tcount <= MAXBSIZE && tcount <= uio->uio_resid);
 	ASSERT(smbfs_rw_lock_held(&np->r_rwlock, RW_WRITER));
 	if (!vpm_enable) {
-		ASSERT(((uintptr_t) base & MAXBOFFSET) + tcount <= MAXBSIZE);
+		ASSERT(((uintptr_t)base & MAXBOFFSET) + tcount <= MAXBSIZE);
 	}
 
 	/*
@@ -2870,7 +2868,7 @@ smbfsremove(vnode_t *dvp, vnode_t *vp, struct smb_cred *scred,
 		error = smbfs_smb_t2rename(np, tmpname, tnlen, scred, fid, 0);
 		if (error != 0) {
 			SMBVDEBUG("error %d renaming %s -> %s\n",
-				  error, np->n_rpath, tmpname);
+			    error, np->n_rpath, tmpname);
 			/* Keep going without the rename. */
 		} else {
 			renamed = B_TRUE;
@@ -2901,7 +2899,7 @@ smbfsremove(vnode_t *dvp, vnode_t *vp, struct smb_cred *scred,
 			err2 = smbfs_smb_t2rename(np, oldname, oldnlen,
 			    scred, fid, 0);
 			SMBVDEBUG("error %d un-renaming %s -> %s\n",
-			  err2, tmpname, np->n_rpath);
+			    err2, tmpname, np->n_rpath);
 		}
 		error = EBUSY;
 		goto out;
@@ -3702,7 +3700,7 @@ static int smbfs_lostpage = 0;	/* number of times we lost original page */
  * Like nfs3_getpage
  */
 /* ARGSUSED */
-static int 
+static int
 smbfs_getpage(vnode_t *vp, offset_t off, size_t len, uint_t *protp,
 	page_t *pl[], size_t plsz, struct seg *seg, caddr_t addr,
 	enum seg_rw rw, cred_t *cr, caller_context_t *ct)
@@ -3799,7 +3797,7 @@ smbfs_getapage(vnode_t *vp, u_offset_t off, size_t len, uint_t *protp,
 	page_t *pl[], size_t plsz, struct seg *seg, caddr_t addr,
 	enum seg_rw rw, cred_t *cr)
 {
-	smbnode_t      *np;
+	smbnode_t	*np;
 	smbmntinfo_t   *smi;
 
 	uint_t		bsize;
@@ -3808,8 +3806,7 @@ smbfs_getapage(vnode_t *vp, u_offset_t off, size_t len, uint_t *protp,
 	u_offset_t	lbn;
 	u_offset_t	io_off;
 	u_offset_t	blkoff;
-	/* u_offset_t	rablkoff; */
-	size_t          io_len;
+	size_t		io_len;
 	uint_t blksize;
 	int error;
 	/* int readahead; */
@@ -3847,7 +3844,7 @@ reread:
 again:
 	if ((pagefound = page_exists(vp, off)) == NULL) {
 		if (pl == NULL) {
-			(void)0; /* Todo: smbfs_async_readahead(); */
+			(void) 0; /* Todo: smbfs_async_readahead(); */
 		} else if (rw == S_CREATE) {
 			/*
 			 * Block for this page is not allocated, or the offset
@@ -4053,7 +4050,7 @@ smbfs_putpage(vnode_t *vp, offset_t off, size_t len, int flags, cred_t *cr,
 	/* Here NFS does rp->r_count (++/--) stuff. */
 
 	/* Beginning of code from nfs_putpages. */
-	
+
 	if (!vn_has_cached_data(vp))
 		return (0);
 
@@ -4166,12 +4163,11 @@ smbfs_putpage(vnode_t *vp, offset_t off, size_t len, int flags, cred_t *cr,
  *
  * Like nfs3_putapage / nfs3_sync_putapage
  */
-static int 
+static int
 smbfs_putapage(vnode_t *vp, page_t *pp, u_offset_t *offp, size_t *lenp,
 	int flags, cred_t *cr)
 {
-	smbnode_t      *np;
-
+	smbnode_t *np;
 	u_offset_t io_off;
 	u_offset_t lbn_off;
 	u_offset_t lbn;
@@ -4338,10 +4334,10 @@ smbfs_putapage(vnode_t *vp, page_t *pp, u_offset_t *offp, size_t *lenp,
  * NFS has this in nfs_client.c (shared by v2,v3,...)
  * We have it here so smbfs_putapage can be file scope.
  */
-void 
+void
 smbfs_invalidate_pages(vnode_t *vp, u_offset_t off, cred_t *cr)
 {
-	smbnode_t      *np;
+	smbnode_t *np;
 
 	np = VTOSMB(vp);
 
@@ -4370,16 +4366,16 @@ smbfs_invalidate_pages(vnode_t *vp, u_offset_t off, cred_t *cr)
 /* Like nfs3_map */
 
 /* ARGSUSED */
-static int 
+static int
 smbfs_map(vnode_t *vp, offset_t off, struct as *as, caddr_t *addrp,
 	size_t len, uchar_t prot, uchar_t maxprot, uint_t flags,
 	cred_t *cr, caller_context_t *ct)
 {
-	segvn_crargs_t  vn_a;
-	struct vattr    va;
-	smbnode_t      *np;
-	smbmntinfo_t   *smi;
-	int             error;
+	segvn_crargs_t	vn_a;
+	struct vattr	va;
+	smbnode_t	*np;
+	smbmntinfo_t	*smi;
+	int		error;
 
 	np = VTOSMB(vp);
 	smi = VTOSMI(vp);
@@ -4480,7 +4476,7 @@ done:
 }
 
 /* ARGSUSED */
-static int 
+static int
 smbfs_addmap(vnode_t *vp, offset_t off, struct as *as, caddr_t addr,
 	size_t len, uchar_t prot, uchar_t maxprot, uint_t flags,
 	cred_t *cr, caller_context_t *ct)
@@ -4524,7 +4520,7 @@ typedef struct smbfs_delmap_args {
 } smbfs_delmap_args_t;
 
 /* ARGSUSED */
-static int 
+static int
 smbfs_delmap(vnode_t *vp, offset_t off, struct as *as, caddr_t addr,
 	size_t len, uint_t prot, uint_t maxprot, uint_t flags,
 	cred_t *cr, caller_context_t *ct)
@@ -4959,9 +4955,7 @@ const fs_operation_def_t smbfs_vnodeops_template[] = {
 	VOPNAME_MAP,		{ .vop_map = smbfs_map },
 	VOPNAME_ADDMAP,		{ .vop_addmap = smbfs_addmap },
 	VOPNAME_DELMAP,		{ .vop_delmap = smbfs_delmap },
-	VOPNAME_DUMP,		{ .error = fs_nosys }, /* smbfs_dump, */
 	VOPNAME_PATHCONF,	{ .vop_pathconf = smbfs_pathconf },
-	VOPNAME_PAGEIO,		{ .error = fs_nosys }, /* smbfs_pageio, */
 	VOPNAME_SETSECATTR,	{ .vop_setsecattr = smbfs_setsecattr },
 	VOPNAME_GETSECATTR,	{ .vop_getsecattr = smbfs_getsecattr },
 	VOPNAME_SHRLOCK,	{ .vop_shrlock = smbfs_shrlock },

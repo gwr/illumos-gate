@@ -288,8 +288,6 @@ int smbfs_writevnode(vnode_t *vp, uio_t *uiop, cred_t *cr,
 			int ioflag, int timo);
 int smbfsgetattr(vnode_t *vp, struct vattr *vap, cred_t *cr);
 
-/* nfs: writerp writenp */
-/* nfs_putpages? */
 void smbfs_invalidate_pages(vnode_t *vp, u_offset_t off, cred_t *cr);
 
 /* smbfs ACL support */
