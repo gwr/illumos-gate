@@ -1372,7 +1372,7 @@ smbfs_ioctl(vnode_t *vp, int cmd, intptr_t arg, int flag,
 	cred_t *cr, int *rvalp,	caller_context_t *ct)
 {
 	int		error;
-	smbmntinfo_t 	*smi;
+	smbmntinfo_t	*smi;
 
 	smi = VTOSMI(vp);
 
@@ -1994,7 +1994,7 @@ smbfs_fsync(vnode_t *vp, int syncflag, cred_t *cr, caller_context_t *ct)
 {
 	int		error = 0;
 	smbmntinfo_t	*smi;
-	smbnode_t 	*np;
+	smbnode_t	*np;
 	struct smb_cred scred;
 
 	np = VTOSMB(vp);
@@ -2214,8 +2214,8 @@ smbfslookup(vnode_t *dvp, char *nm, vnode_t **vpp, cred_t *cr,
 	/* struct smb_vc	*vcp; */
 	const char	*ill;
 	const char	*name = (const char *)nm;
-	int 		nmlen = strlen(nm);
-	int 		rplen;
+	int		nmlen = strlen(nm);
+	int		rplen;
 	struct smb_cred scred;
 	struct smbfattr fa;
 
@@ -4960,7 +4960,7 @@ const fs_operation_def_t smbfs_vnodeops_template[] = {
 	VOPNAME_GETSECATTR,	{ .vop_getsecattr = smbfs_getsecattr },
 	VOPNAME_SHRLOCK,	{ .vop_shrlock = smbfs_shrlock },
 #ifdef	SMBFS_VNEVENT
-	VOPNAME_VNEVENT, 	{ .vop_vnevent = fs_vnevent_support },
+	VOPNAME_VNEVENT,	{ .vop_vnevent = fs_vnevent_support },
 #endif
 	{ NULL, NULL }
 };

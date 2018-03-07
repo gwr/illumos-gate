@@ -186,7 +186,7 @@ typedef struct smbfs_node_hdr {
  * be held whenever any kind of access of r_size is made.
  *
  * Lock ordering:
- * 	r_rwlock > r_lkserlock > r_statelock
+ *	r_rwlock > r_lkserlock > r_statelock
  */
 
 typedef struct smbnode {
@@ -284,7 +284,7 @@ typedef struct smbnode {
 #define	NATTRCHANGED	0x02000 /* kill cached attributes at close */
 #define	NALLOC		0x04000 /* being created */
 #define	NWALLOC		0x08000 /* awaiting creation */
-#define	N_XATTR 	0x10000 /* extended attribute (dir or file) */
+#define	N_XATTR		0x10000 /* extended attribute (dir or file) */
 
 /*
  * Flag bits in: smbnode_t .r_flags

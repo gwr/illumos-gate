@@ -159,7 +159,7 @@ sn_inactive(smbnode_t *np)
 {
 	vsecattr_t	ovsa;
 	cred_t		*oldcr;
-	char 		*orpath;
+	char		*orpath;
 	int		orplen;
 	vnode_t		*vp;
 

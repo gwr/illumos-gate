@@ -351,15 +351,15 @@ smbfs_mount(vfs_t *vfsp, vnode_t *mvp, struct mounta *uap, cred_t *cr)
 {
 	char		*data = uap->dataptr;
 	int		error;
-	smbnode_t 	*rtnp = NULL;	/* root of this fs */
-	smbmntinfo_t 	*smi = NULL;
-	dev_t 		smbfs_dev;
-	int 		version;
-	int 		devfd;
+	smbnode_t	*rtnp = NULL;	/* root of this fs */
+	smbmntinfo_t	*smi = NULL;
+	dev_t		smbfs_dev;
+	int		version;
+	int		devfd;
 	zone_t		*zone = curproc->p_zone;
 	zone_t		*mntzone = NULL;
-	smb_share_t 	*ssp = NULL;
-	smb_cred_t 	scred;
+	smb_share_t	*ssp = NULL;
+	smb_cred_t	scred;
 	int		flags, sec;
 
 	STRUCT_DECL(smbfs_args, args);		/* smbfs mount arguments */
@@ -533,8 +533,8 @@ smbfs_mount(vfs_t *vfsp, vnode_t *mvp, struct mounta *uap, cred_t *cr)
 	 * starting with args.flags (SMBFS_MF_xxx)
 	 */
 	flags = STRUCT_FGET(args, flags);
-	smi->smi_uid 	= STRUCT_FGET(args, uid);
-	smi->smi_gid 	= STRUCT_FGET(args, gid);
+	smi->smi_uid	= STRUCT_FGET(args, uid);
+	smi->smi_gid	= STRUCT_FGET(args, gid);
 	smi->smi_fmode	= STRUCT_FGET(args, file_mode) & 0777;
 	smi->smi_dmode	= STRUCT_FGET(args, dir_mode) & 0777;
 

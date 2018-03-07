@@ -33,7 +33,7 @@
  */
 
 /*
- * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2012 Nexenta Systems, Inc.  All rights reserved.
  * Copyright 2010 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
@@ -134,7 +134,7 @@ struct smbfs_fctx {
 	int		f_left;		/* entries left */
 	int		f_ecnt;		/* entries left in current response */
 	int		f_eofs;		/* entry offset in data block */
-	uchar_t 	f_skey[SMB_SKEYLEN]; /* server side search context */
+	uchar_t		f_skey[SMB_SKEYLEN]; /* server side search context */
 	uchar_t		f_fname[8 + 1 + 3 + 1]; /* for 8.3 filenames */
 	uint16_t	f_Sid;		/* Search handle (like a FID) */
 	uint16_t	f_infolevel;
