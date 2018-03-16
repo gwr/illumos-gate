@@ -126,6 +126,8 @@ struct smb_ctx {
  */
 #define	ct_ssn		ct_iod_ssn.iod_ossn
 #define	ct_vopt		ct_iod_ssn.iod_ossn.ssn_vopt
+#define	ct_minver	ct_iod_ssn.iod_ossn.ssn_minver
+#define	ct_maxver	ct_iod_ssn.iod_ossn.ssn_maxver
 #define	ct_owner	ct_iod_ssn.iod_ossn.ssn_owner
 #define	ct_srvaddr	ct_iod_ssn.iod_ossn.ssn_srvaddr
 #define	ct_domain	ct_iod_ssn.iod_ossn.ssn_domain
@@ -136,9 +138,8 @@ struct smb_ctx {
 #define	ct_lmhash	ct_iod_ssn.iod_lmhash
 
 #define	ct_vcflags	ct_work.wk_vcflags
-#define	ct_mackeylen	ct_work.wk_u_maclen
-#define	ct_mackey	ct_work.wk_u_mackey.lp_ptr
-#define	ct_ssn_key	ct_work.wk_ssn_key
+#define	ct_ssnkey_len	ct_work.wk_u_ssnkey_len
+#define	ct_ssnkey_buf	ct_work.wk_u_ssnkey_buf.lp_ptr
 
 
 /*
@@ -194,6 +195,9 @@ int smb_iod_work(struct smb_ctx *);
 
 int  smb_open_rcfile(char *);
 void smb_close_rcfile(void);
+
+int smb_cf_minauth_from_str(char *);
+int smb_cf_version_from_str(char *);
 
 void smb_simplecrypt(char *dst, const char *src);
 int  smb_simpledecrypt(char *dst, const char *src);

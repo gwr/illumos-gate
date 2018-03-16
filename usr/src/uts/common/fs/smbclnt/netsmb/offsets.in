@@ -52,8 +52,10 @@ smbioc_ssn_ident
 	id_user
 
 smbioc_ossn
-	ssn_vopt
 	ssn_owner
+	ssn_vopt
+	ssn_minver
+	ssn_maxver
 	ssn_id
 	ssn_srvname
 
@@ -70,27 +72,27 @@ smbioc_tcon
 
 smbioc_ssn_work
 	wk_out_state
-	wk_u_maclen
-	wk_u_mackey
+	wk_u_ssnkey_len
+	wk_u_ssnkey_buf
 	wk_u_auth_rlen
 	wk_u_auth_wlen
 	wk_u_auth_rbuf
 	wk_u_auth_wbuf
-	wk_ssn_key
+	wk_cl_guid
+
+smbioc_rw	SIZEOF_SMBIOC_RW
+	ioc_cnt
+	ioc_flags
+	_ioc_offset
+	_ioc_base
 
 smbioc_xnp	SIZEOF_SMBIOC_XNP
-	ioc_fh
 	ioc_tdlen
 	ioc_rdlen
 	ioc_more
+	ioc_pad1
 	_ioc_tdata
 	_ioc_rdata
-
-smbioc_rw	SIZEOF_SMBIOC_RW
-	ioc_fh
-	ioc_cnt
-	_ioc_offset
-	_ioc_base
 
 smbioc_ntcreate	SIZEOF_NTCREATE
 	ioc_req_acc
