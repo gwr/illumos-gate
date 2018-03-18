@@ -1813,7 +1813,7 @@ MAKE_BASIC_TYPE_BASE(_wchar, 2)	/* ndt__wchar, ndt_s_wchar */
 int
 ndr_basic_integer(ndr_ref_t *ref, unsigned size)
 {
-	ndr_stream_t 	*nds = ref->stream;
+	ndr_stream_t	*nds = ref->stream;
 	char 		*valp = (char *)ref->datum;
 	int		rc;
 
@@ -1914,7 +1914,7 @@ int
 ndr_s_wchar(ndr_ref_t *encl_ref)
 {
 	ndr_stream_t		*nds = encl_ref->stream;
-	char 			*valp = encl_ref->datum;
+	char			*valp = encl_ref->datum;
 	ndr_ref_t		myref;
 	char			name[30];
 	ndr_wchar_t		wcs[NDR_STRING_MAX+1];

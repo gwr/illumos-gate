@@ -246,7 +246,7 @@ typedef struct ndr_binding {
 #define	NDR_N_BINDING_POOL	2
 
 typedef struct ndr_pipe {
-	void 			*np_listener;
+	void			*np_listener;
 	const char		*np_endpoint;
 	struct smb_netuserinfo	*np_user;
 	int			(*np_send)(struct ndr_pipe *, void *, size_t);

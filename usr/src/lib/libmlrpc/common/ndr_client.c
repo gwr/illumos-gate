@@ -45,7 +45,7 @@ ndr_clnt_bind(ndr_client_t *clnt, ndr_service_t *msvc,
 	ndr_binding_t		*mbind;
 	ndr_xa_t		mxa;
 	ndr_bind_hdr_t		*bhdr;
-	ndr_p_cont_elem_t 	*pce;
+	ndr_p_cont_elem_t	*pce;
 	ndr_bind_ack_hdr_t	*bahdr;
 	ndr_p_result_t		*pre;
 	int			rc;

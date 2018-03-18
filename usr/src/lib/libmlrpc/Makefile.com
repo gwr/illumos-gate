@@ -29,7 +29,7 @@
 LIBRARY =	libmlrpc.a
 VERS =		.2
 
-OBJS_COMMON = 			\
+OBJS_COMMON =			\
 	mlrpc_clh.o		\
 	ndr_client.o		\
 	ndr_heap.o		\
