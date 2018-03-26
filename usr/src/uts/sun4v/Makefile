@@ -285,7 +285,7 @@ $(USR_MONZA_SBIN_LINKS):	$(USR_MONZA_SBIN_DIR)
 #
 #	Full kernel lint target.
 #
-LINT_TARGET	= globallint
+LINT_TARGET	= lint
 
 globallint:
 	@-$(ECHO) "\nSUN4V KERNEL: global crosschecks:"

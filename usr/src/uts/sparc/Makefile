@@ -82,7 +82,7 @@ install_h check:	FRC
 #
 #	Full kernel lint target.
 #
-LINT_TARGET	= globallint
+LINT_TARGET	= lint
 
 globallint:
 	@-$(ECHO) "\nFULL KERNEL: global crosschecks:"
