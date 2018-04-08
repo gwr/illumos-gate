@@ -159,11 +159,12 @@ function cti_lf_checkargs
 #
 # Modifications for test-runner:
 # Print the result and test name (in place of tet_result)
-# On failure, exit non-zero to tell test-runner our status.
+# On failure, return non-zero to tell test-runner our status.
 #
 function cti_result
 {
 	typeset res
+	typeset -i rv=0
 
 	test $# -eq 0 && return
 	res=$1
@@ -177,22 +178,44 @@ function cti_result
 	# Print the result and test name (as tet_result would)
 	print "$res: ${tc_id:-$(basename $0)}"
 
-	# and exit non-zero for failures
+	# Return non-zero for failures.  See codes in:
+	# test-runner/stf/include/stf.shlib
 	case "$res" in
 	PASS)
 		;;
-	NOTINUSE|UNSUPPORTED)
-		;;	# like PASS
 	FAIL)
-		exit 1
+		rv=1
 		;;
-	UNINITIATED|UNRESOLVED|UNTESTED)
-		exit 1	# like FAIL
+	UNRESOLVED)
+		rv=2
+		;;
+	NOTINUSE)
+		rv=3
+		;;
+	UNSUPPORTED)
+		rv=4
+		;;
+	UNTESTED)
+		rv=5
+		;;
+	UNINITIATED)
+		rv=6
+		;;
+	NORESULT)
+		rv=7
+		;;
+	WARNING)
+		rv=8
+		;;
+	TIMED_OUT)
+		rv=9
+		;;
 	*)
 		echo "cti_result: $res: unknown result code"
-		exit 1	# script error
+		rv=10
 		;;
 	esac
+	return $rv
 }
 
 #
@@ -494,7 +517,8 @@ function cti_appendfile
 #	-i input	Use -i as an input line to the command.
 #			May have multiple -i options.
 #
-# Returns 0 on success, non-zero on failure.
+# Returns 0 on success, non-zero on failure (returning the
+#  exit status from the command when possible).
 #
 function cti_execute
 {
@@ -563,10 +587,9 @@ function cti_execute
 	# Execute the command, redirecting standard input if required.
 	if test -f cti_stdin
 	then
-		"$@" < cti_stdin > cti_stdout 2> cti_stderr
+		eval "$@" < cti_stdin > cti_stdout 2> cti_stderr
 	else
-# XXX		"$@" > cti_stdout 2> cti_stderr
-		 > cti_stdout 2> cti_stderr  eval "$@"
+		eval "$@" > cti_stdout 2> cti_stderr
 	fi
 
 	cti_lv_status=$?
@@ -576,16 +599,18 @@ function cti_execute
 	then
 		if [[ "$cti_lv_result" = "CTI" ]]
 		then
-			cti_report "Command \"$*\" failed with status $cti_lv_status"
+			cti_report CTI "Command \"$*\" failed "\
+				"with status $cti_lv_status"
 		else
-			cti_result "$cti_lv_result" \
-				"Command \"$*\" failed with status $cti_lv_status"
-			cti_lv_rv=1
+			cti_result "$cti_lv_result"\
+				"Command \"$*\" failed "\
+				"with status $cti_lv_status"
+			cti_lv_rv=$cti_lv_status
 		fi
 	fi
 
-	# Always dump stdout and stderr for testrunner
-	if true # [[ "$cti_lv_result" = "CTI" ]]
+	# Always log output of cti_execute_cmd
+	if [[ "$cti_lv_result" = "CTI" ]]
 	then
 
 		if test -s cti_stdout
@@ -599,24 +624,24 @@ function cti_execute
 		return $cti_lv_status
 	fi
 
-	# If required, check standard error.
+	# If cmd failed, or if "-c err", check standard error.
 	if test \( $cti_lv_rv -ne 0 -o $cti_lv_checkstderr -eq 1 \) \
 		-a -s cti_stderr
 	then
 		cti_result "$cti_lv_result" \
 			"Command \"$*\" produced standard error"
 		cti_reportfile cti_stderr "Standard error from command \"$*\""
-		cti_lv_rv=1
+		[[ $cti_lv_rv = 0 ]] && cti_lv_rv=1
 	fi
 
-	# If required, check standard output.
+	#  If cmd failed, or if "-c out", check standard output.
 	if test \( $cti_lv_rv -ne 0 -o $cti_lv_checkstdout -eq 1 \) \
 		-a -s cti_stdout
 	then
 		cti_result "$cti_lv_result" \
 			"Command \"$*\" produced standard output"
 		cti_reportfile cti_stdout "Standard output from command \"$*\""
-		cti_lv_rv=1
+		[[ $cti_lv_rv = 0 ]] && cti_lv_rv=1
 	fi
 
 	return $cti_lv_rv 
