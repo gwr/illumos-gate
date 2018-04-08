@@ -46,7 +46,7 @@ if [[ $STC_CIFS_CLIENT_DEBUG == 1 ]] || \
     set -x
 fi
 
-tdir=/kernel/misc
+srcdir=/usr/lib/locale/C
 server=$(server_name)|| return
 
 if [[ $? != 0 ]]; then
@@ -69,14 +69,13 @@ fi
 
 cti_execute_cmd "rm -rf $TMNT/*"
 cti_execute_cmd "rm -rf $TDIR/*"
-cti_execute_cmd "cd $TMNT"
 
 # create mutil file/dirs on the local
-cti_execute_cmd "cp -rf $tdir $TDIR/test_dir"
-cti_execute_cmd "cp -rf $tdir $TDIR/test_dir_org"
+cti_execute_cmd "cp -rf $srcdir $TDIR/test_dir"
+cti_execute_cmd "cp -rf $srcdir $TDIR/test_dir_org"
 
 # mv to server
-cti_execute_cmd "mv $TDIR/test_dir test_dir"
+cti_execute_cmd "mv $TDIR/test_dir $TMNT/test_dir"
 if [[ $? != 0 ]]; then
 	cti_fail "FAIL: mv $TDIR/test_dir to server failed"
 	return
@@ -85,7 +84,7 @@ else
 fi
 
 # diff the local and server
-cti_execute_cmd "diff -r $TDIR/test_dir_org test_dir"
+cti_execute_cmd "diff -r $TDIR/test_dir_org $TMNT/test_dir"
 if [[ $? != 0 ]]; then
 	cti_fail "FAIL: diff -r $TDIR/test_dir_org test_dir failed"
 	return
@@ -94,7 +93,7 @@ else
 fi
 
 # mv mutil dirs from the server to local
-cti_execute_cmd "mv test_dir $TDIR/test_dir_mv"
+cti_execute_cmd "mv $TMNT/test_dir $TDIR/test_dir_mv"
 if [[ $? != 0 ]]; then
 	cti_fail "FAIL: mv test_dir to $TDIR/test_dir_mv failed"
 	return
@@ -113,7 +112,6 @@ else
 	    " $TDIR/test_dir_mv succeeded"
 fi
 
-cti_execute_cmd "cd -"
 cti_execute_cmd "rm -rf $TDIR/*"
 cti_execute_cmd "rm -rf $TMNT/*"
 

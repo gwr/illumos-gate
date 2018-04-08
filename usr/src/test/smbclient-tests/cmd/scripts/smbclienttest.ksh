@@ -29,20 +29,34 @@ runfile=$STF_SUITE/runfiles/default.run
 PATH=/usr/bin:/usr/sbin:/sbin:$STF_SUITE/bin:$PATH
 export PATH
 
-while getopts c:q c; do
+while getopts 'c:fqs:' c; do
 	case $c in
 	'c')
 		runfile=$OPTARG
-		[[ -f $runfile ]] || fail "Cannot read file: $runfile"
+		;;
+	'f')
+		export STC_QUICK=1
 		;;
 	'q')
 		quiet='-q'
+		;;
+	's')
+		export SRV=$OPTARG
 		;;
 	esac
 done
 shift $((OPTIND - 1))
 
 . $STF_SUITE/include/default_cfg.ksh
+
+[[ -n "$SRV" ]] || { echo "$0 -s SERVER required"; exit 1; }
+
+# Allow relative runfiles for convenience.
+if [[ ! -r "$runfile" && -r "$STF_SUITE/runfiles/$runfile" ]]
+then
+    runfile="$STF_SUITE/runfiles/$runfile"
+fi
+[[ -r $runfile ]] || { echo "$0 Cannot read file: $runfile"; exit 1; }
 
 $runner $quiet -c $runfile
 

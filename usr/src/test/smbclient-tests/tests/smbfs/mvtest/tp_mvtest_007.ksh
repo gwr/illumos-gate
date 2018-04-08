@@ -46,7 +46,7 @@ if [[ $STC_CIFS_CLIENT_DEBUG == 1 ]] || \
     set -x
 fi
 
-tdir=/kernel/sys
+srcdir=/usr/lib/locale/C
 server=$(server_name)|| return
 
 if [[ $? != 0 ]]; then
@@ -72,21 +72,21 @@ cti_execute_cmd "cd $TMNT"
 
 
 # create mutil file/dirs on the server
-cti_execute_cmd "cp -rf $tdir test_dir"
+cti_execute_cmd "cp -rf $srcdir test_dir"
 if [[ $? != 0 ]]; then
-	cti_fail "FAIL: cp $tdir to test_dir failed"
+	cti_fail "FAIL: cp $srcdir to test_dir failed"
 	return
 else
-	cti_report "PASS: cp $tdir to test_dir succeeded"
+	cti_report "PASS: cp $srcdir to test_dir succeeded"
 fi
 
 # create mutil file/dirs on the server
-cti_execute_cmd "cp -rf /$tdir test_dir_org"
+cti_execute_cmd "cp -rf /$srcdir test_dir_org"
 if [[ $? != 0 ]]; then
-	cti_fail "FAIL: cp $tdir to test_dir_org failed"
+	cti_fail "FAIL: cp $srcdir to test_dir_org failed"
 	return
 else
-	cti_report "PASS: cp $tdir to test_dir_org succeeded"
+	cti_report "PASS: cp $srcdir to test_dir_org succeeded"
 fi
 
 # find .

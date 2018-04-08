@@ -20,6 +20,8 @@
 # CDDL HEADER END
 #
 
+# Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
+
 #
 # mmap test purpose
 #
@@ -51,14 +53,12 @@ print_test_case $tc_id - $tc_desc
 if [[ $STC_CIFS_CLIENT_DEBUG == 1 ]] || \
 	[[ *:${STC_CIFS_CLIENT_DEBUG}:* == *:$tc_id:* ]]; then
     set -x
-fi 
-
-size=16111k
-if [[ -n "$STC_QUICK" ]] ; then
-  size=6111k
 fi
 
-server=$(server_name) || return 
+# Note: size should be prime (see cp_mmap)
+size=1123k
+
+server=$(server_name) || return
 
 testdir=$TDIR
 mnt_point=$TMNT
@@ -80,45 +80,35 @@ fi
 
 # make a smbfs file
 
-cti_execute_cmd "cd $mnt_point"
-
-cti_execute_cmd "mkfile_mmap -n $size -f ${test_file}"
+cmd="mkfile_mmap -n $size -f ${mnt_point}/${test_file}"
+cti_execute FAIL $cmd
 if (($?!=0)); then
-	cti_fail "FAIL: mkfile_mmap -n $size -f ${test_file} failed"
+	cti_fail "FAIL: $cmd"
 	return
 else
-	cti_report "PASS: mkfile_mmap -n $size -f ${test_file} succeeded"
+	cti_report "PASS: $cmd"
 fi
 
 # continuously mmap and read the smbfs file, then write into a local file
 
-cti_execute_cmd "cp_mmap -t c -f ${test_file} ${testdir}/${test_file}"
+cmd="cp_mmap -t c -f ${mnt_point}/${test_file} ${testdir}/${test_file}"
+cti_execute FAIL $cmd
 if (($?!=0)); then
-	cti_fail "FAIL: cp_mmap -t c -f ${test_file} ${testdir}/${test_file} failed"
+	cti_fail "FAIL: $cmd"
 	return
 else
-	cti_report "PASS: cp_mmap -t c -f ${test_file} ${testdir}/${test_file} succeeded"
+	cti_report "PASS: $cmd"
 fi
 
 # diff the local file & smbfs file
 
-cti_execute FAIL "sum ${test_file}"
-if (($?!=0)); then
-	cti_fail "FAIL: smbfs sum failed"
-	return
-else
-	cti_report "PASS: smbfs sum succeeded"
-fi
+cti_execute_cmd "sum ${testdir}/${test_file}"
 read sum1 cnt1 junk < cti_stdout
+cti_report "local sum $sum1 $cnt1"
 
-cti_execute FAIL "sum ${testdir}/${test_file}"
-if (($?!=0)); then
-	cti_fail "FAIL: local sum failed"
-	return
-else
-	cti_report "PASS: local sum succeeded"
-fi
+cti_execute_cmd "sum ${mnt_point}/${test_file}"
 read sum2 cnt2 junk < cti_stdout
+cti_report "smbfs sum $sum2 $cnt2"
 
 if [[ $sum1 != $sum2 ]] ; then
         cti_fail "FAIL: the files are different"
@@ -128,15 +118,8 @@ else
 fi
 
 cti_execute_cmd "rm -rf $testdir/*"
-cti_execute_cmd "rm -f ${test_file}"
-cti_execute_cmd "cd -"
+cti_execute_cmd "rm -f ${mnt_point}/${test_file}"
 
 smbmount_clean $mnt_point
-
-if [[ -n "$STC_QUICK" ]] ; then
-  cti_report "PASS, but with reduced size."
-  cti_untested $tc_id
-  return
-fi
 
 cti_pass "${tc_id}: PASS"

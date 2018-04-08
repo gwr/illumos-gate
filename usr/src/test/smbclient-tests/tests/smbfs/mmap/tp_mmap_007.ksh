@@ -20,6 +20,8 @@
 # CDDL HEADER END
 #
 
+# Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
+
 #
 # mmap test purpose
 #
@@ -28,7 +30,8 @@
 # ID: mmap_007
 #
 # DESCRIPTION:
-#        Verify compatibility between open(O_RDWR) & mmap(PROT_READ|PROT_WRITE, MAP_PRIVATE)
+#       Verify compatibility between open(O_RDWR) &
+#	  mmap(PROT_READ|PROT_WRITE, MAP_PRIVATE)
 #
 # STRATEGY:
 #       1. run "mount -F smbfs //server/public /export/mnt"
@@ -46,17 +49,17 @@
 . $STF_SUITE/include/libtest.ksh
 
 tc_id="mmap007"
-tc_desc=" Verify compatibility between open(O_RDWR) & mmap(PROT_READ|PROT_WRITE, MAP_PRIVATE)"
+tc_desc=" Verify compatibility between open(O_RDWR) & mmap(rw, p)"
 print_test_case $tc_id - $tc_desc
 
 if [[ $STC_CIFS_CLIENT_DEBUG == 1 ]] || \
 	[[ *:${STC_CIFS_CLIENT_DEBUG}:* == *:$tc_id:* ]]; then
     set -x
-fi 
+fi
 
 size=1111k
 
-server=$(server_name) || return 
+server=$(server_name) || return
 
 testdir=$TDIR
 mnt_point=$TMNT
@@ -70,60 +73,53 @@ test_file="tmp007"
 cmd="mount -F smbfs //$TUSER:$TPASS@$server/public $mnt_point"
 cti_execute -i '' FAIL $cmd
 if (($?!=0)); then
-	cti_fail "FAIL: smbmount can't mount the public share"
+	cti_fail "FAIL: $cmd"
 	return
 else
-	cti_report "PASS: smbmount can mount the public share"
+	cti_report "PASS: $cmd"
 fi
 
-cti_execute_cmd "cd $mnt_point"
-
 # make a smbfs file
-cti_execute_cmd "mkfile_mmap -n $size -f ${test_file}"
+cmd="mkfile_mmap -n $size -f ${mnt_point}/${test_file}"
+cti_execute FAIL $cmd
 if (($?!=0)); then
-	cti_fail "FAIL: mkfile_mmap -n $size -f ${test_file} failed"
+	cti_fail "FAIL: $cmd"
 	return
 else
-	cti_report "PASS: mkfile_mmap -n $size -f ${test_file} succeeded"
+	cti_report "PASS: $cmd"
 fi
 
 # make a local file, with the same size
-cti_execute_cmd "mkfile_mmap -n $size -f ${testdir}/${test_file}"
+cmd="mkfile_mmap -n $size -f ${testdir}/${test_file}"
+cti_execute FAIL $cmd
 if (($?!=0)); then
-	cti_fail "FAIL: mkfile_mmap -n $size -f ${testdir}/${test_file} failed"
+	cti_fail "FAIL: $cmd"
 	return
 else
-	cti_report "PASS: mkfile_mmap -n $size -f ${testdir}/${test_file} succeeded"
+	cti_report "PASS: $cmd"
 fi
 
 # backup the sum before write the smbfs file
-cti_execute FAIL "sum ${test_file}"
-if (($?!=0)); then
-	cti_fail "FAIL: smbfs sum failed"
-	return
-else
-	cti_report "PASS: smbfs sum succeeded"
-fi
+cti_execute_cmd "sum ${mnt_point}/${test_file}"
 read sum1 cnt1 junk < cti_stdout
+cti_report "before sum $sum1 $cnt1"
 
-# open(O_RDWR) & mmap(PROT_READ|PROT_WRITE, MAP_PRIVATE) the smbfs file, verify if can write it
-cti_execute_cmd "prot_mmap -o r rw -m rs rwp -f ${testdir}/${test_file} ${test_file}"
+# open(O_RDWR) & mmap(PROT_READ|PROT_WRITE, MAP_PRIVATE) the smbfs file,
+# verify if can write it
+cmd="prot_mmap -o r rw -m rs rwp -f \
+  ${testdir}/${test_file} ${mnt_point}/${test_file}"
+cti_execute FAIL $cmd
 if (($?!=0)); then
-	cti_fail "FAIL: prot_mmap -o r rw -m rs rwp -f ${testdir}/${test_file} ${test_file} failed"
+	cti_fail "FAIL: $cmd"
 	return
 else
-	cti_report "PASS: prot_mmap -o r rw -m rs rwp -f ${testdir}/${test_file} ${test_file} succeeded"
+	cti_report "PASS: $cmd"
 fi
 
-# recal the sum of the smbfs file
-cti_execute FAIL "sum ${test_file}"
-if (($?!=0)); then
-	cti_fail "FAIL: smbfs sum failed"
-	return
-else
-	cti_report "PASS: smbfs sum succeeded"
-fi
+# recalc the sum of the smbfs file
+cti_execute_cmd "sum ${mnt_point}/${test_file}"
 read sum2 cnt2 junk < cti_stdout
+cti_report "after sum $sum2 $cnt2"
 
 # verify the the smbfs file not changed
 if [[ $sum1 != $sum2 ]] ; then
@@ -134,8 +130,7 @@ else
 fi
 
 cti_execute_cmd "rm -rf $testdir/*"
-cti_execute_cmd "rm -f ${test_file}"
-cti_execute_cmd "cd -"
+cti_execute_cmd "rm -f ${mnt_point}/${test_file}"
 
 smbmount_clean $mnt_point
 

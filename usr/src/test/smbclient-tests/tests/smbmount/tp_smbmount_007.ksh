@@ -52,11 +52,14 @@ fi
 
 server=$(server_name) || return
 
+# SKIP for now (mount -O needs privs)
+no_tested || return
+
 testdir_init $TDIR
 smbmount_clean $TMNT
 smbmount_init $TMNT
 
-cmd="mount -F smbfs //$AUSER:$APASS@$server/public $TMNT"
+cmd="mount -F smbfs -o noprompt //$AUSER:$APASS@$server/public $TMNT"
 cti_execute -i '' FAIL $cmd
 if [[ $? != 0 ]]; then
 	cti_fail "FAIL: smbmount can't mount the public share"
@@ -79,7 +82,7 @@ fi
 cmd="rm -rf $TMNT/$AUSER"
 cti_execute_cmd $cmd
 
-cmd="mount -F smbfs -O //$BUSER:$BPASS@$server/public $TMNT"
+cmd="mount -F smbfs -O -o noprompt //$BUSER:$BPASS@$server/public $TMNT"
 cti_execute -i '' FAIL $cmd
 if [[ $? != 0 ]]; then
 	cti_fail "FAIL: the second mount with $BUSER failed"

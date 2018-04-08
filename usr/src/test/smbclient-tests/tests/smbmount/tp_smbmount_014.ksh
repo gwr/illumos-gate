@@ -48,13 +48,14 @@ fi
 
 server=$(server_name) || return
 
+# SKIP for now (mount priv issues)
 no_tested || return
 
 testdir_init $TDIR
 smbmount_clean $TMNT
 smbmount_init $TMNT
 
-cmd="mount -F smbfs //$AUSER:$APASS@$server/$AUSER $TMNT"
+cmd="mount -F smbfs -o noprompt //$AUSER:$APASS@$server/a_share $TMNT"
 cti_execute -i '' FAIL $cmd
 if [[ $? != 0 ]]; then
 	cti_fail "FAIL: smbmount can't mount the share $AUSER"
@@ -66,7 +67,7 @@ fi
 smbmount_check $TMNT || return
 
 cmd="cp /usr/bin/ls $TMNT"
-cti_execute_cmd $cmd
+cti_execute_cmd sudo -n -u $BUSER $cmd
 if [[ $? == 0 ]]; then
 	cti_fail "FAIL: cp to the smbfs should fail, but it's successful"
 	return

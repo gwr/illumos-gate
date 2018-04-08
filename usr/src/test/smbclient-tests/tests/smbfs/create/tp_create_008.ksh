@@ -48,7 +48,8 @@ fi
 
 size=1500m
 if [[ -n "$STC_QUICK" ]] ; then
-  size=15m
+  cti_notinuse "${tc_id}: skipped (STC_QUICK)"
+  return
 fi
 
 server=$(server_name) || return
@@ -106,11 +107,5 @@ cti_execute_cmd "rm $TDIR/file "
 cti_execute_cmd "cd -"
 
 smbmount_clean $TMNT
-
-if [[ -n "$STC_QUICK" ]] ; then
-  cti_report "PASS, but with reduced size."
-  cti_untested $tc_id
-  return
-fi
 
 cti_pass "${tc_id}: PASS"

@@ -33,12 +33,12 @@ export TDIR=$TBASEDIR/test
 
 # Users for SMB client authentication testing
 # Share names (public, a_share, b_share) are hard-coded in the tests.
-export AUSER=a_share
+export AUSER=smbuser
 export AUSERUID=20002
-export APASS=A_nex_123
-export BUSER=b_share
+export APASS=C_nex_123
+export BUSER=smbuser1
 export BUSERUID=20003
-export BPASS=B_nex_123
+export BPASS=C_nex_123
 export TUSER=smbuser
 export TUSERUID=20000
 export TUSER1=smbuser1
@@ -69,5 +69,5 @@ export FILETRUNC=${STF_SUITE}/bin/file_trunc
 # large data file (read-only) used for copy tests, etc.
 export REFFILE=/usr/lib/libc.so.1
 
-# avoid testruner timeouts
-export STC_QUICK=1
+# avoid testruner timeouts (set by smbclienttest -f)
+# export STC_QUICK=1

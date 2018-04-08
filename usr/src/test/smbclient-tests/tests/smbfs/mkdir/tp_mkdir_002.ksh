@@ -67,7 +67,7 @@ cti_execute_cmd "cd $TMNT"
 testdir="dir1/dir2/dir3/dir4/dir5/dir6/dir7/dir8/dir9/dir10"
 
 # mkdir on server
-cti_execute_cmd  "mkdir -p $TDIR"
+cti_execute_cmd  "(cd $TDIR; mkdir -p $testdir)"
 if [[ $? != 0 ]]; then
 	cti_fail "FAIL: mkdir -p $TDIR failed"
 	return
@@ -75,7 +75,7 @@ else
 	cti_report "PASS: mkdir -p $TDIR succeeded"
 fi
 
-cti_execute_cmd "rmdir -p $TDIR"
+cti_execute_cmd "(cd $TDIR; rmdir -p $testdir)"
 if [[ $? != 0 ]]; then
 	cti_fail "FAIL: rmdir -p $TDIR failed"
 	return

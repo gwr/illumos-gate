@@ -26,7 +26,6 @@ dir path=opt/smbclient-tests/config
 dir path=opt/smbclient-tests/include
 dir path=opt/smbclient-tests/runfiles
 dir path=opt/smbclient-tests/tests
-dir path=opt/smbclient-tests/tests/configure
 dir path=opt/smbclient-tests/tests/nsmbrc
 dir path=opt/smbclient-tests/tests/performance
 dir path=opt/smbclient-tests/tests/performance/filebench
@@ -69,8 +68,12 @@ file path=opt/smbclient-tests/include/smbutil_common.ksh mode=0444
 file path=opt/smbclient-tests/include/utils_common.ksh mode=0444
 file path=opt/smbclient-tests/include/xattr_common.ksh mode=0444
 file path=opt/smbclient-tests/runfiles/default.run mode=444
+file path=opt/smbclient-tests/runfiles/just-nsmbrc.run mode=444
+file path=opt/smbclient-tests/runfiles/just-sharectl.run mode=444
+file path=opt/smbclient-tests/runfiles/just-smbfs.run mode=444
+file path=opt/smbclient-tests/runfiles/just-smbmount.run mode=444
+file path=opt/smbclient-tests/runfiles/just-smbutil.run mode=444
 file path=opt/smbclient-tests/runfiles/perf-regression.run mode=444
-file path=opt/smbclient-tests/tests/configure/configure mode=0555
 file path=opt/smbclient-tests/tests/nsmbrc/tp_nsmbrc_001 mode=0555
 file path=opt/smbclient-tests/tests/nsmbrc/tp_nsmbrc_002 mode=0555
 file path=opt/smbclient-tests/tests/nsmbrc/tp_nsmbrc_003 mode=0555

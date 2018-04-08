@@ -34,5 +34,6 @@
 . ${STF_SUITE}/include/smbutil_common.ksh
 . ${STF_SUITE}/include/utils_common.ksh
 . ${STF_SUITE}/include/smbmount_common.ksh
+. ${STF_SUITE}/include/xattr_common.ksh
 
 . ${STF_TOOLS}/contrib/include/ctiutils.shlib

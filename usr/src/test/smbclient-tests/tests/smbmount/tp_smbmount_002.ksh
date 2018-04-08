@@ -52,7 +52,7 @@ testdir_init $TDIR
 smbmount_clean $TMNT
 smbmount_init $TMNT
 
-cmd="mount -F smbfs //$AUSER:$APASS@$server/$AUSER $TMNT"
+cmd="mount -F smbfs -o noprompt //$AUSER:$APASS@$server/a_share $TMNT"
 cti_execute -i '' FAIL $cmd
 if [[ $? != 0 ]]; then
 	cti_fail "FAIL: smbmount can't mount the share $AUSER"

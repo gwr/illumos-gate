@@ -62,9 +62,9 @@ else
 	
 fi
 
-# get rid of our connection
-kill_smbiod
-sleep 2
+# get rid of our connection first
+cti_execute_cmd "smbutil discon //$TUSER:$TPASS@$server"
+sleep 1
 
 cti_report "expect failure next"
 cmd="smbutil view //$TUSER:$TPASS@$server"

@@ -53,7 +53,7 @@ server=$(server_name) || return
 smbmount_clean $TMNT
 smbmount_init $TMNT
 
-cmd="mount -F smbfs //$TUSER:$TPASS@$server/public $TMNT"
+cmd="mount -F smbfs -oacl //$TUSER:$TPASS@$server/public $TMNT"
 cti_execute -i '' FAIL $cmd
 if [[ $? != 0 ]]; then
 	cti_fail "FAIL: $cmd"
@@ -108,7 +108,7 @@ tail +2 cti_stdout > acl_test
 
 # The new ACL should be different, and should contain "everyone@"
 cmd="diff acl_save acl_test"
-cti_execute PASS $cmd
+cti_execute_cmd $cmd
 if [[ $? == 0 ]]; then
 	cti_fail "FAIL: ACL should have changed"
 	smbmount_clean $TMNT

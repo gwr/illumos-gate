@@ -49,7 +49,8 @@ fi
 
 server=$(server_name) || return
 
-smbutil logoutall
+# initialize
+sudo -n smbutil logoutall
 
 cmd="$EXPECT $SMBUTILEXP $TUSER \$TPASS"
 cti_execute_cmd $cmd

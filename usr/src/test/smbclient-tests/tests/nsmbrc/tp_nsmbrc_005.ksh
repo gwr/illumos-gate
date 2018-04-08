@@ -22,6 +22,7 @@
 
 #
 # Copyright 2010 Sun Microsystems, Inc.  All rights reserved.
+# Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
 #
 
 #
@@ -50,16 +51,16 @@ fi
 
 server=$(server_name) || return
 
-rm -f ~root/.nsmbrc
+cti_execute_cmd "rm -f ~/.nsmbrc"
 smbmount_clean $TMNT
 smbmount_init $TMNT
 
 pass=$(smbutil crypt $TPASS)
-echo "[default]" > ~root/.nsmbrc
-echo "password=$pass" >> ~root/.nsmbrc
-echo "user=$TUSER" >> ~root/.nsmbrc
-echo "domain=mydomain" >> ~root/.nsmbrc
-chmod 600 ~root/.nsmbrc
+echo "[default]" > ~/.nsmbrc
+echo "password=$pass" >> ~/.nsmbrc
+echo "user=$TUSER" >> ~/.nsmbrc
+echo "domain=mydomain" >> ~/.nsmbrc
+cti_execute_cmd chmod 600 ~/.nsmbrc
 
 cmd="smbutil view //$server"
 cti_execute -i '' FAIL $cmd
@@ -88,7 +89,7 @@ if [[ $? != 0 ]]; then
 	return
 fi
 
-rm -f ~root/.nsmbrc
+cti_execute_cmd "rm -f ~/.nsmbrc"
 smbmount_clean $TMNT
 
 cti_pass "${tc_id}: PASS"

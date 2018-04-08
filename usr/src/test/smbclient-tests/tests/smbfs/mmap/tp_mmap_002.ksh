@@ -20,6 +20,8 @@
 # CDDL HEADER END
 #
 
+# Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
+
 #
 # mmap test purpose
 #
@@ -51,15 +53,12 @@ print_test_case $tc_id - $tc_desc
 if [[ $STC_CIFS_CLIENT_DEBUG == 1 ]] || \
 	[[ *:${STC_CIFS_CLIENT_DEBUG}:* == *:$tc_id:* ]]; then
     set -x
-fi 
-
-# Note: size should be prime (see cp_mmap)
-size=16111k
-if [[ -n "$STC_QUICK" ]] ; then
-  size=5011k
 fi
 
-server=$(server_name) || return 
+# Note: size should be prime (see cp_mmap)
+size=1123k
+
+server=$(server_name) || return
 
 testdir=$TDIR
 mnt_point=$TMNT
@@ -82,44 +81,32 @@ fi
 # make a local file
 
 cmd="mkfile_mmap -n $size -f ${testdir}/${test_file}"
-cti_execute_cmd $cmd
+cti_execute FAIL $cmd
 if (($?!=0)); then
-	cti_fail "FAIL: $cmd failed"
+	cti_fail "FAIL: $cmd"
 	return
 else
-	cti_report "PASS: $cmd succeeded"
+	cti_report "PASS: $cmd"
 fi
 
 # discontinuously mmap and read the local file, then write into the smbfs file
 
 cmd="cp_mmap -t d -f ${testdir}/${test_file} ${mnt_point}/${test_file}"
-cti_execute_cmd $cmd
+cti_execute FAIL $cmd
 if (($?!=0)); then
-	cti_fail "FAIL: $cmd failed"
+	cti_fail "FAIL: $cmd"
 	return
 else
-	cti_report "PASS: $cmd succeeded"
+	cti_report "PASS: $cmd"
 fi
 
 # diff the local file & smbfs file
 
-cti_execute FAIL "sum ${testdir}/${test_file}"
-if (($?!=0)); then
-	cti_fail "FAIL: local sum failed"
-	return
-else
-	cti_report "PASS: local sum succeeded"
-fi
+cti_execute_cmd "sum ${testdir}/${test_file}"
 read sum1 cnt1 junk < cti_stdout
 cti_report "local sum $sum1 $cnt1"
 
-cti_execute FAIL "sum ${mnt_point}/${test_file}"
-if (($?!=0)); then
-	cti_fail "FAIL: smbfs sum failed"
-	return
-else
-	cti_report "PASS: smbfs sum succeeded"
-fi
+cti_execute_cmd "sum ${mnt_point}/${test_file}"
 read sum2 cnt2 junk < cti_stdout
 cti_report "smbfs sum $sum2 $cnt2"
 
@@ -132,14 +119,7 @@ fi
 
 cti_execute_cmd "rm -rf $testdir/*"
 cti_execute_cmd "rm -f ${mnt_point}/${test_file}"
-cti_execute_cmd "cd -"
 
 smbmount_clean $mnt_point
-
-if [[ -n "$STC_QUICK" ]] ; then
-  cti_report "PASS, but with reduced size."
-  cti_untested $tc_id
-  return
-fi
 
 cti_pass "${tc_id}: PASS"

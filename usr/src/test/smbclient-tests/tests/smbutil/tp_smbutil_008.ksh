@@ -61,7 +61,7 @@ else
 	cti_report "smbutil can view shares"
 fi
 
-parse_view_output $AUSER cti_stdout
+parse_view_output a_share cti_stdout
 if [[ $? != 0 ]]; then
 	cti_fail "FAIL: smbutil view can't get $AUSER share"
 	return

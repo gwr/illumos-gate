@@ -49,7 +49,7 @@ fi
 
 sleep 3
 
-smbutil logoutall
+smbutil logout -a
 
 i=0
 while ((i<20));do

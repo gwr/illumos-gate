@@ -49,7 +49,8 @@ fi
 
 server=$(server_name) || return
 
-smbutil logoutall
+# initialize
+sudo -n smbutil logoutall
 
 cmd="$EXPECT $SMBUTILEXP $TUSER $TPASS"
 cti_execute_cmd $cmd
@@ -104,9 +105,9 @@ else
 	cti_report "PASS: keychain doesn't exist"
 fi
 
-# get rid of our connection
-kill_smbiod
-sleep 2
+# get rid of our connection first
+cti_execute_cmd "smbutil discon //$TUSER@$server"
+sleep 1
 
 cti_report "expect failure next"
 cmd="smbutil view -N //$TUSER@$server"

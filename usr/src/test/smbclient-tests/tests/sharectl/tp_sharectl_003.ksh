@@ -78,11 +78,11 @@ else
 	cti_report "PASS: sharectl set addr in $SERVER section succeeded"
 fi
 
-smbutil logoutall
+smbutil logout -a
 
-# get rid of our connection
-kill_smbiod
-sleep 2
+# get rid of our connection first
+cti_execute_cmd "smbutil discon //$TUSER1@$server"
+sleep 1
 
 cti_report "expect failure next"
 cmd="smbutil view -N //$TUSER1@$server"

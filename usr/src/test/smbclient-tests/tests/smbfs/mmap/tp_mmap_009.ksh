@@ -20,6 +20,8 @@
 # CDDL HEADER END
 #
 
+# Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
+
 #
 # mmap test purpose
 #
@@ -46,15 +48,16 @@
 . $STF_SUITE/include/libtest.ksh
 
 tc_id="mmap009"
-tc_desc=" Verify smbfs will help sync the dirty pages to the file and close it, including otW close, if the userland does not explicitly do it"
+tc_desc=" Verify smbfs will sync the dirty pages to the file and close it,
+ including otW close, if the userland does not explicitly do it."
 print_test_case $tc_id - $tc_desc
 
 if [[ $STC_CIFS_CLIENT_DEBUG == 1 ]] || \
 	[[ *:${STC_CIFS_CLIENT_DEBUG}:* == *:$tc_id:* ]]; then
     set -x
-fi 
+fi
 
-server=$(server_name) || return 
+server=$(server_name) || return
 
 testdir=$TDIR
 mnt_point=$TMNT
@@ -68,52 +71,40 @@ test_file="tmp009"
 cmd="mount -F smbfs //$TUSER:$TPASS@$server/public $mnt_point"
 cti_execute -i '' FAIL $cmd
 if (($?!=0)); then
-	cti_fail "FAIL: smbmount can't mount the public share"
+	cti_fail "FAIL: $cmd"
 	return
 else
-	cti_report "PASS: smbmount can mount the public share"
+	cti_report "PASS: $cmd"
 fi
 
-
-cti_execute_cmd "cd $mnt_point"
-
-# open, mmap a file in smbfs, then write something into it, exit without msync/munmap/close
-cti_execute_cmd "no_close ${test_file}"
+# open, mmap a file in smbfs, then write something into it,
+# exit without msync/munmap/close
+cti_execute FAIL "no_close ${mnt_point}/${test_file}"
 if (($?!=0)); then
-	cti_fail "FAIL: no_close ${test_file} failed"
+	cti_fail "FAIL: $cmd"
 	return
 else
-	cti_report "PASS: no_close ${test_file} succeeded"
+	cti_report "PASS: $cmd"
 fi
 
 # do the same thing in local file, for comparison
-cti_execute_cmd "no_close ${testdir}/${test_file}"
+cti_execute FAIL "no_close ${testdir}/${test_file}"
 if (($?!=0)); then
-	cti_fail "FAIL: no_close ${testdir}/${test_file} failed"
+	cti_fail "FAIL: $cmd"
 	return
 else
-	cti_report "PASS: no_close ${testdir}/${test_file} succeeded"
+	cti_report "PASS: $cmd"
 fi
 
+# diff the local file & smbfs file
 
-cti_execute FAIL "sum ${test_file}"
-if (($?!=0)); then
-	cti_fail "FAIL: smbfs sum failed"
-	return
-else
-	cti_report "PASS: smbfs sum succeeded"
-fi
+cti_execute_cmd "sum ${testdir}/${test_file}"
 read sum1 cnt1 junk < cti_stdout
+cti_report "local sum $sum1 $cnt1"
 
-cti_execute FAIL "sum ${testdir}/${test_file}"
-if (($?!=0)); then
-	cti_fail "FAIL: local sum failed"
-	return
-else
-	cti_report "PASS: local sum succeeded"
-fi
+cti_execute_cmd "sum ${mnt_point}/${test_file}"
 read sum2 cnt2 junk < cti_stdout
-
+cti_report "smbfs sum $sum2 $cnt2"
 
 if [[ $sum1 != $sum2 ]] ; then
         cti_fail "FAIL: the files are different"
@@ -123,8 +114,7 @@ else
 fi
 
 cti_execute_cmd "rm -rf $testdir/*"
-cti_execute_cmd "rm -f ${test_file}"
-cti_execute_cmd "cd -"
+cti_execute_cmd "rm -f ${mnt_point}/${test_file}"
 
 smbmount_clean $mnt_point
 

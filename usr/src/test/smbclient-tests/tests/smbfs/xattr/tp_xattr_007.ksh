@@ -69,16 +69,14 @@ if [[ $? != 0 ]]; then
 	return
 fi
 
-cti_execute_cmd "cd $TMNT"
-
 # Create files set some xattrs on them.
 
-cti_execute_cmd "touch test_file"
-create_xattr test_file passwd /etc/passwd
+cti_execute_cmd "touch $TMNT/test_file"
+create_xattr $TMNT/test_file passwd /etc/passwd
 
 # Try to create directory in the xattr namespace
 
-cti_execute_cmd "runat test_file mkdir foo"
+cti_execute_cmd "runat $TMNT/test_file mkdir foo"
 if [[ $? == 0 ]]; then
 	cti_fail "FAIL: mkdir inside the xattr namespace succeeded unexpectedly"
 	return
@@ -87,7 +85,7 @@ else
 fi
 # Try to create a range of different filetypes in the xattr namespace
 
-cti_execute_cmd "runat test_file mknod block b 888 888"
+cti_execute_cmd "runat $TMNT/test_file mknod block b 888 888"
 if [[ $? == 0 ]]; then
 	cti_fail "FAIL: mknod block file succeeded unexpectedly inside the xattr namespace"
 	return
@@ -95,7 +93,7 @@ else
 	cti_report "PASS: mknod block file failed as expected inside the xattr namespace"
 fi
 
-cti_execute_cmd "runat test_file mknod char c"
+cti_execute_cmd "runat $TMNT/test_file mknod char c"
 if [[ $? == 0 ]]; then
 	cti_fail "FAIL: mknod char file succeeded unexpectedly inside the xattr namespace"
 	return
@@ -103,15 +101,13 @@ else
 	cti_report "PASS: mknod char file failed as expected inside the xattr namespace"
 fi
 
-cti_execute_cmd "runat test_file mknod fifo p"
+cti_execute_cmd "runat $TMNT/test_file mknod fifo p"
 if [[ $? == 0 ]]; then
 	cti_fail "FAIL: mknod fifo file succeeded unexpectedly inside the xattr namespace"
 	return
 else
 	cti_report "PASS: mknod fifo file failed as expected inside the xattr namespace"
 fi
-
-cti_execute_cmd "cd -"
 
 smbmount_clean $TMNT
 cti_pass "$tc_id: PASS"

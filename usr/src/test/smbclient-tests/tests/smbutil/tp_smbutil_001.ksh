@@ -48,7 +48,7 @@ fi
 
 cti_execute_cmd "rm -f core"
 
-cti_execute PASS "smbutil lookup"
+cti_execute_cmd "smbutil lookup"
 if [[ $? == 0 ]]; then
 	cti_fail "FAIL: smbutil lookup succeeded"
 	return
@@ -56,7 +56,7 @@ else
 	cti_report "PASS: smbutil lookup failed"
 fi
 
-cti_execute PASS "smbutil"
+cti_execute_cmd "smbutil"
 if [[ $? == 0 ]]; then
 	cti_fail "FAIL: smbutil succeeded"
 	return
@@ -64,7 +64,7 @@ else
 	cti_report "PASS: smbutil failed"
 fi
 
-cti_execute PASS "smbutil status"
+cti_execute_cmd "smbutil status"
 if [[ $? == 0 ]]; then
 	cti_fail "FAIL: smbutil status succeeded"
 	return
@@ -72,7 +72,7 @@ else
 	cti_report "PASS: smbutil status failed"
 fi
 
-cti_execute PASS "smbutil -a"
+cti_execute_cmd "smbutil -a"
 if [[ $? == 0 ]]; then
 	cti_fail "FAIL: smbutil -a suceeded"
 	return

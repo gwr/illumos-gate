@@ -108,6 +108,9 @@ This testsuite uses the default configuration of filebench.
 
    - Prerequisites: configure client and server (see above).
 
+   - Install an "exepct" package, i.e. with IPS
+	pkg install shell/expect
+
    - Export the environment variables:
 
      # export SRV=servername

@@ -70,19 +70,16 @@ fi
 
 # create a file
 
-cti_execute_cmd "cd $TMNT"
-cti_execute_cmd "touch test_file"
+cti_execute_cmd "touch $TMNT/test_file"
 
 # should not find an xattr file
-cti_execute PASS "runat test_file cat not-here.txt"
+cti_execute_cmd "runat $TMNT/test_file cat not-here.txt"
 if [[ $? == 0 ]]; then
 	cti_fail "FAIL: A read of a non-existent xattr succeeded unexpectedly"
 	return
 else
 	cti_report "PASS: A read of a non-existent xattr fail as expected"
 fi
-
-cti_execute_cmd "cd -"
 
 smbmount_clean $TMNT
 cti_pass "$tc_id: PASS"

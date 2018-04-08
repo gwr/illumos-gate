@@ -53,7 +53,7 @@ server=$(server_name) || return
 cmd="smbutil status $server"
 cti_execute_cmd $cmd
 if [[ $? != 0 ]]; then
-	cti_unsupported "FAIL: $cmd"
+	cti_unsupported "SKIP: $cmd"
 	return
 else
 	cti_report "PASS: $cmd"
@@ -62,7 +62,7 @@ fi
 # Get the server name from the status output.
 grep '^Server' cti_stdout | read junk nbname
 if [[ "x$nbname" == x ]] ; then
-	cti_unsupported "FAIL: Can't get NetBIOS name."
+	cti_unsupported "SKIP: Can't get NetBIOS name."
 	return
 else
 	cti_report "Server NetBIOS name: $nbname"

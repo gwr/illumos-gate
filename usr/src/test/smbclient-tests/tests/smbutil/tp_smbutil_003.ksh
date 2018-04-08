@@ -50,7 +50,7 @@ fi
 server=$(server_name) || return
 
 # clean up all the password
-smbutil logoutall
+smbutil logout -a
 cmd="$EXPECT $SMBUTILEXP $TUSER $TPASS"
 cti_execute_cmd $cmd
 if [[ $? != 0 ]]; then
@@ -86,6 +86,6 @@ else
 	cti_report "PASS: smbutil view can get the public share"
 fi
 
-smbutil logoutall
+smbutil logout -a
 
 cti_pass "${tc_id}: PASS"

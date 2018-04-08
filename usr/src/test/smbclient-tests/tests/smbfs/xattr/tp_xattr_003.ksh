@@ -120,6 +120,5 @@ else
 	 cti_report "PASS: after move the xattr has not changed as expected"
 fi
 
-
 smbmount_clean $TMNT
 cti_pass "$tc_id: PASS"

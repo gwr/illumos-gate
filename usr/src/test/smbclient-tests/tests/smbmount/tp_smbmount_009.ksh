@@ -53,10 +53,10 @@ testdir_init $TDIR
 smbmount_clean $TMNT
 smbmount_init $TMNT
 
-chown $AUSER $TMNT
+sudo -n chown $AUSER $TMNT
 
-cmd="mount -F smbfs //$AUSER:$APASS@$server/$AUSER $TMNT"
-cti_execute -i '' FAIL su $AUSER -c "$cmd"
+cmd="mount -F smbfs -o noprompt //$AUSER:$APASS@$server/a_share $TMNT"
+cti_execute -i '' FAIL sudo -n -u $AUSER "$cmd"
 if [[ $? != 0 ]]; then
 	cti_fail "FAIL: the normal user can't mount the share $AUSER"
 	return
@@ -66,11 +66,10 @@ fi
 
 smbmount_check $TMNT || return
 
-cd $TMNT
 cti_execute_cmd "rm -rf $TMNT/*"
 
-cmd="su $AUSER -c \"cp /usr/bin/ls ls_file\""
-cti_execute_cmd $cmd
+cmd="cp /usr/bin/ls $TMNT/ls_file"
+cti_execute FAIL sudo -n -u $AUSER $cmd
 if [[ $? != 0 ]]; then
 	cti_fail "FAIL: cp the file /usr/bin/ls is failed"
 	return
@@ -78,8 +77,8 @@ else
 	cti_report "PASS: cp the file /usr/bin/ls successfully"
 fi
 
-cmd="su $AUSER -c \"diff /usr/bin/ls ls_file\""
-cti_execute_cmd $cmd
+cmd="diff /usr/bin/ls $TMNT/ls_file"
+cti_execute_cmd sudo -n -u $AUSER $cmd
 if [[ $? != 0 ]]; then
 	cti_fail "FAIL: the file /usr/bin/ls is different with the file ls_file"
 	return
@@ -88,10 +87,9 @@ else
 fi
 
 cti_execute_cmd "rm ls_file"
-cti_execute_cmd "cd -"
 
-cmd="su $AUSER -c \"umount $TMNT\""
-cti_execute_cmd $cmd
+cmd="umount $TMNT"
+cti_execute_cmd sudo -n -u $AUSER $cmd
 if [[ $? != 0 ]]; then
 	cti_fail "FAIL: the normal user failed to umount the $TMNT"
 	return

@@ -46,6 +46,11 @@ if [[ $STC_CIFS_CLIENT_DEBUG == 1 ]] || \
     set -x
 fi
 
+if [[ -n "$STC_QUICK" ]] ; then
+  cti_notinuse "${tc_id}: skipped (STC_QUICK)"
+  return
+fi
+
 server=$(server_name) || return
 
 testdir_init $TDIR
@@ -62,14 +67,13 @@ else
 fi
 
 cti_execute_cmd "rm -rf $TMNT/*"
-cti_execute_cmd "cd $TMNT"
 
 # create file
-mkfile 20m file &
+mkfile 20m $TMNT/file &
 pid1=$!
 
 sleep 3
-tail -f file >/dev/null 2>&1 &
+tail -f $TMNT/file >/dev/null 2>&1 &
 pid2=$!
 
 wait $pid1
@@ -83,9 +87,8 @@ fi
 
 kill -9 $pid2
 
-cti_execute_cmd "rm -rf *"
-cti_execute_cmd "cd -"
-sleep 10
+cti_execute_cmd "rm -rf $TMNT/*"
+sleep 2
 
 smbmount_clean $TMNT
 cti_pass "${tc_id}: PASS"

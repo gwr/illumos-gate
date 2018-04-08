@@ -34,6 +34,7 @@ $(PROG):	$(OBJS)
 
 %.o:		%.c
 		$(COMPILE.c) $<
+		$(POST_PROCESS_O)
 
 install:	all $(ROOTPROG)
 

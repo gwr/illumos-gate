@@ -72,13 +72,10 @@ if [[ $? != 0 ]]; then
 	return
 fi
 
-cti_execute_cmd "cd $TMNT"
-cti_execute_cmd "touch test_file"
-create_xattr test_file passwd /etc/passwd
-verify_write_xattr test_file passwd
-delete_xattr test_file passwd
-
-cti_execute_cmd "cd -"
+cti_execute_cmd "touch $TMNT/test_file"
+create_xattr $TMNT/test_file passwd /etc/passwd
+verify_write_xattr $TMNT/test_file passwd
+delete_xattr $TMNT/test_file passwd
 
 smbmount_clean $TMNT
 cti_pass "$tc_id: PASS"

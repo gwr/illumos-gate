@@ -91,7 +91,7 @@ sleep 2
 #	For now, just log the connection states here.
 #	Our connetion will show state "IDLE".
 
-cmd="echo '::nsmb_vc' |mdb -k"
+cmd="echo '::nsmb_vc' |sudo -n mdb -k"
 cti_execute_cmd $cmd
 if [[ $? != 0 ]]; then
 	cti_fail "FAIL: $cmd"

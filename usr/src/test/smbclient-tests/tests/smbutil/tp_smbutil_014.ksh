@@ -46,7 +46,8 @@ if [[ $STC_CIFS_CLIENT_DEBUG == 1 ]] || \
     set -x
 fi
 
-smbutil logoutall
+# initialize
+sudo -n smbutil logoutall
 
 cmd="$EXPECT $SMBUTILEXP $TUSER \$TPASS"
 cti_execute_cmd $cmd
@@ -66,8 +67,8 @@ else
 	cti_report "PASS: '$TUSER' keychain exists"
 fi
 
-cmd="su $AUSER -c \"$EXPECT $SMBUTILEXP $AUSER \$APASS\""
-cti_execute_cmd $cmd
+cmd="$EXPECT $SMBUTILEXP $AUSER \$APASS"
+cti_execute_cmd sudo -n -u $AUSER $cmd
 if [[ $? != 0 ]]; then
 	cti_fail "FAIL: smbutil login failed to set passwd to $TUSER"
 	return
@@ -75,8 +76,8 @@ else
 	cti_report "PASS: smbutil login failed to set passwd to $TUSER"
 fi
 
-cmd="su $AUSER -c \"smbutil login -c $AUSER | grep exists\""
-cti_execute_cmd $cmd
+cmd="smbutil login -c $AUSER | grep exists"
+cti_execute_cmd sudo -n -u $AUSER $cmd
 if [[ $? != 0 ]]; then
 	cti_fail "FAIL: the keychain doesn't exist"
 	return
@@ -84,7 +85,7 @@ else
 	cti_report "PASS: the keychain exists"
 fi
 
-cmd="smbutil logoutall"
+cmd="sudo -n smbutil logoutall"
 cti_execute_cmd $cmd
 if [[ $? != 0 ]]; then
 	cti_fail "FAIL: smbutil logoutut can't work"
@@ -102,8 +103,8 @@ else
 	cti_report "PASS: the $TUSER keychain doesn't exist"
 fi
 
-cmd="su $AUSER -c \"smbutil login -c $AUSER | grep exists\""
-cti_execute_cmd $cmd
+cmd="smbutil login -c $AUSER | grep exists"
+cti_execute_cmd sudo -n -u $AUSER $cmd
 if [[ $? == 0 ]]; then
 	cti_fail "FAIL: the $AUSER keychain exists"
 	return

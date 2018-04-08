@@ -46,7 +46,7 @@ if [[ $STC_CIFS_CLIENT_DEBUG == 1 ]] || \
     set -x
 fi
 
-cti_execute PASS "smbutil status bad"
+cti_execute_cmd "smbutil status bad"
 if [[ $? == 0 ]]; then
 	cti_fail "FAIL: smbutil status bad succeeded"
 	return

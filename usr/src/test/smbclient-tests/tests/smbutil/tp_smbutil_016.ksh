@@ -48,7 +48,7 @@ if [[ $STC_CIFS_CLIENT_DEBUG == 1 ]] || \
 fi
 
 # cleanup the keychains
-smbutil logoutall
+smbutil logout -a
 cmd="$EXPECT $SMBUTILEXP ${TUSER}@mygroup \$TPASS"
 cti_execute_cmd $cmd
 if [[ $? != 0 ]]; then

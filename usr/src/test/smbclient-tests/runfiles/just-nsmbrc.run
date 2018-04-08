@@ -10,17 +10,18 @@
 #
 
 #
-# Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
+# Copyright (c) 2012 by Delphix. All rights reserved.
 #
 
-.PARALLEL:	$(SUBDIRS)
+[DEFAULT]
+pre =
+verbose = False
+quiet = False
+timeout = 60
+post =
+outputdir = /var/tmp/test_results
+user =
 
-SUBDIRS=	\
-		nsmbrc		\
-		performance	\
-		sharectl	\
-		smbfs		\
-		smbmount	\
-		smbutil	
-
-include		$(SRC)/test/Makefile.com
+[/opt/smbclient-tests/tests/nsmbrc]
+tests = ['tp_nsmbrc_001', 'tp_nsmbrc_002', 'tp_nsmbrc_003', 'tp_nsmbrc_004',
+	'tp_nsmbrc_005', 'tp_nsmbrc_006']

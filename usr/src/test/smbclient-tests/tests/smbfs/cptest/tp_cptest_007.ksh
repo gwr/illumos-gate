@@ -46,6 +46,11 @@ if [[ $STC_CIFS_CLIENT_DEBUG == 1 ]] || \
     set -x
 fi
 
+if [[ -n "$STC_QUICK" ]] ; then
+  cti_notinuse "${tc_id}: skipped (STC_QUICK)"
+  return
+fi
+
 tdir=/kernel/misc
 server=$(server_name)|| return
 

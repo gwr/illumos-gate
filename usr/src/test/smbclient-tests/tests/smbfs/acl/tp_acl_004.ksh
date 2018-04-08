@@ -60,7 +60,7 @@ smbmount_init $TMNT2
 
 #       1. run "mount -F smbfs //$TUSER@..." $TMNT
 
-cmd="mount -F smbfs //$TUSER:$TPASS@$server/public $TMNT"
+cmd="mount -F smbfs -oacl //$TUSER:$TPASS@$server/public $TMNT"
 cti_execute -i '' FAIL $cmd
 if [[ $? != 0 ]]; then
 	cti_fail "FAIL: $cmd"
@@ -79,7 +79,7 @@ fi
 
 #       2. run "mount -F smbfs //$TUSER1@..." $TMNT2
 
-cmd="mount -F smbfs //$TUSER1:$TPASS@$server/public $TMNT2"
+cmd="mount -F smbfs -oacl //$TUSER1:$TPASS@$server/public $TMNT2"
 cti_execute -i '' FAIL $cmd
 if [[ $? != 0 ]]; then
 	cti_fail "FAIL: $cmd"
