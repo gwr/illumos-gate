@@ -22,6 +22,7 @@
 /*
  * Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2018 RackTop Systems.
  */
 
 /*
@@ -822,6 +823,9 @@ lsarpc_s_LookupSids(void *arg, ndr_xa_t *mxa)
 		result = lsa_lookup_sid(sid, &account);
 		if ((result != NT_STATUS_SUCCESS) ||
 		    (account.a_name == NULL) || (*account.a_name == '\0')) {
+			if (result == NT_STATUS_SUCCESS)
+				smb_account_free(&account);
+			bzero(&account, sizeof (smb_account_t));
 			account.a_type = SidTypeUnknown;
 			smb_sid_tostr(sid, sidstr);
 
@@ -974,6 +978,9 @@ lsarpc_s_LookupSids2(void *arg, ndr_xa_t *mxa)
 		result = lsa_lookup_sid(sid, &account);
 		if ((result != NT_STATUS_SUCCESS) ||
 		    (account.a_name == NULL) || (*account.a_name == '\0')) {
+			if (result == NT_STATUS_SUCCESS)
+				smb_account_free(&account);
+			bzero(&account, sizeof (smb_account_t));
 			account.a_type = SidTypeUnknown;
 			smb_sid_tostr(sid, sidstr);
 
