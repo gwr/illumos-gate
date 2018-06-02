@@ -588,9 +588,10 @@ handle_dma_cookies:
 		if (cmd->pc_dmaccount >
 		    (s->s_sg_chain_buf_length / sizeof (pqi_sg_entry_t))) {
 			dev_err(s->s_dip, CE_WARN,
-			    "Cookie(0x%x) verses SG(0x%" PRIx64 ") mismatch",
+			    "Cookie(0x%x) verses SG(0x%lx) mismatch",
 			    cmd->pc_dmaccount,
-			    s->s_sg_chain_buf_length / sizeof (pqi_sg_entry_t));
+			    (unsigned long int)s->s_sg_chain_buf_length /
+			    sizeof (pqi_sg_entry_t));
 			goto out;
 		}
 
@@ -1184,6 +1185,7 @@ config_one(dev_info_t *pdip, pqi_state_t s, pqi_device_t d,
 	/* ---- Inquiry target ---- */
 	if (!d->pd_online ||
 	    pqi_scsi_inquiry(s, d, 0, &inq, sizeof (inq)) == B_FALSE) {
+
 		pqi_fail_drive_cmds(d);
 
 		if (d->pd_dip != NULL) {
