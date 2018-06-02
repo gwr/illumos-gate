@@ -1087,8 +1087,8 @@ create_virt_lun(pqi_state_t s, pqi_device_t d, struct scsi_inquiry *inq,
 				    DDI_SUCCESS) {
 					return (B_FALSE);
 				}
-				if (mdi_pi_free(d->pd_pip_offlined,
-				    MDI_CLIENT_FLAGS_NO_EVENT) != MDI_SUCCESS) {
+				if (mdi_pi_free(d->pd_pip_offlined, 0) !=
+				    MDI_SUCCESS) {
 					return (B_FALSE);
 				}
 				d->pd_pip_offlined = NULL;
@@ -1188,7 +1188,7 @@ config_one(dev_info_t *pdip, pqi_state_t s, pqi_device_t d,
 
 		if (d->pd_dip != NULL) {
 			(void) ndi_devi_offline(d->pd_dip,
-			    NDI_DEVFS_CLEAN | NDI_DEVI_REMOVE | NDI_DEVI_GONE);
+			    NDI_DEVFS_CLEAN | NDI_DEVI_REMOVE);
 			d->pd_dip = NULL;
 		} else if (d->pd_pip != NULL) {
 			(void) mdi_pi_offline(d->pd_pip, 0);
