@@ -408,7 +408,7 @@ static int mptsas_create_virt_lun(dev_info_t *pdip, struct scsi_inquiry *sd,
 static void mptsas_offline_missed_luns(dev_info_t *pdip,
     uint16_t *repluns, int lun_cnt, mptsas_target_t *ptgt);
 static int mptsas_offline_lun(dev_info_t *pdip, dev_info_t *rdip,
-    mdi_pathinfo_t *rpip, uint_t flags);
+    mdi_pathinfo_t *rpip);
 
 static int mptsas_config_smp(dev_info_t *pdip, uint64_t sas_wwn,
     dev_info_t **smp_dip);
@@ -14725,8 +14725,7 @@ mptsas_offline_missed_luns(dev_info_t *pdip, uint16_t *repluns,
 			/*
 			 * The lun has not been there already
 			 */
-			(void) mptsas_offline_lun(pdip, savechild, NULL,
-			    NDI_DEVI_REMOVE);
+			(void) mptsas_offline_lun(pdip, savechild, NULL);
 		}
 	}
 
@@ -14762,8 +14761,7 @@ mptsas_offline_missed_luns(dev_info_t *pdip, uint16_t *repluns,
 			/*
 			 * The lun has not been there already
 			 */
-			(void) mptsas_offline_lun(pdip, NULL, savepip,
-			    NDI_DEVI_REMOVE);
+			(void) mptsas_offline_lun(pdip, NULL, savepip);
 		}
 	}
 }
@@ -15059,8 +15057,7 @@ mptsas_offline_target(dev_info_t *pdip, char *name)
 			continue;
 		}
 
-		tmp_rval = mptsas_offline_lun(pdip, prechild, NULL,
-		    NDI_DEVI_REMOVE);
+		tmp_rval = mptsas_offline_lun(pdip, prechild, NULL);
 		if (tmp_rval != DDI_SUCCESS) {
 			rval = DDI_FAILURE;
 			if (ndi_prop_create_boolean(DDI_DEV_T_NONE,
@@ -15092,8 +15089,7 @@ mptsas_offline_target(dev_info_t *pdip, char *name)
 			continue;
 		}
 
-		(void) mptsas_offline_lun(pdip, NULL, savepip,
-		    NDI_DEVI_REMOVE);
+		(void) mptsas_offline_lun(pdip, NULL, savepip);
 		/*
 		 * driver will not invoke mdi_pi_free, so path will not
 		 * be freed forever, return DDI_FAILURE.
@@ -15104,8 +15100,7 @@ mptsas_offline_target(dev_info_t *pdip, char *name)
 }
 
 static int
-mptsas_offline_lun(dev_info_t *pdip, dev_info_t *rdip,
-    mdi_pathinfo_t *rpip, uint_t flags)
+mptsas_offline_lun(dev_info_t *pdip, dev_info_t *rdip, mdi_pathinfo_t *rpip)
 {
 	int		rval = DDI_FAILURE;
 	char		*devname;
@@ -15145,7 +15140,8 @@ mptsas_offline_lun(dev_info_t *pdip, dev_info_t *rdip,
 			rval = mdi_pi_offline(rpip, 0);
 		}
 	} else {
-		rval = ndi_devi_offline(cdip, flags);
+		rval = ndi_devi_offline(cdip,
+		    NDI_DEVFS_CLEAN | NDI_DEVI_REMOVE | NDI_DEVI_GONE);
 	}
 
 	return (rval);

@@ -1376,8 +1376,8 @@ detach_node(dev_info_t *dip, uint_t flag)
 	ASSERT(DEVI_BUSY_OWNED(ddi_get_parent(dip)));
 	ASSERT(i_ddi_node_state(dip) == DS_ATTACHED);
 
-	/* check references */
-	if (DEVI(dip)->devi_ref)
+	/* Check references */
+	if (DEVI(dip)->devi_ref != 0 && !DEVI_IS_GONE(dip))
 		return (DDI_FAILURE);
 
 	NDI_CONFIG_DEBUG((CE_CONT, "detach_node: 0x%p(%s%d)\n",
@@ -6094,6 +6094,10 @@ devi_detach_node(dev_info_t *dip, uint_t flags)
 	if (driver)
 		strfree(driver);
 
+	/* Clean the flag on successful detach */
+	if (ret == NDI_SUCCESS)
+		DEVI_UNSET_GONE(dip);
+
 	return (ret);
 }
 
@@ -6668,6 +6672,9 @@ ndi_devi_offline(dev_info_t *dip, uint_t flags)
 	ASSERT(pdip);
 
 	flags |= NDI_DEVI_OFFLINE;
+
+	if (flags & NDI_DEVI_GONE)
+		DEVI_SET_GONE(dip);
 
 	/*
 	 * If child is pHCI and vHCI and pHCI are not siblings then enter vHCI
