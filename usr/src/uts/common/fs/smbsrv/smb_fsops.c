@@ -452,6 +452,7 @@ smb_fsop_create_stream(smb_request_t *sr, cred_t *cr,
 	if (cr != kcr && smb_strname_restricted(sname))
 		return (EACCES);
 
+	bzero(&fattr, sizeof (fattr));
 	fattr.sa_mask = SMB_AT_UID | SMB_AT_GID;
 	rc = smb_vop_getattr(fnode->vp, NULL, &fattr, 0, kcr);
 
@@ -2074,7 +2075,7 @@ smb_fsop_lookup(
 		return (0);
 	}
 
-	od_name = kmem_alloc(MAXNAMELEN, KM_SLEEP);
+	od_name = kmem_zalloc(MAXNAMELEN, KM_SLEEP);
 
 	rc = smb_vop_lookup(dnode->vp, name, &vp, od_name, flags,
 	    &ret_flags, root_node ? root_node->vp : NULL, &attr, cr);
