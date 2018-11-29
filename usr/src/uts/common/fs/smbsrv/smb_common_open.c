@@ -473,8 +473,9 @@ smb_common_open(smb_request_t *sr)
 		 *   it must NOT be (required by Lotus Notes)
 		 * - the target is NOT a directory and client requires that
 		 *   it MUST be.
+		 * Streams are never directories.
 		 */
-		if (smb_node_is_dir(fnode)) {
+		if (smb_node_is_dir(fnode) && sname == NULL) {
 			if (op->create_options & FILE_NON_DIRECTORY_FILE) {
 				status = NT_STATUS_FILE_IS_A_DIRECTORY;
 				goto errout;
@@ -622,6 +623,7 @@ smb_common_open(smb_request_t *sr)
 		if (!stream_found) {
 			smb_node_t *tmp_node = fnode;
 
+			bzero(&new_attr, sizeof (new_attr));
 			new_attr.sa_vattr.va_type = VREG;
 			new_attr.sa_vattr.va_mode = S_IRUSR;
 			new_attr.sa_mask |= SMB_AT_TYPE | SMB_AT_MODE;
