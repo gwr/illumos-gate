@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2019 Nexenta Systems, Inc.  All rights reserved.
  */
 
 
@@ -1647,9 +1647,10 @@ idmap_cfg_load_smf(idmap_cfg_handles_t *handles, idmap_pg_config_t *pgcfg,
 			free(pgcfg->domain_name);
 			pgcfg->domain_name = NULL;
 		}
+		if (pgcfg->domain_name != NULL)
+			pgcfg->domain_name_auto_disc = B_FALSE;
 		(void) ad_disc_set_DomainName(handles->ad_ctx,
 		    pgcfg->domain_name);
-		pgcfg->domain_name_auto_disc = B_FALSE;
 	}
 
 	rc = get_val_astring(handles, "default_domain",
@@ -1742,16 +1743,30 @@ idmap_cfg_load_smf(idmap_cfg_handles_t *handles, idmap_pg_config_t *pgcfg,
 	if (rc != 0)
 		(*errors)++;
 	else {
+		if (pgcfg->forest_name != NULL &&
+		    pgcfg->forest_name[0] == '\0') {
+			free(pgcfg->forest_name);
+			pgcfg->forest_name = NULL;
+		}
+		if (pgcfg->forest_name != NULL)
+			pgcfg->forest_name_auto_disc = B_FALSE;
 		(void) ad_disc_set_ForestName(handles->ad_ctx,
 		    pgcfg->forest_name);
-		pgcfg->forest_name_auto_disc = B_FALSE;
 	}
 
 	rc = get_val_astring(handles, "site_name", &pgcfg->site_name);
 	if (rc != 0)
 		(*errors)++;
-	else
+	else {
+		if (pgcfg->site_name != NULL &&
+		    pgcfg->site_name[0] == '\0') {
+			free(pgcfg->site_name);
+			pgcfg->site_name = NULL;
+		}
+		if (pgcfg->site_name != NULL)
+			pgcfg->site_name_auto_disc = B_FALSE;
 		(void) ad_disc_set_SiteName(handles->ad_ctx, pgcfg->site_name);
+	}
 
 	rc = get_val_ds(handles, "global_catalog", 3268,
 	    &pgcfg->global_catalog);
