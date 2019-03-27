@@ -1,0 +1,25 @@
+Temporary file used to insert XXX markers between groups of commits,
+useful while reordering and squashing things.  Not for upstream.
+
+XXX Base (illumos-master)
+XXX misc illumos fixes
+XXX misc fixes (before mdb)
+XXX mdb enhancements
+XXX misc fixes (before MS-SMB1 extensions)
+XXX SMB1 extensions
+XXX Apple extensions
+XXX fix cancel
+XXX Auth sock shutdown
+XXX lock & notify
+XXX misc fixes (before utf16)
+XXX merge-base 4x vs 5x
+XXX misc 4x vs 5x differences
+XXX dtrace provider
+XXX misc fixes (before DH)
+XXX durable handles
+XXX misc fixes (before leases)
+XXX oplock leases
+XXX encryption otw
+XXX server-side copy
+XXX misc fixes (before CA)
+XXX CA (persistent handles)
