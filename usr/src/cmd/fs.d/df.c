@@ -1154,18 +1154,26 @@ number_to_string(
 			int unit_from,		/* from units of this size */
 			int unit_to)		/* to units of this size */
 {
-	if ((long long)number == (long long)-1)
+	if ((long long)number == (long long)-1) {
 		(void) strcpy(buf, "-1");
-	else {
-		if (unit_from == unit_to)
-			(void) sprintf(buf, "%llu", number);
-		else if (unit_from < unit_to)
-			(void) sprintf(buf, "%llu",
-			    number / (unsigned long long)(unit_to / unit_from));
-		else
-			(void) sprintf(buf, "%llu",
-			    number * (unsigned long long)(unit_from / unit_to));
+		return (buf);
 	}
+
+	/* don't crash if, i.e. fsp->f_frsize == 0 */
+	if (unit_from <= 0)
+		unit_from = 1;
+	if (unit_to <= 0)
+		unit_to = 1;
+
+	if (unit_from == unit_to)
+		(void) sprintf(buf, "%llu", number);
+	else if (unit_from < unit_to)
+		(void) sprintf(buf, "%llu",
+		    number / (unsigned long long)(unit_to / unit_from));
+	else
+		(void) sprintf(buf, "%llu",
+		    number * (unsigned long long)(unit_from / unit_to));
+
 	return (buf);
 }
 
