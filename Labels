@@ -12,3 +12,4 @@ XXX Auth sock shutdown
 XXX fix cancel
 XXX lock & notify
 XXX misc fixes (before utf16)
+XXX merge-base 4x vs 5x
