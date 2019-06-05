@@ -23,7 +23,7 @@
  * Copyright (c) 2011 Bayard G. Bell. All rights reserved.
  * Copyright (c) 2013 by Delphix. All rights reserved.
  * Copyright (c) 2017 Joyent Inc
- * Copyright 2019 Nexenta by DDN, Inc.
+ * Copyright 2019 Nexenta by DDN, Inc. All rights reserved.
  */
 
 /*

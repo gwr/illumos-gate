@@ -25,7 +25,7 @@
 
 /*
  * Copyright 2018 Nexenta Systems, Inc.
- * Copyright 2019 Nexenta by DDN, Inc.
+ * Copyright 2019 Nexenta by DDN, Inc. All rights reserved.
  */
 
 #include <sys/systm.h>
