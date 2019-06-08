@@ -180,7 +180,7 @@ struct option_defs optdefs[] = {
 	{ SHOPT_DESCRIPTION,	OPT_TYPE_STRING },
 	{ SHOPT_FSO,		OPT_TYPE_BOOLEAN },
 	{ SHOPT_QUOTAS,		OPT_TYPE_BOOLEAN },
-	{ NULL, NULL }
+	{ NULL, 0 }
 };
 
 /*
