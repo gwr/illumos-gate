@@ -1940,7 +1940,7 @@ smb_hash_walk_init(mdb_walk_state_t *wsp)
 	int ll_off, sll_off, i;
 	uintptr_t addr = wsp->walk_addr;
 
-	if (addr == NULL) {
+	if (addr == 0) {
 		mdb_printf("require address of an smb_hash_t\n");
 		return (WALK_ERR);
 	}
@@ -2029,7 +2029,7 @@ smb_hashstat_walk_init(mdb_walk_state_t *wsp)
 	uint32_t arr_sz;
 	smb_hash_wd_t *wd;
 
-	if (addr == NULL) {
+	if (addr == 0) {
 		mdb_printf("require address of an smb_hash_t\n");
 		return (WALK_ERR);
 	}
