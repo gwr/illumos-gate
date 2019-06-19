@@ -38,6 +38,17 @@
 
 $mapfile_version 2
 
+SYMBOL_VERSION ILLUMOS_0.10 {
+	global:
+
+	lzc_get_bookmark_props;
+	lzc_redact;
+	lzc_send_progress;
+	lzc_send_redacted;
+	lzc_send_resume_redacted;
+	lzc_send_space_resume_redacted;
+} ILLUMOS_0.9;
+
 SYMBOL_VERSION ILLUMOS_0.9 {
 	global:
 

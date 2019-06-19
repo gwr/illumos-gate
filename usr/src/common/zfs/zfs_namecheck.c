@@ -185,6 +185,8 @@ entity_namecheck(const char *path, namecheck_err_t *why, char *what)
 {
 	const char *end;
 
+	EQUIV(why == NULL, what == NULL);
+
 	/*
 	 * Make sure the name is not too long.
 	 */
@@ -284,6 +286,44 @@ dataset_namecheck(const char *path, namecheck_err_t *why, char *what)
 		if (why != NULL) {
 			*why = NAME_ERR_INVALCHAR;
 			*what = '#';
+		}
+		return (-1);
+	}
+
+	return (ret);
+}
+
+/*
+ * Assert path is a valid bookmark name
+ */
+int
+bookmark_namecheck(const char *path, namecheck_err_t *why, char *what)
+{
+	int ret = entity_namecheck(path, why, what);
+
+	if (ret == 0 && strchr(path, '#') == NULL) {
+		if (why != NULL) {
+			*why = NAME_ERR_NO_POUND;
+			*what = '#';
+		}
+		return (-1);
+	}
+
+	return (ret);
+}
+
+/*
+ * Assert path is a valid snapshot name
+ */
+int
+snapshot_namecheck(const char *path, namecheck_err_t *why, char *what)
+{
+	int ret = entity_namecheck(path, why, what);
+
+	if (ret == 0 && strchr(path, '@') == NULL) {
+		if (why != NULL) {
+			*why = NAME_ERR_NO_AT;
+			*what = '@';
 		}
 		return (-1);
 	}

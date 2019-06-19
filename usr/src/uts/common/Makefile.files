@@ -1372,6 +1372,7 @@ ZFS_COMMON_OBJS +=		\
 	dmu.o			\
 	dmu_diff.o		\
 	dmu_recv.o		\
+	dmu_redact.o		\
 	dmu_send.o		\
 	dmu_object.o		\
 	dmu_objset.o		\
@@ -1398,6 +1399,7 @@ ZFS_COMMON_OBJS +=		\
 	lz4.o			\
 	lzjb.o			\
 	metaslab.o		\
+	objlist.o		\
 	mmp.o			\
 	multilist.o		\
 	range_tree.o		\

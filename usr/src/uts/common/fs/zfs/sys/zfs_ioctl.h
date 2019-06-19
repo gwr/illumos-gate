@@ -92,7 +92,7 @@ typedef enum drr_headertype {
 /* flag #18 is reserved for a Delphix feature */
 #define	DMU_BACKUP_FEATURE_LARGE_BLOCKS		(1 << 19)
 #define	DMU_BACKUP_FEATURE_RESUMING		(1 << 20)
-/* flag #21 is reserved for the redacted send/receive feature */
+#define	DMU_BACKUP_FEATURE_REDACTED		(1 << 21)
 #define	DMU_BACKUP_FEATURE_COMPRESSED		(1 << 22)
 #define	DMU_BACKUP_FEATURE_LARGE_DNODE		(1 << 23)
 #define	DMU_BACKUP_FEATURE_RAW			(1 << 24)
@@ -107,7 +107,8 @@ typedef enum drr_headertype {
     DMU_BACKUP_FEATURE_EMBED_DATA | DMU_BACKUP_FEATURE_LZ4 | \
     DMU_BACKUP_FEATURE_RESUMING | DMU_BACKUP_FEATURE_LARGE_BLOCKS | \
     DMU_BACKUP_FEATURE_COMPRESSED | DMU_BACKUP_FEATURE_LARGE_DNODE | \
-    DMU_BACKUP_FEATURE_RAW | DMU_BACKUP_FEATURE_HOLDS)
+    DMU_BACKUP_FEATURE_RAW | DMU_BACKUP_FEATURE_HOLDS | \
+	DMU_BACKUP_FEATURE_REDACTED)
 
 /* Are all features in the given flag word currently supported? */
 #define	DMU_STREAM_SUPPORTED(x)	(!((x) & ~DMU_BACKUP_FEATURE_MASK))
@@ -203,7 +204,7 @@ typedef struct dmu_replay_record {
 	enum {
 		DRR_BEGIN, DRR_OBJECT, DRR_FREEOBJECTS,
 		DRR_WRITE, DRR_FREE, DRR_END, DRR_WRITE_BYREF,
-		DRR_SPILL, DRR_WRITE_EMBEDDED, DRR_OBJECT_RANGE,
+		DRR_SPILL, DRR_WRITE_EMBEDDED, DRR_OBJECT_RANGE, DRR_REDACT,
 		DRR_NUMTYPES
 	} drr_type;
 	uint32_t drr_payloadlen;
@@ -328,6 +329,12 @@ typedef struct dmu_replay_record {
 			uint8_t drr_flags;
 			uint8_t drr_pad[3];
 		} drr_object_range;
+		struct drr_redact {
+			uint64_t drr_object;
+			uint64_t drr_offset;
+			uint64_t drr_length;
+			uint64_t drr_toguid;
+		} drr_redact;
 
 		/*
 		 * Nore: drr_checksum is overlaid with all record types

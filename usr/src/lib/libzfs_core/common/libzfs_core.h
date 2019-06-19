@@ -59,11 +59,13 @@ int lzc_promote(const char *, char *, int);
 int lzc_destroy_snaps(nvlist_t *, boolean_t, nvlist_t **);
 int lzc_bookmark(nvlist_t *, nvlist_t **);
 int lzc_get_bookmarks(const char *, nvlist_t *, nvlist_t **);
+int lzc_get_bookmark_props(const char *, nvlist_t **);
 int lzc_destroy_bookmarks(nvlist_t *, nvlist_t **);
 int lzc_initialize(const char *, pool_initialize_func_t, nvlist_t *,
     nvlist_t **);
 int lzc_trim(const char *, pool_trim_func_t, uint64_t, boolean_t,
     nvlist_t *, nvlist_t **);
+int lzc_redact(const char *, const char *, nvlist_t *);
 
 int lzc_load_key(const char *, boolean_t, uint8_t *, uint_t);
 int lzc_unload_key(const char *);
@@ -85,12 +87,14 @@ enum lzc_send_flags {
 int lzc_send(const char *, const char *, int, enum lzc_send_flags);
 int lzc_send_resume(const char *, const char *, int,
     enum lzc_send_flags, uint64_t, uint64_t);
-int lzc_send_space(const char *, const char *, enum lzc_send_flags, uint64_t *);
-
 struct dmu_replay_record;
 
-int lzc_receive(const char *, nvlist_t *, const char *, boolean_t,
-    boolean_t, int);
+int lzc_send_redacted(const char *, const char *, int, enum lzc_send_flags,
+    const char *);
+int lzc_send_resume_redacted(const char *, const char *, int,
+    enum lzc_send_flags, uint64_t, uint64_t, const char *);
+int lzc_receive(const char *, nvlist_t *, const char *, boolean_t, boolean_t,
+    int);
 int lzc_receive_resumable(const char *, nvlist_t *, const char *,
     boolean_t, boolean_t, int);
 int lzc_receive_with_header(const char *, nvlist_t *, const char *, boolean_t,
@@ -99,6 +103,11 @@ int lzc_receive_with_cmdprops(const char *, nvlist_t *, nvlist_t *,
     uint8_t *, uint_t, const char *, boolean_t, boolean_t, boolean_t, int,
     const struct dmu_replay_record *, int, uint64_t *, uint64_t *,
     uint64_t *, nvlist_t **);
+int lzc_send_space(const char *, const char *, enum lzc_send_flags, uint64_t *);
+int lzc_send_space_resume_redacted(const char *, const char *,
+    enum lzc_send_flags, uint64_t, uint64_t, uint64_t, const char *,
+    int, uint64_t *);
+uint64_t lzc_send_progress(int);
 
 boolean_t lzc_exists(const char *);
 

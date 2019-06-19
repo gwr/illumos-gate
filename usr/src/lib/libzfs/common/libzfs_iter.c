@@ -189,10 +189,12 @@ zfs_iter_bookmarks(zfs_handle_t *zhp, zfs_iter_f func, void *data)
 
 	/* Setup the requested properties nvlist. */
 	props = fnvlist_alloc();
-	fnvlist_add_boolean(props, zfs_prop_to_name(ZFS_PROP_GUID));
-	fnvlist_add_boolean(props, zfs_prop_to_name(ZFS_PROP_CREATETXG));
-	fnvlist_add_boolean(props, zfs_prop_to_name(ZFS_PROP_CREATION));
-	fnvlist_add_boolean(props, zfs_prop_to_name(ZFS_PROP_IVSET_GUID));
+	for (zfs_prop_t p = 0; p < ZFS_NUM_PROPS; p++) {
+		if (zfs_prop_valid_for_type(p, ZFS_TYPE_BOOKMARK, B_FALSE)) {
+			fnvlist_add_boolean(props, zfs_prop_to_name(p));
+		}
+	}
+	fnvlist_add_boolean(props, "redact_complete");
 
 	if ((err = lzc_get_bookmarks(zhp->zfs_name, props, &bmarks)) != 0)
 		goto out;

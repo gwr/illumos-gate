@@ -745,6 +745,35 @@ test_wait(const char *pool)
 }
 
 static void
+test_redact(const char *snapshot1, const char *snapshot2)
+{
+	nvlist_t *required = fnvlist_alloc();
+	nvlist_t *snapnv = fnvlist_alloc();
+	char bookmark[MAXNAMELEN + 32];
+
+	fnvlist_add_string(required, "bookname", "testbookmark");
+	fnvlist_add_boolean(snapnv, snapshot2);
+	fnvlist_add_nvlist(required, "snapnv", snapnv);
+
+	IOC_INPUT_TEST(ZFS_IOC_REDACT, snapshot1, required, NULL, 0);
+
+	nvlist_free(snapnv);
+	nvlist_free(required);
+
+	strlcpy(bookmark, snapshot1, sizeof (bookmark));
+	*strchr(bookmark, '@') = '\0';
+	strlcat(bookmark, "#testbookmark", sizeof (bookmark) -
+	    strlen(bookmark));
+	zfs_destroy(bookmark);
+}
+
+static void
+test_get_bookmark_props(const char *bookmark)
+{
+	IOC_INPUT_TEST(ZFS_IOC_GET_BOOKMARK_PROPS, bookmark, NULL, NULL, 0);
+}
+
+static void
 zfs_ioc_input_tests(const char *pool)
 {
 	char filepath[] = "/tmp/ioc_test_file_XXXXXX";
@@ -754,6 +783,7 @@ zfs_ioc_input_tests(const char *pool)
 	char bookmark[ZFS_MAX_DATASET_NAME_LEN + 32];
 	char backup[ZFS_MAX_DATASET_NAME_LEN];
 	char clone[ZFS_MAX_DATASET_NAME_LEN];
+	char clonesnap[ZFS_MAX_DATASET_NAME_LEN + 32];
 	int tmpfd, err;
 
 	/*
@@ -764,6 +794,7 @@ zfs_ioc_input_tests(const char *pool)
 	(void) snprintf(snapshot, sizeof (snapshot), "%s@snapshot", dataset);
 	(void) snprintf(bookmark, sizeof (bookmark), "%s#bookmark", dataset);
 	(void) snprintf(clone, sizeof (clone), "%s/test-fs-clone", pool);
+	(void) snprintf(clonesnap, sizeof (clonesnap), "%s@snap", clone);
 	(void) snprintf(backup, sizeof (backup), "%s/backup", pool);
 
 	err = lzc_create(dataset, LZC_DATSET_TYPE_ZFS, NULL, NULL, 0);
@@ -805,6 +836,7 @@ zfs_ioc_input_tests(const char *pool)
 
 	test_bookmark(pool, snapshot, bookmark);
 	test_get_bookmarks(dataset);
+	test_get_bookmark_props(bookmark);
 	test_destroy_bookmarks(pool, bookmark);
 
 	test_hold(pool, snapshot);
@@ -812,7 +844,10 @@ zfs_ioc_input_tests(const char *pool)
 	test_release(pool, snapshot);
 
 	test_clone(snapshot, clone);
-	(void) zfs_destroy(clone);
+	test_snapshot(pool, clonesnap);
+	test_redact(snapshot, clonesnap);
+	zfs_destroy(clonesnap);
+	zfs_destroy(clone);
 
 	test_rollback(dataset, snapshot);
 	test_destroy_snaps(pool, snapshot);

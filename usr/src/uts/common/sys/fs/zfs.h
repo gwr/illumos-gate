@@ -184,6 +184,8 @@ typedef enum {
 	ZFS_PROP_KEY_GUID,
 	ZFS_PROP_KEYSTATUS,
 	ZFS_PROP_IVSET_GUID,		/* not exposed to the user */
+	ZFS_PROP_REDACTED,
+	ZFS_PROP_REDACT_SNAPS,
 	ZFS_NUM_PROPS
 } zfs_prop_t;
 
@@ -1289,6 +1291,8 @@ typedef enum zfs_ioc {
  * The enum implicitly includes all the error codes from errno.h.
  * New code should use and extend this enum for errors that are
  * not described precisely by generic errno codes.
+ *
+ * These numbers should not change over time. New entries should be appended.
  */
 typedef enum {
 	ZFS_ERR_CHECKPOINT_EXISTS = 1024,
@@ -1304,6 +1308,9 @@ typedef enum {
 	ZFS_ERR_IOC_ARG_UNAVAIL,
 	ZFS_ERR_IOC_ARG_REQUIRED,
 	ZFS_ERR_IOC_ARG_BADTYPE,
+	ZFS_ERR_WRONG_PARENT,
+	ZFS_ERR_EXPORT_IN_PROGRESS,
+	ZFS_ERR_BOOKMARK_SOURCE_NOT_ANCESTOR,
 } zfs_errno_t;
 
 /*

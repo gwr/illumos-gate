@@ -34,6 +34,7 @@
 #include <sys/rrwlock.h>
 #include <sys/zfs_ioctl.h>
 #include <sys/dsl_dataset.h>
+#include <sys/objlist.h>
 
 #ifdef	__cplusplus
 extern "C" {
@@ -146,6 +147,8 @@ typedef struct zfid_long {
 
 extern int zfs_suspend_fs(zfsvfs_t *zfsvfs);
 extern int zfs_resume_fs(zfsvfs_t *zfsvfs, struct dsl_dataset *ds);
+extern int zfs_end_fs(zfsvfs_t *zfsvfs, struct dsl_dataset *ds);
+extern int zfs_end_fs(zfsvfs_t *zfsvfs, struct dsl_dataset *ds);
 extern int zfs_userspace_one(zfsvfs_t *zfsvfs, zfs_userquota_prop_t type,
     const char *domain, uint64_t rid, uint64_t *valuep);
 extern int zfs_userspace_many(zfsvfs_t *zfsvfs, zfs_userquota_prop_t type,
@@ -165,6 +168,7 @@ extern void zfsvfs_free(zfsvfs_t *zfsvfs);
 extern int zfs_check_global_label(const char *dsname, const char *hexsl);
 extern int zfs_get_temporary_prop(dsl_dataset_t *ds, zfs_prop_t zfs_prop,
     uint64_t *val, char *setpoint);
+extern objlist_t *zfs_get_deleteq(objset_t *os);
 
 #ifdef	__cplusplus
 }

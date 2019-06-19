@@ -835,7 +835,7 @@ zfs_blkptr_verify(spa_t *spa, const blkptr_t *bp)
 	}
 
 	if (BP_IS_EMBEDDED(bp)) {
-		if (BPE_GET_ETYPE(bp) > NUM_BP_EMBEDDED_TYPES) {
+		if (BPE_GET_ETYPE(bp) >= NUM_BP_EMBEDDED_TYPES) {
 			zfs_panic_recover("blkptr at %p has invalid ETYPE %llu",
 			    bp, (longlong_t)BPE_GET_ETYPE(bp));
 		}
@@ -4658,6 +4658,9 @@ zbookmark_compare(uint16_t dbss1, uint8_t ibs1, uint16_t dbss2, uint8_t ibs2,
 	    zb1->zb_level == zb2->zb_level &&
 	    zb1->zb_blkid == zb2->zb_blkid)
 		return (0);
+
+	IMPLY(zb1->zb_level > 0, ibs1 >= SPA_MINBLOCKSHIFT);
+	IMPLY(zb2->zb_level > 0, ibs2 >= SPA_MINBLOCKSHIFT);
 
 	/*
 	 * BP_SPANB calculates the span in blocks.

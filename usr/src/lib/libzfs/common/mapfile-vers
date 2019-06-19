@@ -80,14 +80,14 @@ $if _ELF64
 	spa_feature_table		{
 					  ASSERT = {
 						  TYPE = OBJECT;
-						  SIZE = addrsize[162];
+						  SIZE = addrsize[180];
 						};
 					};
 $elif _ELF32
 	spa_feature_table		{
 					  ASSERT = {
 						  TYPE = OBJECT;
-						  SIZE = addrsize[189];
+						  SIZE = addrsize[210];
 						};
 					};
 $else
@@ -185,6 +185,7 @@ $endif
 	zfs_save_arguments;
 	zfs_send;
 	zfs_send_one;
+	zfs_send_progress;
 	zfs_send_resume;
 	zfs_send_resume_token_to_nvlist;
 	zfs_share;

@@ -134,6 +134,10 @@ post =
 tests = ['zfs_001_neg', 'zfs_002_pos', 'zfs_003_neg']
 tags = ['functional', 'cli_root', 'zfs']
 
+[tests/functional/cli_root/zfs_bookmark]
+tests = ['zfs_bookmark_cliargs']
+tags = ['functional', 'cli_root', 'zfs_bookmark']
+
 [tests/functional/cli_root/zfs_change-key]
 tests = ['zfs_change-key', 'zfs_change-key_child', 'zfs_change-key_format',
     'zfs_change-key_inherit', 'zfs_change-key_load', 'zfs_change-key_location',
@@ -145,7 +149,7 @@ tags = ['functional', 'cli_root', 'zfs_change-key']
 tests = ['zfs_clone_001_neg', 'zfs_clone_002_pos', 'zfs_clone_003_pos',
     'zfs_clone_004_pos', 'zfs_clone_005_pos', 'zfs_clone_006_pos',
     'zfs_clone_007_pos', 'zfs_clone_008_neg', 'zfs_clone_009_neg',
-    'zfs_clone_010_pos', 'zfs_clone_encrypted']
+    'zfs_clone_010_pos', 'zfs_clone_encrypted', 'zfs_clone_rm_nested']
 tags = ['functional', 'cli_root', 'zfs_clone']
 
 [tests/functional/cli_root/zfs_copies]
@@ -767,11 +771,20 @@ tags = ['functional', 'reservation']
 tests = ['rootpool_002_neg', 'rootpool_003_neg', 'rootpool_007_pos']
 tags = ['functional', 'rootpool']
 
+[tests/functional/redacted_send]
+tests = ['redacted_compressed', 'redacted_contents', 'redacted_deleted',
+    'redacted_disabled_feature', 'redacted_embedded', 'redacted_holes',
+    'redacted_incrementals', 'redacted_largeblocks', 'redacted_many_clones',
+    'redacted_mixed_recsize', 'redacted_mounts', 'redacted_negative',
+    'redacted_origin', 'redacted_props', 'redacted_resume', 'redacted_size',
+    'redacted_volume']
+tags = ['functional', 'redacted_send']
+
 [tests/functional/rsend]
 tests = ['rsend_001_pos', 'rsend_002_pos', 'rsend_003_pos', 'rsend_004_pos',
     'rsend_005_pos', 'rsend_006_pos', 'rsend_007_pos', 'rsend_008_pos',
     'rsend_009_pos', 'rsend_010_pos', 'rsend_011_pos', 'rsend_012_pos',
-    'rsend_013_pos', 'rsend_014_pos',
+    'rsend_013_pos', 'rsend_014_pos', 'rsend_016_neg',
     'rsend_019_pos', 'rsend_020_pos',
     'rsend_021_pos', 'rsend_022_pos', 'rsend_024_pos',
     'recv_secpolicy',
