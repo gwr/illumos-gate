@@ -11,6 +11,7 @@
 
 /*
  * Copyright 2018 Nexenta Systems, Inc.
+ * Copyright 2019 Racktop Systems
  */
 
 /*
@@ -1873,8 +1874,8 @@ is_new_dev(pqi_state_t s, pqi_device_t new_dev)
 #define	PQI_RESET_TYPE_FIRM_RESET	0x2
 #define	PQI_RESET_TYPE_HARD_RESET	0x3
 
-static boolean_t
-hba_reset(pqi_state_t s)
+boolean_t
+pqi_hba_reset(pqi_state_t s)
 {
 	uint32_t	val;
 
@@ -1893,7 +1894,7 @@ save_ctrl_mode(pqi_state_t s, int mode)
 static boolean_t
 revert_to_sis(pqi_state_t s)
 {
-	if (!hba_reset(s))
+	if (!pqi_hba_reset(s))
 		return (B_FALSE);
 	if (sis_reenable_mode(s) == B_FALSE)
 		return (B_FALSE);
