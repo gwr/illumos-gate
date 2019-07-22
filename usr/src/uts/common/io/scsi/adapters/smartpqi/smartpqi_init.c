@@ -956,13 +956,6 @@ pqi_scan_scsi_devices(pqi_state_t s)
 			dev->pd_online = 1;
 		else
 			dev->pd_online = 0;
-
-		/* ---- Software version of disk pull for debug ---- */
-		if (pqi_do_offline && dev->pd_target == pqi_offline_target) {
-			cmn_err(CE_WARN, "%s: offlining %d\n", __func__,
-			    pqi_offline_target);
-			dev->pd_online = 0;
-		}
 	}
 
 	mutex_exit(&s->s_mutex);
@@ -1857,9 +1850,20 @@ is_new_dev(pqi_state_t s, pqi_device_t new_dev)
 
 	for (dev = list_head(&s->s_devnodes); dev != NULL;
 	    dev = list_next(&s->s_devnodes, dev)) {
-		if (dev->pd_wwid == new_dev->pd_wwid) {
-			dev->pd_scanned = 1;
-			return (B_FALSE);
+		if (new_dev->pd_phys_dev != dev->pd_phys_dev) {
+			continue;
+		}
+		if (dev->pd_phys_dev) {
+			if (dev->pd_wwid == new_dev->pd_wwid) {
+				dev->pd_scanned = 1;
+				return (B_FALSE);
+			}
+		} else {
+			if (memcmp(dev->pd_volume_id, new_dev->pd_volume_id,
+			    16) == 0) {
+				dev->pd_scanned = 1;
+				return (B_FALSE);
+			}
 		}
 	}
 

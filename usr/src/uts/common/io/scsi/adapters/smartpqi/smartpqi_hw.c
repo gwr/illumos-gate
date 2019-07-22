@@ -72,11 +72,6 @@ pqi_watchdog(void *v)
 		s->s_watchdog = timeout(pqi_watchdog, s,
 		    drv_usectohz(WATCHDOG));
 	}
-	if (pqi_do_scan && s->s_instance == pqi_do_ctrl) {
-		pqi_do_scan = 0;
-		s->s_rescan = timeout(pqi_do_rescan, (void *)s,
-		    drv_usectohz(MICROSEC));
-	}
 }
 
 /*
