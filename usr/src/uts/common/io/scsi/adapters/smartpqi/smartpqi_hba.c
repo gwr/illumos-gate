@@ -11,6 +11,7 @@
 
 /*
  * Copyright 2018 Nexenta Systems, Inc.
+ * Copyright 2019 RackTop Systems, Inc.
  */
 
 /*
@@ -121,10 +122,10 @@ smartpqi_register_hba(pqi_state_t s)
 		return (FALSE);
 	}
 
-	if (s->s_enable_mpxio) {
+	if (!s->s_disable_mpxio) {
 		if (mdi_phci_register(MDI_HCI_CLASS_SCSI, s->s_dip, 0) !=
 		    MDI_SUCCESS) {
-			s->s_enable_mpxio = 0;
+			s->s_disable_mpxio = 1;
 		}
 	}
 
@@ -137,7 +138,7 @@ smartpqi_register_hba(pqi_state_t s)
 void
 smartpqi_unregister_hba(pqi_state_t s)
 {
-	if (s->s_enable_mpxio)
+	if (!s->s_disable_mpxio)
 		(void) mdi_phci_unregister(s->s_dip, 0);
 
 	if (s->s_cmd_timeout != NULL) {
@@ -239,8 +240,6 @@ pqi_start(struct scsi_address *ap, struct scsi_pkt *pkt)
 			    DDI_DMA_SYNC_FORDEV);
 		}
 	}
-
-	cmd->pc_target = ap->a_target;
 
 	mutex_enter(&s->s_mutex);
 	if (HBA_IS_QUIESCED(s) && !poll) {
@@ -946,7 +945,7 @@ abort_all(struct scsi_address *ap, pqi_state_t s)
 {
 	pqi_device_t	devp;
 
-	if ((devp = pqi_find_target_dev(s, ap->a_target)) == NULL)
+	if ((devp = scsi_device_hba_private_get(ap->a.a_sd)) == NULL)
 		return;
 
 	pqi_fail_drive_cmds(devp);
@@ -958,24 +957,13 @@ create_phys_lun(pqi_state_t s, pqi_device_t d,
 {
 	char		**compatible	= NULL;
 	char		*nodename	= NULL;
-	char		*scsi_binding_set;
 	int		ncompatible	= 0;
 	dev_info_t	*dip;
-	char		*wwn_str;
 	int		rval;
 
-	/* ---- get the 'scsi-binding-set' property ---- */
-	if (ddi_prop_lookup_string(DDI_DEV_T_ANY, s->s_dip,
-	    DDI_PROP_NOTPROM | DDI_PROP_DONTPASS, "scsi-binding-set",
-	    &scsi_binding_set) != DDI_PROP_SUCCESS) {
-		scsi_binding_set = NULL;
-	}
-
 	/* ---- At this point we have a new device not in our list ---- */
-	scsi_hba_nodename_compatible_get(inq, scsi_binding_set,
+	scsi_hba_nodename_compatible_get(inq, NULL,
 	    inq->inq_dtype, NULL, &nodename, &compatible, &ncompatible);
-	if (scsi_binding_set != NULL)
-		ddi_prop_free(scsi_binding_set);
 	if (nodename == NULL)
 		return (B_FALSE);
 
@@ -1008,18 +996,23 @@ create_phys_lun(pqi_state_t s, pqi_device_t d,
 		goto free_devi;
 	}
 
-	wwn_str = kmem_zalloc(MAX_NAME_PROP_SIZE, KM_SLEEP);
-	(void) snprintf(wwn_str, MAX_NAME_PROP_SIZE, "w%016" PRIx64,
-	    d->pd_wwid);
-	rval = ndi_prop_update_string(DDI_DEV_T_NONE, dip,
-	    SCSI_ADDR_PROP_TARGET_PORT, wwn_str);
-	kmem_free(wwn_str, MAX_NAME_PROP_SIZE);
-	if (rval != DDI_PROP_SUCCESS)
-		goto free_devi;
+	if (d->pd_wwid != 0) {
+		char		*wwn_str;
+		wwn_str = kmem_zalloc(MAX_NAME_PROP_SIZE, KM_SLEEP);
+		(void) snprintf(wwn_str, MAX_NAME_PROP_SIZE, "w%016" PRIx64,
+		    d->pd_wwid);
+		rval = ndi_prop_update_string(DDI_DEV_T_NONE, dip,
+		    SCSI_ADDR_PROP_TARGET_PORT, wwn_str);
+		kmem_free(wwn_str, MAX_NAME_PROP_SIZE);
+		if (rval != DDI_PROP_SUCCESS)
+			goto free_devi;
+	}
 
-	if (ddi_prop_update_string(DDI_DEV_T_NONE, dip, NDI_GUID, d->pd_guid) !=
-	    DDI_PROP_SUCCESS) {
-		goto free_devi;
+	if (d->pd_guid != NULL) {
+		if (ddi_prop_update_string(DDI_DEV_T_NONE, dip, NDI_GUID,
+		    d->pd_guid) != DDI_PROP_SUCCESS) {
+			goto free_devi;
+		}
 	}
 
 	if (ndi_prop_update_int(DDI_DEV_T_NONE, dip, "pm-capable", 1) !=
@@ -1057,7 +1050,6 @@ create_virt_lun(pqi_state_t s, pqi_device_t d, struct scsi_inquiry *inq,
 	char		*guid_ptr;
 	char		wwid_str[17];
 	char		tgt_str[17];
-	int		instance = ddi_get_instance(s->s_dip);
 	dev_info_t	*lun_dip;
 	char		*old_guid;
 
@@ -1100,7 +1092,7 @@ create_virt_lun(pqi_state_t s, pqi_device_t d, struct scsi_inquiry *inq,
 		}
 	}
 
-	scsi_hba_nodename_compatible_get(inq, "vhci", inq->inq_dtype, NULL,
+	scsi_hba_nodename_compatible_get(inq, NULL, inq->inq_dtype, NULL,
 	    &nodename, &compatible, &ncompatible);
 	if (nodename == NULL)
 		return (B_FALSE);
@@ -1126,14 +1118,11 @@ create_virt_lun(pqi_state_t s, pqi_device_t d, struct scsi_inquiry *inq,
 			goto cleanup;
 		}
 
-		if (mdi_prop_update_int(pip, TARGET_PROP, instance) !=
-		    DDI_SUCCESS) {
-			dev_err(s->s_dip, CE_WARN,
-			    "unable to create property (%s) for lun %d\n",
-			    TARGET_PROP, d->pd_target);
-			goto cleanup;
-		}
-
+		/*
+		 * For MPxIO, we actually don't really need to care
+		 * about the LUN or target property, because nothing
+		 * really uses them.
+		 */
 		if (mdi_prop_update_int(pip, LUN_PROP, d->pd_target) !=
 		    DDI_SUCCESS) {
 			dev_err(s->s_dip, CE_WARN,
@@ -1175,11 +1164,7 @@ config_one(dev_info_t *pdip, pqi_state_t s, pqi_device_t d,
     dev_info_t **childp)
 {
 	struct scsi_inquiry	inq;
-	boolean_t		rval;
-
-	/* ---- For now ignore logical devices ---- */
-	if (is_physical_dev(d) == B_FALSE)
-		return (NDI_FAILURE);
+	boolean_t		rval = B_FALSE;
 
 	/* ---- Inquiry target ---- */
 	if (!d->pd_online ||
@@ -1207,10 +1192,10 @@ config_one(dev_info_t *pdip, pqi_state_t s, pqi_device_t d,
 	}
 
 	d->pd_parent = pdip;
-	if (s->s_enable_mpxio)
+	if ((!s->s_disable_mpxio) && is_physical_dev(d))
 		rval = create_virt_lun(s, d, &inq, childp);
 
-	if (!s->s_enable_mpxio || (rval == B_FALSE))
+	if (rval == B_FALSE)
 		rval = create_phys_lun(s, d, &inq, childp);
 
 	return ((rval == B_TRUE) ? NDI_SUCCESS : NDI_FAILURE);

@@ -11,7 +11,7 @@
 
 /*
  * Copyright 2019 Nexenta Systems, Inc.
- * Copyright 2019 RackTop Systems
+ * Copyright 2019 RackTop Systems, Inc.
  */
 
 /*
@@ -80,11 +80,6 @@ static struct modldrv modldrv = {
 static struct modlinkage modlinkage = {
 	MODREV_1, &modldrv, NULL
 };
-
-int pqi_do_scan = 0;
-int pqi_do_ctrl = 0;
-int pqi_offline_target = 0;
-int pqi_do_offline = 0;
 
 /*
  * This is used for data I/O DMA memory allocation. (full 64-bit DMA
@@ -247,9 +242,10 @@ smartpqi_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
 
 	s->s_debug_level = ddi_prop_get_int(DDI_DEV_T_ANY, dip,
 	    DDI_PROP_DONTPASS, "debug", 0);
+
 	if (ddi_prop_get_int(DDI_DEV_T_ANY, dip, DDI_PROP_DONTPASS,
-	    "enable-mpxio", 0) != 0) {
-		s->s_enable_mpxio = 1;
+	    "disable-mpxio", 0) != 0) {
+		s->s_disable_mpxio = 1;
 	}
 	if (smartpqi_register_intrs(s) == FALSE) {
 		dev_err(s->s_dip, CE_WARN, "unable to register interrupts");
@@ -297,10 +293,6 @@ smartpqi_detach(dev_info_t *dip, ddi_detach_cmd_t cmd)
 
 	instance = ddi_get_instance(dip);
 	if ((s = ddi_get_soft_state(pqi_state, instance)) != NULL) {
-		if (s->s_rescan != NULL) {
-			(void) untimeout(s->s_rescan);
-			s->s_rescan = NULL;
-		}
 
 		if (s->s_watchdog != 0) {
 			(void) untimeout(s->s_watchdog);

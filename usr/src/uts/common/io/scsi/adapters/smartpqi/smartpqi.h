@@ -11,7 +11,7 @@
 
 /*
  * Copyright 2019 Nexenta Systems, Inc.
- * Copyright 2019 RackTop Systems
+ * Copyright 2019 RackTop Systems, Inc.
  */
 
 #ifndef _SMARTPQI_H
@@ -46,7 +46,7 @@ extern "C" {
 /* ---- Hint for ddi_soft_state_init() on amount of structs to alloc ---- */
 #define	SMARTPQI_INITIAL_SOFT_SPACE	1
 
-#define	SMARTPQI_MOD_STRING	"smartpqi 20180525"
+#define	SMARTPQI_MOD_STRING	"smartpqi RT-20190725"
 
 /* ---- Handy constants ---- */
 #define	UNDEFINED				-1
@@ -72,7 +72,7 @@ extern "C" {
 #define	PQI_MAX_QUEUE_GROUPS			PQI_MAX_MSIX_VECTORS
 #define	PQI_MIN_OPERATIONAL_QUEUE_ID		1
 /* ---- Size of structure scsi_arq_status without sense data. ---- */
-#define PQI_ARQ_STATUS_NOSENSE_LEN    (sizeof (struct scsi_arq_status) - \
+#define	PQI_ARQ_STATUS_NOSENSE_LEN	(sizeof (struct scsi_arq_status) - \
     sizeof (struct scsi_extended_sense))
 
 /* ---- macros to return various addresses ---- */
@@ -268,12 +268,11 @@ typedef struct pqi_state {
 
 	int			s_intr_ready : 1,
 				s_offline : 1,
-				s_enable_mpxio : 1;
+				s_disable_mpxio : 1;
 	kmem_cache_t		*s_cmd_cache;
 	ddi_taskq_t		*s_events_taskq;
 	ddi_taskq_t		*s_complete_taskq;
 	timeout_id_t		s_time_of_day;
-	timeout_id_t		s_rescan;
 	timeout_id_t		s_cmd_timeout;
 
 	/* ---- Debug related state ---- */
@@ -456,7 +455,6 @@ typedef struct pqi_cmd {
 	struct scsi_pkt		*pc_pkt;
 	pqi_state_t		pc_softc;
 	pqi_device_t		pc_device;
-	int			pc_target;
 	ksema_t			*pc_poll;
 	uint8_t			pc_cdb[SCSI_CDB_SIZE];
 	struct scsi_arq_status	pc_cmd_scb;
@@ -543,8 +541,6 @@ typedef struct mem_len_pair {
 void *pqi_state;
 extern int pqi_do_scan;
 extern int pqi_do_ctrl;
-extern int pqi_do_offline;
-extern int pqi_offline_target;
 
 /* ---- smartpqi_intr.c ---- */
 int smartpqi_register_intrs(pqi_state_t);
