@@ -54,7 +54,7 @@ zfs_smartfolder_enabled(dsl_dataset_t *ds)
 }
 
 static int
-zfs_get_sharenfssmb(dsl_dataset_t *ds, char *sharenfs, char *sharesmb)
+zfs_get_sharenfs(dsl_dataset_t *ds, char *sharenfs)
 {
 	int err;
 	dsl_pool_t *dp = ds->ds_dir->dd_pool;
@@ -67,14 +67,7 @@ zfs_get_sharenfssmb(dsl_dataset_t *ds, char *sharenfs, char *sharesmb)
 		return (err);
 	}
 
-	if ((err = dsl_prop_get_ds(ds, "sharesmb", 1, ZFS_MAXPROPLEN, sharesmb,
-	    NULL)) != 0) {
-		dsl_pool_config_exit(dp, FTAG);
-		return (err);
-	}
-
-	DTRACE_PROBE2(xxx_smartfolder_share, const char *, sharenfs,
-	    const char *, sharesmb);
+	DTRACE_PROBE1(xxx_smartfolder_share, const char *, sharenfs);
 
 	dsl_pool_config_exit(dp, FTAG);
 	return (0);
@@ -147,7 +140,7 @@ zfs_create_smartfolder(struct zfsvfs *zfsvfs, struct vnode *dvp, struct vnode *v
 	boolean_t is_insensitive;
 	char *ppath, *path;
 	char *smartname;
-	char *sharenfs, *sharesmb;
+	char *sharenfs;
 	refstr_t *mntpt;
 
 	if (zfs_smartfolder_nohidden && dirname[0] == '.')
@@ -157,7 +150,6 @@ zfs_create_smartfolder(struct zfsvfs *zfsvfs, struct vnode *dvp, struct vnode *v
 	path = kmem_alloc(MAXPATHLEN, KM_SLEEP);
 	smartname = kmem_alloc(MAXPATHLEN, KM_SLEEP);
 	sharenfs = kmem_alloc(MAXPATHLEN, KM_SLEEP);
-	sharesmb = kmem_alloc(MAXPATHLEN, KM_SLEEP);
 
 	if (zfsvfs->z_vfs->vfs_mntpt == NULL) {
 		err = ENOENT;
@@ -191,8 +183,8 @@ zfs_create_smartfolder(struct zfsvfs *zfsvfs, struct vnode *dvp, struct vnode *v
 		goto out;
 	}
 
-	if ((err = zfs_get_sharenfssmb(dmu_objset_ds(zfsvfs->z_os), sharenfs,
-	    sharesmb)) != 0) {
+	if ((err = zfs_get_sharenfs(dmu_objset_ds(zfsvfs->z_os),
+		    sharenfs)) != 0) {
 		goto out;
 	}
 
@@ -214,6 +206,9 @@ zfs_create_smartfolder(struct zfsvfs *zfsvfs, struct vnode *dvp, struct vnode *v
 
 	nvlist_free(zct.zct_zplprops);
 
+	(void) dsl_prop_set_string(smartname, "sharesmb",
+	    ZPROP_SRC_LOCAL, "off");
+
 	ma.spec = (char *)smartname;
 	ma.dir = (char *)path;
 	ma.flags = MS_SYSSPACE;
@@ -233,7 +228,6 @@ zfs_create_smartfolder(struct zfsvfs *zfsvfs, struct vnode *dvp, struct vnode *v
 		VFS_RELE(vfs);
 	}
 out:
-	kmem_free(sharesmb, MAXPATHLEN);
 	kmem_free(sharenfs, MAXPATHLEN);
 	kmem_free(smartname, MAXPATHLEN);
 	kmem_free(path, MAXPATHLEN);
