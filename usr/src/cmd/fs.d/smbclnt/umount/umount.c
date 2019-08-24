@@ -25,6 +25,7 @@
 
 /*
  * Copyright (c) 2018, Joyent, Inc.
+ * Copyright 2019 Nexenta by DDN, Inc. All rights reserved.
  */
 
 /*
@@ -55,9 +56,6 @@ static void usage();
 static int smbfs_unmount(char *, int);
 static struct extmnttab *mnttab_find();
 
-static char *myname;
-static char typename[64];
-
 int
 main(int argc, char *argv[])
 {
@@ -74,21 +72,16 @@ main(int argc, char *argv[])
 
 	/*
 	 * Normal users are allowed to umount smbfs mounts they own.
-	 * To allow that, this program is installed setuid root, and
-	 * it adds SYS_MOUNT privilege here (if needed), and then
-	 * restores the user's normal privileges.
+	 * To allow that, this program has an exec_attr the adds
+	 * SYS_MOUNT privilege.
 	 */
-	if (__init_suid_priv(0, PRIV_SYS_MOUNT, (char *)NULL) < 0) {
+	if (!priv_ineffect(PRIV_SYS_MOUNT)) {
 		(void) fprintf(stderr,
 		    gettext("Insufficient privileges, "
-		    "%s must be set-uid root\n"), argv[0]);
+		    "%s should have sys_mount privilege via exec_attr\n"),
+		    argv[0]);
 		exit(RET_ERR);
 	}
-
-	myname = strrchr(argv[0], '/');
-	myname = myname ? myname+1 : argv[0];
-	(void) sprintf(typename, "smbfs %s", myname);
-	argv[0] = typename;
 
 	/*
 	 * Set options
@@ -117,7 +110,7 @@ pr_err(const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	(void) fprintf(stderr, "%s: ", typename);
+	(void) fprintf(stderr, "smbfs/umount: ");
 	(void) vfprintf(stderr, fmt, ap);
 	(void) fflush(stderr);
 	va_end(ap);
@@ -162,8 +155,7 @@ smbfs_unmount(char *pathname, int umnt_flag)
  *  Return the last entry in the file that matches.
  */
 static struct extmnttab *
-mnttab_find(dirname)
-	char *dirname;
+mnttab_find(char *dirname)
 {
 	FILE *fp;
 	struct extmnttab mnt;

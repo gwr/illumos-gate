@@ -1,0 +1,2 @@
+SMB File System client:solaris:cmd:::/usr/lib/fs/smbfs/mount:privs=sys_mount
+SMB File System client:solaris:cmd:::/usr/lib/fs/smbfs/umount:privs=sys_mount
