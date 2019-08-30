@@ -85,8 +85,10 @@
 #include <sys/attr.h>
 #include <sys/zil.h>
 #include <sys/sa_impl.h>
+#include <sys/dsl_dir.h>
 #include <sys/zfs_project.h>
 #include <sys/zfs_smartfolder.h>
+#include "zfs_namecheck.h"
 
 /*
  * Programming rules.
@@ -2086,6 +2088,12 @@ zfs_mkdir(vnode_t *dvp, char *dirname, vattr_t *vap, vnode_t **vpp, cred_t *cr,
 		return (SET_ERROR(EINVAL));
 	}
 
+	if (zfs_check_smartfolders_enabled(dmu_objset_ds(zfsvfs->z_os)) &&
+	    dataset_namecheck(dirname, NULL, NULL) != 0) {
+		ZFS_EXIT(zfsvfs);
+		return (SET_ERROR(EILSEQ));
+	}
+
 	if (zfsvfs->z_utf8 && u8_validate(dirname,
 	    strlen(dirname), NULL, U8_VALIDATE_ENTIRE, &error) < 0) {
 		ZFS_EXIT(zfsvfs);
@@ -2199,9 +2207,9 @@ top:
 	if (zfsvfs->z_os->os_sync == ZFS_SYNC_ALWAYS)
 		zil_commit(zilog, 0);
 
-	if (zfs_smartfolder_enabled(dmu_objset_ds(zfsvfs->z_os)))
+	if (zfs_check_smartfolders_enabled(dmu_objset_ds(zfsvfs->z_os)))
 		(void) zfs_create_smartfolder(zfsvfs, dvp, *vpp, dirname,
-		    flags, cr, ct);
+		    flags, cr, (ct && (ct->cc_flags & CC_HELDEXPLOCK)));
 
 	ZFS_EXIT(zfsvfs);
 	return (0);
@@ -3848,10 +3856,14 @@ zfs_rename(vnode_t *sdvp, char *snm, vnode_t *tdvp, char *tnm, cred_t *cr,
 	zfs_dirlock_t	*sdl, *tdl;
 	dmu_tx_t	*tx;
 	zfs_zlock_t	*zl;
+	char *path = NULL;
+	char *srcsmartname, *dstsmartname = NULL;
+	char *sharenfs;
 	int		cmp, serr, terr;
 	int		error = 0, rm_err = 0;
 	int		zflg = 0;
 	boolean_t	waited = B_FALSE;
+	boolean_t	smartok = B_FALSE;
 
 	ZFS_ENTER(zfsvfs);
 	ZFS_VERIFY_ZP(sdzp);
@@ -4038,6 +4050,50 @@ top:
 
 	if (ZTOV(szp)->v_type == VDIR) {
 		/*
+		 * Check if src mounted
+		 */
+		if (!smartok && vn_ismntpt(ZTOV(szp))) {
+			char *p;
+
+			if (error = vn_vfsrlock(ZTOV(szp))) {
+				error = EBUSY;
+				goto out;
+			}
+
+			/*
+			 * Only smartfolder mounted dir can be renamed
+			 */
+			if (!zfs_check_smartfolder(ZTOV(szp))) {
+				vn_vfsunlock(ZTOV(szp));
+				error = EBUSY;
+				goto out;
+			}
+
+			/*
+			 * Smartfolder must stay in same parent dir
+			 */
+			if (sdzp != tdzp) {
+				vn_vfsunlock(ZTOV(szp));
+				error = EXDEV;
+				goto out;
+			}
+
+			if ((error = zfs_smartfolder_unmount(ZTOV(szp),
+			    &srcsmartname, &path, &sharenfs)) != 0) {
+				goto out;
+			}
+
+			dstsmartname = kmem_alloc(
+			    ZFS_MAX_DATASET_NAME_LEN, KM_SLEEP);
+
+			(void) strcpy(dstsmartname, srcsmartname);
+			p = strrchr(dstsmartname, '/');
+			p++;
+			(void) strcpy(p, tnm);
+			smartok = B_TRUE;
+		}
+
+		/*
 		 * Check to make sure rename is valid.
 		 * Can't do a move like this: /usr/a/b to /usr/a/b/c/d
 		 */
@@ -4187,6 +4243,28 @@ out:
 
 	zfs_dirent_unlock(sdl);
 	zfs_dirent_unlock(tdl);
+
+	if (smartok) {
+		boolean_t usetq = ct && (ct->cc_flags & CC_HELDEXPLOCK);
+
+		if (error == 0) {
+			char *p = strrchr(path, '/');
+			ASSERT3P(p, !=, NULL);
+			p++;
+			strcpy(p, tnm);
+			dsl_dir_rename(srcsmartname, dstsmartname);
+			zfs_smartfolder_mount(ZTOV(szp), dstsmartname, path,
+			    sharenfs, usetq);
+		} else {
+			zfs_smartfolder_mount(ZTOV(szp), srcsmartname, path,
+			    sharenfs, usetq);
+		}
+
+		kmem_free(dstsmartname, ZFS_MAX_DATASET_NAME_LEN);
+		kmem_free(srcsmartname, ZFS_MAX_DATASET_NAME_LEN);
+		kmem_free(sharenfs, MAXPATHLEN);
+		kmem_free(path, MAXPATHLEN);
+	}
 
 	if (sdzp == tdzp)
 		rw_exit(&sdzp->z_name_lock);

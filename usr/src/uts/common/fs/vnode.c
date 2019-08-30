@@ -25,6 +25,7 @@
  * Copyright 2022 Spencer Evans-Cole.
  * Copyright 2016 Nexenta Systems, Inc.  All rights reserved.
  * Copyright (c) 2011, 2017 by Delphix. All rights reserved.
+ * Copyright 2019 RackTop Systems.
  */
 
 /*	Copyright (c) 1983, 1984, 1985, 1986, 1987, 1988, 1989 AT&T	*/
@@ -1701,6 +1702,7 @@ vn_renameat(vnode_t *fdvp, char *fname, vnode_t *tdvp,
 	vnode_t *fromvp, *fvp;
 	vnode_t *tovp, *targvp;
 	int estale_retry = 0;
+	int is_smartfs = 0;
 	uint32_t auditing = AU_AUDITING();
 
 top:
@@ -1779,8 +1781,19 @@ top:
 	 * (but allow files like mnttab)
 	 */
 	if ((fvp->v_flag & VROOT) != 0 && fvp->v_type == VDIR) {
-		error = EBUSY;
-		goto out;
+		if (fromvp->v_flag & VROOT)
+			is_smartfs = vfs_has_feature(fromvp->v_vfsp,
+			    VFSFT_SMARTFOLDERS);
+
+		if (is_smartfs) {
+			if (fromvp != tovp) {
+				error = EXDEV;
+				goto out;
+			}
+		} else {
+			error = EBUSY;
+			goto out;
+		}
 	}
 
 	if (targvp && (fvp != targvp)) {
@@ -1799,6 +1812,11 @@ top:
 			error = EACCES;
 			goto out;
 		}
+	}
+
+	if (is_smartfs) {
+		VN_RELE(fvp);
+		fvp = NULL;
 	}
 
 	/*

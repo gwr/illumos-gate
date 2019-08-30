@@ -29,6 +29,7 @@
  * Copyright (c) 2014 Integros [integros.com]
  * Copyright 2017 Nexenta Systems, Inc.
  * Copyright (c) 2017 Open-E, Inc. All Rights Reserved.
+ * Copyright 2019 RackTop Systems.
  */
 
 /* Portions Copyright 2010 Robert Milkowski */
@@ -59,6 +60,9 @@
 #include <sys/spa_impl.h>
 #include <sys/dmu_recv.h>
 #include <sys/zfs_project.h>
+#ifdef	_KERNEL
+#include <sys/zfs_vfsops.h>
+#endif	/* _KERNEL */
 #include "zfs_namecheck.h"
 
 /*
@@ -166,6 +170,58 @@ zfs_logbias_op_t
 dmu_objset_logbias(objset_t *os)
 {
 	return (os->os_logbias);
+}
+
+static void
+smartfolders_changed_cb(void *arg, uint64_t newval)
+{
+#ifdef	_KERNEL
+	objset_t *os = arg;
+	zfsvfs_t *zfsvfs;
+	struct vfs *vfsp;
+	int err;
+
+	ASSERT(newval == 0 || newval == 1);
+
+	if ((err = getzfsvfs_impl(os, &zfsvfs)) != 0)
+		return;
+
+	vfsp = zfsvfs->z_vfs;
+	ASSERT3P(vfsp, !=, NULL);
+
+	if (newval)
+		vfs_set_feature(vfsp, VFSFT_SMARTFOLDERS);
+	else
+		vfs_clear_feature(vfsp, VFSFT_SMARTFOLDERS);
+	/* getzfsvfs_impl did VFS_HOLD */
+	VFS_RELE(zfsvfs->z_vfs);
+#endif	/* _KERNEL */
+}
+
+static void
+smartfs_changed_cb(void *arg, uint64_t newval)
+{
+#ifdef	_KERNEL
+	objset_t *os = arg;
+	zfsvfs_t *zfsvfs;
+	struct vfs *vfsp;
+	int err;
+
+	ASSERT(newval == 0 || newval == 1);
+
+	if ((err = getzfsvfs_impl(os, &zfsvfs)) != 0)
+		return;
+
+	vfsp = zfsvfs->z_vfs;
+	ASSERT3P(vfsp, !=, NULL);
+
+	if (newval)
+		vfs_set_feature(vfsp, VFSFT_SMARTFS);
+	else
+		vfs_clear_feature(vfsp, VFSFT_SMARTFS);
+	/* getzfsvfs_impl did VFS_HOLD */
+	VFS_RELE(zfsvfs->z_vfs);
+#endif	/* _KERNEL */
 }
 
 static void
@@ -517,6 +573,16 @@ dmu_objset_open_impl(spa_t *spa, dsl_dataset_t *ds, blkptr_t *bp,
 			    secondary_cache_changed_cb, os);
 		}
 		if (!ds->ds_is_snapshot) {
+			if (err == 0) {
+				err = dsl_prop_register(ds,
+				    zfs_prop_to_name(ZFS_PROP_SMARTFOLDERS),
+				    smartfolders_changed_cb, os);
+			}
+			if (err == 0) {
+				err = dsl_prop_register(ds,
+				    zfs_prop_to_name(ZFS_PROP_SMARTFS),
+				    smartfs_changed_cb, os);
+			}
 			if (err == 0) {
 				err = dsl_prop_register(ds,
 				    zfs_prop_to_name(ZFS_PROP_CHECKSUM),

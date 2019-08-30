@@ -27,6 +27,7 @@
  * Copyright 2020 Joshua M. Clulow <josh@sysmgr.org>
  * Copyright 2020 OmniOS Community Edition (OmniOSce) Association.
  * Copyright 2022 Oxide Computer Company
+ * Copyright 2019 RackTop Systems.
  */
 
 /* Portions Copyright 2010 Robert Milkowski */
@@ -72,6 +73,7 @@
 #include <sys/dmu_objset.h>
 #include <sys/spa_boot.h>
 #include <sys/vdev_impl.h>
+#include <sys/zfs_smartfolder.h>
 #include "zfs_comutil.h"
 
 int zfsfstype;
@@ -1353,8 +1355,8 @@ zfs_set_fuid_feature(zfsvfs_t *zfsvfs)
 	zfsvfs->z_use_sa = USE_SA(zfsvfs->z_version, zfsvfs->z_os);
 }
 
-int
-zfs_domount(vfs_t *vfsp, const char *osname)
+static int
+zfs_domount(vfs_t *vfsp, char *osname)
 {
 	dev_t mount_dev;
 	uint64_t recordsize, fsid_guid;
@@ -1389,6 +1391,10 @@ zfs_domount(vfs_t *vfsp, const char *osname)
 	vfsp->vfs_bsize = recordsize;
 	vfsp->vfs_flag |= VFS_NOTRUNC;
 	vfsp->vfs_data = zfsvfs;
+	if (zfs_check_smartroot(dmu_objset_ds(zfsvfs->z_os)))
+		vfs_set_feature(vfsp, VFSFT_SMARTFOLDERS);
+	if (zfs_check_smartfs(dmu_objset_ds(zfsvfs->z_os)))
+		vfs_set_feature(vfsp, VFSFT_SMARTFS);
 
 	/*
 	 * The fsid is 64 bits, composed of an 8-bit fs type, which
@@ -1917,7 +1923,7 @@ zfs_mount(vfs_t *vfsp, vnode_t *mvp, struct mounta *uap, cred_t *cr)
 	mutex_enter(&mvp->v_lock);
 	if ((uap->flags & MS_REMOUNT) == 0 &&
 	    (uap->flags & MS_OVERLAY) == 0 &&
-	    (mvp->v_count != 1 || (mvp->v_flag & VROOT))) {
+	    (mvp->v_count != 1 && mvp->v_count != 2) || (mvp->v_flag & VROOT)) {
 		mutex_exit(&mvp->v_lock);
 		return (SET_ERROR(EBUSY));
 	}
@@ -2267,6 +2273,7 @@ zfs_umount(vfs_t *vfsp, int fflag, cred_t *cr)
 	}
 
 	if (!(fflag & MS_FORCE)) {
+		boolean_t smartfs = vfs_has_feature(vfsp, VFSFT_SMARTFS);
 		/*
 		 * Check the number of active vnodes in the file system.
 		 * Our count is maintained in the vfs structure, but the

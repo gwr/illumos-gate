@@ -1,5 +1,5 @@
 /*
- * Copyright 2009-2016 RackTop Systems LLC and/or its affiliates.
+ * Copyright 2009-2019 RackTop Systems LLC and/or its affiliates.
  * http://www.racktopsystems.com
  *
  * The methods and techniques utilized herein are considered TRADE SECRETS
@@ -17,11 +17,18 @@ extern "C" {
 
 #include <sys/param.h>
 
+typedef enum smartfolder_upcall_cmd {
+	SF_UPCALL_CMD_SHARE,
+	SF_UPCALL_CMD_UNSHARE,
+	SF_UPCALL_NUM_CMDS
+} sf_upcall_cmd_t;
+
 typedef struct smartfolder_exp_data {
-	char	sed_dsname[MAXPATHLEN];
-	char	sed_path[MAXPATHLEN];
-	char	sed_sharenfs[MAXPATHLEN];
-	char	sed_sharesmb[MAXPATHLEN];
+	sf_upcall_cmd_t	sed_cmd;
+	char		sed_dsname[MAXPATHLEN];
+	char		sed_path[MAXPATHLEN];
+	char		sed_sharenfs[MAXPATHLEN];
+	char		sed_sharesmb[MAXPATHLEN];
 } smartfolder_exp_data_t;
 
 typedef struct smartfolder_exp_res {
@@ -30,10 +37,10 @@ typedef struct smartfolder_exp_res {
 } smartfolder_exp_res_t;
 
 #ifdef	_KERNEL
-#include <sys/stdbool.h>
-
-int create_nfs_share(char *smartname, char *path, char *sharenfs, struct cred *cr,
-    bool use_taskq);
+int zfs_smartfolder_share(const char *smartname, const char *path,
+    const char *sharenfs, struct cred *cr, boolean_t usetq);
+int zfs_smartfolder_unshare(const char *smartname, const char *path,
+    struct cred *cr);
 #endif
 
 #ifdef	__cplusplus

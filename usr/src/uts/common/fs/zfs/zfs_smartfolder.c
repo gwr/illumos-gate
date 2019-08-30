@@ -1,5 +1,5 @@
 /*
- * Copyright 2009-2016 RackTop Systems LLC and/or its affiliates.
+ * Copyright 2009-2019 RackTop Systems LLC and/or its affiliates.
  * http://www.racktopsystems.com
  *
  * The methods and techniques utilized herein are considered TRADE SECRETS
@@ -15,6 +15,7 @@
 #include "sys/dsl_dataset.h"
 #include "sys/dsl_dir.h"
 #include "sys/dsl_prop.h"
+#include "sys/zap.h"
 #include "sys/vfs.h"
 #include "sys/mount.h"
 #include <sys/nvpair.h>
@@ -28,11 +29,8 @@ int zfs_smartfolder_nohidden = 1;
 
 #define	ZFS_MAXPROPLEN	MAXPATHLEN
 
-/*
- * ARGSUSED
- */
 int
-zfs_smartfolder_enabled(dsl_dataset_t *ds)
+zfs_check_smartfolders_enabled(dsl_dataset_t *ds)
 {
 	uint64_t val;
 	dsl_pool_t *dp = ds->ds_dir->dd_pool;
@@ -47,7 +45,39 @@ zfs_smartfolder_enabled(dsl_dataset_t *ds)
 		return (0);
 	}
 
-	DTRACE_PROBE1(xxx_smartfolder_en, uint64_t, val);
+	dsl_pool_config_exit(dp, FTAG);
+	return (val != 0);
+}
+
+int
+zfs_check_smartroot(dsl_dataset_t *ds)
+{
+	uint64_t val;
+	dsl_pool_t *dp = ds->ds_dir->dd_pool;
+
+	dsl_pool_config_enter(dp, FTAG);
+
+	if (dsl_prop_get_int_ds(ds, "smartfolders", &val) != 0) {
+		dsl_pool_config_exit(dp, FTAG);
+		return (0);
+	}
+
+	dsl_pool_config_exit(dp, FTAG);
+	return (val != 0);
+}
+
+int
+zfs_check_smartfs(dsl_dataset_t *ds)
+{
+	uint64_t val;
+	dsl_pool_t *dp = ds->ds_dir->dd_pool;
+
+	dsl_pool_config_enter(dp, FTAG);
+
+	if (dsl_prop_get_int_ds(ds, "smartfs", &val) != 0) {
+		dsl_pool_config_exit(dp, FTAG);
+		return (0);
+	}
 
 	dsl_pool_config_exit(dp, FTAG);
 	return (val != 0);
@@ -67,44 +97,29 @@ zfs_get_sharenfs(dsl_dataset_t *ds, char *sharenfs)
 		return (err);
 	}
 
-	DTRACE_PROBE1(xxx_smartfolder_share, const char *, sharenfs);
-
 	dsl_pool_config_exit(dp, FTAG);
 	return (0);
 }
 
 /*
- * buf must contain parent dir path
+ * smartname must contain parent name
  */
 static int
-zfs_get_smartname(objset_t *os, const char *dirname, char *smartname)
+zfs_get_smartname(char *smartname, const char *dirname)
 {
 	size_t len, dlen;
 
-	ASSERT3P(os, !=, NULL);
-	ASSERT3P(dirname, !=, NULL);
 	ASSERT3P(smartname, !=, NULL);
+	ASSERT3P(dirname, !=, NULL);
 
-	if (!zfs_smartfolder)
-		return (ENOTSUP);
+	len = strnlen(smartname, ZFS_MAX_DATASET_NAME_LEN);
+	dlen = strnlen(dirname, ZFS_MAX_DATASET_NAME_LEN);
 
-	if (smartname == NULL)
-		return (EINVAL);
-
-	dsl_dataset_name(os->os_dsl_dataset, smartname);
-
-	len = strnlen(smartname, MAXPATHLEN);
-	dlen = strnlen(dirname, MAXPATHLEN);
-
-	if (len + dlen + 1 >= MAXPATHLEN)
+	if (len + dlen + 1 >= ZFS_MAX_DATASET_NAME_LEN)
 		return (EINVAL);
 
 	smartname[len] = '/';
 	(void) strcpy(&smartname[len + 1], dirname);
-
-	DTRACE_PROBE2(xxx_smartname,
-	    char *, smartname,
-	    char *, dirname);
 
 	return (0);
 }
@@ -128,40 +143,14 @@ extern int zfs_fill_zplprops(const char *dataset, nvlist_t *createprops,
  * ARGSUSED
  */
 int
-zfs_create_smartfolder(struct zfsvfs *zfsvfs, struct vnode *dvp, struct vnode *vp,
-    const char *dirname, int flags, struct cred *cr, struct caller_context *ct)
+zfs_check_create_smartfolder(struct zfsvfs *zfsvfs, const char *ppath)
 {
-	int err = EINVAL;
+	int err = 0;
 #ifdef	_KERNEL
-	zfs_creat_t zct = { 0 };
-	struct mounta ma;
-	struct vfs *vfs;
-	objset_t *os;
-	boolean_t is_insensitive;
-	char *ppath, *path;
-	char *smartname;
-	char *sharenfs;
 	refstr_t *mntpt;
 
-	if (zfs_smartfolder_nohidden && dirname[0] == '.')
-		return (err);
-
-	ppath = kmem_alloc(MAXPATHLEN, KM_SLEEP);
-	path = kmem_alloc(MAXPATHLEN, KM_SLEEP);
-	smartname = kmem_alloc(MAXPATHLEN, KM_SLEEP);
-	sharenfs = kmem_alloc(MAXPATHLEN, KM_SLEEP);
-
-	if (zfsvfs->z_vfs->vfs_mntpt == NULL) {
-		err = ENOENT;
-		goto out;
-	}
-	/* Get parent dir path */
-	if ((err = vnodetopath(NULL, dvp, ppath, MAXPATHLEN, cr)) != 0)
-		goto out;
-
-	/* Get dir path */
-	if ((err = vnodetopath(NULL, vp, path, MAXPATHLEN, cr)) != 0)
-		goto out;
+	if (zfsvfs->z_vfs->vfs_mntpt == NULL)
+		return (ENOENT);
 
 	mntpt = vfs_getmntpoint(zfsvfs->z_vfs);
 	if ((strcmp(refstr_value(mntpt), ppath) != 0)) {
@@ -169,27 +158,68 @@ zfs_create_smartfolder(struct zfsvfs *zfsvfs, struct vnode *dvp, struct vnode *v
 		refstr_rele(mntpt);
 		goto out;
 	}
-	DTRACE_PROBE3(xxx_smartpath, char *, ppath, char *, path,
-	    char *, dirname);
-	refstr_rele(mntpt);
 
-	/* Need to check if dataset is mounted and parent dir == mountpoint */
-	if ((err = zfs_get_smartname(zfsvfs->z_os, dirname, smartname)) != 0)
+	refstr_rele(mntpt);
+out:
+#endif
+	return (err);
+}
+
+/*
+ * ARGSUSED
+ */
+int
+zfs_create_smartfolder(struct zfsvfs *zfsvfs, struct vnode *dvp,
+    struct vnode *vp, const char *dirname, int flags, struct cred *cr,
+    boolean_t usetq)
+{
+	int err = EINVAL;
+#ifdef	_KERNEL
+	zfs_creat_t zct = { 0 };
+	struct mounta ma;
+	objset_t *os;
+	boolean_t is_insensitive;
+	char *path;
+	char *smartname = NULL;
+	char *sharenfs = NULL;
+
+	if (zfs_smartfolder_nohidden && dirname[0] == '.')
+		return (err);
+
+	smartname = kmem_alloc(ZFS_MAX_DATASET_NAME_LEN, KM_SLEEP);
+	path = kmem_alloc(MAXPATHLEN, KM_SLEEP);
+	sharenfs = kmem_alloc(MAXPATHLEN, KM_SLEEP);
+
+	/* Get parent dir path */
+	if ((err = vnodetopath(NULL, dvp, path, MAXPATHLEN, cr)) != 0)
 		goto out;
 
+	/* Check parent dir is smartfolders parent dataset mountpoint */
+	if ((err = zfs_check_create_smartfolder(zfsvfs, path)) != 0)
+		goto out;
+
+	/* Get dir path */
+	if ((err = vnodetopath(NULL, vp, path, MAXPATHLEN, cr)) != 0)
+		goto out;
+
+	dsl_dataset_name(zfsvfs->z_os->os_dsl_dataset, smartname);
+
+	if ((err = zfs_get_smartname(smartname, dirname)) != 0)
+		goto out;
+
+	/* Check if dataset does not exist */
 	if ((err = dmu_objset_hold(smartname, FTAG, &os)) == 0) {
 		dmu_objset_rele(os, FTAG);
 		err = EEXIST;
 		goto out;
 	}
 
-	if ((err = zfs_get_sharenfs(dmu_objset_ds(zfsvfs->z_os),
-		    sharenfs)) != 0) {
+	if ((err = zfs_get_sharenfs(dmu_objset_ds(zfsvfs->z_os), sharenfs))
+	    != 0) {
 		goto out;
 	}
 
-	VERIFY(nvlist_alloc(&zct.zct_zplprops,
-	    NV_UNIQUE_NAME, KM_SLEEP) == 0);
+	VERIFY0(nvlist_alloc(&zct.zct_zplprops, NV_UNIQUE_NAME, KM_SLEEP));
 
 	if ((err = zfs_fill_zplprops(smartname, NULL, zct.zct_zplprops,
 	    &is_insensitive)) != 0) {
@@ -197,6 +227,9 @@ zfs_create_smartfolder(struct zfsvfs *zfsvfs, struct vnode *dvp, struct vnode *v
 		goto out;
 	}
 
+	/*
+	 * Create dataset
+	 */
 	if ((err = dmu_objset_create_cred(smartname, DMU_OST_ZFS,
 	    (flags & FIGNORECASE ?  DS_FLAG_CI_DATASET : 0),
 	    zfs_create_cb, &zct, cr)) != 0) {
@@ -206,10 +239,64 @@ zfs_create_smartfolder(struct zfsvfs *zfsvfs, struct vnode *dvp, struct vnode *v
 
 	nvlist_free(zct.zct_zplprops);
 
-	(void) dsl_prop_set_string(smartname, "sharesmb",
-	    ZPROP_SRC_LOCAL, "off");
+	VERIFY0(nvlist_alloc(&zct.zct_props, NV_UNIQUE_NAME, KM_SLEEP));
 
-	ma.spec = (char *)smartname;
+	VERIFY0(nvlist_add_string(zct.zct_props, "sharesmb", "off"));
+	VERIFY0(nvlist_add_uint64(zct.zct_props, "smartfs", 1));
+
+	VERIFY0(dsl_props_set(smartname, ZPROP_SRC_LOCAL, zct.zct_props));
+
+	nvlist_free(zct.zct_props);
+
+	/*
+	 * Mount dataset on vp
+	 */
+	err = zfs_smartfolder_mount(vp, smartname, path, sharenfs, usetq);
+
+out:
+	kmem_free(sharenfs, MAXPATHLEN);
+	kmem_free(path, MAXPATHLEN);
+	kmem_free(smartname, ZFS_MAX_DATASET_NAME_LEN);
+#endif
+	return (err);
+}
+
+/*
+ * ARGSUSED
+ */
+int
+zfs_check_smartfolder(vnode_t *vp)
+{
+	int err = 0;
+#ifdef	_KERNEL
+	zfsvfs_t *zfsvfs;
+	vfs_t *vfs;
+
+	ASSERT3S(vp->v_type, ==, VDIR);
+
+	if (!vn_ismntpt(vp))
+		return (0);
+
+	vfs = vn_mountedvfs(vp);
+	zfsvfs = vfs->vfs_data;
+	err = zfs_check_smartfs(dmu_objset_ds(zfsvfs->z_os));
+#endif
+	return (err);
+}
+
+
+/*
+ * ARGSUSED
+ */
+int zfs_smartfolder_mount(vnode_t *vp, const char *smartfs, const char *path,
+    const char *sharenfs, boolean_t usetq)
+{
+	int err = 0;
+#ifdef	_KERNEL
+	struct mounta ma;
+	struct vfs *vfs;
+
+	ma.spec = (char *)smartfs;
 	ma.dir = (char *)path;
 	ma.flags = MS_SYSSPACE;
 	ma.fstype = (char *)"zfs";
@@ -219,19 +306,93 @@ zfs_create_smartfolder(struct zfsvfs *zfsvfs, struct vnode *dvp, struct vnode *v
 	ma.optlen = 0;
 
 	if ((err = domount("zfs", &ma, vp, kcred, &vfs)) == 0) {
-		if (sharenfs[0] != '\0') {
-			bool usetaskq = ct && ct->cc_flags & CC_HELDEXPLOCK;
-
-			err = create_nfs_share(smartname, path, sharenfs,
-			    kcred, usetaskq);
+		if (sharenfs != NULL && sharenfs[0] != '\0') {
+			err = zfs_smartfolder_share(smartfs, path, sharenfs,
+			    kcred, usetq);
 		}
+		/*
+		 * domount() adds ref and it should be released, same way as
+		 * mount() does.
+		 */
 		VFS_RELE(vfs);
 	}
-out:
-	kmem_free(sharenfs, MAXPATHLEN);
-	kmem_free(smartname, MAXPATHLEN);
-	kmem_free(path, MAXPATHLEN);
-	kmem_free(ppath, MAXPATHLEN);
 #endif
 	return (err);
+}
+
+/*
+ * ARGSUSED
+ */
+int
+zfs_smartfolder_unmount(vnode_t *vp, char **smartdsp, char **pathp,
+    char **sharenfs)
+{
+	int err = 0;
+#ifdef	_KERNEL
+	znode_t *zp = VTOZ(vp);
+	zfsvfs_t *zfsvfs;
+	vfs_t *vfs;
+	objset_t *os;
+
+	ASSERT3S(vp->v_type, ==, VDIR);
+
+	*sharenfs = NULL;
+	*pathp = NULL;
+	*smartdsp = NULL;
+
+	if (vn_vfswlock_held(vp))
+		return (SET_ERROR(EBUSY));
+
+	if (!vn_ismntpt(vp)) {
+		vn_vfsunlock(vp);
+		return (SET_ERROR(EINVAL));
+	}
+
+	if (!zfs_check_smartfolder(vp)) {
+		vn_vfsunlock(vp);
+		return (SET_ERROR(EINVAL));
+	}
+
+	vfs = vn_mountedvfs(vp);
+	zfsvfs = vfs->vfs_data;
+
+	*smartdsp = kmem_alloc(ZFS_MAX_DATASET_NAME_LEN, KM_SLEEP);
+	*pathp = kmem_alloc(MAXPATHLEN, KM_SLEEP);
+	*sharenfs = kmem_alloc(MAXPATHLEN, KM_SLEEP);
+
+	VERIFY0(vnodetopath(NULL, vp, *pathp, MAXPATHLEN, kcred));
+
+	os = zfsvfs->z_os;
+
+	dsl_dataset_name(dmu_objset_ds(os), *smartdsp);
+	(void) zfs_get_sharenfs(dmu_objset_ds(os), *sharenfs);
+
+	if ((*sharenfs)[0] != '\0')
+		zfs_smartfolder_unshare(*smartdsp, *pathp, kcred);
+
+	/* release read lock and take write one */
+	vn_vfsunlock(vp);
+	if (vn_vfswlock(vp)) {
+		err = EBUSY;
+		goto out;
+	}
+
+	if ((err = dounmount(vfs, 0, CRED())) != 0)
+	    goto out;
+
+	return (0);
+out:
+	if ((*sharenfs)[0] != '\0')
+		(void) zfs_smartfolder_share(*smartdsp, *pathp, *sharenfs,
+		    kcred, B_FALSE);
+
+	kmem_free(*sharenfs, MAXPATHLEN);
+	kmem_free(*pathp, MAXPATHLEN);
+	kmem_free(*smartdsp, ZFS_MAX_DATASET_NAME_LEN);
+
+	*sharenfs = NULL;
+	*pathp = NULL;
+	*smartdsp = NULL;
+#endif
+	return (SET_ERROR(err));
 }

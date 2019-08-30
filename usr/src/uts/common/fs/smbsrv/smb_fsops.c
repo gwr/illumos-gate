@@ -1201,9 +1201,11 @@ smb_fsop_rename(
 		return (rc);
 
 	/*
-	 * Make sure "from" vp is not a mount point.
+	 * Make sure from_node->vp is not a mount point,
+	 * unless it is smartfolder.
 	 */
-	if (from_vp->v_type == VDIR && vn_ismntpt(from_vp)) {
+	if (from_vp->v_type == VDIR && vn_ismntpt(from_vp) &&
+	    !vfs_has_feature(vn_mountedvfs(from_vp), VFSFT_SMARTFS)) {
 		VN_RELE(from_vp);
 		return (EACCES);
 	}

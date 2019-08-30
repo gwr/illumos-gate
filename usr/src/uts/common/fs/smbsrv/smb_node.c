@@ -645,6 +645,13 @@ smb_rmdir_possible(smb_node_t *n)
 	int eof = 0;
 
 	buf = kmem_alloc(SMB_ODIR_BUFSIZE, KM_SLEEP);
+	/*
+	 * Make sure the node is not root of mounted filesystem.
+	 */
+	if ((n->flags & NODE_FLAGS_VFSROOT) != 0) {
+		status = NT_STATUS_NOT_SAME_DEVICE;
+		goto out;
+	}
 
 	/* Flags zero: no edirent, no ABE wanted here */
 	if (smb_vop_readdir(n->vp, 0, buf, &bsize, &eof, 0, zone_kcred())) {

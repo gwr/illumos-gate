@@ -1,5 +1,5 @@
 /*
- * Copyright 2009-2016 RackTop Systems LLC and/or its affiliates.
+ * Copyright 2009-2019 RackTop Systems LLC and/or its affiliates.
  * http://www.racktopsystems.com
  *
  * The methods and techniques utilized herein are considered TRADE SECRETS
@@ -18,18 +18,16 @@
 #include <sys/taskq.h>
 #include <sys/zfs_smartfolder_exp.h>
 
-#ifdef	_KERNEL
-static void create_nfs_share_task(void *arg);
-static void door_share_call(smartfolder_exp_data_t *);
 
+static void smartfolder_share_task(void *arg);
+static void smartfolder_svc_upcall(smartfolder_exp_data_t *);
+
+#ifdef	_KERNEL
 static taskq_t *sfe_taskq;
 extern kmutex_t sfdh_lock;
 extern door_handle_t smartfolder_dh;
 #endif
 
-/*
- *
- */
 int
 zfs_smartfolder_init(void)
 {
@@ -43,9 +41,6 @@ zfs_smartfolder_init(void)
 	return (0);
 }
 
-/*
- *
- */
 void
 zfs_smartfolder_fini(void)
 {
@@ -54,49 +49,19 @@ zfs_smartfolder_fini(void)
 #endif
 }
 
+static void
+smartfolder_share_task(void *arg)
+{
+	smartfolder_svc_upcall(arg);
+}
+
+/*
+ * ARGSUSED
+ */
+static void
+smartfolder_svc_upcall(smartfolder_exp_data_t *sed)
+{
 #ifdef	_KERNEL
-
-/* ARGSUSED */
-int
-create_nfs_share(char *dsname, char *path, char *sharenfs, struct cred *cr,
-    bool use_taskq)
-{
-	smartfolder_exp_data_t *sed;
-
-	ASSERT3P(dsname, !=, NULL);
-	ASSERT3P(path, !=, NULL);
-	ASSERT3P(sharenfs, !=, NULL);
-
-	if ((sed = kmem_alloc(sizeof (*sed), KM_SLEEP)) == NULL)
-		return (ENOMEM);
-
-	(void) strncpy(sed->sed_dsname, dsname, sizeof (sed->sed_dsname));
-	(void) strncpy(sed->sed_path, path, sizeof (sed->sed_path));
-	(void) strncpy(sed->sed_sharenfs, sharenfs, sizeof (sed->sed_sharenfs));
-	sed->sed_sharesmb[0] = '\0';
-
-	if (use_taskq) {
-		if (taskq_dispatch(sfe_taskq, create_nfs_share_task, sed,
-		    TQ_SLEEP) == NULL) {
-			kmem_free(sed, sizeof (*sed));
-			return (ENOMEM);
-		}
-	} else {
-		door_share_call(sed);
-	}
-
-	return (0);
-}
-
-static void
-create_nfs_share_task(void *arg)
-{
-	door_share_call(arg);
-}
-
-static void
-door_share_call(smartfolder_exp_data_t *sed)
-{
 	int err;
 	smartfolder_exp_res_t ser;
 	door_arg_t door_args;
@@ -129,6 +94,70 @@ door_share_call(smartfolder_exp_data_t *sed)
 
 out:
 	kmem_free(sed, sizeof (*sed));
+#endif
 }
 
-#endif	/* _KERNEL */
+/* ARGSUSED */
+int
+zfs_smartfolder_share(const char *dsname, const char *path,
+    const char *sharenfs, struct cred *cr, boolean_t usetq)
+{
+#ifdef	_KERNEL
+	smartfolder_exp_data_t *sed;
+
+	ASSERT3P(dsname, !=, NULL);
+	ASSERT3P(path, !=, NULL);
+	ASSERT3P(sharenfs, !=, NULL);
+
+	if ((sed = kmem_alloc(sizeof (*sed), KM_SLEEP)) == NULL)
+		return (ENOMEM);
+
+	sed->sed_cmd = SF_UPCALL_CMD_SHARE;
+	sed->sed_sharenfs[0] = '\0';
+	sed->sed_sharesmb[0] = '\0';
+
+	(void) strncpy(sed->sed_dsname, dsname, sizeof (sed->sed_dsname));
+	(void) strncpy(sed->sed_path, path, sizeof (sed->sed_path));
+
+	if (sharenfs != NULL && sharenfs[0] != '\0') {
+		(void) strncpy(sed->sed_sharenfs, sharenfs,
+		    sizeof (sed->sed_sharenfs));
+	}
+
+	if (usetq) {
+		if (taskq_dispatch(sfe_taskq, smartfolder_share_task, sed,
+		    TQ_SLEEP) == NULL) {
+			kmem_free(sed, sizeof (*sed));
+			return (ENOMEM);
+		}
+	} else {
+		smartfolder_svc_upcall(sed);
+	}
+#endif
+	return (0);
+}
+
+/* ARGSUSED */
+int
+zfs_smartfolder_unshare(const char *dsname, const char *path, struct cred *cr)
+{
+#ifdef	_KERNEL
+	smartfolder_exp_data_t *sed;
+
+	ASSERT3P(dsname, !=, NULL);
+	ASSERT3P(path, !=, NULL);
+
+	if ((sed = kmem_alloc(sizeof (*sed), KM_SLEEP)) == NULL)
+		return (ENOMEM);
+
+	sed->sed_cmd = SF_UPCALL_CMD_UNSHARE;
+	sed->sed_sharenfs[0] = '\0';
+	sed->sed_sharesmb[0] = '\0';
+
+	(void) strncpy(sed->sed_dsname, dsname, sizeof (sed->sed_dsname));
+	(void) strncpy(sed->sed_path, path, sizeof (sed->sed_path));
+
+	smartfolder_svc_upcall(sed);
+#endif
+	return (0);
+}

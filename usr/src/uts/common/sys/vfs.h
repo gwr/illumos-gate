@@ -24,6 +24,7 @@
  * Copyright 2016 Toomas Soome <tsoome@me.com>
  * Copyright (c) 2016, 2017 by Delphix. All rights reserved.
  * Copyright 2016 Nexenta Systems, Inc.
+ * Copyright 2019 RackTop Systems.
  */
 
 /*	Copyright (c) 1983, 1984, 1985, 1986, 1987, 1988, 1989 AT&T	*/
@@ -280,6 +281,9 @@ typedef	uint64_t	vfs_feature_t;
 #define	VFSFT_REPARSE		0x100000100	/* Supports reparse point */
 #define	VFSFT_ZEROCOPY_SUPPORTED	0x100000200
 				/* Support loaning /returning cache buffer */
+#define	VFSFT_SMARTFOLDERS	0x100000400
+#define	VFSFT_SMARTFS		0x100000800
+
 /*
  * Argument structure for mount(2).
  *

@@ -24,6 +24,7 @@
  * Copyright (c) 2013 by Saso Kiselkov. All rights reserved.
  * Copyright (c) 2014 Integros [integros.com]
  * Copyright 2016, Joyent, Inc.
+ * Copyright 2019 RackTop Systems.
  */
 
 /* Portions Copyright 2010 Robert Milkowski */
@@ -353,6 +354,9 @@ zfs_prop_init(void)
 	    "CANMOUNT", canmount_table);
 	zprop_register_index(ZFS_PROP_SMARTFOLDERS, "smartfolders", 0,
 	    PROP_DEFAULT, ZFS_TYPE_FILESYSTEM, "on | off", "SMARTFOLDERS",
+	    boolean_table);
+	zprop_register_index(ZFS_PROP_SMARTFS, "smartfs", 0,
+	    PROP_DEFAULT, ZFS_TYPE_FILESYSTEM, "on | off", "SMARTFS",
 	    boolean_table);
 
 	/* readonly index properties */

@@ -597,6 +597,16 @@ smb_rename_check_src(smb_request_t *sr, smb_fqi_t *src_fqi)
 	uint32_t status;
 
 	/*
+	 * Make sure src node vp is not root of mounted filesystem,
+	 * unless it is smartfs.
+	 */
+	if (src_node->vp->v_type == VDIR &&
+	    (src_node->flags & NODE_FLAGS_VFSROOT) != 0 &&
+	    !vfs_has_feature(SMB_NODE_VFS(src_node), VFSFT_SMARTFS)) {
+		return (NT_STATUS_NOT_SAME_DEVICE);
+	}
+
+	/*
 	 * Break BATCH oplock before ofile checks. If a client
 	 * has a file open, this will force a flush or close,
 	 * which may affect the outcome of any share checking.
