@@ -26,59 +26,53 @@ void	*pqi_state;
 /* ---- Autoconfigure forward declarations ---- */
 static int smartpqi_attach(dev_info_t *dip, ddi_attach_cmd_t cmd);
 static int smartpqi_detach(dev_info_t *dip, ddi_detach_cmd_t cmd);
-static int smartpqi_power(dev_info_t *dip, int component, int level);
-static int smartpqi_getinfo(dev_info_t *dip, ddi_info_cmd_t cmd, void *arg,
-    void **results);
 static int smartpqi_quiesce(dev_info_t *dip);
 
-/* ---- cb_ops forward declarations ---- */
-static int smartpqi_ioctl(dev_t dev, int cmd, intptr_t data, int mode,
-    cred_t *credp, int *rval);
-
 static struct cb_ops smartpqi_cb_ops = {
-	scsi_hba_open,		/* open */
-	scsi_hba_close,		/* close */
-	nodev,			/* strategy */
-	nodev,			/* print */
-	nodev,			/* dump */
-	nodev,			/* read */
-	nodev,			/* write */
-	smartpqi_ioctl,		/* ioctl */
-	nodev,			/* devmap */
-	nodev,			/* mmap */
-	nodev,			/* segmap */
-	nochpoll,		/* chpoll */
-	ddi_prop_op,		/* cb_prop_op */
-	NULL,			/* streamtab */
-	D_MP,			/* cb_flag */
-	CB_REV,			/* rev */
-	nodev,			/* aread */
-	nodev			/* awrite */
+	.cb_open =		scsi_hba_open,
+	.cb_close =		scsi_hba_close,
+	.cb_strategy =		nodev,
+	.cb_print =		nodev,
+	.cb_dump =		nodev,
+	.cb_read =		nodev,
+	.cb_write =		nodev,
+	.cb_ioctl =		scsi_hba_ioctl,
+	.cb_devmap =		nodev,
+	.cb_mmap =		nodev,
+	.cb_segmap =		nodev,
+	.cb_chpoll =		nochpoll,
+	.cb_prop_op =		ddi_prop_op,
+	.cb_str =		NULL,
+	.cb_flag =		D_MP,
+	.cb_rev =		CB_REV,
+	.cb_aread =		nodev,
+	.cb_awrite =		nodev
 };
 
 static struct dev_ops smartpqi_ops = {
-	DEVO_REV,		/* dev_rev */
-	0,			/* refcnt */
-	smartpqi_getinfo,	/* info */
-	nulldev,		/* identify */
-	nulldev,		/* probe */
-	smartpqi_attach,	/* attach */
-	smartpqi_detach,	/* detach */
-	nodev,			/* reset */
-	&smartpqi_cb_ops,	/* driver operations */
-	NULL,			/* bus operations */
-	smartpqi_power,		/* power management */
-	smartpqi_quiesce,	/* quiesce */
+	.devo_rev =		DEVO_REV,
+	.devo_refcnt =		0,
+	.devo_getinfo =		nodev,
+	.devo_identify =	nulldev,
+	.devo_probe =		nulldev,
+	.devo_attach =		smartpqi_attach,
+	.devo_detach =		smartpqi_detach,
+	.devo_reset =		nodev,
+	.devo_cb_ops =		&smartpqi_cb_ops,
+	.devo_bus_ops =		NULL,
+	.devo_power =		nodev,
+	.devo_quiesce =		smartpqi_quiesce
 };
 
-static struct modldrv modldrv = {
-	&mod_driverops,
-	SMARTPQI_MOD_STRING,
-	&smartpqi_ops,
+static struct modldrv smartpqi_modldrv = {
+	.drv_modops =		&mod_driverops,
+	.drv_linkinfo =		SMARTPQI_MOD_STRING,
+	.drv_dev_ops =		&smartpqi_ops
 };
 
-static struct modlinkage modlinkage = {
-	MODREV_1, &modldrv, NULL
+static struct modlinkage smartpqi_modlinkage = {
+	.ml_rev =		MODREV_1,
+	.ml_linkage =		{ &smartpqi_modldrv, NULL }
 };
 
 /*
@@ -110,25 +104,25 @@ ddi_device_acc_attr_t smartpqi_dev_attr = {
 int
 _init(void)
 {
-	int	status;
+	int	ret;
 
-	if ((status = ddi_soft_state_init(&pqi_state,
+	if ((ret = ddi_soft_state_init(&pqi_state,
 	    sizeof (struct pqi_state), SMARTPQI_INITIAL_SOFT_SPACE)) !=
 	    0) {
-		return (status);
+		return (ret);
 	}
 
-	if ((status = scsi_hba_init(&modlinkage)) != 0) {
+	if ((ret = scsi_hba_init(&smartpqi_modlinkage)) != 0) {
 		ddi_soft_state_fini(&pqi_state);
-		return (status);
+		return (ret);
 	}
 
-	if ((status = mod_install(&modlinkage)) != 0) {
+	if ((ret = mod_install(&smartpqi_modlinkage)) != 0) {
+		scsi_hba_fini(&smartpqi_modlinkage);
 		ddi_soft_state_fini(&pqi_state);
-		scsi_hba_fini(&modlinkage);
 	}
 
-	return (status);
+	return (ret);
 }
 
 int
@@ -136,48 +130,17 @@ _fini(void)
 {
 	int	ret;
 
-	if ((ret = mod_remove(&modlinkage)) == 0) {
-		scsi_hba_fini(&modlinkage);
+	if ((ret = mod_remove(&smartpqi_modlinkage)) == 0) {
+		scsi_hba_fini(&smartpqi_modlinkage);
 		ddi_soft_state_fini(&pqi_state);
 	}
 	return (ret);
 }
 
-/*
- * The loadable-module _info(9E) entry point
- */
 int
 _info(struct modinfo *modinfop)
 {
-	/* CONSTCOND */
-	ASSERT(NO_COMPETING_THREADS);
-
-	return (mod_info(&modlinkage, modinfop));
-}
-
-/*ARGSUSED*/
-static int smartpqi_getinfo(dev_info_t *dip, ddi_info_cmd_t cmd, void *arg,
-    void **result)
-{
-	int		rc = DDI_FAILURE;
-	pqi_state_t	s;
-
-	switch (cmd) {
-	case DDI_INFO_DEVT2DEVINFO:
-		if ((s = ddi_get_soft_state(pqi_state, 0)) == NULL)
-			break;
-		*result = s->s_dip;
-		break;
-
-	case DDI_INFO_DEVT2INSTANCE:
-		*result = 0;
-		rc = DDI_SUCCESS;
-		break;
-
-	default:
-		break;
-	}
-	return (rc);
+	return (mod_info(&smartpqi_modlinkage, modinfop));
 }
 
 static int
@@ -372,14 +335,6 @@ smartpqi_detach(dev_info_t *dip, ddi_detach_cmd_t cmd)
 	return (DDI_SUCCESS);
 }
 
-/*ARGSUSED*/
-static int
-smartpqi_power(dev_info_t *dip, int component, int level)
-{
-	/* We don't register any power components yet. */
-	return (DDI_SUCCESS);
-}
-
 static int
 smartpqi_quiesce(dev_info_t *dip)
 {
@@ -399,13 +354,4 @@ smartpqi_quiesce(dev_info_t *dip)
 	}
 	/* If we couldn't quiesce for any reason, play it safe and reboot. */
 	return (DDI_FAILURE);
-}
-
-/*ARGSUSED*/
-static int
-smartpqi_ioctl(dev_t dev, int cmd, intptr_t data, int mode, cred_t *credp,
-    int *rval)
-{
-	/* Arguably we could just use nodev for the entry point. */
-	return (EINVAL);
 }
