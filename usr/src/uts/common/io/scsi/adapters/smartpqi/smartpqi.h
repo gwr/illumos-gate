@@ -277,9 +277,6 @@ typedef struct pqi_state {
 
 	/* ---- Debug related state ---- */
 	int			s_debug_level;
-	list_t			s_mem_check;
-	kmutex_t		s_mem_mutex;
-	timeout_id_t		s_mem_timeo;
 
 	/* ---- State for watchdog ---- */
 	timeout_id_t		s_watchdog;
@@ -358,29 +355,6 @@ typedef struct pqi_state {
 	pqi_event_queue_t	s_event_queue;
 	struct pqi_event	s_events[PQI_NUM_SUPPORTED_EVENTS];
 } *pqi_state_t;
-
-#define	RUN_MEM_CHECK	0
-#if RUN_MEM_CHECK == 1
-#define	MEM_CHECK_ON_DMA	1
-#define	MEM_CHECK_SIG		0xdeadcafe
-#define	PQI_ALLOC(len, flag) pqi_kmem_alloc(len, flag, __FILE__, __LINE__, s)
-#define	PQI_ZALLOC(len, flag) pqi_kmem_zalloc(len, flag, __FILE__, __LINE__, s)
-#define	PQI_FREE(v, len) pqi_kmem_free(v, len, s)
-#else
-#define	MEM_CHECK_ON_DMA	0
-#define	MEM_CHECK_SIG		0xdeadcafe
-#define	PQI_ALLOC(len, flag) kmem_alloc(len, flag)
-#define	PQI_ZALLOC(len, flag) kmem_zalloc(len, flag)
-#define	PQI_FREE(v, len) kmem_free(v, len)
-#endif
-
-typedef struct mem_check {
-	list_node_t		m_node;
-	uint32_t		m_sig;
-	int			m_line;
-	size_t			m_len;
-	char			m_file[80];
-} *mem_check_t;
 
 typedef struct pqi_device {
 	list_node_t		pd_list;
@@ -519,14 +493,6 @@ typedef struct pqi_cmd {
 
 #define	MASKED_DEVICE(lunid)				((lunid)[3] & 0xc0)
 
-#define	MEMP(args...) (void) snprintf(m.mem + strlen(m.mem), \
-	m.len - strlen(m.mem), args)
-
-typedef struct mem_len_pair {
-	caddr_t	mem;
-	int	len;
-} mem_len_pair_t;
-
 /* ---- Defines for PQI mode ---- */
 #define	IRQ_MODE_NONE			0x00
 #define	VPD_PAGE			(1 << 8)
@@ -599,17 +565,8 @@ int pqi_map_event(uint8_t event);
 boolean_t pqi_supported_event(uint8_t event_type);
 char *bool_to_str(int v);
 char *dtype_to_str(int t);
-void pqi_free_mem_len(mem_len_pair_t *m);
-mem_len_pair_t pqi_alloc_mem_len(int len);
-mem_len_pair_t build_cdb_str(uint8_t *cdb);
-mem_len_pair_t mem_to_arraystr(uint8_t *ptr, size_t len);
 int pqi_is_offline(pqi_state_t s);
 void pqi_show_dev_state(pqi_state_t s);
-void *pqi_kmem_zalloc(size_t size, int kmflag, char *file, int line,
-    pqi_state_t s);
-void *pqi_kmem_alloc(size_t size, int kmflag, char *file, int line,
-    pqi_state_t s);
-void pqi_kmem_free(void *v, size_t, pqi_state_t s);
 void pqi_mem_check(void *v);
 char *cdb_to_str(uint8_t scsi_cmd);
 char *io_status_to_str(int val);
