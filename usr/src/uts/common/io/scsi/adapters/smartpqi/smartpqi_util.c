@@ -11,6 +11,7 @@
 
 /*
  * Copyright 2018 Nexenta Systems, Inc.
+ * Copyright 2019 RackTop Systems, Inc.
  */
 
 /*
@@ -411,99 +412,6 @@ pqi_show_dev_state(pqi_state_t s)
 	}
 }
 
-void *
-pqi_kmem_zalloc(size_t size, int kmflag, char *file, int line, pqi_state_t s)
-{
-	void *v;
-
-	if ((v = pqi_kmem_alloc(size, kmflag, file, line, s)) != NULL)
-		(void) memset(v, 0, size);
-
-	return (v);
-}
-
-void *
-pqi_kmem_alloc(size_t size, int kmflag, char *file, int line, pqi_state_t s)
-{
-	size_t		ht_size;
-	void		*v;
-	mem_check_t	header;
-	mem_check_t	tailer;
-	size_t		size_adj;
-
-	ht_size = PQIALIGN_TYPED(sizeof (struct mem_check), 64, size_t);
-	size_adj = PQIALIGN_TYPED(size, 64, size_t);
-	v = kmem_alloc(ht_size * 2 + size_adj, kmflag);
-	if (v == NULL)
-		return (NULL);
-
-	header = v;
-	list_link_init(&header->m_node);
-	(void) strncpy(header->m_file, file, sizeof (header->m_file));
-	header->m_line = line;
-	header->m_len = ht_size * 2 + size_adj;
-	header->m_sig = MEM_CHECK_SIG;
-
-	tailer = (mem_check_t)((uintptr_t)v + ht_size + size_adj);
-	list_link_init(&tailer->m_node);
-	(void) strncpy(tailer->m_file, file, sizeof (tailer->m_file));
-	tailer->m_line = line;
-	tailer->m_len = ht_size * 2 + size_adj;
-	tailer->m_sig = MEM_CHECK_SIG;
-
-	mutex_enter(&s->s_mem_mutex);
-	list_insert_tail(&s->s_mem_check, header);
-	list_insert_tail(&s->s_mem_check, tailer);
-	mutex_exit(&s->s_mem_mutex);
-	ASSERT(s->s_dip != NULL);
-
-	return ((void *)((uintptr_t)v + ht_size));
-}
-
-/*ARGSUSED*/
-void
-pqi_kmem_free(void *v, size_t size, pqi_state_t s)
-{
-	mem_check_t	header;
-	mem_check_t	tailer;
-	size_t		ht_size;
-
-	ht_size = PQIALIGN_TYPED(sizeof (struct mem_check), 64, size_t);
-	header = (mem_check_t)((uintptr_t)v - ht_size);
-	ASSERT(header->m_sig == MEM_CHECK_SIG);
-
-	mutex_enter(&s->s_mem_mutex);
-	tailer = list_next(&s->s_mem_check, header);
-	list_remove(&s->s_mem_check, header);
-	list_remove(&s->s_mem_check, tailer);
-	mutex_exit(&s->s_mem_mutex);
-	ASSERT(s->s_dip != NULL);
-
-	kmem_free(header, header->m_len);
-}
-
-void
-pqi_mem_check(void *v)
-{
-	pqi_state_t	s = v;
-	mem_check_t	mc;
-
-	mutex_enter(&s->s_mem_mutex);
-	for (mc = list_head(&s->s_mem_check); mc != NULL;
-	    mc = list_next(&s->s_mem_check, mc)) {
-		if (mc->m_sig != MEM_CHECK_SIG) {
-			cmn_err(CE_NOTE, "%s: Bad sig from %s:%d\n",
-			    __func__, mc->m_file, mc->m_line);
-			ASSERT(0);
-		}
-	}
-	ASSERT(s->s_dip != NULL);
-	s->s_mem_timeo = timeout(pqi_mem_check, s,
-	    drv_usectohz(5 * 1000 * 1000));
-	mutex_exit(&s->s_mem_mutex);
-}
-
-
 char *
 cdb_to_str(uint8_t scsi_cmd)
 {
@@ -578,22 +486,6 @@ iu_type_to_str(int val)
 	case PQI_RESPONSE_IU_AIO_PATH_DISABLED: return ("AIO Path Disabled");
 	default: return ("UNHANDLED");
 	}
-}
-
-void
-pqi_free_mem_len(mem_len_pair_t *m)
-{
-	kmem_free(m->mem, m->len);
-}
-
-mem_len_pair_t
-pqi_alloc_mem_len(int len)
-{
-	mem_len_pair_t m;
-	m.len = len;
-	m.mem = kmem_alloc(m.len, KM_SLEEP);
-	*m.mem = '\0';
-	return (m);
 }
 
 /*
@@ -743,12 +635,12 @@ cmd_state_str(pqi_cmd_state_t state)
 }
 
 
-mem_len_pair_t
-build_cdb_str(uint8_t *cdb)
-{
-	mem_len_pair_t m = pqi_alloc_mem_len(64);
+#define	MEMP(args...) (void) snprintf(buf + strlen(buf), sz - strlen(buf), args)
 
-	m.mem[0] = '\0';
+static void
+build_cdb_str(uint8_t *cdb, char *buf, size_t sz)
+{
+	*buf = '\0';
 
 	switch (cdb[0]) {
 	case SCMD_INQUIRY:
@@ -786,23 +678,6 @@ build_cdb_str(uint8_t *cdb)
 		MEMP("%s (%x)", cdb_to_str(cdb[0]), cdb[0]);
 		break;
 	}
-	return (m);
-}
-
-mem_len_pair_t
-mem_to_arraystr(uint8_t *ptr, size_t len)
-{
-	mem_len_pair_t	m	= pqi_alloc_mem_len(len * 3 + 20);
-	int		i;
-
-	m.mem[0] = '\0';
-	MEMP("{ ");
-	for (i = 0; i < len; i++) {
-		MEMP("%02x ", *ptr++ & 0xff);
-	}
-	MEMP(" }");
-
-	return (m);
 }
 
 static char lun_str[64];
@@ -851,7 +726,6 @@ dump_raid(pqi_state_t s, void *v, pqi_index_t idx)
 	int			len	= 512;
 	caddr_t			scratch;
 	pqi_raid_path_request_t	*rqst = v;
-	mem_len_pair_t		cdb_data;
 	caddr_t			raw = v;
 
 	scratch = kmem_alloc(len, KM_SLEEP);
@@ -866,9 +740,9 @@ dump_raid(pqi_state_t s, void *v, pqi_index_t idx)
 	}
 
 	if (s->s_debug_level & DBG_LVL_CDB) {
-		cdb_data = build_cdb_str(rqst->rp_cdb);
-		SCRATCH_PRINT("cdb(%s),", cdb_data.mem);
-		pqi_free_mem_len(&cdb_data);
+		char buf[64];
+		build_cdb_str(rqst->rp_cdb, buf, sizeof (buf));
+		SCRATCH_PRINT("cdb(%s),", buf);
 	}
 
 	ASSERT0(rqst->header.reserved);
@@ -913,14 +787,13 @@ dump_aio(void *v)
 	int			i;
 	int			len	= 512;
 	caddr_t			scratch;
-	mem_len_pair_t		cdb_data;
+	char			buf[64];
 
 	scratch = kmem_alloc(len, KM_SLEEP);
 	scratch[0] = '\0';
 
-	cdb_data = build_cdb_str(rqst->cdb);
-	SCRATCH_PRINT("cdb(%s)", cdb_data.mem);
-	pqi_free_mem_len(&cdb_data);
+	build_cdb_str(rqst->cdb, buf, sizeof (buf));
+	SCRATCH_PRINT("cdb(%s)", buf);
 
 	SCRATCH_PRINT("h(type=%x,len=%x,id=%x)",
 	    rqst->header.iu_type, rqst->header.iu_length,

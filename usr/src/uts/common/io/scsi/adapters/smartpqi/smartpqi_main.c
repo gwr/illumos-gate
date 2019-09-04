@@ -149,7 +149,7 @@ smartpqi_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
 	int		instance;
 	pqi_state_t	s	= NULL;
 	int		mem_bar	= IO_SPACE;
-	mem_len_pair_t	m;
+	char		name[32];
 
 	switch (cmd) {
 	case DDI_ATTACH:
@@ -177,31 +177,24 @@ smartpqi_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
 	s->s_offline = 0;
 	list_create(&s->s_devnodes, sizeof (struct pqi_device),
 	    offsetof(struct pqi_device, pd_list));
-	list_create(&s->s_mem_check, sizeof (struct mem_check),
-	    offsetof(struct mem_check, m_node));
 
 	/* ---- Initialize mutex used in interrupt handler ---- */
 	mutex_init(&s->s_mutex, NULL, MUTEX_DRIVER,
 	    DDI_INTR_PRI(s->s_intr_pri));
-	mutex_init(&s->s_mem_mutex, NULL, MUTEX_DRIVER, NULL);
 	mutex_init(&s->s_io_mutex, NULL, MUTEX_DRIVER, NULL);
 	mutex_init(&s->s_intr_mutex, NULL, MUTEX_DRIVER, NULL);
 	cv_init(&s->s_quiescedvar, NULL, CV_DRIVER, NULL);
 	cv_init(&s->s_io_condvar, NULL, CV_DRIVER, NULL);
 	sema_init(&s->s_sync_rqst, 1, NULL, SEMA_DRIVER, NULL);
 
-	m = pqi_alloc_mem_len(256);
-	(void) snprintf(m.mem, m.len, "smartpqi_cache%d", instance);
-	s->s_cmd_cache = kmem_cache_create(m.mem, sizeof (struct pqi_cmd), 0,
+	(void) snprintf(name, sizeof (name), "smartpqi_cache%d", instance);
+	s->s_cmd_cache = kmem_cache_create(name, sizeof (struct pqi_cmd), 0,
 	    pqi_cache_constructor, pqi_cache_destructor, NULL, s, NULL, 0);
 
-	(void) snprintf(m.mem, m.len, "pqi_events_taskq%d", instance);
-	s->s_events_taskq = ddi_taskq_create(s->s_dip, m.mem, 1,
+	s->s_events_taskq = ddi_taskq_create(s->s_dip, "pqi_events_tq", 1,
 	    TASKQ_DEFAULTPRI, 0);
-	(void) snprintf(m.mem, m.len, "pqi_complete_taskq%d", instance);
-	s->s_complete_taskq = ddi_taskq_create(s->s_dip, m.mem, 4,
+	s->s_complete_taskq = ddi_taskq_create(s->s_dip, "pqi_complete_tq", 4,
 	    TASKQ_DEFAULTPRI, 0);
-	pqi_free_mem_len(&m);
 
 	s->s_debug_level = ddi_prop_get_int(DDI_DEV_T_ANY, dip,
 	    DDI_PROP_DONTPASS, "debug", 0);
@@ -237,7 +230,6 @@ smartpqi_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
 		goto fail;
 	}
 	ddi_report_dev(s->s_dip);
-	s->s_mem_timeo = timeout(pqi_mem_check, s, drv_usectohz(5 * MICROSEC));
 
 	return (DDI_SUCCESS);
 
@@ -304,7 +296,7 @@ smartpqi_detach(dev_info_t *dip, ddi_detach_cmd_t cmd)
 			list_destroy(&devp->pd_cmd_list);
 			mutex_destroy(&devp->pd_mutex);
 			list_remove(&s->s_devnodes, devp);
-			PQI_FREE(devp, sizeof (*devp));
+			kmem_free(devp, sizeof (*devp));
 		}
 		list_destroy(&s->s_devnodes);
 		mutex_destroy(&s->s_mutex);
@@ -314,14 +306,6 @@ smartpqi_detach(dev_info_t *dip, ddi_detach_cmd_t cmd)
 		cv_destroy(&s->s_quiescedvar);
 		smartpqi_unregister_hba(s);
 		smartpqi_unregister_intrs(s);
-
-		if (s->s_mem_timeo != 0) {
-			mutex_enter(&s->s_mem_mutex);
-			(void) untimeout(s->s_mem_timeo);
-			s->s_mem_timeo = 0;
-			mutex_exit(&s->s_mem_mutex);
-			mutex_destroy(&s->s_mem_mutex);
-		}
 
 		if (s->s_time_of_day != 0) {
 			(void) untimeout(s->s_time_of_day);
