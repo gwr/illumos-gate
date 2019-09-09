@@ -11,6 +11,7 @@
 
 /*
  * Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2019 Racktop Systems
  */
 
 /*
@@ -143,18 +144,6 @@ smb1_negotiate_smb2(smb_request_t *sr)
 	}
 
 	/*
-	 * Clients that negotiate SMB2 from SMB1 have not yet had the
-	 * opportunity to provide us with a secmode. However, any
-	 * client that negotiates SMB2 should support signing, so
-	 * this should be fiction good enough to pass the signing
-	 * check in smb2_negotiate_common(). Even if the client
-	 * doesn't support signing and we require it, we'll fail them
-	 * later when they fail to sign the packet. For 2.???,
-	 * we'll check the real secmode when the 2nd negotiate comes.
-	 */
-	s->cli_secmode = SMB2_NEGOTIATE_SIGNING_ENABLED;
-
-	/*
 	 * We did not decode an SMB2 header, so make sure
 	 * the SMB2 header fields are initialized.
 	 * (Most are zero from smb_request_alloc.)
@@ -165,9 +154,9 @@ smb1_negotiate_smb2(smb_request_t *sr)
 	sr->smb2_cmd_code = SMB2_NEGOTIATE;
 
 	rc = smb2_negotiate_common(sr, smb2_version);
-	smb2_send_reply(sr);
 	if (rc != 0)
-		return (SDRC_DROP_VC);
+		smb2sr_put_error(sr, NT_STATUS_INTERNAL_ERROR);
+	smb2_send_reply(sr);
 
 	/*
 	 * We sent the reply, so tell the SMB1 dispatch
@@ -213,6 +202,7 @@ smb2_newrq_negotiate(smb_request_t *sr)
 {
 	smb_session_t *s = sr->session;
 	int rc;
+	uint32_t status = 0;
 	uint16_t struct_size;
 	uint16_t best_version;
 	uint16_t version_cnt;
@@ -263,8 +253,7 @@ smb2_newrq_negotiate(smb_request_t *sr)
 	if (best_version == 0) {
 		cmn_err(CE_NOTE, "clnt %s no supported dialect",
 		    sr->session->ip_addr_str);
-		sr->smb2_status = NT_STATUS_INVALID_PARAMETER;
-		rc = -1;
+		status = NT_STATUS_INVALID_PARAMETER;
 		goto errout;
 	}
 	s->dialect = best_version;
@@ -274,11 +263,14 @@ smb2_newrq_negotiate(smb_request_t *sr)
 	s->newrq_func = smb2sr_newrq;
 
 	rc = smb2_negotiate_common(sr, best_version);
+	status = (rc == 0) ? 0 : NT_STATUS_INTERNAL_ERROR;
 
 errout:
-	/* sr->smb2_status was set */
+	sr->smb2_status = status;
 	DTRACE_SMB2_DONE(op__Negotiate, smb_request_t *, sr);
 
+	if (status != 0)
+		smb2sr_put_error(sr, status);
 	smb2_send_reply(sr);
 
 	return (rc);
@@ -290,8 +282,7 @@ errout:
  * Do negotiation decisions and encode the reply.
  * The caller does the network send.
  *
- * Return value is 0 for success, and anything else will
- * terminate the reader thread (drop the connection).
+ * Return value is 0 for success, else error.
  */
 static int
 smb2_negotiate_common(smb_request_t *sr, uint16_t version)
@@ -302,19 +293,12 @@ smb2_negotiate_common(smb_request_t *sr, uint16_t version)
 	uint32_t max_rwsize;
 	uint16_t secmode;
 
-	sr->smb2_status = 0;
-
 	/*
 	 * Negotiation itself.  First the Security Mode.
 	 */
 	secmode = SMB2_NEGOTIATE_SIGNING_ENABLED;
-	if (sr->sr_cfg->skc_signing_required) {
+	if (sr->sr_cfg->skc_signing_required)
 		secmode |= SMB2_NEGOTIATE_SIGNING_REQUIRED;
-		/* Make sure client at least enables signing. */
-		if ((s->cli_secmode & secmode) == 0) {
-			sr->smb2_status = NT_STATUS_INVALID_PARAMETER;
-		}
-	}
 	s->srv_secmode = secmode;
 
 	s->cmd_max_bytes = smb2_tcp_bufsize;
@@ -339,11 +323,6 @@ smb2_negotiate_common(smb_request_t *sr, uint16_t version)
 	 */
 	sr->smb2_hdr_flags = SMB2_FLAGS_SERVER_TO_REDIR;
 	(void) smb2_encode_header(sr, B_FALSE);
-	if (sr->smb2_status != 0) {
-		smb2sr_put_error(sr, sr->smb2_status);
-		/* smb2_send_reply(sr); in caller */
-		return (-1); /* will drop */
-	}
 
 	/*
 	 * If the version is 0x2FF, we haven't completed negotiate.
