@@ -21,6 +21,14 @@
 #include <smbsrv/smb2_kproto.h>
 #include <smbsrv/smb2.h>
 
+/*
+ * Note from [MS-SMB2] Sec. 2.2.3:  Windows servers return
+ * invalid parameter if the dialect count is greater than 64
+ * This is here (and not in smb2.h) because this is technically
+ * an implementation detail, not protocol specification.
+ */
+#define	SMB2_NEGOTIATE_MAX_DIALECTS	64
+
 static int smb2_negotiate_common(smb_request_t *, uint16_t);
 
 uint32_t smb2srv_capabilities =
@@ -211,7 +219,7 @@ smb2_newrq_negotiate(smb_request_t *sr)
 	uint16_t struct_size;
 	uint16_t best_version;
 	uint16_t version_cnt;
-	uint16_t cl_versions[8];
+	uint16_t cl_versions[SMB2_NEGOTIATE_MAX_DIALECTS];
 
 	/*
 	 * Decode SMB2 request header and encode initial reply header.
@@ -241,18 +249,41 @@ smb2_newrq_negotiate(smb_request_t *sr)
 	    /* start_time	  8. */
 	if (rc != 0)
 		return (rc);
-	if (struct_size != 36 || version_cnt > 8)
+	if (struct_size != 36)
 		return (-1);
 
 	/*
 	 * Decode SMB2 Negotiate (variable part)
+	 *
+	 * Be somewhat tolerant while decoding the variable part
+	 * so we can return errors instead of dropping the client.
+	 * Will limit decoding to the size of cl_versions here,
+	 * and do the error checks on version_cnt after the
+	 * dtrace start probe.
 	 */
-	rc = smb_mbc_decodef(&sr->command,
-	    "#w", version_cnt, cl_versions);
-	if (rc != 0)
-		return (rc);
+	if (version_cnt != 0) {
+		int cnt = version_cnt;
+		if (cnt > SMB2_NEGOTIATE_MAX_DIALECTS)
+			cnt = SMB2_NEGOTIATE_MAX_DIALECTS;
+		rc = smb_mbc_decodef(&sr->command,
+		    "#w", cnt, cl_versions);
+		if (rc != 0) {
+			/* decode error; force an error below */
+			version_cnt = 0;
+		}
+	}
 
 	DTRACE_SMB2_START(op__Negotiate, smb_request_t *, sr);
+
+	/*
+	 * [MS-SMB2] 3.3.5.4 Receiving an SMB2 NEGOTIATE Request
+	 * "If the DialectCount of the SMB2 NEGOTIATE Request is 0, the
+	 * server MUST fail the request with STATUS_INVALID_PARAMETER."
+	 */
+	if (version_cnt == 0 || version_cnt > SMB2_NEGOTIATE_MAX_DIALECTS) {
+		status = NT_STATUS_INVALID_PARAMETER;
+		goto errout;
+	}
 
 	/*
 	 * The client offers an array of protocol versions it
@@ -261,9 +292,7 @@ smb2_newrq_negotiate(smb_request_t *sr)
 	 */
 	best_version = smb2_find_best_dialect(s, cl_versions, version_cnt);
 	if (best_version == 0) {
-		cmn_err(CE_NOTE, "clnt %s no supported dialect",
-		    sr->session->ip_addr_str);
-		status = NT_STATUS_INVALID_PARAMETER;
+		status = NT_STATUS_NOT_SUPPORTED;
 		goto errout;
 	}
 	s->dialect = best_version;
