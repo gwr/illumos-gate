@@ -11,7 +11,7 @@
 
 /*
  * Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
- * Copyright 2019 Racktop Systems
+ * Copyright 2019 RackTop Systems.
  */
 
 /*
@@ -152,10 +152,15 @@ smb1_negotiate_smb2(smb_request_t *sr)
 	 */
 	sr->smb2_reply_hdr = sr->reply.chain_offset = 0;
 	sr->smb2_cmd_code = SMB2_NEGOTIATE;
+	sr->smb2_hdr_flags = SMB2_FLAGS_SERVER_TO_REDIR;
+
+	(void) smb2_encode_header(sr, B_FALSE);
 
 	rc = smb2_negotiate_common(sr, smb2_version);
 	if (rc != 0)
 		smb2sr_put_error(sr, NT_STATUS_INTERNAL_ERROR);
+
+	(void) smb2_encode_header(sr, B_TRUE);
 	smb2_send_reply(sr);
 
 	/*
@@ -208,14 +213,19 @@ smb2_newrq_negotiate(smb_request_t *sr)
 	uint16_t version_cnt;
 	uint16_t cl_versions[8];
 
+	/*
+	 * Decode SMB2 request header and encode initial reply header.
+	 * This happens in smb2sr_work() for normal requests.
+	 */
 	sr->smb2_cmd_hdr = sr->command.chain_offset;
 	rc = smb2_decode_header(sr);
 	if (rc != 0)
 		return (rc);
-
 	if ((sr->smb2_cmd_code != SMB2_NEGOTIATE) ||
 	    (sr->smb2_next_command != 0))
 		return (-1);
+	sr->smb2_hdr_flags = SMB2_FLAGS_SERVER_TO_REDIR;
+	(void) smb2_encode_header(sr, B_FALSE);
 
 	/*
 	 * Decode SMB2 Negotiate (fixed-size part)
@@ -271,6 +281,8 @@ errout:
 
 	if (status != 0)
 		smb2sr_put_error(sr, status);
+
+	(void) smb2_encode_header(sr, B_TRUE);
 	smb2_send_reply(sr);
 
 	return (rc);
@@ -317,12 +329,6 @@ smb2_negotiate_common(smb_request_t *sr, uint16_t version)
 	boot_tv.tv_nsec = 0;
 	now_tv.tv_sec = gethrestime_sec();
 	now_tv.tv_nsec = 0;
-
-	/*
-	 * SMB2 negotiate reply
-	 */
-	sr->smb2_hdr_flags = SMB2_FLAGS_SERVER_TO_REDIR;
-	(void) smb2_encode_header(sr, B_FALSE);
 
 	/*
 	 * If the version is 0x2FF, we haven't completed negotiate.
