@@ -493,6 +493,7 @@ struct zfsvfs;
 typedef struct zfs_creat {
 	nvlist_t	*zct_zplprops;
 	nvlist_t	*zct_props;
+	vsecattr_t	*zct_vsecattr;
 } zfs_creat_t;
 
 extern dev_info_t *zfs_dip;

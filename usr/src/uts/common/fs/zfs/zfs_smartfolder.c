@@ -19,6 +19,7 @@
 #include "sys/vfs.h"
 #include "sys/mount.h"
 #include <sys/nvpair.h>
+#include <sys/vnode.h>
 
 #ifdef	_KERNEL
 #include <sys/zfs_vfsops.h>
@@ -132,7 +133,7 @@ zfs_create_cb(objset_t *os, void *arg, cred_t *cr, dmu_tx_t *tx)
 {
 #ifdef	_KERNEL
 	zfs_creat_t *zct = arg;
-	zfs_create_fs(os, cr, zct->zct_zplprops, tx);
+	zfs_create_fs(os, cr, zct->zct_zplprops, zct->zct_vsecattr, tx);
 #endif
 }
 
@@ -171,7 +172,7 @@ out:
 int
 zfs_create_smartfolder(struct zfsvfs *zfsvfs, struct vnode *dvp,
     struct vnode *vp, const char *dirname, int flags, struct cred *cr,
-    boolean_t usetq)
+    vsecattr_t *vsecp, boolean_t usetq)
 {
 	int err = EINVAL;
 #ifdef	_KERNEL
@@ -226,6 +227,8 @@ zfs_create_smartfolder(struct zfsvfs *zfsvfs, struct vnode *dvp,
 		nvlist_free(zct.zct_zplprops);
 		goto out;
 	}
+
+	zct.zct_vsecattr = vsecp;
 
 	/*
 	 * Create dataset

@@ -305,7 +305,7 @@ zfs_inherit_projid(znode_t *dzp)
 extern int	zfs_init_fs(zfsvfs_t *, znode_t **);
 extern void	zfs_set_dataprop(objset_t *);
 extern void	zfs_create_fs(objset_t *os, cred_t *cr, nvlist_t *,
-    dmu_tx_t *tx);
+    vsecattr_t *vsecp, dmu_tx_t *tx);
 extern void	zfs_tstamp_update_setup(znode_t *, uint_t, uint64_t [2],
     uint64_t [2], boolean_t);
 extern void	zfs_grow_blocksize(znode_t *, uint64_t, dmu_tx_t *);

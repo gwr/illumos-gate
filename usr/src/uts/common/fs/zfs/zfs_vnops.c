@@ -2209,7 +2209,7 @@ top:
 
 	if (zfs_check_smartfolders_enabled(dmu_objset_ds(zfsvfs->z_os)))
 		(void) zfs_create_smartfolder(zfsvfs, dvp, *vpp, dirname,
-		    flags, cr, (ct && (ct->cc_flags & CC_HELDEXPLOCK)));
+		    flags, cr, vsecp, (ct && (ct->cc_flags & CC_HELDEXPLOCK)));
 
 	ZFS_EXIT(zfsvfs);
 	return (0);

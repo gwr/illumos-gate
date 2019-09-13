@@ -1832,7 +1832,8 @@ log:
 }
 
 void
-zfs_create_fs(objset_t *os, cred_t *cr, nvlist_t *zplprops, dmu_tx_t *tx)
+zfs_create_fs(objset_t *os, cred_t *cr, nvlist_t *zplprops, vsecattr_t *vsecp,
+    dmu_tx_t *tx)
 {
 	uint64_t	moid, obj, sa_obj, version;
 	uint64_t	sense = ZFS_CASE_SENSITIVE;
@@ -1958,7 +1959,7 @@ zfs_create_fs(objset_t *os, cred_t *cr, nvlist_t *zplprops, dmu_tx_t *tx)
 
 	rootzp->z_zfsvfs = zfsvfs;
 	VERIFY(0 == zfs_acl_ids_create(rootzp, IS_ROOT_NODE, &vattr,
-	    cr, NULL, &acl_ids));
+	    cr, vsecp, &acl_ids));
 	zfs_mknode(rootzp, &vattr, tx, cr, IS_ROOT_NODE, &zp, &acl_ids);
 	ASSERT3P(zp, ==, rootzp);
 	ASSERT(!vn_in_dnlc(ZTOV(rootzp))); /* not valid to move */
