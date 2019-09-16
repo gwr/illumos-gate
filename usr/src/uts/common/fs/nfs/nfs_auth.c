@@ -875,6 +875,7 @@ nfsauth_cache_get(struct exportinfo *exi, struct svc_req *req, int flavor,
 
 	ASSERT(cr != NULL);
 
+	ASSERT3P(curzone, ==, exi->exi_zone);
 	nag = nfsauth_get_zg();
 
 	/*
