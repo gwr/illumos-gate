@@ -281,6 +281,9 @@ nfsauth_zone_fini(nfs_globals_t *ng)
 	cv_destroy(&nag->refreshq_cv);
 	mutex_destroy(&nag->refreshq_lock);
 	mutex_destroy(&nag->mountd_lock);
+	/* Extra cleanup. */
+	if (nag->mountd_dh != NULL)
+		door_ki_rele(nag->mountd_dh);
 	kmem_free(nag, sizeof (*nag));
 }
 
