@@ -2562,14 +2562,17 @@ nlm_vp_active(const vnode_t *vp)
  * on them.
  */
 void
-nlm_unexport(struct exportinfo *exi)
+nlm_zone_unexport(struct nlm_globals *g, struct exportinfo *exi)
 {
-	struct nlm_globals *g;
 	struct nlm_host *hostp;
 
-	g = zone_getspecific(nlm_zone_key, curzone);
-
 	mutex_enter(&g->lock);
+	if (g->run_status != NLM_ST_UP) {
+		/* nothing to do */
+		mutex_exit(&g->lock);
+		return;
+	}
+
 	hostp = avl_first(&g->nlm_hosts_tree);
 	while (hostp != NULL) {
 		struct nlm_vhold *nvp;
@@ -2615,6 +2618,20 @@ nlm_unexport(struct exportinfo *exi)
 	}
 
 	mutex_exit(&g->lock);
+}
+
+void
+nlm_unexport(struct exportinfo *exi)
+{
+	struct nlm_globals *g;
+
+	rw_enter(&lm_lck, RW_READER);
+	TAILQ_FOREACH(g, &nlm_zones_list, nlm_link) {
+		if (g->nlm_zoneid != exi->exi_zoneid)
+			continue;
+		nlm_zone_unexport(g, exi);
+	}
+	rw_exit(&lm_lck);
 }
 
 /*
