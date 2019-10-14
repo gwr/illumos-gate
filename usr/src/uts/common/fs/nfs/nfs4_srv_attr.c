@@ -135,7 +135,12 @@ rfs4_attr_init()
 	struct statvfs64 sb;
 
 	rfs4_init_compound_state(&cs);
-	cs.vp = ZONE_ROOTVP();
+	/*
+	 * This is global state checking, called once. We might be in
+	 * non-global-zone context here (say a modload happens from a zone
+	 * process) so in this case, we want the global-zone root vnode.
+	 */
+	cs.vp = rootvp;
 	cs.fh.nfs_fh4_val = NULL;
 	cs.cr = kcred;
 
