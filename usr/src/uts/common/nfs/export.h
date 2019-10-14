@@ -47,6 +47,16 @@
 extern "C" {
 #endif
 
+/* Server files include this. */
+#if defined(NFS_CURZONE_DEBUG) && defined(_KERNEL)
+extern void nfs_trap_curzone(char *);
+extern struct zone *nfs_curzone(void);
+#undef	curzone
+#define	curzone (nfs_curzone())
+#undef ZONE_ROOTVP
+#define	ZONE_ROOTVP()	(curzone->zone_rootvp)
+#endif	/* NFS_CURZONE_DEBUG && KERNEL */
+
 /*
  * nfs pseudo flavor number is owned by IANA. Need to make sure the
  * Solaris specific NFS_FLAVOR_NOMAP number will not overlap with any

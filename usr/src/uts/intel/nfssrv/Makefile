@@ -86,6 +86,8 @@ CERRWARN	+= -_gcc=-Wno-switch
 # needs work
 SMATCH=off
 
+CPPFLAGS	+= -DNFS_CURZONE_DEBUG
+
 #
 #	Default build targets.
 #

@@ -267,6 +267,27 @@ nvlist_t *rfs4_dss_paths, *rfs4_dss_oldpaths;
 int rfs4_dispatch(struct rpcdisp *, struct svc_req *, SVCXPRT *, char *);
 bool_t rfs4_minorvers_mismatch(struct svc_req *, SVCXPRT *, void *);
 
+/*
+ * Debugging to prevent use of curzone from entry points that
+ * we know are called from a thread in the GZ
+ */
+#if defined(NFS_CURZONE_DEBUG)
+uint_t nfs_curzone_key;
+
+void
+nfs_trap_curzone(char *who)
+{
+	(void) tsd_set(nfs_curzone_key, who);
+}
+
+struct zone *
+nfs_curzone(void)
+{
+	ASSERT(tsd_get(nfs_curzone_key) == NULL);
+	return (curproc->p_zone);
+}
+#endif	/* NFS_CURZONE_DEBUG && KERNEL */
+
 nfs_globals_t *
 nfs_srv_getzg(void)
 {
@@ -2569,6 +2590,9 @@ nfs_srvinit(void)
 	rw_init(&nfssrv_globals_rwl, NULL, RW_DEFAULT, NULL);
 	list_create(&nfssrv_globals_list, sizeof (nfs_globals_t),
 	    offsetof (nfs_globals_t, nfs_g_link));
+#ifdef	NFS_CURZONE_DEBUG
+	tsd_create(&nfs_curzone_key, NULL);
+#endif
 
 	/* The order here is important */
 	nfs_exportinit();
@@ -2607,6 +2631,10 @@ nfs_srvfini(void)
 	rfs_srvrfini();
 	nfs_exportfini();
 
+#ifdef	NFS_CURZONE_DEBUG
+	tsd_destroy(&nfs_curzone_key);
+#endif
+
 	/* Truly global stuff in this module (not per zone) */
 	list_destroy(&nfssrv_globals_list);
 	rw_destroy(&nfssrv_globals_rwl);
@@ -2631,6 +2659,7 @@ nfs_server_zone_init(zoneid_t zoneid)
 	nfs_globals_t *ng;
 
 	ng = kmem_zalloc(sizeof (*ng), KM_SLEEP);
+	nfs_trap_curzone("init");
 
 	ng->nfs_versmin = NFS_VERSMIN_DEFAULT;
 	ng->nfs_versmax = NFS_VERSMAX_DEFAULT;
@@ -2658,6 +2687,7 @@ nfs_server_zone_init(zoneid_t zoneid)
 	list_insert_tail(&nfssrv_globals_list, ng);
 	rw_exit(&nfssrv_globals_rwl);
 
+	nfs_trap_curzone(NULL);
 	return (ng);
 }
 
@@ -2668,6 +2698,7 @@ nfs_server_zone_shutdown(zoneid_t zoneid, void *data)
 	nfs_globals_t *ng;
 
 	ng = (nfs_globals_t *)data;
+	nfs_trap_curzone("shutdown");
 
 	/*
 	 * Order is like _fini, but only
@@ -2675,6 +2706,7 @@ nfs_server_zone_shutdown(zoneid_t zoneid, void *data)
 	 */
 	nfsauth_zone_shutdown(ng);
 	nfs_export_zone_shutdown(ng);
+	nfs_trap_curzone(NULL);
 }
 
 /* ARGSUSED */
@@ -2684,6 +2716,7 @@ nfs_server_zone_fini(zoneid_t zoneid, void *data)
 	nfs_globals_t *ng;
 
 	ng = (nfs_globals_t *)data;
+	nfs_trap_curzone("fini");
 
 	rw_enter(&nfssrv_globals_rwl, RW_WRITER);
 	list_remove(&nfssrv_globals_list, ng);
@@ -2704,6 +2737,7 @@ nfs_server_zone_fini(zoneid_t zoneid, void *data)
 	mutex_destroy(&ng->rdma_wait_mutex);
 	cv_destroy(&ng->rdma_wait_cv);
 
+	nfs_trap_curzone(NULL);
 	kmem_free(ng, sizeof (*ng));
 }
 
