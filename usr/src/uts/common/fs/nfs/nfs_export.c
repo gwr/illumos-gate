@@ -915,8 +915,9 @@ nfs_export_zone_init(nfs_globals_t *ng)
 	ne->exi_root->exi_count = 1;
 	mutex_init(&ne->exi_root->exi_lock, NULL, MUTEX_DEFAULT, NULL);
 
-	ne->exi_root->exi_vp = ZONE_ROOTVP();
 	ne->exi_root->exi_zoneid = ng->nfs_zoneid;
+	ne->exi_root->exi_vp =
+	    zone_find_by_id_nolock(ng->nfs_zoneid)->zone_rootvp;
 
 	/*
 	 * Fill in ne->exi_rootfid later, in nfs_export_get_rootfid
