@@ -2581,18 +2581,24 @@ client_addr(struct svc_req *req, char *buf)
  *	- Call sub-initialization routines (localize access to variables)
  *	- Initialize all locks
  *	- initialize the version 3 write verifier
+ *
+ * Note that this is not always called by a GZ thread, e.g. when
+ * the GZ does not have NFS services enabled, so the first load
+ * happens from a thread in some NGZ.
  */
 void
 nfs_srvinit(void)
 {
 
+#ifdef	NFS_CURZONE_DEBUG
+	tsd_create(&nfs_curzone_key, NULL);
+	nfs_trap_curzone("g_init");
+#endif
+
 	/* Truly global stuff in this module (not per zone) */
 	rw_init(&nfssrv_globals_rwl, NULL, RW_DEFAULT, NULL);
 	list_create(&nfssrv_globals_list, sizeof (nfs_globals_t),
 	    offsetof (nfs_globals_t, nfs_g_link));
-#ifdef	NFS_CURZONE_DEBUG
-	tsd_create(&nfs_curzone_key, NULL);
-#endif
 
 	/* The order here is important */
 	nfs_exportinit();
@@ -2600,6 +2606,10 @@ nfs_srvinit(void)
 	rfs3_srvrinit();
 	rfs4_srvrinit();
 	nfsauth_init();
+
+#ifdef	NFS_CURZONE_DEBUG
+	nfs_trap_curzone(NULL);
+#endif
 
 	/*
 	 * NFS server zone-specific global variables
@@ -2624,6 +2634,10 @@ nfs_srvfini(void)
 	 */
 	(void) zone_key_delete(nfssrv_zone_key);
 
+#ifdef	NFS_CURZONE_DEBUG
+	nfs_trap_curzone("g_fini");
+#endif
+
 	/* The order here is important (reverse of init) */
 	nfsauth_fini();
 	rfs4_srvrfini();
@@ -2632,6 +2646,7 @@ nfs_srvfini(void)
 	nfs_exportfini();
 
 #ifdef	NFS_CURZONE_DEBUG
+	nfs_trap_curzone(NULL);
 	tsd_destroy(&nfs_curzone_key);
 #endif
 
@@ -2659,7 +2674,9 @@ nfs_server_zone_init(zoneid_t zoneid)
 	nfs_globals_t *ng;
 
 	ng = kmem_zalloc(sizeof (*ng), KM_SLEEP);
+#ifdef	NFS_CURZONE_DEBUG
 	nfs_trap_curzone("init");
+#endif
 
 	ng->nfs_versmin = NFS_VERSMIN_DEFAULT;
 	ng->nfs_versmax = NFS_VERSMAX_DEFAULT;
@@ -2687,7 +2704,9 @@ nfs_server_zone_init(zoneid_t zoneid)
 	list_insert_tail(&nfssrv_globals_list, ng);
 	rw_exit(&nfssrv_globals_rwl);
 
+#ifdef	NFS_CURZONE_DEBUG
 	nfs_trap_curzone(NULL);
+#endif
 	return (ng);
 }
 
@@ -2698,7 +2717,9 @@ nfs_server_zone_shutdown(zoneid_t zoneid, void *data)
 	nfs_globals_t *ng;
 
 	ng = (nfs_globals_t *)data;
+#ifdef	NFS_CURZONE_DEBUG
 	nfs_trap_curzone("shutdown");
+#endif
 
 	/*
 	 * Order is like _fini, but only
@@ -2706,7 +2727,9 @@ nfs_server_zone_shutdown(zoneid_t zoneid, void *data)
 	 */
 	nfsauth_zone_shutdown(ng);
 	nfs_export_zone_shutdown(ng);
+#ifdef	NFS_CURZONE_DEBUG
 	nfs_trap_curzone(NULL);
+#endif
 }
 
 /* ARGSUSED */
@@ -2716,7 +2739,9 @@ nfs_server_zone_fini(zoneid_t zoneid, void *data)
 	nfs_globals_t *ng;
 
 	ng = (nfs_globals_t *)data;
+#ifdef	NFS_CURZONE_DEBUG
 	nfs_trap_curzone("fini");
+#endif
 
 	rw_enter(&nfssrv_globals_rwl, RW_WRITER);
 	list_remove(&nfssrv_globals_list, ng);
@@ -2737,7 +2762,9 @@ nfs_server_zone_fini(zoneid_t zoneid, void *data)
 	mutex_destroy(&ng->rdma_wait_mutex);
 	cv_destroy(&ng->rdma_wait_cv);
 
+#ifdef	NFS_CURZONE_DEBUG
 	nfs_trap_curzone(NULL);
+#endif
 	kmem_free(ng, sizeof (*ng));
 }
 
