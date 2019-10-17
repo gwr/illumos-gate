@@ -4130,11 +4130,11 @@ rfs4_clean_state_exi(nfs_export_t *ne, struct exportinfo *exi)
 		return;
 	}
 
-	/* CSTYLED */
-	rfs4_dbe_walk(nsrv4->rfs4_lo_state_tab, rfs4_lo_state_walk_callout, exi);
+	rfs4_dbe_walk(nsrv4->rfs4_lo_state_tab,
+	    rfs4_lo_state_walk_callout, exi);
 	rfs4_dbe_walk(nsrv4->rfs4_state_tab, rfs4_state_walk_callout, exi);
-	/* CSTYLED */
-	rfs4_dbe_walk(nsrv4->rfs4_deleg_state_tab, rfs4_deleg_state_walk_callout, exi);
+	rfs4_dbe_walk(nsrv4->rfs4_deleg_state_tab,
+	    rfs4_deleg_state_walk_callout, exi);
 	rfs4_dbe_walk(nsrv4->rfs4_file_tab, rfs4_file_walk_callout, exi);
 
 	mutex_exit(&nsrv4->state_lock);
