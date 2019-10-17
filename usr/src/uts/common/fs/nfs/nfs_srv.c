@@ -1321,7 +1321,7 @@ rfs_write(struct nfswriteargs *wa, struct nfsattrstat *ns,
 	caller_context_t ct;
 	nfs_srv_t *nsrv;
 
-	ASSERT3P(curzone, ==, ((exi == NULL) ? curzone : exi->exi_zone));
+	ASSERT(exi == NULL || exi->exi_zoneid == curzone->zone_id);
 	nsrv = nfs_get_srv();
 	if (!nsrv->write_async) {
 		rfs_write_sync(wa, ns, exi, req, cr, ro);
