@@ -248,7 +248,7 @@ typedef struct ndr_binding {
 typedef struct ndr_pipe {
 	void			*np_listener;
 	const char		*np_endpoint;
-	struct smb_netuserinfo	*np_user;
+	void			*np_user;	/* smb_netuserinfo */
 	int			(*np_send)(struct ndr_pipe *, void *, size_t);
 	int			(*np_recv)(struct ndr_pipe *, void *, size_t);
 	int			np_fid;
@@ -435,38 +435,12 @@ typedef struct ndr_xa {
  */
 CONTEXT_HANDLE(ndr_hdid) ndr_hdid_t;
 
-typedef struct ndr_client {
-	/* transport stuff (xa_* members) */
-	int (*xa_init)(struct ndr_client *, ndr_xa_t *);
-	int (*xa_exchange)(struct ndr_client *, ndr_xa_t *);
-	int (*xa_read)(struct ndr_client *, ndr_xa_t *);
-	void (*xa_preserve)(struct ndr_client *, ndr_xa_t *);
-	void (*xa_destruct)(struct ndr_client *, ndr_xa_t *);
-	void (*xa_release)(struct ndr_client *);
-	void			*xa_private;
-	int			xa_fd;
-
-	ndr_hdid_t		*handle;
-	ndr_binding_t		*binding;
-	ndr_binding_t		*binding_list;
-	ndr_binding_t		binding_pool[NDR_N_BINDING_POOL];
-
-	boolean_t		nonull;
-	boolean_t		heap_preserved;
-	ndr_heap_t		*heap;
-	ndr_stream_t		*recv_nds;
-	ndr_stream_t		*send_nds;
-
-	uint32_t		next_call_id;
-	unsigned		next_p_cont_id;
-} ndr_client_t;
-
 typedef struct ndr_handle {
 	ndr_hdid_t		nh_id;
 	struct ndr_handle	*nh_next;
 	ndr_pipe_t		*nh_pipe;
 	const ndr_service_t	*nh_svc;
-	ndr_client_t		*nh_clnt;
+	struct ndr_client	*nh_clnt;
 	void			*nh_data;
 	void			(*nh_data_free)(void *);
 } ndr_handle_t;
@@ -485,11 +459,6 @@ typedef struct ndr_buf {
 int nds_initialize(ndr_stream_t *, unsigned, int, ndr_heap_t *);
 void nds_destruct(ndr_stream_t *);
 void nds_show_state(ndr_stream_t *);
-
-/* ndr_client.c */
-int ndr_clnt_bind(ndr_client_t *, ndr_service_t *, ndr_binding_t **);
-int ndr_clnt_call(ndr_binding_t *, int, void *);
-void ndr_clnt_free_heap(ndr_client_t *);
 
 /* ndr_marshal.c */
 ndr_buf_t *ndr_buf_init(ndr_typeinfo_t *);
@@ -545,8 +514,8 @@ ssize_t ndr_uiomove(caddr_t, size_t, enum uio_rw, struct uio *);
  * handle member is first in this struct.  careful
  */
 typedef struct mlrpc_handle {
-	ndr_hdid_t	handle;		/* keep first */
-	ndr_client_t	*clnt;
+	ndr_hdid_t		handle;		/* keep first */
+	struct ndr_client	*clnt;
 } mlrpc_handle_t;
 
 int mlrpc_clh_create(mlrpc_handle_t *, void *);
@@ -560,6 +529,7 @@ void *ndr_rpc_malloc(mlrpc_handle_t *, size_t);
 ndr_heap_t *ndr_rpc_get_heap(mlrpc_handle_t *);
 void ndr_rpc_release(mlrpc_handle_t *);
 void ndr_rpc_set_nonull(mlrpc_handle_t *);
+ndr_binding_t *ndr_rpc_get_binding(mlrpc_handle_t *);
 
 boolean_t ndr_is_null_handle(mlrpc_handle_t *);
 boolean_t ndr_is_bind_handle(mlrpc_handle_t *);

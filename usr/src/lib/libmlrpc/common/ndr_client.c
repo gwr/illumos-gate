@@ -30,6 +30,7 @@
 #include <strings.h>
 
 #include <libmlrpc.h>
+#include <ndr_client.h>
 
 #define	NDR_DEFAULT_FRAGSZ	8192
 #define	NDR_MULTI_FRAGSZ	(60 * 1024)
@@ -175,6 +176,7 @@ ndr_clnt_call(ndr_binding_t *mbind, int opnum, void *params)
 	reqhdr->alloc_hint = mxa.send_nds.pdu_size -
 	    sizeof (ndr_request_hdr_t);
 
+	/* XXX - Should handle pdu_size > max_frag */
 	rc = ndr_encode_pdu_hdr(&mxa);
 	if (NDR_DRC_IS_FAULT(rc))
 		goto fault_exit;
