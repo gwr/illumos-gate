@@ -41,6 +41,7 @@
 #include <netsmb/smbfs_api.h>
 #include <smb/ntstatus.h>
 #include <libmlrpc.h>
+#include <ndr_client.h>
 
 #include <assert.h>
 
@@ -324,6 +325,12 @@ void
 ndr_rpc_set_nonull(mlrpc_handle_t *handle)
 {
 	handle->clnt->nonull = B_TRUE;
+}
+
+ndr_binding_t *
+ndr_rpc_get_binding(mlrpc_handle_t *handle)
+{
+	return (handle->clnt->binding);
 }
 
 /*

@@ -54,9 +54,6 @@ SYMBOL_VERSION SUNWprivate {
 	ndr_buf_decode;
 	ndr_buf_fini;
 	ndr_buf_init;
-	ndr_clnt_bind;
-	ndr_clnt_call;
-	ndr_clnt_free_heap;
 	ndr_generic_call_stub;
 	ndr_heap_avail;
 	ndr_heap_create;
@@ -80,6 +77,7 @@ SYMBOL_VERSION SUNWprivate {
 	ndr_params;
 	ndr_pipe_worker;
 	ndr_rpc_call;
+	ndr_rpc_get_binding;
 	ndr_rpc_get_heap;
 	ndr_rpc_get_ssnkey;
 	ndr_rpc_malloc;
