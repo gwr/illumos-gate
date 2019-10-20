@@ -191,7 +191,6 @@ ndr_rpc_unbind(mlsvc_handle_t *handle)
 void
 ndr_rpc_status(mlsvc_handle_t *handle, int opnum, DWORD status)
 {
-	ndr_service_t *svc;
 	char *name = "NDR RPC";
 	char *s = "unknown";
 
@@ -211,8 +210,9 @@ ndr_rpc_status(mlsvc_handle_t *handle, int opnum, DWORD status)
 	}
 
 	if (handle) {
-		svc = handle->clnt->binding->service;
-		name = svc->name;
+		ndr_binding_t *b;
+		b = ndr_rpc_get_binding(handle);
+		name = b->service->name;
 	}
 
 	smb_tracef("%s[0x%02x]: %s: %s (0x%08x)",
