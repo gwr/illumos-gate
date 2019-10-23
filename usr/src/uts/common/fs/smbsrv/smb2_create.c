@@ -185,12 +185,16 @@ smb2_create(smb_request_t *sr)
 		goto errout;
 	}
 	if (NameLength == 0) {
-		op->fqi.fq_path.pn_path = "\\";
+		op->fqi.fq_path.pn_path = "";
 	} else {
 		rc = smb_mbc_decodef(&sr->smb_data, "%#U", sr,
 		    NameLength, &op->fqi.fq_path.pn_path);
 		if (rc) {
 			status = NT_STATUS_OBJECT_PATH_INVALID;
+			goto errout;
+		}
+		if (op->fqi.fq_path.pn_path[0] == '\\') {
+			status = NT_STATUS_INVALID_PARAMETER;
 			goto errout;
 		}
 	}
