@@ -11,6 +11,7 @@
 
 /*
  * Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2019 RackTop Systems.
  */
 
 /*
@@ -405,6 +406,19 @@ smb2_create(smb_request_t *sr)
 
 	/*
 	 * ImpersonationLevel (spec. says validate + ignore)
+	 */
+	switch (ImpersonationLevel) {
+	case SMB2_IMPERSONATION_ANONYMOUS:
+	case SMB2_IMPERSONATION_IDENTIFICATION:
+	case SMB2_IMPERSONATION_IMPERSONATION:
+	case SMB2_IMPERSONATION_DELEGATE:
+		break;
+	default:
+		status = NT_STATUS_BAD_IMPERSONATION_LEVEL;
+		goto cmd_done;
+	}
+
+	/*
 	 * SmbCreateFlags (spec. says ignore)
 	 */
 
