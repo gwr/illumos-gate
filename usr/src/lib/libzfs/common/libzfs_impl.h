@@ -23,6 +23,7 @@
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2011 Pawel Jakub Dawidek. All rights reserved.
  * Copyright (c) 2011, 2016 by Delphix. All rights reserved.
+ * Copyright 2019 Nexenta by DDN, Inc. All rights reserved.
  */
 
 #ifndef	_LIBZFS_IMPL_H
@@ -213,6 +214,13 @@ extern int zfs_parse_options(char *, zfs_share_proto_t);
 
 extern int zfs_unshare_proto(zfs_handle_t *,
     const char *, zfs_share_proto_t *);
+
+extern int update_smb_shares(zfs_handle_t *, char *, sa_share_t, sa_share_t);
+extern sa_share_t zfs_sa_find_share(sa_handle_t, char *);
+extern void zfs_sa_fini(sa_handle_t);
+
+extern boolean_t zfs_is_mountable(zfs_handle_t *, char *, size_t,
+    zprop_source_t *);
 
 extern void libzfs_fru_clear(libzfs_handle_t *, boolean_t);
 extern void libzfs_log_event(libzfs_handle_t *, const char *name);

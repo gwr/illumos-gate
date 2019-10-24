@@ -24,11 +24,11 @@
  */
 
 /*
- * Copyright 2020 Nexenta by DDN, Inc. All rights reserved.
  * Copyright (c) 2014, 2016 by Delphix. All rights reserved.
  * Copyright 2016 Igor Kozhukhov <ikozhukhov@gmail.com>
  * Copyright 2017 Joyent, Inc.
  * Copyright 2017 RackTop Systems.
+ * Copyright 2019-2020 Nexenta by DDN, Inc. All rights reserved.
  */
 
 /*
@@ -308,7 +308,7 @@ zfs_is_mounted(zfs_handle_t *zhp, char **where)
  * Returns true if the given dataset is mountable, false otherwise.  Returns the
  * mountpoint in 'buf'.
  */
-static boolean_t
+boolean_t
 zfs_is_mountable(zfs_handle_t *zhp, char *buf, size_t buflen,
     zprop_source_t *source)
 {
@@ -605,6 +605,11 @@ static boolean_t (*_sa_needs_refresh)(sa_handle_t *);
 static libzfs_handle_t *(*_sa_get_zfs_handle)(sa_handle_t);
 static int (* _sa_get_zfs_share)(sa_handle_t, char *, zfs_handle_t *);
 static void (*_sa_update_sharetab_ts)(sa_handle_t);
+static int (*_sa_proto_notify_resource)(sa_resource_t, char *);
+static sa_resource_t (*_sa_get_share_resource)(sa_share_t, char *);
+static sa_resource_t (*_sa_get_next_resource)(sa_share_t);
+static char *(*_sa_get_resource_attr)(sa_resource_t, char *);
+static void (*_sa_free_attr_string)(char *);
 
 /*
  * _zfs_init_libshare()
@@ -655,13 +660,29 @@ _zfs_init_libshare(void)
 		    zfs_handle_t *)) dlsym(libshare, "sa_get_zfs_share");
 		_sa_update_sharetab_ts = (void (*)(sa_handle_t))
 		    dlsym(libshare, "sa_update_sharetab_ts");
+		_sa_proto_notify_resource = (int (*)(sa_resource_t, char *))
+		    dlsym(libshare, "sa_proto_notify_resource");
+		_sa_get_share_resource =
+		    (sa_resource_t (*)(sa_share_t, char *))
+		    dlsym(libshare, "sa_get_share_resource");
+		_sa_get_next_resource = (sa_resource_t (*)(sa_share_t))
+		    dlsym(libshare, "sa_get_next_resource");
+		_sa_get_resource_attr = (char *(*)(sa_resource_t, char *))
+		    dlsym(libshare, "sa_get_resource_attr");
+		_sa_free_attr_string = (void (*)(char *))
+		    dlsym(libshare, "sa_free_attr_string");
 		if (_sa_init == NULL || _sa_init_arg == NULL ||
 		    _sa_fini == NULL || _sa_find_share == NULL ||
 		    _sa_enable_share == NULL || _sa_disable_share == NULL ||
 		    _sa_errorstr == NULL || _sa_parse_legacy_options == NULL ||
 		    _sa_needs_refresh == NULL || _sa_get_zfs_handle == NULL ||
 		    _sa_get_zfs_share == NULL || _sa_service == NULL ||
-		    _sa_update_sharetab_ts == NULL) {
+		    _sa_update_sharetab_ts == NULL ||
+		    _sa_proto_notify_resource == NULL ||
+		    _sa_get_share_resource == NULL ||
+		    _sa_get_next_resource == NULL ||
+		    _sa_get_resource_attr == NULL ||
+		    _sa_free_attr_string == NULL) {
 			_sa_init = NULL;
 			_sa_init_arg = NULL;
 			_sa_service = NULL;
@@ -670,11 +691,16 @@ _zfs_init_libshare(void)
 			_sa_enable_share = NULL;
 			_sa_errorstr = NULL;
 			_sa_parse_legacy_options = NULL;
-			(void) dlclose(libshare);
 			_sa_needs_refresh = NULL;
 			_sa_get_zfs_handle = NULL;
 			_sa_get_zfs_share = NULL;
 			_sa_update_sharetab_ts = NULL;
+			_sa_proto_notify_resource = NULL;
+			_sa_get_share_resource = NULL;
+			_sa_get_next_resource = NULL;
+			_sa_get_resource_attr = NULL;
+			_sa_free_attr_string = NULL;
+			(void) dlclose(libshare);
 		}
 	}
 }
@@ -744,8 +770,7 @@ void
 zfs_uninit_libshare(libzfs_handle_t *zhandle)
 {
 	if (zhandle != NULL && zhandle->libzfs_sharehdl != NULL) {
-		if (_sa_fini != NULL)
-			_sa_fini(zhandle->libzfs_sharehdl);
+		zfs_sa_fini(zhandle->libzfs_sharehdl);
 		zhandle->libzfs_sharehdl = NULL;
 	}
 }
@@ -766,13 +791,20 @@ zfs_parse_options(char *options, zfs_share_proto_t proto)
 	return (SA_CONFIG_ERR);
 }
 
+void
+zfs_sa_fini(sa_handle_t handle)
+{
+	if (_sa_fini != NULL)
+		_sa_fini(handle);
+}
+
 /*
  * zfs_sa_find_share(handle, path)
  *
  * wrapper around sa_find_share to find a share path in the
  * configuration.
  */
-static sa_share_t
+sa_share_t
 zfs_sa_find_share(sa_handle_t handle, char *path)
 {
 	if (_sa_find_share != NULL)
@@ -1084,6 +1116,115 @@ int
 zfs_unshareall_bypath(zfs_handle_t *zhp, const char *mountpoint)
 {
 	return (zfs_unshare_proto(zhp, mountpoint, share_all_proto));
+}
+
+int
+zfs_sa_proto_notify_resource(sa_resource_t resource, char *proto)
+{
+	if (_sa_proto_notify_resource != NULL)
+		return (_sa_proto_notify_resource(resource, proto));
+	return (SA_CONFIG_ERR);
+}
+
+sa_resource_t
+zfs_sa_get_share_resource(sa_share_t share, char *rname)
+{
+	if (_sa_get_share_resource != NULL)
+		return (_sa_get_share_resource(share, rname));
+	return (NULL);
+}
+
+sa_resource_t
+zfs_sa_get_next_resource(sa_share_t share)
+{
+	if (_sa_get_next_resource != NULL)
+		return (_sa_get_next_resource(share));
+	return (NULL);
+}
+
+char *
+zfs_sa_get_resource_attr(sa_resource_t resource, char *name)
+{
+	if (_sa_get_resource_attr != NULL)
+		return (_sa_get_resource_attr(resource, name));
+	return (NULL);
+}
+
+void
+zfs_sa_free_attr_string(char *str)
+{
+	if (_sa_free_attr_string != NULL)
+		_sa_free_attr_string(str);
+}
+
+/*
+ * When changing ZFS_PROP_SHARESMB we need to update the contents of
+ * the .zfs/shares directory.  We generally have both the old and new
+ * share handles (from before and after a property change) though we
+ * may have newsh=NULL when unsharing, and may have oldsh=NULL when
+ * adding a new share.
+ */
+int
+update_smb_shares(zfs_handle_t *zh, char *mntpt,
+    sa_share_t new_share, sa_share_t old_share)
+{
+	libzfs_handle_t *hdl = zh->zfs_hdl;
+	char *dsname = zh->zfs_name;
+	char *rname;
+	sa_resource_t res;
+	int errors = 0;
+
+	if (new_share == NULL) {
+		/* sharesmb=off is easy */
+		return (zfs_smb_acl_purge(hdl, dsname, mntpt));
+	}
+
+	/*
+	 * For each resource under the old share that's
+	 * not in the new share, remove.
+	 */
+	for (res = zfs_sa_get_share_resource(old_share, NULL);
+	    res != NULL;
+	    res = zfs_sa_get_next_resource(res)) {
+
+		rname = zfs_sa_get_resource_attr(res, "name");
+		if (rname == NULL)
+			continue;
+
+		if (zfs_sa_get_share_resource(new_share, rname) == NULL) {
+			/* rname not in the NEW share, remove */
+			if (zfs_smb_acl_remove(hdl, dsname, mntpt, rname) != 0)
+				errors++;
+		}
+
+		zfs_sa_free_attr_string(rname);
+		rname = NULL;
+	}
+
+	/*
+	 * For each resource under the new share, either
+	 * update (if it was in the old too) or add it.
+	 */
+	for (res = zfs_sa_get_share_resource(new_share, NULL);
+	    res != NULL;
+	    res = zfs_sa_get_next_resource(res)) {
+
+		rname = zfs_sa_get_resource_attr(res, "name");
+		if (rname == NULL)
+			continue;
+
+		if (zfs_sa_get_share_resource(old_share, rname) == NULL) {
+			/* rname not in the OLD share, add */
+			if (zfs_smb_acl_add(hdl, dsname, mntpt, rname) != 0)
+				errors++;
+		}
+		(void)zfs_sa_proto_notify_resource(res, "smb");
+
+		zfs_sa_free_attr_string(rname);
+		rname = NULL;
+	}
+
+	return (errors ? -1 : 0);
 }
 
 /*

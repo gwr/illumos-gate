@@ -26,6 +26,7 @@
  * Portions Copyright 2007 Ramprakash Jelari
  * Copyright (c) 2014, 2016 by Delphix. All rights reserved.
  * Copyright 2016 Igor Kozhukhov <ikozhukhov@gmail.com>
+ * Copyright 2019 Nexenta by DDN, Inc. All rights reserved.
  */
 
 #include <libintl.h>
@@ -118,25 +119,38 @@ changelist_prefix(prop_changelist_t *clp)
 		if (getzoneid() == GLOBAL_ZONEID && cn->cn_zoned)
 			continue;
 
-		if (!ZFS_IS_VOLUME(cn->cn_handle)) {
-			/*
-			 * Do the property specific processing.
-			 */
-			switch (clp->cl_prop) {
-			case ZFS_PROP_MOUNTPOINT:
-				if (zfs_unmount(cn->cn_handle, NULL,
-				    clp->cl_mflags) != 0) {
-					ret = -1;
-					cn->cn_needpost = B_FALSE;
-				}
-				break;
-			case ZFS_PROP_SHARESMB:
-				(void) zfs_unshare_smb(cn->cn_handle, NULL);
-				break;
+		if (ZFS_IS_VOLUME(cn->cn_handle))
+			continue;
 
-			default:
-				break;
+		/*
+		 * If changing share properties, try to get
+		 * the libshare state before things change.
+		 * Here too, skip sharenfs
+		 */
+		if (clp->cl_prop == ZFS_PROP_SHARESMB) {
+			zfs_handle_t *zh = cn->cn_handle;
+			(void) zfs_init_libshare_arg(zh->zfs_hdl,
+			    SA_INIT_ONE_SHARE_FROM_HANDLE, zh);
+		}
+
+		/*
+		 * Do the property specific processing.
+		 */
+		switch (clp->cl_prop) {
+		case ZFS_PROP_MOUNTPOINT:
+			if (zfs_unmount(cn->cn_handle, NULL,
+			    clp->cl_mflags) != 0) {
+				ret = -1;
+				cn->cn_needpost = B_FALSE;
 			}
+			break;
+		case ZFS_PROP_SHARESMB:
+			(void) zfs_unshare_smb(cn->cn_handle, NULL);
+			break;
+
+		case ZFS_PROP_SHARENFS: /* see comment above */
+		default:
+			break;
 		}
 	}
 
@@ -147,24 +161,133 @@ changelist_prefix(prop_changelist_t *clp)
 }
 
 /*
- * If the property is 'mountpoint' or 'sharenfs', go through and remount and/or
- * reshare the filesystems as necessary.  In changelist_gather() we recorded
- * whether the filesystem was previously shared or mounted.  The action we take
- * depends on the previous state, and whether the value was previously 'legacy'.
+ * changelist_postfix_one
+ *
+ * Helper for changelist_postfix
+ * re-mount and re-share a dataset
+ *
+ * If the property is 'mountpoint' or 'sharenfs', remount and/or reshare the
+ * filesystem as necessary.  In changelist_gather() we recorded whether the
+ * filesystem was previously shared or mounted.  The action we take depends on
+ * the previous state, and whether the value was previously 'legacy'.
  * For non-legacy properties, we only remount/reshare the filesystem if it was
  * previously mounted/shared.  Otherwise, we always remount/reshare the
  * filesystem.
  */
+static int
+changelist_postfix_one(prop_changelist_t *clp, prop_changenode_t *cn,
+    char *mountpt)
+{
+	char shareopts[ZFS_MAXPROPLEN];
+	zfs_handle_t *zh = cn->cn_handle;
+	libzfs_handle_t *hdl = zh->zfs_hdl;
+	void *old_libzfs_sharehdl = NULL;
+	sa_share_t old_share = NULL;
+	sa_share_t new_share = NULL;
+	boolean_t sharenfs;
+	boolean_t sharesmb;
+	boolean_t mounted;
+	int errors = 0;
+	int ret;
+
+	/*
+	 * Remount if previously mounted or mountpoint was legacy,
+	 * or sharenfs or sharesmb  property is set.
+	 */
+	sharenfs = ((zfs_prop_get(zh, ZFS_PROP_SHARENFS,
+	    shareopts, sizeof (shareopts), NULL, NULL, 0,
+	    B_FALSE) == 0) && (strcmp(shareopts, "off") != 0));
+
+	sharesmb = ((zfs_prop_get(zh, ZFS_PROP_SHARESMB,
+	    shareopts, sizeof (shareopts), NULL, NULL, 0,
+	    B_FALSE) == 0) && (strcmp(shareopts, "off") != 0));
+
+	mounted = zfs_is_mounted(zh, NULL);
+
+	if (!mounted && (cn->cn_mounted ||
+	    ((sharenfs || sharesmb || clp->cl_waslegacy) &&
+	    (zfs_prop_get_int(zh,
+	    ZFS_PROP_CANMOUNT) == ZFS_CANMOUNT_ON)))) {
+
+		if (zfs_mount(zh, NULL, 0) != 0)
+			errors++;
+		else
+			mounted = TRUE;
+	}
+
+	/*
+	 * Now that we're (re)mounted, update the libshare info.
+	 * We need both the old and new share info for updating
+	 * SMB shares below.
+	 *
+	 * It is possible that the changelist_prefix() used libshare
+	 * to unshare some entries. Since libshare caches data, an
+	 * attempt to reshare during postfix can fail unless libshare
+	 * is uninitialized here so that it will reinitialize later.
+	 */
+
+	old_libzfs_sharehdl = hdl->libzfs_sharehdl;
+	hdl->libzfs_sharehdl = NULL;
+
+	ret = zfs_init_libshare_arg(hdl,
+	    SA_INIT_ONE_SHARE_FROM_HANDLE, zh);
+	if (ret != SA_OK) {
+		(void) zfs_error_fmt(hdl, EZFS_SHARENFSFAILED,
+		    dgettext(TEXT_DOMAIN,
+		    "cannot init libshare for '%s': ret=%d"),
+		    zfs_get_name(zh), ret);
+	}
+
+	/*
+	 * If possible, get old and new share info used to
+	 * notify the protocol about property changes.
+	 */
+	if (old_libzfs_sharehdl != NULL)
+		old_share = zfs_sa_find_share(old_libzfs_sharehdl, mountpt);
+	if (hdl->libzfs_sharehdl)
+		new_share = zfs_sa_find_share(hdl->libzfs_sharehdl, mountpt);
+
+	/*
+	 * When changing ZFS_PROP_SHARESMB, update the contents of
+	 * the .zfs/shares directory and notify the SMB server
+	 * about the new/changed resources.
+	 */
+	if (clp->cl_prop == ZFS_PROP_SHARESMB &&
+	    (new_share != NULL || old_share != NULL)) {
+		(void)update_smb_shares(zh, mountpt, new_share, old_share);
+	}
+
+	/*
+	 * If the file system is mounted we always re-share even
+	 * if the filesystem is currently shared, so that we can
+	 * adopt any new options.
+	 */
+	if (sharenfs && mounted)
+		errors += zfs_share_nfs(zh);
+	else if (cn->cn_shared || clp->cl_waslegacy)
+		errors += zfs_unshare_nfs(zh, NULL);
+	if (sharesmb && mounted)
+		errors += zfs_share_smb(zh);
+	else if (cn->cn_shared || clp->cl_waslegacy)
+		errors += zfs_unshare_smb(zh, NULL);
+
+	if (old_libzfs_sharehdl != NULL) {
+		zfs_sa_fini(old_libzfs_sharehdl);
+	}
+
+	return (errors ? -1 : 0);
+}
+
+/*
+ * re-mount and re-share datasets
+ */
 int
 changelist_postfix(prop_changelist_t *clp)
 {
+	char mountpt[ZFS_MAXPROPLEN];
 	prop_changenode_t *cn;
-	char shareopts[ZFS_MAXPROPLEN];
 	int errors = 0;
-	libzfs_handle_t *hdl;
-	size_t num_datasets = 0, i;
-	zfs_handle_t **zhandle_arr;
-	sa_init_selective_arg_t sharearg;
+	int ret;
 
 	/*
 	 * If we're changing the mountpoint, attempt to destroy the underlying
@@ -180,41 +303,8 @@ changelist_postfix(prop_changelist_t *clp)
 		remove_mountpoint(cn->cn_handle);
 
 	/*
-	 * It is possible that the changelist_prefix() used libshare
-	 * to unshare some entries. Since libshare caches data, an
-	 * attempt to reshare during postfix can fail unless libshare
-	 * is uninitialized here so that it will reinitialize later.
-	 */
-	if (cn->cn_handle != NULL) {
-		hdl = cn->cn_handle->zfs_hdl;
-		assert(hdl != NULL);
-		zfs_uninit_libshare(hdl);
-
-		/*
-		 * For efficiencies sake, we initialize libshare for only a few
-		 * shares (the ones affected here). Future initializations in
-		 * this process should just use the cached initialization.
-		 */
-		for (cn = uu_list_last(clp->cl_list); cn != NULL;
-		    cn = uu_list_prev(clp->cl_list, cn)) {
-			num_datasets++;
-		}
-
-		zhandle_arr = zfs_alloc(hdl,
-		    num_datasets * sizeof (zfs_handle_t *));
-		for (i = 0, cn = uu_list_last(clp->cl_list); cn != NULL;
-		    cn = uu_list_prev(clp->cl_list, cn)) {
-			zhandle_arr[i++] = cn->cn_handle;
-			zfs_refresh_properties(cn->cn_handle);
-		}
-		assert(i == num_datasets);
-		sharearg.zhandle_arr = zhandle_arr;
-		sharearg.zhandle_len = num_datasets;
-		errors = zfs_init_libshare_arg(hdl, SA_INIT_SHARE_API_SELECTIVE,
-		    &sharearg);
-		free(zhandle_arr);
-	}
-	/*
+	 * Now re-mount and re-share datasets, as needed.
+	 *
 	 * We walk the datasets in reverse, because we want to mount any parent
 	 * datasets before mounting the children.  We walk all datasets even if
 	 * there are errors.
@@ -222,63 +312,22 @@ changelist_postfix(prop_changelist_t *clp)
 	for (cn = uu_list_last(clp->cl_list); cn != NULL;
 	    cn = uu_list_prev(clp->cl_list, cn)) {
 
-		boolean_t sharenfs;
-		boolean_t sharesmb;
-		boolean_t mounted;
-
-		/*
-		 * If we are in the global zone, but this dataset is exported
-		 * to a local zone, do nothing.
-		 */
-		if (getzoneid() == GLOBAL_ZONEID && cn->cn_zoned)
-			continue;
-
 		/* Only do post-processing if it's required */
 		if (!cn->cn_needpost)
 			continue;
 		cn->cn_needpost = B_FALSE;
 
-		if (ZFS_IS_VOLUME(cn->cn_handle))
+		/*
+		 * If we are in the global zone, but this dataset is exported
+		 * to a local zone, do nothing.  Or if it's a volume, etc.
+		 */
+		if (!zfs_is_mountable(cn->cn_handle,  mountpt,
+		    sizeof (mountpt), NULL))
 			continue;
 
-		/*
-		 * Remount if previously mounted or mountpoint was legacy,
-		 * or sharenfs or sharesmb  property is set.
-		 */
-		sharenfs = ((zfs_prop_get(cn->cn_handle, ZFS_PROP_SHARENFS,
-		    shareopts, sizeof (shareopts), NULL, NULL, 0,
-		    B_FALSE) == 0) && (strcmp(shareopts, "off") != 0));
-
-		sharesmb = ((zfs_prop_get(cn->cn_handle, ZFS_PROP_SHARESMB,
-		    shareopts, sizeof (shareopts), NULL, NULL, 0,
-		    B_FALSE) == 0) && (strcmp(shareopts, "off") != 0));
-
-		mounted = zfs_is_mounted(cn->cn_handle, NULL);
-
-		if (!mounted && (cn->cn_mounted ||
-		    ((sharenfs || sharesmb || clp->cl_waslegacy) &&
-		    (zfs_prop_get_int(cn->cn_handle,
-		    ZFS_PROP_CANMOUNT) == ZFS_CANMOUNT_ON)))) {
-
-			if (zfs_mount(cn->cn_handle, NULL, 0) != 0)
-				errors++;
-			else
-				mounted = TRUE;
-		}
-
-		/*
-		 * If the file system is mounted we always re-share even
-		 * if the filesystem is currently shared, so that we can
-		 * adopt any new options.
-		 */
-		if (sharenfs && mounted)
-			errors += zfs_share_nfs(cn->cn_handle);
-		else if (cn->cn_shared || clp->cl_waslegacy)
-			errors += zfs_unshare_nfs(cn->cn_handle, NULL);
-		if (sharesmb && mounted)
-			errors += zfs_share_smb(cn->cn_handle);
-		else if (cn->cn_shared || clp->cl_waslegacy)
-			errors += zfs_unshare_smb(cn->cn_handle, NULL);
+		ret = changelist_postfix_one(clp, cn, mountpt);
+		if (ret != 0)
+			errors++;
 	}
 
 	return (errors ? -1 : 0);
