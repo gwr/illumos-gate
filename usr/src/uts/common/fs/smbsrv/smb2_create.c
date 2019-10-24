@@ -800,7 +800,17 @@ smb2_decode_create_ctx(smb_request_t *sr, smb2_create_ctx_t *cc)
 			break;
 		case SMB2_CREATE_QUERY_MAXIMAL_ACCESS_REQ: /* ("MxAc") */
 			cc->cc_in_flags |= CCTX_QUERY_MAX_ACCESS;
-			/* no input data for this */
+			/*
+			 * Version 2/14/2019 of MS-SMB 2.2.13.2.5
+			 * says this CC may have either length zero
+			 * or length 8, where the 8-byte form has a
+			 * timestamp (clarification requested).
+			 * The Windows Protocol Test Suites (WPTS)
+			 * report failures if we don't check for
+			 * either of those allowed lengths.
+			 */
+			if (data_len != 0 && data_len != 8)
+				goto errout;
 			break;
 		case SMB2_CREATE_TIMEWARP_TOKEN:	/* ("TWrp") */
 			cc->cc_in_flags |= CCTX_TIMEWARP_TOKEN;
