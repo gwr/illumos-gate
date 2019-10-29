@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2018 Nexenta Systems, Inc.
+ * Copyright 2019 Nexenta by DDN, Inc. All rights reserved.
  * Copyright 2021 Racktop Systems.
  */
 
@@ -1333,7 +1333,8 @@ submit_raid_rqst_sync(pqi_state_t s, pqi_iu_header_t *rqst,
 
 	sema_p(&s->s_sync_rqst);
 
-	io = pqi_alloc_io(s);
+	if ((io = pqi_alloc_io(s)) == NULL)
+		return (B_FALSE);
 	((pqi_raid_path_request_t *)rqst)->rp_id = io->io_index;
 	if (rqst->iu_type == PQI_REQUEST_IU_RAID_PATH_IO)
 		((pqi_raid_path_request_t *)rqst)->rp_error_index =
