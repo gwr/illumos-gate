@@ -21,12 +21,12 @@
 /*
  * Copyright 2007 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
+ *
+ * Copyright 2019 Nexenta by DDN, Inc. All rights reserved.
  */
 
 #ifndef	_ETHERADDR_H
 #define	_ETHERADDR_H
-
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
 
 /*
  * Module:	etheraddr
@@ -42,18 +42,9 @@ extern "C" {
 #endif
 
 #include <sys/socket.h>
-#include <net/if.h>
-#include <netinet/if_ether.h>
 #include <sys/uuid.h>
 
-typedef struct walker_arg {
-	uchar_t	wa_etheraddr[DLPI_PHYSADDR_MAX];
-	size_t	wa_etheraddrlen;
-	boolean_t	wa_addrvalid;
-} walker_arg_t;
-
 /* global function */
-int	arp_get(uuid_node_t *);
 int	get_ethernet_address(uuid_node_t *);
 
 #ifdef __cplusplus

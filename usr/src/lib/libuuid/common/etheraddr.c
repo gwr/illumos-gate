@@ -21,9 +21,9 @@
 /*
  * Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
+ *
+ * Copyright 2019 Nexenta by DDN, Inc. All rights reserved.
  */
-
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -32,111 +32,75 @@
 #include <unistd.h>
 #include <uuid/uuid.h>
 #include <sys/sockio.h>
-#include <libdlpi.h>
 #include <sys/utsname.h>
 
 #include <netdb.h>
+#include <net/if.h>
 #include <netinet/in.h>
+#include <netinet/if_ether.h>
 #include <arpa/inet.h>
 
 #include "etheraddr.h"
 
-static boolean_t get_etheraddr(const char *linkname, void *arg);
-
-/*
- * get an individual arp entry
- */
-int
-arp_get(uuid_node_t *node)
-{
-	struct utsname name;
-	struct arpreq ar;
-	struct hostent *hp;
-	struct sockaddr_in *sin;
-	int s;
-
-	if (uname(&name) == -1) {
-		return (-1);
-	}
-	(void) memset(&ar, 0, sizeof (ar));
-	ar.arp_pa.sa_family = AF_INET;
-	/* LINTED pointer */
-	sin = (struct sockaddr_in *)&ar.arp_pa;
-	sin->sin_family = AF_INET;
-	sin->sin_addr.s_addr = inet_addr(name.nodename);
-	if (sin->sin_addr.s_addr == (in_addr_t)-1) {
-		hp = gethostbyname(name.nodename);
-		if (hp == NULL) {
-			return (-1);
-		}
-		(void) memcpy(&sin->sin_addr, hp->h_addr,
-		    sizeof (sin->sin_addr));
-	}
-	s = socket(AF_INET, SOCK_DGRAM, 0);
-	if (s < 0) {
-		return (-1);
-	}
-	if (ioctl(s, SIOCGARP, (caddr_t)&ar) < 0) {
-		(void) close(s);
-		return (-1);
-	}
-	(void) close(s);
-	if (ar.arp_flags & ATF_COM) {
-		bcopy(&ar.arp_ha.sa_data, node, 6);
-	} else
-		return (-1);
-	return (0);
-}
-
 /*
  * Name:	get_ethernet_address
  *
- * Description:	Obtains the system ethernet address.
+ * Description:	Obtains a system ethernet address (any will do)
+ *		used as a unique identifier by uuid_generate_time().
  *
  * Returns:	0 on success, non-zero otherwise.  The system ethernet
  *		address is copied into the passed-in variable.
+ *
+ * If this fails, the caller uses a randomly generated node ID instead,
+ * so a failure here will not cause the uuid_create call to fail.
+ * In fact, most methods here WILL fail when this library is called
+ * from a process with ordinary privileges, and that's OK.
  */
 int
 get_ethernet_address(uuid_node_t *node)
 {
-	walker_arg_t	state;
+	char buf[1024];
+	int		sd;
+	struct lifreq	ifr, *ifrp;
+	struct lifconf	ifc;
+	int		n, i;
+	unsigned char	*a;
+	struct sockaddr_dl *sdlp;
 
-	if (arp_get(node) == 0)
-		return (0);
+	sd = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+	if (sd < 0)
+		return (-1);
 
-	/*
-	 * Try to get physical (ethernet) address from network interfaces.
-	 */
-	state.wa_addrvalid = B_FALSE;
-	dlpi_walk(get_etheraddr, &state, 0);
-	if (state.wa_addrvalid)
-		bcopy(state.wa_etheraddr, node, state.wa_etheraddrlen);
-
-	return (state.wa_addrvalid ? 0 : -1);
-}
-
-/*
- * Get the physical address via DLPI and update the flag to true upon success.
- */
-static boolean_t
-get_etheraddr(const char *linkname, void *arg)
-{
-	int		retval;
-	dlpi_handle_t	dh;
-	walker_arg_t	*statep = arg;
-
-	if (dlpi_open(linkname, &dh, 0) != DLPI_SUCCESS)
-		return (B_FALSE);
-
-	statep->wa_etheraddrlen = DLPI_PHYSADDR_MAX;
-	retval = dlpi_get_physaddr(dh, DL_CURR_PHYS_ADDR,
-	    statep->wa_etheraddr, &(statep->wa_etheraddrlen));
-
-	dlpi_close(dh);
-
-	if (retval == DLPI_SUCCESS) {
-		statep->wa_addrvalid = B_TRUE;
-		return (B_TRUE);
+	memset(buf, 0, sizeof(buf));
+	ifc.lifc_len = sizeof(buf);
+	ifc.lifc_buf = buf;
+	if (ioctl (sd, SIOCGLIFCONF, (char *)&ifc) < 0) {
+		close(sd);
+		return (-1);
 	}
-	return (B_FALSE);
+	n = ifc.lifc_len;
+	for (i = 0; i < n; i+= sizeof (*ifrp) ) {
+		ifrp = (struct lifreq *)((char *)ifc.lifc_buf + i);
+
+		memset(&ifr, 0, sizeof (ifr));
+		strncpy(ifr.lifr_name, ifrp->lifr_name, LIFNAMSIZ);
+
+		if (ioctl(sd, SIOCGLIFHWADDR, &ifr) < 0)
+			continue;
+
+		sdlp = (struct sockaddr_dl *) &ifr.lifr_addr;
+		if ((sdlp->sdl_family != AF_LINK) || (sdlp->sdl_alen != 6))
+			continue;
+		a = (unsigned char *) &sdlp->sdl_data[sdlp->sdl_nlen];
+
+		if (!a[0] && !a[1] && !a[2] && !a[3] && !a[4] && !a[5])
+			continue;
+
+		memcpy(node, a, 6);
+		close(sd);
+		return (0);
+	}
+	close(sd);
+
+	return (-1);
 }

@@ -22,7 +22,7 @@
 # Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
 #
-# ident	"%Z%%M%	%I%	%E% SMI"
+# Copyright 2019 Nexenta by DDN, Inc. All rights reserved.
 #
 
 LIBRARY =	libuuid.a
@@ -35,7 +35,7 @@ include ../../Makefile.lib
 include ../../Makefile.rootfs
 
 LIBS =		$(DYNLIB) $(LINTLIB)
-LDLIBS +=	-lsocket -lnsl -lc -ldlpi
+LDLIBS +=	-lsocket -lnsl -lc
 
 SRCDIR =	../common
 $(LINTLIB):=	SRCS = $(SRCDIR)/$(LINTSRC)
