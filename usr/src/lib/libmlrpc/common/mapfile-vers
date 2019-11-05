@@ -40,6 +40,15 @@
 
 $mapfile_version 2
 
+SYMBOL_SCOPE {
+	smb_fh_close		{ TYPE = function; FLAGS = NODIRECT };
+	smb_fh_getssnkey	{ TYPE = function; FLAGS = NODIRECT };
+	smb_fh_open		{ TYPE = function; FLAGS = NODIRECT };
+	smb_fh_read		{ TYPE = function; FLAGS = NODIRECT };
+	smb_fh_write		{ TYPE = function; FLAGS = NODIRECT };
+	smb_fh_xactnp		{ TYPE = function; FLAGS = NODIRECT };
+};
+
 SYMBOL_VERSION SUNWprivate {
     global:
 	mlrpc_clh_bind;
