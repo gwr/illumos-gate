@@ -23,7 +23,7 @@
 # Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
 #
-# Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+# Copyright 2019 Nexenta by DDN, Inc. All rights reserved.
 #
 
 LIBRARY =	libmlrpc.a
@@ -31,6 +31,7 @@ VERS =		.2
 
 OBJS_COMMON =			\
 	mlrpc_clh.o		\
+	mlrpc_weak.o		\
 	ndr_client.o		\
 	ndr_heap.o		\
 	ndr_marshal.o		\
@@ -49,7 +50,7 @@ include ../../Makefile.lib
 
 LIBS=		$(DYNLIB) $(LINTLIB)
 
-LDLIBS +=	-lsmbfs -luuid -lc
+LDLIBS +=	-luuid -lc
 
 SRCDIR=		../common
 SRCS=   $(OBJS_COMMON:%.o=$(SRCDIR)/%.c)

@@ -23,7 +23,7 @@
  * Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  *
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2019 Nexenta by DDN, Inc. All rights reserved.
  */
 
 /*
@@ -53,6 +53,27 @@ static void ndr_xa_release(ndr_client_t *);
 
 /* See notes in mlrpc_clh_bind */
 int rpc_pipe_open_retries = 10;
+
+/*
+ * Normal callers link with libsmbfs to get a struct smb_ctx to pass,
+ * in which we'll link with the real libsmbfs functions: smb_fh_...
+ *
+ * There are also test programs that link with this library and provide
+ * alternate versions of these functions (not from libsmbfs).  To allow
+ * the caller such flexibility, provide weak symbols here for all six
+ * libsmbfs functions this calls, and use what our caller uses.
+ */
+static int
+smb_fh_weak()
+{
+	return (-1);
+}
+#pragma weak smb_fh_open  = smb_fh_weak
+#pragma weak smb_fh_read  = smb_fh_weak
+#pragma weak smb_fh_write = smb_fh_weak
+#pragma weak smb_fh_close = smb_fh_weak
+#pragma weak smb_fh_xactnp = smb_fh_weak
+#pragma weak smb_fh_getssnkey = smb_fh_weak
 
 /*
  * Create an RPC client binding handle using the given smb_ctx.
