@@ -74,6 +74,11 @@ RELEASE_BUILD=				$(POUND_SIGN)
 $(RELEASE_BUILD)NOT_RELEASE_BUILD=	$(POUND_SIGN)
 PATCH_BUILD=				$(POUND_SIGN)
 
+# dmake SOURCEDEBUG=yes ... enables source-level debugging information,
+# and avoids stripping it.
+SOURCEDEBUG	= $(POUND_SIGN)
+SRCDBGBLD	= $(SOURCEDEBUG:yes=)
+
 # SPARC_BLD is '#' for an Intel build.
 # INTEL_BLD is '#' for a Sparc build.
 SPARC_BLD_1=    $(MACH:i386=$(POUND_SIGN))
@@ -482,6 +487,14 @@ sparcv9_CFLAGS=	$(sparcv9_XARCH) -dalign $(CCVERBOSE) $(V9ABIWARN) $(CCREGSYM) \
 i386_CFLAGS=	$(i386_XARCH)
 amd64_CFLAGS=	$(amd64_XARCH)
 
+#
+# Ensure that the standard function prologue remains at the very start
+# of a function, so DTrace fbt will instrument the right place.
+#
+i386_CFLAGS += -_gcc7=-fno-shrink-wrap
+i386_CFLAGS += -_gcc8=-fno-shrink-wrap
+i386_CFLAGS += -_gcc9=-fno-shrink-wrap
+
 sparc_ASFLAGS=	$(sparc_AS_XARCH)
 sparcv9_ASFLAGS=$(sparcv9_AS_XARCH)
 i386_ASFLAGS=	$(i386_AS_XARCH)
@@ -495,6 +508,8 @@ amd64_COPTFLAG=		-xO3
 
 COPTFLAG= $($(MACH)_COPTFLAG)
 COPTFLAG64= $($(MACH64)_COPTFLAG)
+$(SRCDBGBLD)COPTFLAG = -xO0 -_gcc7=-fno-optimize-sibling-calls -_gcc7=-funit-at-a-time -_gcc7=-fno-inline-functions-called-once
+$(SRCDBGBLD)COPTFLAG64 = -xO0
 
 # When -g is used, the compiler globalizes static objects
 # (gives them a unique prefix). Disable that.
@@ -584,11 +599,6 @@ amd64_XREGSFLAG		=
 
 XREGSFLAG		= $($(MACH)_XREGSFLAG)
 XREGSFLAG64		= $($(MACH64)_XREGSFLAG)
-
-# dmake SOURCEDEBUG=yes ... enables source-level debugging information, and
-# avoids stripping it.
-SOURCEDEBUG	= $(POUND_SIGN)
-SRCDBGBLD	= $(SOURCEDEBUG:yes=)
 
 #
 # These variables are intended ONLY for use by developers to safely pass extra

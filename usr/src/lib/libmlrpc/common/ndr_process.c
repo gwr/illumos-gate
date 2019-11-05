@@ -370,15 +370,16 @@ ndr_topmost(ndr_ref_t *top_ref)
 	outer_ref->datum = top_ref->datum;
 
 	/* All outer constructs start on a mod4 (longword) boundary */
-	if (!ndr_outer_align(outer_ref))
-		return (0);		/* error already set */
+	rc = ndr_outer_align(outer_ref);
+	if (!rc)
+		goto out;		/* error already set */
 
 	/* Regardless of what it is, this is where it starts */
 	outer_ref->pdu_offset = nds->pdu_scan_offset;
 
 	rc = ndr_outer_grow(outer_ref, n_fixed);
 	if (!rc)
-		return (0);		/* error already set */
+		goto out;		/* error already set */
 
 	outer_ref->pdu_end_offset = outer_ref->pdu_offset + n_fixed;
 
@@ -390,13 +391,27 @@ ndr_topmost(ndr_ref_t *top_ref)
 	/* do the topmost member */
 	rc = ndr_inner(outer_ref);
 	if (!rc)
-		return (0);		/* error already set */
+		goto out;		/* error already set */
 
 	nds->pdu_scan_offset = outer_ref->pdu_end_offset;
 
 	/* advance, as though run_outer_queue() was doing it */
 	nds->outer_current = nds->outer_current->next;
-	return (ndr_run_outer_queue(nds));
+
+	/* rc = ndr_run_outer_queue(nds); */
+	/* int ndr_run_outer_queue(ndr_stream_t *nds) */
+	while (nds->outer_current) {
+		nds->outer_queue_tailp = &nds->outer_current->next;
+
+		if (!ndr_outer(nds->outer_current))
+			return (0);
+
+		nds->outer_current = nds->outer_current->next;
+	}
+	rc = 1;
+
+out:
+	return (rc);
 }
 
 static ndr_ref_t *
@@ -429,6 +444,7 @@ ndr_enter_outer_queue(ndr_ref_t *arg_ref)
 	return (outer_ref);
 }
 
+#if 0 // XXX
 int
 ndr_run_outer_queue(ndr_stream_t *nds)
 {
@@ -443,6 +459,7 @@ ndr_run_outer_queue(ndr_stream_t *nds)
 
 	return (1);
 }
+#endif
 
 /*
  * OUTER CONSTRUCTS

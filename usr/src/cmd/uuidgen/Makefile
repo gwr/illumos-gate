@@ -18,6 +18,8 @@ PROG= uuidgen
 include ../Makefile.cmd
 
 CFLAGS +=	$(CCVERBOSE)
+
+LDFLAGS += '-R$$ORIGIN/../lib'
 LDLIBS += -luuid
 
 CSTD = $(CSTD_GNU99) 
