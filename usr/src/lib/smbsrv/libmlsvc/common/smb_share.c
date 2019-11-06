@@ -435,7 +435,7 @@ smb_shr_add(smb_share_t *si)
 		smb_shr_cache_delent(si->shr_name);
 		smb_shr_cache_unlock();
 	}
-	
+
 	/*
 	 * rc == ENOENT means the shared directory doesn't exist
 	 */

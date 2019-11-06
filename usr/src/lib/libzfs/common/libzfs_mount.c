@@ -37,25 +37,25 @@
  * they are used by mount and unmount and when changing a filesystem's
  * mountpoint.
  *
- * 	zfs_is_mounted()
- * 	zfs_mount()
- * 	zfs_unmount()
- * 	zfs_unmountall()
+ *	zfs_is_mounted()
+ *	zfs_mount()
+ *	zfs_unmount()
+ *	zfs_unmountall()
  *
  * This file also contains the functions used to manage sharing filesystems via
  * NFS and iSCSI:
  *
- * 	zfs_is_shared()
- * 	zfs_share()
- * 	zfs_unshare()
+ *	zfs_is_shared()
+ *	zfs_share()
+ *	zfs_unshare()
  *
- * 	zfs_is_shared_nfs()
- * 	zfs_is_shared_smb()
- * 	zfs_share_proto()
- * 	zfs_shareall();
- * 	zfs_unshare_nfs()
- * 	zfs_unshare_smb()
- * 	zfs_unshareall_nfs()
+ *	zfs_is_shared_nfs()
+ *	zfs_is_shared_smb()
+ *	zfs_share_proto()
+ *	zfs_shareall();
+ *	zfs_unshare_nfs()
+ *	zfs_unshare_smb()
+ *	zfs_unshareall_nfs()
  *	zfs_unshareall_smb()
  *	zfs_unshareall()
  *	zfs_unshareall_bypath()
@@ -63,10 +63,10 @@
  * The following functions are available for pool consumers, and will
  * mount/unmount and share/unshare all datasets within pool:
  *
- * 	zpool_enable_datasets()
- * 	zpool_enable_datasets_ex()
- * 	zpool_disable_datasets()
- * 	zpool_disable_datasets_ex()
+ *	zpool_enable_datasets()
+ *	zpool_enable_datasets_ex()
+ *	zpool_disable_datasets()
+ *	zpool_disable_datasets_ex()
  */
 
 #include <dirent.h>
@@ -1218,7 +1218,7 @@ update_smb_shares(zfs_handle_t *zh, char *mntpt,
 			if (zfs_smb_acl_add(hdl, dsname, mntpt, rname) != 0)
 				errors++;
 		}
-		(void)zfs_sa_proto_notify_resource(res, "smb");
+		(void) zfs_sa_proto_notify_resource(res, "smb");
 
 		zfs_sa_free_attr_string(rname);
 		rname = NULL;
@@ -1654,7 +1654,8 @@ unmounter(void *arg)
 		 * It is possible someone has destroyed this dataset and
 		 * this case needs to be ignored
 		 */
-		if (umount_err != 0 && (q_error == ENOENT || q_error == EINVAL)) {
+		if (umount_err != 0 &&
+		    (q_error == ENOENT || q_error == EINVAL)) {
 			umount_err = 0;
 			q_error = 0;
 		}
@@ -2106,7 +2107,8 @@ zpool_disable_datasets_ex(zpool_handle_t *zhp, boolean_t force, int n_threads)
 	 */
 	if (n_threads < 2) {
 		for (i = 0; i < used; i++) {
-			if (unmount_one(hdl, mountpoints[i], flags, IGNORE_NO_SUCH_PATH) != 0)
+			if (unmount_one(hdl, mountpoints[i], flags,
+			    IGNORE_NO_SUCH_PATH) != 0)
 				goto out;
 		}
 	} else {

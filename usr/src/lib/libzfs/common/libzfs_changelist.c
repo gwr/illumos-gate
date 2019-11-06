@@ -49,11 +49,11 @@
  *
  * The interface consists of the following sequence of functions:
  *
- * 	changelist_gather()
- * 	changelist_prefix()
- * 	< change property >
- * 	changelist_postfix()
- * 	changelist_free()
+ *	changelist_gather()
+ *	changelist_prefix()
+ *	< change property >
+ *	changelist_postfix()
+ *	changelist_free()
  *
  * Other interfaces:
  *
@@ -254,7 +254,7 @@ changelist_postfix_one(prop_changelist_t *clp, prop_changenode_t *cn,
 	 */
 	if (clp->cl_prop == ZFS_PROP_SHARESMB &&
 	    (new_share != NULL || old_share != NULL)) {
-		(void)update_smb_shares(zh, mountpt, new_share, old_share);
+		(void) update_smb_shares(zh, mountpt, new_share, old_share);
 	}
 
 	/*
@@ -541,9 +541,9 @@ change_one(zfs_handle_t *zhp, void *data)
 			 * Add this child to beginning of the list. Children
 			 * below this one in the hierarchy will get added above
 			 * this one in the list. This produces a list in
-			 * reverse dataset name order.
-			 * This is necessary when the original mountpoint
-			 * is legacy or none (see changelist_gather() for details).
+			 * reverse dataset name order. This is necessary when
+			 * the original mountpoint is legacy or none
+			 * (see changelist_gather() for details).
 			 */
 			ASSERT(!clp->cl_alldependents ||
 			    clp->cl_realprop == ZFS_PROP_NAME);
