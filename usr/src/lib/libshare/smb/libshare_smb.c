@@ -574,9 +574,6 @@ smb_share_changed(sa_share_t share)
 	char *path;
 	sa_resource_t resource;
 
-	if (!smb_isonline())
-		return (SA_OK);
-
 	/* get the path since it is important in several places */
 	path = sa_get_share_attr(share, "path");
 	if (path == NULL)
@@ -604,14 +601,26 @@ smb_resource_changed(sa_resource_t resource)
 	sa_share_t share;
 	smb_share_t si;
 
-	if (!smb_isonline())
-		return (SA_OK);
-
 	if ((share = sa_get_resource_parent(resource)) == NULL)
 		return (SA_CONFIG_ERR);
 
 	if ((res = smb_build_shareinfo(share, resource, &si)) != SA_OK)
 		return (res);
+
+	/*
+	 * In case the quotas option changed, create or destroy the
+	 * special control dir/file SMB uses to present quotas.
+	 */
+	if (sa_path_is_zfs(si.shr_path)) {
+		if ((si.shr_flags & SMB_SHRF_QUOTAS) != 0) {
+			smb_share_quota_add(si.shr_path);
+		} else {
+			smb_share_quota_remove(si.shr_path);
+		}
+	}
+
+	if (!smb_isonline())
+		return (SA_OK);
 
 	res = smb_share_modify(&si);
 

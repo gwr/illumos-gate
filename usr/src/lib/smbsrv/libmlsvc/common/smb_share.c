@@ -420,6 +420,10 @@ smb_shr_add(smb_share_t *si)
 		if (rc == 0) {
 			smb_shr_publish(si->shr_name, si->shr_container);
 
+			/* Update the quota tree */
+			if (STYPE_ISDSK(si->shr_type))
+				smb_quota_add_fs(si->shr_path);
+
 			if ((si->shr_flags & SMB_SHRF_DFSROOT) != 0)
 				dfs_namespace_load(si->shr_name);
 
@@ -484,6 +488,13 @@ smb_shr_remove(char *sharename)
 		}
 	}
 
+	/*
+	 * If path is ZFS, remove from the quota tree.
+	 * Need to remove before cleanup of cache occurs.
+	 */
+	if (STYPE_ISDSK(si->shr_type))
+		smb_quota_remove_fs(si->shr_path);
+
 	(void) smb_shr_encode(si, &shrlist);
 
 	(void) strlcpy(container, si->shr_container, sizeof (container));
@@ -545,6 +556,12 @@ smb_shr_rename(char *from_name, char *to_name)
 
 	bcopy(from_si, &to_si, sizeof (smb_share_t));
 	(void) strlcpy(to_si.shr_name, to_name, sizeof (to_si.shr_name));
+
+	/*
+	 * If path is ZFS, update quotas tree?
+	 * No, the path never changes here.
+	 * XXX: was smb_shr_zfs_rename()
+	 */
 
 	if ((status = smb_shr_cache_addent(&to_si)) != NERR_Success) {
 		smb_shr_cache_unlock();
@@ -608,6 +625,7 @@ smb_shr_modify(smb_share_t *new_si)
 	smb_share_t old_si;
 	smb_share_t *si;
 	boolean_t adc_changed = B_FALSE;
+	boolean_t quota_flag_changed = B_FALSE;
 	uint32_t access, flag;
 	nvlist_t *shrlist;
 
@@ -669,6 +687,8 @@ smb_shr_modify(smb_share_t *new_si)
 	flag = (new_si->shr_flags & SMB_SHRF_QUOTAS);
 	si->shr_flags &= ~SMB_SHRF_QUOTAS;
 	si->shr_flags |= flag;
+	if ((old_si.shr_flags ^ si->shr_flags) & SMB_SHRF_QUOTAS)
+		quota_flag_changed = B_TRUE;
 
 	flag = (new_si->shr_flags & SMB_SHRF_CSC_MASK);
 	si->shr_flags &= ~SMB_SHRF_CSC_MASK;
@@ -707,6 +727,20 @@ smb_shr_modify(smb_share_t *new_si)
 	if (adc_changed) {
 		smb_shr_unpublish(old_si.shr_name, old_si.shr_container);
 		smb_shr_publish(new_si->shr_name, new_si->shr_container);
+	}
+
+	/*
+	 * XXX: used to have:
+	 *	smb_shr_zfs_remove(&old_si);
+	 *	smb_shr_zfs_add(si);
+	 * Note: shr_path does not change here.
+	 */
+	if (quota_flag_changed) {
+		if ((new_si->shr_flags & SMB_SHRF_QUOTAS) != 0) {
+			smb_quota_add_fs(new_si->shr_path);
+		} else {
+			smb_quota_remove_fs(old_si.shr_path);
+		}
 	}
 
 	return (NERR_Success);

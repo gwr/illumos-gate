@@ -156,9 +156,6 @@ typedef struct smb_quota_zfs_arg {
 	avl_tree_t *qa_avl;
 } smb_quota_zfs_arg_t;
 
-static void smb_quota_add_ctrldir(const char *);
-static void smb_quota_remove_ctrldir(const char *);
-
 static smb_quota_tree_t *smb_quota_tree_create(const char *);
 static void smb_quota_tree_delete(smb_quota_tree_t *);
 
@@ -187,18 +184,6 @@ static uint32_t smb_quota_query_list(smb_quota_tree_t *,
 #define	SMB_QUOTA_REFRESH		2
 #define	SMB_QUOTA_CMD_LENGTH		21
 #define	SMB_QUOTA_CMD_STR_LENGTH	SMB_SID_STRSZ+SMB_QUOTA_CMD_LENGTH
-
-/*
- * In order to display the quota properties tab, windows clients
- * check for the existence of the quota control file.
- */
-#define	SMB_QUOTA_CNTRL_DIR		".$EXTEND"
-#define	SMB_QUOTA_CNTRL_FILE		"$QUOTA"
-#define	SMB_QUOTA_CNTRL_INDEX_XATTR	"SUNWsmb:$Q:$INDEX_ALLOCATION"
-/*
- * Note: this line needs to have the same format as what acl_totext() returns.
- */
-#define	SMB_QUOTA_CNTRL_PERM		"everyone@:rw-p--aARWc--s:-------:allow"
 
 /*
  * smb_quota_init
@@ -283,7 +268,8 @@ smb_quota_fini(void)
  * smb_quota_add_fs
  *
  * If there is not a quota tree representing the specified path,
- * create one and add it to the list.
+ * create one and add it to the list.  The control dir/file has
+ * already been created by libshare_smb.
  */
 void
 smb_quota_add_fs(const char *path)
@@ -313,9 +299,6 @@ smb_quota_add_fs(const char *path)
 		if (qtree)
 			list_insert_head(&smb_quota_fs_list, (void *)qtree);
 	}
-
-	if (qtree)
-		smb_quota_add_ctrldir(path);
 
 	(void) mutex_unlock(&smb_quota_list_mutex);
 }
@@ -349,7 +332,6 @@ smb_quota_remove_fs(const char *path)
 			--qtree->qt_sharecnt;
 			if (qtree->qt_sharecnt == 0) {
 				list_remove(&smb_quota_fs_list, (void *)qtree);
-				smb_quota_remove_ctrldir(qtree->qt_path);
 				--(qtree->qt_refcnt);
 				delete = (qtree->qt_refcnt == 0);
 			}
@@ -1110,157 +1092,4 @@ smb_quota_zfs_fini(smb_quota_zfs_handle_t *zfs_hdl)
 {
 	zfs_close(zfs_hdl->z_fs);
 	libzfs_fini(zfs_hdl->z_lib);
-}
-
-/*
- * smb_quota_add_ctrldir
- *
- * In order to display the quota properties tab, windows clients
- * check for the existence of the quota control file, created
- * here as follows:
- * - Create SMB_QUOTA_CNTRL_DIR directory (with A_HIDDEN & A_SYSTEM
- *   attributes).
- * - Create the SMB_QUOTA_CNTRL_FILE file (with extended attribute
- *   SMB_QUOTA_CNTRL_INDEX_XATTR) in the SMB_QUOTA_CNTRL_DIR directory.
- * - Set the acl of SMB_QUOTA_CNTRL_FILE file to SMB_QUOTA_CNTRL_PERM.
- */
-static void
-smb_quota_add_ctrldir(const char *path)
-{
-	int newfd, dirfd, afd;
-	nvlist_t *attr;
-	char dir[MAXPATHLEN], file[MAXPATHLEN], *acl_text;
-	acl_t *aclp, *existing_aclp;
-	boolean_t qdir_created, prop_hidden = B_FALSE, prop_sys = B_FALSE;
-	struct stat statbuf;
-
-	assert(path != NULL);
-
-	(void) snprintf(dir, MAXPATHLEN, ".%s/%s", path, SMB_QUOTA_CNTRL_DIR);
-	(void) snprintf(file, MAXPATHLEN, "%s/%s", dir, SMB_QUOTA_CNTRL_FILE);
-	if ((mkdir(dir, 0750) < 0) && (errno != EEXIST))
-		return;
-	qdir_created = (errno == EEXIST) ? B_FALSE : B_TRUE;
-
-	if ((dirfd = open(dir, O_RDONLY)) < 0) {
-		if (qdir_created)
-			(void) remove(dir);
-		return;
-	}
-
-	if (fgetattr(dirfd, XATTR_VIEW_READWRITE, &attr) != 0) {
-		(void) close(dirfd);
-		if (qdir_created)
-			(void) remove(dir);
-		return;
-	}
-
-	if ((nvlist_lookup_boolean_value(attr, A_HIDDEN, &prop_hidden) != 0) ||
-	    (nvlist_lookup_boolean_value(attr, A_SYSTEM, &prop_sys) != 0)) {
-		nvlist_free(attr);
-		(void) close(dirfd);
-		if (qdir_created)
-			(void) remove(dir);
-		return;
-	}
-	nvlist_free(attr);
-
-	/*
-	 * Before setting attr or acl we check if the they have already been
-	 * set to what we want. If so we could be dealing with a received
-	 * snapshot and setting these is not needed.
-	 */
-
-	if (!prop_hidden || !prop_sys) {
-		if (nvlist_alloc(&attr, NV_UNIQUE_NAME, 0) == 0) {
-			if ((nvlist_add_boolean_value(
-			    attr, A_HIDDEN, 1) != 0) ||
-			    (nvlist_add_boolean_value(
-			    attr, A_SYSTEM, 1) != 0) ||
-			    (fsetattr(dirfd, XATTR_VIEW_READWRITE, attr))) {
-				nvlist_free(attr);
-				(void) close(dirfd);
-				if (qdir_created)
-					(void) remove(dir);
-				return;
-			}
-		}
-		nvlist_free(attr);
-	}
-
-	(void) close(dirfd);
-
-	if (stat(file, &statbuf) != 0) {
-		if ((newfd = creat(file, 0640)) < 0) {
-			if (qdir_created)
-				(void) remove(dir);
-			return;
-		}
-		(void) close(newfd);
-	}
-
-	afd = attropen(file, SMB_QUOTA_CNTRL_INDEX_XATTR, O_RDWR | O_CREAT,
-	    0640);
-	if (afd == -1) {
-		(void) unlink(file);
-		if (qdir_created)
-			(void) remove(dir);
-		return;
-	}
-	(void) close(afd);
-
-	if (acl_get(file, 0, &existing_aclp) == -1) {
-		(void) unlink(file);
-		if (qdir_created)
-			(void) remove(dir);
-		return;
-	}
-
-	acl_text = acl_totext(existing_aclp, ACL_COMPACT_FMT);
-	if (acl_text == NULL) {
-		acl_free(existing_aclp);
-		(void) unlink(file);
-		if (qdir_created)
-			(void) remove(dir);
-		return;
-	}
-	acl_free(existing_aclp);
-
-	aclp = NULL;
-	if (strcmp(acl_text, SMB_QUOTA_CNTRL_PERM) != 0) {
-		if (acl_fromtext(SMB_QUOTA_CNTRL_PERM, &aclp) != 0) {
-			free(acl_text);
-			(void) unlink(file);
-			if (qdir_created)
-				(void) remove(dir);
-			return;
-		}
-		if (acl_set(file, aclp) == -1) {
-			free(acl_text);
-			(void) unlink(file);
-			if (qdir_created)
-				(void) remove(dir);
-			acl_free(aclp);
-			return;
-		}
-		acl_free(aclp);
-	}
-	free(acl_text);
-}
-
-/*
- * smb_quota_remove_ctrldir
- *
- * Remove SMB_QUOTA_CNTRL_FILE and SMB_QUOTA_CNTRL_DIR.
- */
-static void
-smb_quota_remove_ctrldir(const char *path)
-{
-	char dir[MAXPATHLEN], file[MAXPATHLEN];
-	assert(path);
-
-	(void) snprintf(dir, MAXPATHLEN, ".%s/%s", path, SMB_QUOTA_CNTRL_DIR);
-	(void) snprintf(file, MAXPATHLEN, "%s/%s", dir, SMB_QUOTA_CNTRL_FILE);
-	(void) unlink(file);
-	(void) remove(dir);
 }

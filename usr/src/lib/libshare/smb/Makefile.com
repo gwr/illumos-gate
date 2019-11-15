@@ -31,7 +31,7 @@ SMBMLSVC_DIR	= $(SRC)/lib/smbsrv/libmlsvc/common
 SMBBASE_DIR	= $(SRC)/lib/smbsrv/libsmb/common
 SMBCOMMON_DIR	= $(SRC)/common/smbsrv
 
-LIBOBJS =	libshare_smb.o smb_share_doorclnt.o
+LIBOBJS =	libshare_smb.o smb_share_doorclnt.o smb_share_quota.o
 SMBCOMMON_OBJ =	smb_door_legacy.o smb_cfg_util.o
 SMBBASE_OBJ =	smb_cfg.o smb_scfutil.o
 OBJECTS =	$(LIBOBJS) $(SMBCOMMON_OBJ) $(SMBBASE_OBJ)
@@ -45,13 +45,14 @@ LIBSRCS = $(LIBOBJS:%.o=$(SRCDIR)/%.c)
 lintcheck := SRCS = $(LIBSRCS)
 
 LIBS =		$(DYNLIB)
-LDLIBS +=	-lshare -lscf -luuid -ldlpi -lnsl -lnvpair -lxml2 -lumem -lc
+LDLIBS +=	-lshare -lscf -luuid -ldlpi -lnsl -lnvpair -lxml2 -lsec \
+		-lumem -lc
 
 CFLAGS +=	$(CCVERBOSE)
 CERRWARN +=	-_gcc=-Wno-char-subscripts
 CERRWARN +=	-_gcc=-Wno-switch
 CPPFLAGS +=	-D_REENTRANT -I$(ADJUNCT_PROTO)/usr/include/libxml2 \
-  		-I$(SRCDIR)/../common
+		-I$(SRCDIR)/../common
 $(ENABLE_SMB_PRINTING) CPPFLAGS += -DHAVE_CUPS
 
 .KEEP_STATE:

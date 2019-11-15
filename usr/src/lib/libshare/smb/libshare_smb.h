@@ -67,6 +67,8 @@ struct option_defs {
 #define	SMB_REFRESH_RESTART	0x0001	/* restart smb/server */
 #define	SMB_REFRESH_REFRESH	0x0002	/* refresh smb/server */
 
+void smb_share_quota_add(const char *);
+void smb_share_quota_remove(const char *);
 
 #ifdef	__cplusplus
 }
