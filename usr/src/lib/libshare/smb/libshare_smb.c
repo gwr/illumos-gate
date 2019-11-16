@@ -613,9 +613,9 @@ smb_resource_changed(sa_resource_t resource)
 	 */
 	if (sa_path_is_zfs(si.shr_path)) {
 		if ((si.shr_flags & SMB_SHRF_QUOTAS) != 0) {
-			smb_share_quota_add(si.shr_path);
+			(void) smb_share_quota_add(si.shr_path);
 		} else {
-			smb_share_quota_remove(si.shr_path);
+			(void) smb_share_quota_remove(si.shr_path);
 		}
 	}
 
