@@ -425,8 +425,14 @@ rfs_climb_crossmnt(vnode_t **dvpp, struct exportinfo **exip, cred_t *cr)
 	dvp = untraverse(dvp, zone_rootvp);
 	exi = nfs_vptoexi(NULL, dvp, cr, NULL, NULL, FALSE);
 	if (exi == NULL) {
-		VN_RELE(dvp);
-		return (-1);
+		if (((*exip)->exi_export.ex_flags & EX_CROSSMNT) &&
+		    EQFSID(&(*dvpp)->v_vfsp->vfs_expfsid, &(*exip)->exi_fsid)) {
+			exi_hold(*exip);
+			exi = *exip;
+		} else {
+			VN_RELE(dvp);
+			return (-1);
+		}
 	}
 
 	ASSERT3U(exi->exi_zoneid, ==, (*exip)->exi_zoneid);

@@ -30,12 +30,12 @@ int zfs_check_smartroot(struct dsl_dataset *ds);
 int zfs_check_smartfs(struct dsl_dataset *ds);
 int zfs_create_smartfolder(struct zfsvfs *zfsvfs, struct vnode *dvp,
     struct vnode *vp, const char *dirname, int flags, struct cred *cr,
-    struct vsecattr *vsecp, boolean_t usetq);
+    struct vsecattr *vsecp);
 int zfs_check_smartfolder(struct vnode *vp);
 int zfs_smartfolder_mount(struct vnode *vp, const char *smartfs,
-    const char *path, const char *sharenfs, boolean_t usetq);
+    const char *path);
 int zfs_smartfolder_unmount(struct vnode *vp, char **dsnamep,
-    char **pathp, char **sharenfsp);
+    char **pathp);
 
 #ifdef	__cplusplus
 }

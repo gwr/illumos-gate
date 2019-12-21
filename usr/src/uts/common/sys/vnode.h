@@ -878,7 +878,6 @@ typedef struct caller_context {
  */
 #define	CC_WOULDBLOCK	0x01
 #define	CC_DONTBLOCK	0x02
-#define	CC_HELDEXPLOCK	0x04	/* caller holds exported_lock on read */
 
 /*
  * Structure tags for function prototypes, defined elsewhere.

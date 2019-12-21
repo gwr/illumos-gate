@@ -699,21 +699,6 @@ lzc_send_space(const char *snapname, const char *from,
 	return (err);
 }
 
-/*
- *
- */
-int
-lzc_smartdoor(int doorfd)
-{
-	int err;
-	nvlist_t *innvl = fnvlist_alloc();
-	nvlist_add_int32(innvl, "door", doorfd);
-
-	err = lzc_ioctl(ZFS_IOC_SMARTFOLDER_DOOR, "", innvl, NULL);
-	nvlist_free(innvl);
-	return (err);
-}
-
 static int
 recv_read(int fd, void *buf, int ilen)
 {

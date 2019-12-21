@@ -9,7 +9,6 @@
  */
 
 #include "sys/zfs_smartfolder.h"
-#include "sys/zfs_smartfolder_exp.h"
 #include "sys/zfs_znode.h"
 #include "sys/dmu_objset.h"
 #include "sys/dsl_dataset.h"
@@ -84,24 +83,6 @@ zfs_check_smartfs(dsl_dataset_t *ds)
 	return (val != 0);
 }
 
-static int
-zfs_get_sharenfs(dsl_dataset_t *ds, char *sharenfs)
-{
-	int err;
-	dsl_pool_t *dp = ds->ds_dir->dd_pool;
-
-	dsl_pool_config_enter(dp, FTAG);
-
-	if ((err = dsl_prop_get_ds(ds, "sharenfs", 1, ZFS_MAXPROPLEN, sharenfs,
-	    NULL)) != 0) {
-		dsl_pool_config_exit(dp, FTAG);
-		return (err);
-	}
-
-	dsl_pool_config_exit(dp, FTAG);
-	return (0);
-}
-
 /*
  * smartname must contain parent name
  */
@@ -172,7 +153,7 @@ out:
 int
 zfs_create_smartfolder(struct zfsvfs *zfsvfs, struct vnode *dvp,
     struct vnode *vp, const char *dirname, int flags, struct cred *cr,
-    vsecattr_t *vsecp, boolean_t usetq)
+    vsecattr_t *vsecp)
 {
 	int err = EINVAL;
 #ifdef	_KERNEL
@@ -182,14 +163,12 @@ zfs_create_smartfolder(struct zfsvfs *zfsvfs, struct vnode *dvp,
 	boolean_t is_insensitive;
 	char *path;
 	char *smartname = NULL;
-	char *sharenfs = NULL;
 
 	if (zfs_smartfolder_nohidden && dirname[0] == '.')
 		return (err);
 
 	smartname = kmem_alloc(ZFS_MAX_DATASET_NAME_LEN, KM_SLEEP);
 	path = kmem_alloc(MAXPATHLEN, KM_SLEEP);
-	sharenfs = kmem_alloc(MAXPATHLEN, KM_SLEEP);
 
 	/* Get parent dir path */
 	if ((err = vnodetopath(NULL, dvp, path, MAXPATHLEN, cr)) != 0)
@@ -212,11 +191,6 @@ zfs_create_smartfolder(struct zfsvfs *zfsvfs, struct vnode *dvp,
 	if ((err = dmu_objset_hold(smartname, FTAG, &os)) == 0) {
 		dmu_objset_rele(os, FTAG);
 		err = EEXIST;
-		goto out;
-	}
-
-	if ((err = zfs_get_sharenfs(dmu_objset_ds(zfsvfs->z_os), sharenfs))
-	    != 0) {
 		goto out;
 	}
 
@@ -245,6 +219,7 @@ zfs_create_smartfolder(struct zfsvfs *zfsvfs, struct vnode *dvp,
 	VERIFY0(nvlist_alloc(&zct.zct_props, NV_UNIQUE_NAME, KM_SLEEP));
 
 	VERIFY0(nvlist_add_string(zct.zct_props, "sharesmb", "off"));
+	VERIFY0(nvlist_add_string(zct.zct_props, "sharenfs", "off"));
 	VERIFY0(nvlist_add_uint64(zct.zct_props, "smartfs", 1));
 
 	VERIFY0(dsl_props_set(smartname, ZPROP_SRC_LOCAL, zct.zct_props));
@@ -254,10 +229,9 @@ zfs_create_smartfolder(struct zfsvfs *zfsvfs, struct vnode *dvp,
 	/*
 	 * Mount dataset on vp
 	 */
-	err = zfs_smartfolder_mount(vp, smartname, path, sharenfs, usetq);
+	err = zfs_smartfolder_mount(vp, smartname, path);
 
 out:
-	kmem_free(sharenfs, MAXPATHLEN);
 	kmem_free(path, MAXPATHLEN);
 	kmem_free(smartname, ZFS_MAX_DATASET_NAME_LEN);
 #endif
@@ -291,8 +265,8 @@ zfs_check_smartfolder(vnode_t *vp)
 /*
  * ARGSUSED
  */
-int zfs_smartfolder_mount(vnode_t *vp, const char *smartfs, const char *path,
-    const char *sharenfs, boolean_t usetq)
+int
+zfs_smartfolder_mount(vnode_t *vp, const char *smartfs, const char *path)
 {
 	int err = 0;
 #ifdef	_KERNEL
@@ -309,10 +283,6 @@ int zfs_smartfolder_mount(vnode_t *vp, const char *smartfs, const char *path,
 	ma.optlen = 0;
 
 	if ((err = domount("zfs", &ma, vp, kcred, &vfs)) == 0) {
-		if (sharenfs != NULL && sharenfs[0] != '\0') {
-			err = zfs_smartfolder_share(smartfs, path, sharenfs,
-			    kcred, usetq);
-		}
 		/*
 		 * domount() adds ref and it should be released, same way as
 		 * mount() does.
@@ -327,8 +297,7 @@ int zfs_smartfolder_mount(vnode_t *vp, const char *smartfs, const char *path,
  * ARGSUSED
  */
 int
-zfs_smartfolder_unmount(vnode_t *vp, char **smartdsp, char **pathp,
-    char **sharenfs)
+zfs_smartfolder_unmount(vnode_t *vp, char **smartdsp, char **pathp)
 {
 	int err = 0;
 #ifdef	_KERNEL
@@ -339,7 +308,6 @@ zfs_smartfolder_unmount(vnode_t *vp, char **smartdsp, char **pathp,
 
 	ASSERT3S(vp->v_type, ==, VDIR);
 
-	*sharenfs = NULL;
 	*pathp = NULL;
 	*smartdsp = NULL;
 
@@ -361,17 +329,12 @@ zfs_smartfolder_unmount(vnode_t *vp, char **smartdsp, char **pathp,
 
 	*smartdsp = kmem_alloc(ZFS_MAX_DATASET_NAME_LEN, KM_SLEEP);
 	*pathp = kmem_alloc(MAXPATHLEN, KM_SLEEP);
-	*sharenfs = kmem_alloc(MAXPATHLEN, KM_SLEEP);
 
 	VERIFY0(vnodetopath(NULL, vp, *pathp, MAXPATHLEN, kcred));
 
 	os = zfsvfs->z_os;
 
 	dsl_dataset_name(dmu_objset_ds(os), *smartdsp);
-	(void) zfs_get_sharenfs(dmu_objset_ds(os), *sharenfs);
-
-	if ((*sharenfs)[0] != '\0')
-		zfs_smartfolder_unshare(*smartdsp, *pathp, kcred);
 
 	/* release read lock and take write one */
 	vn_vfsunlock(vp);
@@ -380,20 +343,14 @@ zfs_smartfolder_unmount(vnode_t *vp, char **smartdsp, char **pathp,
 		goto out;
 	}
 
-	if ((err = dounmount(vfs, 0, CRED())) != 0)
-	    goto out;
+	if ((err = dounmount(vfs, 0, kcred)) != 0)
+		goto out;
 
 	return (0);
 out:
-	if ((*sharenfs)[0] != '\0')
-		(void) zfs_smartfolder_share(*smartdsp, *pathp, *sharenfs,
-		    kcred, B_FALSE);
-
-	kmem_free(*sharenfs, MAXPATHLEN);
 	kmem_free(*pathp, MAXPATHLEN);
 	kmem_free(*smartdsp, ZFS_MAX_DATASET_NAME_LEN);
 
-	*sharenfs = NULL;
 	*pathp = NULL;
 	*smartdsp = NULL;
 #endif

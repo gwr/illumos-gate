@@ -2209,7 +2209,7 @@ top:
 
 	if (zfs_check_smartfolders_enabled(dmu_objset_ds(zfsvfs->z_os)))
 		(void) zfs_create_smartfolder(zfsvfs, dvp, *vpp, dirname,
-		    flags, cr, vsecp, (ct && (ct->cc_flags & CC_HELDEXPLOCK)));
+		    flags, cr, vsecp);
 
 	ZFS_EXIT(zfsvfs);
 	return (0);
@@ -3858,7 +3858,6 @@ zfs_rename(vnode_t *sdvp, char *snm, vnode_t *tdvp, char *tnm, cred_t *cr,
 	zfs_zlock_t	*zl;
 	char *path = NULL;
 	char *srcsmartname, *dstsmartname = NULL;
-	char *sharenfs;
 	int		cmp, serr, terr;
 	int		error = 0, rm_err = 0;
 	int		zflg = 0;
@@ -4079,7 +4078,7 @@ top:
 			}
 
 			if ((error = zfs_smartfolder_unmount(ZTOV(szp),
-			    &srcsmartname, &path, &sharenfs)) != 0) {
+			    &srcsmartname, &path)) != 0) {
 				goto out;
 			}
 
@@ -4245,24 +4244,19 @@ out:
 	zfs_dirent_unlock(tdl);
 
 	if (smartok) {
-		boolean_t usetq = ct && (ct->cc_flags & CC_HELDEXPLOCK);
-
 		if (error == 0) {
 			char *p = strrchr(path, '/');
 			ASSERT3P(p, !=, NULL);
 			p++;
 			strcpy(p, tnm);
 			dsl_dir_rename(srcsmartname, dstsmartname);
-			zfs_smartfolder_mount(ZTOV(szp), dstsmartname, path,
-			    sharenfs, usetq);
+			zfs_smartfolder_mount(ZTOV(szp), dstsmartname, path);
 		} else {
-			zfs_smartfolder_mount(ZTOV(szp), srcsmartname, path,
-			    sharenfs, usetq);
+			zfs_smartfolder_mount(ZTOV(szp), srcsmartname, path);
 		}
 
 		kmem_free(dstsmartname, ZFS_MAX_DATASET_NAME_LEN);
 		kmem_free(srcsmartname, ZFS_MAX_DATASET_NAME_LEN);
-		kmem_free(sharenfs, MAXPATHLEN);
 		kmem_free(path, MAXPATHLEN);
 	}
 
