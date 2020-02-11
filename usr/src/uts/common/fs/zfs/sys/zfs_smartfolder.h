@@ -23,8 +23,6 @@ struct vnode;
 struct cred;
 struct vsecattr;
 
-int zfs_smartfolder_init(void);
-void zfs_smartfolder_fini(void);
 int zfs_check_smartfolders_enabled(struct dsl_dataset *ds);
 int zfs_check_smartroot(struct dsl_dataset *ds);
 int zfs_check_smartfs(struct dsl_dataset *ds);

@@ -7484,10 +7484,8 @@ _init(void)
 	zfs_init();
 	zvol_init();
 	zfs_ioctl_init();
-	(void) zfs_smartfolder_init();
 
 	if ((error = mod_install(&modlinkage)) != 0) {
-		zfs_smartfolder_fini();
 		zvol_fini();
 		zfs_fini();
 		spa_fini();
@@ -7516,7 +7514,6 @@ _fini(void)
 	if ((error = mod_remove(&modlinkage)) != 0)
 		return (error);
 
-	zfs_smartfolder_fini();
 	zvol_fini();
 	zfs_fini();
 	spa_fini();
