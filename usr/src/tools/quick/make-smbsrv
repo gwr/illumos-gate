@@ -225,6 +225,9 @@ do
 
   done
 done
+
+(cd $SRC/test/libmlrpc-tests && $make $1 )
+
 }
 
 
