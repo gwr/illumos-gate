@@ -28,7 +28,7 @@
 
 /*
  * Copyright (c) 2013 by Delphix. All rights reserved.
- * Copyright 2019 Nexenta by DDN, Inc. All rights reserved.
+ * Copyright 2021 Tintri by DDN, Inc. All rights reserved.
  */
 
 #ifndef	_NFS_NFS_H
@@ -993,6 +993,9 @@ extern int	nfslookup(vnode_t *, char *, vnode_t **, struct pathname *, int,
 extern void	sv_free(struct servinfo *);
 extern int	nfsauth_access(struct exportinfo *, struct svc_req *, cred_t *,
     uid_t *, gid_t *, uint_t *, gid_t **);
+extern int nfs4auth_getauditinfo(struct svc_req *, cred_t *);
+extern void nfs4auth_reset_aumask(cred_t *);
+
 extern void	nfsauth_init(void);
 extern void	nfsauth_fini(void);
 extern void	nfsauth_zone_init(nfs_globals_t *);

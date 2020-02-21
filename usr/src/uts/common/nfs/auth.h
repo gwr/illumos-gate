@@ -20,7 +20,7 @@
  */
 
 /*
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 /*
@@ -46,10 +46,10 @@
  * const A_MAXPATH	= 1024;
  *
  * struct auth_req {
- * 	netobj 	req_client;		# client's address
- * 	string	req_netid<>;		# Netid of address
- * 	string	req_path<A_MAXPATH>;	# export path
- * 	int	req_flavor;		# auth flavor
+ *	netobj	req_client;		# client's address
+ *	string	req_netid<>;		# Netid of address
+ *	string	req_path<A_MAXPATH>;	# export path
+ *	int	req_flavor;		# auth flavor
  *	uid_t	req_clnt_uid;		# client's uid
  *	gid_t	req_clnt_gid;		# client's gid
  *	gid_t	req_clnt_gids<>;	# client's supplemental groups
@@ -60,7 +60,7 @@
  * const NFSAUTH_RW	  = 0x04;	# Read-write
  * const NFSAUTH_ROOT	  = 0x08;	# Root access
  * const NFSAUTH_WRONGSEC = 0x10;	# Advise NFS v4 clients to
- * 					# try a different flavor
+ *					# try a different flavor
  * const NFSAUTH_UIDMAP   = 0x100;	# uid mapped
  * const NFSAUTH_GIDMAP   = 0x200;	# gid mapped
  * const NFSAUTH_GROUPS   = 0x400;	# translated supplemental groups
@@ -72,26 +72,29 @@
  * const NFSAUTH_LIMITED = 0x80;	# Access limited to visible nodes
  *
  * struct auth_res {
- * 	int	auth_perm;
+ *	int	auth_perm;
  *	uid_t	auth_srv_uid;		# translated uid
  *	gid_t	auth_srv_gid;		# translated gid
  *	gid_t	auth_srv_gids<>;	# translated supplemental groups
  * };
  *
  * program NFSAUTH_PROG {
- * 	version NFSAUTH_VERS {
+ *	version NFSAUTH_VERS {
  *		#
  *		# Authorization Request
  *		#
- * 		auth_res
- * 		NFSAUTH_ACCESS(auth_req) = 1;
+ *		auth_res
+ *		NFSAUTH_ACCESS(auth_req) = 1;
  *
- * 	} = 1;
+ *	} = 1;
  * } = 100231;
  */
 
 #ifndef _KERNEL
 #include <stddef.h>
+#include <bsm/audit.h>
+#else
+#include <c2/audit.h>
 #endif
 #include <sys/sysmacros.h>
 #include <sys/types.h>
@@ -106,7 +109,9 @@ extern "C" {
 
 #define	A_MAXPATH		1024
 
+#define	NFSAUTH_ERR		0
 #define	NFSAUTH_ACCESS		1
+#define	NFSAUTH_AUDITINFO	2
 
 #define	NFSAUTH_DENIED		0x01
 #define	NFSAUTH_RO		0x02
@@ -145,13 +150,27 @@ struct auth_res {
 };
 typedef struct auth_res auth_res;
 
+struct audit_req {
+	uid_t	 req_uid;
+	gid_t	 req_gid;
+};
+typedef struct audit_req audit_req;
+
+struct audit_res {
+	au_id_t res_auid;
+	au_mask_t res_amask;
+	au_asid_t res_asid;
+};
+typedef struct audit_res audit_res;
+
 /* --8<-- End: nfsauth_prot.x definitions --8<-- */
 
 
 #define	NFSAUTH_DR_OKAY		0x0	/* success */
-#define	NFSAUTH_DR_BADCMD	0x100	/* NFSAUTH_ACCESS is only cmd allowed */
+#define	NFSAUTH_DR_BADCMD	0x100	/* Unsupported cmd */
 #define	NFSAUTH_DR_DECERR	0x200	/* mountd could not decode arguments */
 #define	NFSAUTH_DR_EFAIL	0x400	/* mountd could not encode results */
+#define	NFSAUTH_DR_NOAUDIT	0x800	/* mountd could not get audit info */
 #define	NFSAUTH_DR_TRYCNT	5	/* door handle acquisition retry cnt */
 
 #if defined(DEBUG) && !defined(_KERNEL)
@@ -165,13 +184,25 @@ typedef struct auth_res auth_res;
  */
 struct nfsauth_arg {
 	uint_t		cmd;
-	auth_req	areq;
+	union {
+		auth_req	areq;
+		audit_req	ureq;
+	};
 };
 typedef struct nfsauth_arg nfsauth_arg_t;
 
+/*
+ * TODO: the result should also have a 'cmd' discriminator, so that we can e.g.
+ * distinguish between an error during decoding and an error during command
+ * processing. However, that will probably break down-rev zones.
+ */
 struct nfsauth_res {
 	uint_t		stat;
-	auth_res	ares;
+	uint_t		cmd;
+	union {
+		auth_res	ares;
+		audit_res	ures;
+	};
 };
 typedef struct nfsauth_res nfsauth_res_t;
 
@@ -179,10 +210,13 @@ typedef struct nfsauth_res nfsauth_res_t;
  * For future extensibility, we version the data structures so
  * future incantations of mountd(8) will know how to XDR decode
  * the arguments.
+ *
+ * Note that the result structure is not currently versioned.
  */
 enum vtypes {
 	V_ERROR = 0,
-	V_PROTO = 1
+	V_PROTO = 1,
+	V_AUDIT = 2
 };
 typedef enum vtypes vtypes;
 
@@ -195,7 +229,7 @@ typedef struct varg {
 } varg_t;
 
 extern bool_t	xdr_varg(XDR *, varg_t *);
-extern bool_t	xdr_nfsauth_arg(XDR *, nfsauth_arg_t *);
+extern bool_t	xdr_nfsauth_arg(XDR *, nfsauth_arg_t *, vtypes);
 extern bool_t	xdr_nfsauth_res(XDR *, nfsauth_res_t *);
 
 #ifdef	__cplusplus
