@@ -30,8 +30,7 @@
 
 /*
  * Copyright (c) 2012, 2016 by Delphix. All rights reserved.
- * Copyright 2019 Nexenta Systems, Inc.
- * Copyright 2019 Nexenta by DDN, Inc.
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  * Copyright 2021 Racktop Systems, Inc.
  */
 
@@ -1621,6 +1620,9 @@ rfs4_op_create(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 	struct sockaddr *ca;
 	char *name = NULL;
 	char *lname = NULL;
+	boolean_t do_audit = B_FALSE;
+	uint32_t access = ACE_ADD_FILE;
+	char *audit_path = NULL;
 
 	DTRACE_NFSV4_2(op__create__start, struct compound_state *, cs,
 	    CREATE4args *, args);
@@ -1759,6 +1761,13 @@ rfs4_op_create(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 			vap->va_mode = 0700;	/* default: owner rwx only */
 			vap->va_mask |= AT_MODE;
 		}
+		do_audit = nfs_audit_init(req, cs->cr, &audit_path, dvp);
+		if (do_audit && audit_path == NULL) {
+			error = ESTALE;
+			do_audit = B_FALSE;
+			break;
+		}
+		access = ACE_ADD_SUBDIRECTORY;
 		error = VOP_MKDIR(dvp, name, vap, &vp, cr, NULL, 0, NULL);
 		if (error)
 			break;
@@ -1819,6 +1828,12 @@ rfs4_op_create(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 			goto out;
 		}
 
+		do_audit = nfs_audit_init(req, cs->cr, &audit_path, dvp);
+		if (do_audit && audit_path == NULL) {
+			error = ESTALE;
+			do_audit = B_FALSE;
+			break;
+		}
 		error = VOP_SYMLINK(dvp, name, vap, lname, cr, NULL, 0);
 		if (lname != lnm)
 			kmem_free(lname, MAXPATHLEN + 1);
@@ -1860,7 +1875,18 @@ rfs4_op_create(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 		/*
 		 * We know this will only generate one VOP call
 		 */
-		vp = do_rfs4_op_mknod(args, resp, req, cs, vap, name);
+		do_audit = nfs_audit_init(req, cs->cr, &audit_path, dvp);
+		if (do_audit && audit_path == NULL) {
+			error = ESTALE;
+			do_audit = B_FALSE;
+		} else {
+			vp = do_rfs4_op_mknod(args, resp, req, cs, vap, name);
+		}
+		if (do_audit) {
+			nfs_audit_fini(cs->cr, access, dvp,
+			    resp->status == NFS4_OK, NULL, audit_path);
+			do_audit = B_FALSE;
+		}
 
 		if (vp == NULL) {
 			if (name != nm)
@@ -1887,6 +1913,11 @@ rfs4_op_create(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 
 	if (error) {
 		*cs->statusp = resp->status = puterrno4(error);
+	}
+
+	if (do_audit) {
+		nfs_audit_fini(cs->cr, access, dvp, resp->status == NFS4_OK,
+		    NULL, audit_path);
 	}
 
 	/*
@@ -2397,6 +2428,9 @@ rfs4_op_getattr(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 	struct nfs4_svgetit_arg sarg;
 	struct statvfs64 sb;
 	nfsstat4 status;
+	boolean_t do_audit = B_FALSE;
+	uint32_t aud_mask = ACE_READ_ATTRIBUTES;
+	char *audit_path = NULL;
 
 	DTRACE_NFSV4_2(op__getattr__start, struct compound_state *, cs,
 	    GETATTR4args *, args);
@@ -2418,9 +2452,19 @@ rfs4_op_getattr(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 	status = bitmap4_to_attrmask(args->attr_request, &sarg);
 	if (status == NFS4_OK) {
 
+		/* bitmap4_get_sysattrs calls VOP_GETATTR */
+		do_audit = nfs_audit_init(req, cs->cr, &audit_path, cs->vp);
+		if (do_audit && audit_path == NULL) {
+			*cs->statusp = resp->status = NFS4ERR_STALE;
+			do_audit = B_FALSE;
+			goto out;
+		}
+		if (sarg.vap->va_mask != 0)
+			aud_mask |= ACE_READ_ATTRIBUTES;
 		status = bitmap4_get_sysattrs(&sarg);
 		if (status == NFS4_OK) {
 
+			nfs_audit_save();
 			/* Is this a referral? */
 			if (vn_is_nfs_reparse(cs->vp, cs->cr)) {
 				/* Older V4 Solaris client sees a link */
@@ -2429,9 +2473,18 @@ rfs4_op_getattr(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 				else
 					sarg.is_referral = B_TRUE;
 			}
-
+			nfs_audit_load();
 			status = do_rfs4_op_getattr(args->attr_request,
 			    &resp->obj_attributes, &sarg);
+
+		}
+		if (do_audit) {
+			if ((resp->obj_attributes.attrmask &
+			    FATTR4_ACL_MASK) != 0)
+				aud_mask |= ACE_READ_ACL;
+
+			nfs_audit_fini(cs->cr, aud_mask, cs->vp,
+			    status == NFS4_OK, NULL, audit_path);
 		}
 	}
 	*cs->statusp = resp->status = status;
@@ -2542,6 +2595,8 @@ rfs4_op_link(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 	struct sockaddr *ca;
 	char *name = NULL;
 	nfsstat4 status;
+	boolean_t do_audit = B_FALSE;
+	char *audit_path = NULL;
 
 	DTRACE_NFSV4_2(op__link__start, struct compound_state *, cs,
 	    LINK4args *, args);
@@ -2634,9 +2689,19 @@ rfs4_op_link(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 		goto out;
 	}
 
-	NFS4_SET_FATTR4_CHANGE(resp->cinfo.before, bdva.va_ctime)
-
-	error = VOP_LINK(dvp, vp, name, cs->cr, NULL, 0);
+	do_audit = nfs_audit_init(req, cs->cr, &audit_path, dvp);
+	if (do_audit && audit_path == NULL) {
+		error = ESTALE;
+		do_audit = B_FALSE;
+	} else {
+		NFS4_SET_FATTR4_CHANGE(resp->cinfo.before, bdva.va_ctime)
+		error = VOP_LINK(dvp, vp, name, cs->cr, NULL, 0);
+	}
+	if (do_audit) {
+		nfs_audit_fini(cs->cr,
+		    (vp->v_type == VDIR) ? ACE_ADD_SUBDIRECTORY : ACE_ADD_FILE,
+		    dvp, error == 0, NULL, audit_path);
+	}
 
 	if (nm != name)
 		kmem_free(name, MAXPATHLEN + 1);
@@ -3243,6 +3308,8 @@ rfs4_op_read(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 	int loaned_buffers;
 	caller_context_t ct;
 	struct uio *uiop;
+	boolean_t do_audit = B_FALSE;
+	char *audit_path = NULL;
 
 	DTRACE_NFSV4_2(op__read__start, struct compound_state *, cs,
 	    READ4args, args);
@@ -3306,6 +3373,13 @@ rfs4_op_read(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 		goto out;
 	}
 
+	do_audit = nfs_audit_init(req, cs->cr, &audit_path, vp);
+	if (do_audit && audit_path == NULL) {
+		*cs->statusp = resp->status = NFS4ERR_STALE;
+		do_audit = B_FALSE;
+		goto out;
+	}
+
 	if (crgetuid(cs->cr) != va.va_uid &&
 	    (error = VOP_ACCESS(vp, VREAD, 0, cs->cr, &ct)) &&
 	    (error = VOP_ACCESS(vp, VEXEC, 0, cs->cr, &ct))) {
@@ -3313,6 +3387,7 @@ rfs4_op_read(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 		goto out;
 	}
 
+	nfs_audit_save();
 	if (MANDLOCK(vp, va.va_mode)) { /* XXX - V4 supports mand locking */
 		*cs->statusp = resp->status = NFS4ERR_ACCESS;
 		goto out;
@@ -3410,6 +3485,7 @@ rfs4_op_read(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 	uiop = &uio;
 
 doio_read:
+	nfs_audit_load();
 	error = do_io(FREAD, vp, uiop, 0, cs->cr, &ct);
 
 	va.va_mask = AT_SIZE;
@@ -3458,6 +3534,10 @@ out:
 	if (in_crit)
 		nbl_end_crit(vp);
 
+	if (do_audit) {
+		nfs_audit_fini(cs->cr, ACE_READ_DATA|ACE_EXECUTE, vp,
+		    resp->status == NFS4_OK, &ct, audit_path);
+	}
 	if (iovp != NULL)
 		kmem_free(iovp, iovcnt * sizeof (struct iovec));
 
@@ -4092,6 +4172,8 @@ rfs4_op_remove(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 	struct sockaddr *ca;
 	char *name = NULL;
 	nfsstat4 status;
+	boolean_t do_audit = B_FALSE;
+	char *audit_path = NULL;
 
 	DTRACE_NFSV4_2(op__remove__start, struct compound_state *, cs,
 	    REMOVE4args *, args);
@@ -4266,16 +4348,32 @@ rfs4_op_remove(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 			 * NFS4ERR_EXIST to NFS4ERR_NOTEMPTY to
 			 * transmit over the wire.
 			 */
-			if ((error = VOP_RMDIR(dvp, name, ZONE_ROOTVP(), cs->cr,
-			    NULL, 0)) == EEXIST)
-				error = ENOTEMPTY;
+
+			do_audit = nfs_audit_init(req, cs->cr, &audit_path,
+			    dvp);
+			if (do_audit && audit_path == NULL) {
+				error = ESTALE;
+				do_audit = B_FALSE;
+			} else {
+				if ((error = VOP_RMDIR(dvp, name, ZONE_ROOTVP(),
+				    cs->cr, NULL, 0)) == EEXIST)
+					error = ENOTEMPTY;
+			}
 		}
 	} else {
-		if ((error = VOP_REMOVE(dvp, name, cs->cr, NULL, 0)) == 0 &&
+		do_audit = nfs_audit_init(req, cs->cr, &audit_path, dvp);
+		if (do_audit && audit_path == NULL) {
+			error = ESTALE;
+			do_audit = B_FALSE;
+		} else {
+			error = VOP_REMOVE(dvp, name, cs->cr, NULL, 0);
+		}
+		if (error == 0 &&
 		    fp != NULL) {
 			struct vattr va;
 			vnode_t *tvp;
 
+			nfs_audit_save();
 			rfs4_dbe_lock(fp->rf_dbe);
 			tvp = fp->rf_vp;
 			if (tvp)
@@ -4299,11 +4397,28 @@ rfs4_op_remove(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 				}
 				VN_RELE(tvp);
 			}
+			nfs_audit_load();
 		}
 	}
 
 	if (in_crit)
 		nbl_end_crit(vp);
+
+	/*
+	 * Symlinks don't have their own ACEs, but we'd still like to be able to
+	 * audit their removal; use the directory's DELETE_CHILD audit entry as
+	 * a stand-in.
+	 */
+	if (do_audit) {
+		if (vp->v_type == VLNK) {
+			nfs_audit_delete_fini(cs->cr, ACE_DELETE_CHILD, dvp,
+			    name, error == 0, NULL, audit_path);
+		} else {
+			nfs_audit_delete_fini(cs->cr, ACE_DELETE, vp, name,
+			    error == 0, NULL, audit_path);
+		}
+	}
+
 	VN_RELE(vp);
 
 	if (fp) {
@@ -4392,6 +4507,8 @@ rfs4_op_rename(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 	char *converted_onm = NULL;
 	char *converted_nnm = NULL;
 	nfsstat4 status;
+	boolean_t do_audit = B_FALSE;
+	char *spath = NULL, *tpath = NULL, *dpath = NULL;
 
 	DTRACE_NFSV4_2(op__rename__start, struct compound_state *, cs,
 	    RENAME4args *, args);
@@ -4607,8 +4724,15 @@ rfs4_op_rename(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 	NFS4_SET_FATTR4_CHANGE(resp->source_cinfo.before, obdva.va_ctime)
 	NFS4_SET_FATTR4_CHANGE(resp->target_cinfo.before, nbdva.va_ctime)
 
-	error = VOP_RENAME(odvp, converted_onm, ndvp, converted_nnm, cs->cr,
-	    NULL, 0);
+	do_audit = nfs_audit_rename_init(req, cs->cr, &spath, srcvp, &tpath,
+	    targvp, &dpath, ndvp);
+	if (do_audit && spath == NULL) {
+		error = ESTALE;
+		do_audit = B_FALSE;
+	} else {
+		error = VOP_RENAME(odvp, converted_onm, ndvp, converted_nnm,
+		    cs->cr, NULL, 0);
+	}
 
 	/*
 	 * If target existed and was unlinked by VOP_RENAME, state will need
@@ -4616,6 +4740,8 @@ rfs4_op_rename(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 	 * any necessary nbl_end_crit on srcvp and tgtvp.
 	 */
 	if (error == 0 && fp != NULL) {
+		nfs_audit_save();
+
 		rfs4_dbe_lock(fp->rf_dbe);
 		tvp = fp->rf_vp;
 		if (tvp)
@@ -4641,16 +4767,22 @@ rfs4_op_rename(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 				VN_RELE(tvp);
 			}
 		}
+		nfs_audit_load();
 	}
 	if (error == 0)
 		vn_renamepath(ndvp, srcvp, nnm, nlen - 1);
 
 	if (in_crit_src)
 		nbl_end_crit(srcvp);
-	if (srcvp)
-		VN_RELE(srcvp);
 	if (in_crit_targ)
 		nbl_end_crit(targvp);
+
+	if (do_audit) {
+		nfs_audit_rename_fini(cs->cr, spath, tpath, dpath, error == 0,
+		    srcvp->v_type == VDIR);
+	}
+	if (srcvp)
+		VN_RELE(srcvp);
 	if (targvp)
 		VN_RELE(targvp);
 
@@ -5170,7 +5302,7 @@ do_rfs4_set_attrs(bitmap4 *resp, fattr4 *fattrp, struct compound_state *cs,
 
 static nfsstat4
 do_rfs4_op_setattr(bitmap4 *resp, fattr4 *fattrp, struct compound_state *cs,
-    stateid4 *stateid)
+    stateid4 *stateid, boolean_t do_audit, char *audit_path)
 {
 	int error = 0;
 	struct nfs4_svgetit_arg sarg;
@@ -5186,6 +5318,7 @@ do_rfs4_op_setattr(bitmap4 *resp, fattr4 *fattrp, struct compound_state *cs,
 	int in_crit = 0;
 	uint_t saved_mask = 0;
 	caller_context_t ct;
+	uint32_t aud_mask = 0;
 
 	*resp = 0;
 	sarg.sbp = &sb;
@@ -5393,6 +5526,16 @@ done:
 	if (in_crit)
 		nbl_end_crit(vp);
 
+	if (do_audit) {
+		if ((fattrp->attrmask & FATTR4_ACL_MASK) != 0)
+			aud_mask |= ACE_WRITE_ACL;
+		if ((fattrp->attrmask & ~FATTR4_ACL_MASK) != 0)
+			aud_mask |= ACE_WRITE_ATTRIBUTES;
+
+		nfs_audit_fini(cs->cr, aud_mask, vp,
+		    status == NFS4_OK, &ct, audit_path);
+	}
+
 	nfs4_ntov_table_free(&ntov, &sarg);
 
 	return (status);
@@ -5406,6 +5549,8 @@ rfs4_op_setattr(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 	SETATTR4args *args = &argop->nfs_argop4_u.opsetattr;
 	SETATTR4res *resp = &resop->nfs_resop4_u.opsetattr;
 	bslabel_t *clabel;
+	boolean_t do_audit = B_FALSE;
+	char *audit_path = NULL;
 
 	DTRACE_NFSV4_2(op__setattr__start, struct compound_state *, cs,
 	    SETATTR4args *, args);
@@ -5447,10 +5592,14 @@ rfs4_op_setattr(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 		}
 	}
 
-	*cs->statusp = resp->status =
-	    do_rfs4_op_setattr(&resp->attrsset, &args->obj_attributes, cs,
-	    &args->stateid);
-
+	do_audit = nfs_audit_init(req, cs->cr, &audit_path, cs->vp);
+	if (do_audit && audit_path == NULL) {
+		*cs->statusp = resp->status = NFS4ERR_STALE;
+	} else {
+		*cs->statusp = resp->status =
+		    do_rfs4_op_setattr(&resp->attrsset, &args->obj_attributes,
+		    cs, &args->stateid, do_audit, audit_path);
+	}
 out:
 	DTRACE_NFSV4_2(op__setattr__done, struct compound_state *, cs,
 	    SETATTR4res *, resp);
@@ -5474,6 +5623,9 @@ rfs4_op_verify(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 	struct nfs4_svgetit_arg sarg;
 	struct statvfs64 sb;
 	struct nfs4_ntov_table ntov;
+	boolean_t do_audit = B_FALSE;
+	uint32_t aud_mask = 0;
+	char *audit_path = NULL;
 
 	DTRACE_NFSV4_2(op__verify__start, struct compound_state *, cs,
 	    VERIFY4args *, args);
@@ -5486,6 +5638,12 @@ rfs4_op_verify(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 	sarg.sbp = &sb;
 	sarg.is_referral = B_FALSE;
 	nfs4_ntov_table_init(&ntov);
+	do_audit = nfs_audit_init(req, cs->cr, &audit_path, cs->vp);
+	if (do_audit && audit_path == NULL) {
+		resp->status = NFS4ERR_STALE;
+		do_audit = B_FALSE;
+		goto done;
+	}
 	resp->status = do_rfs4_set_attrs(NULL, &args->obj_attributes, cs,
 	    &sarg, &ntov, NFS4ATTR_VERIT);
 	if (resp->status != NFS4_OK) {
@@ -5511,6 +5669,18 @@ rfs4_op_verify(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 	}
 done:
 	*cs->statusp = resp->status;
+
+	if (do_audit) {
+		if ((args->obj_attributes.attrmask & FATTR4_ACL_MASK) != 0)
+			aud_mask |= ACE_READ_ACL;
+		if ((args->obj_attributes.attrmask & ~FATTR4_ACL_MASK) != 0)
+			aud_mask |= ACE_READ_ATTRIBUTES;
+
+		nfs_audit_fini(cs->cr, aud_mask, cs->vp,
+		    resp->status == NFS4_OK ||
+		    resp->status == NFS4ERR_NOT_SAME, NULL, audit_path);
+	}
+
 	nfs4_ntov_table_free(&ntov, &sarg);
 out:
 	DTRACE_NFSV4_2(op__verify__done, struct compound_state *, cs,
@@ -5535,6 +5705,9 @@ rfs4_op_nverify(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 	struct nfs4_svgetit_arg sarg;
 	struct statvfs64 sb;
 	struct nfs4_ntov_table ntov;
+	boolean_t do_audit = B_FALSE;
+	uint32_t aud_mask = 0;
+	char *audit_path = NULL;
 
 	DTRACE_NFSV4_2(op__nverify__start, struct compound_state *, cs,
 	    NVERIFY4args *, args);
@@ -5548,6 +5721,12 @@ rfs4_op_nverify(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 	sarg.sbp = &sb;
 	sarg.is_referral = B_FALSE;
 	nfs4_ntov_table_init(&ntov);
+	do_audit = nfs_audit_init(req, cs->cr, &audit_path, cs->vp);
+	if (do_audit && audit_path == NULL) {
+		resp->status = NFS4ERR_STALE;
+		do_audit = B_FALSE;
+		goto done;
+	}
 	resp->status = do_rfs4_set_attrs(NULL, &args->obj_attributes, cs,
 	    &sarg, &ntov, NFS4ATTR_VERIT);
 	if (resp->status != NFS4_OK) {
@@ -5573,6 +5752,18 @@ rfs4_op_nverify(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 	}
 done:
 	*cs->statusp = resp->status;
+
+	if (do_audit) {
+		if ((args->obj_attributes.attrmask & FATTR4_ACL_MASK) != 0)
+			aud_mask |= ACE_READ_ACL;
+		if ((args->obj_attributes.attrmask & ~FATTR4_ACL_MASK) != 0)
+			aud_mask |= ACE_READ_ATTRIBUTES;
+
+		nfs_audit_fini(cs->cr, aud_mask, cs->vp,
+		    resp->status == NFS4_OK ||
+		    resp->status == NFS4ERR_SAME, NULL, audit_path);
+	}
+
 	nfs4_ntov_table_free(&ntov, &sarg);
 
 	DTRACE_NFSV4_2(op__nverify__done, struct compound_state *, cs,
@@ -5606,6 +5797,8 @@ rfs4_op_write(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 	int in_crit = 0;
 	caller_context_t ct;
 	nfs4_srv_t *nsrv4;
+	boolean_t do_audit = B_FALSE;
+	char *audit_path = NULL;
 
 	DTRACE_NFSV4_2(op__write__start, struct compound_state *, cs,
 	    WRITE4args *, args);
@@ -5665,12 +5858,19 @@ rfs4_op_write(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 		goto out;
 	}
 
+	do_audit = nfs_audit_init(req, cs->cr, &audit_path, vp);
+	if (do_audit && audit_path == NULL) {
+		*cs->statusp = resp->status = NFS4ERR_STALE;
+		do_audit = B_FALSE;
+		goto out;
+	}
 	if (crgetuid(cr) != bva.va_uid &&
 	    (error = VOP_ACCESS(vp, VWRITE, 0, cr, &ct))) {
 		*cs->statusp = resp->status = puterrno4(error);
 		goto out;
 	}
 
+	nfs_audit_save();
 	if (MANDLOCK(vp, bva.va_mode)) {
 		*cs->statusp = resp->status = NFS4ERR_ACCESS;
 		goto out;
@@ -5751,6 +5951,7 @@ rfs4_op_write(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 		goto out;
 	}
 
+	nfs_audit_load();
 	/*
 	 * We're changing creds because VM may fault and we need
 	 * the cred of the current thread to be used if quota
@@ -5782,6 +5983,11 @@ rfs4_op_write(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 out:
 	if (in_crit)
 		nbl_end_crit(vp);
+
+	if (do_audit) {
+		nfs_audit_fini(cs->cr, ACE_WRITE_DATA, vp,
+		    resp->status == NFS4_OK, &ct, audit_path);
+	}
 
 	DTRACE_NFSV4_2(op__write__done, struct compound_state *, cs,
 	    WRITE4res *, resp);
@@ -5844,7 +6050,8 @@ rfs4_compound(COMPOUND4args *args, COMPOUND4res *resp, struct exportinfo *exi,
 	cr = svc_xprt_cred(req->rq_xprt);
 	ASSERT(cr != NULL);
 
-	if (sec_svc_getcred(req, cr, &cs.principal, &cs.nfsflavor) == 0) {
+	if (sec_svc_getcred(req, cr, &cs.principal, &cs.nfsflavor) == 0 ||
+	    nfs4auth_getauditinfo(req, cr) == 0) {
 		DTRACE_NFSV4_2(compound__start, struct compound_state *,
 		    &cs, COMPOUND4args *, args);
 		DTRACE_NFSV4_2(compound__done, struct compound_state *,
@@ -5852,6 +6059,7 @@ rfs4_compound(COMPOUND4args *args, COMPOUND4res *resp, struct exportinfo *exi,
 		svcerr_badcred(req->rq_xprt);
 		if (rv != NULL)
 			*rv = 1;
+		nfs4auth_reset_aumask(cr);
 		return;
 	}
 	resp->array_len = args->array_len;
@@ -5975,6 +6183,7 @@ rfs4_compound(COMPOUND4args *args, COMPOUND4res *resp, struct exportinfo *exi,
 		kmem_free(req->rq_label, sizeof (bslabel_t));
 		req->rq_label = NULL;
 	}
+	nfs4auth_reset_aumask(cr);
 }
 
 /*
@@ -6384,6 +6593,8 @@ rfs4_createfile(OPEN4args *args, struct svc_req *req, struct compound_state *cs,
 	bslabel_t *clabel;
 	struct sockaddr *ca;
 	char *name = NULL;
+	boolean_t do_audit = B_FALSE;
+	char *audit_path = NULL;
 
 	sarg.sbp = &sb;
 	sarg.is_referral = B_FALSE;
@@ -6533,11 +6744,25 @@ rfs4_createfile(OPEN4args *args, struct svc_req *req, struct compound_state *cs,
 		return (NFS4ERR_SERVERFAULT);
 	}
 
-	status = create_vnode(dvp, name, vap, args->mode,
-	    cs->cr, &vp, &created);
+	do_audit = nfs_audit_init(req, cs->cr, &audit_path, dvp);
+	if (do_audit && audit_path == NULL) {
+		status = NFS4ERR_STALE;
+		do_audit = B_FALSE;
+	} else {
+		status = create_vnode(dvp, name, vap, args->mode,
+		    cs->cr, &vp, &created);
+	}
 	if (nm != name)
 		kmem_free(name, MAXPATHLEN + 1);
 	kmem_free(nm, buflen);
+
+	if (do_audit) {
+		if (created)
+			nfs_audit_fini(cs->cr, ACE_ADD_FILE, dvp,
+			    status == NFS4_OK, NULL, audit_path);
+		else
+			nfs_audit_freepath(audit_path);
+	}
 
 	if (status != NFS4_OK) {
 		if (ntov_table_init)
@@ -6707,7 +6932,30 @@ rfs4_createfile(OPEN4args *args, struct svc_req *req, struct compound_state *cs,
 
 			cva.va_mask = AT_SIZE;
 			cva.va_size = reqsize;
-			(void) VOP_SETATTR(vp, &cva, 0, cs->cr, &ct);
+
+			audit_path = NULL;
+			do_audit = nfs_audit_init(req, cs->cr, &audit_path, vp);
+			if (do_audit && audit_path == NULL) {
+				do_audit = B_FALSE;
+
+				/*
+				 * Since we *just* looked up this node via its
+				 * name, the v_path should be valid. Stranger
+				 * things have happened, though. Since we don't
+				 * do anything if the setattr fails *anyway*,
+				 * just skip it if we can't audit it.
+				 */
+				cmn_err(CE_WARN, "!rfs4_createfile: can't audit"
+				    " truncation; truncation skipped.");
+			} else {
+				error = VOP_SETATTR(vp, &cva, 0, cs->cr, &ct);
+			}
+
+			if (do_audit) {
+				nfs_audit_fini(cs->cr, ACE_WRITE_ATTRIBUTES, vp,
+				    error == 0, &ct, audit_path);
+			}
+
 			if (in_crit)
 				nbl_end_crit(vp);
 		}
