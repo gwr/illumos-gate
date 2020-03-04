@@ -11,7 +11,7 @@
 
 /*
  * Copyright 2018 Nexenta Systems, Inc.
- * Copyright 2019 Racktop Systems
+ * Copyright 2020 Racktop Systems.
  */
 
 /*
@@ -1381,7 +1381,7 @@ build_raid_path_request(pqi_raid_path_request_t *rqst,
 	case SCMD_READ:
 		rqst->rp_data_dir = (uint8_t)SOP_READ_FLAG;
 		cdb[0] = (uint8_t)cmd;
-		cdb[2] = (uint8_t)vpd_page >> 8;
+		cdb[2] = (uint8_t)(vpd_page >> 8);
 		cdb[3] = (uint8_t)vpd_page;
 		cdb[4] = len >> 9;
 		break;
@@ -1461,7 +1461,7 @@ identify_physical_device(pqi_state_t s, pqi_device_t devp,
 
 	idx = CISS_GET_DRIVE_NUMBER(devp->pd_scsi3addr);
 	rqst.rp_cdb[2] = (uint8_t)idx;
-	rqst.rp_cdb[9] = (uint8_t)idx >> 8;
+	rqst.rp_cdb[9] = (uint8_t)(idx >> 8);
 
 	rqst.rp_sglist[0].sg_addr = dma->dma_addr;
 	rqst.rp_sglist[0].sg_len = dma->len_to_alloc;
