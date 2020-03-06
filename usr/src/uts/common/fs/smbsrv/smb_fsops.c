@@ -2701,16 +2701,12 @@ smb_fsop_sdinherit(smb_request_t *sr, smb_node_t *dnode, smb_fssd_t *fs_sd)
 		dacl = smb_fsacl_inherit(pfs_sd.sd_zdacl, is_dir,
 		    SMB_DACL_SECINFO, sr->user_cr);
 		fs_sd->sd_zdacl = dacl;
-		if (dacl != NULL)
-			fs_sd->sd_secinfo |= SMB_DACL_SECINFO;
 	}
 
 	if ((secinfo & SMB_SACL_SECINFO) == 0) {
 		sacl = smb_fsacl_inherit(pfs_sd.sd_zsacl, is_dir,
 		    SMB_SACL_SECINFO, sr->user_cr);
 		fs_sd->sd_zsacl = sacl;
-		if (sacl != NULL)
-			fs_sd->sd_secinfo |= SMB_SACL_SECINFO;
 	}
 
 	smb_fsacl_free(pfs_sd.sd_zdacl);
