@@ -63,7 +63,7 @@ getshare(FILE *fd, share_t **shp)
 	static share_t *sh = NULL;
 	char *p;
 	char *lasts;
-	char *w = " \t";
+	char *w = "\t";
 
 	if (line == NULL) {
 		line = (char *)malloc(MAXBUFSIZE+1);
