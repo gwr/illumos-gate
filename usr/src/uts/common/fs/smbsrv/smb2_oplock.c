@@ -96,13 +96,24 @@ smb2_oplock_break_ack(smb_request_t *sr)
 		NewLevel = OPLOCK_LEVEL_BATCH;
 		break;
 	case SMB2_OPLOCK_LEVEL_LEASE:	/* 0xFF */
-	default:
 		NewLevel = OPLOCK_LEVEL_NONE;
 		break;
+	default:
+		status = NT_STATUS_INVALID_PARAMETER;
+		goto errout;
 	}
 
 	ofile = sr->fid_ofile;
+	if (ofile->f_oplock.og_breaking == 0) {
+		if (smbOplockLevel == SMB2_OPLOCK_LEVEL_LEASE) {
+			status = NT_STATUS_INVALID_PARAMETER;
+		} else {
+			status = NT_STATUS_INVALID_OPLOCK_PROTOCOL;
+		}
+		goto errout;
+	}
 	ofile->f_oplock.og_breaking = 0;
+
 	status = smb_oplock_ack_break(sr, ofile, &NewLevel);
 	if (status == NT_STATUS_OPLOCK_BREAK_IN_PROGRESS) {
 		status = smb2sr_go_async(sr);
