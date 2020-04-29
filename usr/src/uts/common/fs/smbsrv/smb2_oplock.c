@@ -105,11 +105,22 @@ smb2_oplock_break_ack(smb_request_t *sr)
 
 	ofile = sr->fid_ofile;
 	if (ofile->f_oplock.og_breaking == 0) {
+		/*
+		 * This is an unsolicited Ack. (There is no
+		 * outstanding oplock break in progress now.)
+		 * There are WPTS tests that care which error
+		 * is returned.  See [MS-SMB2] 3.3.5.22.1
+		 */
 		if (smbOplockLevel == SMB2_OPLOCK_LEVEL_LEASE) {
 			status = NT_STATUS_INVALID_PARAMETER;
-		} else {
-			status = NT_STATUS_INVALID_OPLOCK_PROTOCOL;
+			goto errout;
 		}
+		if (NewLevel >= (ofile->f_oplock.og_state &
+		    OPLOCK_LEVEL_TYPE_MASK)) {
+			status = NT_STATUS_INVALID_OPLOCK_PROTOCOL;
+			goto errout;
+		}
+		status = NT_STATUS_INVALID_DEVICE_STATE;
 		goto errout;
 	}
 	ofile->f_oplock.og_breaking = 0;
