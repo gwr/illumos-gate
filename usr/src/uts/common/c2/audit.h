@@ -20,6 +20,7 @@
  */
 /*
  * Copyright (c) 1992, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright 2020 Nexenta by DDN, Inc. All rights reserved.
  */
 
 /*
@@ -40,6 +41,11 @@ extern "C" {
 #include <sys/msg.h>	/* for msqid_ds structure */
 #include <sys/atomic.h>	/* using atomics */
 #include <sys/secflags.h>
+#ifndef _KERNEL
+#include <bsm/audit_types.h>
+#else
+#include <c2/audit_types.h>
+#endif
 
 /*
  * Audit conditions, statements reguarding what's to be done with
@@ -80,29 +86,6 @@ extern "C" {
 #define	PAD_FAILURE	0x8000		/* fail audit event */
 #define	PAD_SPRIVUSE	0x0080		/* successfully used privileged */
 #define	PAD_FPRIVUSE	0x0100		/* failed use of privileged */
-
-/*
- * Some typedefs for the fundamentals
- */
-typedef uint_t au_asid_t;
-typedef uint_t  au_class_t;
-typedef ushort_t au_event_t;
-typedef ushort_t au_emod_t;
-typedef uid_t au_id_t;
-
-/*
- * An audit event mask.
- */
-#define	AU_MASK_ALL	0xFFFFFFFF	/* all bits on for unsigned int */
-#define	AU_MASK_NONE	0x0		/* all bits off = no:invalid class */
-
-struct au_mask {
-	unsigned int	am_success;	/* success bits */
-	unsigned int	am_failure;	/* failure bits */
-};
-typedef struct au_mask au_mask_t;
-#define	as_success am_success
-#define	as_failure am_failure
 
 /*
  * The structure of the terminal ID (ipv4)
@@ -443,6 +426,7 @@ struct audit_stat {
 };
 typedef struct audit_stat au_stat_t;
 
+extern uint32_t audit_policy;
 /* get kernel audit context dependent on AUDIT_PERZONE policy */
 #define	GET_KCTX_PZ	(audit_policy & AUDIT_PERZONE) ?\
 			    curproc->p_zone->zone_audit_kctxt :\
@@ -490,6 +474,7 @@ extern "C" {
 
 struct fcntla;
 struct t_audit_data;
+struct t_audit_sacl;
 struct audit_path;
 struct priv_set;
 struct devplcysys;
@@ -547,6 +532,8 @@ void	audit_async_finish(caddr_t *, au_event_t, au_emod_t, timestruc_t *);
 void	audit_async_discard_backend(void *);
 void	audit_async_done(caddr_t *, int);
 void	audit_async_drop(caddr_t *, int);
+void	audit_sacl(char *, cred_t *, uint32_t, boolean_t,
+    struct t_audit_sacl *);
 
 #ifndef AUK_CONTEXT_T
 #define	AUK_CONTEXT_T
@@ -577,6 +564,9 @@ int	    au_zone_getstate(const au_kcontext_t *);
 	(audit_active == C2AUDIT_LOADED &&  \
 	    ((AU_AUDIT_MASK) & au_zone_getstate((zcontext))))
 
+#define	AU_AUDIT_PERZONE()	\
+	((audit_policy & AUDIT_PERZONE) != 0)
+
 /*
  * Get auditing status
  */
@@ -584,6 +574,7 @@ int	    au_zone_getstate(const au_kcontext_t *);
 
 int	audit_success(au_kcontext_t *, struct t_audit_data *, int, cred_t *);
 int	auditme(au_kcontext_t *, struct t_audit_data *, au_state_t);
+int	auditev(au_event_t, cred_t *);
 void	audit_fixpath(struct audit_path *, int);
 void	audit_ipc(int, int, void *);
 void	audit_ipcget(int, void *);

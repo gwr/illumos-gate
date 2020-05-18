@@ -1,0 +1,282 @@
+#!/bin/ksh
+#
+# This file and its contents are supplied under the terms of the
+# Common Development and Distribution License ("CDDL"), version 1.0.
+# You may only use this file in accordance with the terms of version
+# 1.0 of the CDDL.
+#
+# A full copy of the text of the CDDL should have accompanied this
+# source.  A copy of the CDDL is also available via the Internet at
+# http://www.illumos.org/license/CDDL.
+#
+
+#
+# Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
+#
+
+# Use normal make (not dmake) by default.
+make=${MAKE:-make}
+
+CLOSED_IS_PRESENT=no
+export CLOSED_IS_PRESENT
+
+# Do this if you want to use dbx or gdb
+# export SOURCEDEBUG=yes
+
+[ -n "$SRC" ] || {
+  echo "SRC not set.  Run 'ws' or 'bldenv' first."
+  exit 1
+}
+
+cpu=`uname -p`
+case $cpu in
+i386)
+	x=intel
+	kmdb_arch="amd64"
+	mdb_arch="ia32 amd64"
+	arch64=amd64
+	;;
+sparc)
+	x=sparc
+	kmdb_arch=v9
+	mdb_arch="v7 v9"
+	arch64=sparcv9
+	;;
+*)  echo "Huh?" ; exit 1;;
+esac
+
+################################################################
+
+build_tools() {
+  test -f $SRC/tools/proto/root_i386-nd/opt/onbld/bin/genoffsets ||
+    (cd $SRC/tools && $make install)
+  (cd $SRC/common/mapfiles; $make install)
+}
+
+clobber_tools() {
+  (cd $SRC/tools && $make clobber)
+  (cd $SRC/common/mapfiles; $make clobber)
+}
+
+################################################################
+
+do_hdrs() {
+
+targ=$1
+if [ "$targ" = clobber ]
+then
+  (cd $SRC/uts && $make -k clobber_h)
+  (cd $SRC/head && $make clobber)
+fi
+
+if [ "$targ" = install ]
+then
+  targ=install_h
+
+  # Just the parts of "make sgs" we need, and
+  # skip them if they appear to be done.
+  # ... stuff under $SRC
+  test -f $SRC/uts/common/sys/priv_names.h ||
+    (cd $SRC/uts && $make -k all_h)
+
+  # ... stuff under $ROOT (proto area)
+  test -d $ROOT/usr/include/sys ||
+    (cd $SRC && $make rootdirs)
+  test -f $ROOT/usr/include/sys/types.h ||
+    (cd $SRC/uts && $make -k $targ)
+
+  # always update headers to be safe
+  (cd $SRC/uts/common/sys && $make -k $targ)
+  (cd $SRC/uts/common/c2 && $make -k $targ)
+fi
+
+if [ "$targ" = lint ]
+then
+  targ=check
+  (cd $SRC/uts/common/c2 && $make -k $targ)
+fi
+
+# Need some library headers too...
+for lib in \
+  libbsm \
+  auditd_plugins
+do
+  (cd $SRC/lib/$lib && $make $targ)
+done
+}
+
+################################################################
+
+do_kern() {
+  case $1 in
+  lint) targ=modlintlib ;;
+  *) targ=$1 ;;
+  esac
+  ( unset SOURCEDEBUG ;
+  (cd $SRC/uts/$x/c2audit && $make $targ) )
+}
+
+################################################################
+
+# Note lib1 builds prerequisite libraries not delivered by the
+# tar file we create below.  To accelerate clean/install, we
+# skip these on clean (but still nuke them for clobber)
+
+do_lib1() {
+
+for lib in \
+  libinetutil \
+  smbsrv/libsmb
+do
+  (cd $SRC/lib/$lib && $make $1)
+done
+}
+
+# lib2 builds stuff we include in the tar file,
+# or that we don't mind rebuilding after clean.
+
+do_lib2() {
+
+for lib in \
+  auditd_plugins \
+  libbsm
+do
+  (cd $SRC/lib/$lib && $make $1)
+done
+
+}
+
+################################################################
+
+do_cmds() {
+
+(cd $SRC/cmd/audit && $make $1)
+(cd $SRC/cmd/auditconfig && $make $1)
+(cd $SRC/cmd/auditd && $make $1)
+(cd $SRC/cmd/auditrecord && $make $1)
+(cd $SRC/cmd/auditreduce && $make $1)
+(cd $SRC/cmd/auditset && $make $1)
+(cd $SRC/cmd/auditstat && $make $1)
+(cd $SRC/cmd/audit_warn && $make $1)
+(cd $SRC/cmd/praudit && $make $1)
+
+#Doesn't look like there are any audit mdb modules.
+}
+################################################################
+# This builds $SRC/TAGS (and cscope.files) in a helpful order.
+
+do_tags() {
+	(cd $SRC ;
+	find uts/common/sys -name '*.[ch]' -print |sort
+	find uts/common/c2 -name '*.[ch]' -print |sort
+	find head -name '*.h' -print |sort
+	find lib/auditd_plugins -name '*.[ch]' -print |sort
+	find lib/libbsm -name '*.[ch]' -print |sort
+	find cmd/audit -name '*.[ch]' -print |sort
+	find cmd/auditconfig -name '*.[ch]' -print |sort
+	find cmd/auditd -name '*.[ch]' -print |sort
+	find cmd/auditrecord -name '*.[ch]' -print |sort
+	find cmd/auditreduce -name '*.[ch]' -print |sort
+	find cmd/auditset -name '*.[ch]' -print |sort
+	find cmd/auditstat -name '*.[ch]' -print |sort
+	find cmd/audit_warn -name '*.[ch]' -print |sort
+	find cmd/praudit -name '*.[ch]' -print |sort
+	) > $SRC/cscope.files
+
+	(cd $SRC ;
+	exctags -e --langmap=c:+.ndl -h ndl -L - < cscope.files
+	cscope -b )
+}
+
+################################################################
+# This creates a tarfile one can use to update a test machine.
+
+do_tar() {
+	git_rev=`git rev-parse --short=8 HEAD`
+	files="
+etc/security/audit_warn
+etc/security/audit_event
+etc/security/audit
+etc/security/audit_class
+lib/svc/manifest/system/auditd.xml
+lib/svc/manifest/system/auditset.xml
+lib/svc/method/svc-auditd
+lib/svc/method/svc-auditset
+lib/amd64/libbsm.so.1
+lib/libbsm.so.1
+kernel/sys/$arch64/c2audit
+usr/lib/amd64/libbsm.so.1
+usr/lib/libbsm.so.1
+usr/lib/audit/audit_record_attr
+usr/lib/security/audit_binfile.so.1
+usr/lib/security/audit_remote.so.1
+usr/lib/security/audit_syslog.so.1
+usr/sbin/auditreduce
+usr/sbin/praudit
+usr/sbin/auditstat
+usr/sbin/auditrecord
+usr/sbin/auditd
+usr/sbin/auditconfig
+usr/sbin/audit
+usr/share/lib/xml/dtd/adt_record.dtd.1
+usr/share/lib/xml/style/adt_record.xsl.1
+"
+# NOTE: usr/lib/security/audit_*.so.1 will have incorrect owners
+# after untarring. You'll need to set them to root.
+# chown root $ROOT/usr/lib/security/audit_*.so.1
+	(cd $ROOT && tar cfj ../../audit-${git_rev}.tar.bz2 $files)
+}
+
+################################################################
+
+if [ "$1" = "" ]; then
+  set '?' # force usage
+fi
+
+set -x
+
+for arg
+do
+  case "$arg" in
+  install)
+    build_tools
+    set -e
+    do_hdrs $arg
+    do_kern $arg
+    do_lib1 $arg
+    do_lib2 $arg
+    do_cmds $arg
+    ;;
+  lint)
+    do_hdrs $arg
+    do_kern $arg
+    do_lib1 $arg
+    do_lib2 $arg
+    do_cmds $arg
+    ;;
+  clean)
+    # intentionally skip: lib1, hdrs, tools
+    do_cmds $arg
+    do_lib2 $arg
+    do_kern $arg
+    ;;
+  clobber)
+    do_cmds $arg
+    do_lib2 $arg
+    do_lib1 $arg
+    do_kern $arg
+    do_hdrs $arg
+    clobber_tools
+    ;;
+  tags)
+    do_tags
+    ;;
+  tar)
+    do_tar
+    ;;
+  *)
+    echo "Usage: $0 {install|lint|clean|clobber|tags|tar}";
+    exit 1;
+    ;;
+  esac
+done
