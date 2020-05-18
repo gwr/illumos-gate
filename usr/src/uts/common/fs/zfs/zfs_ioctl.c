@@ -5977,7 +5977,8 @@ zfs_ioc_smb_acl(zfs_cmd_t *zc)
 		vattr.va_uid = 0;
 		vattr.va_gid = 0;
 
-		vsec.vsa_mask = VSA_ACE;
+		/* The 'special file' doesn't need to inherit AUDIT ACEs. */
+		vsec.vsa_mask = VSA_ACE | VSA_ACE_SYS;
 		vsec.vsa_aclentp = &full_access;
 		vsec.vsa_aclentsz = sizeof (full_access);
 		vsec.vsa_aclcnt = 1;
