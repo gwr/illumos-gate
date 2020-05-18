@@ -24,6 +24,7 @@
  * Copyright 2019 Joyent, Inc.
  * Copyright 2021 OmniOS Community Edition (OmniOSce) Association.
  * Copyright 2022 Garrett D'Amore <garrett@damore.org>
+ * Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <sys/asm_linkage.h>
@@ -829,10 +830,12 @@ fcnname/**/_info:							\
 	NO_UNLOAD_STUB(c2audit, audit_start,		nomod_zero);
 	NO_UNLOAD_STUB(c2audit, audit_finish,		nomod_zero);
 	NO_UNLOAD_STUB(c2audit, audit,			nomod_zero);
+	NO_UNLOAD_STUB(c2audit, auditev,		nomod_zero);
 	NO_UNLOAD_STUB(c2audit, auditdoor,		nomod_zero);
 	NO_UNLOAD_STUB(c2audit, audit_closef,		nomod_zero);
 	NO_UNLOAD_STUB(c2audit, audit_core_start,	nomod_zero);
 	NO_UNLOAD_STUB(c2audit, audit_core_finish,	nomod_zero);
+	NO_UNLOAD_STUB(c2audit, audit_sacl,		nomod_zero);
 	NO_UNLOAD_STUB(c2audit, audit_strputmsg,	nomod_zero);
 	NO_UNLOAD_STUB(c2audit, audit_savepath,		nomod_zero);
 	NO_UNLOAD_STUB(c2audit, audit_anchorpath,	nomod_zero);
