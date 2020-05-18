@@ -100,6 +100,7 @@ extern "C" {
 #define	ZFS_ACL_AUTO_INHERIT	0x40		/* ACL should be inherited */
 #define	ZFS_BONUS_SCANSTAMP	0x80		/* Scanstamp in bonus area */
 #define	ZFS_NO_EXECS_DENIED	0x100		/* exec was given to everyone */
+#define	ZFS_ACL_NO_AUDIT_ACE	0x200		/* ACL has no AUDIT ACEs */
 
 #define	SA_ZPL_ATIME(z)		z->z_attr_table[ZPL_ATIME]
 #define	SA_ZPL_MTIME(z)		z->z_attr_table[ZPL_MTIME]
