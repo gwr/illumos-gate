@@ -22,7 +22,7 @@
  * Copyright 2010 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  *
- * Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2020 Nexenta by DDN, Inc. All rights reserved.
  */
 
 #ifndef _AUDITRT_H
@@ -119,8 +119,8 @@ typedef struct audit_pcb audit_pcb_t;
 #define	M_AFTER		0x0001	/* 'a' after a time */
 #define	M_BEFORE	0x0002	/* 'b' before a time */
 #define	M_CLASS		0x0004	/* 'c' event class */
-#define	M_GROUPE 	0x0008	/* 'f' effective group-id */
-#define	M_GROUPR 	0x0010	/* 'g' real group-id */
+#define	M_GROUPE	0x0008	/* 'f' effective group-id */
+#define	M_GROUPR	0x0010	/* 'g' real group-id */
 #define	M_OBJECT	0x0020	/* 'o' object */
 #define	M_SUBJECT	0x0040	/* 'j' subject */
 #define	M_TYPE		0x0080	/* 'm' event type */
@@ -187,10 +187,11 @@ extern int	obj_flag;	/* 'o' object type */
 extern int	obj_id;		/* object identifier */
 extern gid_t	obj_group;	/* object group */
 extern uid_t	obj_owner;	/* object owner */
-extern int	subj_id; 	/* subject identifier */
+extern int	subj_id;	/* subject identifier */
 extern char	ipc_type;	/* 'o' object type - tell what type of IPC */
 extern scf_pattern_t fmri;	/* 'o' fmri value */
 extern uid_t	obj_user;	/* 'o' user value */
+extern char	*wsid;		/* 'o' wsid value */
 
 /*
  * File selection options
@@ -215,6 +216,7 @@ extern int	new_mode;	/* 'N' new object selection mode */
  * printed to describe exactly what went wrong.
  * Errbuf is used to build messages with variables in them.
  */
+#define	ERRBUF_SZ	256
 extern char	*error_str;	/* current error message */
 extern char	errbuf[];	/* buffer for building error message */
 extern char	*ar;		/* => "auditreduce:" */
@@ -250,6 +252,11 @@ extern int	filenum;	/* number of files total */
  * Global variable, class of current record being processed.
  */
 extern int	global_class;
+
+/*
+ * SMB_SID_STRSZ - see uts/common/smbsrv/smb_sid.h
+ */
+#define	AU_SID_STRSZ	256
 
 #ifdef	__cplusplus
 }

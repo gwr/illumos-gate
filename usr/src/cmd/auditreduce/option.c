@@ -21,6 +21,8 @@
 /*
  * Copyright 2010 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
+ *
+ * Copyright 2020 Nexenta by DDN, Inc. All rights reserved.
  */
 
 /*
@@ -69,7 +71,8 @@ static obj_ent_t obj_tbl[] = {
 			{ "shmgroup", OBJ_SHMGROUP  },
 			{ "shmowner", OBJ_SHMOWNER  },
 			{ "sock", OBJ_SOCK },
-			{ "user", OBJ_USER } };
+			{ "user", OBJ_USER },
+			{ "wsid", OBJ_WSID } };
 
 extern int	derive_date(char *, struct tm *);
 extern int	parse_time(char *, int);
@@ -96,6 +99,7 @@ static int	proc_type(char *);
 static int	proc_user(char *, uid_t *);
 static int	proc_zonename(char *);
 static int	proc_fmri(char *);
+static int	proc_wsid(char *);
 
 /*
  * .func	process_options - process command line options.
@@ -124,6 +128,7 @@ process_options(int argc, char **argv)
 
 	error_str = gettext("general error");
 
+	wsid = NULL;
 	zonename = NULL;
 	/*
 	 * Big switch to process the flags.
@@ -410,6 +415,8 @@ proc_object(char *optarg)
 		return (proc_fmri(obj_val));
 	case OBJ_USER:
 		return (proc_user(obj_val, &obj_user));
+	case OBJ_WSID:
+		return (proc_wsid(obj_val));
 	case OBJ_LP: /* lp objects have not yet been defined */
 	default: /* impossible */
 		(void) sprintf(errbuf, gettext("invalid object type (%s)"),
@@ -522,7 +529,7 @@ int
 proc_id(char *optstr, int opt)
 {
 	switch (opt) {
-	case 'e': 		/* effective user id */
+	case 'e':		/* effective user id */
 		if (flags & M_USERE) {
 			error_str = gettext(
 			    "'e' option specified multiple times");
@@ -530,7 +537,7 @@ proc_id(char *optstr, int opt)
 		}
 		flags |= M_USERE;
 		return (proc_user(optstr, &m_usere));
-	case 'f': 		/* effective group id */
+	case 'f':		/* effective group id */
 		if (flags & M_GROUPE) {
 			error_str = gettext(
 			    "'f' option specified multiple times");
@@ -538,7 +545,7 @@ proc_id(char *optstr, int opt)
 		}
 		flags |= M_GROUPE;
 		return (proc_group(optstr, &m_groupe));
-	case 'r': 		/* real user id */
+	case 'r':		/* real user id */
 		if (flags & M_USERR) {
 			error_str = gettext(
 			    "'r' option specified multiple times");
@@ -546,7 +553,7 @@ proc_id(char *optstr, int opt)
 		}
 		flags |= M_USERR;
 		return (proc_user(optstr, &m_userr));
-	case 'u': 		/* audit user id */
+	case 'u':		/* audit user id */
 		if (flags & M_USERA) {
 			error_str = gettext(
 			    "'u' option specified multiple times");
@@ -554,7 +561,7 @@ proc_id(char *optstr, int opt)
 		}
 		flags |= M_USERA;
 		return (proc_user(optstr, &m_usera));
-	case 'g': 		/* real group id */
+	case 'g':		/* real group id */
 		if (flags & M_GROUPR) {
 			error_str = gettext(
 			    "'g' option specified multiple times");
@@ -562,7 +569,7 @@ proc_id(char *optstr, int opt)
 		}
 		flags |= M_GROUPR;
 		return (proc_group(optstr, &m_groupr));
-	default: 		/* impossible */
+	default:		/* impossible */
 		(void) sprintf(errbuf, gettext("'%c' unknown option"), opt);
 		error_str = errbuf;
 		return (-1);
@@ -1290,5 +1297,26 @@ proc_fmri(char *optstr)
 	if (fmri.sp_arg == NULL)
 		return (-1);
 
+	return (0);
+}
+
+/*
+ * proc_wsid - pick up Windows SID.
+ *
+ * ret 0:	non-empty string
+ * ret -1:	empty string or string is too long.
+ */
+static int
+proc_wsid(char *optstr)
+{
+	size_t	length = strlen(optstr);
+	if ((length < 1) || (length > AU_SID_STRSZ) ||
+	    strncmp(optstr, "S-1-", 4) != 0) {
+		(void) snprintf(errbuf, ERRBUF_SZ,
+		    gettext("bad Windows SID: %s"), optstr);
+		error_str = errbuf;
+		return (-1);
+	}
+	wsid = strdup(optstr);
 	return (0);
 }

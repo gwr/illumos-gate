@@ -21,6 +21,8 @@
 /*
  * Copyright 2010 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
+ *
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 /*
@@ -196,6 +198,10 @@ init_tokens(void)
 	    ip_addr_ex_token, T_ELEMENT);
 	table_init(AUT_SOCKET_EX, "socket", socket_ex_token, T_ENCLOSED);
 	table_init(AUT_TID, "tid", tid_token, T_EXTENDED);
+
+	table_init(AUT_ACCESS_MASK, "access mask", access_mask_token,
+	    T_ELEMENT);
+	table_init(AUT_WSID, "Windows SID", wsid_token, T_ELEMENT);
 
 #ifdef _PRAUDIT
 	/*
