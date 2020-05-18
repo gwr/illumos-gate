@@ -24,7 +24,9 @@
 # Copyright 2010 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
 #
+# Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
 # Copyright (c) 2018, Joyent, Inc.
+#
 
 XLATEDIR = $(SRC)/lib/libbsm/common
 
@@ -47,7 +49,7 @@ CERRWARN += $(CNOWARN_UNINIT)
 
 SMOFF += signed
 
-LDLIBS += -lbsm -lnsl -lpam -ltsol
+LDLIBS += -lbsm -lnsl -lpam -ltsol -lidmap
 
 .KEEP_STATE:
 
