@@ -191,6 +191,7 @@ extern int	subj_id; 	/* subject identifier */
 extern char	ipc_type;	/* 'o' object type - tell what type of IPC */
 extern scf_pattern_t fmri;	/* 'o' fmri value */
 extern uid_t	obj_user;	/* 'o' user value */
+extern char	*wsid;		/* 'o' wsid value */
 
 /*
  * File selection options
@@ -215,6 +216,7 @@ extern int	new_mode;	/* 'N' new object selection mode */
  * printed to describe exactly what went wrong.
  * Errbuf is used to build messages with variables in them.
  */
+#define	ERRBUF_SZ	256
 extern char	*error_str;	/* current error message */
 extern char	errbuf[];	/* buffer for building error message */
 extern char	*ar;		/* => "auditreduce:" */
