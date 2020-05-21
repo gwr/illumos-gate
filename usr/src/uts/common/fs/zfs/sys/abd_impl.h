@@ -26,14 +26,18 @@ extern "C" {
 typedef enum abd_flags {
 	ABD_FLAG_LINEAR	= 1 << 0,	/* is buffer linear (or scattered)? */
 	ABD_FLAG_OWNER	= 1 << 1,	/* does it own its data buffers? */
-	ABD_FLAG_META	= 1 << 2	/* does this represent FS metadata? */
+	ABD_FLAG_META	= 1 << 2,	/* does this represent FS metadata? */
+	ABD_FLAG_GANG	= 1 << 6,	/* multiple ABDs chained together */
+	ABD_FLAG_GANG_FREE = 1 << 7	/* gang ABD owns this ABD */
 } abd_flags_t;
 
 struct abd {
 	abd_flags_t	abd_flags;
 	uint_t		abd_size;	/* excludes scattered abd_offset */
+	list_node_t	abd_gang_link;
 	struct abd	*abd_parent;
 	zfs_refcount_t	abd_children;
+	kmutex_t	abd_mtx;
 	union {
 		struct abd_scatter {
 			uint_t	abd_offset;
@@ -43,8 +47,13 @@ struct abd {
 		struct abd_linear {
 			void	*abd_buf;
 		} abd_linear;
+		struct abd_gang {
+			list_t	abd_gang_chain;
+		} abd_gang;
 	} abd_u;
 };
+
+#define	ABD_GANG(abd)		((abd)->abd_u.abd_gang)
 
 #ifdef __cplusplus
 }
