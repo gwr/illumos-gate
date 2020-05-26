@@ -4212,12 +4212,17 @@ asyputchar(cons_polledio_arg_t arg, uchar_t c)
 /*
  * See if there's a character available. If no character is
  * available, return 0. Run in polled mode, no interrupts.
+ *
+ * Common Hypervisors (e.g. VMware Fusion) will "yield" the guest
+ * when we read the MSR register.  It's important do to that here
+ * so the guest doesn't burn CPU in the pollng loops calling this.
  */
 static boolean_t
 asyischar(cons_polledio_arg_t arg)
 {
 	struct asycom *asy = (struct asycom *)arg;
 
+	(void) ddi_get8(asy->asy_iohandle, asy->asy_ioaddr + MSR);
 	return ((ddi_get8(asy->asy_iohandle, asy->asy_ioaddr + LSR) & RCA)
 	    != 0);
 }

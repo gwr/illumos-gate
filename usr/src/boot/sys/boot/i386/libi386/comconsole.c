@@ -285,10 +285,18 @@ comc_getchar(struct console *cp)
 	return (comc_ischar(cp) ? inb(sp->ioaddr + com_data) : -1);
 }
 
+/*
+ * Return non-zero when a character is ready to be read.
+ *
+ * Common Hypervisors (e.g. VMware Fusion) will "yield" the guest
+ * when we read the MSR register.  It's important do to that here
+ * so the guest doesn't burn CPU in the pollng loops calling this.
+ */
 static int
 comc_ischar(struct console *cp)
 {
 	struct serial *sp = cp->c_private;
+	(void) inb(sp->ioaddr + com_msr);
 	return (inb(sp->ioaddr + com_lsr) & LSR_RXRDY);
 }
 

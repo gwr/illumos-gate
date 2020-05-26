@@ -897,9 +897,17 @@ serial_getchar(void)
 	return (inb(port + DAT));
 }
 
+/*
+ * Return non-zero when a character is ready to be read.
+ *
+ * Common Hypervisors (e.g. VMware Fusion) will "yield" the guest
+ * when we read the MSR register.  It's important do to that here
+ * so the guest doesn't burn CPU in the pollng loops calling this.
+ */
 static int
 serial_ischar(void)
 {
+	(void) inb(port + MSR);
 	return (inb(port + LSR) & RCA);
 }
 
