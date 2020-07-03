@@ -17,11 +17,6 @@ include $(SRC)/Makefile.master
 
 PROG = sysevent
 
-SCRIPTS = cleanup \
-	resilver_restart_001 \
-	resilver_restart_002 \
-	setup
-
 include $(SRC)/cmd/Makefile.cmd
 include $(SRC)/test/Makefile.com
 
@@ -30,13 +25,9 @@ TARGETDIR = $(ROOTOPTPKG)/tests/functional/resilver
 
 OBJS = $(PROG:%=%.o)
 SRCS = $(OBJS:%.o=%.c)
-SRCFILES = resilver.cfg
 
-CMDS = $(PROG:%=$(TARGETDIR)/%) $(SCRIPTS:%=$(TARGETDIR)/%)
+CMDS = $(PROG:%=$(TARGETDIR)/%)
 $(CMDS) := FILEMODE = 0555
-
-FILES = $(SRCFILES:%=$(TARGETDIR)/%)
-$(FILES) := FILEMODE = 0444
 
 CPPFLAGS += -D__EXTENSIONS__
 LDLIBS += -lsysevent
@@ -52,7 +43,7 @@ $(PROG): $(OBJS)
 %.o: %.c
 	$(COMPILE.c) $<
 
-install: all $(CMDS) $(FILES)
+install: all $(CMDS)
 
 clobber: clean
 	-$(RM) $(PROG)
@@ -62,13 +53,8 @@ clean:
 
 $(CMDS): $(TARGETDIR) $(PROG)
 
-$(FILES): $(SRCFILES)
-
 $(TARGETDIR):
 	$(INS.dir)
 
 $(TARGETDIR)/%: %
 	$(INS.file)
-
-$(TARGETDIR)/%: %.ksh
-	$(INS.rename)

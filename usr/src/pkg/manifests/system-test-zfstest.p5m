@@ -2212,6 +2212,9 @@ file path=opt/zfs-tests/tests/functional/cli_root/zpool_wait/scan/cleanup \
 file path=opt/zfs-tests/tests/functional/cli_root/zpool_wait/scan/setup \
     mode=0555
 file \
+    path=opt/zfs-tests/tests/functional/cli_root/zpool_wait/scan/zpool_wait_rebuild \
+    mode=0555
+file \
     path=opt/zfs-tests/tests/functional/cli_root/zpool_wait/scan/zpool_wait_replace \
     mode=0555
 file \
@@ -2915,14 +2918,28 @@ file path=opt/zfs-tests/tests/functional/rename_dirs/rename_dirs_001_pos \
     mode=0555
 file path=opt/zfs-tests/tests/functional/rename_dirs/setup mode=0555
 dir  path=opt/zfs-tests/tests/functional/replacement
+file path=opt/zfs-tests/tests/functional/replacement/attach_import mode=0555
+file path=opt/zfs-tests/tests/functional/replacement/attach_multiple mode=0555
+file path=opt/zfs-tests/tests/functional/replacement/attach_rebuild mode=0555
+file path=opt/zfs-tests/tests/functional/replacement/attach_resilver mode=0555
 file path=opt/zfs-tests/tests/functional/replacement/cleanup mode=0555
+file path=opt/zfs-tests/tests/functional/replacement/detach mode=0555
+file \
+    path=opt/zfs-tests/tests/functional/replacement/rebuild_disabled_feature \
+    mode=0555
+file path=opt/zfs-tests/tests/functional/replacement/rebuild_multiple mode=0555
+file path=opt/zfs-tests/tests/functional/replacement/rebuild_raidz mode=0555
+file path=opt/zfs-tests/tests/functional/replacement/replace_import mode=0555
+file path=opt/zfs-tests/tests/functional/replacement/replace_rebuild mode=0555
+file path=opt/zfs-tests/tests/functional/replacement/replace_resilver mode=0555
 file path=opt/zfs-tests/tests/functional/replacement/replacement.cfg mode=0444
-file path=opt/zfs-tests/tests/functional/replacement/replacement_001_pos \
+file \
+    path=opt/zfs-tests/tests/functional/replacement/resilver_restart_001 \
     mode=0555
-file path=opt/zfs-tests/tests/functional/replacement/replacement_002_pos \
+file \
+    path=opt/zfs-tests/tests/functional/replacement/resilver_restart_002 \
     mode=0555
-file path=opt/zfs-tests/tests/functional/replacement/replacement_003_pos \
-    mode=0555
+file path=opt/zfs-tests/tests/functional/replacement/scrub_cancel mode=0555
 file path=opt/zfs-tests/tests/functional/replacement/setup mode=0555
 dir  path=opt/zfs-tests/tests/functional/reservation
 file path=opt/zfs-tests/tests/functional/reservation/cleanup mode=0555
@@ -2974,11 +2991,6 @@ file path=opt/zfs-tests/tests/functional/reservation/reservation_022_pos \
     mode=0555
 file path=opt/zfs-tests/tests/functional/reservation/setup mode=0555
 dir  path=opt/zfs-tests/tests/functional/resilver
-file path=opt/zfs-tests/tests/functional/resilver/cleanup mode=0555
-file path=opt/zfs-tests/tests/functional/resilver/resilver.cfg mode=0444
-file path=opt/zfs-tests/tests/functional/resilver/resilver_restart_001 mode=0555
-file path=opt/zfs-tests/tests/functional/resilver/resilver_restart_002 mode=0555
-file path=opt/zfs-tests/tests/functional/resilver/setup mode=0555
 file path=opt/zfs-tests/tests/functional/resilver/sysevent mode=0555
 dir  path=opt/zfs-tests/tests/functional/rootpool
 file path=opt/zfs-tests/tests/functional/rootpool/cleanup mode=0555

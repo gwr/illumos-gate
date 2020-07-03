@@ -40,6 +40,7 @@
 #include <sys/uberblock_impl.h>
 #include <sys/vdev_indirect_mapping.h>
 #include <sys/vdev_indirect_births.h>
+#include <sys/vdev_rebuild.h>
 #include <sys/vdev_removal.h>
 
 #ifdef	__cplusplus
@@ -301,13 +302,26 @@ struct vdev {
 	/* The following is not in ZoL, but used for auto-trim test progress */
 	uint64_t	vdev_autotrim_bytes_done;
 
-	/* for limiting outstanding I/Os (initialize and TRIM) */
+	/* Rebuild related */
+	boolean_t	vdev_rebuilding;
+	boolean_t	vdev_rebuild_exit_wanted;
+	boolean_t	vdev_rebuild_cancel_wanted;
+	boolean_t	vdev_rebuild_reset_wanted;
+	kmutex_t	vdev_rebuild_lock;
+	kcondvar_t	vdev_rebuild_cv;
+	kthread_t	*vdev_rebuild_thread;
+	vdev_rebuild_t	vdev_rebuild_config;
+
+	/* For limiting outstanding I/Os (initialize, TRIM, rebuild) */
 	kmutex_t	vdev_initialize_io_lock;
 	kcondvar_t	vdev_initialize_io_cv;
 	uint64_t	vdev_initialize_inflight;
 	kmutex_t	vdev_trim_io_lock;
 	kcondvar_t	vdev_trim_io_cv;
 	uint64_t	vdev_trim_inflight[2];
+	kmutex_t	vdev_rebuild_io_lock;
+	kcondvar_t	vdev_rebuild_io_cv;
+	uint64_t	vdev_rebuild_inflight;
 
 	/*
 	 * Values stored in the config for an indirect or removing vdev.
@@ -364,6 +378,7 @@ struct vdev {
 	uint64_t	vdev_degraded;	/* persistent degraded state	*/
 	uint64_t	vdev_removed;	/* persistent removed state	*/
 	uint64_t	vdev_resilver_txg; /* persistent resilvering state */
+	uint64_t	vdev_rebuild_txg; /* persistent rebuilding state */
 	uint64_t	vdev_nparity;	/* number of parity devices for raidz */
 	char		*vdev_path;	/* vdev path (if any)		*/
 	char		*vdev_devid;	/* vdev devid (if any)		*/

@@ -80,14 +80,14 @@ $if _ELF64
 	spa_feature_table		{
 					  ASSERT = {
 						  TYPE = OBJECT;
-						  SIZE = addrsize[180];
+						  SIZE = addrsize[186];
 						};
 					};
 $elif _ELF32
 	spa_feature_table		{
 					  ASSERT = {
 						  TYPE = OBJECT;
-						  SIZE = addrsize[210];
+						  SIZE = addrsize[217];
 						};
 					};
 $else
@@ -292,6 +292,7 @@ $endif
 	zpool_unmount_datasets;
 	zpool_upgrade;
 	zpool_vdev_attach;
+	zpool_vdev_attach_rebuild;
 	zpool_vdev_clear;
 	zpool_vdev_degrade;
 	zpool_vdev_detach;

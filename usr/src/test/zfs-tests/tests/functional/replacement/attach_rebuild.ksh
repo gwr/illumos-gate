@@ -1,4 +1,4 @@
-#!/usr/bin/ksh -p
+#!/bin/ksh -p
 #
 # CDDL HEADER START
 #
@@ -27,6 +27,7 @@
 
 #
 # Copyright (c) 2013, 2016 by Delphix. All rights reserved.
+# Copyright (c) 2020 by Lawrence Livermore National Security, LLC.
 #
 
 . $STF_SUITE/include/libtest.shlib
@@ -34,13 +35,15 @@
 
 #
 # DESCRIPTION:
-# 	Detaching disks during I/O should pass for supported pools.
+# 	Attaching disks during I/O should pass for supported pools.
 #
 # STRATEGY:
 #	1. Create multidisk pools (stripe/mirror/raidz) and
 #	   start some random I/O
-#	2. Detach a disk from the pool.
+#	2. Attach a disk to the pool.
 #	3. Verify the integrity of the file system and the resilvering.
+#
+# NOTE: Raidz does not support the sequential resilver (-s) option.
 #
 
 verify_runnable "global"
@@ -48,9 +51,8 @@ verify_runnable "global"
 function cleanup
 {
 	if [[ -n "$child_pids" ]]; then
-		for wait_pid in $child_pids
-		do
-		        kill $wait_pid
+		for wait_pid in $child_pids; do
+			kill $wait_pid
 		done
 	fi
 
@@ -78,17 +80,19 @@ log_onexit cleanup
 
 [[ -n "$HOLES_FILEOFFSET" ]] && options="$options -o $HOLES_FILEOFFSET "
 
-ptions="$options -r "
+options="$options -r "
 
 [[ -n "$options" ]] && options_display=$options
 
 child_pids=""
 
-function detach_test
+function attach_test
 {
 	typeset -i iters=2
 	typeset -i index=0
-	typeset disk1=$1
+	typeset opt=$1
+	typeset disk1=$2
+	typeset disk2=$3
 
 	typeset i=0
 	while [[ $i -lt $iters ]]; do
@@ -97,68 +101,73 @@ function detach_test
 		typeset pid=$!
 
 		sleep 1
-		if ! ps -p $pid > /dev/null 2>&1; then
-			log_fail "file_trunc $options $TESTDIR/$TESTFILE.$i"
-		fi
 
 		child_pids="$child_pids $pid"
 		((i = i + 1))
 	done
 
-	log_must zpool detach $TESTPOOL1 $disk1
+	log_must zpool attach -sw $opt $TESTPOOL1 $disk1 $disk2
 
-	sleep 10
-
-	for wait_pid in $child_pids
-	do
+	for wait_pid in $child_pids; do
 		kill $wait_pid
 	done
 	child_pids=""
 
-        log_must zpool export $TESTPOOL1
-        log_must zpool import -d $TESTDIR $TESTPOOL1
-        log_must zfs umount $TESTPOOL1/$TESTFS1
-        log_must zdb -cdui $TESTPOOL1/$TESTFS1
-        log_must zfs mount $TESTPOOL1/$TESTFS1
+	log_must zpool export $TESTPOOL1
+	log_must zpool import -d $TESTDIR $TESTPOOL1
+	log_must zfs umount $TESTPOOL1/$TESTFS1
+	log_must zdb -cdui $TESTPOOL1/$TESTFS1
+	log_must zfs mount $TESTPOOL1/$TESTFS1
+	verify_pool $TESTPOOL1
 }
 
 specials_list=""
 i=0
-while [[ $i != 2 ]]; do
-	mkfile $MINVDEVSIZE $TESTDIR/$TESTFILE1.$i
+while [[ $i != 3 ]]; do
+	log_must mkfile $MINVDEVSIZE $TESTDIR/$TESTFILE1.$i
 	specials_list="$specials_list $TESTDIR/$TESTFILE1.$i"
 
 	((i = i + 1))
 done
 
-create_pool $TESTPOOL1 mirror $specials_list
-log_must zfs create $TESTPOOL1/$TESTFS1
-log_must zfs set mountpoint=$TESTDIR1 $TESTPOOL1/$TESTFS1
+#
+# Create a replacement disk special file.
+#
+log_must mkfile $MINVDEVSIZE $TESTDIR/$REPLACEFILE
 
-detach_test $TESTDIR/$TESTFILE1.1
-
-zpool iostat -v $TESTPOOL1 | grep "$TESTDIR/$TESTFILE1.1"
-if [[ $? -eq 0 ]]; then
-	log_fail "$TESTFILE1.1 should no longer be present."
-fi
-
-destroy_pool $TESTPOOL1
-
-log_note "Verify 'zpool detach' fails with non-mirrors."
-
-for type in "" "raidz" "raidz1" ; do
-	create_pool $TESTPOOL1 $type $specials_list
+for op in "" "-f"; do
+	create_pool $TESTPOOL1 mirror $specials_list
 	log_must zfs create $TESTPOOL1/$TESTFS1
 	log_must zfs set mountpoint=$TESTDIR1 $TESTPOOL1/$TESTFS1
 
-	log_mustnot zpool detach $TESTDIR/$TESTFILE1.1
+	attach_test "$opt" $TESTDIR/$TESTFILE1.1 $TESTDIR/$REPLACEFILE
 
-	zpool iostat -v $TESTPOOL1 | grep "$TESTDIR/$TESTFILE1.1"
+	zpool iostat -v $TESTPOOL1 | grep "$REPLACEFILE"
 	if [[ $? -ne 0 ]]; then
-	        log_fail "$TESTFILE1.1 is not present."
+		log_fail "$REPLACEFILE is not present."
 	fi
 
 	destroy_pool $TESTPOOL1
+done
+
+log_note "Verify 'zpool attach' fails with non-mirrors."
+
+for type in "" "raidz" "raidz1"; do
+	for op in "" "-f"; do
+		create_pool $TESTPOOL1 $type $specials_list
+		log_must zfs create $TESTPOOL1/$TESTFS1
+		log_must zfs set mountpoint=$TESTDIR1 $TESTPOOL1/$TESTFS1
+
+		log_mustnot zpool attach -s "$opt" $TESTDIR/$TESTFILE1.1 \
+		    $TESTDIR/$REPLACEFILE
+
+		zpool iostat -v $TESTPOOL1 | grep "$REPLACEFILE"
+		if [[ $? -eq 0 ]]; then
+			log_fail "$REPLACEFILE should not be present."
+		fi
+
+		destroy_pool $TESTPOOL1
+	done
 done
 
 log_pass

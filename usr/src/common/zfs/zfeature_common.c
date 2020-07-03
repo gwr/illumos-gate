@@ -456,9 +456,13 @@ zpool_feature_init(void)
 	    "Support for defering new resilvers when one is already running.",
 	    ZFEATURE_FLAG_READONLY_COMPAT, ZFEATURE_TYPE_BOOLEAN, NULL);
 
+	zfeature_register(SPA_FEATURE_DEVICE_REBUILD,
+	    "org.openzfs:device_rebuild", "device_rebuild",
+	    "Support for sequential device rebuilds",
+	    ZFEATURE_FLAG_READONLY_COMPAT, ZFEATURE_TYPE_BOOLEAN, NULL);
+
 	/*
 	 * Slots for:
-	 * SPA_FEATURE_DEVICE_REBUILD
 	 * SPA_FEATURE_ZSTD_COMPRESS
 	 * SPA_FEATURE_DRAID
 	 * SPA_FEATURE_ZILSAXATTR
