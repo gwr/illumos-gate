@@ -399,10 +399,13 @@ spa_prop_get(spa_t *spa, nvlist_t **nvp)
 	objset_t *mos = spa->spa_meta_objset;
 	zap_cursor_t zc;
 	zap_attribute_t za;
+	dsl_pool_t *dp;
 	int err;
 
 	VERIFY(nvlist_alloc(nvp, NV_UNIQUE_NAME, KM_SLEEP) == 0);
 
+	dp = spa_get_dsl(spa);
+	dsl_pool_config_enter(dp, FTAG);
 	mutex_enter(&spa->spa_props_lock);
 
 	/*
@@ -413,6 +416,7 @@ spa_prop_get(spa_t *spa, nvlist_t **nvp)
 	/* If no pool property object, no more prop to get. */
 	if (mos == NULL || spa->spa_pool_props_object == 0) {
 		mutex_exit(&spa->spa_props_lock);
+		dsl_pool_config_exit(dp, FTAG);
 		return (0);
 	}
 
@@ -438,23 +442,17 @@ spa_prop_get(spa_t *spa, nvlist_t **nvp)
 				src = ZPROP_SRC_LOCAL;
 
 			if (prop == ZPOOL_PROP_BOOTFS) {
-				dsl_pool_t *dp;
 				dsl_dataset_t *ds = NULL;
 
-				dp = spa_get_dsl(spa);
-				dsl_pool_config_enter(dp, FTAG);
 				err = dsl_dataset_hold_obj(dp,
 				    za.za_first_integer, FTAG, &ds);
-				if (err != 0) {
-					dsl_pool_config_exit(dp, FTAG);
+				if (err != 0)
 					break;
-				}
 
 				strval = kmem_alloc(ZFS_MAX_DATASET_NAME_LEN,
 				    KM_SLEEP);
 				dsl_dataset_name(ds, strval);
 				dsl_dataset_rele(ds, FTAG);
-				dsl_pool_config_exit(dp, FTAG);
 			} else {
 				strval = NULL;
 				intval = za.za_first_integer;
@@ -486,6 +484,7 @@ spa_prop_get(spa_t *spa, nvlist_t **nvp)
 	}
 	zap_cursor_fini(&zc);
 	mutex_exit(&spa->spa_props_lock);
+	dsl_pool_config_exit(dp, FTAG);
 	if (err && err != ENOENT) {
 		nvlist_free(*nvp);
 		*nvp = NULL;
