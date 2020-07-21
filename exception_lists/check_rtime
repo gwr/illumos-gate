@@ -26,6 +26,7 @@
 # Copyright 2019 Peter Tribble.
 # Copyright 2018 Joyent, Inc.
 # Copyright 2020 Oxide Computer Company
+# Copyright 2020 Tintri by DDN, Inc. All rights reserved.
 #
 
 # This file provides exceptions to the usual rules applied to ELF objects by
@@ -233,6 +234,8 @@ FORBIDDEN_DEP   usr/lib/netsvc/yp/ypxfrd        # C++
 
 # libfakekernel is a test environment, not intended for general use
 FORBIDDEN libfakekernel\.so
+FORBIDDEN_DEP opt/os-tests/tests/ksid/ksid.32
+FORBIDDEN_DEP opt/os-tests/tests/ksid/ksid.64
 FORBIDDEN_DEP usr/MACH(lib)/libzpool.so.1
 FORBIDDEN_DEP usr/bin/amd64/ztest
 FORBIDDEN_DEP usr/bin/i86/ztest

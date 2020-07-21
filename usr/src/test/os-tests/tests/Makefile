@@ -21,6 +21,7 @@ SUBDIRS =       \
 		ddi_ufm \
 		file-locking \
 		ksensor \
+		ksid \
 		libtopo \
 		pf_key \
 		poll \
