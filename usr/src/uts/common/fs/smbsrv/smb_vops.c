@@ -35,6 +35,8 @@
 #include <sys/nbmlock.h>
 #include <sys/share.h>
 #include <sys/fcntl.h>
+#include <sys/priv_const.h>
+#include <sys/policy.h>
 #include <nfs/lm.h>
 
 #include <smbsrv/smb_kproto.h>
@@ -679,6 +681,17 @@ smb_vop_lookup(
 	if (flags & SMB_CATIA)
 		np = smb_vop_catia_v5tov4(name, namebuf, sizeof (namebuf));
 
+#ifdef _KERNEL
+	/*
+	 * The SMB server enables BYPASS_TRAVERSE_CHECKING by default.
+	 * This grants PRIV_FILE_DAC_SEARCH to all users.
+	 * If the user has this privilege, we'll always succeed ACE_EXECUTE
+	 * checks on directories, so skip the (potentially expensive)
+	 * ACL check.
+	 */
+	if (PRIV_POLICY_ONLY(cr, PRIV_FILE_DAC_SEARCH, B_FALSE))
+		option_flags |= ATTR_NOACLCHECK;
+#endif
 	pn_alloc(&rpn);
 
 	/*
