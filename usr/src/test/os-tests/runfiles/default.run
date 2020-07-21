@@ -118,5 +118,8 @@ tests = [ 'ksensor_basic.32','ksensor_basic.64', 'ksensor_err.32',
     'ksensor_err.64' ]
 post = ksensor_fini
 
+[/opt/os-tests/tests/ksid]
+tests = ['ksid.32','ksid.64']
+
 [/opt/os-tests/tests/stackalign]
 tests = ['stackalign.32', 'stackalign.64']

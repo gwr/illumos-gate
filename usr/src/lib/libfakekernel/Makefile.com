@@ -10,7 +10,7 @@
 #
 
 #
-# Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
+# Copyright 2020 Tintri by DDN, Inc. All rights reserved.
 # Copyright 2017 RackTop Systems.
 #
 
@@ -28,7 +28,6 @@ COBJS = \
 	kiconv.o \
 	kmem.o \
 	kmisc.o \
-	ksid.o \
 	ksocket.o \
 	kstat.o \
 	mutex.o \
@@ -36,6 +35,7 @@ COBJS = \
 	random.o \
 	rwlock.o \
 	sema.o \
+	sid.o \
 	strext.o \
 	taskq.o \
 	thread.o \
@@ -62,7 +62,7 @@ CFLAGS +=	$(CCVERBOSE)
 CPPFLAGS.first += -I../common
 CPPFLAGS= $(CPPFLAGS.first)
 
-INCS += -I$(SRC)/uts/common
+INCS += -I$(SRC)/uts/common -I $(SRC)/common
 
 CPPFLAGS += $(INCS) -D_REENTRANT -D_FAKE_KERNEL
 CPPFLAGS += -D_FILE_OFFSET_BITS=64
@@ -75,11 +75,13 @@ CPPFLAGS += -DDEBUG
 # complaints
 ZGUIDANCE= -Wl,-zguidance=noasserts
 
-LDLIBS += -lumem -lcryptoutil -lsocket -lc
+LDLIBS += -lumem -lcryptoutil -lsocket -lc -lavl
 
 .KEEP_STATE:
 
 all: $(LIBS)
 
+$(SRCDIR)/sid.c: $(SRC)/uts/common/os/sid.c
+	$(CP) $^ $@
 
 include ../../Makefile.targ
