@@ -26,6 +26,7 @@
 # Copyright 2019 Peter Tribble.
 # Copyright 2018 Joyent, Inc.
 # Copyright 2020 Oxide Computer Company
+# Copyright 2020 Tintri by DDN, Inc. All rights reserved.
 # Copyright 2022 Garrett D'Amore <garrett@damore.org>
 #
 
@@ -232,6 +233,8 @@ FORBIDDEN_DEP   usr/lib/netsvc/yp/ypxfrd        # C++
 
 # libfakekernel is a test environment, not intended for general use
 FORBIDDEN libfakekernel\.so
+FORBIDDEN_DEP opt/os-tests/tests/ksid/ksid.32
+FORBIDDEN_DEP opt/os-tests/tests/ksid/ksid.64
 FORBIDDEN_DEP usr/MACH(lib)/libzpool.so.1
 FORBIDDEN_DEP usr/bin/ztest
 FORBIDDEN_DEP usr/bin/raidz_test
