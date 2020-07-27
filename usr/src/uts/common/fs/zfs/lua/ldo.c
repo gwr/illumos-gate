@@ -31,6 +31,21 @@
 
 
 
+#ifdef _KERNEL
+static intptr_t stack_remaining(void) {
+  intptr_t local;
+  if (curthread->t_stk > curthread->t_stkbase)
+    local = (intptr_t)&local - (intptr_t)curthread->t_stkbase;
+  else
+    local = (intptr_t)curthread->t_stkbase - (intptr_t)&local;
+  return local;
+}
+#else
+static intptr_t stack_remaining(void) {
+  return INTPTR_MAX;
+}
+#endif
+
 
 /*
 ** {======================================================
@@ -399,8 +414,13 @@ void luaD_call (lua_State *L, StkId func, int nResults, int allowyield) {
     if (L->nCcalls == LUAI_MAXCCALLS)
       luaG_runerror(L, "C stack overflow");
     else if (L->nCcalls >= (LUAI_MAXCCALLS + (LUAI_MAXCCALLS>>3)))
-      luaD_throw(L, LUA_ERRERR);  /* error while handing stack error */
+      luaD_throw(L, LUA_ERRERR);  /* error while handling stack error */
   }
+  intptr_t remaining = stack_remaining();
+  if (L->runerror == 0 && remaining < LUAI_MINCSTACK)
+    luaG_runerror(L, "C stack overflow");
+  if (L->runerror != 0 && remaining < LUAI_MINCSTACK / 2)
+    luaD_throw(L, LUA_ERRERR);  /* error while handling stack error */
   if (!allowyield) L->nny++;
   if (!luaD_precall(L, func, nResults))  /* is a Lua function? */
     luaV_execute(L);  /* call it */
