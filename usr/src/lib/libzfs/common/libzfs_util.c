@@ -612,6 +612,9 @@ zfs_standard_error_fmt(libzfs_handle_t *hdl, int error, const char *fmt, ...)
 	case ZFS_ERR_IOC_ARG_BADTYPE:
 		zfs_verror(hdl, EZFS_IOC_NOTSUPPORTED, fmt, ap);
 		break;
+	case ZFS_ERR_BADPROP:
+		zfs_verror(hdl, EZFS_BADPROP, fmt, ap);
+		break;
 	default:
 		zfs_error_aux(hdl, strerror(error));
 		zfs_verror(hdl, EZFS_UNKNOWN, fmt, ap);
@@ -741,6 +744,9 @@ zpool_standard_error_fmt(libzfs_handle_t *hdl, int error, const char *fmt, ...)
 	case ZFS_ERR_IOC_ARG_REQUIRED:
 	case ZFS_ERR_IOC_ARG_BADTYPE:
 		zfs_verror(hdl, EZFS_IOC_NOTSUPPORTED, fmt, ap);
+		break;
+	case ZFS_ERR_BADPROP:
+		zfs_verror(hdl, EZFS_BADPROP, fmt, ap);
 		break;
 	default:
 		zfs_error_aux(hdl, strerror(error));

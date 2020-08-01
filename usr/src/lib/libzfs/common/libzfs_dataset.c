@@ -1695,6 +1695,10 @@ zfs_setprop_error(libzfs_handle_t *hdl, zfs_prop_t prop, int err,
 {
 	switch (err) {
 
+	case ZFS_ERR_BADPROP:
+		(void) zfs_error(hdl, EZFS_BADPROP, errbuf);
+		break;
+
 	case ENOSPC:
 		/*
 		 * For quotas and reservations, ENOSPC indicates
