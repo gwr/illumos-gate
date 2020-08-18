@@ -77,6 +77,7 @@ my %cols = (# HDR => [Size, Scale, Description]
 	"mm%"		=>[3, 100, "Metadata miss percentage"],
 	"arcsz"		=>[5, 1024, "ARC Size"],
 	"c"		=>[4, 1024, "ARC Target Size"],
+	"waste"		=>[5, 1024, "Scatter ABD rounding waste"],
 	"mfu"		=>[4, 1000, "MFU List hits per second"],
 	"mru"		=>[4, 1000, "MRU List hits per second"],
 	"mfug"		=>[4, 1000, "MFU Ghost List hits per second"],
@@ -327,6 +328,7 @@ sub calculate {
 
 	$v{"arcsz"} = $cur{"size"};
 	$v{"c"} = $cur{"c"};
+	$v{"waste"} = $cur{"abd_chunk_waste_size"};
 	$v{"mfu"} = $d{"mfu_hits"}/$int;
 	$v{"mru"} = $d{"mru_hits"}/$int;
 	$v{"mrug"} = $d{"mru_ghost_hits"}/$int;

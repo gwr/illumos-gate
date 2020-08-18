@@ -89,6 +89,7 @@
 
 #include <sys/abd.h>
 #include <sys/abd_impl.h>
+#include <sys/arc.h>
 #include <sys/param.h>
 #include <sys/zio.h>
 #include <sys/zfs_context.h>
@@ -344,6 +345,7 @@ abd_alloc(size_t size, boolean_t is_metadata)
 	VERIFY3U(size, <=, SPA_MAXBLOCKSIZE);
 
 	size_t n = abd_chunkcnt_for_bytes(size);
+	int waste = n * zfs_abd_chunk_size - size;
 	abd_t *abd = abd_alloc_struct(n);
 
 	abd->abd_flags = ABD_FLAG_OWNER;
@@ -365,8 +367,8 @@ abd_alloc(size_t size, boolean_t is_metadata)
 
 	ABDSTAT_BUMP(abdstat_scatter_cnt);
 	ABDSTAT_INCR(abdstat_scatter_data_size, size);
-	ABDSTAT_INCR(abdstat_scatter_chunk_waste,
-	    n * zfs_abd_chunk_size - size);
+	ABDSTAT_INCR(abdstat_scatter_chunk_waste, waste);
+	arc_space_consume(waste, ARC_SPACE_ABD_CHUNK_WASTE);
 
 	return (abd);
 }
@@ -375,6 +377,8 @@ static void
 abd_free_scatter(abd_t *abd)
 {
 	size_t n = abd_scatter_chunkcnt(abd);
+	int waste = n * zfs_abd_chunk_size - abd->abd_size;
+
 	for (int i = 0; i < n; i++) {
 		abd_free_chunk(abd->abd_u.abd_scatter.abd_chunks[i]);
 	}
@@ -382,8 +386,8 @@ abd_free_scatter(abd_t *abd)
 	zfs_refcount_destroy(&abd->abd_children);
 	ABDSTAT_BUMPDOWN(abdstat_scatter_cnt);
 	ABDSTAT_INCR(abdstat_scatter_data_size, -(int)abd->abd_size);
-	ABDSTAT_INCR(abdstat_scatter_chunk_waste,
-	    abd->abd_size - n * zfs_abd_chunk_size);
+	ABDSTAT_INCR(abdstat_scatter_chunk_waste, -waste);
+	arc_space_return(waste, ARC_SPACE_ABD_CHUNK_WASTE);
 
 	abd_free_struct(abd);
 }

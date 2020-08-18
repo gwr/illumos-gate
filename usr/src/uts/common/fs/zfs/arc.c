@@ -530,6 +530,7 @@ arc_stats_t arc_stats = {
 	{ "async_upgrade_sync",		KSTAT_DATA_UINT64 },
 	{ "demand_hit_predictive_prefetch", KSTAT_DATA_UINT64 },
 	{ "demand_hit_prescient_prefetch", KSTAT_DATA_UINT64 },
+	{ "abd_chunk_waste_size",	KSTAT_DATA_UINT64 },
 };
 
 #define	ARCSTAT_MAX(stat, val) {					\
@@ -603,6 +604,7 @@ aggsum_t astat_metadata_size;
 aggsum_t astat_hdr_size;
 aggsum_t astat_other_size;
 aggsum_t astat_l2_hdr_size;
+aggsum_t astat_abd_chunk_waste_size;
 
 static int		arc_no_grow;	/* Don't try to grow cache size */
 static hrtime_t		arc_growtime;
@@ -2441,9 +2443,16 @@ arc_space_consume(uint64_t space, arc_space_type_t type)
 	case ARC_SPACE_L2HDRS:
 		aggsum_add(&astat_l2_hdr_size, space);
 		break;
+	case ARC_SPACE_ABD_CHUNK_WASTE:
+		/*
+		 * This includes waste from all scatter ABDs, but most scatter
+		 * ABDs are allocated by the ARC; other users are short-lived.
+		 */
+		aggsum_add(&astat_abd_chunk_waste_size, space);
+		break;
 	}
 
-	if (type != ARC_SPACE_DATA)
+	if (type != ARC_SPACE_DATA && type != ARC_SPACE_ABD_CHUNK_WASTE)
 		aggsum_add(&arc_meta_used, space);
 
 	aggsum_add(&arc_size, space);
@@ -2470,9 +2479,12 @@ arc_space_return(uint64_t space, arc_space_type_t type)
 	case ARC_SPACE_L2HDRS:
 		aggsum_add(&astat_l2_hdr_size, -space);
 		break;
+	case ARC_SPACE_ABD_CHUNK_WASTE:
+		aggsum_add(&astat_abd_chunk_waste_size, -space);
+		break;
 	}
 
-	if (type != ARC_SPACE_DATA) {
+	if (type != ARC_SPACE_DATA && type != ARC_SPACE_ABD_CHUNK_WASTE) {
 		ASSERT(aggsum_compare(&arc_meta_used, space) >= 0);
 		/*
 		 * We use the upper bound here rather than the precise value
@@ -6924,6 +6936,8 @@ arc_kstat_update(kstat_t *ksp, int rw)
 		ARCSTAT(arcstat_hdr_size) = aggsum_value(&astat_hdr_size);
 		ARCSTAT(arcstat_other_size) = aggsum_value(&astat_other_size);
 		ARCSTAT(arcstat_l2_hdr_size) = aggsum_value(&astat_l2_hdr_size);
+		ARCSTAT(arcstat_abd_chunk_waste_size) =
+		    aggsum_value(&astat_abd_chunk_waste_size);
 	}
 
 	return (0);
@@ -7042,6 +7056,7 @@ arc_state_init(void)
 	aggsum_init(&astat_hdr_size, 0);
 	aggsum_init(&astat_other_size, 0);
 	aggsum_init(&astat_l2_hdr_size, 0);
+	aggsum_init(&astat_abd_chunk_waste_size, 0);
 
 	arc_anon->arcs_state = ARC_STATE_ANON;
 	arc_mru->arcs_state = ARC_STATE_MRU;
@@ -7092,6 +7107,7 @@ arc_state_fini(void)
 	aggsum_fini(&astat_hdr_size);
 	aggsum_fini(&astat_other_size);
 	aggsum_fini(&astat_l2_hdr_size);
+	aggsum_fini(&astat_abd_chunk_waste_size);
 
 }
 

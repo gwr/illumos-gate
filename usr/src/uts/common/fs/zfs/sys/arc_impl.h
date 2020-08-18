@@ -830,6 +830,7 @@ typedef struct arc_stats {
 	kstat_named_t arcstat_async_upgrade_sync;
 	kstat_named_t arcstat_demand_hit_predictive_prefetch;
 	kstat_named_t arcstat_demand_hit_prescient_prefetch;
+	kstat_named_t arcstat_abd_chunk_waste_size;
 } arc_stats_t;
 
 #define	ARCSTAT(stat)	(arc_stats.stat.value.ui64)
