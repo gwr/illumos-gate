@@ -7283,6 +7283,12 @@ arc_fini(void)
 	cv_destroy(&arc_adjust_waiters_cv);
 
 	/*
+	 * Free buffers tagged for destruction before arc_state_fini()
+	 * destroys the aggsums updated when scatter ABDs are freed.
+	 */
+	l2arc_do_free_on_write();
+
+	/*
 	 * buf_fini() must proceed arc_state_fini() because buf_fin() may
 	 * trigger the release of kmem magazines, which can callback to
 	 * arc_space_return() which accesses aggsums freed in act_state_fini().
@@ -9113,14 +9119,6 @@ l2arc_init(void)
 void
 l2arc_fini(void)
 {
-	/*
-	 * This is called from dmu_fini(), which is called from spa_fini();
-	 * Because of this, we can assume that all l2arc devices have
-	 * already been removed when the pools themselves were removed.
-	 */
-
-	l2arc_do_free_on_write();
-
 	mutex_destroy(&l2arc_feed_thr_lock);
 	cv_destroy(&l2arc_feed_thr_cv);
 	mutex_destroy(&l2arc_rebuild_thr_lock);
