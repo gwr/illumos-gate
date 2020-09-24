@@ -208,6 +208,7 @@ for lib in \
   libproc \
   libscf \
   libcryptoutil \
+  libmd5 \
   $libzfs \
   pkcs11/libpkcs11
 do
