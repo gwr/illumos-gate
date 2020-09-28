@@ -570,6 +570,7 @@ smb_user_is_admin(smb_user_t *user)
 	ksidlist_t	*ksidlist;
 	ksid_t		*ksid;
 	uint32_t	rid;
+	int		ret;
 #endif	/* _KERNEL */
 	boolean_t	rc = B_FALSE;
 
@@ -581,7 +582,8 @@ smb_user_is_admin(smb_user_t *user)
 
 #ifdef	_KERNEL
 	(void) strlcpy(sidstr, ADMINISTRATORS_SID, SMB_SID_STRSZ);
-	ASSERT(smb_sid_splitstr(sidstr, &rid) == 0);
+	ret = smb_sid_splitstr(sidstr, &rid);
+	ASSERT3S(ret, ==, 0);
 
 	ksidlist = crgetsidlist(user->u_cred);
 	ASSERT(ksidlist);
