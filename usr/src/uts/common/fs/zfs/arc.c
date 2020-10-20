@@ -5985,7 +5985,10 @@ top:
 		    demand, prefetch, !HDR_ISTYPE_METADATA(hdr),
 		    data, metadata, misses);
 
-		if (vd != NULL && l2arc_ndev != 0 && !(l2arc_norw && devw)) {
+		const boolean_t spa_has_l2 = l2arc_ndev != 0 &&
+		    spa->spa_l2cache.sav_count > 0;
+
+		if (vd != NULL && spa_has_l2 && !(l2arc_norw && devw)) {
 			/*
 			 * Read from the L2ARC if the following are true:
 			 * 1. The L2ARC vdev was previously cached.
@@ -6085,7 +6088,7 @@ top:
 		} else {
 			if (vd != NULL)
 				spa_config_exit(spa, SCL_L2ARC, vd);
-			if (l2arc_ndev != 0) {
+			if (spa_has_l2) {
 				DTRACE_PROBE1(l2arc__miss,
 				    arc_buf_hdr_t *, hdr);
 				ARCSTAT_BUMP(arcstat_l2_misses);
