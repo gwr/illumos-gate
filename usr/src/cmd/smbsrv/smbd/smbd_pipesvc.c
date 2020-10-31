@@ -390,5 +390,14 @@ pipe_send(ndr_pipe_t *np, void *buf, size_t len)
 		len -= x;
 	}
 
+	/*
+	 * Temporary fix:  Delay a little here so the kernel side
+	 * has a chance to read what we just sent.  Later, should
+	 * come up with a way to implement message boundaries,
+	 * where the recv side would read one message at a time.
+	 * Perhaps SOCK_SEQPACKET would do the job.
+	 */
+	usleep(1000);
+
 	return (0);
 }

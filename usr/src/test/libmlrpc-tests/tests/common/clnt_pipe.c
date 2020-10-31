@@ -23,6 +23,11 @@ smb_fh_close(int fd)
 	return (0);
 }
 
+/*
+ * Cheating a little: Looking at the RPC frag length to
+ * arrange for read to return only the current frag,
+ * instead of whatever will fit in the caller's len.
+ */
 int
 smb_fh_read(int fd, off64_t offset, size_t len,
 	char *dst)

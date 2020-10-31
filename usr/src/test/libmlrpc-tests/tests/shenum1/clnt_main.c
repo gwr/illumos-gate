@@ -61,7 +61,8 @@ main(int argc, char **argv)
 	}
 	if (compare(test_data, call_data, wbuf.off)) {
 		printf("wrong output data\n");
-		hexdump(test_data, wbuf.off);
+		/* hexdump(test_data, wbuf.off); */
+		return (1);
 	}
 
 	return (0);
