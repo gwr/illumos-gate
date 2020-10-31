@@ -103,6 +103,9 @@ srvsvc_net_server_getinfo(mlrpc_handle_t *handle, char *server,
 
 /*
  * Client-side stub for NetShareEnum
+ *
+ * Todo: Pass in a resume handle, and repeat calls to this
+ * with each non-zero resume handle until finished.
  */
 int
 srvsvc_net_share_enum(mlrpc_handle_t *handle, char *server,
@@ -112,6 +115,7 @@ srvsvc_net_share_enum(mlrpc_handle_t *handle, char *server,
 	struct mslm_NetShareInfo_0_result nres;
 	struct mslm_NetShareEnum arg;
 	int len, opnum, rc;
+	DWORD resume = 0;
 
 	opnum = SRVSVC_OPNUM_NetShareEnum;
 	bzero(&nres, sizeof (nres));
@@ -127,7 +131,7 @@ srvsvc_net_share_enum(mlrpc_handle_t *handle, char *server,
 	arg.result.level = level;
 	arg.result.ru.bufptr0 = &nres;
 	arg.prefmaxlen = 0xFFFFFFFF;
-	arg.resume_handle = NULL;
+	arg.resume_handle = &resume;
 
 	rc = ndr_rpc_call(handle, opnum, &arg);
 	if ((rc != 0) || (arg.status != 0))

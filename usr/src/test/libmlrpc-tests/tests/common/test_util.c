@@ -4,7 +4,7 @@
 #include <sys/errno.h>
 
 void
-hexdump(const uchar_t *buf, int len)
+hexdump(const uchar_t *buf, int len, int start)
 {
 	int idx;
 	char ascii[24];
@@ -12,7 +12,7 @@ hexdump(const uchar_t *buf, int len)
 
 	memset(ascii, '\0', sizeof (ascii));
 
-	idx = 0;
+	idx = start;
 	while (len--) {
 		if ((idx & 15) == 0) {
 			printf("%04X: ", idx);
@@ -58,8 +58,8 @@ compare(uchar_t *p1, uchar_t *p2, size_t len)
 		if (p1[off] != p2[off]) {
 			printf("differs at off %d\n", off);
 			row = off & ~15;
-			hexdump(p1+row, 16);
-			hexdump(p2+row, 16);
+			hexdump(p1+row, 16, row);
+			hexdump(p2+row, 16, row);
 			off = row + 16;
 			diffs++;
 		}

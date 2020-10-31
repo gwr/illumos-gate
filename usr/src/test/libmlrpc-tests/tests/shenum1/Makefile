@@ -18,12 +18,12 @@ include $(SRC)/Makefile.master
 ROOTOPTPKG = $(ROOT)/opt/libmlrpc-tests
 TESTDIR = $(ROOTOPTPKG)/tests
 
-PROGS = srvsvc1srv srvsvc1clnt
+PROG = srvsvc1srv srvsvc1clnt
 
 include $(SRC)/cmd/Makefile.cmd
 
-INSTPROGS = $(PROGS:%=$(TESTDIR)/%)
-$(INSTPROGS) := FILEMODE = 0555
+INSTPROG = $(PROG:%=$(TESTDIR)/%)
+$(INSTPROG) := FILEMODE = 0555
 
 CPPFLAGS += -I../common
 CPPFLAGS += -DDEBUG
@@ -37,21 +37,18 @@ LDLIBS += -lmlrpc -luuid
 # not linted
 SMATCH=off
 
-CLEANFILES +=  srvsvc1_ndr.c
+CLOBBERFILES +=  srvsvc1_ndr.c
 
-all: $(PROGS)
+all: $(PROG)
 
-install: all $(INSTPROGS)
+install: all $(INSTPROG)
 
 lint:
-
-clobber: clean
-	$(RM) $(PROGS)
 
 clean:
 	$(RM) *.o $(CLEANFILES)
 
-$(INSTPROGS): $(TESTDIR) $(PROGS)
+$(INSTPROG): $(TESTDIR) $(PROG)
 
 $(TESTDIR):
 	$(INS.dir)

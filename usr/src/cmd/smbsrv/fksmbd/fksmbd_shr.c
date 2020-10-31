@@ -94,7 +94,7 @@ shr_load_file(char *shr_file)
 			if (p != NULL)
 				*p++ = '\0';
 		}
-		new_share(name, path, comment, 0);
+		new_share(name, path, comment, SMB_SHRF_GUEST_OK);
 	}
 	(void) fclose(fp);
 }
