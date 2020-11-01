@@ -17,6 +17,7 @@
 
 SUBDIRS = \
 	shenum1 \
+	shenum2 \
 #	netrlogon1
 
 PROGS =
