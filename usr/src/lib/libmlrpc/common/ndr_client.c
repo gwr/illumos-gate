@@ -149,6 +149,8 @@ ndr_clnt_call(ndr_binding_t *mbind, int opnum, void *params)
 	ndr_xa_t		mxa;
 	ndr_request_hdr_t	*reqhdr;
 	ndr_common_header_t	*rsphdr;
+	unsigned char		*send_buf = NULL;
+	unsigned char		*recv_buf = NULL;
 	unsigned long		recv_pdu_scan_offset;
 	int			rc;
 
@@ -167,6 +169,14 @@ ndr_clnt_call(ndr_binding_t *mbind, int opnum, void *params)
 	rc = (*clnt->xa_init)(clnt, &mxa);
 	if (NDR_DRC_IS_FAULT(rc))
 		return (rc);
+	/* after xa_init, errors goto fault_exit */
+
+	send_buf = ndr_heap_malloc(clnt->heap, clnt->xa_max_xmit_frag);
+	recv_buf = ndr_heap_malloc(clnt->heap, clnt->xa_max_recv_frag);
+	if (send_buf == NULL || recv_buf == NULL) {
+		rc = NDR_DRC_FAULT_OUT_OF_MEMORY;
+		goto fault_exit;
+	}
 
 	/* Reserve room for hdr */
 	mxa.send_nds.pdu_scan_offset = sizeof (*reqhdr);

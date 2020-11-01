@@ -426,9 +426,11 @@ int ndr_heap_avail(ndr_heap_t *);
 typedef struct ndr_xa {
 	unsigned short		ptype;		/* high bits special */
 	unsigned short		opnum;
-	ndr_stream_t		recv_nds;
+	ndr_stream_t		recv_body;
+	ndr_stream_t		recv_frag;
 	ndr_hdr_t		recv_hdr;
-	ndr_stream_t		send_nds;
+	ndr_stream_t		send_body;
+	ndr_stream_t		send_frag;
 	ndr_hdr_t		send_hdr;
 	ndr_binding_t		*binding;	/* what we're using */
 	ndr_binding_t		*binding_list;	/* from connection */

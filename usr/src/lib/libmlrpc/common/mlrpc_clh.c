@@ -476,8 +476,6 @@ ndr_inherit_handle(mlrpc_handle_t *child, mlrpc_handle_t *parent)
 static int
 ndr_xa_init(ndr_client_t *clnt, ndr_xa_t *mxa)
 {
-	ndr_stream_t *recv_nds = &mxa->recv_nds;
-	ndr_stream_t *send_nds = &mxa->send_nds;
 	ndr_heap_t *heap = clnt->heap;
 	int		rc;
 
@@ -490,22 +488,22 @@ ndr_xa_init(ndr_client_t *clnt, ndr_xa_t *mxa)
 
 	mxa->heap = heap;
 
-	rc = nds_initialize(send_nds, 0, NDR_MODE_CALL_SEND, heap);
-	if (rc == 0)
-		rc = nds_initialize(recv_nds, NDR_PDU_SIZE_HINT_DEFAULT,
-		    NDR_MODE_RETURN_RECV, heap);
-
-	if (rc != 0) {
-		nds_destruct(&mxa->recv_nds);
-		nds_destruct(&mxa->send_nds);
-		ndr_heap_destroy(mxa->heap);
-		mxa->heap = NULL;
-		clnt->heap = NULL;
+	if ((rc = nds_initialize(&mxa->send_body, 0,
+			 NDR_MODE_CALL_SEND, heap) != 0) ||
+	    (rc = nds_initialize(&mxa->recv_body, 0,
+			 NDR_MODE_RETURN_RECV, heap) != 0) ||
+	    (rc = nds_initialize(&mxa->send_frag, NDR_DEFAULT_FRAGSZ,
+			 NDR_MODE_CALL_SEND, heap) != 0) ||
+	    (rc = nds_initialize(&mxa->recv_frag, NDR_DEFAULT_FRAGSZ,
+			 NDR_MODE_RETURN_RECV, heap) != 0) ) {
+		/* rc != 0 */
+		clnt->heap_preserved = B_FALSE;
+		ndr_xa_destruct(clnt, mxa);
 		return (-1);
 	}
 
 	if (clnt->nonull)
-		NDS_SETF(send_nds, NDS_F_NONULL);
+		NDS_SETF(&mxa->send_body, NDS_F_NONULL);
 
 	return (0);
 }
@@ -520,20 +518,20 @@ ndr_xa_init(ndr_client_t *clnt, ndr_xa_t *mxa)
 static int
 ndr_xa_exchange(ndr_client_t *clnt, ndr_xa_t *mxa)
 {
-	ndr_stream_t *recv_nds = &mxa->recv_nds;
-	ndr_stream_t *send_nds = &mxa->send_nds;
+	ndr_stream_t *recv_frag = &mxa->recv_frag;
+	ndr_stream_t *send_frag = &mxa->send_frag;
 	int err, more, nbytes;
 
-	nbytes = recv_nds->pdu_max_size;
+	nbytes = recv_frag->pdu_max_size;
 	err = smb_fh_xactnp(clnt->xa_fd,
-	    send_nds->pdu_size, (char *)send_nds->pdu_base_offset,
-	    &nbytes, (char *)recv_nds->pdu_base_offset, &more);
+	    send_frag->pdu_size, (char *)send_frag->pdu_base_offset,
+	    &nbytes, (char *)recv_frag->pdu_base_offset, &more);
 	if (err) {
-		recv_nds->pdu_size = 0;
+		recv_frag->pdu_size = 0;
 		return (-1);
 	}
 
-	recv_nds->pdu_size = nbytes;
+	recv_frag->pdu_size = nbytes;
 	return (0);
 }
 
@@ -550,7 +548,7 @@ ndr_xa_exchange(ndr_client_t *clnt, ndr_xa_t *mxa)
 static int
 ndr_xa_read(ndr_client_t *clnt, ndr_xa_t *mxa)
 {
-	ndr_stream_t *nds = &mxa->recv_nds;
+	ndr_stream_t *nds = &mxa->recv_frag;
 	int len;
 	int nbytes;
 
@@ -582,7 +580,7 @@ ndr_xa_read(ndr_client_t *clnt, ndr_xa_t *mxa)
 static int
 ndr_xa_write(ndr_client_t *clnt, ndr_xa_t *mxa)
 {
-	ndr_stream_t *nds = &mxa->send_nds;
+	ndr_stream_t *nds = &mxa->send_frag;
 	int len;
 	int nbytes;
 
@@ -625,8 +623,10 @@ ndr_xa_preserve(ndr_client_t *clnt, ndr_xa_t *mxa)
 static void
 ndr_xa_destruct(ndr_client_t *clnt, ndr_xa_t *mxa)
 {
-	nds_destruct(&mxa->recv_nds);
-	nds_destruct(&mxa->send_nds);
+	nds_destruct(&mxa->recv_body);
+	nds_destruct(&mxa->send_body);
+	nds_destruct(&mxa->recv_frag);
+	nds_destruct(&mxa->send_frag);
 
 	if (!clnt->heap_preserved) {
 		ndr_heap_destroy(mxa->heap);
