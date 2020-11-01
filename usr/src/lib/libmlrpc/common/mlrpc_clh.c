@@ -55,6 +55,7 @@
 static int ndr_xa_init(ndr_client_t *, ndr_xa_t *);
 static int ndr_xa_exchange(ndr_client_t *, ndr_xa_t *);
 static int ndr_xa_read(ndr_client_t *, ndr_xa_t *);
+static int ndr_xa_write(ndr_client_t *, ndr_xa_t *);
 static void ndr_xa_preserve(ndr_client_t *, ndr_xa_t *);
 static void ndr_xa_destruct(ndr_client_t *, ndr_xa_t *);
 static void ndr_xa_release(ndr_client_t *);
@@ -111,6 +112,7 @@ mlrpc_clh_create(mlrpc_handle_t *handle, void *ctx)
 	clnt->xa_init = ndr_xa_init;
 	clnt->xa_exchange = ndr_xa_exchange;
 	clnt->xa_read = ndr_xa_read;
+	clnt->xa_write = ndr_xa_write;
 	clnt->xa_preserve = ndr_xa_preserve;
 	clnt->xa_destruct = ndr_xa_destruct;
 	clnt->xa_release = ndr_xa_release;
@@ -556,6 +558,38 @@ ndr_xa_read(ndr_client_t *clnt, ndr_xa_t *mxa)
 		return (-1);
 
 	nbytes = smb_fh_read(clnt->xa_fd, 0, len,
+	    (char *)nds->pdu_base_offset + nds->pdu_size);
+
+	if (nbytes < 0)
+		return (-1);
+
+	nds->pdu_size += nbytes;
+
+	if (nds->pdu_size > nds->pdu_max_size) {
+		nds->pdu_size = nds->pdu_max_size;
+		return (-1);
+	}
+
+	return (nbytes);
+}
+
+/*
+ * This entry point is called only if an RPC call encodes args with
+ * more data than will fit in a single fragment.  The RPC client code
+ * will make xa_write requests until the amount remaining to send will
+ * fit in one fragment, and then use xa_exchange for the final part.
+ */
+static int
+ndr_xa_write(ndr_client_t *clnt, ndr_xa_t *mxa)
+{
+	ndr_stream_t *nds = &mxa->send_nds;
+	int len;
+	int nbytes;
+
+	if ((len = (nds->pdu_max_size - nds->pdu_size)) < 0)
+		return (-1);
+
+	nbytes = smb_fh_write(clnt->xa_fd, 0, len,
 	    (char *)nds->pdu_base_offset + nds->pdu_size);
 
 	if (nbytes < 0)

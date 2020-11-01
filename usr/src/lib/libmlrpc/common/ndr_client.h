@@ -45,7 +45,7 @@ struct ndr_client {
 	int (*xa_init)(struct ndr_client *, ndr_xa_t *);
 	int (*xa_exchange)(struct ndr_client *, ndr_xa_t *);
 	int (*xa_read)(struct ndr_client *, ndr_xa_t *);
-	/* XXX Need xa_write too! */
+	int (*xa_write)(struct ndr_client *, ndr_xa_t *);
 	void (*xa_preserve)(struct ndr_client *, ndr_xa_t *);
 	void (*xa_destruct)(struct ndr_client *, ndr_xa_t *);
 	void (*xa_release)(struct ndr_client *);
