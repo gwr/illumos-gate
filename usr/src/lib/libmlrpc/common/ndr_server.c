@@ -36,6 +36,7 @@
 #include <strings.h>
 #include <string.h>
 #include <thread.h>
+#include <assert.h>
 
 #include <libmlrpc.h>
 
@@ -182,6 +183,10 @@ ndr_recv_request(ndr_xa_t *mxa)
  * reading and decoding these additional fragments, so
  * the payload of such frags will overwrite what was
  * (temporarily) the frag header.
+ *
+ * If we change pipes to SOCK_SEQPACKET we'll need to use a
+ * single recvmsg call per fragment (to avoid discards).
+ * Should just read into a maxfrag buffer and copy.  TODO
  */
 static int
 ndr_recv_frag(ndr_xa_t *mxa)
@@ -570,6 +575,7 @@ ndr_reply_prepare_hdr(ndr_xa_t *mxa)
 	case NDR_PTYPE_BIND:
 		/*
 		 * Compute the maximum fragment sizes for xmit/recv
+		 * (lesser of peer max frag and local max frag)
 		 * and store in the pipe endpoint.  Note "xmit" is
 		 * client-to-server; "recv" is server-to-client.
 		 */
@@ -582,6 +588,18 @@ ndr_reply_prepare_hdr(ndr_xa_t *mxa)
 			mxa->pipe->np_max_recv_frag =
 			    mxa->recv_hdr.bind_hdr.max_recv_frag;
 
+		/*
+		 * Enforce a lower bound as well.
+		 * Could do bind-nack instead.
+		 */
+		if (mxa->pipe->np_max_xmit_frag < NDR_MUST_RECV_FRAG_SIZE)
+			mxa->pipe->np_max_xmit_frag = NDR_MUST_RECV_FRAG_SIZE;
+		if (mxa->pipe->np_max_recv_frag < NDR_MUST_RECV_FRAG_SIZE)
+			mxa->pipe->np_max_recv_frag = NDR_MUST_RECV_FRAG_SIZE;
+
+		/*
+		 * Update the outgoing header
+		 */
 		hdr->ptype = NDR_PTYPE_BIND_ACK;
 		mxa->send_hdr.bind_ack_hdr.max_xmit_frag =
 		    mxa->pipe->np_max_xmit_frag;
@@ -703,6 +721,7 @@ ndr_send_reply(ndr_xa_t *mxa)
 	unsigned long frag_data_size;
 
 	frag_size = mxa->pipe->np_max_recv_frag;
+	assert(frag_size >= NDR_MUST_RECV_FRAG_SIZE);
 	pdu_size = nds->pdu_size;
 	pdu_buf = nds->pdu_base_addr;
 
@@ -789,13 +808,13 @@ ndr_send_reply(ndr_xa_t *mxa)
 	 * Last frag (pdu_data_size <= frag_data_size)
 	 */
 	hdr->pfc_flags = NDR_PFC_LAST_FRAG;
-	frag_size = pdu_data_size + NDR_RSP_HDR_SIZE;
-	hdr->frag_length = frag_size;
+	pdu_size = pdu_data_size + NDR_RSP_HDR_SIZE;
+	hdr->frag_length = pdu_size;
 	mxa->send_hdr.response_hdr.alloc_hint = pdu_data_size;
 	nds->pdu_scan_offset = 0;
 	(void) ndr_encode_pdu_hdr(mxa);
 	bcopy(nds->pdu_base_addr, pdu_buf, NDR_RSP_HDR_SIZE);
-	(void) NDR_PIPE_SEND(mxa->pipe, pdu_buf, frag_size);
+	(void) NDR_PIPE_SEND(mxa->pipe, pdu_buf, pdu_size);
 
 	return (0);
 }

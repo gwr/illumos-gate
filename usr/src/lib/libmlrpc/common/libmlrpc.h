@@ -259,6 +259,12 @@ typedef struct ndr_pipe {
 } ndr_pipe_t;
 
 /*
+ * DCE-RPC 11.6 MustRecvFragSize is the lower bound of the
+ * fragment size negotiated via bind.
+ */
+#define	NDR_MUST_RECV_FRAG_SIZE		1432
+
+/*
  * Number of bytes required to align SIZE on the next dword/4-byte
  * boundary.
  */
