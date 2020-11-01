@@ -52,6 +52,9 @@ struct ndr_client {
 	void			*xa_private;
 	int			xa_fd;
 
+	uint16_t		xa_max_xmit_frag;
+	uint16_t		xa_max_recv_frag;
+
 	ndr_hdid_t		*handle;
 	ndr_binding_t		*binding;
 	ndr_binding_t		*binding_list;

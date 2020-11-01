@@ -45,6 +45,13 @@
 
 #include <assert.h>
 
+/*
+ * Maximum message size for SMB named pipes.
+ * Should be less than PIPE_BUF (5120).
+ * Use the same value Windows does.
+ */
+#define	NDR_DEFAULT_FRAGSZ	4280
+
 static int ndr_xa_init(ndr_client_t *, ndr_xa_t *);
 static int ndr_xa_exchange(ndr_client_t *, ndr_xa_t *);
 static int ndr_xa_read(ndr_client_t *, ndr_xa_t *);
@@ -97,19 +104,21 @@ mlrpc_clh_create(mlrpc_handle_t *handle, void *ctx)
 		return (ENOMEM);
 	bzero(clnt, sizeof (*clnt));
 
-	clnt->xa_fd = -1;
-
 	/*
 	 * Setup the transport functions.
 	 * Always a named pipe (for now).
 	 */
-	clnt->xa_private = ctx;
 	clnt->xa_init = ndr_xa_init;
 	clnt->xa_exchange = ndr_xa_exchange;
 	clnt->xa_read = ndr_xa_read;
 	clnt->xa_preserve = ndr_xa_preserve;
 	clnt->xa_destruct = ndr_xa_destruct;
 	clnt->xa_release = ndr_xa_release;
+	clnt->xa_private = ctx;
+	clnt->xa_fd = -1;
+
+	clnt->xa_max_xmit_frag = NDR_DEFAULT_FRAGSZ;
+	clnt->xa_max_recv_frag = NDR_DEFAULT_FRAGSZ;
 
 	/* See _is_bind_handle */
 	clnt->handle = &handle->handle;

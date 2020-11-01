@@ -32,7 +32,6 @@
 #include <libmlrpc.h>
 #include <ndr_client.h>
 
-#define	NDR_DEFAULT_FRAGSZ	8192
 #define	NDR_MULTI_FRAGSZ	(60 * 1024)
 
 static void ndr_clnt_init_hdr(ndr_client_t *, ndr_xa_t *);
@@ -62,8 +61,8 @@ ndr_clnt_bind(ndr_client_t *clnt, ndr_service_t *msvc,
 	bhdr = &mxa.send_hdr.bind_hdr;
 	bhdr->common_hdr.ptype = NDR_PTYPE_BIND;
 	bhdr->common_hdr.frag_length = sizeof (*bhdr);
-	bhdr->max_xmit_frag = NDR_DEFAULT_FRAGSZ;
-	bhdr->max_recv_frag = NDR_DEFAULT_FRAGSZ;
+	bhdr->max_xmit_frag = clnt->xa_max_xmit_frag;
+	bhdr->max_recv_frag = clnt->xa_max_recv_frag;
 	bhdr->assoc_group_id = 0;
 	bhdr->p_context_elem.n_context_elem = 1;
 
@@ -115,9 +114,19 @@ ndr_clnt_bind(ndr_client_t *clnt, ndr_service_t *msvc,
 		return (NDR_DRC_FAULT_RECEIVED_MALFORMED);
 
 	pre = &bahdr->p_result_list.p_results[0];
-
 	if (pre->result != NDR_PCDR_ACCEPTANCE)
 		return (NDR_DRC_FAULT_RECEIVED_MALFORMED);
+
+	/*
+	 * Check negotiated max fragment lengths and save.
+	 */
+	if (bahdr->max_xmit_frag < NDR_MUST_RECV_FRAG_SIZE ||
+	    bahdr->max_recv_frag < NDR_MUST_RECV_FRAG_SIZE)
+		return (NDR_DRC_FAULT_RECEIVED_MALFORMED);
+	if (clnt->xa_max_xmit_frag > bahdr->max_xmit_frag)
+		clnt->xa_max_xmit_frag = bahdr->max_xmit_frag;
+	if (clnt->xa_max_recv_frag > bahdr->max_recv_frag)
+		clnt->xa_max_recv_frag = bahdr->max_recv_frag;
 
 	mbind->p_cont_id = pce->p_cont_id;
 	mbind->which_side = NDR_BIND_SIDE_CLIENT;
