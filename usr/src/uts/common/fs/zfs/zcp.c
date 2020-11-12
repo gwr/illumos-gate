@@ -718,7 +718,6 @@ static void *
 zcp_lua_alloc(void *ud, void *ptr, size_t osize, size_t nsize)
 {
 	zcp_alloc_arg_t *allocargs = ud;
-	int flags = (allocargs->aa_must_succeed) ? KM_SLEEP : KM_NOSLEEP_LAZY;
 
 	if (nsize == 0) {
 		if (ptr != NULL) {
@@ -741,10 +740,7 @@ zcp_lua_alloc(void *ud, void *ptr, size_t osize, size_t nsize)
 			return (NULL);
 		}
 
-		allocbuf = kmem_alloc(allocsize, flags);
-		if (allocbuf == NULL) {
-			return (NULL);
-		}
+		allocbuf = kmem_alloc(allocsize, KM_SLEEP);
 		allocargs->aa_alloc_remaining -= allocsize;
 
 		*allocbuf = allocsize;
@@ -839,9 +835,8 @@ zcp_eval_impl(dmu_tx_t *tx, zcp_run_info_t *ri)
 	    zfs_lua_check_instrlimit_interval);
 
 	/*
-	 * Tell the Lua memory allocator to stop using KM_SLEEP before handing
-	 * off control to the channel program. Channel programs that use too
-	 * much memory should die with ENOSPC.
+	 * Tell the Lua memory allocator to enforce the memory limit before
+	 * handing off control to the channel program.
 	 */
 	ri->zri_allocargs->aa_must_succeed = B_FALSE;
 
@@ -853,7 +848,7 @@ zcp_eval_impl(dmu_tx_t *tx, zcp_run_info_t *ri)
 	err = lua_pcall(state, 1, LUA_MULTRET, 1);
 
 	/*
-	 * Let Lua use KM_SLEEP while we interpret the return values.
+	 * Stop enforcing the memory limit while we interpret the return values.
 	 */
 	ri->zri_allocargs->aa_must_succeed = B_TRUE;
 
