@@ -458,13 +458,16 @@ zpool_feature_init(void)
 
 	zfeature_register(SPA_FEATURE_DEVICE_REBUILD,
 	    "org.openzfs:device_rebuild", "device_rebuild",
-	    "Support for sequential device rebuilds",
+	    "Support for sequential mirror/dRAID device rebuilds",
 	    ZFEATURE_FLAG_READONLY_COMPAT, ZFEATURE_TYPE_BOOLEAN, NULL);
+
+	zfeature_register(SPA_FEATURE_DRAID,
+	    "org.openzfs:draid", "draid", "Support for distributed parity RAID",
+	    ZFEATURE_FLAG_MOS, ZFEATURE_TYPE_BOOLEAN, NULL);
 
 	/*
 	 * Slots for:
 	 * SPA_FEATURE_ZSTD_COMPRESS
-	 * SPA_FEATURE_DRAID
 	 * SPA_FEATURE_ZILSAXATTR
 	 * SPA_FEATURE_HEAD_ERRLOG
 	 * SPA_FEATURE_BLAKE3

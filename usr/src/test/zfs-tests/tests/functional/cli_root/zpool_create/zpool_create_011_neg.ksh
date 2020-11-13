@@ -75,7 +75,11 @@ mirror1="${disk}s${SLICE1} ${disk}s${SLICE3}"
 mirror2="${disk}s${SLICE4} ${disk}s${SLICE5}"
 raidz1=$mirror1
 raidz2=$mirror2
+draid1="${disk}s${SLICE1} ${disk}s${SLICE3} ${disk}s${SLICE4}"
+draid2="${disk}s${SLICE3} ${disk}s${SLICE4} ${disk}s${SLICE5}"
 diff_size_dev="${disk}s${SLICE6} ${disk}s${SLICE7}"
+draid_diff_size_dev="${disk}s${SLICE1} ${disk}s${SLICE6} \
+    ${disk}s${SLICE7}"
 vfstab_dev=$(find_vfstab_dev)
 specified_dump_dev=${disk}s${SLICE0}
 saved_dump_dev=$(save_dump_dev)
@@ -93,13 +97,17 @@ set -A arg "$TESTPOOL $pooldev2" \
         "$TESTPOOL1 mirror mirror $mirror1 mirror $mirror2" \
         "$TESTPOOL1 raidz raidz $raidz1 raidz $raidz2" \
         "$TESTPOOL1 raidz1 raidz1 $raidz1 raidz1 $raidz2" \
+	"$TESTPOOL1 draid draid $draid1 draid $draid2" \
         "$TESTPOOL1 mirror raidz $raidz1 raidz $raidz2" \
         "$TESTPOOL1 mirror raidz1 $raidz1 raidz1 $raidz2" \
+	"$TESTPOOL1 mirror draid $draid1 draid $draid2" \
         "$TESTPOOL1 raidz mirror $mirror1 mirror $mirror2" \
         "$TESTPOOL1 raidz1 mirror $mirror1 mirror $mirror2" \
+	"$TESTPOOL1 draid1 mirror $mirror1 mirror $mirror2" \
         "$TESTPOOL1 mirror $diff_size_dev" \
         "$TESTPOOL1 raidz $diff_size_dev" \
         "$TESTPOOL1 raidz1 $diff_size_dev" \
+	"$TESTPOOL1 draid1 $draid_diff_size_dev" \
 	"$TESTPOOL1 mirror $mirror1 spare $mirror2 spare $diff_size_dev" \
         "$TESTPOOL1 $vfstab_dev" \
         "$TESTPOOL1 ${disk}s10" \

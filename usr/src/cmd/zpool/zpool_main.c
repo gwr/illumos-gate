@@ -2079,14 +2079,13 @@ print_status_config(zpool_handle_t *zhp, status_cbdata_t *cb, const char *name,
 			(void) printf(gettext("  (resilvering)"));
 		}
 	}
-
 	if (cb->vcdl != NULL &&
 	    nvlist_lookup_string(nv, ZPOOL_CONFIG_PATH, &path) == 0) {
 		(void) printf("  ");
 		zpool_print_cmd(cb->vcdl, zpool_get_name(zhp), path);
 	}
 
-	/* Display vdev initialization and trim status for leaves */
+	/* Display vdev initialization and trim status for leaves. */
 	if (children == 0) {
 		print_status_initialize(vs, cb->cb_print_vdev_init);
 		print_status_trim(vs, cb->cb_print_vdev_trim);
@@ -9055,7 +9054,8 @@ vdev_any_spare_replacing(nvlist_t *nv)
 	(void) nvlist_lookup_string(nv, ZPOOL_CONFIG_TYPE, &vdev_type);
 
 	if (strcmp(vdev_type, VDEV_TYPE_REPLACING) == 0 ||
-	    strcmp(vdev_type, VDEV_TYPE_SPARE) == 0) {
+	    strcmp(vdev_type, VDEV_TYPE_SPARE) == 0 ||
+	    strcmp(vdev_type, VDEV_TYPE_DRAID_SPARE) == 0) {
 		return (B_TRUE);
 	}
 

@@ -1423,6 +1423,8 @@ ZFS_COMMON_OBJS +=		\
 	unique.o		\
 	vdev.o			\
 	vdev_cache.o		\
+	vdev_draid.o		\
+	vdev_draid_rand.o	\
 	vdev_file.o		\
 	vdev_indirect.o		\
 	vdev_indirect_births.o	\

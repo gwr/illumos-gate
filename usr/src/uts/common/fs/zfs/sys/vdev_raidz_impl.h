@@ -29,6 +29,7 @@
 #include <sys/debug.h>
 #include <sys/kstat.h>
 #include <sys/abd.h>
+#include <sys/vdev_impl.h>
 
 #ifdef  __cplusplus
 extern "C" {
@@ -106,29 +107,44 @@ typedef struct raidz_col {
 	size_t rc_offset;		/* device offset */
 	size_t rc_size;			/* I/O size */
 	abd_t *rc_abd;			/* I/O data */
-	void *rc_gdata;			/* used to store the "good" version */
+	void *rc_orig_data;		/* pre-reconstruction */
+	abd_t *rc_gdata;		/* used to store the "good" version */
 	int rc_error;			/* I/O error for this device */
-	unsigned int rc_tried;		/* Did we attempt this I/O column? */
-	unsigned int rc_skipped;	/* Did we skip this I/O column? */
+	uint8_t rc_tried;		/* Did we attempt this I/O column? */
+	uint8_t rc_skipped;		/* Did we skip this I/O column? */
+	uint8_t rc_need_orig_restore;	/* need to restore from orig_data? */
+	uint8_t rc_repair;		/* Write good data to this column */
 } raidz_col_t;
 
+typedef struct raidz_row {
+	uint64_t rr_cols;		/* Regular column count */
+	uint64_t rr_scols;		/* Count including skipped columns */
+	uint64_t rr_bigcols;		/* Remainder data column count */
+	uint64_t rr_missingdata;	/* Count of missing data devices */
+	uint64_t rr_missingparity;	/* Count of missing parity devices */
+	uint64_t rr_firstdatacol;	/* First data column/parity count */
+	abd_t *rr_abd_copy;		/* rm_asize-buffer of copied data */
+	abd_t *rr_abd_empty;		/* dRAID empty sector buffer */
+	int rr_nempty;			/* empty sectors included in parity */
+	int rr_code;			/* reconstruction code (unused) */
+#ifdef ZFS_DEBUG
+	uint64_t rr_offset;		/* Logical offset for *_io_verify() */
+	uint64_t rr_size;		/* Physical size for *_io_verify() */
+#endif
+	raidz_col_t rr_col[0];		/* Flexible array of I/O columns */
+} raidz_row_t;
+
 typedef struct raidz_map {
-	size_t rm_cols;			/* Regular column count */
-	size_t rm_scols;		/* Count including skipped columns */
-	size_t rm_bigcols;		/* Number of oversized columns */
-	size_t rm_asize;		/* Actual total I/O size */
-	size_t rm_missingdata;		/* Count of missing data devices */
-	size_t rm_missingparity;	/* Count of missing parity devices */
-	size_t rm_firstdatacol;		/* First data column/parity count */
-	size_t rm_nskip;		/* Skipped sectors for padding */
-	size_t rm_skipstart;		/* Column index of padding start */
-	void *rm_abd_copy;		/* rm_asize-buffer of copied data */
-	size_t rm_reports;		/* # of referencing checksum reports */
-	unsigned int rm_freed;		/* map no longer has referencing ZIO */
-	unsigned int rm_ecksuminjected;	/* checksum error was injected */
+	uintptr_t rm_reports;		/* # of referencing checksum reports */
+	boolean_t rm_freed;		/* map no longer has referencing ZIO */
+	boolean_t rm_ecksuminjected;	/* checksum error was injected */
+	int rm_nrows;			/* Regular row count */
+	int rm_nskip;			/* RAIDZ sectors skipped for padding */
+	int rm_skipstart;		/* Column index of padding start */
 	const raidz_impl_ops_t *rm_ops;	/* RAIDZ math operations */
-	raidz_col_t rm_col[1];		/* Flexible array of I/O columns */
+	raidz_row_t *rm_row[0];		/* flexible array of rows */
 } raidz_map_t;
+
 
 #define	RAIDZ_ORIGINAL_IMPL	(INT_MAX)
 
@@ -148,17 +164,18 @@ extern const raidz_impl_ops_t vdev_raidz_avx2_impl;
  *
  * raidz_parity		Returns parity of the RAIDZ block
  * raidz_ncols		Returns number of columns the block spans
+ *			Note, all rows have the same number of columns.
  * raidz_nbigcols	Returns number of big columns
  * raidz_col_p		Returns pointer to a column
  * raidz_col_size	Returns size of a column
  * raidz_big_size	Returns size of big columns
  * raidz_short_size	Returns size of short columns
  */
-#define	raidz_parity(rm)	((rm)->rm_firstdatacol)
-#define	raidz_ncols(rm)		((rm)->rm_cols)
-#define	raidz_nbigcols(rm)	((rm)->rm_bigcols)
-#define	raidz_col_p(rm, c)	((rm)->rm_col + (c))
-#define	raidz_col_size(rm, c)	((rm)->rm_col[c].rc_size)
+#define	raidz_parity(rm)	((rm)->rm_row[0]->rr_firstdatacol)
+#define	raidz_ncols(rm)		((rm)->rm_row[0]->rr_cols)
+#define	raidz_nbigcols(rm)	((rm)->rm_row[0]->rr_bigcols)
+#define	raidz_col_p(rm, c)	((rm)->rm_row[0]->rr_col + (c))
+#define	raidz_col_size(rm, c)	((rm)->rm_row[0]->rr_col[c].rc_size)
 #define	raidz_big_size(rm)	(raidz_col_size(rm, CODE_P))
 #define	raidz_short_size(rm)	(raidz_col_size(rm, raidz_ncols(rm)-1))
 
@@ -170,10 +187,10 @@ extern const raidz_impl_ops_t vdev_raidz_avx2_impl;
  */
 #define	_RAIDZ_GEN_WRAP(code, impl) 					\
 static void								\
-impl ## _gen_ ## code(void *rmp)					\
+impl ## _gen_ ## code(void *rrp)					\
 {									\
-	raidz_map_t *rm = (raidz_map_t *) rmp;				\
-	raidz_generate_## code ## _impl(rm); 				\
+	raidz_row_t *rr = (raidz_row_t *)rrp;				\
+	raidz_generate_## code ## _impl(rr);				\
 }
 
 /*
@@ -182,12 +199,12 @@ impl ## _gen_ ## code(void *rmp)					\
  * @code	parity the function produce
  * @impl	name of the implementation
  */
-#define	_RAIDZ_REC_WRAP(code, impl) 					\
-static int 								\
-impl ## _rec_ ## code(void *rmp, const int *tgtidx)			\
+#define	_RAIDZ_REC_WRAP(code, impl)					\
+static int								\
+impl ## _rec_ ## code(void *rrp, const int *tgtidx)			\
 {									\
-	raidz_map_t *rm = (raidz_map_t *) rmp;				\
-	return (raidz_reconstruct_## code ## _impl(rm, tgtidx));	\
+	raidz_row_t *rr = (raidz_row_t *)rrp;				\
+	return (raidz_reconstruct_## code ## _impl(rr, tgtidx));	\
 }
 
 /*
@@ -285,7 +302,7 @@ vdev_raidz_exp2(const uint8_t a, const unsigned exp)
 	if (a == 0)
 		return (0);
 
-	return (vdev_raidz_pow2[(exp + (unsigned) vdev_raidz_log2[a]) % 255]);
+	return (vdev_raidz_pow2[(exp + (unsigned)vdev_raidz_log2[a]) % 255]);
 }
 
 /*
@@ -308,9 +325,9 @@ gf_mul(const gf_t a, const gf_t b)
 	if (a == 0 || b == 0)
 		return (0);
 
-	logsum = (gf_log_t) vdev_raidz_log2[a] + (gf_log_t) vdev_raidz_log2[b];
+	logsum = (gf_log_t)vdev_raidz_log2[a] + (gf_log_t)vdev_raidz_log2[b];
 
-	return ((gf_t) vdev_raidz_pow2[logsum % 255]);
+	return ((gf_t)vdev_raidz_pow2[logsum % 255]);
 }
 
 static inline gf_t
@@ -322,10 +339,10 @@ gf_div(const gf_t  a, const gf_t b)
 	if (a == 0)
 		return (0);
 
-	logsum = (gf_log_t) 255 + (gf_log_t) vdev_raidz_log2[a] -
-	    (gf_log_t) vdev_raidz_log2[b];
+	logsum = (gf_log_t)255 + (gf_log_t)vdev_raidz_log2[a] -
+	    (gf_log_t)vdev_raidz_log2[b];
 
-	return ((gf_t) vdev_raidz_pow2[logsum % 255]);
+	return ((gf_t)vdev_raidz_pow2[logsum % 255]);
 }
 
 static inline gf_t
@@ -335,9 +352,9 @@ gf_inv(const gf_t a)
 
 	ASSERT3U(a, >, 0);
 
-	logsum = (gf_log_t) 255 - (gf_log_t) vdev_raidz_log2[a];
+	logsum = (gf_log_t)255 - (gf_log_t)vdev_raidz_log2[a];
 
-	return ((gf_t) vdev_raidz_pow2[logsum]);
+	return ((gf_t)vdev_raidz_pow2[logsum]);
 }
 
 static inline gf_t
@@ -350,7 +367,7 @@ static inline gf_t
 gf_exp4(gf_log_t exp)
 {
 	ASSERT3U(exp, <=, 255);
-	return ((gf_t) vdev_raidz_pow2[(2 * exp) % 255]);
+	return ((gf_t)vdev_raidz_pow2[(2 * exp) % 255]);
 }
 
 #ifdef  __cplusplus

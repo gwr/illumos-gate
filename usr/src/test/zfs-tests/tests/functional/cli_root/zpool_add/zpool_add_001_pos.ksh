@@ -51,13 +51,14 @@ function cleanup
 		destroy_pool $TESTPOOL
 
 	partition_cleanup
+	rm -f $disk0 $disk1 $disk2
 }
 
 log_assert "'zpool add <pool> <vdev> ...' can add devices to the pool."
 
 log_onexit cleanup
 
-set -A keywords "" "mirror" "raidz" "raidz1" "spare"
+set -A keywords "" "mirror" "raidz" "raidz1" "draid:1s" "draid1:1s" "spare"
 
 case $DISK_ARRAY_NUM in
 0|1)
@@ -66,6 +67,8 @@ case $DISK_ARRAY_NUM in
                   \"${disk}s${SLICE0} ${disk}s${SLICE1}\""
         mirrordevs="\"/dev/dsk/${disk}s${SLICE0} ${disk}s${SLICE1}\""
         raidzdevs="\"/dev/dsk/${disk}s${SLICE0} ${disk}s${SLICE1}\""
+	draiddevs="\"${disk}s${SLICE0} ${disk}s${SLICE1} \
+	    ${disk}s${SLICE3}\""
 
         ;;
 2|*)
@@ -76,15 +79,23 @@ case $DISK_ARRAY_NUM in
                    ${DISK1}s${SLICE1}\""
         mirrordevs="\"/dev/dsk/${DISK0}s${SLICE0} ${DISK1}s${SLICE0}\""
         raidzdevs="\"/dev/dsk/${DISK0}s${SLICE0} ${DISK1}s${SLICE0}\""
+	draiddevs="\"${DISK0}s${SLICE0} ${DISK1}s${SLICE0} \
+	    ${DISK0}s${SLICE1}\""
 
         ;;
 esac
+
+disk0=$TEST_BASE_DIR/disk0
+disk1=$TEST_BASE_DIR/disk1
+disk2=$TEST_BASE_DIR/disk2
+log_must truncate -s $MINVDEVSIZE $disk0 $disk1 $disk2
 
 typeset -i i=0
 typeset vdev
 eval set -A poolarray $pooldevs
 eval set -A mirrorarray $mirrordevs
 eval set -A raidzarray $raidzdevs
+eval set -A draidarray $draiddevs
 
 while (( $i < ${#keywords[*]} )); do
         case ${keywords[i]} in
@@ -116,6 +127,19 @@ while (( $i < ${#keywords[*]} )); do
 			log_must poolexists "$TESTPOOL"
 			log_must zpool add "$TESTPOOL" ${keywords[i]} $vdev
 			log_must vdevs_in_pool "$TESTPOOL" "$vdev"
+			destroy_pool "$TESTPOOL"
+		done
+
+		;;
+        draid:1s|draid1:1s)
+		for vdev in "${draidarray[@]}"; do
+			create_pool "$TESTPOOL" "${keywords[i]}" \
+				"$disk0" "$disk1" "$disk2"
+			log_must poolexists "$TESTPOOL"
+			log_must zpool add "$TESTPOOL" ${keywords[i]} $vdev
+			log_must vdevs_in_pool "$TESTPOOL" "$vdev"
+			log_must vdevs_in_pool "$TESTPOOL" "draid1-0-0"
+			log_must vdevs_in_pool "$TESTPOOL" "draid1-1-0"
 			destroy_pool "$TESTPOOL"
 		done
 

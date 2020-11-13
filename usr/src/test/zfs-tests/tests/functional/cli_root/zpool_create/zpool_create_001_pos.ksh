@@ -67,7 +67,7 @@ log_assert "'zpool create <pool> <vspec> ...' can successfully create" \
 
 log_onexit cleanup
 
-set -A keywords "" "mirror" "raidz" "raidz1"
+set -A keywords "" "mirror" "raidz" "raidz1" "draid"
 
 case $DISK_ARRAY_NUM in
 0|1)
@@ -89,6 +89,8 @@ case $DISK_ARRAY_NUM in
                    \"${disk}s${SLICE0} ${disk}s${SLICE1} ${disk}s${SLICE3} \
                      ${disk}s${SLICE4}\"\
                    \"$TESTDIR0/$FILEDISK0 $TESTDIR1/$FILEDISK1\""
+	draiddevs="\"${disk}s${SLICE0} ${disk}s${SLICE1} \
+	    ${disk}s${SLICE3}\""
 	mirrordevs=$raidzdevs
 	;;
 2|*)
@@ -107,6 +109,8 @@ case $DISK_ARRAY_NUM in
                    ${DISK1}s${SLICE1}\" \
                  \"$TESTDIR0/$FILEDISK0 $TESTDIR1/$FILEDISK1\""
 	mirrordevs=$raidzdevs
+	draiddevs="\"${DISK0}s${SLICE0} ${DISK1}s${SLICE0} \
+	    ${DISK0}s${SLICE1}\""
 	;;
 esac
 
@@ -119,6 +123,8 @@ while (( $i < ${#keywords[*]} )); do
 		create_pool_test "$TESTPOOL" "${keywords[i]}" "$mirrordevs";;
 	raidz|raidz1)
 		create_pool_test "$TESTPOOL" "${keywords[i]}" "$raidzdevs" ;;
+	draid)
+		create_pool_test "$TESTPOOL" "${keywords[i]}" "$draiddevs" ;;
 	esac
 	(( i = i+1 ))
 done

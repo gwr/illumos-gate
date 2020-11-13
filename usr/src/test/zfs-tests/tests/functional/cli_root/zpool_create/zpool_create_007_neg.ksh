@@ -69,6 +69,13 @@ set -A args  "" "-?" "-n" "-f" "-nf" "-fn" "-f -n" "--f" "-e" "-s" \
 	"$TESTPOOL RAIDZ1 ${disk}s${SLICE0} ${disk}s${SLICE1}" \
 	"$TESTPOOL MIRROR $disk" "$TESTPOOL raidz $disk" \
 	"$TESTPOOL raidz1 $disk" \
+	"$TESTPOOL draid1" "$TESTPOOL mirror draid1" \
+	"$TESTPOOL DRAID ${disk}s${SLICE0} ${disk}s${SLICE1} \
+	${disk}s${SLICE3}" \
+	"$TESTPOOL draid ${disk}s${SLICE0}" \
+	"$TESTPOOL draid2 ${disk}s${SLICE0} ${disk}s${SLICE1}" \
+	"$TESTPOOL draid ${disk}s${SLICE0} ${disk}s${SLICE1} \
+	${disk}s${SLICE3} spare s0-draid1-0" \
 	"1tank $disk" "1234 $disk" "?tank $disk" \
 	"tan%k $disk" "ta@# $disk" "tan+k $disk" \
 	"$BYND_MAX_NAME $disk"

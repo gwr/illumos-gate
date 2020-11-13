@@ -69,7 +69,7 @@ for i in 1 2 3; do
 	log_must zfs create -V $org_size $VFS/vol$i
 done
 
-for type in " " mirror raidz raidz2; do
+for type in " " mirror raidz raidz2 draid; do
 
 	log_must zpool create -o autoexpand=on $TESTPOOL1 $type \
 	    /dev/zvol/dsk/$VFS/vol1  /dev/zvol/dsk/$VFS/vol2 \
@@ -120,6 +120,16 @@ for type in " " mirror raidz raidz2; do
 			if (( $? != 0 )) ; then
 				log_fail "pool $TESTPOOL1 is not autoexpand " \
 				    "after LUN expansion"
+			fi
+		elif [[ $type == "draid" ]]; then
+			typeset expansion_size=$((2*($exp_size-$org_size)))
+			zpool history -il $TESTPOOL1 | \
+			    grep "pool '$TESTPOOL1' size:" | \
+			    grep "vdev online" | \
+			    grep "(+${expansion_size})" >/dev/null 2>&1
+
+			if [[ $? -ne 0 ]]; then
+				log_fail "pool $TESTPOOL has not expanded"
 			fi
 		else
 			zpool history -il $TESTPOOL1 | \

@@ -1022,9 +1022,9 @@ int
 abd_iterate_func(abd_t *abd, size_t off, size_t size,
     abd_iter_func_t *func, void *private)
 {
-	int ret = 0;
 	struct abd_iter aiter;
 	abd_t *cabd;
+	int ret = 0;
 
 	if (size == 0)
 		return (0);
@@ -1157,6 +1157,9 @@ abd_iterate_func2(abd_t *dabd, abd_t *sabd, size_t doff, size_t soff,
 	int ret = 0;
 	struct abd_iter daiter, saiter;
 	abd_t *cdabd, *csabd;
+
+	if (size == 0)
+		return (0);
 
 	if (size == 0)
 		return (0);

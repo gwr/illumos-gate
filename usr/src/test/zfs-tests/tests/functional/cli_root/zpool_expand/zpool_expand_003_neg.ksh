@@ -69,7 +69,7 @@ for i  in 1 2 3; do
 	log_must zfs create -V $org_size $VFS/vol$i
 done
 
-for type in " " mirror raidz raidz2; do
+for type in " " mirror raidz raidz2 draid; do
 	log_must zpool create $TESTPOOL1 $type /dev/zvol/dsk/$VFS/vol1 \
 	    /dev/zvol/dsk/$VFS/vol2 /dev/zvol/dsk/$VFS/vol3
 

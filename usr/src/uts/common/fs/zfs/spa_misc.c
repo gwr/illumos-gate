@@ -748,6 +748,7 @@ spa_add(const char *name, nvlist_t *config, const char *altroot)
 
 	spa->spa_min_ashift = INT_MAX;
 	spa->spa_max_ashift = 0;
+	spa->spa_min_alloc = INT_MAX;
 
 	/*
 	 * As a pool is being created, treat all features as disabled by
