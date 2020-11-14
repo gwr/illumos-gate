@@ -8637,6 +8637,12 @@ print_history_records(nvlist_t *nvhis, hist_cbdata_t *cb)
 				dump_nvlist(fnvlist_lookup_nvlist(rec,
 				    ZPOOL_HIST_OUTPUT_NVL), 8);
 			}
+			if (nvlist_exists(rec, ZPOOL_HIST_OUTPUT_SIZE)) {
+				(void) printf("    output nvlist omitted; "
+				    "original size: %lldKB\n",
+				    (longlong_t)fnvlist_lookup_int64(rec,
+				    ZPOOL_HIST_OUTPUT_SIZE) / 1024);
+			}
 			if (nvlist_exists(rec, ZPOOL_HIST_ERRNO)) {
 				(void) printf("    errno: %lld\n",
 				    fnvlist_lookup_int64(rec,

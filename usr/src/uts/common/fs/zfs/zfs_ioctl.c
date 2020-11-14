@@ -234,6 +234,12 @@ extern void zfs_fini(void);
 ldi_ident_t zfs_li = NULL;
 dev_info_t *zfs_dip;
 
+/*
+ * Limit the output nvlist logged in on-disk history.  This must be less than
+ * DMU_MAX_ACCESS and applies primarily to zfs_ioc_channel_program().
+ */
+unsigned long zfs_history_output_max = 1024 * 1024;
+
 extern uint_t rrw_tsd_key;
 static uint_t zfs_allow_log_key;
 
@@ -7608,8 +7614,14 @@ zfsdev_ioctl(dev_t dev, int cmd, intptr_t arg, int flag, cred_t *cr, int *rvalp)
 		    vec->zvec_allow_log &&
 		    spa_open(zc->zc_name, &spa, FTAG) == 0) {
 			if (!nvlist_empty(outnvl)) {
-				fnvlist_add_nvlist(lognv, ZPOOL_HIST_OUTPUT_NVL,
-				    outnvl);
+				size_t out_size = fnvlist_size(outnvl);
+				if (out_size > zfs_history_output_max) {
+					fnvlist_add_int64(lognv,
+					    ZPOOL_HIST_OUTPUT_SIZE, out_size);
+				} else {
+					fnvlist_add_nvlist(lognv,
+					    ZPOOL_HIST_OUTPUT_NVL, outnvl);
+				}
 			}
 			if (error != 0) {
 				fnvlist_add_int64(lognv, ZPOOL_HIST_ERRNO,
