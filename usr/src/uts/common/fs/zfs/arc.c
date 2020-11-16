@@ -8380,9 +8380,15 @@ out:
 		goto top;
 	}
 
-	ASSERT3U(dev->l2ad_hand + distance, <, dev->l2ad_end);
-	if (!dev->l2ad_first)
-		ASSERT3U(dev->l2ad_hand, <, dev->l2ad_evict);
+	if (!all) {
+		/*
+		 * During cache device removal these assertions may be violated
+		 * without functional consequences.
+		 */
+		ASSERT3U(dev->l2ad_hand + distance, <, dev->l2ad_end);
+		if (!dev->l2ad_first)
+			ASSERT3U(dev->l2ad_hand, <, dev->l2ad_evict);
+	}
 }
 
 /*
