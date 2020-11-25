@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2021 Tintri by DDN, Inc. All rights reserved.
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 /*
@@ -86,6 +86,7 @@ static int cmd_validator(int, char *);
 static int disposition_validator(int, char *);
 static int protocol_validator(int, char *);
 static int require_validator(int, char *);
+static int rpcsec_validator(int, char *);
 
 static int smb_enable_resource(sa_resource_t);
 static int smb_disable_resource(sa_resource_t);
@@ -902,6 +903,8 @@ struct smb_proto_option_defs {
 	    SMB_REFRESH_REFRESH },
 	{ SMB_CI_REPARSE_ENABLE, 0, 0, true_false_validator,
 	    SMB_REFRESH_REFRESH },
+	{ SMB_CI_RPCSRV_SEC, 0, MAX_VALUE_BUFLEN, rpcsec_validator,
+	    SMB_REFRESH_RESTART },
 };
 
 #define	SMB_OPT_NUM \
@@ -920,6 +923,24 @@ require_validator(int index, char *value)
 		return (SA_OK);
 
 	if (strcmp(value, "enabled") == 0)
+		return (SA_OK);
+
+	return (SA_BAD_VALUE);
+}
+
+static int
+rpcsec_validator(int index, char *value)
+{
+	if (string_length_check_validator(index, value) != SA_OK)
+		return (SA_BAD_VALUE);
+
+	if (strcmp(value, "never") == 0)
+		return (SA_OK);
+
+	if (strcmp(value, "service") == 0)
+		return (SA_OK);
+
+	if (strcmp(value, "optional") == 0)
 		return (SA_OK);
 
 	return (SA_BAD_VALUE);

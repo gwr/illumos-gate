@@ -1,6 +1,8 @@
 /*
  * Copyright 2004 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
+ *
+ * Copyright 2020 Tintri by DDN, Inc. All rights reserved.
  */
 
 /*
@@ -27,8 +29,6 @@
 
 #ifndef	_GSSAPI_H_
 #define	_GSSAPI_H_
-
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
 
 #ifdef	__cplusplus
 extern "C" {
@@ -140,6 +140,8 @@ typedef	int gss_cred_usage_t;
 #define	GSS_C_ANON_FLAG 64
 #define	GSS_C_PROT_READY_FLAG 128
 #define	GSS_C_TRANS_FLAG 256
+
+#define	GSS_C_DCE_STYLE 0x1000
 
 /*
  * Credential usage options

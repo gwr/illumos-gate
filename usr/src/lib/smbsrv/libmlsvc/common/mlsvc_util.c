@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2020 Tintri by DDN, Inc. All rights reserved.
  * Copyright 2021 RackTop Systems, Inc.
  */
 
@@ -485,4 +485,10 @@ ndr_native_os(ndr_xa_t *xa)
 	smb_netuserinfo_t *ctx = xa->pipe->np_user;
 
 	return (ctx->ui_native_os);
+}
+
+boolean_t
+mlsvc_register_ssp(const ndr_auth_ops_t *ops, uint8_t type, uint32_t flags)
+{
+	return (ndr_svc_register_ssp(ops, type, flags));
 }

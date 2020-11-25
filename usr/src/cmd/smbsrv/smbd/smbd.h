@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2022 Tintri by DDN, Inc.  All rights reserved.
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 #ifndef _SMBD_H
@@ -42,6 +42,7 @@ extern "C" {
 void smbd_report(const char *fmt, ...);
 int smbd_pipesvc_start(void);
 void smbd_pipesvc_stop(void);
+void smbd_pipesvc_register_ssp(void);
 int smbd_share_start(void);
 void smbd_share_stop(void);
 int smbd_nicmon_start(const char *);

@@ -285,7 +285,7 @@ krb5_gss_accept_sec_context(minor_status, context_handle,
 {
    krb5_context context;
    unsigned char *ptr, *ptr2;
-   krb5_gss_ctx_id_rec *ctx = 0;
+   krb5_gss_ctx_id_rec *ctx = NULL;
    char *sptr;
    long tmp;
    size_t md5len;
@@ -316,7 +316,7 @@ krb5_gss_accept_sec_context(minor_status, context_handle,
    OM_uint32 saved_ap_options = 0;
    krb5int_access kaccess;
    int cred_rcache = 0;
-   int no_encap;
+   boolean_t gss_hdr = B_TRUE, dce_style = B_FALSE;
    OM_uint32 t_minor_status = 0;
    int acquire_fail = 0;
 
@@ -331,51 +331,62 @@ krb5_gss_accept_sec_context(minor_status, context_handle,
        return(GSS_S_FAILURE);
    }
 
-   code = krb5_gss_init_context(&context);
-   if (code) {
-       *minor_status = code;
-       return GSS_S_FAILURE;
-   }
-
-   /* set up returns to be freeable */
-
-   if (src_name)
-      *src_name = (gss_name_t) NULL;
    output_token->length = 0;
    output_token->value = NULL;
-   token.value = 0;
+   token.value = NULL;
+   token.length = 0;
    reqcksum.contents = 0;
    ap_req.data = 0;
    ap_rep.data = 0;
    
-   if (mech_type)
-      *mech_type = GSS_C_NULL_OID;
-   /* initialize the delegated cred handle to NO_CREDENTIAL for now */
-   if (delegated_cred_handle)
-      *delegated_cred_handle = GSS_C_NO_CREDENTIAL;
+   if (*context_handle == GSS_C_NO_CONTEXT) {
+       code = krb5_gss_init_context(&context);
+       if (code) {
+	   *minor_status = code;
+	   return GSS_S_FAILURE;
+       }
 
-   /*
-    * Context handle must be unspecified.  Actually, it must be
-    * non-established, but currently, accept_sec_context never returns
-    * a non-established context handle.
-    */
-   /*SUPPRESS 29*/
-   if (*context_handle != GSS_C_NO_CONTEXT) {
-      *minor_status = 0;
+       /* set up returns to be freeable */
 
-       /* Solaris kerberos: the original Solaris code returned GSS_S_NO_CONTEXT
-	* for this error.  This conflicts somewhat with RFC2743 which states
-	* GSS_S_NO_CONTEXT should be returned only for sucessor calls following
-	* GSS_S_CONTINUE_NEEDED status returns.  Note the MIT code doesn't
-	* return GSS_S_NO_CONTEXT at all.
+       if (src_name)
+	   *src_name = (gss_name_t) NULL;
+       if (mech_type)
+	   *mech_type = GSS_C_NULL_OID;
+       /* initialize the delegated cred handle to NO_CREDENTIAL for now */
+       if (delegated_cred_handle)
+	    *delegated_cred_handle = GSS_C_NO_CREDENTIAL;
+
+   } else {
+       if (!kg_validate_ctx_id(*context_handle)) {
+	   code = (OM_uint32) G_VALIDATE_FAILED;
+	   major_status = GSS_S_NO_CONTEXT;
+	   goto fail;
+       }
+
+       ctx = (krb5_gss_ctx_id_t) *context_handle;
+       context = ctx->k5_context;
+
+       /*
+	* Context handle must be non-established.
 	*/
+       /*SUPPRESS 29*/
+       if (ctx->established) {
 
-      major_status = GSS_S_NO_CONTEXT;
-      KRB5_LOG0(KRB5_ERR,"krb5_gss_accept_sec_context() "
-	      "error GSS_S_NO_CONTEXT");
-      goto cleanup;
+	   *minor_status = 0;
+
+	   /* Solaris kerberos: the original Solaris code returned GSS_S_NO_CONTEXT
+	    * for this error.  This conflicts somewhat with RFC2743 which states
+	    * GSS_S_NO_CONTEXT should be returned only for sucessor calls following
+	    * GSS_S_CONTINUE_NEEDED status returns.  Note the MIT code doesn't
+	    * return GSS_S_NO_CONTEXT at all.
+	    */
+
+	   major_status = GSS_S_NO_CONTEXT;
+	   KRB5_LOG0(KRB5_ERR,"krb5_gss_accept_sec_context() "
+		     "error GSS_S_NO_CONTEXT");
+	   goto cleanup;
+       }
    }
-
    /* verify the token's integrity, and leave the token in ap_req.
       figure out which mech oid was used, and save it */
 
@@ -415,7 +426,7 @@ krb5_gss_accept_sec_context(minor_status, context_handle,
         ap_req.length = input_token->length;
         ap_req.data = input_token->value;
         mech_used = gss_mech_krb5;
-        no_encap = 1;
+        gss_hdr = B_FALSE;
    } else {
 	major_status = GSS_S_DEFECTIVE_TOKEN;
         goto fail;
@@ -430,6 +441,23 @@ krb5_gss_accept_sec_context(minor_status, context_handle,
     *  service principal in order to try and acquire a cred for it.
     *  below in the "handle default cred handle" code block.
     */
+   if (ctx != NULL && (ctx->gss_flags & GSS_C_DCE_STYLE) != 0 &&
+       krb5_is_ap_rep(&ap_req)) {
+       krb5_ap_rep *reply;
+       if ((code = decode_krb5_ap_rep(&ap_req, &reply))) {
+	   if (code == KRB5_BADMSGTYPE)
+	       code = KRB5KRB_AP_ERR_BADVERSION;
+           goto fail;
+       }
+       krb5_free_ap_rep(context, reply);
+       code = 0;
+       *minor_status = 0;
+       major_status = GSS_S_COMPLETE;
+       ctx->established = 1;
+       if (ret_flags != NULL)
+	   *ret_flags = ctx->gss_flags;
+       goto fail;
+   }
    if (!krb5_is_ap_req(&ap_req)) {
        code = KRB5KRB_AP_ERR_MSG_TYPE;
        goto fail;
@@ -748,6 +776,8 @@ krb5_gss_accept_sec_context(minor_status, context_handle,
 
        TREAD_INT(ptr, gss_flags, bigend);
 
+       dce_style = (gss_flags & GSS_C_DCE_STYLE) != 0;
+
        /* if the checksum length > 24, there are options to process */
 
        if(authdat->checksum->length > 24 && (gss_flags & GSS_C_DELEG_FLAG)) {
@@ -840,7 +870,8 @@ krb5_gss_accept_sec_context(minor_status, context_handle,
    ctx->gss_flags = (GSS_C_TRANS_FLAG |
                     ((gss_flags) & (GSS_C_INTEG_FLAG | GSS_C_CONF_FLAG |
                             GSS_C_MUTUAL_FLAG | GSS_C_REPLAY_FLAG |
-                            GSS_C_SEQUENCE_FLAG | GSS_C_DELEG_FLAG)));
+                            GSS_C_SEQUENCE_FLAG | GSS_C_DELEG_FLAG |
+                            GSS_C_DCE_STYLE)));
    ctx->seed_init = 0;
    ctx->big_endian = bigend;
    ctx->cred_rcache = cred_rcache;
@@ -1071,9 +1102,10 @@ krb5_gss_accept_sec_context(minor_status, context_handle,
 
        /* the reply token hasn't been sent yet, but that's ok. */
        ctx->gss_flags |= GSS_C_PROT_READY_FLAG;
-       ctx->established = 1;
+       ctx->established = (dce_style) ? 0 : 1;
 
-       token.length = g_token_size(mech_used, ap_rep.length);
+       token.length = (gss_hdr) ?
+	   g_token_size(mech_used, ap_rep.length) : ap_rep.length;
 
        if ((token.value = (unsigned char *) xmalloc(token.length))
 	   == NULL) {
@@ -1082,19 +1114,21 @@ krb5_gss_accept_sec_context(minor_status, context_handle,
 	   goto fail;
        }
        ptr3 = token.value;
-       g_make_token_header(mech_used, ap_rep.length,
+
+       if (gss_hdr)
+	   g_make_token_header(mech_used, ap_rep.length,
 			   &ptr3, KG_TOK_CTX_AP_REP);
 
        TWRITE_STR(ptr3, ap_rep.data, ap_rep.length);
 
-       ctx->established = 1;
+       ctx->established = (dce_style) ? 0 : 1;
 
    } else {
        token.length = 0;
        token.value = NULL;
        ctx->seq_send = ctx->seq_recv;
 
-       ctx->established = 1;
+       ctx->established = (dce_style) ? 0 : 1;
    }
 
    /* set the return arguments */
@@ -1149,7 +1183,11 @@ krb5_gss_accept_sec_context(minor_status, context_handle,
    /* finally! */
 
    *minor_status = 0;
-   major_status = GSS_S_COMPLETE;
+   if (dce_style)
+       major_status = GSS_S_CONTINUE_NEEDED;
+   else
+       major_status = GSS_S_COMPLETE;
+
 
  fail:
    if (mech_type) {
@@ -1182,7 +1220,7 @@ krb5_gss_accept_sec_context(minor_status, context_handle,
 	request = NULL;
    }
 
-   if (!GSS_ERROR(major_status) && major_status != GSS_S_CONTINUE_NEEDED) {
+   if (!GSS_ERROR(major_status) && (dce_style || major_status != GSS_S_CONTINUE_NEEDED)) {
 	if (!verifier_cred_handle && cred_handle) {
 		krb5_gss_release_cred(minor_status, &cred_handle);
 	}
@@ -1271,13 +1309,14 @@ krb5_gss_accept_sec_context(minor_status, context_handle,
        tmsglen = scratch.length;
        toktype = KG_TOK_CTX_ERROR;
 
-       token.length = g_token_size(mech_used, tmsglen);
+       token.length =  (gss_hdr) ? g_token_size(mech_used, tmsglen) : tmsglen;
        token.value = (unsigned char *) xmalloc(token.length);
        if (!token.value)
 	  goto cleanup;
 
        ptr = token.value;
-       g_make_token_header(mech_used, tmsglen, &ptr, toktype);
+       if (gss_hdr)
+	   g_make_token_header(mech_used, tmsglen, &ptr, toktype);
 
        TWRITE_STR(ptr, scratch.data, scratch.length);
        xfree(scratch.data);

@@ -89,6 +89,7 @@ SYMBOL_VERSION SUNWprivate {
 	ndr_svc_binding_pool_init;
 	ndr_svc_lookup_name;
 	ndr_svc_register;
+	ndr_svc_register_ssp;
 	ndr_topmost;
 	ndr_uuid_parse;
 	ndr_uuid_unparse;

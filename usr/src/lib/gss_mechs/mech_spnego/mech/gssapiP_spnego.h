@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 1999, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright 2020 Tintri by DDN, Inc. All rights reserved.
  */
 #ifndef	_GSSAPIP_SPNEGO_H_
 #define	_GSSAPIP_SPNEGO_H_
@@ -498,6 +499,44 @@ OM_uint32 spnego_gss_verify_mic
 	const gss_buffer_t msg_buffer,
 	const gss_buffer_t token_buffer,
 	gss_qop_t *qop_state
+);
+
+OM_uint32 glue_spnego_gss_sign
+(
+	void *context,
+	OM_uint32 *minor_status,
+	const gss_ctx_id_t context_handle,
+	int qop_req,
+	const gss_buffer_t message_buffer,
+	gss_buffer_t message_token
+);
+
+OM_uint32 spnego_gss_sign
+(
+	OM_uint32 *minor_status,
+	const gss_ctx_id_t context_handle,
+	int qop_req,
+	const gss_buffer_t message_buffer,
+	gss_buffer_t message_token
+);
+
+OM_uint32 glue_spnego_gss_verify
+(
+	void *context,
+	OM_uint32 *minor_status,
+	const gss_ctx_id_t context_handle,
+	const gss_buffer_t msg_buffer,
+	const gss_buffer_t token_buffer,
+	int *qop_state
+);
+
+OM_uint32 spnego_gss_verify
+(
+	OM_uint32 *minor_status,
+	const gss_ctx_id_t context_handle,
+	const gss_buffer_t msg_buffer,
+	const gss_buffer_t token_buffer,
+	int *qop_state
 );
 
 OM_uint32

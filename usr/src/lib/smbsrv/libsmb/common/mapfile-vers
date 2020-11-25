@@ -105,6 +105,7 @@ SYMBOL_VERSION SUNWprivate {
 	smb_config_get_fg_flag;
 	smb_config_get_localsid;
 	smb_config_get_require;
+	smb_config_get_rpcsec;
 	smb_config_get_secmode;
 	smb_config_get_version;
 	smb_config_getbool;

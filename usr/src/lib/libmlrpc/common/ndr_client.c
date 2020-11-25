@@ -92,6 +92,7 @@ ndr_clnt_bind(ndr_client_t *clnt, ndr_service_t *msvc,
 
 	/* Reserve room for hdr */
 	mxa.send_nds.pdu_scan_offset = sizeof (*bhdr);
+	mxa.send_nds.pdu_hdr_size = sizeof (*bhdr);
 
 	/* GSS_Init_sec_context */
 	rc = ndr_add_sec_context(&clnt->auth_ctx, &mxa);
@@ -126,6 +127,11 @@ ndr_clnt_bind(ndr_client_t *clnt, ndr_service_t *msvc,
 	rc = ndr_decode_pdu_hdr(&mxa);
 	if (NDR_DRC_IS_FAULT(rc))
 		goto fault_exit;
+
+	if (mxa.recv_hdr.common_hdr.frag_length > mxa.recv_nds.pdu_size) {
+		rc = NDR_DRC_FAULT_RECEIVED_MALFORMED;
+		goto fault_exit;
+	}
 
 	rc = ndr_decode_pdu_auth(&mxa);
 	if (NDR_DRC_IS_FAULT(rc))
@@ -200,6 +206,7 @@ ndr_clnt_call(ndr_binding_t *mbind, int opnum, void *params)
 
 	/* Reserve room for hdr */
 	mxa.send_nds.pdu_scan_offset = sizeof (*reqhdr);
+	mxa.send_nds.pdu_hdr_size = sizeof (*reqhdr);
 	/* pdu_scan_offset now points to start of stub */
 	mxa.send_nds.pdu_body_offset = mxa.send_nds.pdu_scan_offset;
 
@@ -215,7 +222,7 @@ ndr_clnt_call(ndr_binding_t *mbind, int opnum, void *params)
 	    sizeof (ndr_request_hdr_t);
 
 	/* GSS_WrapEx/VerifyMICEx */
-	rc = ndr_add_auth(&clnt->auth_ctx, &mxa);
+	rc = ndr_add_auth(&clnt->auth_ctx, &mxa, mxa.send_nds.pdu_scan_offset);
 	if (NDR_DRC_IS_FAULT(rc))
 		goto fault_exit;
 
@@ -244,6 +251,11 @@ ndr_clnt_call(ndr_binding_t *mbind, int opnum, void *params)
 		goto fault_exit;
 
 	if (mxa.ptype != NDR_PTYPE_RESPONSE) {
+		rc = NDR_DRC_FAULT_RECEIVED_MALFORMED;
+		goto fault_exit;
+	}
+
+	if (mxa.recv_hdr.common_hdr.frag_length > mxa.recv_nds.pdu_size) {
 		rc = NDR_DRC_FAULT_RECEIVED_MALFORMED;
 		goto fault_exit;
 	}

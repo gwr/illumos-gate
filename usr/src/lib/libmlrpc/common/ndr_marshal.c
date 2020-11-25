@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2021 Tintri by DDN, Inc. All rights reserved.
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 #include <assert.h>
@@ -318,9 +318,9 @@ ndr_decode_pdu_hdr(ndr_xa_t *mxa)
 	/* pdu_scan_offset now points to (this fragment's) stub data */
 	nds->pdu_body_offset = nds->pdu_scan_offset;
 	nds->pdu_hdr_size = nds->pdu_scan_offset - saved_offset;
-	nds->pdu_body_size = hdr->frag_length - hdr->auth_length -
-	    nds->pdu_hdr_size -
-	    ((hdr->auth_length != 0) ? SEC_TRAILER_SIZE : 0);
+	nds->pdu_body_size = hdr->frag_length - nds->pdu_hdr_size;
+	if (hdr->auth_length != 0)
+		nds->pdu_body_size -= hdr->auth_length + SEC_TRAILER_SIZE;
 
 	if (hdr->auth_length != 0 && hdr->auth_length >
 	    (hdr->frag_length - nds->pdu_hdr_size - SEC_TRAILER_SIZE))
@@ -377,8 +377,6 @@ ndr_decode_hdr_common(ndr_stream_t *nds, ndr_common_header_t *hdr)
 
 	rc = ndr_encode_decode_common(nds, ptype, &TYPEINFO(ndr_hdr), hdr);
 
-	if (hdr->frag_length > (nds->pdu_size - saved_offset))
-		rc = NDR_DRC_FAULT_RECEIVED_MALFORMED;
 	return (NDR_DRC_PTYPE_RPCHDR(rc));
 }
 
@@ -456,10 +454,13 @@ ndr_decode_frag_hdr(ndr_stream_t *nds, ndr_common_header_t *hdr)
 
 	/* pdu_scan_offset points to byte 0 of this fragment */
 	nds->pdu_hdr_size = NDR_RSP_HDR_SIZE;
+	if ((hdr->pfc_flags & NDR_PFC_OBJECT_UUID) != 0)
+		nds->pdu_hdr_size += 16;
+
 	nds->pdu_body_offset = nds->pdu_scan_offset + nds->pdu_hdr_size;
-	nds->pdu_body_size = hdr->frag_length - hdr->auth_length -
-	    nds->pdu_hdr_size -
-	    ((hdr->auth_length != 0) ? SEC_TRAILER_SIZE : 0);
+	nds->pdu_body_size = hdr->frag_length - nds->pdu_hdr_size;
+	if (hdr->auth_length != 0)
+		nds->pdu_body_size -= hdr->auth_length + SEC_TRAILER_SIZE;
 }
 
 /*
@@ -581,6 +582,9 @@ ndr_typeinfo_t ndt__ndr_bind_ack_hdr = {
     0,		/* c_size_variable_part */
 };
 
+/* The '68' above assumes the header is less than this */
+#define	ASSUMED_HDR_SIZE	40
+
 /*
  * [_no_reorder]
  */
@@ -592,23 +596,37 @@ ndr__ndr_bind_ack_hdr(ndr_ref_t *encl_ref)
 	    (struct ndr_bind_ack_hdr *)encl_ref->datum;
 	ndr_ref_t		myref;
 	unsigned long		offset;
+	uint8_t	align;
 
 	bzero(&myref, sizeof (myref));
 	myref.enclosing = encl_ref;
 	myref.stream = encl_ref->stream;
 	myref.packed_alignment = 0;
 
-	/* do all members in order */
-	NDR_MEMBER(_ndr_common_header, common_hdr, 0UL);
-	NDR_MEMBER(_ushort, max_xmit_frag, 16UL);
-	NDR_MEMBER(_ushort, max_recv_frag, 18UL);
-	NDR_MEMBER(_ulong, assoc_group_id, 20UL);
-
-	/* port any is the conformant culprit */
-	offset = 24UL;
-
 	switch (nds->m_op) {
 	case NDR_M_OP_MARSHALL:
+		/*
+		 * The pdu_size_fixed_part above is based on PIPE_NTSVCS.
+		 * This will result in an offset <= 40. If it's over
+		 * that, the state needs adjusting to compensate,
+		 * or we'll send a short reply.
+		 */
+		if (nds->pdu_hdr_size > ASSUMED_HDR_SIZE) {
+			uint8_t diff = nds->pdu_hdr_size - ASSUMED_HDR_SIZE;
+			ulong_t want_size =
+			    encl_ref->ti->pdu_size_fixed_part + diff;
+
+			/* NDS_GROW_PDU will set pdu_size for us */
+			if (nds->pdu_size < want_size &&
+			    NDS_GROW_PDU(nds, want_size, encl_ref) == 0) {
+				NDR_SET_ERROR(encl_ref, NDR_ERR_GROW_FAILED);
+				return (0);
+			}
+
+			nds->pdu_scan_offset += diff;
+			encl_ref->pdu_end_offset += diff;
+		}
+
 		val->sec_addr.length =
 		    strlen((char *)val->sec_addr.port_spec) + 1;
 		break;
@@ -621,12 +639,38 @@ ndr__ndr_bind_ack_hdr(ndr_ref_t *encl_ref)
 		return (0);
 	}
 
+	/* do all members in order */
+	NDR_MEMBER(_ndr_common_header, common_hdr, 0UL);
+	NDR_MEMBER(_ushort, max_xmit_frag, 16UL);
+	NDR_MEMBER(_ushort, max_recv_frag, 18UL);
+	NDR_MEMBER(_ulong, assoc_group_id, 20UL);
+
+	/* port any is the conformant culprit */
+	offset = 24UL;
+
 	NDR_MEMBER(_ushort, sec_addr.length, offset);
 	NDR_MEMBER_ARR_WITH_DIMENSION(_uchar, sec_addr.port_spec,
 	    offset+2UL, val->sec_addr.length);
 
 	offset += 2;
 	offset += val->sec_addr.length;
+
+	/*
+	 * Proper alignment doesn't happen here since we're not treating this as
+	 * a 'topmost' structure, so we need to do it ourselves.
+	 */
+	align = NDR_ALIGN4(offset);
+	if ((encl_ref->pdu_offset + offset + align) >
+	    encl_ref->pdu_end_offset) {
+		NDR_SET_ERROR(encl_ref, NDR_ERR_GROW_FAILED);
+		return (0);
+	}
+	if (nds->m_op == NDR_M_OP_MARSHALL &&
+	    NDS_PAD_PDU(nds, encl_ref->pdu_offset + offset, align,
+	    encl_ref) == 0) {
+		NDR_SET_ERROR(encl_ref, NDR_ERR_PAD_FAILED);
+		return (0);
+	}
 	offset += NDR_ALIGN4(offset);
 
 	NDR_MEMBER(_ndr_p_result_list, p_result_list, offset);

@@ -474,6 +474,8 @@ usr/src/lib/gss_mechs/mech_krb5/support/supp-int.h
 usr/src/lib/gss_mechs/mech_krb5/support/threads.c
 usr/src/lib/gss_mechs/mech_krb5/support/utf8_conv.c
 usr/src/lib/gss_mechs/mech_krb5/support/utf8.c
+usr/src/lib/gss_mechs/mech_spnego/mech/gssapiP_spnego.h
+usr/src/lib/gss_mechs/mech_spnego/mech/spnego_mech.c
 usr/src/lib/krb5/dyn/dyn_append.c
 usr/src/lib/krb5/dyn/dyn_create.c
 usr/src/lib/krb5/dyn/dyn_debug.c

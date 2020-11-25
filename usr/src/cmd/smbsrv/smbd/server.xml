@@ -22,9 +22,8 @@ information: Portions Copyright [yyyy] [name of copyright owner]
 CDDL HEADER END
 
 Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
-Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
 Copyright 2016 Hans Rosenfeld <rosenfeld@grumpf.hope-2000.org>
-Copyright 2021 Tintri by DDN, Inc. All rights reserved.
+Copyright 2022 Tintri by DDN, Inc. All rights reserved.
 Copyright 2020 RackTop Systems.
 
 NOTE:  This service manifest is not editable; its contents will
@@ -245,6 +244,8 @@ file.
 			value='0' override='true'/>
 		<propval name='reparse_enable' type='boolean'
 			value='true' override='true'/>
+		<propval name='rpcsrv_use_security' type='astring'
+			value='service' override='true'/>
 	</property_group>
 
 	<!-- SMB service-specific shares exec configuration defaults -->

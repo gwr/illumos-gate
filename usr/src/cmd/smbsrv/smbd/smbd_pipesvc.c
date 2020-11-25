@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 /*
@@ -42,6 +42,7 @@ struct pipe_listener {
 	int max_seen;
 	int current;
 	pthread_t tid;
+	smb_rpcsec_val_t use_rpc_security;
 };
 
 static void *pipesvc_listener(void *);
@@ -104,6 +105,24 @@ np_new(struct pipe_listener *pl, int fid)
 	np->np_max_xmit_frag = pipe_max_msgsize;
 	np->np_max_recv_frag = pipe_max_msgsize;
 
+	switch (pl->use_rpc_security) {
+	case SMB_RPCSEC_REQUIRED:
+		np->np_auth_ctx.auth_use_sec = NDR_RPCSEC_USE_ALWAYS;
+		break;
+
+	case SMB_RPCSEC_OPTIONAL:
+		np->np_auth_ctx.auth_use_sec = NDR_RPCSEC_USE_REQUESTED;
+		break;
+
+	case SMB_RPCSEC_PERSERVICE:
+		np->np_auth_ctx.auth_use_sec = NDR_RPCSEC_USE_SVC;
+		break;
+
+	case SMB_RPCSEC_NEVER:
+	default:
+		np->np_auth_ctx.auth_use_sec = NDR_RPCSEC_USE_NEVER;
+		break;
+	}
 	return (np);
 }
 
@@ -125,6 +144,11 @@ smbd_pipesvc_start(void)
 	pthread_attr_t tattr;
 	struct pipe_listener *pl;
 	int i, rc;
+	smb_rpcsec_val_t use_sec;
+
+	use_sec = smb_config_get_rpcsec();
+	if (use_sec != SMB_RPCSEC_NEVER)
+		smbd_pipesvc_register_ssp();
 
 	if (mlsvc_init() != 0) {
 		smbd_report("msrpc initialization failed");
@@ -141,6 +165,8 @@ smbd_pipesvc_start(void)
 		if (strcasecmp(pl->name, "spoolss") == 0 &&
 		    smb_config_getbool(SMB_CI_PRINT_ENABLE) == B_FALSE)
 			continue;
+
+		pl->use_rpc_security = use_sec;
 
 		rc = pthread_create(&tid, &tattr, pipesvc_listener, pl);
 		if (rc != 0)

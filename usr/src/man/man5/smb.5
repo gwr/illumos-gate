@@ -17,7 +17,7 @@
 .\" fields enclosed by brackets "[]" replaced with your own identifying
 .\" information: Portions Copyright [yyyy] [name of copyright owner]
 .\"
-.TH SMB 4 "September 24, 2021"
+.TH SMB 5 "September 29, 2022"
 .SH NAME
 smb \- configuration properties for Solaris CIFS server
 .SH DESCRIPTION
@@ -470,6 +470,22 @@ the legacy name for cache delegations in SMB.
 By default, oplocks are enabled.
 Note that if oplocks are disabled, file I/O performance may be
 severely reduced.
+.RE
+
+.sp
+.ne 2
+.na
+\fB\fBrpcsrv_use_security\fR\fR
+.ad
+.sp .6
+.RS 4n
+Controls whether MS-RPC Server will use RPC-level Security. Note that the MS-RPC
+server already provides transport-level security via SMB signing.
+When set to \fBnever\fR, the server will not provide security services.
+When set to \fBoptional\fR, the server will provide security services only when
+the client requests it.
+When set to \fBservice\fR, the server will let each RPC service determine
+whether to support security services.
 .RE
 
 .sp

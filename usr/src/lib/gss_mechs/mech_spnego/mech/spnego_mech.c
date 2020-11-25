@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 1999, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright 2020 Tintri by DDN, Inc. All rights reserved.
  */
 /*
  * Copyright (C) 2006,2008 by the Massachusetts Institute of Technology.
@@ -270,8 +271,8 @@ static struct gss_config spnego_mechanism =
 	NULL, /* pname */
 	NULL, /* userok */
 	NULL, /* gss_export_name */
-	NULL, /* sign */
-	NULL, /* verify */
+	glue_spnego_gss_sign, /* sign */
+	glue_spnego_gss_verify, /* verify */
 	NULL, /* gss_store_cred */
         spnego_gss_inquire_sec_context_by_oid, /* gss_inquire_sec_context_by_oid */
 };
@@ -2542,6 +2543,72 @@ spnego_gss_verify_mic(
 {
 	OM_uint32 ret;
 	ret = gss_verify_mic(minor_status,
+			    context_handle,
+			    msg_buffer,
+			    token_buffer,
+			    qop_state);
+	return (ret);
+}
+
+OM_uint32
+glue_spnego_gss_sign(
+	void *context,
+	OM_uint32	*minor_status,
+	const gss_ctx_id_t context_handle,
+	int		qop_req,
+	const gss_buffer_t message_buffer,
+	gss_buffer_t message_token)
+{
+	return(spnego_gss_sign(minor_status,
+			context_handle,
+			qop_req,
+			message_buffer,
+			message_token));
+}
+
+OM_uint32
+spnego_gss_sign(
+		OM_uint32 *minor_status,
+		const gss_ctx_id_t context_handle,
+		int  qop_req,
+		const gss_buffer_t message_buffer,
+		gss_buffer_t message_token)
+{
+	OM_uint32 ret;
+	ret = gss_sign(minor_status,
+		    context_handle,
+		    qop_req,
+		    message_buffer,
+		    message_token);
+	return (ret);
+}
+
+OM_uint32
+glue_spnego_gss_verify(
+	void *context,
+	OM_uint32	*minor_status,
+	const gss_ctx_id_t context_handle,
+	const gss_buffer_t msg_buffer,
+	const gss_buffer_t token_buffer,
+	int		*qop_state)
+{
+	return(spnego_gss_verify(minor_status,
+			context_handle,
+			msg_buffer,
+			token_buffer,
+			qop_state));
+}
+
+OM_uint32
+spnego_gss_verify(
+		OM_uint32 *minor_status,
+		const gss_ctx_id_t context_handle,
+		const gss_buffer_t msg_buffer,
+		const gss_buffer_t token_buffer,
+		int *qop_state)
+{
+	OM_uint32 ret;
+	ret = gss_verify(minor_status,
 			    context_handle,
 			    msg_buffer,
 			    token_buffer,
