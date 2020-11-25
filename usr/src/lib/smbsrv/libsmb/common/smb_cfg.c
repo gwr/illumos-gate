@@ -161,6 +161,7 @@ static smb_cfg_param_t smb_cfg_table[] =
 	{SMB_CI_ENCRYPT_CIPHER, "encrypt_cipher", SCF_TYPE_ASTRING, 0},
 	{SMB_CI_NETLOGON_FLAGS, "netlogon_flags", SCF_TYPE_INTEGER, 0},
 	{SMB_CI_REPARSE_ENABLE, "reparse_enable", SCF_TYPE_BOOLEAN, 0},
+	{SMB_CI_RPCSRV_SEC, "rpcsrv_use_security", SCF_TYPE_ASTRING, 0},
 
 	/* SMB_CI_MAX */
 };
@@ -1305,4 +1306,33 @@ smb_config_get_require(smb_cfg_id_t id)
 		return (SMB_CONFIG_ENABLED);
 
 	return (SMB_CONFIG_DISABLED);
+}
+
+const smb_rpcsec_val_t smb_rpcsrv_sec_default = SMB_RPCSEC_NEVER;
+
+/* should be the largest expected string length */
+#define	SMB_RPCSEC_STRLEN (sizeof ("optional"))
+
+smb_rpcsec_val_t
+smb_config_get_rpcsec(void)
+{
+	int rc;
+	char str[SMB_RPCSEC_STRLEN];
+	smb_rpcsec_val_t ret;
+
+	rc = smb_config_getstr(SMB_CI_RPCSRV_SEC, str, sizeof (str));
+
+	if (rc != SMBD_SMF_OK)
+		ret = smb_rpcsrv_sec_default;
+	else if (strncmp(str, "never", sizeof (str)) == 0)
+		ret = SMB_RPCSEC_NEVER;
+	else if (strncmp(str, "service", sizeof (str)) == 0)
+		ret = SMB_RPCSEC_PERSERVICE;
+	else if (strncmp(str, "optional", sizeof (str)) == 0)
+		ret = SMB_RPCSEC_OPTIONAL;
+	else {
+		syslog(LOG_INFO, "Bad smbd/rpcsrv_use_security value %s", str);
+		ret = smb_rpcsrv_sec_default;
+	}
+	return (ret);
 }

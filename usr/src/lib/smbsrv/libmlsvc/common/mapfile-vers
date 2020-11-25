@@ -54,6 +54,7 @@ SYMBOL_VERSION SUNWprivate {
 	mlsvc_init;
 	mlsvc_join;
 	mlsvc_netlogon;
+	mlsvc_register_ssp;
 	netlogon_init_global;
 	netlogon_logon;
 	netr_initialize;

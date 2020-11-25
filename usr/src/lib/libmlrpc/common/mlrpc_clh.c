@@ -97,6 +97,9 @@ mlrpc_clh_create(mlrpc_handle_t *handle, void *ctx)
 	if ((clnt->heap = ndr_heap_create()) == NULL)
 		goto nomem;
 
+	clnt->auth_ctx.auth_type = NDR_C_AUTHN_NONE;
+	clnt->auth_ctx.auth_level = NDR_C_AUTHN_LEVEL_NONE;
+
 	/* success! */
 	bzero(handle, sizeof (*handle));
 	handle->clnt = clnt;

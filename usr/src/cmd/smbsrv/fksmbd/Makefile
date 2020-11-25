@@ -20,7 +20,7 @@
 #
 #
 # Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
-# Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
+# Copyright 2020 Tintri by DDN, Inc. All rights reserved.
 #
 
 
@@ -37,6 +37,7 @@ OBJS_SMBD=			\
 	smbd_ntlmssp.o		\
 	smbd_pipesvc.o		\
 	smbd_share_doorsvc.o	\
+	smbd_spnego_ssp.o	\
 	smbd_spool.o		\
 	smbd_vss.o		\
 

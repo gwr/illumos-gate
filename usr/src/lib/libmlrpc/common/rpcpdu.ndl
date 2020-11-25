@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2021 Tintri by DDN, Inc. All rights reserved.
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 #ifndef _RPCPDU_NDL_
@@ -504,6 +504,47 @@ struct ndr_bind_ack_hdr {
 };
 typedef struct ndr_bind_ack_hdr	ndr_bind_ack_hdr_t;
 
+typedef WORD p_reject_reason_t;
+
+struct rpc_version {
+	BYTE major;
+	BYTE minor;
+};
+typedef struct rpc_version version_t;
+
+typedef version_t p_rt_version_t;
+
+/*
+ * This should be a size_is(n_protocols)[] array, but
+ * NDRGEN doesn't support var-sized members...
+ *
+ * NDRGEN 'does the wrong thing' if a type doesn't actually
+ * fill the entirety of its 'pdu_size_fixed_part' and so
+ * will leak a few bytes of memory; the pad[3] bit is here
+ * so that the bind_nak header fills 24 bytes exactly.
+ */
+struct supported_versions {
+	BYTE n_protocols; /* count */
+	p_rt_version_t p_protocols[1];
+	BYTE pad[3];
+};
+typedef struct supported_versions p_rt_versions_supported_t;
+
+/*
+ * Bind_Nak PDU (0x0D)
+ *
+ * Used for rejecting a BIND.
+ */
+_NO_REORDER_
+struct ndr_bind_nak_hdr {
+	ndr_common_header_t	common_hdr;	/* 00:16 (see above) */
+
+	p_reject_reason_t	reason;	/* 16:02 reject reason */
+
+	p_rt_versions_supported_t versions; /* 18:yy array of protocol
+						 * versions supported */
+};
+typedef struct ndr_bind_nak_hdr	ndr_bind_nak_hdr_t;
 
 /*
  * Request PDU (0x00)
@@ -661,6 +702,9 @@ union ndr_hdr {
 
     CASE(NDR_PTYPE_BIND_ACK)
 	struct ndr_bind_ack_hdr			bind_ack_hdr;
+
+    CASE(NDR_PTYPE_BIND_NAK)
+	struct ndr_bind_nak_hdr			bind_nak_hdr;
 
     CASE(NDR_PTYPE_REQUEST)
 	struct ndr_request_hdr			request_hdr;

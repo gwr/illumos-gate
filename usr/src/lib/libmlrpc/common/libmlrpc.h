@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2020 Tintri by DDN, Inc. All rights reserved.
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 #ifndef	_LIBMLRPC_H
@@ -114,14 +114,22 @@ extern "C" {
 #define	NDR_DRC_MASK_SPECIFIER			0xFF00
 #define	NDR_DRC_MASK_PTYPE			0x00FF
 
+#define	NDR_DRC_PTYPE_RPCHDR_VAL		0x00FF
+#define	NDR_DRC_PTYPE_API_VAL			0x00AA
+#define	NDR_DRC_PTYPE_SEC_VAL			0x00CC
+
 /* Fake PTYPE DRC discriminators */
-#define	NDR_DRC_PTYPE_RPCHDR(DRC)		((DRC) | 0x00FF)
-#define	NDR_DRC_PTYPE_API(DRC)			((DRC) | 0x00AA)
-#define	NDR_DRC_PTYPE_SEC(DRC)			((DRC) | 0x00CC)
+#define	NDR_DRC_PTYPE_RPCHDR(DRC)	((DRC) | NDR_DRC_PTYPE_RPCHDR_VAL)
+#define	NDR_DRC_PTYPE_API(DRC)		((DRC) | NDR_DRC_PTYPE_API_VAL)
+#define	NDR_DRC_PTYPE_SEC(DRC)		((DRC) | NDR_DRC_PTYPE_SEC_VAL)
 
 /* DRC Recognizers */
-#define	NDR_DRC_IS_OK(DRC)	(((DRC) & NDR_DRC_MASK_SPECIFIER) == 0)
-#define	NDR_DRC_IS_FAULT(DRC)	(((DRC) & NDR_DRC_MASK_FAULT) != 0)
+#define	NDR_DRC_IS_OK(DRC)		(((DRC) & NDR_DRC_MASK_SPECIFIER) == 0)
+#define	NDR_DRC_IS_FAULT(DRC)		(((DRC) & NDR_DRC_MASK_FAULT) != 0)
+#define	NDR_DRC_IS_PTYPE(DRC, PTYPE)	\
+	(((DRC) & NDR_DRC_MASK_PTYPE) == (PTYPE))
+#define	NDR_DRC_PTYPE_IS_SEC(DRC)	\
+	(NDR_DRC_IS_PTYPE((DRC), NDR_DRC_PTYPE_SEC_VAL))
 
 /*
  * (Un)Marshalling category specifiers
@@ -137,6 +145,7 @@ extern "C" {
 #define	NDR_DRC_FAULT_ENCODE_TOO_BIG		0x8900
 #define	NDR_DRC_SENT				0x0A00
 #define	NDR_DRC_FAULT_SEND_FAILED		0x8B00
+#define	NDR_DRC_CONTINUE			0x0C00
 
 /*
  * Resource category specifier
@@ -159,6 +168,8 @@ extern "C" {
 #define	NDR_DRC_FAULT_PARAM_4_UNIMPLEMENTED	0xD400
 #define	NDR_DRC_FAULT_PARAM_5_INVALID		0xC500
 #define	NDR_DRC_FAULT_PARAM_5_UNIMPLEMENTED	0xD500
+#define	NDR_DRC_FAULT_PARAM_6_INVALID		0xC600
+#define	NDR_DRC_FAULT_PARAM_6_UNIMPLEMENTED	0xD600
 
 #define	NDR_DRC_FAULT_OUT_OF_MEMORY		0xF000
 
@@ -185,9 +196,9 @@ extern "C" {
 #define	NDR_DRC_FAULT_API_OPNUM_INVALID		0xC1AA	/* PARAM_1_INVALID */
 
 /* Secure RPC and SSPs */
-#define	NDR_DRC_FAULT_SEC_TYPE_UNIMPLEMENTED	\
+#define	NDR_DRC_FAULT_SEC_AUTH_TYPE_UNIMPLEMENTED	\
     NDR_DRC_PTYPE_SEC(NDR_DRC_FAULT_PARAM_0_UNIMPLEMENTED)
-#define	NDR_DRC_FAULT_SEC_LEVEL_UNIMPLEMENTED	\
+#define	NDR_DRC_FAULT_SEC_AUTH_LEVEL_UNIMPLEMENTED	\
     NDR_DRC_PTYPE_SEC(NDR_DRC_FAULT_PARAM_1_UNIMPLEMENTED)
 #define	NDR_DRC_FAULT_SEC_SSP_FAILED		\
     NDR_DRC_PTYPE_SEC(NDR_DRC_FAULT_RESOURCE_1)
@@ -209,6 +220,8 @@ extern "C" {
     NDR_DRC_PTYPE_SEC(NDR_DRC_FAULT_PARAM_4_INVALID)
 #define	NDR_DRC_FAULT_SEC_SIG_INVALID		\
     NDR_DRC_PTYPE_SEC(NDR_DRC_FAULT_PARAM_5_INVALID)
+#define	NDR_DRC_FAULT_SEC_AUTH_CTX_INVALID		\
+    NDR_DRC_PTYPE_SEC(NDR_DRC_FAULT_PARAM_6_INVALID)
 
 struct ndr_xa;
 struct ndr_client;
@@ -217,6 +230,13 @@ typedef struct ndr_stub_table {
 	int		(*func)(void *, struct ndr_xa *);
 	unsigned short	opnum;
 } ndr_stub_table_t;
+
+typedef enum ndr_svc_sec {
+	NDR_RPCSEC_USE_NEVER = 0,	/* disabled */
+	NDR_RPCSEC_USE_REQUESTED,	/* when client requests */
+	NDR_RPCSEC_USE_ALWAYS,		/* required */
+	NDR_RPCSEC_USE_SVC		/* defer to service */
+} ndr_rpc_sec_t;
 
 typedef struct ndr_service {
 	char		*name;
@@ -233,6 +253,7 @@ typedef struct ndr_service {
 	int		(*call_stub)(struct ndr_xa *);
 	ndr_typeinfo_t	*interface_ti;
 	ndr_stub_table_t *stub_table;
+	ndr_rpc_sec_t	use_rpc_security;
 } ndr_service_t;
 
 /*
@@ -269,6 +290,53 @@ typedef struct ndr_binding {
 #define	NDR_BINDING_TO_SPECIFIC(BINDING, TYPE) \
 	((TYPE *) (BINDING)->instance_specific)
 
+struct ndr_xa;
+
+typedef struct ndr_auth_ops {
+	int (*nao_init)(void *, struct ndr_xa *);
+	int (*nao_recv)(void *, struct ndr_xa *);
+	int (*nao_accept)(void **, struct ndr_xa *);
+	int (*nao_sign)(void *, struct ndr_xa *);
+	int (*nao_verify)(void *, struct ndr_xa *, boolean_t);
+	void (*nao_destroy)(void **);
+} ndr_auth_ops_t;
+
+/*
+ * A client provides this structure during bind to indicate
+ * that the RPC runtime should use "Secure RPC" (RPC-level auth).
+ *
+ * Currently, only NETLOGON uses this, and only NETLOGON-based
+ * Integrity protection is supported.
+ *
+ * A server creates this structure and registers it, then copies it when
+ * a client requests RPC-level authentication.
+ *
+ * Currently, only NEGOTIATE authentication with Integrity protection
+ * is supported.
+ */
+typedef struct ndr_auth_ctx {
+	ndr_auth_ops_t		auth_ops;
+	void			*auth_ctx; /* SSP-specific context */
+	uint32_t		auth_context_id;
+	uint8_t			auth_type;
+	uint8_t			auth_level;
+	boolean_t		auth_verify_resp;
+	boolean_t		auth_complete;
+	ndr_rpc_sec_t		auth_use_sec; /* server-only */
+} ndr_auth_ctx_t;
+
+typedef struct ndr_ssp {
+	ndr_auth_ops_t	ssp_ops;
+	uint32_t	ssp_flags;
+} ndr_auth_ssp_t;
+
+/* auth_type is a BYTE, so there can only be 256 SSPs */
+#define	NDR_MAX_SSPS	256
+extern ndr_auth_ssp_t *ndr_ssp_handlers[NDR_MAX_SSPS];
+
+#define	NDR_SSP_SUPPORTS_INTEGRITY	0x00000001
+#define	NDR_SSP_SUPPORTS_PRIVACY	0x00000002
+
 /*
  * The binding list space must be provided by the application library
  * for use by the underlying RPC library.  We need at least two binding
@@ -276,6 +344,10 @@ typedef struct ndr_binding {
  */
 #define	NDR_N_BINDING_POOL	2
 
+/*
+ * Only one Auth Context is supported until we support
+ * "Security Context Multiplexing" (and negotiation thereof).
+ */
 typedef struct ndr_pipe {
 	void			*np_listener;
 	const char		*np_endpoint;
@@ -286,6 +358,7 @@ typedef struct ndr_pipe {
 	uint16_t		np_max_xmit_frag;
 	uint16_t		np_max_recv_frag;
 	ndr_binding_t		*np_binding;
+	ndr_auth_ctx_t		np_auth_ctx;
 	ndr_binding_t		np_binding_pool[NDR_N_BINDING_POOL];
 } ndr_pipe_t;
 
@@ -293,7 +366,7 @@ typedef struct ndr_pipe {
  * Number of bytes required to align SIZE on the next dword/4-byte
  * boundary.
  */
-#define	NDR_ALIGN4(SIZE)	((4 - (SIZE)) & 3);
+#define	NDR_ALIGN4(SIZE)	((4 - (SIZE)) & 3)
 
 /*
  * DCE RPC strings (CAE section 14.3.4) are represented as varying or varying
@@ -459,32 +532,10 @@ typedef struct ndr_xa {
 	ndr_sec_t		send_auth;
 	ndr_binding_t		*binding;	/* what we're using */
 	ndr_binding_t		*binding_list;	/* from connection */
+	ndr_auth_ctx_t		*svc_auth_ctx;
 	ndr_heap_t		*heap;
 	ndr_pipe_t		*pipe;
 } ndr_xa_t;
-
-typedef struct ndr_auth_ops {
-	int (*nao_init)(void *, ndr_xa_t *);
-	int (*nao_recv)(void *, ndr_xa_t *);
-	int (*nao_sign)(void *, ndr_xa_t *);
-	int (*nao_verify)(void *, ndr_xa_t *, boolean_t);
-} ndr_auth_ops_t;
-
-/*
- * A client provides this structure during bind to indicate
- * that the RPC runtime should use "Secure RPC" (RPC-level auth).
- *
- * Currently, only NETLOGON uses this, and only NETLOGON-based
- * Integrity protection is supported.
- */
-typedef struct ndr_auth_ctx {
-	ndr_auth_ops_t		auth_ops;
-	void			*auth_ctx; /* SSP-specific context */
-	uint32_t		auth_context_id;
-	uint8_t			auth_type;
-	uint8_t			auth_level;
-	boolean_t		auth_verify_resp;
-} ndr_auth_ctx_t;
 
 /*
  * 20-byte opaque id used by various RPC services.
@@ -576,8 +627,11 @@ void ndr_show_auth(ndr_sec_t *);
  */
 int ndr_add_sec_context(ndr_auth_ctx_t *, ndr_xa_t *);
 int ndr_recv_sec_context(ndr_auth_ctx_t *, ndr_xa_t *);
-int ndr_add_auth(ndr_auth_ctx_t *, ndr_xa_t *);
+int ndr_add_auth(ndr_auth_ctx_t *, ndr_xa_t *, unsigned long);
 int ndr_check_auth(ndr_auth_ctx_t *, ndr_xa_t *);
+int ndr_add_auth_token(ndr_auth_ctx_t *, ndr_xa_t *, unsigned long);
+int ndr_accept_sec_context(ndr_auth_ctx_t *, ndr_xa_t *);
+void ndr_auth_destroy_ctx(ndr_auth_ctx_t *);
 
 /* ndr_server.c */
 void ndr_pipe_worker(ndr_pipe_t *);
@@ -593,6 +647,8 @@ void ndr_svc_unregister(ndr_service_t *);
 void ndr_svc_binding_pool_init(ndr_binding_t **, ndr_binding_t pool[], int);
 ndr_binding_t *ndr_svc_find_binding(ndr_xa_t *, ndr_p_context_id_t);
 ndr_binding_t *ndr_svc_new_binding(ndr_xa_t *);
+
+boolean_t ndr_svc_register_ssp(const ndr_auth_ops_t *, uint8_t, uint32_t);
 
 int ndr_uuid_parse(char *, ndr_uuid_t *);
 void ndr_uuid_unparse(ndr_uuid_t *, char *);

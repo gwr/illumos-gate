@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2021 Tintri by DDN, Inc. All rights reserved.
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  * Copyright 2020 RackTop Systems, Inc.
  */
 
@@ -164,9 +164,18 @@ typedef enum {
 	SMB_CI_ENCRYPT_CIPHER,
 	SMB_CI_NETLOGON_FLAGS,
 	SMB_CI_REPARSE_ENABLE,
+	SMB_CI_RPCSRV_SEC,
 
 	SMB_CI_MAX
 } smb_cfg_id_t;
+
+typedef enum smb_rpcsec_val {
+	SMB_RPCSEC_NEVER = 0,
+	SMB_RPCSEC_PERSERVICE,
+	SMB_RPCSEC_OPTIONAL,
+	SMB_RPCSEC_REQUIRED,
+	SMB_RPCSEC_INVALID
+} smb_rpcsec_val_t;
 
 /* SMF helper functions */
 extern smb_scfhandle_t *smb_smf_scf_init(char *);
@@ -228,6 +237,8 @@ extern void smb_config_upgrade(void);
 extern uint16_t smb31_config_get_encrypt_cipher(void);
 
 extern smb_cfg_val_t smb_config_get_require(smb_cfg_id_t);
+
+extern smb_rpcsec_val_t smb_config_get_rpcsec(void);
 
 extern void smb_load_kconfig(smb_kmod_cfg_t *kcfg);
 extern uint32_t smb_crc_gen(uint8_t *, size_t);

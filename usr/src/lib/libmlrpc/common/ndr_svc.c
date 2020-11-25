@@ -22,7 +22,7 @@
  * Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  *
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2020 Tintri by DDN, Inc. All rights reserved.
  */
 
 #include <uuid/uuid.h>
@@ -52,6 +52,8 @@ static mutex_t ndr_handle_lock;
 #define	NDR_MAX_SERVICES	32
 static ndr_service_t *ndr_services[NDR_MAX_SERVICES];
 
+ndr_auth_ssp_t *ndr_ssp_handlers[NDR_MAX_SSPS] = {0};
+
 /*
  * Register a service.
  *
@@ -64,7 +66,7 @@ static ndr_service_t *ndr_services[NDR_MAX_SERVICES];
 int
 ndr_svc_register(ndr_service_t *svc)
 {
-	ndr_service_t 	*p;
+	ndr_service_t	*p;
 	int		free_slot = -1;
 	int		i;
 
@@ -100,6 +102,43 @@ ndr_svc_unregister(ndr_service_t *svc)
 	}
 }
 
+/*
+ * Register an ops vector to handle a given authentication flavor.
+ * Note: Because SMBD only uses this during single-threaded startup,
+ * no locking is needed around the global ndr_ssp_handlers.
+ */
+boolean_t
+ndr_svc_register_ssp(const ndr_auth_ops_t *auth_ops, uint8_t auth_type,
+    uint32_t flags)
+{
+	ndr_auth_ssp_t *ssp;
+
+	if (ndr_ssp_handlers[auth_type] != NULL)
+		return (B_FALSE);
+
+	if (auth_ops->nao_accept == NULL ||
+	    auth_ops->nao_verify == NULL ||
+	    auth_ops->nao_sign == NULL) {
+		ndo_printf(NULL, NULL, "registering SSP %d: bad ops",
+		    auth_type);
+		return (B_FALSE);
+	}
+
+	if ((ssp = malloc(sizeof (*ssp))) == NULL) {
+		ndo_printf(NULL, NULL, "registering SSP %d: no memory",
+		    auth_type);
+		return (B_FALSE);
+	}
+
+	/* struct copy */
+	ssp->ssp_ops = *auth_ops;
+	ssp->ssp_flags = flags;
+
+	ndr_ssp_handlers[auth_type] = ssp;
+
+	return (B_TRUE);
+}
+
 ndr_stub_table_t *
 ndr_svc_find_stub(ndr_service_t *svc, int opnum)
 {
@@ -116,7 +155,7 @@ ndr_svc_find_stub(ndr_service_t *svc, int opnum)
 ndr_service_t *
 ndr_svc_lookup_name(const char *name)
 {
-	ndr_service_t 	*svc;
+	ndr_service_t		*svc;
 	int			i;
 
 	for (i = 0; i < NDR_MAX_SERVICES; i++) {
@@ -315,6 +354,7 @@ ndr_hdclose(ndr_pipe_t *pipe)
 		pphd = &(*pphd)->nh_next;
 	}
 
+	ndr_auth_destroy_ctx(&pipe->np_auth_ctx);
 	(void) mutex_unlock(&ndr_handle_lock);
 }
 
@@ -338,8 +378,8 @@ ndr_uuid_unparse(ndr_uuid_t *uuid, char *out)
 int
 ndr_uuid_parse(char *in, ndr_uuid_t *uuid)
 {
-	char 		*p = in;
-	char 		*q;
+	char		*p = in;
+	char		*q;
 	char		buf[4];
 	int		i;
 
