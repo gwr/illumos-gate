@@ -259,7 +259,7 @@ get_usage(zfs_help_t idx)
 		return (gettext("\tclone [-p] [-o property=value] ... "
 		    "<snapshot> <filesystem|volume>\n"));
 	case HELP_CREATE:
-		return (gettext("\tcreate [-Pnpv] [-o property=value] ... "
+		return (gettext("\tcreate [-Pnpuv] [-o property=value] ... "
 		    "<filesystem>\n"
 		    "\tcreate [-Pnpsv] [-b blocksize] [-o property=value] ... "
 		    "-V <size> <volume>\n"));
@@ -962,7 +962,7 @@ default_volblocksize(zpool_handle_t *zhp, nvlist_t *props)
 }
 
 /*
- * zfs create [-Pnpv] [-o prop=value] ... fs
+ * zfs create [-Pnpuv] [-o prop=value] ... fs
  * zfs create [-Pnpsv] [-b blocksize] [-o prop=value] ... -V vol size
  *
  * Create a new dataset.  This command can be used to create filesystems
@@ -980,6 +980,8 @@ default_volblocksize(zpool_handle_t *zhp, nvlist_t *props)
  * check of arguments and properties, but does not check for permissions,
  * available space, etc.
  *
+ * The '-u' flag prevents the newly created file system from being mounted.
+ *
  * The '-v' flag is for verbose output.
  *
  * The '-P' flag is used for parseable output.  It implies '-v'.
@@ -996,6 +998,7 @@ zfs_do_create(int argc, char **argv)
 	boolean_t bflag = B_FALSE;
 	boolean_t parents = B_FALSE;
 	boolean_t dryrun = B_FALSE;
+	boolean_t nomount = B_FALSE;
 	boolean_t verbose = B_FALSE;
 	boolean_t parseable = B_FALSE;
 	int ret = 1;
@@ -1007,7 +1010,7 @@ zfs_do_create(int argc, char **argv)
 		nomem();
 
 	/* check options */
-	while ((c = getopt(argc, argv, ":PV:b:nso:pv")) != -1) {
+	while ((c = getopt(argc, argv, ":PV:b:nso:puv")) != -1) {
 		switch (c) {
 		case 'V':
 			type = ZFS_TYPE_VOLUME;
@@ -1054,6 +1057,9 @@ zfs_do_create(int argc, char **argv)
 		case 's':
 			noreserve = B_TRUE;
 			break;
+		case 'u':
+			nomount = B_TRUE;
+			break;
 		case 'v':
 			verbose = B_TRUE;
 			break;
@@ -1071,6 +1077,11 @@ zfs_do_create(int argc, char **argv)
 	if ((bflag || noreserve) && type != ZFS_TYPE_VOLUME) {
 		(void) fprintf(stderr, gettext("'-s' and '-b' can only be "
 		    "used when creating a volume\n"));
+		goto badusage;
+	}
+	if (nomount && type != ZFS_TYPE_FILESYSTEM) {
+		(void) fprintf(stderr, gettext("'-u' can only be "
+		    "used when creating a filesystem\n"));
 		goto badusage;
 	}
 
@@ -1231,6 +1242,11 @@ zfs_do_create(int argc, char **argv)
 	if (log_history) {
 		(void) zpool_log_history(g_zfs, history_str);
 		log_history = B_FALSE;
+	}
+
+	if (nomount) {
+		ret = 0;
+		goto error;
 	}
 
 	ret = zfs_mount_and_share(g_zfs, argv[0], ZFS_TYPE_DATASET);
