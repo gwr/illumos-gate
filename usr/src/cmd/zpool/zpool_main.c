@@ -549,8 +549,13 @@ print_vdev_tree(zpool_handle_t *zhp, const char *name, nvlist_t *nv, int indent,
 	}
 
 	for (c = 0; c < children; c++) {
-		uint64_t is_log = B_FALSE;
+		uint64_t is_log = B_FALSE, is_hole = B_FALSE;
 		char *class = "";
+
+		(void) nvlist_lookup_uint64(child[c], ZPOOL_CONFIG_IS_HOLE,
+		    &is_hole);
+		if (is_hole)
+			continue;
 
 		(void) nvlist_lookup_uint64(child[c], ZPOOL_CONFIG_IS_LOG,
 		    &is_log);
@@ -568,6 +573,42 @@ print_vdev_tree(zpool_handle_t *zhp, const char *name, nvlist_t *nv, int indent,
 		vname = zpool_vdev_name(g_zfs, zhp, child[c], name_flags);
 		print_vdev_tree(zhp, vname, child[c], indent + 2, "",
 		    name_flags);
+		free(vname);
+	}
+}
+
+static void
+print_cache_list(nvlist_t *nv, int indent)
+{
+	nvlist_t **child;
+	uint_t c, children;
+
+	if (nvlist_lookup_nvlist_array(nv, ZPOOL_CONFIG_L2CACHE,
+	    &child, &children) != 0 || children == 0)
+		return;
+
+	(void) printf("\t%*s%s\n", indent, "", "cache");
+	for (c = 0; c < children; c++) {
+		char *vname = zpool_vdev_name(g_zfs, NULL, child[c], 0);
+		(void) printf("\t%*s%s\n", indent + 2, "", vname);
+		free(vname);
+	}
+}
+
+static void
+print_spare_list(nvlist_t *nv, int indent)
+{
+	nvlist_t **child;
+	uint_t c, children;
+
+	if (nvlist_lookup_nvlist_array(nv, ZPOOL_CONFIG_SPARES,
+	    &child, &children) != 0 || children == 0)
+		return;
+
+	(void) printf("\t%*s%s\n", indent, "", "spares");
+	for (c = 0; c < children; c++) {
+		char *vname = zpool_vdev_name(g_zfs, NULL, child[c], 0);
+		(void) printf("\t%*s%s\n", indent + 2, "", vname);
 		free(vname);
 	}
 }
@@ -802,12 +843,15 @@ zpool_do_add(int argc, char **argv)
 
 	if (dryrun) {
 		nvlist_t *poolnvroot;
+		nvlist_t **child;
+		uint_t children, c;
+		boolean_t hadcache = B_FALSE, hadspare = B_FALSE;
 
 		verify(nvlist_lookup_nvlist(config, ZPOOL_CONFIG_VDEV_TREE,
 		    &poolnvroot) == 0);
 
 		(void) printf(gettext("would update '%s' to the following "
-		    "configuration:\n"), zpool_get_name(zhp));
+		    "configuration:\n\n"), zpool_get_name(zhp));
 
 		/* print original main pool and new tree */
 		print_vdev_tree(zhp, poolname, poolnvroot, 0, "",
@@ -829,6 +873,52 @@ zpool_do_add(int argc, char **argv)
 		    name_flags);
 		print_vdev_tree(zhp, NULL, nvroot, 0, VDEV_ALLOC_BIAS_LOG,
 		    name_flags);
+
+		if (nvlist_lookup_nvlist_array(poolnvroot, ZPOOL_CONFIG_L2CACHE,
+		    &child, &children) == 0 && children > 0) {
+			hadcache = B_TRUE;
+			(void) printf(gettext("\tcache\n"));
+			for (c = 0; c < children; c++) {
+				char *vname = zpool_vdev_name(g_zfs, NULL,
+				    child[c], name_flags);
+				(void) printf("\t  %s\n", vname);
+				free(vname);
+			}
+		}
+		if (nvlist_lookup_nvlist_array(nvroot, ZPOOL_CONFIG_L2CACHE,
+		    &child, &children) == 0 && children > 0) {
+			if (!hadcache)
+				(void) printf(gettext("\tcache\n"));
+			for (c = 0; c < children; c++) {
+				char *vname = zpool_vdev_name(g_zfs, NULL,
+				    child[c], name_flags);
+				(void) printf("\t  %s\n", vname);
+				free(vname);
+			}
+		}
+
+		if (nvlist_lookup_nvlist_array(poolnvroot, ZPOOL_CONFIG_SPARES,
+		    &child, &children) == 0 && children > 0) {
+			hadspare = B_TRUE;
+			(void) printf(gettext("\tspares\n"));
+			for (c = 0; c < children; c++) {
+				char *vname = zpool_vdev_name(g_zfs, NULL,
+				    child[c], name_flags);
+				(void) printf("\t  %s\n", vname);
+				free(vname);
+			}
+		}
+		if (nvlist_lookup_nvlist_array(nvroot, ZPOOL_CONFIG_SPARES,
+		    &child, &children) == 0 && children > 0) {
+			if (!hadspare)
+				(void) printf(gettext("\tspares\n"));
+			for (c = 0; c < children; c++) {
+				char *vname = zpool_vdev_name(g_zfs, NULL,
+				    child[c], name_flags);
+				(void) printf("\t  %s\n", vname);
+				free(vname);
+			}
+		}
 
 		ret = 0;
 	} else {
@@ -1436,6 +1526,8 @@ zpool_do_create(int argc, char **argv)
 		    VDEV_ALLOC_BIAS_SPECIAL, 0);
 		print_vdev_tree(NULL, "logs", nvroot, 0,
 		    VDEV_ALLOC_BIAS_LOG, 0);
+		print_cache_list(nvroot, 0);
+		print_spare_list(nvroot, 0);
 
 		ret = 0;
 	} else {
@@ -6166,6 +6258,10 @@ zpool_do_split(int argc, char **argv)
 			    "following layout:\n\n"), newpool);
 			print_vdev_tree(NULL, newpool, config, 0, "",
 			    flags.name_flags);
+			print_vdev_tree(NULL, "dedup", config, 0,
+			    VDEV_ALLOC_BIAS_DEDUP, flags.name_flags);
+			print_vdev_tree(NULL, "special", config, 0,
+			    VDEV_ALLOC_BIAS_SPECIAL, flags.name_flags);
 		}
 		nvlist_free(config);
 	}
