@@ -5485,7 +5485,7 @@ arc_read_done(zio_t *zio)
 	 */
 	int callback_cnt = 0;
 	for (acb = callback_list; acb != NULL; acb = acb->acb_next) {
-		if (!acb->acb_done)
+		if (!acb->acb_done || acb->acb_nobuf)
 			continue;
 
 		callback_cnt++;
@@ -5649,6 +5649,7 @@ arc_read(zio_t *pio, spa_t *spa, const blkptr_t *bp, arc_read_done_func_t *done,
 	    (zio_flags & ZIO_FLAG_RAW_ENCRYPT) != 0;
 	boolean_t noauth_read = BP_IS_AUTHENTICATED(bp) &&
 	    (zio_flags & ZIO_FLAG_RAW_ENCRYPT) != 0;
+	boolean_t no_buf = *arc_flags & ARC_FLAG_NO_BUF;
 	int rc = 0;
 
 	ASSERT(!BP_IS_EMBEDDED(bp) ||
@@ -5715,6 +5716,7 @@ top:
 				acb->acb_compressed = compressed_read;
 				acb->acb_encrypted = encrypted_read;
 				acb->acb_noauth = noauth_read;
+				acb->acb_nobuf = no_buf;
 				acb->acb_zb = *zb;
 				if (pio != NULL)
 					acb->acb_zio_dummy = zio_null(pio,
@@ -5734,7 +5736,7 @@ top:
 		ASSERT(hdr->b_l1hdr.b_state == arc_mru ||
 		    hdr->b_l1hdr.b_state == arc_mfu);
 
-		if (done) {
+		if (done && !no_buf) {
 			if (hdr->b_flags & ARC_FLAG_PREDICTIVE_PREFETCH) {
 				/*
 				 * This is a demand read which does not have to
