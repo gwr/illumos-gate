@@ -1601,10 +1601,11 @@ zpool_find_config(void *hdl, const char *target, nvlist_t **configp,
 					/* multiple matches found */
 					continue;
 				} else {
-					match = config;
+					match = fnvlist_dup(config);
 				}
 			}
 		}
+		fnvlist_free(pools);
 	}
 
 	if (count == 0) {
@@ -1614,6 +1615,7 @@ zpool_find_config(void *hdl, const char *target, nvlist_t **configp,
 
 	if (count > 1) {
 		free(targetdup);
+		fnvlist_free(match);
 		return (EINVAL);
 	}
 
