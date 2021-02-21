@@ -1628,8 +1628,13 @@ smb_shr_unload()
 	int rc;
 
 	if ((handle = smb_shr_sa_enter()) == NULL) {
-		syslog(LOG_ERR, "smb_shr_unload: failed");
-		return;
+		syslog(LOG_INFO, "smb_shr_unload: cannot get sa_handle");
+		/*
+		 * Note: This can happen during system shutdown.
+		 * Continue with handle = NULL which the call to
+		 * sa_delete_share() below handles by just skipping
+		 * the sharetab timestamp update.
+		 */
 	}
 
 	smb_shr_iterinit(&iterator);
