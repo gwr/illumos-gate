@@ -100,6 +100,9 @@ scfutilhandle_t *
 sa_scf_init(sa_handle_impl_t ihandle)
 {
 	scfutilhandle_t *handle;
+	int line = 0;
+
+#define	GOERR do { line = __LINE__ ; goto err; } while (0)
 
 	scf_max_name_len = scf_limit(SCF_LIMIT_MAX_NAME_LENGTH);
 	if (scf_max_name_len <= 0)
@@ -113,30 +116,38 @@ sa_scf_init(sa_handle_impl_t ihandle)
 	handle->scf_state = SCH_STATE_INITIALIZING;
 	handle->handle = scf_handle_create(SCF_VERSION);
 	if (handle->handle == NULL) {
-		free(handle);
-		handle = NULL;
 		(void) printf("libshare could not access SMF repository: %s\n",
 		    scf_strerror(scf_error()));
-		return (handle);
+		free(handle);
+		return (NULL);
 	}
 	if (scf_handle_bind(handle->handle) != 0)
-		goto err;
+		GOERR;
 
 	handle->scope = scf_scope_create(handle->handle);
+	if (handle->scope == NULL)
+		GOERR;
+
 	handle->service = scf_service_create(handle->handle);
+	if (handle->service == NULL)
+		GOERR;
+
 	handle->pg = scf_pg_create(handle->handle);
+	if (handle->pg == NULL)
+		GOERR;
 
 	/* Make sure we have sufficient SMF running */
 	handle->instance = scf_instance_create(handle->handle);
-	if (handle->scope == NULL || handle->service == NULL ||
-	    handle->pg == NULL || handle->instance == NULL)
-		goto err;
+	if (handle->instance == NULL)
+		GOERR;
+
 	if (scf_handle_get_scope(handle->handle,
 	    SCF_SCOPE_LOCAL, handle->scope) != 0)
-		goto err;
+		GOERR;
+
 	if (scf_scope_get_service(handle->scope,
 	    SA_GROUP_SVC_NAME, handle->service) != 0)
-		goto err;
+		GOERR;
 
 	handle->scf_state = SCH_STATE_INIT;
 	if (sa_get_instance(handle, "default") != SA_OK) {
@@ -150,10 +161,12 @@ sa_scf_init(sa_handle_impl_t ihandle)
 	return (handle);
 
 	/* Error handling/unwinding */
+#undef	GOERR
 err:
-	(void) sa_scf_fini(handle);
 	(void) printf("libshare SMF initialization problem: %s\n",
 	    scf_strerror(scf_error()));
+	(void) printf("from sa_scf_init line %d", line);
+	(void) sa_scf_fini(handle);
 	return (NULL);
 }
 

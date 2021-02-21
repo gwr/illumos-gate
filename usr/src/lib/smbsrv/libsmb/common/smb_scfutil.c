@@ -640,63 +640,67 @@ smb_smf_restart_service(void)
  *
  * must be called before using any of the SCF functions.
  * Returns smb_scfhandle_t pointer if success.
+ * Borrowed from libshare sa_scf_init()
  */
 smb_scfhandle_t *
 smb_smf_scf_init(char *svc_name)
 {
 	smb_scfhandle_t *handle;
+	int line = 0;
 
-	handle = malloc(sizeof (smb_scfhandle_t));
-	if (handle != NULL) {
-		bzero((char *)handle, sizeof (smb_scfhandle_t));
-		handle->scf_state = SCH_STATE_INITIALIZING;
-		handle->scf_handle = scf_handle_create(SCF_VERSION);
-		if (handle->scf_handle != NULL) {
-			if (scf_handle_bind(handle->scf_handle) == 0) {
-				handle->scf_scope =
-				    scf_scope_create(handle->scf_handle);
+#define	GOERR do { line = __LINE__ ; goto err; } while (0)
 
-				if (handle->scf_scope == NULL)
-					goto err;
+	handle = calloc(1, sizeof (smb_scfhandle_t));
+	if (handle == NULL)
+		return (handle);
 
-				if (scf_handle_get_local_scope(
-				    handle->scf_handle, handle->scf_scope) != 0)
-					goto err;
-
-				handle->scf_service =
-				    scf_service_create(handle->scf_handle);
-
-				if (handle->scf_service == NULL)
-					goto err;
-
-				if (scf_scope_get_service(handle->scf_scope,
-				    svc_name, handle->scf_service)
-				    != SCF_SUCCESS) {
-					goto err;
-				}
-				handle->scf_pg =
-				    scf_pg_create(handle->scf_handle);
-
-				if (handle->scf_pg == NULL)
-					goto err;
-
-				handle->scf_state = SCH_STATE_INIT;
-			} else {
-				goto err;
-			}
-		} else {
-			free(handle);
-			handle = NULL;
-			smb_smf_scf_log_error("Could not access SMF "
-			    "repository: %s\n");
-		}
+	bzero((char *)handle, sizeof (smb_scfhandle_t));
+	handle->scf_state = SCH_STATE_INITIALIZING;
+	handle->scf_handle = scf_handle_create(SCF_VERSION);
+	if (handle->scf_handle == NULL) {
+		smb_smf_scf_log_error("Could not access SMF "
+		    "repository: %s\n");
+		free(handle);
+		return (NULL);
 	}
+	if (scf_handle_bind(handle->scf_handle) != 0)
+		GOERR;
+
+	handle->scf_scope = scf_scope_create(handle->scf_handle);
+	if (handle->scf_scope == NULL)
+		GOERR;
+
+	handle->scf_service = scf_service_create(handle->scf_handle);
+	if (handle->scf_service == NULL)
+		GOERR;
+
+	handle->scf_pg = scf_pg_create(handle->scf_handle);
+	if (handle->scf_pg == NULL)
+		GOERR;
+
+	/* Make sure we have sufficient SMF running */
+	handle->scf_instance = scf_instance_create(handle->scf_handle);
+	if (handle->scf_instance == NULL)
+		GOERR;
+
+	if (scf_handle_get_local_scope(
+	    handle->scf_handle, handle->scf_scope) != 0)
+		GOERR;
+
+	if (scf_scope_get_service(handle->scf_scope,
+	    svc_name, handle->scf_service) != 0)
+		GOERR;
+
+	handle->scf_state = SCH_STATE_INIT;
 	return (handle);
 
-	/* error handling/unwinding */
+	/* Error handling/unwinding */
+#undef	GOERR
 err:
-	(void) smb_smf_scf_fini(handle);
 	(void) smb_smf_scf_log_error("SMF initialization problem: %s\n");
+	syslog(LOG_ERR, "from smb_smf_scf_init line %d", line);
+	assert(0);
+	(void) smb_smf_scf_fini(handle);
 	return (NULL);
 }
 
