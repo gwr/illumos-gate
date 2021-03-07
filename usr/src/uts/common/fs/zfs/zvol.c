@@ -387,7 +387,19 @@ zvol_replay_truncate(void *arg1, void *arg2, boolean_t byteswap)
 	offset = lr->lr_offset;
 	length = lr->lr_length;
 
-	return (dmu_free_long_range(zv->zv_objset, ZVOL_OBJ, offset, length));
+	dmu_tx_t *tx = dmu_tx_create(zv->zv_objset);
+	dmu_tx_mark_netfree(tx);
+	int error = dmu_tx_assign(tx, TXG_WAIT);
+	if (error != 0) {
+		dmu_tx_abort(tx);
+	} else {
+		zil_replaying(zv->zv_zilog, tx);
+		dmu_tx_commit(tx);
+		error = dmu_free_long_range(zv->zv_objset, ZVOL_OBJ, offset,
+		    length);
+	}
+
+	return (error);
 }
 
 /*
@@ -428,6 +440,7 @@ zvol_replay_write(void *arg1, void *arg2, boolean_t byteswap)
 		dmu_tx_abort(tx);
 	} else {
 		dmu_write(os, ZVOL_OBJ, offset, length, data, tx);
+		zil_replaying(zv->zv_zilog, tx);
 		dmu_tx_commit(tx);
 	}
 
@@ -562,12 +575,16 @@ zvol_create_minor(const char *name)
 	ASSERT(error == 0);
 	zv->zv_volblocksize = doi.doi_data_block_size;
 
+	ASSERT3P(zv->zv_zilog, ==, NULL);
+	zv->zv_zilog = zil_open(os, zvol_get_data);
 	if (spa_writeable(dmu_objset_spa(os))) {
 		if (zil_replay_disable)
-			zil_destroy(dmu_objset_zil(os), B_FALSE);
+			zil_destroy(zv->zv_zilog, B_FALSE);
 		else
 			zil_replay(os, zv, zvol_replay_vector);
 	}
+	zil_close(zv->zv_zilog);
+	zv->zv_zilog = NULL;
 	dmu_objset_disown(os, 1, FTAG);
 	zv->zv_objset = NULL;
 
