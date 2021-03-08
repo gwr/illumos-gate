@@ -477,8 +477,31 @@ static int
 unmount_one(libzfs_handle_t *hdl, const char *mountpoint, int flags)
 {
 	if (umount2(mountpoint, flags) != 0) {
-		zfs_error_aux(hdl, strerror(errno));
-		return (zfs_error_fmt(hdl, EZFS_UMOUNTFAILED,
+		int error = errno;
+		int libzfs_error;
+
+		zfs_error_aux(hdl, strerror(error));
+		switch (error) {
+		case EBUSY:
+			libzfs_error = EZFS_BUSY;
+			break;
+		case EIO:
+			libzfs_error = EZFS_IO;
+			break;
+		case ENOENT:
+			libzfs_error = EZFS_NOENT;
+			break;
+		case ENOMEM:
+			libzfs_error = EZFS_NOMEM;
+			break;
+		case EPERM:
+			libzfs_error = EZFS_PERM;
+			break;
+		default:
+			libzfs_error = EZFS_UMOUNTFAILED;
+			break;
+		}
+		return (zfs_error_fmt(hdl, libzfs_error,
 		    dgettext(TEXT_DOMAIN, "cannot unmount '%s'"),
 		    mountpoint));
 	}
