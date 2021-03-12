@@ -10,25 +10,11 @@
 #
 
 #
-# Copyright (c) 2012 by Delphix. All rights reserved.
-# Copyright 2014 Garrett D'Amore <garrett@damore.org>
-# Copyright 2019 Joyent, Inc.
-# Copyright 2021 Tintri by DDN, Inc. All rights reserved.
+# Copyright (c) 2012, 2017 by Delphix. All rights reserved.
 #
 
 .PARALLEL: $(SUBDIRS)
 
-SUBDIRS = \
-	crypto-tests \
-	elf-tests \
-	libc-tests \
-	libmlrpc-tests \
-	net-tests \
-	os-tests \
-	smbclient-tests \
-	smbsrv-tests \
-	test-runner \
-	util-tests \
-	zfs-tests
+SUBDIRS:sh = find ./* -maxdepth 0 -type d
 
-include Makefile.com
+include $(SRC)/test/Makefile.com
