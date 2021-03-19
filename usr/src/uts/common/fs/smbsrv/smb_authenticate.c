@@ -501,7 +501,7 @@ smb_auth_get_token(smb_request_t *sr)
 	 * at least through Session Setup.
 	 */
 	if (sr->session->dialect >= SMB_VERS_3_0)
-		smb3_encrypt_begin(sr, token);
+		smb3_encrypt_begin(sr->uid_user, token);
 
 	/*
 	 * Save the session key, and (maybe) enable signing,
