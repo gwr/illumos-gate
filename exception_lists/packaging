@@ -607,6 +607,8 @@ usr/lib/smbsrv/libmlsvc.so
 usr/lib/smbsrv/libsmb.so
 usr/lib/smbsrv/libsmbns.so
 usr/lib/smbsrv/nvlprint
+usr/lib/smbsrv/test-decrypt
+usr/lib/smbsrv/test-encrypt
 usr/lib/smbsrv/test-msgbuf
 usr/lib/smbsrv/testoplock
 #
