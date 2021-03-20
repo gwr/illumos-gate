@@ -20,17 +20,20 @@
  *
  * There are two implementations of these functions:
  * This one (for kernel) and another for user space:
- * See: lib/smbsrv/libfksmbsrv/common/fksmb_encrypt_pkcs.c
+ * See: lib/smbclnt/libfksmbcrypt/common/fksmb_encrypt_pkcs.c
  *
  * Contrary to what one might assume from the file name,
  * there should be NO SMB implementation knowledge here
  * beyond a few carefully selected things (smb_kcrypt.h).
  */
 
+#include <sys/types.h>
 #include <sys/crypto/api.h>
-#include <smbsrv/smb_kcrypt.h>
-#include <sys/systm.h>
+
+#include <fs/smbcrypt/smb_kcrypt.h>
+
 #include <sys/cmn_err.h>
+#include <sys/sunddi.h>
 
 /*
  * Common function to see if a mech is available.

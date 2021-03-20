@@ -123,6 +123,7 @@ do_kern() {
   *) targ=$1 ;;
   esac
   ( unset SOURCEDEBUG ;
+  (cd $SRC/uts/$x/smbcrypt && $make $targ) ;
   (cd $SRC/uts/$x/nsmb && $make $targ) ;
   (cd $SRC/uts/$x/smbfs && $make $targ) )
 }
@@ -260,6 +261,7 @@ usr/kernel/drv/$arch64/nsmb
 usr/kernel/fs/$arch64/smbfs
 usr/kernel/kmdb/$arch64/nsmb
 usr/kernel/kmdb/$arch64/smbfs
+usr/kernel/misc/$arch64/smbcrypt
 usr/lib/$arch64/libsmbfs.so.1
 usr/lib/fs/smbfs/$arch64/libshare_smbfs.so.1
 usr/lib/fs/smbfs/chacl

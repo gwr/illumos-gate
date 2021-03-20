@@ -13,14 +13,4 @@
 # Copyright 2017 Nexenta Systems, Inc.  All rights reserved.
 #
 
-include ../Makefile.lib
-
-SUBDIRS = \
-	libfksmbcrypt \
-	libfknsmb \
-	libfksmbfs
-
-libfksmbfs: libfknsmb
-libfknsmb: libfksmbcrypt
-
-include ./Makefile.subdirs
+include ../Makefile.smbclnt

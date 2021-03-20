@@ -20,8 +20,8 @@
 /*
  * SMB signing routines used in {smb,smb2}_signing.c
  * Two implementations of these (kernel/user) in:
- *	uts/common/fs/smbsrv/smb_sign_kcf.c
- *	lib/smbsrv/libfksmbsrv/common/fksmb_sign_pkcs.c
+ *	uts/common/fs/smbcrypt/smb_*_kcf.c
+ *	lib/smbclnt/libfksmbcrypt/common/fksmb_*_pkcs.c
  */
 
 #ifdef	_KERNEL

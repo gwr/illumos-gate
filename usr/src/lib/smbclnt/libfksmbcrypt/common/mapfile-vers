@@ -1,0 +1,77 @@
+#
+# CDDL HEADER START
+#
+# The contents of this file are subject to the terms of the
+# Common Development and Distribution License (the "License").
+# You may not use this file except in compliance with the License.
+#
+# You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
+# or http://www.opensolaris.org/os/licensing.
+# See the License for the specific language governing permissions
+# and limitations under the License.
+#
+# When distributing Covered Code, include this CDDL HEADER in each
+# file and include the License file at usr/src/OPENSOLARIS.LICENSE.
+# If applicable, add the following below this CDDL HEADER, with the
+# fields enclosed by brackets "[]" replaced with your own identifying
+# information: Portions Copyright [yyyy] [name of copyright owner]
+#
+# CDDL HEADER END
+#
+#
+# Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
+# Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
+#
+
+#
+# MAPFILE HEADER START
+#
+# WARNING:  STOP NOW.  DO NOT MODIFY THIS FILE.
+# Object versioning must comply with the rules detailed in
+#
+#	usr/src/lib/README.mapfiles
+#
+# You should not be making modifications here until you've read the most current
+# copy of that file. If you need help, contact a gatekeeper for guidance.
+#
+# MAPFILE HEADER END
+#
+
+$mapfile_version 2
+
+SYMBOL_VERSION SUNWprivate {
+    global:
+
+	smb_md5_getmech;
+	smb_md5_init;
+	smb_md5_update;
+	smb_md5_final;
+
+	smb2_hmac_getmech;
+	smb2_hmac_init;
+	smb2_hmac_update;
+	smb2_hmac_final;
+
+	smb3_cmac_getmech;
+	smb3_cmac_init;
+	smb3_cmac_update;
+	smb3_cmac_final;
+
+	smb3_aes_ccm_getmech;
+	smb3_aes_gcm_getmech;
+	smb3_crypto_init_ccm_param;
+	smb3_crypto_init_gcm_param;
+
+	smb3_decrypt_init;
+	smb3_decrypt_uio;
+
+	smb3_encrypt_init;
+	smb3_encrypt_uio;
+
+	smb3_enc_ctx_done;
+
+	smb3_kdf;
+
+    local:
+	*;
+};

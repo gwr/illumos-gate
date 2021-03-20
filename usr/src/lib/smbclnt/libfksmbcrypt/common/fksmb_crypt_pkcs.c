@@ -19,7 +19,7 @@
  *
  * There are two implementations of these functions:
  * This one (for user space) and another for kernel.
- * See: uts/common/fs/smbsrv/smb3_encrypt_kcf.c
+ * See: uts/common/fs/smbcrypt/smb_crypt_kcf.c
  *
  * Contrary to what one might assume from the file name,
  * there should be NO SMB implementation knowledge here
@@ -28,7 +28,7 @@
 
 #include <security/cryptoki.h>
 #include <security/pkcs11.h>
-#include <smbsrv/smb_kcrypt.h>
+#include <fs/smbcrypt/smb_kcrypt.h>
 
 #include <sys/cmn_err.h>
 #include <sys/debug.h>
@@ -209,7 +209,7 @@ smb3_encrypt_uio(smb_enc_ctx_t *ctxp, uio_t *in, uio_t *out)
 	if (in->uio_resid <= 0)
 		return (-1);
 	inlen = in->uio_resid;
-	outlen = inlen + 16;
+	outlen = inlen + SMB2_SIG_SIZE;
 	buf = malloc(outlen);
 	if (buf == NULL)
 		return (-1);
@@ -249,10 +249,10 @@ smb3_decrypt_uio(smb_enc_ctx_t *ctxp, uio_t *in, uio_t *out)
 	int err;
 	CK_RV rv;
 
-	if (in->uio_resid <= 16)
+	if (in->uio_resid <= SMB2_SIG_SIZE)
 		return (-1);
 	inlen = in->uio_resid;
-	outlen = inlen - 16;
+	outlen = inlen - SMB2_SIG_SIZE;
 	buf = malloc(inlen);
 	if (buf == NULL)
 		return (-1);
