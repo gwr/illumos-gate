@@ -429,6 +429,7 @@ MISC_KMODS	+= qlc_fw_8100
 MISC_KMODS	+= mii
 
 MISC_KMODS	+= klmmod klmops
+MISC_KMODS	+= smbcrypt
 
 #
 #	Software Cryptographic Providers (/kernel/crypto):

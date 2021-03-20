@@ -18,14 +18,20 @@
  *
  * There are two implementations of these functions:
  * This one (for user space) and another for kernel.
- * See: uts/common/fs/smbsrv/smb_sign_kcf.c
+ * See: uts/common/fs/smbcrypt/smb_sign_kcf.c
+ *
+ * Contrary to what one might assume from the file name,
+ * there should be NO SMB implementation knowledge here
+ * beyond a few carefully selected things (smb_kcrypt.h).
  */
 
-#include <stdlib.h>
-#include <smbsrv/smb_kproto.h>
-#include <smbsrv/smb_kcrypt.h>
 #include <security/cryptoki.h>
 #include <security/pkcs11.h>
+#include <fs/smbcrypt/smb_kcrypt.h>
+
+#include <stdlib.h>
+#include <strings.h>
+#include <sys/cmn_err.h>
 
 /*
  * Common function to see if a mech is available.

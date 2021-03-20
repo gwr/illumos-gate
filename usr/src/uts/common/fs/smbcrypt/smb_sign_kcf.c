@@ -19,14 +19,17 @@
  *
  * There are two implementations of these functions:
  * This one (for kernel) and another for user space:
- * See: lib/smbsrv/libfksmbsrv/common/fksmb_sign_pkcs.c
+ * See: lib/smbclnt/libfksmbcrypt/common/fksmb_sign_pkcs.c
  */
 
 #include <sys/types.h>
-#include <sys/kmem.h>
 #include <sys/crypto/api.h>
-#include <smbsrv/smb_kproto.h>
-#include <smbsrv/smb_kcrypt.h>
+
+#include <fs/smbcrypt/smb_kcrypt.h>
+
+#include <sys/cmn_err.h>
+#include <sys/kmem.h>
+#include <sys/sunddi.h>
 
 /*
  * Common function to see if a mech is available.

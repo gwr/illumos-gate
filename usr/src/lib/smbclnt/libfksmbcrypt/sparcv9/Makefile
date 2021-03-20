@@ -13,14 +13,10 @@
 # Copyright 2017 Nexenta Systems, Inc.  All rights reserved.
 #
 
-include ../Makefile.lib
+include ../Makefile.com
+include ../../../Makefile.lib.64
 
-SUBDIRS = \
-	libfksmbcrypt \
-	libfknsmb \
-	libfksmbfs
+DYNFLAGS += '-R$$ORIGIN'
+DYNFLAGS += '-R$$ORIGIN/../../$(MACH64)'
 
-libfksmbfs: libfknsmb
-libfknsmb: libfksmbcrypt
-
-include ./Makefile.subdirs
+install: all $(ROOTLIBS64) $(ROOTLINKS64)

@@ -1115,6 +1115,12 @@ NFSSRV_OBJS +=	nfs_server.o	nfs_srv.o	nfs3_srv.o \
 		nfs4_deleg_ops.o nfs4_srv_readdir.o nfs4_dispatch.o \
 		nfs4_audit.o
 
+SMBCRYPT_OBJS += \
+		smb_crypt_kcf.o \
+		smb_kdf.o \
+		smb_sign_kcf.o \
+		smbcrypt_mod.o
+
 SMBSRV_SHARED_OBJS += \
 		smb_cfg_util.o \
 		smb_door_legacy.o \

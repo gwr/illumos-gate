@@ -24,7 +24,7 @@
  * Copyright 2020 RackTop Systems, Inc.
  */
 
-#include <smbsrv/smb_kcrypt.h>
+#include <fs/smbcrypt/smb_kcrypt.h>
 #include <sys/types.h>
 #include <sys/sysmacros.h>
 #include <sys/ddi.h>

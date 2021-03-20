@@ -141,6 +141,7 @@ UNUSED_RPATH	/usr/gcc/.*/lib.*\ from\ .*
 
 # Unused runpaths for reasons not captured above
 UNUSED_RPATH	/usr/lib/smbsrv.*\ from\ .*libsmb\.so\.1	# future needs
+UNUSED_RPATH	\$ORIGIN.*\ from\ .*/usr/lib/smb.*libfk.*\.so\.1
 
 # Unreferenced objects of non-OSnet objects we can't change
 UNREF_OBJ	/lib.*\ of\ .*libcimapi\.so
@@ -243,6 +244,7 @@ FORBIDDEN_DEP usr/bin/raidz_test
 FORBIDDEN_DEP usr/bin/sparcv7/ztest
 FORBIDDEN_DEP usr/bin/sparcv9/ztest
 FORBIDDEN_DEP usr/lib/MACH(smbfs)/libfknsmb.so.1
+FORBIDDEN_DEP usr/lib/MACH(smbfs)/libfksmbcrypt.so.1
 FORBIDDEN_DEP usr/lib/MACH(smbfs)/libfksmbfs.so.1
 FORBIDDEN_DEP usr/lib/MACH(smbsrv)/libfksmbsrv.so.1
 FORBIDDEN_DEP usr/lib/smbsrv/fksmbd

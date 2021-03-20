@@ -674,6 +674,8 @@ usr/lib/smbfs/sparcv9			sparc
 usr/lib/smbfs/fksmbcl
 usr/lib/smbfs/libfknsmb.so
 usr/lib/smbfs/libfknsmb.so.1
+usr/lib/smbfs/libfksmbcrypt.so
+usr/lib/smbfs/libfksmbcrypt.so.1
 usr/lib/smbfs/libfksmbfs.so
 usr/lib/smbfs/libfksmbfs.so.1
 #
