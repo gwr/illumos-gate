@@ -77,19 +77,26 @@ then
     (cd $SRC/uts && $make -k all_h)
 
   test -f $SRC/head/rpcsvc/nispasswd.h ||
-    (cd $SRC/head && $make -k install_h)
+    (cd $SRC/head && $make -k $targ)
 
   # ... stuff under $ROOT (proto area)
   test -d $ROOT/usr/include/sys ||
     (cd $SRC && $make rootdirs)
   test -f $ROOT/usr/include/sys/types.h ||
-    (cd $SRC/uts && $make -k install_h)
+    (cd $SRC/uts && $make -k $targ)
   test -f $ROOT/usr/include/rpcsvc/daemon_utils.h ||
-    (cd $SRC/head && $make install_h)
+    (cd $SRC/head && $make $targ)
 
-  # always update the smb headers to be safe
-  (cd $SRC/uts/common/smb && $make -k install_h)
+  # always update the sys,smb headers to be safe
+  (cd $SRC/uts/common/sys && $make -k $targ)
+  (cd $SRC/uts/common/smb && $make -k $targ)
+fi
 
+if [ "$targ" = lint ]
+then
+  targ=check
+  (cd $SRC/uts/common/smb && $make -k $targ)
+  (cd $SRC/uts/common/netsmb && $make -k $targ)
 fi
 
 # Need some library headers too...
@@ -122,24 +129,31 @@ do_kern() {
 
 ################################################################
 
-# Note lib1 builds prerequisite libraries not delivered by the
-# tar file we create below.  To accelerate clean/install, we
-# skip these on clean (but still nuke them for clobber)
+# Build all libraries used by the other targets in here.
+#
+# Run this once (at least) in each new workspace where you
+# will run "make-smbsrv install", if you want to avoid linking
+# against the libraries from your build host.
 
-do_lib1() {
+do_deplibs() {
+
+# So we don't have to build EVERYTHING, set LDCHECKS=
+# when building the dependent libraries.
+export LDCHECKS=
 
 for lib in \
   libavl \
-  libcmdutils
+  libcmdutils \
+  libcryptoutil \
+  pkcs11/libpkcs11
 do
   (cd $SRC/lib/$lib && $make $1)
 done
 }
 
-# lib2 builds stuff we include in the tar file,
-# or that we don't mind rebuilding after clean.
+################################################################
 
-do_lib2() {
+do_libs() {
 
 (cd $SRC/lib/libsmbfs && $make $1)
 [ "$1" = install ] &&
@@ -202,13 +216,12 @@ done
 # mdb_arch is both 32-bit & 64-bit
 for a in $mdb_arch
 do
-  (cd $SRC/cmd/mdb/$x/$a/libfknsmb &&
-	$make $1 )
-  (cd $SRC/cmd/mdb/$x/$a/libfksmbfs &&
-	$make $1 )
+  for lib in libfknsmb libfksmbfs
+  do
+    (cd $SRC/cmd/mdb/$x/$a/$lib && $make $1 )
+  done
 done
 }
-
 
 ################################################################
 # This builds $SRC/TAGS (and cscope.files) in a helpful order.
@@ -286,29 +299,34 @@ do
     set -e
     do_hdrs $arg
     do_kern $arg
-    do_lib1 $arg
-    do_lib2 $arg
+    do_deplibs $arg
+    do_libs $arg
     do_cmds $arg
     ;;
   lint)
     do_kern $arg
-    do_lib1 $arg
-    do_lib2 $arg
+    do_libs $arg
     do_cmds $arg
     ;;
   clean)
     # intentionally skip: lib1, hdrs, tools
     do_cmds $arg
-    do_lib2 $arg
+    do_libs $arg
     do_kern $arg
     ;;
   clobber)
     do_cmds $arg
-    do_lib2 $arg
-    do_lib1 $arg
+    do_libs $arg
+    do_deplibs $arg
     do_kern $arg
     do_hdrs $arg
     clobber_tools
+    ;;
+  deplibs)
+    build_tools
+    set -e
+    do_hdrs install
+    do_deplibs install
     ;;
   tags)
     do_tags
@@ -317,7 +335,7 @@ do
     do_tar
     ;;
   *)
-    echo "Usage: $0 {install|lint|clean|clobber|tags|tar}";
+    echo "Usage: $0 {install|lint|clean|clobber|deplibs|tags|tar}";
     exit 1;
     ;;
   esac
