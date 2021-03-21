@@ -153,6 +153,7 @@ do_kern() {
   esac
   ( unset SOURCEDEBUG ;
    export NO_GENUNIX_UNIQUIFY= ;
+  (cd $SRC/uts/$x/smbcrypt && $make $targ) ;
   (cd $SRC/uts/$x/smbsrv && $make $targ) )
 }
 
@@ -224,6 +225,9 @@ for lib in \
 do
   (cd $SRC/lib/$lib && $make $1)
 done
+
+# fksmbd uses this lib from the SMB client
+(cd $SRC/lib/smbclnt/libfksmbcrypt && $make $1 PLUGINS=smb)
 
 (cd $SRC/lib/libshare && $make $1 PLUGINS=smb)
 (cd $SRC/lib/smbsrv && $make $1)

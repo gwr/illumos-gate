@@ -54,7 +54,7 @@ include $(UTSBASE)/intel/Makefile.intel
 #
 #
 LDFLAGS += -Nfs/sockfs -Nmisc/ksocket -Ndrv/ip -Nstrmod/rpcmod -Nsys/doorfs
-LDFLAGS += -Nmisc/kcf
+LDFLAGS += -Nmisc/smbcrypt -Nmisc/kcf
 
 #
 #	Define targets

@@ -22,11 +22,12 @@
  * Copyright 2020 RackTop Systems, Inc.
  */
 
+#include <sys/crypto/api.h>
+#include <fs/smbcrypt/smb_kcrypt.h>
+
 #include <smbsrv/smb2_kproto.h>
 #include <smbsrv/smb2.h>
-#include <sys/crypto/api.h>
 #include <smbsrv/smb_kproto.h>
-#include <smbsrv/smb_kcrypt.h>
 
 /*
  * SMB 3.1.1 Preauth Integrity
