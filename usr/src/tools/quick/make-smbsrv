@@ -152,6 +152,7 @@ do_kern() {
   *) targ=$1 ;;
   esac
   ( unset SOURCEDEBUG ;
+  (cd $SRC/uts/$x/smbcrypt && $make $targ) ;
   (cd $SRC/uts/$x/smbsrv && $make $targ) )
 }
 
@@ -165,6 +166,7 @@ do_kern() {
 #
 do_deplibs() {
 
+(cd $SRC/lib/ssp_ns && $make $1)
 (cd $SRC/lib/libc && $make $1)
 
 for lib in \
@@ -221,6 +223,9 @@ for lib in \
 do
   (cd $SRC/lib/$lib && $make $1)
 done
+
+# fksmbd uses this lib from the SMB client
+(cd $SRC/lib/smbclnt/libfksmbcrypt && $make $1 PLUGINS=smb)
 
 (cd $SRC/lib/libshare && $make $1 PLUGINS=smb)
 (cd $SRC/lib/smbsrv && $make $1)

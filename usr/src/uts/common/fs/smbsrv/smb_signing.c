@@ -38,9 +38,8 @@
  * Disabled	| Fail		| Not Signed  | Not Signed
  */
 
-#include <sys/uio.h>
+#include <fs/smbcrypt/smb_kcrypt.h>
 #include <smbsrv/smb_kproto.h>
-#include <smbsrv/smb_kcrypt.h>
 #include <sys/isa_defs.h>
 #include <sys/byteorder.h>
 

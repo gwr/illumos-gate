@@ -18,8 +18,8 @@
  * Routines for smb3 encryption.
  */
 
+#include <fs/smbcrypt/smb_kcrypt.h>
 #include <smbsrv/smb2_kproto.h>
-#include <smbsrv/smb_kcrypt.h>
 #include <sys/random.h>
 #include <sys/cmn_err.h>
 

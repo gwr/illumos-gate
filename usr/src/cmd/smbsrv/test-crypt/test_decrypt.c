@@ -14,7 +14,7 @@
  */
 
 #include <sys/types.h>
-#include <smbsrv/smb_kcrypt.h>
+#include <fs/smbcrypt/smb_kcrypt.h>
 #include <security/cryptoki.h>
 #include <security/pkcs11.h>
 

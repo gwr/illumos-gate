@@ -25,10 +25,12 @@
 # Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
 #
 
-MACH_LDLIBS +=	-L$(ROOT)/usr/lib/smbsrv/$(MACH64)
-
 include ../Makefile.com
 include ../../../Makefile.lib.64
+
+DYNFLAGS += '-R$$ORIGIN'
+DYNFLAGS += '-R$$ORIGIN/../../smbfs/$(MACH64)'
+DYNFLAGS += '-R$$ORIGIN/../../$(MACH64)'
 
 sparcv9_C_PICFLAGS= $(sparcv9_C_BIGPICFLAGS)
 

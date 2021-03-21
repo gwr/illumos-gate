@@ -34,13 +34,11 @@ VERS =		.1
 OBJS_LOCAL = \
 		fksmb_audit.o \
 		fksmb_cred.o \
-		fksmb_encrypt_pkcs.o \
 		fksmb_fem.o \
 		fksmb_idmap.o \
 		fksmb_init.o \
 		fksmb_kdoor.o \
 		fksmb_preauth_pkcs.o \
-		fksmb_sign_pkcs.o \
 		fake_lookup.o \
 		fake_nblk.o \
 		fake_vfs.o \
@@ -164,8 +162,6 @@ OBJS_FS_SMBSRV = \
 		smb2_tree_connect.o \
 		smb2_tree_disconn.o \
 		smb2_write.o \
-	        \
-	        smb3_kdf.o \
 	        smb3_encrypt.o
 
 # Can't just link with -lsmb because of user vs kernel API
@@ -212,7 +208,6 @@ CSOURCEDEBUGFLAGS	= $(CCGDEBUG)
 CCSOURCEDEBUGFLAGS	= $(CCGDEBUG)
 STRIP_STABS	= :
 
-
 # Note: need our sys includes _before_ ENVCPPFLAGS, proto etc.
 # Also, like Makefile.uts, reset CPPFLAGS
 CPPFLAGS.first += -I../../../libfakekernel/common
@@ -223,10 +218,6 @@ INCS += -I$(SRC)/uts/common
 INCS += -I$(SRC)/common/smbsrv
 INCS += -I$(SRC)/common
 
-LDLIBS +=	$(MACH_LDLIBS)
-LDLIBS +=	-lfakekernel -lidmap -lcmdutils
-LDLIBS +=	-lavl -lnvpair -lnsl -lpkcs11 -lreparse -lc
-
 CPPFLAGS += $(INCS) -D_REENTRANT -D_FAKE_KERNEL
 CPPFLAGS += -D_FILE_OFFSET_BITS=64
 # Always want DEBUG here
@@ -236,6 +227,15 @@ CERRWARN += -_gcc=-Wno-switch
 
 # not linted
 SMATCH=off
+
+# Have LDLIBS32, LDLIBS64 from ../Makefile.lib
+# For this lib (only) add lib/smbfs
+LDLIBS32 +=	-L$(ROOT)/usr/lib/smbfs
+LDLIBS64 +=	-L$(ROOT)/usr/lib/smbfs/$(MACH64)
+
+LDLIBS +=	$(MACH_LDLIBS)
+LDLIBS +=	-lfksmbcrypt -lfakekernel -lidmap -lcmdutils
+LDLIBS +=	-lavl -lnvpair -lnsl -lreparse -lc
 
 SRCS=   $(OBJS_LOCAL:%.o=$(SRCDIR)/%.c) \
 	$(OBJS_FS_SMBSRV:%.o=$(SRC)/uts/common/fs/smbsrv/%.c) \

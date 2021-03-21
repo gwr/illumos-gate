@@ -27,7 +27,7 @@
 PROG=	test-encrypt test-decrypt
 
 LIBFAKEKERN=../../../lib/libfakekernel/common
-LIBFKSMBSRV=../../../lib/smbsrv/libfksmbsrv/common
+LIBFKSMBCRYPT=../../../lib/smbclnt/libfksmbcrypt/common
 SMBSRV_SRCDIR=../../../uts/common/fs/smbsrv
 SMBSRV_CMNDIR=../../../common/smbsrv
 
@@ -83,14 +83,14 @@ clean:
 
 lint:
 
-TEOBJS= test_encrypt.o utils.o fksmb_encrypt_pkcs.o
+TEOBJS= test_encrypt.o utils.o fksmb_crypt_pkcs.o
 test-encrypt := OBJS = $(TEOBJS)
 test-encrypt : $(TEOBJS)
 	$(LINK.c) -o $@ $(OBJS) $(LDLIBS)
 	$(POST_PROCESS)
 
 
-TDOBJS= test_decrypt.o utils.o fksmb_encrypt_pkcs.o
+TDOBJS= test_decrypt.o utils.o fksmb_crypt_pkcs.o
 test-decrypt := OBJS = $(TDOBJS)
 test-decrypt : $(TDOBJS)
 	$(LINK.c) -o $@ $(OBJS) $(LDLIBS)
@@ -98,8 +98,8 @@ test-decrypt : $(TDOBJS)
 
 include ../../Makefile.targ
 
-# LIBFKSMBSRV
-%.o: $(LIBFKSMBSRV)/%.c
+# LIBFKSMBCRYPT
+%.o: $(LIBFKSMBCRYPT)/%.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) \
 	  -I../../../uts/common/smbsrv \
 	  -I../../../common/smbsrv -c $<
