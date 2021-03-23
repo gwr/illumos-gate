@@ -2930,6 +2930,15 @@ do_rfs4_op_lookup(char *nm, struct svc_req *req, struct compound_state *cs)
 
 	error = VOP_LOOKUP(cs->vp, nm, &vp, NULL, 0, NULL, cs->cr,
 	    NULL, NULL, NULL);
+
+	if (error == ENOENT && VN_CMP(cs->vp, ZONE_ROOTVP())) {
+		vp = export_name_lookup(cs->exi->exi_ne, nm);
+		if (vp != NULL) {
+			error = 0;
+			different_export = 1;
+		}
+	}
+
 	if (error)
 		return (puterrno4(error));
 

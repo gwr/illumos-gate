@@ -192,6 +192,9 @@ struct option_defs optdefs[] = {
 #define	OPT_VOLFH	21
 	{SHOPT_VOLFH, OPT_VOLFH},
 #endif /* VOLATILE_FH_TEST */
+#define	OPT_NAME	22
+	{SHOPT_NAME, OPT_NAME, OPT_TYPE_STRING},
+	NULL
 };
 
 /*
@@ -1048,6 +1051,18 @@ fill_export_from_optionset(struct exportdata *export, sa_optionset_t optionset)
 				export->ex_flags &= ~EX_NOHIDE;
 
 			break;
+		case OPT_NAME:
+			if (value != NULL)  {
+				export->ex_name = strdup(value);
+				if (export->ex_name == NULL) {
+					(void) printf(dgettext(TEXT_DOMAIN,
+					    "NFS: out of memory setting"
+					    " name property\n"));
+					break;
+				}
+				export->ex_namelen = strlen(value) + 1;
+			}
+			break;
 		default:
 			/* have a syntactic error */
 			(void) printf(dgettext(TEXT_DOMAIN,
@@ -1315,6 +1330,8 @@ printarg(char *path, struct exportdata *ep)
 			    sp->s_rootnames[j] : "<null>");
 		(void) printf("\n\n");
 	}
+	if (ep->ex_name)
+		(void) printf("\tname = %s\n\n", ep->ex_name);
 }
 
 /*
@@ -1801,6 +1818,7 @@ nfs_enable_share(sa_share_t share)
 	int i;
 	int iszfs;
 	sa_handle_t handle;
+	char *inherited;
 
 	/* Don't drop core if the NFS module isn't loaded. */
 	(void) signal(SIGSYS, SIG_IGN);
@@ -1811,6 +1829,9 @@ nfs_enable_share(sa_share_t share)
 		return (SA_NO_SUCH_PATH);
 
 	iszfs = sa_path_is_zfs(path);
+
+	inherited = sa_get_share_attr(share, "inherited");
+
 	/*
 	 * find the optionsets and security sets.  There may not be
 	 * any or there could be one or two for each of optionset and
@@ -1844,6 +1865,11 @@ nfs_enable_share(sa_share_t share)
 	if (opt != NULL)
 		err = fill_export_from_optionset(&export, opt);
 
+	if (inherited != NULL) {
+		free(export.ex_name);
+		export.ex_namelen = 0;
+		export.ex_name = NULL;
+	}
 	/*
 	 * check to see if "public" is set. If it is, then make sure
 	 * no other share has it set. If it is already used, fail.
@@ -1992,6 +2018,9 @@ nfs_enable_share(sa_share_t share)
 	}
 
 out:
+	if (inherited != NULL)
+		sa_free_attr_string(inherited);
+
 	if (path != NULL)
 		free(path);
 

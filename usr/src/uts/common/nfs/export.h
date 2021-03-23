@@ -151,6 +151,8 @@ struct exportdata {
 	size_t		ex_log_bufferlen;	/* buffer file path len */
 	char		*ex_tag;	/* tag used to identify log config */
 	size_t		ex_taglen;	/* tag length */
+	char		*ex_name;
+	size_t		ex_namelen;
 };
 
 #ifdef _SYSCALL32
@@ -167,6 +169,8 @@ struct exportdata32 {
 	int32_t		ex_log_bufferlen;	/* buffer file path len */
 	caddr32_t	ex_tag;		/* tag used to identify log config */
 	int32_t		ex_taglen;	/* tag length */
+	caddr32_t	ex_name;
+	int32_t		ex_namelen;
 };
 #endif /* _SYSCALL32 */
 
@@ -658,6 +662,15 @@ extern char    *build_symlink(vnode_t *, cred_t *, size_t *);
 
 extern fhandle_t nullfh2;	/* for comparing V2 filehandles */
 
+struct nfs_resource;
+struct nfs_export;
+int	export_name_register(struct nfs_export *ne, const char *name,
+    vnode_t *dvp);
+void	export_name_unregister(struct nfs_export *ne, const char *name);
+vnode_t	*export_name_lookup(struct nfs_export *ne, const char *name);
+struct nfs_resource	*resource_alloc(void);
+void	resource_free(struct nfs_resource *nr);
+
 typedef struct nfs_export {
 	/* Root of nfs pseudo namespace */
 	treenode_t *ns_root;
@@ -683,6 +696,9 @@ typedef struct nfs_export {
 
 	/* The change attribute value of the root of nfs pseudo namespace */
 	timespec_t ns_root_change;
+
+	/* Top resources */
+	struct nfs_resource *ns_resource;
 } nfs_export_t;
 
 /*

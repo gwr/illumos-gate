@@ -57,6 +57,7 @@ extern "C" {
 #define	SHOPT_UIDMAP	"uidmap"
 #define	SHOPT_GIDMAP	"gidmap"
 #define	SHOPT_NOHIDE	"nohide"
+#define	SHOPT_NAME	"name"
 
 /*
  * defined options types. These should be in a file rather than

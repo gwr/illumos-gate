@@ -886,6 +886,9 @@ sa_get_zfs_share_common(sa_handle_t handle, zfs_handle_t *fs_handle, char *path,
 			    0, nfsshareopts,
 			    nfssourcestr, dataset);
 			share = sa_find_share(handle, mountpoint);
+			if (share != NULL)
+				set_node_attr(share, "inherited",
+				    nfs_inherited ? "yes" : NULL);
 		}
 		if (smb || smb_inherited) {
 			err = sa_zfs_process_share(handle, zfsgroup,
@@ -918,6 +921,8 @@ sa_get_zfs_share_common(sa_handle_t handle, zfs_handle_t *fs_handle, char *path,
 			    ZPROP_SRC_INHERITED, nfsshareopts,
 			    grpdataset, dataset);
 			share = sa_find_share(handle, mountpoint);
+			if (share != NULL)
+				set_node_attr(share, "inherited", "yes");
 		}
 		if (smb_inherited) {
 			err = sa_zfs_process_share(handle, zfsgroup,

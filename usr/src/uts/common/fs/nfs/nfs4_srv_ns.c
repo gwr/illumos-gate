@@ -1286,3 +1286,139 @@ tree_update_change(nfs_export_t *ne, treenode_t *tnode, timespec_t *change)
 	else
 		gethrestime(vis_change);
 }
+
+/*
+ * NFSv4.x resource name.
+ */
+
+struct name_entry {
+	list_node_t node;
+	char *entry_name;	/* for lookup */
+	vnode_t *entry_dvp;	/* where points to */
+};
+
+struct nfs_resource {
+	list_t lookup_list;	/* name_entry */
+};
+
+static struct name_entry *
+resource_lookup_entry(struct nfs_resource *r, const char *name)
+
+{
+	struct name_entry *entry;
+
+	entry = list_head(&r->lookup_list);
+	while (entry != NULL) {
+		if (strcmp(entry->entry_name, name) == 0)
+			break;
+		entry = list_next(&r->lookup_list, entry);
+	}
+	return (entry);
+}
+
+static void
+resource_alloc_add_entry(struct nfs_resource *r, const char *name,
+    vnode_t *tvp)
+{
+	struct name_entry *entry;
+
+	entry = kmem_alloc(sizeof (struct name_entry), KM_SLEEP);
+
+	list_link_init(&entry->node);
+	entry->entry_name = strdup(name);
+	entry->entry_dvp = tvp;
+	VN_HOLD(tvp);
+
+	list_insert_head(&r->lookup_list, entry);
+}
+
+static void
+resource_remove_free_entry(struct nfs_resource *r, struct name_entry *entry)
+{
+	list_remove(&r->lookup_list, entry);
+	VN_RELE(entry->entry_dvp);
+	strfree(entry->entry_name);
+	kmem_free(entry, sizeof (struct name_entry));
+}
+
+struct nfs_resource *
+resource_alloc(void)
+{
+	struct nfs_resource *r;
+
+	r = kmem_alloc(sizeof (struct nfs_resource), KM_SLEEP);
+	list_create(&r->lookup_list,
+	    sizeof (struct name_entry), offsetof(struct name_entry, node));
+
+	return (r);
+}
+
+void
+resource_free(struct nfs_resource *r)
+{
+	ASSERT(r != NULL);
+	ASSERT(list_is_empty(&r->lookup_list));
+
+	list_destroy(&r->lookup_list);
+	kmem_free(r, sizeof (struct nfs_resource));
+}
+
+void
+export_name_unregister(struct nfs_export *ne, const char *name)
+{
+	struct name_entry *entry;
+	struct nfs_resource *r;
+
+	if (name == NULL || *name == '\0')
+		return;
+
+	VERIFY(RW_WRITE_HELD(&ne->exported_lock));
+
+	r = ne->ns_resource;
+	entry = resource_lookup_entry(r, name);
+	ASSERT(entry != NULL);
+
+	resource_remove_free_entry(r, entry);
+}
+
+int
+export_name_register(struct nfs_export *ne, const char *name, vnode_t *dvp)
+{
+	struct name_entry *entry;
+	struct nfs_resource *r;
+
+	VERIFY(RW_WRITE_HELD(&ne->exported_lock));
+
+	if (name == NULL || *name == '\0')
+		return (0);
+
+	r = ne->ns_resource;
+	entry = resource_lookup_entry(r, name);
+	if (entry != NULL)
+		return (EEXIST);
+
+	tree_update_change(ne, ne->ns_root, NULL);
+
+	resource_alloc_add_entry(r, name, dvp);
+	return (0);
+}
+
+/* fastpath */
+vnode_t *
+export_name_lookup(struct nfs_export *ne, const char *name)
+{
+	struct nfs_resource *r;
+	struct name_entry *entry;
+
+	VERIFY(RW_READ_HELD(&ne->exported_lock));
+
+	r = ne->ns_resource;
+	ASSERT(r != NULL);
+
+	entry = resource_lookup_entry(r, name);
+	if (entry == NULL)
+		return (NULL);
+
+	VN_HOLD(entry->entry_dvp);
+	return (entry->entry_dvp);
+}

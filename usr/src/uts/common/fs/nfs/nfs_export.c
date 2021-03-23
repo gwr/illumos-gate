@@ -960,6 +960,7 @@ nfs_export_zone_init(nfs_globals_t *ng)
 	avl_add(&exi_id_tree, ne->exi_root);
 	mutex_exit(&nfs_exi_id_lock);
 
+	ne->ns_resource = resource_alloc();
 	rw_exit(&ne->exported_lock);
 	ne->ns_root = NULL;
 
@@ -1037,6 +1038,8 @@ nfs_export_zone_fini(nfs_globals_t *ng)
 	ng->nfs_export = NULL;
 
 	rw_enter(&ne->exported_lock, RW_WRITER);
+
+	resource_free(ne->ns_resource);
 
 	mutex_enter(&nfs_exi_id_lock);
 	avl_remove(&exi_id_tree, ne->exi_root);
@@ -1234,7 +1237,6 @@ done:
 
 	return (TRUE);
 }
-
 
 /*
  * Exportfs system call; credentials should be checked before
@@ -1490,6 +1492,9 @@ exportfs(struct exportfs_args *args, model_t model, cred_t *cr)
 	kex->ex_log_bufferlen = STRUCT_FGET(uexi, ex_log_bufferlen);
 	kex->ex_tag = STRUCT_FGETP(uexi, ex_tag);
 	kex->ex_taglen = STRUCT_FGET(uexi, ex_taglen);
+	kex->ex_namelen = STRUCT_FGET(uexi, ex_namelen);
+	if (kex->ex_namelen > 0)
+		kex->ex_name = STRUCT_FGETP(uexi, ex_name);
 
 	/*
 	 * Copy the exported pathname into
@@ -1506,6 +1511,23 @@ exportfs(struct exportfs_args *args, model_t model, cred_t *cr)
 	kex->ex_path[kex->ex_pathlen] = '\0';
 	kmem_free(pathbuf, MAXPATHLEN);
 
+	if (kex->ex_namelen > 0) {
+		char *buf;
+
+		buf = kmem_alloc(MAXPATHLEN, KM_SLEEP);
+		if (copyinstr(kex->ex_name, buf, MAXPATHLEN,
+		    &kex->ex_namelen)) {
+			kmem_free(buf, MAXPATHLEN);
+			error = EFAULT;
+			goto out2;
+		}
+
+		kex->ex_name = kmem_alloc(kex->ex_namelen + 1, KM_SLEEP);
+		bcopy(buf, kex->ex_name, kex->ex_namelen);
+		kex->ex_name[kex->ex_namelen] = '\0';
+		kmem_free(buf, MAXPATHLEN);
+	}
+
 	/*
 	 * Get the path to the logging buffer and the tag
 	 */
@@ -1515,7 +1537,7 @@ exportfs(struct exportfs_args *args, model_t model, cred_t *cr)
 		    &kex->ex_log_bufferlen)) {
 			kmem_free(log_buffer, MAXPATHLEN);
 			error = EFAULT;
-			goto out2;
+			goto out2_2;
 		}
 		kex->ex_log_buffer =
 		    kmem_alloc(kex->ex_log_bufferlen + 1, KM_SLEEP);
@@ -1732,6 +1754,15 @@ exportfs(struct exportfs_args *args, model_t model, cred_t *cr)
 		kex->ex_flags &= ~EX_PUBLIC;
 	}
 
+	if (ex != NULL) {
+		/* Re-share */
+		export_name_unregister(ne, ex->exi_export.ex_name);
+	}
+
+	error = export_name_register(ne, exi->exi_export.ex_name, exi->exi_vp);
+	if (error != 0)
+		goto out7_1;
+
 #ifdef VOLATILE_FH_TEST
 	/*
 	 * Set up the volatile_id value if volatile on share.
@@ -1838,10 +1869,24 @@ exportfs(struct exportfs_args *args, model_t model, cred_t *cr)
 	return (0);
 
 out7:
+	export_name_unregister(ne, exi->exi_export.ex_name);
+out7_1:
+	if (ex != NULL) {
+		/* Revert back */
+		mutex_enter(&nfs_exi_id_lock);
+		avl_add(&exi_id_tree, ex);
+		mutex_exit(&nfs_exi_id_lock);
+		export_link(ne, ex);
+		(void) export_name_register(ne, ex->exi_export.ex_name,
+		    ex->exi_vp);
+	}
 	/* Unlink the new export in exptable. */
 	export_unlink(ne, exi);
 	DTRACE_PROBE(nfss__i__exported_lock3_stop);
 	rw_exit(&ne->exported_lock);
+
+	if (exi->exi_logbuffer != NULL)
+		nfslog_disable(exi);
 out6:
 	if (kex->ex_flags & EX_INDEX)
 		kmem_free(kex->ex_index, strlen(kex->ex_index) + 1);
@@ -1863,6 +1908,9 @@ out4:
 out3:
 	if ((kex->ex_flags & EX_LOG) && kex->ex_log_buffer != NULL)
 		kmem_free(kex->ex_log_buffer, kex->ex_log_bufferlen + 1);
+out2_2:
+	if (kex->ex_name != NULL)
+		kmem_free(kex->ex_name, kex->ex_namelen + 1);
 out2:
 	kmem_free(kex->ex_path, kex->ex_pathlen + 1);
 out1:
@@ -1911,6 +1959,8 @@ unexport(nfs_export_t *ne, struct exportinfo *exi, cred_t *cr)
 		rw_exit(&ne->exported_lock);
 		return (EINVAL);
 	}
+
+	export_name_unregister(ne, exi->exi_export.ex_name);
 
 	mutex_enter(&nfs_exi_id_lock);
 	avl_remove(&exi_id_tree, exi);
@@ -2790,6 +2840,12 @@ exportfree(struct exportinfo *exi)
 
 	ASSERT(exi->exi_vp != NULL && !(exi->exi_export.ex_flags & EX_PUBLIC));
 	VN_RELE(exi->exi_vp);
+
+	if (exi->exi_export.ex_name != NULL) {
+		kmem_free(exi->exi_export.ex_name,
+		    exi->exi_export.ex_namelen + 1);
+	}
+
 	if (exi->exi_dvp != NULL)
 		VN_RELE(exi->exi_dvp);
 
