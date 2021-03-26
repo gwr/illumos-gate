@@ -163,6 +163,17 @@ smb_fsop_create_with_sd(smb_request_t *sr, cred_t *cr,
 
 			rc = smb_fsacl_to_vsa(acl, &vsecattr, &aclbsize);
 
+			/*
+			 * If the caller specified they want to set the SACL,
+			 * or indicated they want to clear the SACL
+			 * (SACL_SECINFO with a NULL sacl),
+			 * then inform the filesystem that we've included
+			 * the SACL.
+			 */
+			if (sacl != NULL ||
+			    (fs_sd->sd_secinfo & SMB_SACL_SECINFO) != 0)
+				vsecattr.vsa_mask |= VSA_ACE_SYS;
+
 			if (dacl && sacl)
 				acl_free(acl);
 
