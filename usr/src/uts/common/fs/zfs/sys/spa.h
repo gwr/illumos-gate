@@ -399,6 +399,12 @@ typedef struct blkptr {
 /*
  * Macros to get and set fields in a bp or DVA.
  */
+
+/*
+ * For gang blocks, DVA_GET_ASIZE() is the total space allocated for this
+ * gang DVA including its child block pointers.  The space allocated at this
+ * DVA's vdev and offset is vdev_gang_header_asize(vdev).
+ */
 #define	DVA_GET_ASIZE(dva)	\
 	BF64_GET_SB((dva)->dva_word[0], 0, SPA_ASIZEBITS, SPA_MINBLOCKSHIFT, 0)
 #define	DVA_SET_ASIZE(dva, x)	\
