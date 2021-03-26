@@ -2540,7 +2540,8 @@ vdev_to_nvlist_iter(nvlist_t *nv, nvlist_t *search, boolean_t *avail_spare,
 			}
 		} else if (strcmp(srchkey, ZPOOL_CONFIG_TYPE) == 0 && val) {
 			char *type, *idx, *end, *p;
-			uint64_t id, vdev_id;
+			uint64_t id, vdev_id, vdev_parity;
+			int parity, rzlen, typlen;
 
 			/*
 			 * Determine our vdev type, keeping in mind
@@ -2571,6 +2572,25 @@ vdev_to_nvlist_iter(nvlist_t *nv, nvlist_t *search, boolean_t *avail_spare,
 
 			errno = 0;
 			vdev_id = strtoull(idx, &end, 10);
+
+			rzlen = strlen(VDEV_TYPE_RAIDZ);
+			typlen = strlen(type);
+			if (strncmp(type, VDEV_TYPE_RAIDZ, rzlen) == 0 &&
+			    typlen != rzlen) {
+				parity = type[rzlen] - '0';
+				if (parity <= 0 || parity > 3 ||
+				    typlen - rzlen != 1) {
+					free(type);
+					return (NULL);
+				}
+
+				verify(nvlist_lookup_uint64(nv,
+				    ZPOOL_CONFIG_NPARITY, &vdev_parity) == 0);
+				if (vdev_parity != parity) {
+					free(type);
+					break;
+				}
+			}
 
 			free(type);
 			if (errno != 0)
