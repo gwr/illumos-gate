@@ -41,4 +41,7 @@ int smb2_rq_simple(struct smb_rq *rqp);
 int smb2_rq_simple_timed(struct smb_rq *rqp, int timeout);
 int smb2_rq_internal(struct smb_rq *rqp, int timeout);
 
+int smb3_rq_encrypt(struct smb_rq *rqp, mblk_t **mpp);
+int smb3_msg_decrypt(struct smb_vc *vcp, mblk_t **mpp);
+
 #endif	/* _NETSMB_SMB2_RQ_H_ */
