@@ -91,7 +91,7 @@ STRIP_STABS	= :
 CPPFLAGS.first += -I../../../libfakekernel/common
 CPPFLAGS.first += -I../../libfknsmb/common
 CPPFLAGS.first += -I../common
-CPPFLAGS= $(CPPFLAGS.first)
+CPPFLAGS = $(CPPFLAGS.first)
 
 INCS += -I$(SRC)/uts/common/fs/smbclnt
 INCS += -I$(SRC)/uts/common
@@ -109,6 +109,7 @@ CERRWARN += -_gcc=-Wno-parentheses
 # needs work
 SMOFF += all_func_returns,deref_check,signed,or_vs_and
 
+# Have LDLIBS32, LDLIBS64 from ../Makefile.lib
 LDLIBS +=	$(MACH_LDLIBS)
 LDLIBS +=	-lfknsmb -lfakekernel -lidmap -lcmdutils -lavl -lc
 
