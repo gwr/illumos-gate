@@ -32,8 +32,13 @@
 
 #include <sys/cmn_err.h>
 #include <sys/debug.h>
+#include <sys/stream.h>
+#include <sys/strsun.h>
 #include <stdlib.h>
 #include <strings.h>
+
+size_t	msgsize(mblk_t *);
+static int copy_mblks(void *buf, size_t buflen, enum uio_rw, mblk_t *m);
 
 /*
  * Common function to see if a mech is available.
@@ -290,4 +295,143 @@ smb3_enc_ctx_done(smb_enc_ctx_t *ctxp)
 		(void) C_CloseSession(ctxp->ctx);
 		ctxp->ctx = 0;
 	}
+}
+
+/*
+ * Encrypt a whole message with scatter/gather (MBLK)
+ *
+ * While the PKCS#11 implementation internally has the ability to
+ * handle scatter/gather, it currently presents no interface for it.
+ * As this library is used primarily for debugging, performance in
+ * here is not a big concern, so we'll get around the limitation of
+ * libpkcs11 by copying to/from a contiguous working buffer.
+ */
+int
+smb3_encrypt_mblks(smb_enc_ctx_t *ctxp, mblk_t *mp, size_t clearlen)
+{
+	uint8_t *buf;
+	size_t inlen, outlen;
+	ulong_t tlen;
+	int err;
+	CK_RV rv;
+
+	inlen = clearlen;
+	outlen = clearlen + SMB2_SIG_SIZE;
+	ASSERT(msgsize(mp) >= outlen);
+
+	buf = malloc(outlen);
+	if (buf == NULL)
+		return (-1);
+
+	/* Copy from mblk chain to buf */
+	err = copy_mblks(buf, inlen, UIO_WRITE, mp);
+	if (err != 0)
+		return (-1);
+
+	/* Encrypt in-place in our work buffer. */
+	tlen = outlen;
+	rv = C_Encrypt(ctxp->ctx, buf, inlen, buf, &tlen);
+	if (rv != CKR_OK) {
+		cmn_err(CE_WARN, "C_Encrypt failed: 0x%lx", rv);
+		return (-1);
+	}
+	if (tlen != outlen) {
+		cmn_err(CE_WARN, "smb3_encrypt_mblks outlen %d vs %d",
+		    (int)tlen, (int)outlen);
+		return (-1);
+	}
+
+	/* Copy from buf to mblk segs */
+	err = copy_mblks(buf, outlen, UIO_READ, mp);
+	if (err != 0)
+		return (-1);
+
+	return (0);
+}
+
+/*
+ * Decrypt a whole message with scatter/gather (MBLK)
+ */
+int
+smb3_decrypt_mblks(smb_enc_ctx_t *ctxp, mblk_t *mp, size_t cipherlen)
+{
+	uint8_t *buf;
+	size_t inlen, outlen;
+	ulong_t tlen;
+	int err;
+	CK_RV rv;
+
+	if (cipherlen <= SMB2_SIG_SIZE)
+		return (-1);
+	inlen = cipherlen;
+	outlen = cipherlen - SMB2_SIG_SIZE;
+	ASSERT(msgsize(mp) >= inlen);
+
+	buf = malloc(inlen);
+	if (buf == NULL)
+		return (-1);
+
+	/* Copy from mblk chain to buf */
+	err = copy_mblks(buf, inlen, UIO_WRITE, mp);
+	if (err != 0)
+		return (-1);
+
+	/* Decrypt in-place in our work buffer. */
+	tlen = outlen;
+	rv = C_Decrypt(ctxp->ctx, buf, inlen, buf, &tlen);
+	if (rv != CKR_OK) {
+		cmn_err(CE_WARN, "C_Decrypt failed: 0x%lx", rv);
+		return (-1);
+	}
+	if (tlen != outlen) {
+		cmn_err(CE_WARN, "smb3_decrypt_mblks outlen %d vs %d",
+		    (int)tlen, (int)outlen);
+		return (-1);
+	}
+
+	/* Copy from buf to mblk segs */
+	err = copy_mblks(buf, outlen, UIO_READ, mp);
+	if (err != 0)
+		return (-1);
+
+	return (0);
+}
+
+static int
+copy_mblks(void *buf, size_t buflen, enum uio_rw rw, mblk_t *m)
+{
+	uchar_t *p = buf;
+	size_t rem = buflen;
+	size_t len;
+
+	while (rem > 0) {
+		if (m == NULL)
+			return (-1);
+		ASSERT(m->b_datap->db_type == M_DATA);
+		len = MBLKL(m);
+		if (len > rem)
+			len = rem;
+		if (rw == UIO_READ) {
+			/* buf to mblks */
+			bcopy(p, m->b_rptr, len);
+		} else {
+			/* mblks to buf */
+			bcopy(m->b_rptr, p, len);
+		}
+		m = m->b_cont;
+		p += len;
+		rem -= len;
+	}
+	return (0);
+}
+
+size_t
+msgsize(mblk_t *mp)
+{
+	size_t	n = 0;
+
+	for (; mp != NULL; mp = mp->b_cont)
+		n += MBLKL(mp);
+
+	return (n);
 }

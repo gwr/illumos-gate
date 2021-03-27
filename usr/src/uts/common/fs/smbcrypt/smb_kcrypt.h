@@ -30,6 +30,7 @@
 #include <security/cryptoki.h>
 #include <security/pkcs11.h>
 #endif
+#include <sys/stream.h>
 #include <sys/uio.h>
 
 #ifdef __cplusplus
@@ -122,10 +123,12 @@ void smb3_crypto_init_gcm_param(smb_enc_ctx_t *,
     uint8_t *, size_t, uint8_t *, size_t);
 
 int smb3_encrypt_init(smb_enc_ctx_t *, uint8_t *, size_t);
+int smb3_encrypt_mblks(smb_enc_ctx_t *, mblk_t *, size_t);
 int smb3_encrypt_uio(smb_enc_ctx_t *, uio_t *, uio_t *);
 void smb3_enc_ctx_done(smb_enc_ctx_t *);
 
 int smb3_decrypt_init(smb_enc_ctx_t *, uint8_t *, size_t);
+int smb3_decrypt_mblks(smb_enc_ctx_t *, mblk_t *, size_t);
 int smb3_decrypt_uio(smb_enc_ctx_t *, uio_t *, uio_t *);
 
 #ifdef	__cplusplus

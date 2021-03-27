@@ -181,6 +181,9 @@ int smb2_sign_init(struct smb_vc *);
 void smb2_rq_sign(struct smb_rq *);
 int smb2_rq_verify(struct smb_rq *);
 
+void smb3_crypt_init_mech(struct smb_vc *);
+void smb3_crypt_set_keys(struct smb_vc *);
+
 /*
  * SMB protocol level functions
  */

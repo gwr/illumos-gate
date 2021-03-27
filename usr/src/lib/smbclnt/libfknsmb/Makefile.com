@@ -61,6 +61,7 @@ OBJS_NSMB = \
 	smb2_rq.o \
 	smb2_sign.o \
 	smb2_smb.o \
+	smb3_crypt.o \
 	subr_mchain.o
 
 OBJECTS = \
