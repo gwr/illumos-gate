@@ -15,6 +15,7 @@
 
 include ../Makefile.com
 
-DYNFLAGS +=	-R/usr/lib/smbfs
+DYNFLAGS += '-R$$ORIGIN'
+DYNFLAGS += '-R$$ORIGIN/..'
 
 install: all $(ROOTLIBS) $(ROOTLINKS)

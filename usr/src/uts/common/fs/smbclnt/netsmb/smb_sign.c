@@ -43,13 +43,14 @@
 #include <sys/strsun.h>
 #include <sys/sdt.h>
 
+#include <fs/smbcrypt/smb_kcrypt.h>
+
 #include <netsmb/smb_osdep.h>
 #include <netsmb/smb.h>
 #include <netsmb/smb_conn.h>
 #include <netsmb/smb_subr.h>
 #include <netsmb/smb_dev.h>
 #include <netsmb/smb_rq.h>
-#include <netsmb/smb_signing.h>
 
 #ifdef DEBUG
 /*

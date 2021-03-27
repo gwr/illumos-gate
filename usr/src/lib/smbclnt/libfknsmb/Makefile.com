@@ -31,7 +31,6 @@ LIBRARY =	libfknsmb.a
 VERS =		.1
 
 OBJS_LOCAL = \
-	fksmb_sign_pkcs.o \
 	fake_ddi.o \
 	fake_fio.o \
 	fake_kmem.o \
@@ -80,7 +79,7 @@ STRIP_STABS	= :
 # Also, like Makefile.uts, reset CPPFLAGS
 CPPFLAGS.first += -I../../../libfakekernel/common
 CPPFLAGS.first += -I../common
-CPPFLAGS= $(CPPFLAGS.first)
+CPPFLAGS = $(CPPFLAGS.first)
 
 INCS += -I$(SRC)/uts/common/fs/smbclnt
 INCS += -I$(SRC)/uts/common
@@ -95,8 +94,9 @@ CERRWARN += -_gcc=-Wno-switch
 # needs work
 SMOFF += all_func_returns,deref_check,signed
 
+# Have LDLIBS32, LDLIBS64 from ../Makefile.lib
 LDLIBS +=	$(MACH_LDLIBS)
-LDLIBS +=	-lfakekernel -lpkcs11 -lnsl -lc
+LDLIBS +=	-lfksmbcrypt -lfakekernel -lnsl -lc
 
 # libfknsmb isn't delivered, and is a special case, disable global data complaints
 ZGUIDANCE= -Wl,-zguidance=noasserts

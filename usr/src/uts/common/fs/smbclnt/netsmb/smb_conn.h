@@ -47,8 +47,8 @@
 #include <sys/t_lock.h>
 #include <sys/queue.h> /* for SLIST below */
 #include <sys/uio.h>
+#include <fs/smbcrypt/smb_kcrypt.h>
 #include <netsmb/smb_dev.h>
-#include "smb_signing.h"
 
 /*
  * Credentials of user/process for processing in the connection procedures
@@ -224,7 +224,7 @@ typedef struct smb_vc {
 	int			vc_ssnkeylen;	/* session key length */
 	uint8_t			*vc_mackey;	/* MAC key buffer */
 	uint8_t			*vc_ssnkey;	/* session key buffer */
-	smb_sign_mech_t		vc_signmech;
+	smb_crypto_mech_t	vc_signmech;
 	struct smb_mac_ops	*vc_sign_ops;
 
 	struct smb_tran_desc	*vc_tdesc;	/* transport ops. vector */
