@@ -33,6 +33,7 @@
 #include <fs/smbcrypt/smb_kcrypt.h>
 
 #include <sys/cmn_err.h>
+#include <sys/strsun.h>
 #include <sys/sunddi.h>
 
 /*
@@ -206,4 +207,78 @@ void
 smb3_enc_ctx_done(smb_enc_ctx_t *ctxp)
 {
 	crypto_cancel_ctx(ctxp->ctx);
+}
+
+/*
+ * Encrypt a whole message with scatter/gather (MBLK)
+ */
+int
+smb3_encrypt_mblks(smb_enc_ctx_t *ctxp, mblk_t *mp, size_t clearlen)
+{
+	crypto_ctx_template_t tmpl = NULL;	// todo
+	crypto_data_t in_cd, out_cd;
+	size_t inlen, outlen;
+	int rv;
+
+	inlen = clearlen;
+	outlen = clearlen + SMB2_SIG_SIZE;
+	ASSERT(msgsize(mp) >= outlen);
+
+	bzero(&in_cd, sizeof (crypto_data_t));
+	in_cd.cd_format = CRYPTO_DATA_MBLK;
+	in_cd.cd_length = inlen;
+	in_cd.cd_mp = mp;
+
+	bzero(&out_cd, sizeof (crypto_data_t));
+	out_cd.cd_format = CRYPTO_DATA_MBLK;
+	out_cd.cd_length = outlen;
+	out_cd.cd_mp = mp;
+
+	rv = crypto_encrypt(&ctxp->mech, &in_cd,
+	    &ctxp->ckey, tmpl, &out_cd, NULL);
+	if (rv != CRYPTO_SUCCESS) {
+		cmn_err(CE_WARN, "crypto_encrypt failed: 0x%x", rv);
+		return (-1);
+	}
+
+	return (0);
+}
+
+/*
+ * Decrypt a whole message with scatter/gather (MBLK)
+ */
+int
+smb3_decrypt_mblks(smb_enc_ctx_t *ctxp, mblk_t *mp, size_t cipherlen)
+{
+	crypto_ctx_template_t tmpl = NULL;	// todo
+	crypto_data_t in_cd, out_cd;
+	size_t inlen, outlen;
+	int rv;
+
+	if (cipherlen <= SMB2_SIG_SIZE)
+		return (-1);
+	inlen = cipherlen;
+	outlen = cipherlen - SMB2_SIG_SIZE;
+	ASSERT(msgsize(mp) >= inlen);
+
+	/* In is ciphertext */
+	bzero(&in_cd, sizeof (crypto_data_t));
+	in_cd.cd_format = CRYPTO_DATA_MBLK;
+	in_cd.cd_length = inlen;
+	in_cd.cd_mp = mp;
+
+	/* Out is plaintext */
+	bzero(&out_cd, sizeof (crypto_data_t));
+	out_cd.cd_format = CRYPTO_DATA_MBLK;
+	out_cd.cd_length = outlen;
+	out_cd.cd_mp = mp;
+
+	rv = crypto_decrypt(&ctxp->mech, &in_cd,
+	    &ctxp->ckey, tmpl, &out_cd, NULL);
+	if (rv != CRYPTO_SUCCESS) {
+		cmn_err(CE_WARN, "crypto_encrypt failed: 0x%x", rv);
+		return (-1);
+	}
+
+	return (0);
 }

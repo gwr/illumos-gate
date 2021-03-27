@@ -63,9 +63,11 @@ SYMBOL_VERSION SUNWprivate {
 	smb3_crypto_init_gcm_param;
 
 	smb3_decrypt_init;
+	smb3_decrypt_mblks;
 	smb3_decrypt_uio;
 
 	smb3_encrypt_init;
+	smb3_encrypt_mblks;
 	smb3_encrypt_uio;
 
 	smb3_enc_ctx_done;

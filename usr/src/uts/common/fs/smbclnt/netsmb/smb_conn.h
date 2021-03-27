@@ -163,6 +163,7 @@ enum smbco_level {
 
 /*
  * SMB1 Negotiated protocol parameters
+ * Note:  All set to zero at start of nsmb_iod_negotiate
  */
 struct smb_sopt {
 	uint16_t	sv_proto;	/* protocol dialect */
@@ -177,12 +178,12 @@ struct smb_sopt {
 	uint32_t	sv_caps;	/* capabilites SMB_CAP_ */
 
 	/* SMB2+ fields */
-	uint32_t	sv2_sessflags;	/* final session setup reply flags */
 	uint32_t	sv2_capabilities;	/* capabilities */
 	uint32_t	sv2_maxtransact;	/* max transact size */
 	uint32_t	sv2_maxread;	/* max read size */
 	uint32_t	sv2_maxwrite;	/* max write size */
 	uint16_t	sv2_security_mode;	/* security mode */
+	uint16_t	sv2_sessflags;	/* final session setup reply flags */
 	uint8_t		sv2_guid[16];	/* GUID */
 };
 typedef struct smb_sopt smb_sopt_t;
@@ -237,6 +238,19 @@ typedef struct smb_vc {
 	uint64_t	vc2_session_id;		/* session id */
 	uint64_t	vc2_prev_session_id;	/* for reconnect */
 	uint32_t	vc2_lease_key;		/* lease key gen */
+
+	/* SMB3+ fields */
+	smb_crypto_mech_t *vc3_crypt_mech;
+
+	uint8_t		vc3_encrypt_key[SMB3_KEYLEN];
+	uint32_t	vc3_encrypt_key_len;
+
+	uint8_t		vc3_decrypt_key[SMB3_KEYLEN];
+	uint32_t	vc3_decrypt_key_len;
+
+	/* SMB 3 Nonce used for encryption */
+	uint64_t	vc3_nonce_high;
+	uint64_t	vc3_nonce_low;
 
 	kcondvar_t		iod_idle;	/* IOD thread idle CV */
 	krwlock_t		iod_rqlock;	/* iod_rqlist */
