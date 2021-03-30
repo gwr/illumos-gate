@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2021 Tintri by DDN, Inc.  All rights reserved.
+ * Copyright 2018-2021 Tintri by DDN, Inc.  All rights reserved.
  */
 
 /*
@@ -137,8 +137,11 @@ uint32_t smb2_odx_write_max = (1<<24); /* 16M */
  * needs to be large enough to allow the copy to proceed with
  * reasonable efficiency.  1M is currently the largest possible
  * block size with ZFS, so that's what we'll use here.
+ *
+ * Actually, limit this to kmem_max_cached, to avoid contention
+ * allocating from kmem_oversize_arena.
  */
-uint32_t smb2_odx_buf_size = (1<<20); /* 1M */
+uint32_t smb2_odx_buf_size = (1<<17); /* 128k */
 
 
 /*
