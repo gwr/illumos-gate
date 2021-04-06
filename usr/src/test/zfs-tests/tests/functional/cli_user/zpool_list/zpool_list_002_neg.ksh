@@ -27,6 +27,7 @@
 
 #
 # Copyright (c) 2013, 2016 by Delphix. All rights reserved.
+# Copyright 2026 RackTop Systems Inc.
 #
 
 . $STF_SUITE/include/libtest.shlib
@@ -53,5 +54,10 @@ while [[ $i -lt ${#args[*]} ]]; do
 	log_mustnot zpool list ${args[i]}
 	((i = i + 1))
 done
+
+output=$(zpool list "" 2>&1)
+(( $? != 0 )) || log_fail "'zpool list \"\"' unexpectedly succeeded"
+[[ "$output" == *"cannot open ''"* ]] ||
+    log_fail "'zpool list \"\"' did not treat the empty string as a pool name"
 
 log_pass "Executing 'zpool list' with bad options fails"

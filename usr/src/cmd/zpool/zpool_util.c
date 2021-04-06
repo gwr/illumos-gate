@@ -106,6 +106,9 @@ array64_max(uint64_t array[], unsigned int len)
 int
 isnumber(char *str)
 {
+	if (*str == '\0')
+		return (0);
+
 	for (; *str; str++)
 		if (!(isdigit(*str) || (*str == '.')))
 			return (0);
