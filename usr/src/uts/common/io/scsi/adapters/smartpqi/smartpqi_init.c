@@ -124,6 +124,8 @@ static void update_time(void *v);
 
 static int reset_devices = 1;
 
+int pqi_max_io_slots = 0;
+
 boolean_t
 pqi_check_firmware(pqi_state_t s)
 {
@@ -168,8 +170,7 @@ pqi_calculate_io_resources(pqi_state_t s)
 	uint32_t	max_xfer_size;
 	uint32_t	max_sg_entries;
 
-	s->s_max_io_slots = min(PQI_MAX_OUTSTANDING_REQUESTS,
-	    s->s_max_outstanding_requests);
+	s->s_max_io_slots = s->s_max_outstanding_requests;
 
 	max_xfer_size = min(s->s_max_xfer_size, PQI_MAX_TRANSFER_SIZE);
 
@@ -189,10 +190,11 @@ pqi_calculate_io_resources(pqi_state_t s)
 static boolean_t
 pqi_check_alloc(pqi_state_t s)
 {
-	if (s->s_max_outstanding_requests > PQI_MAX_OUTSTANDING_REQUESTS)
-		s->s_max_outstanding_requests = PQI_MAX_OUTSTANDING_REQUESTS;
+	if (pqi_max_io_slots != 0 && pqi_max_io_slots < s->s_max_io_slots) {
+	    s->s_max_io_slots = pqi_max_io_slots;
+	}
 
-	s->s_error_dma = pqi_alloc_single(s, (s->s_max_outstanding_requests *
+	s->s_error_dma = pqi_alloc_single(s, (s->s_max_io_slots *
 	    PQI_ERROR_BUFFER_ELEMENT_LENGTH) + SIS_BASE_STRUCT_ALIGNMENT);
 	if (s->s_error_dma == NULL)
 		return (B_FALSE);
