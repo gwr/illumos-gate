@@ -4788,11 +4788,6 @@ zfs_receive_one(libzfs_handle_t *hdl, int infd, const char *tosnap,
 		(void) fflush(stdout);
 	}
 
-	if (flags->dryrun) {
-		err = recv_skip(hdl, infd, flags->byteswap);
-		goto out;
-	}
-
 	if (top_zfs && (*top_zfs == NULL || strcmp(*top_zfs, name) == 0))
 		toplevel = B_TRUE;
 	if (drrb->drr_type == DMU_OST_ZVOL) {
@@ -4809,6 +4804,11 @@ zfs_receive_one(libzfs_handle_t *hdl, int infd, const char *tosnap,
 	    stream_wantsnewfs, raw, toplevel, rcvprops, cmdprops, origprops,
 	    &oxprops, &wkeydata, &wkeylen, errbuf)) != 0)
 		goto out;
+
+	if (flags->dryrun) {
+		err = recv_skip(hdl, infd, flags->byteswap);
+		goto out;
+	}
 
 	/*
 	 * The following is a difference between ZoL and illumos.

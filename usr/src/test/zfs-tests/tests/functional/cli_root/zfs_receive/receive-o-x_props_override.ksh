@@ -16,6 +16,7 @@
 
 #
 # Copyright 2017, loli10K <ezomori.nozomu@gmail.com>. All rights reserved.
+# Copyright 2026 RackTop Systems Inc.
 #
 
 . $STF_SUITE/include/libtest.shlib
@@ -76,6 +77,8 @@ log_mustnot eval "zfs recv $dest -x atime -x atime < $streamfile_full"
 log_mustnot eval "zfs recv $dest -o version=1 < $streamfile_full"
 log_mustnot eval "zfs recv $dest -x version < $streamfile_full"
 log_mustnot eval "zfs recv $dest -x normalization < $streamfile_full"
+log_mustnot eval "zfs recv -n $dest -o version=1 < $streamfile_full"
+log_mustnot eval "zfs recv -n $dest -x atime=off < $streamfile_full"
 # Verify we also reject invalid ZVOL options
 log_must zfs create -V 32K -s $orig/zvol
 log_must eval "zfs send $orig@snap1 > $streamfile_full"
