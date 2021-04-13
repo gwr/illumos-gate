@@ -350,6 +350,9 @@ zfs_mount(zfs_handle_t *zhp, const char *options, int flags)
 	struct stat buf;
 	char mountpoint[ZFS_MAXPROPLEN];
 	char mntopts[MNT_LINE_MAX];
+	char prop_encroot[MAXNAMELEN];
+	boolean_t is_encroot;
+	zfs_handle_t *encroot_hp = zhp;
 	libzfs_handle_t *hdl = zhp->zfs_hdl;
 	uint64_t keystatus;
 	int rc;
@@ -389,7 +392,27 @@ zfs_mount(zfs_handle_t *zhp, const char *options, int flags)
 		 */
 		if (keystatus == ZFS_KEYSTATUS_UNAVAILABLE) {
 			if (flags & MS_CRYPT) {
-				rc = zfs_crypto_load_key(zhp, B_FALSE, NULL);
+				rc = zfs_crypto_get_encryption_root(zhp,
+				    &is_encroot, prop_encroot);
+				if (rc != 0) {
+					zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
+					    "Failed to get encryption root for "
+					    "'%s'."), zfs_get_name(zhp));
+					return (rc);
+				}
+
+				if (!is_encroot) {
+					encroot_hp = zfs_open(hdl, prop_encroot,
+					    ZFS_TYPE_DATASET);
+					if (encroot_hp == NULL)
+						return (libzfs_errno(hdl));
+				}
+
+				rc = zfs_crypto_load_key(encroot_hp,
+				    B_FALSE, NULL);
+
+				if (!is_encroot)
+					zfs_close(encroot_hp);
 				if (rc != 0)
 					return (rc);
 			} else {

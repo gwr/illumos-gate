@@ -16,6 +16,7 @@
 
 #
 # Copyright (c) 2017, Datto, Inc. All rights reserved.
+# Copyright 2026 RackTop Systems Inc.
 #
 
 . $STF_SUITE/include/libtest.shlib
@@ -42,7 +43,7 @@ verify_runnable "both"
 function cleanup
 {
 	datasetexists $TESTPOOL/$TESTFS1 && \
-		log_must zfs destroy -f $TESTPOOL/$TESTFS1
+		log_must zfs destroy -r -f $TESTPOOL/$TESTFS1
 }
 
 log_onexit cleanup
@@ -51,7 +52,9 @@ log_assert "'zfs mount -l' should properly load a valid wrapping key"
 
 log_must eval "echo $PASSPHRASE | zfs create -o encryption=on" \
 	"-o keyformat=passphrase $TESTPOOL/$TESTFS1"
+log_must zfs create $TESTPOOL/$TESTFS1/child
 
+log_must zfs unmount $TESTPOOL/$TESTFS1/child
 log_must zfs unmount $TESTPOOL/$TESTFS1
 log_must zfs unload-key $TESTPOOL/$TESTFS1
 log_must key_unavailable $TESTPOOL/$TESTFS1
@@ -65,5 +68,14 @@ log_must key_available $TESTPOOL/$TESTFS1
 
 mounted $TESTPOOL/$TESTFS1 || \
 	log_fail "Filesystem $TESTPOOL/$TESTFS1 is unmounted"
+
+log_must zfs unmount $TESTPOOL/$TESTFS1
+log_must zfs unload-key $TESTPOOL/$TESTFS1
+
+log_must eval "echo $PASSPHRASE | zfs mount -l $TESTPOOL/$TESTFS1/child"
+log_must key_available $TESTPOOL/$TESTFS1
+
+mounted $TESTPOOL/$TESTFS1/child || \
+	log_fail "Filesystem $TESTPOOL/$TESTFS1/child is unmounted"
 
 log_pass "'zfs mount -l' properly loads a valid wrapping key"
