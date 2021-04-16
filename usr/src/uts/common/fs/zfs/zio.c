@@ -4361,7 +4361,7 @@ zio_done(zio_t *zio)
 			uint64_t asize = P2ROUNDUP(psize, align);
 			abd_t *adata = zio->io_abd;
 
-			if (asize != psize) {
+			if (adata != NULL && asize != psize) {
 				adata = abd_alloc(asize, B_TRUE);
 				abd_copy(adata, zio->io_abd, psize);
 				abd_zero_off(adata, psize, asize - psize);
@@ -4372,7 +4372,7 @@ zio_done(zio_t *zio)
 			zcr->zcr_finish(zcr, adata);
 			zfs_ereport_free_checksum(zcr);
 
-			if (asize != psize)
+			if (adata != NULL && asize != psize)
 				abd_free(adata);
 		}
 	}
