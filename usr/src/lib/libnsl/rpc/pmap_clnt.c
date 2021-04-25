@@ -44,6 +44,7 @@
 #include <rpc/pmap_prot.h>
 #include <rpc/pmap_clnt.h>
 #include <rpc/pmap_rmt.h>
+#include <stdio.h>
 #include <string.h>
 #include <syslog.h>
 #include <netinet/in.h>

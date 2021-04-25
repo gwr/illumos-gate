@@ -20,7 +20,7 @@
  */
 
 /*
- * Copyright 2016 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2013-2021 Tintri by DDN, Inc. All rights reserved.
  */
 
 /*
@@ -46,7 +46,7 @@
 #include <sys/byteorder.h>	/* For all ntoh* and hton*() kind of macros */
 #include <rpc/types.h>	/* For all ntoh* and hton*() kind of macros */
 #if !defined(_KERNEL) && !defined(_FAKE_KERNEL)
-#include <stdio.h> /* defines FILE *, used in ANSI C function prototypes */
+#include <stdio_tag.h> /* for __FILE_TAG -- see xdrstdio_create */
 #else	/* _KERNEL */
 #include <sys/stream.h>
 #endif	/* _KERNEL */
@@ -567,7 +567,7 @@ typedef struct xdr_bytesrec xdr_bytesrec;
 extern void   xdrmem_create(XDR *, const caddr_t, const uint_t, const enum
 xdr_op);
 	/* XDR using memory buffers */
-extern void   xdrstdio_create(XDR *, FILE *, const enum xdr_op);
+extern void   xdrstdio_create(XDR *, __FILE_TAG *, const enum xdr_op);
 /* XDR using stdio library */
 extern void   xdrrec_create(XDR *, const uint_t, const uint_t, const caddr_t,
 int (*) (void *, caddr_t, int), int (*) (void *, caddr_t, int));

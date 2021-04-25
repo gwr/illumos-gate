@@ -26,6 +26,7 @@
 
 #pragma ident	"%Z%%M%	%I%	%E% SMI"
 
+#include <stdio.h>
 #include <strings.h>
 #include <rpc/rpc.h>
 
