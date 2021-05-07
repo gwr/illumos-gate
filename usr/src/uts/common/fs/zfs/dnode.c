@@ -820,9 +820,7 @@ dnode_move_impl(dnode_t *odn, dnode_t *ndn)
 	ndn->dn_newgid = odn->dn_newgid;
 	ndn->dn_newprojid = odn->dn_newprojid;
 	ndn->dn_id_flags = odn->dn_id_flags;
-	dmu_zfetch_init(&ndn->dn_zfetch, NULL);
-	list_move_tail(&ndn->dn_zfetch.zf_stream, &odn->dn_zfetch.zf_stream);
-	ndn->dn_zfetch.zf_dnode = odn->dn_zfetch.zf_dnode;
+	dmu_zfetch_init(&ndn->dn_zfetch, ndn);
 
 	/*
 	 * Update back pointers. Updating the handle fixes the back pointer of
@@ -830,9 +828,6 @@ dnode_move_impl(dnode_t *odn, dnode_t *ndn)
 	 */
 	ASSERT(ndn->dn_handle->dnh_dnode == odn);
 	ndn->dn_handle->dnh_dnode = ndn;
-	if (ndn->dn_zfetch.zf_dnode == odn) {
-		ndn->dn_zfetch.zf_dnode = ndn;
-	}
 
 	/*
 	 * Invalidate the original dnode by clearing all of its back pointers.
@@ -843,7 +838,7 @@ dnode_move_impl(dnode_t *odn, dnode_t *ndn)
 	    offsetof(dmu_buf_impl_t, db_link));
 	odn->dn_dbufs_count = 0;
 	odn->dn_bonus = NULL;
-	odn->dn_zfetch.zf_dnode = NULL;
+	dmu_zfetch_fini(&odn->dn_zfetch);
 
 	/*
 	 * Set the low bit of the objset pointer to ensure that dnode_move()
