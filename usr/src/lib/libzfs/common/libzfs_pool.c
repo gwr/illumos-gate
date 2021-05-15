@@ -530,8 +530,8 @@ zpool_valid_proplist(libzfs_handle_t *hdl, const char *poolname,
 			if (intval < version ||
 			    !SPA_VERSION_IS_SUPPORTED(intval)) {
 				zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
-				    "property '%s' number %d is invalid."),
-				    propname, intval);
+				    "property '%s' number %llu is invalid."),
+				    propname, (unsigned long long)intval);
 				(void) zfs_error(hdl, EZFS_BADVERSION, errbuf);
 				goto error;
 			}
@@ -551,10 +551,11 @@ zpool_valid_proplist(libzfs_handle_t *hdl, const char *poolname,
 			if (intval != 0 &&
 			    (intval < ASHIFT_MIN || intval > ASHIFT_MAX)) {
 				zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
-				    "invalid '%s=%d' property: only values "
+				    "invalid '%s=%llu' property: only values "
 				    "between %" PRId32 " and %" PRId32 " "
 				    "are allowed.\n"),
-				    propname, intval, ASHIFT_MIN, ASHIFT_MAX);
+				    propname, (u_longlong_t)intval, ASHIFT_MIN,
+				    ASHIFT_MAX);
 				(void) zfs_error(hdl, EZFS_BADPROP, errbuf);
 				goto error;
 			}
@@ -1582,10 +1583,6 @@ zpool_export_common(zpool_handle_t *zhp, boolean_t force, boolean_t hardforce,
     const char *log_str)
 {
 	zfs_cmd_t zc = { 0 };
-	char msg[1024];
-
-	(void) snprintf(msg, sizeof (msg), dgettext(TEXT_DOMAIN,
-	    "cannot export '%s'"), zhp->zpool_name);
 
 	(void) strlcpy(zc.zc_name, zhp->zpool_name, sizeof (zc.zc_name));
 	zc.zc_cookie = force;
@@ -1600,11 +1597,13 @@ zpool_export_common(zpool_handle_t *zhp, boolean_t force, boolean_t hardforce,
 			    "'%s' has an active shared spare which could be"
 			    " used by other pools once '%s' is exported."),
 			    zhp->zpool_name, zhp->zpool_name);
-			return (zfs_error(zhp->zpool_hdl, EZFS_ACTIVE_SPARE,
-			    msg));
+			return (zfs_error_fmt(zhp->zpool_hdl, EZFS_ACTIVE_SPARE,
+			    dgettext(TEXT_DOMAIN, "cannot export '%s'"),
+			    zhp->zpool_name));
 		default:
 			return (zpool_standard_error_fmt(zhp->zpool_hdl, errno,
-			    msg));
+			    dgettext(TEXT_DOMAIN, "cannot export '%s'"),
+			    zhp->zpool_name));
 		}
 	}
 
@@ -2009,7 +2008,7 @@ zpool_import_props(libzfs_handle_t *hdl, nvlist_t *config, const char *newname,
 					    "set.\n"));
 				}
 
-				(void) zfs_error_aux(hdl, aux);
+				(void) zfs_error_aux(hdl, "%s", aux);
 			}
 			(void) zfs_error(hdl, EZFS_ACTIVE_POOL, desc);
 			break;

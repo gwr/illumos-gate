@@ -1092,7 +1092,7 @@ estimate_ioctl(zfs_handle_t *zhp, uint64_t fromsnap_obj,
 		case ERANGE:
 		case EFAULT:
 		case EROFS:
-			zfs_error_aux(hdl, strerror(errno));
+			zfs_error_aux(hdl, "%s", strerror(errno));
 			return (zfs_error(hdl, EZFS_BADBACKUP, errbuf));
 
 		default:
@@ -1177,7 +1177,7 @@ dump_ioctl(zfs_handle_t *zhp, const char *fromsnap, uint64_t fromsnap_obj,
 		case ERANGE:
 		case EFAULT:
 		case EROFS:
-			zfs_error_aux(hdl, strerror(errno));
+			zfs_error_aux(hdl, "%s", strerror(errno));
 			return (zfs_error(hdl, EZFS_BADBACKUP, errbuf));
 
 		default:
@@ -2100,7 +2100,7 @@ zfs_send_resume(libzfs_handle_t *hdl, sendflags_t *flags, int outfd,
 		case ERANGE:
 		case EFAULT:
 		case EROFS:
-			zfs_error_aux(hdl, strerror(errno));
+			zfs_error_aux(hdl, "%s", strerror(errno));
 			return (zfs_error(hdl, EZFS_BADBACKUP, errbuf));
 
 		default:
@@ -2312,7 +2312,7 @@ zfs_send(zfs_handle_t *zhp, const char *fromsnap, const char *tosnap,
 		featureflags |= (DMU_BACKUP_FEATURE_DEDUP |
 		    DMU_BACKUP_FEATURE_DEDUPPROPS);
 		if ((err = pipe(pipefd)) != 0) {
-			zfs_error_aux(zhp->zfs_hdl, strerror(errno));
+			zfs_error_aux(zhp->zfs_hdl, "%s", strerror(errno));
 			return (zfs_error(zhp->zfs_hdl, EZFS_PIPEFAILED,
 			    errbuf));
 		}
@@ -2322,7 +2322,7 @@ zfs_send(zfs_handle_t *zhp, const char *fromsnap, const char *tosnap,
 		if ((err = pthread_create(&tid, NULL, cksummer, &dda)) != 0) {
 			(void) close(pipefd[0]);
 			(void) close(pipefd[1]);
-			zfs_error_aux(zhp->zfs_hdl, strerror(errno));
+			zfs_error_aux(zhp->zfs_hdl, "%s", strerror(errno));
 			return (zfs_error(zhp->zfs_hdl,
 			    EZFS_THREADCREATEFAILED, errbuf));
 		}
@@ -2813,7 +2813,7 @@ zfs_send_one(zfs_handle_t *zhp, const char *from, int fd, sendflags_t *flags,
 		case EPIPE:
 		case ERANGE:
 		case EROFS:
-			zfs_error_aux(hdl, strerror(err));
+			zfs_error_aux(hdl, "%s", zfs_strerror(err));
 			return (zfs_error(hdl, EZFS_BADBACKUP, errbuf));
 
 		default:
@@ -5254,8 +5254,8 @@ zfs_receive_impl(libzfs_handle_t *hdl, const char *tosnap,
 	if (!DMU_STREAM_SUPPORTED(featureflags) ||
 	    (hdrtype != DMU_SUBSTREAM && hdrtype != DMU_COMPOUNDSTREAM)) {
 		zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
-		    "stream has unsupported feature, feature flags = %lx"),
-		    featureflags);
+		    "stream has unsupported feature, feature flags = %llx"),
+		    (unsigned long long)featureflags);
 		return (zfs_error(hdl, EZFS_BADSTREAM, errbuf));
 	}
 

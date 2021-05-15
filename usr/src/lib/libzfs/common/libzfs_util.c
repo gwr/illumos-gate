@@ -616,7 +616,7 @@ zfs_standard_error_fmt(libzfs_handle_t *hdl, int error, const char *fmt, ...)
 		zfs_verror(hdl, EZFS_BADPROP, fmt, ap);
 		break;
 	default:
-		zfs_error_aux(hdl, strerror(error));
+		zfs_error_aux(hdl, "%s", strerror(error));
 		zfs_verror(hdl, EZFS_UNKNOWN, fmt, ap);
 		break;
 	}
@@ -749,7 +749,7 @@ zpool_standard_error_fmt(libzfs_handle_t *hdl, int error, const char *fmt, ...)
 		zfs_verror(hdl, EZFS_BADPROP, fmt, ap);
 		break;
 	default:
-		zfs_error_aux(hdl, strerror(error));
+		zfs_error_aux(hdl, "%s", strerror(error));
 		zfs_verror(hdl, EZFS_UNKNOWN, fmt, ap);
 	}
 
