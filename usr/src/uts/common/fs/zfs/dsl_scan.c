@@ -2697,25 +2697,31 @@ dsl_scan_visit(dsl_scan_t *scn, dmu_tx_t *tx)
 }
 
 static uint64_t
-dsl_scan_count_leaves(vdev_t *vd)
+dsl_scan_vdev_data_disks(vdev_t *vd)
 {
-	uint64_t i, leaves = 0;
-
-	/* we only count leaves that belong to the main pool and are readable */
-	if (vd->vdev_islog || vd->vdev_isspare ||
-	    vd->vdev_isl2cache || !vdev_readable(vd))
-		return (0);
-
-	if (vd->vdev_ops->vdev_op_leaf)
-		return (1);
-
-	for (i = 0; i < vd->vdev_children; i++) {
-		leaves += dsl_scan_count_leaves(vd->vdev_child[i]);
+	if (vd->vdev_nparity != 0) {
+		ASSERT3U(vd->vdev_children, >, vd->vdev_nparity);
+		return (vd->vdev_children - vd->vdev_nparity);
 	}
 
-	return (leaves);
+	return (1);
 }
 
+static uint64_t
+dsl_scan_count_data_disks(vdev_t *rvd)
+{
+	uint64_t data_disks = 0;
+
+	for (uint64_t i = 0; i < rvd->vdev_children; i++) {
+		vdev_t *vd = rvd->vdev_child[i];
+
+		if (vd->vdev_islog || vd->vdev_isspare || vd->vdev_isl2cache)
+			continue;
+		data_disks += dsl_scan_vdev_data_disks(vd);
+	}
+
+	return (data_disks);
+}
 
 static void
 scan_io_queues_update_zio_stats(dsl_scan_io_queue_t *q, const blkptr_t *bp)
@@ -2956,8 +2962,6 @@ scan_io_queues_run_one(void *arg)
 	range_seg_t *rs = NULL;
 	scan_io_t *sio = NULL;
 	list_t sio_list;
-	uint64_t bytes_per_leaf = zfs_scan_vdev_limit;
-	uint64_t nr_leaves = dsl_scan_count_leaves(queue->q_vd);
 
 	ASSERT(queue->q_scn->scn_is_sorted);
 
@@ -2965,9 +2969,9 @@ scan_io_queues_run_one(void *arg)
 	    offsetof(scan_io_t, sio_nodes.sio_list_node));
 	mutex_enter(q_lock);
 
-	/* calculate maximum in-flight bytes for this txg (min 1MB) */
-	queue->q_maxinflight_bytes =
-	    MAX(nr_leaves * bytes_per_leaf, 1ULL << 20);
+	/* Calculate maximum in-flight bytes for this vdev. */
+	queue->q_maxinflight_bytes = MAX(1, zfs_scan_vdev_limit *
+	    dsl_scan_vdev_data_disks(queue->q_vd));
 
 	/* reset per-queue scan statistics for this txg */
 	queue->q_total_seg_size_this_txg = 0;
@@ -3586,16 +3590,14 @@ dsl_scan_sync(dsl_pool_t *dp, dmu_tx_t *tx)
 		/* Need to scan metadata for more blocks to scrub */
 		dsl_scan_phys_t *scnp = &scn->scn_phys;
 		taskqid_t prefetch_tqid;
-		uint64_t bytes_per_leaf = zfs_scan_vdev_limit;
-		uint64_t nr_leaves = dsl_scan_count_leaves(spa->spa_root_vdev);
 
 		/*
 		 * Calculate the max number of in-flight bytes for pool-wide
 		 * scanning operations (minimum 1MB). Limits for the issuing
 		 * phase are done per top-level vdev and are handled separately.
 		 */
-		scn->scn_maxinflight_bytes =
-		    MAX(nr_leaves * bytes_per_leaf, 1ULL << 20);
+		scn->scn_maxinflight_bytes = MAX(zfs_scan_vdev_limit *
+		    dsl_scan_count_data_disks(spa->spa_root_vdev), 1ULL << 20);
 
 		if (scnp->scn_ddt_bookmark.ddb_class <=
 		    scnp->scn_ddt_class_max) {
