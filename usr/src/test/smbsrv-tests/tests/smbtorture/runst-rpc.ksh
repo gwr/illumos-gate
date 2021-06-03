@@ -18,7 +18,7 @@
 export SMBSRV_TESTS="/opt/smbsrv-tests"
 
 runsmbtor=$SMBSRV_TESTS/bin/run_smbtorture
-excl_file=$SMBSRV_TESTS/include/smbtor-excl-smb2.txt
+excl_file=$SMBSRV_TESTS/include/smbtor-excl-rpc.txt
 
 cfgfile=${CFGFILE:-$SMBSRV_TESTS/include/default.cfg}
 outdir=${OUTDIR:-/var/tmp/test_results/smbsrv-tests}
@@ -57,19 +57,22 @@ mkdir -p $outdir
 cd $outdir || fail "Could not cd to $outdir"
 
 tstamp=$(date +'%Y%m%dT%H%M%S')
-logfile=./smbtor-smb2-${tstamp}.log
-outfile=./smbtor-smb2-${tstamp}.summary
-outbase=${basefile:-./smbtor-smb2-baseline.summary}
+logfile=./smbtor-rpc-${tstamp}.log
+outfile=./smbtor-rpc-${tstamp}.summary
+outbase=${basefile:-./smbtor-rpc-baseline.summary}
 
 if [[ -z "$timeout" && -n "$TIMEOUT" ]]; then
 	timeout="-t $TIMEOUT"
 fi
 
-$SMBTOR -U "$SMBT_USER%${SMBT_PASS}" //$SMBT_HOST/$SMBT_SHARE smb2.dir.find || \
-    fail "Cannot connect to //$SMBT_HOST/$SMBT_SHARE"
-echo "Running smbtorture/smb2 tests with //$SMBT_HOST/$SMBT_SHARE"
-$runsmbtor -m smb2 -e $excl_file -o $logfile $timeout \
-    "$SMBT_HOST" "$SMBT_SHARE" "$SMBT_USER" "${SMBT_PASS}" |
+#It would be nice to have a generic 'Can I connect to this server/share?' test
+$SMBTOR -U "$SMBT_USER%${SMBT_PASS}" //$SMBT_HOST/IPC\$	\
+    rpc.wkssvc.wkssvc.NetWkstaGetInfo || \
+    fail "Cannot connect to //$SMBT_HOST/IPC\$"
+
+echo "Running smbtorture/RPC tests with //$SMBT_HOST/IPC\$"
+$runsmbtor -m rpc -e $excl_file -o $logfile $timeout \
+    "$SMBT_HOST" "IPC\$" "$SMBT_USER" "${SMBT_PASS}" |
      tee $outfile
 
 if [ -f $outbase ] ; then

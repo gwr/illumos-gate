@@ -56,6 +56,7 @@ class TestResult(Enum):
     UNKNOWN = 2
     SKIP = 3
     KILLED = 4
+    TEST_ERR = 5
 
     def __str__(self):
         return self.name
@@ -68,9 +69,9 @@ class TestCase:
 
     __slots__ = 'name', 'result'
 
-    def __init__(self, name, skip=False):
+    def __init__(self, name):
         self.name = name
-        self.result = TestResult.SKIP if skip else TestResult.UNKNOWN
+        self.result = TestResult.UNKNOWN
 
     def __str__(self):
         return '{0.name} | {0.result}'.format(self)
@@ -102,6 +103,8 @@ class TestCase:
                     self.result = TestResult.PASS
                 elif line.startswith('skip:'):
                     self.result = TestResult.SKIP
+                elif line.startswith('INTERNAL ERROR:'):
+                    self.result = TestResult.TEST_ERR
         except subprocess.TimeoutExpired:
             self.result = TestResult.KILLED
             wfd.write('\nKilled due to timeout\n')
@@ -109,15 +112,36 @@ class TestCase:
 
         return finish(self, starttime, wfd)
 
-def should_skip(test, pattern, verbose):
-    """Returns whether test matches pattern, indicating it should be skipped."""
+class TestSet:
+    """Class to track state associated with the entire test set"""
 
-    if not pattern or not pattern.match(test):
-        return False
+    __slots__ = 'excluded', 'tests'
 
-    if verbose:
-        print('{} matches exception pattern; marking as skipped'.format(test))
-    return True
+    def __init__(self, tests, skip_pat, verbose):
+        self.excluded = 0
+
+        def should_skip(self, test, pattern, verbose):
+            """Returns whether test matches pattern, indicating it should be
+            skipped."""
+
+            if not pattern or not pattern.match(test):
+                return False
+
+            if verbose:
+                print('{} matches exception pattern; marking as skipped'.format(test))
+
+            self.excluded += 1
+            return True
+
+        self.tests = [TestCase(line) for line in tests
+            if not should_skip(self, line, skip_pat, verbose)]
+
+
+    def __iter__(self):
+        return iter(self.tests)
+
+    def __len__(self):
+        return len(self.tests)
 
 def fnm2regex(fnm_pat):
     """Maps an fnmatch(5) pattern to a regex pattern that will match against
@@ -201,14 +225,12 @@ def main():
     else:
         skip_pat = None
 
-    tests = [TestCase(line, should_skip(line, skip_pat, args.verbose))
-        for line in parse_tests(testgen)]
+    tests = TestSet(parse_tests(testgen), skip_pat, args.verbose)
 
     if args.verbose:
         print('Tests to run:')
         for test in tests:
-            if test.result != TestResult.SKIP:
-                print(test.name)
+            print(test.name)
 
     outw = open(fout, 'w', buffering=1)
     outr = open(fout, 'r')
@@ -236,6 +258,7 @@ def main():
         print('{}: {:>{}}'.format(res, results[res], 20 - len(res)))
     print('=' * 22)
     print('Total: {:>15}'.format(len(tests)))
+    print('Excluded: {:>12}'.format(tests.excluded))
 
 if __name__ == '__main__':
     try:
