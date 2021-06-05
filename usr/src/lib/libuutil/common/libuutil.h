@@ -82,17 +82,15 @@ const char *uu_strerror(uint32_t);
 extern void uu_alt_exit(int);
 extern const char *uu_setpname(char *);
 extern const char *uu_getpname(void);
-/*PRINTFLIKE1*/
-extern void uu_warn(const char *, ...);
-extern void uu_vwarn(const char *, va_list);
-/*PRINTFLIKE1*/
-extern void uu_die(const char *, ...) __NORETURN;
-extern void uu_vdie(const char *, va_list) __NORETURN;
-/*PRINTFLIKE2*/
-extern void uu_xdie(int, const char *, ...) __NORETURN;
-extern void uu_vxdie(int, const char *, va_list) __NORETURN;
-/*PRINTFLIKE1*/
-extern void uu_panic(const char *, ...) __NORETURN;
+extern void uu_warn(const char *, ...) __PRINTFLIKE(1);
+extern void uu_vwarn(const char *, va_list) __VPRINTFLIKE(1);
+extern void uu_die(const char *, ...) __PRINTFLIKE(1) __NORETURN;
+extern void uu_vdie(const char *, va_list) __VPRINTFLIKE(1) __NORETURN;
+extern void uu_xdie(int, const char *, ...)
+    __PRINTFLIKE(2) __NORETURN;
+extern void uu_vxdie(int, const char *, va_list)
+    __VPRINTFLIKE(2) __NORETURN;
+extern void uu_panic(const char *, ...) __PRINTFLIKE(1) __NORETURN;
 
 /*
  * Exit status functions (not to be used directly)

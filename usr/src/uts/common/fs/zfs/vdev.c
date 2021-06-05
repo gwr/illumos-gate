@@ -118,7 +118,6 @@ int zfs_vdev_standard_sm_blksz = (1 << 17);
 
 int zfs_ashift_min;
 
-/*PRINTFLIKE2*/
 void
 vdev_dbgmsg(vdev_t *vd, const char *fmt, ...)
 {
@@ -3153,7 +3152,8 @@ vdev_load(vdev_t *vd)
 			vdev_set_state(vd, B_FALSE, VDEV_STATE_CANT_OPEN,
 			    VDEV_AUX_CORRUPT_DATA);
 			vdev_dbgmsg(vd, "vdev_load: zap_lookup(top_zap=%llu) "
-			    "failed [error=%d]", vd->vdev_top_zap, error);
+			    "failed [error=%d]",
+			    (u_longlong_t)vd->vdev_top_zap, error);
 			return (error);
 		}
 	}

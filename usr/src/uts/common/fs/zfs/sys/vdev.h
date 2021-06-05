@@ -51,7 +51,7 @@ extern boolean_t zfs_nocacheflush;
 
 typedef boolean_t vdev_open_children_func_t(vdev_t *vd);
 
-extern void vdev_dbgmsg(vdev_t *vd, const char *fmt, ...);
+extern void vdev_dbgmsg(vdev_t *vd, const char *fmt, ...) __KPRINTFLIKE(2);
 extern void vdev_dbgmsg_print_tree(vdev_t *, int);
 extern int vdev_open(vdev_t *);
 extern void vdev_open_children(vdev_t *);

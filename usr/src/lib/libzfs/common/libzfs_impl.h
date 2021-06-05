@@ -192,18 +192,20 @@ typedef struct zfs_uri_handler {
 #define	CONFIG_BUF_MINSIZE	262144
 
 int zfs_error(libzfs_handle_t *, int, const char *);
-int zfs_error_fmt(libzfs_handle_t *, int, const char *, ...);
-void zfs_error_aux(libzfs_handle_t *, const char *, ...);
+int zfs_error_fmt(libzfs_handle_t *, int, const char *, ...) __PRINTFLIKE(3);
+void zfs_error_aux(libzfs_handle_t *, const char *, ...) __PRINTFLIKE(2);
 void *zfs_alloc(libzfs_handle_t *, size_t);
 void *zfs_realloc(libzfs_handle_t *, void *, size_t, size_t);
-char *zfs_asprintf(libzfs_handle_t *, const char *, ...);
+char *zfs_asprintf(libzfs_handle_t *, const char *, ...) __PRINTFLIKE(2);
 char *zfs_strdup(libzfs_handle_t *, const char *);
 int no_memory(libzfs_handle_t *);
 
 int zfs_standard_error(libzfs_handle_t *, int, const char *);
-int zfs_standard_error_fmt(libzfs_handle_t *, int, const char *, ...);
+int zfs_standard_error_fmt(libzfs_handle_t *, int, const char *, ...)
+    __PRINTFLIKE(3);
 int zpool_standard_error(libzfs_handle_t *, int, const char *);
-int zpool_standard_error_fmt(libzfs_handle_t *, int, const char *, ...);
+int zpool_standard_error_fmt(libzfs_handle_t *, int, const char *, ...)
+    __PRINTFLIKE(3);
 
 int get_dependents(libzfs_handle_t *, boolean_t, const char *, char ***,
     size_t *);
