@@ -469,7 +469,7 @@ zio_do_crypt_uio(boolean_t encrypt, uint64_t crypt, crypto_key_t *key,
 		}
 	} else {
 		if (zio_decrypt_fail_fraction != 0 &&
-		    spa_get_random(zio_decrypt_fail_fraction) == 0) {
+		    random_in_range(zio_decrypt_fail_fraction) == 0) {
 			ret = CRYPTO_INVALID_MAC;
 		} else {
 			ret = crypto_decrypt(&mech, &cipherdata,

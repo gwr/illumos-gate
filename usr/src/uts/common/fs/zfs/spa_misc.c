@@ -1526,31 +1526,20 @@ spa_strfree(char *s)
 }
 
 uint64_t
-spa_get_random(uint64_t range)
-{
-	uint64_t r;
-
-	ASSERT(range != 0);
-
-	if (range == 1)
-		return (0);
-
-	(void) random_get_pseudo_bytes((void *)&r, sizeof (uint64_t));
-
-	return (r % range);
-}
-
-uint64_t
 spa_generate_guid(spa_t *spa)
 {
-	uint64_t guid = spa_get_random(-1ULL);
+	uint64_t guid;
 
 	if (spa != NULL) {
-		while (guid == 0 || spa_guid_exists(spa_guid(spa), guid))
-			guid = spa_get_random(-1ULL);
+		do {
+			(void) random_get_pseudo_bytes((void *)&guid,
+			    sizeof (guid));
+		} while (guid == 0 || spa_guid_exists(spa_guid(spa), guid));
 	} else {
-		while (guid == 0 || spa_guid_exists(guid, 0))
-			guid = spa_get_random(-1ULL);
+		do {
+			(void) random_get_pseudo_bytes((void *)&guid,
+			    sizeof (guid));
+		} while (guid == 0 || spa_guid_exists(guid, 0));
 	}
 
 	return (guid);

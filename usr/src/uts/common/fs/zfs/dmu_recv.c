@@ -1339,7 +1339,7 @@ receive_object(struct receive_writer_arg *rwa, struct drr_object *drro,
 	    drro->drr_dn_slots : DNODE_MIN_SLOTS;
 
 	if (receive_object_delay_frac != 0 &&
-	    spa_get_random(receive_object_delay_frac) == 0)
+	    random_in_range(receive_object_delay_frac) == 0)
 		delay(1);
 
 	if (drro->drr_type == DMU_OT_NONE ||

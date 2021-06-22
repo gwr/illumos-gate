@@ -280,6 +280,21 @@ extern vnode_t *rootdir;
 /*
  * Random stuff
  */
+static __inline__ uint32_t
+random_in_range(uint32_t range)
+{
+	uint32_t r;
+
+	ASSERT(range != 0);
+
+	if (range == 1)
+		return (0);
+
+	(void) random_get_pseudo_bytes((void *)&r, sizeof (r));
+
+	return (r % range);
+}
+
 #define	max_ncpus	64
 #define	boot_ncpus	(sysconf(_SC_NPROCESSORS_ONLN))
 

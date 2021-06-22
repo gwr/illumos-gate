@@ -19,9 +19,6 @@
 #include <sys/zfs_context.h>
 #include <sys/multilist.h>
 
-/* needed for spa_get_random() */
-#include <sys/spa.h>
-
 /*
  * This overrides the number of sublists in each multilist_t, which defaults
  * to the number of CPUs in the system (see multilist_create()).
@@ -269,7 +266,7 @@ multilist_get_num_sublists(multilist_t *ml)
 unsigned int
 multilist_get_random_index(multilist_t *ml)
 {
-	return (spa_get_random(ml->ml_num_sublists));
+	return (random_in_range(ml->ml_num_sublists));
 }
 
 /* Lock and return the sublist specified at the given index */

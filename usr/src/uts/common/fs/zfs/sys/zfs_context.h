@@ -83,6 +83,21 @@ extern "C" {
 #define	likely(x)	_zfs_expect((x) != 0, 1)
 #define	unlikely(x)	_zfs_expect((x) != 0, 0)
 
+static __inline__ uint32_t
+random_in_range(uint32_t range)
+{
+	uint32_t r;
+
+	ASSERT(range != 0);
+
+	if (range == 1)
+		return (0);
+
+	(void) random_get_pseudo_bytes((void *)&r, sizeof (r));
+
+	return (r % range);
+}
+
 #define	CPU_SEQID	(CPU->cpu_seqid)
 
 /*

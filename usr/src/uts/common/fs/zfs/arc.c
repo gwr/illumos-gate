@@ -4627,7 +4627,7 @@ arc_available_memory(void)
 	}
 #else
 	/* Every 100 calls, free a small amount */
-	if (spa_get_random(100) == 0)
+	if (random_in_range(100) == 0)
 		lowest = -1024;
 #endif
 
