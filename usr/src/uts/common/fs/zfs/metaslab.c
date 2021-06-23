@@ -2852,8 +2852,9 @@ metaslab_set_fragmentation(metaslab_t *msp)
 			msp->ms_condense_wanted = B_TRUE;
 			vdev_dirty(vd, VDD_METASLAB, msp, txg + 1);
 			zfs_dbgmsg("txg %llu, requesting force condense: "
-			    "ms_id %llu, vdev_id %llu", txg, msp->ms_id,
-			    vd->vdev_id);
+			    "ms_id %llu, vdev_id %llu", (u_longlong_t)txg,
+			    (u_longlong_t)msp->ms_id,
+			    (u_longlong_t)vd->vdev_id);
 		}
 		msp->ms_fragmentation = ZFS_FRAG_INVALID;
 		return;
@@ -3569,10 +3570,11 @@ metaslab_condense(metaslab_t *msp, dmu_tx_t *tx)
 	ASSERT(range_tree_is_empty(msp->ms_freed)); /* since it is pass 1 */
 
 	zfs_dbgmsg("condensing: txg %llu, msp[%llu] %p, vdev id %llu, "
-	    "spa %s, smp size %llu, segments %lu, forcing condense=%s", txg,
-	    msp->ms_id, msp, msp->ms_group->mg_vd->vdev_id,
-	    spa->spa_name, space_map_length(msp->ms_sm),
-	    range_tree_numsegs(msp->ms_allocatable),
+	    "spa %s, smp size %llu, segments %llu, forcing condense=%s",
+	    (u_longlong_t)txg, (u_longlong_t)msp->ms_id, msp,
+	    (u_longlong_t)msp->ms_group->mg_vd->vdev_id,
+	    spa->spa_name, (u_longlong_t)space_map_length(msp->ms_sm),
+	    (u_longlong_t)range_tree_numsegs(msp->ms_allocatable),
 	    msp->ms_condense_wanted ? "TRUE" : "FALSE");
 
 	msp->ms_condense_wanted = B_FALSE;
@@ -3817,11 +3819,13 @@ metaslab_flush(metaslab_t *msp, dmu_tx_t *tx)
 	if (zfs_flags & ZFS_DEBUG_LOG_SPACEMAP) {
 		zfs_dbgmsg("flushing: txg %llu, spa %s, vdev_id %llu, "
 		    "ms_id %llu, unflushed_allocs %llu, unflushed_frees %llu, "
-		    "appended %llu bytes", dmu_tx_get_txg(tx), spa_name(spa),
-		    msp->ms_group->mg_vd->vdev_id, msp->ms_id,
-		    range_tree_space(msp->ms_unflushed_allocs),
-		    range_tree_space(msp->ms_unflushed_frees),
-		    (sm_len_after - sm_len_before));
+		    "appended %llu bytes", (u_longlong_t)dmu_tx_get_txg(tx),
+		    spa_name(spa),
+		    (u_longlong_t)msp->ms_group->mg_vd->vdev_id,
+		    (u_longlong_t)msp->ms_id,
+		    (u_longlong_t)range_tree_space(msp->ms_unflushed_allocs),
+		    (u_longlong_t)range_tree_space(msp->ms_unflushed_frees),
+		    (u_longlong_t)(sm_len_after - sm_len_before));
 	}
 
 	ASSERT3U(spa->spa_unflushed_stats.sus_memused, >=,

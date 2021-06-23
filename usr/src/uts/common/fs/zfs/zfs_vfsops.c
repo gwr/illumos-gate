@@ -2445,7 +2445,9 @@ zfs_vget(vfs_t *vfsp, vnode_t **vpp, fid_t *fidp)
 
 	gen_mask = -1ULL >> (64 - 8 * i);
 
-	dprintf_zfs("getting %llu [%u mask %llx]\n", object, fid_gen, gen_mask);
+	dprintf_zfs("getting %llu [%llu mask %llx]\n",
+	    (u_longlong_t)object, (u_longlong_t)fid_gen,
+	    (u_longlong_t)gen_mask);
 	if (err = zfs_zget(zfsvfs, object, &zp)) {
 		ZFS_EXIT(zfsvfs);
 		return (err);
@@ -2456,8 +2458,8 @@ zfs_vget(vfs_t *vfsp, vnode_t **vpp, fid_t *fidp)
 	if (zp_gen == 0)
 		zp_gen = 1;
 	if (zp->z_unlinked || zp_gen != fid_gen) {
-		dprintf_zfs("znode gen (%u) != fid gen (%u)\n", zp_gen,
-		    fid_gen);
+		dprintf_zfs("znode gen (%llu) != fid gen (%llu)\n",
+		    (u_longlong_t)zp_gen, (u_longlong_t)fid_gen);
 		VN_RELE(ZTOV(zp));
 		ZFS_EXIT(zfsvfs);
 		return (SET_ERROR(EINVAL));

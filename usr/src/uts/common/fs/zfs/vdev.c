@@ -146,7 +146,8 @@ vdev_dbgmsg_print_tree(vdev_t *vd, int indent)
 	char state[20];
 
 	if (vd->vdev_ishole || vd->vdev_ops == &vdev_missing_ops) {
-		zfs_dbgmsg("%*svdev %u: %s", indent, "", vd->vdev_id,
+		zfs_dbgmsg("%*svdev %llu: %s", indent, "",
+		    (u_longlong_t)vd->vdev_id,
 		    vd->vdev_ops->vdev_op_type);
 		return;
 	}

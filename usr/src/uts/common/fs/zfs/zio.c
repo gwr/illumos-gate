@@ -3360,8 +3360,8 @@ zio_dva_allocate(zio_t *zio)
 
 	if (error != 0) {
 		zfs_dbgmsg("%s: metaslab allocation failure: zio %p, "
-		    "size %llu, error %d", spa_name(spa), zio, zio->io_size,
-		    error);
+		    "size %llu, error %d", spa_name(spa), zio,
+		    (u_longlong_t)zio->io_size, error);
 		if (error == ENOSPC && zio->io_size > SPA_MINBLOCKSIZE)
 			return (zio_write_gang_block(zio));
 		zio->io_error = error;
@@ -3486,7 +3486,8 @@ zio_alloc_zil(spa_t *spa, objset_t *os, uint64_t txg, blkptr_t *new_bp,
 		}
 	} else {
 		zfs_dbgmsg("%s: zil block allocation failure: "
-		    "size %llu, error %d", spa_name(spa), size, error);
+		    "size %llu, error %d", spa_name(spa), (u_longlong_t)size,
+		    error);
 	}
 
 	return (error);

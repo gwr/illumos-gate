@@ -333,7 +333,6 @@ static int get_nvlist(uint64_t nvl, uint64_t size, int iflag, nvlist_t **nvp);
 
 static int zfs_prop_activate_feature(spa_t *spa, spa_feature_t feature);
 
-/* _NOTE(PRINTFLIKE(4)) - this is printf-like, but lint is too whiney */
 void
 __dprintf(const char *file, const char *func, int line, const char *fmt, ...)
 {

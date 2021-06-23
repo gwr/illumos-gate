@@ -2574,8 +2574,10 @@ spa_activity_check_duration(spa_t *spa, uberblock_t *ub)
 
 		zfs_dbgmsg("fail_intvals>0 import_delay=%llu ub_mmp "
 		    "mmp_fails=%llu ub_mmp mmp_interval=%llu "
-		    "import_intervals=%u", import_delay, MMP_FAIL_INT(ub),
-		    MMP_INTERVAL(ub), import_intervals);
+		    "import_intervals=%llu", (u_longlong_t)import_delay,
+		    (u_longlong_t)MMP_FAIL_INT(ub),
+		    (u_longlong_t)MMP_INTERVAL(ub),
+		    (u_longlong_t)import_intervals);
 
 	} else if (MMP_INTERVAL_VALID(ub) && MMP_FAIL_INT_VALID(ub) &&
 	    MMP_FAIL_INT(ub) == 0) {
@@ -2586,8 +2588,10 @@ spa_activity_check_duration(spa_t *spa, uberblock_t *ub)
 
 		zfs_dbgmsg("fail_intvals=0 import_delay=%llu ub_mmp "
 		    "mmp_interval=%llu ub_mmp_delay=%llu "
-		    "import_intervals=%u", import_delay, MMP_INTERVAL(ub),
-		    ub->ub_mmp_delay, import_intervals);
+		    "import_intervals=%llu", (u_longlong_t)import_delay,
+		    (u_longlong_t)MMP_INTERVAL(ub),
+		    (u_longlong_t)ub->ub_mmp_delay,
+		    (u_longlong_t)import_intervals);
 
 	} else if (MMP_VALID(ub)) {
 		/*
@@ -2598,15 +2602,18 @@ spa_activity_check_duration(spa_t *spa, uberblock_t *ub)
 		    ub->ub_mmp_delay) * import_intervals);
 
 		zfs_dbgmsg("import_delay=%llu ub_mmp_delay=%llu "
-		    "import_intervals=%u leaves=%u", import_delay,
-		    ub->ub_mmp_delay, import_intervals,
+		    "import_intervals=%llu leaves=%u",
+		    (u_longlong_t)import_delay,
+		    (u_longlong_t)ub->ub_mmp_delay,
+		    (u_longlong_t)import_intervals,
 		    vdev_count_leaves(spa));
 	} else {
 		/* Using local tunings is the only reasonable option */
 		zfs_dbgmsg("pool last imported on non-MMP aware "
 		    "host using import_delay=%llu multihost_interval=%llu "
-		    "import_intervals=%u", import_delay, multihost_interval,
-		    import_intervals);
+		    "import_intervals=%llu", (u_longlong_t)import_delay,
+		    (u_longlong_t)multihost_interval,
+		    (u_longlong_t)import_intervals);
 	}
 
 	return (import_delay);
@@ -2674,8 +2681,11 @@ spa_activity_check(spa_t *spa, uberblock_t *ub, nvlist_t *config)
 			    "txg %llu ub_txg  %llu "
 			    "timestamp %llu ub_timestamp  %llu "
 			    "mmp_config %#llx ub_mmp_config %#llx",
-			    txg, ub->ub_txg, timestamp, ub->ub_timestamp,
-			    mmp_config, ub->ub_mmp_config);
+			    (u_longlong_t)txg, (u_longlong_t)ub->ub_txg,
+			    (u_longlong_t)timestamp,
+			    (u_longlong_t)ub->ub_timestamp,
+			    (u_longlong_t)mmp_config,
+			    (u_longlong_t)ub->ub_mmp_config);
 
 			error = SET_ERROR(EREMOTEIO);
 			break;
