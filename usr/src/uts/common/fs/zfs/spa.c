@@ -8318,12 +8318,16 @@ spa_sync_props(void *arg, dmu_tx_t *tx)
 			spa->spa_comment = spa_strdup(strval);
 			/*
 			 * We need to dirty the configuration on all the vdevs
-			 * so that their labels get updated.  It's unnecessary
-			 * to do this for pool creation since the vdev's
-			 * configuratoin has already been dirtied.
+			 * so that their labels get updated.  We also need to
+			 * update the cache file to keep it in sync with the
+			 * MOS version.  It's unnecessary to do this for pool
+			 * creation since the vdev's configuration has already
+			 * been dirtied.
 			 */
-			if (tx->tx_txg != TXG_INITIAL)
+			if (tx->tx_txg != TXG_INITIAL) {
 				vdev_config_dirty(spa->spa_root_vdev);
+				spa_async_request(spa, SPA_ASYNC_CONFIG_UPDATE);
+			}
 			spa_history_log_internal(spa, "set", tx,
 			    "%s=%s", nvpair_name(elem), strval);
 			break;
