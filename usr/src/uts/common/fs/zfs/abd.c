@@ -271,6 +271,7 @@ abd_is_gang(abd_t *abd)
 static inline void
 abd_verify(abd_t *abd)
 {
+#ifdef ZFS_DEBUG
 	ASSERT3U(abd->abd_size, <=, SPA_MAXBLOCKSIZE);
 	ASSERT3U(abd->abd_flags, ==, abd->abd_flags & (ABD_FLAG_LINEAR |
 	    ABD_FLAG_OWNER | ABD_FLAG_META | ABD_FLAG_GANG |
@@ -301,6 +302,7 @@ abd_verify(abd_t *abd)
 			    abd->abd_u.abd_scatter.abd_chunks[i], !=, NULL);
 		}
 	}
+#endif
 }
 
 static inline abd_t *
