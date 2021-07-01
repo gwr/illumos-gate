@@ -620,11 +620,12 @@ dbuf_init(void)
 	int i;
 
 	/*
-	 * The hash table is big enough to fill all of physical memory
+	 * The hash table is big enough to fill one eighth of ARC memory
 	 * with an average 4K block size.  The table will take up
-	 * totalmem*sizeof(void*)/4K (i.e. 2MB/GB with 8-byte pointers).
+	 * arc_all_memory()/8*sizeof(void*)/4K (i.e. 256KB/GB with
+	 * 8-byte pointers).
 	 */
-	while (hsize * 4096 < physmem * PAGESIZE)
+	while (hsize * 4096 < arc_all_memory() / 8)
 		hsize <<= 1;
 
 retry:
@@ -2630,8 +2631,8 @@ dbuf_create(dnode_t *dn, uint8_t level, uint64_t blkid,
 	db->db_state = DB_EVICTING;
 	if ((odb = dbuf_hash_insert(db)) != NULL) {
 		/* someone else inserted it first */
-		kmem_cache_free(dbuf_kmem_cache, db);
 		mutex_exit(&dn->dn_dbufs_mtx);
+		kmem_cache_free(dbuf_kmem_cache, db);
 		return (odb);
 	}
 	avl_add(&dn->dn_dbufs, db);
