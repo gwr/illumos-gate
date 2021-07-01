@@ -445,14 +445,6 @@ txg_dispatch_callbacks(dsl_pool_t *dp, uint64_t txg)
 }
 
 static boolean_t
-txg_is_syncing(dsl_pool_t *dp)
-{
-	tx_state_t *tx = &dp->dp_tx;
-	ASSERT(MUTEX_HELD(&tx->tx_sync_lock));
-	return (tx->tx_syncing_txg != 0);
-}
-
-static boolean_t
 txg_is_quiescing(dsl_pool_t *dp)
 {
 	tx_state_t *tx = &dp->dp_tx;
@@ -484,8 +476,6 @@ txg_sync_thread(void *arg)
 		uint64_t timeout = zfs_txg_timeout * hz;
 		uint64_t timer;
 		uint64_t txg;
-		uint64_t dirty_min_bytes =
-		    zfs_dirty_data_max * zfs_dirty_data_sync_pct / 100;
 
 		/*
 		 * We sync when we're scanning, there's someone waiting
@@ -496,8 +486,7 @@ txg_sync_thread(void *arg)
 		while (!dsl_scan_active(dp->dp_scan) &&
 		    !tx->tx_exiting && timer > 0 &&
 		    tx->tx_synced_txg >= tx->tx_sync_txg_waiting &&
-		    !txg_has_quiesced_to_sync(dp) &&
-		    dp->dp_dirty_total < dirty_min_bytes) {
+		    !txg_has_quiesced_to_sync(dp)) {
 			dprintf_zfs(
 			    "waiting; tx_synced=%llu waiting=%llu dp=%p\n",
 			    (u_longlong_t)tx->tx_synced_txg,
@@ -512,6 +501,11 @@ txg_sync_thread(void *arg)
 		 * prompting it to do so if necessary.
 		 */
 		while (!tx->tx_exiting && !txg_has_quiesced_to_sync(dp)) {
+			if (txg_is_quiescing(dp)) {
+				txg_thread_wait(tx, &cpr,
+				    &tx->tx_quiesce_done_cv, 0);
+				continue;
+			}
 			if (tx->tx_quiesce_txg_waiting < tx->tx_open_txg+1)
 				tx->tx_quiesce_txg_waiting = tx->tx_open_txg+1;
 			cv_broadcast(&tx->tx_quiesce_more_cv);
@@ -723,24 +717,22 @@ txg_wait_open(dsl_pool_t *dp, uint64_t txg, boolean_t should_quiesce)
 }
 
 /*
- * If there isn't a txg syncing or in the pipeline, push another txg through
- * the pipeline by queiscing the open txg.
+ * Pass in the txg number that should be synced.
  */
 void
-txg_kick(dsl_pool_t *dp)
+txg_kick(dsl_pool_t *dp, uint64_t txg)
 {
 	tx_state_t *tx = &dp->dp_tx;
 
 	ASSERT(!dsl_pool_config_held(dp));
 
+	if (tx->tx_sync_txg_waiting >= txg)
+		return;
+
 	mutex_enter(&tx->tx_sync_lock);
-	if (!txg_is_syncing(dp) &&
-	    !txg_is_quiescing(dp) &&
-	    tx->tx_quiesce_txg_waiting <= tx->tx_open_txg &&
-	    tx->tx_sync_txg_waiting <= tx->tx_synced_txg &&
-	    tx->tx_quiesced_txg <= tx->tx_synced_txg) {
-		tx->tx_quiesce_txg_waiting = tx->tx_open_txg + 1;
-		cv_broadcast(&tx->tx_quiesce_more_cv);
+	if (tx->tx_sync_txg_waiting < txg) {
+		tx->tx_sync_txg_waiting = txg;
+		cv_broadcast(&tx->tx_sync_more_cv);
 	}
 	mutex_exit(&tx->tx_sync_lock);
 }
