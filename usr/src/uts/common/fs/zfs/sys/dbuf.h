@@ -419,7 +419,7 @@ boolean_t dbuf_is_metadata(dmu_buf_impl_t *db);
 	char __db_buf[32]; \
 	uint64_t __db_obj = (dbuf)->db.db_object; \
 	if (__db_obj == DMU_META_DNODE_OBJECT) \
-		(void) strcpy(__db_buf, "mdn"); \
+		(void) strlcpy(__db_buf, "mdn", sizeof (__db_buf));	\
 	else \
 		(void) snprintf(__db_buf, sizeof (__db_buf), "%lld", \
 		    (u_longlong_t)__db_obj); \
