@@ -11,7 +11,7 @@
 
 /*
  * Copyright 2019 Nexenta Systems, Inc.
- * Copyright 2019 RackTop Systems, Inc.
+ * Copyright 2021 RackTop Systems, Inc.
  */
 
 #ifndef _SMARTPQI_H
@@ -23,6 +23,7 @@ extern "C" {
 
 /* ---- Standard header files. ---- */
 #include <sys/note.h>
+#include <sys/byteorder.h>
 #include <sys/scsi/scsi.h>
 #include <sys/pci.h>
 #include <sys/file.h>
@@ -46,7 +47,7 @@ extern "C" {
 /* ---- Hint for ddi_soft_state_init() on amount of structs to alloc ---- */
 #define	SMARTPQI_INITIAL_SOFT_SPACE	1
 
-#define	SMARTPQI_MOD_STRING	"smartpqi RT-20190725"
+#define	SMARTPQI_MOD_STRING	"smartpqi RT-20210716"
 
 /* ---- Handy constants ---- */
 #define	UNDEFINED				-1
@@ -366,6 +367,7 @@ typedef struct pqi_device {
 
 	int			pd_active_cmds;
 	int			pd_target;
+	int 			pd_lun;
 
 	/* ---- Only one will be valid, MPxIO uses s_pip ---- */
 	dev_info_t		*pd_dip;
@@ -381,12 +383,12 @@ typedef struct pqi_device {
 	int			pd_aio_enabled : 1;
 	uint32_t		pd_aio_handle;
 	char			pd_scsi3addr[8];
-	uint64_t		pd_wwid;	/* big endian */
+	uint64_t		pd_wwid;
 	char			*pd_guid;
-	uint64_t		pd_sas_address;
 	uint8_t			pd_volume_id[16];
 	char			pd_vendor[8];	/* From INQUIRY */
 	char			pd_model[16];	/* From INQUIRY */
+	char			pd_unit_address[32];
 } *pqi_device_t;
 
 /* ---- Flags used in pqi_cmd_t ---- */
@@ -534,7 +536,7 @@ boolean_t pqi_hba_reset(pqi_state_t s);
 /* ---- smartpqi_hba.c ---- */
 int smartpqi_register_hba(pqi_state_t);
 void smartpqi_unregister_hba(pqi_state_t);
-pqi_device_t pqi_find_target_dev(pqi_state_t s, int target);
+pqi_device_t pqi_find_target_ua(pqi_state_t s, char *);
 int pqi_cache_constructor(void *buf, void *un, int flags);
 void pqi_cache_destructor(void *buf, void *un);
 int pqi_config_all(dev_info_t *pdip, pqi_state_t s);

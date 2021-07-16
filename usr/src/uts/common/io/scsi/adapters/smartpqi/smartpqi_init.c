@@ -11,7 +11,7 @@
 
 /*
  * Copyright 2018 Nexenta Systems, Inc.
- * Copyright 2020 Racktop Systems.
+ * Copyright 2021 Racktop Systems.
  */
 
 /*
@@ -191,7 +191,7 @@ static boolean_t
 pqi_check_alloc(pqi_state_t s)
 {
 	if (pqi_max_io_slots != 0 && pqi_max_io_slots < s->s_max_io_slots) {
-	    s->s_max_io_slots = pqi_max_io_slots;
+		s->s_max_io_slots = pqi_max_io_slots;
 	}
 
 	s->s_error_dma = pqi_alloc_single(s, (s->s_max_io_slots *
@@ -874,8 +874,6 @@ pqi_schedule_update_time_worker(pqi_state_t s)
 	return (B_TRUE);
 }
 
-static uint32_t pqi_next_lun;
-
 static boolean_t
 pqi_scan_scsi_devices(pqi_state_t s)
 {
@@ -929,13 +927,6 @@ pqi_scan_scsi_devices(pqi_state_t s)
 				    NULL);
 
 				mutex_enter(&s->s_mutex);
-				/*
-				 * Start at index 0. The first call to
-				 * atomic_inc_32_nv will return 1 so subtract
-				 * 1 from the return value.
-				 */
-				dev->pd_target =
-				    atomic_inc_32_nv(&pqi_next_lun) - 1;
 				list_insert_tail(&s->s_devnodes, dev);
 				mutex_exit(&s->s_mutex);
 			} else {
@@ -1673,7 +1664,6 @@ get_device_info(pqi_state_t s, pqi_device_t dev)
 	(void) memcpy(dev->pd_vendor, inq->inq_vid, sizeof (dev->pd_vendor));
 	(void) memcpy(dev->pd_model, inq->inq_pid, sizeof (dev->pd_model));
 
-	/* TODO Handle logical devices */
 	rval = B_TRUE;
 out:
 	kmem_free(inq, sizeof (*inq));
@@ -1698,7 +1688,7 @@ is_supported_dev(pqi_state_t s, pqi_device_t dev)
 			rval = B_TRUE;
 		break;
 	default:
-		dev_err(s->s_dip, CE_WARN, "Not supported device: 0x%x\n",
+		dev_err(s->s_dip, CE_WARN, "Not supported device: 0x%x",
 		    dev->pd_devtype);
 		break;
 	}
@@ -1710,13 +1700,15 @@ static void
 get_phys_disk_info(pqi_state_t s, pqi_device_t dev,
     bmic_identify_physical_device_t *id)
 {
+	dev->pd_lun = id->scsi_lun;
+	(void) snprintf(dev->pd_unit_address, sizeof (dev->pd_unit_address),
+	    "w%016lx,%d", dev->pd_wwid, id->scsi_lun);
 }
 
-/*ARGSUSED*/
 static int
 is_external_raid_addr(char *addr)
 {
-	return (0);
+	return (addr[2] != 0);
 }
 
 static void
@@ -1763,9 +1755,8 @@ create_phys_dev(pqi_state_t s, report_phys_lun_extended_entry_t *e)
 
 	dev = kmem_zalloc(sizeof (*dev), KM_SLEEP);
 	dev->pd_phys_dev = 1;
-	dev->pd_wwid = e->wwid;
+	dev->pd_wwid = htonll(e->wwid);
 	(void) memcpy(dev->pd_scsi3addr, e->lunid, sizeof (dev->pd_scsi3addr));
-	dev->pd_target = -1;
 
 	if (skip_device(dev->pd_scsi3addr) == B_TRUE)
 		goto out;
@@ -1779,7 +1770,9 @@ create_phys_dev(pqi_state_t s, report_phys_lun_extended_entry_t *e)
 	switch (dev->pd_devtype) {
 	case DTYPE_ESI:
 		build_guid(s, dev);
-		dev->pd_sas_address = ntohll(dev->pd_wwid);
+		/* hopefully only LUN 0... which seems to match */
+		(void) snprintf(dev->pd_unit_address, 20, "w%016lx,0",
+		    dev->pd_wwid);
 		break;
 
 	case DTYPE_DIRECT:
@@ -1800,7 +1793,6 @@ create_phys_dev(pqi_state_t s, report_phys_lun_extended_entry_t *e)
 			    id_phys) == B_FALSE)
 				goto out;
 		}
-		dev->pd_sas_address = ntohll(dev->pd_wwid);
 		get_phys_disk_info(s, dev, id_phys);
 		kmem_free(id_phys, sizeof (*id_phys));
 		break;
@@ -1816,10 +1808,11 @@ static pqi_device_t
 create_logical_dev(pqi_state_t s, report_log_lun_extended_entry_t *e)
 {
 	pqi_device_t	dev;
+	uint16_t	target;
+	uint16_t	lun;
 
 	dev = kmem_zalloc(sizeof (*dev), KM_SLEEP);
 	dev->pd_phys_dev = 0;
-	dev->pd_target = -1;
 	(void) memcpy(dev->pd_scsi3addr, e->lunid, sizeof (dev->pd_scsi3addr));
 	dev->pd_external_raid = is_external_raid_addr(dev->pd_scsi3addr);
 
@@ -1828,6 +1821,21 @@ create_logical_dev(pqi_state_t s, report_log_lun_extended_entry_t *e)
 
 	if (!is_supported_dev(s, dev))
 		goto out;
+
+	if (memcmp(dev->pd_scsi3addr, RAID_CTLR_LUNID, 8) == 0) {
+		target = 0;
+		lun = 0;
+	} else if (dev->pd_external_raid) {
+		target = (LE_IN16(&dev->pd_scsi3addr[2]) & 0x3FFF) + 2;
+		lun = dev->pd_scsi3addr[0];
+	} else {
+		target = 1;
+		lun = LE_IN16(dev->pd_scsi3addr);
+	}
+	dev->pd_target = target;
+	dev->pd_lun = lun;
+	(void) snprintf(dev->pd_unit_address, sizeof (dev->pd_unit_address),
+	    "%d,%d", target, lun);
 
 	(void) memcpy(dev->pd_volume_id, e->volume_id,
 	    sizeof (dev->pd_volume_id));

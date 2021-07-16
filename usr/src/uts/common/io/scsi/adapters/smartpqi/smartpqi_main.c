@@ -11,7 +11,7 @@
 
 /*
  * Copyright 2019 Nexenta Systems, Inc.
- * Copyright 2019 RackTop Systems, Inc.
+ * Copyright 2021 RackTop Systems, Inc.
  */
 
 /*
@@ -78,17 +78,22 @@ static struct modlinkage smartpqi_modlinkage = {
 /*
  * This is used for data I/O DMA memory allocation. (full 64-bit DMA
  * physical addresses are supported.)
+ *
+ * We believe that the device probably doesn't have any limitations,
+ * but previous generations of this hardware used a 32-bit DMA counter.
+ * Absent better guidance, we choose the same.  (Note that the Linux
+ * driver from the vendor imposes no DMA limitations.)
  */
 ddi_dma_attr_t smartpqi_dma_attrs = {
 	DMA_ATTR_V0,		/* attribute layout version		*/
 	0x0ull,			/* address low - should be 0 (longlong)	*/
 	0xffffffffffffffffull, /* address high - 64-bit max	*/
-	0x00666600ull,		/* count max - max DMA object size	*/
+	0xffffffffull,		/* count max - max DMA object size	*/
 	4096,			/* allocation alignment requirements	*/
 	0x78,			/* burstsizes - binary encoded values	*/
 	1,			/* minxfer - gran. of DMA engine	*/
-	0x00666600ull,		/* maxxfer - gran. of DMA engine	*/
-	0x00666600ull,		/* max segment size (DMA boundary)	*/
+	0xffffffffull,		/* maxxfer - gran. of DMA engine	*/
+	0xffffffffull,		/* max segment size (DMA boundary)	*/
 	PQI_MAX_SCATTER_GATHER,	/* scatter/gather list length		*/
 	512,			/* granularity - device transfer size	*/
 	0			/* flags, set to 0			*/
