@@ -1491,6 +1491,11 @@ dsl_dir_diduse_space(dsl_dir_t *dd, dd_used_t type,
 {
 	int64_t accounted_delta;
 
+	ASSERT(dmu_tx_is_syncing(tx));
+	ASSERT(type < DD_USED_NUM);
+
+	dmu_buf_will_dirty(dd->dd_dbuf, tx);
+
 	/*
 	 * dsl_dataset_set_refreservation_sync_impl() calls this with
 	 * dd_lock held, so that it can atomically update
@@ -1500,45 +1505,36 @@ dsl_dir_diduse_space(dsl_dir_t *dd, dd_used_t type,
 	 */
 	boolean_t needlock = !MUTEX_HELD(&dd->dd_lock);
 
-	ASSERT(dmu_tx_is_syncing(tx));
-	ASSERT(type < DD_USED_NUM);
-
-	dmu_buf_will_dirty(dd->dd_dbuf, tx);
-
 	if (needlock)
 		mutex_enter(&dd->dd_lock);
-	accounted_delta =
-	    parent_delta(dd, dsl_dir_phys(dd)->dd_used_bytes, used);
-	ASSERT(used >= 0 || dsl_dir_phys(dd)->dd_used_bytes >= -used);
-	ASSERT(compressed >= 0 ||
-	    dsl_dir_phys(dd)->dd_compressed_bytes >= -compressed);
+	dsl_dir_phys_t *ddp = dsl_dir_phys(dd);
+	accounted_delta = parent_delta(dd, ddp->dd_used_bytes, used);
+	ASSERT(used >= 0 || ddp->dd_used_bytes >= -used);
+	ASSERT(compressed >= 0 || ddp->dd_compressed_bytes >= -compressed);
 	ASSERT(uncompressed >= 0 ||
-	    dsl_dir_phys(dd)->dd_uncompressed_bytes >= -uncompressed);
-	dsl_dir_phys(dd)->dd_used_bytes += used;
-	dsl_dir_phys(dd)->dd_uncompressed_bytes += uncompressed;
-	dsl_dir_phys(dd)->dd_compressed_bytes += compressed;
+	    ddp->dd_uncompressed_bytes >= -uncompressed);
+	ddp->dd_used_bytes += used;
+	ddp->dd_uncompressed_bytes += uncompressed;
+	ddp->dd_compressed_bytes += compressed;
 
-	if (dsl_dir_phys(dd)->dd_flags & DD_FLAG_USED_BREAKDOWN) {
-		ASSERT(used > 0 ||
-		    dsl_dir_phys(dd)->dd_used_breakdown[type] >= -used);
-		dsl_dir_phys(dd)->dd_used_breakdown[type] += used;
+	if (ddp->dd_flags & DD_FLAG_USED_BREAKDOWN) {
+		ASSERT(used >= 0 || ddp->dd_used_breakdown[type] >= -used);
+		ddp->dd_used_breakdown[type] += used;
 #ifdef DEBUG
 		dd_used_t t;
 		uint64_t u = 0;
 		for (t = 0; t < DD_USED_NUM; t++)
-			u += dsl_dir_phys(dd)->dd_used_breakdown[t];
-		ASSERT3U(u, ==, dsl_dir_phys(dd)->dd_used_bytes);
+			u += ddp->dd_used_breakdown[t];
+		ASSERT3U(u, ==, ddp->dd_used_bytes);
 #endif
 	}
 	if (needlock)
 		mutex_exit(&dd->dd_lock);
 
 	if (dd->dd_parent != NULL) {
-		dsl_dir_diduse_space(dd->dd_parent, DD_USED_CHILD,
-		    accounted_delta, compressed, uncompressed, tx);
-		dsl_dir_transfer_space(dd->dd_parent,
-		    used - accounted_delta,
-		    DD_USED_CHILD_RSRV, DD_USED_CHILD, tx);
+		dsl_dir_diduse_transfer_space(dd->dd_parent,
+		    accounted_delta, compressed, uncompressed,
+		    used, DD_USED_CHILD_RSRV, DD_USED_CHILD, tx);
 	}
 }
 
@@ -1550,19 +1546,70 @@ dsl_dir_transfer_space(dsl_dir_t *dd, int64_t delta,
 	ASSERT(oldtype < DD_USED_NUM);
 	ASSERT(newtype < DD_USED_NUM);
 
+	dsl_dir_phys_t *ddp = dsl_dir_phys(dd);
 	if (delta == 0 ||
-	    !(dsl_dir_phys(dd)->dd_flags & DD_FLAG_USED_BREAKDOWN))
+	    !(ddp->dd_flags & DD_FLAG_USED_BREAKDOWN))
 		return;
 
 	dmu_buf_will_dirty(dd->dd_dbuf, tx);
 	mutex_enter(&dd->dd_lock);
 	ASSERT(delta > 0 ?
-	    dsl_dir_phys(dd)->dd_used_breakdown[oldtype] >= delta :
-	    dsl_dir_phys(dd)->dd_used_breakdown[newtype] >= -delta);
-	ASSERT(dsl_dir_phys(dd)->dd_used_bytes >= ABS(delta));
-	dsl_dir_phys(dd)->dd_used_breakdown[oldtype] -= delta;
-	dsl_dir_phys(dd)->dd_used_breakdown[newtype] += delta;
+	    ddp->dd_used_breakdown[oldtype] >= delta :
+	    ddp->dd_used_breakdown[newtype] >= -delta);
+	ASSERT(ddp->dd_used_bytes >= ABS(delta));
+	ddp->dd_used_breakdown[oldtype] -= delta;
+	ddp->dd_used_breakdown[newtype] += delta;
 	mutex_exit(&dd->dd_lock);
+}
+
+void
+dsl_dir_diduse_transfer_space(dsl_dir_t *dd, int64_t used,
+    int64_t compressed, int64_t uncompressed, int64_t tonew,
+    dd_used_t oldtype, dd_used_t newtype, dmu_tx_t *tx)
+{
+	int64_t accounted_delta;
+
+	ASSERT(dmu_tx_is_syncing(tx));
+	ASSERT(oldtype < DD_USED_NUM);
+	ASSERT(newtype < DD_USED_NUM);
+
+	dmu_buf_will_dirty(dd->dd_dbuf, tx);
+
+	mutex_enter(&dd->dd_lock);
+	dsl_dir_phys_t *ddp = dsl_dir_phys(dd);
+	accounted_delta = parent_delta(dd, ddp->dd_used_bytes, used);
+	ASSERT(used >= 0 || ddp->dd_used_bytes >= -used);
+	ASSERT(compressed >= 0 || ddp->dd_compressed_bytes >= -compressed);
+	ASSERT(uncompressed >= 0 ||
+	    ddp->dd_uncompressed_bytes >= -uncompressed);
+	ddp->dd_used_bytes += used;
+	ddp->dd_uncompressed_bytes += uncompressed;
+	ddp->dd_compressed_bytes += compressed;
+
+	if (ddp->dd_flags & DD_FLAG_USED_BREAKDOWN) {
+		ASSERT(tonew - used <= 0 ||
+		    ddp->dd_used_breakdown[oldtype] >= tonew - used);
+		ASSERT(tonew >= 0 ||
+		    ddp->dd_used_breakdown[newtype] >= -tonew);
+		ddp->dd_used_breakdown[oldtype] -= tonew - used;
+		ddp->dd_used_breakdown[newtype] += tonew;
+#ifdef DEBUG
+		{
+			dd_used_t t;
+			uint64_t u = 0;
+			for (t = 0; t < DD_USED_NUM; t++)
+				u += ddp->dd_used_breakdown[t];
+			ASSERT3U(u, ==, ddp->dd_used_bytes);
+		}
+#endif
+	}
+	mutex_exit(&dd->dd_lock);
+
+	if (dd->dd_parent != NULL) {
+		dsl_dir_diduse_transfer_space(dd->dd_parent,
+		    accounted_delta, compressed, uncompressed,
+		    used, DD_USED_CHILD_RSRV, DD_USED_CHILD, tx);
+	}
 }
 
 typedef struct dsl_dir_set_qr_arg {
