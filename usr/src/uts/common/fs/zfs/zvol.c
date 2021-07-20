@@ -1081,6 +1081,7 @@ zvol_log_write(zvol_state_t *zv, dmu_tx_t *tx, offset_t off, ssize_t resid,
 	uint32_t blocksize = zv->zv_volblocksize;
 	zilog_t *zilog = zv->zv_zilog;
 	itx_wr_state_t write_state;
+	ssize_t size = resid;
 
 	if (zil_replaying(zilog, tx))
 		return;
@@ -1132,6 +1133,9 @@ zvol_log_write(zvol_state_t *zv, dmu_tx_t *tx, offset_t off, ssize_t resid,
 		off += len;
 		resid -= len;
 	}
+
+	if (write_state == WR_COPIED || write_state == WR_NEED_COPY)
+		dsl_pool_wrlog_count(zilog->zl_dmu_pool, size, tx->tx_txg);
 }
 
 static int

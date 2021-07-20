@@ -103,6 +103,13 @@ uint64_t zfs_dirty_data_max_max = 4ULL * 1024 * 1024 * 1024;
 int zfs_dirty_data_max_percent = 10;
 
 /*
+ * Upper limit of TX_WRITE log data.  Once it is reached, writes are blocked
+ * until log data is cleared after a transaction group sync.  This counts only
+ * TX_WRITE records with WR_COPIED or WR_NEED_COPY.
+ */
+uint64_t zfs_wrlog_data_max;
+
+/*
  * If there's at least this much dirty data (as a percentage of
  * zfs_dirty_data_max), push out a txg.  This should be less than
  * zfs_vdev_async_write_active_min_dirty_percent.
@@ -217,6 +224,10 @@ dsl_pool_open_impl(spa_t *spa, uint64_t txg)
 
 	mutex_init(&dp->dp_lock, NULL, MUTEX_DEFAULT, NULL);
 	cv_init(&dp->dp_spaceavail_cv, NULL, CV_DEFAULT, NULL);
+
+	aggsum_init(&dp->dp_wrlog_total, 0);
+	for (int i = 0; i < TXG_SIZE; i++)
+		aggsum_init(&dp->dp_wrlog_pertxg[i], 0);
 
 	dp->dp_vnrele_taskq = taskq_create("zfs_vn_rele_taskq", 1, minclsyspri,
 	    1, 4, 0);
@@ -404,6 +415,12 @@ dsl_pool_close(dsl_pool_t *dp)
 
 	rrw_destroy(&dp->dp_config_rwlock);
 	mutex_destroy(&dp->dp_lock);
+	ASSERT0(aggsum_value(&dp->dp_wrlog_total));
+	aggsum_fini(&dp->dp_wrlog_total);
+	for (int i = 0; i < TXG_SIZE; i++) {
+		ASSERT0(aggsum_value(&dp->dp_wrlog_pertxg[i]));
+		aggsum_fini(&dp->dp_wrlog_pertxg[i]);
+	}
 	taskq_destroy(dp->dp_unlinked_drain_taskq);
 	taskq_destroy(dp->dp_vnrele_taskq);
 	if (dp->dp_blkstats != NULL)
@@ -570,6 +587,36 @@ dsl_pool_dirty_delta(dsl_pool_t *dp, int64_t delta)
 	 */
 	if (dp->dp_dirty_total < zfs_dirty_data_max)
 		cv_signal(&dp->dp_spaceavail_cv);
+}
+
+void
+dsl_pool_wrlog_count(dsl_pool_t *dp, int64_t size, uint64_t txg)
+{
+	ASSERT3S(size, >=, 0);
+
+	aggsum_add(&dp->dp_wrlog_pertxg[txg & TXG_MASK], size);
+	aggsum_add(&dp->dp_wrlog_total, size);
+
+	uint64_t sync_min =
+	    zfs_dirty_data_max * (zfs_dirty_data_sync_pct + 10) / 100;
+	if (aggsum_compare(&dp->dp_wrlog_pertxg[txg & TXG_MASK], sync_min) > 0)
+		txg_kick(dp, txg);
+}
+
+boolean_t
+dsl_pool_wrlog_over_max(dsl_pool_t *dp)
+{
+	return (aggsum_compare(&dp->dp_wrlog_total, zfs_wrlog_data_max) > 0);
+}
+
+static void
+dsl_pool_wrlog_clear(dsl_pool_t *dp, uint64_t txg)
+{
+	int64_t delta =
+	    -(int64_t)aggsum_value(&dp->dp_wrlog_pertxg[txg & TXG_MASK]);
+
+	aggsum_add(&dp->dp_wrlog_pertxg[txg & TXG_MASK], delta);
+	aggsum_add(&dp->dp_wrlog_total, delta);
 }
 
 static boolean_t
@@ -786,6 +833,9 @@ dsl_pool_sync_done(dsl_pool_t *dp, uint64_t txg)
 		ASSERT(!dmu_objset_is_dirty(zilog->zl_os, txg));
 		dmu_buf_rele(ds->ds_dbuf, zilog);
 	}
+
+	dsl_pool_wrlog_clear(dp, txg);
+
 	ASSERT(!dmu_objset_is_dirty(dp->dp_meta_objset, txg));
 }
 
