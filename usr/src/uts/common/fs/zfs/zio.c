@@ -1711,8 +1711,8 @@ zio_taskq_dispatch(zio_t *zio, zio_taskq_type_t q, boolean_t cutinline)
 	 * to dispatch the zio to another taskq at the same time.
 	 */
 	ASSERT(zio->io_tqent.tqent_next == NULL);
-	spa_taskq_dispatch_ent(spa, t, q, (task_func_t *)zio_execute, zio,
-	    flags, &zio->io_tqent);
+	spa_taskq_dispatch_ent(spa, t, q, zio_execute, zio, flags,
+	    &zio->io_tqent);
 }
 
 static boolean_t
@@ -1742,7 +1742,7 @@ zio_issue_async(zio_t *zio)
 }
 
 void
-zio_interrupt(zio_t *zio)
+zio_interrupt(void *zio)
 {
 	zio_taskq_dispatch(zio, ZIO_TASKQ_INTERRUPT, B_FALSE);
 }
@@ -1895,8 +1895,10 @@ zio_deadman(zio_t *pio, char *tag)
 static zio_pipe_stage_t *zio_pipeline[];
 
 void
-zio_execute(zio_t *zio)
+zio_execute(void *arg)
 {
+	zio_t *zio = arg;
+
 	zio->io_executor = curthread;
 
 	ASSERT3U(zio->io_queued_timestamp, >, 0);
@@ -2041,8 +2043,9 @@ zio_nowait(zio_t *zio)
  */
 
 static void
-zio_reexecute(zio_t *pio)
+zio_reexecute(void *arg)
 {
+	zio_t *pio = arg;
 	zio_t *cio, *cio_next;
 
 	ASSERT(pio->io_child_type == ZIO_CHILD_LOGICAL);
@@ -4551,8 +4554,8 @@ zio_done(zio_t *zio)
 			 */
 			ASSERT(zio->io_tqent.tqent_next == NULL);
 			spa_taskq_dispatch_ent(spa, ZIO_TYPE_CLAIM,
-			    ZIO_TASKQ_ISSUE, (task_func_t *)zio_reexecute, zio,
-			    0, &zio->io_tqent);
+			    ZIO_TASKQ_ISSUE, zio_reexecute, zio, 0,
+			    &zio->io_tqent);
 		}
 		return (ZIO_PIPELINE_STOP);
 	}
