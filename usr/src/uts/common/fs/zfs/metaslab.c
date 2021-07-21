@@ -381,12 +381,11 @@ metaslab_class_create(spa_t *spa, metaslab_ops_t *ops)
 	mutex_init(&mc->mc_lock, NULL, MUTEX_DEFAULT, NULL);
 	multilist_create(&mc->mc_metaslab_txg_list, sizeof (metaslab_t),
 	    offsetof(metaslab_t, ms_class_txg_node), metaslab_idx_func);
-	mc->mc_alloc_slots = kmem_zalloc(spa->spa_alloc_count *
-	    sizeof (zfs_refcount_t), KM_SLEEP);
-	mc->mc_alloc_max_slots = kmem_zalloc(spa->spa_alloc_count *
-	    sizeof (uint64_t), KM_SLEEP);
+	mc->mc_allocator = kmem_zalloc(spa->spa_alloc_count *
+	    sizeof (metaslab_class_allocator_t), KM_SLEEP);
 	for (int i = 0; i < spa->spa_alloc_count; i++)
-		zfs_refcount_create_tracked(&mc->mc_alloc_slots[i]);
+		zfs_refcount_create_tracked(
+		    &mc->mc_allocator[i].mca_alloc_slots);
 
 	return (mc);
 }
@@ -401,11 +400,9 @@ metaslab_class_destroy(metaslab_class_t *mc)
 	ASSERT(mc->mc_dspace == 0);
 
 	for (int i = 0; i < mc->mc_spa->spa_alloc_count; i++)
-		zfs_refcount_destroy(&mc->mc_alloc_slots[i]);
-	kmem_free(mc->mc_alloc_slots, mc->mc_spa->spa_alloc_count *
-	    sizeof (zfs_refcount_t));
-	kmem_free(mc->mc_alloc_max_slots, mc->mc_spa->spa_alloc_count *
-	    sizeof (uint64_t));
+		zfs_refcount_destroy(&mc->mc_allocator[i].mca_alloc_slots);
+	kmem_free(mc->mc_allocator, mc->mc_spa->spa_alloc_count *
+	    sizeof (metaslab_class_allocator_t));
 	mutex_destroy(&mc->mc_lock);
 	multilist_destroy(&mc->mc_metaslab_txg_list);
 	kmem_free(mc, sizeof (metaslab_class_t));
@@ -4471,7 +4468,8 @@ metaslab_group_increment_qdepth(metaslab_group_t *mg, int allocator)
 		if (atomic_cas_64(&mg->mg_cur_max_alloc_queue_depth[allocator],
 		    cur, cur + 1) == cur) {
 			atomic_inc_64(
-			    &mg->mg_class->mc_alloc_max_slots[allocator]);
+			    &mg->mg_class->mc_allocator[allocator].
+			    mca_alloc_max_slots);
 			return;
 		}
 		cur = mg->mg_cur_max_alloc_queue_depth[allocator];
@@ -5508,42 +5506,31 @@ boolean_t
 metaslab_class_throttle_reserve(metaslab_class_t *mc, int slots, int allocator,
     zio_t *zio, int flags)
 {
-	uint64_t available_slots = 0;
-	boolean_t slot_reserved = B_FALSE;
-	uint64_t max = mc->mc_alloc_max_slots[allocator];
+	metaslab_class_allocator_t *mca = &mc->mc_allocator[allocator];
+	uint64_t max = mca->mca_alloc_max_slots;
 
 	ASSERT(mc->mc_alloc_throttle_enabled);
-	mutex_enter(&mc->mc_lock);
-
-	uint64_t reserved_slots =
-	    zfs_refcount_count(&mc->mc_alloc_slots[allocator]);
-	if (reserved_slots < max)
-		available_slots = max - reserved_slots;
-
-	if (slots <= available_slots || GANG_ALLOCATION(flags) ||
-	    flags & METASLAB_MUST_RESERVE) {
+	if (GANG_ALLOCATION(flags) || (flags & METASLAB_MUST_RESERVE) ||
+	    zfs_refcount_count(&mca->mca_alloc_slots) + slots <= max) {
 		/*
 		 * We reserve the slots individually so that we can unreserve
 		 * them individually when an I/O completes.
 		 */
-		zfs_refcount_add_few(&mc->mc_alloc_slots[allocator], slots,
-		    zio);
+		zfs_refcount_add_few(&mca->mca_alloc_slots, slots, zio);
 		zio->io_flags |= ZIO_FLAG_IO_ALLOCATING;
-		slot_reserved = B_TRUE;
+		return (B_TRUE);
 	}
-
-	mutex_exit(&mc->mc_lock);
-	return (slot_reserved);
+	return (B_FALSE);
 }
 
 void
 metaslab_class_throttle_unreserve(metaslab_class_t *mc, int slots,
     int allocator, zio_t *zio)
 {
+	metaslab_class_allocator_t *mca = &mc->mc_allocator[allocator];
+
 	ASSERT(mc->mc_alloc_throttle_enabled);
-	mutex_enter(&mc->mc_lock);
-	zfs_refcount_remove_few(&mc->mc_alloc_slots[allocator], slots, zio);
-	mutex_exit(&mc->mc_lock);
+	zfs_refcount_remove_few(&mca->mca_alloc_slots, slots, zio);
 }
 
 static int

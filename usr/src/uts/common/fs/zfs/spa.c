@@ -8577,12 +8577,18 @@ spa_sync_adjust_vdev_max_queue_depth(spa_t *spa)
 	}
 
 	for (int i = 0; i < spa->spa_alloc_count; i++) {
-		ASSERT0(zfs_refcount_count(&normal->mc_alloc_slots[i]));
-		ASSERT0(zfs_refcount_count(&special->mc_alloc_slots[i]));
-		ASSERT0(zfs_refcount_count(&dedup->mc_alloc_slots[i]));
-		normal->mc_alloc_max_slots[i] = slots_per_allocator;
-		special->mc_alloc_max_slots[i] = slots_per_allocator;
-		dedup->mc_alloc_max_slots[i] = slots_per_allocator;
+		ASSERT0(zfs_refcount_count(
+		    &normal->mc_allocator[i].mca_alloc_slots));
+		ASSERT0(zfs_refcount_count(
+		    &special->mc_allocator[i].mca_alloc_slots));
+		ASSERT0(zfs_refcount_count(
+		    &dedup->mc_allocator[i].mca_alloc_slots));
+		normal->mc_allocator[i].mca_alloc_max_slots =
+		    slots_per_allocator;
+		special->mc_allocator[i].mca_alloc_max_slots =
+		    slots_per_allocator;
+		dedup->mc_allocator[i].mca_alloc_max_slots =
+		    slots_per_allocator;
 	}
 	normal->mc_alloc_throttle_enabled = zio_dva_throttle_enabled;
 	special->mc_alloc_throttle_enabled = zio_dva_throttle_enabled;
@@ -8777,9 +8783,9 @@ spa_sync(spa_t *spa, uint64_t txg)
 	spa->spa_sync_pass = 0;
 
 	for (int i = 0; i < spa->spa_alloc_count; i++) {
-		mutex_enter(&spa->spa_alloc_locks[i]);
-		VERIFY0(avl_numnodes(&spa->spa_alloc_trees[i]));
-		mutex_exit(&spa->spa_alloc_locks[i]);
+		mutex_enter(&spa->spa_allocs[i].spaa_lock);
+		VERIFY0(avl_numnodes(&spa->spa_allocs[i].spaa_tree));
+		mutex_exit(&spa->spa_allocs[i].spaa_lock);
 	}
 
 	/*
@@ -8889,9 +8895,9 @@ spa_sync(spa_t *spa, uint64_t txg)
 	dsl_pool_sync_done(dp, txg);
 
 	for (int i = 0; i < spa->spa_alloc_count; i++) {
-		mutex_enter(&spa->spa_alloc_locks[i]);
-		VERIFY0(avl_numnodes(&spa->spa_alloc_trees[i]));
-		mutex_exit(&spa->spa_alloc_locks[i]);
+		mutex_enter(&spa->spa_allocs[i].spaa_lock);
+		VERIFY0(avl_numnodes(&spa->spa_allocs[i].spaa_tree));
+		mutex_exit(&spa->spa_allocs[i].spaa_lock);
 	}
 
 	/*

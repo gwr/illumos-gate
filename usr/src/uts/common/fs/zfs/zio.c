@@ -766,8 +766,7 @@ zio_create(zio_t *pio, spa_t *spa, uint64_t txg, const blkptr_t *bp,
 		zio->io_bookmark = *zb;
 
 	if (pio != NULL) {
-		if (zio->io_metaslab_class == NULL)
-			zio->io_metaslab_class = pio->io_metaslab_class;
+		zio->io_metaslab_class = pio->io_metaslab_class;
 		if (zio->io_logical == NULL)
 			zio->io_logical = pio->io_logical;
 		if (zio->io_child_type == ZIO_CHILD_GANG)
@@ -2561,8 +2560,8 @@ zio_write_gang_block(zio_t *pio)
 		ASSERT(has_data);
 
 		flags |= METASLAB_ASYNC_ALLOC;
-		VERIFY(zfs_refcount_held(&mc->mc_alloc_slots[pio->io_allocator],
-		    pio));
+		VERIFY(zfs_refcount_held(
+		    &mc->mc_allocator[pio->io_allocator].mca_alloc_slots, pio));
 
 		/*
 		 * The logical zio has already placed a reservation for
@@ -3192,9 +3191,9 @@ zio_io_to_allocate(spa_t *spa, int allocator)
 {
 	zio_t *zio;
 
-	ASSERT(MUTEX_HELD(&spa->spa_alloc_locks[allocator]));
+	ASSERT(MUTEX_HELD(&spa->spa_allocs[allocator].spaa_lock));
 
-	zio = avl_first(&spa->spa_alloc_trees[allocator]);
+	zio = avl_first(&spa->spa_allocs[allocator].spaa_tree);
 	if (zio == NULL)
 		return (NULL);
 
@@ -3206,11 +3205,11 @@ zio_io_to_allocate(spa_t *spa, int allocator)
 	 */
 	ASSERT3U(zio->io_allocator, ==, allocator);
 	if (!metaslab_class_throttle_reserve(zio->io_metaslab_class,
-	    zio->io_prop.zp_copies, zio->io_allocator, zio, 0)) {
+	    zio->io_prop.zp_copies, allocator, zio, 0)) {
 		return (NULL);
 	}
 
-	avl_remove(&spa->spa_alloc_trees[allocator], zio);
+	avl_remove(&spa->spa_allocs[allocator].spaa_tree, zio);
 	ASSERT3U(zio->io_stage, <, ZIO_STAGE_DVA_ALLOCATE);
 
 	return (zio);
@@ -3234,8 +3233,8 @@ zio_dva_throttle(zio_t *zio)
 		return (ZIO_PIPELINE_CONTINUE);
 	}
 
+	ASSERT(zio->io_type == ZIO_TYPE_WRITE);
 	ASSERT(zio->io_child_type > ZIO_CHILD_GANG);
-
 	ASSERT3U(zio->io_queued_timestamp, >, 0);
 	ASSERT(zio->io_stage == ZIO_STAGE_DVA_THROTTLE);
 
@@ -3247,14 +3246,14 @@ zio_dva_throttle(zio_t *zio)
 	 * into 2^20 block regions, and then hash based on the objset, object,
 	 * level, and region to accomplish both of these goals.
 	 */
-	zio->io_allocator = cityhash4(bm->zb_objset, bm->zb_object,
+	int allocator = (uint_t)cityhash4(bm->zb_objset, bm->zb_object,
 	    bm->zb_level, bm->zb_blkid >> 20) % spa->spa_alloc_count;
-	mutex_enter(&spa->spa_alloc_locks[zio->io_allocator]);
-	ASSERT(zio->io_type == ZIO_TYPE_WRITE);
+	zio->io_allocator = allocator;
 	zio->io_metaslab_class = mc;
-	avl_add(&spa->spa_alloc_trees[zio->io_allocator], zio);
-	nio = zio_io_to_allocate(spa, zio->io_allocator);
-	mutex_exit(&spa->spa_alloc_locks[zio->io_allocator]);
+	mutex_enter(&spa->spa_allocs[allocator].spaa_lock);
+	avl_add(&spa->spa_allocs[allocator].spaa_tree, zio);
+	nio = zio_io_to_allocate(spa, allocator);
+	mutex_exit(&spa->spa_allocs[allocator].spaa_lock);
 
 	if (nio == zio)
 		return (ZIO_PIPELINE_CONTINUE);
@@ -3279,9 +3278,9 @@ zio_allocate_dispatch(spa_t *spa, int allocator)
 {
 	zio_t *zio;
 
-	mutex_enter(&spa->spa_alloc_locks[allocator]);
+	mutex_enter(&spa->spa_allocs[allocator].spaa_lock);
 	zio = zio_io_to_allocate(spa, allocator);
-	mutex_exit(&spa->spa_alloc_locks[allocator]);
+	mutex_exit(&spa->spa_allocs[allocator].spaa_lock);
 	if (zio == NULL)
 		return;
 
@@ -3443,17 +3442,17 @@ zio_alloc_zil(spa_t *spa, objset_t *os, uint64_t txg, blkptr_t *new_bp,
 	 * of, so we just hash the objset ID to pick the allocator to get
 	 * some parallelism.
 	 */
+	int allocator = (uint_t)cityhash4(0, 0, 0,
+	    os->os_dsl_dataset->ds_object) % spa->spa_alloc_count;
 	error = metaslab_alloc(spa, spa_log_class(spa), size, new_bp, 1,
 	    txg, old_bp, METASLAB_HINTBP_AVOID, &io_alloc_list, NULL,
-	    cityhash4(0, 0, 0,
-	    os->os_dsl_dataset->ds_object) % spa->spa_alloc_count);
+	    allocator);
 	if (error == 0) {
 		*slog = TRUE;
 	} else {
 		error = metaslab_alloc(spa, spa_normal_class(spa), size,
 		    new_bp, 1, txg, old_bp, METASLAB_HINTBP_AVOID,
-		    &io_alloc_list, NULL, cityhash4(0, 0, 0,
-		    os->os_dsl_dataset->ds_object) % spa->spa_alloc_count);
+		    &io_alloc_list, NULL, allocator);
 		if (error == 0)
 			*slog = FALSE;
 	}
@@ -4323,8 +4322,8 @@ zio_done(zio_t *zio)
 		metaslab_group_alloc_verify(spa, zio->io_bp, zio,
 		    zio->io_allocator);
 		VERIFY(zfs_refcount_not_held(
-		    &zio->io_metaslab_class->mc_alloc_slots[zio->io_allocator],
-		    zio));
+		    &zio->io_metaslab_class->mc_allocator[zio->io_allocator].
+		    mca_alloc_slots, zio));
 	}
 
 	for (int c = 0; c < ZIO_CHILD_TYPES; c++)

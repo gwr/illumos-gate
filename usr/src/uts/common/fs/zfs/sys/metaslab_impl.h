@@ -153,6 +153,11 @@ typedef enum trace_alloc_type {
  * final step in allocation. These allocators are pluggable allowing each class
  * to use a block allocator that best suits that class.
  */
+typedef struct metaslab_class_allocator {
+	uint64_t		mca_alloc_max_slots;
+	zfs_refcount_t		mca_alloc_slots;
+} __cacheline_aligned metaslab_class_allocator_t;
+
 struct metaslab_class {
 	kmutex_t		mc_lock;
 	spa_t			*mc_spa;
@@ -179,14 +184,13 @@ struct metaslab_class {
 	 * first reserve the number of blocks that it wants to allocate.
 	 * If there aren't sufficient slots available for the pending zio
 	 * then that I/O is throttled until more slots free up. The current
-	 * number of reserved allocations is maintained by the mc_alloc_slots
-	 * refcount. The mc_alloc_max_slots value determines the maximum
+	 * number of reserved allocations is maintained by the allocator's
+	 * refcount. Its maximum slot value determines the maximum
 	 * number of allocations that the system allows. Gang blocks are
 	 * allowed to reserve slots even if we've reached the maximum
 	 * number of allocations allowed.
 	 */
-	uint64_t		*mc_alloc_max_slots;
-	zfs_refcount_t		*mc_alloc_slots;
+	metaslab_class_allocator_t *mc_allocator;
 
 	uint64_t		mc_alloc_groups; /* # of allocatable groups */
 
