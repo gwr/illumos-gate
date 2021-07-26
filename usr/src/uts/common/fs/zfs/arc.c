@@ -8923,6 +8923,79 @@ l2arc_vdev_get(vdev_t *vd)
 	return (dev);
 }
 
+static void
+l2arc_rebuild_dev(l2arc_dev_t *dev, boolean_t reopen)
+{
+	l2arc_dev_hdr_phys_t *l2dhdr = dev->l2ad_dev_hdr;
+	uint64_t l2dhdr_asize = dev->l2ad_dev_hdr_asize;
+	spa_t *spa = dev->l2ad_spa;
+
+	/*
+	 * The L2ARC has to hold at least the payload of one log block for
+	 * them to be restored (persistent L2ARC). The payload of a log block
+	 * depends on the amount of its log entries. We always write log blocks
+	 * with 1022 entries. How many of them are committed or restored depends
+	 * on the size of the L2ARC device. Thus the maximum payload of
+	 * one log block is 1022 * SPA_MAXBLOCKSIZE = 16GB. If the L2ARC device
+	 * is less than that, we reduce the amount of committed and restored
+	 * log entries per block so as to enable persistence.
+	 */
+	if (dev->l2ad_end < l2arc_rebuild_blocks_min_l2size) {
+		dev->l2ad_log_entries = 0;
+	} else {
+		dev->l2ad_log_entries = MIN((dev->l2ad_end -
+		    dev->l2ad_start) >> SPA_MAXBLOCKSHIFT,
+		    L2ARC_LOG_BLK_MAX_ENTRIES);
+	}
+
+	/*
+	 * Read the device header, if an error is returned do not rebuild L2ARC.
+	 */
+	if (l2arc_dev_hdr_read(dev) == 0 && dev->l2ad_log_entries > 0) {
+		/*
+		 * If we are onlining a cache device (vdev_reopen) that was
+		 * still present (l2arc_vdev_present()) and rebuild is enabled,
+		 * we should evict all ARC buffers and pointers to log blocks
+		 * and reclaim their space before restoring its contents to
+		 * L2ARC.
+		 */
+		if (reopen) {
+			if (!l2arc_rebuild_enabled)
+				return;
+
+			l2arc_evict(dev, 0, B_TRUE);
+			/* start a new log block */
+			dev->l2ad_log_ent_idx = 0;
+			dev->l2ad_log_blk_payload_asize = 0;
+			dev->l2ad_log_blk_payload_start = 0;
+		}
+		/*
+		 * Just mark the device as pending for a rebuild. We won't
+		 * be starting a rebuild in line here as it would block pool
+		 * import. Instead spa_load_impl will hand that off to an
+		 * async task which will call l2arc_spa_rebuild_start.
+		 */
+		dev->l2ad_rebuild = B_TRUE;
+	} else if (spa_writeable(spa)) {
+		/*
+		 * In this case TRIM the whole device if l2arc_trim_ahead > 0,
+		 * otherwise create a new header. We zero out the memory holding
+		 * the header to reset dh_start_lbps. If we TRIM the whole
+		 * device the new header will be written by
+		 * vdev_trim_l2arc_thread() at the end of the TRIM to update the
+		 * trim_state in the header too. When reading the header, if
+		 * trim_state is not VDEV_TRIM_COMPLETE and l2arc_trim_ahead > 0
+		 * we opt to TRIM the whole device again.
+		 */
+		if (l2arc_trim_ahead > 0) {
+			dev->l2ad_trim_all = B_TRUE;
+		} else {
+			bzero(l2dhdr, l2dhdr_asize);
+			l2arc_dev_hdr_update(dev);
+		}
+	}
+}
+
 /*
  * Add a vdev for use by the L2ARC.  By this point the spa has already
  * validated the vdev and opened it.
@@ -8974,88 +9047,38 @@ l2arc_add_vdev(spa_t *spa, vdev_t *vd)
 	zfs_refcount_create(&adddev->l2ad_lb_count);
 
 	/*
+	 * Decide if dev is eligible for L2ARC rebuild or whole device
+	 * trimming. This has to happen before the device is added in the
+	 * cache device list and l2arc_dev_mtx is released. Otherwise
+	 * l2arc_feed_thread() might already start writing on the
+	 * device.
+	 */
+	l2arc_rebuild_dev(adddev, B_FALSE);
+
+	/*
 	 * Add device to global list
 	 */
 	mutex_enter(&l2arc_dev_mtx);
 	list_insert_head(l2arc_dev_list, adddev);
 	atomic_inc_64(&l2arc_ndev);
 	mutex_exit(&l2arc_dev_mtx);
-
-	/*
-	 * Decide if vdev is eligible for L2ARC rebuild
-	 */
-	l2arc_rebuild_vdev(adddev->l2ad_vdev, B_FALSE);
 }
 
+/*
+ * Decide if a vdev is eligible for L2ARC rebuild, called from vdev_reopen()
+ * when onlining a cache device.
+ */
 void
 l2arc_rebuild_vdev(vdev_t *vd, boolean_t reopen)
 {
-	l2arc_dev_t		*dev = NULL;
-	l2arc_dev_hdr_phys_t	*l2dhdr;
-	uint64_t		l2dhdr_asize;
-	spa_t			*spa;
-
-	dev = l2arc_vdev_get(vd);
+	l2arc_dev_t *dev = l2arc_vdev_get(vd);
 	ASSERT3P(dev, !=, NULL);
-	spa = dev->l2ad_spa;
-	l2dhdr = dev->l2ad_dev_hdr;
-	l2dhdr_asize = dev->l2ad_dev_hdr_asize;
 
 	/*
-	 * The L2ARC has to hold at least the payload of one log block for
-	 * them to be restored (persistent L2ARC). The payload of a log block
-	 * depends on the amount of its log entries. We always write log blocks
-	 * with 1022 entries. How many of them are committed or restored depends
-	 * on the size of the L2ARC device. Thus the maximum payload of
-	 * one log block is 1022 * SPA_MAXBLOCKSIZE = 16GB. If the L2ARC device
-	 * is less than that, we reduce the amount of committed and restored
-	 * log entries per block so as to enable persistence.
+	 * The device parameters survive offline/online, so the feed thread
+	 * cannot invalidate all prior contents before rebuild is requested.
 	 */
-	if (dev->l2ad_end < l2arc_rebuild_blocks_min_l2size) {
-		dev->l2ad_log_entries = 0;
-	} else {
-		dev->l2ad_log_entries = MIN((dev->l2ad_end -
-		    dev->l2ad_start) >> SPA_MAXBLOCKSHIFT,
-		    L2ARC_LOG_BLK_MAX_ENTRIES);
-	}
-
-	/*
-	 * Read the device header, if an error is returned do not rebuild L2ARC.
-	 */
-	if (l2arc_dev_hdr_read(dev) == 0 && dev->l2ad_log_entries > 0) {
-		/*
-		 * If we are onlining a cache device (vdev_reopen) that was
-		 * still present (l2arc_vdev_present()) and rebuild is enabled,
-		 * we should evict all ARC buffers and pointers to log blocks
-		 * and reclaim their space before restoring its contents to
-		 * L2ARC.
-		 */
-		if (reopen) {
-			if (!l2arc_rebuild_enabled) {
-				return;
-			} else {
-				l2arc_evict(dev, 0, B_TRUE);
-				/* start a new log block */
-				dev->l2ad_log_ent_idx = 0;
-				dev->l2ad_log_blk_payload_asize = 0;
-				dev->l2ad_log_blk_payload_start = 0;
-			}
-		}
-		/*
-		 * Just mark the device as pending for a rebuild. We won't
-		 * be starting a rebuild in line here as it would block pool
-		 * import. Instead spa_load_impl will hand that off to an
-		 * async task which will call l2arc_spa_rebuild_start.
-		 */
-		dev->l2ad_rebuild = B_TRUE;
-	} else if (spa_writeable(spa)) {
-		/*
-		 * In this case create a new header. We zero out the memory
-		 * holding the header to reset dh_start_lbps.
-		 */
-		bzero(l2dhdr, l2dhdr_asize);
-		l2arc_dev_hdr_update(dev);
-	}
+	l2arc_rebuild_dev(dev, reopen);
 }
 
 /*
