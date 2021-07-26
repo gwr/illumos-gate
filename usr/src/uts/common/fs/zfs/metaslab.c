@@ -5513,6 +5513,11 @@ metaslab_class_throttle_reserve(metaslab_class_t *mc, int slots, int allocator,
 	if (GANG_ALLOCATION(flags) || (flags & METASLAB_MUST_RESERVE) ||
 	    zfs_refcount_count(&mca->mca_alloc_slots) + slots <= max) {
 		/*
+		 * The allocator lock covers the race between count and add in
+		 * normal use.  Gang and must-reserve allocations may exceed the
+		 * limit intentionally.  Any other race can only admit a few
+		 * allocations early, which is harmless.
+		 *
 		 * We reserve the slots individually so that we can unreserve
 		 * them individually when an I/O completes.
 		 */
