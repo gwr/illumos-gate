@@ -337,11 +337,16 @@ abd_free_struct(abd_t *abd)
  * Allocate an ABD, along with its own underlying data buffers. Use this if you
  * don't care whether the ABD is linear or not.
  */
+boolean_t
+abd_size_alloc_linear(size_t size)
+{
+	return (!zfs_abd_scatter_enabled || size < zfs_abd_scatter_min_size);
+}
+
 abd_t *
 abd_alloc(size_t size, boolean_t is_metadata)
 {
-	/* see the comment above zfs_abd_scatter_min_size */
-	if (!zfs_abd_scatter_enabled || size < zfs_abd_scatter_min_size)
+	if (abd_size_alloc_linear(size))
 		return (abd_alloc_linear(size, is_metadata));
 
 	VERIFY3U(size, <=, SPA_MAXBLOCKSIZE);
