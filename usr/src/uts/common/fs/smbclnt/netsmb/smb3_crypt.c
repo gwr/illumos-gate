@@ -11,7 +11,7 @@
 
 /*
  * Copyright 2019 Nexenta Systems, Inc.  All rights reserved.
- * Copyright 2024 RackTop Systems, Inc.
+ * Copyright 2022-2025 RackTop Systems, Inc.
  */
 
 /*
@@ -30,7 +30,7 @@
 #include <sys/random.h>
 #include <sys/stream.h>
 #include <sys/strsun.h>
-#include <sys/sdt.h>
+#include <sys/sysmacros.h>
 
 #include <netsmb/smb_osdep.h>
 #include <netsmb/smb2.h>
@@ -60,10 +60,25 @@ nsmb_crypt_init_mech(struct smb_vc *vcp)
 	if (vcp->vc3_crypt_mech != NULL)
 		return;
 
+	if (SMB_DIALECT(vcp) < SMB2_DIALECT_0311)
+		vcp->vc3_enc_cipherid = SMB3_CIPHER_AES128_CCM;
+
 	mech = kmem_zalloc(sizeof (*mech), KM_SLEEP);
 
-	/* Always CCM for now. */
-	rc = nsmb_aes_ccm_getmech(mech);
+	switch (vcp->vc3_enc_cipherid) {
+	case SMB3_CIPHER_AES256_GCM:
+	case SMB3_CIPHER_AES128_GCM:
+		rc = nsmb_aes_gcm_getmech(mech);
+		break;
+	case SMB3_CIPHER_AES256_CCM:
+	case SMB3_CIPHER_AES128_CCM:
+		rc = nsmb_aes_ccm_getmech(mech);
+		break;
+	default:
+		rc = -1;
+		break;
+	};
+
 	if (rc != 0) {
 		kmem_free(mech, sizeof (*mech));
 		cmn_err(CE_NOTE, "SMB3 found no AES mechanism"
@@ -91,6 +106,7 @@ nsmb_crypt_free_mech(struct smb_vc *vcp)
 void
 nsmb_crypt_init_keys(struct smb_vc *vcp)
 {
+	uint32_t derived_keylen, input_keylen;
 
 	/*
 	 * If we don't have a session key, we'll fail later when a
@@ -104,21 +120,56 @@ nsmb_crypt_init_keys(struct smb_vc *vcp)
 	/*
 	 * For SMB3, the encrypt/decrypt keys are derived from
 	 * the session key using KDF in counter mode.
+	 *
+	 * AES256 Keys are derived from the 'FullSessionKey', which is the
+	 * entirety of what we got from authentication (in vcp->vc_ssnkey).
+	 * AES128 Keys are derived from the 'SessionKey', which is the
+	 * first 16 bytes of the 'FullSessionKey' (MS terminology).
 	 */
-	if (nsmb_kdf(vcp->vc3_encrypt_key, SMB3_KEYLEN,
-	    vcp->vc_ssnkey, vcp->vc_ssnkeylen,
-	    (uint8_t *)"SMB2AESCCM", 11,
-	    (uint8_t *)"ServerIn ", 10) != 0)
-		return;
+	if (SMB_DIALECT(vcp) >= SMB2_DIALECT_0311) {
+		if (vcp->vc3_enc_cipherid == SMB3_CIPHER_AES256_GCM ||
+		    vcp->vc3_enc_cipherid == SMB3_CIPHER_AES256_CCM) {
+			derived_keylen = AES256_KEY_LENGTH;
+			input_keylen = vcp->vc_ssnkeylen;
+		} else {
+			derived_keylen = AES128_KEY_LENGTH;
+			input_keylen = MIN(SMB2_KEYLEN, vcp->vc_ssnkeylen);
+		}
 
-	if (nsmb_kdf(vcp->vc3_decrypt_key, SMB3_KEYLEN,
-	    vcp->vc_ssnkey, vcp->vc_ssnkeylen,
-	    (uint8_t *)"SMB2AESCCM", 11,
-	    (uint8_t *)"ServerOut", 10) != 0)
-		return;
+		if (nsmb_kdf(vcp->vc3_encrypt_key, derived_keylen,
+		    vcp->vc_ssnkey, input_keylen,
+		    (uint8_t *)"SMBC2SCipherKey", 16,
+		    vcp->vc3_preauth_hashval, SHA512_DIGEST_LENGTH) != 0)
+			return;
 
-	vcp->vc3_encrypt_key_len = SMB3_KEYLEN;
-	vcp->vc3_decrypt_key_len = SMB3_KEYLEN;
+		if (nsmb_kdf(vcp->vc3_decrypt_key, derived_keylen,
+		    vcp->vc_ssnkey, input_keylen,
+		    (uint8_t *)"SMBS2CCipherKey", 16,
+		    vcp->vc3_preauth_hashval, SHA512_DIGEST_LENGTH) != 0)
+			return;
+
+		vcp->vc3_encrypt_key_len = derived_keylen;
+		vcp->vc3_decrypt_key_len = derived_keylen;
+	} else {
+		derived_keylen = AES128_KEY_LENGTH;
+		input_keylen = MIN(SMB2_KEYLEN, vcp->vc_ssnkeylen);
+
+		if (nsmb_kdf(vcp->vc3_encrypt_key, derived_keylen,
+		    vcp->vc_ssnkey, input_keylen,
+		    (uint8_t *)"SMB2AESCCM", 11,
+		    (uint8_t *)"ServerIn ", 10) != 0)
+			return;
+
+		if (nsmb_kdf(vcp->vc3_decrypt_key, derived_keylen,
+		    vcp->vc_ssnkey, input_keylen,
+		    (uint8_t *)"SMB2AESCCM", 11,
+		    (uint8_t *)"ServerOut", 10) != 0)
+			return;
+
+		vcp->vc3_encrypt_key_len = derived_keylen;
+		vcp->vc3_decrypt_key_len = derived_keylen;
+	}
+
 
 	(void) random_get_pseudo_bytes(
 	    (uint8_t *)&vcp->vc3_nonce_low,
@@ -144,14 +195,19 @@ smb3_msg_encrypt(struct smb_vc *vcp, mblk_t **mpp)
 	uint32_t bodylen;
 	uint8_t *authdata;
 	size_t authlen;
+	int gcm = 0;
 	int rc;
 
 	ASSERT(RW_WRITE_HELD(&vcp->iod_rqlock));
 
 	if (vcp->vc3_crypt_mech == NULL ||
-	    vcp->vc3_encrypt_key_len != SMB3_KEYLEN) {
+	    vcp->vc3_encrypt_key_len < SMB2_KEYLEN) {
 		return (ENOTSUP);
 	}
+
+	if (vcp->vc3_enc_cipherid == SMB3_CIPHER_AES256_GCM ||
+	    vcp->vc3_enc_cipherid == SMB3_CIPHER_AES128_GCM)
+		gcm = 1;
 
 	bzero(&ctx, sizeof (ctx));
 	ctx.mech = *((smb_crypto_mech_t *)vcp->vc3_crypt_mech);
@@ -196,9 +252,14 @@ smb3_msg_encrypt(struct smb_vc *vcp, mblk_t **mpp)
 	authdata = thdr->b_rptr + SMB3_NONCE_OFFS;
 	authlen = SMB3_TFORM_HDR_SIZE - SMB3_NONCE_OFFS;
 
-	nsmb_crypto_init_ccm_param(&ctx,
-	    authdata, SMB2_SIG_SIZE,
-	    authdata, authlen, bodylen);
+	if (gcm)
+		nsmb_crypto_init_gcm_param(&ctx,
+		    authdata, SMB2_SIG_SIZE,
+		    authdata, authlen);
+	else
+		nsmb_crypto_init_ccm_param(&ctx,
+		    authdata, SMB2_SIG_SIZE,
+		    authdata, authlen, bodylen);
 
 	rc = nsmb_encrypt_init(&ctx,
 	    vcp->vc3_encrypt_key, vcp->vc3_encrypt_key_len);
@@ -268,12 +329,17 @@ smb3_msg_decrypt(struct smb_vc *vcp, mblk_t **mpp)
 	uint16_t th_flags;
 	uint8_t *authdata;
 	size_t authlen;
+	int gcm = 0;
 	int rc;
 
 	if (vcp->vc3_crypt_mech == NULL ||
-	    vcp->vc3_encrypt_key_len != SMB3_KEYLEN) {
+	    vcp->vc3_decrypt_key_len < SMB2_KEYLEN) {
 		return (ENOTSUP);
 	}
+
+	if (vcp->vc3_enc_cipherid == SMB3_CIPHER_AES256_GCM ||
+	    vcp->vc3_enc_cipherid == SMB3_CIPHER_AES128_GCM)
+		gcm = 1;
 
 	bzero(&ctx, sizeof (ctx));
 	ctx.mech = *((smb_crypto_mech_t *)vcp->vc3_crypt_mech);
@@ -342,9 +408,14 @@ smb3_msg_decrypt(struct smb_vc *vcp, mblk_t **mpp)
 	authlen = SMB3_TFORM_HDR_SIZE - SMB3_NONCE_OFFS;
 	tlen = bodylen + SMB2_SIG_SIZE;
 
-	nsmb_crypto_init_ccm_param(&ctx,
-	    authdata, SMB2_SIG_SIZE,
-	    authdata, authlen, tlen);
+	if (gcm)
+		nsmb_crypto_init_gcm_param(&ctx,
+		    authdata, SMB2_SIG_SIZE,
+		    authdata, authlen);
+	else
+		nsmb_crypto_init_ccm_param(&ctx,
+		    authdata, SMB2_SIG_SIZE,
+		    authdata, authlen, tlen);
 
 	rc = nsmb_decrypt_init(&ctx,
 	    vcp->vc3_decrypt_key, vcp->vc3_decrypt_key_len);

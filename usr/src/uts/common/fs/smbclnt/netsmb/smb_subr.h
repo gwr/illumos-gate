@@ -35,7 +35,7 @@
 /*
  * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
- * Copyright 2024 RackTop Systems, Inc.
+ * Copyright 2024-2025 RackTop Systems, Inc.
  */
 
 #ifndef _NETSMB_SMB_SUBR_H_
@@ -269,6 +269,18 @@ int smb2_smb_read(smb_fh_t *fhp, uint32_t *lenp,
 	uio_t *uiop, smb_cred_t *scred, int timo);
 int smb2_smb_write(smb_fh_t *fhp, uint32_t *lenp,
 	uio_t *uiop, smb_cred_t *scred, int timo);
+
+/*
+ * SMB3 protocol support
+ */
+int nsmb_preauth_init(smb_vc_t *);
+int nsmb_preauth_calc(smb_vc_t *vcp, mblk_t *mb, uint8_t *, uint8_t *);
+
+int smb3_negctxs_encode(struct smb_vc *vcp, struct mbchain *mbp,
+	uint32_t *negctx_off_p, uint16_t *negctx_cnt_p);
+
+int smb3_negctxs_decode(struct smb_vc *, struct mdchain *,
+	uint16_t negctx_cnt);
 
 /*
  * time conversions

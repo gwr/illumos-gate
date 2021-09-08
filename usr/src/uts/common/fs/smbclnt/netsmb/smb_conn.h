@@ -38,7 +38,7 @@
  *
  * Portions Copyright (C) 2001 - 2013 Apple Inc. All rights reserved.
  * Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
- * Copyright 2024 RackTop Systems, Inc.
+ * Copyright 2021-2025 RackTop Systems, Inc.
  */
 
 #ifndef _SMB_CONN_H
@@ -241,12 +241,18 @@ typedef struct smb_vc {
 	uint32_t	vc2_lease_key;		/* lease key gen */
 
 	/* SMB3+ fields */
+	smb_crypto_mech_t vc3_preauthmech;
 	smb_crypto_mech_t *vc3_crypt_mech;
 
-	uint8_t		vc3_encrypt_key[SMB3_KEYLEN];
+	uint16_t		vc3_enc_cipherid;
+	uint16_t		vc3_preauth_hashid;
+	uint8_t			vc3_preauth_hashval[SHA512_DIGEST_LENGTH];
+
+	/* Encrypt/decrypt keys can be 128 bit or 256 bit */
+	uint8_t		vc3_encrypt_key[AES256_KEY_LENGTH];
 	uint32_t	vc3_encrypt_key_len;
 
-	uint8_t		vc3_decrypt_key[SMB3_KEYLEN];
+	uint8_t		vc3_decrypt_key[AES256_KEY_LENGTH];
 	uint32_t	vc3_decrypt_key_len;
 
 	/* SMB 3 Nonce used for encryption */
