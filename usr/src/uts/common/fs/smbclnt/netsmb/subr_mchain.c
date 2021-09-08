@@ -37,6 +37,7 @@
  * Use is subject to license terms.
  *
  * Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2021-2025 RackTop Systems, Inc.
  */
 
 #include <sys/param.h>
@@ -1110,4 +1111,23 @@ m_split(
 	m->b_cont = NULL;
 
 	return (n);
+}
+
+uint32_t
+md_tell(mdchain_t *mdp)
+{
+	uint32_t cnt = 0;
+	mblk_t *m;
+
+	for (m = mdp->md_top; m != NULL; m = m->b_cont) {
+		if (m == mdp->md_cur) {
+			cnt += mdp->md_pos - m->b_rptr;
+			break;
+		}
+
+		int len = MBLKL(m);
+		cnt += len;
+	}
+
+	return (cnt);
 }
