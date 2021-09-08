@@ -57,6 +57,11 @@ SYMBOL_VERSION SUNWprivate {
 	smb3_cmac_update;
 	smb3_cmac_final;
 
+	smb3_sha512_getmech;
+	smb3_sha512_init;
+	smb3_sha512_update;
+	smb3_sha512_final;
+
 	smb3_aes_ccm_getmech;
 	smb3_aes_gcm_getmech;
 	smb3_crypto_init_ccm_param;

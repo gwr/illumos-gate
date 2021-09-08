@@ -23,6 +23,7 @@
 
 /*
  * Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2021 RackTop Systems, Inc.
  */
 
 #include <sys/param.h>
@@ -49,16 +50,19 @@
 #include <netsmb/smb_tran.h>
 #include <netsmb/smb_rq.h>
 #include <netsmb/smb2_rq.h>
+#include <netsmb/smb31_preauth.h>
+#include <netsmb/smb3_negctx.h>
 
 /*
  * Supported dialects.  Keep sorted by number because of how the
  * vc_maxver check below may truncate this list.
  */
-#define	NDIALECTS	3
+#define	NDIALECTS	4
 static const uint16_t smb2_dialects[NDIALECTS] = {
 	SMB2_DIALECT_0210,
 	SMB2_DIALECT_0300,
 	SMB2_DIALECT_0302,
+	SMB2_DIALECT_0311,
 };
 
 /* Optional capabilities we advertise (none yet). */
@@ -148,6 +152,7 @@ smb2_parse_smb1nego_resp(struct smb_rq *rqp)
 	return (0);
 }
 
+extern int xxx;
 int
 smb2_smb_negotiate(struct smb_vc *vcp, struct smb_cred *scred)
 {
@@ -159,10 +164,14 @@ smb2_smb_negotiate(struct smb_vc *vcp, struct smb_cred *scred)
 	uint16_t *ndialects_p;
 	uint16_t ndialects = NDIALECTS;
 	boolean_t will_sign = B_FALSE;
+	boolean_t smb311 = B_FALSE;
 	uint16_t length = 0;
 	uint16_t security_mode;
 	uint16_t sec_buf_off;
 	uint16_t sec_buf_len;
+	uint32_t negctx_off = 0;
+	uint16_t negctx_cnt = 2;
+	uint32_t *negctx_off_p = 0;
 	int err, i;
 
 	/*
@@ -178,6 +187,17 @@ smb2_smb_negotiate(struct smb_vc *vcp, struct smb_cred *scred)
 	if (err)
 		return (err);
 
+
+	if (vcp->vc_maxver >= SMB2_DIALECT_0311) {
+		err = smb31_preauth_init(vcp);
+		if (err != 0)
+			return (err);
+
+		smb311 = B_TRUE;
+		bzero(vcp->vc3_preauth_hashval,
+		    sizeof (vcp->vc3_preauth_hashval));
+	}
+
 	/*
 	 * Build the SMB2 negotiate request.
 	 */
@@ -188,13 +208,77 @@ smb2_smb_negotiate(struct smb_vc *vcp, struct smb_cred *scred)
 	mb_put_uint16le(mbp, 0);		/*  Reserved */
 	mb_put_uint32le(mbp, smb2_clnt_caps);
 	mb_put_mem(mbp, vcp->vc_cl_guid, 16, MB_MSYSTEM);
-	mb_put_uint64le(mbp, 0);		/* Start Time */
+
+	if (smb311) {
+		/* Add negotiation ctxs offset/count */
+		negctx_off_p = mb_reserve(mbp, 4);	/* Neg Ctxs Offset */
+		mb_put_uint16le(mbp, negctx_cnt);	/* Neg Ctxs Count */
+		mb_put_uint16le(mbp, 0);		/* Reserved */
+	} else {
+		mb_put_uint64le(mbp, 0);		/* Start Time */
+	}
+
 	for (i = 0; i < ndialects; i++) {	/* Dialects */
 		if (smb2_dialects[i] > vcp->vc_maxver)
 			break;
 		mb_put_uint16le(mbp, smb2_dialects[i]);
 	}
 	*ndialects_p = htoles(i);
+
+	if (smb311) {
+		uint8_t salt[SMB31_PREAUTH_CTX_SALT_LEN];
+		size_t saltlen = sizeof (salt);
+		(void) random_get_pseudo_bytes(salt, saltlen);
+
+		mb_put_align8(mbp);
+		negctx_off = mbp->mb_count;
+		*negctx_off_p = negctx_off;	/* Neg Ctxs Offset */
+
+		/* Put Contexts */
+
+		/* Pre-authenctication context*/
+		mb_put_uint16le(mbp, SMB2_PREAUTH_INTEGRITY_CAPS);
+		uint16_t *len_p = mb_reserve(mbp, 2);
+		mb_put_uint32le(mbp, 0);	/* Reserved */
+		int start = mbp->mb_count;
+
+		mb_put_uint16le(mbp, 1);	/* HashAlgorithmCount */
+		mb_put_uint16le(mbp, saltlen);	/* SaltLength */
+
+		/* The only supported hash algo - SHA-512 */
+		mb_put_uint16le(mbp, SMB3_HASH_SHA512);
+		/* Salt */
+		mb_put_mem(mbp, salt, saltlen, MB_MINLINE);
+
+		uint16_t len = mbp->mb_count - start;
+		*len_p = len;
+
+		mb_put_align8(mbp);
+
+		/* Encryption context*/
+
+		mb_put_uint16le(mbp, SMB2_ENCRYPTION_CAPS);
+		len_p = mb_reserve(mbp, 2);
+		mb_put_uint32le(mbp, 0);	/* Reserved */
+		start = mbp->mb_count;
+
+		uint16_t cipher_cnt = xxx ? 2 : 1;
+		mb_put_uint16le(mbp, cipher_cnt);	/* CipherCount */
+
+		/* Ciphers */
+
+		/* AES-128-CCM */
+		if (xxx) {
+		mb_put_uint16le(mbp, SMB3_CIPHER_AES128_CCM);
+		}
+		/* AES-128-GCM */
+		mb_put_uint16le(mbp, SMB3_CIPHER_AES128_GCM);
+
+		len = mbp->mb_count - start;
+		*len_p = len;
+
+		mb_put_align8(mbp);
+	}
 
 	/*
 	 * Do the OTW call.
@@ -222,7 +306,7 @@ smb2_smb_negotiate(struct smb_vc *vcp, struct smb_cred *scred)
 
 	md_get_uint16le(mdp, &sp->sv2_security_mode);
 	md_get_uint16le(mdp, &sp->sv_proto); /* dialect */
-	md_get_uint16le(mdp, NULL);	/* reserved */
+	md_get_uint16le(mdp, &negctx_cnt);
 	md_get_mem(mdp, sp->sv2_guid, 16, MB_MSYSTEM);
 	md_get_uint32le(mdp, &sp->sv2_capabilities);
 	md_get_uint32le(mdp, &sp->sv2_maxtransact);
@@ -236,7 +320,20 @@ smb2_smb_negotiate(struct smb_vc *vcp, struct smb_cred *scred)
 	err = md_get_uint16le(mdp, &sec_buf_len);
 	if (err != 0)
 		goto errout;
-	md_get_uint32le(mdp, NULL);	/* reserved */
+	md_get_uint32le(mdp, &negctx_off);	/* reserved */
+
+	if (sp->sv_proto >= SMB2_DIALECT_0311) {
+		if (smb31_preauth_calc(vcp, rqp->sr_rp.md_top,
+		    vcp->vc3_preauth_hashval,
+		    vcp->vc3_preauth_hashval) != 0) {
+			cmn_err(CE_WARN, "(NEG Resp) Pre-auth hash calculation "
+			    "failed");
+			/*
+			 * Ignore error - postpone error detection for
+			 * an encryption/signing stage.
+			 */
+		}
+	}
 
 	/*
 	 * Security buffer offset is from the beginning of SMB 2 Header
@@ -272,6 +369,27 @@ smb2_smb_negotiate(struct smb_vc *vcp, struct smb_cred *scred)
 		}
 	}
 
+	if (sp->sv_proto >= SMB2_DIALECT_0311) {
+		smb2_neg_ctxs_t negctxs;
+		int skip = negctx_off - sec_buf_off - sec_buf_len;
+
+		if (skip < 0) {
+			err = EBADRPC;
+			goto errout;
+		}
+		if (skip > 0) {
+			md_get_mem(mdp, NULL, skip, MB_MSYSTEM);
+		}
+		/* Parse Negotiation Contexts */
+		negctxs.offset = negctx_off;
+		negctxs.count = negctx_cnt;
+
+		if ((err = smb31_decode_negctxs(vcp, mdp, &negctxs)) != 0) {
+			cmn_err(CE_NOTE, "Failed to decode negctxs: %x", err);
+			goto errout;
+		}
+	}
+
 	/*
 	 * Decoded everything.  Now decisions.
 	 */
@@ -303,8 +421,9 @@ smb2_smb_negotiate(struct smb_vc *vcp, struct smb_cred *scred)
 	if (sp->sv2_capabilities & SMB2_CAP_DFS)
 		sp->sv_caps |= SMB_CAP_DFS;
 
-	if (sp->sv_proto >= SMB2_DIALECT_0300 &&
-	    (sp->sv2_capabilities & SMB2_CAP_ENCRYPTION) != 0) {
+	if ((sp->sv_proto >= SMB2_DIALECT_0311 && vcp->vc3_enc_cipherid) ||
+	    (sp->sv_proto >= SMB2_DIALECT_0300 &&
+	     (sp->sv2_capabilities & SMB2_CAP_ENCRYPTION) != 0)) {
 		smb3_crypt_init_mech(vcp);
 	}
 
@@ -350,6 +469,7 @@ errout:
 int
 smb2_smb_ssnsetup(struct smb_vc *vcp, struct smb_cred *scred)
 {
+	smb_sopt_t *sv = &vcp->vc_sopt;
 	smbioc_ssn_work_t *wk = &vcp->vc_work;
 	struct smb_rq *rqp = NULL;
 	struct mbchain *mbp = NULL;
@@ -458,6 +578,30 @@ smb2_smb_ssnsetup(struct smb_vc *vcp, struct smb_cred *scred)
 	if (err != 0) {
 		ret = err;
 		goto out;
+	}
+
+	if (sv->sv_proto >= SMB2_DIALECT_0311) {
+		if (rqp->sr_error == NT_STATUS_MORE_PROCESSING_REQUIRED) {
+			if (smb31_preauth_calc(vcp, rqp->sr_rp.md_top,
+			    vcp->vc3_preauth_hashval,
+			    vcp->vc3_preauth_hashval) != 0) {
+				cmn_err(CE_WARN, "(SSNSETUP Resp) Pre-auth hash "
+				    "calculation failed");
+				/*
+				 * Ignore error - postpone error detection for
+				 * an encryption/signing stage.
+				 */
+			}
+		} else {
+			ASSERT0(rqp->sr_error);
+			/*
+			 * Session setup completed.
+			 * We have either to sign or to encrypt  packets.
+			 * We don't have encryption implemented yet, so we
+			 * should always sign.
+			 */
+			vcp->vc_flags |= SMBV_SIGNING;
+		}
 	}
 
 	/*

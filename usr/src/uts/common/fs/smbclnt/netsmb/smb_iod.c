@@ -38,6 +38,7 @@
  *
  * Portions Copyright (C) 2001 - 2013 Apple Inc. All rights reserved.
  * Copyright 2019 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2021 Racktop Systems.
  */
 
 #ifdef DEBUG
@@ -77,6 +78,7 @@
 #include <netsmb/smb_subr.h>
 #include <netsmb/smb_tran.h>
 #include <netsmb/smb_trantcp.h>
+#include <netsmb/smb31_preauth.h>
 
 /*
  * SMB messages are up to 64K.  Let's leave room for two.
@@ -334,6 +336,22 @@ smb2_iod_sendrq(struct smb_rq *rqp)
 	 * requests after the top one, do those too.
 	 */
 	smb2_rq_fillhdr(rqp);
+
+	if ((rqp->sr2_command == SMB2_NEGOTIATE &&
+	    vcp->vc_maxver >= SMB2_DIALECT_0311) ||
+	    (rqp->sr2_command == SMB2_SESSION_SETUP &&
+	     sv->sv_proto >= SMB2_DIALECT_0311)) {
+		if (smb31_preauth_calc(vcp, rqp->sr_rq.mb_top,
+		    vcp->vc3_preauth_hashval, vcp->vc3_preauth_hashval) != 0) {
+			cmn_err(CE_WARN, "(CMD: %d) Pre-auth hash calculation "
+			    "failed", rqp->sr2_command);
+			/*
+			 * Ignore error - postpone error detection for
+			 * an encryption/signing stage.
+			 */
+		}
+	}
+
 	if (!encrypt && (rqp->sr2_rqflags & SMB2_FLAGS_SIGNED) != 0) {
 		smb2_rq_sign(rqp);
 	}

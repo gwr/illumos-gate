@@ -38,6 +38,7 @@
  *
  * Portions Copyright (C) 2001 - 2013 Apple Inc. All rights reserved.
  * Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2021 RackTop Systems, Inc.
  */
 
 #ifndef _SMB_CONN_H
@@ -240,6 +241,7 @@ typedef struct smb_vc {
 	uint32_t	vc2_lease_key;		/* lease key gen */
 
 	/* SMB3+ fields */
+	smb_crypto_mech_t vc_preauthmech;
 	smb_crypto_mech_t *vc3_crypt_mech;
 
 	uint8_t		vc3_encrypt_key[SMB3_KEYLEN];
@@ -270,6 +272,10 @@ typedef struct smb_vc {
 
 	/* session identity, etc. */
 	smbioc_ossn_t		vc_ssn;
+
+	uint16_t		vc3_enc_cipherid;
+	uint16_t		vc3_preauth_hashid;
+	uint8_t			vc3_preauth_hashval[SHA512_DIGEST_LENGTH];
 } smb_vc_t;
 
 #define	vc_lock		vc_co.co_lock

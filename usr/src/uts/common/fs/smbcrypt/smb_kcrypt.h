@@ -11,7 +11,7 @@
 
 /*
  * Copyright 2017-2021 Tintri by DDN, Inc. All rights reserved.
- * Copyright 2020 RackTop Systems, Inc.
+ * Copyright 2021 RackTop Systems, Inc.
  */
 
 #ifndef _SMB_KCRYPT_H_
@@ -46,6 +46,12 @@ extern "C" {
 
 #define	SMB3_AES128_CCM_NONCE_SIZE	11
 #define	SMB3_AES128_GCM_NONCE_SIZE	12
+
+#define	SMB3_HASH_SHA512	1
+
+#define	SMB3_CIPHER_NONE	0
+#define	SMB3_CIPHER_AES128_CCM	1
+#define	SMB3_CIPHER_AES128_GCM	2
 
 #ifdef	_KERNEL
 
@@ -110,6 +116,14 @@ int smb3_cmac_getmech(smb_crypto_mech_t *);
 int smb3_cmac_init(smb_sign_ctx_t *, smb_crypto_mech_t *, uint8_t *, size_t);
 int smb3_cmac_update(smb_sign_ctx_t, uint8_t *, size_t);
 int smb3_cmac_final(smb_sign_ctx_t, uint8_t *);
+
+/*
+ * SMB 3.1.1 pre-authentication routines.
+ */
+int smb3_sha512_getmech(smb_crypto_mech_t *);
+int smb3_sha512_init(smb_sign_ctx_t *, smb_crypto_mech_t *);
+int smb3_sha512_update(smb_sign_ctx_t, uint8_t *, size_t);
+int smb3_sha512_final(smb_sign_ctx_t, uint8_t *);
 
 int smb3_kdf(uint8_t *outbuf, uint8_t *key, size_t key_len,
     uint8_t *label, size_t label_len,

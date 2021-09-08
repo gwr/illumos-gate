@@ -11,6 +11,7 @@
 
 /*
  * Copyright 2017 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2021 RackTop Systems, Inc.
  */
 
 /*
@@ -262,6 +263,66 @@ smb3_cmac_final(smb_sign_ctx_t ctx, uint8_t *digest)
 	CK_RV rv;
 
 	rv = C_SignFinal(ctx, digest, &len);
+	(void) C_CloseSession(ctx);
+
+	return (rv == CKR_OK ? 0 : -1);
+}
+
+/*
+ * SMB 3.1.1 preauth integrity helpers:
+ * (getmech, init, update, final)
+ */
+/*
+ * Find out if we have this mech.
+ */
+int
+smb3_sha512_getmech(smb_crypto_mech_t *mech)
+{
+	return (find_mech(mech, CKM_SHA512));
+}
+
+/*
+ * Start PKCS#11 session.
+ */
+int
+smb3_sha512_init(smb_sign_ctx_t *ctxp, smb_crypto_mech_t *mech)
+{
+	CK_RV rv;
+
+	rv = SUNW_C_GetMechSession(mech->mechanism, ctxp);
+	if (rv != CKR_OK)
+		return (-1);
+
+	rv = C_DigestInit(*ctxp, mech);
+
+	return (rv == CKR_OK ? 0 : -1);
+}
+
+/*
+ * Digest one segment
+ */
+int
+smb3_sha512_update(smb_sign_ctx_t ctx, uint8_t *buf, size_t len)
+{
+	CK_RV rv;
+
+	rv = C_DigestUpdate(ctx, buf, len);
+	if (rv != CKR_OK)
+		(void) C_CloseSession(ctx);
+
+	return (rv == CKR_OK ? 0 : -1);
+}
+
+/*
+ * Get the final digest.
+ */
+int
+smb3_sha512_final(smb_sign_ctx_t ctx, uint8_t *digest64)
+{
+	CK_ULONG len = SHA512_DIGEST_LENGTH;
+	CK_RV rv;
+
+	rv = C_DigestFinal(ctx, digest64, &len);
 	(void) C_CloseSession(ctx);
 
 	return (rv == CKR_OK ? 0 : -1);

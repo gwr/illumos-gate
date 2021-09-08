@@ -107,7 +107,7 @@ smb2_rq_fillhdr(struct smb_rq *rqp)
 	mb_put_uint32le(mbp, rqp->sr_pid);		/* Process ID */
 	mb_put_uint32le(mbp, rqp->sr2_rqtreeid);	/* Tree ID */
 	mb_put_uint64le(mbp, rqp->sr2_rqsessionid);	/* Session ID */
-	/* The MAC signature is filled in by smb2_vc_sign() */
+	/* The MAC signature is filled in by smb2_rq_sign() */
 
 	/* This will free the mblk from dupb. */
 	mb_done(mbp);

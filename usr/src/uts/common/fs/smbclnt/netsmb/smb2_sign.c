@@ -115,12 +115,25 @@ smb2_sign_init(smb_vc_t *vcp)
 
 		vcp->vc_sign_ops = &smb2_sign_ops;
 	} else {
-		rc = smb3_kdf(vcp->vc_mackey,
-		    vcp->vc_ssnkey, vcp->vc_ssnkeylen,
-		    (uint8_t *)"SMB2AESCMAC", 12,
-		    (uint8_t *)"SmbSign", 8);
-		if (rc != 0)
-			return (EAUTH);
+		/*
+		 * For SMB3, the signing key is a "KDF" hash of the
+		 * session key.
+		 */
+		if (SMB_DIALECT(vcp) >= SMB2_DIALECT_0311) {
+			if (smb3_kdf(vcp->vc_mackey,
+			    vcp->vc_ssnkey, vcp->vc_ssnkeylen,
+			    (uint8_t *)"SMBSigningKey", 14,
+			    vcp->vc3_preauth_hashval,
+			    SHA512_DIGEST_LENGTH) != 0)
+				return (EAUTH);
+		} else {
+			if (smb3_kdf(vcp->vc_mackey,
+			    vcp->vc_ssnkey, vcp->vc_ssnkeylen,
+			    (uint8_t *)"SMB2AESCMAC", 12,
+			    (uint8_t *)"SmbSign", 8) != 0)
+				return (EAUTH);
+		}
+
 		vcp->vc_sign_ops = &smb3_sign_ops;
 	}
 

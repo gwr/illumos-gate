@@ -164,7 +164,7 @@ smb3_encrypt_uio(smb_enc_ctx_t *ctxp, uio_t *in_uio, uio_t *out_uio)
 	rv = crypto_encrypt(&ctxp->mech, &in_cd,
 	    &ctxp->ckey, tmpl, &out_cd, NULL);
 	if (rv != CRYPTO_SUCCESS) {
-		cmn_err(CE_WARN, "crypto_encrypt failed: 0x%x", rv);
+		cmn_err(CE_WARN, "crypto_encrypt (uio) failed: 0x%x", rv);
 		return (-1);
 	}
 
@@ -196,7 +196,7 @@ smb3_decrypt_uio(smb_enc_ctx_t *ctxp, uio_t *in_uio, uio_t *out_uio)
 	rv = crypto_decrypt(&ctxp->mech, &in_cd,
 	    &ctxp->ckey, tmpl, &out_cd, NULL);
 	if (rv != CRYPTO_SUCCESS) {
-		cmn_err(CE_WARN, "crypto_encrypt failed: 0x%x", rv);
+		cmn_err(CE_WARN, "crypto_decrypt (uio) failed: 0x%x", rv);
 		return (-1);
 	}
 
@@ -237,7 +237,7 @@ smb3_encrypt_mblks(smb_enc_ctx_t *ctxp, mblk_t *mp, size_t clearlen)
 	rv = crypto_encrypt(&ctxp->mech, &in_cd,
 	    &ctxp->ckey, tmpl, &out_cd, NULL);
 	if (rv != CRYPTO_SUCCESS) {
-		cmn_err(CE_WARN, "crypto_encrypt failed: 0x%x", rv);
+		cmn_err(CE_WARN, "crypto_encrypt (mblks) failed: 0x%x", rv);
 		return (-1);
 	}
 
@@ -276,7 +276,7 @@ smb3_decrypt_mblks(smb_enc_ctx_t *ctxp, mblk_t *mp, size_t cipherlen)
 	rv = crypto_decrypt(&ctxp->mech, &in_cd,
 	    &ctxp->ckey, tmpl, &out_cd, NULL);
 	if (rv != CRYPTO_SUCCESS) {
-		cmn_err(CE_WARN, "crypto_encrypt failed: 0x%x", rv);
+		cmn_err(CE_WARN, "crypto_decrypt (mblks) failed: 0x%x", rv);
 		return (-1);
 	}
 

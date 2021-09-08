@@ -26,6 +26,8 @@
 #
 # Copyright 2019, Joyent, Inc.
 #
+# Copyright 2021 RackTop Systems, Inc.
+#
 
 LIBRARY =	libfknsmb.a
 VERS =		.1
@@ -62,6 +64,8 @@ OBJS_NSMB = \
 	smb2_sign.o \
 	smb2_smb.o \
 	smb3_crypt.o \
+	smb3_negctx.o \
+	nsmb31_preauth.o \
 	subr_mchain.o
 
 OBJECTS = \
