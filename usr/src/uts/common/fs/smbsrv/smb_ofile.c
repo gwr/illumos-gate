@@ -455,9 +455,13 @@ smb_ofile_close(smb_ofile_t *of, int32_t mtime_sec)
 		smb_llist_enter(&node->n_ofile_list, RW_READER);
 		mutex_enter(&node->n_oplock.ol_mutex);
 
-		if (of->f_lease != NULL)
-			smb2_lease_ofile_close(of);
-		smb_oplock_break_CLOSE(node, of);
+		if (of->f_oplock_closing == B_FALSE) {
+			of->f_oplock_closing = B_TRUE;
+
+			if (of->f_lease != NULL)
+				smb2_lease_ofile_close(of);
+			smb_oplock_break_CLOSE(node, of);
+		}
 
 		mutex_exit(&node->n_oplock.ol_mutex);
 		smb_llist_exit(&node->n_ofile_list);

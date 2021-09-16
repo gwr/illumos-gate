@@ -701,7 +701,7 @@ smb2_lease_ofile_close(smb_ofile_t *ofile)
 			continue;
 		if (o->f_lease != lease)
 			continue;
-		if (o->f_oplock.og_closing)
+		if (o->f_oplock_closing)
 			continue;
 		/* If we can get a hold, use this ofile. */
 		if (smb_ofile_hold(o))
@@ -709,9 +709,11 @@ smb2_lease_ofile_close(smb_ofile_t *ofile)
 	}
 	if (o == NULL) {
 		/* Normal for last close on a lease. */
+		lease->ls_oplock_ofile = NULL;
 		return;
 	}
 	smb_oplock_move(node, ofile, o);
+	lease->ls_oplock_ofile = o;
 
 	smb_ofile_release(o);
 }

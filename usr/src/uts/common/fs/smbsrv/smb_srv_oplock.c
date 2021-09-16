@@ -174,7 +174,7 @@ smb_oplock_ind_break_in_ack(smb_request_t *ack_sr, smb_ofile_t *ofile,
 	 * We're going to schedule a request that will have a
 	 * reference to this ofile. Get the hold first.
 	 */
-	if (ofile->f_oplock.og_closing ||
+	if (ofile->f_oplock_closing ||
 	    !smb_ofile_hold_olbrk(ofile)) {
 		/* It's closing (or whatever).  Nothing to do. */
 		return;
@@ -253,6 +253,9 @@ smb_oplock_ind_break(smb_ofile_t *ofile, uint32_t NewLevel,
 		break;
 
 	case STATUS_NEW_HANDLE:
+		/* nothing to do (keep for observability) */
+		return;
+
 	case NT_STATUS_OPLOCK_HANDLE_CLOSED:
 		smb_oplock_hdl_clear(ofile);
 		return;
@@ -266,7 +269,7 @@ smb_oplock_ind_break(smb_ofile_t *ofile, uint32_t NewLevel,
 	 * We're going to schedule a request that will have a
 	 * reference to this ofile. Get the hold first.
 	 */
-	if (ofile->f_oplock.og_closing ||
+	if (ofile->f_oplock_closing ||
 	    !smb_ofile_hold_olbrk(ofile)) {
 		/* It's closing (or whatever).  Nothing to do. */
 		return;
@@ -619,8 +622,8 @@ smb_oplock_send_brk(smb_request_t *sr)
 }
 
 /*
- * See: NT_STATUS_OPLOCK_HANDLE_CLOSED above,
- * and: STATUS_NEW_HANDLE
+ * See: NT_STATUS_OPLOCK_HANDLE_CLOSED above and
+ * smb_ofile_close, smb_oplock_break_CLOSE.
  *
  * The FS-level oplock layer calls this to update the
  * SMB-level state when a handle loses its oplock.
@@ -633,9 +636,10 @@ smb_oplock_hdl_clear(smb_ofile_t *ofile)
 	if (lease != NULL) {
 		if (lease->ls_oplock_ofile == ofile) {
 			/*
-			 * This ofile no longer holds the oplock
-			 * for this lease (close or upgrade)
+			 * smb2_lease_ofile_close should have
+			 * moved the oplock to another ofile.
 			 */
+			ASSERT(0);
 			lease->ls_oplock_ofile = NULL;
 		}
 	}
