@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2020 Tintri by DDN, Inc. All rights reserved.
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 /*
@@ -267,6 +267,7 @@ smb_common_open(smb_request_t *sr)
 	boolean_t	is_stream = B_FALSE;
 	int		lookup_flags = SMB_FOLLOW_LINKS;
 	uint32_t	uniq_fid = 0;
+	uint32_t	path_remaining = 0;
 	uint16_t	tree_fid = 0;
 	boolean_t	created = B_FALSE;
 	boolean_t	last_comp_found = B_FALSE;
@@ -395,11 +396,28 @@ smb_common_open(smb_request_t *sr)
 
 	rc = smb_pathname_reduce(sr, sr->user_cr, pn->pn_path,
 	    sr->tid_tree->t_snode, cur_node, &op->fqi.fq_dnode,
-	    op->fqi.fq_last_comp);
+	    op->fqi.fq_last_comp, &path_remaining);
+
 	if (rc != 0) {
 		status = smb_errno2status(rc);
 		goto errout;
 	}
+
+	if (smb_node_is_reparse(op->fqi.fq_dnode)) {
+		size_t pathlen = strlen(pn->pn_path);
+		ASSERT3U(pathlen, >=, path_remaining);
+
+		/*
+		 * The third arg here is the 'unparsed path', beginning
+		 * path_remaining characters backwards from the end of the path.
+		 */
+		status = smb_reparse_get_error_data(sr, op->fqi.fq_dnode,
+		    pn->pn_path + pathlen - path_remaining);
+		dnode = op->fqi.fq_dnode;
+		dnode_held = B_TRUE;
+		goto errout;
+	}
+
 	dnode = op->fqi.fq_dnode;
 	dnode_held = B_TRUE;
 
@@ -458,9 +476,6 @@ smb_common_open(smb_request_t *sr)
 
 	if (last_comp_found) {
 
-		fnode = op->fqi.fq_fnode;
-		dnode = op->fqi.fq_dnode;
-
 		if (!smb_node_is_file(fnode) &&
 		    !smb_node_is_dir(fnode) &&
 		    !smb_node_is_symlink(fnode)) {
@@ -487,6 +502,13 @@ smb_common_open(smb_request_t *sr)
 				status = NT_STATUS_NOT_A_DIRECTORY;
 				goto errout;
 			}
+		}
+
+		if (smb_node_is_reparse(op->fqi.fq_fnode) &&
+		    (op->create_options & FILE_OPEN_REPARSE_POINT) == 0) {
+			status = smb_reparse_get_error_data(sr,
+			    op->fqi.fq_fnode, (sname != NULL) ? sname : "");
+			goto errout;
 		}
 
 		/* If we're given a stream name, look it up now */
@@ -907,10 +929,15 @@ smb_common_open(smb_request_t *sr)
 
 			/*
 			 * If file is being replaced, remove existing streams
+			 * and reparse point data
 			 */
 			if (SMB_IS_STREAM(fnode) == 0) {
 				status = smb_fsop_remove_streams(sr,
 				    sr->user_cr, fnode);
+				if (status != 0)
+					goto errout;
+
+				status = smb_reparse_delete(sr, fnode);
 				if (status != 0)
 					goto errout;
 			}

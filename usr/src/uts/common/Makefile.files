@@ -298,6 +298,7 @@ GENUNIX_OBJS +=	\
 		refhash.o	\
 		refstr.o	\
 		rename.o	\
+		reparse_xattr.o	\
 		resolvepath.o	\
 		retire_store.o	\
 		process.o	\
@@ -1230,6 +1231,7 @@ SMBSRV_OBJS +=	$(SMBSRV_SHARED_OBJS)			\
 		smb2_fsctl_copychunk.o \
 		smb2_fsctl_fs.o \
 		smb2_fsctl_odx.o \
+		smb2_fsctl_reparse.o \
 		smb2_fsctl_sparse.o \
 		smb2_ioctl.o \
 		smb2_lease.o \

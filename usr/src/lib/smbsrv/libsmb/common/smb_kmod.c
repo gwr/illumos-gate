@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2017 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2021 Tintri by DDN, Inc. All rights reserved.
  * Copyright 2017 Joyent, Inc.
  * Copyright 2020 RackTop Systems, Inc.
  */
@@ -88,6 +88,7 @@ smb_kmod_setcfg(smb_kmod_cfg_t *cfg)
 	ioc.netbios_enable = cfg->skc_netbios_enable;
 	ioc.ipv6_enable = cfg->skc_ipv6_enable;
 	ioc.print_enable = cfg->skc_print_enable;
+	ioc.reparse_enable = cfg->skc_reparse_enable;
 	ioc.traverse_mounts = cfg->skc_traverse_mounts;
 	ioc.max_protocol = cfg->skc_max_protocol;
 	ioc.min_protocol = cfg->skc_min_protocol;

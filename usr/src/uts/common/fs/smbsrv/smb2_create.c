@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2021 Tintri by DDN, Inc. All rights reserved.
  * Copyright 2019 RackTop Systems.
  */
 
@@ -117,6 +117,7 @@ smb2_create(smb_request_t *sr)
 	uint32_t CreateCtxLength;
 	smb2fid_t smb2fid = { 0, 0 };
 	uint32_t status;
+	uint32_t resp_flags = 0;
 	int dh_flags;
 	int skip;
 	int rc = 0;
@@ -629,6 +630,18 @@ reconnect_done:
 	}
 
 	/*
+	 * Windows only sets FLAG_REPARSEPOINT when the underlying file
+	 * is a reparse point, but FILE_OPEN_REPARSE_POINT wasn't set.
+	 *
+	 * That likely indicates that the server processed the reparse point
+	 * on its own.
+	 */
+	if (sr->session->dialect >= SMB_VERS_3_0 &&
+	    of->f_node != NULL && smb_node_is_reparse(of->f_node) &&
+	    (op->create_options & FILE_OPEN_REPARSE_POINT) == 0)
+		resp_flags |= SMB2_CREATE_FLAG_REPARSEPOINT;
+
+	/*
 	 * This marks the end of the "body" section and the
 	 * beginning of the "encode" section.  Any errors
 	 * encoding the response should use: goto errout
@@ -656,9 +669,10 @@ cmd_done:
 	attr = &op->fqi.fq_fattr;
 	rc = smb_mbc_encodef(
 	    &sr->reply,
-	    "wb.lTTTTqqllqqll",
+	    "wbblTTTTqqllqqll",
 	    89,	/* StructSize */	/* w */
 	    op->op_oplock_level,	/* b */
+	    resp_flags,			/* b */
 	    op->action_taken,		/* l */
 	    &attr->sa_crtime,		/* T */
 	    &attr->sa_vattr.va_atime,	/* T */
@@ -703,7 +717,16 @@ cmd_done:
 	errout:
 		if (of != NULL)
 			smb_ofile_close(of, 0);
-		smb2sr_put_error(sr, status);
+		if (status == NT_STATUS_STOPPED_ON_SYMLINK) {
+			if (sr->session->dialect >= SMB_VERS_3_11)
+				smb2sr_put_error_ctx0(sr, status,
+				    &sr->raw_data);
+			else
+				smb2sr_put_error_data(sr, status,
+				    &sr->raw_data);
+		} else {
+			smb2sr_put_error(sr, status);
+		}
 	}
 	if (op->sd != NULL) {
 		smb_sd_term(op->sd);

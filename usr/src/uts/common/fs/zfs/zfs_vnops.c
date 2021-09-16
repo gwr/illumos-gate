@@ -1530,6 +1530,33 @@ zfs_lookup(vnode_t *dvp, char *nm, vnode_t **vpp, struct pathname *pnp,
 }
 
 /*
+ * Validate the xvattr_t to be set.
+ */
+static boolean_t
+zfs_xvattr_is_valid(xvattr_t *xvap)
+{
+	xoptattr_t *xoap = NULL;
+	int error;
+	uint8_t big_attrs = 0;
+
+	if ((xoap = xva_getxoptattr(xvap)) == NULL)
+		return (B_FALSE);
+
+	/* Only one of these three can be changed at a time */
+	if (XVA_ISSET_REQ(xvap, XAT_AV_SCANSTAMP))
+		big_attrs++;
+	if (XVA_ISSET_REQ(xvap, XAT_REPARSE_TAG))
+		big_attrs++;
+	if (XVA_ISSET_REQ(xvap, XAT_PROJID))
+		big_attrs++;
+
+	if (big_attrs > 1)
+		return (B_FALSE);
+
+	return (B_TRUE);
+}
+
+/*
  * Attempt to create a new entry in a directory.  If the entry
  * already exists, truncate the file if permissible, else return
  * an error.  Return the vp of the created or trunc'd file.
@@ -1606,6 +1633,10 @@ zfs_create(vnode_t *dvp, char *name, vattr_t *vap, vcexcl_t excl,
 		    crgetuid(cr), cr, vap->va_type)) != 0) {
 			ZFS_EXIT(zfsvfs);
 			return (error);
+		}
+		if (!zfs_xvattr_is_valid((xvattr_t *)vap)) {
+			ZFS_EXIT(zfsvfs);
+			return (SET_ERROR(EINVAL));
 		}
 	}
 top:
@@ -2108,6 +2139,10 @@ zfs_mkdir(vnode_t *dvp, char *dirname, vattr_t *vap, vnode_t **vpp, cred_t *cr,
 		    crgetuid(cr), cr, vap->va_type)) != 0) {
 			ZFS_EXIT(zfsvfs);
 			return (error);
+		}
+		if (!zfs_xvattr_is_valid((xvattr_t *)vap)) {
+			ZFS_EXIT(zfsvfs);
+			return (SET_ERROR(EINVAL));
 		}
 	}
 
@@ -2859,6 +2894,11 @@ zfs_getattr(vnode_t *vp, vattr_t *vap, int flags, cred_t *cr,
 			xoap->xoa_projid = zp->z_projid;
 			XVA_SET_RTN(xvap, XAT_PROJID);
 		}
+
+		if (XVA_ISSET_REQ(xvap, XAT_REPARSE_TAG)) {
+			xoap->xoa_reparse_tag = zp->z_reparse_tag;
+			XVA_SET_RTN(xvap, XAT_REPARSE_TAG);
+		}
 	}
 
 	ZFS_TIME_DECODE(&vap->va_atime, zp->z_atime);
@@ -3031,6 +3071,7 @@ zfs_setattr(vnode_t *vp, vattr_t *vap, int flags, cred_t *cr,
 	uint64_t	xattr_obj;
 	uint64_t	mtime[2], ctime[2];
 	uint64_t	projid = ZFS_INVALID_PROJID;
+	uint64_t	tag = ZFS_INVALID_REPARSE_TAG;
 	znode_t		*attrzp;
 	int		need_policy = FALSE;
 	int		err, err2 = 0;
@@ -3059,6 +3100,10 @@ zfs_setattr(vnode_t *vp, vattr_t *vap, int flags, cred_t *cr,
 	 */
 	xoap = xva_getxoptattr(xvap);
 	if (xoap != NULL && (mask & AT_XVATTR)) {
+		if (!zfs_xvattr_is_valid((xvattr_t *)vap)) {
+			ZFS_EXIT(zfsvfs);
+			return (SET_ERROR(EINVAL));
+		}
 		if (XVA_ISSET_REQ(xvap, XAT_PROJID)) {
 			if (!dmu_objset_projectquota_enabled(os) ||
 			    (vp->v_type != VREG && vp->v_type != VDIR)) {
@@ -3322,9 +3367,31 @@ top:
 		}
 
 		if (XVA_ISSET_REQ(xvap, XAT_REPARSE)) {
-			mutex_exit(&zp->z_lock);
-			ZFS_EXIT(zfsvfs);
-			return (SET_ERROR(EPERM));
+			if (xoap->xoa_reparse !=
+			    ((zp->z_pflags & ZFS_REPARSE) != 0)) {
+				if (vp->v_type == VLNK) {
+					mutex_exit(&zp->z_lock);
+					ZFS_EXIT(zfsvfs);
+					return (SET_ERROR(EPERM));
+				}
+				need_policy = TRUE;
+			} else {
+				XVA_CLR_REQ(xvap, XAT_REPARSE);
+				XVA_SET_REQ(&tmpxvattr, XAT_REPARSE);
+			}
+		}
+
+		if (XVA_ISSET_REQ(xvap, XAT_REPARSE_TAG)) {
+			tag = xoap->xoa_reparse_tag;
+
+			if (tag == zp->z_reparse_tag &&
+			    (zp->z_pflags & ZFS_REPARSE_TAG) != 0) {
+				XVA_CLR_REQ(xvap, XAT_REPARSE_TAG);
+				XVA_SET_RTN(xvap, XAT_REPARSE_TAG);
+				tag = ZFS_INVALID_REPARSE_TAG;
+			} else {
+				need_policy = TRUE;
+			}
 		}
 
 		if (need_policy == FALSE &&
@@ -3467,7 +3534,9 @@ top:
 		if (((mask & AT_XVATTR) &&
 		    XVA_ISSET_REQ(xvap, XAT_AV_SCANSTAMP)) ||
 		    (projid != ZFS_INVALID_PROJID &&
-		    !(zp->z_pflags & ZFS_PROJID)))
+		    !(zp->z_pflags & ZFS_PROJID)) ||
+		    (tag != ZFS_INVALID_REPARSE_TAG &&
+		    (zp->z_pflags & ZFS_REPARSE_TAG) == 0))
 			dmu_tx_hold_sa(tx, zp->z_sa_hdl, B_TRUE);
 		else
 			dmu_tx_hold_sa(tx, zp->z_sa_hdl, B_FALSE);
@@ -3664,6 +3733,9 @@ top:
 		}
 		if (XVA_ISSET_REQ(&tmpxvattr, XAT_PROJINHERIT)) {
 			XVA_SET_REQ(xvap, XAT_PROJINHERIT);
+		}
+		if (XVA_ISSET_REQ(&tmpxvattr, XAT_REPARSE)) {
+			XVA_SET_REQ(xvap, XAT_REPARSE);
 		}
 
 		if (XVA_ISSET_REQ(xvap, XAT_AV_SCANSTAMP))

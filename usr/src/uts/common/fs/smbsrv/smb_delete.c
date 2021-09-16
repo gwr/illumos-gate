@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2020 Tintri by DDN, Inc.  All rights reserved.
+ * Copyright 2021 Tintri by DDN, Inc. All rights reserved.
  */
 
 #include <sys/sunddi.h>
@@ -162,7 +162,7 @@ smb_com_delete(smb_request_t *sr)
 
 	rc = smb_pathname_reduce(sr, sr->user_cr, fqi->fq_path.pn_path,
 	    sr->tid_tree->t_snode, sr->tid_tree->t_snode,
-	    &fqi->fq_dnode, fqi->fq_last_comp);
+	    &fqi->fq_dnode, fqi->fq_last_comp, NULL);
 	if (rc == 0) {
 		if (!smb_node_is_dir(fqi->fq_dnode)) {
 			smb_node_release(fqi->fq_dnode);

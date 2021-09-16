@@ -139,6 +139,7 @@ OBJS_FS_SMBSRV = \
 		smb2_fsctl_copychunk.o \
 		smb2_fsctl_fs.o \
 		smb2_fsctl_odx.o \
+		smb2_fsctl_reparse.o \
 		smb2_fsctl_sparse.o \
 		smb2_ioctl.o \
 		smb2_lease.o \
@@ -190,6 +191,7 @@ OBJS_MISC = \
 		acl_common.o \
 		pathname.o \
 		refstr.o \
+		reparse_xattr.o \
 		smb_status2winerr.o \
 		xattr_common.o
 
@@ -257,6 +259,10 @@ pics/pathname.o:	   $(SRC)/uts/common/fs/pathname.c
 
 pics/refstr.o:		   $(SRC)/uts/common/os/refstr.c
 	$(COMPILE.c) -o $@ $(SRC)/uts/common/os/refstr.c
+	$(POST_PROCESS_O)
+
+pics/reparse_xattr.o:	   $(SRC)/uts/common/fs/reparse_xattr.c
+	$(COMPILE.c) -o $@ $(SRC)/uts/common/fs/reparse_xattr.c
 	$(POST_PROCESS_O)
 
 pics/smb_status2winerr.o:  $(SRC)/common/smbclnt/smb_status2winerr.c

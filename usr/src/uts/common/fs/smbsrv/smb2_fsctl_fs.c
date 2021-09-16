@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2019 Nexenta by DDN, Inc. All rights reserved.
+ * Copyright 2021 Tintri by DDN, Inc. All rights reserved.
  */
 
 /*
@@ -144,8 +144,13 @@ smb2_fsctl_fs(smb_request_t *sr, smb_fsctl_t *fsctl)
 		func = smb2_fsctl_set_compression;
 		break;
 	case FSCTL_SET_REPARSE_POINT:		/* 41 */
+		func = smb2_fsctl_set_reparse;
+		break;
 	case FSCTL_GET_REPARSE_POINT:		/* 42 */
-		func = smb2_fsctl_notsup;
+		func = smb2_fsctl_get_reparse;
+		break;
+	case FSCTL_DELETE_REPARSE_POINT:	/* 43 */
+		func = smb2_fsctl_del_reparse;
 		break;
 	case FSCTL_CREATE_OR_GET_OBJECT_ID:	/* 48 */
 		func = smb2_fsctl_invalid;

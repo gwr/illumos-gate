@@ -130,6 +130,8 @@ int smb_fsop_frlock(smb_node_t *, smb_lock_t *, boolean_t, cred_t *);
  * SMB_CATIA		Perform CATIA character substitution.
  * SMB_ABE		Perform Access based enumeration/lookup.
  * SMB_CASE_SENSITIVE	Don't set SMB_IGNORE_CASE based on tree.
+ * SMB_EDIRENT		Use extended directory entries.
+ * SMB_NO_REPARSE	return EREMOTE for reparse points.
  */
 
 #define	SMB_FOLLOW_LINKS	0x00000001
@@ -138,6 +140,7 @@ int smb_fsop_frlock(smb_node_t *, smb_lock_t *, boolean_t, cred_t *);
 #define	SMB_ABE			0x00000008
 #define	SMB_CASE_SENSITIVE	0x00000010
 #define	SMB_EDIRENT		0x00000020
+#define	SMB_NO_REPARSE		0X00000040
 
 /*
  * Increased MAXPATHLEN for SMB.  Essentially, we want to allow a

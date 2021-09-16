@@ -665,6 +665,7 @@ zfs_znode_alloc(zfsvfs_t *zfsvfs, dmu_buf_t *db, int blksz,
 	uint64_t mode;
 	uint64_t parent;
 	uint64_t projid = ZFS_DEFAULT_PROJID;
+	uint64_t tag = ZFS_INVALID_REPARSE_TAG;
 	sa_bulk_attr_t bulk[11];
 	int count = 0;
 
@@ -718,7 +719,17 @@ zfs_znode_alloc(zfsvfs_t *zfsvfs, dmu_buf_t *db, int blksz,
 		return (NULL);
 	}
 
+	if ((zp->z_pflags & ZFS_REPARSE_TAG) != 0 &&
+	    sa_lookup(zp->z_sa_hdl, SA_ZPL_REPARSE_TAG(zfsvfs), &tag,
+	    sizeof (tag)) != 0) {
+		if (hdl == NULL)
+			sa_handle_destroy(zp->z_sa_hdl);
+		kmem_cache_free(znode_cache, zp);
+		return (NULL);
+	}
+
 	zp->z_projid = projid;
+	zp->z_reparse_tag = tag;
 	zp->z_mode = mode;
 	vp->v_vfsp = zfsvfs->z_parent->z_vfs;
 
@@ -1062,6 +1073,7 @@ zfs_mknode(znode_t *dzp, vattr_t *vap, dmu_tx_t *tx, cred_t *cr,
 	(*zpp)->z_mode = mode;
 	(*zpp)->z_dnodesize = dnodesize;
 	(*zpp)->z_projid = projid;
+	(*zpp)->z_reparse_tag = ZFS_INVALID_REPARSE_TAG;
 
 	if (vap->va_mask & AT_XVATTR)
 		zfs_xvattr_set(*zpp, (xvattr_t *)vap, tx);
@@ -1155,6 +1167,8 @@ zfs_xvattr_set(znode_t *zp, xvattr_t *xvap, dmu_tx_t *tx)
 	if (XVA_ISSET_REQ(xvap, XAT_REPARSE)) {
 		ZFS_ATTR_SET(zp, ZFS_REPARSE, xoap->xoa_reparse,
 		    zp->z_pflags, tx);
+		if (!xoap->xoa_reparse)
+			xoap->xoa_reparse_tag = 0;
 		XVA_SET_RTN(xvap, XAT_REPARSE);
 	}
 	if (XVA_ISSET_REQ(xvap, XAT_OFFLINE)) {
@@ -1171,6 +1185,22 @@ zfs_xvattr_set(znode_t *zp, xvattr_t *xvap, dmu_tx_t *tx)
 		ZFS_ATTR_SET(zp, ZFS_PROJINHERIT, xoap->xoa_projinherit,
 		    zp->z_pflags, tx);
 		XVA_SET_RTN(xvap, XAT_PROJINHERIT);
+	}
+	if (XVA_ISSET_REQ(xvap, XAT_REPARSE_TAG) && zp->z_is_sa) {
+		uint64_t pflags = zp->z_pflags | ZFS_REPARSE_TAG;
+		sa_bulk_attr_t bulk[2];
+		int err, count = 0;
+
+		SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_FLAGS(zp->z_zfsvfs), NULL,
+		    &pflags, sizeof (pflags));
+		SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_REPARSE_TAG(zp->z_zfsvfs),
+		    NULL,
+		    &xoap->xoa_reparse_tag, sizeof (xoap->xoa_reparse_tag));
+		if (sa_bulk_update(zp->z_sa_hdl, bulk, count, tx) == 0) {
+			zp->z_reparse_tag = xoap->xoa_reparse_tag;
+			zp->z_pflags |= ZFS_REPARSE_TAG;
+		}
+		XVA_SET_RTN(xvap, XAT_REPARSE_TAG);
 	}
 }
 
@@ -1268,6 +1298,7 @@ zfs_rezget(znode_t *zp)
 	int count = 0;
 	uint64_t gen;
 	uint64_t projid = ZFS_DEFAULT_PROJID;
+	uint64_t tag = ZFS_INVALID_REPARSE_TAG;
 
 	ZFS_OBJ_HOLD_ENTER(zfsvfs, obj_num);
 
@@ -1331,7 +1362,18 @@ zfs_rezget(znode_t *zp)
 		}
 	}
 
+	if ((zp->z_pflags & ZFS_REPARSE_TAG) != 0) {
+		err = sa_lookup(zp->z_sa_hdl, SA_ZPL_REPARSE_TAG(zfsvfs),
+		    &tag, sizeof(tag));
+		if (err != 0) {
+			zfs_znode_dmu_fini(zp);
+			ZFS_OBJ_HOLD_EXIT(zfsvfs, obj_num);
+			return (SET_ERROR(err));
+		}
+	}
+
 	zp->z_projid = projid;
+	zp->z_reparse_tag = tag;
 	zp->z_mode = mode;
 
 	if (gen != zp->z_gen) {

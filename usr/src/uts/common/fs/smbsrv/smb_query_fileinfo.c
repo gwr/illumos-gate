@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2017 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2021 Tintri by DDN, Inc. All rights reserved.
  */
 
 #include <smbsrv/smb_kproto.h>
@@ -320,7 +320,7 @@ smb_query_by_path(smb_request_t *sr, smb_xa_t *xa, uint16_t infolev)
 
 	rc = smb_pathname_reduce(sr, sr->user_cr, pn->pn_path,
 	    sr->tid_tree->t_snode, sr->tid_tree->t_snode, &dnode,
-	    qinfo->qi_name);
+	    qinfo->qi_name, NULL);
 
 	if (rc == 0) {
 		rc = smb_fsop_lookup_name(sr, sr->user_cr, SMB_FOLLOW_LINKS,
@@ -616,7 +616,7 @@ smb_query_encode_response(smb_request_t *sr, smb_xa_t *xa,
  */
 uint32_t
 smb_query_stream_info(smb_request_t *sr, mbuf_chain_t *mbc,
-	smb_queryinfo_t *qinfo)
+    smb_queryinfo_t *qinfo)
 {
 	char *stream_name;
 	uint32_t next_offset;
@@ -759,7 +759,7 @@ smb_query_stream_info(smb_request_t *sr, mbuf_chain_t *mbc,
  */
 static boolean_t
 smb_stream_fits(smb_request_t *sr, mbuf_chain_t *mbc,
-	char *name, uint32_t offset)
+    char *name, uint32_t offset)
 {
 	uint32_t len, pad;
 

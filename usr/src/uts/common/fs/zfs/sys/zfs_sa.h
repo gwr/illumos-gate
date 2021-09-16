@@ -21,6 +21,8 @@
 /*
  * Copyright 2010 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
+ *
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 #ifndef	_SYS_ZFS_SA_H
@@ -74,6 +76,7 @@ typedef enum zpl_attr {
 	ZPL_SCANSTAMP,
 	ZPL_DACL_ACES,
 	ZPL_PROJID,
+	ZPL_REPARSE_TAG,
 	ZPL_END
 } zpl_attr_t;
 

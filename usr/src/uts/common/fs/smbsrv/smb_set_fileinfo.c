@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2019 Nexenta by DDN, Inc. All rights reserved.
+ * Copyright 2021 Tintri by DDN, Inc. All rights reserved.
  */
 
 /*
@@ -287,7 +287,7 @@ smb_set_by_path(smb_request_t *sr, smb_xa_t *xa, uint16_t infolev)
 
 	name = kmem_alloc(MAXNAMELEN, KM_SLEEP);
 	rc = smb_pathname_reduce(sr, sr->user_cr, pn->pn_path,
-	    sr->tid_tree->t_snode, sr->tid_tree->t_snode, &dnode, name);
+	    sr->tid_tree->t_snode, sr->tid_tree->t_snode, &dnode, name, NULL);
 	if (rc == 0) {
 		rc = smb_fsop_lookup_name(sr, sr->user_cr, SMB_FOLLOW_LINKS,
 		    sr->tid_tree->t_snode, dnode, name, &node);

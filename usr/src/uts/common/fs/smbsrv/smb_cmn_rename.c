@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013-2020 Tintri by DDN, Inc.  All rights reserved.
+ * Copyright 2013-2021 Tintri by DDN, Inc.  All rights reserved.
  * Copyright 2019 RackTop Systems.
  */
 
@@ -107,6 +107,7 @@ smb_common_rename(smb_request_t *sr, smb_fqi_t *src_fqi, smb_fqi_t *dst_fqi)
 	boolean_t do_audit;
 	char *srcpath = NULL;
 	char *dstpath = NULL;
+	uint32_t path_remaining = 0;
 
 	tnode = sr->tid_tree->t_snode;
 	path = dst_fqi->fq_path.pn_path;
@@ -132,6 +133,20 @@ smb_common_rename(smb_request_t *sr, smb_fqi_t *src_fqi, smb_fqi_t *dst_fqi)
 		rc = smb_rename_lookup_src(sr);
 		if (rc != 0)
 			return (smb_rename_errno2status(rc));
+
+		if (smb_node_is_reparse(src_fqi->fq_dnode)) {
+			/*
+			 * Windows 2012R2 doesn't return symlink error data;
+			 * pass a NULL path for that purpose.
+			 *
+			 * If dnode is a reparse point, fnode will be NULL.
+			 * Reparse points are renamed directly.
+			 */
+			status = smb_reparse_get_error_data(sr,
+			    src_fqi->fq_dnode, NULL);
+			smb_node_release(src_fqi->fq_dnode);
+			return (status);
+		}
 		/* Holding refs on dnode, fnode */
 	}
 	src_fnode = src_fqi->fq_fnode;
@@ -161,10 +176,22 @@ smb_common_rename(smb_request_t *sr, smb_fqi_t *src_fqi, smb_fqi_t *dst_fqi)
 	} else {
 		/* called via smb2_setf_rename, smb_com_rename, etc. */
 		rc = smb_pathname_reduce(sr, sr->user_cr, path, tnode, tnode,
-		    &dst_fqi->fq_dnode, dst_fqi->fq_last_comp);
+		    &dst_fqi->fq_dnode, dst_fqi->fq_last_comp, &path_remaining);
 		if (rc != 0) {
 			smb_rename_release_src(sr);
 			return (smb_rename_errno2status(rc));
+		}
+
+		if (smb_node_is_reparse(dst_fqi->fq_dnode)) {
+			/*
+			 * Windows 2012R2 doesn't return symlink error data;
+			 * pass a NULL path for that purpose.
+			 */
+			status = smb_reparse_get_error_data(sr,
+			    dst_fqi->fq_dnode, NULL);
+			smb_node_release(dst_fqi->fq_dnode);
+			smb_rename_release_src(sr);
+			return (status);
 		}
 	}
 
@@ -472,6 +499,7 @@ smb_make_link(smb_request_t *sr, smb_fqi_t *src_fqi, smb_fqi_t *dst_fqi)
 	smb_node_t *tnode;
 	char *path;
 	int rc;
+	uint32_t status, path_remaining = 0;
 
 	tnode = sr->tid_tree->t_snode;
 	path = dst_fqi->fq_path.pn_path;
@@ -491,6 +519,20 @@ smb_make_link(smb_request_t *sr, smb_fqi_t *src_fqi, smb_fqi_t *dst_fqi)
 		rc = smb_rename_lookup_src(sr);
 		if (rc != 0)
 			return (smb_rename_errno2status(rc));
+
+		if (smb_node_is_reparse(src_fqi->fq_dnode)) {
+			/*
+			 * Windows 2012R2 doesn't return symlink error data;
+			 * pass a NULL path for that purpose.
+			 *
+			 * If dnode is a reparse point, fnode will be NULL.
+			 * Reparse points are renamed directly.
+			 */
+			status = smb_reparse_get_error_data(sr,
+			    src_fqi->fq_dnode, NULL);
+			smb_node_release(src_fqi->fq_dnode);
+			return (status);
+		}
 		/* Holding refs on dnode, fnode */
 	}
 
@@ -517,10 +559,22 @@ smb_make_link(smb_request_t *sr, smb_fqi_t *src_fqi, smb_fqi_t *dst_fqi)
 		smb_node_ref(dst_fqi->fq_dnode);
 	} else {
 		rc = smb_pathname_reduce(sr, sr->user_cr, path, tnode, tnode,
-		    &dst_fqi->fq_dnode, dst_fqi->fq_last_comp);
+		    &dst_fqi->fq_dnode, dst_fqi->fq_last_comp, &path_remaining);
 		if (rc != 0) {
 			smb_rename_release_src(sr);
 			return (smb_rename_errno2status(rc));
+		}
+
+		if (smb_node_is_reparse(dst_fqi->fq_dnode)) {
+			/*
+			 * Windows 2012R2 doesn't return symlink error data;
+			 * pass a NULL path for that purpose.
+			 */
+			status = smb_reparse_get_error_data(sr,
+			    dst_fqi->fq_dnode, NULL);
+			smb_node_release(dst_fqi->fq_dnode);
+			smb_rename_release_src(sr);
+			return (status);
 		}
 	}
 
@@ -581,7 +635,7 @@ smb_rename_lookup_src(smb_request_t *sr)
 	smb_node_t *tnode;
 	char *path;
 	int rc;
-
+	uint32_t path_remaining = 0;
 	smb_fqi_t *src_fqi = &sr->arg.dirop.fqi;
 
 	if (smb_is_stream_name(src_fqi->fq_path.pn_path))
@@ -591,8 +645,8 @@ smb_rename_lookup_src(smb_request_t *sr)
 	tnode = sr->tid_tree->t_snode;
 	path = src_fqi->fq_path.pn_path;
 	rc = smb_pathname_reduce(sr, sr->user_cr, path, tnode, tnode,
-	    &src_fqi->fq_dnode, src_fqi->fq_last_comp);
-	if (rc != 0)
+	    &src_fqi->fq_dnode, src_fqi->fq_last_comp, &path_remaining);
+	if (rc != 0 || smb_node_is_reparse(src_fqi->fq_dnode))
 		return (rc);
 	/* hold fq_dnode */
 

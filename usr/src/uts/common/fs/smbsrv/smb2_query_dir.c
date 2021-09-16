@@ -22,7 +22,7 @@
  * Copyright 2010 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  *
- * Copyright 2017 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2021 Tintri by DDN, Inc. All rights reserved.
  */
 
 /*
@@ -501,7 +501,7 @@ smb2_find_mbc_encode(smb_request_t *sr, smb2_find_args_t *args)
 		    fileinfo->fi_alloc_size,
 		    fileinfo->fi_dosattr,
 		    namelen,
-		    0L);	/* EaSize */
+		    fileinfo->fi_easize);
 		break;
 
 	/* See also: SMB_FIND_FILE_ID_FULL_DIRECTORY_INFO */
@@ -518,7 +518,7 @@ smb2_find_mbc_encode(smb_request_t *sr, smb2_find_args_t *args)
 		    fileinfo->fi_alloc_size,
 		    fileinfo->fi_dosattr,
 		    namelen,
-		    0L,		/* EaSize */
+		    fileinfo->fi_easize,
 		    0L,		/* reserved */
 		    fileinfo->fi_nodeid);
 		break;
@@ -542,7 +542,7 @@ smb2_find_mbc_encode(smb_request_t *sr, smb2_find_args_t *args)
 		    fileinfo->fi_alloc_size,
 		    fileinfo->fi_dosattr,
 		    namelen,
-		    0L,		/* EaSize */
+		    fileinfo->fi_easize,
 		    shortlen,
 		    buf83);
 
@@ -568,7 +568,7 @@ smb2_find_mbc_encode(smb_request_t *sr, smb2_find_args_t *args)
 		    fileinfo->fi_alloc_size,	/* q */
 		    fileinfo->fi_dosattr,	/* l */
 		    namelen,			/* l */
-		    0L,		/* EaSize	   l */
+		    fileinfo->fi_easize,	/* l */
 		    shortlen,			/* b. */
 		    buf83,			/* 24c */
 		    /* reserved			   .. */

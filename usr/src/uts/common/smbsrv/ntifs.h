@@ -22,7 +22,7 @@
  * Copyright 2010 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  *
- * Copyright 2017 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2021 Tintri by DDN, Inc. All rights reserved.
  * Copyright (c) 2016 by Delphix. All rights reserved.
  */
 
@@ -160,12 +160,16 @@ extern "C" {
  *	be used to open the file. This flag is irrelevant to device and
  *	intermediate drivers.
  *
- * FILE_OPEN_FOR_BACKUP _INTENT
+ * FILE_OPEN_FOR_BACKUP_INTENT
  *	The file is being opened for backup intent, hence, the system should
  *	check for certain access rights and grant the caller the appropriate
  *	accesses to the file before checking the input DesiredAccess against
  *	the file's security descriptor. This flag is irrelevant to device
  *	and intermediate drivers.
+ *
+ * FILE_OPEN_REPARSE_POINT
+ *	The file containing the reparse point should be opened, rather than
+ *	the reparse point's target.
  */
 #define	FILE_DIRECTORY_FILE			0x00000001
 #define	FILE_WRITE_THROUGH			0x00000002
@@ -188,7 +192,7 @@ extern "C" {
 #define	FILE_NO_COMPRESSION			0x00008000
 
 #define	FILE_RESERVE_OPFILTER			0x00100000
-#define	FILE_RESERVED0				0x00200000
+#define	FILE_OPEN_REPARSE_POINT			0x00200000
 #define	FILE_RESERVED1				0x00400000
 #define	FILE_RESERVED2				0x00800000
 

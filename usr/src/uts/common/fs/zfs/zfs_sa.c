@@ -20,6 +20,7 @@
  */
 /*
  * Copyright (c) 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 #include <sys/zfs_context.h>
@@ -65,6 +66,7 @@ sa_attr_reg_t zfs_attr_table[ZPL_END+1] = {
 	{"ZPL_SCANSTAMP", 32, SA_UINT8_ARRAY, 0},
 	{"ZPL_DACL_ACES", 0, SA_ACL, 0},
 	{"ZPL_PROJID", sizeof (uint64_t), SA_UINT64_ARRAY, 0},
+	{"ZPL_REPARSE_TAG", sizeof (uint64_t), SA_UINT64_ARRAY, 0},
 	{NULL, 0, 0, 0}
 };
 

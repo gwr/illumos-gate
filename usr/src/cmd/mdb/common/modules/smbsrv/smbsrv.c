@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2019 Nexenta by DDN, Inc. All rights reserved.
+ * Copyright 2021 Tintri by DDN, Inc. All rights reserved.
  * Copyright 2021 RackTop Systems, Inc.
  */
 
@@ -1633,6 +1633,9 @@ tree_flag_bits[] = {
 	{ "CA",
 	    SMB_TREE_CA,
 	    SMB_TREE_CA },
+	{ "REPARSE",
+	    SMB_TREE_REPARSE,
+	    SMB_TREE_REPARSE },
 	{ NULL, 0, 0 }
 };
 

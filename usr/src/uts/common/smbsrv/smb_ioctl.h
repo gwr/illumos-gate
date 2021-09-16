@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2017 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2021 Tintri by DDN, Inc. All rights reserved.
  * Copyright 2017 Joyent, Inc.
  * Copyright 2020 RackTop Systems, Inc.
  */
@@ -171,6 +171,7 @@ typedef struct smb_ioc_cfg {
 	int32_t		netbios_enable;
 	int32_t		ipv6_enable;
 	int32_t		print_enable;
+	int32_t		reparse_enable;
 	int32_t		traverse_mounts;
 	uint32_t	max_protocol;
 	uint32_t	min_protocol;
