@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2021 Tintri by DDN, Inc. All rights reserved.
  * Copyright 2021 RackTop Systems, Inc.
  */
 
@@ -226,6 +226,9 @@ typedef enum {
 #define	SMB2_IMPERSONATION_IDENTIFICATION		0x01
 #define	SMB2_IMPERSONATION_IMPERSONATION		0x02
 #define	SMB2_IMPERSONATION_DELEGATE			0x03
+
+/* SMB2 Create response flags */
+#define	SMB2_CREATE_FLAG_REPARSEPOINT			0x01
 
 /*
  * Note: ShareAccess, CreateDispositon, CreateOptions,

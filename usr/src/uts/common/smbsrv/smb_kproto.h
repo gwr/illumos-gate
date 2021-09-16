@@ -525,6 +525,7 @@ boolean_t smb_node_is_file(smb_node_t *);
 boolean_t smb_node_is_dir(smb_node_t *);
 boolean_t smb_node_is_symlink(smb_node_t *);
 boolean_t smb_node_is_dfslink(smb_node_t *);
+boolean_t smb_node_is_legacy_reparse(smb_node_t *);
 boolean_t smb_node_is_reparse(smb_node_t *);
 boolean_t smb_node_is_vfsroot(smb_node_t *);
 boolean_t smb_node_is_system(smb_node_t *);
@@ -551,15 +552,20 @@ void smb_node_getpath_nofail(smb_node_t *, vnode_t *, char *, uint32_t);
 int smb_node_getmntpath(smb_node_t *, char *, uint32_t);
 int smb_node_getshrpath(smb_node_t *, smb_tree_t *, char *, uint32_t);
 
+uint32_t smb_reparse_get_tag(smb_request_t *, smb_node_t *);
+uint32_t smb_rmdir_possible(smb_node_t *);
+
 /*
  * Pathname functions
  */
 
 int smb_pathname_reduce(smb_request_t *, cred_t *,
-    const char *, smb_node_t *, smb_node_t *, smb_node_t **, char *);
+    const char *, smb_node_t *, smb_node_t *, smb_node_t **, char *,
+    uint32_t *);
 
 int smb_pathname(smb_request_t *, char *, int, smb_node_t *,
-    smb_node_t *, smb_node_t **, smb_node_t **, cred_t *, pathname_t *);
+    smb_node_t *, smb_node_t **, smb_node_t **, cred_t *, pathname_t *,
+    uint32_t *);
 
 /*
  * smb_notify.c

@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2019 Nexenta by DDN, Inc. All rights reserved.
+ * Copyright 2021 Tintri by DDN, Inc. All rights reserved.
  * Copyright 2021 RackTop Systems, Inc.
  */
 
@@ -123,6 +123,14 @@ smb_is_executable(char *path)
  * The last component of the path.  (This may be different from the name of any
  * link target to which the last component may resolve.)
  *
+ * path_remaining (out)
+ * --------------
+ * When a reparse point is encountered during path processing, this function
+ * returns without processing the whole path. This contains the length of the
+ * part of the path that has not yet been processed.
+ * Note: callers who set this are expected to properly handle reparse points.
+ * Those that don't set this will receive an EREMOTE return instead.
+ *
  *
  * ____________________________
  *
@@ -149,7 +157,8 @@ smb_pathname_reduce(
     smb_node_t		*share_root_node,
     smb_node_t		*cur_node,
     smb_node_t		**dir_node,
-    char		*last_component)
+    char		*last_component,
+    uint32_t		*path_remaining)
 {
 	smb_node_t	*root_node;
 	pathname_t	ppn = {0};
@@ -162,7 +171,7 @@ smb_pathname_reduce(
 	smb_node_t	*vss_node;
 	smb_node_t	*local_cur_node;
 	smb_node_t	*local_root_node;
-	boolean_t	chk_vss;
+	boolean_t	chk_vss, dot_last = B_FALSE;
 	char		*gmttoken;
 
 	ASSERT(dir_node);
@@ -283,6 +292,7 @@ smb_pathname_reduce(
 	if (!chk_vss) {
 		if (trailing_slash) {
 			(void) strlcpy(last_component, ".", MAXNAMELEN);
+			dot_last = B_TRUE;
 		} else {
 			(void) pn_setlast(&ppn);
 			if (ppn.pn_pathlen >= MAXNAMELEN) {
@@ -300,7 +310,7 @@ smb_pathname_reduce(
 	} else {
 		err = smb_pathname(sr, ppn.pn_buf, lookup_flags,
 		    local_root_node, local_cur_node, NULL, dir_node, cred,
-		    chk_vss ? &mnt_pn : NULL);
+		    chk_vss ? &mnt_pn : NULL, path_remaining);
 	}
 
 end_not_vss:
@@ -332,6 +342,7 @@ end_not_vss:
 
 			if (pathleft == 0 || trailing_slash) {
 				(void) strlcpy(last_component, ".", MAXNAMELEN);
+				dot_last = B_TRUE;
 			} else {
 				(void) pn_setlast(&mnt_pn);
 				if (ppn.pn_pathlen >= MAXNAMELEN) {
@@ -342,12 +353,13 @@ end_not_vss:
 				    MAXNAMELEN);
 				mnt_pn.pn_path[0] = '\0';
 				pathleft -= strlen(last_component);
+				dot_last = B_FALSE;
 			}
 
 			if (pathleft != 0) {
 				err = smb_pathname(sr, p, lookup_flags,
 				    vss_node, vss_node, NULL, dir_node, cred,
-				    NULL);
+				    NULL, path_remaining);
 			} else {
 				*dir_node = vss_node;
 				vss_node = NULL;
@@ -383,6 +395,9 @@ end_chk_vss:
 				err = 0;
 		}
 	}
+
+	if (path_remaining != NULL && !dot_last)
+		*path_remaining += strlen(last_component);
 
 	if (err) {
 		if (*dir_node) {
@@ -428,20 +443,22 @@ end_chk_vss:
 int
 smb_pathname(smb_request_t *sr, char *path, int flags,
     smb_node_t *root_node, smb_node_t *cur_node, smb_node_t **dir_node,
-    smb_node_t **ret_node, cred_t *cred, pathname_t *mnt_pn)
+    smb_node_t **ret_node, cred_t *cred, pathname_t *mnt_pn,
+    uint32_t *path_remaining)
 {
 	char		*component, *real_name, *namep;
 	pathname_t	pn, rpn, upn, link_pn;
 	smb_node_t	*dnode, *fnode, *mnt_node;
 	smb_attr_t	attr;
 	vnode_t		*rootvp, *vp;
-	size_t		pathleft;
+	size_t		pathleft, linklen = 0;
 	int		err = 0;
 	int		nlink = 0;
 	int		local_flags;
 	uint32_t	abe_flag = 0;
 	char		namebuf[MAXNAMELEN];
-	vnode_t *fsrootvp = NULL;
+	vnode_t		*fsrootvp = NULL;
+	boolean_t	is_reparse, trailing_slash, add_slash = B_FALSE;
 
 	if (path == NULL)
 		return (EINVAL);
@@ -455,12 +472,17 @@ smb_pathname(smb_request_t *sr, char *path, int flags,
 	if (dir_node)
 		*dir_node = NULL;
 
+	if (path_remaining != NULL)
+		*path_remaining = strlen(path);
+
 	(void) pn_alloc_sz(&upn, SMB_MAXPATHLEN);
 
 	if ((err = pn_set(&upn, path)) != 0) {
 		(void) pn_free(&upn);
 		return (err);
 	}
+
+	trailing_slash = (upn.pn_path[upn.pn_pathlen - 1] == '/');
 
 	if (mnt_pn != NULL && (err = pn_set(mnt_pn, path) != 0)) {
 		(void) pn_free(&upn);
@@ -495,6 +517,9 @@ smb_pathname(smb_request_t *sr, char *path, int flags,
 
 		if ((err = pn_getcomponent(&upn, component)) != 0)
 			break;
+
+		if (linklen > 0)
+			linklen -= strlen(component);
 
 		if ((namep = smb_pathname_catia_v5tov4(sr, component,
 		    namebuf, sizeof (namebuf))) == NULL) {
@@ -538,18 +563,43 @@ smb_pathname(smb_request_t *sr, char *path, int flags,
 				break;
 		}
 
+		is_reparse = (attr.sa_dosattr &
+		    FILE_ATTRIBUTE_REPARSE_POINT) != 0;
+
 		/*
-		 * This check MUST be done before symlink check
-		 * since a reparse point is of type VLNK but should
-		 * not be handled like a regular symlink.
+		 * If this is a reparse point, but it's not a directory,
+		 * then rather than return EREMOTE (and later symlink data),
+		 * return ENOTDIR instead.
+		 *
+		 * Return EREMOTE for 'legacy' reparse points until we
+		 * decide how we want to handle them.
+		 * Callers who set path_remaining to NULL aren't designed to
+		 * handle reparse points; also return EREMOTE for those (to
+		 * maintain existing reparse behavior). This is mostly SMB1
+		 * callers.
+		 *
+		 * If we encounter a reparse point while processing a UNIX
+		 * symlink, return ELOOP, as we don't want to try to modify the
+		 * returned reparse data based on whatever's in the symlink.
 		 */
-		if (attr.sa_dosattr & FILE_ATTRIBUTE_REPARSE_POINT) {
-			err = EREMOTE;
-			VN_RELE(vp);
-			break;
+		if (is_reparse) {
+			/* err is guaranteed to be 0 right now. */
+			if (vp->v_type == VLNK ||
+			    (linklen == 0 && path_remaining == NULL) ||
+			    sr == NULL || !sr->sr_cfg->skc_reparse_enable)
+				err = EREMOTE;
+			else if (linklen > 0)
+				err = ELOOP;
+			else if (vp->v_type != VDIR)
+				err = ENOTDIR;
+
+			if (err != 0) {
+				VN_RELE(vp);
+				break;
+			}
 		}
 
-		if ((vp->v_type == VLNK) &&
+		if (!is_reparse && (vp->v_type == VLNK) &&
 		    ((flags & FOLLOW) || pn_pathleft(&upn))) {
 
 			if (++nlink > MAXSYMLINKS) {
@@ -565,6 +615,8 @@ smb_pathname(smb_request_t *sr, char *path, int flags,
 			if (err == 0) {
 				if (pn_pathleft(&link_pn) == 0)
 					(void) pn_set(&link_pn, ".");
+
+				linklen += pn_pathleft(&link_pn);
 				err = pn_insert(&upn, &link_pn,
 				    strlen(component));
 			}
@@ -583,8 +635,10 @@ smb_pathname(smb_request_t *sr, char *path, int flags,
 				smb_node_ref(fnode);
 			}
 
-			if (pn_fixslash(&upn))
+			if (pn_fixslash(&upn)) {
 				flags |= FOLLOW;
+				add_slash = trailing_slash;
+			}
 
 		} else {
 			if (flags & FIGNORECASE) {
@@ -606,11 +660,24 @@ smb_pathname(smb_request_t *sr, char *path, int flags,
 				err = ENOMEM;
 				break;
 			}
+
+			/*
+			 * Break early if this is a reparse point;
+			 * Someone (the client or the caller) needs to parse
+			 * and resolve it.
+			 * Symlinks are always processed by the client.
+			 *
+			 * 'err' is guaranteed to be 0 here.
+			 */
+			if (is_reparse)
+				break;
 		}
 
 		while (upn.pn_path[0] == '/') {
 			upn.pn_path++;
 			upn.pn_pathlen--;
+			if (linklen > 0)
+				linklen--;
 		}
 
 		/*
@@ -645,7 +712,7 @@ smb_pathname(smb_request_t *sr, char *path, int flags,
 
 	/*
 	 * We always want to return a node when we're doing VSS
-	 * (mnt_pn != NULL)
+	 * (mnt_pn != NULL).
 	 */
 	if (mnt_pn == NULL && err != 0) {
 		if (fnode)
@@ -665,6 +732,17 @@ smb_pathname(smb_request_t *sr, char *path, int flags,
 			*dir_node = dnode;
 		else
 			smb_node_release(dnode);
+
+		if (path_remaining != NULL) {
+			*path_remaining = upn.pn_pathlen;
+
+			/*
+			 * If there was a trailing slash that was removed due to
+			 * UNIX symlink processing, add it back into remaining.
+			 */
+			if (add_slash)
+				*path_remaining += 1;
+		}
 	}
 
 	kmem_free(component, MAXNAMELEN);

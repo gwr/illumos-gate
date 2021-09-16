@@ -11,7 +11,7 @@
 
 /*
  * Copyright (c) 2013 by Delphix. All rights reserved.
- * Copyright 2017 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2017-2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 /*
@@ -25,6 +25,10 @@ provider fksmb {
 	probe probe2(char *probename, unsigned long arg1, unsigned long arg2);
 	probe probe3(char *probename, unsigned long arg1, unsigned long arg2,
 	    unsigned long arg3);
+	probe probe4(char *probename, unsigned long arg1, unsigned long arg2,
+	    unsigned long arg3, unsigned long arg4);
+	probe probe5(char *probename, unsigned long arg1, unsigned long arg2,
+	    unsigned long arg3, unsigned long arg4, unsigned long arg5);
 	/* smb provider probes */
 	probe smb_start(char *probename, unsigned long arg1);
 	probe smb_done(char *probename, unsigned long arg1);

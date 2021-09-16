@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 /*
@@ -277,7 +277,7 @@ static void smb_odir_delete(void *);
  */
 uint32_t
 smb_odir_openpath(smb_request_t *sr, char *path, uint16_t sattr,
-	uint32_t flags, smb_odir_t **odp)
+    uint32_t flags, smb_odir_t **odp)
 {
 	int		rc;
 	smb_tree_t	*tree;
@@ -298,7 +298,7 @@ smb_odir_openpath(smb_request_t *sr, char *path, uint16_t sattr,
 		smb_convert_wildcards(path);
 
 	rc = smb_pathname_reduce(sr, sr->user_cr, path,
-	    tree->t_snode, tree->t_snode, &dnode, pattern);
+	    tree->t_snode, tree->t_snode, &dnode, pattern, NULL);
 	if (rc != 0)
 		return (smb_errno2status(rc));
 
@@ -338,7 +338,7 @@ smb_odir_openpath(smb_request_t *sr, char *path, uint16_t sattr,
  */
 uint32_t
 smb_odir_openfh(smb_request_t *sr, const char *pattern, uint16_t sattr,
-	smb_odir_t **odp)
+    smb_odir_t **odp)
 {
 	smb_ofile_t	*of = sr->fid_ofile;
 
@@ -896,7 +896,7 @@ smb_odir_resume_at(smb_odir_t *od, smb_odir_resume_t *resume)
  */
 static smb_odir_t *
 smb_odir_create(smb_request_t *sr, smb_node_t *dnode,
-	const char *pattern, uint16_t sattr, uint16_t odid, cred_t *cr)
+    const char *pattern, uint16_t sattr, uint16_t odid, cred_t *cr)
 {
 	smb_odir_t	*od;
 	smb_tree_t	*tree;
@@ -1205,7 +1205,7 @@ smb_odir_single_fileinfo(smb_request_t *sr, smb_odir_t *od,
 	}
 
 	bzero(&attr, sizeof (attr));
-	attr.sa_mask = SMB_AT_ALL;
+	attr.sa_mask = SMB_AT_ALL | SMB_AT_REPTAG;
 	rc = smb_node_getattr(NULL, fnode, zone_kcred(), NULL, &attr);
 	if (rc != 0) {
 		smb_node_release(fnode);
@@ -1218,7 +1218,7 @@ smb_odir_single_fileinfo(smb_request_t *sr, smb_odir_t *od,
 	    smb_odir_lookup_link(sr, od, fnode->od_name, &tgt_node)) {
 		smb_node_release(fnode);
 		fnode = tgt_node;
-		attr.sa_mask = SMB_AT_ALL;
+		attr.sa_mask = SMB_AT_ALL | SMB_AT_REPTAG;
 		rc = smb_node_getattr(NULL, fnode, zone_kcred(), NULL, &attr);
 		if (rc != 0) {
 			smb_node_release(fnode);
@@ -1257,6 +1257,11 @@ smb_odir_single_fileinfo(smb_request_t *sr, smb_odir_t *od,
 	else
 		fileinfo->fi_crtime = attr.sa_vattr.va_mtime;
 
+	if (smb_node_is_reparse(fnode)) {
+		fileinfo->fi_easize = attr.sa_reparse_tag;
+	} else {
+		fileinfo->fi_easize = 0; /* EAs not supported */
+	}
 	smb_node_release(fnode);
 	return (0);
 }
@@ -1336,7 +1341,7 @@ smb_odir_wildcard_fileinfo(smb_request_t *sr, smb_odir_t *od,
 		cr = zone_kcred();
 
 	bzero(&attr, sizeof (attr));
-	attr.sa_mask = SMB_AT_ALL;
+	attr.sa_mask = SMB_AT_ALL | SMB_AT_REPTAG;
 	rc = smb_node_getattr(NULL, fnode, cr, NULL, &attr);
 	if (rc != 0) {
 		smb_node_release(fnode);
@@ -1376,6 +1381,11 @@ smb_odir_wildcard_fileinfo(smb_request_t *sr, smb_odir_t *od,
 	else
 		fileinfo->fi_crtime = attr.sa_vattr.va_mtime;
 
+	if (smb_node_is_reparse(fnode)) {
+		fileinfo->fi_easize = attr.sa_reparse_tag;
+	} else {
+		fileinfo->fi_easize = 0; /* EAs not supported */
+	}
 	smb_node_release(fnode);
 	return (0);
 }

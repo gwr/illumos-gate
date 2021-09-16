@@ -22,6 +22,7 @@
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2015 by Delphix. All rights reserved.
  * Copyright (c) 2014 Integros [integros.com]
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 #include <sys/types.h>
@@ -176,6 +177,9 @@ zfs_log_xvattr(lr_attr_t *lrattr, xvattr_t *xvap)
 		 * at the same time, so we can share the same space.
 		 */
 		bcopy(&xoap->xoa_projid, scanstamp, sizeof (uint64_t));
+	} else if (XVA_ISSET_REQ(xvap, XAT_REPARSE_TAG)) {
+		bcopy(&xoap->xoa_reparse_tag, scanstamp,
+		    sizeof (xoap->xoa_reparse_tag));
 	}
 	if (XVA_ISSET_REQ(xvap, XAT_REPARSE))
 		*attrs |= (xoap->xoa_reparse == 0) ? 0 :

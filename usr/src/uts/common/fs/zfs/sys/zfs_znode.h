@@ -78,6 +78,11 @@ extern "C" {
  */
 #define	ZFS_PROJID		0x0000800000000000
 
+/*
+ * REPARSE_TAG is used to indicate the object has a reparse tag SA attr.
+ */
+#define	ZFS_REPARSE_TAG		0x0001000000000000
+
 #define	ZFS_ATTR_SET(zp, attr, value, pflags, tx) \
 { \
 	if (value) \
@@ -123,6 +128,7 @@ extern "C" {
 #define	SA_ZPL_ZNODE_ACL(z)	z->z_attr_table[ZPL_ZNODE_ACL]
 #define	SA_ZPL_PAD(z)		z->z_attr_table[ZPL_PAD]
 #define	SA_ZPL_PROJID(z)	z->z_attr_table[ZPL_PROJID]
+#define	SA_ZPL_REPARSE_TAG(z)	z->z_attr_table[ZPL_REPARSE_TAG]
 
 /*
  * Is ID ephemeral?
@@ -211,6 +217,7 @@ typedef struct znode {
 	kmutex_t	z_acl_lock;	/* acl data lock */
 	zfs_acl_t	*z_acl_cached;	/* cached acl */
 	uint64_t	z_projid;	/* project ID */
+	uint64_t	z_reparse_tag;	/* reparse tag (cached) */
 	list_node_t	z_link_node;	/* all znodes in fs link */
 	sa_handle_t	*z_sa_hdl;	/* handle to sa data */
 	boolean_t	z_is_sa;	/* are we native sa? */
@@ -222,6 +229,12 @@ zfs_inherit_projid(znode_t *dzp)
 	return ((dzp->z_pflags & ZFS_PROJINHERIT) ? dzp->z_projid :
 	    ZFS_DEFAULT_PROJID);
 }
+
+/*
+ * Tags over UINT32_MAX are invalid.
+ * This is used to indicate that no reparse tag was set.
+ */
+#define	ZFS_INVALID_REPARSE_TAG	(UINT64_MAX)
 
 /*
  * Range locking rules

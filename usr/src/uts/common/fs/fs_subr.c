@@ -24,7 +24,7 @@
 
 /*
  * Copyright (c) 1989, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2022 Tintri by DDN, Inc.  All rights reserved.
  * Copyright 2017 Joyent, Inc.
  */
 
@@ -891,6 +891,7 @@ void
 reparse_point_init()
 {
 	mutex_init(&reparsed_door_lock, NULL, MUTEX_DEFAULT, NULL);
+	reparse_data_init();
 }
 
 static door_handle_t

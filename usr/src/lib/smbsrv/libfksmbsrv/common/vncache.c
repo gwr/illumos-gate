@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 #include <sys/types.h>
@@ -60,6 +60,7 @@ vn_cache_constructor(void *buf, void *cdrarg, int kmflags)
 	bzero(vp, sizeof (*vp));
 
 	mutex_init(&vp->v_lock, NULL, MUTEX_DEFAULT, NULL);
+	mutex_init(&vp->v_vsd_lock, NULL, MUTEX_DEFAULT, NULL);
 	vp->v_fd = -1;
 
 	return (0);
@@ -73,6 +74,7 @@ vn_cache_destructor(void *buf, void *cdrarg)
 
 	vp = buf;
 
+	mutex_destroy(&vp->v_vsd_lock);
 	mutex_destroy(&vp->v_lock);
 }
 

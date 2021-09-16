@@ -22,7 +22,7 @@
  * Copyright 2010 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  *
- * Copyright 2017 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2021 Tintri by DDN, Inc. All rights reserved.
  */
 
 #include <smbsrv/smb_kproto.h>
@@ -118,7 +118,7 @@ smb_common_create_directory(smb_request_t *sr)
 	tnode = sr->tid_tree->t_snode;
 
 	rc = smb_pathname_reduce(sr, sr->user_cr, fqi->fq_path.pn_path,
-	    tnode, tnode, &fqi->fq_dnode, fqi->fq_last_comp);
+	    tnode, tnode, &fqi->fq_dnode, fqi->fq_last_comp, NULL);
 	if (rc != 0)
 		return (rc);
 
@@ -240,7 +240,7 @@ smb_com_delete_directory(smb_request_t *sr)
 	}
 
 	rc = smb_pathname_reduce(sr, sr->user_cr, fqi->fq_path.pn_path,
-	    tnode, tnode, &fqi->fq_dnode, fqi->fq_last_comp);
+	    tnode, tnode, &fqi->fq_dnode, fqi->fq_last_comp, NULL);
 
 	if (rc != 0) {
 		smbsr_errno(sr, rc);
@@ -400,7 +400,7 @@ smb_com_check_directory(smb_request_t *sr)
 	tnode = sr->tid_tree->t_snode;
 
 	rc = smb_pathname_reduce(sr, sr->user_cr, path, tnode, tnode,
-	    &fqi->fq_dnode, fqi->fq_last_comp);
+	    &fqi->fq_dnode, fqi->fq_last_comp, NULL);
 	if (rc != 0) {
 		smbsr_errno(sr, rc);
 		return (SDRC_ERROR);

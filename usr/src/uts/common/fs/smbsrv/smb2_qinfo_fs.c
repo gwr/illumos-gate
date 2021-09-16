@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2019 Nexenta by DDN, Inc. All rights reserved.
+ * Copyright 2021 Tintri by DDN, Inc. All rights reserved.
  */
 
 /*
@@ -257,6 +257,8 @@ smb2_qfs_attr(smb_request_t *sr)
 		FsAttr |= FILE_VOLUME_QUOTAS;
 	if (tree->t_flags & SMB_TREE_SPARSE)
 		FsAttr |= FILE_SUPPORTS_SPARSE_FILES;
+	if (tree->t_flags & SMB_TREE_REPARSE)
+		FsAttr |= FILE_SUPPORTS_REPARSE_POINTS;
 
 	rc = smb_mbc_encodef(
 	    &sr->raw_data, "lllU",
@@ -403,8 +405,8 @@ smb2_qfs_sectorsize(smb_request_t *sr)
 	// always ZFS-backed, which can reorder things on disk.
 	// Leaving out SSINFO_FLAGS_TRIM_ENABLED for now.
 	flags = SSINFO_FLAGS_ALIGNED_DEVICE |
-		SSINFO_FLAGS_PARTITION_ALIGNED_ON_DEVICE |
-		SSINFO_FLAGS_NO_SEEK_PENALTY;
+	    SSINFO_FLAGS_PARTITION_ALIGNED_ON_DEVICE |
+	    SSINFO_FLAGS_NO_SEEK_PENALTY;
 
 	// ByteOffsetForSectorAlignment
 	// ByteOffsetForPartitionAlignment

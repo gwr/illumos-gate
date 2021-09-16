@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2020 Tintri by DDN, Inc. All rights reserved.
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  * Copyright 2021 RackTop Systems, Inc.
  */
 /*
@@ -109,7 +109,7 @@ static int smb_node_constructor(void *, void *, int);
 static void smb_node_destructor(void *, void *);
 static smb_llist_t *smb_node_get_hash(fsid_t *, smb_attr_t *, uint32_t *);
 
-static void smb_node_init_reparse(smb_node_t *, smb_attr_t *);
+static void smb_node_init_reparse(smb_request_t *, smb_node_t *, smb_attr_t *);
 static void smb_node_init_system(smb_node_t *);
 
 #define	VALIDATE_DIR_NODE(_dir_, _node_) \
@@ -277,7 +277,7 @@ smb_node_lookup(
 	 * This getattr is performed on behalf of the server
 	 * that's why kcred is used not the user's cred
 	 */
-	attr.sa_mask = SMB_AT_ALL;
+	attr.sa_mask = SMB_AT_ALL | SMB_AT_REPTAG;
 	error = smb_vop_getattr(vp, unnamed_vp, &attr, 0, zone_kcred());
 	if (error)
 		return (NULL);
@@ -357,7 +357,6 @@ smb_node_lookup(
 		break;
 	}
 	node = smb_node_alloc(od_name, vp, node_hdr, hashkey);
-	smb_node_init_reparse(node, &attr);
 
 	if (op)
 		node->flags |= smb_is_executable(op->fqi.fq_last_comp);
@@ -375,6 +374,8 @@ smb_node_lookup(
 		node->n_unode = unode;
 	}
 
+	/* init_reparse needs n_unode to be set */
+	smb_node_init_reparse(sr, node, &attr);
 	smb_node_init_system(node);
 
 	DTRACE_PROBE1(smb_node_lookup_miss, smb_node_t *, node);
@@ -624,7 +625,7 @@ smb_node_root_init(smb_server_t *sv, smb_node_t **svrootp)
 	 * so need to use kcred, not zone_kcred().
 	 */
 	error = smb_pathname(NULL, zone->zone_rootpath, 0,
-	    smb_root_node, smb_root_node, NULL, svrootp, kcred, NULL);
+	    smb_root_node, smb_root_node, NULL, svrootp, kcred, NULL, NULL);
 
 	return (error);
 }
@@ -635,7 +636,7 @@ smb_node_root_init(smb_server_t *sv, smb_node_t **svrootp)
  * Unfortunately, to find out if a directory is empty, we have to read it
  * and check for anything other than "." or ".." in the readdir buf.
  */
-static uint32_t
+uint32_t
 smb_rmdir_possible(smb_node_t *n)
 {
 	ASSERT(n->vp->v_type == VDIR);
@@ -837,7 +838,7 @@ smb_node_delete_check(smb_node_t *node)
 	if (smb_node_is_dir(node))
 		return (NT_STATUS_SUCCESS);
 
-	if (smb_node_is_reparse(node))
+	if (smb_node_is_legacy_reparse(node))
 		return (NT_STATUS_ACCESS_DENIED);
 
 	/*
@@ -1415,6 +1416,7 @@ smb_node_constructor(void *buf, void *un, int kmflags)
 	mutex_init(&node->n_oplock.ol_mutex, NULL, MUTEX_DEFAULT, NULL);
 	cv_init(&node->n_oplock.WaitingOpenCV, NULL, CV_DEFAULT, NULL);
 	rw_init(&node->n_lock, NULL, RW_DEFAULT, NULL);
+	mutex_init(&node->n_reparse_mutex, NULL, MUTEX_DEFAULT, NULL);
 	mutex_init(&node->n_mutex, NULL, MUTEX_DEFAULT, NULL);
 	smb_node_create_audit_buf(node, kmflags);
 	return (0);
@@ -1432,6 +1434,7 @@ smb_node_destructor(void *buf, void *un)
 
 	smb_node_destroy_audit_buf(node);
 	mutex_destroy(&node->n_mutex);
+	mutex_destroy(&node->n_reparse_mutex);
 	rw_destroy(&node->n_lock);
 	cv_destroy(&node->n_oplock.WaitingOpenCV);
 	mutex_destroy(&node->n_oplock.ol_mutex);
@@ -1541,8 +1544,15 @@ boolean_t
 smb_node_is_reparse(smb_node_t *node)
 {
 	SMB_NODE_VALID(node);
-	return ((node->vp->v_type == VLNK) &&
-	    (node->flags & NODE_FLAGS_REPARSE));
+	return ((node->flags & NODE_FLAGS_REPARSE) != 0);
+}
+
+boolean_t
+smb_node_is_legacy_reparse(smb_node_t *node)
+{
+	SMB_NODE_VALID(node);
+	return (node->vp->v_type == VLNK &&
+	    (node->flags & NODE_FLAGS_REPARSE) != 0);
 }
 
 boolean_t
@@ -1888,17 +1898,12 @@ smb_node_getattr(smb_request_t *sr, smb_node_t *node, cred_t *cr,
 	return (0);
 }
 
-
-#ifndef	_KERNEL
-extern int reparse_vnode_parse(vnode_t *vp, nvlist_t *nvl);
-#endif	/* _KERNEL */
-
 /*
  * Check to see if the node represents a reparse point.
  * If yes, whether the reparse point contains a DFS link.
  */
 static void
-smb_node_init_reparse(smb_node_t *node, smb_attr_t *attr)
+smb_node_init_reparse(smb_request_t *sr, smb_node_t *node, smb_attr_t *attr)
 {
 	nvlist_t *nvl;
 	nvpair_t *rec;
@@ -1906,6 +1911,11 @@ smb_node_init_reparse(smb_node_t *node, smb_attr_t *attr)
 
 	if ((attr->sa_dosattr & FILE_ATTRIBUTE_REPARSE_POINT) == 0)
 		return;
+
+	if (node->vp->v_type != VLNK && attr->sa_reparse_tag != 0) {
+		node->flags |= NODE_FLAGS_REPARSE;
+		return;
+	}
 
 	if ((nvl = reparse_init()) == NULL)
 		return;

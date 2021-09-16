@@ -21,7 +21,7 @@
 /*
  * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2013 by Delphix. All rights reserved.
- * Copyright 2017 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2017-2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 #ifndef _SYS_SDT_H
@@ -84,6 +84,16 @@ extern "C" {
 #define	DTRACE_PROBE3(name, type1, arg1, type2, arg2, type3, arg3) \
 	FKSMB_PROBE3(#name, (unsigned long)arg1, (unsigned long)arg2, \
 		(unsigned long)arg3)
+
+#define	DTRACE_PROBE4(name, type1, arg1, type2, arg2, \
+    type3, arg3, type4, arg4)						      \
+	FKSMB_PROBE4(#name, (unsigned long)arg1, (unsigned long)arg2, \
+	    (unsigned long)arg3, (unsigned long)arg4)
+
+#define	DTRACE_PROBE5(name, type1, arg1, type2, arg2, \
+    type3, arg3, type4, arg4, type5, arg5)	      \
+	FKSMB_PROBE5(#name, (unsigned long)arg1, (unsigned long)arg2, \
+	    (unsigned long)arg3, (unsigned long)arg4, (unsigned long)arg5)
 
 #ifdef	__cplusplus
 }

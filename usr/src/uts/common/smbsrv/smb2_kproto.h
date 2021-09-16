@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2014-2022 Tintri by DDN, Inc. All rights reserved.
  * Copyright 2020 RackTop Systems, Inc.
  */
 
@@ -91,6 +91,13 @@ uint32_t smb2_sparse_copy(smb_request_t *sr,
     smb_ofile_t *src_ofile, smb_ofile_t *dst_ofile,
     off64_t src_off, off64_t dst_off, uint32_t *residp,
     void *buffer, size_t bufsize);
+
+/* smb2_fsctl_reparse.c */
+uint32_t smb_reparse_get_error_data(smb_request_t *, smb_node_t *, char *);
+uint32_t smb_reparse_delete(smb_request_t *, smb_node_t *);
+uint32_t smb2_fsctl_del_reparse(smb_request_t *, smb_fsctl_t *);
+uint32_t smb2_fsctl_get_reparse(smb_request_t *, smb_fsctl_t *);
+uint32_t smb2_fsctl_set_reparse(smb_request_t *, smb_fsctl_t *);
 
 uint32_t smb2_nego_validate(smb_request_t *, smb_fsctl_t *);
 

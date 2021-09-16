@@ -651,6 +651,7 @@ typedef struct smb_node {
 	uint32_t		n_magic;
 	krwlock_t		n_lock;
 	kmutex_t		n_mutex;
+	kmutex_t		n_reparse_mutex;
 	smb_node_state_t	n_state;
 	uint32_t		n_refcnt;
 	uint32_t		n_hashkey;
@@ -1123,6 +1124,7 @@ typedef struct smb_user {
 #define	SMB_TREE_TRAVERSE_MOUNTS	0x00080000
 #define	SMB_TREE_FORCE_L2_OPLOCK	0x00100000
 #define	SMB_TREE_CA			0x00200000
+#define	SMB_TREE_REPARSE		0x00400000
 /* Note: SMB_TREE_... in the mdb module too. */
 
 /*
@@ -1205,6 +1207,10 @@ typedef struct smb_tree {
 #define	SMB_TREE_SUPPORTS_SHORTNAMES(sr)				\
 	(((sr) && (sr)->tid_tree) ?					\
 	smb_tree_has_feature((sr)->tid_tree, SMB_TREE_SHORTNAMES) : 0)
+
+#define	SMB_TREE_SUPPORTS_REPARSE(sr)				\
+	(((sr) && (sr)->tid_tree) ?					\
+	smb_tree_has_feature((sr)->tid_tree, SMB_TREE_REPARSE) : 0)
 
 /*
  * SMB_TREE_CONTAINS_NODE is used to check if a node is on the same
@@ -1454,6 +1460,7 @@ typedef struct smb_fileinfo {
 	char		fi_shortname[SMB_SHORTNAMELEN];
 	uint32_t	fi_cookie;	/* Dir offset (of next entry) */
 	uint32_t	fi_dosattr;	/* DOS attributes */
+	uint32_t	fi_easize;	/* ReparseTag or EA size */
 	uint64_t	fi_nodeid;	/* file system node id */
 	uint64_t	fi_size;	/* file size in bytes */
 	uint64_t	fi_alloc_size;	/* allocation size in bytes */

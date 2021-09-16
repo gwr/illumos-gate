@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2017 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2021 Tintri by DDN, Inc. All rights reserved.
  */
 
 /*
@@ -899,6 +899,8 @@ struct smb_proto_option_defs {
 	{ SMB_CI_BYPASS_TRAVERSE_CHECKING, 0, 0, true_false_validator,
 	    SMB_REFRESH_REFRESH },
 	{ SMB_CI_OPLOCK_ENABLE, 0, 0, true_false_validator,
+	    SMB_REFRESH_REFRESH },
+	{ SMB_CI_REPARSE_ENABLE, 0, 0, true_false_validator,
 	    SMB_REFRESH_REFRESH },
 };
 

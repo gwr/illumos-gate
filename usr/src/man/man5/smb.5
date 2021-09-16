@@ -1,6 +1,6 @@
 '\" te
 .\" Copyright (c) 2009, Sun Microsystems, Inc. All Rights Reserved.
-.\" Copyright 2017, Nexenta Systems, Inc. All Rights Reserved.
+.\" Copyright 2021, Tintri by DDN, Inc. All Rights Reserved.
 .\" Copyright 2021, RackTop Systems, Inc. All Rights Reserved.
 .\" The contents of this file are subject to the terms of the
 .\" Common Development and Distribution License (the "License").
@@ -17,7 +17,7 @@
 .\" fields enclosed by brackets "[]" replaced with your own identifying
 .\" information: Portions Copyright [yyyy] [name of copyright owner]
 .\"
-.TH SMB 5 "December 28, 2020"
+.TH SMB 4 "September 24, 2021"
 .SH NAME
 smb \- configuration properties for Solaris CIFS server
 .SH DESCRIPTION
@@ -483,6 +483,18 @@ Specifies the preferred IP address for the domain controller. This property is
 sometimes used when there are multiple domain controllers to indicate which one
 is preferred. If the specified domain controller responds, it is chosen even if
 the other domain controllers are also available. By default, no value is set.
+.RE
+
+.sp
+.ne 2
+.na
+\fB\fBreparse_enable\fR\fR
+.ad
+.sp .6
+.RS 4n
+Controls whether the SMB server will allow reparse point FSCTLs,
+process reparse-symlinks, or advertise Reparse Point support.
+By default, reparse points are enabled.
 .RE
 
 .sp

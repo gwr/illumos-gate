@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2013-2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 #ifndef _SMBSRV_SMB_VOPS_H
@@ -71,6 +71,7 @@ typedef struct smb_attr {
 	uint32_t	sa_dosattr;	/* DOS attributes */
 	timestruc_t	sa_crtime;	/* Creation time */
 	u_offset_t	sa_allocsz;	/* File allocation size in bytes */
+	uint64_t	sa_reparse_tag;	/* Reparse point tag */
 } smb_attr_t;
 
 #define	SMB_AT_TYPE	0x00001
@@ -92,6 +93,7 @@ typedef struct smb_attr {
 #define	SMB_AT_DOSATTR	0x00100000
 #define	SMB_AT_CRTIME	0x00200000
 #define	SMB_AT_ALLOCSZ	0x00400000
+#define	SMB_AT_REPTAG	0x00800000
 
 /*
  * Some useful combinations, for convenience.  Some of the sets are

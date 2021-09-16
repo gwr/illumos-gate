@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2020 Tintri by DDN, Inc. All rights reserved.
+ * Copyright 2021 Tintri by DDN, Inc. All rights reserved.
  * Copyright 2021 RackTop Systems, Inc.
  */
 
@@ -157,6 +157,7 @@ typedef struct smb_kmod_cfg {
 	int32_t skc_netbios_enable;
 	int32_t skc_ipv6_enable;
 	int32_t skc_print_enable;
+	int32_t skc_reparse_enable;
 	int32_t skc_traverse_mounts;
 	uint32_t skc_max_protocol;	/* SMB_VERS_... */
 	uint32_t skc_min_protocol;	/* SMB_VERS_... */

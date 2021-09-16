@@ -23,7 +23,7 @@
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2011, 2019 by Delphix. All rights reserved.
  * Copyright (c) 2014 Integros [integros.com]
- * Copyright 2017 Nexenta Systems, Inc.
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  * Copyright (c) 2017, 2018 Lawrence Livermore National Security, LLC.
  * Copyright 2017 RackTop Systems.
  */
@@ -2075,7 +2075,7 @@ dump_znode(objset_t *os, uint64_t object, void *data, size_t size)
 	sa_handle_t *hdl;
 	uint64_t xattr, rdev, gen;
 	uint64_t uid, gid, mode, fsize, parent, links;
-	uint64_t pflags;
+	uint64_t pflags, tag;
 	uint64_t acctm[2], modtm[2], chgtm[2], crtm[2];
 	time_t z_crtime, z_atime, z_mtime, z_ctime;
 	sa_bulk_attr_t bulk[12];
@@ -2149,6 +2149,9 @@ dump_znode(objset_t *os, uint64_t object, void *data, size_t size)
 		    sizeof (uint64_t)) == 0)
 			(void) printf("\tprojid	%llu\n", (u_longlong_t)projid);
 	}
+	if (sa_lookup(hdl, sa_attr_table[ZPL_REPARSE_TAG], &tag,
+	    sizeof (tag)) == 0)
+		(void) printf("\trtag	0x%016llx\n", (u_longlong_t)tag);
 	if (sa_lookup(hdl, sa_attr_table[ZPL_XATTR], &xattr,
 	    sizeof (uint64_t)) == 0)
 		(void) printf("\txattr	%llu\n", (u_longlong_t)xattr);

@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2020 Tintri by DDN, Inc. All rights reserved.
+ * Copyright 2013-2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 #include <sys/types.h>
@@ -352,6 +352,10 @@ smb_vop_getattr(vnode_t *vp, vnode_t *unnamed_vp, smb_attr_t *ret_attr,
 		XVA_SET_REQ(&tmp_xvattr, XAT_OFFLINE);
 		XVA_SET_REQ(&tmp_xvattr, XAT_SPARSE);
 
+		if ((ret_attr->sa_mask & SMB_AT_REPTAG) != 0 &&
+		    use_vp->v_type != VLNK)
+			XVA_SET_REQ(&tmp_xvattr, XAT_REPARSE_TAG);
+
 		error = VOP_GETATTR(use_vp, &tmp_xvattr.xva_vattr, flags,
 		    cr, &smb_ct);
 		if (error != 0)
@@ -361,6 +365,8 @@ smb_vop_getattr(vnode_t *vp, vnode_t *unnamed_vp, smb_attr_t *ret_attr,
 		ret_attr->sa_dosattr = 0;
 
 		if (tmp_xvattr.xva_vattr.va_mask & AT_XVATTR) {
+			boolean_t is_reparse = B_FALSE;
+
 			xoap = xva_getxoptattr(&tmp_xvattr);
 			ASSERT(xoap);
 
@@ -388,6 +394,7 @@ smb_vop_getattr(vnode_t *vp, vnode_t *unnamed_vp, smb_attr_t *ret_attr,
 			    (xoap->xoa_reparse)) {
 				ret_attr->sa_dosattr |=
 				    FILE_ATTRIBUTE_REPARSE_POINT;
+				is_reparse = B_TRUE;
 			}
 
 			if ((XVA_ISSET_RTN(&tmp_xvattr, XAT_OFFLINE)) &&
@@ -400,6 +407,18 @@ smb_vop_getattr(vnode_t *vp, vnode_t *unnamed_vp, smb_attr_t *ret_attr,
 				ret_attr->sa_dosattr |=
 				    FILE_ATTRIBUTE_SPARSE_FILE;
 			}
+
+			/*
+			 * UINT64_MAX is an 'invalid' reparse tag.
+			 * This tells the caller to find it through the
+			 * reparse interface.
+			 */
+			if (use_vp->v_type == VLNK || !is_reparse)
+				ret_attr->sa_reparse_tag = 0;
+			else if (!XVA_ISSET_RTN(&tmp_xvattr, XAT_REPARSE_TAG))
+				ret_attr->sa_reparse_tag = UINT64_MAX;
+			else
+				ret_attr->sa_reparse_tag = xoap->xoa_reparse_tag;
 
 			ret_attr->sa_crtime = xoap->xoa_createtime;
 		} else {
@@ -416,6 +435,16 @@ smb_vop_getattr(vnode_t *vp, vnode_t *unnamed_vp, smb_attr_t *ret_attr,
 		    flags, cr, &smb_ct);
 		if (error != 0)
 			return (error);
+
+		/*
+		 * UINT64_MAX is an 'invalid' reparse tag.
+		 * This tells the caller to find it through the
+		 * reparse interface.
+		 */
+		if (use_vp->v_type == VLNK)
+			ret_attr->sa_reparse_tag = 0;
+		else
+			ret_attr->sa_reparse_tag = UINT64_MAX;
 
 		ret_attr->sa_dosattr = 0;
 		ret_attr->sa_crtime = ret_attr->sa_vattr.va_mtime;
@@ -1015,6 +1044,17 @@ smb_vop_setup_xvattr(smb_attr_t *smb_attr, xvattr_t *xvattr)
 		xvattr->xva_vattr.va_mask |= xva_mask;
 		XVA_SET_REQ(xvattr, XAT_CREATETIME);
 		xoap->xoa_createtime = smb_attr->sa_crtime;
+	}
+
+	if (smb_attr->sa_mask & SMB_AT_REPTAG) {
+		/*
+		 * "|" in the original xva_mask, which contains
+		 * AT_XVATTR
+		 */
+
+		xvattr->xva_vattr.va_mask |= xva_mask;
+		XVA_SET_REQ(xvattr, XAT_REPARSE_TAG);
+		xoap->xoa_reparse_tag = smb_attr->sa_reparse_tag;
 	}
 }
 

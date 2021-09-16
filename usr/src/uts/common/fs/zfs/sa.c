@@ -26,6 +26,7 @@
  * Copyright (c) 2014 Spectra Logic Corporation, All rights reserved.
  * Copyright (c) 2014 Integros [integros.com]
  * Copyright 2019 Joyent, Inc.
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 #include <sys/zfs_context.h>
@@ -1513,6 +1514,7 @@ sa_add_projid(sa_handle_t *hdl, dmu_tx_t *tx, uint64_t projid)
 	sa_bulk_attr_t *bulk, *attrs;
 	zfs_acl_locator_cb_t locate = { 0 };
 	uint64_t uid, gid, mode, rdev, xattr = 0, parent, gen, links;
+	uint64_t tag = ZFS_INVALID_REPARSE_TAG;
 	uint64_t crtime[2], mtime[2], ctime[2], atime[2];
 	zfs_acl_phys_t znode_acl = { 0 };
 	char scanstamp[AV_SCANSTAMP_SZ];
@@ -1563,6 +1565,9 @@ sa_add_projid(sa_handle_t *hdl, dmu_tx_t *tx, uint64_t projid)
 		if (S_ISBLK(zp->z_mode) || S_ISCHR(zp->z_mode))
 			SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_RDEV(zfsvfs), NULL,
 			    &rdev, 8);
+		if ((zp->z_pflags & ZFS_REPARSE_TAG) != 0)
+			SA_ADD_BULK_ATTR(bulk, count,
+			    SA_ZPL_REPARSE_TAG(zfsvfs), NULL, &tag, 8);
 	} else {
 		SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_ATIME(zfsvfs), NULL,
 		    &atime, 16);
@@ -1623,6 +1628,10 @@ sa_add_projid(sa_handle_t *hdl, dmu_tx_t *tx, uint64_t projid)
 	if (S_ISBLK(zp->z_mode) || S_ISCHR(zp->z_mode))
 		SA_ADD_BULK_ATTR(attrs, count, SA_ZPL_RDEV(zfsvfs), NULL,
 		    &rdev, 8);
+
+	if (tag != ZFS_INVALID_REPARSE_TAG)
+		SA_ADD_BULK_ATTR(attrs, count, SA_ZPL_REPARSE_TAG(zfsvfs), NULL,
+		    &tag, 8);
 
 	if (zp->z_acl_cached != NULL) {
 		SA_ADD_BULK_ATTR(attrs, count, SA_ZPL_DACL_COUNT(zfsvfs), NULL,

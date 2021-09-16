@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2012-2021 Tintri by DDN, Inc. All rights reserved.
+ * Copyright 2012-2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 #include <sys/sid.h>
@@ -32,6 +32,7 @@
 #include <sys/filio.h>
 #include <sys/flock.h>
 #include <fs/fs_subr.h>
+#include <fs/fs_reparse.h>
 
 extern caller_context_t smb_ct;
 
@@ -1035,6 +1036,13 @@ smb_fsop_rmdir(
 }
 
 /*
+ * This is called in a context where sr may be NULL, which means we can't check
+ * the reparse_enable configuration option. This exists so that we can still
+ * disable this check if need be.
+ */
+static boolean_t smb_fsop_check_rptag = B_TRUE;
+
+/*
  * smb_fsop_getattr
  *
  * All SMB functions should use this wrapper to ensure that
@@ -1093,9 +1101,23 @@ smb_fsop_getattr(smb_request_t *sr, cred_t *cr, smb_node_t *snode,
 
 	rc = smb_vop_getattr(snode->vp, unnamed_vp, attr, flags, cr);
 
-	if ((rc == 0) && smb_node_is_dfslink(snode)) {
-		/* a DFS link should be treated as a directory */
-		attr->sa_dosattr |= FILE_ATTRIBUTE_DIRECTORY;
+	if (rc == 0) {
+		if (smb_node_is_dfslink(snode)) {
+			/* a DFS link should be treated as a directory */
+			attr->sa_dosattr |= FILE_ATTRIBUTE_DIRECTORY;
+		}
+		/*
+		 * If this is a reparse point but no tag was set in the response,
+		 * query the reparse point itself for the tag, and try to
+		 * set it in the filesystem.
+		 * This handles cases where the filesystem doesn't support
+		 * XAT_REPARSE_TAG, or older versions of symlink support.
+		 */
+		if ((attr->sa_mask & SMB_AT_REPTAG) != 0 &&
+		    (attr->sa_dosattr & FILE_ATTRIBUTE_REPARSE_POINT) != 0 &&
+		    attr->sa_reparse_tag > REPARSE_TAG_MAX_VALID &&
+		    smb_fsop_check_rptag)
+			attr->sa_reparse_tag = smb_reparse_get_tag(sr, snode);
 	}
 
 	return (rc);
@@ -1252,7 +1274,8 @@ smb_fsop_rename(
 		return (EACCES);
 	}
 
-	if (from_attr.sa_dosattr & FILE_ATTRIBUTE_REPARSE_POINT) {
+	if (from_vp->v_type == VLNK &&
+	    (from_attr.sa_dosattr & FILE_ATTRIBUTE_REPARSE_POINT) != 0) {
 		VN_RELE(from_vp);
 		return (EACCES);
 	}
@@ -1765,7 +1788,7 @@ smb_fsop_access(smb_request_t *sr, cred_t *cr, smb_node_t *snode,
 		}
 	}
 
-	if (smb_node_is_reparse(snode) && (faccess & DELETE))
+	if (smb_node_is_legacy_reparse(snode) && (faccess & DELETE))
 		return (NT_STATUS_ACCESS_DENIED);
 
 	unnamed_node = SMB_IS_STREAM(snode);
@@ -2153,10 +2176,21 @@ smb_fsop_lookup(
 		}
 	}
 
+	/*
+	 * Keep the old behavior for VLNK-style reparse points until we decide
+	 * to handle them through the reparse FSCTLS.
+	 */
+	if ((attr.sa_dosattr & FILE_ATTRIBUTE_REPARSE_POINT) != 0 &&
+	    vp->v_type != VLNK && (flags & SMB_NO_REPARSE) != 0) {
+		VN_RELE(vp);
+		kmem_free(od_name, MAXNAMELEN);
+		return (EREMOTE);
+	}
+
 	if ((flags & SMB_FOLLOW_LINKS) && (vp->v_type == VLNK) &&
 	    ((attr.sa_dosattr & FILE_ATTRIBUTE_REPARSE_POINT) == 0)) {
 		rc = smb_pathname(sr, od_name, FOLLOW, root_node, dnode,
-		    &lnk_dnode, &lnk_target_node, cr, NULL);
+		    &lnk_dnode, &lnk_target_node, cr, NULL, NULL);
 
 		if (rc != 0) {
 			/*

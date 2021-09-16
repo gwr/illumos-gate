@@ -1009,7 +1009,7 @@ smb_server_share_lookup(smb_server_t *sv, const char *shr_path,
 	sr->user_cr = zone_kcred();
 
 	rc = smb_pathname_reduce(sr, sr->user_cr, shr_path,
-	    NULL, NULL, &dnode, last_comp);
+	    NULL, NULL, &dnode, last_comp, NULL);
 
 	if (rc == 0) {
 		rc = smb_fsop_lookup(sr, sr->user_cr, SMB_FOLLOW_LINKS,
@@ -2122,6 +2122,7 @@ smb_server_store_cfg(smb_server_t *sv, smb_ioc_cfg_t *ioc)
 	sv->sv_cfg.skc_netbios_enable = ioc->netbios_enable;
 	sv->sv_cfg.skc_ipv6_enable = ioc->ipv6_enable;
 	sv->sv_cfg.skc_print_enable = ioc->print_enable;
+	sv->sv_cfg.skc_reparse_enable = ioc->reparse_enable;
 	sv->sv_cfg.skc_traverse_mounts = ioc->traverse_mounts;
 	sv->sv_cfg.skc_max_protocol = ioc->max_protocol;
 	sv->sv_cfg.skc_min_protocol = ioc->min_protocol;

@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2020 Tintri by DDN, Inc. All rights reserved.
+ * Copyright 2021 Tintri by DDN, Inc. All rights reserved.
  * Copyright 2021 RackTop Systems, Inc.
  */
 
@@ -160,6 +160,7 @@ static smb_cfg_param_t smb_cfg_table[] =
 	    "bypass_traverse_checking", SCF_TYPE_BOOLEAN, 0},
 	{SMB_CI_ENCRYPT_CIPHER, "encrypt_cipher", SCF_TYPE_ASTRING, 0},
 	{SMB_CI_NETLOGON_FLAGS, "netlogon_flags", SCF_TYPE_INTEGER, 0},
+	{SMB_CI_REPARSE_ENABLE, "reparse_enable", SCF_TYPE_BOOLEAN, 0},
 
 	/* SMB_CI_MAX */
 };

@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  * Copyright 2019 RackTop Systems.
  */
 
@@ -83,4 +83,55 @@ xva_getxoptattr(xvattr_t *xvap)
 	if (xvap->xva_vattr.va_mask & AT_XVATTR)
 		xoap = &xvap->xva_xoptattrs;
 	return (xoap);
+}
+
+/* ARGSUSED */
+void
+vsd_defaultdestructor()
+{
+}
+
+static void (*vsd_destructor[NUM_VSD_KEYS])(void *);
+
+void
+vsd_create(uint_t *keyp, void (*destructor)(void *))
+{
+	int i;
+	if (*keyp)
+		return;
+
+	if (destructor == NULL)
+		destructor = vsd_defaultdestructor;
+
+	for (i = 0 ; i < NUM_VSD_KEYS; i++)
+		if (atomic_cas_ptr(&vsd_destructor[i], NULL, destructor) == NULL)
+			break;
+
+	if (i == NUM_VSD_KEYS)
+		panic("Too many VSD consumers");
+
+	*keyp = i + 1;
+}
+
+void *
+vsd_get(vnode_t *vp, uint_t key)
+{
+	if (key && key <= NUM_VSD_KEYS)
+		return (vp->v_vsd[key - 1]);
+
+	return (NULL);
+}
+
+int
+vsd_set(vnode_t *vp, uint_t key, void *value)
+{
+	if (key == 0)
+		return (EINVAL);
+
+	if (key <= NUM_VSD_KEYS) {
+		vp->v_vsd[key - 1] = value;
+		return (0);
+	}
+
+	return (EINVAL);
 }

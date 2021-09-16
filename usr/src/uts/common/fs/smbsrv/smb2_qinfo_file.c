@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2019 Nexenta by DDN, Inc. All rights reserved.
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 /*
@@ -95,6 +95,11 @@ smb2_qinfo_file(smb_request_t *sr, smb_queryinfo_t *qi)
 
 	case FileNetworkOpenInformation:
 		mask = SMB_AT_BASIC | SMB_AT_STANDARD;
+		break;
+
+	case FileAttributeTagInformation:
+		mask = SMB_AT_DOSATTR | SMB_AT_REPTAG;
+		break;
 
 	default:
 		break;
@@ -606,21 +611,20 @@ smb2_qif_opens(smb_request_t *sr, smb_queryinfo_t *qi)
 
 /*
  * FileAttributeTagInformation
- *
- * If dattr includes FILE_ATTRIBUTE_REPARSE_POINT, the
- * second dword should be the reparse tag.  Otherwise
- * the tag value should be set to zero.
- * We don't support reparse points, so we set the tag
- * to zero.
  */
 static uint32_t
 smb2_qif_tags(smb_request_t *sr, smb_queryinfo_t *qi)
 {
-	_NOTE(ARGUNUSED(qi))
 	int rc;
+	uint32_t tag = 0;
+	uint32_t attrs = qi->qi_attr.sa_dosattr;
+
+	if ((attrs & FILE_ATTRIBUTE_REPARSE_POINT) != 0 &&
+	    qi->qi_node != NULL && smb_node_is_reparse(qi->qi_node))
+		tag = (uint32_t)qi->qi_attr.sa_reparse_tag;
 
 	rc = smb_mbc_encodef(
-	    &sr->raw_data, "ll", 0, 0);
+	    &sr->raw_data, "ll", attrs, tag);
 	if (rc != 0)
 		return (NT_STATUS_BUFFER_OVERFLOW);
 

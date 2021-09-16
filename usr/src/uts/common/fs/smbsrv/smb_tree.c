@@ -820,9 +820,10 @@ smb_tree_connect_printq(smb_request_t *sr, smb_arg_tcon_t *tcon)
 	 * Check that the shared directory exists.
 	 */
 	rc = smb_pathname_reduce(sr, user->u_cred, si->shr_path, 0, 0, &dnode,
-	    last_component);
+	    last_component, NULL);
 	if (rc == 0) {
-		rc = smb_fsop_lookup(sr, user->u_cred, SMB_FOLLOW_LINKS,
+		rc = smb_fsop_lookup(sr, user->u_cred,
+		    SMB_FOLLOW_LINKS|SMB_NO_REPARSE,
 		    sr->sr_server->si_root_smb_node, dnode, last_component,
 		    &snode);
 
@@ -1298,6 +1299,15 @@ smb_tree_get_flags(const smb_kshare_t *si, vfs_t *vfsp, smb_tree_t *tree)
 
 	if (vfs_has_feature(vfsp, VFSFT_ACEMASKONACCESS))
 		flags |= SMB_TREE_ACEMASKONACCESS;
+
+	/*
+	 * Reparse Points are implemented using the XAT_REPARSE XVATTR
+	 * and Extended Attributes.
+	 */
+	if (ssn->s_cfg.skc_reparse_enable &&
+	    (flags & (SMB_TREE_XVATTR|SMB_TREE_STREAMS)) ==
+	    (SMB_TREE_XVATTR|SMB_TREE_STREAMS))
+		flags |= SMB_TREE_REPARSE;
 
 	DTRACE_PROBE2(smb__tree__flags, uint32_t, flags, char *, name);
 

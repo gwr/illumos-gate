@@ -22,6 +22,7 @@
  * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2016 Joyent, Inc.
  * Copyright (c) 2016 by Delphix. All rights reserved.
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  * Copyright 2022 Oxide Computer Company
  */
 
@@ -1379,6 +1380,13 @@ secpolicy_xvattr(xvattr_t *xvap, uid_t owner, cred_t *cr, vtype_t vtype)
 		    xoap->xoa_av_scanstamp, cr);
 		if (error == 0 && vtype != VREG)
 			error = EINVAL;
+	}
+	if (error == 0 && XVA_ISSET_REQ(xvap, XAT_REPARSE) && vtype != VLNK)
+		error = ATTR_FLAG_PRIV(XAT_REPARSE,
+		    xoap->xoa_reparse, cr);
+	if (error == 0 && XVA_ISSET_REQ(xvap, XAT_REPARSE_TAG)) {
+		error = ATTR_FLAG_PRIV(XAT_REPARSE_TAG,
+		    B_TRUE, cr);
 	}
 	return (error);
 }
