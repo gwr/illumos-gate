@@ -29,4 +29,5 @@ file path=opt/smbsrv-tests/include/default.cfg mode=0444
 file path=opt/smbsrv-tests/include/smbtor-excl-smb2.txt mode=0444
 file path=opt/smbsrv-tests/tests/smbtorture/runst-smb2 mode=0555
 license lic_CDDL license=lic_CDDL
+$(python3_ONLY)depend fmri=runtime/python$(PYTHON3_PKGVERS) type=require
 depend fmri=service/network/samba type=optional

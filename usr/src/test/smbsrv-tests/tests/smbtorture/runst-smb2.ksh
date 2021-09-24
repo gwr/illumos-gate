@@ -16,13 +16,13 @@
 #
 
 export SMBSRV_TESTS="/opt/smbsrv-tests"
+export SMBTOR="/usr/bin/smbtorture"
 
 runsmbtor=$SMBSRV_TESTS/bin/run_smbtorture
 excl_file=$SMBSRV_TESTS/include/smbtor-excl-smb2.txt
 
 cfgfile=${CFGFILE:-$SMBSRV_TESTS/include/default.cfg}
 outdir=${OUTDIR:-/var/tmp/test_results/smbsrv-tests}
-basefile=$BASEFILE
 
 function fail
 {
@@ -30,11 +30,8 @@ function fail
 	exit ${2:-1}
 }
 
-while getopts b:c:o:t: c; do
+while getopts c:o:t: c; do
 	case $c in
-	'b')
-		basefile=$OPTARG
-		;;
 	'c')
 		cfgfile=$OPTARG
 		[[ -f $cfgfile ]] || fail "Cannot read file: $cfgfile"
@@ -59,22 +56,28 @@ cd $outdir
 tstamp=$(date +'%Y%m%dT%H%M%S')
 logfile=$outdir/smbtor-smb2-${tstamp}.log
 outfile=$outdir/smbtor-smb2-${tstamp}.summary
-outbase=${basefile:-$outdir/smbtor-smb2-baseline.summary}
 
 if [[ -z "$timeout" && -n "$TIMEOUT" ]]; then
 	timeout="-t $TIMEOUT"
 fi
 
-$SMBTOR -U "$SMBT_USER%${SMBT_PASS}" //$SMBT_HOST/$SMBT_SHARE smb2.dir.find || \
+# Non-option args taken as list of match patterns
+if [ -z "$1" ] ; then
+    match="-m smb2"
+fi
+for m
+do
+    match="$match -m $m"
+done
+
+# Make sure we can connect, otherwise we'll report every test as failing.
+$SMBTOR -U "$SMBT_USER%${SMBT_PASS}" //$SMBT_HOST/$SMBT_SHARE smb2.connect \
+ > /dev/null 2>&1 || \
     fail "Cannot connect to //$SMBT_HOST/$SMBT_SHARE"
+
 echo "Running smbtorture/smb2 tests with //$SMBT_HOST/$SMBT_SHARE"
-$runsmbtor -m smb2 -e $excl_file -o $logfile $timeout \
+$runsmbtor $match -e $excl_file -o $logfile $timeout \
     "$SMBT_HOST" "$SMBT_SHARE" "$SMBT_USER" "${SMBT_PASS}" |
      tee $outfile
-
-if [ -f $outbase ] ; then
-	echo "Comparing with baseline"
-	diff $outbase $outfile
-fi
 
 exit 0

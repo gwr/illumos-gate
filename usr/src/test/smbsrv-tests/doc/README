@@ -62,6 +62,10 @@ For example:
 
 These take similar options (eg. -c config_file).
 
+To run only a subset of the tests, you can pass match patterns
+as additional arguments to the individual test, eg
+	/opt/smbsrv-tests/tests/smbtorture/runst-smb2 smb2.lease
+
 --------------------------------------------------------------------------------
 
 3. Test Results
