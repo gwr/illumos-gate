@@ -11,6 +11,7 @@
 
 /*
  * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2021 RackTop Systems, Inc.
  */
 
 
@@ -183,6 +184,8 @@ cmd_dsgetdcname(char *domname)
 	(void) printf("  Flags:  0x%x \n", dcinfo->Flags);
 	(void) printf("  DC Site Name:  %s \n", dcinfo->DcSiteName);
 	(void) printf("  Client Site Name:  %s \n", dcinfo->ClientSiteName);
+
+	DsFreeDcInfo(dcinfo);
 
 	return (0);
 }
