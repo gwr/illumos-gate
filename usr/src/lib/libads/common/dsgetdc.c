@@ -11,6 +11,7 @@
 
 /*
  * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2021 RackTop Systems, Inc.
  */
 
 /*
@@ -156,7 +157,7 @@ void
 DsFreeDcInfo(DOMAIN_CONTROLLER_INFO *dci)
 {
 	if (dci != NULL) {
-		xdr_free(xdr_DsGetDcNameRes, (char *)dci);
+		xdr_free(xdr_adspriv_dcinfo, (char *)dci);
 		free(dci);
 	}
 }
