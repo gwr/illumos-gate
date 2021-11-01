@@ -932,8 +932,12 @@ main(int argc, char **argv, char **envp)
 	 * to the test above.
 	 */
 	if (wname) {
-		if ((wfd = open(wname, (O_RDWR | O_CREAT | O_TRUNC),
-		    0666)) < 0) {
+		if (strcmp(wname, "-") == 0) {
+			wfd = dup(fileno(stdout));
+		} else {
+			wfd = open(wname, (O_RDWR | O_CREAT | O_TRUNC), 0666);
+		}
+		if (wfd < 0) {
 			int err = errno;
 			(void) fprintf(stderr, MSG_INTL(MSG_ERR_OPEN),
 			    wname, strerror(err));

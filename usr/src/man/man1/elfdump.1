@@ -12,7 +12,7 @@
 .\"  If applicable, add the following below this CDDL HEADER, with the fields
 .\" enclosed by brackets "[]" replaced with your own identifying information:
 .\" Portions Copyright [yyyy] [name of copyright owner]
-.TH ELFDUMP 1 "Dec 19, 2018"
+.TH ELFDUMP 1 "Oct 30, 2021"
 .SH NAME
 elfdump \- dumps selected parts of an object file
 .SH SYNOPSIS
@@ -477,7 +477,9 @@ Dumps the contents of the \fB\&.SUNW\fR\fI_version\fR version sections.
 .ad
 .RS 18n
 Writes the contents of sections which are specified with the matching options
-(\fB-I\fR, \fB-N\fR, \fB-T\fR) to the named file. For example, extracting the
+(\fB-I\fR, \fB-N\fR, \fB-T\fR) to the named file.  If \fIfile\fR is '-'
+then output is written to standard output instead of creating a file.
+For example, extracting the
 \fB\&.text\fR section of a file can be carried out with:
 .sp
 .in +2
