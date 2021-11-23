@@ -194,29 +194,55 @@ rfs4x_get_server_impl_id(EXCHANGE_ID4resok *resp)
 	/* Time is zero for now */
 }
 
+/*
+ * Fill in the "server owner" and "server scope" for  EXCHANGE_ID
+ * RFC 5661 sections:
+ *	2.10.4.  Server Scope
+ *	8.4.2.1.  State Reclaim
+ *	11. Multi-Server Namespace
+ *	11.7.  Effecting File System Transitions
+ *
+ * When we're part of a cluster, we want "server scope" to be
+ * the same for all members in the cluster, but different from
+ * other clusters. The "server ownwer" should really be unique,
+ * but some clients (eg VMware) won't reconnect if it changes
+ * after a fail-over, so that's done like server scope.
+ * We just use the "cluster ID" for both.
+ */
 static void
 rfs4x_set_trunkinfo(EXCHANGE_ID4resok *rok)
 {
-	const char *nodename = uts_nodename();
-	size_t nd_len = strlen(nodename);
-	size_t hw_len = strlen(hw_serial);
-	size_t id_len = nd_len + 1 + hw_len;
-	char *s = kmem_alloc(id_len, KM_SLEEP);
-	server_owner4 *so = &rok->eir_server_owner;
+	struct server_owner4 *so = &rok->eir_server_owner;
 	struct eir_server_scope *ss = &rok->eir_server_scope;
+	unsigned int id_len;
+	char *s;
 
-	(void) memcpy(s, nodename, nd_len);
-	s[nd_len] = ' ';
-	(void) memcpy(s + nd_len + 1, hw_serial, hw_len);
+	if (rfs4_cluster_id != NULL &&
+	    rfs4_cluster_id[0] != '\0') {
+		id_len = strlen(rfs4_cluster_id);
+		s = kmem_alloc(id_len, KM_SLEEP);
+		(void) memcpy(s, rfs4_cluster_id, id_len);
+	} else {
+		const char *nodename = uts_nodename();
+		unsigned int nd_len = strlen(nodename);
+		unsigned int hw_len = strlen(hw_serial);
+		id_len = nd_len + 1 + hw_len;
+		s = kmem_alloc(id_len, KM_SLEEP);
 
+		(void) memcpy(s, nodename, nd_len);
+		s[nd_len] = ' ';
+		(void) memcpy(s + nd_len + 1, hw_serial, hw_len);
+	}
+
+	/* server owner */
 	so->so_major_id.so_major_id_len = id_len;
 	so->so_major_id.so_major_id_val = s;
+	so->so_minor_id = 0;
 
+	/* server scope */
 	ss->eir_server_scope_len = id_len;
 	ss->eir_server_scope_val = kmem_alloc(id_len, KM_SLEEP);
 	(void) memcpy(ss->eir_server_scope_val, s, id_len);
-
-	rok->eir_server_owner.so_minor_id = 0;
 }
 
 static bool_t

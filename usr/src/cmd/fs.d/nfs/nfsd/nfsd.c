@@ -140,6 +140,7 @@ main(int ac, char *av[])
 	int maxservers = 1024;	/* zero allows inifinte number of threads */
 	int maxservers_set = 0;
 	int logmaxservers = 0;
+	int node_id = 0;
 	int pid;
 	int i;
 	char *provider = NULL;
@@ -148,6 +149,7 @@ main(int ac, char *av[])
 	NETSELDECL(proto) = NULL;
 	NETSELDECL(df_proto) = NULL;
 	NETSELPDECL(providerp);
+	char *cluster_id = NULL;
 	char *defval;
 	boolean_t can_do_mlp;
 	uint_t dss_npaths = 0;
@@ -268,6 +270,23 @@ main(int ac, char *av[])
 		if (strncasecmp(value, "off", 3) == 0)
 			nfs_server_delegation = FALSE;
 
+	bufsz = PATH_MAX;
+	ret = nfs_smf_get_prop("cluster_id", value, DEFAULT_INSTANCE,
+	    SCF_TYPE_ASTRING, NFSD, &bufsz);
+	if ((ret == SA_OK) && strlen(value) > 0) {
+		cluster_id = strdup(value);
+	}
+
+	bufsz = PATH_MAX;
+	ret = nfs_smf_get_prop("node_id", value, DEFAULT_INSTANCE,
+	    SCF_TYPE_INTEGER, NFSD, &bufsz);
+	if (ret == SA_OK) {
+		errno = 0;
+		node_id = strtol(value, (char **)NULL, 10);
+		if (errno != 0)
+			node_id = 0;
+	}
+
 	/*
 	 * Conflict options error messages.
 	 */
@@ -282,7 +301,7 @@ main(int ac, char *av[])
 	}
 	opt_cnt = 0;
 
-	while ((i = getopt(ac, av, "ac:p:s:t:l:")) != EOF) {
+	while ((i = getopt(ac, av, "ac:p:s:t:l:x:y:")) != EOF) {
 		switch (i) {
 		case 'a':
 			free(df_proto);
@@ -345,6 +364,22 @@ main(int ac, char *av[])
 
 		case 'l':
 			listen_backlog = atoi(optarg);
+			break;
+
+		case 'x':
+			node_id = atoi(optarg);
+			if (node_id <= 0) {
+				fprintf(stderr, "-x bad node ID\n");
+				usage();
+			}
+			break;
+
+		case 'y':
+			if (strlen(optarg) == 0) {
+				fprintf(stderr, "-y bad cluster ID\n");
+				usage();
+			}
+			cluster_id = strdup(optarg);
 			break;
 
 		case '?':
@@ -462,6 +497,22 @@ main(int ac, char *av[])
 	default:
 		/* daemon was already running */
 		exit(0);
+	}
+
+	/* Add the cluster info, if configured. */
+	if (node_id != 0 && cluster_id != NULL) {
+		struct nfs_cluster_args cl;
+
+		cl.cl_node_idx = node_id;
+		(void) strlcpy(cl.cl_cluster_id, cluster_id, MAXNAMELEN);
+
+		if (_nfssys(NFS4_SET_CLUSTER, &cl) < 0) {
+			fprintf(stderr, "nfsd set cluster info: %s\n",
+			    strerror(errno));
+			return (1);
+		}
+		free(cluster_id);
+		cluster_id = NULL;
 	}
 
 	/*

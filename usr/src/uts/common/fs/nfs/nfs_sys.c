@@ -70,8 +70,9 @@ time_t rfs4_grace_period = RFS4_LEASETIME;
 
 /* DSS: distributed stable storage */
 size_t nfs4_dss_buflen = 0;
-/* This filled in by nfssrv:_init() */
+/* These are filled in by nfssrv:_init() */
 int (*nfs_srv_dss_func)(char *, size_t) = NULL;
+int (*nfs_srv_clinit_func)(void *) = NULL;
 
 int
 nfs_export(void *arg)
@@ -376,6 +377,17 @@ nfssys(enum nfssys_op opcode, void *arg)
 			return (set_errno(EFAULT));
 		nfscmd_args(did);
 		error = 0;
+		break;
+	}
+
+	case NFS4_SET_CLUSTER: {
+		struct nfs_cluster_args cla;
+		/* check that nfssrv module is loaded */
+		if (nfs_srv_clinit_func == NULL)
+			return (set_errno(ENOTSUP));
+		if (copyin(arg, &cla, sizeof (cla)))
+			return (set_errno(EFAULT));
+		error = nfs_srv_clinit_func(&cla);
 		break;
 	}
 

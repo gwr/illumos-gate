@@ -123,6 +123,8 @@ uint_t		rfs4_dss_numnewpaths;
 /* nvlists of all DSS paths: current, and before last warmstart */
 nvlist_t *rfs4_dss_paths, *rfs4_dss_oldpaths;
 
+static int	nfs_srv_clinit(void *);
+
 int
 _init(void)
 {
@@ -151,6 +153,7 @@ _init(void)
 	 */
 	nfs_srv_quiesce_func = nfs_srv_quiesce_all;
 	nfs_srv_dss_func = rfs4_dss_setpaths;
+	nfs_srv_clinit_func = nfs_srv_clinit;
 
 	/* setup DSS paths here; must be done before initial server startup */
 	rfs4_dss_paths = rfs4_dss_oldpaths = NULL;
@@ -281,6 +284,34 @@ nfs_srv_getzg(void)
 	}
 
 	return (ng);
+}
+
+char rfs4_cluster_id[MAXNAMELEN];
+static uint32_t nfs_cl_nodeid;	/* zone-specific? */
+static int
+nfs_srv_clinit(void *va)
+{
+	struct nfs_cluster_args *cl = va;
+
+	if (cl->cl_node_idx == 0 ||
+	    cl->cl_node_idx > NFS4_MAX_NODEID ||
+	    cl->cl_cluster_id[0] == '\0')
+		return (set_errno(EINVAL));
+
+	nfs_cl_nodeid = cl->cl_node_idx;
+	bcopy(cl->cl_cluster_id, rfs4_cluster_id, MAXNAMELEN-1);
+	ASSERT(rfs4_cluster_id[MAXNAMELEN-1] == '\0');
+	return (0);
+}
+
+/*
+ * Return the cluster "Node ID" of this node, or zero if not a
+ * member of a cluster (where all IDs are "local")
+ */
+uint32_t
+nfs_get_nodeid(void)
+{
+	return (nfs_cl_nodeid);
 }
 
 /*
@@ -516,8 +547,7 @@ nfs_svc(struct nfs_svc_args *arg, model_t model)
 	releasef(STRUCT_FGET(uap, fd));
 
 	/* HA-NFSv4: save the cluster nodeid */
-	if (cluster_bootflags & CLUSTER_BOOTED)
-		lm_global_nlmid = clconf_get_nodeid();
+	lm_global_nlmid = (int)nfs_get_nodeid();
 
 	return (error);
 }
@@ -550,7 +580,7 @@ rfs4_server_start(nfs_globals_t *ng, int nfs4_srv_delegation)
 
 			rfs4_do_server_start(ng->nfs_server_upordown,
 			    nfs4_srv_delegation, nfs4_minor_max,
-			    cluster_bootflags & CLUSTER_BOOTED);
+			    nfs_get_nodeid() != 0);
 
 			ng->nfs_server_upordown = NFS_SERVER_RUNNING;
 		}

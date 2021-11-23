@@ -51,7 +51,7 @@ enum nfssys_op	{ OLD_NFS_SVC, OLD_ASYNC_DAEMON, EXPORTFS, OLD_NFS_GETFH,
     NFS4_SVC, RDMA_SVC_INIT, NFS4_CLR_STATE, NFS_IDMAP,
     NFS4_SVC_REQUEST_QUIESCE, NFS_GETFH, NFS4_DSS_SETPATHS,
     NFS4_DSS_SETPATHS_SIZE, NFS4_EPHEMERAL_MOUNT_TO, MOUNTD_ARGS,
-    NFSCMD_ARGS };
+    NFSCMD_ARGS, NFS4_SET_CLUSTER };
 
 /*
  * The protocol version below represents protocol version number and
@@ -307,6 +307,12 @@ struct nfs4_svc_args32 {
 #define	NFS4_DSS_NVPAIR_NAME	"dss_pathname_array"
 /* default storage dir */
 #define	NFS4_DSS_VAR_DIR	"/var/nfs"
+
+#define	NFS4_MAX_NODEID	255	/* cl_node_idx */
+struct nfs_cluster_args {
+	uint32_t	cl_node_idx;
+	char		cl_cluster_id[MAXNAMELEN];
+};
 
 #ifdef _KERNEL
 

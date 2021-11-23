@@ -1046,6 +1046,7 @@ extern const struct fs_operation_def nfs_vnodeops_template[];
 extern int		nfsfstyp;
 extern void		(*nfs_srv_quiesce_func)(void);
 extern int		(*nfs_srv_dss_func)(char *, size_t);
+extern int		(*nfs_srv_clinit_func)(void *);
 
 /*
  * Per-zone stats as consumed by nfsstat(8)
@@ -2418,6 +2419,7 @@ extern void	rfs_rndup_mblks(mblk_t *, uint_t, int);
 extern void	rfs_free_xuio(void *);
 
 extern time_t nfs_sys_uptime(void);
+extern uint32_t nfs_get_nodeid(void);
 
 #endif	/* _KERNEL */
 

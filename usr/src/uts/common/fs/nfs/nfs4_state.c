@@ -70,7 +70,7 @@ stateid4 special1 = {
 
 /* For embedding the cluster nodeid into our clientid */
 #define	CLUSTER_NODEID_SHIFT	24
-#define	CLUSTER_MAX_NODEID	255
+#define	CLUSTER_MAX_NODEID	NFS4_MAX_NODEID
 
 #ifdef DEBUG
 int rfs4_debug;
@@ -1827,7 +1827,7 @@ rfs4_client_create(rfs4_entry_t u_entry, void *arg)
 	cidp->impl_id.c_id = (uint32_t)rfs4_dbe_getid(cp->rc_dbe);
 
 	/* If we are booted as a cluster node, embed our nodeid */
-	if (cluster_bootflags & CLUSTER_BOOTED)
+	if (nfs_get_nodeid() != 0)
 		embed_nodeid(cidp);
 
 	/* Allocate and copy client's client id value */
@@ -1958,7 +1958,7 @@ rfs4_findclient_by_id(clientid4 clientid, bool_t find_unconfirmed)
 	nfs4_srv_t *nsrv4 = nfs4_get_srv();
 
 	/* If we're a cluster and the nodeid isn't right, short-circuit */
-	if (cluster_bootflags & CLUSTER_BOOTED && foreign_clientid(cidp))
+	if (nfs_get_nodeid() != 0 && foreign_clientid(cidp))
 		return (NULL);
 
 	rw_enter(&nsrv4->rfs4_findclient_lock, RW_READER);
@@ -2907,8 +2907,7 @@ get_stateid(id_t eid)
 	 * We've already done sanity checks in rfs4_client_create() so no
 	 * need to repeat them here.
 	 */
-	id.bits.clnodeid = (cluster_bootflags & CLUSTER_BOOTED) ?
-	    clconf_get_nodeid() : 0;
+	id.bits.clnodeid = nfs_get_nodeid();
 
 	return (id);
 }
@@ -2921,8 +2920,8 @@ get_stateid(id_t eid)
 static int
 foreign_stateid(stateid_t *id)
 {
-	ASSERT(cluster_bootflags & CLUSTER_BOOTED);
-	return (id->bits.clnodeid != (uint32_t)clconf_get_nodeid());
+	uint32_t n = nfs_get_nodeid();
+	return (id->bits.clnodeid != 0 && id->bits.clnodeid != n);
 }
 
 /*
@@ -2933,9 +2932,9 @@ foreign_stateid(stateid_t *id)
 static int
 foreign_clientid(cid *cidp)
 {
-	ASSERT(cluster_bootflags & CLUSTER_BOOTED);
-	return (cidp->impl_id.c_id >> CLUSTER_NODEID_SHIFT !=
-	    (uint32_t)clconf_get_nodeid());
+	uint32_t n = nfs_get_nodeid();
+	uint32_t i = cidp->impl_id.c_id >> CLUSTER_NODEID_SHIFT;
+	return (i != 0 && i != n);
 }
 
 /*
@@ -2945,7 +2944,7 @@ foreign_clientid(cid *cidp)
 static void
 embed_nodeid(cid *cidp)
 {
-	int clnodeid;
+	uint32_t n = nfs_get_nodeid();
 	/*
 	 * Currently, our state tables are small enough that their
 	 * ids will leave enough bits free for the nodeid. If the
@@ -2953,12 +2952,9 @@ embed_nodeid(cid *cidp)
 	 * Equally, we only have room for so many bits of nodeid, so
 	 * must check that too.
 	 */
-	ASSERT(cluster_bootflags & CLUSTER_BOOTED);
-	ASSERT(cidp->impl_id.c_id >> CLUSTER_NODEID_SHIFT == 0);
-	clnodeid = clconf_get_nodeid();
-	ASSERT(clnodeid <= CLUSTER_MAX_NODEID);
-	ASSERT(clnodeid != NODEID_UNKNOWN);
-	cidp->impl_id.c_id |= (clnodeid << CLUSTER_NODEID_SHIFT);
+	ASSERT(n != 0);
+	ASSERT(n <= CLUSTER_MAX_NODEID);
+	cidp->impl_id.c_id |= (n << CLUSTER_NODEID_SHIFT);
 }
 
 static uint32_t
@@ -3439,7 +3435,7 @@ rfs4_check_clientid(clientid4 *cp, int setclid_confirm)
 	 * If it indicates that this clientid was generated on another node,
 	 * inform the client accordingly.
 	 */
-	if (cluster_bootflags & CLUSTER_BOOTED && foreign_clientid(cidp))
+	if (nfs_get_nodeid() != 0 && foreign_clientid(cidp))
 		return (NFS4ERR_STALE_CLIENTID);
 
 	/*
@@ -3467,7 +3463,7 @@ what_stateid_error(stateid_t *id, stateid_type_t type)
 	nsrv4 = nfs4_get_srv();
 
 	/* If we are booted as a cluster node, was stateid locally generated? */
-	if ((cluster_bootflags & CLUSTER_BOOTED) && foreign_stateid(id))
+	if (nfs_get_nodeid() != 0 && foreign_stateid(id))
 		return (NFS4ERR_STALE_STATEID);
 
 	/* If types don't match then no use checking further */
@@ -3516,7 +3512,7 @@ rfs4_get_state_lockit(stateid4 *stateid, rfs4_state_t **spp,
 	*spp = NULL;
 
 	/* If we are booted as a cluster node, was stateid locally generated? */
-	if ((cluster_bootflags & CLUSTER_BOOTED) && foreign_stateid(id))
+	if (nfs_get_nodeid() != 0 && foreign_stateid(id))
 		return (NFS4ERR_STALE_STATEID);
 
 	sp = rfs4_findstate(id, find_invalid, lock_fp);
@@ -3621,7 +3617,7 @@ rfs4_get_deleg_state(stateid4 *stateid, rfs4_deleg_state_t **dspp)
 	*dspp = NULL;
 
 	/* If we are booted as a cluster node, was stateid locally generated? */
-	if ((cluster_bootflags & CLUSTER_BOOTED) && foreign_stateid(id))
+	if (nfs_get_nodeid() != 0 && foreign_stateid(id))
 		return (NFS4ERR_STALE_STATEID);
 
 	dsp = rfs4_finddelegstate(id);
@@ -3648,7 +3644,7 @@ rfs4_get_lo_state(stateid4 *stateid, rfs4_lo_state_t **lspp, bool_t lock_fp)
 	*lspp = NULL;
 
 	/* If we are booted as a cluster node, was stateid locally generated? */
-	if ((cluster_bootflags & CLUSTER_BOOTED) && foreign_stateid(id))
+	if (nfs_get_nodeid() != 0 && foreign_stateid(id))
 		return (NFS4ERR_STALE_STATEID);
 
 	lsp = rfs4_findlo_state(id, lock_fp);

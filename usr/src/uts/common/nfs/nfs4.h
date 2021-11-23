@@ -392,6 +392,9 @@ extern uint_t		rfs4_dss_numnewpaths;
 /* nvlists of all DSS paths: current, and before last warmstart */
 extern nvlist_t *rfs4_dss_paths, *rfs4_dss_oldpaths;
 
+/* server cluster ID */
+extern char rfs4_cluster_id[];
+
 /*
  * The server maintains a set of state on a per client basis that
  * matches that of the protocol requirements.  A client's state is
