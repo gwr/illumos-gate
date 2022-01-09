@@ -11,6 +11,7 @@
 
 /*
  * Copyright 2017 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2022 RackTop Systems, Inc.
  */
 
 /*
@@ -20,6 +21,7 @@
 #include <smbsrv/smb2_kproto.h>
 
 #define	SMB2_SHARE_CAP_CA SMB2_SHARE_CAP_CONTINUOUS_AVAILABILITY
+#define	ANON_OR_GUEST	(SMB_USER_FLAG_ANON | SMB_USER_FLAG_GUEST)
 
 smb_sdrc_t
 smb2_tree_connect(smb_request_t *sr)
@@ -71,6 +73,20 @@ smb2_tree_connect(smb_request_t *sr)
 	DTRACE_SMB2_START(op__TreeConnect, smb_request_t *, sr);
 
 	/*
+	 * If Connection.Dialect is "3.1.1" and Session.IsAnonymous and
+	 * Session.IsGuest are set to FALSE and the request is not signed
+	 * or encrypted, then the server MUST disconnect the connection.
+	 */
+	if (sr->session->dialect >= SMB_VERS_3_11 &&
+	    (sr->uid_user->u_flags & ANON_OR_GUEST) == 0 &&
+	    (sr->smb2_hdr_flags & SMB2_FLAGS_SIGNED) == 0 &&
+	    sr->encrypted == B_FALSE) {
+		smb_session_disconnect(sr->session);
+		status = NT_STATUS_ACCESS_DENIED;
+		goto errout;
+	}
+
+	/*
 	 * [MS-SMB2] 3.3.5.7 Receiving an SMB2 TREE_CONNECT Request
 	 *
 	 * If RejectUnencryptedAccess is TRUE,
@@ -82,6 +98,7 @@ smb2_tree_connect(smb_request_t *sr)
 	 */
 	status = smb_tree_connect(sr);
 
+errout:
 	sr->smb2_status = status;
 	DTRACE_SMB2_DONE(op__TreeConnect, smb_request_t *, sr);
 
