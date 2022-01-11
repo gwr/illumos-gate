@@ -931,7 +931,12 @@ smb_fsop_remove_streams(smb_request_t *sr, cred_t *cr, smb_node_t *fnode)
 	if (SMB_TREE_SUPPORTS_CATIA(sr))
 		flags |= SMB_CATIA;
 
-	status = smb_odir_openat(sr, fnode, &od);
+	/*
+	 * NB: There aren't currently any restricted streams that could be
+	 * removed by this function. If there ever are, be careful to exclude
+	 * any restricted streams that we DON'T want to remove.
+	 */
+	status = smb_odir_openat(sr, fnode, &od, B_FALSE);
 	switch (status) {
 	case 0:
 		break;

@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2021 Tintri by DDN, Inc. All rights reserved.
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 #include <smbsrv/smb_kproto.h>
@@ -646,7 +646,7 @@ smb_query_stream_info(smb_request_t *sr, mbuf_chain_t *mbc,
 	datasz = attr->sa_vattr.va_size;
 	allocsz = attr->sa_allocsz;
 
-	status = smb_odir_openat(sr, fnode, &od);
+	status = smb_odir_openat(sr, fnode, &od, B_TRUE);
 	switch (status) {
 	case 0:
 		break;
