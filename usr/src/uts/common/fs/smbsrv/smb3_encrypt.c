@@ -11,7 +11,7 @@
 
 /*
  * Copyright 2017 Nexenta Systems, Inc.  All rights reserved.
- * Copyright 2020 RackTop Systems, Inc.
+ * Copyright 2022 RackTop Systems, Inc.
  */
 
 /*
@@ -25,8 +25,8 @@
 
 #define	SMB3_NONCE_OFFS		20
 #define	SMB3_SIG_OFFS		4
-#define	SMB3_AES128_CCM_NONCE_SIZE	11
-#define	SMB3_AES128_GCM_NONCE_SIZE	12
+#define	SMB3_AES_CCM_NONCE_SIZE	11
+#define	SMB3_AES_GCM_NONCE_SIZE	12
 
 /*
  * Arbitrary value used to prevent nonce reuse via overflow. Currently
@@ -89,9 +89,11 @@ smb3_encrypt_init_mech(smb_session_t *s)
 	mech = kmem_zalloc(sizeof (*mech), KM_SLEEP);
 
 	switch (s->smb31_enc_cipherid) {
+	case SMB3_CIPHER_AES256_GCM:
 	case SMB3_CIPHER_AES128_GCM:
 		rc = smb3_aes_gcm_getmech(mech);
 		break;
+	case SMB3_CIPHER_AES256_CCM:
 	case SMB3_CIPHER_AES128_CCM:
 		rc = smb3_aes_ccm_getmech(mech);
 		break;
@@ -121,6 +123,7 @@ smb3_encrypt_begin(smb_request_t *sr, smb_token_t *token)
 	smb_user_t *u = sr->uid_user;
 	struct smb_key *enc_key = &u->u_enc_key;
 	struct smb_key *dec_key = &u->u_dec_key;
+	uint32_t keylen;
 
 	/*
 	 * In order to enforce encryption, all users need to
@@ -149,35 +152,52 @@ smb3_encrypt_begin(smb_request_t *sr, smb_token_t *token)
 	 * the session key using KDF in counter mode.
 	 */
 	if (s->dialect >= SMB_VERS_3_11) {
-		if (smb3_kdf(enc_key->key,
-		    token->tkn_ssnkey.val, token->tkn_ssnkey.len,
+		uint32_t ssnkey_len;
+
+		if (s->smb31_enc_cipherid == SMB3_CIPHER_AES256_GCM ||
+		    s->smb31_enc_cipherid == SMB3_CIPHER_AES256_CCM) {
+			keylen = 32;
+			ssnkey_len = token->tkn_ssnkey.len;
+		} else {
+			keylen = SMB2_KEYLEN; /* 16 */
+			ssnkey_len = MIN(16, token->tkn_ssnkey.len);
+		}
+
+		if (smb3_kdf(enc_key->key, keylen,
+		    token->tkn_ssnkey.val, ssnkey_len,
 		    (uint8_t *)"SMBS2CCipherKey", 16,
 		    u->u_preauth_hashval, SHA512_DIGEST_LENGTH) != 0)
 			return;
 
-		if (smb3_kdf(dec_key->key,
-		    token->tkn_ssnkey.val, token->tkn_ssnkey.len,
+		if (smb3_kdf(dec_key->key, keylen,
+		    token->tkn_ssnkey.val, ssnkey_len,
 		    (uint8_t *)"SMBC2SCipherKey", 16,
 		    u->u_preauth_hashval, SHA512_DIGEST_LENGTH) != 0)
 			return;
+
+		enc_key->len = keylen;
+		dec_key->len = keylen;
 	} else {
-		if (smb3_kdf(enc_key->key,
+		keylen = SMB2_KEYLEN;
+
+		if (smb3_kdf(enc_key->key, keylen,
 		    token->tkn_ssnkey.val, token->tkn_ssnkey.len,
 		    (uint8_t *)"SMB2AESCCM", 11,
 		    (uint8_t *)"ServerOut", 10) != 0)
 			return;
 
-		if (smb3_kdf(dec_key->key,
+		if (smb3_kdf(dec_key->key, keylen,
 		    token->tkn_ssnkey.val, token->tkn_ssnkey.len,
 		    (uint8_t *)"SMB2AESCCM", 11,
 		    (uint8_t *)"ServerIn ", 10) != 0)
 			return;
+
+		enc_key->len = keylen;
+		dec_key->len = keylen;
 	}
 
 	smb3_encrypt_init_nonce(u);
 
-	enc_key->len = SMB3_KEYLEN;
-	dec_key->len = SMB3_KEYLEN;
 }
 
 /*
@@ -198,13 +218,16 @@ smb3_decrypt_sr(smb_request_t *sr)
 	int offset, resid, tlen, rc;
 	smb3_crypto_param_t param;
 	smb_crypto_mech_t mech;
-	boolean_t gcm = sr->session->smb31_enc_cipherid ==
-	    SMB3_CIPHER_AES128_GCM;
-	size_t nonce_size = (gcm ? SMB3_AES128_GCM_NONCE_SIZE :
-	    SMB3_AES128_CCM_NONCE_SIZE);
+	boolean_t gcm =
+	    s->smb31_enc_cipherid == SMB3_CIPHER_AES256_GCM ||
+	    s->smb31_enc_cipherid == SMB3_CIPHER_AES128_GCM;
+	size_t nonce_size = (gcm ?
+	    SMB3_AES_GCM_NONCE_SIZE :
+	    SMB3_AES_CCM_NONCE_SIZE);
 
 	ASSERT(u != NULL);
-	if (s->enc_mech == NULL || dec_key->len != 16) {
+
+	if (s->enc_mech == NULL || dec_key->len == 0) {
 		return (-1);
 	}
 
@@ -339,13 +362,16 @@ smb3_encrypt_sr(smb_request_t *sr, struct mbuf_chain *in_mbc,
 	int resid, tlen, rc;
 	smb3_crypto_param_t param;
 	smb_crypto_mech_t mech;
-	boolean_t gcm = sr->session->smb31_enc_cipherid ==
-	    SMB3_CIPHER_AES128_GCM;
-	size_t nonce_size = (gcm ? SMB3_AES128_GCM_NONCE_SIZE :
-	    SMB3_AES128_CCM_NONCE_SIZE);
+	boolean_t gcm =
+	    s->smb31_enc_cipherid == SMB3_CIPHER_AES256_GCM ||
+	    s->smb31_enc_cipherid == SMB3_CIPHER_AES128_GCM;
+	size_t nonce_size = (gcm ?
+	    SMB3_AES_GCM_NONCE_SIZE :
+	    SMB3_AES_CCM_NONCE_SIZE);
 
 	ASSERT(u != NULL);
-	if (s->enc_mech == NULL || enc_key->len != 16) {
+
+	if (s->enc_mech == NULL || enc_key->len == 0) {
 		return (-1);
 	}
 
