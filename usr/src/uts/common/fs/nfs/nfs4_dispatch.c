@@ -397,17 +397,14 @@ rfs40_dispatch(struct svc_req *req, SVCXPRT *xprt, char *ap)
 	/*
 	 * Figure out the disposition of the whole COMPOUND
 	 * and record it's IDEMPOTENTCY.
-	 */
-	rfs4_compound_flagproc(cap, &dis_flags);
-
-	/*
+	 *
 	 * If NON-IDEMPOTENT then we need to figure out if this
 	 * request can be replied from the duplicate cache.
 	 *
 	 * If this is a new request then we need to insert the
 	 * reply into the duplicate cache.
 	 */
-	if (!(dis_flags & RPC_IDEMPOTENT)) {
+	if (!rfs4_idempotent_req(cap)) {
 		/* look for a replay from the cache or allocate */
 		dr_stat = rfs4_find_dr(req, nfs4_drc, &drp);
 
