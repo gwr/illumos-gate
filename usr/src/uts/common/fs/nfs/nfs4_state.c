@@ -404,8 +404,6 @@ static uint32_t deleg_state_hash(void *);
 static bool_t deleg_state_compare(rfs4_entry_t, void *);
 static void *deleg_state_mkkey(rfs4_entry_t);
 
-static void rfs4_state_rele_nounlock(rfs4_state_t *);
-
 static int rfs4_ss_enabled = 0;
 
 void
@@ -3027,7 +3025,7 @@ rfs4_state_destroy(rfs4_entry_t u_entry)
 	sp->rs_owner = NULL;
 }
 
-static void
+void
 rfs4_state_rele_nounlock(rfs4_state_t *sp)
 {
 	rfs4_dbe_rele(sp->rs_dbe);
@@ -3551,6 +3549,13 @@ rfs4_get_state(stateid4 *stateid, rfs4_state_t **spp,
     rfs4_dbsearch_type_t find_invalid)
 {
 	return (rfs4_get_state_lockit(stateid, spp, find_invalid, TRUE));
+}
+
+nfsstat4
+rfs4_get_state_nolock(stateid4 *stateid, rfs4_state_t **spp,
+    rfs4_dbsearch_type_t find_invalid)
+{
+	return (rfs4_get_state_lockit(stateid, spp, find_invalid, FALSE));
 }
 
 int
