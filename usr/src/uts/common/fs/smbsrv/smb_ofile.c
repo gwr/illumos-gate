@@ -808,6 +808,22 @@ smb_ofile_hold(smb_ofile_t *of)
 }
 
 /*
+ * Void arg variant of smb_ofile_release for use with smb_llist_post.
+ * This is needed because smb_ofile_release may need to enter the
+ * smb_llist as writer when it drops the last reference, so when
+ * we're in the llist as reader, use smb_llist_post with this
+ * function to arrange for the release call at llist_exit.
+ */
+void
+smb_ofile_release_LL(void *arg)
+{
+	smb_ofile_t	*of = arg;
+
+	SMB_OFILE_VALID(of);
+	smb_ofile_release(of);
+}
+
+/*
  * Release a reference on a file.  If the reference count falls to
  * zero and the file has been closed, post the object for deletion.
  * Object deletion is deferred to avoid modifying a list while an
