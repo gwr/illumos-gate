@@ -1,3 +1,5 @@
+#!/usr/bin/ksh
+
 #
 # This file and its contents are supplied under the terms of the
 # Common Development and Distribution License ("CDDL"), version 1.0.
@@ -13,15 +15,17 @@
 # Copyright 2022 Tintri by DDN, Inc. All rights reserved.
 #
 
-include $(SRC)/Makefile.master
+export SMBSRV_TESTS=${SMBSRV_TESTS:-/opt/smbsrv-tests}
 
-# The python code in here required python3 or later.
-PYSHEBANG = $(PYTHON3)
-PYVER = $(PYTHON3_VERSION)
-PYSUFFIX = $(PYTHON3_SUFFIX)
+. $SMBSRV_TESTS/tests/negotiate/ctx_common
 
-ROOTOPTPKG = $(ROOT)/opt/smbsrv-tests
-TARGETDIR = $(ROOTOPTPKG)/bin
+NUM_ENCRYPT=0
+NUM_PREAUTH=1
+PREAUTH_ALGS="1"
+ENCRYPT_ALGS=
 
-include $(SRC)/test/smbsrv-tests/Makefile.com
-include $(SRC)/test/Makefile.com
+EXPECTED_STATUS="0"
+EXPECTED_PREAUTH_ALG=1
+EXPECTED_ENCRYPT_ALG=
+
+run_test

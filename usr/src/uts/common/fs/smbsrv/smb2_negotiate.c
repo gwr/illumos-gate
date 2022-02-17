@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2019 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2015-2022 Tintri by DDN, Inc. All rights reserved.
  * Copyright 2021 RackTop Systems, Inc.
  */
 
@@ -219,18 +219,24 @@ typedef struct smb2_negotiate_ctx {
 #define	SMB31_PREAUTH_CTX_SALT_LEN	32
 
 /*
- * SMB 3.1.1 originally specified a single hashing algorithm - SHA-512 - and
- * two encryption ones - AES-128-CCM and AES-128-GCM.
- * Windows Server 2022 and Windows 11 introduced two further encryption
- * algorithms - AES-256-CCM and AES-256-GCM.
+ * SMB 3.1.1 specifies one hashing algorithm: SHA-256.
+ * It also specifies four encryption ciphers: AES-128-CCM, AES-128-GCM,
+ * AES-256-CCM, and AES-256-GCM.
+ *
+ * The following represent the maximum number of entries we'll examine in the
+ * relevant negotiation context, and are chosen to allow us some wiggle room
+ * if new algorithms are introduced in a future specification.
  */
-#define	MAX_HASHID_NUM	(1)
-#define	MAX_CIPHER_NUM	(4)
+#define	MAX_HASHID_NUM	(4)	/* Preauth Integrity hashes */
+#define	MAX_CIPHER_NUM	(8)	/* Encryption ciphers */
+
+/* OTW bytes per hash/cipher ID */
+#define	SMB3_BYTES_PER_ID	2
 
 typedef struct smb2_preauth_integrity_caps {
 	uint16_t	picap_hash_count;
 	uint16_t	picap_salt_len;
-	uint16_t	picap_hash_id;
+	uint16_t	picap_hash_ids[MAX_HASHID_NUM];
 	uint8_t		picap_salt[SMB31_PREAUTH_CTX_SALT_LEN];
 } smb2_preauth_caps_t;
 
@@ -286,7 +292,7 @@ smb31_decode_neg_ctxs(smb_request_t *sr, smb2_neg_ctxs_t *neg_ctxs)
 	smb_session_t *s = sr->session;
 	smb2_preauth_caps_t *picap = &neg_ctxs->preauth_ctx.preauth_caps;
 	smb2_encrypt_caps_t *encap = &neg_ctxs->encrypt_ctx.encrypt_caps;
-	boolean_t found_sha512 = B_FALSE;
+	boolean_t found_hash = B_FALSE;
 	boolean_t found_cipher = B_FALSE;
 	uint16_t ciphers = sr->sr_server->sv_cfg.skc_encrypt_cipher;
 	uint32_t status = 0;
@@ -381,8 +387,7 @@ smb31_decode_neg_ctxs(smb_request_t *sr, smb2_neg_ctxs_t *neg_ctxs)
 			    &sr->command, "ww",
 			    &picap->picap_hash_count,	/* w */
 			    &picap->picap_salt_len);	/* w */
-			if (rc != 0 || picap->picap_hash_count >
-			    MAX_HASHID_NUM) {
+			if (rc != 0) {
 				status = NT_STATUS_INVALID_PARAMETER;
 				goto errout;
 			}
@@ -390,10 +395,25 @@ smb31_decode_neg_ctxs(smb_request_t *sr, smb2_neg_ctxs_t *neg_ctxs)
 			/*
 			 * Get hash id
 			 */
-			rc = smb_mbc_decodef(
-			    &sr->command, "#w",
-			    picap->picap_hash_count,
-			    &picap->picap_hash_id);	/* w */
+			if (picap->picap_hash_count > MAX_HASHID_NUM) {
+				uint16_t skip_cnt = picap->picap_hash_count -
+				    MAX_HASHID_NUM;
+				DTRACE_PROBE2(extra__preauth__ids,
+				    smb_request_t *, sr,
+				    uint16_t, picap->picap_hash_count);
+				rc = smb_mbc_decodef(
+				    &sr->command, "#w#.",
+				    MAX_HASHID_NUM,
+				    &picap->picap_hash_ids[0],		/* w */
+				    skip_cnt * SMB3_BYTES_PER_ID);	/* #. */
+				picap->picap_hash_count = MAX_HASHID_NUM;
+			} else {
+				rc = smb_mbc_decodef(
+				    &sr->command, "#w",
+				    picap->picap_hash_count,
+				    &picap->picap_hash_ids[0]);	/* w */
+			}
+
 			if (rc != 0) {
 				status = NT_STATUS_INVALID_PARAMETER;
 				goto errout;
@@ -411,18 +431,20 @@ smb31_decode_neg_ctxs(smb_request_t *sr, smb2_neg_ctxs_t *neg_ctxs)
 				goto errout;
 			}
 
-			/*
-			 * In SMB 0x311 there should be exactly 1 preauth
-			 * negotiate context, and there should be exactly 1
-			 * hash value in the list - SHA512.
-			 */
-			if (picap->picap_hash_count != 1) {
-				status = NT_STATUS_INVALID_PARAMETER;
-				continue;
-			}
+			for (int k = 0; k < picap->picap_hash_count; k++) {
+				uint16_t hash = picap->picap_hash_ids[k];
 
-			if (picap->picap_hash_id == SMB3_HASH_SHA512)
-				found_sha512 = B_TRUE;
+				if (hash == SMB3_HASH_SHA512) {
+					s->smb31_preauth_hashid = hash;
+					found_hash = B_TRUE;
+					break;
+				} else {
+					DTRACE_PROBE2(
+					    unknown__preauth__id,
+					    smb_request_t *, sr,
+					    uint16_t, hash);
+				}
+			}
 			break;
 		case SMB2_ENCRYPTION_CAPS:
 			memcpy(&neg_ctxs->preauth_ctx.neg_ctx, &neg_ctx,
@@ -436,8 +458,7 @@ smb31_decode_neg_ctxs(smb_request_t *sr, smb2_neg_ctxs_t *neg_ctxs)
 			rc = smb_mbc_decodef(
 			    &sr->command, "w",
 			    &encap->encap_cipher_count);	/* w */
-			if (rc != 0 || encap->encap_cipher_count >
-			    MAX_CIPHER_NUM) {
+			if (rc != 0) {
 				status = NT_STATUS_INVALID_PARAMETER;
 				goto errout;
 			}
@@ -445,10 +466,25 @@ smb31_decode_neg_ctxs(smb_request_t *sr, smb2_neg_ctxs_t *neg_ctxs)
 			/*
 			 * Get cipher list
 			 */
-			rc = smb_mbc_decodef(
-			    &sr->command, "#w",
-			    encap->encap_cipher_count,
-			    &encap->encap_cipher_ids[0]);	/* w */
+			if (encap->encap_cipher_count > MAX_CIPHER_NUM) {
+				uint16_t skip_cnt = encap->encap_cipher_count -
+				    MAX_CIPHER_NUM;
+				DTRACE_PROBE2(extra__ciphers,
+				    smb_request_t *, sr,
+				    uint16_t, encap->encap_cipher_count);
+				rc = smb_mbc_decodef(
+				    &sr->command, "#w#.",
+				    MAX_CIPHER_NUM,
+				    &encap->encap_cipher_ids[0],	/* w */
+				    skip_cnt * SMB3_BYTES_PER_ID);	/* #. */
+				encap->encap_cipher_count = MAX_CIPHER_NUM;
+			} else {
+				rc = smb_mbc_decodef(
+				    &sr->command, "#w",
+				    encap->encap_cipher_count,
+				    &encap->encap_cipher_ids[0]);	/* w */
+			}
+
 			if (rc != 0) {
 				status = NT_STATUS_INVALID_PARAMETER;
 				goto errout;
@@ -465,6 +501,10 @@ smb31_decode_neg_ctxs(smb_request_t *sr, smb2_neg_ctxs_t *neg_ctxs)
 					s->smb31_enc_cipherid = c;
 					found_cipher = B_TRUE;
 					break;
+				} else if (c > SMB3_CIPHER_MAX) {
+					DTRACE_PROBE2(unknown__cipher__id,
+					    smb_request_t *, sr,
+					    uint16_t, c);
 				}
 			}
 			break;
@@ -482,12 +522,10 @@ smb31_decode_neg_ctxs(smb_request_t *sr, smb2_neg_ctxs_t *neg_ctxs)
 		goto errout;
 	}
 
-	if (!found_sha512) {
+	if (!found_hash) {
 		status = STATUS_PREAUTH_HASH_OVERLAP;
 		goto errout;
 	}
-
-	s->smb31_preauth_hashid = SMB3_HASH_SHA512;
 
 	if (!found_cipher)
 		s->smb31_enc_cipherid = 0;
@@ -517,7 +555,7 @@ smb31_encode_neg_ctxs(smb_request_t *sr, smb2_neg_ctxs_t *neg_ctxs)
 	ASSERT3S(neg_ctx_off, ==, sr->reply.chain_offset);
 
 	encap->encap_cipher_ids[0] = s->smb31_enc_cipherid;
-	picap->picap_hash_id = s->smb31_preauth_hashid;
+	picap->picap_hash_ids[0] = s->smb31_preauth_hashid;
 	picap->picap_salt_len = salt_len;
 
 	(void) random_get_pseudo_bytes(picap->picap_salt, salt_len);

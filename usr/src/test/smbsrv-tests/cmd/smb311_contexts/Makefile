@@ -13,15 +13,10 @@
 # Copyright 2022 Tintri by DDN, Inc. All rights reserved.
 #
 
-include $(SRC)/Makefile.master
+PROG = smb311_contexts
 
-# The python code in here required python3 or later.
-PYSHEBANG = $(PYTHON3)
-PYVER = $(PYTHON3_VERSION)
-PYSUFFIX = $(PYTHON3_SUFFIX)
+include $(SRC)/cmd/Makefile.cmd
 
-ROOTOPTPKG = $(ROOT)/opt/smbsrv-tests
-TARGETDIR = $(ROOTOPTPKG)/bin
+LDLIBS += -lnsl -lsocket
 
-include $(SRC)/test/smbsrv-tests/Makefile.com
-include $(SRC)/test/Makefile.com
+include ../Makefile.subdirs
