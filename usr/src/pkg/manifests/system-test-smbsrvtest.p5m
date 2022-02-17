@@ -9,7 +9,7 @@
 # http://www.illumos.org/license/CDDL.
 #
 
-# Copyright 2021 Tintri by DDN, Inc.  All rights reserved.
+# Copyright 2022 Tintri by DDN, Inc.  All rights reserved.
 
 set name=pkg.fmri value=pkg:/system/test/smbsrvtest@$(PKGVERS)
 set name=pkg.summary value="SMB Server Functional Tests"
@@ -21,12 +21,29 @@ dir  path=opt/smbsrv-tests
 file path=opt/smbsrv-tests/README mode=0444
 dir  path=opt/smbsrv-tests/bin
 file path=opt/smbsrv-tests/bin/run_smbtorture mode=0555
+file path=opt/smbsrv-tests/bin/smb311_contexts mode=0555
 file path=opt/smbsrv-tests/bin/smbsrvtests mode=0555
 dir  path=opt/smbsrv-tests/include
 file path=opt/smbsrv-tests/include/default.cfg mode=0444
 file path=opt/smbsrv-tests/include/smbtor-excl-rpc.txt mode=0444
 file path=opt/smbsrv-tests/include/smbtor-excl-smb2.txt mode=0444
 dir  path=opt/smbsrv-tests/tests
+dir  path=opt/smbsrv-tests/tests/negotiate
+file path=opt/smbsrv-tests/tests/negotiate/ctx_common mode=0555
+file path=opt/smbsrv-tests/tests/negotiate/encrypt_extra_failure mode=0555
+file path=opt/smbsrv-tests/tests/negotiate/encrypt_extra_success mode=0555
+file path=opt/smbsrv-tests/tests/negotiate/encrypt_one_failure mode=0555
+file path=opt/smbsrv-tests/tests/negotiate/encrypt_one_success mode=0555
+file path=opt/smbsrv-tests/tests/negotiate/mixed_encrypt_failure mode=0555
+file path=opt/smbsrv-tests/tests/negotiate/mixed_encrypt_far mode=0555
+file path=opt/smbsrv-tests/tests/negotiate/mixed_extra_success mode=0555
+file path=opt/smbsrv-tests/tests/negotiate/mixed_preauth_failure mode=0555
+file path=opt/smbsrv-tests/tests/negotiate/mixed_preauth_far mode=0555
+file path=opt/smbsrv-tests/tests/negotiate/preauth_extra_failure mode=0555
+file path=opt/smbsrv-tests/tests/negotiate/preauth_extra_success mode=0555
+file path=opt/smbsrv-tests/tests/negotiate/preauth_one_failure mode=0555
+file path=opt/smbsrv-tests/tests/negotiate/preauth_one_success mode=0555
+file path=opt/smbsrv-tests/tests/negotiate/run_all mode=0555
 dir  path=opt/smbsrv-tests/tests/smbtorture
 file path=opt/smbsrv-tests/tests/smbtorture/runst-rpc mode=0555
 file path=opt/smbsrv-tests/tests/smbtorture/runst-smb2 mode=0555
