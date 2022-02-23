@@ -301,7 +301,6 @@ smb2_lease_break_ack(smb_request_t *sr)
 	smb_node_t  *node;
 	smb_ofile_t *ofile;
 	uint32_t LeaseState;
-	uint32_t BreakTo;
 	uint32_t status;
 	int rc = 0;
 
@@ -363,7 +362,7 @@ smb2_lease_break_ack(smb_request_t *sr)
 	/* Success, so have sr->fid_ofile */
 	ofile = sr->fid_ofile;
 
-	if (lease->ls_breaking == 0) {
+	if (lease->ls_breaking == B_FALSE) {
 		/*
 		 * This ACK is either unsolicited or too late,
 		 * eg. we timed out the ACK and did it locally.
@@ -376,9 +375,7 @@ smb2_lease_break_ack(smb_request_t *sr)
 	 * If the new LeaseState has any bits in excess of
 	 * the lease state we sent in the break, error...
 	 */
-	BreakTo = (lease->ls_breaking >> BREAK_SHIFT) &
-	    OPLOCK_LEVEL_CACHE_MASK;
-	if ((LeaseState & ~BreakTo) != 0) {
+	if ((LeaseState & ~(lease->ls_breakto)) != 0) {
 		status = NT_STATUS_REQUEST_NOT_ACCEPTED;
 		goto errout;
 	}
@@ -388,16 +385,18 @@ smb2_lease_break_ack(smb_request_t *sr)
 	 *
 	 * Clear breaking flags before we ack,
 	 * because ack might set those.
+	 * Signal both CVs, out of paranoia.
 	 */
-	ofile->f_oplock.og_breaking = 0;
-	lease->ls_breaking = 0;
+	ofile->f_oplock.og_breaking = B_FALSE;
+	cv_broadcast(&ofile->f_oplock.og_ack_cv);
+	lease->ls_breaking = B_FALSE;
 	cv_broadcast(&lease->ls_ack_cv);
 
 	LeaseState |= OPLOCK_LEVEL_GRANULAR;
 	status = smb_oplock_ack_break(sr, ofile, &LeaseState);
 
 	ofile->f_oplock.og_state = LeaseState;
-	lease->ls_state = LeaseState & CACHE_RWH;
+	lease->ls_state = LeaseState;
 	/* ls_epoch does not change here */
 
 	if (ofile->dh_persist)
@@ -664,7 +663,7 @@ smb2_lease_send_break(smb_request_t *sr)
 		 * We're expecting an ACK.  Wait in this thread
 		 * so we can log clients that don't respond.
 		 */
-		status = smb_oplock_wait_ack(sr);
+		status = smb_oplock_wait_ack(sr, NewLevel);
 		if (status == 0)
 			return;
 
@@ -706,14 +705,14 @@ smb2_lease_send_break(smb_request_t *sr)
 	/*
 	 * Now continue like the non-lease code
 	 */
-	ofile->f_oplock.og_breaking = 0;
-	lease->ls_breaking = 0;
+	ofile->f_oplock.og_breaking = B_FALSE;
+	lease->ls_breaking = B_FALSE;
 	cv_broadcast(&lease->ls_ack_cv);
 
 	status = smb_oplock_ack_break(sr, ofile, &NewLevel);
 
 	ofile->f_oplock.og_state = NewLevel;
-	lease->ls_state = NewLevel & CACHE_RWH;
+	lease->ls_state = NewLevel;
 	/* ls_epoch does not change here */
 
 	if (ofile->dh_persist)
@@ -736,7 +735,7 @@ unlock_out:
  * Convert SMB2 lease request info in to internal form,
  * call common oplock code, convert result to SMB2.
  *
- * If necessary, "go async" here.
+ * If necessary, "go async" here (at the end).
  */
 void
 smb2_lease_acquire(smb_request_t *sr)
@@ -795,15 +794,18 @@ smb2_lease_acquire(smb_request_t *sr)
 	mutex_enter(&node->n_oplock.ol_mutex);
 
 	/*
-	 * Disallow downgrade
+	 * MS-SMB2 3.3.5.9.8 and 3.3.5.9.11 Lease (V2) create contexts
 	 *
-	 * Note that open with a lease is not allowed to turn off
-	 * any cache rights.  If the client tries to "downgrade",
-	 * any bits, just return the existing lease cache bits.
+	 * If the caching state requested in LeaseState of the (create ctx)
+	 * is not a superset of Lease.LeaseState or if Lease.Breaking is TRUE,
+	 * the server MUST NOT promote Lease.LeaseState. If the lease state
+	 * requested is a superset of Lease.LeaseState and Lease.Breaking is
+	 * FALSE, the server MUST request promotion of the lease state from
+	 * the underlying object store to the new caching state.
 	 */
 	have = lease->ls_state & CACHE_RWH;
 	want = op->op_oplock_state & CACHE_RWH;
-	if ((have & ~want) != 0) {
+	if ((want & ~have) == 0 || lease->ls_breaking) {
 		op->op_oplock_state = have |
 		    OPLOCK_LEVEL_GRANULAR;
 		goto done;
@@ -828,9 +830,7 @@ smb2_lease_acquire(smb_request_t *sr)
 	 * Try exclusive (request is RW or RWH)
 	 */
 	if ((op->op_oplock_state & WRITE_CACHING) != 0) {
-		want = op->op_oplock_state & CACHE_RWH;
-		if (have == want)
-			goto done;
+		/* Alread checked (want & ~have) */
 
 		status = smb_oplock_request_LH(sr, ofile,
 		    &op->op_oplock_state);
@@ -869,7 +869,7 @@ smb2_lease_acquire(smb_request_t *sr)
 	 */
 	if ((op->op_oplock_state & HANDLE_CACHING) != 0) {
 		want = op->op_oplock_state & CACHE_RWH;
-		if (have == want)
+		if ((want & ~have) == 0)
 			goto done;
 
 		status = smb_oplock_request_LH(sr, ofile,
@@ -895,7 +895,7 @@ smb2_lease_acquire(smb_request_t *sr)
 	 */
 	if ((op->op_oplock_state & READ_CACHING) != 0) {
 		want = op->op_oplock_state & CACHE_RWH;
-		if (have == want)
+		if ((want & ~have) == 0)
 			goto done;
 
 		status = smb_oplock_request_LH(sr, ofile,
@@ -933,11 +933,13 @@ done:
 	 * this has to be using granular oplocks.
 	 */
 	if (NewGrant) {
-		ofile->f_oplock.og_state = op->op_oplock_state;
-		ofile->f_oplock.og_breaking = 0;
+		ofile->f_oplock.og_state   = op->op_oplock_state;
+		ofile->f_oplock.og_breakto = op->op_oplock_state;
+		ofile->f_oplock.og_breaking = B_FALSE;
 
 		lease->ls_oplock_ofile = ofile;
-		lease->ls_state = op->op_oplock_state;
+		lease->ls_state   = ofile->f_oplock.og_state;
+		lease->ls_breakto = ofile->f_oplock.og_breakto;
 		lease->ls_breaking = B_FALSE;
 		lease->ls_epoch++;
 
@@ -976,6 +978,11 @@ done:
  * This ofile has a lease and is about to close.
  * Called by smb_ofile_close when there's a lease.
  *
+ * Note that a client may close an ofile in response to an
+ * oplock break or lease break intead of doing an Ack break,
+ * so this must wake anything that might bew aiting on an ack
+ * when the last close of a lease happens.
+ *
  * With leases, just one ofile on a lease owns the oplock.
  * If an ofile with a lease is closed and it's the one that
  * owns the oplock, try to move the oplock to another ofile
@@ -996,6 +1003,12 @@ smb2_lease_ofile_close(smb_ofile_t *ofile)
 
 	ASSERT(RW_READ_HELD(&node->n_ofile_list.ll_lock));
 	ASSERT(MUTEX_HELD(&node->n_oplock.ol_mutex));
+
+#ifdef	DEBUG
+	FOREACH_NODE_OFILE(node, o) {
+		DTRACE_PROBE1(each_ofile, smb_ofile_t *, o);
+	}
+#endif
 
 	/*
 	 * If this ofile was not the oplock owner for this lease,
@@ -1065,7 +1078,8 @@ smb2_lease_ofile_close(smb_ofile_t *ofile)
 	 * Wakeup ACK waiters too.
 	 */
 	lease->ls_state = 0;
-	lease->ls_breaking = 0;
+	lease->ls_breakto = 0;
+	lease->ls_breaking = B_FALSE;
 	cv_broadcast(&lease->ls_ack_cv);
 
 	lease->ls_oplock_ofile = NULL;
