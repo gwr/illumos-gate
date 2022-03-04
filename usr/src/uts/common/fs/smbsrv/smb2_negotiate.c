@@ -410,8 +410,17 @@ smb31_decode_neg_ctxs(smb_request_t *sr)
 
 	s->smb31_preauth_hashid = SMB3_HASH_SHA512;
 
-	if (!found_cipher)
+	/*
+	 * If we did not get an SMB2_ENCRYPTION_CAPS
+	 * assume pre 3.1.1 AES128_CCM;
+	 */
+	if (found_encrypt_ctx == 0)
+		s->smb31_enc_cipherid = SMB3_CIPHER_AES128_CCM;
+	else if (!found_cipher)
 		s->smb31_enc_cipherid = 0;
+
+	/* Initialize out = in */
+	nego->neg_out_ctxs = nego->neg_in_ctxs;
 
 errout:
 	return (status);
@@ -432,14 +441,11 @@ smb31_encode_neg_ctxs(smb_request_t *sr)
 	    P2ROUNDUP(sr->sr_cfg->skc_negtok_len, 8);
 	uint32_t rc;
 
-	bzero(neg_ctxs, sizeof (*neg_ctxs));
-
 	if ((rc = smb_mbc_put_align(&sr->reply, 8)) != 0)
 		return (rc);
 
 	ASSERT3S(neg_ctx_off, ==, sr->reply.chain_offset);
 
-	encap->encap_cipher_ids[0] = s->smb31_enc_cipherid;
 	picap->picap_hash_id = s->smb31_preauth_hashid;
 	picap->picap_salt_len = salt_len;
 
@@ -460,13 +466,18 @@ smb31_encode_neg_ctxs(smb_request_t *sr)
 	    s->smb31_preauth_hashid,	/* hash id */
 	    salt_len,			/* salt length */
 	    picap->picap_salt);
-
-	/* aligned on 8-bytes boundary */
-	if (rc != 0 || s->smb31_enc_cipherid == 0) {
-		cmn_err(CE_NOTE, "Encryption is not supported");
+	if (rc != 0)
 		return (rc);
-	}
 
+	/*
+	 * If we did not get SMB2_ENCRYPTION_CAPS, don't send one.
+	 */
+	if (encap->encap_cipher_count == 0)
+		return (0);
+
+	/*
+	 * Encode SMB2_ENCRYPTION_CAPS response.
+	 */
 	if ((rc = smb_mbc_put_align(&sr->reply, 8)) != 0)
 		return (rc);
 
@@ -765,6 +776,7 @@ smb2_negotiate_common(smb_request_t *sr, uint16_t version)
 {
 	timestruc_t boot_tv, now_tv;
 	smb_session_t *s = sr->session;
+	smb2_arg_negotiate_t *nego = sr->arg.other;
 	int rc;
 	uint32_t max_rwsize;
 	uint16_t secmode;
@@ -824,16 +836,21 @@ smb2_negotiate_common(smb_request_t *sr, uint16_t version)
 		s->srv_cap = smb2srv_capabilities & SMB_2X_CAPS;
 	} else {
 		/* SMB 3.0 or later */
-		s->srv_cap = smb2srv_capabilities &
-		    (SMB_2X_CAPS | s->capabilities);
+		s->srv_cap = smb2srv_capabilities & s->capabilities;
 		if ((s->srv_cap & SMB2_CAP_ENCRYPTION) != 0 &&
 		    smb3_encrypt_init_mech(s) != 0) {
 			s->srv_cap &= ~SMB2_CAP_ENCRYPTION;
-			s->smb31_enc_cipherid = 0;
 		}
 
 		if (s->dialect >= SMB_VERS_3_11) {
-			neg_ctx_cnt = s->smb31_enc_cipherid == 0 ? 1 : 2;
+			smb2_encrypt_caps_t *encap =
+			    &nego->neg_in_ctxs.encrypt_ctx.encrypt_caps;
+
+			neg_ctx_cnt = 1; // always have preauth
+
+			if (encap->encap_cipher_count != 0)
+				neg_ctx_cnt++;
+
 			neg_ctx_off = NEG_CTX_OFFSET_OFFSET +
 			    P2ROUNDUP(sr->sr_cfg->skc_negtok_len, 8);
 
@@ -876,7 +893,7 @@ smb2_negotiate_common(smb_request_t *sr, uint16_t version)
 	    sr->sr_cfg->skc_negtok_len,	/* # */
 	    sr->sr_cfg->skc_negtok);	/* c */
 
-
+	/* Note: smb31_encode_neg_ctxs() follows in caller */
 
 	/* smb2_send_reply(sr); in caller */
 
