@@ -257,34 +257,38 @@ smb2_tq_work(void *arg)
 	smb_srqueue_runq_exit(srq);
 }
 
+/*
+ * Any non-zero return code and we'll drop the connection.
+ * Other than that, return codes are just informative eg.
+ * when looking at dtrace logs, which return did we take?
+ */
 static int
 smb3_decrypt_msg(smb_request_t *sr)
 {
 	int save_offset;
 
 	if (sr->session->dialect < SMB_VERS_3_0) {
-		cmn_err(CE_WARN, "encrypted message in SMB 2.x");
 		return (-1);
+	}
+	if ((sr->session->srv_cap & SMB2_CAP_ENCRYPTION) == 0) {
+		return (-2);
 	}
 
 	sr->encrypted = B_TRUE;
 	save_offset = sr->command.chain_offset;
 	if (smb3_decode_tform_header(sr) != 0) {
-		cmn_err(CE_WARN, "bad transform header");
-		return (-1);
+		return (-3);
 	}
 	sr->command.chain_offset = save_offset;
 
 	sr->tform_ssn = smb_session_lookup_ssnid(sr->session,
 	    sr->smb3_tform_ssnid);
 	if (sr->tform_ssn == NULL) {
-		cmn_err(CE_WARN, "transform header: session not found");
-		return (-1);
+		return (-4);
 	}
 
 	if (smb3_decrypt_sr(sr) != 0) {
-		cmn_err(CE_WARN, "smb3 decryption failed");
-		return (-1);
+		return (-5);
 	}
 
 	return (0);
@@ -700,9 +704,8 @@ cmd_start:
 			 * Note that Session.EncryptData can only be TRUE when
 			 * we're talking 3.x.
 			 */
-
-			if (sr->uid_user->u_encrypt ==
-			    SMB_CONFIG_REQUIRED &&
+			if (sr->uid_user->u_encrypt == SMB_CONFIG_REQUIRED &&
+			    sr->smb2_cmd_code != SMB2_LOGOFF &&
 			    !sr->encrypted) {
 				smb2sr_put_error(sr,
 				    NT_STATUS_ACCESS_DENIED);
@@ -712,20 +715,6 @@ cmd_start:
 			sr->user_cr = smb_user_getcred(sr->uid_user);
 		}
 		ASSERT(sr->uid_user != NULL);
-
-		/*
-		 * Encrypt if:
-		 * - The cmd is not SESSION_SETUP or NEGOTIATE; AND
-		 * - Session.EncryptData is TRUE
-		 *
-		 * Those commands suppress UID, so they can't be the cmd here.
-		 */
-		if (sr->uid_user->u_encrypt != SMB_CONFIG_DISABLED &&
-		    sr->tform_ssn == NULL) {
-			smb_user_hold_internal(sr->uid_user);
-			sr->tform_ssn = sr->uid_user;
-			sr->smb3_tform_ssnid = sr->smb2_ssnid;
-		}
 	}
 
 	if ((sdd->sdt_flags & SDDF_SUPPRESS_TID) == 0) {
@@ -776,29 +765,14 @@ cmd_start:
 			 * what we support, we still enforce encryption.
 			 */
 			if (sr->tid_tree->t_encrypt == SMB_CONFIG_REQUIRED &&
-			    (!sr->encrypted ||
-			    (session->srv_cap & SMB2_CAP_ENCRYPTION) == 0)) {
+			    sr->smb2_cmd_code != SMB2_TREE_DISCONNECT &&
+			    !sr->encrypted) {
 				smb2sr_put_error(sr,
 				    NT_STATUS_ACCESS_DENIED);
 				goto cmd_done;
 			}
 		}
 		ASSERT(sr->tid_tree != NULL);
-
-		/*
-		 * Encrypt if:
-		 * - The cmd is not TREE_CONNECT; AND
-		 * - Tree.EncryptData is TRUE
-		 *
-		 * TREE_CONNECT suppresses TID, so that can't be the cmd here.
-		 * NOTE: assumes we can't have a tree without a user
-		 */
-		if (sr->tid_tree->t_encrypt != SMB_CONFIG_DISABLED &&
-		    sr->tform_ssn == NULL) {
-			smb_user_hold_internal(sr->uid_user);
-			sr->tform_ssn = sr->uid_user;
-			sr->smb3_tform_ssnid = sr->smb2_ssnid;
-		}
 	}
 
 	/*
