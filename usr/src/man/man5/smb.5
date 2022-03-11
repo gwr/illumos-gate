@@ -17,7 +17,7 @@
 .\" fields enclosed by brackets "[]" replaced with your own identifying
 .\" information: Portions Copyright [yyyy] [name of copyright owner]
 .\"
-.TH SMB 5 "January 17, 2022"
+.TH SMB 5 "August 16, 2022"
 .SH NAME
 smb \- configuration properties for Solaris CIFS server
 .SH DESCRIPTION
@@ -137,6 +137,8 @@ behavior is controlled by the stricter of this option and the per-share
 "encrypt" option.
 .sp
 When set to \fBdisabled\fR, the server will not ask clients to encrypt requests.
+Note that this setting does not actually disable encryption, but leaves the
+decision about whether to encrypt up to the client and/or the per-share options.
 When set to \fBenabled\fR, the server will ask clients to encrypt requests,
 but will not require that they do so. Any message that can be encrypted
 will be encrypted.
@@ -152,7 +154,7 @@ message that CAN be encrypted MUST be encrypted.
 .sp
 .ne 2
 .na
-\fB\fBencrypt_cipher\fR\fR
+\fB\fBencrypt_ciphers\fR\fR
 .ad
 .sp .6
 .RS 4n
@@ -163,8 +165,8 @@ ignored.
 .sp
 When the property is set, a list of comma separated ciphers should be specified,
 or the value \fBall\fR should be used instead to enable all supported ciphers.
-By default, when the property is empty, it is equivalent to value \fBall\fR -
-all available ciphers will be enabled.
+When the property is empty, it is equivalent to value \fBall\fR - all supported
+ciphers are enabled.
 .sp
 The list of ciphers should contain these values:
 .sp
@@ -184,7 +186,6 @@ dialect.
 .ad
 .RS 13n
 AES-128-GCM cipher is enabled.
-preferred.
 .RE
 
 .sp
