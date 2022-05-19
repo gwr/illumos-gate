@@ -21,6 +21,8 @@
  *
  * Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
+ *
+ * Copyright 2022 RackTop Systems, Inc.
  */
 
 #include <acl_common.h>
@@ -39,7 +41,7 @@ extern acl_t *yyacl;
 	acl_t *acl;
 }
 
-
+%token BARE_SID_TOK
 %token USER_TOK USER_SID_TOK GROUP_TOK GROUP_SID_TOK MASK_TOK OTHER_TOK
 %token OWNERAT_TOK GROUPAT_TOK EVERYONEAT_TOK DEFAULT_USER_TOK 
 %token DEFAULT_GROUP_TOK DEFAULT_MASK_TOK DEFAULT_OTHER_TOK
@@ -588,6 +590,11 @@ bad_entry_type(int toketype, char *str)
 	case GROUP_SID_TOK:
 		acl_error(dgettext(TEXT_DOMAIN,
 		    "Invalid group SID %s specified.\n"), str);
-	}
+		break;
 
+	case BARE_SID_TOK:
+		acl_error(dgettext(TEXT_DOMAIN,
+		    "Invalid SID %s specified.\n"), str);
+		break;
+	}
 }

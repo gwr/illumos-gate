@@ -20,6 +20,8 @@
  *
  * Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
+ *
+ * Copyright 2022 RackTop Systems, Inc.
  */
 
 %{
@@ -127,7 +129,7 @@ INHERIT_STR [fdinFSI-]+
 			}
 <TS>sid:		{
 				BEGIN NS;
-				yylval.val = GROUP_SID_TOK;
+				yylval.val = BARE_SID_TOK;
 				return (ENTRY_TYPE);
 			}
 <TS>mask:		{
@@ -832,6 +834,8 @@ unput(int c)
 	}
 }
 
+static int sid_isuser = 0;
+
 /*
  * return ACE entry type
  */
@@ -840,6 +844,12 @@ ace_entry_type(int type)
 {
 	int ret = -1;
 	switch (type) {
+		case BARE_SID_TOK:
+			if (sid_isuser == 0)
+				ret = ACE_IDENTIFIER_GROUP;
+			else
+				ret = 0;
+			break;
 		case USER_TOK:
 		case USER_SID_TOK:
 			ret = 0;
@@ -962,6 +972,11 @@ get_id(int entry_type, char *name, uid_t *id)
 
 	case GROUP_SID_TOK:
 		if (sid_to_id(name, B_FALSE, id))
+			error = EACL_INVALID_USER_GROUP;
+		break;
+
+	case BARE_SID_TOK:
+		if (sid_to_xid(name, &sid_isuser, id))
 			error = EACL_INVALID_USER_GROUP;
 		break;
 	}
