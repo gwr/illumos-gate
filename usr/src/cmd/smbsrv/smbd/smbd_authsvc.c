@@ -338,6 +338,7 @@ smbd_authsvc_listen(void *arg)
 			smbd_authsvc_thrcnt--;
 			(void) mutex_unlock(&smbd_authsvc_mutex);
 			(void) close(ns);
+			smbd_nomem();
 			continue;
 		}
 		ctx->ctx_socket = ns;
@@ -349,8 +350,12 @@ smbd_authsvc_listen(void *arg)
 			smbd_authsvc_thrcnt--;
 			(void) mutex_unlock(&smbd_authsvc_mutex);
 			smbd_authctx_destroy(ctx);
+			ctx = NULL;
+			smbd_nomem();
+			continue;
 		}
 		ctx = NULL; /* given to the new thread or destroyed */
+		(void) pthread_detach(tid);
 	}
 
 out:
@@ -579,6 +584,9 @@ smbd_authsvc_dispatch(authsvc_context_t *ctx)
 	default:
 		return (-1);
 	}
+
+	if (rc == NT_STATUS_NO_MEMORY)
+		smbd_nomem();
 
 	if (rc != 0) {
 		smb_lsa_eresp_t *er = ctx->ctx_orawbuf;
@@ -1028,7 +1036,7 @@ smbd_authsvc_gettoken(authsvc_context_t *ctx)
 	if (len > ctx->ctx_orawlen) {
 		if ((ctx->ctx_orawbuf = realloc(ctx->ctx_orawbuf, len)) ==
 		    NULL) {
-			return (NT_STATUS_INTERNAL_ERROR);
+			return (NT_STATUS_NO_MEMORY);
 		}
 	}
 
