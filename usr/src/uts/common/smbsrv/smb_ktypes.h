@@ -2063,6 +2063,7 @@ typedef struct {
 	int			ld_family;
 	struct sockaddr_in	ld_sin;
 	struct sockaddr_in6	ld_sin6;
+	clock_t			ld_quiet;
 } smb_listener_daemon_t;
 
 #define	SMB_SSETUP_CMD			"authentication"
