@@ -23,6 +23,7 @@
  * Copyright 2005 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  * Copyright 2021 OmniOS Community Edition (OmniOSce) Association.
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 #include <sys/copyops.h>
@@ -74,8 +75,8 @@ getcwd(char *buf, size_t buflen)
 
 		/*
 		 * dogetcwd() inconsistently returns ERANGE or ENAMETOOLONG
-		 * depending on whether it calls dirtopath() and then whether
-		 * the subsequent operations run out of space whilst
+		 * depending on whether it calls vnode_reverse_lookup() and then
+		 * whether the subsequent operations run out of space whilst
 		 * evaluating a cached vnode path or otherwise.
 		 */
 		if (err == ENAMETOOLONG || err == ERANGE) {

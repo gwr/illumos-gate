@@ -23,7 +23,7 @@
  * Copyright (c) 1988, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2020 Joyent, Inc.
  * Copyright 2022 Spencer Evans-Cole.
- * Copyright 2016 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  * Copyright (c) 2011, 2017 by Delphix. All rights reserved.
  */
 
@@ -378,6 +378,9 @@ static const fs_operation_trans_def_t vn_ops_table[] = {
 	VOPNAME_RETZCBUF, offsetof(struct vnodeops, vop_retzcbuf),
 	    fs_nosys, fs_nosys,
 
+	VOPNAME_PARENT, offsetof(struct vnodeops, vop_parent),
+	    fs_nosys, fs_nosys,
+
 	NULL, 0, NULL, NULL
 };
 
@@ -542,6 +545,8 @@ create_vopstats_template()
 	kstat_named_init(&vsp->nreqzcbuf, "nreqzcbuf", KSTAT_DATA_UINT64);
 	/* VOP_RETZCBUF */
 	kstat_named_init(&vsp->nretzcbuf, "nretzcbuf", KSTAT_DATA_UINT64);
+	/* VOP_PARENT */
+	kstat_named_init(&vsp->nparent, "nparent", KSTAT_DATA_UINT64);
 
 	return (vsp);
 }
@@ -4453,6 +4458,18 @@ fop_retzcbuf(vnode_t *vp, xuio_t *uiop, cred_t *cr, caller_context_t *ct)
 		return (ENOTSUP);
 	err = (*(vp)->v_op->vop_retzcbuf)(vp, uiop, cr, ct);
 	VOPSTATS_UPDATE(vp, retzcbuf);
+	return (err);
+}
+
+int
+fop_parent(vnode_t *vp, vnode_t **pvp, cred_t *cr, caller_context_t *ct)
+{
+	int err;
+
+	VOPXID_MAP_CR(vp, cr);
+
+	err = (*(vp)->v_op->vop_parent)(vp, pvp, cr, ct);
+	VOPSTATS_UPDATE(vp, parent);
 	return (err);
 }
 

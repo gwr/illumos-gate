@@ -22,6 +22,7 @@
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2012, 2018 by Delphix. All rights reserved.
  * Copyright (c) 2014 Integros [integros.com]
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 /* Portions Copyright 2007 Jeremy Teo */
@@ -2091,6 +2092,44 @@ zfs_obj_to_pobj(objset_t *osp, sa_handle_t *hdl, sa_attr_type_t *sa_table,
 
 	return (0);
 }
+
+#ifdef _KERNEL
+int
+zfs_obj_get_parent(znode_t *zp, znode_t **pdvp)
+{
+	zfsvfs_t *zfsvfs = zp->z_zfsvfs;
+	objset_t *osp;
+	sa_attr_type_t *sa_table;
+	sa_handle_t *hdl;
+	dmu_buf_t *db;
+	uint64_t parentid;
+	int error, is_xattrdir;
+
+	ZFS_ENTER(zfsvfs);
+	ZFS_VERIFY_ZP(zp);
+
+	osp = zfsvfs->z_os;
+	error = zfs_sa_setup(osp, &sa_table);
+	if (error != 0)
+		goto out;
+
+	error = zfs_grab_sa_handle(osp, zp->z_id, &hdl, &db, FTAG);
+	if (error != 0)
+		goto out;
+
+	error = zfs_obj_to_pobj(osp, hdl, sa_table, &parentid, &is_xattrdir);
+
+	if (error == 0) {
+		*pdvp = NULL;
+		error = zfs_zget(zfsvfs, parentid, pdvp);
+	}
+
+	zfs_release_sa_handle(hdl, db, FTAG);
+out:
+	ZFS_EXIT(zfsvfs);
+	return (error);
+}
+#endif /* _KERNEL */
 
 /*
  * Given an object number, return some zpl level statistics

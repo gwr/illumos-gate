@@ -20,7 +20,7 @@
  */
 
 /*
- * Copyright 2019 Nexenta by DDN, Inc. All rights reserved.
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  * Copyright (c) 1988, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2016 Joyent, Inc.
  */
@@ -1089,7 +1089,7 @@ vnode_valid_pn(vnode_t *vp, vnode_t *vrootp, pathname_t *pn, pathname_t *rpn,
 
 /*
  * Struct for tracking vnodes with invalidated v_path entries during a
- * dirtopath reverse lookup.  By keeping adequate state, those vnodes can be
+ * vnode_reverse_lookup.  By keeping adequate state, those vnodes can be
  * revisted to populate v_path.
  */
 struct dirpath_walk {
@@ -1101,13 +1101,16 @@ struct dirpath_walk {
 };
 
 /*
- * Given a directory, return the full, resolved path.  This looks up "..",
+ * Given a vnode, return the full, resolved path.  This looks up "..",
  * searches for the given vnode in the parent, appends the component, etc.  It
  * is used to implement vnodetopath() and getcwd() when the cached path fails.
+ *
+ * For non-directories, the first lookup uses the VOP_PARENT to try
+ * to get the parent directory.
  */
 static int
-dirtopath(vnode_t *vrootp, vnode_t *vp, char *buf, size_t buflen, int flags,
-    cred_t *cr)
+vnode_reverse_lookup(vnode_t *vrootp, vnode_t *vp, char *buf, size_t buflen,
+    int flags, cred_t *cr)
 {
 	pathname_t	pn, rpn, emptypn;
 	vnode_t		*pvp = NULL, *startvp = vp;
@@ -1117,9 +1120,6 @@ dirtopath(vnode_t *vrootp, vnode_t *vp, char *buf, size_t buflen, int flags,
 	char		*bufloc, *dbuf;
 	const size_t	dlen = DIRENT64_RECLEN(MAXPATHLEN);
 	struct dirpath_walk *dw_chain = NULL, *dw_entry;
-
-	/* Operation only allowed on directories */
-	ASSERT(vp->v_type == VDIR);
 
 	/* We must have at least enough space for "/" */
 	if (buflen < 2)
@@ -1206,8 +1206,22 @@ dirtopath(vnode_t *vrootp, vnode_t *vp, char *buf, size_t buflen, int flags,
 		 */
 		if (vp->v_flag & VROOT)
 			vp = vn_under(vp);
-		if ((err = VOP_LOOKUP(vp, "..", &pvp, &emptypn, 0, vrootp, cr,
-		    NULL, NULL, NULL)) != 0)
+
+		/*
+		 * For non-directories, use VOP_PARENT to try to get the
+		 * parent vnode. This should only happen on the very first loop.
+		 */
+		if (vp->v_type != VDIR) {
+			err = VOP_PARENT(vp, &pvp, cr, NULL);
+
+			/* Map errors to 'not found' to maintain old behavior */
+			if (err != 0)
+				err = SET_ERROR(ENOENT);
+		} else {
+			err = VOP_LOOKUP(vp, "..", &pvp, &emptypn, 0, vrootp,
+			    cr, NULL, NULL, NULL);
+		}
+		if (err != 0)
 			goto out;
 
 		/*
@@ -1284,13 +1298,13 @@ dirtopath(vnode_t *vrootp, vnode_t *vp, char *buf, size_t buflen, int flags,
 out:
 	/*
 	 * Walk over encountered directory entries which were afflicted with a
-	 * stale or absent v_path.  If the dirtopath was successful, we should
+	 * stale or absent v_path.  If we were successful, we should
 	 * possess the necessary information to populate all of them with a
 	 * valid v_path.
 	 *
 	 * While processing this list, it is safe to call vn_setpath despite
 	 * the fact that racing vnode actions may have altered v_path entries
-	 * while the above loopwas still executing.  Any updated entries will
+	 * while the above loop was still executing.  Any updated entries will
 	 * have a newer v_path_stamp value which prevents an invalid overwrite.
 	 *
 	 * If an error was encountered during the search, freeing the chain is
@@ -1426,17 +1440,12 @@ vnodetopath_common(vnode_t *vrootp, vnode_t *vp, char *buf, size_t buflen,
 	}
 	pn_free(&pn);
 
-	if (vp->v_type != VDIR) {
-		/*
-		 * The reverse lookup tricks used by dirtopath aren't possible
-		 * for non-directory entries.  The best which can be done is
-		 * clearing any stale v_path so later lookups can potentially
-		 * repopulate it with a valid path.
-		 */
-		ret = ENOENT;
-	} else {
-		ret = dirtopath(vrootp, vp, buf, buflen, flags, cr);
-	}
+	/*
+	 * Attempt to find the path by reverse lookup.
+	 * This will frequently work for directories, but will fail for
+	 * non-directories on filesystems that don't implement VOP_PARENT.
+	 */
+	ret = vnode_reverse_lookup(vrootp, vp, buf, buflen, flags, cr);
 
 out:
 	VN_RELE(vrootp);
