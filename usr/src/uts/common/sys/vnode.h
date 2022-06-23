@@ -24,6 +24,7 @@
  * Copyright (c) 2018, Joyent, Inc.
  * Copyright (c) 2011, 2017 by Delphix. All rights reserved.
  * Copyright 2017 RackTop Systems.
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 /*	Copyright (c) 1983, 1984, 1985, 1986, 1987, 1988, 1989 AT&T	*/
@@ -124,6 +125,7 @@ typedef struct vopstats {
 	kstat_named_t	nvnevent;	/* VOP_VNEVENT */
 	kstat_named_t	nreqzcbuf;	/* VOP_REQZCBUF */
 	kstat_named_t	nretzcbuf;	/* VOP_RETZCBUF */
+	kstat_named_t	nparent;	/* VOP_PARENT */
 } vopstats_t;
 
 /*
@@ -811,9 +813,9 @@ typedef enum vnevent	{
 	VE_REMOVE	= 3,	/* Remove of vnode's name */
 	VE_RMDIR	= 4,	/* Remove of directory vnode's name */
 	VE_CREATE	= 5,	/* Create with vnode's name which exists */
-	VE_LINK		= 6, 	/* Link with vnode's name as source */
-	VE_RENAME_DEST_DIR	= 7, 	/* Rename with vnode as target dir */
-	VE_MOUNTEDOVER	= 8, 	/* File or Filesystem got mounted over vnode */
+	VE_LINK		= 6,	/* Link with vnode's name as source */
+	VE_RENAME_DEST_DIR	= 7,	/* Rename with vnode as target dir */
+	VE_MOUNTEDOVER	= 8,	/* File or Filesystem got mounted over vnode */
 	VE_TRUNCATE = 9,	/* Truncate */
 	VE_PRE_RENAME_SRC = 10,	/* Pre-rename, with vnode as source */
 	VE_PRE_RENAME_DEST = 11, /* Pre-rename, with vnode as target/dest. */
@@ -1007,6 +1009,8 @@ struct taskq;
 	int	(*vop_reqzcbuf)(vnode_t *, enum uio_rw, xuio_t *,	\
 				cred_t *, caller_context_t *);		\
 	int	(*vop_retzcbuf)(vnode_t *, xuio_t *, cred_t *,		\
+				caller_context_t *);			\
+	int	(*vop_parent)(vnode_t *, vnode_t **, cred_t *,		\
 				caller_context_t *)
 	/* NB: No ";" */
 
@@ -1107,6 +1111,7 @@ extern int	fop_vnevent(vnode_t *, vnevent_t, vnode_t *, char *,
 extern int	fop_reqzcbuf(vnode_t *, enum uio_rw, xuio_t *, cred_t *,
 				caller_context_t *);
 extern int	fop_retzcbuf(vnode_t *, xuio_t *, cred_t *, caller_context_t *);
+extern int	fop_parent(vnode_t *, vnode_t **, cred_t *, caller_context_t *);
 
 #endif	/* _KERNEL */
 
@@ -1202,6 +1207,8 @@ extern int	fop_retzcbuf(vnode_t *, xuio_t *, cred_t *, caller_context_t *);
 	fop_reqzcbuf(vp, rwflag, xuiop, cr, ct)
 #define	VOP_RETZCBUF(vp, xuiop, cr, ct) \
 	fop_retzcbuf(vp, xuiop, cr, ct)
+#define	VOP_PARENT(vp, pvp, cr, ct)		\
+	fop_parent(vp, pvp, cr, ct)
 
 #define	VOPNAME_OPEN		"open"
 #define	VOPNAME_CLOSE		"close"
@@ -1249,6 +1256,7 @@ extern int	fop_retzcbuf(vnode_t *, xuio_t *, cred_t *, caller_context_t *);
 #define	VOPNAME_VNEVENT		"vnevent"
 #define	VOPNAME_REQZCBUF	"reqzcbuf"
 #define	VOPNAME_RETZCBUF	"retzcbuf"
+#define	VOPNAME_PARENT		"parent"
 
 /*
  * Flags for VOP_LOOKUP
@@ -1292,9 +1300,9 @@ void	vn_recycle(vnode_t *);
 void	vn_free(vnode_t *);
 
 int	vn_is_readonly(vnode_t *);
-int   	vn_is_opened(vnode_t *, v_mode_t);
-int   	vn_is_mapped(vnode_t *, v_mode_t);
-int   	vn_has_other_opens(vnode_t *, v_mode_t);
+int	vn_is_opened(vnode_t *, v_mode_t);
+int	vn_is_mapped(vnode_t *, v_mode_t);
+int	vn_has_other_opens(vnode_t *, v_mode_t);
 void	vn_open_upgrade(vnode_t *, int);
 void	vn_open_downgrade(vnode_t *, int);
 
@@ -1477,7 +1485,7 @@ extern uint_t pvn_vmodsort_supported;
  * Compare two vnodes for equality.  In general this macro should be used
  * in preference to calling VOP_CMP directly.
  */
-#define	VN_CMP(VP1, VP2)	((VP1) == (VP2) ? 1 : 	\
+#define	VN_CMP(VP1, VP2)	((VP1) == (VP2) ? 1 :	\
 	((VP1) && (VP2) && (vn_getops(VP1) == vn_getops(VP2)) ? \
 	VOP_CMP(VP1, VP2, NULL) : 0))
 

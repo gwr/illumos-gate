@@ -21,6 +21,8 @@
 /*
  * Copyright 2010 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
+ *
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 #include <sys/types.h>
@@ -125,6 +127,7 @@ static fs_operation_trans_def_t	fem_opdef[] = {
 	_FEMOPDEF(VNEVENT,	vnevent),
 	_FEMOPDEF(REQZCBUF,	reqzcbuf),
 	_FEMOPDEF(RETZCBUF,	retzcbuf),
+	_FEMOPDEF(PARENT,	parent),
 	{ NULL, 0, NULL, NULL }
 };
 
@@ -179,6 +182,7 @@ static struct fs_operation_def fem_guard_ops[] = {
 	_FEMGUARD(VNEVENT,	vnevent),
 	_FEMGUARD(REQZCBUF,	reqzcbuf),
 	_FEMGUARD(RETZCBUF,	retzcbuf),
+	_FEMGUARD(PARENT,	parent),
 	{ NULL, NULL }
 };
 
@@ -1706,6 +1710,33 @@ vhead_retzcbuf(vnode_t *vp, xuio_t *xuiop, cred_t *cr, caller_context_t *ct)
 }
 
 static int
+vhead_parent(vnode_t *vp, vnode_t **pvp, cred_t *cr, caller_context_t *ct)
+{
+	femarg_t	farg;
+	struct fem_list	*femsp;
+	int		(*func)();
+	void		*arg0;
+	int		errc;
+
+	if ((femsp = fem_lock(vp->v_femhead)) == NULL) {
+		func = (int (*)()) (vp->v_op->vop_parent);
+		arg0 = vp;
+		fem_unlock(vp->v_femhead);
+		errc = (*func)(arg0, pvp, cr, ct);
+	} else {
+		fem_addref(femsp);
+		fem_unlock(vp->v_femhead);
+		farg.fa_vnode.vp = vp;
+		farg.fa_fnode = femsp->feml_nodes + femsp->feml_tos;
+		vsop_find(&farg, &func, int, &arg0, vop_parent,
+		    femop_parent);
+		errc = (*func)(arg0, pvp, cr, ct);
+		fem_release(femsp);
+	}
+	return (errc);
+}
+
+static int
 fshead_mount(vfs_t *vfsp, vnode_t *mvp, struct mounta *uap, cred_t *cr)
 {
 	fsemarg_t	farg;
@@ -2006,6 +2037,7 @@ static struct fs_operation_def fhead_vn_spec[] = {
 	{ VOPNAME_VNEVENT, (femop_t *)vhead_vnevent },
 	{ VOPNAME_REQZCBUF, (femop_t *)vhead_reqzcbuf },
 	{ VOPNAME_RETZCBUF, (femop_t *)vhead_retzcbuf },
+	{ VOPNAME_PARENT, (femop_t *)vhead_parent },
 	{	NULL,	NULL	}
 };
 
@@ -2732,6 +2764,20 @@ vnext_retzcbuf(femarg_t *vf, xuio_t *xuiop, cred_t *cr, caller_context_t *ct)
 	ASSERT(func != NULL);
 	ASSERT(arg0 != NULL);
 	return ((*func)(arg0, xuiop, cr, ct));
+}
+
+int
+vnext_parent(femarg_t *vf, vnode_t **pvp, cred_t *cr, caller_context_t *ct)
+{
+	int (*func)() = NULL;
+	void *arg0 = NULL;
+
+	ASSERT(vf != NULL);
+	vf->fa_fnode--;
+	vsop_find(vf, &func, int, &arg0, vop_parent, femop_parent);
+	ASSERT(func != NULL);
+	ASSERT(arg0 != NULL);
+	return ((*func)(arg0, pvp, cr, ct));
 }
 
 int

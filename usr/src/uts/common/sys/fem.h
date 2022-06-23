@@ -22,7 +22,7 @@
  * Copyright 2010 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  *
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 #ifndef _SYS_FEM_H
@@ -260,12 +260,14 @@ struct fem_head {
 			struct shrlock *shr, int flag, cred_t *cr,	\
 			caller_context_t *ct);				\
 	int (*femop_vnevent)(femarg_t *vf, vnevent_t vnevent,		\
-			vnode_t *dvp, char *cname, 			\
+			vnode_t *dvp, char *cname,			\
 			caller_context_t *ct);				\
 	int (*femop_reqzcbuf)(femarg_t *vf, enum uio_rw ioflag,		\
 			xuio_t *xuio, cred_t *cr,			\
 			caller_context_t *ct);				\
 	int (*femop_retzcbuf)(femarg_t *vf, xuio_t *xuio, cred_t *cr,	\
+			caller_context_t *ct);				\
+	int (*femop_parent)(femarg_t *vf, vnode_t **pvp, cred_t *cr,	\
 			caller_context_t *ct)
 	/* NB: No ";" */
 
@@ -401,6 +403,8 @@ extern int vnext_vnevent(femarg_t *vf, vnevent_t vevent, vnode_t *dvp,
 extern int vnext_reqzcbuf(femarg_t *vf, enum uio_rw ioflag, xuio_t *xuiop,
 			cred_t *cr, caller_context_t *ct);
 extern int vnext_retzcbuf(femarg_t *vf, xuio_t *xuiop, cred_t *cr,
+			caller_context_t *ct);
+extern int vnext_parent(femarg_t *vf, vnode_t **pvp, cred_t *cr,
 			caller_context_t *ct);
 
 extern int vfsnext_mount(fsemarg_t *vf, vnode_t *mvp, struct mounta *uap,

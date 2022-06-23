@@ -24,7 +24,7 @@
  * Copyright (c) 2012, 2017 by Delphix. All rights reserved.
  * Copyright (c) 2014 Integros [integros.com]
  * Copyright 2020 Joyent, Inc.
- * Copyright 2017 Nexenta Systems, Inc.
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 /* Portions Copyright 2007 Jeremy Teo */
@@ -5603,6 +5603,26 @@ zfs_retzcbuf(vnode_t *vp, xuio_t *xuio, cred_t *cr, caller_context_t *ct)
 	return (0);
 }
 
+/*ARGSUSED*/
+static int
+zfs_parent(vnode_t *vp, vnode_t **pvp, cred_t *cr, caller_context_t *ct)
+{
+	znode_t *zp = NULL;
+	int err;
+
+	if (pvp == NULL)
+		return (SET_ERROR(EINVAL));
+
+	err = zfs_obj_get_parent(VTOZ(vp), &zp);
+
+	if (err == 0)
+		*pvp = ZTOV(zp);
+	else
+		*pvp = NULL;
+
+	return (err);
+}
+
 /*
  * Predeclare these here so that the compiler assumes that
  * this is an "old style" function declaration that does
@@ -5686,6 +5706,7 @@ const fs_operation_def_t zfs_fvnodeops_template[] = {
 	VOPNAME_VNEVENT,	{ .vop_vnevent = fs_vnevent_support },
 	VOPNAME_REQZCBUF,	{ .vop_reqzcbuf = zfs_reqzcbuf },
 	VOPNAME_RETZCBUF,	{ .vop_retzcbuf = zfs_retzcbuf },
+	VOPNAME_PARENT,		{ .vop_parent = zfs_parent },
 	NULL,			NULL
 };
 

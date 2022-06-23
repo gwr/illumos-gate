@@ -23,6 +23,7 @@
  * Use is subject to license terms.
  * Copyright (c) 2016 by Delphix. All rights reserved.
  * Copyright 2017 Jason King
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 #include <stdio.h>
@@ -131,7 +132,7 @@ usage()
 	(newvsp->member.value.ui64 - (oldvsp ? oldvsp->member.value.ui64 : 0))
 
 #define	PRINTSTAT(isnice, nicestring, rawstring, rawval, buf)		\
-	(isnice) ?	 						\
+	(isnice) ?							\
 		nicenum(rawval, buf, sizeof (buf)),			\
 		(void) printf((nicestring), (buf))			\
 	:								\
@@ -303,7 +304,7 @@ naming_display(char *name, vopstats_t *oldvsp, vopstats_t *newvsp, int dispflag)
 		(void) printf("%10s ", #vop);				\
 	PRINTSTAT(niceflag, "%5s ", "%lld:", DELTA(n##vop), buf);
 
-#define	PRINT_VOPSTAT(niceflag, vop) 					\
+#define	PRINT_VOPSTAT(niceflag, vop)					\
 	PRINT_VOPSTAT_CMN(niceflag, vop);				\
 	if (niceflag)							\
 		(void) printf("\n");
@@ -370,6 +371,7 @@ vop_display(char *name, vopstats_t *oldvsp, vopstats_t *newvsp, int dispflag)
 	PRINT_VOPSTAT(niceflag, vnevent);
 	PRINT_VOPSTAT(niceflag, reqzcbuf);
 	PRINT_VOPSTAT(niceflag, retzcbuf);
+	PRINT_VOPSTAT(niceflag, parent);
 
 	if (niceflag) {
 		/* Make it easier on the eyes */
@@ -798,7 +800,7 @@ main(int argc, char *argv[])
 	int		nfstypes;	/* Number of fstypes */
 	int		dispflag = 0;	/* Flags for display control */
 	long		count = 0;	/* Number of iterations for display */
-	int		forever; 	/* Run forever */
+	int		forever;	/* Run forever */
 	long		interval = 0;
 	boolean_t	fstypes_only = B_FALSE;	/* Display fstypes only */
 	char		**fstypes;	/* Array of names of all fstypes */
