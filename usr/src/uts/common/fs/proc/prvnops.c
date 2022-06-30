@@ -884,7 +884,7 @@ pr_read_fdinfo(prnode_t *pnp, uio_t *uiop, cred_t *cr)
 
 	error = prgetfdinfo(p, fp->f_vnode, fdinfo, cr, fp->f_cred, &data);
 
-	closef(fp);
+	(void) closef(fp);
 
 out:
 	if (error == 0)
@@ -3181,7 +3181,7 @@ prgetattr(vnode_t *vp, vattr_t *vap, int flags, cred_t *cr,
 		prunlock(pnp);
 		vap->va_size = prgetfdinfosize(p, fp->f_vnode, cr);
 		vap->va_nblocks = (fsblkcnt64_t)btod(vap->va_size);
-		closef(fp);
+		(void) closef(fp);
 		return (0);
 	}
 	case PR_LWPDIR:
@@ -4277,7 +4277,7 @@ pr_lookup_fddir(vnode_t *dp, char *comp)
 			pnp->pr_mode |= 0222;
 		vp = fp->f_vnode;
 		VN_HOLD(vp);
-		closef(fp);
+		(void) closef(fp);
 	}
 
 	prunlock(dpnp);
