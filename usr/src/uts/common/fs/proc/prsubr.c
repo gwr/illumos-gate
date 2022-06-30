@@ -1492,6 +1492,18 @@ pr_u64tos(uint64_t n, char *s)
 	return (len);
 }
 
+/*
+ * Similar to getf() / getf_gen(), but for the specified process.
+ * On success, returns the fp with fp->f_count incremented.
+ * The caller must call closef(fp) on the returned fp after
+ * completing any actions using that fp.
+ * Return NULL for errors (eg. EBADF)
+ *
+ * There are lock order challenges here.  We need to do the
+ * equivalent of: getf() dupfd() releasef() and avoid
+ * trying to enter file_t->f_tlock while holding
+ * fileinfo.fi_lock and uf_entry_t.uf_lock
+ */
 file_t *
 pr_getf(proc_t *p, uint_t fd, short *flag)
 {
@@ -1506,41 +1518,57 @@ pr_getf(proc_t *p, uint_t fd, short *flag)
 	if (fd >= fip->fi_nfiles)
 		return (NULL);
 
+	/*
+	 * It's OK to temporarily drop p->p_lock
+	 * because p->p_proc_flag & P_PR_LOCK
+	 */
 	mutex_exit(&p->p_lock);
+
+	/*
+	 * This part is like getf()
+	 */
 	mutex_enter(&fip->fi_lock);
 	UF_ENTER(ufp, fip, fd);
-	if ((fp = ufp->uf_file) != NULL && fp->f_count > 0) {
-		if (flag != NULL)
-			*flag = ufp->uf_flag;
-		ufp->uf_refcnt++;
-	} else {
-		fp = NULL;
+
+	if ((fp = ufp->uf_file) == NULL) {
+		goto out;
 	}
+	if (fp->f_count == 0) {
+		fp = NULL;
+		goto out;
+	}
+
+	if (flag != NULL)
+		*flag = ufp->uf_flag;
+	ufp->uf_refcnt++;
+
 	UF_EXIT(ufp);
 	mutex_exit(&fip->fi_lock);
-	mutex_enter(&p->p_lock);
 
-	return (fp);
-}
+	/*
+	 * End of getf() likeness,
+	 * now like fcntl F_DUPFD etc.
+	 */
+	mutex_enter(&fp->f_tlock);
+	fp->f_count++;
+	mutex_exit(&fp->f_tlock);
 
-void
-pr_releasef(proc_t *p, uint_t fd)
-{
-	uf_entry_t *ufp;
-	uf_info_t *fip;
-
-	ASSERT(MUTEX_HELD(&p->p_lock) && (p->p_proc_flag & P_PR_LOCK));
-
-	fip = P_FINFO(p);
-
-	mutex_exit(&p->p_lock);
+	/*
+	 * Now like releasef()
+	 */
 	mutex_enter(&fip->fi_lock);
 	UF_ENTER(ufp, fip, fd);
 	ASSERT3U(ufp->uf_refcnt, >, 0);
-	ufp->uf_refcnt--;
+	if (--ufp->uf_refcnt == 0)
+		cv_broadcast(&ufp->uf_closing_cv);
+
+out:
 	UF_EXIT(ufp);
 	mutex_exit(&fip->fi_lock);
+
 	mutex_enter(&p->p_lock);
+
+	return (fp);
 }
 
 void
