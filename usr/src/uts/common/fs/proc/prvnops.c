@@ -824,10 +824,8 @@ pr_read_fdinfo(prnode_t *pnp, uio_t *uiop, cred_t *cr)
 	prfdinfo_t *fdinfo;
 	list_t data;
 	proc_t *p;
-	vnode_t *vp;
 	uint_t fd;
 	file_t *fp;
-	cred_t *file_cred;
 	short ufp_flag;
 	int error = 0;
 
@@ -865,9 +863,6 @@ pr_read_fdinfo(prnode_t *pnp, uio_t *uiop, cred_t *cr)
 		goto out;
 	}
 
-	vp = fp->f_vnode;
-	VN_HOLD(vp);
-
 	/*
 	 * For fdinfo, we don't want to include the placeholder pr_misc at the
 	 * end of the struct. We'll terminate the data with an empty pr_misc
@@ -881,21 +876,15 @@ pr_read_fdinfo(prnode_t *pnp, uio_t *uiop, cred_t *cr)
 	if ((fdinfo->pr_fileflags & (FSEARCH | FEXEC)) == 0)
 		fdinfo->pr_fileflags += FOPEN;
 	fdinfo->pr_offset = fp->f_offset;
-	file_cred = fp->f_cred;
-	crhold(file_cred);
 	/*
 	 * Information from the vnode (rather than the file_t) is retrieved
 	 * later, in prgetfdinfo() - for example sock_getfasync()
 	 */
-	pr_releasef(p, fd);
-
 	prunlock(pnp);
 
-	error = prgetfdinfo(p, vp, fdinfo, cr, file_cred, &data);
+	error = prgetfdinfo(p, fp->f_vnode, fdinfo, cr, fp->f_cred, &data);
 
-	crfree(file_cred);
-
-	VN_RELE(vp);
+	(void) closef(fp);
 
 out:
 	if (error == 0)
@@ -3105,11 +3094,22 @@ prgetattr(vnode_t *vp, vattr_t *vap, int flags, cred_t *cr,
 		return (0);
 	}
 
+	/*
+	 * Similar to: prlock(pnp)
+	 */
 	p = pr_p_lock(pnp);
 	mutex_exit(&pr_pidlock);
 	if (p == NULL)
 		return (ENOENT);
 	pcp = pnp->pr_common;
+
+	/*
+	 * Return ENOENT if process entered zombie state or is exiting
+	 */
+	if (((pcp->prc_flags & PRC_DESTROY) || (p->p_flag & SEXITING))) {
+		prunlock(pnp);
+		return (ENOENT);
+	}
 
 	mutex_enter(&p->p_crlock);
 	vap->va_uid = crgetruid(p->p_cred);
@@ -3182,7 +3182,6 @@ prgetattr(vnode_t *vp, vattr_t *vap, int flags, cred_t *cr,
 		break;
 	case PR_FDINFO: {
 		file_t *fp;
-		vnode_t *vp;
 		int fd = pnp->pr_index;
 
 		fp = pr_getf(p, fd, NULL);
@@ -3190,13 +3189,10 @@ prgetattr(vnode_t *vp, vattr_t *vap, int flags, cred_t *cr,
 			prunlock(pnp);
 			return (ENOENT);
 		}
-		vp = fp->f_vnode;
-		VN_HOLD(vp);
-		pr_releasef(p, fd);
 		prunlock(pnp);
-		vap->va_size = prgetfdinfosize(p, vp, cr);
-		VN_RELE(vp);
+		vap->va_size = prgetfdinfosize(p, fp->f_vnode, cr);
 		vap->va_nblocks = (fsblkcnt64_t)btod(vap->va_size);
+		(void) closef(fp);
 		return (0);
 	}
 	case PR_LWPDIR:
@@ -4245,7 +4241,7 @@ pr_lookup_lwpiddir(vnode_t *dp, char *comp)
 }
 
 /*
- * Lookup one of the process's open files.
+ * Lookup one of the process's open file vnodes
  */
 static vnode_t *
 pr_lookup_fddir(vnode_t *dp, char *comp)
@@ -4292,7 +4288,7 @@ pr_lookup_fddir(vnode_t *dp, char *comp)
 			pnp->pr_mode |= 0222;
 		vp = fp->f_vnode;
 		VN_HOLD(vp);
-		pr_releasef(p, fd);
+		(void) closef(fp);
 	}
 
 	prunlock(dpnp);
