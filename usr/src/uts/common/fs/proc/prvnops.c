@@ -3094,11 +3094,22 @@ prgetattr(vnode_t *vp, vattr_t *vap, int flags, cred_t *cr,
 		return (0);
 	}
 
+	/*
+	 * Similar to: prlock(pnp)
+	 */
 	p = pr_p_lock(pnp);
 	mutex_exit(&pr_pidlock);
 	if (p == NULL)
 		return (ENOENT);
 	pcp = pnp->pr_common;
+
+	/*
+	 * Return ENOENT if process entered zombie state or is exiting
+	 */
+	if (((pcp->prc_flags & PRC_DESTROY) || (p->p_flag & SEXITING))) {
+		prunlock(pnp);
+		return (ENOENT);
+	}
 
 	mutex_enter(&p->p_crlock);
 	vap->va_uid = crgetruid(p->p_cred);
@@ -3178,10 +3189,10 @@ prgetattr(vnode_t *vp, vattr_t *vap, int flags, cred_t *cr,
 			prunlock(pnp);
 			return (ENOENT);
 		}
-		prunlock(pnp);
 		vap->va_size = prgetfdinfosize(p, fp->f_vnode, cr);
 		vap->va_nblocks = (fsblkcnt64_t)btod(vap->va_size);
 		(void) closef(fp);
+		prunlock(pnp);
 		return (0);
 	}
 	case PR_LWPDIR:
