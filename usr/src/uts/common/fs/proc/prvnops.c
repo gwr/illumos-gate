@@ -3189,10 +3189,10 @@ prgetattr(vnode_t *vp, vattr_t *vap, int flags, cred_t *cr,
 			prunlock(pnp);
 			return (ENOENT);
 		}
+		prunlock(pnp);
 		vap->va_size = prgetfdinfosize(p, fp->f_vnode, cr);
 		vap->va_nblocks = (fsblkcnt64_t)btod(vap->va_size);
 		(void) closef(fp);
-		prunlock(pnp);
 		return (0);
 	}
 	case PR_LWPDIR:
