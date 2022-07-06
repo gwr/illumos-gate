@@ -1492,6 +1492,13 @@ pr_u64tos(uint64_t n, char *s)
 	return (len);
 }
 
+/*
+ * Similar to getf() / getf_gen(), but for the specified process.
+ * On success, returns the fp with fp->f_count incremented.
+ * The caller must call closef(fp) on the returned fp after
+ * completing any actions using that fp.
+ * Return NULL for errors (eg. EBADF)
+ */
 file_t *
 pr_getf(proc_t *p, uint_t fd, short *flag)
 {
@@ -1512,7 +1519,19 @@ pr_getf(proc_t *p, uint_t fd, short *flag)
 	if ((fp = ufp->uf_file) != NULL && fp->f_count > 0) {
 		if (flag != NULL)
 			*flag = ufp->uf_flag;
-		ufp->uf_refcnt++;
+		if (mutex_tryenter(&fp->f_tlock)) {
+			ASSERT(fp->f_count > 0);
+			fp->f_count++;
+			mutex_exit(&fp->f_tlock);
+		} else {
+			/*
+			 * Fail-fast if we can't acquire the lock.
+			 * We may wish to be more sophisticated about this,
+			 * but for now, just return no fp and the caller will
+			 * return ENOENT.
+			 */
+			fp = NULL;
+		}
 	} else {
 		fp = NULL;
 	}
@@ -1521,26 +1540,6 @@ pr_getf(proc_t *p, uint_t fd, short *flag)
 	mutex_enter(&p->p_lock);
 
 	return (fp);
-}
-
-void
-pr_releasef(proc_t *p, uint_t fd)
-{
-	uf_entry_t *ufp;
-	uf_info_t *fip;
-
-	ASSERT(MUTEX_HELD(&p->p_lock) && (p->p_proc_flag & P_PR_LOCK));
-
-	fip = P_FINFO(p);
-
-	mutex_exit(&p->p_lock);
-	mutex_enter(&fip->fi_lock);
-	UF_ENTER(ufp, fip, fd);
-	ASSERT3U(ufp->uf_refcnt, >, 0);
-	ufp->uf_refcnt--;
-	UF_EXIT(ufp);
-	mutex_exit(&fip->fi_lock);
-	mutex_enter(&p->p_lock);
 }
 
 void
