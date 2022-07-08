@@ -1531,8 +1531,10 @@ pr_getf(proc_t *p, uint_t fd, short *flag)
 	UF_ENTER(ufp, fip, fd);
 
 	if ((fp = ufp->uf_file) == NULL) {
-		UF_EXIT(ufp);
-		mutex_exit(&fip->fi_lock);
+		goto out;
+	}
+	if (fp->f_count == 0) {
+		fp = NULL;
 		goto out;
 	}
 
@@ -1558,10 +1560,11 @@ pr_getf(proc_t *p, uint_t fd, short *flag)
 	UF_ENTER(ufp, fip, fd);
 	ASSERT3U(ufp->uf_refcnt, >, 0);
 	ufp->uf_refcnt--;
+
+out:
 	UF_EXIT(ufp);
 	mutex_exit(&fip->fi_lock);
 
-out:
 	mutex_enter(&p->p_lock);
 
 	return (fp);
