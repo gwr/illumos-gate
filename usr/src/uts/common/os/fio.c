@@ -705,8 +705,18 @@ closeandsetf(int fd, file_t *newfp)
 	 * are in an interruptible sleep so they will emerge from
 	 * their system calls immediately.  post_syscall() will
 	 * test the a_stale flag and set errno to EBADF.
+	 *
+	 * The above is all true EXCEPT when procfs takes a ref
+	 * on a ufp in pr_getf(), where we can have refcnt > 0
+	 * and lpwcnt = 1.  Effectively, the thread holding the
+	 * ref is outside the process.  When this happens, the
+	 * code below will walk the LWP list needlessly, but
+	 * that will be rare.  Let's keep the ASSERT but let it
+	 * tolerate this case by testing the P_PR_LOCK flag,
+	 * which is set when procfs has this ref.
 	 */
-	ASSERT(ufp->uf_refcnt == 0 || p->p_lwpcnt > 1);
+	ASSERT(ufp->uf_refcnt == 0 || p->p_lwpcnt > 1 ||
+	    (p->p_proc_flag & P_PR_LOCK) != 0);
 	if (ufp->uf_refcnt > 0) {
 		kthread_t *t;
 
