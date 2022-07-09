@@ -1559,7 +1559,8 @@ pr_getf(proc_t *p, uint_t fd, short *flag)
 	mutex_enter(&fip->fi_lock);
 	UF_ENTER(ufp, fip, fd);
 	ASSERT3U(ufp->uf_refcnt, >, 0);
-	ufp->uf_refcnt--;
+	if (--ufp->uf_refcnt == 0)
+		cv_broadcast(&ufp->uf_closing_cv);
 
 out:
 	UF_EXIT(ufp);
