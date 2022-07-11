@@ -166,6 +166,7 @@ typedef struct smb_kmod_cfg {
 	uint32_t skc_execflags;
 	uint32_t skc_negtok_len;
 	uint32_t skc_max_opens;		/* per client */
+	uint32_t skc_readdir_delay;
 	smb_version_t skc_version;
 	uint16_t skc_initial_credits;
 	uint16_t skc_maximum_credits;

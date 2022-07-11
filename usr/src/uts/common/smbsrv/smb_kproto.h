@@ -715,6 +715,7 @@ void smb_odir_reopen(smb_odir_t *, const char *, uint16_t);
 void smb_odir_close(smb_odir_t *);
 boolean_t smb_odir_hold(smb_odir_t *);
 void smb_odir_release(smb_odir_t *);
+void smb_odir_delay(smb_odir_t *, uint32_t);
 
 int smb_odir_read(smb_request_t *, smb_odir_t *,
     smb_odirent_t *, boolean_t *);

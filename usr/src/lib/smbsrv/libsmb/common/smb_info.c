@@ -150,6 +150,9 @@ smb_load_kconfig(smb_kmod_cfg_t *kcfg)
 	kcfg->skc_maxconnections = (uint32_t)citem;
 	(void) smb_config_getnum(SMB_CI_MAX_OPENS, &citem);
 	kcfg->skc_max_opens = (uint32_t)citem;
+	(void) smb_config_getnum(SMB_CI_READDIR_DELAY, &citem);
+	kcfg->skc_readdir_delay = (uint32_t)citem;
+
 	kcfg->skc_restrict_anon = smb_config_getbool(SMB_CI_RESTRICT_ANON);
 	kcfg->skc_signing_enable = smb_config_getbool(SMB_CI_SIGNING_ENABLE);
 	kcfg->skc_signing_required = smb_config_getbool(SMB_CI_SIGNING_REQD);

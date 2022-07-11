@@ -1288,6 +1288,8 @@ typedef struct smb_odir {
 	boolean_t		d_eof;
 	int			d_bufsize;
 	uint64_t		d_offset;
+	kcondvar_t		d_lastr_cv;
+	hrtime_t		d_lastread;
 	union {
 		char		*u_bufptr;
 		struct edirent	*u_edp;

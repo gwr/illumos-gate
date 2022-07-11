@@ -333,6 +333,13 @@ smb_com_trans2_find_first2(smb_request_t *sr, smb_xa_t *xa)
 	if (od == NULL)
 		return (SDRC_ERROR);
 
+	/*
+	 * Reading a directory is heavily meta-data intensive.
+	 * We sometimes need to rate-limit this actvitity.
+	 */
+	if (sr->sr_cfg->skc_readdir_delay != 0)
+		smb_odir_delay(od, sr->sr_cfg->skc_readdir_delay);
+
 	count = smb_trans2_find_entries(sr, xa, od, &args);
 
 	if (count == -1) {

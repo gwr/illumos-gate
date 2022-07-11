@@ -253,6 +253,7 @@
 #include <smbsrv/smb_fsops.h>
 #include <smbsrv/smb_share.h>
 #include <sys/extdirent.h>
+#include <sys/callo.h>
 
 /* static functions */
 static smb_odir_t *smb_odir_create(smb_request_t *, smb_node_t *,
@@ -888,6 +889,39 @@ smb_odir_resume_at(smb_odir_t *od, smb_odir_resume_t *resume)
 	mutex_exit(&od->d_mutex);
 }
 
+/*
+ * Reading a directory is heavily meta-data intensive.
+ * We sometimes need to rate-limit this actvitity.
+ * Configure via svccfg smbd/readdir_delay
+ *
+ * When configured, the server calls this before a loop of calls to
+ * smb_odir_read_fileinfo, passing a delay in microseconds.  That
+ * delay is computed as a time since the last read in this directory,
+ * so if the client has delayed for other reasons, this will not.
+ * Limit the delay to 1 sec. to avoid protocol timeouts.
+ */
+void
+smb_odir_delay(smb_odir_t *od, uint32_t delay_usec)
+{
+	hrtime_t now = gethrtime();
+	hrtime_t next;
+
+	if (delay_usec > MICROSEC)
+		delay_usec = MICROSEC;
+
+	mutex_enter(&od->d_mutex);
+
+	/* When is the soonest we can read again? (in nSec) */
+	next = od->d_lastread + ((uint64_t)delay_usec * 1000);
+	if (now < next) {
+		(void) cv_timedwait_hires(&od->d_lastr_cv, &od->d_mutex,
+		    next, 1, CALLOUT_FLAG_ABSOLUTE);
+	}
+	od->d_lastread = gethrtime();
+
+	mutex_exit(&od->d_mutex);
+}
+
 
 /* *** static functions *** */
 
@@ -915,6 +949,7 @@ smb_odir_create(smb_request_t *sr, smb_node_t *dnode,
 	bzero(od, sizeof (smb_odir_t));
 
 	mutex_init(&od->d_mutex, NULL, MUTEX_DEFAULT, NULL);
+	cv_init(&od->d_lastr_cv, NULL, CV_DEFAULT, NULL);
 
 	/*
 	 * Return this to the caller as if they had done
@@ -1027,6 +1062,7 @@ smb_odir_delete(void *arg)
 	od->d_magic = 0;
 	smb_node_release(od->d_dnode);
 	smb_user_release(od->d_user);
+	cv_destroy(&od->d_lastr_cv);
 	mutex_destroy(&od->d_mutex);
 	kmem_cache_free(smb_cache_odir, od);
 }

@@ -155,6 +155,7 @@ static smb_cfg_param_t smb_cfg_table[] =
 	{SMB_CI_NETLOGON_FLAGS, "netlogon_flags", SCF_TYPE_INTEGER, 0},
 	{SMB_CI_SHORT_NAMES, "short_names", SCF_TYPE_BOOLEAN, 0},
 	{SMB_CI_MAX_OPENS, "max_opens", SCF_TYPE_INTEGER, 0},
+	{SMB_CI_READDIR_DELAY, "readdir_delay", SCF_TYPE_INTEGER, 0},
 
 	/* SMB_CI_MAX */
 };

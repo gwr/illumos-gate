@@ -165,6 +165,7 @@ typedef enum {
 	SMB_CI_NETLOGON_FLAGS,
 	SMB_CI_SHORT_NAMES,
 	SMB_CI_MAX_OPENS,
+	SMB_CI_READDIR_DELAY,
 
 	SMB_CI_MAX
 } smb_cfg_id_t;

@@ -226,6 +226,13 @@ smb2_query_dir(smb_request_t *sr)
 	}
 
 	/*
+	 * Reading a directory is heavily meta-data intensive.
+	 * We sometimes need to rate-limit this actvitity.
+	 */
+	if (sr->sr_cfg->skc_readdir_delay != 0)
+		smb_odir_delay(od, sr->sr_cfg->skc_readdir_delay);
+
+	/*
 	 * "Reopen" sets a new pattern and restart.
 	 */
 	if (args.fa_fflags & SMB2_QDIR_FLAG_REOPEN) {

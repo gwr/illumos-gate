@@ -96,6 +96,7 @@ smb_kmod_setcfg(smb_kmod_cfg_t *cfg)
 	ioc.exec_flags = cfg->skc_execflags;
 	ioc.negtok_len = cfg->skc_negtok_len;
 	ioc.max_opens = cfg->skc_max_opens;
+	ioc.readdir_delay = cfg->skc_readdir_delay;
 
 	ioc.version = cfg->skc_version;
 	ioc.initial_credits = cfg->skc_initial_credits;
