@@ -1513,28 +1513,45 @@ pr_getf(proc_t *p, uint_t fd, short *flag)
 	if (fd >= fip->fi_nfiles)
 		return (NULL);
 
+	/*
+	 * It's OK to temporarily drop p->p_lock
+	 * because p->p_proc_flag & P_PR_LOCK
+	 */
+top:
 	mutex_exit(&p->p_lock);
 	mutex_enter(&fip->fi_lock);
 	UF_ENTER(ufp, fip, fd);
-	if ((fp = ufp->uf_file) != NULL && fp->f_count > 0) {
-		if (flag != NULL)
-			*flag = ufp->uf_flag;
-		if (mutex_tryenter(&fp->f_tlock)) {
-			ASSERT(fp->f_count > 0);
-			fp->f_count++;
-			mutex_exit(&fp->f_tlock);
-		} else {
-			/*
-			 * Fail-fast if we can't acquire the lock.
-			 * We may wish to be more sophisticated about this,
-			 * but for now, just return no fp and the caller will
-			 * return ENOENT.
-			 */
-			fp = NULL;
-		}
-	} else {
+	if ((fp = ufp->uf_file) == NULL)
+		goto out;
+	if (fp->f_count <= 0) {
 		fp = NULL;
+		goto out;
 	}
+
+	/*
+	 * Taking f_tlock "out of order" w.r.t p_lock etc.
+	 */
+	if (mutex_tryenter(&fp->f_tlock) == 0) {
+		UF_EXIT(ufp);
+		mutex_exit(&fip->fi_lock);
+		mutex_enter(&p->p_lock);
+		/*
+		 * Would like to wait until we can get fp->f_tlock
+		 * but the fp can go away after UF_EXIT, so...
+		 */
+		delay(1);	/* or preempt()? */
+		goto top;
+	}
+
+	if (flag != NULL)
+		*flag = ufp->uf_flag;
+
+	ASSERT(MUTEX_HELD(&fp->f_tlock));
+	ASSERT(fp->f_count > 0);
+	fp->f_count++;
+	mutex_exit(&fp->f_tlock);
+
+out:
 	UF_EXIT(ufp);
 	mutex_exit(&fip->fi_lock);
 	mutex_enter(&p->p_lock);
