@@ -653,6 +653,7 @@ typedef struct smb_node {
 	kmutex_t		n_mutex;
 	smb_node_state_t	n_state;
 	uint32_t		n_refcnt;
+	volatile uint32_t	n_fem_refcnt;
 	uint32_t		n_hashkey;
 	smb_llist_t		*n_hash_bucket;
 	uint32_t		n_open_count;

@@ -123,6 +123,7 @@ static void smb_node_init_system(smb_node_t *);
 static kmem_cache_t	*smb_node_cache = NULL;
 static smb_llist_t	smb_node_hash_table[SMBND_HASH_MASK+1];
 static smb_node_t	*smb_root_node;
+static smb_llist_t	smb_node_zombies;
 
 /*
  * smb_node_init
@@ -152,6 +153,8 @@ smb_node_init(void)
 		smb_llist_constructor(&smb_node_hash_table[i],
 		    sizeof (smb_node_t), offsetof(smb_node_t, n_lnd));
 	}
+	smb_llist_constructor(&smb_node_zombies,
+	    sizeof (smb_node_t), offsetof(smb_node_t, n_lnd));
 
 	/*
 	 * The node cache is shared by all zones, so the smb_root_node
@@ -216,6 +219,7 @@ smb_node_fini(void)
 	}
 #endif
 
+	smb_llist_destructor(&smb_node_zombies);
 	for (i = 0; i <= SMBND_HASH_MASK; i++) {
 		smb_llist_destructor(&smb_node_hash_table[i]);
 	}
@@ -445,6 +449,9 @@ smb_node_ref(smb_node_t *node)
 	mutex_exit(&node->n_mutex);
 }
 
+uint64_t smb_node_fem_ref_waited = 0;
+int smb_node_fem_refcnt_wait = 10000; /* 10 sec. in milliseconds */
+
 /*
  * smb_node_lookup() takes a hold on an smb_node, whether found in the
  * hash table or newly created.  This hold is expected to be released
@@ -465,6 +472,40 @@ smb_node_ref(smb_node_t *node)
  *
  * smb_node_release() itself will call smb_node_release() on a node's n_dnode,
  * as smb_node_lookup() takes a hold on dnode.
+ *
+ * Notes about FEM tear-down.
+ *
+ * FEM hooks (n_ncn_count, n_oplock.ol_fem)
+ *
+ * The fem_uninstall calls happen during smb_ofile_close, via
+ * smb_node_fcn_unsubscribe, smb_oplock_break_CLOSE etc.
+ * By the time we get here with a last ref. on the node, all
+ * ofiles should be gone and therefore all FEM hooks gone.
+ * If any check below found FEM hooks, that indicates a bug
+ * somewhere in the ofile close handling.
+ *
+ * FEM calls (n_fem_refcnt)
+ *
+ * The n_fem_refcnt check below guards against the (remote) possibility
+ * that some FEM call blocks so long that the smb node it references gets
+ * here with a last ref. before that call finishes.  That's very unlikely
+ * because FEM calls only block during their interactions with an ofile
+ * in the node's n_ofile_list, and by the time we get here with a last ref.
+ * on the node, that list of ofiles is empty.  Given that this condition
+ * does not appear to actually happen, the defense against it is minimal.
+ *
+ * In the unlikely event we see n_fem_refcnt non-zero in here, this will
+ *
+ *	Wait up to 10 sec. for the ref to go away
+ *		(see smb_node_fem_refcnt_wait)
+ *	If n_fem_refcnt is still non-zero:
+ *		Put this node on the "zombie" list (leak it)
+ *		Log that fact that we've done this.
+ *
+ * In tests, put a dtrace panic() action on the fem-refcnt-wait probe
+ * (below) to verify that the condition does not actually happen.
+ * On a running system, examine smb_node_fem_ref_waited and the
+ * smb_node_zombies list to see if this has ever happened.
  */
 void
 smb_node_release(smb_node_t *node)
@@ -473,8 +514,8 @@ smb_node_release(smb_node_t *node)
 
 	mutex_enter(&node->n_mutex);
 	ASSERT(node->n_refcnt);
-	DTRACE_PROBE1(smb_node_release, smb_node_t *, node);
 	if (--node->n_refcnt == 0) {
+		DTRACE_PROBE1(last__ref, smb_node_t *, node);
 		switch (node->n_state) {
 
 		case SMB_NODE_STATE_AVAILABLE:
@@ -484,9 +525,8 @@ smb_node_release(smb_node_t *node)
 			 * While we still hold n_mutex,
 			 * make sure FEM hooks are gone.
 			 */
+			ASSERT0(node->n_fcn_count);
 			if (node->n_fcn_count > 0) {
-				DTRACE_PROBE1(fem__fcn__dangles,
-				    smb_node_t *, node);
 				node->n_fcn_count = 0;
 				(void) smb_fem_fcn_uninstall(node);
 			}
@@ -500,32 +540,67 @@ smb_node_release(smb_node_t *node)
 			mutex_enter(&node->n_oplock.ol_mutex);
 			ASSERT(node->n_oplock.ol_fem == B_FALSE);
 			if (node->n_oplock.ol_fem == B_TRUE) {
-				smb_fem_oplock_uninstall(node);
 				node->n_oplock.ol_fem = B_FALSE;
+				smb_fem_oplock_uninstall(node);
 			}
 			mutex_exit(&node->n_oplock.ol_mutex);
+
+			/*
+			 * See comments re. n_fem_refcnt above.
+			 */
+			if (node->n_fem_refcnt != 0) {
+				clock_t waitcount =
+				    MSEC_TO_TICK(smb_node_fem_refcnt_wait);
+
+				DTRACE_PROBE1(fem__refcnt__wait,
+				    smb_node_t *, node);
+
+				smb_node_fem_ref_waited++;
+				while (node->n_fem_refcnt != 0 &&
+				       --waitcount > 0) {
+					delay(1);
+				}
+
+				DTRACE_PROBE1(fem__refcnt__done,
+				    smb_node_t *, node);
+			}
 
 			smb_llist_enter(node->n_hash_bucket, RW_WRITER);
 			smb_llist_remove(node->n_hash_bucket, node);
 			smb_llist_exit(node->n_hash_bucket);
 
 			/*
-			 * Check if the file was deleted
+			 * Delete-on-close processing for normal ofiles
+			 * happens in smb_ofile_close().  However note
+			 * that smb2_dh_setdoc_persistent() sets DoC
+			 * without any ofiles, which is handled here.
 			 */
 			if (node->flags & NODE_FLAGS_DELETE_ON_CLOSE) {
 				smb_node_delete_on_close(node);
 			}
 
 			if (node->n_dnode) {
-				ASSERT(node->n_dnode->n_magic ==
-				    SMB_NODE_MAGIC);
-				smb_node_release(node->n_dnode);
+				smb_node_t *dnode = node->n_dnode;
+				node->n_dnode = NULL;
+				smb_node_release(dnode);
 			}
 
 			if (node->n_unode) {
-				ASSERT(node->n_unode->n_magic ==
-				    SMB_NODE_MAGIC);
-				smb_node_release(node->n_unode);
+				smb_node_t *unode = node->n_unode;
+				node->n_unode = NULL;
+				smb_node_release(unode);
+			}
+
+			/*
+			 * See comments re. n_fem_refcnt above.
+			 */
+			if (node->n_fem_refcnt != 0) {
+				smb_llist_enter(&smb_node_zombies, RW_WRITER);
+				smb_llist_insert_tail(&smb_node_zombies, node);
+				smb_llist_exit(&smb_node_zombies);
+				cmn_err(CE_NOTE, "leaked node: 0x%p %s",
+				    (void *)node, node->od_name);
+				return;
 			}
 
 			smb_node_free(node);
