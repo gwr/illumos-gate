@@ -154,9 +154,29 @@ smb_fem_fini(void)
 }
 
 /*
+ * FEM hold/rele callbacks.
+ *
+ * Just do atomic refcnts here.
+ * See checks in smb_node_release()
+ */
+static void
+smb_fem_hold(void *arg)
+{
+	smb_node_t *node = arg;
+	SMB_NODE_VALID(node);
+	atomic_inc_32(&node->n_fem_refcnt);
+}
+
+static void
+smb_fem_rele(void *arg)
+{
+	smb_node_t *node = arg;
+	SMB_NODE_VALID(node);
+	atomic_dec_32(&node->n_fem_refcnt);
+}
+
+/*
  * Install our fem hooks for change notify.
- * Not using hold/rele function here because we
- * remove the fem hooks before node destroy.
  */
 int
 smb_fem_fcn_install(smb_node_t *node)
@@ -166,7 +186,7 @@ smb_fem_fcn_install(smb_node_t *node)
 	if (smb_fcn_ops == NULL)
 		return (ENOSYS);
 	rc = fem_install(node->vp, smb_fcn_ops, (void *)node, OPARGUNIQ,
-	    NULL, NULL);
+	    smb_fem_hold, smb_fem_rele);
 	return (rc);
 }
 
@@ -189,7 +209,7 @@ smb_fem_oplock_install(smb_node_t *node)
 	if (smb_oplock_ops == NULL)
 		return (ENOSYS);
 	rc = fem_install(node->vp, smb_oplock_ops, (void *)node, OPARGUNIQ,
-	    (fem_func_t)smb_node_ref, (fem_func_t)smb_node_release);
+	    smb_fem_hold, smb_fem_rele);
 	return (rc);
 }
 

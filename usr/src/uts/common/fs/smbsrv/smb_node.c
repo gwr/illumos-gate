@@ -469,12 +469,14 @@ smb_node_ref(smb_node_t *node)
 void
 smb_node_release(smb_node_t *node)
 {
+	int waitcount;
+
 	SMB_NODE_VALID(node);
 
 	mutex_enter(&node->n_mutex);
 	ASSERT(node->n_refcnt);
-	DTRACE_PROBE1(smb_node_release, smb_node_t *, node);
 	if (--node->n_refcnt == 0) {
+		DTRACE_PROBE1(last__ref, smb_node_t *, node);
 		switch (node->n_state) {
 
 		case SMB_NODE_STATE_AVAILABLE:
@@ -498,19 +500,36 @@ smb_node_release(smb_node_t *node)
 			 * used by oplocks are also gone.
 			 */
 			mutex_enter(&node->n_oplock.ol_mutex);
-			ASSERT(node->n_oplock.ol_fem == B_FALSE);
 			if (node->n_oplock.ol_fem == B_TRUE) {
+				DTRACE_PROBE1(fem__oplock__dangles,
+				    smb_node_t *, node);
 				smb_fem_oplock_uninstall(node);
 				node->n_oplock.ol_fem = B_FALSE;
 			}
 			mutex_exit(&node->n_oplock.ol_mutex);
+
+			/*
+			 * Any FEM refs should be long gone now,
+			 * but let's be careful.  In testing,
+			 * the fem-lingers probe never fires.
+			 */
+			waitcount = 1000;
+			while (node->n_fem_refcnt > 0 && --waitcount > 0) {
+				DTRACE_PROBE1(fem__refcnt__wait,
+				    smb_node_t *, node);
+				delay(MSEC_TO_TICK(10));
+			}
+			VERIFY0(node->n_fem_refcnt);
 
 			smb_llist_enter(node->n_hash_bucket, RW_WRITER);
 			smb_llist_remove(node->n_hash_bucket, node);
 			smb_llist_exit(node->n_hash_bucket);
 
 			/*
-			 * Check if the file was deleted
+			 * Delete-on-close processing for normal ofiles
+			 * happens in smb_ofile_close().  However note
+			 * that smb2_dh_setdoc_persistent() sets DoC
+			 * without any ofiles, which is handled here.
 			 */
 			if (node->flags & NODE_FLAGS_DELETE_ON_CLOSE) {
 				smb_node_delete_on_close(node);
@@ -1252,6 +1271,7 @@ smb_node_free(smb_node_t *node)
 	VERIFY(node->n_lock_list.ll_count == 0);
 	VERIFY(node->n_wlock_list.ll_count == 0);
 	VERIFY(node->n_ofile_list.ll_count == 0);
+	VERIFY(node->n_fcn_count == 0);
 	VERIFY(node->n_oplock.ol_fem == B_FALSE);
 	VERIFY(MUTEX_NOT_HELD(&node->n_mutex));
 	VERIFY(!RW_LOCK_HELD(&node->n_lock));
