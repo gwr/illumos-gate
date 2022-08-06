@@ -123,6 +123,7 @@ static void smb_node_init_system(smb_node_t *);
 static kmem_cache_t	*smb_node_cache = NULL;
 static smb_llist_t	smb_node_hash_table[SMBND_HASH_MASK+1];
 static smb_node_t	*smb_root_node;
+static smb_llist_t	smb_node_zombies;
 
 /*
  * smb_node_init
@@ -152,6 +153,8 @@ smb_node_init(void)
 		smb_llist_constructor(&smb_node_hash_table[i],
 		    sizeof (smb_node_t), offsetof(smb_node_t, n_lnd));
 	}
+	smb_llist_constructor(&smb_node_zombies,
+	    sizeof (smb_node_t), offsetof(smb_node_t, n_lnd));
 
 	/*
 	 * The node cache is shared by all zones, so the smb_root_node
@@ -216,6 +219,7 @@ smb_node_fini(void)
 	}
 #endif
 
+	smb_llist_destructor(&smb_node_zombies);
 	for (i = 0; i <= SMBND_HASH_MASK; i++) {
 		smb_llist_destructor(&smb_node_hash_table[i]);
 	}
@@ -509,9 +513,10 @@ smb_node_release(smb_node_t *node)
 			mutex_exit(&node->n_oplock.ol_mutex);
 
 			/*
-			 * Any FEM refs should be long gone now,
-			 * but let's be careful.  In testing,
-			 * the fem-lingers probe never fires.
+			 * None of our FEM calls should take long,
+			 * so any FEM refs should be gone by now.
+			 * Just in case, wait up to ten sec. for
+			 * any FEM refs to go away.  More below.
 			 */
 			waitcount = 1000;
 			while (node->n_fem_refcnt > 0 && --waitcount > 0) {
@@ -519,7 +524,6 @@ smb_node_release(smb_node_t *node)
 				    smb_node_t *, node);
 				delay(MSEC_TO_TICK(10));
 			}
-			VERIFY0(node->n_fem_refcnt);
 
 			smb_llist_enter(node->n_hash_bucket, RW_WRITER);
 			smb_llist_remove(node->n_hash_bucket, node);
@@ -536,15 +540,29 @@ smb_node_release(smb_node_t *node)
 			}
 
 			if (node->n_dnode) {
-				ASSERT(node->n_dnode->n_magic ==
-				    SMB_NODE_MAGIC);
-				smb_node_release(node->n_dnode);
+				smb_node_t *dnode = node->n_dnode;
+				node->n_dnode = NULL;
+				smb_node_release(dnode);
 			}
 
 			if (node->n_unode) {
-				ASSERT(node->n_unode->n_magic ==
-				    SMB_NODE_MAGIC);
-				smb_node_release(node->n_unode);
+				smb_node_t *unode = node->n_unode;
+				node->n_unode = NULL;
+				smb_node_release(unode);
+			}
+
+			/*
+			 * In the unlikely event some FEM call is still
+			 * blocked holding a ref on this node, just
+			 * leak the node (put it on the zombie list).
+			 */
+			if (node->n_fem_refcnt != 0) {
+				smb_llist_enter(&smb_node_zombies, RW_WRITER);
+				smb_llist_insert_tail(&smb_node_zombies, node);
+				smb_llist_exit(&smb_node_zombies);
+				cmn_err(CE_NOTE, "leaked node: 0x%p %s",
+				    (void *)node, node->od_name);
+				return;
 			}
 
 			smb_node_free(node);
