@@ -256,8 +256,8 @@ smb_net_wrap_mbuf(mbuf_t *mbuf)
 	frtn->free_func = smb_net_send_free;
 	frtn->free_arg = (caddr_t)mbuf;
 
-	mblk = esballoca((void *)mbuf->m_data, mbuf->m_len, BPRI_MED, frtn);
-	ASSERT(mblk != NULL);
+	mblk = esballoca_wait((void *)mbuf->m_data, mbuf->m_len,
+	    BPRI_MED, frtn);
 	if (mblk != NULL) {
 		mblk->b_wptr += mbuf->m_len;
 		mblk->b_datap->db_type = M_DATA;
