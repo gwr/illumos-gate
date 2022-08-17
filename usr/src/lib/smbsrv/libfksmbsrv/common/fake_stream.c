@@ -82,6 +82,16 @@ esballoca(unsigned char *base, size_t size, uint_t pri, frtn_t *frp)
 	return (mp);
 }
 
+/*
+ * Same as esballoca() but sleeps waiting for memory.
+ * (in here, both sleep)
+ */
+mblk_t *
+esballoca_wait(unsigned char *base, size_t size, uint_t pri, frtn_t *frp)
+{
+	return (esballoca(base, size, pri, frp));
+}
+
 void
 freemsg(mblk_t *mp)
 {
