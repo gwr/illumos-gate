@@ -52,6 +52,14 @@
 #define	SMB_LOCAL_IOV_MAX	16
 
 /*
+ * XXX %Z% temporary -- allow missing esballoca_wait
+ * XXX %Z% remove before upstreaming
+ */
+typedef mblk_t *(*esbaf_t)(unsigned char *, size_t, uint_t, frtn_t *);
+extern mblk_t *esballoca_wait(unsigned char *, size_t, uint_t, frtn_t *);
+#pragma weak esballoca_wait
+
+/*
  * SMB Network Socket API
  *
  * smb_socreate:	Creates an socket based on domain/type.
@@ -229,6 +237,7 @@ smb_net_wrap_mbuf(mbuf_t *mbuf)
 {
 	frtn_t		*frtn;
 	mblk_t		*mblk;
+	static esbaf_t	esbaf = NULL;
 
 	if ((mbuf->m_flags & M_EXT) == 0 &&
 	    M_TRAILINGSPACE(mbuf) < sizeof (*frtn)) {
@@ -257,8 +266,22 @@ smb_net_wrap_mbuf(mbuf_t *mbuf)
 	frtn->free_func = smb_net_send_free;
 	frtn->free_arg = (caddr_t)mbuf;
 
-	mblk = esballoca_wait((void *)mbuf->m_data, mbuf->m_len,
-	    BPRI_MED, frtn);
+	/*
+	 * XXX %Z% temporary -- allow missing esballoca_wait
+	 * XXX %Z% remove before upstreaming
+	 * Technically threads can race setting esbaf,
+	 * but all will get the same answer.
+	 */
+	if (esbaf == NULL) {
+		if (&esballoca_wait) {
+			esbaf = esballoca_wait;
+		} else {
+			esbaf = esballoca;
+		}
+	}
+	mblk = esbaf((void *)mbuf->m_data, mbuf->m_len,
+		    BPRI_MED, frtn);
+
 	if (mblk != NULL) {
 		mblk->b_wptr += mbuf->m_len;
 		mblk->b_datap->db_type = M_DATA;
