@@ -129,6 +129,7 @@ static smb_wchar_t smb_catia_v4_lookup[SMB_CATIA_V4_LOOKUP_MAX];
 
 static void smb_vop_setup_xvattr(smb_attr_t *smb_attr, xvattr_t *xvattr);
 static void smb_sa_to_va_mask(uint_t sa_mask, uint_t *va_maskp);
+static void smb_sa_to_va_mask_get(uint_t sa_mask, uint_t *va_maskp);
 static callb_cpr_t *smb_lock_frlock_callback(flk_cb_when_t, void *);
 static void smb_vop_catia_init();
 
@@ -338,7 +339,7 @@ smb_vop_getattr(vnode_t *vp, vnode_t *unnamed_vp, smb_attr_t *ret_attr,
 		xoap = xva_getxoptattr(&tmp_xvattr);
 		ASSERT(xoap);
 
-		smb_sa_to_va_mask(ret_attr->sa_mask,
+		smb_sa_to_va_mask_get(ret_attr->sa_mask,
 		    &tmp_xvattr.xva_vattr.va_mask);
 
 		XVA_SET_REQ(&tmp_xvattr, XAT_READONLY);
@@ -407,7 +408,7 @@ smb_vop_getattr(vnode_t *vp, vnode_t *unnamed_vp, smb_attr_t *ret_attr,
 		/*
 		 * Support for file systems without VFSFT_XVATTR
 		 */
-		smb_sa_to_va_mask(ret_attr->sa_mask,
+		smb_sa_to_va_mask_get(ret_attr->sa_mask,
 		    &ret_attr->sa_vattr.va_mask);
 
 		error = VOP_GETATTR(use_vp, &ret_attr->sa_vattr,
@@ -420,9 +421,14 @@ smb_vop_getattr(vnode_t *vp, vnode_t *unnamed_vp, smb_attr_t *ret_attr,
 	}
 
 	if (unnamed_vp) {
+		/*
+		 * vp is a named stream under "unnamed_vp"
+		 * Need to get the size from vp (not use_vp)
+		 */
 		ret_attr->sa_vattr.va_type = VREG;
 
-		if (ret_attr->sa_mask & (SMB_AT_SIZE | SMB_AT_NBLOCKS)) {
+		if (ret_attr->sa_mask &
+		    (SMB_AT_SIZE | SMB_AT_NBLOCKS | SMB_AT_ALLOCSZ)) {
 			tmp_attr.sa_vattr.va_mask = AT_SIZE | AT_NBLOCKS;
 
 			error = VOP_GETATTR(vp, &tmp_attr.sa_vattr,
@@ -436,8 +442,29 @@ smb_vop_getattr(vnode_t *vp, vnode_t *unnamed_vp, smb_attr_t *ret_attr,
 		}
 	}
 
-	if (ret_attr->sa_vattr.va_type == VDIR)
+	/*
+	 * Override a few things so they're as SMB expects.
+	 * SMB allocsz is always zero for directories.
+	 * Fror plain files, allocsz is the larger of:
+	 * size, allocsize  (See smb_node_getattr)
+	 */
+	if (ret_attr->sa_vattr.va_type == VDIR) {
 		ret_attr->sa_dosattr |= FILE_ATTRIBUTE_DIRECTORY;
+		/* SMB expectes directories to have... */
+		ret_attr->sa_vattr.va_size = 0;
+		ret_attr->sa_vattr.va_nlink = 1;
+	} else {
+		if (ret_attr->sa_dosattr == 0)
+			ret_attr->sa_dosattr = FILE_ATTRIBUTE_NORMAL;
+		if ((ret_attr->sa_mask & SMB_AT_ALLOCSZ) != 0) {
+			ret_attr->sa_allocsz =
+			    tmp_attr.sa_vattr.va_nblocks * DEV_BSIZE;
+			if (ret_attr->sa_allocsz < tmp_attr.sa_vattr.va_size) {
+				ret_attr->sa_allocsz = P2ROUNDUP(
+				    tmp_attr.sa_vattr.va_size, DEV_BSIZE);
+			}
+		}
+	}
 
 	return (error);
 }
@@ -1082,6 +1109,21 @@ smb_sa_to_va_mask(uint_t sa_mask, uint_t *va_maskp)
 			*(va_maskp) |= smb_attrmap[i];
 
 		smask >>= 1;
+	}
+}
+
+/*
+ * Variant of smb_sa_to_va_mask for vop_getattr,
+ * adding some bits for SMB_AT_ALLOCSZ etc.
+ */
+void
+smb_sa_to_va_mask_get(uint_t sa_mask, uint_t *va_maskp)
+{
+	smb_sa_to_va_mask(sa_mask, va_maskp);
+
+	*va_maskp |= AT_TYPE;
+	if ((sa_mask & SMB_AT_ALLOCSZ) != 0) {
+		*va_maskp |= (AT_SIZE | AT_NBLOCKS);
 	}
 }
 
