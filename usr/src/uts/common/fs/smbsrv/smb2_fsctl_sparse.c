@@ -186,10 +186,10 @@ smb2_fsctl_query_alloc_ranges(smb_request_t *sr, smb_fsctl_t *fsctl)
 	/*
 	 * The given offsets are actually int64_t (signed).
 	 */
-	end_off = arg.off + arg.len;
-	if (arg.off > INT64_MAX || arg.len < 0 ||
-	    end_off > INT64_MAX || end_off < arg.off)
+	if (arg.off < 0 || arg.len < 0 ||
+	    arg.len > (INT64_MAX - arg.off))
 		return (NT_STATUS_INVALID_PARAMETER);
+	end_off = arg.off + arg.len;
 
 	if (!smb_node_is_file(ofile->f_node))
 		return (NT_STATUS_INVALID_PARAMETER);

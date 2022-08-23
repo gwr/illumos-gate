@@ -1175,12 +1175,11 @@ smb_ace_is_audit(int type)
 static uint16_t
 smb_ace_len(smb_ace_t *ace)
 {
-	ASSERT(ace);
-	ASSERT(ace->se_sid);
-
+	ASSERT(ace != NULL);
 	if (ace == NULL)
 		return (0);
 
+	ASSERT(ace->se_sid != NULL);
 	return (SMB_ACE_HDRSIZE + sizeof (ace->se_mask) +
 	    smb_sid_len(ace->se_sid));
 }

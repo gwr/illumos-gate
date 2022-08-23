@@ -233,14 +233,14 @@ CPPFLAGS += -DDEBUG
 
 CERRWARN += -_gcc=-Wno-switch
 
-# not linted
-SMATCH=off
-
 SRCS=   $(OBJS_LOCAL:%.o=$(SRCDIR)/%.c) \
 	$(OBJS_FS_SMBSRV:%.o=$(SRC)/uts/common/fs/smbsrv/%.c) \
 	$(OBJS_CMN_SMBSRV:%.o=$(SRC)/common/smbsrv/%.c)
 
 all:
+
+# This is "too hairy" for smatch
+pics/smb_common_open.o := SMATCH=off
 
 pics/%.o:	$(SRC)/uts/common/fs/smbsrv/%.c
 	$(COMPILE.c) -o $@ $<

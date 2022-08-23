@@ -1222,7 +1222,7 @@ smb_fsop_rename(
 	 *   ATTR_NOACLCHECK flag to ensure that the file system
 	 *   does not check permissions on subsequent calls.
 	 */
-	if (sr && sr->fid_ofile) {
+	if (sr->fid_ofile != NULL) {
 		rc = smb_ofile_access(sr->fid_ofile, cr, DELETE);
 		if (rc != NT_STATUS_SUCCESS) {
 			VN_RELE(from_vp);

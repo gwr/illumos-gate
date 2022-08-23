@@ -72,9 +72,6 @@ INC_PATH	+= -I$(SRC)/common
 
 CERRWARN	+= -_gcc=-Wno-switch
 
-# needs work
-SMATCH=off
-
 #
 #	Default build targets.
 #
@@ -92,6 +89,9 @@ install:	$(INSTALL_DEPS)
 
 $(ROOTLINK):	$(ROOT_SYS_DIR) $(ROOTMODULE)
 	-$(RM) $@; ln $(ROOTMODULE) $@
+
+# This is "too hairy" for smatch
+$(OBJS_DIR)/smb_common_open.o := SMATCH=off
 
 #
 #	Include common targets.
