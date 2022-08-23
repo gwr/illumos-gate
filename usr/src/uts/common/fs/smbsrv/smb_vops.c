@@ -325,7 +325,6 @@ smb_vop_getattr(vnode_t *vp, vnode_t *unnamed_vp, smb_attr_t *ret_attr,
 {
 	int error;
 	vnode_t *use_vp;
-	smb_attr_t tmp_attr;
 	xvattr_t tmp_xvattr;
 	xoptattr_t *xoap = NULL;
 
@@ -425,6 +424,7 @@ smb_vop_getattr(vnode_t *vp, vnode_t *unnamed_vp, smb_attr_t *ret_attr,
 		 * vp is a named stream under "unnamed_vp"
 		 * Need to get the size from vp (not use_vp)
 		 */
+		smb_attr_t tmp_attr;
 		ret_attr->sa_vattr.va_type = VREG;
 
 		if (ret_attr->sa_mask &
@@ -451,17 +451,18 @@ smb_vop_getattr(vnode_t *vp, vnode_t *unnamed_vp, smb_attr_t *ret_attr,
 	if (ret_attr->sa_vattr.va_type == VDIR) {
 		ret_attr->sa_dosattr |= FILE_ATTRIBUTE_DIRECTORY;
 		/* SMB expectes directories to have... */
-		ret_attr->sa_vattr.va_size = 0;
 		ret_attr->sa_vattr.va_nlink = 1;
+		ret_attr->sa_vattr.va_size = 0;
+		ret_attr->sa_allocsz = 0;
 	} else {
 		if (ret_attr->sa_dosattr == 0)
 			ret_attr->sa_dosattr = FILE_ATTRIBUTE_NORMAL;
 		if ((ret_attr->sa_mask & SMB_AT_ALLOCSZ) != 0) {
 			ret_attr->sa_allocsz =
-			    tmp_attr.sa_vattr.va_nblocks * DEV_BSIZE;
-			if (ret_attr->sa_allocsz < tmp_attr.sa_vattr.va_size) {
+			    ret_attr->sa_vattr.va_nblocks * DEV_BSIZE;
+			if (ret_attr->sa_allocsz < ret_attr->sa_vattr.va_size) {
 				ret_attr->sa_allocsz = P2ROUNDUP(
-				    tmp_attr.sa_vattr.va_size, DEV_BSIZE);
+				    ret_attr->sa_vattr.va_size, DEV_BSIZE);
 			}
 		}
 	}
