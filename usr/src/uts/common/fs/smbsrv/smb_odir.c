@@ -1320,24 +1320,37 @@ smb_odir_wildcard_fileinfo(smb_request_t *sr, smb_odir_t *od,
 		return(rc);
 
 	/*
-	 * Like smb_node_is_symlink(fnode)
+	 * follow link to get target node & attr
 	 */
 	if (attr.sa_vattr.va_type == VLNK &&
 	    (attr.sa_dosattr & FILE_ATTRIBUTE_REPARSE_POINT) == 0) {
 		/*
 		 * Follow the symlink (lookup again w/ follow)
 		 * Like smb_odir_lookup_link
+		 *
+		 * Could avoid creating an smb_node_t here,
+		 * but symlinks are not so common.
 		 */
-		vnode_t *lvp = NULL;
-		uint32_t flags2 = SMB_FOLLOW_LINKS | SMB_CASE_SENSITIVE;
+		smb_node_t *tnode = NULL;
+		vnode_t *tvp = NULL;
 
-		rc = smb_vop_lookup(od->d_dnode->vp, odirent->od_name, &lvp,
-		    NULL, flags2, &de_flags, od->d_tree->t_snode->vp, &attr,
-		    od->d_cred);
-		if (rc == 0) {
-			/* Use the link target */
+		if (smb_odir_lookup_link(sr, od, odirent->od_name, &tnode)) {
+
+			attr.sa_mask = SMB_AT_ALL;
+			rc = smb_fsop_getattr(NULL, zone_kcred(), tnode, &attr);
+			if (rc != 0) {
+				smb_node_release(tnode);
+				VN_RELE(fvp);
+				return (rc);
+			}
+
+			/* Use the link target as fvp */
+			tvp = tnode->vp;
+			VN_HOLD(tvp);
+			smb_node_release(tnode);
+
 			VN_RELE(fvp);
-			fvp = lvp;
+			fvp = tvp;
 		}
 	}
 
