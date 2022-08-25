@@ -825,6 +825,7 @@ uint_t
 apic_nmi_intr(caddr_t arg __unused, caddr_t arg1 __unused)
 {
 	nmi_action_t action = nmi_action;
+	boolean_t debugger;
 
 	if (apic_shutdown_processors) {
 		apic_disable_local_apic();
@@ -841,11 +842,16 @@ apic_nmi_intr(caddr_t arg __unused, caddr_t arg1 __unused)
 	 * "nmi_action" always over-rides the older way of doing this, unless we
 	 * can't actually drop into kmdb when requested.
 	 */
-	if (action == NMI_ACTION_KMDB && !psm_debugger())
+	debugger = psm_debugger();
+	prom_printf("NMI debugger=%d action=%d kmdb=%d panic=%d\n",
+		    debugger ? 1 : 0, action,
+		    apic_kmdb_on_nmi, apic_panic_on_nmi);
+
+	if (action == NMI_ACTION_KMDB && !debugger)
 		action = NMI_ACTION_UNSET;
 
 	if (action == NMI_ACTION_UNSET) {
-		if (apic_kmdb_on_nmi && psm_debugger())
+		if (apic_kmdb_on_nmi && debugger)
 			action = NMI_ACTION_KMDB;
 		else if (apic_panic_on_nmi)
 			action = NMI_ACTION_PANIC;
