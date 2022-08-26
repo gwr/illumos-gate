@@ -293,7 +293,7 @@ smb_find_ads_server(char *fqdn, char *buf, int buflen)
 	return (found);
 }
 
-void
+int
 smb_notify_dc_changed(void)
 {
 	int rc;
@@ -303,6 +303,7 @@ smb_notify_dc_changed(void)
 
 	if (rc != 0)
 		syslog(LOG_DEBUG, "smb_notify_dc_changed: %m");
+	return (rc);
 }
 
 
