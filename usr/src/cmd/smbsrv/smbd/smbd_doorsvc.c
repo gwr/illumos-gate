@@ -218,6 +218,7 @@ have_req_privs(int opflags)
 	ucred_t *uc = NULL;
 	const priv_set_t *ps = NULL;
 	boolean_t ret = B_FALSE;
+	pid_t pid;
 
 	/* If only DOF_R (read), let 'em through */
 	if ((opflags & ~DOF_R) == 0)
@@ -228,18 +229,17 @@ have_req_privs(int opflags)
 		goto out;
 	}
 
+	/*
+	 * in-kernel callers have pid==0
+	 * If we have pid zero, that's sufficient.
+	 * If not, allow with sys_smb priv (below)
+	 */
+	pid = ucred_getpid(uc);
 	if ((opflags & DOF_K) != 0) {
-		/*
-		 * in-kernel caller.  Should have pid==0
-		 * If we have pid zero, that's sufficient.
-		 * If not, allow with sys_smb priv (below)
-		 */
-		pid_t pid = ucred_getpid(uc);
 		if (pid == 0) {
 			ret = B_TRUE;
 			goto out;
 		}
-		syslog(LOG_DEBUG, "%s: ucred_getpid %d", __func__, pid);
 	}
 
 	ps = ucred_getprivset(uc, PRIV_EFFECTIVE);
@@ -257,6 +257,9 @@ have_req_privs(int opflags)
 			goto out;
 		}
 	}
+
+	syslog(LOG_DEBUG, "smbd_door_dispatch: missing privilege, "
+	    "PID = %d UID = %d", (int)pid, ucred_getruid(uc));
 
 out:
 	/* ps is free'd with the ucred */
@@ -337,8 +340,6 @@ smbd_door_dispatch(void *cookie, char *argp, size_t arg_size, door_desc_t *dp,
 	if ((hdr->dh_flags & SMB_DF_ASYNC) != 0)
 		opflags |= DOF_K;
 	if (!have_req_privs(opflags)) {
-		syslog(LOG_DEBUG, "smbd_door_dispatch: "
-		    "missing privilege, op=%u", hdr->dh_op);
 		smbd_door_return(&smbd_door_sdh, NULL, 0, NULL, 0);
 	}
 

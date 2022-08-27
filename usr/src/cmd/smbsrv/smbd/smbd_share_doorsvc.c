@@ -143,9 +143,21 @@ have_priv_sys_smb(void)
 	ucred_t *uc = NULL;
 	const priv_set_t *ps = NULL;
 	boolean_t ret = B_FALSE;
+	pid_t pid;
 
 	if (door_ucred(&uc) != 0) {
 		syslog(LOG_DEBUG, "%s: door_ucred failed", __func__);
+		goto out;
+	}
+
+	/*
+	 * in-kernel callers have pid==0
+	 * If we have pid zero, that's sufficient.
+	 * If not, allow with sys_smb priv (below)
+	 */
+	pid = ucred_getpid(uc);
+	if (pid == 0) {
+		ret = B_TRUE;
 		goto out;
 	}
 
@@ -154,8 +166,13 @@ have_priv_sys_smb(void)
 		syslog(LOG_DEBUG, "%s: ucred_getprivset failed", __func__);
 		goto out;
 	}
-	if (priv_ismember(ps, PRIV_SYS_SMB))
+	if (priv_ismember(ps, PRIV_SYS_SMB)) {
 		ret = B_TRUE;
+		goto out;
+	}
+
+	syslog(LOG_DEBUG, "smbd_share_dispatch: missing privilege, "
+	    "PID = %d UID = %d", (int)pid, ucred_getruid(uc));
 
 out:
 	/* ps is free'd with the ucred */
@@ -202,7 +219,6 @@ smbd_share_dispatch(void *cookie, char *ptr, size_t size, door_desc_t *dp,
 	if (req_type != SMB_SHROP_NUM_SHARES &&
 	    req_type != SMB_SHROP_LIST &&
 	    !have_priv_sys_smb()) {
-		syslog(LOG_DEBUG, "%s: missing privilege", __func__);
 		dec_status = EPERM;
 		goto decode_error;
 	}

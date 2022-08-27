@@ -291,8 +291,9 @@ pipe_has_priv(ndr_pipe_t *np)
 	}
 
 	if (smbd.s_debug) {
-		smbd_report("pipesvc: non-privileged client PID = %d",
-			    (int) clpid);
+		smbd_report("pipesvc: non-privileged client "
+		    "PID = %d UID = %d",
+		    (int) clpid, ucred_getruid(uc));
 	}
 
 out:

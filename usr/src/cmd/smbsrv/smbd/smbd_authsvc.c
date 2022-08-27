@@ -259,8 +259,9 @@ authsock_has_priv(int sock)
 	}
 
 	if (smbd.s_debug) {
-		smbd_report("authsvc: non-privileged client PID = %d",
-			    (int) clpid);
+		smbd_report("authsvc: non-privileged client "
+		    "PID = %d UID = %d",
+		    (int) clpid, ucred_getruid(uc));
 	}
 
 out:
