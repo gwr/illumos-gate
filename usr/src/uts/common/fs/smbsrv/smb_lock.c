@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2017 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 /*
@@ -780,6 +780,9 @@ smb_lock_cancel_sr(smb_request_t *sr)
 {
 	smb_lock_t *lock = sr->cancel_arg2;
 
+	if (lock == NULL)
+		return;
+
 	ASSERT(lock->l_magic == SMB_LOCK_MAGIC);
 	mutex_enter(&lock->l_mutex);
 	lock->l_blocked_by = NULL;
@@ -806,6 +809,7 @@ smb_lock_wait(smb_request_t *sr, smb_lock_t *lock, smb_lock_t *conflict)
 	smb_node_t	*node;
 	clock_t		rc;
 	uint32_t	status = NT_STATUS_SUCCESS;
+	boolean_t	cancelled = B_FALSE;
 
 	node = lock->l_file->f_node;
 	ASSERT(node == conflict->l_file->f_node);
@@ -906,6 +910,7 @@ smb_lock_wait(smb_request_t *sr, smb_lock_t *lock, smb_lock_t *conflict)
 	case SMB_REQ_STATE_CANCEL_PENDING:
 		/* Cancelled via smb_lock_cancel_sr */
 		sr->sr_state = SMB_REQ_STATE_CANCELLED;
+		cancelled = B_TRUE;
 		/* FALLTHROUGH */
 	case SMB_REQ_STATE_CANCELLED:
 		if (status == NT_STATUS_SUCCESS)
@@ -916,6 +921,13 @@ smb_lock_wait(smb_request_t *sr, smb_lock_t *lock, smb_lock_t *conflict)
 		break;
 	}
 	mutex_exit(&sr->sr_mutex);
+
+	if (cancelled) {
+		mutex_enter(&lock->l_mutex);
+		while ((lock->l_flags & SMB_LOCK_FLAG_CANCELLED) == 0)
+			cv_wait(&lock->l_cv, &lock->l_mutex);
+		mutex_exit(&lock->l_mutex);
+	}
 
 	/* Return to the caller with n_lock_list held. */
 	smb_llist_enter(&node->n_lock_list, RW_WRITER);

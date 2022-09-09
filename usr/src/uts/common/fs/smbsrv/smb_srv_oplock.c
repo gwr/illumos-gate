@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2021 Tintri by DDN, Inc. All rights reserved.
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  * Copyright 2021 RackTop Systems, Inc.
  */
 
@@ -670,6 +670,9 @@ smb_oplock_wait_break_cancel(smb_request_t *sr)
 {
 	smb_node_t   *node = sr->cancel_arg2;
 	smb_oplock_t *ol;
+
+	if (node == NULL)
+		return;
 
 	SMB_NODE_VALID(node);
 	ol = &node->n_oplock;
