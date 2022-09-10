@@ -45,6 +45,14 @@ CONF_SRCDIR	= $(UTSBASE)/common/fs/smbclnt/netsmb
 OFFSETS_SRC	= $(CONF_SRCDIR)/offsets.in
 IOC_CHECK_H	= $(OBJS_DIR)/ioc_check.h
 
+# Todo: Try TYPECHECK_LIB in libsmbfs instead of ioc_check.h stuff?
+
+# What symbols we export (e.g. _init(), ...)
+MAPFILE		= $(CONF_SRCDIR)/$(MODULE).mapfile
+
+# The symbols we link against
+MAPFILES	+= tlimod nsmb_ext ddi
+
 #
 #	Include common rules.
 #
@@ -130,4 +138,5 @@ $(IOC_CHECK_H): $(OFFSETS_SRC)
 #
 #	Include common targets.
 #
+include $(UTSBASE)/Makefile.mapfile
 include $(UTSBASE)/intel/Makefile.targ
