@@ -1,3 +1,4 @@
+// Copyright 2022 RackTop Systems, Inc.
 // Copyright 2012 Nexenta Systems, Inc.  All rights reserved.
 // Copyright (C) 2002 Microsoft Corporation
 // All rights reserved.
@@ -1672,7 +1673,7 @@ int IsValidContextFlags( unsigned char ucContextFlags )
 int IsValidNegResult( SPNEGO_NEGRESULT negResult )
 {
    return ( negResult >= spnego_negresult_success &&
-            negResult <= spnego_negresult_rejected );
+            negResult <= spnego_negresult_request_mic );
 }
 
 /////////////////////////////////////////////////////////////////////////////
