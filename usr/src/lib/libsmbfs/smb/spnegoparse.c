@@ -1672,7 +1672,7 @@ int IsValidContextFlags( unsigned char ucContextFlags )
 int IsValidNegResult( SPNEGO_NEGRESULT negResult )
 {
    return ( negResult >= spnego_negresult_success &&
-            negResult <= spnego_negresult_rejected );
+            negResult <= spnego_negresult_request_mic );
 }
 
 /////////////////////////////////////////////////////////////////////////////

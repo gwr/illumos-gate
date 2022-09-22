@@ -271,7 +271,6 @@ smb_ssnsetup_spnego(struct smb_ctx *ctx, struct mbdata *hint_mb)
 	if (err)
 		goto out;
 
-#if 1	/* HACK */
 	if (getenv("HACKING") != NULL) {
 
 		/*
@@ -300,14 +299,28 @@ smb_ssnsetup_spnego(struct smb_ctx *ctx, struct mbdata *hint_mb)
 			DPRINT("smb__ssnsetup, ssp next, err=%d", err);
 			goto out;
 		}
-	}
-#endif	/* HACK */
 
-	/* NULL input indicates first call. */
-	err = ssp_ctx_next_token(ctx, NULL, &send_mb);
-	if (err) {
-		DPRINT("smb__ssnsetup, ssp next, err=%d", err);
-		goto out;
+		/*
+		 * Now send NTLMSSP negotiate in NegTokenTarg
+		 */
+		DPRINT("Connect sending NEGOEX!");
+		err = ssp_hack_put_newmech(ctx, &send_mb);
+		if (err) {
+			DPRINT("hack: smb__ssnsetup, ssp put2, err=%d", err);
+			goto out;
+		}
+
+		/* End HACKING */
+	} else {
+		/* Normal send first token */
+
+		/* NULL input indicates first call. */
+		err = ssp_ctx_next_token(ctx, NULL, &send_mb);
+		if (err) {
+			DPRINT("smb__ssnsetup, ssp next, err=%d", err);
+			goto out;
+		}
+
 	}
 	for (;;) {
 		err = smb__ssnsetup(ctx, &send_mb, &recv_mb);

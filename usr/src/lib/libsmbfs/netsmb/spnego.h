@@ -113,6 +113,7 @@ typedef enum spnego_negResult
 	spnego_negresult_success,
 	spnego_negresult_incomplete,
 	spnego_negresult_rejected,
+	spnego_negresult_request_mic,
 	spnego_negresult_NotUsed = -1
 } SPNEGO_NEGRESULT;
 

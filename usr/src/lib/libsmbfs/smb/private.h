@@ -140,6 +140,7 @@ void ssp_ctx_destroy(struct smb_ctx *);
 
 int ssp_hack_put_negoex(struct smb_ctx *, struct mbdata *);
 int ssp_hack_get_newmech(struct smb_ctx *, struct mbdata *);
+int ssp_hack_put_newmech(struct smb_ctx *, struct mbdata *);
 
 #ifdef KICONV_SUPPORT
 /* See nls.c (get rid of this?) */

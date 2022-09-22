@@ -109,37 +109,6 @@ uchar_t negoex_req[] = {
 	'\x73', '\x30', '\x32'
 };
 
-static void hexdump(const uchar_t *buf, int len);
-
-int ssp_hack_put_negoex(struct smb_ctx *ctx, struct mbdata *omb)
-{
-	struct mbuf *m;
-	size_t toklen = sizeof(negoex_req);
-	int err;
-
-	err = mb_init_sz(omb, toklen);
-	if (err)
-		return (err);
-	m = omb->mb_top;
-	memcpy(m->m_data, negoex_req, toklen);
-	omb->mb_count = m->m_len = toklen;
-
-	return (0);
-}
-
-int ssp_hack_get_newmech(struct smb_ctx *ctx, struct mbdata *imb)
-{
-	struct mbuf *m;
-	size_t toklen;
-	int err;
-
-	m = imb->mb_top;
-	printf("NEGOEX response: (len=%d)\n", m->m_len);
-	hexdump((uchar_t *)m->m_data, m->m_len);
-
-	return (0);
-}
-
 static void
 hexdump(const uchar_t *buf, int len)
 {
@@ -183,4 +152,117 @@ hexdump(const uchar_t *buf, int len)
 		}
 		printf("%s\n", ascii);
 	}
+}
+
+/*
+ * Put canned negoex_req from above.
+ */
+int
+ssp_hack_put_negoex(struct smb_ctx *ctx, struct mbdata *omb)
+{
+	struct mbuf *m;
+	size_t toklen = sizeof(negoex_req);
+	int err;
+
+	err = mb_init_sz(omb, toklen);
+	if (err)
+		return (err);
+	m = omb->mb_top;
+	memcpy(m->m_data, negoex_req, toklen);
+	omb->mb_count = m->m_len = toklen;
+
+	return (0);
+}
+
+/*
+ * Get negoex response (request-mic)
+ */
+int
+ssp_hack_get_newmech(struct smb_ctx *ctx, struct mbdata *imb)
+{
+	struct mbuf *m;
+	size_t toklen;
+	int err;
+
+	m = imb->mb_top;
+	printf("NEGOEX response: (len=%d)\n", m->m_len);
+	hexdump((uchar_t *)m->m_data, m->m_len);
+
+	return (0);
+}
+
+/*
+ * Put NTLMSSP negotiate, but as NegTokenTarg
+ */
+int
+ssp_hack_put_newmech(struct smb_ctx *ctx, struct mbdata *caller_out)
+{
+	struct mbdata body_out;
+	SPNEGO_TOKEN_HANDLE stok_out;
+	SPNEGO_NEGRESULT result;
+	ssp_ctx_t *sp;
+	struct mbuf *m;
+	ulong_t toklen;
+	int err, rc;
+
+	bzero(&body_out, sizeof (body_out));
+	stok_out = NULL;
+	sp = ctx->ct_ssp_ctx;
+
+	err = sp->sp_nexttok(sp, NULL, &body_out);
+	if (err)
+		goto out;
+
+	/*
+	 * Wrap the outgoing body if requested,
+	 * either negTokenInit on first call, or
+	 * negTokenTarg on subsequent calls.
+	 */
+	if (caller_out != NULL) {
+		m = body_out.mb_top;
+
+		rc = spnegoCreateNegTokenTarg(
+		    sp->sp_mech,
+		    spnego_negresult_NotUsed,
+		    (uchar_t *)m->m_data, m->m_len,
+		    NULL, 0, &stok_out);
+		/* Note: allocated stok_out */
+
+		if (rc) {
+			DPRINT("CreateNegTokenX, rc 0x%x", rc);
+			err = EBADRPC;
+			goto out;
+		}
+
+		/*
+		 * Copy binary from stok_out to caller_out
+		 * Two calls: get the size, get the data.
+		 */
+		rc = spnegoTokenGetBinary(stok_out, NULL, &toklen);
+		if (rc != SPNEGO_E_BUFFER_TOO_SMALL) {
+			DPRINT("GetBinary1, rc 0x%x", rc);
+			err = EBADRPC;
+			goto out;
+		}
+		err = mb_init_sz(caller_out, (size_t)toklen);
+		if (err)
+			goto out;
+		m = caller_out->mb_top;
+		rc = spnegoTokenGetBinary(stok_out,
+		    (uchar_t *)m->m_data, &toklen);
+		if (rc) {
+			DPRINT("GetBinary2, rc 0x%x", rc);
+			err = EBADRPC;
+			goto out;
+		}
+		caller_out->mb_count = m->m_len = (size_t)toklen;
+	}
+
+	err = 0;
+
+out:
+	mb_done(&body_out);
+	spnegoFreeData(stok_out);
+
+	return (err);
 }
