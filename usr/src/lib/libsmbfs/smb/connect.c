@@ -271,6 +271,38 @@ smb_ssnsetup_spnego(struct smb_ctx *ctx, struct mbdata *hint_mb)
 	if (err)
 		goto out;
 
+#if 1	/* HACK */
+	if (getenv("HACKING") != NULL) {
+
+		/*
+		 * XXX Hacking...
+		 * Send { NEGOEX, NTLMSSP }
+		 */
+		DPRINT("Connect sending NEGOEX!");
+		err = ssp_hack_put_negoex(ctx, &send_mb);
+		if (err) {
+			DPRINT("hack: smb__ssnsetup, ssp put, err=%d", err);
+			goto out;
+		}
+		err = smb__ssnsetup(ctx, &send_mb, &recv_mb);
+		DPRINT("hack: smb__ssnsetup err=%d, new state=%s", err,
+		    smb_iod_state_name(work->wk_out_state));
+		if (err != EINPROGRESS) {
+			goto out;
+		}
+		if (work->wk_out_state != SMBIOD_ST_AUTHCONT) {
+			DPRINT("hack: Wrong state (expected AUTHCONT)");
+			goto out;
+		}
+		DPRINT("Connect got NEGOEX respose:");
+		err = ssp_hack_get_newmech(ctx, &recv_mb);
+		if (err) {
+			DPRINT("smb__ssnsetup, ssp next, err=%d", err);
+			goto out;
+		}
+	}
+#endif	/* HACK */
+
 	/* NULL input indicates first call. */
 	err = ssp_ctx_next_token(ctx, NULL, &send_mb);
 	if (err) {

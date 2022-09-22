@@ -138,6 +138,9 @@ int ssp_ctx_create_client(struct smb_ctx *, struct mbdata *);
 int ssp_ctx_next_token(struct smb_ctx *, struct mbdata *, struct mbdata *);
 void ssp_ctx_destroy(struct smb_ctx *);
 
+int ssp_hack_put_negoex(struct smb_ctx *, struct mbdata *);
+int ssp_hack_get_newmech(struct smb_ctx *, struct mbdata *);
+
 #ifdef KICONV_SUPPORT
 /* See nls.c (get rid of this?) */
 extern uchar_t nls_lower[256], nls_upper[256];

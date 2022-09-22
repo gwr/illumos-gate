@@ -105,6 +105,8 @@ fknewvc(struct smb_ctx *ctx, struct addrinfo *ai)
 /*
  * Setup a new VC via the IOD.
  * Similar to findvc.c
+ *
+ * Note: This replaces the normal libsmbfs function (NODIRECT)
  */
 int
 smb_ctx_newvc(struct smb_ctx *ctx)

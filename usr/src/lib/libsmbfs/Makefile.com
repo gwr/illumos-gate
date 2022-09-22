@@ -68,6 +68,7 @@ OBJ_LIB=\
 	spnego.o \
 	spnegoparse.o \
 	ssp.o \
+	ssp_hack.o \
 	subr.o \
 	ui-sun.o \
 	utf_str.o

@@ -17,6 +17,8 @@
  * This file implements device open/close/ioctl wrappers that
  * redirect access from the real "nsmb" device to the in-process
  * device simulation in libfknsmb.
+ *
+ * Note: These replace the normal libsmbfs functions (NODIRECT)
  */
 
 #include <sys/param.h>
