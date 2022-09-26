@@ -20,6 +20,7 @@
  */
 /*
  * Copyright (c) 2006, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 #ifndef	_NSCD_CFGDEF_H
@@ -1150,6 +1151,16 @@ static	nscd_cfg_stat_desc_t	_nscd_cfg_stat_desc[] = {
 		NSCD_CFG_FUNC_GET_STAT_AS_GROUP),
 
 	NSCD_CFG_STAT_DESC(
+		"global-cache-hard-failures",
+		NSCD_CFG_DATA_INTEGER,
+		NSCD_CFG_SFLAG_GLOBAL,
+		fail_count,
+		nscd_cfg_stat_cache_t,
+		cache,
+		nscd_cfg_stat_global_data_t,
+		NSCD_CFG_FUNC_GET_STAT_AS_GROUP),
+
+	NSCD_CFG_STAT_DESC(
 		"global-cache-queries-queued",
 		NSCD_CFG_DATA_INTEGER,
 		NSCD_CFG_SFLAG_GLOBAL,
@@ -1314,6 +1325,16 @@ static	nscd_cfg_stat_desc_t	_nscd_cfg_stat_desc[] = {
 		NSCD_CFG_DATA_INTEGER,
 		NSCD_CFG_SFLAG_NONE,
 		neg_misses,
+		nscd_cfg_stat_cache_t,
+		cache,
+		nscd_cfg_stat_nsw_db_data_t,
+		NSCD_CFG_FUNC_GET_STAT_AS_GROUP),
+
+	NSCD_CFG_STAT_DESC(
+		"cache-hard-failures",
+		NSCD_CFG_DATA_INTEGER,
+		NSCD_CFG_SFLAG_NONE,
+		fail_count,
 		nscd_cfg_stat_cache_t,
 		cache,
 		nscd_cfg_stat_nsw_db_data_t,
