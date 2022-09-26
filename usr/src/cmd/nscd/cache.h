@@ -20,6 +20,7 @@
  */
 /*
  * Copyright (c) 1994, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 #ifndef _NSCD_H
@@ -98,7 +99,7 @@ extern "C" {
 
 #define	_NSC_GET_HITRATE(sp) \
 	sp->hitrate = sp->pos_misses + sp->neg_misses + \
-		sp->pos_hits + sp->neg_hits; \
+		sp->pos_hits + sp->neg_hits + sp->fail_count; \
 	if (sp->hitrate > 0.0) \
 		sp->hitrate = (100.0 * \
 			((double)sp->pos_hits + \
@@ -227,6 +228,7 @@ typedef struct nscd_cfg_stat_cache {
 	ulong_t	neg_hits;		/* hits on -ve entries */
 	ulong_t	pos_misses;		/* misses on +ve entries */
 	ulong_t	neg_misses;		/* misses on -ve entries */
+	ulong_t fail_count;		/* hard failure count */
 	ulong_t	entries;		/* count of cache entries */
 	ulong_t	drop_count;		/* cache queries dropped */
 	ulong_t	wait_count;		/* cache queries queued */

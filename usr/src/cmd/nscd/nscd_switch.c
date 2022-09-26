@@ -23,6 +23,7 @@
  * Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  * Copyright 2012 Milan Jurik. All rights reserved.
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 #include <stdlib.h>	/* getenv() */
@@ -751,8 +752,6 @@ nss_search(nss_db_root_t *rootp, nss_db_initf_t initf, int search_fnum,
 		int			n_loop = 0;
 		int			max_retry = 10;
 
-		res = NSS_UNAVAIL;
-
 		if (n_src == 0)
 			lkp = s->config->lookups;
 		else
@@ -865,6 +864,14 @@ nss_search(nss_db_root_t *rootp, nss_db_initf_t initf, int search_fnum,
 			goto next_src;
 		}
 
+		/*
+		 * Before this point, keep the result set on the prior loop.
+		 * Otherwise, disabled services might cause us to overwrite
+		 * a cacheable result with an uncacheable one.
+		 *
+		 * If a particular check wants a fatal error, it should set
+		 * it explicitly.
+		 */
 		do {
 			/*
 			 * we can only retry max_retry times,

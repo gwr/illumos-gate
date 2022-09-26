@@ -23,6 +23,7 @@
  * Copyright 2012 Milan Jurik. All rights reserved.
  * Copyright (c) 2016 by Delphix. All rights reserved.
  * Copyright 2018 Joyent, Inc.
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 /*
@@ -531,6 +532,8 @@ print_stats(nscd_cfg_stat_cache_t *statsp)
 	    statsp->pos_misses);
 	(void) fprintf(stdout, gettext("\t negative misses: %lu\n"),
 	    statsp->neg_misses);
+	(void) fprintf(stdout, gettext("\t hard failures: %lu\n"),
+	    statsp->fail_count);
 	(void) fprintf(stdout, gettext("\t total entries: %lu\n"),
 	    statsp->entries);
 	(void) fprintf(stdout, gettext("\t queries queued: %lu\n"),
@@ -957,6 +960,7 @@ _nscd_cfg_cache_get_stat(
 			statsp->neg_hits += stats.neg_hits;
 			statsp->pos_misses += stats.pos_misses;
 			statsp->neg_misses += stats.neg_misses;
+			statsp->fail_count += stats.fail_count;
 			statsp->entries += stats.entries;
 			statsp->drop_count += stats.drop_count;
 			statsp->wait_count += stats.wait_count;
@@ -1714,6 +1718,24 @@ lookup_int(nsc_lookup_args_t *largs, int flag)
 				delete_entry(nscdb, ctx, this_entry);
 			else
 				this_stats->status = ST_DISCARD;
+
+			switch (status) {
+			/* These aren't 'real' errors */
+			case NSS_TRYLOCAL:
+			case NSS_TRYAGAIN:
+			case NSS_ALTRETRY:
+			case NSS_NISSERVDNS_TRYAGAIN:
+				break;
+
+			default:
+				/* update hard failure count */
+				if (!(UPDATEBIT & flag)) {
+					(void) mutex_lock(&ctx->stats_mutex);
+					ctx->stats.fail_count++;
+					(void) mutex_unlock(&ctx->stats_mutex);
+				}
+				break;
+			}
 
 			(void) mutex_unlock(&nscdb->db_mutex);
 			_NSCD_LOG(NSCD_LOG_CACHE, NSCD_LOG_LEVEL_WARNING)
