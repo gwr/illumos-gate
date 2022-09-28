@@ -19,7 +19,7 @@
 #
 #
 # Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
-# Copyright 2020 Tintri by DDN, Inc. All rights reserved.
+# Copyright 2022 Tintri by DDN, Inc. All rights reserved.
 #
 
 #
@@ -60,6 +60,7 @@ SYMBOL_VERSION SUNWprivate {
 	ht_remove_item;
 	ht_replace_item;
 	ht_set_cmpfn;
+	ht_set_hashfn;
 	lsa_account_xdr;
 	oemtoucs;
 	rand_hash;

@@ -21,9 +21,9 @@
 /*
  * Copyright 2007 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
+ *
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  */
-
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
 
 /*
  * Generic hash table library. The hash table is an array of pointers
@@ -210,6 +210,20 @@ ht_set_cmpfn(HT_HANDLE *handle, HT_CMP cmpfn)
 {
 	if (handle)
 		handle->ht_cmp = cmpfn;
+}
+
+/*
+ * ht_set_hashfn
+ *
+ * Replace the current hash function. As the this is function
+ * for searching hash tables, it should not be called while there are
+ * items in the table.
+ */
+void
+ht_set_hashfn(HT_HANDLE *handle, HT_HASH hashfn)
+{
+	if (handle)
+		handle->ht_hash = hashfn;
 }
 
 /*

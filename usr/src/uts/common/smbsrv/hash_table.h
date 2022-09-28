@@ -21,12 +21,12 @@
 /*
  * Copyright 2007 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
+ *
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  */
 
 #ifndef _SMBSRV_HASH_TABLE_H
 #define	_SMBSRV_HASH_TABLE_H
-
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
 
 /*
  *
@@ -132,6 +132,8 @@ typedef void (*HT_CALLBACK)(HT_ITEM *item);
  */
 typedef	int (*HT_CMP)(const char *, const char *, size_t);
 
+typedef	size_t (*HT_HASH)(HT_HANDLE *, const char *);
+
 /*
  * Iterator used with ht_findfirst and ht_findnext to walk through
  * all the items in a hash table. The iterator should be treated as
@@ -155,6 +157,7 @@ extern HT_HANDLE *ht_create_table(size_t table_size, size_t key_size,
     size_t flags);
 extern void ht_destroy_table(HT_HANDLE *handle);
 extern void ht_set_cmpfn(HT_HANDLE *handle, HT_CMP cmpfn);
+extern void ht_set_hashfn(HT_HANDLE *handle, HT_HASH hashfn);
 extern size_t ht_get_total_items(HT_HANDLE *handle);
 
 /*

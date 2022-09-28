@@ -19,7 +19,7 @@
  * CDDL HEADER END
  *
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2018 Nexenta Systems, Inc. All rights reserved.
+ * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
  * Copyright 2019 RackTop Systems.
  */
 
@@ -1343,6 +1343,37 @@ smb_shr_add_transient(char *name, char *cmnt, char *path)
  * ============================================
  */
 
+static size_t
+smb_shr_cache_hash(HT_HANDLE *handle, const char *key)
+{
+	unsigned int hash_ndx = 0;
+	size_t rval;
+	uint32_t c;
+
+	assert((handle->ht_flags & HTHF_FIXED_KEY) == 0);
+
+	while (*key) {
+		if (smb_isascii(*key)) {
+			hash_ndx += smb_tolower(*key);
+			++key;
+		} else {
+			if (smb_mbtowc(&c, key, MTS_MB_CHAR_MAX) < 0) {
+				hash_ndx += *key;
+				++key;
+			} else if (c == 0) {
+				break;
+			} else {
+				c = smb_tolower(c);
+				hash_ndx += c;
+				key += smb_wctomb(NULL, c);
+			}
+		}
+	}
+
+	rval = (hash_ndx * HASH_MESH_VALUE) & handle->ht_table_mask;
+	return (rval);
+}
+
 /*
  * Create the share cache (hash table).
  */
@@ -1361,8 +1392,10 @@ smb_shr_cache_create(void)
 			break;
 		}
 
-		(void) ht_set_cmpfn(smb_shr_cache.sc_cache,
+		ht_set_cmpfn(smb_shr_cache.sc_cache,
 		    (HT_CMP)smb_strcasecmp);
+		ht_set_hashfn(smb_shr_cache.sc_cache,
+		    smb_shr_cache_hash);
 		(void) ht_register_callback(smb_shr_cache.sc_cache,
 		    smb_shr_cache_freent);
 		smb_shr_cache.sc_nops = 0;
