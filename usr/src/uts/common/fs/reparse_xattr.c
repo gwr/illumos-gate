@@ -23,6 +23,10 @@
 #include <sys/nbmlock.h>
 #include <sys/sdt.h>
 
+#ifndef	SET_ERROR
+#define	SET_ERROR(err) (err)
+#endif
+
 const uint32_t reparse_packed_cur_version = 1;
 uint_t reparse_vsd_key = 0;
 kmem_cache_t *reparse_vsd_cache;
