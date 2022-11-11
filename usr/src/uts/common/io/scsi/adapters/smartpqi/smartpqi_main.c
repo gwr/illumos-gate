@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2020 Nexenta by DDN, Inc. All rights reserved.
+ * Copyright 2022 Nexenta by DDN, Inc. All rights reserved.
  * Copyright 2021 RackTop Systems, Inc.
  */
 
@@ -192,7 +192,7 @@ smartpqi_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
 	list_create(&s->s_mem_check, sizeof (struct mem_check),
 	    offsetof(struct mem_check, m_node));
 	list_create(&s->s_special_device.pd_cmd_list, sizeof (struct pqi_cmd),
-		offsetof(struct pqi_cmd, pc_list));
+	    offsetof(struct pqi_cmd, pc_list));
 
 	/* ---- Initialize mutex used in interrupt handler ---- */
 	mutex_init(&s->s_mutex, NULL, MUTEX_DRIVER,
@@ -200,6 +200,7 @@ smartpqi_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
 	mutex_init(&s->s_io_mutex, NULL, MUTEX_DRIVER, NULL);
 	mutex_init(&s->s_intr_mutex, NULL, MUTEX_DRIVER, NULL);
 	mutex_init(&s->s_special_device.pd_mutex, NULL, MUTEX_DRIVER, NULL);
+	mutex_init(&s->s_special_device.pd_reset, NULL, MUTEX_DRIVER, NULL);
 	cv_init(&s->s_quiescedvar, NULL, CV_DRIVER, NULL);
 	cv_init(&s->s_io_condvar, NULL, CV_DRIVER, NULL);
 
@@ -315,6 +316,7 @@ smartpqi_detach(dev_info_t *dip, ddi_detach_cmd_t cmd)
 				(void) mdi_pi_free(devp->pd_pip_offlined, 0);
 			list_destroy(&devp->pd_cmd_list);
 			mutex_destroy(&devp->pd_mutex);
+			mutex_destroy(&devp->pd_reset);
 			list_remove(&s->s_devnodes, devp);
 			kmem_free(devp, sizeof (*devp));
 		}

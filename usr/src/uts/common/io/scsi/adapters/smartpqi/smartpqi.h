@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2020 Nexenta by DDN, Inc. All rights reserved.
+ * Copyright 2022 Nexenta by DDN, Inc. All rights reserved.
  * Copyright 2021 RackTop Systems, Inc.
  */
 
@@ -78,7 +78,7 @@ extern "C" {
 #define	PQI_MAX_QUEUE_GROUPS			PQI_MAX_MSIX_VECTORS
 #define	PQI_MIN_OPERATIONAL_QUEUE_ID		1
 /* ---- Size of structure scsi_arq_status without sense data. ---- */
-#define	PQI_ARQ_STATUS_NOSENSE_LEN	(sizeof (struct scsi_arq_status) - \
+#define	PQI_ARQ_STATUS_NOSENSE_LEN    (sizeof (struct scsi_arq_status) - \
     sizeof (struct scsi_extended_sense))
 
 /* ---- macros to return various addresses ---- */
@@ -262,6 +262,7 @@ typedef struct pqi_event {
 
 typedef struct pqi_device {
 	list_node_t		pd_list;
+	kmutex_t		pd_reset; /* must hold to reset device */
 	kmutex_t		pd_mutex;
 
 	/* ---- Protected by pd_mutex ---- */
