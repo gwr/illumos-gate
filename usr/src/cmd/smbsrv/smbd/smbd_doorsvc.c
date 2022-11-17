@@ -40,6 +40,7 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <priv.h>
+#include <rpcsvc/daemon_utils.h> /* DAEMON_UID */
 
 #include <smbsrv/smb_door.h>
 #include <smbsrv/smb_xdr.h>
@@ -91,6 +92,7 @@ typedef struct smbd_doorop {
 #define	DOF_R	1	/* read */
 #define	DOF_W	2	/* write */
 #define	DOF_K	4	/* kernel caller */
+#define	DOF_D	8	/* daemon caller */
 
 smbd_doorop_t smbd_doorops[] = {
 	{ SMB_DR_NULL,			DOF_R,	smbd_dop_null },
@@ -111,7 +113,8 @@ smbd_doorop_t smbd_doorops[] = {
 	{ SMB_DR_DFS_GET_REFERRALS,	DOF_K,	smbd_dop_dfs_get_referrals },
 	{ SMB_DR_SHR_HOSTACCESS,	DOF_K,	smbd_dop_shr_hostaccess },
 	{ SMB_DR_SHR_EXEC,		DOF_K,	smbd_dop_shr_exec },
-	{ SMB_DR_NOTIFY_DC_CHANGED,	DOF_W,	smbd_dop_notify_dc_changed },
+	{ SMB_DR_NOTIFY_DC_CHANGED,	DOF_W|DOF_D,
+						smbd_dop_notify_dc_changed },
 	{ SMB_DR_LOOKUP_LSID,		DOF_R,	smbd_dop_lookup_sid },
 	{ SMB_DR_LOOKUP_LNAME,		DOF_R,	smbd_dop_lookup_name }
 };
@@ -213,12 +216,13 @@ smbd_door_stop(void)
 }
 
 static boolean_t
-have_req_privs(int opflags)
+have_req_privs(uint32_t opcode, int opflags)
 {
 	ucred_t *uc = NULL;
 	const priv_set_t *ps = NULL;
 	boolean_t ret = B_FALSE;
 	pid_t pid;
+	uid_t uid;
 
 	/* If only DOF_R (read), let 'em through */
 	if ((opflags & ~DOF_R) == 0)
@@ -241,6 +245,13 @@ have_req_privs(int opflags)
 			goto out;
 		}
 	}
+	uid = ucred_geteuid(uc);
+	if ((opflags & DOF_D) != 0) {
+		if (uid == DAEMON_UID) {
+			ret = B_TRUE;
+			goto out;
+		}
+	}
 
 	ps = ucred_getprivset(uc, PRIV_EFFECTIVE);
 	if (ps == NULL) {
@@ -259,7 +270,8 @@ have_req_privs(int opflags)
 	}
 
 	syslog(LOG_DEBUG, "smbd_door_dispatch: missing privilege, "
-	    "PID = %d UID = %d", (int)pid, ucred_getruid(uc));
+	    "OpCode = %d PID = %d UID = %d",
+	    (int)opcode, (int)pid, (int)uid);
 
 out:
 	/* ps is free'd with the ucred */
@@ -339,7 +351,7 @@ smbd_door_dispatch(void *cookie, char *argp, size_t arg_size, door_desc_t *dp,
 	opflags = doorop->opflags;
 	if ((hdr->dh_flags & SMB_DF_ASYNC) != 0)
 		opflags |= DOF_K;
-	if (!have_req_privs(opflags)) {
+	if (!have_req_privs(hdr->dh_op, opflags)) {
 		smbd_door_return(&smbd_door_sdh, NULL, 0, NULL, 0);
 	}
 
