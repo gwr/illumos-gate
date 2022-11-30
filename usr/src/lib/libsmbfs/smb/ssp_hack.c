@@ -182,13 +182,47 @@ ssp_hack_get_newmech(struct smb_ctx *ctx, struct mbdata *imb)
 {
 	struct mbuf *m;
 	size_t toklen;
+	SPNEGO_TOKEN_HANDLE	tok = NULL;
+	SPNEGO_NEGRESULT	result = -1;
+	SPNEGO_MECH_OID		mech = -1;
 	int err;
+	int rc = -1;
 
 	m = imb->mb_top;
 	printf("NEGOEX response: (len=%d)\n", m->m_len);
 	hexdump((uchar_t *)m->m_data, m->m_len);
 
-	return (0);
+	err = spnegoInitFromBinary((uchar_t *)m->m_data, m->m_len, &tok);
+	if (err != SPNEGO_E_SUCCESS) {
+		DPRINT("get newmech parse, err %d", err);
+		goto out;
+	}
+	/* Have token. */
+	err = spnegoGetNegotiationResult(tok, &result);
+	if (err != SPNEGO_E_SUCCESS) {
+		DPRINT("get newmech result, err %d", err);
+		goto out;
+	}
+	if (result != spnego_negresult_request_mic) {
+		printf("NEGOEX response: (neg result %d)\n", result);
+		goto out;
+	}
+
+	err = spnegoGetSupportedMechType(tok, &mech);
+	if (err != SPNEGO_E_SUCCESS) {
+		DPRINT("get newmech MechType, err %d", err);
+		return (-1);
+	}
+	if (mech != spnego_mech_oid_NTLMSSP) {
+		printf("NEGOEX response: (Not NTLMSSP?)\n");
+		goto out;
+	}
+	rc = 0;
+
+out:
+	spnegoFreeData(tok);
+
+	return (rc);
 }
 
 /*
