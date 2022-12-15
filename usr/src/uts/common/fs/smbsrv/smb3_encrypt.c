@@ -123,7 +123,7 @@ smb3_encrypt_begin(smb_request_t *sr, smb_token_t *token)
 	smb_user_t *u = sr->uid_user;
 	struct smb_key *enc_key = &u->u_enc_key;
 	struct smb_key *dec_key = &u->u_dec_key;
-	uint32_t keylen;
+	uint32_t derived_keylen, input_keylen;
 
 	/*
 	 * In order to enforce encryption, all users need to
@@ -150,54 +150,58 @@ smb3_encrypt_begin(smb_request_t *sr, smb_token_t *token)
 	/*
 	 * For SMB3, the encrypt/decrypt keys are derived from
 	 * the session key using KDF in counter mode.
+	 *
+	 * AES256 Keys are derived from the 'FullSessionKey', which is the
+	 * entirety of what we got in the token; AES128 Keys are derived from
+	 * the 'SessionKey', which is the first 16 bytes of the key we got in
+	 * the token.
 	 */
 	if (s->dialect >= SMB_VERS_3_11) {
-		uint32_t ssnkey_len;
-
 		if (s->smb31_enc_cipherid == SMB3_CIPHER_AES256_GCM ||
 		    s->smb31_enc_cipherid == SMB3_CIPHER_AES256_CCM) {
-			keylen = 32;
-			ssnkey_len = token->tkn_ssnkey.len;
+			derived_keylen = AES256_KEY_LENGTH;
+			input_keylen = token->tkn_ssnkey.len;
 		} else {
-			keylen = SMB2_KEYLEN; /* 16 */
-			ssnkey_len = MIN(16, token->tkn_ssnkey.len);
+			derived_keylen = AES128_KEY_LENGTH;
+			input_keylen = MIN(SMB2_SSN_KEYLEN,
+			    token->tkn_ssnkey.len);
 		}
 
-		if (smb3_kdf(enc_key->key, keylen,
-		    token->tkn_ssnkey.val, ssnkey_len,
+		if (smb3_kdf(enc_key->key, derived_keylen,
+		    token->tkn_ssnkey.val, input_keylen,
 		    (uint8_t *)"SMBS2CCipherKey", 16,
 		    u->u_preauth_hashval, SHA512_DIGEST_LENGTH) != 0)
 			return;
 
-		if (smb3_kdf(dec_key->key, keylen,
-		    token->tkn_ssnkey.val, ssnkey_len,
+		if (smb3_kdf(dec_key->key, derived_keylen,
+		    token->tkn_ssnkey.val, input_keylen,
 		    (uint8_t *)"SMBC2SCipherKey", 16,
 		    u->u_preauth_hashval, SHA512_DIGEST_LENGTH) != 0)
 			return;
 
-		enc_key->len = keylen;
-		dec_key->len = keylen;
+		enc_key->len = derived_keylen;
+		dec_key->len = derived_keylen;
 	} else {
-		keylen = SMB2_KEYLEN;
+		derived_keylen = AES128_KEY_LENGTH;
+		input_keylen = MIN(SMB2_SSN_KEYLEN, token->tkn_ssnkey.len);
 
-		if (smb3_kdf(enc_key->key, keylen,
-		    token->tkn_ssnkey.val, token->tkn_ssnkey.len,
+		if (smb3_kdf(enc_key->key, derived_keylen,
+		    token->tkn_ssnkey.val, input_keylen,
 		    (uint8_t *)"SMB2AESCCM", 11,
 		    (uint8_t *)"ServerOut", 10) != 0)
 			return;
 
-		if (smb3_kdf(dec_key->key, keylen,
-		    token->tkn_ssnkey.val, token->tkn_ssnkey.len,
+		if (smb3_kdf(dec_key->key, derived_keylen,
+		    token->tkn_ssnkey.val, input_keylen,
 		    (uint8_t *)"SMB2AESCCM", 11,
 		    (uint8_t *)"ServerIn ", 10) != 0)
 			return;
 
-		enc_key->len = keylen;
-		dec_key->len = keylen;
+		enc_key->len = derived_keylen;
+		dec_key->len = derived_keylen;
 	}
 
 	smb3_encrypt_init_nonce(u);
-
 }
 
 /*

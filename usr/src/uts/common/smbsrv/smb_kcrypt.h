@@ -35,11 +35,14 @@
 extern "C" {
 #endif
 
+#define	AES128_KEY_LENGTH	16	/* AES128 key length in bytes */
+#define	AES256_KEY_LENGTH	32	/* AES256 key length in bytes */
 #define	MD5_DIGEST_LENGTH	16	/* MD5 digest length in bytes */
 #define	SHA256_DIGEST_LENGTH	32	/* SHA256 digest length in bytes */
 #define	SHA512_DIGEST_LENGTH	64	/* SHA512 digest length in bytes */
 #define	SMB2_SIG_SIZE		16
-#define	SMB2_KEYLEN		16
+#define	SMB2_KEYLEN		16	/* SMB2/3 Signing Key length */
+#define	SMB2_SSN_KEYLEN		16	/* Max size of the SMB2 Session Key */
 
 #ifdef	_KERNEL
 /* KCF variant */
