@@ -21,7 +21,8 @@
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2013 by Delphix. All rights reserved.
- * Copyright 2017 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2020 Tintri by DDN, Inc. All rights reserved.
+ * Copyright 2019-2023 RackTop Systems, Inc.
  */
 
 #include <sys/types.h>
@@ -2423,6 +2424,7 @@ zfs_zaccess(znode_t *zp, int mode, int flags, boolean_t skipaclchk, cred_t *cr)
 	needed_bits = 0;
 
 	working_mode = mode;
+
 	if ((working_mode & (ACE_READ_ACL|ACE_READ_ATTRIBUTES)) &&
 	    owner == crgetuid(cr))
 		working_mode &= ~(ACE_READ_ACL|ACE_READ_ATTRIBUTES);
@@ -2482,9 +2484,9 @@ zfs_zaccess(znode_t *zp, int mode, int flags, boolean_t skipaclchk, cred_t *cr)
 		    needed_bits & ~checkmode, needed_bits);
 
 		if (error == 0 && (working_mode & ACE_WRITE_OWNER))
-			error = secpolicy_vnode_chown(cr, owner);
+			error = secpolicy_vnode_chown3(cr, owner, B_FALSE);
 		if (error == 0 && (working_mode & ACE_WRITE_ACL))
-			error = secpolicy_vnode_setdac(cr, owner);
+			error = secpolicy_vnode_setdac3(cr, owner, B_FALSE);
 
 		if (error == 0 && (working_mode &
 		    (ACE_DELETE|ACE_DELETE_CHILD)))

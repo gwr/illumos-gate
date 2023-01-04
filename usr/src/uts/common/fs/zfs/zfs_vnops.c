@@ -24,7 +24,8 @@
  * Copyright (c) 2012, 2017 by Delphix. All rights reserved.
  * Copyright (c) 2014 Integros [integros.com]
  * Copyright 2020 Joyent, Inc.
- * Copyright 2017 Nexenta Systems, Inc.
+ * Copyright 2020 Tintri by DDN, Inc. All rights reserved.
+ * Copyright 2015-2023 RackTop Systems, Inc.
  */
 
 /* Portions Copyright 2007 Jeremy Teo */
@@ -3353,7 +3354,8 @@ top:
 			saved_mask = vap->va_mask;
 			vap->va_mask &= ~trim_mask;
 		}
-		err = secpolicy_vnode_setattr(cr, vp, vap, &oldva, flags,
+		err = secpolicy_vnode_setattr(cr, vp, vap, &oldva,
+		    (flags | ATTR_NOIMPLICIT),
 		    (int (*)(void *, int, cred_t *))zfs_zaccess_unix, zp);
 		if (err) {
 			ZFS_EXIT(zfsvfs);
