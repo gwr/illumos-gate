@@ -3706,6 +3706,7 @@ $endif
 	klpd_register_id;
 	klpd_unregister;
 	klpd_unregister_id;
+	_legacy_isatty;
 	_lgrp_home_fast		{ FLAGS = NODYNSORT; };
 	_lgrpsys;
 	_lltostr;

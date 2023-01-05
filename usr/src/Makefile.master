@@ -712,8 +712,10 @@ NATIVE_CCFLAGS64=	$(CCOPTFLAG64) $($(NATIVE_MACH64)_CCFLAGS) \
 
 DTEXTDOM=-DTEXT_DOMAIN=\"$(TEXT_DOMAIN)\"	# For messaging.
 DTS_ERRNO=-D_TS_ERRNO
+# move the isatty define down nearer consumers as things get fixed
+D_ISATTY=-D_USE_LEGACY_ISATTY
 CPPFLAGS.first=	# Please keep empty.  Only lower makefiles should set this.
-CPPFLAGS.master=$(DTEXTDOM) $(DTS_ERRNO) \
+CPPFLAGS.master=$(DTEXTDOM) $(DTS_ERRNO) $(D_ISATTY) \
 	$(ENVCPPFLAGS1) $(ENVCPPFLAGS2) $(ENVCPPFLAGS3) $(ENVCPPFLAGS4) \
 	$(ADJUNCT_PROTO:%=-I%/usr/include)
 CPPFLAGS.native=$(ENVCPPFLAGS1) $(ENVCPPFLAGS2) $(ENVCPPFLAGS3) \

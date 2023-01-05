@@ -34,6 +34,7 @@
 #include <sys/types.h>
 #include <sys/termio.h>
 #include <errno.h>
+#undef _USE_LEGACY_ISATTY
 #include <unistd.h>
 
 /*
@@ -64,6 +65,25 @@ isatty(int f)
 		if (errno != EBADF) {
 			errno = ENOTTY;
 		}
+		return (0);
+	}
+	return (1);
+}
+
+/*
+ * Legacy version of the above (preserves errno)
+ * Used by a lot of our older commands & libs.
+ * See unistd.h _USE_LEGACY_ISATTY
+ */
+int
+_legacy_isatty(int f)
+{
+	struct termio tty;
+	int err;
+
+	err = errno;
+	if (ioctl(f, TCGETA, &tty) < 0) {
+		errno = err;
 		return (0);
 	}
 	return (1);

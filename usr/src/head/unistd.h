@@ -399,7 +399,20 @@ extern int ioctl(int, int, ...);
 extern int isaexec(const char *, char *const *, char *const *);
 extern int issetugid(void);
 #endif
+
+#ifndef	_ISATTY_DEFINED		/* Avoid duplicate in stdlib.h */
+#define	_ISATTY_DEFINED
+#ifdef	_USE_LEGACY_ISATTY
+#ifdef	__PRAGMA_REDEFINE_EXTNAME
+#pragma	redefine_extname isatty _legacy_isatty
+#else	/* __PRAGMA_REDEFINE_EXTNAME */
+extern int _legacy_isatty(int);
+#define	isatty	_legacy_isatty
+#endif	/* __PRAGMA_REDEFINE_EXTNAME */
+#endif	/* _USE_LEGACY_ISATTY */
 extern int isatty(int);
+#endif	/* _ISATTY_DEFINED */
+
 #if !defined(__XOPEN_OR_POSIX) || defined(_XPG4_2) || defined(__EXTENSIONS__)
 extern int lchown(const char *, uid_t, gid_t);
 #endif

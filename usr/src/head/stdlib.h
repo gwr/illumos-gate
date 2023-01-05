@@ -297,7 +297,20 @@ extern int optind, opterr, optopt;
 extern char *getpass(const char *);
 extern char *getpassphrase(const char *);
 extern int getpw(uid_t, char *);
+
+#ifndef	_ISATTY_DEFINED		/* Avoid duplicate in unistd.h */
+#define	_ISATTY_DEFINED
+#ifdef	_USE_LEGACY_ISATTY
+#ifdef	__PRAGMA_REDEFINE_EXTNAME
+#pragma	redefine_extname isatty _legacy_isatty
+#else	/* __PRAGMA_REDEFINE_EXTNAME */
+extern int _legacy_isatty(int);
+#define	isatty	_legacy_isatty
+#endif	/* __PRAGMA_REDEFINE_EXTNAME */
+#endif	/* _USE_LEGACY_ISATTY */
 extern int isatty(int);
+#endif	/* _ISATTY_DEFINED */
+
 extern void *memalign(size_t, size_t);
 extern char *ttyname(int);
 extern char *mkdtemp(char *);
