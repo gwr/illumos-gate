@@ -211,8 +211,12 @@ function test_chmod_map
 		check_test_result "$node" "$acl_flag" "$acl_access" \
 		    "$acl_inherit_object" "$acl_inherit_strategy" "$acl_type"
 
-		# Check "chmod A-"
-		log_must usr_exec chmod A0- $node
+		# Check "chmod A-". If write_acl is denied, use root.
+		if [[ $acl_type == deny && $acl_access == *C* ]]; then
+			log_must chgusr_exec root chmod A0- $node
+		else
+			log_must usr_exec chmod A0- $node
+		fi
 		log_must usr_exec eval "ls -Vd $node > $cur_ace"
 
 		diff $orig_ace $cur_ace

@@ -160,7 +160,7 @@ function test_chmod_basic_access #node g_usr o_usr
 			check_chmod_results "$node" "$flag" \
 				"$acl_t" "$g_usr" "$o_usr"
 
-			log_must usr_exec chmod A0- $node
+			log_pos usr_exec chmod A-$flag:$acl_t $node
 		done
 	done
 }

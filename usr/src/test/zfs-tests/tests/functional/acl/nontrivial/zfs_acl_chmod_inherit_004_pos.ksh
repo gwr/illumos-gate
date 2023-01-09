@@ -54,7 +54,7 @@ log_assert "aclinherit=passthrough-x should inherit the execute permission" \
 log_onexit cleanup
 
 set -A aces \
-    "owner@:rwxp:f:allow" \
+    "owner@:rwxpC:f:allow" \
     "group@:rxp:f:allow" \
     "everyone@:rxp:f:allow"
 
