@@ -2484,7 +2484,7 @@ zfs_zaccess(znode_t *zp, int mode, int flags, boolean_t skipaclchk, cred_t *cr)
 		    needed_bits & ~checkmode, needed_bits);
 
 		if (error == 0 && (working_mode & ACE_WRITE_OWNER))
-			error = secpolicy_vnode_chown3(cr, owner, B_FALSE);
+			error = secpolicy_vnode_chown(cr, owner);
 		if (error == 0 && (working_mode & ACE_WRITE_ACL))
 			error = secpolicy_vnode_setdac3(cr, owner, B_FALSE);
 

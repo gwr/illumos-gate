@@ -1171,30 +1171,10 @@ int
 secpolicy_vnode_chown(const cred_t *cred, uid_t owner)
 {
 	boolean_t is_owner = (owner == crgetuid(cred));
-
-	return (secpolicy_vnode_chown3(cred, owner, is_owner));
-}
-
-/*
- * Variant of secpolicy_vnode_chown() that does NOT assume
- * owner should have implied "chown" access -- used by ZFS
- * for non-trivial ACLs where owner rights are explicit.
- * When called for trivial ACLs, owner_implied_rights is
- * set when the credential matches the file owner.
- */
-
-int
-secpolicy_vnode_chown3(const cred_t *cred, uid_t owner,
-    boolean_t owner_implied_rights)
-{
 	boolean_t allzone = B_FALSE;
 	int priv;
 
-	if (!owner_implied_rights) {
-		/*
-		 * The cred is not the file owner, or the ACL
-		 * is non-trivial and owner lacks write owner.
-		 */
+	if (!is_owner) {
 		allzone = (owner == 0);
 		priv = PRIV_FILE_CHOWN;
 	} else {
@@ -1256,7 +1236,7 @@ secpolicy_vnode_setdac(const cred_t *cred, uid_t owner)
 	if (owner == cred->cr_uid)
 		return (0);
 
-	return (PRIV_POLICY(cred, PRIV_FILE_DAC_WRITE, allzone, EPERM, NULL));
+	return (PRIV_POLICY(cred, PRIV_FILE_OWNER, allzone, EPERM, NULL));
 }
 
 /*
@@ -1278,7 +1258,7 @@ secpolicy_vnode_setdac3(const cred_t *cred, uid_t owner,
 	if (owner_implied_rights && owner == cred->cr_uid)
 		return (0);
 
-	return (PRIV_POLICY(cred, PRIV_FILE_DAC_WRITE, allzone, EPERM, NULL));
+	return (PRIV_POLICY(cred, PRIV_FILE_OWNER, allzone, EPERM, NULL));
 }
 
 /*
@@ -1540,9 +1520,8 @@ secpolicy_vnode_setattr(cred_t *cr, struct vnode *vp, struct vattr *vap,
 		/*
 		 * If necessary, check privilege to see if update can be done.
 		 */
-		if (checkpriv) {
-			error = secpolicy_vnode_chown3(cr, ovap->va_uid,
-			    implicit);
+		if (checkpriv &&
+		    (error = secpolicy_vnode_chown(cr, ovap->va_uid)) != 0) {
 			goto out;
 		}
 
