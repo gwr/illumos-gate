@@ -3348,14 +3348,17 @@ top:
 		 * has the ability to modify mode.  In that case remove
 		 * UID|GID and or MODE from mask so that
 		 * secpolicy_vnode_setattr() doesn't revoke it.
+		 * Also, if acl_implicit_owner_rights if false,
+		 * tell secpolicy about that via the flags.
 		 */
 
+		if (zfsvfs->z_acl_ior == B_FALSE)
+			flags |= ATTR_NOIMPLICIT;
 		if (trim_mask) {
 			saved_mask = vap->va_mask;
 			vap->va_mask &= ~trim_mask;
 		}
-		err = secpolicy_vnode_setattr(cr, vp, vap, &oldva,
-		    (flags | ATTR_NOIMPLICIT),
+		err = secpolicy_vnode_setattr(cr, vp, vap, &oldva, flags,
 		    (int (*)(void *, int, cred_t *))zfs_zaccess_unix, zp);
 		if (err) {
 			ZFS_EXIT(zfsvfs);
