@@ -1091,8 +1091,7 @@ on a file or directory with a non-trivial ACL when
 is set to
 .Sy restricted ,
 you must first remove all ACEs except for those that represent the current mode.
-.It Xo
-.Sy aclimplicit  Ns = Ns Sy on Ns | Ns Sy off
+.It Sy aclimplicit  Ns = Ns Sy on Ns | Ns Sy off
 Controls whether the owner of an object has "implicit owner rights".
 If this property is set to
 .Sy on ,
@@ -1119,8 +1118,7 @@ and
 because in other configurations, objects can end up having
 .Sy write_acl
 granted to the object owner.
-.It Xo
-.Sy atime Ns = Ns Sy on Ns | Ns Sy off
+.It Sy atime Ns = Ns Sy on Ns | Ns Sy off
 Controls whether the access time for files is updated when they are read.
 Turning this property off avoids producing write traffic when reading files and
 can result in significant performance gains, though it might confuse mailers
