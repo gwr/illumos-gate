@@ -3348,7 +3348,7 @@ top:
 		 * has the ability to modify mode.  In that case remove
 		 * UID|GID and or MODE from mask so that
 		 * secpolicy_vnode_setattr() doesn't revoke it.
-		 * Also, if acl_implicit_owner_rights if false,
+		 * If acl_ior (implicit owner rights) is false,
 		 * tell secpolicy about that via the flags.
 		 */
 
