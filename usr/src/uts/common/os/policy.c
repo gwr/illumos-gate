@@ -1251,11 +1251,11 @@ secpolicy_vnode_setdac(const cred_t *cred, uid_t owner)
 
 int
 secpolicy_vnode_setdac3(const cred_t *cred, uid_t owner,
-    boolean_t owner_implied_rights)
+    boolean_t owner_implicit_rights)
 {
 	boolean_t allzone = (owner == 0);
 
-	if (owner_implied_rights && owner == cred->cr_uid)
+	if (owner_implicit_rights && owner == cred->cr_uid)
 		return (0);
 
 	return (PRIV_POLICY(cred, PRIV_FILE_OWNER, allzone, EPERM, NULL));

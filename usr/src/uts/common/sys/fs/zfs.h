@@ -183,7 +183,7 @@ typedef enum {
 	ZFS_PROP_KEY_GUID,
 	ZFS_PROP_KEYSTATUS,
 	ZFS_PROP_IVSET_GUID,		/* not exposed to the user */
-	ZFS_PROP_ACL_IOR,	/* ACL Implicit Owner Rights (RackTop) */
+	ZFS_PROP_ACLIMPLICIT,	/* ACL Implicit Owner Rights (RackTop) */
 	ZFS_NUM_PROPS
 } zfs_prop_t;
 
