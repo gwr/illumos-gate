@@ -362,20 +362,23 @@ static void
 smb_idmap_bgm_report(smb_idmap_batch_t *sib, smb_idmap_t *sim)
 {
 
+	if ((sib->sib_flags & SMB_IDMAP_SKIP_ERRS) != 0)
+		return;
+
 	if ((sib->sib_flags & SMB_IDMAP_ID2SID) != 0) {
 		/*
 		 * Note: The ID and type we asked idmap to map
 		 * were saved in *sim_id and sim_idtype.
 		 */
-		uint_t id = (sim->sim_id == NULL) ?
-		    0 : (uint_t)*sim->sim_id;
-		cmn_err(CE_WARN, "Can't get SID for "
-		    "ID=%u type=%d, status=%d",
+		int id = (sim->sim_id == NULL) ?
+		    -1 : (int)*sim->sim_id;
+		cmn_err(CE_WARN, "!Can't get SID for "
+		    "ID=%d type=%d, status=%d",
 		    id, sim->sim_idtype, sim->sim_stat);
 	}
 
 	if ((sib->sib_flags & SMB_IDMAP_SID2ID) != 0) {
-		cmn_err(CE_WARN, "Can't get ID for SID %s-%u, status=%d",
+		cmn_err(CE_WARN, "!Can't get ID for SID %s-%u, status=%d",
 		    sim->sim_domsid, sim->sim_rid, sim->sim_stat);
 	}
 }
