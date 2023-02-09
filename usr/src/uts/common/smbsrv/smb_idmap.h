@@ -69,7 +69,7 @@ extern "C" {
  */
 typedef struct smb_idmap {
 	int		sim_idtype;
-	uid_t		*sim_id;
+	uid_t		sim_xid; /* uid or gid */
 	char		*sim_domsid;
 	uint32_t	sim_rid;
 	smb_sid_t	*sim_sid;

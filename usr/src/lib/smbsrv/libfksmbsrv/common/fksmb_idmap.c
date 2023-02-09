@@ -119,7 +119,6 @@ smb_idmap_getid(smb_sid_t *sid, uid_t *id, int *id_type)
 		return (stat);
 
 	sim = &sib.sib_maps[0];
-	sim->sim_id = id;
 	stat = smb_idmap_batch_getid(sib.sib_idmaph, sim, sid, *id_type);
 	if (stat != IDMAP_SUCCESS) {
 		smb_idmap_batch_destroy(&sib);
@@ -133,6 +132,7 @@ smb_idmap_getid(smb_sid_t *sid, uid_t *id, int *id_type)
 		return (stat);
 	}
 
+	*id      = sim->sim_xid;
 	*id_type = sim->sim_idtype;
 	smb_idmap_batch_destroy(&sib);
 
@@ -247,19 +247,19 @@ smb_idmap_batch_getid(idmap_get_handle_t *idmaph, smb_idmap_t *sim,
 	switch (idtype) {
 	case SMB_IDMAP_USER:
 		stat = idmap_get_uidbysid(idmaph, sim->sim_domsid,
-		    sim->sim_rid, flag, sim->sim_id, &sim->sim_stat);
+		    sim->sim_rid, flag, &sim->sim_xid, &sim->sim_stat);
 		smb_idmap_check("idmap_get_uidbysid", stat);
 		break;
 
 	case SMB_IDMAP_GROUP:
 		stat = idmap_get_gidbysid(idmaph, sim->sim_domsid,
-		    sim->sim_rid, flag, sim->sim_id, &sim->sim_stat);
+		    sim->sim_rid, flag, &sim->sim_xid, &sim->sim_stat);
 		smb_idmap_check("idmap_get_gidbysid", stat);
 		break;
 
 	case SMB_IDMAP_UNKNOWN:
 		stat = idmap_get_pidbysid(idmaph, sim->sim_domsid,
-		    sim->sim_rid, flag, sim->sim_id, &sim->sim_idtype,
+		    sim->sim_rid, flag, &sim->sim_xid, &sim->sim_idtype,
 		    &sim->sim_stat);
 		smb_idmap_check("idmap_get_pidbysid", stat);
 		break;
@@ -351,11 +351,8 @@ smb_idmap_bgm_report(smb_idmap_batch_t *sib, smb_idmap_t *sim)
 		 * Note: The ID and type we asked idmap to map
 		 * were saved in *sim_id and sim_idtype.
 		 */
-		int id = (sim->sim_id == NULL) ?
-		    -1 : (int)*sim->sim_id;
-		cmn_err(CE_WARN, "!Can't get SID for "
-		    "ID=%d type=%d, status=%d",
-		    id, sim->sim_idtype, sim->sim_stat);
+		cmn_err(CE_WARN, "!Can't get SID for ID=%u type=%d, status=%d",
+		    sim->sim_xid, sim->sim_idtype, sim->sim_stat);
 	}
 
 	if ((sib->sib_flags & SMB_IDMAP_SID2ID) != 0) {

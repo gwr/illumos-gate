@@ -341,7 +341,7 @@ smb_acl_to_zfs(smb_acl_t *acl, uint32_t flags, int which_acl, acl_t **fs_acl)
 		smb_sid_tostr(ace->se_sid, sidstr);
 
 		if (!smb_ace_wellknown_update(sidstr, zace)) {
-			sim->sim_id = &zace->a_who;
+			sim->sim_xid = zace->a_who;
 			idm_stat = smb_idmap_batch_getid(sib.sib_idmaph, sim,
 			    ace->se_sid, SMB_IDMAP_UNKNOWN);
 

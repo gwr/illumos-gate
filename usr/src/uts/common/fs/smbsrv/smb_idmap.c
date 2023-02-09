@@ -146,22 +146,22 @@ smb_idmap_getid(smb_sid_t *sid, uid_t *id, int *idtype)
 	if (smb_sid_splitstr(sidstr, &sim.sim_rid) != 0)
 		return (IDMAP_ERR_SID);
 	sim.sim_domsid = sidstr;
-	sim.sim_id = id;
+	sim.sim_xid = (uid_t)-1;
 
 	switch (*idtype) {
 	case SMB_IDMAP_USER:
 		sim.sim_stat = kidmap_getuidbysid(curzone, sim.sim_domsid,
-		    sim.sim_rid, sim.sim_id);
+		    sim.sim_rid, &sim.sim_xid);
 		break;
 
 	case SMB_IDMAP_GROUP:
 		sim.sim_stat = kidmap_getgidbysid(curzone, sim.sim_domsid,
-		    sim.sim_rid, sim.sim_id);
+		    sim.sim_rid, &sim.sim_xid);
 		break;
 
 	case SMB_IDMAP_UNKNOWN:
 		sim.sim_stat = kidmap_getpidbysid(curzone, sim.sim_domsid,
-		    sim.sim_rid, sim.sim_id, &sim.sim_idtype);
+		    sim.sim_rid, &sim.sim_xid, &sim.sim_idtype);
 		break;
 
 	default:
@@ -169,6 +169,7 @@ smb_idmap_getid(smb_sid_t *sid, uid_t *id, int *idtype)
 		return (IDMAP_ERR_ARG);
 	}
 
+	*id     = sim.sim_xid;
 	*idtype = sim.sim_idtype;
 
 	return (sim.sim_stat);
@@ -275,17 +276,17 @@ smb_idmap_batch_getid(idmap_get_handle_t *idmaph, smb_idmap_t *sim,
 	switch (idtype) {
 	case SMB_IDMAP_USER:
 		idm_stat = kidmap_batch_getuidbysid(idmaph, sim->sim_domsid,
-		    sim->sim_rid, sim->sim_id, &sim->sim_stat);
+		    sim->sim_rid, &sim->sim_xid, &sim->sim_stat);
 		break;
 
 	case SMB_IDMAP_GROUP:
 		idm_stat = kidmap_batch_getgidbysid(idmaph, sim->sim_domsid,
-		    sim->sim_rid, sim->sim_id, &sim->sim_stat);
+		    sim->sim_rid, &sim->sim_xid, &sim->sim_stat);
 		break;
 
 	case SMB_IDMAP_UNKNOWN:
 		idm_stat = kidmap_batch_getpidbysid(idmaph, sim->sim_domsid,
-		    sim->sim_rid, sim->sim_id, &sim->sim_idtype,
+		    sim->sim_rid, &sim->sim_xid, &sim->sim_idtype,
 		    &sim->sim_stat);
 		break;
 
@@ -370,11 +371,8 @@ smb_idmap_bgm_report(smb_idmap_batch_t *sib, smb_idmap_t *sim)
 		 * Note: The ID and type we asked idmap to map
 		 * were saved in *sim_id and sim_idtype.
 		 */
-		int id = (sim->sim_id == NULL) ?
-		    -1 : (int)*sim->sim_id;
-		cmn_err(CE_WARN, "!Can't get SID for "
-		    "ID=%d type=%d, status=%d",
-		    id, sim->sim_idtype, sim->sim_stat);
+		cmn_err(CE_WARN, "!Can't get SID for ID=%u type=%d, status=%d",
+		    sim->sim_xid, sim->sim_idtype, sim->sim_stat);
 	}
 
 	if ((sib->sib_flags & SMB_IDMAP_SID2ID) != 0) {

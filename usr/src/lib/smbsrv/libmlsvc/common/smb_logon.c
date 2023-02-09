@@ -66,6 +66,13 @@ static void smb_guest_account(char *, size_t);
 /* Consolidation private function from Network Repository */
 extern int _getgroupsbymember(const char *, gid_t[], int, int);
 
+/*
+ * Get Unix UID/GID values for the SIDs in the token.  The batch was
+ * created with SMB_IDMAP_SID2ID | SMB_IDMAP_SKIP_ERRS so any SIDs
+ * that can't be mapped should just go without GIDs.
+ *
+ * XXX going with sim->sim_xid here gets harder... XXX
+ */
 static idmap_stat
 smb_token_idmap(smb_token_t *token, smb_idmap_batch_t *sib)
 {
