@@ -240,7 +240,6 @@ out:
  * domains in other forests.  However, we don't yet discover any DCs other
  * than the DCs for the joined domain.
  */
-static
 void
 reload_dcs(void)
 {
@@ -329,14 +328,6 @@ nomem:
 			adutils_ad_free(&new_dcs[0]);
 		free(new_dcs);
 	}
-}
-
-
-void
-reload_ad(void)
-{
-	reload_gcs();
-	reload_dcs();
 }
 
 void

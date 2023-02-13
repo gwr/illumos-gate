@@ -176,8 +176,11 @@ do_res_ninit(ad_disc_t ctx)
 	int rc;
 
 	rc = res_ninit(&ctx->res_state);
-	if (rc != 0)
+	if (rc != 0) {
+		if (DBG(DNS, 0))
+			logger(LOG_INFO, "res_ninit failed: %d", rc);
 		return (rc);
+	}
 	ctx->res_ninitted = 1;
 	/*
 	 * The SRV records returnd by AD can be larger than 512 bytes,
