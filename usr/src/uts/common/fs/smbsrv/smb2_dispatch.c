@@ -429,6 +429,16 @@ smb2_record_stats(smb_request_t *sr, smb_disp_stats_t *sds, boolean_t tx_only)
 }
 
 /*
+ * Some clients (eg. WPTS) are apparently not prepared to decrypt a
+ * response when the request was not encrypted.  To allow testing
+ * with such (arguably wrong) clients with encryption enabled at
+ * either the system or share level, set this to zero.  Encrypt:
+ * (1) when smb_user_t indicates, (2) when smb_tree_t indicates.
+ * Normally both should be set (3).
+ */
+int smb2_dispatch_encrypt = 3;
+
+/*
  * smb2sr_work
  *
  * This function processes each SMB command in the current request
@@ -722,7 +732,8 @@ cmd_start:
 		 *
 		 * Those commands suppress UID, so they can't be the cmd here.
 		 */
-		if (sr->uid_user->u_encrypt != SMB_CONFIG_DISABLED &&
+		if ((smb2_dispatch_encrypt & 1) != 0 &&
+		    sr->uid_user->u_encrypt != SMB_CONFIG_DISABLED &&
 		    sr->tform_ssn == NULL) {
 			smb_user_hold_internal(sr->uid_user);
 			sr->tform_ssn = sr->uid_user;
@@ -795,7 +806,8 @@ cmd_start:
 		 * TREE_CONNECT suppresses TID, so that can't be the cmd here.
 		 * NOTE: assumes we can't have a tree without a user
 		 */
-		if (sr->tid_tree->t_encrypt != SMB_CONFIG_DISABLED &&
+		if ((smb2_dispatch_encrypt & 2) != 0 &&
+		    sr->tid_tree->t_encrypt != SMB_CONFIG_DISABLED &&
 		    sr->tform_ssn == NULL) {
 			smb_user_hold_internal(sr->uid_user);
 			sr->tform_ssn = sr->uid_user;
