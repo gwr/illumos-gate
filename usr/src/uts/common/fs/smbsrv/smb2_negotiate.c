@@ -410,13 +410,7 @@ smb31_decode_neg_ctxs(smb_request_t *sr)
 
 	s->smb31_preauth_hashid = SMB3_HASH_SHA512;
 
-	/*
-	 * If we did not get an SMB2_ENCRYPTION_CAPS
-	 * assume pre 3.1.1 AES128_CCM;
-	 */
-	if (found_encrypt_ctx == 0)
-		s->smb31_enc_cipherid = SMB3_CIPHER_AES128_CCM;
-	else if (!found_cipher)
+	if (!found_cipher)
 		s->smb31_enc_cipherid = 0;
 
 	/* Initialize out = in */
