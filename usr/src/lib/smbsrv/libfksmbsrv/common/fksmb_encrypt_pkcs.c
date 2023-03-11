@@ -11,7 +11,7 @@
 
 /*
  * Copyright 2018-2021 Tintri by DDN, Inc. All rights reserved.
- * Copyright 2021 RackTop Systems, Inc.
+ * Copyright 2023 RackTop Systems, Inc.
  */
 
 /*
@@ -190,20 +190,22 @@ smb3_decrypt_init(smb_enc_ctx_t *ctxp,
 
 /*
  * Encrypt a whole message with scatter/gather (UIO)
+ * Any non-zero return is an error.
  *
  * While the PKCS#11 implementation internally has the ability to
  * handle scatter/gather, it currently presents no interface for it.
  * As this library is used primarily for debugging, performance in
  * here is not a big concern, so we'll get around the limitation of
- * libpkcs11 by copying to/from a contiguous working buffer.
+ * libpkcs11 using a temporary (contiguous) output buffer.
  */
 int
 smb3_encrypt_uio(smb_enc_ctx_t *ctxp, uio_t *in, uio_t *out)
 {
 	uint8_t *buf = NULL;
-	size_t inlen, outlen;
+	uint8_t *p;
+	size_t inlen, outlen, orem;
 	ulong_t tlen;
-	int err, rc = -1;
+	int i, rc = -1;
 	CK_RV rv;
 
 	if (in->uio_resid <= 0)
@@ -214,77 +216,102 @@ smb3_encrypt_uio(smb_enc_ctx_t *ctxp, uio_t *in, uio_t *out)
 	if (buf == NULL)
 		return (-1);
 
-	/* Copy from uio segs to buf */
-	err = uiomove(buf, inlen, UIO_WRITE, in);
-	if (err != 0)
-		goto out;
+	/* Encrypt UIO segments into the output buffer. */
+	p = buf;
+	orem = outlen;
+	for (i = 0; i < in->uio_iovcnt; i++) {
+		struct iovec *iov = &in->uio_iov[i];
 
-	/* Encrypt in-place in our work buffer. */
-	tlen = outlen;
-	rv = C_Encrypt(ctxp->ctx, buf, inlen, buf, &tlen);
+		tlen = orem;
+		rv = C_EncryptUpdate(ctxp->ctx,
+		     (CK_BYTE_PTR) iov->iov_base, iov->iov_len, p, &tlen);
+		if (rv != CKR_OK) {
+			cmn_err(CE_WARN, "C_EncryptUpdate: rv=0x%lx", rv);
+			goto out;
+		}
+		p += tlen;
+		orem -= tlen;
+	}
+	in->uio_resid = 0; /* like uiomove */
+
+	tlen = orem;
+	rv = C_EncryptFinal(ctxp->ctx, p, &tlen);
 	if (rv != CKR_OK) {
-		cmn_err(CE_WARN, "C_Encrypt failed: 0x%lx", rv);
+		cmn_err(CE_WARN, "C_EncryptFinal: rv=0x%lx", rv);
 		goto out;
 	}
-	if (tlen != outlen) {
-		cmn_err(CE_WARN, "smb3_encrypt_uio outlen %d vs %d",
-		    (int)tlen, (int)outlen);
+	orem -= tlen;
+	if (orem != 0) {
+		cmn_err(CE_WARN, "smb3_encrypt_uio remainder %d", (int)orem);
 		goto out;
 	}
 
 	/* Copy from buf to uio segs */
-	err = uiomove(buf, outlen, UIO_READ, out);
-	if (err != 0)
-		goto out;
+	rc = uiomove(buf, outlen, UIO_READ, out);
 
-	rc = 0;
 out:
 	free(buf);
 
 	return (rc);
 }
 
+/*
+ * Decrypt a whole message with scatter/gather (UIO)
+ * Any non-zero return is an error.
+ *
+ * Nearly identical to smb3_encrypt_uio
+ */
 int
 smb3_decrypt_uio(smb_enc_ctx_t *ctxp, uio_t *in, uio_t *out)
 {
 	uint8_t *buf = NULL;
-	size_t inlen, outlen;
+	uint8_t *p;
+	size_t inlen, outlen, orem;
 	ulong_t tlen;
-	int err, rc = -1;
+	int i, rc = -1;
 	CK_RV rv;
 
 	if (in->uio_resid <= 16)
 		return (-1);
 	inlen = in->uio_resid;
 	outlen = inlen - 16;
-	buf = malloc(inlen);
+	buf = malloc(outlen);
 	if (buf == NULL)
 		return (-1);
 
-	/* Copy from uio segs to buf */
-	err = uiomove(buf, inlen, UIO_WRITE, in);
-	if (err != 0)
-		goto out;
+	/* Decrypt UIO segments into the output buffer. */
+	p = buf;
+	orem = outlen;
+	for (i = 0; i < in->uio_iovcnt; i++) {
+		struct iovec *iov = &in->uio_iov[i];
 
-	/* Decrypt in-place in our work buffer. */
-	tlen = outlen;
-	rv = C_Decrypt(ctxp->ctx, buf, inlen, buf, &tlen);
+		tlen = orem;
+		rv = C_DecryptUpdate(ctxp->ctx,
+		     (CK_BYTE_PTR) iov->iov_base, iov->iov_len, p, &tlen);
+		if (rv != CKR_OK) {
+			cmn_err(CE_WARN, "C_DecryptUpdate: rv=0x%lx", rv);
+			goto out;
+		}
+		p += tlen;
+		orem -= tlen;
+	}
+	in->uio_resid = 0; /* like uiomove */
+
+	tlen = orem;
+	rv = C_DecryptFinal(ctxp->ctx, p, &tlen);
 	if (rv != CKR_OK) {
-		cmn_err(CE_WARN, "C_Decrypt failed: 0x%lx", rv);
+		cmn_err(CE_WARN, "C_DecryptFinal: rv=0x%lx", rv);
 		goto out;
 	}
-	if (tlen != outlen) {
-		cmn_err(CE_WARN, "smb3_decrypt_uio outlen %d vs %d",
-		    (int)tlen, (int)outlen);
+	orem -= tlen;
+	if (orem != 0) {
+		cmn_err(CE_WARN, "smb3_decrypt_uio remainder %d", (int)orem);
 		goto out;
 	}
 
 	/* Copy from buf to uio segs */
-	err = uiomove(buf, outlen, UIO_READ, out);
-	if (err != 0)
-		goto out;
+	rc = uiomove(buf, outlen, UIO_READ, out);
 
-	rc = 0;
 out:
 	free(buf);
 
