@@ -39,3 +39,6 @@ $ROOT/usr/lib/smbsrv/test-encrypt
 
 # sudo -s dtrace -s Watch.d -o test-decrypt.dto -c \
 $ROOT/usr/lib/smbsrv/test-decrypt
+
+# sudo -s dtrace -s Watch.d -o test-toomas.dto -c \
+$ROOT/usr/lib/smbsrv/test-toomas

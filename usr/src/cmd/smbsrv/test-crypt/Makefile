@@ -24,7 +24,7 @@
 #
 
 
-PROG=	test-encrypt test-decrypt
+PROG=	test-encrypt test-decrypt test-toomas
 
 LIBFAKEKERN=../../../lib/libfakekernel/common
 LIBFKSMBSRV=../../../lib/smbsrv/libfksmbsrv/common
@@ -82,6 +82,14 @@ clean:
 	-$(RM) *.o
 
 lint:
+
+
+TTOBJS= test_toomas.o utils.o fksmb_encrypt_pkcs.o
+test-toomas := OBJS = $(TTOBJS)
+test-toomas : $(TTOBJS)
+	$(LINK.c) -o $@ $(OBJS) $(LDLIBS)
+	$(POST_PROCESS)
+
 
 TEOBJS= test_encrypt.o utils.o fksmb_encrypt_pkcs.o
 test-encrypt := OBJS = $(TEOBJS)
