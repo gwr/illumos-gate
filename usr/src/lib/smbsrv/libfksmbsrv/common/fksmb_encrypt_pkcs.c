@@ -200,10 +200,10 @@ smb3_decrypt_init(smb_enc_ctx_t *ctxp,
 int
 smb3_encrypt_uio(smb_enc_ctx_t *ctxp, uio_t *in, uio_t *out)
 {
-	uint8_t *buf;
+	uint8_t *buf = NULL;
 	size_t inlen, outlen;
 	ulong_t tlen;
-	int err;
+	int err, rc = -1;
 	CK_RV rv;
 
 	if (in->uio_resid <= 0)
@@ -217,36 +217,40 @@ smb3_encrypt_uio(smb_enc_ctx_t *ctxp, uio_t *in, uio_t *out)
 	/* Copy from uio segs to buf */
 	err = uiomove(buf, inlen, UIO_WRITE, in);
 	if (err != 0)
-		return (-1);
+		goto out;
 
 	/* Encrypt in-place in our work buffer. */
 	tlen = outlen;
 	rv = C_Encrypt(ctxp->ctx, buf, inlen, buf, &tlen);
 	if (rv != CKR_OK) {
 		cmn_err(CE_WARN, "C_Encrypt failed: 0x%lx", rv);
-		return (-1);
+		goto out;
 	}
 	if (tlen != outlen) {
 		cmn_err(CE_WARN, "smb3_encrypt_uio outlen %d vs %d",
 		    (int)tlen, (int)outlen);
-		return (-1);
+		goto out;
 	}
 
 	/* Copy from buf to uio segs */
 	err = uiomove(buf, outlen, UIO_READ, out);
 	if (err != 0)
-		return (-1);
+		goto out;
 
-	return (0);
+	rc = 0;
+out:
+	free(buf);
+
+	return (rc);
 }
 
 int
 smb3_decrypt_uio(smb_enc_ctx_t *ctxp, uio_t *in, uio_t *out)
 {
-	uint8_t *buf;
+	uint8_t *buf = NULL;
 	size_t inlen, outlen;
 	ulong_t tlen;
-	int err;
+	int err, rc = -1;
 	CK_RV rv;
 
 	if (in->uio_resid <= 16)
@@ -260,27 +264,31 @@ smb3_decrypt_uio(smb_enc_ctx_t *ctxp, uio_t *in, uio_t *out)
 	/* Copy from uio segs to buf */
 	err = uiomove(buf, inlen, UIO_WRITE, in);
 	if (err != 0)
-		return (-1);
+		goto out;
 
 	/* Decrypt in-place in our work buffer. */
 	tlen = outlen;
 	rv = C_Decrypt(ctxp->ctx, buf, inlen, buf, &tlen);
 	if (rv != CKR_OK) {
 		cmn_err(CE_WARN, "C_Decrypt failed: 0x%lx", rv);
-		return (-1);
+		goto out;
 	}
 	if (tlen != outlen) {
 		cmn_err(CE_WARN, "smb3_decrypt_uio outlen %d vs %d",
 		    (int)tlen, (int)outlen);
-		return (-1);
+		goto out;
 	}
 
 	/* Copy from buf to uio segs */
 	err = uiomove(buf, outlen, UIO_READ, out);
 	if (err != 0)
-		return (-1);
+		goto out;
 
-	return (0);
+	rc = 0;
+out:
+	free(buf);
+
+	return (rc);
 }
 
 void
