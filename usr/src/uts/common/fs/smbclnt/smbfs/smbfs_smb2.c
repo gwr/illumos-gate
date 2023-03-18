@@ -82,6 +82,9 @@ smbfs_smb2_locking(struct smbnode *np, int op, uint32_t pid,
  * For SMB2 we need to do an attribute-only open.  The
  * data returned by open gets us everything we need, so
  * just close the handle and we're done.
+ *
+ * Need a FID for smb2, so open/close here.
+ * XXX Should make a compound here.
  */
 int
 smbfs_smb2_getpattr(
@@ -89,26 +92,40 @@ smbfs_smb2_getpattr(
 	struct smbfattr *fap,
 	struct smb_cred *scrp)
 {
-	smb_fh_t tmp_fh;
+	struct mbchain name_mb;
+	smb2fid_t tmp_fid;
 	struct smb_share *ssp = np->n_mount->smi_share;
 	uint32_t rights = (STD_RIGHT_READ_CONTROL_ACCESS |
 	    SA_RIGHT_FILE_READ_ATTRIBUTES);
-	int error;
+	int err;
 
-	bzero(&tmp_fh, sizeof (tmp_fh));
-	error = smbfs_smb_ntcreatex(np,
-	    NULL, 0, 0,	/* name nmlen xattr */
+	bzero(&tmp_fid, sizeof (tmp_fid));
+	mb_init(&name_mb);
+
+	err = smbfs_fullpath(&name_mb, SSTOVC(ssp),
+	    np, NULL, 0, '\\');
+	if (err != 0)
+		goto out;
+
+	err = smb2_smb_ntcreate(
+	    ssp, &name_mb,
+	    NULL, NULL, /* cctx in, out */
+	    0,	/* NTCREATEX_FLAGS... */
 	    rights, SMB_EFA_NORMAL,
 	    NTCREATEX_SHARE_ACCESS_ALL,
 	    NTCREATEX_DISP_OPEN,
 	    0, /* create options */
-	    scrp, &tmp_fh,
-	    NULL, fap);
-	if (error == 0) {
-		(void) smb_smb_close(ssp, &tmp_fh, scrp);
+	    NTCREATEX_IMPERSONATION_IMPERSONATION,
+	    scrp, &tmp_fid,
+	    NULL, /* create action ret. */
+	    fap);
+	if (err == 0) {
+		(void) smb2_smb_close(ssp, &tmp_fid, scrp);
 	}
+out:
+	mb_done(&name_mb);
 
-	return (error);
+	return (err);
 }
 
 /*
@@ -237,18 +254,20 @@ static int
 smbfs_smb2_query_fs_info(struct smb_share *ssp, struct mdchain *mdp,
 	uint8_t level, struct smb_cred *scrp)
 {
-	smb2fid_t fid;
+	smb2fid_t tmp_fid;
 	uint32_t iolen = 1024;
-	boolean_t opened = B_FALSE;
 	int error;
+
+	bzero(&tmp_fid, sizeof (tmp_fid));
 
 	/*
 	 * Need a FID for smb2, and this is called during mount
 	 * so "go behind" the usual open/close functions.
 	 */
 	error = smb2_smb_ntcreate(
-	    ssp, NULL,	// name
-	    NULL, NULL, // create ctx in, out
+	    ssp,
+	    NULL,	/* name */
+	    NULL, NULL, /* create ctx in, out */
 	    0,	/* NTCREATEX_FLAGS... */
 	    SA_RIGHT_FILE_READ_ATTRIBUTES,
 	    SMB_EFA_NORMAL,
@@ -256,17 +275,15 @@ smbfs_smb2_query_fs_info(struct smb_share *ssp, struct mdchain *mdp,
 	    NTCREATEX_DISP_OPEN,
 	    0, /* create options */
 	    NTCREATEX_IMPERSONATION_IMPERSONATION,
-	    scrp, &fid, NULL, NULL);
+	    scrp, &tmp_fid,
+	    NULL, /* cr_act_p */
+	    NULL); /* fap */
 	if (error != 0)
-		goto out;
-	opened = B_TRUE;
+		return (error);
 
-	error = smbfs_smb2_query_info(ssp, &fid, mdp, &iolen,
+	error = smbfs_smb2_query_info(ssp, &tmp_fid, mdp, &iolen,
 	    SMB2_0_INFO_FILESYSTEM, level, 0, scrp);
-
-out:
-	if (opened)
-		(void) smb2_smb_close(ssp, &fid, scrp);
+	(void) smb2_smb_close(ssp, &tmp_fid, scrp);
 
 	return (error);
 }
@@ -681,12 +698,15 @@ int
 smbfs_smb2_findopen(struct smbfs_fctx *ctx, struct smbnode *dnp,
     const char *wildcard, int wclen, uint32_t attr)
 {
+	struct mbchain name_mb;
 	smb_fh_t *fhp = NULL;
 	uint32_t rights =
 	    STD_RIGHT_READ_CONTROL_ACCESS |
 	    SA_RIGHT_FILE_READ_ATTRIBUTES |
 	    SA_RIGHT_FILE_READ_DATA;
-	int error;
+	int err;
+
+	mb_init(&name_mb);
 
 	/*
 	 * Set f_type no matter what, so cleanup will call
@@ -698,24 +718,34 @@ smbfs_smb2_findopen(struct smbfs_fctx *ctx, struct smbnode *dnp,
 	/*
 	 * Get a file handle on the directory
 	 */
-	error = smb_fh_create(ctx->f_ssp, &fhp);
-	if (error != 0)
-		goto errout;
+	err = smb_fh_create(ctx->f_ssp, &fhp);
+	if (err != 0)
+		goto out;
 
-	error = smbfs_smb_ntcreatex(dnp,
-	    NULL, 0, 0,	/* name nmlen xattr */
+	err = smbfs_fullpath(&name_mb, SSTOVC(ctx->f_ssp),
+	    dnp, NULL, 0, '\\');
+	if (err != 0)
+		goto out;
+
+	err = smb2_smb_ntcreate(
+	    ctx->f_ssp, &name_mb,
+	    NULL, NULL, /* cctx in, out */
+	    0,	/* NTCREATEX_FLAGS... */
 	    rights, SMB_EFA_NORMAL,
 	    NTCREATEX_SHARE_ACCESS_ALL,
 	    NTCREATEX_DISP_OPEN,
 	    0, /* create options */
-	    ctx->f_scred, fhp,
+	    NTCREATEX_IMPERSONATION_IMPERSONATION,
+	    ctx->f_scred,
+	    &fhp->fh_fid2,
 	    NULL, NULL); /* cr_act_p fa_p */
-	if (error != 0)
-		goto errout;
+	if (err != 0)
+		goto out;
 
 	fhp->fh_rights = rights;
 	smb_fh_opened(fhp);
 	ctx->f_fhp = fhp;
+	fhp = NULL;
 
 	ctx->f_namesz = SMB_MAXFNAMELEN + 1;
 	ctx->f_name = kmem_alloc(ctx->f_namesz, KM_SLEEP);
@@ -724,12 +754,12 @@ smbfs_smb2_findopen(struct smbfs_fctx *ctx, struct smbnode *dnp,
 	ctx->f_wildcard = wildcard;
 	ctx->f_wclen = wclen;
 
-	return (0);
-
-errout:
+out:
 	if (fhp != NULL)
 		smb_fh_rele(fhp);
-	return (error);
+	mb_done(&name_mb);
+
+	return (err);
 }
 
 int
@@ -794,43 +824,48 @@ int
 smbfs_smb2_get_streaminfo(smbnode_t *np, struct mdchain *mdp,
 	struct smb_cred *scrp)
 {
+	struct mbchain name_mb;
+	smb2fid_t tmp_fid;
 	smb_share_t *ssp = np->n_mount->smi_share;
-	smb_fh_t *fhp = NULL;
 	uint32_t rights =
 	    STD_RIGHT_READ_CONTROL_ACCESS |
 	    SA_RIGHT_FILE_READ_ATTRIBUTES;
 	uint32_t iolen = INT16_MAX;
-	int error;
+	int err;
 
-	/*
-	 * Get a file handle on the object
-	 * with read attr. rights.
-	 */
-	error = smb_fh_create(ssp, &fhp);
-	if (error != 0)
+	bzero(&tmp_fid, sizeof (tmp_fid));
+	mb_init(&name_mb);
+
+	err = smbfs_fullpath(&name_mb, SSTOVC(ssp),
+	    np, NULL, 0, '\\');
+	if (err != 0)
 		goto out;
-	error = smbfs_smb_ntcreatex(np,
-	    NULL, 0, 0,	/* name nmlen xattr */
+
+	err = smb2_smb_ntcreate(
+	    ssp, &name_mb,
+	    NULL, NULL, /* cctx in, out */
+	    0,	/* NTCREATEX_FLAGS... */
 	    rights, SMB_EFA_NORMAL,
 	    NTCREATEX_SHARE_ACCESS_ALL,
 	    NTCREATEX_DISP_OPEN,
 	    0, /* create options */
-	    scrp, fhp, NULL, NULL);
-	if (error != 0)
+	    NTCREATEX_IMPERSONATION_IMPERSONATION,
+	    scrp, &tmp_fid,
+	    NULL, NULL); /* cr_act_p fa_p */
+	if (err != 0)
 		goto out;
-
-	smb_fh_opened(fhp);
 
 	/*
 	 * Query stream info
 	 */
-	error = smbfs_smb2_query_info(ssp, &fhp->fh_fid2, mdp, &iolen,
+	err = smbfs_smb2_query_info(ssp, &tmp_fid, mdp, &iolen,
 	    SMB2_0_INFO_FILE, FileStreamInformation, 0, scrp);
+	(void) smb2_smb_close(ssp, &tmp_fid, scrp);
 
 out:
-	if (fhp != NULL)
-		smb_fh_rele(fhp);
-	return (error);
+	mb_done(&name_mb);
+
+	return (err);
 }
 
 
