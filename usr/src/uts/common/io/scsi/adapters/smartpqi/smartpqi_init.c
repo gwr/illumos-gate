@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2020 Nexenta by DDN, Inc. All rights reserved.
+ * Copyright 2023 Tintri by DDN, Inc. All rights reserved.
  * Copyright 2021 Racktop Systems.
  */
 
@@ -98,7 +98,7 @@ func_list_t startup_funcs[] =
 	NULL, NULL
 };
 
-#define RESET_FUNCS \
+#define	RESET_FUNCS \
     item(pqi_reset_prep) \
     item(revert_to_sis) \
     item(pqi_check_firmware) \
@@ -168,7 +168,6 @@ static boolean_t scsi_common(pqi_state_t s, pqi_raid_path_request_t *rqst,
 static void update_time(void *v);
 
 static int reset_devices = 1;
-
 
 int pqi_max_io_slots = 0;
 
@@ -1025,13 +1024,6 @@ pqi_scan_scsi_devices(pqi_state_t s)
 				    NULL);
 
 				mutex_enter(&s->s_mutex);
-				/*
-				 * Start at index 0. The first call to
-				 * atomic_inc_32_nv will return 1 so subtract
-				 * 1 from the return value.
-				 */
-				dev->pd_target =
-				    atomic_inc_32_nv(&s->s_next_target) - 1;
 				list_insert_tail(&s->s_devnodes, dev);
 				mutex_exit(&s->s_mutex);
 			} else {

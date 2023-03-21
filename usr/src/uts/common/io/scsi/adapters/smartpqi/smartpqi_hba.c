@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2022 Nexenta by DDN, Inc. All rights reserved.
+ * Copyright 2023 Tintri by DDN, Inc. All rights reserved.
  * Copyright 2021 RackTop Systems, Inc.
  */
 
@@ -783,10 +783,6 @@ pqi_find_target_ua(pqi_state_t s, char *ua)
 {
 	pqi_device_t d;
 
-	/*
-	 * Should switch to indexed array of devices that can grow
-	 * as needed.
-	 */
 	mutex_enter(&s->s_mutex);
 	for (d = list_head(&s->s_devnodes); d != NULL;
 	    d = list_next(&s->s_devnodes, d)) {
@@ -927,19 +923,8 @@ create_phys_lun(pqi_state_t s, pqi_device_t d,
 {
 	char		**compatible	= NULL;
 	char		*nodename	= NULL;
-	char		*scsi_binding_set;
-	char		*guid_ptr;
 	int		ncompatible	= 0;
 	dev_info_t	*dip;
-	char		*wwn_str = NULL;
-	int		rval;
-
-	/* ---- get the 'scsi-binding-set' property ---- */
-	if (ddi_prop_lookup_string(DDI_DEV_T_ANY, s->s_dip,
-	    DDI_PROP_NOTPROM | DDI_PROP_DONTPASS, "scsi-binding-set",
-	    &scsi_binding_set) != DDI_PROP_SUCCESS) {
-		scsi_binding_set = NULL;
-	}
 
 	/* ---- At this point we have a new device not in our list ---- */
 	scsi_hba_nodename_compatible_get(inq, NULL,
@@ -966,24 +951,25 @@ create_phys_lun(pqi_state_t s, pqi_device_t d,
 		goto free_devi;
 	}
 
-	wwn_str = kmem_zalloc(MAX_NAME_PROP_SIZE, KM_SLEEP);
-	(void) snprintf(wwn_str, MAX_NAME_PROP_SIZE, "w%016" PRIx64,
-	    d->pd_wwid);
-	rval = ndi_prop_update_string(DDI_DEV_T_NONE, dip,
-	    SCSI_ADDR_PROP_TARGET_PORT, wwn_str);
-	if (rval != DDI_PROP_SUCCESS)
-		goto free_devi;
+	if (d->pd_wwid != 0) {
+		char		wwn_str[20];
+		(void) snprintf(wwn_str, 20, "w%016" PRIx64, d->pd_wwid);
+		if (ndi_prop_update_string(DDI_DEV_T_NONE, dip,
+		    SCSI_ADDR_PROP_TARGET_PORT, wwn_str) != DDI_PROP_SUCCESS) {
+			goto free_devi;
+		}
+	} else {
+		if (ndi_prop_update_int(DDI_DEV_T_NONE, dip, TARGET_PROP,
+		    d->pd_target) != DDI_PROP_SUCCESS) {
+			goto free_devi;
+		}
+	}
 
 	if (d->pd_guid != NULL) {
-		guid_ptr = d->pd_guid;
-	} else {
-		(void) snprintf(wwn_str, MAX_NAME_PROP_SIZE, "%" PRIx64,
-		    d->pd_wwid);
-		guid_ptr = wwn_str;
-	}
-	if (ndi_prop_update_string(DDI_DEV_T_NONE, dip, NDI_GUID, guid_ptr) !=
-	    DDI_PROP_SUCCESS) {
-		goto free_devi;
+		if (ddi_prop_update_string(DDI_DEV_T_NONE, dip, NDI_GUID,
+		    d->pd_guid) != DDI_PROP_SUCCESS) {
+			goto free_devi;
+		}
 	}
 
 	if (ndi_prop_update_int(DDI_DEV_T_NONE, dip, "pm-capable", 1) !=
@@ -998,13 +984,10 @@ create_phys_lun(pqi_state_t s, pqi_device_t d,
 		*childp = dip;
 
 	scsi_hba_nodename_compatible_free(nodename, compatible);
-	kmem_free(wwn_str, MAX_NAME_PROP_SIZE);
 
 	return (B_TRUE);
 
 free_devi:
-	if (wwn_str != NULL)
-		kmem_free(wwn_str, MAX_NAME_PROP_SIZE);
 	ndi_prop_remove_all(dip);
 	(void) ndi_devi_free(dip);
 	d->pd_dip = NULL;
@@ -1023,9 +1006,7 @@ create_virt_lun(pqi_state_t s, pqi_device_t d, struct scsi_inquiry *inq,
 	int		rval;
 	mdi_pathinfo_t	*pip		= NULL;
 	char		*guid_ptr;
-	char		wwid_str[DISPLAY_64BIT_LENGTH];
-	char		tgt_str[DISPLAY_64BIT_LENGTH];
-	int		instance = ddi_get_instance(s->s_dip);
+	char		wwid_str[17];
 	dev_info_t	*lun_dip;
 	char		*old_guid;
 

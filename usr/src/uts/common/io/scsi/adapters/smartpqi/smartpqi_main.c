@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2022 Nexenta by DDN, Inc. All rights reserved.
+ * Copyright 2023 Tintri by DDN, Inc. All rights reserved.
  * Copyright 2021 RackTop Systems, Inc.
  */
 
@@ -26,14 +26,7 @@ void	*pqi_state;
 /* ---- Autoconfigure forward declarations ---- */
 static int smartpqi_attach(dev_info_t *dip, ddi_attach_cmd_t cmd);
 static int smartpqi_detach(dev_info_t *dip, ddi_detach_cmd_t cmd);
-static int smartpqi_power(dev_info_t *dip, int component, int level);
-static int smartpqi_getinfo(dev_info_t *dip, ddi_info_cmd_t cmd, void *arg,
-    void **results);
 static int smartpqi_quiesce(dev_info_t *dip);
-
-/* ---- cb_ops forward declarations ---- */
-static int smartpqi_ioctl(dev_t dev, int cmd, intptr_t data, int mode,
-    cred_t *credp, int *rval);
 
 static struct cb_ops smartpqi_cb_ops = {
 	.cb_open =		scsi_hba_open,
@@ -57,18 +50,18 @@ static struct cb_ops smartpqi_cb_ops = {
 };
 
 static struct dev_ops smartpqi_ops = {
-	DEVO_REV,		/* dev_rev */
-	0,			/* refcnt */
-	smartpqi_getinfo,	/* info */
-	nulldev,		/* identify */
-	nulldev,		/* probe */
-	smartpqi_attach,	/* attach */
-	smartpqi_detach,	/* detach */
-	nodev,			/* reset */
-	&smartpqi_cb_ops,	/* driver operations */
-	NULL,			/* bus operations */
-	smartpqi_power,		/* power management */
-	smartpqi_quiesce,	/* quiesce */
+	.devo_rev =		DEVO_REV,
+	.devo_refcnt =		0,
+	.devo_getinfo =		nodev,
+	.devo_identify =	nulldev,
+	.devo_probe =		nulldev,
+	.devo_attach =		smartpqi_attach,
+	.devo_detach =		smartpqi_detach,
+	.devo_reset =		nodev,
+	.devo_cb_ops =		&smartpqi_cb_ops,
+	.devo_bus_ops =		NULL,
+	.devo_power =		nodev,
+	.devo_quiesce =		smartpqi_quiesce
 };
 
 static struct modldrv smartpqi_modldrv = {
@@ -189,8 +182,6 @@ smartpqi_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
 	s->s_offline = 0;
 	list_create(&s->s_devnodes, sizeof (struct pqi_device),
 	    offsetof(struct pqi_device, pd_list));
-	list_create(&s->s_mem_check, sizeof (struct mem_check),
-	    offsetof(struct mem_check, m_node));
 	list_create(&s->s_special_device.pd_cmd_list, sizeof (struct pqi_cmd),
 	    offsetof(struct pqi_cmd, pc_list));
 
@@ -344,13 +335,6 @@ smartpqi_detach(dev_info_t *dip, ddi_detach_cmd_t cmd)
 static int
 smartpqi_quiesce(dev_info_t *dip)
 {
-	/* We don't register any power components yet. */
-	return (DDI_SUCCESS);
-}
-
-static int
-smartpqi_quiesce(dev_info_t *dip)
-{
 	pqi_state_t	s;
 	int		instance;
 
@@ -367,13 +351,4 @@ smartpqi_quiesce(dev_info_t *dip)
 	}
 	/* If we couldn't quiesce for any reason, play it safe and reboot. */
 	return (DDI_FAILURE);
-}
-
-/*ARGSUSED*/
-static int
-smartpqi_ioctl(dev_t dev, int cmd, intptr_t data, int mode, cred_t *credp,
-    int *rval)
-{
-	/* Arguably we could just use nodev for the entry point. */
-	return (EINVAL);
 }

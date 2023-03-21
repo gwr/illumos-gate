@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2022 Nexenta by DDN, Inc. All rights reserved.
+ * Copyright 2023 Tintri by DDN, Inc. All rights reserved.
  * Copyright 2021 RackTop Systems, Inc.
  */
 
@@ -66,11 +66,6 @@ extern "C" {
 #define	SYNC_CMDS_TIMEOUT_SECS			5
 #define	IO_SPACE				1
 #define	PQI_MAXTGTS				256
-/*
- * Space needed in characters to display a 64bit value as hexidecimal plus
- * a NULL character
- */
-#define	DISPLAY_64BIT_LENGTH			17
 
 #define	PQI_MIN_MSIX_VECTORS			1
 #define	PQI_MAX_MSIX_VECTORS			16
@@ -78,7 +73,7 @@ extern "C" {
 #define	PQI_MAX_QUEUE_GROUPS			PQI_MAX_MSIX_VECTORS
 #define	PQI_MIN_OPERATIONAL_QUEUE_ID		1
 /* ---- Size of structure scsi_arq_status without sense data. ---- */
-#define	PQI_ARQ_STATUS_NOSENSE_LEN    (sizeof (struct scsi_arq_status) - \
+#define	PQI_ARQ_STATUS_NOSENSE_LEN	(sizeof (struct scsi_arq_status) - \
     sizeof (struct scsi_extended_sense))
 
 /* ---- macros to return various addresses ---- */
@@ -271,6 +266,7 @@ typedef struct pqi_device {
 
 	int			pd_active_cmds;
 	int			pd_target;
+	int			pd_lun;
 
 	/* ---- Only one will be valid, MPxIO uses s_pip ---- */
 	dev_info_t		*pd_dip;
@@ -286,19 +282,18 @@ typedef struct pqi_device {
 	int			pd_aio_enabled : 1;
 	uint32_t		pd_aio_handle;
 	char			pd_scsi3addr[8];
-	uint64_t		pd_wwid;	/* big endian */
+	uint64_t		pd_wwid;
 	char			*pd_guid;
-	uint64_t		pd_sas_address;
 	uint8_t			pd_volume_id[16];
 	char			pd_vendor[8];	/* From INQUIRY */
 	char			pd_model[16];	/* From INQUIRY */
+	char			pd_unit_address[32];
 
 	/* ---- Debug stats ---- */
 	uint32_t		pd_killed;
 	uint32_t		pd_posted;
 	uint32_t		pd_timedout;
 	uint32_t		pd_sense_errors;
-	uint32_t		pd_busy;
 } *pqi_device_t;
 
 typedef struct pqi_state {
@@ -402,29 +397,6 @@ typedef struct pqi_state {
 	pqi_event_queue_t	s_event_queue;
 	struct pqi_event	s_events[PQI_NUM_SUPPORTED_EVENTS];
 } *pqi_state_t;
-
-#define	RUN_MEM_CHECK	0
-#if RUN_MEM_CHECK == 1
-#define	MEM_CHECK_ON_DMA	1
-#define	MEM_CHECK_SIG		0xdeadcafe
-#define	PQI_ALLOC(len, flag) pqi_kmem_alloc(len, flag, __FILE__, __LINE__, s)
-#define	PQI_ZALLOC(len, flag) pqi_kmem_zalloc(len, flag, __FILE__, __LINE__, s)
-#define	PQI_FREE(v, len) pqi_kmem_free(v, len, s)
-#else
-#define	MEM_CHECK_ON_DMA	0
-#define	MEM_CHECK_SIG		0xdeadcafe
-#define	PQI_ALLOC(len, flag) kmem_alloc(len, flag)
-#define	PQI_ZALLOC(len, flag) kmem_zalloc(len, flag)
-#define	PQI_FREE(v, len) kmem_free(v, len)
-#endif
-
-typedef struct mem_check {
-	list_node_t		m_node;
-	uint32_t		m_sig;
-	int			m_line;
-	size_t			m_len;
-	char			m_file[80];
-} *mem_check_t;
 
 /* ---- Flags used in pqi_cmd_t ---- */
 #define	PQI_FLAG_ABORTED	0x0001
@@ -618,7 +590,6 @@ mem_len_pair_t pqi_alloc_mem_len(int len);
 mem_len_pair_t build_cdb_str(uint8_t *cdb);
 int pqi_is_offline(pqi_state_t s);
 void pqi_show_dev_state(pqi_state_t s);
-void pqi_mem_check(void *v);
 char *cdb_to_str(uint8_t scsi_cmd);
 char *io_status_to_str(int val);
 char *scsi_status_to_str(uint8_t val);
