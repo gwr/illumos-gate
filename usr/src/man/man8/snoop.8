@@ -1,16 +1,18 @@
 '\" te
+.\" Copyright 2023 RackTop Systems, Inc.
 .\" Copyright 2021 Joyent, Inc.
 .\" Copyright (C) 2009, Sun Microsystems, Inc. All Rights Reserved
 .\" The contents of this file are subject to the terms of the Common Development and Distribution License (the "License").  You may not use this file except in compliance with the License.
 .\" You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE or http://www.opensolaris.org/os/licensing.  See the License for the specific language governing permissions and limitations under the License.
 .\" When distributing Covered Code, include this CDDL HEADER in each file and include the License file at usr/src/OPENSOLARIS.LICENSE.  If applicable, add the following below this CDDL HEADER, with the fields enclosed by brackets "[]" replaced with your own identifying information: Portions Copyright [yyyy] [name of copyright owner]
-.TH SNOOP 8 "Mar 22, 2021"
+.TH SNOOP 8 "Jun 02, 2023"
 .SH NAME
 snoop \- capture and inspect network packets
 .SH SYNOPSIS
 .nf
 \fBsnoop\fR  [\fB-afqrCDINPSvV\fR] [\fB-t\fR [r |  a |  d]] [\fB-c\fR \fImaxcount\fR]
- [\fB-d\fR \fIdevice\fR] [\fB-i\fR \fIfilename\fR] [\fB-n\fR \fIfilename\fR] [\fB-o\fR \fIfilename\fR]
+ [\fB-d\fR \fIdevice\fR] [\fB-i\fR \fIfilename\fR] [\fB-n\fR \fIfilename\fR]
+ [\fB-O\fR \fIprefix:count:size\fR | \fB-o\fR \fIfilename\fR]
  [\fB-p\fR \fIfirst\fR [, \fIlast\fR]] [\fB-s\fR \fIsnaplen\fR] [\fB-x\fR \fIoffset\fR [, \fIlength\fR]]
  [\fIexpression\fR]
 .fi
@@ -199,6 +201,25 @@ the \fBsnoop\fR \fBIP\fR address-to-name mapping table (See \fB-N\fR flag).
 Use \fIfilename\fR as an \fBIP\fR address-to-name mapping table. This file must
 have the same format as the \fB/etc/hosts\fR file (IP address followed by the
 hostname).
+.RE
+
+.sp
+.ne 2
+.na
+\fB\fB-O\fR \fIprefix\fR:\fIcount\fR:\fIsize\fR\fR
+.ad
+.sp .6
+.RS 4n
+Save captured packets in \fIfiles\fR as they are captured. File names
+are created from \fIprefix\fR, added index (values [0 - count], maximum 99),
+and suffix \fI.snoop\fR for closed file or \fI.snoop.current\fR for file
+we are currently writing. \fIsize\fR will determine the switchover to next file.
+On file switch, the currently open file will be closed and renamed to remove
+the suffix \fI.current\fR. When index will reach \fIcount\fR, the next
+value used for index is 0.
+Size value may end with suffix \fIk\fR, \fIm\fR or \fIg\fR to specify
+kilobytes, megabytes or gigabytes.  The format of the capture file is
+same as with option \fB-o\fR.
 .RE
 
 .sp

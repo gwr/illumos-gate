@@ -23,6 +23,7 @@
  * Use is subject to license terms.
  * Copyright 2012 Milan Jurik. All rights reserved.
  * Copyright 2021 Joyent, Inc.
+ * Copyright 2023 RackTop Systems, Inc.
  */
 
 #include <stdio.h>
@@ -562,7 +563,12 @@ nwrite(int fd, const void *buffer, size_t buflen)
  * Routines for opening, closing, reading and writing
  * a capture file of packets saved with the -o option.
  */
-static int capfile_out;
+static struct capfile_out_data {
+	int		*capfile_fd;		/* Open file descriptors */
+	size_t		capfile_count;		/* Number of files */
+	size_t		capfile_index;		/* Current file */
+	off_t		capfile_size_limit;
+} capfile_out;
 
 /*
  * The snoop capture file has a header to identify
@@ -594,27 +600,103 @@ static const int snoop_idlen = 8;
 static const int snoop_version = 2;
 
 void
-cap_open_write(const char *name)
+cap_open_write(const char *prefix, size_t nfiles, off_t limit)
 {
-	int vers;
+	size_t i;
+	int vers, mac;
+	char *name;
 
-	capfile_out = open(name, O_CREAT | O_TRUNC | O_RDWR, 0666);
-	if (capfile_out < 0)
-		pr_err("%s: %m", name);
+	capfile_out.capfile_count = nfiles;
+	capfile_out.capfile_size_limit = limit;
+	capfile_out.capfile_index = 0;
 
-	vers = htonl(snoop_version);
-	if (nwrite(capfile_out, snoop_id, snoop_idlen) == -1)
-		cap_write_error("snoop_id");
+	/* we have at least one output file. */
+	if (nfiles == 0)
+		nfiles++;
 
-	if (nwrite(capfile_out, &vers, sizeof (int)) == -1)
-		cap_write_error("version");
+	capfile_out.capfile_fd = malloc(nfiles *
+	    sizeof (*capfile_out.capfile_fd));
+	if (capfile_out.capfile_fd == NULL) {
+		pr_err("out of memory\n");
+		exit(1);
+	}
+
+	/* Open all files. */
+	for (i = 0; i < nfiles; i++) {
+		name = NULL;
+		if (capfile_out.capfile_count == 0) {
+			name = strdup(prefix);
+		} else {
+			(void) asprintf(&name, "%s-%02d.snoop",
+			    prefix, i);
+		}
+
+		if (name == NULL) {
+			pr_err("out of memory\n");
+			exit(1);
+		}
+		capfile_out.capfile_fd[i] = open(name,
+		    O_CREAT | O_TRUNC | O_RDWR, 0666);
+		free(name);
+
+		/* Write header */
+		vers = htonl(snoop_version);
+		if (nwrite(capfile_out.capfile_fd[i], snoop_id,
+		    snoop_idlen) == -1)
+			cap_write_error("snoop_id");
+
+		if (nwrite(capfile_out.capfile_fd[i], &vers,
+		    sizeof (int)) == -1)
+			cap_write_error("version");
+
+		mac = htonl(interface->mac_type);
+		if (nwrite(capfile_out.capfile_fd[i], &mac,
+		    sizeof (int)) == -1)
+			cap_write_error("mac_type");
+	}
 }
 
+static int
+cap_get_write_fd(void)
+{
+	struct stat buf;
+	size_t idx = capfile_out.capfile_index;
+
+	if (capfile_out.capfile_count == 0) {
+		/* Single file, no rotation */
+		return (*capfile_out.capfile_fd);
+	}
+
+	if (fstat(capfile_out.capfile_fd[idx], &buf) != 0)
+		pr_err("%s: %m", __func__);
+
+	if (buf.st_size < capfile_out.capfile_size_limit) {
+		/* we are below size limit */
+		return (capfile_out.capfile_fd[idx]);
+	}
+
+	/* pick next file */
+	if (idx == capfile_out.capfile_count - 1)
+		capfile_out.capfile_index = 0;
+	else
+		capfile_out.capfile_index++;
+	idx = capfile_out.capfile_index;
+	(void) lseek(capfile_out.capfile_fd[idx], 16, SEEK_SET);
+	(void) ftruncate(capfile_out.capfile_fd[idx], 16);
+	return (capfile_out.capfile_fd[idx]);
+}
 
 void
 cap_close(void)
 {
-	(void) close(capfile_out);
+	size_t i, nfiles;
+
+	nfiles = capfile_out.capfile_count;
+	if (nfiles == 0)
+		nfiles++;
+
+	for (i = 0; i < nfiles; i++)
+		(void) close(capfile_out.capfile_fd[i]);
 }
 
 static char *cap_buffp = NULL;
@@ -710,24 +792,19 @@ cap_read(int first, int last, int filter, void (*proc)(), int flags)
 	(void) munmap(cap_buffp, cap_len);
 }
 
-/* ARGSUSED */
 void
-cap_write(struct sb_hdr *hdrp, char *pktp, int num, int flags)
+cap_write(struct sb_hdr *hdrp, char *pktp, int num __unused, int flags __unused)
 {
-	int pktlen, mac;
-	static int first = 1;
+	int pktlen, fd;
 	struct sb_hdr nhdr;
 	extern boolean_t qflg;
 
 	if (hdrp == NULL)
 		return;
 
-	if (first) {
-		first = 0;
-		mac = htonl(interface->mac_type);
-		if (nwrite(capfile_out, &mac, sizeof (int)) == -1)
-			cap_write_error("mac_type");
-	}
+	fd = cap_get_write_fd();
+	if (fd == -1)
+		return;
 
 	pktlen = hdrp->sbh_totlen - sizeof (*hdrp);
 
@@ -741,13 +818,13 @@ cap_write(struct sb_hdr *hdrp, char *pktp, int num, int flags)
 	nhdr.sbh_timestamp.tv_sec = htonl(hdrp->sbh_timestamp.tv_sec);
 	nhdr.sbh_timestamp.tv_usec = htonl(hdrp->sbh_timestamp.tv_usec);
 
-	if (nwrite(capfile_out, &nhdr, sizeof (nhdr)) == -1)
+	if (nwrite(fd, &nhdr, sizeof (nhdr)) == -1)
 		cap_write_error("packet header");
 
-	if (nwrite(capfile_out, pktp, pktlen) == -1)
+	if (nwrite(fd, pktp, pktlen) == -1)
 		cap_write_error("packet");
 
-	if (! qflg)
+	if (!qflg)
 		show_count();
 }
 
