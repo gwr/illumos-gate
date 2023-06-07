@@ -493,6 +493,14 @@ typedef struct pqi_cmd {
 
 #define	MASKED_DEVICE(lunid)				((lunid)[3] & 0xc0)
 
+#define	MEMP(args...) (void) snprintf(m.mem + strlen(m.mem), \
+	m.len - strlen(m.mem), args)
+
+typedef struct mem_len_pair {
+	caddr_t	mem;
+	int	len;
+} mem_len_pair_t;
+
 /* ---- Defines for PQI mode ---- */
 #define	IRQ_MODE_NONE			0x00
 #define	VPD_PAGE			(1 << 8)
@@ -565,6 +573,9 @@ int pqi_map_event(uint8_t event);
 boolean_t pqi_supported_event(uint8_t event_type);
 char *bool_to_str(int v);
 char *dtype_to_str(int t);
+void pqi_free_mem_len(mem_len_pair_t *m);
+mem_len_pair_t pqi_alloc_mem_len(int len);
+mem_len_pair_t build_cdb_str(uint8_t *cdb);
 int pqi_is_offline(pqi_state_t s);
 void pqi_show_dev_state(pqi_state_t s);
 void pqi_mem_check(void *v);
