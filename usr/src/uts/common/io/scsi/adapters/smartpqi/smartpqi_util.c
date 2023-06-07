@@ -488,6 +488,22 @@ iu_type_to_str(int val)
 	}
 }
 
+void
+pqi_free_mem_len(mem_len_pair_t *m)
+{
+	kmem_free(m->mem, m->len);
+}
+
+mem_len_pair_t
+pqi_alloc_mem_len(int len)
+{
+	mem_len_pair_t m;
+	m.len = len;
+	m.mem = kmem_alloc(m.len, KM_SLEEP);
+	*m.mem = '\0';
+	return (m);
+}
+
 /*
  * []------------------------------------------------------------------[]
  * | Support/utility functions for main functions above			|
@@ -635,12 +651,12 @@ cmd_state_str(pqi_cmd_state_t state)
 }
 
 
-#define	MEMP(args...) (void) snprintf(buf + strlen(buf), sz - strlen(buf), args)
-
-static void
-build_cdb_str(uint8_t *cdb, char *buf, size_t sz)
+mem_len_pair_t
+build_cdb_str(uint8_t *cdb)
 {
-	*buf = '\0';
+	mem_len_pair_t m = pqi_alloc_mem_len(64);
+
+	m.mem[0] = '\0';
 
 	switch (cdb[0]) {
 	case SCMD_INQUIRY:
@@ -678,6 +694,23 @@ build_cdb_str(uint8_t *cdb, char *buf, size_t sz)
 		MEMP("%s (%x)", cdb_to_str(cdb[0]), cdb[0]);
 		break;
 	}
+	return (m);
+}
+
+mem_len_pair_t
+mem_to_arraystr(uint8_t *ptr, size_t len)
+{
+	mem_len_pair_t	m	= pqi_alloc_mem_len(len * 3 + 20);
+	int		i;
+
+	m.mem[0] = '\0';
+	MEMP("{ ");
+	for (i = 0; i < len; i++) {
+		MEMP("%02x ", *ptr++ & 0xff);
+	}
+	MEMP(" }");
+
+	return (m);
 }
 
 static char lun_str[64];
@@ -726,6 +759,7 @@ dump_raid(pqi_state_t s, void *v, pqi_index_t idx)
 	int			len	= 512;
 	caddr_t			scratch;
 	pqi_raid_path_request_t	*rqst = v;
+	mem_len_pair_t		cdb_data;
 	caddr_t			raw = v;
 
 	scratch = kmem_alloc(len, KM_SLEEP);
@@ -740,9 +774,9 @@ dump_raid(pqi_state_t s, void *v, pqi_index_t idx)
 	}
 
 	if (s->s_debug_level & DBG_LVL_CDB) {
-		char buf[64];
-		build_cdb_str(rqst->rp_cdb, buf, sizeof (buf));
-		SCRATCH_PRINT("cdb(%s),", buf);
+		cdb_data = build_cdb_str(rqst->rp_cdb);
+		SCRATCH_PRINT("cdb(%s),", cdb_data.mem);
+		pqi_free_mem_len(&cdb_data);
 	}
 
 	ASSERT0(rqst->header.reserved);
@@ -787,13 +821,14 @@ dump_aio(void *v)
 	int			i;
 	int			len	= 512;
 	caddr_t			scratch;
-	char			buf[64];
+	mem_len_pair_t		cdb_data;
 
 	scratch = kmem_alloc(len, KM_SLEEP);
 	scratch[0] = '\0';
 
-	build_cdb_str(rqst->cdb, buf, sizeof (buf));
-	SCRATCH_PRINT("cdb(%s)", buf);
+	cdb_data = build_cdb_str(rqst->cdb);
+	SCRATCH_PRINT("cdb(%s)", cdb_data.mem);
+	pqi_free_mem_len(&cdb_data);
 
 	SCRATCH_PRINT("h(type=%x,len=%x,id=%x)",
 	    rqst->header.iu_type, rqst->header.iu_length,

@@ -154,7 +154,7 @@ smartpqi_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
 	int		instance;
 	pqi_state_t	s	= NULL;
 	int		mem_bar	= IO_SPACE;
-	char		name[32];
+	mem_len_pair_t	m;
 
 	switch (cmd) {
 	case DDI_ATTACH:
@@ -192,14 +192,18 @@ smartpqi_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
 	cv_init(&s->s_io_condvar, NULL, CV_DRIVER, NULL);
 	sema_init(&s->s_sync_rqst, 1, NULL, SEMA_DRIVER, NULL);
 
-	(void) snprintf(name, sizeof (name), "smartpqi_cache%d", instance);
-	s->s_cmd_cache = kmem_cache_create(name, sizeof (struct pqi_cmd), 0,
+	m = pqi_alloc_mem_len(256);
+	(void) snprintf(m.mem, m.len, "smartpqi_cache%d", instance);
+	s->s_cmd_cache = kmem_cache_create(m.mem, sizeof (struct pqi_cmd), 0,
 	    pqi_cache_constructor, pqi_cache_destructor, NULL, s, NULL, 0);
 
-	s->s_events_taskq = ddi_taskq_create(s->s_dip, "pqi_events_tq", 1,
+	(void) snprintf(m.mem, m.len, "pqi_events_taskq%d", instance);
+	s->s_events_taskq = ddi_taskq_create(s->s_dip, m.mem, 1,
 	    TASKQ_DEFAULTPRI, 0);
-	s->s_complete_taskq = ddi_taskq_create(s->s_dip, "pqi_complete_tq", 4,
+	(void) snprintf(m.mem, m.len, "pqi_complete_taskq%d", instance);
+	s->s_complete_taskq = ddi_taskq_create(s->s_dip, m.mem, 4,
 	    TASKQ_DEFAULTPRI, 0);
+	pqi_free_mem_len(&m);
 
 	s->s_debug_level = ddi_prop_get_int(DDI_DEV_T_ANY, dip,
 	    DDI_PROP_DONTPASS, "debug", 0);
