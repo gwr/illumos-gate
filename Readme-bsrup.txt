@@ -5,3 +5,4 @@ XXX %Z% Don't upstream this!
 
 Labels follow:
 IL-BSRUP7-BASE
+il-bsrup7 -- corresponds to BSR 23.6
