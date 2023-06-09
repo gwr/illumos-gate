@@ -563,6 +563,9 @@ nwrite(int fd, const void *buffer, size_t buflen)
  * Routines for opening, closing, reading and writing
  * a capture file of packets saved with the -o option.
  */
+// XXX  Would like to have a member that's the current FD,
+// instead of using: capfile_out.capfile_fd[capfile_index]
+// XXX maybe: capfile_out.cur_fd ?
 static struct capfile_out_data {
 	int		*capfile_fd;		/* Open file descriptors */
 	size_t		capfile_count;		/* Number of files */
@@ -598,6 +601,10 @@ static struct capfile_out_data {
 static const char *snoop_id = "snoop\0\0\0";
 static const int snoop_idlen = 8;
 static const int snoop_version = 2;
+
+// XXX I'd rather you keep cap_open_write() more like it was,
+// and add a new function to call it in a loop for the
+// multi-file case.  Maybe: cap_open_wr_multi()
 
 void
 cap_open_write(const char *prefix, size_t nfiles, off_t limit)
@@ -656,6 +663,11 @@ cap_open_write(const char *prefix, size_t nfiles, off_t limit)
 	}
 }
 
+// XXX Let's replace this with a new function called when we've
+// just passed the maximum file size and need move to the next.
+// See comments in cap_write().  Maybe cap_next_and_trunc()?
+// And again, use lseek to get size, not stat/fstat
+// though I think I'd prefer to see that in cap_write()
 static int
 cap_get_write_fd(void)
 {
@@ -802,9 +814,23 @@ cap_write(struct sb_hdr *hdrp, char *pktp, int num __unused, int flags __unused)
 	if (hdrp == NULL)
 		return;
 
-	fd = cap_get_write_fd();
-	if (fd == -1)
-		return;
+	// XXX Instead of cap_get_write_fd() here...
+	// XXX I'd rather see something like this:
+	if (capfile_out.capfile_count != 0) {
+		// Is it time to switch output files?
+		// XXX use lseek, not fstat
+		off_t cur_off;
+		cur_off = lseek(capfile_out.cur_fd, 0, SEEK_CUR);
+		if (cur_off >= capfile_out.capfile_size_limit) {
+			// XXX call something that changes the
+			// capfile_out.cur_fd to the next
+			// output file and truncates.
+			// Maybe: cap_next_and_trunc() ?
+		}
+	}
+	// XXX proceed with capfile_out...
+	// maybe just get rid of variable: fd
+	fd = capfile_out.cur_fd;
 
 	pktlen = hdrp->sbh_totlen - sizeof (*hdrp);
 
@@ -818,10 +844,10 @@ cap_write(struct sb_hdr *hdrp, char *pktp, int num __unused, int flags __unused)
 	nhdr.sbh_timestamp.tv_sec = htonl(hdrp->sbh_timestamp.tv_sec);
 	nhdr.sbh_timestamp.tv_usec = htonl(hdrp->sbh_timestamp.tv_usec);
 
-	if (nwrite(fd, &nhdr, sizeof (nhdr)) == -1)
+	if (nwrite(capfile_out.cur_fd, &nhdr, sizeof (nhdr)) == -1)
 		cap_write_error("packet header");
 
-	if (nwrite(fd, pktp, pktlen) == -1)
+	if (nwrite(capfile_out.cur_fd, pktp, pktlen) == -1)
 		cap_write_error("packet");
 
 	if (!qflg)

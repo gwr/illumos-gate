@@ -482,7 +482,10 @@ main(int argc, char **argv)
 	 * mappings through the name service.
 	 */
 	if (ocapfile) {
-		cap_open_write(ocapfile, nfiles, limit);
+		if (nfiles > 1)
+			cap_open_wr_multi(ocapfile, nfiles, limit);
+		else
+			cap_open_write(ocapfile);
 		proc = cap_write;
 	} else {
 		flags |= F_NOW;
