@@ -12,9 +12,11 @@
 /*
  * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  * Copyright 2019 Joyent, Inc.
+ * Copyright 2023 Racktop Systems, Inc.
  */
 
 #include <stdio.h>
+#include <strings.h> /* strstr */
 
 #include "cryptotest.h"
 
@@ -36,6 +38,7 @@ main(void)
 {
 	int errs = 0;
 	int i;
+	ulong_t param_len = hmac_len;
 	uint8_t N[1024];
 	cryptotest_t args = {
 		.out = N,
@@ -45,6 +48,10 @@ main(void)
 		.updatelens = updatelens
 	};
 
+	if (strstr(mechname, "GENERAL") != NULL) {
+		args.param = &param_len;
+		args.plen = sizeof (param_len);
+	}
 	for (i = 0; i < msgcount; i++) {
 		args.key = KEY[i];
 		args.keylen = KEYLEN[i];

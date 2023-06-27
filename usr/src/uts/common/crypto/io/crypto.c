@@ -22,6 +22,7 @@
  * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  * Copyright 2018, Joyent, Inc.
+ * Copyright 2023 Racktop Systems, Inc.
  */
 
 
@@ -849,6 +850,15 @@ crypto_build_function_list(crypto_function_list_t *fl, kcf_provider_desc_t *pd)
 	fl->fl_threshold[5].mech_threshold = kcf_md5_threshold;
 	fl->fl_threshold[6].mech_type = CKM_SHA_1;
 	fl->fl_threshold[6].mech_threshold = kcf_sha1_threshold;
+	/*
+	 * NOTE: this is missing CKM_AES_CMAC and CKM_AES_GMAC.
+	 * However, the fl_threshold array is fixed-size in the argument/return
+	 * structure, which means adding new ones would require us to design
+	 * around the binary incompatibility it would introduce.
+	 * Luckily, this feature is gated behind an undocumented environment
+	 * variable in metaslot, so no one should mind if a few thresholds are
+	 * missing.
+	 */
 }
 
 /* ARGSUSED */
@@ -2133,6 +2143,19 @@ close_session(dev_t dev, caddr_t arg, int mode, int *rval)
 	return (0);
 }
 
+static int
+copyin_mech_rctl_chk(crypto_session_data_t *sp, size_t param_len,
+    boolean_t *out_rctl_chk)
+{
+	if (param_len > crypto_max_buffer_len) {
+		cmn_err(CE_NOTE, "copyin_mech: buffer greater than "
+		    "%ld bytes, pid = %d", crypto_max_buffer_len,
+		    curproc->p_pid);
+		return (CRYPTO_ARGUMENTS_BAD);
+	}
+
+	return (CRYPTO_BUFFER_CHECK(sp, param_len, *out_rctl_chk));
+}
 /*
  * Copy data model dependent mechanism structure into a kernel mechanism
  * structure.  Allocate param storage if necessary.
@@ -2157,19 +2180,41 @@ copyin_mech(int mode, crypto_session_data_t *sp, crypto_mechanism_t *in_mech,
 	out_mech->cm_param = NULL;
 	out_mech->cm_param_len = 0;
 	if (param != NULL && param_len != 0) {
-		if (param_len > crypto_max_buffer_len) {
-			cmn_err(CE_NOTE, "copyin_mech: buffer greater than "
-			    "%ld bytes, pid = %d", crypto_max_buffer_len,
-			    curproc->p_pid);
-			rv = CRYPTO_ARGUMENTS_BAD;
+		kcf_mech_entry_t *me;
+
+		if (kcf_get_mech_entry(out_mech->cm_type, &me) != KCF_SUCCESS) {
+			rv = CRYPTO_MECHANISM_INVALID;
 			goto out;
 		}
 
-		rv = CRYPTO_BUFFER_CHECK(sp, param_len, *out_rctl_chk);
-		if (rv != CRYPTO_SUCCESS) {
+		rv = copyin_mech_rctl_chk(sp, param_len, out_rctl_chk);
+		if (rv != CRYPTO_SUCCESS)
+			goto out;
+		rctl_bytes = param_len;
+
+		if (me->me_copyin_param != NULL) {
+			size_t inner_bytes;
+			rv = me->me_copyin_param(param, param_len, out_mech,
+			    mode, KM_SLEEP, &inner_bytes);
+			if (rv == CRYPTO_SUCCESS && inner_bytes != 0 &&
+			    (rv = copyin_mech_rctl_chk(sp, inner_bytes,
+			    out_rctl_chk)) == CRYPTO_SUCCESS) {
+				VERIFY(me->me_copyin_param_inner != NULL);
+				rv = me->me_copyin_param_inner(out_mech,
+				    inner_bytes, KM_SLEEP);
+			}
+			if (rv != CRYPTO_SUCCESS) {
+				if (out_mech->cm_param != NULL)
+					kmem_free(out_mech->cm_param,
+					    out_mech->cm_param_len);
+				out_mech->cm_param = NULL;
+				out_mech->cm_param_len = 0;
+				error = EFAULT;
+				goto out;
+			}
+			rctl_bytes += inner_bytes;
 			goto out;
 		}
-		rctl_bytes = param_len;
 
 		out_mech->cm_param = kmem_alloc(param_len, KM_SLEEP);
 		if (copyin((char *)param, out_mech->cm_param, param_len) != 0) {
@@ -2617,7 +2662,12 @@ crypto_free_mech(kcf_provider_desc_t *pd, boolean_t allocated_by_crypto_module,
 	crypto_mech_type_t provider_mech_type;
 
 	if (allocated_by_crypto_module) {
-		if (mech->cm_param != NULL)
+		kcf_mech_entry_t *me;
+		if (mech->cm_param != NULL &&
+		    kcf_get_mech_entry(mech->cm_type, &me) == KCF_SUCCESS &&
+		    me->me_free_param != NULL)
+			me->me_free_param(mech->cm_param, mech->cm_param_len);
+		else
 			kmem_free(mech->cm_param, mech->cm_param_len);
 	} else {
 		/* get the provider's mech number */
@@ -6651,7 +6701,7 @@ get_provider_by_mech(dev_t dev, caddr_t arg, int mode, int *rval)
 	crypto_by_mech_t mech;
 	crypto_provider_session_t *ps;
 	crypto_minor_t *cm;
-	int rv, error;
+	int rv;
 
 	if ((cm = crypto_hold_minor(getminor(dev))) == NULL) {
 		cmn_err(CE_WARN, "get_provider_by_mech: failed holding minor");
@@ -6668,17 +6718,15 @@ get_provider_by_mech(dev_t dev, caddr_t arg, int mode, int *rval)
 
 	key.ck_length = mech.mech_keylen;
 	/* pd is returned held */
-	if ((pd = kcf_get_mech_provider(mech.mech_type, &key, &me, &error,
-	    NULL, mech.mech_fg, 0)) == NULL) {
-		rv = error;
+	if ((pd = kcf_get_mech_provider(mech.mech_type, &key, &me, &rv,
+	    NULL, mech.mech_fg, 0)) == NULL)
 		goto release_minor;
-	}
 
 	/* don't want to allow direct access to software providers */
 	if (pd->pd_prov_type == CRYPTO_SW_PROVIDER) {
 		rv = CRYPTO_MECHANISM_INVALID;
 		KCF_PROV_REFRELE(pd);
-		cmn_err(CE_WARN, "software mech_type given");
+		cmn_err(CE_WARN, "!software mech_type given");
 		goto release_minor;
 	}
 
@@ -6694,7 +6742,7 @@ release_minor:
 	if (copyout(&mech, arg, sizeof (mech)) != 0)
 		return (EFAULT);
 
-	return (rv);
+	return (0);
 }
 
 /* ARGSUSED */

@@ -21,6 +21,8 @@
 /*
  * Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
+ *
+ * Copyright 2023 Racktop Systems, Inc.
  */
 
 #include <sys/types.h>
@@ -29,6 +31,7 @@
 #include <sys/disp.h>
 #include <sys/modctl.h>
 #include <sys/modhash.h>
+#include <sys/sysmacros.h>
 #include <sys/crypto/common.h>
 #include <sys/crypto/api.h>
 #include <sys/crypto/impl.h>
@@ -159,6 +162,350 @@ kcf_mech_hash_find(char *mechname)
 }
 
 /*
+ * Generic functions to copyin/free mechanisms whose parameters need more work
+ * than a simple flat copyin. Similar to dprov_copyin_mechanism().
+ * This is designed to protect against hardware providers that implement these
+ * mechanisms, but do not implement the copyin_mechanism operation, which would
+ * let user pointers be accessed by providers that have no way to detect them.
+ */
+static int
+kcf_copyin_aes_ccm_param(caddr_t in_addr, size_t param_len,
+    crypto_mechanism_t *mech, int mode, int kmflags, size_t *inner_bytes)
+{
+	STRUCT_DECL(CK_AES_CCM_PARAMS, in_param);
+	CK_AES_CCM_PARAMS *out_param;
+
+	ASSERT(in_addr != NULL);
+	ASSERT(mech != NULL);
+	ASSERT(mech->cm_param != NULL);
+
+	STRUCT_INIT(in_param, mode);
+	if (param_len != STRUCT_SIZE(in_param))
+		return (CRYPTO_ARGUMENTS_BAD);
+
+	if (copyin(in_addr, STRUCT_BUF(in_param), param_len) != 0)
+		return (CRYPTO_MECHANISM_PARAM_INVALID);
+
+	out_param = kmem_alloc(sizeof (*out_param), kmflags);
+	if (out_param == NULL)
+		return (CRYPTO_HOST_MEMORY);
+
+	out_param->ulMACSize = STRUCT_FGET(in_param, ulMACSize);
+	out_param->ulNonceSize = STRUCT_FGET(in_param, ulNonceSize);
+	out_param->ulAuthDataSize = STRUCT_FGET(in_param, ulAuthDataSize);
+	out_param->ulDataSize = STRUCT_FGET(in_param, ulDataSize);
+
+	out_param->nonce = STRUCT_FGETP(in_param, nonce);
+	out_param->authData = STRUCT_FGETP(in_param, authData);
+
+	mech->cm_param = (caddr_t)out_param;
+	mech->cm_param_len = sizeof (*out_param);
+
+	*inner_bytes = out_param->ulNonceSize + out_param->ulAuthDataSize;
+	return (CRYPTO_SUCCESS);
+}
+
+static int
+kcf_copyin_aes_ccm_param_inner(crypto_mechanism_t *mech, size_t inner_size,
+    int kmflags)
+{
+	CK_AES_CCM_PARAMS *param = (CK_AES_CCM_PARAMS *)mech->cm_param;
+	size_t alloc_len = param->ulNonceSize + param->ulAuthDataSize;
+	uchar_t *nonce, *auth;
+
+	if (inner_size != alloc_len) {
+		cmn_err(CE_NOTE, "!%s: param size changed: %ld != %ld\n",
+		    __func__, inner_size, alloc_len);
+		return (CRYPTO_MECHANISM_PARAM_INVALID);
+	}
+
+	nonce = kmem_alloc(alloc_len, kmflags);
+	if (nonce == NULL)
+		return (CRYPTO_HOST_MEMORY);
+
+	auth = nonce + param->ulNonceSize;
+	if (copyin(param->nonce, nonce, param->ulNonceSize) != 0) {
+		kmem_free(nonce, alloc_len);
+		return (CRYPTO_MECHANISM_PARAM_INVALID);
+	}
+	if (copyin(param->authData, auth, param->ulAuthDataSize) != 0) {
+		kmem_free(nonce, alloc_len);
+		return (CRYPTO_MECHANISM_PARAM_INVALID);
+	}
+
+	param->nonce = nonce;
+	param->authData = auth;
+	return (CRYPTO_SUCCESS);
+}
+
+static int
+kcf_copyin_aes_gcm_param(caddr_t in_addr, size_t param_len,
+    crypto_mechanism_t *mech, int mode, int kmflags, size_t *inner_bytes)
+{
+	STRUCT_DECL(CK_AES_GCM_PARAMS, in_param);
+	CK_AES_GCM_PARAMS *out_param;
+
+	STRUCT_INIT(in_param, mode);
+
+	if (param_len != STRUCT_SIZE(in_param))
+		return (CRYPTO_ARGUMENTS_BAD);
+
+	if (copyin(in_addr, STRUCT_BUF(in_param), param_len) != 0)
+		return (CRYPTO_MECHANISM_PARAM_INVALID);
+
+	out_param = kmem_alloc(sizeof (*out_param), kmflags);
+	if (out_param == NULL)
+		return (CRYPTO_HOST_MEMORY);
+
+	out_param->ulIvLen = STRUCT_FGET(in_param, ulIvLen);
+	out_param->ulIvBits = STRUCT_FGET(in_param, ulIvBits);
+	out_param->ulAADLen = STRUCT_FGET(in_param, ulAADLen);
+	out_param->ulTagBits = STRUCT_FGET(in_param, ulTagBits);
+
+	out_param->pIv = STRUCT_FGETP(in_param, pIv);
+	out_param->pAAD = STRUCT_FGETP(in_param, pAAD);
+
+	mech->cm_param = (caddr_t)out_param;
+	mech->cm_param_len = sizeof (*out_param);
+
+	*inner_bytes = out_param->ulIvLen + out_param->ulAADLen;
+	return (CRYPTO_SUCCESS);
+}
+
+static int
+kcf_copyin_aes_gcm_param_inner(crypto_mechanism_t *mech, size_t inner_size,
+    int kmflags)
+{
+	CK_AES_GCM_PARAMS *param = (CK_AES_GCM_PARAMS *)mech->cm_param;
+	size_t alloc_len = param->ulIvLen + param->ulAADLen;
+	uchar_t *iv, *auth;
+
+	if (inner_size != alloc_len) {
+		cmn_err(CE_NOTE, "!%s: param size changed: %ld != %ld\n",
+		    __func__, inner_size, alloc_len);
+		return (CRYPTO_MECHANISM_PARAM_INVALID);
+	}
+
+	iv = kmem_alloc(alloc_len, kmflags);
+	if (iv == NULL)
+		return (CRYPTO_HOST_MEMORY);
+
+	auth = iv + param->ulIvLen;
+	if (copyin(param->pIv, iv, param->ulIvLen) != 0) {
+		kmem_free(iv, alloc_len);
+		return (CRYPTO_MECHANISM_PARAM_INVALID);
+	}
+	if (copyin(param->pAAD, auth, param->ulAADLen) != 0) {
+		kmem_free(iv, alloc_len);
+		return (CRYPTO_MECHANISM_PARAM_INVALID);
+	}
+
+	param->pIv = iv;
+	param->pAAD = auth;
+	return (CRYPTO_SUCCESS);
+}
+
+static int
+kcf_copyin_aes_gmac_param(caddr_t in_addr, size_t param_len,
+    crypto_mechanism_t *mech, int mode, int kmflags, size_t *inner_bytes)
+{
+	STRUCT_DECL(CK_AES_GMAC_PARAMS, in_param);
+	CK_AES_GMAC_PARAMS *out_param;
+
+	STRUCT_INIT(in_param, mode);
+
+	if (param_len != STRUCT_SIZE(in_param))
+		return (CRYPTO_ARGUMENTS_BAD);
+
+	if (copyin(in_addr, STRUCT_BUF(in_param), param_len) != 0)
+		return (CRYPTO_MECHANISM_PARAM_INVALID);
+
+	out_param = kmem_alloc(sizeof (*out_param), kmflags);
+	if (out_param == NULL)
+		return (CRYPTO_HOST_MEMORY);
+
+	out_param->ulAADLen = STRUCT_FGET(in_param, ulAADLen);
+
+	out_param->pIv = STRUCT_FGETP(in_param, pIv);
+	out_param->pAAD = STRUCT_FGETP(in_param, pAAD);
+
+	mech->cm_param = (caddr_t)out_param;
+	mech->cm_param_len = sizeof (*out_param);
+
+	*inner_bytes = AES_GMAC_IV_LEN + out_param->ulAADLen;
+	return (CRYPTO_SUCCESS);
+}
+
+static int
+kcf_copyin_aes_gmac_param_inner(crypto_mechanism_t *mech, size_t inner_size,
+    int kmflags)
+{
+	CK_AES_GMAC_PARAMS *param = (CK_AES_GMAC_PARAMS *)mech->cm_param;
+	size_t alloc_len = AES_GMAC_IV_LEN + param->ulAADLen;
+	uchar_t *iv, *auth;
+
+	if (inner_size != alloc_len) {
+		cmn_err(CE_NOTE, "!%s: param size changed: %ld != %ld\n",
+		    __func__, inner_size, alloc_len);
+		return (CRYPTO_MECHANISM_PARAM_INVALID);
+	}
+
+	iv = kmem_alloc(alloc_len, kmflags);
+	if (iv == NULL)
+		return (CRYPTO_HOST_MEMORY);
+
+	auth = iv + AES_GMAC_IV_LEN;
+	if (copyin(param->pIv, iv, AES_GMAC_IV_LEN) != 0) {
+		kmem_free(iv, alloc_len);
+		return (CRYPTO_MECHANISM_PARAM_INVALID);
+	}
+	if (copyin(param->pAAD, auth, param->ulAADLen) != 0) {
+		kmem_free(iv, alloc_len);
+		return (CRYPTO_MECHANISM_PARAM_INVALID);
+	}
+
+	param->pIv = iv;
+	param->pAAD = auth;
+	return (CRYPTO_SUCCESS);
+}
+
+static int
+kcf_copyin_ecdh1_param(caddr_t in_addr, size_t param_len,
+    crypto_mechanism_t *mech, int mode, int kmflags, size_t *inner_bytes)
+{
+	STRUCT_DECL(CK_ECDH1_DERIVE_PARAMS, in_param);
+	CK_ECDH1_DERIVE_PARAMS *out_param;
+
+	STRUCT_INIT(in_param, mode);
+
+	if (param_len != STRUCT_SIZE(in_param))
+		return (CRYPTO_ARGUMENTS_BAD);
+
+	if (copyin(in_addr, STRUCT_BUF(in_param), param_len) != 0)
+		return (CRYPTO_MECHANISM_PARAM_INVALID);
+
+	out_param = kmem_alloc(sizeof (*out_param), kmflags);
+	if (out_param == NULL)
+		return (CRYPTO_HOST_MEMORY);
+
+	out_param->kdf = STRUCT_FGET(in_param, kdf);
+	out_param->ulSharedDataLen = STRUCT_FGET(in_param, ulSharedDataLen);
+	out_param->ulPublicDataLen = STRUCT_FGET(in_param, ulPublicDataLen);
+
+	out_param->pSharedData = STRUCT_FGETP(in_param, pSharedData);
+	out_param->pPublicData = STRUCT_FGETP(in_param, pPublicData);
+
+	mech->cm_param = (caddr_t)out_param;
+	mech->cm_param_len = sizeof (*out_param);
+
+	*inner_bytes = roundup(out_param->ulSharedDataLen, sizeof (caddr_t)) +
+	    roundup(out_param->ulPublicDataLen, sizeof (caddr_t));
+	return (CRYPTO_SUCCESS);
+}
+
+static int
+kcf_copyin_ecdh1_param_inner(crypto_mechanism_t *mech, size_t inner_size,
+    int kmflags)
+{
+	CK_ECDH1_DERIVE_PARAMS *param =
+	    (CK_ECDH1_DERIVE_PARAMS *)mech->cm_param;
+	size_t alloc_len =
+	    roundup(param->ulSharedDataLen, sizeof (caddr_t)) +
+	    roundup(param->ulPublicDataLen, sizeof (caddr_t));
+	uchar_t *shared, *public;
+
+	if (inner_size != alloc_len) {
+		cmn_err(CE_NOTE, "!%s: param size changed: %ld != %ld\n",
+		    __func__, inner_size, alloc_len);
+		return (CRYPTO_MECHANISM_PARAM_INVALID);
+	}
+
+	shared = kmem_alloc(alloc_len, kmflags);
+	if (shared == NULL)
+		return (CRYPTO_HOST_MEMORY);
+
+	public = shared + param->ulSharedDataLen;
+	if (copyin(param->pSharedData, shared, param->ulSharedDataLen) != 0) {
+		kmem_free(shared, alloc_len);
+		return (CRYPTO_MECHANISM_PARAM_INVALID);
+	}
+	if (copyin(param->pPublicData, public, param->ulPublicDataLen) != 0) {
+		kmem_free(shared, alloc_len);
+		return (CRYPTO_MECHANISM_PARAM_INVALID);
+	}
+
+	param->pSharedData = shared;
+	param->pPublicData = public;
+	return (CRYPTO_SUCCESS);
+}
+
+/*
+ * Free methods are only needed for parameters whose allocation size
+ * is not equal to mech->cm_param_len.
+ */
+static void
+kcf_free_aes_ccm_param(void *in_param, size_t param_len)
+{
+	CK_AES_CCM_PARAMS *param = in_param;
+
+	if (param_len != sizeof (*param)) {
+		cmn_err(CE_NOTE, "!%s: param_len doesn't match: %lu", __func__,
+		    param_len);
+		return;
+	}
+
+	kmem_free(param->nonce, param->ulNonceSize + param->ulAuthDataSize);
+	kmem_free(param, sizeof (*param));
+}
+
+static void
+kcf_free_aes_gcm_param(void *in_param, size_t param_len)
+{
+	CK_AES_GCM_PARAMS *param = in_param;
+
+	if (param_len != sizeof (*param)) {
+		cmn_err(CE_NOTE, "!%s: param_len doesn't match: %lu", __func__,
+		    param_len);
+		return;
+	}
+
+	kmem_free(param->pIv, param->ulIvLen + param->ulAADLen);
+	kmem_free(param, sizeof (*param));
+}
+
+static void
+kcf_free_aes_gmac_param(void *in_param, size_t param_len)
+{
+	CK_AES_GMAC_PARAMS *param = in_param;
+
+	if (param_len != sizeof (*param)) {
+		cmn_err(CE_NOTE, "!%s: param_len doesn't match: %lu", __func__,
+		    param_len);
+		return;
+	}
+
+	kmem_free(param->pIv, param->ulAADLen + AES_GMAC_IV_LEN);
+	kmem_free(param, sizeof (*param));
+}
+
+static void
+kcf_free_ecdh1_param(void *in_param, size_t param_len)
+{
+	CK_ECDH1_DERIVE_PARAMS *param = in_param;
+
+	if (param_len != sizeof (*param)) {
+		cmn_err(CE_NOTE, "!%s: param_len doesn't match: %lu", __func__,
+		    param_len);
+		return;
+	}
+
+	kmem_free(param->pSharedData,
+	    roundup(param->ulSharedDataLen, sizeof (caddr_t)) +
+	    roundup(param->ulPublicDataLen, sizeof (caddr_t)));
+	kmem_free(param, sizeof (*param));
+}
+
+/*
  * kcf_init_mech_tabs()
  *
  * Called by the misc/kcf's _init() routine to initialize the tables
@@ -185,6 +532,8 @@ kcf_init_mech_tabs()
 	(void) strncpy(kcf_digest_mechs_tab[1].me_name, SUN_CKM_SHA1,
 	    CRYPTO_MAX_MECH_NAME);
 	kcf_digest_mechs_tab[1].me_threshold = kcf_sha1_threshold;
+
+	CTASSERT(ARRAY_SIZE(kcf_digest_mechs_tab) >= 2);
 
 	/* The symmetric ciphers in various modes */
 	(void) strncpy(kcf_cipher_mechs_tab[0].me_name, SUN_CKM_DES_CBC,
@@ -223,6 +572,31 @@ kcf_init_mech_tabs()
 	    CRYPTO_MAX_MECH_NAME);
 	kcf_cipher_mechs_tab[8].me_threshold = kcf_rc4_threshold;
 
+	(void) strncpy(kcf_cipher_mechs_tab[9].me_name, SUN_CKM_AES_CCM,
+	    CRYPTO_MAX_MECH_NAME);
+	kcf_cipher_mechs_tab[9].me_copyin_param = kcf_copyin_aes_ccm_param;
+	kcf_cipher_mechs_tab[9].me_copyin_param_inner =
+	    kcf_copyin_aes_ccm_param_inner;
+	kcf_cipher_mechs_tab[9].me_free_param = kcf_free_aes_ccm_param;
+
+	(void) strncpy(kcf_cipher_mechs_tab[10].me_name, SUN_CKM_AES_GCM,
+	    CRYPTO_MAX_MECH_NAME);
+	kcf_cipher_mechs_tab[10].me_copyin_param = kcf_copyin_aes_gcm_param;
+	kcf_cipher_mechs_tab[10].me_copyin_param_inner =
+	    kcf_copyin_aes_gcm_param_inner;
+	kcf_cipher_mechs_tab[10].me_free_param = kcf_free_aes_gcm_param;
+
+	CTASSERT(ARRAY_SIZE(kcf_cipher_mechs_tab) >= 11);
+
+	/* 1 KeyOp */
+	(void) strncpy(kcf_keyops_mechs_tab[0].me_name, SUN_CKM_ECDH1_DERIVE,
+	    CRYPTO_MAX_MECH_NAME);
+	kcf_keyops_mechs_tab[0].me_copyin_param = kcf_copyin_ecdh1_param;
+	kcf_keyops_mechs_tab[0].me_copyin_param_inner =
+	    kcf_copyin_ecdh1_param_inner;
+	kcf_keyops_mechs_tab[0].me_free_param = kcf_free_ecdh1_param;
+
+	CTASSERT(ARRAY_SIZE(kcf_keyops_mechs_tab) >= 1);
 
 	/* 6 HMACs */
 	(void) strncpy(kcf_mac_mechs_tab[0].me_name, SUN_CKM_MD5_HMAC,
@@ -243,15 +617,23 @@ kcf_init_mech_tabs()
 
 	(void) strncpy(kcf_mac_mechs_tab[4].me_name, SUN_CKM_AES_GMAC,
 	    CRYPTO_MAX_MECH_NAME);
-	kcf_mac_mechs_tab[4].me_threshold = kcf_sha1_threshold;
+	kcf_mac_mechs_tab[4].me_threshold = kcf_aes_threshold;
+	kcf_mac_mechs_tab[4].me_copyin_param = kcf_copyin_aes_gmac_param;
+	kcf_mac_mechs_tab[4].me_copyin_param_inner =
+	    kcf_copyin_aes_gmac_param_inner;
+	kcf_mac_mechs_tab[4].me_free_param = kcf_free_aes_gmac_param;
 
 	(void) strncpy(kcf_mac_mechs_tab[5].me_name, SUN_CKM_AES_CMAC,
 	    CRYPTO_MAX_MECH_NAME);
-	kcf_mac_mechs_tab[5].me_threshold = kcf_sha1_threshold;
+	kcf_mac_mechs_tab[5].me_threshold = kcf_aes_threshold;
+
+	CTASSERT(ARRAY_SIZE(kcf_mac_mechs_tab) >= 6);
 
 	/* 1 random number generation pseudo mechanism */
 	(void) strncpy(kcf_misc_mechs_tab[0].me_name, SUN_RANDOM,
 	    CRYPTO_MAX_MECH_NAME);
+
+	CTASSERT(ARRAY_SIZE(kcf_misc_mechs_tab) >= 1);
 
 	kcf_mech_hash = mod_hash_create_strhash("kcf mech2id hash",
 	    kcf_mech_hash_size, mod_hash_null_valdtor);
@@ -342,6 +724,9 @@ kcf_create_mech_entry(kcf_ops_class_t class, char *mechname)
 			 * the threshold is set to zero.
 			 */
 			me_tab[i].me_threshold = 0;
+			me_tab[i].me_copyin_param = NULL;
+			me_tab[i].me_copyin_param_inner = NULL;
+			me_tab[i].me_free_param = NULL;
 
 			ME_MUTEXES_EXIT_ALL();
 			/* Add the new mechanism to the hash table */
