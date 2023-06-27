@@ -59,12 +59,12 @@ tests = ['sha1_32', 'sha256_32', 'sha384_32', 'sha512_32', 'sha512_224_32',
 post = cleanup
 
 [/opt/crypto-tests/tests/hmac/pkcs]
-tests = ['hmac_sha1_32', 'hmac_sha1_64']
+tests = ['hmac_sha1_32', 'hmac_sha1_64', 'hmac_sha1_gen_32', 'hmac_sha1_gen_64']
 
 [/opt/crypto-tests/tests/hmac/kcf]
 pre = setup
 user = root
-tests = ['hmac_sha1_32', 'hmac_sha1_64']
+tests = ['hmac_sha1_32', 'hmac_sha1_64', 'hmac_sha1_gen_32', 'hmac_sha1_gen_64']
 post = cleanup
 
 [/opt/crypto-tests/tests/longhash]

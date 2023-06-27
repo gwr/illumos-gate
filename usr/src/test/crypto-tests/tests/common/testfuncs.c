@@ -12,6 +12,7 @@
 /*
  * Copyright 2016 Nexenta Systems, Inc.  All rights reserved.
  * Copyright 2019 Joyent, Inc.
+ * Copyright 2023 Racktop Systems, Inc.
  */
 
 #define	__EXTENSIONS__
@@ -21,12 +22,6 @@
 #include <stdio.h>
 #include <sys/debug.h>
 #include "cryptotest.h"
-
-/*
- * A somewhat arbitrary size that should be large enough to hold the printed
- * error and size messages.
- */
-#define	BUFSZ 128
 
 #define	EXIT_FAILURE_MULTIPART	1
 #define	EXIT_FAILURE_SINGLEPART	2
@@ -211,10 +206,8 @@ test_multi(cryptotest_t *args, test_fg_t *funcs, uint8_t *cmp, size_t cmplen)
 		(void) fprintf(stderr, "    update size: %s\n", sizebuf);
 		(void) fflush(stderr);
 
-		if ((ret = funcs->tf_init(crypto_op)) != CRYPTO_SUCCESS) {
-			(void) fprintf(stderr, "        fatal error %d\n", ret);
-			exit(EXIT_FAILURE_MULTIPART);
-		}
+		if ((ret = funcs->tf_init(crypto_op)) != CRYPTO_SUCCESS)
+			goto out;
 
 		while (offset < args->inlen) {
 			size_t len = updatelen;
@@ -241,6 +234,7 @@ test_multi(cryptotest_t *args, test_fg_t *funcs, uint8_t *cmp, size_t cmplen)
 
 		ret = funcs->tf_final(crypto_op, outlen);
 
+out:
 		/*
 		 * Errors from the crypto frameworks (KCF, PKCS#11) are all
 		 * positive (and 0 == success).  Negative values are used by
@@ -278,13 +272,10 @@ test_single(cryptotest_t *args, test_fg_t *funcs, uint8_t *cmp, size_t cmplen)
 		exit(EXIT_FAILURE_SINGLEPART);
 	}
 
-	if ((ret = funcs->tf_init(crypto_op)) != CRYPTO_SUCCESS) {
-		(void) fprintf(stderr, "        fatal error %d\n", ret);
-		exit(EXIT_FAILURE_SINGLEPART);
-	}
+	ret = funcs->tf_init(crypto_op);
 
-	if ((ret = funcs->tf_single(crypto_op)) != CRYPTO_SUCCESS)
-		goto out;
+	if (ret == CRYPTO_SUCCESS)
+		ret = funcs->tf_single(crypto_op);
 
 	/*
 	 * Errors from the crypto frameworks (KCF, PKCS#11) are all
@@ -294,7 +285,6 @@ test_single(cryptotest_t *args, test_fg_t *funcs, uint8_t *cmp, size_t cmplen)
 	if (ret > 0) {
 		(void) fprintf(stderr, "        failure %s\n",
 		    cryptotest_errstr(ret, errbuf, sizeof (errbuf)));
-		return (1);
 	} else if (ret < 0) {
 		(void) fprintf(stderr, "        fatal error %s\n",
 		    ctest_errstr(ret, errbuf, sizeof (errbuf)));
@@ -303,7 +293,6 @@ test_single(cryptotest_t *args, test_fg_t *funcs, uint8_t *cmp, size_t cmplen)
 		ret = bufcmp(cmp, args->out, cmplen);
 	}
 
-out:
 	(void) cryptotest_close(crypto_op);
 	return ((ret == CRYPTO_SUCCESS) ? 0 : 1);
 }

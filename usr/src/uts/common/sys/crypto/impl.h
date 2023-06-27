@@ -20,6 +20,7 @@
  */
 /*
  * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright 2023 Racktop Systems, Inc.
  */
 
 #ifndef	_SYS_CRYPTO_IMPL_H
@@ -200,9 +201,9 @@ typedef enum {
  * pd_flags:		bitwise OR of pi_flags from crypto_provider_info_t
  *			and other internal flags defined above.
  * pd_hash_limit:	Maximum data size that hash mechanisms of this provider
- * 			can support.
+ *			can support.
  * pd_hmac_limit:	Maximum data size that HMAC mechanisms of this provider
- * 			can support.
+ *			can support.
  * pd_kcf_prov_handle:	KCF-private handle assigned by KCF
  * pd_prov_id:		Identification # assigned by KCF to provider
  * pd_kstat:		kstat associated with the provider
@@ -336,10 +337,19 @@ typedef struct kcf_prov_mech_desc {
 
 extern kcf_lock_withpad_t *me_mutexes;
 
+typedef int (*kcf_copyin_param_func_t) (caddr_t, size_t, crypto_mechanism_t *,
+    int, int, size_t *);
+typedef int (*kcf_copyin_inner_func_t) (crypto_mechanism_t *, size_t, int);
+typedef void (*kcf_free_param_func_t) (void *, size_t);
+
 #define	KCF_CPU_PAD (128 - sizeof (crypto_mech_name_t) - \
     sizeof (crypto_mech_type_t) - \
     2 * sizeof (kcf_prov_mech_desc_t *) - \
-    sizeof (int) - sizeof (uint32_t) - sizeof (size_t))
+    sizeof (int) - sizeof (uint32_t) - sizeof (size_t) - \
+    sizeof (kcf_copyin_param_func_t) - sizeof (kcf_free_param_func_t) - \
+    sizeof (kcf_copyin_inner_func_t))
+
+CTASSERT(KCF_CPU_PAD > 0);
 
 /*
  * A mechanism entry in an xxx_mech_tab[]. KCF_CPU_PAD needs
@@ -364,6 +374,9 @@ typedef	struct kcf_mech_entry {
 	 *  threshold for using hardware providers for this mech
 	 */
 	size_t			me_threshold;
+	kcf_copyin_param_func_t	me_copyin_param;
+	kcf_copyin_inner_func_t	me_copyin_param_inner;
+	kcf_free_param_func_t	me_free_param;
 	uint8_t			me_pad[KCF_CPU_PAD];
 } kcf_mech_entry_t;
 
@@ -478,8 +491,8 @@ extern kcf_mech_entry_tab_t kcf_mech_tabs_tab[];
 
 #define	KCF_MECH2INDEX(mech_type) ((int)(mech_type))
 
-#define	KCF_TO_PROV_MECH_INDX(pd, mech_type) 			\
-	((pd)->pd_mech_indx[KCF_MECH2CLASS(mech_type)] 		\
+#define	KCF_TO_PROV_MECH_INDX(pd, mech_type)			\
+	((pd)->pd_mech_indx[KCF_MECH2CLASS(mech_type)]		\
 	[KCF_MECH2INDEX(mech_type)])
 
 #define	KCF_TO_PROV_MECHINFO(pd, mech_type)			\

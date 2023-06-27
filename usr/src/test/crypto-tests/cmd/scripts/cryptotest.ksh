@@ -13,6 +13,7 @@
 
 #
 # Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
+# Copyright 2023 RackTop Systems, Inc.
 #
 
 export CRYPTO_TESTS="/opt/crypto-tests"
@@ -26,7 +27,13 @@ function fail
 
 function find_runfile
 {
-	typeset distro=default
+	typeset distro=
+
+	if [[ $(uname -s) = BrickStorOS ]]; then
+		distro=brickstor
+	else
+		distro=default
+	fi
 
 	[[ -n $distro ]] && echo $CRYPTO_TESTS/runfiles/$distro.run
 }
