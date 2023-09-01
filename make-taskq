@@ -1,0 +1,42 @@
+#!/bin/sh
+
+if [ "$1" = "install" ]
+then
+  (cd $SRC/uts && make install_h)
+  (cd $SRC/cmd/smbsrv/test-taskq && make install_h)
+fi
+
+(cd $SRC/uts/intel/genunix && make debug64/taskq.o )
+
+(cd $SRC/cmd/smbsrv/test-taskq && make $1 SOURCEDEBUG=yes COPTFLAG=-g)
+
+# kmdb_arch is 64-bit only
+kmdb_arch="amd64"
+x=intel
+for a in $kmdb_arch
+do
+  case $1 in
+  install|lint)
+    (cd $SRC/cmd/mdb/$x/$a/genunix &&
+	make dmod/taskq.o kmod/taskq.o )
+    ;;
+  clean|clobber)
+    (cd $SRC/cmd/mdb/$x/$a/genunix &&
+	make $1 )
+    ;;
+  esac
+done
+
+# mdb_arch is both 32-bit & 64-bit
+mdb_arch="ia32 amd64"
+for a in $mdb_arch
+do
+  # We build these libraries (to the proto area), so we need to
+  # build the mdb modules for all dependent libraries too.
+
+  for lib in libfakekernel
+  do
+    (cd $SRC/cmd/mdb/$x/$a/$lib && make $1 )
+  done
+done
+

@@ -244,6 +244,7 @@ SYMBOL_VERSION SUNWprivate_1.1 {
 	thread_create;
 	thread_join;
 	thread_exit;
+	thread_setrun;
 
 	tsd_get;
 	tsd_set;

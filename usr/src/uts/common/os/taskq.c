@@ -559,13 +559,21 @@
 #include <sys/systm.h>
 #include <sys/cmn_err.h>
 #include <sys/debug.h>
-#include <sys/vmsystm.h>	/* For throttlefree */
 #include <sys/sysmacros.h>
 #include <sys/cpuvar.h>
-#include <sys/cpupart.h>
+#include <sys/errno.h>
 #include <sys/sdt.h>
-#include <sys/sysdc.h>
 #include <sys/note.h>
+
+#ifdef	_KERNEL
+#include <sys/vmsystm.h>	/* For throttlefree */
+#include <sys/cpupart.h>
+#include <sys/sysdc.h>
+#else	/* _KERNEL */
+#include <umem.h>
+#include "test_defs.h"
+#include "tq_dt.h"
+#endif	/* _KERNEL */
 
 static kmem_cache_t *taskq_ent_cache, *taskq_cache;
 
@@ -650,7 +658,11 @@ int taskq_maxbuckets = TASKQ_MAXBUCKETS;
  * Get an index for the current CPU, used in the hash to spread
  * work among buckets based on what CPU is running this.
  */
+#ifdef	_KERNEL
 #define	CPUHINT()		((uintptr_t)(CPU->cpu_seqid))
+#else	/* _KERNEL */
+#define	CPUHINT()		((uintptr_t)curthread)
+#endif	/* _KERNEL */
 
 /*
  * We do not create any new threads when the system is low on memory and start
@@ -957,6 +969,7 @@ taskq_init(void)
 	    offsetof(taskq_t, tq_cpupct_link));
 }
 
+#ifdef	_KERNEL
 static void
 taskq_update_nthreads(taskq_t *tq, uint_t ncpus)
 {
@@ -1059,6 +1072,7 @@ taskq_mp_init(void)
 	(void) taskq_cpu_setup(CPU_ON, CPU->cpu_id, NULL);
 	mutex_exit(&cpu_lock);
 }
+#endif	/* _KERNEL */
 
 /*
  * Create global system dynamic task queue.
@@ -1582,7 +1596,10 @@ taskq_empty(taskq_t *tq)
 {
 	boolean_t rv;
 
+#ifdef	_KERNEL
 	ASSERT3P(tq, !=, curthread->t_taskq);
+#endif	/* _KERNEL */
+
 	mutex_enter(&tq->tq_lock);
 	rv = (tq->tq_task.tqent_next == &tq->tq_task) && (tq->tq_active == 0);
 	mutex_exit(&tq->tq_lock);
@@ -1597,7 +1614,9 @@ taskq_empty(taskq_t *tq)
 void
 taskq_wait(taskq_t *tq)
 {
+#ifdef	_KERNEL
 	ASSERT(tq != curthread->t_taskq);
+#endif	/* _KERNEL */
 
 	mutex_enter(&tq->tq_lock);
 	while (tq->tq_task.tqent_next != &tq->tq_task || tq->tq_active != 0)
@@ -1687,11 +1706,13 @@ taskq_resume(taskq_t *tq)
 	rw_exit(&tq->tq_threadlock);
 }
 
+#ifdef	_KERNEL
 int
 taskq_member(taskq_t *tq, kthread_t *thread)
 {
 	return (thread->t_taskq == tq);
 }
+#endif	/* _KERNEL */
 
 /*
  * Creates a thread in the taskq.  We only allow one outstanding create at
@@ -1743,9 +1764,13 @@ taskq_thread_create(taskq_t *tq)
 	 * destroyed until creation has completed.  We can therefore
 	 * safely dereference t.
 	 */
+#ifdef	_KERNEL
 	if (tq->tq_flags & TASKQ_THREADS_CPU_PCT) {
 		taskq_cpupct_install(tq, t->t_cpupart);
 	}
+#else	/* _KERNEL */
+	(void) t;
+#endif	/* _KERNEL */
 	mutex_enter(&tq->tq_lock);
 
 	/* Wait until we can service requests. */
@@ -1795,12 +1820,15 @@ taskq_thread(void *arg)
 	hrtime_t start, end;
 	boolean_t freeit;
 
+#ifdef	_KERNEL
 	curthread->t_taskq = tq;	/* mark ourselves for taskq_member() */
 
 	if (curproc != &p0 && (tq->tq_flags & TASKQ_DUTY_CYCLE)) {
 		sysdc_thread_enter(curthread, tq->tq_DC,
 		    (tq->tq_flags & TASKQ_DC_BATCH) ? SYSDC_THREAD_BATCH : 0);
 	}
+
+#endif
 
 	if (tq->tq_flags & TASKQ_CPR_SAFE) {
 		CALLB_CPR_INIT_SAFE(curthread, tq->tq_name);
@@ -1937,10 +1965,14 @@ taskq_thread(void *arg)
 
 	ASSERT(!(tq->tq_flags & TASKQ_CPR_SAFE));
 	CALLB_CPR_EXIT(&cprinfo);		/* drops tq->tq_lock */
+
+#ifdef	_KERNEL
 	if (curthread->t_lwp != NULL) {
 		mutex_enter(&curproc->p_lock);
 		lwp_exit();
-	} else {
+	} else
+#endif	/* _KERNEL */
+	{
 		thread_exit();
 	}
 }
@@ -1988,6 +2020,9 @@ taskq_d_svc_bucket(taskq_ent_t *tqe,
 	clock_t		tmo = MSEC_TO_TICK(taskq_thread_bucket_wait);
 
 	mutex_enter(lock);
+
+	DTRACE_PROBE2(taskq__d__svc__start, taskq_t *, tq,
+		      taskq_bucket_t *, bucket);	// XXX
 
 	/*
 	 * After this thread is started by taskq_bucket_extend(),
@@ -2226,6 +2261,9 @@ taskq_d_svc_bucket(taskq_ent_t *tqe,
 	cv_signal(&bucket->tqbucket_cv);
 
 unlock_out:
+	DTRACE_PROBE2(taskq__d__svc__end, taskq_t *, tq,
+		      taskq_bucket_t *, bucket); // XXX
+
 	mutex_exit(lock);
 }
 
@@ -2252,6 +2290,9 @@ taskq_d_thread(taskq_ent_t *tqe)
 	 */
 	mutex_enter(idle_lock);
 	bucket = tqe->tqent_un.tqent_bucket;
+
+	DTRACE_PROBE2(taskq__d__thread__start, taskq_t *, tq,
+		      taskq_ent_t *, tqe); // XXX
 
 	/*
 	 * If we were started for TASKQ_PREPOPULATE,
@@ -2453,6 +2494,9 @@ taskq_d_thread(taskq_ent_t *tqe)
 	ASSERT(MUTEX_HELD(idle_lock));
 	ASSERT(tqe->tqent_prev != NULL);
 
+	DTRACE_PROBE2(taskq__d__thread__end, taskq_t *, tq,
+		      taskq_ent_t *, tqe); // XXX
+
 	/*
 	 * Thread creation/destruction happens rarely,
 	 * so grabbing the lock is not a big performance issue.
@@ -2490,10 +2534,13 @@ taskq_d_thread(taskq_ent_t *tqe)
 
 	kmem_cache_free(taskq_ent_cache, tqe);
 
+#ifdef	_KERNEL
 	if (curthread->t_lwp != NULL) {
 		mutex_enter(&curproc->p_lock);
 		lwp_exit(); /* noreturn. drops p_lock */
-	} else {
+	} else
+#endif	/* _KERNEL */
+	{
 		thread_exit();
 	}
 }
@@ -2544,7 +2591,9 @@ taskq_create_proc(const char *name, int nthreads, pri_t pri, int minalloc,
     int maxalloc, proc_t *proc, uint_t flags)
 {
 	ASSERT((flags & ~TASKQ_INTERFACE_FLAGS) == 0);
+#ifdef	_KERNEL
 	ASSERT(proc->p_flag & SSYS);
+#endif	/* _KERNEL */
 
 	return (taskq_create_common(name, 0, nthreads, pri, minalloc,
 	    maxalloc, proc, 0, flags | TASKQ_NOINSTANCE));
@@ -2555,7 +2604,9 @@ taskq_create_sysdc(const char *name, int nthreads, int minalloc,
     int maxalloc, proc_t *proc, uint_t dc, uint_t flags)
 {
 	ASSERT((flags & ~TASKQ_INTERFACE_FLAGS) == 0);
+#ifdef	_KERNEL
 	ASSERT(proc->p_flag & SSYS);
+#endif	/* _KERNEL */
 
 	return (taskq_create_common(name, 0, nthreads, minclsyspri, minalloc,
 	    maxalloc, proc, dc, flags | TASKQ_NOINSTANCE | TASKQ_DUTY_CYCLE));
@@ -2672,7 +2723,9 @@ taskq_create_common(const char *name, int instance, int nthreads, pri_t pri,
 	 * makes sure all the taskq threads are gone.  This hold is
 	 * similar in purpose to those taken by zthread_create().
 	 */
+#ifdef	_KERNEL
 	zone_hold(tq->tq_proc->p_zone);
+#endif	/* _KERNEL */
 
 	/*
 	 * Create the first thread, which will create any other threads
@@ -2790,9 +2843,11 @@ taskq_destroy(taskq_t *tq)
 	/*
 	 * Unregister from the cpupct list.
 	 */
+#ifdef	_KERNEL
 	if (tq->tq_flags & TASKQ_THREADS_CPU_PCT) {
 		taskq_cpupct_remove(tq);
 	}
+#endif	/* _KERNEL */
 
 	/*
 	 * Wait for any pending entries to complete.
@@ -2920,7 +2975,9 @@ taskq_destroy(taskq_t *tq)
 	 * Now that all the taskq threads are gone, we can
 	 * drop the zone hold taken in taskq_create_common
 	 */
+#ifdef	_KERNEL
 	zone_rele(tq->tq_proc->p_zone);
+#endif	/* _KERNEL */
 
 	tq->tq_threads_ncpus_pct = 0;
 	tq->tq_totaltime = 0;
@@ -3012,7 +3069,9 @@ taskq_bucket_extend(taskq_bucket_t *b)
 		    0, tq->tq_proc, TS_STOPPED, tq->tq_pri);
 	}
 	tqe->tqent_thread = t;
+#ifdef	_KERNEL
 	t->t_taskq = tq;	/* mark thread as a taskq_member() */
+#endif	/* _KERNEL */
 
 	/*
 	 * Once the entry is ready, link it to the the bucket free list.
@@ -3040,6 +3099,7 @@ taskq_bucket_extend(taskq_bucket_t *b)
 	/*
 	 * Start the stopped thread.
 	 */
+#ifdef	_KERNEL
 	if (t->t_lwp != NULL) {
 		proc_t *p = tq->tq_proc;
 		mutex_enter(&p->p_lock);
@@ -3052,6 +3112,9 @@ taskq_bucket_extend(taskq_bucket_t *b)
 		setrun_locked(t);
 		thread_unlock(t);
 	}
+#else	/* _KERNEL */
+	thread_setrun(t);	/* libfakekernel */
+#endif	/* _KERNEL */
 
 	return (tqe);
 }

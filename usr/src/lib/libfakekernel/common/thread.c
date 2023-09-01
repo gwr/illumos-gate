@@ -103,6 +103,13 @@ thread_join(kt_did_t id)
 }
 
 void
+thread_setrun(kthread_t *kt)
+{
+	thread_t tid = (thread_t)(uintptr_t)kt;
+	(void)thr_continue(tid);
+}
+
+void
 tsignal(kthread_t *kt, int sig)
 {
 	thread_t tid = (thread_t)(uintptr_t)kt;

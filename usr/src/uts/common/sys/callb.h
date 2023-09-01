@@ -112,7 +112,7 @@ typedef struct callb_cpr {
 					/* due to pwr mgmt of disks, make -- */
 					/* big enough for worst spinup time */
 
-#ifdef  _KERNEL
+#if defined(_KERNEL) || defined(_FAKE_KERNEL)
 /*
  *
  * CALLB_CPR_INIT macro is used by kernel threads to add their entry to
@@ -207,7 +207,7 @@ extern boolean_t callb_generic_cpr_safe(void *, int);
 extern boolean_t callb_is_stopped(kthread_id_t, caddr_t *);
 extern void	callb_lock_table(void);
 extern void	callb_unlock_table(void);
-#endif
+#endif	/* _KERNEL || _FAKE_KERNEL */
 
 #ifdef	__cplusplus
 }

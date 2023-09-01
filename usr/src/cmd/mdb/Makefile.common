@@ -36,6 +36,7 @@ COMMON_MODULES_PROC = \
 	dof \
 	libavl \
 	libc \
+	libfakekernel \
 	libfknsmb \
 	libfksmbfs \
 	libfksmbsrv \

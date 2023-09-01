@@ -25,9 +25,11 @@
  * Copyright 2023-2024 RackTop Systems, Inc.
  */
 
-#include <mdb/mdb_param.h>
 #include <mdb/mdb_modapi.h>
+#ifdef	_KERNEL
+#include <mdb/mdb_param.h>
 #include <mdb/mdb_ks.h>
+#endif	/* _KERNEL */
 #include <sys/taskq.h>
 #include <sys/taskq_impl.h>
 
@@ -149,13 +151,17 @@ taskq(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 	const char *name = NULL;
 	uintptr_t minmaxq = 0;
 	uint_t	active = FALSE;
+	uint_t	print_buckets = FALSE;
 	uint_t	print_threads = FALSE;
 	uint_t	print_threads_all = FALSE;
+	taskq_bucket_t *b = NULL;
+	size_t bsize = 0;
 
-	size_t tact, tcount, queued, maxq;
+	size_t idx, tact, tcount, queued, maxq;
 
 	if (mdb_getopts(argc, argv,
 	    'a', MDB_OPT_SETBITS, TRUE, &active,
+	    'b', MDB_OPT_SETBITS, TRUE, &print_buckets,
 	    'm', MDB_OPT_UINTPTR, &minmaxq,
 	    'n', MDB_OPT_STR, &name,
 	    't', MDB_OPT_SETBITS, TRUE, &print_threads,
@@ -164,7 +170,6 @@ taskq(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 		return (DCMD_USAGE);
 
 	if (!(flags & DCMD_ADDRSPEC)) {
-		size_t idx;
 		tq_info_t tqi;
 
 		bzero(&tqi, sizeof (tqi));
@@ -218,9 +223,8 @@ taskq(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 	maxq = tq.tq_maxtasks;
 
 	if (tq.tq_flags & TASKQ_DYNAMIC) {
-		size_t bsize = tq.tq_nbuckets * sizeof (*tq.tq_buckets);
-		size_t idx;
-		taskq_bucket_t *b = mdb_zalloc(bsize, UM_SLEEP | UM_GC);
+		bsize = tq.tq_nbuckets * sizeof (*tq.tq_buckets);
+		b = mdb_zalloc(bsize, UM_SLEEP | UM_GC);
 
 		if (mdb_vread(b, bsize, (uintptr_t)tq.tq_buckets) == -1) {
 			mdb_warn("unable to read buckets for taskq %p", addr);
@@ -268,19 +272,45 @@ taskq(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 
 	mdb_printf("\n");
 
+	if (b != NULL && print_buckets) {
+		/*
+		 * There are actually (tq.tq_nbuckets + 1) buckets now,
+		 * with the + 1 used as the "idle bucket".  Show all.
+		 */
+		mdb_printf("%<u>%-?s %4s %4s %4s%</u>\n",
+		    "ADDR", "NALLOC", "NBACKLOG", "NFREE");
+
+		for (idx = 0; idx <= tq.tq_nbuckets; idx++) {
+			uintptr_t a = (uintptr_t)tq.tq_buckets;
+
+			(void) mdb_inc_indent(4);
+			mdb_printf("%?p %4d %4d %4d\n", a,
+			    b[idx].tqbucket_nalloc,
+			    b[idx].tqbucket_nbacklog,
+			    b[idx].tqbucket_nfree);
+			(void) mdb_dec_indent(4);
+			a += sizeof (*tq.tq_buckets);
+		}
+	}
+
 	if (print_threads || print_threads_all) {
 		int ret;
 		char strbuf[128];
 		const char *arg =
 		    print_threads_all ? "" : "-C \"taskq_thread_wait\"";
+#ifdef	KERNEL
+		const char *walk = "taskq_thread";
+#else
+		const char *walk = "thread";
+#endif
 
 		/*
 		 * We can't use mdb_pwalk_dcmd() here, because ::stacks needs
 		 * to get the full pipeline.
 		 */
 		mdb_snprintf(strbuf, sizeof (strbuf),
-		    "%p::walk taskq_thread | ::stacks -a %s",
-		    addr, arg);
+		    "%p::walk %s | ::stacks -a %s",
+		    addr, walk, arg);
 
 		(void) mdb_inc_indent(4);
 		ret = mdb_eval(strbuf);
@@ -447,7 +477,10 @@ taskq_ent_walk_step(mdb_walk_state_t *wsp)
 /*
  * Walker: "taskq_thread"; taskq_thread_walk_{init,step,fini}
  * given a taskq_t, list all of its threads
+ *
+ * Only for genunix, not libfakekernel
  */
+#ifdef	_KERNEL
 typedef struct taskq_thread_info {
 	uintptr_t	tti_addr;
 	uintptr_t	*tti_tlist;
@@ -547,3 +580,4 @@ taskq_thread_walk_fini(mdb_walk_state_t *wsp)
 	}
 	mdb_free(tti, sizeof (*tti));
 }
+#endif	/* _KERNEL */

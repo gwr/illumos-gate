@@ -1,0 +1,513 @@
+...
+dtrace_taskq__d__thred__start: bucket[3]
+dtrace_taskq__d__thred__start: bucket[3]
+dtrace_taskq__d__exec__start: bucket[3] job[56]
+dtrace_taskq__d__enqueue: bucket[8] job[59] thr=0x3d
+dtrace_taskq__d__thred__start: bucket[7]
+dtrace_taskq__d__thred__start: bucket[7]
+dtrace_taskq__d__exec__start: bucket[7] job[57]
+dtrace_taskq__d__enqueue: bucket[4] job[60] thr=0x3e
+dtrace_taskq__d__thred__start: bucket[11]
+dtrace_taskq__d__thred__start: bucket[11]
+dtrace_taskq__d__exec__start: bucket[11] job[58]
+dtrace_taskq__d__enqueue: bucket[0] job[61] thr=0x3f
+dtrace_taskq__d__thred__start: bucket[8]
+dtrace_taskq__d__thred__start: bucket[8]
+dtrace_taskq__d__exec__start: bucket[8] job[59]
+dtrace_taskq__d__thred__start: bucket[12]
+dtrace_taskq__d__thred__start: bucket[4]
+dtrace_taskq__d__thred__start: bucket[4]
+dtrace_taskq__d__exec__start: bucket[4] job[60]
+dtrace_taskq__d__thred__start: bucket[0]
+dtrace_taskq__d__thred__start: bucket[0]
+dtrace_taskq__d__exec__start: bucket[0] job[61]
+dtrace_taskq__d__enqueue: bucket[12] job[62] thr=0x40
+dtrace_taskq__d__enqueue: bucket[8] job[63] thr=0x41
+dtrace_taskq__d__enqueue: bucket[5] job[64] thr=0x42
+dtrace_taskq__d__enqueue: bucket[1] job[65] thr=0x0
+dtrace_taskq__enqueue: func = 0x8057d59, arg = 0x80940b8 (bucket[1])
+dtrace_taskq__d__enqueue: bucket[13] job[66] thr=0x0
+dtrace_taskq__enqueue: func = 0x8057d59, arg = 0x8094958 (bucket[13])
+dtrace_taskq__d__enqueue: bucket[9] job[67] thr=0x0
+dtrace_taskq__enqueue: func = 0x8057d59, arg = 0x8094678 (bucket[9])
+dtrace_taskq__d__enqueue: bucket[5] job[68] thr=0x0
+dtrace_taskq__d__thred__start: bucket[12]
+dtrace_taskq__d__exec__start: bucket[12] job[62]
+dtrace_taskq__d__thred__start: bucket[5]
+dtrace_taskq__d__thred__start: bucket[5]
+dtrace_taskq__d__exec__start: bucket[5] job[64]
+dtrace_taskq__d__thred__start: bucket[8]
+dtrace_taskq__d__thred__start: bucket[8]
+dtrace_taskq__d__exec__start: bucket[8] job[63]
+dtrace_taskq__enqueue: func = 0x8057d59, arg = 0x8094398 (bucket[5])
+dtrace_taskq__d__enqueue: bucket[2] job[69] thr=0x0
+dtrace_taskq__enqueue: func = 0x8057d59, arg = 0x8094170 (bucket[2])
+dtrace_taskq__d__enqueue: bucket[14] job[70] thr=0x0
+dtrace_taskq__enqueue: func = 0x8057d59, arg = 0x8094a10 (bucket[14])
+dtrace_taskq__d__enqueue: bucket[10] job[71] thr=0x0
+dtrace_taskq__enqueue: func = 0x8057d59, arg = 0x8094730 (bucket[10])
+dtrace_taskq__d__enqueue: bucket[6] job[72] thr=0x0
+dtrace_taskq__enqueue: func = 0x8057d59, arg = 0x8094450 (bucket[6])
+dtrace_taskq__d__enqueue: bucket[2] job[73] thr=0x0
+dtrace_taskq__d__enqueue: bucket[15] job[74] thr=0x0
+dtrace_taskq__enqueue: func = 0x8057d59, arg = 0x8094ac8 (bucket[15])
+dtrace_taskq__d__enqueue: bucket[11] job[75] thr=0x0
+dtrace_taskq__enqueue: func = 0x8057d59, arg = 0x80947e8 (bucket[11])
+dtrace_taskq__d__enqueue: bucket[7] job[76] thr=0x0
+dtrace_taskq__enqueue: func = 0x8057d59, arg = 0x8094508 (bucket[7])
+dtrace_taskq__d__enqueue: bucket[3] job[77] thr=0x0
+dtrace_taskq__enqueue: func = 0x8057d59, arg = 0x8094228 (bucket[3])
+dtrace_taskq__d__enqueue: bucket[15] job[78] thr=0x0
+dtrace_taskq__enqueue: func = 0x8057d59, arg = 0x8094ac8 (bucket[15])
+dtrace_taskq__d__enqueue: bucket[4] job[79] thr=0x0
+dtrace_taskq__enqueue: func = 0x8057d59, arg = 0x80942e0 (bucket[4])
+dtrace_taskq__d__enqueue: bucket[8] job[80] thr=0x0
+dtrace_taskq__enqueue: func = 0x8057d59, arg = 0x80945c0 (bucket[8])
+> show-tq
+Show: tq=0x8091d88
+  cur threads = 64 (64 - 0)
+  tq_minalloc = 1024
+  tq_maxalloc = 65536
+  tq_nbuckets = 16
+  tq_maxsize  = 64
+  tq_tasks    = 15
+  tq_executed = 15
+dynamic buckets: idx, nalloc, nbacklog, nfree
+00 05 00 00
+01 03 01 00
+02 04 02 00
+03 04 01 00
+04 04 01 00
+05 05 01 00
+06 04 01 00
+07 04 01 00
+08 05 01 00
+09 04 01 00
+10 03 01 00
+11 04 01 00
+12 05 00 00
+13 04 01 00
+14 03 01 00
+15 03 02 00
+16 00 00 00
+> show-jobs
+   free = 65456
+  sched = 16
+    run = 64
+  compl = 0
+> show-jobs rscf
+   free = 65456
+  sched = 16
+    run = 64
+  compl = 0
+Jobs in state run:
+  job[1] bidx=12
+  job[2] bidx=0
+  job[3] bidx=4
+  job[4] bidx=8
+  job[5] bidx=13
+  job[6] bidx=1
+  job[7] bidx=5
+  job[8] bidx=9
+  job[9] bidx=13
+  job[10] bidx=2
+  job[11] bidx=6
+  job[12] bidx=10
+  job[13] bidx=14
+  job[14] bidx=2
+  job[15] bidx=7
+  job[16] bidx=11
+  job[17] bidx=15
+  job[18] bidx=3
+  job[19] bidx=7
+  job[20] bidx=12
+  job[21] bidx=8
+  job[22] bidx=4
+  job[23] bidx=0
+  job[24] bidx=12
+  job[25] bidx=9
+  job[26] bidx=5
+  job[27] bidx=1
+  job[28] bidx=13
+  job[29] bidx=9
+  job[30] bidx=6
+  job[31] bidx=2
+  job[32] bidx=14
+  job[33] bidx=10
+  job[34] bidx=6
+  job[35] bidx=3
+  job[36] bidx=15
+  job[37] bidx=11
+  job[38] bidx=7
+  job[39] bidx=3
+  job[40] bidx=0
+  job[41] bidx=4
+  job[42] bidx=8
+  job[43] bidx=12
+  job[44] bidx=0
+  job[45] bidx=5
+  job[46] bidx=9
+  job[47] bidx=13
+  job[48] bidx=1
+  job[49] bidx=5
+  job[50] bidx=10
+  job[51] bidx=14
+  job[52] bidx=2
+  job[53] bidx=6
+  job[54] bidx=11
+  job[55] bidx=15
+  job[56] bidx=3
+  job[57] bidx=7
+  job[58] bidx=11
+  job[59] bidx=8
+  job[60] bidx=4
+  job[61] bidx=0
+  job[62] bidx=12
+  job[63] bidx=8
+  job[64] bidx=5
+Jobs in state sched:
+  job[65] bidx=1
+  job[66] bidx=13
+  job[67] bidx=9
+  job[68] bidx=5
+  job[69] bidx=2
+  job[70] bidx=14
+  job[71] bidx=10
+  job[72] bidx=6
+  job[73] bidx=2
+  job[74] bidx=15
+  job[75] bidx=11
+  job[76] bidx=7
+  job[77] bidx=3
+  job[78] bidx=15
+  job[79] bidx=4
+  job[80] bidx=8
+Jobs in state compl:
+Jobs in state free:
+  job[0] bidx=-1
+  job[81] bidx=-1
+> show-tq
+Show: tq=0x8091d88
+  cur threads = 64 (64 - 0)
+  tq_minalloc = 1024
+  tq_maxalloc = 65536
+  tq_nbuckets = 16
+  tq_maxsize  = 64
+  tq_tasks    = 15
+  tq_executed = 15
+dynamic buckets: idx, nalloc, nbacklog, nfree
+00 05 00 00
+01 03 01 00
+02 04 02 00
+03 04 01 00
+04 04 01 00
+05 05 01 00
+06 04 01 00
+07 04 01 00
+08 05 01 00
+09 04 01 00
+10 03 01 00
+11 04 01 00
+12 05 00 00
+13 04 01 00
+14 03 01 00
+15 03 02 00
+16 00 00 00
+> compl 2
+> dtrace_taskq__d__exec__end: bucket[0] job[2]
+dtrace_taskq__d__wait1: bucket[0]
+
+> show-tq
+Show: tq=0x8091d88
+  cur threads = 64 (64 - 0)
+  tq_minalloc = 1024
+  tq_maxalloc = 65536
+  tq_nbuckets = 16
+  tq_maxsize  = 64
+  tq_tasks    = 15
+  tq_executed = 15
+dynamic buckets: idx, nalloc, nbacklog, nfree
+00 04 00 01
+01 03 01 00
+02 04 02 00
+03 04 01 00
+04 04 01 00
+05 05 01 00
+06 04 01 00
+07 04 01 00
+08 05 01 00
+09 04 01 00
+10 03 01 00
+11 04 01 00
+12 05 00 00
+13 04 01 00
+14 03 01 00
+15 03 02 00
+16 00 00 00
+> dtrace_taskq__d__thread__end: bucket[0]
+dtrace_taskq__d__migration: bucket[1]
+dtrace_taskq__d__thred__start: bucket[1]
+dtrace_taskq__x__backlog: bucket[1] job[65]
+dtrace_taskq__d__exec__start: bucket[1] job[65]
+
+> compl 23
+> dtrace_taskq__d__exec__end: bucket[0] job[23]
+dtrace_taskq__d__wait1: bucket[0]
+
+> dtrace_taskq__d__thread__end: bucket[0]
+dtrace_taskq__d__migration: bucket[2]
+dtrace_taskq__d__thred__start: bucket[2]
+dtrace_taskq__x__backlog: bucket[2] job[69]
+dtrace_taskq__d__exec__start: bucket[2] job[69]
+compl 40
+> dtrace_taskq__d__exec__end: bucket[0] job[40]
+dtrace_taskq__d__wait1: bucket[0]
+
+> dtrace_taskq__d__thread__end: bucket[0]
+dtrace_taskq__d__migration: bucket[2]
+dtrace_taskq__d__thred__start: bucket[2]
+dtrace_taskq__x__backlog: bucket[2] job[73]
+dtrace_taskq__d__exec__start: bucket[2] job[73]
+compl 61
+> dtrace_taskq__d__exec__end: bucket[0] job[61]
+dtrace_taskq__d__wait1: bucket[0]
+
+> show-tq
+Show: tq=0x8091d88
+  cur threads = 64 (64 - 0)
+  tq_minalloc = 1024
+  tq_maxalloc = 65536
+  tq_nbuckets = 16
+  tq_maxsize  = 64
+  tq_tasks    = 15
+  tq_executed = 15
+dynamic buckets: idx, nalloc, nbacklog, nfree
+00 01 00 01
+01 04 00 00
+02 06 00 00
+03 04 01 00
+04 04 01 00
+05 05 01 00
+06 04 01 00
+07 04 01 00
+08 05 01 00
+09 04 01 00
+10 03 01 00
+11 04 01 00
+12 05 00 00
+13 04 01 00
+14 03 01 00
+15 03 02 00
+16 00 00 00
+> dtrace_taskq__d__thread__end: bucket[0]
+dtrace_taskq__d__migration: bucket[3]
+dtrace_taskq__d__thred__start: bucket[3]
+dtrace_taskq__x__backlog: bucket[3] job[77]
+dtrace_taskq__d__exec__start: bucket[3] job[77]
+
+> show-tq
+Show: tq=0x8091d88
+  cur threads = 64 (64 - 0)
+  tq_minalloc = 1024
+  tq_maxalloc = 65536
+  tq_nbuckets = 16
+  tq_maxsize  = 64
+  tq_tasks    = 15
+  tq_executed = 15
+dynamic buckets: idx, nalloc, nbacklog, nfree
+00 01 00 00
+01 04 00 00
+02 06 00 00
+03 05 00 00
+04 04 01 00
+05 05 01 00
+06 04 01 00
+07 04 01 00
+08 05 01 00
+09 04 01 00
+10 03 01 00
+11 04 01 00
+12 05 00 00
+13 04 01 00
+14 03 01 00
+15 03 02 00
+16 00 00 00
+> show-jobs rs 
+   free = 65460
+  sched = 12
+    run = 64
+  compl = 0
+Jobs in state run:
+  job[1] bidx=12
+  job[3] bidx=4
+  job[4] bidx=8
+  job[5] bidx=13
+  job[6] bidx=1
+  job[7] bidx=5
+  job[8] bidx=9
+  job[9] bidx=13
+  job[10] bidx=2
+  job[11] bidx=6
+  job[12] bidx=10
+  job[13] bidx=14
+  job[14] bidx=2
+  job[15] bidx=7
+  job[16] bidx=11
+  job[17] bidx=15
+  job[18] bidx=3
+  job[19] bidx=7
+  job[20] bidx=12
+  job[21] bidx=8
+  job[22] bidx=4
+  job[24] bidx=12
+  job[25] bidx=9
+  job[26] bidx=5
+  job[27] bidx=1
+  job[28] bidx=13
+  job[29] bidx=9
+  job[30] bidx=6
+  job[31] bidx=2
+  job[32] bidx=14
+  job[33] bidx=10
+  job[34] bidx=6
+  job[35] bidx=3
+  job[36] bidx=15
+  job[37] bidx=11
+  job[38] bidx=7
+  job[39] bidx=3
+  job[41] bidx=4
+  job[42] bidx=8
+  job[43] bidx=12
+  job[44] bidx=0
+  job[45] bidx=5
+  job[46] bidx=9
+  job[47] bidx=13
+  job[48] bidx=1
+  job[49] bidx=5
+  job[50] bidx=10
+  job[51] bidx=14
+  job[52] bidx=2
+  job[53] bidx=6
+  job[54] bidx=11
+  job[55] bidx=15
+  job[56] bidx=3
+  job[57] bidx=7
+  job[58] bidx=11
+  job[59] bidx=8
+  job[60] bidx=4
+  job[62] bidx=12
+  job[63] bidx=8
+  job[64] bidx=5
+  job[65] bidx=-1
+  job[69] bidx=-1
+  job[73] bidx=-1
+  job[77] bidx=-1
+Jobs in state sched:
+  job[66] bidx=13
+  job[67] bidx=9
+  job[68] bidx=5
+  job[70] bidx=14
+  job[71] bidx=10
+  job[72] bidx=6
+  job[74] bidx=15
+  job[75] bidx=11
+  job[76] bidx=7
+  job[78] bidx=15
+  job[79] bidx=4
+  job[80] bidx=8
+> compl 44
+> dtrace_taskq__d__exec__end: bucket[0] job[44]
+dtrace_taskq__d__wait1: bucket[0]
+
+> show-tq
+Show: tq=0x8091d88
+  cur threads = 64 (64 - 0)
+  tq_minalloc = 1024
+  tq_maxalloc = 65536
+  tq_nbuckets = 16
+  tq_maxsize  = 64
+  tq_tasks    = 15
+  tq_executed = 15
+dynamic buckets: idx, nalloc, nbacklog, nfree
+00 00 00 01
+01 04 00 00
+02 06 00 00
+03 05 00 00
+04 04 01 00
+05 05 01 00
+06 04 01 00
+07 04 01 00
+08 05 01 00
+09 04 01 00
+10 03 01 00
+11 04 01 00
+12 05 00 00
+13 04 01 00
+14 03 01 00
+15 03 02 00
+16 00 00 00
+> dtrace_taskq__d__thread__end: bucket[0]
+dtrace_taskq__d__migration: bucket[4]
+dtrace_taskq__d__thred__start: bucket[4]
+dtrace_taskq__x__backlog: bucket[4] job[79]
+dtrace_taskq__d__exec__start: bucket[4] job[79]
+
+> show-tq
+Show: tq=0x8091d88
+  cur threads = 64 (64 - 0)
+  tq_minalloc = 1024
+  tq_maxalloc = 65536
+  tq_nbuckets = 16
+  tq_maxsize  = 64
+  tq_tasks    = 15
+  tq_executed = 15
+dynamic buckets: idx, nalloc, nbacklog, nfree
+01 04 00 00
+02 06 00 00
+03 05 00 00
+04 05 00 00
+05 05 01 00
+06 04 01 00
+07 04 01 00
+08 05 01 00
+09 04 01 00
+10 03 01 00
+11 04 01 00
+12 05 00 00
+13 04 01 00
+14 03 01 00
+15 03 02 00
+16 00 00 00
+> disp 1
+dtrace_taskq__d__enqueue: bucket[0] job[82] thr=0x0
+dtrace_taskq__enqueue: func = 0x8057d59, arg = 0x8094000 (bucket[0])
+> dtrace_taskq__d__enqueue: bucket[2] job[1982292182] thr=0x0
+
+> show-tq
+Show: tq=0x8091d88
+  cur threads = 64 (64 - 0)
+  tq_minalloc = 1024
+  tq_maxalloc = 65536
+  tq_nbuckets = 16
+  tq_maxsize  = 64
+  tq_tasks    = 16
+  tq_executed = 16
+dynamic buckets: idx, nalloc, nbacklog, nfree
+00 00 01 00
+01 04 00 00
+02 06 01 00
+03 05 00 00
+04 05 00 00
+05 05 01 00
+06 04 01 00
+07 04 01 00
+08 05 01 00
+09 04 01 00
+10 03 01 00
+11 04 01 00
+12 05 00 00
+13 04 01 00
+14 03 01 00
+15 03 02 00
+16 00 00 00
+> 
