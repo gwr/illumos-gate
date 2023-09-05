@@ -21,6 +21,8 @@
 /*
  * Copyright 2010 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
+ *
+ * Copyright 2023 Racktop Systems, Inc.
  */
 
 #include <sys/strsun.h>
@@ -72,6 +74,34 @@ crypto_get_input_data(crypto_data_t *input, uchar_t **dptr, uchar_t *buf)
 	}
 
 	return (CRYPTO_SUCCESS);
+}
+
+int
+crypto_compare_data(crypto_data_t *data, uchar_t *buf, int len)
+{
+	uchar_t *dptr;
+
+	switch (data->cd_format) {
+	case CRYPTO_DATA_RAW:
+		dptr = (uchar_t *)(data->cd_raw.iov_base +
+		    data->cd_offset);
+
+		if (data->cd_raw.iov_len < data->cd_length ||
+		    data->cd_length < len)
+			return (CRYPTO_DATA_LEN_RANGE);
+
+		return (bcmp(dptr, buf, len));
+
+	case CRYPTO_DATA_UIO:
+		return (crypto_uio_data(data, buf, len,
+		    COMPARE_TO_DATA, NULL, NULL));
+
+	case CRYPTO_DATA_MBLK:
+		return (crypto_mblk_data(data, buf, len,
+		    COMPARE_TO_DATA, NULL, NULL));
+	}
+
+	return (CRYPTO_FAILED);
 }
 
 int

@@ -13,13 +13,13 @@
 # Copyright (c) 2012 by Delphix. All rights reserved.
 # Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
 # Copyright 2019 Joyent, Inc.
+# Copyright 2023 RackTop Systems, Inc.
 #
 
 BASEPROG = aes_cbc_pad
 
 # Currently, the cbc_pad mechanism is only present in PKCS#11 and
 # not KCF, so we do not create _kcf test binaries.
-CRYPTO = pkcs
 CRYPTO_kcf = $(POUND_SIGN)
 
 include $(SRC)/cmd/Makefile.cmd

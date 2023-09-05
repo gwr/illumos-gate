@@ -21,6 +21,7 @@
 /*
  * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2018, Joyent, Inc.
+ * Copyright 2023 RackTop Systems, Inc.
  */
 
 
@@ -122,6 +123,59 @@ gcm_mul(uint64_t *x_in, uint64_t *y, uint64_t *res)
 	gcm_mul((uint64_t *)(void *)(c)->gcm_ghash, (c)->gcm_H, \
 	(uint64_t *)(void *)(t));
 
+static void
+gcm_encrypt_block(gcm_ctx_t *ctx, uint8_t *datap, crypto_data_t *out,
+    size_t block_size, uint8_t *blockp, void *iov_or_mp, offset_t *offset,
+    int (*encrypt_block)(const void *, const uint8_t *, uint8_t *),
+    void (*copy_block)(uint8_t *, uint8_t *),
+    void (*xor_block)(uint8_t *, uint8_t *))
+{
+	uint8_t *out_data_1;
+	uint8_t *out_data_2;
+	size_t out_data_1_len;
+	uint64_t counter;
+	uint64_t counter_mask = ntohll(0x00000000ffffffffULL);
+
+	/*
+	 * Increment counter. Counter bits are confined
+	 * to the bottom 32 bits of the counter block.
+	 */
+	counter = ntohll(ctx->gcm_cb[1] & counter_mask);
+	counter = htonll(counter + 1);
+	counter &= counter_mask;
+	ctx->gcm_cb[1] = (ctx->gcm_cb[1] & ~counter_mask) | counter;
+
+	encrypt_block(ctx->gcm_keysched, (uint8_t *)ctx->gcm_cb,
+	    (uint8_t *)ctx->gcm_tmp);
+	xor_block(blockp, (uint8_t *)ctx->gcm_tmp);
+
+	if (out == NULL) {
+		if (ctx->gcm_remainder_len > 0) {
+			bcopy(blockp, ctx->gcm_copy_to,
+			    ctx->gcm_remainder_len);
+			bcopy(blockp + ctx->gcm_remainder_len, datap,
+			    block_size - ctx->gcm_remainder_len);
+		}
+	} else {
+		uint8_t *tmpp = (uint8_t *)ctx->gcm_tmp;
+		crypto_get_ptrs(out, iov_or_mp, offset, &out_data_1,
+		    &out_data_1_len, &out_data_2, block_size);
+
+		/* copy block to where it belongs */
+		if (out_data_1_len == block_size) {
+			copy_block(tmpp, out_data_1);
+		} else {
+			bcopy(tmpp, out_data_1, out_data_1_len);
+			if (out_data_2 != NULL) {
+				bcopy(tmpp + out_data_1_len,
+				    out_data_2,
+				    block_size - out_data_1_len);
+			}
+		}
+		/* update offset */
+		out->cd_offset += block_size;
+	}
+}
 
 /*
  * Encrypt multiple blocks of data in GCM mode.  Decrypt for GCM mode
@@ -138,14 +192,8 @@ gcm_mode_encrypt_contiguous_blocks(gcm_ctx_t *ctx, char *data, size_t length,
 	size_t need;
 	uint8_t *datap = (uint8_t *)data;
 	uint8_t *blockp;
-	uint8_t *lastp;
 	void *iov_or_mp;
 	offset_t offset;
-	uint8_t *out_data_1;
-	uint8_t *out_data_2;
-	size_t out_data_1_len;
-	uint64_t counter;
-	uint64_t counter_mask = ntohll(0x00000000ffffffffULL);
 
 	if (length + ctx->gcm_remainder_len < block_size) {
 		/* accumulate bytes here and return */
@@ -157,7 +205,6 @@ gcm_mode_encrypt_contiguous_blocks(gcm_ctx_t *ctx, char *data, size_t length,
 		return (CRYPTO_SUCCESS);
 	}
 
-	lastp = (uint8_t *)ctx->gcm_cb;
 	if (out != NULL)
 		crypto_init_ptrs(out, &iov_or_mp, &offset);
 
@@ -177,51 +224,19 @@ gcm_mode_encrypt_contiguous_blocks(gcm_ctx_t *ctx, char *data, size_t length,
 			blockp = datap;
 		}
 
-		/*
-		 * Increment counter. Counter bits are confined
-		 * to the bottom 32 bits of the counter block.
-		 */
-		counter = ntohll(ctx->gcm_cb[1] & counter_mask);
-		counter = htonll(counter + 1);
-		counter &= counter_mask;
-		ctx->gcm_cb[1] = (ctx->gcm_cb[1] & ~counter_mask) | counter;
-
-		encrypt_block(ctx->gcm_keysched, (uint8_t *)ctx->gcm_cb,
-		    (uint8_t *)ctx->gcm_tmp);
-		xor_block(blockp, (uint8_t *)ctx->gcm_tmp);
-
-		lastp = (uint8_t *)ctx->gcm_tmp;
-
-		ctx->gcm_processed_data_len += block_size;
-
-		if (out == NULL) {
-			if (ctx->gcm_remainder_len > 0) {
-				bcopy(blockp, ctx->gcm_copy_to,
-				    ctx->gcm_remainder_len);
-				bcopy(blockp + ctx->gcm_remainder_len, datap,
-				    need);
-			}
+		if ((ctx->gcm_flags & GMAC_MODE) != 0) {
+			/* add AAD to the hash */
+			ctx->gcm_len_a_len_c[0] += block_size;
+			GHASH(ctx, blockp, ctx->gcm_ghash);
 		} else {
-			crypto_get_ptrs(out, &iov_or_mp, &offset, &out_data_1,
-			    &out_data_1_len, &out_data_2, block_size);
-
-			/* copy block to where it belongs */
-			if (out_data_1_len == block_size) {
-				copy_block(lastp, out_data_1);
-			} else {
-				bcopy(lastp, out_data_1, out_data_1_len);
-				if (out_data_2 != NULL) {
-					bcopy(lastp + out_data_1_len,
-					    out_data_2,
-					    block_size - out_data_1_len);
-				}
-			}
-			/* update offset */
-			out->cd_offset += block_size;
+			gcm_encrypt_block(ctx, datap, out, block_size, blockp,
+			    &iov_or_mp, &offset, encrypt_block, copy_block,
+			    xor_block);
+			/* add ciphertext to the hash */
+			ctx->gcm_processed_data_len += block_size;
+			GHASH(ctx, ctx->gcm_tmp, ctx->gcm_ghash);
 		}
 
-		/* add ciphertext to the hash */
-		GHASH(ctx, ctx->gcm_tmp, ctx->gcm_ghash);
 
 		/* Update pointer to next block of data to be processed. */
 		if (ctx->gcm_remainder_len != 0) {
@@ -322,6 +337,56 @@ gcm_encrypt_final(gcm_ctx_t *ctx, crypto_data_t *out, size_t block_size,
 	return (CRYPTO_SUCCESS);
 }
 
+int
+gmac_mode_final(gcm_ctx_t *ctx, crypto_data_t *out, size_t block_size,
+    int (*encrypt_block)(const void *, const uint8_t *, uint8_t *),
+    void (*xor_block)(uint8_t *, uint8_t *))
+{
+	uint8_t *ghash;
+	int rv;
+
+	if (out->cd_length < ctx->gcm_tag_len)
+		return (CRYPTO_DATA_LEN_RANGE);
+
+	ghash = (uint8_t *)ctx->gcm_ghash;
+
+	if (ctx->gcm_remainder_len > 0) {
+		uint8_t *macp;
+
+		/*
+		 * Here is where we deal with data that is not a
+		 * multiple of the block size.
+		 */
+
+		macp = (uint8_t *)ctx->gcm_remainder;
+		bzero(macp + ctx->gcm_remainder_len,
+		    block_size - ctx->gcm_remainder_len);
+
+		ctx->gcm_len_a_len_c[0] += ctx->gcm_remainder_len;
+		ctx->gcm_remainder_len = 0;
+		/* add AAD to the hash */
+		GHASH(ctx, macp, ghash);
+	}
+
+	/*
+	 * We've stored the total auth data bytes here, but before we add it to
+	 * the hash, we need to convert to bits and change byte order.
+	 */
+	ctx->gcm_len_a_len_c[0] =
+	    htonll(CRYPTO_BYTES2BITS(ctx->gcm_len_a_len_c[0]));
+	GHASH(ctx, ctx->gcm_len_a_len_c, ghash);
+	encrypt_block(ctx->gcm_keysched, (uint8_t *)ctx->gcm_J0,
+	    (uint8_t *)ctx->gcm_J0);
+	xor_block((uint8_t *)ctx->gcm_J0, ghash);
+
+	rv = crypto_put_output_data(ghash, out, ctx->gcm_tag_len);
+	if (rv != CRYPTO_SUCCESS)
+		return (rv);
+	out->cd_offset += ctx->gcm_tag_len;
+
+	return (CRYPTO_SUCCESS);
+}
+
 /*
  * This will only deal with decrypting the last block of the input that
  * might not be a multiple of block length.
@@ -376,6 +441,20 @@ gcm_mode_decrypt_contiguous_blocks(gcm_ctx_t *ctx, char *data, size_t length,
 	size_t new_len;
 	uint8_t *new;
 
+	if ((ctx->gcm_flags & GMAC_MODE) != 0 && ctx->gcm_remainder_len != 0) {
+		uint8_t *macp, *ghash;
+
+		macp = (uint8_t *)ctx->gcm_remainder;
+		ghash = (uint8_t *)ctx->gcm_ghash;
+
+		bzero(macp + ctx->gcm_remainder_len,
+		    block_size - ctx->gcm_remainder_len);
+
+		ctx->gcm_len_a_len_c[0] += ctx->gcm_remainder_len;
+		/* add AAD to the hash */
+		GHASH(ctx, macp, ghash);
+	}
+
 	/*
 	 * Copy contiguous ciphertext input blocks to plaintext buffer.
 	 * Ciphertext will be decrypted in the final.
@@ -425,6 +504,19 @@ gcm_decrypt_final(gcm_ctx_t *ctx, crypto_data_t *out, size_t block_size,
 	ghash = (uint8_t *)ctx->gcm_ghash;
 	blockp = ctx->gcm_pt_buf;
 	remainder = pt_len;
+
+	if ((ctx->gcm_flags & GMAC_MODE) != 0) {
+		ASSERT3U(remainder, ==, 0);
+
+		/*
+		 * We've stored the total auth data bytes here, but before we
+		 * add it to the hash, we need to convert to bits and change
+		 * byte order.
+		 */
+		ctx->gcm_len_a_len_c[0] =
+		    htonll(CRYPTO_BYTES2BITS(ctx->gcm_len_a_len_c[0]));
+	}
+
 	while (remainder > 0) {
 		/* Incomplete last block */
 		if (remainder < block_size) {
@@ -587,6 +679,12 @@ gcm_init(gcm_ctx_t *ctx, unsigned char *iv, size_t iv_len,
 	remainder = auth_data_len;
 	do {
 		if (remainder < block_size) {
+			if ((ctx->gcm_flags & GMAC_MODE) != 0) {
+				bcopy(&(auth_data[processed]),
+				    ctx->gcm_remainder, remainder);
+				ctx->gcm_remainder_len = remainder;
+				break;
+			}
 			/*
 			 * There's not a block full of data, pad rest of
 			 * buffer with zero
@@ -605,6 +703,9 @@ gcm_init(gcm_ctx_t *ctx, unsigned char *iv, size_t iv_len,
 		GHASH(ctx, datap, ghash);
 
 	} while (remainder > 0);
+
+	if ((ctx->gcm_flags & GMAC_MODE) != 0)
+		ctx->gcm_len_a_len_c[0] = auth_data_len - remainder;
 
 	return (CRYPTO_SUCCESS);
 }
@@ -665,8 +766,8 @@ gmac_init_ctx(gcm_ctx_t *gcm_ctx, char *param, size_t block_size,
 		gcm_ctx->gcm_processed_data_len = 0;
 
 		/* these values are in bits */
-		gcm_ctx->gcm_len_a_len_c[0]
-		    = htonll(CRYPTO_BYTES2BITS(gmac_param->ulAADLen));
+		gcm_ctx->gcm_len_a_len_c[0] = 0;
+		gcm_ctx->gcm_len_a_len_c[1] = 0;
 
 		rv = CRYPTO_SUCCESS;
 		gcm_ctx->gcm_flags |= GMAC_MODE;
