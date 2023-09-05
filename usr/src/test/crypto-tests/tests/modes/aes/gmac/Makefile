@@ -16,7 +16,10 @@
 # Copyright 2023 RackTop Systems, Inc.
 #
 
-BASEPROG = aes_cmac
+BASEPROG = aes_gmac aes_gmac_enc
+
+# GMAC is currently only supported by KCF.
+CRYPTO_pkcs = $(POUND_SIGN)
 
 include $(SRC)/cmd/Makefile.cmd
 include ../Makefile.subdirs
