@@ -1,6 +1,6 @@
 .\" Copyright (c) 2009, Sun Microsystems, Inc. All Rights Reserved.
 .\" Copyright 2017, Nexenta Systems, Inc. All Rights Reserved.
-.\" Copyright 2020-2023, RackTop Systems, Inc. All Rights Reserved.
+.\" Copyright 2020-2024, RackTop Systems, Inc.
 .\" Copyright 2022 Jason King
 .\" Copyright 2023 Bill Sommerfeld
 .\" The contents of this file are subject to the terms of the
@@ -18,7 +18,7 @@
 .\" fields enclosed by brackets "[]" replaced with your own identifying
 .\" information: Portions Copyright [yyyy] [name of copyright owner]
 .\"
-.Dd November 8, 2023
+.Dd Mar 18, 2024
 .Dt SMB 5
 .Os
 .Sh NAME
@@ -194,6 +194,18 @@ and from
 seconds and above.
 The default value is
 .Ql 0 .
+.It Sy listener_bindings
+Specifies an optional matching pattern for interface names
+on which the SMB server should listen.
+The pattern is a list of
+.Xr fnmatch 3c
+patterns separated by pipe symbols.
+Patterns may begin with an exclamation point to exclude matching interfaces.
+The first match pattern that matches an interface name acts immediately,
+whether an exclude or include pattern, so order does matter.
+For example, the pattern string:
+.Dq !hb0|*
+will exclude the hb0 interface and include all other interfaces.
 .It Sy lmauth_level
 Specifies the LAN Manager (LM) authentication level.
 The LM compatibility level

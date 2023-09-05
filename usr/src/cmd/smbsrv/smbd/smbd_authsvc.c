@@ -11,7 +11,7 @@
 
 /*
  * Copyright 2017 Nexenta Systems, Inc.  All rights reserved.
- * Copyright 2022-2023 RackTop Systems, Inc.
+ * Copyright 2022-2024 RackTop Systems, Inc.
  */
 
 /*
@@ -278,6 +278,7 @@ out:
 static void *
 smbd_authsvc_listen(void *arg)
 {
+	sigset_t	set;
 	authsvc_context_t *ctx;
 	pthread_attr_t	attr;
 	pthread_t	tid;
@@ -286,6 +287,16 @@ smbd_authsvc_listen(void *arg)
 
 	_NOTE(ARGUNUSED(arg))
 
+	if (smbd.s_debug) {
+		smbd_report("authsvc_listener tid %u started",
+		    pthread_self());
+	}
+
+	(void) sigemptyset(&set);
+	(void) sigaddset(&set, SIGTERM);
+	(void) sigprocmask(SIG_UNBLOCK, &set, NULL);
+
+	/* for child threads we'll create */
 	(void) pthread_attr_init(&attr);
 	(void) pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
@@ -300,6 +311,9 @@ smbd_authsvc_listen(void *arg)
 				continue;
 			case EINTR:
 				/* normal termination */
+				if (smbd.s_debug > 1) {
+					smbd_report("authsvc_listen: EINTR");
+				}
 				goto out;
 			default:
 				smbd_report("authsvc, socket accept failed,"
@@ -310,7 +324,7 @@ smbd_authsvc_listen(void *arg)
 
 #ifndef FKSMBD
 		if (!authsock_has_priv(ns)) {
-			close(ns);
+			(void) close(ns);
 			continue;
 		}
 #endif
@@ -352,11 +366,20 @@ smbd_authsvc_listen(void *arg)
 			ctx = NULL;
 			smbd_nomem();
 		}
+
+		if (smbd.s_debug > 1) {
+			smbd_report("authsvc_work, tid %u created", tid);
+		}
+
 		ctx = NULL; /* given to the new thread or destroyed */
-		(void) pthread_detach(tid);
 	}
 
 out:
+	if (smbd.s_debug) {
+		smbd_report("authsvc_listener tid %u exiting",
+		    pthread_self());
+	}
+
 	(void) pthread_attr_destroy(&attr);
 	smbd_authsock_destroy();
 	return (NULL);
@@ -530,6 +553,11 @@ out:
 	(void) mutex_lock(&smbd_authsvc_mutex);
 	smbd_authsvc_thrcnt--;
 	(void) mutex_unlock(&smbd_authsvc_mutex);
+
+	if (smbd.s_debug > 1) {
+		smbd_report("authsvc_work, tid %u exiting",
+		    pthread_self());
+	}
 
 	return (NULL);	/* implied pthread_exit() */
 }

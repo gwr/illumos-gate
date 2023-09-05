@@ -21,6 +21,7 @@
 /*
  * Copyright (c) 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2012 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2024 RackTop Systems, Inc.
  */
 
 /*
@@ -155,11 +156,16 @@ smbd_spool_stop(void)
 static void *
 smbd_spool_monitor(void *arg)
 {
+	sigset_t	set;
 	uint32_t	spool_num;
 	char		username[MAXNAMELEN];
 	char		path[MAXPATHLEN];
 	smb_inaddr_t	ipaddr;
 	int		error_retry_cnt = 5;
+
+	(void) sigemptyset(&set);
+	(void) sigaddset(&set, SIGTERM);
+	(void) sigprocmask(SIG_UNBLOCK, &set, NULL);
 
 	smbd_online_wait("smbd_spool_monitor");
 

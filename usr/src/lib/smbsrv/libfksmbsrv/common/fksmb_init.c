@@ -217,6 +217,9 @@ fksmbsrv_drv_ioctl(int cmd, void *varg)
 	case SMB_IOC_SPOOLDOC:
 		rc = smb_server_spooldoc(sv, &ioc->ioc_spooldoc);
 		break;
+	case SMB_IOC_LISTEN:
+		rc = smb_server_listen(sv, &ioc->ioc_listen);
+		break;
 	default:
 		rc = SET_ERROR(ENOTTY);
 		break;

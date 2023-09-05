@@ -21,6 +21,7 @@
 #
 # Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
 # Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
+# Copyright 2024 RackTop Systems, Inc.
 #
 
 
@@ -31,6 +32,7 @@ OBJS_SMBD=			\
 	smbd_join.o		\
 	smbd_krb5lookup.o	\
 	smbd_krb5ssp.o		\
+	smbd_listener.o		\
 	smbd_logon.o		\
 	smbd_main.o		\
 	smbd_nicmon.o		\
@@ -84,7 +86,7 @@ LDLIBS += -L$(ROOT)/usr/lib/smbsrv
 LDLIBS += -lfksmbsrv -lfakekernel
 # prefer to keep libs ordered by dependence
 LDLIBS += -lmlsvc -lmlrpc -lsmbns -lsmb -lsmbfs -lgss
-LDLIBS += -lzfs -lbsm -lscf -lcmdutils -lsocket -lnsl -lumem
+LDLIBS += -lzfs -lbsm -lcmdutils -lsocket -lnsl -lumem
 $(PROG) := LDLIBS += -lkrb5
 
 ROOTSMBDDIR = $(ROOTLIB)/smbsrv
