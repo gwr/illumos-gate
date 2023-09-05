@@ -1363,6 +1363,7 @@ extern int crypto_mblk_data(crypto_data_t *, uchar_t *, int, cmd_type_t,
     void *, void (*update)());
 extern int crypto_put_output_data(uchar_t *, crypto_data_t *, int);
 extern int crypto_get_input_data(crypto_data_t *, uchar_t **, uchar_t *);
+extern int crypto_compare_data(crypto_data_t *, uchar_t *, int);
 extern int crypto_copy_key_to_ctx(crypto_key_t *, crypto_key_t **, size_t *,
     int kmflag);
 extern int crypto_digest_data(crypto_data_t *, void *, uchar_t *,

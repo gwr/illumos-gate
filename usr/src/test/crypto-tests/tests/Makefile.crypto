@@ -14,40 +14,62 @@
 # Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
 # Copyright 2019 Joyent, Inc.
 # Copyright 2020 Oxide Computer Company
+# Copyright 2023 RackTop Systems, Inc.
 #
 
 include $(SRC)/cmd/Makefile.cmd
 include $(SRC)/test/Makefile.com
 include $(SRC)/cmd/Makefile.ctf
 
-PROGS_32 = $(CRYPTO:%=$(BASEPROG)_32_%)
-PROGS_64 = $(CRYPTO:%=$(BASEPROG)_64_%)
-PROGS = $(PROGS_32) $(PROGS_64)
-
-COMMON_OBJS_32 = $(COMMON_OBJS:%.o=%.32.o)
-COMMON_OBJS_64 = $(COMMON_OBJS:%.o=%.64.o)
-
 # Some tests may only be relevant for PKCS#11 or KCF.  One can use
 # a statement like 'CRYPTO_kcf = $(POUND_SIGN)' in a test's Makefile to
 # disable creation of tests for a given framework.  For an example, see
 # modes/aes/cbc_pad/Makefile
-$(CRYPTO_pkcs)PROGS_pkcs = $(BASEPROG:%=%_32_pkcs) $(BASEPROG:%=%_64_pkcs)
-$(CRYPTO_kcf)PROGS_kcf = $(BASEPROG:%=%_32_kcf) $(BASEPROG:%=%_64_kcf)
+$(CRYPTO_pkcs)PROGS_pkcs_32 = $(BASEPROG:%=%_32_pkcs)
+$(CRYPTO_pkcs)PROGS_pkcs_64 = $(BASEPROG:%=%_64_pkcs)
+$(CRYPTO_pkcs)PROGS_pkcs = $(PROGS_pkcs_32) $(PROGS_pkcs_64)
+
+$(CRYPTO_kcf)PROGS_kcf_32 = $(BASEPROG:%=%_32_kcf)
+$(CRYPTO_kcf)PROGS_kcf_64 = $(BASEPROG:%=%_64_kcf)
+$(CRYPTO_kcf)PROGS_kcf = $(PROGS_kcf_32) $(PROGS_kcf_64)
+
+PROGS_32 = $(PROGS_pkcs_32) $(PROGS_kcf_32)
+PROGS_64 = $(PROGS_pkcs_64) $(PROGS_kcf_64)
+PROGS = $(PROGS_32) $(PROGS_64)
+
+COMMONDIR = $(SRC)/test/crypto-tests/tests/common
+
+# This would all be way less complicated if we could use conditional
+# macros in dependencies, BUT dmake doesn't properly process them
+# even when escaped, and instead interprets the entire contents of the
+# macro as a single dependency. So, we have to be explicit.
+# See: .SECONDEXPANSION for an example of how that could work.
+COMMON_OBJS_32 = $(COMMON_OBJS:%.o=%.32.o)
+COMMON_OBJS_64 = $(COMMON_OBJS:%.o=%.64.o)
+TEST_OBJS = $(COMMONDIR)/testfuncs.o
+$(CRYPTO_pkcs)TEST_OBJS += $(COMMONDIR)/cryptotest_pkcs.o
+$(CRYPTO_pkcs)PKCS_OBJS = $(COMMONDIR)/testfuncs.o $(COMMONDIR)/cryptotest_pkcs.o
+$(CRYPTO_pkcs)PKCS_OBJS_32 = $(PKCS_OBJS:%.o=%.32.o)
+$(CRYPTO_pkcs)PKCS_OBJS_64 = $(PKCS_OBJS:%.o=%.64.o)
+
+$(CRYPTO_kcf)TEST_OBJS += $(COMMONDIR)/cryptotest_kcf.o
+$(CRYPTO_kcf)KCF_OBJS = $(COMMONDIR)/testfuncs.o $(COMMONDIR)/cryptotest_kcf.o
+$(CRYPTO_kcf)KCF_OBJS_32 = $(KCF_OBJS:%.o=%.32.o)
+$(CRYPTO_kcf)KCF_OBJS_64 = $(KCF_OBJS:%.o=%.64.o)
+
+TEST_OBJS_32 = $(TEST_OBJS:%.o=%.32.o)
+TEST_OBJS_64 = $(TEST_OBJS:%.o=%.64.o)
+
+$(PROGS_pkcs_32) := OBJS += $< $(COMMON_OBJS_32) $(PKCS_OBJS_32)
+$(PROGS_pkcs_64) := OBJS += $< $(COMMON_OBJS_64) $(PKCS_OBJS_64)
+$(PROGS_kcf_32) := OBJS += $< $(COMMON_OBJS_32) $(KCF_OBJS_32)
+$(PROGS_kcf_64) := OBJS += $< $(COMMON_OBJS_64) $(KCF_OBJS_64)
 
 # $(TESTROOT) must be set by whatever includes this file
 $(CRYPTO_pkcs)TESTDIR_pkcs = $(TESTROOT)/pkcs
 $(CRYPTO_kcf)TESTDIR_kcf = $(TESTROOT)/kcf
 
-COMMONDIR = $(SRC)/test/crypto-tests/tests/common
-$(PROGS_32) := OBJS += $(BASEPROG:%=%.32.o) $(COMMON_OBJS_32)
-$(PROGS_64) := OBJS += $(BASEPROG:%=%.64.o) $(COMMON_OBJS_64)
-$(PROGS_32) := OBJS += $(COMMONDIR)/testfuncs.32.o
-$(PROGS_64) := OBJS += $(COMMONDIR)/testfuncs.64.o
 $(PROGS_64) := LDLIBS.cmd = $(LDLIBS64)
-$(CRYPTO_pkcs)$(BASEPROG)_32_pkcs := OBJS += $(COMMONDIR)/cryptotest_pkcs.32.o
-$(CRYPTO_pkcs)$(BASEPROG)_64_pkcs := OBJS += $(COMMONDIR)/cryptotest_pkcs.64.o
-$(CRYPTO_kcf)$(BASEPROG)_32_kcf	:= OBJS += $(COMMONDIR)/cryptotest_kcf.32.o
-$(CRYPTO_kcf)$(BASEPROG)_64_kcf	:= OBJS += $(COMMONDIR)/cryptotest_kcf.64.o
 
 $(CRYPTO_pkcs)$(PROGS_pkcs)	:= LDLIBS += -lpkcs11 -lcryptoutil
 
@@ -64,19 +86,27 @@ CPPFLAGS += -I$(COMMONDIR) -I$(SRC)/common/crypto/
 
 all: $(PROGS)
 
-%_32_pkcs: %.32.o $(COMMON_OBJS_32)
+# Using .make.state files causes all dependencies to be rebuilt when
+# that file isn't present, and because the tests are built in parallel,
+# that causes them to step on each other's feet, as they otherwise share
+# the object files. So, we stub the command for these (like fslib.o).
+# That way we still get rebuilt when it changes.
+$(TEST_OBJS_32) $(TEST_OBJS_64):
+	@:
+
+%_32_pkcs: %.32.o $(COMMON_OBJS_32) $(PKCS_OBJS_32)
 	$(LINK.c) $(OBJS) -o $@ $(LDLIBS)
 	$(POST_PROCESS)
 
-%_64_pkcs: %.64.o $(COMMON_OBJS_64)
+%_64_pkcs: %.64.o $(COMMON_OBJS_64) $(PKCS_OBJS_64)
 	$(LINK64.c) $(OBJS) -o $@ $(LDLIBS)
 	$(POST_PROCESS)
 
-%_32_kcf: %.32.o $(COMMON_OBJS_32)
+%_32_kcf: %.32.o $(COMMON_OBJS_32) $(KCF_OBJS_32)
 	$(LINK.c) $(OBJS) -o $@ $(LDLIBS)
 	$(POST_PROCESS)
 
-%_64_kcf: %.64.o $(COMMON_OBJS_64)
+%_64_kcf: %.64.o $(COMMON_OBJS_64) $(KCF_OBJS_64)
 	$(LINK64.c) $(OBJS) -o $@ $(LDLIBS)
 	$(POST_PROCESS)
 
