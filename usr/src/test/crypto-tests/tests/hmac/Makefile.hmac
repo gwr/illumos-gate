@@ -11,9 +11,9 @@
 
 #
 # Copyright 2019 Joyent, Inc.
+# Copyright 2023 RackTop Systems, Inc.
 #
 
-CRYPTO		= pkcs kcf
 COMMON_OBJS	= main.o
 
 TESTROOT	= $(ROOT)/opt/crypto-tests/tests/hmac
