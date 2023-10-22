@@ -22,8 +22,9 @@
 .\" Copyright (C) 2008, Sun Microsystems, Inc. All Rights Reserved
 .\" Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
 .\" Copyright 2016 Jason King.
+.\" Copyright 2023 RackTop Systems, Inc.
 .\"
-.Dd November 22, 2021
+.Dd October 22, 2023
 .Dt SHARE_NFS 8
 .Os
 .Sh NAME
@@ -172,6 +173,10 @@ is specified, the default values associated with the global tag in
 are used.
 Support of NFS server logging is only available for NFS Version 2 and
 Version 3 requests.
+.It Sy name Ns = Ns Ar export_name
+Allows NFS clients to mount this share using the alternate name
+.Ar export_name ,
+instead of the traditional absolute path name.
 .It Sy nohide
 By default, if server exports two filesystems, one of which is mounted as a
 child of the other, NFS Version 2 and Version 3 clients must mount both

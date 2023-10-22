@@ -22,6 +22,8 @@
 /*
  * Copyright 2007 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
+ *
+ * Copyright 2023 RackTop Systems, Inc.
  */
 
 #include <stdio.h>
@@ -152,6 +154,14 @@ export(struct svc_req *rqstp)
 			free(opts);
 		}
 		tail = newexport(sh->sh_path, groups, tail);
+		/*
+		 * If the export also has a name, show that too.
+		 */
+		if (sh->sh_res != NULL &&
+		    sh->sh_res[0] != '-' &&
+		    sh->sh_res[0] != '\0') {
+			tail = newexport(sh->sh_res, groups, tail);
+		}
 	}
 
 	(void) rw_unlock(&sharetab_lock);

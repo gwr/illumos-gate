@@ -23,7 +23,7 @@
  * Copyright (c) 2006, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2014, 2016 by Delphix. All rights reserved.
  * Copyright 2018 Nexenta Systems, Inc.
- * Copyright 2022 RackTop Systems.
+ * Copyright 2020-2023 RackTop Systems, Inc.
  */
 
 /*
@@ -193,7 +193,7 @@ struct option_defs optdefs[] = {
 	{SHOPT_VOLFH, OPT_VOLFH},
 #endif /* VOLATILE_FH_TEST */
 #define	OPT_NAME	22
-	{SHOPT_NAME, OPT_NAME, OPT_TYPE_STRING},
+	{SHOPT_NAME, OPT_NAME, OPT_TYPE_FILE},
 	NULL
 };
 
@@ -1328,10 +1328,10 @@ printarg(char *path, struct exportdata *ep)
 		for (j = 0; j < sp->s_rootcnt; j++)
 			(void) printf("%s ", sp->s_rootnames[j] ?
 			    sp->s_rootnames[j] : "<null>");
-		(void) printf("\n\n");
+		(void) printf("\n");
 	}
-	if (ep->ex_name)
-		(void) printf("\tname = %s\n\n", ep->ex_name);
+	(void) printf("\tex_name = %s\n\n",
+	    (ep->ex_name != NULL) ? ep->ex_name : "-");
 }
 
 /*
@@ -1948,6 +1948,12 @@ nfs_enable_share(sa_share_t share)
 	/*
 	 * call the exportfs system call which is implemented
 	 * via the nfssys() call as the EXPORTFS subfunction.
+	 * For ZFS that happens via sa_share_zfs() and
+	 * zfs_deleg_share_nfs / ioctl ZFS_IOC_SHARE
+	 *
+	 * Note that OPT_NAME is in ex_name, so NFS passes NULL
+	 * for the "resource" (2nd arg) to sa_share_zfs.
+	 * Fix up sh.sh_res for this when ex_name is set.
 	 */
 	if (iszfs) {
 		struct exportfs_args ea;
@@ -1957,6 +1963,11 @@ nfs_enable_share(sa_share_t share)
 		ea.uex = &export;
 
 		(void) sa_sharetab_fill_zfs(share, &sh, "nfs");
+		if (export.ex_name != NULL && (sh.sh_res == NULL ||
+		    strcmp(sh.sh_res, "-") == 0)) {
+			free(sh.sh_res);
+			sh.sh_res = strdup(export.ex_name);
+		}
 		err = sa_share_zfs(share, NULL, path, &sh, &ea, ZFS_SHARE_NFS);
 		if (err != SA_OK) {
 			errno = err;
@@ -2238,7 +2249,9 @@ nfs_validate_property(sa_handle_t handle, sa_property_t property,
 				break;
 
 			case OPT_TYPE_FILE:
-				if (strcmp(value, "..") == 0 ||
+				/* path name component */
+				if (strcmp(value, ".") == 0 ||
+				    strcmp(value, "..") == 0 ||
 				    strchr(value, '/') != NULL) {
 					ret = SA_BAD_VALUE;
 				}

@@ -23,7 +23,7 @@
  * Copyright (c) 1989, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2012, 2016 by Delphix. All rights reserved.
  * Copyright 2016 Nexenta Systems, Inc.  All rights reserved.
- * Copyright 2022 RackTop Systems.
+ * Copyright 2022-2023 RackTop Systems, Inc.
  */
 
 /*	Copyright (c) 1983, 1984, 1985, 1986, 1987, 1988, 1989 AT&T	*/
@@ -106,6 +106,7 @@ static mutex_t logging_queue_lock;
 static cond_t logging_queue_cv;
 
 static share_t *find_lofsentry(char *, int *);
+static share_t *find_name(char *);
 static int getclientsflavors_old(share_t *, struct cln *, int *);
 static int getclientsflavors_new(share_t *, struct cln *, int *);
 static int check_client_old(share_t *, struct cln *, int, uid_t, gid_t, uint_t,
@@ -1414,23 +1415,31 @@ mount(struct svc_req *rqstp)
 	}
 
 	/*
-	 * Get the real path (no symbolic links in it)
+	 * Try lookup comparing path against sh_res names.
+	 * If that fails, try sh_path (an absolute path)
 	 */
-	if (realpath(path, rpath) == NULL) {
-		error = errno;
-		if (verbose)
-			syslog(LOG_ERR,
-			    "mount request: realpath: %s: %m", path);
-		if (error == ENOENT)
-			error = mount_enoent_error(&cln, path, rpath,
-			    flavor_list);
-		goto reply;
-	}
+	if ((sh = find_name(path)) != NULL) {
+		(void) strlcpy(rpath, sh->sh_path, sizeof (rpath));
+	} else {
+		/*
+		 * Get the real path (no symbolic links in it)
+		 */
+		if (realpath(path, rpath) == NULL) {
+			error = errno;
+			if (verbose)
+				syslog(LOG_ERR,
+				    "mount request: realpath: %s: %m", path);
+			if (error == ENOENT)
+				error = mount_enoent_error(&cln, path, rpath,
+				    flavor_list);
+			goto reply;
+		}
 
-	if ((sh = findentry(rpath)) == NULL &&
-	    (sh = find_lofsentry(rpath, &lofs_tried)) == NULL) {
-		error = EACCES;
-		goto reply;
+		if ((sh = findentry(rpath)) == NULL &&
+		    (sh = find_lofsentry(rpath, &lofs_tried)) == NULL) {
+			error = EACCES;
+			goto reply;
+		}
 	}
 
 	/*
@@ -1906,6 +1915,40 @@ done:
 	fsfreemntlist(mntl);
 	return (retcode);
 }
+
+/*
+ * Variant of findentry that searches by name (sh_res)
+ * Path based exports start with '/' so skip that here.
+ */
+static share_t *
+find_name(char *name)
+{
+	share_t *sh = NULL;
+	struct sh_list *shp;
+
+	if (name[0] == '/')
+		return (sh);
+
+	check_sharetab();
+
+	(void) rw_rdlock(&sharetab_lock);
+
+	for (shp = share_list; shp; shp = shp->shl_next) {
+		sh = shp->shl_sh;
+
+		if (sh->sh_res != NULL &&
+		    strcmp(sh->sh_res, name) == 0)
+			break;
+
+	}
+
+	sh = shp ? sharedup(sh) : NULL;
+
+	(void) rw_unlock(&sharetab_lock);
+
+	return (sh);
+}
+
 
 /*
  * Determine whether an access list grants rights to a particular host.
@@ -3252,6 +3295,7 @@ umount(struct svc_req *rqstp)
 	char rpath[MAXPATHLEN];
 	SVCXPRT *transp;
 	struct cln cln;
+	share_t *sh = NULL;
 
 	transp = rqstp->rq_xprt;
 	path = NULL;
@@ -3282,10 +3326,22 @@ umount(struct svc_req *rqstp)
 	audit_mountd_umount(host, path);
 
 	remove_path = rpath;	/* assume we will use the cannonical path */
-	if (realpath(path, rpath) == NULL) {
-		if (verbose)
-			syslog(LOG_WARNING, "UNMOUNT: realpath: %s: %m ", path);
-		remove_path = path;	/* use path provided instead */
+
+	/*
+	 * If mount used a named export, we need to lookup the
+	 * real path for that export.
+	 */
+	if ((sh = find_name(path)) != NULL) {
+		(void) strlcpy(rpath, sh->sh_path, sizeof (rpath));
+		sharefree(sh);
+	} else {
+		if (realpath(path, rpath) == NULL) {
+			if (verbose)
+				syslog(LOG_WARNING,
+				    "UNMOUNT: realpath: %s: %m ", path);
+			/* use path provided instead */
+			remove_path = path;
+		}
 	}
 
 	mntlist_delete(host, remove_path);	/* remove from mount list */
