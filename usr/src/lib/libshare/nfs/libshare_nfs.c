@@ -3228,6 +3228,42 @@ free_protoprops(void)
 }
 
 /*
+ * If the SMF db is still using integer data type for server_versmin and
+ * server_versmax, then update property template accordingly.
+ *
+ * Try reading server_versmin and server_versmax as strings, and
+ * if that fails, switch those table entries to type number.
+ *
+ * This workaround can be removed when data type is changed to string.
+ */
+static void
+version_type_check(void)
+{
+	int opt, bufsz, ret;
+	char value[PATH_MAX];
+
+	opt = PROTO_OPT_NFS_SERVER_VERSMIN;
+	bufsz = PATH_MAX;
+	ret = nfs_smf_get_prop(proto_options[opt].name, value,
+	(char *)DEFAULT_INSTANCE, getscftype(proto_options[opt].type),
+	    getsvcname(proto_options[opt].svcs), &bufsz);
+	if (ret == SCF_ERROR_TYPE_MISMATCH) {
+		proto_options[opt].type = OPT_TYPE_NUMBER;
+		proto_options[opt].defvalue.intval = NFS_VERSMIN_DEFAULT;
+	}
+
+	opt = PROTO_OPT_NFS_SERVER_VERSMAX;
+	bufsz = PATH_MAX;
+	ret = nfs_smf_get_prop(proto_options[opt].name, value,
+	(char *)DEFAULT_INSTANCE, getscftype(proto_options[opt].type),
+	    getsvcname(proto_options[opt].svcs), &bufsz);
+	if (ret == SCF_ERROR_TYPE_MISMATCH) {
+		proto_options[opt].type = OPT_TYPE_NUMBER;
+		proto_options[opt].defvalue.intval = NFS_VERSMAX_DEFAULT;
+	}
+}
+
+/*
  * nfs_init()
  *
  * Initialize the NFS plugin.
@@ -3244,6 +3280,7 @@ nfs_init(void)
 		return (SA_CONFIG_ERR);
 	}
 
+	version_type_check();
 	ret = initprotofromsmf();
 	if (ret != SA_OK) {
 		(void) printf(dgettext(TEXT_DOMAIN,
