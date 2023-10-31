@@ -1336,7 +1336,7 @@ smb_config_get_encrypt_ciphers(void)
 }
 
 const int smb_default_signing_algs =
-    SMB3_SIGN_FLAG_AES128_CMAC;
+    SMB3_SIGN_FLAG_AES128_CMAC|SMB3_SIGN_FLAG_AES128_GMAC;
 
 uint32_t
 smb_config_get_signing_algs(void)

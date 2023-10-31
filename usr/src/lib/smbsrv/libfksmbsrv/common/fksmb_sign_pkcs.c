@@ -133,6 +133,16 @@ smb3_cmac_getmech(smb_crypto_mech_t *mech)
 }
 
 /*
+ * The status of AES_GMAC in PKCS#11 is... complicated. We have GCM available,
+ * and GMAC is just a subset of GCM, so just use that.
+ */
+int
+smb3_gmac_getmech(smb_crypto_mech_t *mech)
+{
+	return (find_mech(mech, CKM_AES_GCM));
+}
+
+/*
  * Note, the SMB2 signature is the first 16 bytes of the digest,
  * even in the case of SHA256 HMAC (32-byte digest).
  *
@@ -146,6 +156,24 @@ smb2_sign_init_hmac_param(smb_crypto_mech_t *mech, smb_crypto_param_t *param,
 
 	mech->pParameter = (caddr_t)&param->hmac;
 	mech->ulParameterLen = sizeof (param->hmac);
+}
+
+/*
+ * GMAC is GCM where all data is specified as 'AAD', and IvLen is always 12.
+ */
+void
+smb3_sign_init_gmac_param(smb_crypto_mech_t *mech, smb_crypto_param_t *param,
+    uint8_t *iv)
+{
+	param->gcm.pIv = iv;
+	param->gcm.ulIvLen = SMB3_AES_GMAC_NONCE_SIZE;
+	param->gcm.ulTagBits = SMB2_SIG_SIZE << 3;	/* bytes to bits */
+	/* We'll update these in smb2_mac_uio() */
+	param->gcm.pAAD = NULL;
+	param->gcm.ulAADLen = 0;
+
+	mech->pParameter = (caddr_t)&param->gcm;
+	mech->ulParameterLen = sizeof (param->gcm);
 }
 
 int
@@ -171,29 +199,74 @@ smb2_mac_raw(smb_crypto_mech_t *mech,
 		goto out;
 	}
 
-	rv = C_SignInit(hssn, mech, hkey);
-	if (rv != CKR_OK) {
-		rc = -3;
-		goto out;
+	/*
+	 * Now that we know the input length, update the parameter for GMAC.
+	 */
+	if (mech->mechanism == CKM_AES_GCM) {
+		CK_GCM_PARAMS *param = mech->pParameter;
+
+		param->pAAD = data;
+		param->ulAADLen = data_len;
+
+		C_EncryptInit(hssn, mech, hkey);
+		if (rv != CKR_OK) {
+			rc = -3;
+			goto out;
+		}
+		rv = C_Encrypt(hssn, NULL, 0, mac, &ck_maclen);
+	} else {
+		rv = C_SignInit(hssn, mech, hkey);
+		if (rv != CKR_OK) {
+			rc = -3;
+			goto out;
+		}
+
+		rv = C_Sign(hssn, data, data_len, mac, &ck_maclen);
 	}
 
-	rv = C_Sign(hssn, data, data_len, mac, &ck_maclen);
-	if (rv != CKR_OK) {
+	if (rv != CKR_OK)
 		rc = -4;
-		goto out;
-	}
-
-	if (ck_maclen != mac_len) {
+	else if (ck_maclen != mac_len)
 		rc = -5;
-		goto out;
-	}
-	rc = 0;
+	else
+		rc = 0;
 
 out:
 	if (hkey != 0)
 		(void) C_DestroyObject(hssn, hkey);
 	if (hssn != 0)
 		(void) C_CloseSession(hssn);
+
+	return (rc);
+}
+
+/*
+ * While the PKCS#11 implementation internally has the ability to
+ * handle scatter/gather, it currently presents no interface for it.
+ * As this library is used primarily for debugging, performance in
+ * here is not a big concern, so we'll get around the limitation of
+ * libpkcs11 by copying to/from a contiguous working buffer.
+ */
+static int
+smb2_gmac_flatten(smb_crypto_mech_t *mech, uint8_t *key, size_t key_len,
+    uio_t *in_uio, uint8_t *digest16)
+{
+	uint8_t *buf = NULL;
+	size_t inlen;
+	int err, rc = -1;
+
+	inlen = in_uio->uio_resid;
+	buf = malloc(inlen);
+	if (buf == NULL)
+		return (rc);
+
+	/* Copy from uio segs to buf */
+	err = uiomove(buf, inlen, UIO_WRITE, in_uio);
+	if (err == 0)
+		rc = smb2_mac_raw(mech, key, key_len, buf, inlen,
+		    digest16, SMB2_SIG_SIZE);
+
+	free(buf);
 
 	return (rc);
 }
@@ -214,6 +287,12 @@ smb2_mac_uio(smb_crypto_mech_t *mech, uint8_t *key, size_t key_len,
 
 	if (in_uio->uio_resid <= 0)
 		return (-1);
+
+	/* We map GMAC to GCM, which requires a single flat buffer. */
+	if (mech->mechanism == CKM_AES_GCM) {
+		rc = smb2_gmac_flatten(mech, key, key_len, in_uio, digest16);
+		return (rc);
+	}
 
 	if (in_uio->uio_segflg != UIO_USERSPACE &&
 	    in_uio->uio_segflg != UIO_SYSSPACE) {
