@@ -178,8 +178,10 @@ main(int ac, char *av[])
 
 	(void) enable_extended_FILE_stdio(-1, -1);
 
+#ifndef BRICKSTOR
 	/* Upgrade SMF settings, if necessary. */
 	nfs_config_upgrade(NFSD);
+#endif
 
 	/*
 	 * Read in the values from SMF first before we check
@@ -240,6 +242,30 @@ main(int ac, char *av[])
 	}
 
 	bufsz = 4;
+#ifdef BRICKSTOR
+	/*
+	 * This section is needed till we actually perform the
+	 * SMF property type conversion.
+	 */
+	ret = nfs_smf_get_prop("server_versmin", value, DEFAULT_INSTANCE,
+	    SCF_TYPE_INTEGER, NFSD, &bufsz);
+	if (ret == SCF_ERROR_TYPE_MISMATCH) {
+		ret = nfs_smf_get_prop("server_versmin", value,
+		    DEFAULT_INSTANCE, SCF_TYPE_ASTRING, NFSD, &bufsz);
+	}
+	if (ret == SA_OK)
+		nfs_server_vers_min = strtol(value, (char **)NULL, 10);
+
+	bufsz = 4;
+	ret = nfs_smf_get_prop("server_versmax", value, DEFAULT_INSTANCE,
+	    SCF_TYPE_INTEGER, NFSD, &bufsz);
+	if (ret == SCF_ERROR_TYPE_MISMATCH) {
+		ret = nfs_smf_get_prop("server_versmax", value,
+		    DEFAULT_INSTANCE, SCF_TYPE_ASTRING, NFSD, &bufsz);
+	}
+	if (ret == SA_OK)
+		nfs_server_vers_max = strtol(value, (char **)NULL, 10);
+#else
 	ret = nfs_smf_get_prop("server_versmin", value, DEFAULT_INSTANCE,
 	    SCF_TYPE_ASTRING, NFSD, &bufsz);
 	if (ret == SA_OK) {
@@ -264,6 +290,7 @@ main(int ac, char *av[])
 			nfs_server_vers_max = ret;
 		}
 	}
+#endif /* BRICKSTOR */
 
 	bufsz = PATH_MAX;
 	ret = nfs_smf_get_prop("server_delegation", value, DEFAULT_INSTANCE,
