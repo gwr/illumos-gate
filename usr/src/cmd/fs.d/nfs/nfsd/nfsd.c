@@ -241,12 +241,12 @@ main(int ac, char *av[])
 			maxservers_set = 1;
 	}
 
-	bufsz = 4;
 #ifdef BRICKSTOR
 	/*
 	 * This section is needed till we actually perform the
 	 * SMF property type conversion.
 	 */
+	bufsz = 4;
 	ret = nfs_smf_get_prop("server_versmin", value, DEFAULT_INSTANCE,
 	    SCF_TYPE_INTEGER, NFSD, &bufsz);
 	if (ret == SCF_ERROR_TYPE_MISMATCH) {
@@ -266,6 +266,7 @@ main(int ac, char *av[])
 	if (ret == SA_OK)
 		nfs_server_vers_max = strtol(value, (char **)NULL, 10);
 #else
+	bufsz = 4;
 	ret = nfs_smf_get_prop("server_versmin", value, DEFAULT_INSTANCE,
 	    SCF_TYPE_ASTRING, NFSD, &bufsz);
 	if (ret == SA_OK) {

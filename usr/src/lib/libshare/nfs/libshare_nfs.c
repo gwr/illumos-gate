@@ -2724,27 +2724,27 @@ nfs_get_vers_minmax(uint_t index)
 	char *pvalue;
 	sa_property_t prop;
 	sa_optionset_t opts;
+	struct proto_option_defs *po;
 	int rval = 0;		/* Impossible value */
 	const char *errstr;
 
+	po = &proto_options[index];
 	opts = nfs_get_proto_set();
-	prop = sa_get_property(opts, proto_options[index].name);
+	prop = sa_get_property(opts, po->name);
 
 	if (prop != NULL) {
 		pvalue = sa_get_property_attr(prop, "value");
-		rval = strtonumx(pvalue,
-		    proto_options[index].minval,
-		    proto_options[index].maxval,
-		    &errstr, 0);
+		rval = strtonumx(pvalue, po->minval, po->maxval, &errstr, 0);
 		sa_free_attr_string(pvalue);
 	}
 
 	/* in case of failure, return default */
 	if (rval == 0) {
-		rval = strtonumx(proto_options[index].defvalue.string,
-		    proto_options[index].minval,
-		    proto_options[index].maxval,
-		    &errstr, 0);
+		if (po->type == OPT_TYPE_STRING) {
+			rval = strtoul(po->defvalue.string, NULL, 0);
+		} else {
+			rval = po->defvalue.intval;
+		}
 	}
 	return (rval);
 }
@@ -3176,6 +3176,10 @@ free_protoprops(void)
 /*
  * If the SMF db is still using integer data type for server_versmin and
  * server_versmax, then update property template accordingly.
+ *
+ * Try reading server_versmin and server_versmax as strings, and
+ * if that fails, switch those table entries to type number.
+ *
  * This workaround can be removed when data type is changed to string.
  */
 static void
@@ -3184,20 +3188,25 @@ version_type_check(void)
 	int opt, bufsz, ret;
 	char value[PATH_MAX];
 
-	bufsz = PATH_MAX;
 	opt = PROTO_OPT_NFS_SERVER_VERSMIN;
+	bufsz = PATH_MAX;
 	ret = nfs_smf_get_prop(proto_options[opt].name, value,
 	(char *)DEFAULT_INSTANCE, getscftype(proto_options[opt].type),
 	    getsvcname(proto_options[opt].svcs), &bufsz);
-	if (ret != SCF_ERROR_TYPE_MISMATCH)
-		return;
+	if (ret == SCF_ERROR_TYPE_MISMATCH) {
+		proto_options[opt].type = OPT_TYPE_NUMBER;
+		proto_options[opt].defvalue.intval = NFS_VERSMIN_DEFAULT;
+	}
 
-	/*
-	 * We have integer data type, fix property templates.
-	 */
-	proto_options[opt].type = OPT_TYPE_NUMBER;
 	opt = PROTO_OPT_NFS_SERVER_VERSMAX;
-	proto_options[opt].type = OPT_TYPE_NUMBER;
+	bufsz = PATH_MAX;
+	ret = nfs_smf_get_prop(proto_options[opt].name, value,
+	(char *)DEFAULT_INSTANCE, getscftype(proto_options[opt].type),
+	    getsvcname(proto_options[opt].svcs), &bufsz);
+	if (ret == SCF_ERROR_TYPE_MISMATCH) {
+		proto_options[opt].type = OPT_TYPE_NUMBER;
+		proto_options[opt].defvalue.intval = NFS_VERSMAX_DEFAULT;
+	}
 }
 
 /*
