@@ -1187,14 +1187,6 @@ smb_server_newproc(smb_server_t *sv)
 {
 	int rc;
 
-	/*
-	 * Todo: Fix newproc() for zones.
-	 * At present, it always creates in p0.
-	 * For now, only do this for the global zone.
-	 */
-	if (getzoneid() != GLOBAL_ZONEID)
-		return (0);
-
 	mutex_enter(&sv->sv_proc_lock);
 	if (sv->sv_proc_p != NULL) {
 		/* restart? re-use proc */
@@ -1204,7 +1196,7 @@ smb_server_newproc(smb_server_t *sv)
 
 	sv->sv_proc_state = SMB_THREAD_STATE_STARTING;
 	rc = newproc(smb_server_proc_main, (caddr_t)sv,
-	    syscid, smbsrv_base_pri, NULL, 0);
+	    syscid, smbsrv_base_pri, NULL, -1);
 	if (rc != 0) {
 		cmn_err(CE_WARN, "newproc failed, rc=%d", rc);
 		goto out;
