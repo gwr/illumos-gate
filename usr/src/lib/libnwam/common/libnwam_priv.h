@@ -75,12 +75,12 @@ typedef enum {
 
 typedef union {
 	/* Used for EVENT_[UN]REGISTER requests */
-	struct {
+	struct nwdad_register_info {
 		char nwdad_name[MAXPATHLEN];
 	} nwdad_register_info;
 
 	/* Used for ACTION requests */
-	struct {
+	struct nwdad_object_action {
 		nwam_object_type_t nwdad_object_type;
 		char nwdad_name[NWAM_MAX_NAME_LEN];
 		char nwdad_parent[NWAM_MAX_NAME_LEN];
@@ -88,7 +88,7 @@ typedef union {
 	} nwdad_object_action;
 
 	/* Used for STATE requests */
-	struct {
+	struct nwdad_object_state {
 		nwam_object_type_t nwdad_object_type;
 		char nwdad_name[NWAM_MAX_NAME_LEN];
 		char nwdad_parent[NWAM_MAX_NAME_LEN];
@@ -97,12 +97,12 @@ typedef union {
 	} nwdad_object_state;
 
 	/* Used for PRIORITY_GROUP requests */
-	struct {
+	struct nwdad_priority_group_info {
 		int64_t nwdad_priority;
 	} nwdad_priority_group_info;
 
 	/* Used for WLAN request/responses */
-	struct {
+	struct nwdad_wlan_info {
 		char nwdad_name[NWAM_MAX_NAME_LEN];
 		char nwdad_essid[NWAM_MAX_NAME_LEN];
 		char nwdad_bssid[NWAM_MAX_NAME_LEN];
