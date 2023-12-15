@@ -120,6 +120,7 @@ typedef struct {
 	nwam_request_type_t nwda_type;
 	nwam_request_status_t nwda_status;
 	nwam_error_t nwda_error;
+	uint32_t nwda_align; /* for next member */
 	nwamd_door_arg_data_t nwda_data;
 } nwamd_door_arg_t;
 
@@ -133,8 +134,9 @@ typedef struct nwam_backend_door_arg {
 	nwam_backend_door_cmd_t nwbda_cmd;
 	char nwbda_dbname[MAXPATHLEN];			/* config filename */
 	char nwbda_object[NWAM_MAX_NAME_LEN];		/* config object */
-	size_t nwbda_datalen;				/* data follows arg */
+	uint32_t nwbda_datalen;				/* data follows arg */
 	nwam_error_t nwbda_result;			/* return code */
+	uint32_t nwbda_align; /* for next */
 	uint64_t nwbda_flags;
 } nwam_backend_door_arg_t;
 
