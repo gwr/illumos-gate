@@ -968,9 +968,14 @@ typedef enum {
 
 typedef struct nwam_event *nwam_event_t;
 struct nwam_event {
-	int nwe_type;
+#ifdef	_LP64
+	uint64_t	nwe_type;
+#else	/* _ILP32 */
+	uint32_t	nwe_pad1;
+	uint32_t	nwe_type;
+#endif
 	uint32_t nwe_size;
-
+	uint32_t nwe_pad2;
 	union {
 		struct nwam_event_object_action {
 			nwam_object_type_t nwe_object_type;

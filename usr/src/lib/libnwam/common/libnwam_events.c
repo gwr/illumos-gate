@@ -93,12 +93,18 @@ nwam_event_wait(nwam_event_t *eventp)
 {
 	nwam_error_t err;
 	nwam_event_t event;
+	struct msgbuf *mb;
 
 	assert(eventp != NULL);
 
 	if ((err = nwam_event_alloc(&event)) != NWAM_SUCCESS)
 		return (err);
-	while (msgrcv(event_msqid, (struct msgbuf *)event, NWAM_EVENT_MAX_SIZE,
+
+	/*
+	 * Work-around 32-bit vs 64-bit msgbuf layout.
+	 */
+	mb = (struct msgbuf *) &event->nwe_type;
+	while (msgrcv(event_msqid, mb, NWAM_EVENT_MAX_SIZE,
 	    0, 0) == -1) {
 		switch (errno) {
 			case EAGAIN:
@@ -229,6 +235,7 @@ nwam_event_send(nwam_event_t event)
 	int msqid;
 	char eventmsgfile[MAXPATHLEN];
 	nwam_error_t err = NWAM_SUCCESS;
+	struct msgbuf *mb;
 
 	if ((dirp = opendir(NWAM_EVENT_MSG_DIR)) == NULL) {
 		return (nwam_errno_to_nwam_error(errno));
@@ -286,8 +293,11 @@ nwam_event_send(nwam_event_t event)
 		/*
 		 * This shouldn't ever block.  If it does then log an error and
 		 * clean up the queue.
+		 *
+		 * Work-around 32-bit vs 64-bit msgbuf layout.
 		 */
-		if (msgsnd(msqid, (struct msgbuf *)event, event->nwe_size,
+		mb = (struct msgbuf *) &event->nwe_type;
+		if (msgsnd(msqid, mb, event->nwe_size,
 		    IPC_NOWAIT) == -1) {
 			int errno_save = errno;
 			syslog(LOG_ERR, "nwam_event_send: msgsnd: %s, "
