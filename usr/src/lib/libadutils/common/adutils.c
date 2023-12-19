@@ -20,6 +20,7 @@
  */
 /*
  * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright 2023 RackTop Systems, Inc.
  */
 
 #include <alloca.h>
@@ -630,11 +631,12 @@ open_conn(adutils_host_t *adh, int timeoutsecs)
 	    NULL);
 
 	if (rc != LDAP_SUCCESS) {
-		(void) ldap_unbind(adh->ld);
-		adh->ld = NULL;
 		logger(LOG_INFO, "ldap_sasl_interactive_bind_s() to server "
 		    "%s port %d failed. (%s)", adh->host, adh->port,
 		    ldap_err2string(rc));
+		ldap_perror(adh->ld, adh->host);
+		(void) ldap_unbind(adh->ld);
+		adh->ld = NULL;
 		goto out;
 	}
 
