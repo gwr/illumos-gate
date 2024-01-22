@@ -22,7 +22,7 @@
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2013 by Delphix. All rights reserved.
  * Copyright 2020 Tintri by DDN, Inc. All rights reserved.
- * Copyright 2019-2023 RackTop Systems, Inc.
+ * Copyright 2019-2024 RackTop Systems, Inc.
  */
 
 #include <sys/types.h>
@@ -2479,7 +2479,6 @@ zfs_zaccess(znode_t *zp, int mode, int flags, boolean_t skipaclchk, cred_t *cr)
 		}
 	}
 
-	owner = zfs_fuid_map_id(zp->z_zfsvfs, zp->z_uid, cr, ZFS_OWNER);
 	/*
 	 * Map the bits required to the standard vnode flags VREAD|VWRITE|VEXEC
 	 * in needed_bits.  Map the bits mapped by working_mode (currently
@@ -2491,9 +2490,15 @@ zfs_zaccess(znode_t *zp, int mode, int flags, boolean_t skipaclchk, cred_t *cr)
 
 	working_mode = mode;
 
+	/*
+	 * With skipaclchk = TRUE, we're working with an open handle
+	 * and can assume we're allowed to read ACL or attrs.
+	 * This can affect needed_bits below.
+	 */
 	if ((working_mode & (ACE_READ_ACL|ACE_READ_ATTRIBUTES)) &&
-	    owner == crgetuid(cr))
+	    (skipaclchk || zfs_fuid_is_cruser(zp->z_zfsvfs, zp->z_uid, cr))) {
 		working_mode &= ~(ACE_READ_ACL|ACE_READ_ATTRIBUTES);
+	}
 
 	if (working_mode & (ACE_READ_DATA|ACE_READ_NAMED_ATTRS|
 	    ACE_READ_ACL|ACE_READ_ATTRIBUTES|ACE_SYNCHRONIZE))
@@ -2506,9 +2511,27 @@ zfs_zaccess(znode_t *zp, int mode, int flags, boolean_t skipaclchk, cred_t *cr)
 
 	if ((error = zfs_zaccess_common(check_zp, mode, &working_mode,
 	    &check_privs, skipaclchk, cr)) == 0) {
+		uid_t root_owned;
+
 		if (is_attr)
 			VN_RELE(ZTOV(xzp));
-		return (secpolicy_vnode_access2(cr, ZTOV(zp), owner,
+
+		/*
+		 * The secpolicy call below is supposed to be passed the
+		 * file owner UID.  Getting that requires a kidmap call
+		 * that we'd rather avoid due to its potential expense.
+		 * It turns out that the file owner UID is unused in our
+		 * calling situation (last two args are the same) so we
+		 * could just just always pass (uid_t)-1 or something.
+		 * To reduce the layering violation here, let's just
+		 * pass zero when it's really owned by root, else -1.
+		 */
+		if (zp->z_uid == FUID_ENCODE(0, 0))
+			root_owned = 0; /* yes, owned by root */
+		else
+			root_owned = (uid_t)-1;
+
+		return (secpolicy_vnode_access2(cr, ZTOV(zp), root_owned,
 		    needed_bits, needed_bits));
 	}
 
@@ -2521,6 +2544,8 @@ zfs_zaccess(znode_t *zp, int mode, int flags, boolean_t skipaclchk, cred_t *cr)
 	if (error && (flags & V_APPEND)) {
 		error = zfs_zaccess_append(zp, &working_mode, &check_privs, cr);
 	}
+
+	owner = zfs_fuid_map_id(zp->z_zfsvfs, zp->z_uid, cr, ZFS_OWNER);
 
 	if (error && check_privs) {
 		mode_t		checkmode = 0;
