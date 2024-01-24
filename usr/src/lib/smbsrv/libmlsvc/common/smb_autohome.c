@@ -94,7 +94,7 @@ smb_autohome_add(const smb_token_t *token)
 		assert(username);
 	} else {
 		if (getpwuid_r(uid, &pw, buf, sizeof (buf)) == NULL) {
-			syslog(LOG_ERR, "unable to determine name for " \
+			syslog(LOG_DEBUG, "unable to determine name for " \
 			    "UID: %u\n", uid);
 			return;
 		}
