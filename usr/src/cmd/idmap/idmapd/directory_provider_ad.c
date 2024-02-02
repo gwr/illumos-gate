@@ -22,6 +22,7 @@
 /*
  * Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2024 RackTop Systems, Inc.
  */
 
 /*
@@ -147,7 +148,7 @@ directory_provider_ad_get(
 	 * If we don't have any AD servers handy, we can't find anything.
 	 * XXX: this should be using our DC, not the GC.
 	 */
-	if (_idmapdstate.num_gcs < 1) {
+	if (_idmapdstate.gcs == NULL) {
 		return (NULL);
 	}
 
@@ -286,6 +287,7 @@ directory_provider_ad_lookup(
     const char *domain,
     const char *filter)
 {
+	idmap_adlist_t *gcs;
 	adutils_ad_t *ad;
 	adutils_rc batchrc;
 	struct cbinfo cbinfo;
@@ -296,7 +298,12 @@ directory_provider_ad_lookup(
 	 * NEEDSWORK:  Should eventually handle other forests.
 	 * NEEDSWORK:  Should eventually handle non-GC attributes.
 	 */
-	ad = _idmapdstate.gcs[0];
+
+	idmap_get_adlists(&gcs, NULL);
+	if (gcs == NULL)
+		return (NULL);
+
+	ad = gcs->idl_adp[0];
 
 	/* Stash away information for the callback function. */
 	cbinfo.attrs = attrs;
@@ -307,6 +314,7 @@ directory_provider_ad_lookup(
 	rc = adutils_lookup_batch_start(ad, 1, directory_provider_ad_cb,
 	    &cbinfo, &qs);
 	if (rc != ADUTILS_SUCCESS) {
+		idmap_adlist_rele(gcs);
 		return (directory_provider_ad_utils_error(
 		    "adutils_lookup_batch_start", rc));
 	}
@@ -315,11 +323,13 @@ directory_provider_ad_lookup(
 	    NULL, &batchrc);
 	if (rc != ADUTILS_SUCCESS) {
 		adutils_lookup_batch_release(&qs);
+		idmap_adlist_rele(gcs);
 		return (directory_provider_ad_utils_error(
 		    "adutils_lookup_batch_add", rc));
 	}
 
 	rc = adutils_lookup_batch_end(&qs);
+	idmap_adlist_rele(gcs);
 	if (rc != ADUTILS_SUCCESS) {
 		return (directory_provider_ad_utils_error(
 		    "adutils_lookup_batch_end", rc));

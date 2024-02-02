@@ -21,7 +21,7 @@
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
- * Copyright 2022 RackTop Systems, Inc.
+ * Copyright 2022-2024 RackTop Systems, Inc.
  * Copyright 2025 Bill Sommerfeld
  */
 
@@ -103,10 +103,8 @@ typedef struct idmapd_state {
 	uid_t		limit_uid;
 	gid_t		limit_gid;
 	int		new_eph_db;	/* was the ephem ID db [re-]created? */
-	int		num_gcs;
-	adutils_ad_t	**gcs;
-	int		num_dcs;
-	adutils_ad_t	**dcs;
+	idmap_adlist_t	*gcs;
+	idmap_adlist_t	*dcs;
 	mutex_t		addisc_lk;
 	cond_t		addisc_cv;
 	int		addisc_st;

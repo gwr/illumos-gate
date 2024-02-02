@@ -21,6 +21,7 @@
 
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright 2024 RackTop Systems, Inc.
  */
 
 #ifndef _ADUTILS_H
@@ -62,6 +63,17 @@ typedef struct idmap_query_state idmap_query_state_t;
 
 int	idmap_add_ds(adutils_ad_t *ad, const char *host, int port);
 
+typedef struct idmap_adlist {
+	adutils_ad_t	**idl_adp;
+	uint32_t	idl_ref;
+	uint32_t	idl_cnt;
+	uint32_t	idl_max;
+} idmap_adlist_t;
+
+idmap_adlist_t *idmap_adlist_alloc(int);
+void idmap_adlist_add(idmap_adlist_t *, adutils_ad_t *);
+void idmap_get_adlists(idmap_adlist_t **, idmap_adlist_t **);
+void idmap_adlist_rele(idmap_adlist_t *);
 
 /*
  * Batch lookups

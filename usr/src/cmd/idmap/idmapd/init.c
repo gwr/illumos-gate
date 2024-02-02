@@ -21,6 +21,7 @@
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2024 RackTop Systems, Inc.
  */
 
 /*
@@ -109,10 +110,9 @@ void
 reload_gcs(void)
 {
 	int		i, j;
-	adutils_ad_t	**new_gcs;
-	adutils_ad_t	**old_gcs = _idmapdstate.gcs;
-	int		new_num_gcs;
-	int		old_num_gcs = _idmapdstate.num_gcs;
+	adutils_ad_t	*new_gc;
+	idmap_adlist_t	*new_adlist;
+	idmap_adlist_t	*old_gcs = _idmapdstate.gcs;
 	idmap_pg_config_t *pgcfg = &_idmapdstate.cfg->pgcfg;
 	idmap_trustedforest_t *trustfor = pgcfg->trusted_forests;
 	int		num_trustfor = pgcfg->num_trusted_forests;
@@ -124,8 +124,7 @@ reload_gcs(void)
 		 * ADS disabled, or no domain name specified.
 		 * Not using adutils. (but still can use lsa)
 		 */
-		new_gcs = NULL;
-		new_num_gcs = 0;
+		new_adlist = NULL;
 		goto out;
 	}
 
@@ -142,28 +141,27 @@ reload_gcs(void)
 		return;
 	}
 
-	new_num_gcs = 1 + num_trustfor;
-	new_gcs = calloc(new_num_gcs, sizeof (adutils_ad_t *));
-	if (new_gcs == NULL) {
+	new_adlist = idmap_adlist_alloc(1 + num_trustfor);
+	if (new_adlist == NULL) {
 		degrade_svc(0, "could not allocate AD context array "
 		    "(out of memory)");
 		return;
 	}
 
-	if (adutils_ad_alloc(&new_gcs[0], NULL, ADUTILS_AD_GLOBAL_CATALOG) !=
+	if (adutils_ad_alloc(&new_gc, NULL, ADUTILS_AD_GLOBAL_CATALOG) !=
 	    ADUTILS_SUCCESS) {
-		free(new_gcs);
+		idmap_adlist_rele(new_adlist);
 		degrade_svc(0, "could not initialize AD context "
 		    "(out of memory)");
 		return;
 	}
 
 	for (i = 0; pgcfg->global_catalog[i].host[0] != '\0'; i++) {
-		if (idmap_add_ds(new_gcs[0],
+		if (idmap_add_ds(new_gc,
 		    pgcfg->global_catalog[i].host,
 		    pgcfg->global_catalog[i].port) != 0) {
-			adutils_ad_free(&new_gcs[0]);
-			free(new_gcs);
+			adutils_ad_free(&new_gc);
+			idmap_adlist_rele(new_adlist);
 			degrade_svc(0, "could not set AD hosts "
 			    "(out of memory)");
 			return;
@@ -173,11 +171,11 @@ reload_gcs(void)
 	if (pgcfg->domains_in_forest != NULL) {
 		for (i = 0; pgcfg->domains_in_forest[i].domain[0] != '\0';
 		    i++) {
-			if (adutils_add_domain(new_gcs[0],
+			if (adutils_add_domain(new_gc,
 			    pgcfg->domains_in_forest[i].domain,
 			    pgcfg->domains_in_forest[i].sid) != 0) {
-				adutils_ad_free(&new_gcs[0]);
-				free(new_gcs);
+				adutils_ad_free(&new_gc);
+				idmap_adlist_rele(new_adlist);
 				degrade_svc(0, "could not set AD domains "
 				    "(out of memory)");
 				return;
@@ -185,23 +183,23 @@ reload_gcs(void)
 		}
 	}
 
+	idmap_adlist_add(new_adlist, new_gc);
+
 	for (i = 0; i < num_trustfor; i++) {
-		if (adutils_ad_alloc(&new_gcs[i + 1], NULL,
+		if (adutils_ad_alloc(&new_gc, NULL,
 		    ADUTILS_AD_GLOBAL_CATALOG) != ADUTILS_SUCCESS) {
 			degrade_svc(0, "could not initialize trusted AD "
 			    "context (out of memory)");
-				new_num_gcs = i + 1;
-				goto out;
+			goto out;
 		}
 		for (j = 0; trustfor[i].global_catalog[j].host[0] != '\0';
 		    j++) {
-			if (idmap_add_ds(new_gcs[i + 1],
+			if (idmap_add_ds(new_gc,
 			    trustfor[i].global_catalog[j].host,
 			    trustfor[i].global_catalog[j].port) != 0) {
-				adutils_ad_free(&new_gcs[i + 1]);
+				adutils_ad_free(&new_gc);
 				degrade_svc(0, "could not set trusted "
 				    "AD hosts (out of memory)");
-				new_num_gcs = i + 1;
 				goto out;
 			}
 		}
@@ -210,28 +208,25 @@ reload_gcs(void)
 			domain_in_forest = &trustfor[i].domains_in_forest[j];
 			/* Only add domains which are marked */
 			if (domain_in_forest->trusted) {
-				if (adutils_add_domain(new_gcs[i + 1],
+				if (adutils_add_domain(new_gc,
 				    domain_in_forest->domain,
 				    domain_in_forest->sid) != 0) {
-					adutils_ad_free(&new_gcs[i + 1]);
+					adutils_ad_free(&new_gc);
 					degrade_svc(0, "could not set trusted "
 					    "AD domains (out of memory)");
-					new_num_gcs = i + 1;
 					goto out;
 				}
 			}
 		}
+
+		idmap_adlist_add(new_adlist, new_gc);
 	}
 
 out:
-	_idmapdstate.gcs = new_gcs;
-	_idmapdstate.num_gcs = new_num_gcs;
+	_idmapdstate.gcs = new_adlist;
 
-	if (old_gcs != NULL) {
-		for (i = 0; i < old_num_gcs; i++)
-			adutils_ad_free(&old_gcs[i]);
-		free(old_gcs);
-	}
+	if (old_gcs != NULL)
+		idmap_adlist_rele(old_gcs);
 }
 
 /*
@@ -244,10 +239,9 @@ void
 reload_dcs(void)
 {
 	int		i;
-	adutils_ad_t	**new_dcs;
-	adutils_ad_t	**old_dcs = _idmapdstate.dcs;
-	int		new_num_dcs;
-	int		old_num_dcs = _idmapdstate.num_dcs;
+	adutils_ad_t	*new_dc = NULL;
+	idmap_adlist_t	*new_adlist;
+	idmap_adlist_t	*old_dcs = _idmapdstate.dcs;
 	idmap_pg_config_t *pgcfg = &_idmapdstate.cfg->pgcfg;
 
 	if (pgcfg->use_ads == B_FALSE ||
@@ -256,8 +250,7 @@ reload_dcs(void)
 		 * ADS disabled, or no domain name specified.
 		 * Not using adutils. (but still can use lsa)
 		 */
-		new_dcs = NULL;
-		new_num_dcs = 0;
+		new_adlist = NULL;
 		goto out;
 	}
 
@@ -274,17 +267,16 @@ reload_dcs(void)
 		return;
 	}
 
-	new_num_dcs = 1;
-	new_dcs = calloc(new_num_dcs, sizeof (adutils_ad_t *));
-	if (new_dcs == NULL)
+	new_adlist = idmap_adlist_alloc(1);
+	if (new_adlist == NULL)
 		goto nomem;
 
-	if (adutils_ad_alloc(&new_dcs[0], pgcfg->domain_name,
+	if (adutils_ad_alloc(&new_dc, pgcfg->domain_name,
 	    ADUTILS_AD_DATA) != ADUTILS_SUCCESS)
 		goto nomem;
 
 	for (i = 0; pgcfg->domain_controller[i].host[0] != '\0'; i++) {
-		if (idmap_add_ds(new_dcs[0],
+		if (idmap_add_ds(new_dc,
 		    pgcfg->domain_controller[i].host,
 		    pgcfg->domain_controller[i].port) != 0)
 			goto nomem;
@@ -300,7 +292,7 @@ reload_dcs(void)
 	if (dif != NULL) {
 		for (; dif->domain[0] != '\0'; dif++) {
 			if (domain_eq(pgcfg->domain_name, dif->domain)) {
-				if (adutils_add_domain(new_dcs[0],
+				if (adutils_add_domain(new_dc,
 				    dif->domain, dif->sid) != 0)
 					goto nomem;
 				break;
@@ -308,26 +300,22 @@ reload_dcs(void)
 		}
 	}
 
+	idmap_adlist_add(new_adlist, new_dc);
 out:
-	_idmapdstate.dcs = new_dcs;
-	_idmapdstate.num_dcs = new_num_dcs;
+	_idmapdstate.dcs = new_adlist;
 
-	if (old_dcs != NULL) {
-		for (i = 0; i < old_num_dcs; i++)
-			adutils_ad_free(&old_dcs[i]);
-		free(old_dcs);
-	}
+	if (old_dcs != NULL)
+		idmap_adlist_rele(old_dcs);
 
 	return;
 
 nomem:
 	degrade_svc(0, "out of memory");
 
-	if (new_dcs != NULL) {
-		if (new_dcs[0] != NULL)
-			adutils_ad_free(&new_dcs[0]);
-		free(new_dcs);
-	}
+	if (new_dc != NULL)
+		adutils_ad_free(&new_dc);
+	if (new_adlist != NULL)
+		idmap_adlist_rele(new_adlist);
 }
 
 void
