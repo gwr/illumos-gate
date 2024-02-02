@@ -21,7 +21,7 @@
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2016 Nexenta Systems, Inc.  All rights reserved.
- * Copyright 2022 RackTop Systems, Inc.
+ * Copyright 2022-2024 RackTop Systems, Inc.
  */
 
 /*
@@ -2455,6 +2455,7 @@ idmap_retcode
 ad_lookup_batch(lookup_state_t *state, idmap_mapping_batch *batch,
     idmap_ids_res *result)
 {
+	idmap_adlist_t	*dcs, *gcs;
 	idmap_retcode	retcode;
 	int		i, j;
 	idmap_mapping	*req;
@@ -2478,10 +2479,9 @@ ad_lookup_batch(lookup_state_t *state, idmap_mapping_batch *batch,
 		res->retcode = IDMAP_ERR_RETRIABLE_NET_ERR;
 	}
 
-	RDLOCK_CONFIG();
 	num_queries = state->ad_nqueries;
-
-	if (_idmapdstate.num_gcs == 0 && _idmapdstate.num_dcs == 0) {
+	idmap_get_adlists(&gcs, &dcs);
+	if (gcs == NULL && dcs == NULL) {
 		/* Case of no ADs */
 		retcode = IDMAP_ERR_NO_ACTIVEDIRECTORY;
 		for (i = 0; i < batch->idmap_mapping_batch_len; i++) {
@@ -2495,11 +2495,12 @@ ad_lookup_batch(lookup_state_t *state, idmap_mapping_batch *batch,
 		goto out;
 	}
 
-	if (state->directory_based_mapping == DIRECTORY_MAPPING_IDMU) {
-		for (i = 0; i < _idmapdstate.num_dcs && num_queries > 0; i++) {
+	if (state->directory_based_mapping == DIRECTORY_MAPPING_IDMU &&
+	    dcs != NULL) {
+		for (i = 0; i < dcs->idl_cnt && num_queries > 0; i++) {
 
 			retcode = ad_lookup_batch_int(state, batch,
-			    result, _idmapdstate.dcs[i],
+			    result, dcs->idl_adp[i],
 			    i == 0 ? DOMAIN_IS_LOCAL|FOREST_IS_LOCAL : 0,
 			    &num_processed);
 			num_queries -= num_processed;
@@ -2507,14 +2508,15 @@ ad_lookup_batch(lookup_state_t *state, idmap_mapping_batch *batch,
 		}
 	}
 
-	for (i = 0; i < _idmapdstate.num_gcs && num_queries > 0; i++) {
+	if (gcs != NULL) {
+		for (i = 0; i < gcs->idl_cnt && num_queries > 0; i++) {
 
-		retcode = ad_lookup_batch_int(state, batch, result,
-		    _idmapdstate.gcs[i],
-		    i == 0 ? FOREST_IS_LOCAL : 0,
-		    &num_processed);
-		num_queries -= num_processed;
-
+			retcode = ad_lookup_batch_int(state, batch, result,
+			    gcs->idl_adp[i],
+			    i == 0 ? FOREST_IS_LOCAL : 0,
+			    &num_processed);
+			num_queries -= num_processed;
+		}
 	}
 
 	/*
@@ -2532,8 +2534,9 @@ ad_lookup_batch(lookup_state_t *state, idmap_mapping_batch *batch,
 		}
 	}
 
+	idmap_adlist_rele(dcs);
+	idmap_adlist_rele(gcs);
 out:
-	UNLOCK_CONFIG();
 
 	/* AD lookups done. Reset state->ad_nqueries and return */
 	state->ad_nqueries = 0;
@@ -4266,19 +4269,20 @@ ad_lookup_by_winname(lookup_state_t *state,
     char **sidprefix, idmap_rid_t *rid, idmap_id_type *wintype,
     char **unixname)
 {
+	idmap_adlist_t		*gcs;
 	int			retries;
 	idmap_query_state_t	*qs = NULL;
 	idmap_retcode		rc, retcode;
 	int			i;
 	int			found_ad = 0;
 
-	RDLOCK_CONFIG();
-	if (_idmapdstate.num_gcs > 0) {
-		for (i = 0; i < _idmapdstate.num_gcs && !found_ad; i++) {
+	idmap_get_adlists(&gcs, NULL);
+	if (gcs != NULL) {
+		for (i = 0; i < gcs->idl_cnt && !found_ad; i++) {
 			retries = 0;
 retry:
 			retcode = idmap_lookup_batch_start(
-			    _idmapdstate.gcs[i],
+			    gcs->idl_adp[i],
 			    1,
 			    _idmapdstate.cfg->pgcfg.directory_based_mapping,
 			    _idmapdstate.cfg->pgcfg.default_domain,
@@ -4289,7 +4293,7 @@ retry:
 					goto retry;
 				degrade_svc(1, "failed to create request for "
 				    "AD lookup by winname");
-				UNLOCK_CONFIG();
+				idmap_adlist_rele(gcs);
 				return (retcode);
 			}
 
@@ -4334,7 +4338,7 @@ retry:
 		/* No AD case */
 		retcode = IDMAP_ERR_NO_ACTIVEDIRECTORY;
 	}
-	UNLOCK_CONFIG();
+	idmap_adlist_rele(gcs);
 
 	if (retcode != IDMAP_SUCCESS) {
 		idmapdlog(LOG_NOTICE,

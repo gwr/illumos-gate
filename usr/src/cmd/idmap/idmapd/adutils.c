@@ -23,6 +23,7 @@
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  *
  * Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2024 RackTop Systems, Inc.
  */
 
 /*
@@ -166,6 +167,102 @@ idmap_add_ds(adutils_ad_t *ad, const char *host, int port)
 	if (ret == 0 && reaperid == 0)
 		(void) pthread_create(&reaperid, NULL, adreaper, NULL);
 	return (ret);
+}
+
+/*
+ * Allocate and initialize an idmap_adlist_t with space for num_ad adutils_ad_t
+ * handles. Returns with a reference held for the caller.
+ */
+idmap_adlist_t *
+idmap_adlist_alloc(int num_ad)
+{
+	idmap_adlist_t *idl;
+	adutils_ad_t **adp = calloc(num_ad, sizeof (*adp));
+
+	if (adp == NULL)
+		return (NULL);
+
+	idl = malloc(sizeof (*idl));
+	if (idl == NULL) {
+		free(adp);
+		return (NULL);
+	}
+
+	idl->idl_adp = adp;
+	idl->idl_ref = 1; /* for caller */
+	idl->idl_max = num_ad;
+	idl->idl_cnt = 0;
+
+	return (idl);
+}
+
+/*
+ * Add an initialized adutils_ad_t to the array in the idmap_adlist_t.
+ * This must not be called after the idmap_adlist_t is exposed to others.
+ */
+void
+idmap_adlist_add(idmap_adlist_t *idl, adutils_ad_t *ad)
+{
+	assert(idl->idl_cnt < idl->idl_max);
+	assert(idl->idl_ref == 1);
+
+	idl->idl_adp[idl->idl_cnt++] = ad;
+}
+
+/*
+ * Read the list of gcs and/or dcs from the global idmapd configuration.
+ * Specify a NULL argument if a particular list is not required.
+ * The idmap_adlist_t is returned with a reference held; caller must call
+ * idmap_adlist_rele().
+ */
+void
+idmap_get_adlists(idmap_adlist_t **gcs, idmap_adlist_t **dcs)
+{
+	RDLOCK_CONFIG();
+	if (gcs != NULL) {
+		if (_idmapdstate.gcs == NULL ||
+		    _idmapdstate.gcs->idl_cnt == 0) {
+			*gcs = NULL;
+		} else {
+			atomic_inc_32(&_idmapdstate.gcs->idl_ref);
+			*gcs = _idmapdstate.gcs;
+		}
+	}
+
+	if (dcs != NULL) {
+		if (_idmapdstate.dcs == NULL ||
+		    _idmapdstate.dcs->idl_cnt == 0) {
+			*dcs = NULL;
+		} else {
+			atomic_inc_32(&_idmapdstate.dcs->idl_ref);
+			*dcs = _idmapdstate.dcs;
+		}
+	}
+	UNLOCK_CONFIG();
+}
+
+/*
+ * Release a reference on the idmap_adlist_t, freeing it when all are released.
+ *
+ * Idmapd maintains a reference on the idmap_adlist_t until it's been removed
+ * from _idmapdstate. This ensures we can't reach count 0 while it's possible
+ * for additional references to be taken.
+ */
+void
+idmap_adlist_rele(idmap_adlist_t *idl)
+{
+	int i;
+
+	if (atomic_dec_32_nv(&idl->idl_ref) != 0)
+		return;
+
+	/*
+	 * Only idl_cnt handles are valid; see idmap_adlist_add and reload_gcs.
+	 */
+	for (i = 0; i < idl->idl_cnt; i++)
+		adutils_ad_free(&idl->idl_adp[i]);
+	free(idl->idl_adp);
+	free(idl);
 }
 
 static

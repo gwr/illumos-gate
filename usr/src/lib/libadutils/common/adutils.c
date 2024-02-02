@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2023 RackTop Systems, Inc.
+ * Copyright 2023-2024 RackTop Systems, Inc.
  */
 
 #include <alloca.h>
@@ -478,7 +478,9 @@ adutils_reap_idle_connections()
 	(void) pthread_mutex_lock(&adhostlock);
 	now = time(NULL);
 	for (adh = host_head; adh != NULL; adh = adh->next) {
-		(void) pthread_mutex_lock(&adh->lock);
+		/* If someone has the lock, it's not idle */
+		if (pthread_mutex_trylock(&adh->lock) != 0)
+			continue;
 		if (adh->ref == 0 && adh->idletime != 0 &&
 		    adh->idletime + ADCONN_TIME < now) {
 			if (adh->ld) {
