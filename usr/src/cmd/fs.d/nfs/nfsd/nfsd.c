@@ -239,34 +239,17 @@ main(int ac, char *av[])
 			maxservers_set = 1;
 	}
 
-#ifdef BRICKSTOR
-	/*
-	 * This section is needed till we actually perform the
-	 * SMF property type conversion.
-	 */
-	bufsz = 4;
-	ret = nfs_smf_get_prop("server_versmin", value, DEFAULT_INSTANCE,
-	    SCF_TYPE_INTEGER, NFSD, &bufsz);
-	if (ret == SCF_ERROR_TYPE_MISMATCH) {
-		ret = nfs_smf_get_prop("server_versmin", value,
-		    DEFAULT_INSTANCE, SCF_TYPE_ASTRING, NFSD, &bufsz);
-	}
-	if (ret == SA_OK)
-		nfs_server_vers_min = strtol(value, (char **)NULL, 10);
-
-	bufsz = 4;
-	ret = nfs_smf_get_prop("server_versmax", value, DEFAULT_INSTANCE,
-	    SCF_TYPE_INTEGER, NFSD, &bufsz);
-	if (ret == SCF_ERROR_TYPE_MISMATCH) {
-		ret = nfs_smf_get_prop("server_versmax", value,
-		    DEFAULT_INSTANCE, SCF_TYPE_ASTRING, NFSD, &bufsz);
-	}
-	if (ret == SA_OK)
-		nfs_server_vers_max = strtol(value, (char **)NULL, 10);
-#else
 	bufsz = PATH_MAX;
 	ret = nfs_smf_get_prop("server_versmin", value, DEFAULT_INSTANCE,
 	    SCF_TYPE_ASTRING, NFSD, &bufsz);
+#ifdef BRICKSTOR
+	/* Allow for SMF prop of type integer. */
+	if (ret == SCF_ERROR_TYPE_MISMATCH) {
+		bufsz = 4;
+		ret = nfs_smf_get_prop("server_versmin", value,
+		    DEFAULT_INSTANCE, SCF_TYPE_INTEGER, NFSD, &bufsz);
+	}
+#endif
 	if (ret == SA_OK) {
 		ret = nfs_convert_version_str(value);
 		if (ret == 0) {
@@ -280,6 +263,23 @@ main(int ac, char *av[])
 	bufsz = PATH_MAX;
 	ret = nfs_smf_get_prop("server_versmax", value, DEFAULT_INSTANCE,
 	    SCF_TYPE_ASTRING, NFSD, &bufsz);
+#ifdef BRICKSTOR
+	/*
+	 * Allow for SMF prop of type integer, and take "4" to mean
+	 * "enable all 4.x minor versions".  One can set a string
+	 * value to precisely control enabled minor versions.
+	 */
+	if (ret == SCF_ERROR_TYPE_MISMATCH) {
+		bufsz = 4;
+		ret = nfs_smf_get_prop("server_versmax", value,
+		    DEFAULT_INSTANCE, SCF_TYPE_INTEGER, NFSD, &bufsz);
+		if (ret == SA_OK && strcmp(value, "4") == 0) {
+			/* Add minor versions part. */
+			(void) snprintf(value, 4, "4.%d",
+			    (nfs_server_vers_max & 3));
+		}
+	}
+#endif
 	if (ret == SA_OK) {
 		ret = nfs_convert_version_str(value);
 		if (ret == 0) {
@@ -289,7 +289,6 @@ main(int ac, char *av[])
 			nfs_server_vers_max = ret;
 		}
 	}
-#endif /* BRICKSTOR */
 
 	bufsz = PATH_MAX;
 	ret = nfs_smf_get_prop("server_delegation", value, DEFAULT_INSTANCE,

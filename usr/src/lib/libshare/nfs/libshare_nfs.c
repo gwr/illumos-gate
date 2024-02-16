@@ -2788,10 +2788,9 @@ nfs_get_vers_minmax(uint_t index)
 	/* in case of failure, return default */
 	if (rval == 0) {
 		if (po->type == OPT_TYPE_STRING)
-			rval = nfs_convert_version_str(
-			    proto_options[index].defvalue.string);
+			rval = nfs_convert_version_str(po->defvalue.string);
 		else
-			rval = proto_options[index].defvalue.intval;
+			rval = po->defvalue.intval;
 	}
 	return (rval);
 }
@@ -2852,6 +2851,20 @@ range_check_validator_server(uint_t index, char *value)
 		return (SA_NO_SUCH_PROP);
 
 	VERIFY3S(proto_options[index].index, ==, index);
+
+#ifdef	BRICKSTOR
+	/*
+	 * Note that version_type_check() may have changed the
+	 * proto_options table rows for server_versmin / versmax
+	 * to OPT_TYPE_NUMBER when we're running with old-style
+	 * (integer) values for those SMF properties.  If so,
+	 * further constrain the values to what we can store.
+	 */
+	if (proto_options[index].type == OPT_TYPE_NUMBER &&
+	    !is_a_number(value)) {
+		return (ret);
+	}
+#endif	/* BRICKSTOR */
 
 	val = nfs_convert_version_str(value);
 	if (val == 0)
@@ -3227,6 +3240,7 @@ free_protoprops(void)
 	}
 }
 
+#ifdef	BRICKSTOR
 /*
  * If the SMF db is still using integer data type for server_versmin and
  * server_versmax, then update property template accordingly.
@@ -3235,6 +3249,7 @@ free_protoprops(void)
  * if that fails, switch those table entries to type number.
  *
  * This workaround can be removed when data type is changed to string.
+ * See also type handling in range_check_validator_server().
  */
 static void
 version_type_check(void)
@@ -3262,6 +3277,7 @@ version_type_check(void)
 		proto_options[opt].defvalue.intval = NFS_VERSMAX_DEFAULT;
 	}
 }
+#endif	/* BRICKSTOR */
 
 /*
  * nfs_init()
@@ -3280,7 +3296,9 @@ nfs_init(void)
 		return (SA_CONFIG_ERR);
 	}
 
+#ifdef	BRICKSTOR
 	version_type_check();
+#endif
 	ret = initprotofromsmf();
 	if (ret != SA_OK) {
 		(void) printf(dgettext(TEXT_DOMAIN,
