@@ -21,7 +21,7 @@
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2019 Nexenta by DDN, Inc. All rights reserved.
- * Copyright 2022-2023 RackTop Systems, Inc.
+ * Copyright 2022-2024 RackTop Systems, Inc.
  */
 
 /*
@@ -160,7 +160,7 @@ static smbadm_cmdinfo_t smbadm_cmdtable[] =
 	{ "enable-user",	smbadm_user_enable,	HELP_USER_ENABLE,
 		SMBADM_CMDF_USER,	SMBADM_ACTION_AUTH },
 	{ "join",		smbadm_join,		HELP_JOIN,
-		SMBADM_CMDF_GROUP,	SMBADM_VALUE_AUTH },
+		SMBADM_CMDF_GROUP,	SMBADM_ACTION_AUTH },
 	/* "list" is now an alias for "list-domains" */
 	{ "list",		smbadm_list,		HELP_LIST,
 		SMBADM_CMDF_NONE,	SMBADM_BASIC_AUTH },
