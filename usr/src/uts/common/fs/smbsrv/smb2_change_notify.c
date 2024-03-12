@@ -22,7 +22,7 @@
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates.
  * Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
- * Copyright 2022 RackTop Systems, Inc.
+ * Copyright 2022-2024 RackTop Systems, Inc.
  */
 
 /*
@@ -94,11 +94,28 @@ smb2_change_notify(smb_request_t *sr)
 	 */
 	status = smb_notify_act1(sr, oBufLength, CompletionFilter);
 	if (status == NT_STATUS_PENDING) {
-		status = smb2sr_go_async(sr);
+		status = smb2sr_go_async_indefinite(sr);
 		if (status != 0)
 			goto errout;
 		status = smb_notify_act2(sr);
 		if (status == NT_STATUS_PENDING) {
+			uint16_t cmd_idx;
+			smb_disp_stats_t *sds;
+
+			/*
+			 * Change Notify is expected to block for a long time.
+			 * Record a latency sample before we go async
+			 * so as not to mislead users of SMB statistics.
+			 */
+			if (sr->smb2_cmd_code < SMB2_INVALID_CMD)
+				cmd_idx = sr->smb2_cmd_code;
+			else
+				cmd_idx = SMB2_INVALID_CMD;
+
+			sds = &sr->session->s_server->sv_disp_stats2[cmd_idx];
+			smb_latency_add_sample(&sds->sdt_lat,
+			    gethrtime() - sr->sr_time_start);
+
 			/* See next: smb2_change_notify_finish */
 			return (SDRC_SR_KEPT);
 		}
@@ -163,10 +180,11 @@ smb2_change_notify_finish(void *arg)
 	}
 
 	/*
-	 * Record some statistics: (just tx bytes here)
+	 * Record some statistics.
+	 * We already took a latency sample before we went async.
 	 */
 	sds = &sr->session->s_server->sv_disp_stats2[SMB2_CHANGE_NOTIFY];
-	atomic_add_64(&sds->sdt_txb, (int64_t)(sr->reply.chain_offset));
+	smb2_record_stats(sr, sds, B_FALSE);
 
 	/*
 	 * Put (overwrite) the final SMB2 header,
