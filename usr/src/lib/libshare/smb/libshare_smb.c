@@ -909,6 +909,8 @@ struct smb_proto_option_defs {
 	    SMB_REFRESH_REFRESH },
 	{ SMB_CI_SIGN_ALGS, 0, MAX_VALUE_BUFLEN, sign_algs_validator,
 	    SMB_REFRESH_REFRESH },
+	{ SMB_CI_LISTENER_BINDINGS, 0, MAX_VALUE_BUFLEN,
+	    string_length_check_validator, SMB_REFRESH_REFRESH },
 };
 
 #define	SMB_OPT_NUM \

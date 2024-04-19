@@ -22,7 +22,7 @@
  * Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2017 Nexenta Systems, Inc.  All rights reserved.
  * Copyright 2017 Joyent, Inc.
- * Copyright 2020-2023 RackTop Systems, Inc.
+ * Copyright 2020-2024 RackTop Systems, Inc.
  */
 
 #include <sys/types.h>
@@ -483,6 +483,20 @@ smb_kmod_file_close(uint32_t uniqid)
 	ioc.uniqid = uniqid;
 
 	rc = smb_kmod_ioctl(SMB_IOC_FILE_CLOSE, &ioc.hdr, sizeof (ioc));
+	return (rc);
+}
+
+int
+smb_kmod_listen(smb_inaddr_t *addr, uint32_t port)
+{
+	smb_ioc_listen_t ioc;
+	int rc;
+
+	bzero(&ioc, sizeof (ioc));
+	ioc.addr = *addr;
+	ioc.port = port;
+
+	rc = smb_kmod_ioctl(SMB_IOC_LISTEN, &ioc.hdr, sizeof (ioc));
 	return (rc);
 }
 

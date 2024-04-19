@@ -21,7 +21,7 @@
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2011-2021 Tintri by DDN, Inc. All rights reserved.
- * Copyright 2021-2023 RackTop Systems, Inc.
+ * Copyright 2021-2024 RackTop Systems, Inc.
  */
 
 #include <sys/atomic.h>
@@ -692,8 +692,8 @@ done:
  * Port will be IPPORT_NETBIOS_SSN or IPPORT_SMB.
  */
 smb_session_t *
-smb_session_create(ksocket_t new_so, uint16_t port, smb_server_t *sv,
-    int family)
+smb_session_create(ksocket_t new_so, in_port_t port, smb_server_t *sv,
+    sa_family_t family)
 {
 	struct sockaddr_in	sin;
 	socklen_t		slen;

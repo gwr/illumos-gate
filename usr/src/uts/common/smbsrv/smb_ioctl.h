@@ -22,7 +22,7 @@
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2017 Nexenta Systems, Inc.  All rights reserved.
  * Copyright 2017 Joyent, Inc.
- * Copyright 2020-2023 RackTop Systems, Inc.
+ * Copyright 2020-2024 RackTop Systems, Inc.
  */
 
 #ifndef _SMB_IOCTL_H_
@@ -54,6 +54,7 @@ extern "C" {
 #define	SMB_IOC_SHAREINFO	_IOW(SMB_IOC_BASE, 12, int)
 #define	SMB_IOC_SHAREACCESS	_IOW(SMB_IOC_BASE, 13, int)
 #define	SMB_IOC_SPOOLDOC	_IOW(SMB_IOC_BASE, 14, int)
+#define	SMB_IOC_LISTEN		_IOW(SMB_IOC_BASE, 15, int)
 
 typedef struct smb_ioc_header {
 	uint32_t	version;
@@ -164,6 +165,12 @@ typedef	struct smb_ioc_fileid {
 	uint32_t	uniqid;
 } smb_ioc_fileid_t;
 
+typedef	struct smb_ioc_listen {
+	smb_ioc_header_t hdr;
+	smb_inaddr_t	addr;	/* network order */
+	uint16_t	port;	/* network order */
+} smb_ioc_listen_t;
+
 /* See also: smb_kmod_cfg_t */
 typedef struct smb_ioc_cfg {
 	smb_ioc_header_t hdr;
@@ -213,6 +220,7 @@ typedef union smb_ioc {
 	smb_ioc_svcenum_t	ioc_svcenum;
 	smb_ioc_session_t	ioc_session;
 	smb_ioc_fileid_t	ioc_fileid;
+	smb_ioc_listen_t	ioc_listen;
 	smb_ioc_share_t		ioc_share;
 	smb_ioc_shareaccess_t	ioc_shareaccess;
 	smb_ioc_shareinfo_t	ioc_shareinfo;

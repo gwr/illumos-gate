@@ -11,7 +11,7 @@
 
 /*
  * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
- * Copyright 2022-2023 RackTop Systems, Inc.
+ * Copyright 2022-2024 RackTop Systems, Inc.
  */
 
 /*
@@ -178,16 +178,28 @@ smbd_pipesvc_stop(void)
 static void *
 pipesvc_listener(void *varg)
 {
+	sigset_t	set;
 	struct sockaddr_un sa;
 	int err, listen_fd, newfd, snlen;
 	struct pipe_listener *pl = varg;
 	ndr_pipe_t *np;
+	pthread_attr_t	attr;
 	pthread_t tid;
 	int rc;
 
+	if (smbd.s_debug) {
+		smbd_report("pipesvc_listener(%s) tid %u started",
+		    pl->name, pthread_self());
+	}
+
+	(void) sigemptyset(&set);
+	(void) sigaddset(&set, SIGTERM);
+	(void) sigprocmask(SIG_UNBLOCK, &set, NULL);
+
 	listen_fd = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (listen_fd < 0) {
-		smbd_report("pipesvc_listener, so_create: %d", errno);
+		smbd_report("pipesvc_listener(%s), so_create: %d",
+		    pl->name, errno);
 		return (NULL);
 	}
 
@@ -199,16 +211,22 @@ pipesvc_listener(void *varg)
 	/* Bind it to a listening name. */
 	(void) unlink(sa.sun_path);
 	if (bind(listen_fd, (struct sockaddr *)&sa, sizeof (sa)) < 0) {
-		smbd_report("pipesvc_listener, so_bind: %d", errno);
+		smbd_report("pipesvc_listener(%s), so_bind: %d",
+		    pl->name, errno);
 		(void) close(listen_fd);
 		return (NULL);
 	}
 
 	if (listen(listen_fd, SOMAXCONN) < 0) {
-		smbd_report("pipesvc_listener, listen: %d", errno);
+		smbd_report("pipesvc_listener(%s), listen: %d",
+		    pl->name, errno);
 		(void) close(listen_fd);
 		return (NULL);
 	}
+
+	/* for child threads we'll create */
+	(void) pthread_attr_init(&attr);
+	(void) pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
 	for (;;) {
 
@@ -221,38 +239,54 @@ pipesvc_listener(void *varg)
 				continue;
 			case EINTR:
 				/* normal termination */
+				if (smbd.s_debug > 1) {
+					smbd_report("pipesvc_listener(%s),"
+					    " EINTR", pl->name);
+				}
 				goto out;
 			default:
-				smbd_report("pipesvc_listener, "
-				    "accept failed: %d", errno);
+				smbd_report("pipesvc_listener(%s), "
+				    "accept failed: %d",
+				    pl->name, err);
 			}
-			smbd_report("pipesvc_listener, accept: %d", err);
 			break;
 		}
 
 		np = np_new(pl, newfd);
 		if (np == NULL) {
-			smbd_report("pipesvc_listener, alloc1 failed");
+			smbd_report("pipesvc_listener(%s), alloc1 failed",
+			    pl->name);
 			(void) close(newfd);
 			smbd_nomem();
 		}
 
-		rc = pthread_create(&tid, NULL, pipesvc_worker, np);
+		rc = pthread_create(&tid, &attr, pipesvc_worker, np);
 		if (rc != 0) {
-			smbd_report("pipesvc_listener, pthread_create: %d",
-			    errno);
+			smbd_report("pipesvc_listener(%s), pthread_create: %d",
+			    pl->name, errno);
 			np_free(np);
 			smbd_nomem();
 		}
-		(void) pthread_detach(tid);
+
+		if (smbd.s_debug > 1) {
+			smbd_report("pipesvc_worker(%s), tid %u created",
+			    pl->name, tid);
+		}
 
 		/* Note: np_free in pipesvc_worker */
 		np = NULL;
 	}
 
 out:
+	if (smbd.s_debug) {
+		smbd_report("pipesvc_listener(%s) tid %u exiting",
+		    pl->name, pthread_self());
+	}
+
+	(void) pthread_attr_destroy(&attr);
 	(void) close(listen_fd);
 	pl->tid = 0;
+
 	return (NULL);
 }
 
@@ -413,9 +447,15 @@ out_decr:
 	(void) mutex_unlock(&pipesvc_mutex);
 
 out_free_np:
+	if (smbd.s_debug > 1) {
+		smbd_report("pipesvc_worker(%s), tid %u exiting",
+		    np->np_endpoint, pthread_self());
+	}
+
 	/* Cleanup what came in by varg. */
 	(void) shutdown(np->np_fid, SHUT_RDWR);
 	np_free(np);
+
 	return (NULL);
 }
 

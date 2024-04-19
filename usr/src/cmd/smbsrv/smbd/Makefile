@@ -22,6 +22,7 @@
 # Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
 # Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
 # Copyright (c) 2018, Joyent, Inc.
+# Copyright 2024 RackTop Systems, Inc.
 #
 
 
@@ -32,6 +33,7 @@ OBJS=				\
 	smbd_join.o		\
 	smbd_krb5lookup.o	\
 	smbd_krb5ssp.o		\
+	smbd_listener.o		\
 	smbd_logon.o		\
 	smbd_main.o		\
 	smbd_nicmon.o		\
@@ -68,16 +70,13 @@ $(NOT_RELEASE_BUILD)CPPFLAGS += -DDEBUG
 # Should not have to do this, but the Kerberos includes are a mess.
 CPPFLAGS += -I $(ROOT)/usr/include/kerberosv5
 
-# needs work
-SMOFF += all_func_returns,deref_check
-
 CSTD =       $(CSTD_GNU99)
 
 LDFLAGS += -R/usr/lib/smbsrv
 LDLIBS += -L$(ROOT)/usr/lib/smbsrv
 # prefer to keep libs ordered by dependence
 LDLIBS += -lmlsvc -lmlrpc -lsmbns -lsmb -lsmbfs -lgss
-LDLIBS += -lzfs -lbsm -lscf -lcmdutils -lsocket -lnsl -lumem
+LDLIBS += -lzfs -lbsm -lcmdutils -lsocket -lnsl -lumem
 $(PROG) := LDLIBS += -lkrb5
 
 $(ENABLE_SMB_PRINTING) CPPFLAGS += -DHAVE_CUPS

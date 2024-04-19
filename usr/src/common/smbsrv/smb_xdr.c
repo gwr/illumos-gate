@@ -21,7 +21,7 @@
 /*
  * Copyright (c) 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2015 Nexenta Systems, Inc. All rights reserved.
- * Copyright 2022 RackTop Systems, Inc.
+ * Copyright 2022-2024 RackTop Systems, Inc.
  */
 
 #include <sys/sunddi.h>
@@ -218,7 +218,7 @@ smb_netuserinfo_decode(smb_netuserinfo_t *info, uint8_t *buf,
 bool_t
 smb_inaddr_xdr(XDR *xdrs, smb_inaddr_t *objp)
 {
-	if (!xdr_int32_t(xdrs, &objp->a_family))
+	if (!xdr_uint32_t(xdrs, &objp->a_family))
 		return (FALSE);
 	if (objp->a_family == AF_INET) {
 		if (!xdr_uint32_t(xdrs, (in_addr_t *)&objp->a_ipv4))

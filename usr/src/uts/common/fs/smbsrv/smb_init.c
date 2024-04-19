@@ -21,7 +21,7 @@
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
- * Copyright 2015-2023 RackTop Systems, Inc.
+ * Copyright 2015-2024 RackTop Systems, Inc.
  * Copyright 2019 Joyent, Inc.
  */
 
@@ -473,6 +473,9 @@ smb_drv_ioctl(dev_t dev, int cmd, intptr_t argp, int flags, cred_t *cred,
 	case SMB_IOC_SPOOLDOC:
 		rc = smb_server_spooldoc(sv, &ioc->ioc_spooldoc);
 		copyout = B_TRUE;
+		break;
+	case SMB_IOC_LISTEN:
+		rc = smb_server_listen(sv, &ioc->ioc_listen);
 		break;
 	default:
 		rc = SET_ERROR(ENOTTY);

@@ -22,7 +22,7 @@
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2022 Tintri by DDN, Inc.  All rights reserved.
- * Copyright 2022-2023 RackTop Systems, Inc.
+ * Copyright 2022-2024 RackTop Systems, Inc.
  */
 
 #ifndef _SMBD_H
@@ -41,12 +41,12 @@ extern "C" {
 #include <smbsrv/libmlsvc.h>
 
 void smbd_nomem(void) __NORETURN;
-void smbd_report(const char *fmt, ...);
+void smbd_report(const char *fmt, ...) __PRINTFLIKE(1);
 int smbd_pipesvc_start(void);
 void smbd_pipesvc_stop(void);
 int smbd_share_start(void);
 void smbd_share_stop(void);
-int smbd_nicmon_start(const char *);
+int smbd_nicmon_start(pthread_t);
 void smbd_nicmon_stop(void);
 int smbd_nicmon_refresh(void);
 int smbd_dc_monitor_init(void);
@@ -147,6 +147,9 @@ void *smbd_door_dispatch_op(void *);
 
 int smbd_authsvc_start(void);
 void smbd_authsvc_stop(void);
+
+void smbd_listener_start(void);
+void smbd_listener_stop(void);
 
 /* For fksmbd */
 void fksmbd_init(void);

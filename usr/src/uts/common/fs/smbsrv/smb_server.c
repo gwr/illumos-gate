@@ -22,7 +22,7 @@
  * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2017 by Delphix. All rights reserved.
  * Copyright 2019 Nexenta by DDN, Inc. All rights reserved.
- * Copyright 2021-2023 RackTop Systems, Inc.
+ * Copyright 2021-2024 RackTop Systems, Inc.
  */
 
 /*
@@ -242,12 +242,8 @@ static int smb_server_session_disconnect(smb_server_t *, const char *,
 static int smb_server_fclose(smb_server_t *, uint32_t);
 static int smb_server_kstat_update(kstat_t *, int);
 static int smb_server_legacy_kstat_update(kstat_t *, int);
-static void smb_server_listener_init(smb_server_t *, smb_listener_daemon_t *,
-    char *, in_port_t, int);
-static void smb_server_listener_destroy(smb_listener_daemon_t *);
-static int smb_server_listener_start(smb_listener_daemon_t *);
-static void smb_server_listener_stop(smb_listener_daemon_t *);
-static void smb_server_listener(smb_thread_t *, void *);
+static void smb_server_listen_stop(smb_server_t *);
+static int smb_server_listener(smb_listener_daemon_t *);
 static void smb_server_receiver(void *);
 static void smb_server_create_session(smb_listener_daemon_t *, ksocket_t);
 static void smb_server_destroy_session(smb_session_t *);
@@ -277,6 +273,8 @@ uint32_t SMB_OFILE_HASH_NBUCKETS = DEFAULT_HASH_NBUCKETS;
 uint32_t SMB_LEASE_HASH_NBUCKETS = DEFAULT_HASH_NBUCKETS;
 
 int smb_event_debug = 0;
+
+int smb_listen_backlog = SOMAXCONN;
 
 static smb_llist_t	smb_servers;
 
@@ -458,6 +456,9 @@ smb_server_create(dev_t dev)
 	smb_llist_constructor(&sv->sv_event_list, sizeof (smb_event_t),
 	    offsetof(smb_event_t, se_lnd));
 
+	list_create(&sv->sv_listeners, sizeof (smb_listener_daemon_t),
+	    offsetof(smb_listener_daemon_t, ld_ln));
+
 	smb_llist_constructor(&sv->sp_info.sp_list, sizeof (smb_kspooldoc_t),
 	    offsetof(smb_kspooldoc_t, sd_lnd));
 
@@ -547,12 +548,11 @@ smb_server_delete(smb_server_t	*sv)
 	smb_threshold_fini(&sv->sv_opipe_ct);
 	smb_threshold_fini(&sv->sv_logoff_ct);
 
-	smb_server_listener_destroy(&sv->sv_nbt_daemon);
-	smb_server_listener_destroy(&sv->sv_tcp_daemon);
 	rw_destroy(&sv->sv_cfg_lock);
 	smb_server_kstat_fini(sv);
 	smb_kshare_fini(sv);
 	smb_kdoor_fini(sv);
+	list_destroy(&sv->sv_listeners);
 	smb_llist_destructor(&sv->sv_event_list);
 	smb_llist_destructor(&sv->sv_session_list);
 
@@ -629,7 +629,6 @@ int
 smb_server_start(smb_server_t *sv, smb_ioc_start_t *ioc)
 {
 	int		rc = 0;
-	int		family;
 	cred_t		*ucr;
 	struct proc	*tqproc;
 
@@ -726,19 +725,6 @@ smb_server_start(smb_server_t *sv, smb_ioc_start_t *ioc)
 
 		if ((rc = smb_thread_start(&sv->si_thread_timers)) != 0)
 			break;
-
-		family = AF_INET;
-		smb_server_listener_init(sv, &sv->sv_nbt_daemon,
-		    "smb_nbt_listener", IPPORT_NETBIOS_SSN, family);
-		if (sv->sv_cfg.skc_ipv6_enable)
-			family = AF_INET6;
-		smb_server_listener_init(sv, &sv->sv_tcp_daemon,
-		    "smb_tcp_listener", IPPORT_SMB, family);
-		rc = smb_server_listener_start(&sv->sv_tcp_daemon);
-		if (rc != 0)
-			break;
-		if (sv->sv_cfg.skc_netbios_enable)
-			(void) smb_server_listener_start(&sv->sv_nbt_daemon);
 
 		sv->sv_state = SMB_SERVER_STATE_RUNNING;
 		sv->sv_start_time = gethrtime();
@@ -1577,8 +1563,7 @@ smb_server_shutdown(smb_server_t *sv)
 	 * Stop the listeners first, so we can't get any more
 	 * new sessions while we're trying to shut down.
 	 */
-	smb_server_listener_stop(&sv->sv_nbt_daemon);
-	smb_server_listener_stop(&sv->sv_tcp_daemon);
+	smb_server_listen_stop(sv);
 
 	/*
 	 * Disconnect all of the sessions. This causes all the
@@ -1706,87 +1691,81 @@ smb_server_shutdown(smb_server_t *sv)
 }
 
 /*
- * smb_server_listener_init
- *
- * Initializes listener contexts.
+ * Shutdown all listeners
  */
 static void
-smb_server_listener_init(
-    smb_server_t		*sv,
-    smb_listener_daemon_t	*ld,
-    char			*name,
-    in_port_t			port,
-    int				family)
+smb_server_listen_stop(smb_server_t *sv)
 {
-	ASSERT(ld->ld_magic != SMB_LISTENER_MAGIC);
+	smb_listener_daemon_t	*ld;
 
-	bzero(ld, sizeof (*ld));
+	mutex_enter(&sv->sv_mutex);
 
-	ld->ld_sv = sv;
-	ld->ld_family = family;
-	ld->ld_port = port;
-
-	if (family == AF_INET) {
-		ld->ld_sin.sin_family = (uint32_t)family;
-		ld->ld_sin.sin_port = htons(port);
-		ld->ld_sin.sin_addr.s_addr = htonl(INADDR_ANY);
-	} else {
-		ld->ld_sin6.sin6_family = (uint32_t)family;
-		ld->ld_sin6.sin6_port = htons(port);
-		(void) memset(&ld->ld_sin6.sin6_addr.s6_addr, 0,
-		    sizeof (ld->ld_sin6.sin6_addr.s6_addr));
+	for (ld = list_head(&sv->sv_listeners);
+	    ld != NULL;
+	    ld = list_next(&sv->sv_listeners, ld)) {
+		smb_soshutdown(ld->ld_so);	/* ksocket_shutdown */
 	}
 
-	smb_thread_init(&ld->ld_thread, name, smb_server_listener, ld,
-	    smbsrv_listen_pri, sv);
+	mutex_exit(&sv->sv_mutex);
+}
+
+/*
+ * smb_server_listen
+ *
+ * Called via ioctl SMB_IOC_LISTEN
+ *
+ * We always have separate listener threads for IPv4 and IPv6,
+ * and therefore set the sockopt IPV6_V6ONLY below for IPv6.
+ */
+int
+smb_server_listen(smb_server_t *sv, smb_ioc_listen_t *ioc)
+{
+	char	astr[INET6_ADDRSTRLEN];
+	smb_listener_daemon_t	*ld;
+	struct sockaddr_in	*sin;
+	struct sockaddr_in6	*sin6;
+	socklen_t		ssize;
+	uint32_t	on = 1;
+	uint32_t	off = 0;
+	int rc;
+
+	ld = kmem_zalloc(sizeof (*ld), KM_SLEEP);
+
 	ld->ld_magic = SMB_LISTENER_MAGIC;
-}
+	ld->ld_sv = sv;
+	ld->ld_thread = curthread;
+	ld->ld_family = ioc->addr.a_family;
+	ld->ld_port = ntohs(ioc->port);
 
-/*
- * smb_server_listener_destroy
- *
- * Destroyes listener contexts.
- */
-static void
-smb_server_listener_destroy(smb_listener_daemon_t *ld)
-{
-	/*
-	 * Note that if startup fails early, we can legitimately
-	 * get here with an all-zeros object.
-	 */
-	if (ld->ld_magic == 0)
-		return;
+	switch (ld->ld_family) {
+	case AF_INET:
+		sin = (struct sockaddr_in *)&ld->ld_ss;
+		sin->sin_family = ld->ld_family;
+		sin->sin_addr.s_addr = ioc->addr.au_addr.au_ipv4;
+		sin->sin_port = ioc->port;
+		ssize = sizeof (*sin);
+		break;
 
-	SMB_LISTENER_VALID(ld);
-	ASSERT(ld->ld_so == NULL);
-	smb_thread_destroy(&ld->ld_thread);
-	ld->ld_magic = 0;
-}
+	case AF_INET6:
+		sin6 = (struct sockaddr_in6 *)&ld->ld_ss;
+		sin6->sin6_family = ld->ld_family;
+		sin6->sin6_addr = ioc->addr.au_addr.au_ipv6;
+		sin6->sin6_port = ioc->port;
+		ssize = sizeof (*sin6);
+		break;
 
-/*
- * smb_server_listener_start
- *
- * Starts the listener associated with the context passed in.
- *
- * Return:	0	Success
- *		not 0	Failure
- */
-static int
-smb_server_listener_start(smb_listener_daemon_t *ld)
-{
-	int		rc;
-	uint32_t	on;
-	uint32_t	off;
-
-	SMB_LISTENER_VALID(ld);
-
-	if (ld->ld_so != NULL)
-		return (EINVAL);
+	default:
+		rc = EAFNOSUPPORT;
+		goto out;
+	}
+	if (smb_inet_ntop(&ioc->addr, astr, sizeof (astr)) == NULL)
+		(void) strlcpy(astr, "?", sizeof (astr));
 
 	ld->ld_so = smb_socreate(ld->ld_family, SOCK_STREAM, 0);
 	if (ld->ld_so == NULL) {
-		cmn_err(CE_WARN, "port %d: socket create failed", ld->ld_port);
-		return (ENOMEM);
+		cmn_err(CE_WARN, "listen %s: socket create failed", astr);
+		rc = ENOMEM;
+		goto out;
 	}
 
 	off = 0;
@@ -1797,54 +1776,49 @@ smb_server_listener_start(smb_listener_daemon_t *ld)
 	(void) ksocket_setsockopt(ld->ld_so, SOL_SOCKET,
 	    SO_REUSEADDR, &on, sizeof (on), CRED());
 
-	if (ld->ld_family == AF_INET) {
-		rc = ksocket_bind(ld->ld_so,
-		    (struct sockaddr *)&ld->ld_sin,
-		    sizeof (ld->ld_sin), CRED());
-	} else {
-		rc = ksocket_bind(ld->ld_so,
-		    (struct sockaddr *)&ld->ld_sin6,
-		    sizeof (ld->ld_sin6), CRED());
+	if (ld->ld_family == AF_INET6) {
+		on = 1;
+		rc = ksocket_setsockopt(ld->ld_so, IPPROTO_IPV6,
+		    IPV6_V6ONLY, &on, sizeof (on), CRED());
+		if (rc != 0) {
+			cmn_err(CE_WARN, "listen %s set v6only failed", astr);
+		}
 	}
 
+	rc = ksocket_bind(ld->ld_so, (struct sockaddr *)&ld->ld_ss,
+	    ssize, CRED());
 	if (rc != 0) {
-		cmn_err(CE_WARN, "port %d: bind failed", ld->ld_port);
-		return (rc);
+		cmn_err(CE_WARN, "listen %s: bind failed", astr);
+		goto out;
 	}
 
-	rc =  ksocket_listen(ld->ld_so, 20, CRED());
+	rc = ksocket_listen(ld->ld_so, smb_listen_backlog, CRED());
 	if (rc < 0) {
-		cmn_err(CE_WARN, "port %d: listen failed", ld->ld_port);
-		return (rc);
+		cmn_err(CE_WARN, "listen %s: listen failed", astr);
+		goto out;
 	}
 
-	ksocket_hold(ld->ld_so);
-	rc = smb_thread_start(&ld->ld_thread);
-	if (rc != 0) {
-		ksocket_rele(ld->ld_so);
-		cmn_err(CE_WARN, "port %d: listener failed to start",
-		    ld->ld_port);
-		return (rc);
-	}
-	return (0);
-}
+	mutex_enter(&sv->sv_mutex);
+	list_insert_tail(&sv->sv_listeners, ld);
+	mutex_exit(&sv->sv_mutex);
 
-/*
- * smb_server_listener_stop
- *
- * Stops the listener associated with the context passed in.
- */
-static void
-smb_server_listener_stop(smb_listener_daemon_t *ld)
-{
-	SMB_LISTENER_VALID(ld);
+	rc = smb_server_listener(ld);
 
+	mutex_enter(&sv->sv_mutex);
+	list_remove(&sv->sv_listeners, ld);
+	mutex_exit(&sv->sv_mutex);
+
+out:
 	if (ld->ld_so != NULL) {
-		smb_soshutdown(ld->ld_so);
-		smb_sodestroy(ld->ld_so);
-		smb_thread_stop(&ld->ld_thread);
+		smb_soshutdown(ld->ld_so);	/* ksocket_shutdown */
+		smb_sodestroy(ld->ld_so);	/* ksocket_close */
 		ld->ld_so = NULL;
 	}
+	ld->ld_thread = NULL;
+
+	kmem_free(ld, sizeof (*ld));
+
+	return (rc);
 }
 
 /*
@@ -1852,24 +1826,20 @@ smb_server_listener_stop(smb_listener_daemon_t *ld)
  *
  * Entry point of the listeners.
  */
-static void
-smb_server_listener(smb_thread_t *thread, void *arg)
+static int
+smb_server_listener(smb_listener_daemon_t *ld)
 {
-	_NOTE(ARGUNUSED(thread))
-	smb_listener_daemon_t	*ld;
 	ksocket_t		s_so;
 	int			on;
 	int			txbuf_size;
-
-	ld = (smb_listener_daemon_t *)arg;
+	int			ret = 0;
 
 	SMB_LISTENER_VALID(ld);
 
 	DTRACE_PROBE1(so__wait__accept, struct sonode *, ld->ld_so);
 
-	while (smb_thread_continue_nowait(&ld->ld_thread) &&
-	    ld->ld_sv->sv_state != SMB_SERVER_STATE_STOPPING) {
-		int ret = ksocket_accept(ld->ld_so, NULL, NULL, &s_so, CRED());
+	while (ld->ld_sv->sv_state == SMB_SERVER_STATE_RUNNING) {
+		ret = ksocket_accept(ld->ld_so, NULL, NULL, &s_so, CRED());
 
 		switch (ret) {
 		case 0:
@@ -1878,6 +1848,10 @@ smb_server_listener(smb_thread_t *thread, void *arg)
 			continue;
 
 		case EINTR:
+			cmn_err(CE_NOTE,
+			    "smb_server_listener: ksocket_accept EINTR");
+			goto out;
+
 		case EBADF:
 		case ENOTSOCK:
 			/* These are normal during shutdown. Silence. */
@@ -1888,9 +1862,7 @@ smb_server_listener(smb_thread_t *thread, void *arg)
 			cmn_err(CE_WARN,
 			    "smb_server_listener: ksocket_accept failed (%d)",
 			    ret);
-			/* avoid a tight CPU-burn loop here */
-			delay(MSEC_TO_TICK(10));
-			continue;
+			goto out;
 		}
 
 		DTRACE_PROBE1(so__accept, struct sonode *, s_so);
@@ -1913,7 +1885,7 @@ smb_server_listener(smb_thread_t *thread, void *arg)
 		smb_server_create_session(ld, s_so);
 	}
 out:
-	ksocket_rele(ld->ld_so);
+	return (ret);
 }
 
 /*

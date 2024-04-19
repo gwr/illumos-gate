@@ -20,7 +20,7 @@
 #
 # Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
 # Copyright 2020 Tintri by DDN, Inc. All rights reserved.
-# Copyright 2022-2023 RackTop Systems, Inc.
+# Copyright 2022-2024 RackTop Systems, Inc.
 #
 
 #
@@ -238,6 +238,7 @@ SYMBOL_VERSION SUNWprivate {
 	smb_kmod_get_spool_doc;
 	smb_kmod_ioctl			{ FLAGS = NODIRECT };
 	smb_kmod_isbound		{ FLAGS = NODIRECT };
+	smb_kmod_listen;
 	smb_kmod_session_close;
 	smb_kmod_setcfg;
 	smb_kmod_setgmtoff;

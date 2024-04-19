@@ -22,7 +22,7 @@
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2020 Tintri by DDN, Inc. All rights reserved.
- * Copyright 2020-2023 RackTop Systems, Inc.
+ * Copyright 2020-2024 RackTop Systems, Inc.
  */
 
 #ifndef	_LIBSMB_H
@@ -166,6 +166,7 @@ typedef enum {
 	SMB_CI_SHORT_NAMES,
 	SMB_CI_MAX_OPENS,
 	SMB_CI_SIGN_ALGS,
+	SMB_CI_LISTENER_BINDINGS,
 
 	SMB_CI_MAX
 } smb_cfg_id_t;
@@ -924,6 +925,7 @@ void smb_kmod_enum_fini(smb_netsvc_t *);
 int smb_kmod_session_close(const char *, const char *);
 int smb_kmod_file_close(uint32_t);
 int smb_kmod_get_spool_doc(uint32_t *, char *, char *, smb_inaddr_t *);
+int smb_kmod_listen(smb_inaddr_t *, uint32_t);
 
 void smb_name_parse(char *, char **, char **);
 uint32_t smb_name_validate_share(const char *);

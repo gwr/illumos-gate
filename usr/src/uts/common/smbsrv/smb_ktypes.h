@@ -2060,14 +2060,14 @@ typedef enum {
 
 typedef struct {
 	uint32_t		ld_magic;
+	list_node_t		ld_ln;
 	struct smb_server	*ld_sv;
-	smb_thread_t		ld_thread;
-	ksocket_t		ld_so;
-	in_port_t		ld_port;
-	int			ld_family;
-	struct sockaddr_in	ld_sin;
-	struct sockaddr_in6	ld_sin6;
+	kthread_t		*ld_thread;
 	clock_t			ld_quiet;
+	ksocket_t		ld_so;
+	uint32_t		ld_family;
+	uint32_t		ld_port;	/* host order */
+	struct sockaddr_storage	ld_ss;		/* network order */
 } smb_listener_daemon_t;
 
 #define	SMB_SSETUP_CMD			"authentication"
@@ -2125,8 +2125,6 @@ typedef struct smb_server {
 	pid_t			sv_pid;
 	zoneid_t		sv_zid;
 	dev_t			sv_dev;
-	smb_listener_daemon_t	sv_nbt_daemon;
-	smb_listener_daemon_t	sv_tcp_daemon;
 	krwlock_t		sv_cfg_lock;
 	smb_kmod_cfg_t		sv_cfg;
 
@@ -2163,6 +2161,7 @@ typedef struct smb_server {
 	smb_node_t		*si_root_smb_node;
 	smb_llist_t		sv_opipe_list;
 	smb_llist_t		sv_event_list;
+	list_t			sv_listeners;
 
 	/* Statistics */
 	hrtime_t		sv_start_time;

@@ -20,6 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright 2024 RackTop Systems, Inc.
  */
 
 /*
@@ -57,7 +58,7 @@ static boolean_t smbd_nicmon_enabled = B_TRUE;
 static int eventpipe_write = -1;
 
 /* Use this to refresh service instance */
-static char *smbd_nicmon_caller_fmri = NULL;
+static pthread_t smbd_nicmon_main_tid = 0;
 
 static void smbd_nicmon_run_check(void);
 static int smbd_nicmon_setup_rtsock(int);
@@ -69,7 +70,7 @@ static void *smbd_nicmon_daemon(void *);
  * Start the nic monitor thread.
  */
 int
-smbd_nicmon_start(const char *svc_fmri)
+smbd_nicmon_start(pthread_t main_tid)
 {
 	pthread_t	smbd_nicmon_tid;
 	int		rc;
@@ -81,8 +82,8 @@ smbd_nicmon_start(const char *svc_fmri)
 	if (rc != 0)
 		return (-1);
 
-	if (svc_fmri)
-		smbd_nicmon_caller_fmri = (char *)svc_fmri;
+	assert(main_tid != 0);
+	smbd_nicmon_main_tid = main_tid;
 
 	smbd_nicmon_run_check();
 	return (0);
@@ -97,7 +98,7 @@ smbd_nicmon_stop(void)
 		return;
 
 	(void) write(eventpipe_write, &buf, sizeof (buf));
-	smbd_nicmon_caller_fmri = NULL;
+	smbd_nicmon_main_tid = 0;
 	smb_nic_fini();
 }
 
@@ -140,8 +141,11 @@ smbd_nicmon_run_check(void)
 	}
 
 	rc = smb_smf_get_boolean_property(hd, SMBD_NICMON_ENABLE, &status);
-	if (rc == SMBD_SMF_OK && status == 0)
+	if (rc == SMBD_SMF_OK && status == 0) {
 		smbd_nicmon_enabled = B_FALSE;
+		syslog(LOG_DEBUG,
+		    "smbd_nicmon: smbd_nicmon_enabled set FALSE");
+	}
 
 	smb_smf_scf_fini(hd);
 }
@@ -307,11 +311,13 @@ smbd_nicmon_daemon(void *arg)
 		 * refresh the registered SMF service.
 		 */
 		if (smbd_nicmon_enabled && nic_changed &&
-		    smbd_nicmon_caller_fmri) {
-			if (smf_refresh_instance(smbd_nicmon_caller_fmri) != 0)
+		    smbd_nicmon_main_tid != 0) {
+			rc = pthread_kill(smbd_nicmon_main_tid, SIGHUP);
+			if (rc != 0) {
 				syslog(LOG_ERR,
-				    "smbd_nicmon: %s refresh failed",
-				    smbd_nicmon_caller_fmri);
+				    "smbd_nicmon: pthread_kill %d, rc=%d",
+				    smbd_nicmon_main_tid, rc);
+			}
 		}
 	}
 done:

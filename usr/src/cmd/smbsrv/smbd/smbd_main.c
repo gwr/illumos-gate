@@ -21,7 +21,7 @@
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
- * Copyright 2022 RackTop Systems, Inc.
+ * Copyright 2022-2024 RackTop Systems, Inc.
  */
 
 #include <sys/types.h>
@@ -38,7 +38,6 @@
 #include <wait.h>
 #include <signal.h>
 #include <atomic.h>
-#include <libscf.h>
 #include <limits.h>
 #include <priv_utils.h>
 #include <door.h>
@@ -93,11 +92,27 @@ static int smbd_kernel_start(void);
 smbd_t smbd;
 
 /*
+ * We sometimes want to kill specific threads with SIGTERM,
+ * and if there's no handler, that will terminate the process.
+ * This handler (doing nothing) avoids process termination.
+ */
+static void
+smbd_signaled(int sig)
+{
+	if (smbd.s_debug > 1) {
+		smbd_report("tid %d signaled %d",
+		    (int)pthread_self(), sig);
+	}
+}
+
+
+/*
  * Use SMF error codes only on return or exit.
  */
 int
 main(int argc, char *argv[])
 {
+	struct sigaction	sigact;
 	sigset_t		set;
 	uid_t			uid;
 	int			pfd = -1;
@@ -145,7 +160,17 @@ main(int argc, char *argv[])
 		rl.rlim_cur = rl.rlim_max;
 		if (setrlimit(RLIMIT_NOFILE, &rl) != 0)
 			smbd_report("Failed to raise file descriptor limit"
-			    " from %d to %d", orig_limit, rl.rlim_cur);
+			    " from %d to %d", orig_limit, (int)rl.rlim_cur);
+	}
+
+	if (smbd.s_fg == 0) {
+		/*
+		 * "pfd" is a pipe descriptor -- any fatal errors
+		 * during subsequent initialization of the child
+		 * process should be written to this pipe and the
+		 * parent will report this error as the exit status.
+		 */
+		pfd = smbd_daemonize_init();
 	}
 
 	/*
@@ -163,25 +188,21 @@ main(int argc, char *argv[])
 
 	(void) sigprocmask(SIG_SETMASK, &set, NULL);
 
-	if (smbd.s_fg) {
-		if (smbd_service_init() != 0) {
-			smbd_report("service initialization failed");
-			exit(SMF_EXIT_ERR_FATAL);
-		}
-	} else {
-		/*
-		 * "pfd" is a pipe descriptor -- any fatal errors
-		 * during subsequent initialization of the child
-		 * process should be written to this pipe and the
-		 * parent will report this error as the exit status.
-		 */
-		pfd = smbd_daemonize_init();
+	/*
+	 * See comment above smbd_signaled()
+	 */
+	bzero(&sigact, sizeof (sigact));
+	sigact.sa_handler = smbd_signaled;
+	(void) sigaction(SIGHUP,  &sigact, NULL);
+	(void) sigaction(SIGTERM, &sigact, NULL);
+	(void) sigaction(SIGUSR1, &sigact, NULL);
 
-		if (smbd_service_init() != 0) {
-			smbd_report("daemon initialization failed");
-			exit(SMF_EXIT_ERR_FATAL);
-		}
+	if (smbd_service_init() != 0) {
+		smbd_report("daemon initialization failed");
+		exit(SMF_EXIT_ERR_FATAL);
+	}
 
+	if (pfd != -1) {
 		smbd_daemonize_fini(pfd, SMF_EXIT_OK);
 	}
 
@@ -209,6 +230,7 @@ main(int argc, char *argv[])
 			/*
 			 * Typically SIGINT or SIGTERM.
 			 */
+			syslog(LOG_DEBUG, "sigwait got: %d", sigval);
 			smbd.s_shutting_down = B_TRUE;
 			break;
 		}
@@ -446,10 +468,11 @@ smbd_service_init(void)
 	 * fork() etc. in smb_daemonize_init()
 	 */
 	if (smbd.s_dbg_stop) {
-		smbd_report("pid %d stop for debugger attach", smbd.s_pid);
+		smbd_report("pid %d stop for debugger attach",
+		    (int)smbd.s_pid);
 		(void) kill(smbd.s_pid, SIGSTOP);
 	}
-	smbd_report("smbd starting, pid %d", smbd.s_pid);
+	smbd_report("smbd starting, pid %d", (int)smbd.s_pid);
 
 	for (i = 0; i < sizeof (dir)/sizeof (dir[0]); ++i) {
 		if ((mkdir(dir[i].name, dir[i].perm) < 0) &&
@@ -486,7 +509,7 @@ smbd_service_init(void)
 	if (smb_config_getbool(SMB_CI_PRINT_ENABLE))
 		smbd_report("print service %savailable", (rc == 0) ? "" : "un");
 
-	if (smbd_nicmon_start(SMBD_DEFAULT_INSTANCE_FMRI) != 0)
+	if (smbd_nicmon_start(pthread_self()) != 0)
 		smbd_report("NIC monitor failed to start");
 
 	smbd_dyndns_init();
@@ -550,6 +573,7 @@ smbd_service_init(void)
 	smbd_load_shares();
 	smbd_load_printers();
 	smbd_spool_start();
+	smbd_listener_start();
 
 	smbd.s_initialized = B_TRUE;
 	smbd_report("service initialized");
@@ -569,6 +593,7 @@ smbd_service_fini(void)
 	smbd.s_shutting_down = B_TRUE;
 	smbd_report("service shutting down");
 
+	smbd_listener_stop();
 	smb_kmod_stop();
 	smb_logon_abort();
 	smb_lgrp_stop();
@@ -638,6 +663,7 @@ smbd_refresh_handler()
 
 	smbd_load_printers();
 	smbd_spool_start();
+	smbd_listener_start();
 }
 
 void

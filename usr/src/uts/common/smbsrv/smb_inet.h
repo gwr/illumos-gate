@@ -23,6 +23,7 @@
  * Use is subject to license terms.
  *
  * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2024 RackTop Systems, Inc.
  */
 
 /*
@@ -42,7 +43,7 @@ extern "C" {
 
 /*
  * SMB (internal) representation of an IP address.
- * See also: smb_inaddr_xdr()
+ * See also: smb_inaddr_xdr(), mdb_smb_inaddr_t
  */
 typedef struct smb_inaddr {
 	union {
@@ -50,7 +51,7 @@ typedef struct smb_inaddr {
 		in6_addr_t au_ipv6;
 		in6_addr_t au_ip;
 	} au_addr;
-	int a_family;
+	uint32_t a_family;
 } smb_inaddr_t;
 
 #define	a_ipv4 au_addr.au_ipv4

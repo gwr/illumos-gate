@@ -23,7 +23,7 @@
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2011-2022 Tintri by DDN, Inc. All rights reserved.
  * Copyright 2016 Syneto S.R.L.  All rights reserved.
- * Copyright 2015-2023 RackTop Systems, Inc.
+ * Copyright 2015-2024 RackTop Systems, Inc.
  */
 
 /*
@@ -475,6 +475,7 @@ int smb_server_enum(smb_server_t *, smb_ioc_svcenum_t *);
 int smb_server_session_close(smb_server_t *, smb_ioc_session_t *);
 int smb_server_file_close(smb_server_t *, smb_ioc_fileid_t *);
 int smb_server_spooldoc(smb_server_t *, smb_ioc_spooldoc_t *);
+int smb_server_listen(smb_server_t *, smb_ioc_listen_t *);
 
 /* other server stuff */
 boolean_t smb_server_is_stopping(smb_server_t *);
@@ -630,7 +631,8 @@ void smb_authsock_close(smb_user_t *, ksocket_t);
 /*
  * session functions (file smb_session.c)
  */
-smb_session_t *smb_session_create(ksocket_t, uint16_t, smb_server_t *, int);
+smb_session_t *smb_session_create(ksocket_t, in_port_t, smb_server_t *,
+    sa_family_t);
 smb_session_t *smb_server_find_session_byptr(smb_server_t *, void *);
 
 void smb_session_receiver(smb_session_t *);

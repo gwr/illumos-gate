@@ -22,7 +22,7 @@
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2019 Nexenta by DDN, Inc. All rights reserved.
- * Copyright 2022 RackTop Systems, Inc.
+ * Copyright 2022-2024 RackTop Systems, Inc.
  * Copyright 2025 Oxide Computer Company
  */
 
@@ -593,50 +593,6 @@ smb_server_exp_off_sv_list(void)
 	return (svl_off + ll_off);
 }
 
-static int
-smb_server_exp_off_nbt_list(void)
-{
-	int svd_off, lds_off, ll_off;
-
-	/* OFFSETOF(smb_server_t, sv_nbt_daemon.ld_session_list.ll_list); */
-	GET_OFFSET(svd_off, smb_server_t, sv_nbt_daemon);
-	/*
-	 * We can't do OFFSETOF() because the member doesn't exist,
-	 * but we want backwards compatibility to old cores
-	 */
-	lds_off = mdb_ctf_offsetof_by_name("smb_listener_daemon_t",
-	    "ld_session_list");
-	if (lds_off < 0) {
-		mdb_warn("cannot lookup: "
-		    "smb_listener_daemon_t .ld_session_list");
-		return (-1);
-	}
-	GET_OFFSET(ll_off, smb_llist_t, ll_list);
-	return (svd_off + lds_off + ll_off);
-}
-
-static int
-smb_server_exp_off_tcp_list(void)
-{
-	int svd_off, lds_off, ll_off;
-
-	/* OFFSETOF(smb_server_t, sv_tcp_daemon.ld_session_list.ll_list); */
-	GET_OFFSET(svd_off, smb_server_t, sv_tcp_daemon);
-	/*
-	 * We can't do OFFSETOF() because the member doesn't exist,
-	 * but we want backwards compatibility to old cores
-	 */
-	lds_off = mdb_ctf_offsetof_by_name("smb_listener_daemon_t",
-	    "ld_session_list");
-	if (lds_off < 0) {
-		mdb_warn("cannot lookup: "
-		    "smb_listener_daemon_t .ld_session_list");
-		return (-1);
-	}
-	GET_OFFSET(ll_off, smb_llist_t, ll_list);
-	return (svd_off + lds_off + ll_off);
-}
-
 /*
  * List of objects that can be expanded under a server structure.
  */
@@ -644,18 +600,6 @@ static const smb_exp_t smb_server_exp[] =
 {
 	{ SMB_OPT_ALL_OBJ, "list",
 	    smb_server_exp_off_sv_list,
-	    "smbsess", "smb_session"},
-	{ 0 }
-};
-
-/* for backwards compatibility only */
-static const smb_exp_t smb_server_exp_old[] =
-{
-	{ SMB_OPT_ALL_OBJ, "list",
-	    smb_server_exp_off_nbt_list,
-	    "smbsess", "smb_session"},
-	{ SMB_OPT_ALL_OBJ, "list",
-	    smb_server_exp_off_tcp_list,
 	    "smbsess", "smb_session"},
 	{ 0 }
 };
@@ -671,9 +615,6 @@ smbsrv_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 {
 	uint_t		opts;
 	ulong_t		indent = 0;
-	const smb_exp_t	*sv_exp;
-	mdb_ctf_id_t id;
-	ulong_t off;
 
 	if (smb_dcmd_getopt(&opts, argc, argv))
 		return (DCMD_USAGE);
@@ -721,18 +662,9 @@ smbsrv_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 		}
 	}
 
-	/* if we can't look up the type name, just error out */
-	if (mdb_ctf_lookup_by_name("smb_server_t", &id) == -1)
+	if (smb_obj_expand(addr, opts, smb_server_exp, indent))
 		return (DCMD_ERR);
 
-	if (mdb_ctf_offsetof(id, "sv_session_list", &off) == -1)
-		/* sv_session_list doesn't exist; old core */
-		sv_exp = smb_server_exp_old;
-	else
-		sv_exp = smb_server_exp;
-
-	if (smb_obj_expand(addr, opts, sv_exp, indent))
-		return (DCMD_ERR);
 	return (DCMD_OK);
 }
 
@@ -762,7 +694,7 @@ typedef struct mdb_smb_inaddr {
 #endif
 		in6_addr_t au_ip;
 	} au_addr;
-	int a_family;
+	uint32_t a_family;
 } mdb_smb_inaddr_t;
 
 typedef struct mdb_smb_session {
@@ -2212,6 +2144,129 @@ smblease_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 			}
 			mdb_printf(" ...]\n");
 		}
+	}
+
+	return (DCMD_OK);
+}
+
+/*
+ * *****************************************************************************
+ * ***************************** smb_listener_daemon_t *************************
+ * *****************************************************************************
+ */
+
+typedef struct mdb_smb_listener {
+	struct smb_server	*ld_sv;
+	kthread_t		*ld_thread;
+	uint32_t		ld_family;
+	uint32_t		ld_port;	/* host order */
+	struct sockaddr_storage	ld_ss;		/* network order */
+} mdb_smb_listener_t;
+
+struct smb_listener_cb_args {
+	mdb_smb_listener_t ld;
+	uint_t		opts;
+};
+
+static int
+smb_listener_cb(uintptr_t addr, const void *data, void *varg)
+{
+	struct smb_listener_cb_args *args = varg;
+	struct sockaddr_in *sin;
+	struct sockaddr_in6 *sin6;
+	char astr[INET6_ADDRSTRLEN];
+	char *af;
+
+	if (mdb_ctf_vread(&args->ld, SMBSRV_SCOPE "smb_listener_daemon_t",
+	    "mdb_smb_listener_t", addr, 0) < 0) {
+		mdb_warn("failed to read struct smb_listener at %p", addr);
+		return (DCMD_ERR);
+	}
+
+	switch (args->ld.ld_family) {
+	case AF_INET:
+		sin = (struct sockaddr_in *)&args->ld.ld_ss;
+		(void) mdb_snprintf(astr, sizeof (astr), "%I",
+		    sin->sin_addr.s_addr);
+		af = "inet";
+		break;
+	case AF_INET6:
+		sin6 = (struct sockaddr_in6 *)&args->ld.ld_ss;
+		(void) mdb_snprintf(astr, sizeof (astr), "%N",
+		    &sin6->sin6_addr);
+		af = "inet6";
+		break;
+	default:
+		(void) mdb_snprintf(astr, sizeof (astr), "(?)");
+		af = "?";
+		break;
+	}
+
+	if (args->opts & SMB_OPT_VERBOSE) {
+		mdb_printf("%<b>%<u>SMB listener "
+		    "(%p):%</u>%</b>\n", addr);
+
+		mdb_printf("Addr. Fmly    :\t%s (%u)\n",
+		    af, args->ld.ld_family);
+		mdb_printf("Address       :\t%s\n",
+		    astr);
+		mdb_printf("Port          :\t%u\n",
+		    args->ld.ld_port);
+		mdb_printf("Thread        :\t%p\n",
+		    args->ld.ld_thread);
+		mdb_printf("\n");
+
+	} else {
+		/* See DCMD_HDRSPEC in caller below, */
+		mdb_printf("%?p %-6s %-16s %-8u %?p\n",
+		    addr, af, astr, args->ld.ld_port, args->ld.ld_thread);
+	}
+
+	return (WALK_NEXT);
+}
+
+/*
+ * ::smblisten
+ *
+ * smblisten dcmd - Print list of listeners
+ *	requires addr. of smb_server_t
+ */
+static int
+smblisten_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
+{
+	struct smb_listener_cb_args *args;
+	int svl_off;
+
+	args = mdb_zalloc(sizeof (*args), UM_SLEEP | UM_GC);
+	if (mdb_getopts(argc, argv,
+	    'v', MDB_OPT_SETBITS, SMB_OPT_VERBOSE, &args->opts,
+	    NULL) != argc)
+		return (DCMD_USAGE);
+
+	if (!(flags & DCMD_ADDRSPEC))
+		return (DCMD_USAGE);
+
+	svl_off = mdb_ctf_offsetof_by_name("smb_server_t", "sv_listeners");
+	if (svl_off < 0) {
+		mdb_warn("No .sv_listeners in server (old kernel?)");
+		return (DCMD_ERR);
+	}
+	addr += svl_off;
+
+	if (DCMD_HDRSPEC(flags)) {
+		if ((args->opts & SMB_OPT_VERBOSE) != 0) {
+			mdb_printf("%<b>%<u>SMB listeners list:%</u>%</b>\n");
+		} else {
+			mdb_printf(
+			    "%<b>%<u>"
+			    "%-16s %-6s %-16s %-8s %-8s %</u>%</b>\n",
+			    "smb_listener_t", "AF", "Addr", "Port", "Thread");
+		}
+	}
+
+	if (mdb_pwalk("list", smb_listener_cb, args, addr) == -1) {
+		mdb_warn("failed to walk sv_listeners list");
+		return (DCMD_ERR);
 	}
 
 	return (DCMD_OK);
@@ -3981,6 +4036,10 @@ static const mdb_dcmd_t dcmds[] = {
 	    "[-v]",
 	    "list stats from an smb_hash_t structure",
 	    smbhashstat_dcmd },
+	{   "smblisten",
+	    ":[-v]",
+	    "print smb_listener_daemon_t information",
+	    smblisten_dcmd },
 
 	{ NULL }
 };
