@@ -373,11 +373,17 @@ extern FILE	*fmemopen(void *_RESTRICT_KYWD, size_t,
 extern FILE	*open_memstream(char **, size_t *);
 #endif	/* !_STRICT_SYMBOLS || _XPG7 */
 
+#if defined(_XPG7)
+/* PRINTFLIKE2 */
+extern int	dprintf(int, const char *_RESTRICT_KYWD, ...);
+#endif
+
 #if defined(__EXTENSIONS__) || defined(_REENTRANT) || \
 	    (_POSIX_C_SOURCE - 0 >= 199506L)
 #define	getchar_unlocked()	getc_unlocked(stdin)
 #define	putchar_unlocked(x)	putc_unlocked((x), stdout)
 #endif	/* defined(__EXTENSIONS__) || defined(_REENTRANT).. */
+
 
 #ifdef	__cplusplus
 }

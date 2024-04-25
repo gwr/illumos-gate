@@ -780,6 +780,7 @@ MANLINKS=	FD_CLR.3c				\
 		door_setparam.3c			\
 		door_unbind.3c				\
 		double_to_decimal.3c			\
+		dprintf.3c				\
 		dup3.3c					\
 		duplocale.3c				\
 		edata.3c				\
@@ -2155,6 +2156,7 @@ posix_spawnattr_setsigignore_np.3c	:= LINKSRC = posix_spawnattr_getsigignore_np.
 posix_spawnattr_setsigmask.3c		:= LINKSRC = posix_spawnattr_getsigmask.3c
 
 asprintf.3c				:= LINKSRC = printf.3c
+dprintf.3c				:= LINKSRC = printf.3c
 fprintf.3c				:= LINKSRC = printf.3c
 snprintf.3c				:= LINKSRC = printf.3c
 sprintf.3c				:= LINKSRC = printf.3c

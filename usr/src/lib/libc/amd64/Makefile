@@ -26,6 +26,7 @@
 # Copyright 2018 Nexenta Systems, Inc.
 # Copyright 2019 Joyent, Inc.
 # Copyright 2020 OmniOS Community Edition (OmniOSce) Association.
+# Copyright 2024 Hans Rosenfeld
 #
 
 LIBCBASE=	.
@@ -617,6 +618,7 @@ PORTPRINT_W=			\
 PORTPRINT=			\
 	asprintf.o		\
 	doprnt.o		\
+	dprintf.o		\
 	fprintf.o		\
 	printf.o		\
 	snprintf.o		\

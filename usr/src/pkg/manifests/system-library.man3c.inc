@@ -315,6 +315,7 @@ link path=usr/share/man/man3c/door_setparam.3c target=door_getparam.3c
 file path=usr/share/man/man3c/door_ucred.3c
 link path=usr/share/man/man3c/door_unbind.3c target=door_bind.3c
 link path=usr/share/man/man3c/double_to_decimal.3c target=floating_to_decimal.3c
+link path=usr/share/man/man3c/dprintf.3c target=printf.3c
 file path=usr/share/man/man3c/drand48.3c
 file path=usr/share/man/man3c/dup2.3c
 link path=usr/share/man/man3c/dup3.3c target=dup2.3c
