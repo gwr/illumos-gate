@@ -1381,6 +1381,7 @@ MANLINKS=	FD_CLR.3c				\
 		verr.3c					\
 		verrc.3c				\
 		verrx.3c				\
+		vdprintf.3c				\
 		vfprintf.3c				\
 		vfscanf.3c				\
 		vfwscanf.3c				\
@@ -2540,6 +2541,7 @@ vswprintf.3c				:= LINKSRC = vfwprintf.3c
 vwprintf.3c				:= LINKSRC = vfwprintf.3c
 
 vasprintf.3c				:= LINKSRC = vprintf.3c
+vdprintf.3c				:= LINKSRC = vprintf.3c
 vfprintf.3c				:= LINKSRC = vprintf.3c
 vsnprintf.3c				:= LINKSRC = vprintf.3c
 vsprintf.3c				:= LINKSRC = vprintf.3c

@@ -656,6 +656,7 @@ PORTPRINT=			\
 	printf.o		\
 	snprintf.o		\
 	sprintf.o		\
+	vdprintf.o		\
 	vfprintf.o		\
 	vprintf.o		\
 	vsnprintf.o		\

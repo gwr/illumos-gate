@@ -1408,6 +1408,7 @@ link path=usr/share/man/man3c/utmpname.3c target=getutent.3c
 link path=usr/share/man/man3c/utmpxname.3c target=getutxent.3c
 link path=usr/share/man/man3c/valloc.3c target=malloc.3c
 link path=usr/share/man/man3c/vasprintf.3c target=vprintf.3c
+link path=usr/share/man/man3c/vdprintf.3c target=vprintf.3c
 link path=usr/share/man/man3c/verr.3c target=err.3c
 link path=usr/share/man/man3c/verrc.3c target=err.3c
 link path=usr/share/man/man3c/verrx.3c target=err.3c

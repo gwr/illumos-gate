@@ -376,6 +376,8 @@ extern FILE	*open_memstream(char **, size_t *);
 #if defined(_XPG7)
 /* PRINTFLIKE2 */
 extern int	dprintf(int, const char *_RESTRICT_KYWD, ...);
+/* PRINTFLIKE2 */
+extern int	vdprintf(int, const char *_RESTRICT_KYWD, __va_list);
 #endif
 
 #if defined(__EXTENSIONS__) || defined(_REENTRANT) || \
