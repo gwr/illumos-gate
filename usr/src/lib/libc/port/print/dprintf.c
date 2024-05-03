@@ -41,39 +41,18 @@
 #include "libc.h"
 #include "mse.h"
 
+extern int	vdprintf(int, const char *_RESTRICT_KYWD, __va_list);
+
 /*VARARGS1*/
 int
 dprintf(int fildes, const char *format, ...)
 {
-	FILE *file;
-	ssize_t count;
-	rmutex_t *lk;
 	va_list ap;
-
-	file = fdopen(fildes, "w");
-	if (file == NULL)
-		return (EOF);
+	int ret;
 
 	va_start(ap, format);
-
-	_SET_ORIENTATION_BYTE(file);
-
-	count = _ndoprnt(format, ap, file, 0);
+	ret = vdprintf(fildes, format, ap);
 	va_end(ap);
 
-	/* check for errors or EOF */
-	if (FERROR(file) || count ==  EOF) {
-		fdclose(file, NULL);
-		return (EOF);
-	}
-
-	fdclose(file, NULL);
-
-	/* check for overflow */
-	if ((size_t)count > MAXINT) {
-		errno = EOVERFLOW;
-		return (EOF);
-	} else {
-		return ((int)count);
-	}
+	return (ret);
 }

@@ -45,6 +45,7 @@ PROGS = \
 	c11_tss \
 	call_once \
 	closefrom \
+	dprintf \
 	endian \
 	env-7076 \
 	fnmatch \
