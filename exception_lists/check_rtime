@@ -71,6 +71,10 @@ SKIP		^usr/lib/sysevent/modules/picl_slm.so$
 #
 SKIP		^opt/libc-tests/tests/stdio/
 
+# The libsec tests interpose on all referenced libidmap functions,
+# causing false positives for the unref. checks for libsec.
+SKIP		^opt/libsec-tests/bin/
+
 # Objects that are allowed to have executable data segments
 EXEC_DATA	^MACH(lib)/ld\.so\.1$
 EXEC_DATA	^lib/libc\.so\.1$	# 6524709, 32-bit, needed for x86 only
