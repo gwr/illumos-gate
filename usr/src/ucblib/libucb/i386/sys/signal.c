@@ -42,6 +42,7 @@
  *		mask |= sigmask(i)
  */
 
+#define	_REGSET_I386PSABI_NAMES
 #include <sys/types.h>
 #include <ucontext.h>
 #include <signal.h>

@@ -23,6 +23,7 @@
  * Copyright (c) 1999, 2010, Oracle and/or its affiliates. All rights reserved.
  */
 
+#define	_REGSET_I386PSABI_NAMES
 #include "thr_uberdata.h"
 #include <procfs.h>
 #include <ucontext.h>

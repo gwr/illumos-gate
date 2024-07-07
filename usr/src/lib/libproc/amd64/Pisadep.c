@@ -24,6 +24,7 @@
  * Copyright 2018, Joyent, Inc.
  */
 
+#define	_REGSET_I386PSABI_NAMES
 #include <sys/stack.h>
 #include <sys/regset.h>
 #include <sys/frame.h>
