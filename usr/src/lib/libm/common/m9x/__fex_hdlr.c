@@ -31,6 +31,7 @@
 #include <signal.h>
 #include <siginfo.h>
 #include <ucontext.h>
+#include <sys/regset.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>

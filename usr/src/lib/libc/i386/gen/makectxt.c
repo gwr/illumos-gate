@@ -36,6 +36,7 @@
 #include "lint.h"
 #include <stdarg.h>
 #include <ucontext.h>
+#include <sys/regset.h>
 #include <sys/stack.h>
 #include <sys/auxv.h>
 #include <errno.h>
@@ -87,7 +88,7 @@ makecontext(ucontext_t *ucp, void (*func)(), int argc, ...)
 	va_list ap;
 	size_t size;
 
-	ucp->uc_mcontext.gregs[EIP] = (greg_t)func;
+	ucp->uc_mcontext.gregs[REG32_EIP] = (greg_t)func;
 
 	size = sizeof (long) * (argc + 1);
 
@@ -103,7 +104,7 @@ makecontext(ucontext_t *ucp, void (*func)(), int argc, ...)
 
 	*sp = (long)resumecontext;		/* return address */
 
-	ucp->uc_mcontext.gregs[UESP] = (greg_t)sp;
+	ucp->uc_mcontext.gregs[REG32_UESP] = (greg_t)sp;
 
 	/*
 	 * "push" all the arguments

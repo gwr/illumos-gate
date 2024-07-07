@@ -35,6 +35,7 @@
 #include "lint.h"
 #include <sys/types.h>
 #include <sys/ucontext.h>
+#include <sys/regset.h>
 #include <setjmp.h>
 #include <ucontext.h>
 #include <strings.h>
@@ -50,9 +51,9 @@ siglongjmp(sigjmp_buf env, int val)
 	ucontext_t *ucp = (ucontext_t *)env;
 
 	if (val)
-		ucp->uc_mcontext.gregs[EAX] = val;
+		ucp->uc_mcontext.gregs[REG32_EAX] = val;
 	else
-		ucp->uc_mcontext.gregs[EAX] = 1;
+		ucp->uc_mcontext.gregs[REG32_EAX] = 1;
 
 	/*
 	 * While unlikely, it is possible that setcontext() may fail for some

@@ -32,6 +32,7 @@
  * Copyright 2025 Edgecast Cloud LLC.
  */
 
+#define	_REGSET_I386PSABI_NAMES
 #include <sys/types.h>
 #include <sys/utsname.h>
 #include <sys/sysmacros.h>

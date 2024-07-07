@@ -26,6 +26,7 @@
 #include <sys/types.h>
 #include <sys/siginfo.h>
 #include <ucontext.h>
+#include <sys/regset.h>
 #include <signal.h>
 #include "signal.h"
 #include <errno.h>

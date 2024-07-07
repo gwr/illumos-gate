@@ -31,6 +31,7 @@
 #include "lint.h"
 #include <sys/types.h>
 #include <sys/ucontext.h>
+#include <sys/regset.h>
 #include <setjmp.h>
 #include <ucontext.h>
 #include <strings.h>

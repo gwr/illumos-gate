@@ -28,6 +28,7 @@
  * Copyright (c) 2013, Joyent, Inc. All rights reserved.
  */
 
+#define	_REGSET_I386PSABI_NAMES
 #include <stdio.h>
 #include <stdio_ext.h>
 #include <stdlib.h>

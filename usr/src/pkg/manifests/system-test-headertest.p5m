@@ -40,6 +40,7 @@ file path=opt/header-tests/cfg/c-symbols/locale_h.cfg mode=0444
 file path=opt/header-tests/cfg/c-symbols/math_h.cfg mode=0444
 file path=opt/header-tests/cfg/c-symbols/netdb_h.cfg mode=0444
 file path=opt/header-tests/cfg/c-symbols/pthread_h.cfg mode=0444
+file path=opt/header-tests/cfg/c-symbols/setjmp_h.cfg mode=0444
 file path=opt/header-tests/cfg/c-symbols/signal_h.cfg mode=0444
 file path=opt/header-tests/cfg/c-symbols/stdalign_h.cfg mode=0444
 file path=opt/header-tests/cfg/c-symbols/stddef_h.cfg mode=0444
@@ -50,6 +51,7 @@ file path=opt/header-tests/cfg/c-symbols/string_h.cfg mode=0444
 file path=opt/header-tests/cfg/c-symbols/strings_h.cfg mode=0444
 file path=opt/header-tests/cfg/c-symbols/sys_atomic_h.cfg mode=0444
 file path=opt/header-tests/cfg/c-symbols/sys_mman_h.cfg mode=0444
+file path=opt/header-tests/cfg/c-symbols/sys_regset_h.cfg mode=0444
 file path=opt/header-tests/cfg/c-symbols/sys_stat_h.cfg mode=0444
 file path=opt/header-tests/cfg/c-symbols/sys_time_h.cfg mode=0444
 file path=opt/header-tests/cfg/c-symbols/sys_timeb_h.cfg mode=0444
@@ -80,6 +82,7 @@ hardlink path=opt/header-tests/tests/c-symbols/locale_h target=setup
 hardlink path=opt/header-tests/tests/c-symbols/math_h target=setup
 hardlink path=opt/header-tests/tests/c-symbols/netdb_h target=setup
 hardlink path=opt/header-tests/tests/c-symbols/pthread_h target=setup
+hardlink path=opt/header-tests/tests/c-symbols/setjmp_h target=setup
 file path=opt/header-tests/tests/c-symbols/setup mode=0555
 hardlink path=opt/header-tests/tests/c-symbols/signal_h target=setup
 hardlink path=opt/header-tests/tests/c-symbols/stdalign_h target=setup
@@ -91,6 +94,7 @@ hardlink path=opt/header-tests/tests/c-symbols/string_h target=setup
 hardlink path=opt/header-tests/tests/c-symbols/strings_h target=setup
 hardlink path=opt/header-tests/tests/c-symbols/sys_atomic_h target=setup
 hardlink path=opt/header-tests/tests/c-symbols/sys_mman_h target=setup
+hardlink path=opt/header-tests/tests/c-symbols/sys_regset_h target=setup
 hardlink path=opt/header-tests/tests/c-symbols/sys_stat_h target=setup
 hardlink path=opt/header-tests/tests/c-symbols/sys_time_h target=setup
 hardlink path=opt/header-tests/tests/c-symbols/sys_timeb_h target=setup

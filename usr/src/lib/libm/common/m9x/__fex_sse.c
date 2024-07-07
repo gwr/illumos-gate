@@ -28,6 +28,7 @@
  */
 
 #include <ucontext.h>
+#include <sys/regset.h>
 #include <fenv.h>
 #if defined(__SUNPRO_C)
 #include <sunmath.h>
@@ -37,19 +38,11 @@
 #include "fex_handler.h"
 #include "fenv_inlines.h"
 
-#if !defined(REG_PC)
-#define REG_PC	EIP
-#endif
-
-#if !defined(REG_PS)
-#define REG_PS	EFL
-#endif
-
 #ifdef __amd64
 #define regno(X)	((X < 4)? REG_RAX - X : \
 			((X > 4)? REG_RAX + 1 - X : REG_RSP))
 #else
-#define regno(X)	(EAX - X)
+#define regno(X)	(REG32_EAX - X)
 #endif
 
 /*

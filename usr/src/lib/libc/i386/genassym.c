@@ -25,6 +25,7 @@
  * Copyright 2023 Bill Sommerfeld
  */
 
+#define	_REGSET_I386PSABI_NAMES
 #include <stdio.h>
 #include <stddef.h>
 #include <signal.h>

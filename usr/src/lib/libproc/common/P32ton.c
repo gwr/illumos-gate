@@ -24,6 +24,7 @@
  * Use is subject to license terms.
  */
 
+#define	_REGSET_I386PSABI_NAMES
 #include <sys/types.h>
 #include <sys/mkdev.h>
 #include <sys/regset.h>

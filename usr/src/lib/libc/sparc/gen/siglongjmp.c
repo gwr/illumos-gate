@@ -33,6 +33,7 @@
 #include <sys/frame.h>
 #include <memory.h>
 #include <ucontext.h>
+#include <sys/regset.h>
 #include <setjmp.h>
 #include "sigjmp_struct.h"
 #include "libc.h"

@@ -309,7 +309,7 @@ Psyscall_setup(struct ps_prochandle *P, int nargs, int sysindex, uintptr_t sp)
 {
 	sp -= sizeof (int) * (nargs+2);	/* space for arg list + CALL parms */
 
-	P->status.pr_lwp.pr_reg[EAX] = sysindex;
+	P->status.pr_lwp.pr_reg[REG32_EAX] = sysindex;
 	P->status.pr_lwp.pr_reg[R_SP] = sp;
 	P->status.pr_lwp.pr_reg[R_PC] = P->sysaddr;
 

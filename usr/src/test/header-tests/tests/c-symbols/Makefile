@@ -31,6 +31,7 @@ LINKS = \
 	math_h \
 	netdb_h \
 	pthread_h \
+	setjmp_h \
 	stdalign_h \
 	stddef_h \
 	signal_h \
@@ -41,6 +42,7 @@ LINKS = \
 	strings_h \
 	sys_atomic_h \
 	sys_mman_h \
+	sys_regset_h \
 	sys_stat_h \
 	sys_time_h \
 	sys_timeb_h \

@@ -36,6 +36,7 @@
 #include "lint.h"
 #include <stdarg.h>
 #include <ucontext.h>
+#include <sys/regset.h>
 #include <sys/stack.h>
 #include <sys/auxv.h>
 #include <errno.h>
