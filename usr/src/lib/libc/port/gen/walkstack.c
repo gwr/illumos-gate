@@ -142,8 +142,8 @@
 	(((struct frame *)fp)->fr_savpc == (greg_t)-1))
 
 #elif defined(__i386)
-#define	FRAME_PTR_REGISTER EBP
-#define	PC_REGISTER EIP
+#define	FRAME_PTR_REGISTER REG32_EBP
+#define	PC_REGISTER REG32_EIP
 #define	CHECK_FOR_SIGFRAME(fp, oldctx) ((((fp) + sizeof (struct frame)) + \
 	3 * sizeof (int) == (oldctx)) && \
 	(((struct frame *)fp)->fr_savpc == (greg_t)-1))

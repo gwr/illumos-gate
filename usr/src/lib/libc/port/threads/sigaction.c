@@ -575,7 +575,7 @@ setcontext(const ucontext_t *ucp)
 		uc.uc_mcontext.gregs[REG_FS] = (greg_t)0;
 		uc.uc_mcontext.gregs[REG_FSBASE] = (greg_t)self;
 #elif defined(__i386)
-		uc.uc_mcontext.gregs[GS] = (greg_t)LWPGS_SEL;
+		uc.uc_mcontext.gregs[REG32_GS] = (greg_t)LWPGS_SEL;
 #else
 #error "none of __sparc, __amd64, __i386 defined"
 #endif
