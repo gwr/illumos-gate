@@ -411,7 +411,7 @@ extern int lchown(const char *, uid_t, gid_t);
 #endif
 extern int link(const char *, const char *);
 #if !defined(__XOPEN_OR_POSIX) || defined(__EXTENSIONS__)
-extern offset_t llseek(int, offset_t, int);
+extern _offset_t llseek(int, _offset_t, int);
 #endif
 #if !defined(__XOPEN_OR_POSIX) || defined(_XPG4_2) || \
 	(defined(_LARGEFILE_SOURCE) && _FILE_OFFSET_BITS == 64) || \

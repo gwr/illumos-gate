@@ -271,12 +271,22 @@ typedef union {
 	uint32_t	_l[16];
 } upad512_t;
 
-typedef	longlong_t	offset_t;
-typedef	u_longlong_t	u_offset_t;
-typedef u_longlong_t	len_t;
+typedef	longlong_t	_offset_t;
+typedef	u_longlong_t	_u_offset_t;
+typedef u_longlong_t	_len_t;
 typedef	u_longlong_t	diskaddr_t;
 #if (defined(_KERNEL) || defined(_KMEMUSER) || defined(_BOOT))
 typedef	uint64_t	paddr_t;
+#endif
+/*
+ * POSIX says the system "owns" the type namespace *_t but some
+ * names like: offset_t len_t are generic enough to appear in
+ * external code like llvm. Allow that for XOPEN compilations.
+ */
+#if !defined(__XOPEN_OR_POSIX) || defined(__EXTENSIONS__) || defined(_KERNEL)
+typedef	_offset_t	offset_t;
+typedef	_u_offset_t	u_offset_t;
+typedef	_len_t		len_t;
 #endif
 
 /*
