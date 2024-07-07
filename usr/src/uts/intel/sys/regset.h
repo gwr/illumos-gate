@@ -91,7 +91,9 @@ extern "C" {
 
 /*
  * The names and offsets defined here are specified by i386 ABI suppl.
+ * Troublesome namespace pollution (beyond REG_*) so only for _ASM
  */
+#if defined(_ASM)
 
 #define	SS		18	/* only stored on a privilege transition */
 #define	UESP		17	/* only stored on a privilege transition */
@@ -113,6 +115,8 @@ extern "C" {
 #define	FS		1
 #define	GS		0
 
+#endif	// _ASM
+
 /* aliases for portability */
 
 #if defined(__amd64)
@@ -126,12 +130,13 @@ extern "C" {
 
 #else	/* __i386 */
 
-#define	REG_PC	EIP
-#define	REG_FP	EBP
-#define	REG_SP	UESP
-#define	REG_PS	EFL
-#define	REG_R0	EAX
-#define	REG_R1	EDX
+/* Direct values because the names above are only for _ASM */
+#define	REG_PC	14	/* EIP */
+#define	REG_FP	6 	/* EBP */
+#define	REG_SP	17	/* UESP */
+#define	REG_PS	16	/* EFL */
+#define	REG_R0	11	/* EAX*/
+#define	REG_R1	9	/* EDX */
 
 #endif	/* __i386 */
 
