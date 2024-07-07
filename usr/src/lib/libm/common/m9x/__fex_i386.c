@@ -1327,21 +1327,13 @@ __fex_st_result(siginfo_t *sip, ucontext_t *uap, fex_info_t *info)
 	case 0x3e8:
 	case 0x3f0:
 		/* f[u]comi */
-#if defined(__amd64)
 		uap->uc_mcontext.gregs[REG_PS] |= 0x45;
-#else
-		uap->uc_mcontext.gregs[EFL] |= 0x45;
-#endif
 		return;
 
 	case 0x7e8:
 	case 0x7f0:
 		/* f[u]comip */
-#if defined(__amd64)
 		uap->uc_mcontext.gregs[REG_PS] |= 0x45;
-#else
-		uap->uc_mcontext.gregs[EFL] |= 0x45;
-#endif
 		pop(uap);
 		return;
 	}

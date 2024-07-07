@@ -31,6 +31,7 @@
  * Copyright 2024 Oxide Computer Company
  */
 
+#define	_REGSET_SHORT_NAMES_
 #include <sys/types.h>
 #include <sys/utsname.h>
 #include <sys/sysmacros.h>

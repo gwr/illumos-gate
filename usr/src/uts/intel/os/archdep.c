@@ -30,6 +30,7 @@
  * Copyright 2023 Oxide Computer Company
  */
 
+#define	_REGSET_SHORT_NAMES_
 #include <sys/param.h>
 #include <sys/types.h>
 #include <sys/vmparam.h>

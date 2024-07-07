@@ -36,6 +36,7 @@
  * For more details on the implementation refer to mdb_proc.c.
  */
 
+#define	_REGSET_SHORT_NAMES_
 #include <mdb/mdb_proc.h>
 #include <mdb/mdb_kreg.h>
 #include <mdb/mdb_err.h>
