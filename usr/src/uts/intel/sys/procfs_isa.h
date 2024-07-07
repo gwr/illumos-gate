@@ -108,12 +108,12 @@ typedef	uchar_t		instr32_t;
 /*
  * The following defines are for portability (see <sys/regset.h>).
  */
-#define	R_PC	EIP
-#define	R_PS	EFL
-#define	R_SP	UESP
-#define	R_FP	EBP
-#define	R_R0	EAX
-#define	R_R1	EDX
+#define	R_PC	REG32_EIP
+#define	R_PS	REG32_EFL
+#define	R_SP	REG32_UESP
+#define	R_FP	REG32_EBP
+#define	R_R0	REG32_EAX
+#define	R_R1	REG32_EDX
 #endif
 
 /*

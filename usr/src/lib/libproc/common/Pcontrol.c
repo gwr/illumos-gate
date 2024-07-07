@@ -1513,7 +1513,7 @@ Psync(struct ps_prochandle *P)
 #ifdef __i386
 		/* XX64 we should probably restore REG_GS after this */
 		if (ctlfd == P->agentctlfd)
-			P->status.pr_lwp.pr_reg[GS] = 0;
+			P->status.pr_lwp.pr_reg[REG32_GS] = 0;
 #elif defined(__amd64)
 		/* XX64 */
 #endif

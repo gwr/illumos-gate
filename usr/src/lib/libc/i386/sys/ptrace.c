@@ -30,6 +30,7 @@
 
 #pragma weak _ptrace = ptrace
 
+#define	_REGSET_I386PSABI_NAMES
 #include "lint.h"
 #include <stdio.h>
 #include <stdlib.h>

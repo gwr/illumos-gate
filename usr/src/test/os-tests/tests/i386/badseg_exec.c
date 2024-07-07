@@ -78,37 +78,37 @@ resetseg(uint_t seg)
 static void
 resetcs(void)
 {
-	return (resetseg(CS));
+	return (resetseg(REG32_CS));
 }
 
 static void
 resetds(void)
 {
-	return (resetseg(DS));
+	return (resetseg(REG32_DS));
 }
 
 static void
 resetes(void)
 {
-	return (resetseg(ES));
+	return (resetseg(REG32_ES));
 }
 
 static void
 resetfs(void)
 {
-	return (resetseg(FS));
+	return (resetseg(REG32_FS));
 }
 
 static void
 resetgs(void)
 {
-	return (resetseg(GS));
+	return (resetseg(REG32_GS));
 }
 
 static void
 resetss(void)
 {
-	return (resetseg(SS));
+	return (resetseg(REG32_SS));
 }
 
 static void
