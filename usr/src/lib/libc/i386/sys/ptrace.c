@@ -30,6 +30,7 @@
 
 #pragma weak _ptrace = ptrace
 
+#define	_REGSET_SHORT_NAMES_
 #include "lint.h"
 #include <stdio.h>
 #include <stdlib.h>

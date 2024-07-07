@@ -24,6 +24,7 @@
  * Use is subject to license terms.
  */
 
+#define	_REGSET_SHORT_NAMES_
 #include <sys/types.h>
 #include <sys/mkdev.h>
 #include <sys/regset.h>

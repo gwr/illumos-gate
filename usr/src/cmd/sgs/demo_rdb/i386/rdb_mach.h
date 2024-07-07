@@ -29,7 +29,7 @@
 #include <sys/psw.h>
 
 #define	ERRBIT	PS_C
-#define	R_PS	EFL
+#define	R_PS	REG32_EFL
 
 /*
  * Breakpoint instruction

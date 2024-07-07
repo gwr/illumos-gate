@@ -29,6 +29,7 @@
  * Copyright (c) 2017 Joyent, Inc.
  */
 
+#define	_REGSET_SHORT_NAMES_
 #include <sys/dtrace_impl.h>
 #include <sys/stack.h>
 #include <sys/frame.h>

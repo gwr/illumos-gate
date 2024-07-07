@@ -31,6 +31,7 @@
  * Copyright 2023 Oxide Computer Company
  */
 
+#define	_REGSET_SHORT_NAMES_
 #include <sys/types.h>
 #include <sys/t_lock.h>
 #include <sys/param.h>

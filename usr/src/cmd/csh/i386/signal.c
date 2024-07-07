@@ -23,6 +23,7 @@
  *		mask |= sigmask(i)
  */
 
+#define	_REGSET_SHORT_NAMES_
 #include <sys/types.h>
 #include <sys/siginfo.h>
 #include <ucontext.h>
