@@ -93,25 +93,52 @@ extern "C" {
  * The names and offsets defined here are specified by i386 ABI suppl.
  */
 
-#define	SS		18	/* only stored on a privilege transition */
-#define	UESP		17	/* only stored on a privilege transition */
-#define	EFL		16
-#define	CS		15
-#define	EIP		14
-#define	ERR		13
-#define	TRAPNO		12
-#define	EAX		11
-#define	ECX		10
-#define	EDX		9
-#define	EBX		8
-#define	ESP		7
-#define	EBP		6
-#define	ESI		5
-#define	EDI		4
-#define	DS		3
-#define	ES		2
-#define	FS		1
-#define	GS		0
+#define	REG32_SS	18	/* only stored on a privilege transition */
+#define	REG32_UESP	17	/* only stored on a privilege transition */
+#define	REG32_EFL	16
+#define	REG32_CS	15
+#define	REG32_EIP	14
+#define	REG32_ERR	13
+#define	REG32_TRAPNO	12
+#define	REG32_EAX	11
+#define	REG32_ECX	10
+#define	REG32_EDX	9
+#define	REG32_EBX	8
+#define	REG32_ESP	7
+#define	REG32_EBP	6
+#define	REG32_ESI	5
+#define	REG32_EDI	4
+#define	REG32_DS	3
+#define	REG32_ES	2
+#define	REG32_FS	1
+#define	REG32_GS	0
+
+/*
+ * Troublesome namespace pollution (beyond REG_*) so only defined
+ * for _ASM or when requested.  These should just go away...
+ */
+#if defined(_ASM) || defined(_REGSET_SHORT_NAMES_)
+#define	SS	REG32_SS 	/* only stored on a privilege transition */
+#define	UESP	REG32_UESP	/* only stored on a privilege transition */
+#define	EFL	REG32_EFL
+#define	CS	REG32_CS
+#define	EIP	REG32_EIP
+#define	ERR	REG32_ERR
+#define	TRAPNO	REG32_TRAPNO
+#define	EAX	REG32_EAX
+#define	ECX	REG32_ECX
+#define	EDX	REG32_EDX
+#define	EBX	REG32_EBX
+#define	ESP	REG32_ESP
+#define	EBP	REG32_EBP
+#define	ESI	REG32_ESI
+#define	EDI	REG32_EDI
+#define	DS	REG32_DS
+#define	ES	REG32_ES
+#define	FS	REG32_FS
+#define	GS	REG32_GS
+
+#endif	// _ASM || ...
 
 /* aliases for portability */
 
@@ -126,12 +153,12 @@ extern "C" {
 
 #else	/* __i386 */
 
-#define	REG_PC	EIP
-#define	REG_FP	EBP
-#define	REG_SP	UESP
-#define	REG_PS	EFL
-#define	REG_R0	EAX
-#define	REG_R1	EDX
+#define	REG_PC	REG32_EIP
+#define	REG_FP	REG32_EBP
+#define	REG_SP	REG32_UESP
+#define	REG_PS	REG32_EFL
+#define	REG_R0	REG32_EAX
+#define	REG_R1	REG32_EDX
 
 #endif	/* __i386 */
 

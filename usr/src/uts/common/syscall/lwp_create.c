@@ -104,7 +104,7 @@ syslwp_create(ucontext_t *ucp, int flags, id_t *new_lwp)
 		 * libc stashed thrptr into unused kernel %sp.
 		 * See setup_context() in libc.
 		 */
-		thrptr = (uint32_t)uc32.uc_mcontext.gregs[ESP];
+		thrptr = (uint32_t)uc32.uc_mcontext.gregs[REG32_ESP];
 #endif
 	}
 #endif /* _SYSCALL32_IMPL */

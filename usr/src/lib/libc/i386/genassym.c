@@ -25,6 +25,8 @@
  * Copyright 2023 Bill Sommerfeld
  */
 
+#define _REGSET_SHORT_NAMES_ 1
+
 #include <stdio.h>
 #include <stddef.h>
 #include <signal.h>

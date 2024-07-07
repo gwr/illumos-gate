@@ -343,33 +343,33 @@ getgregs32(klwp_t *lwp, gregset32_t grp)
 	if (thisthread)
 		kpreempt_disable();
 	if (PCB_NEED_UPDATE_SEGS(pcb)) {
-		grp[GS] = (uint16_t)pcb->pcb_gs;
-		grp[FS] = (uint16_t)pcb->pcb_fs;
-		grp[DS] = (uint16_t)pcb->pcb_ds;
-		grp[ES] = (uint16_t)pcb->pcb_es;
+		grp[REG32_GS] = (uint16_t)pcb->pcb_gs;
+		grp[REG32_FS] = (uint16_t)pcb->pcb_fs;
+		grp[REG32_DS] = (uint16_t)pcb->pcb_ds;
+		grp[REG32_ES] = (uint16_t)pcb->pcb_es;
 	} else {
-		grp[GS] = (uint16_t)rp->r_gs;
-		grp[FS] = (uint16_t)rp->r_fs;
-		grp[DS] = (uint16_t)rp->r_ds;
-		grp[ES] = (uint16_t)rp->r_es;
+		grp[REG32_GS] = (uint16_t)rp->r_gs;
+		grp[REG32_FS] = (uint16_t)rp->r_fs;
+		grp[REG32_DS] = (uint16_t)rp->r_ds;
+		grp[REG32_ES] = (uint16_t)rp->r_es;
 	}
 	if (thisthread)
 		kpreempt_enable();
-	grp[EDI] = (greg32_t)rp->r_rdi;
-	grp[ESI] = (greg32_t)rp->r_rsi;
-	grp[EBP] = (greg32_t)rp->r_rbp;
-	grp[ESP] = 0;
-	grp[EBX] = (greg32_t)rp->r_rbx;
-	grp[EDX] = (greg32_t)rp->r_rdx;
-	grp[ECX] = (greg32_t)rp->r_rcx;
-	grp[EAX] = (greg32_t)rp->r_rax;
-	grp[TRAPNO] = (greg32_t)rp->r_trapno;
-	grp[ERR] = (greg32_t)rp->r_err;
-	grp[EIP] = (greg32_t)rp->r_rip;
-	grp[CS] = (uint16_t)rp->r_cs;
-	grp[EFL] = (greg32_t)rp->r_rfl;
-	grp[UESP] = (greg32_t)rp->r_rsp;
-	grp[SS] = (uint16_t)rp->r_ss;
+	grp[REG32_EDI] = (greg32_t)rp->r_rdi;
+	grp[REG32_ESI] = (greg32_t)rp->r_rsi;
+	grp[REG32_EBP] = (greg32_t)rp->r_rbp;
+	grp[REG32_ESP] = 0;
+	grp[REG32_EBX] = (greg32_t)rp->r_rbx;
+	grp[REG32_EDX] = (greg32_t)rp->r_rdx;
+	grp[REG32_ECX] = (greg32_t)rp->r_rcx;
+	grp[REG32_EAX] = (greg32_t)rp->r_rax;
+	grp[REG32_TRAPNO] = (greg32_t)rp->r_trapno;
+	grp[REG32_ERR] = (greg32_t)rp->r_err;
+	grp[REG32_EIP] = (greg32_t)rp->r_rip;
+	grp[REG32_CS] = (uint16_t)rp->r_cs;
+	grp[REG32_EFL] = (greg32_t)rp->r_rfl;
+	grp[REG32_UESP] = (greg32_t)rp->r_rsp;
+	grp[REG32_SS] = (uint16_t)rp->r_ss;
 }
 
 void
@@ -388,24 +388,24 @@ ucontext_32ton(const ucontext32_t *src, ucontext_t *dst)
 	dst->uc_stack.ss_size = (size_t)src->uc_stack.ss_size;
 	dst->uc_stack.ss_flags = src->uc_stack.ss_flags;
 
-	dmc->gregs[REG_GS] = (greg_t)(uint32_t)smc->gregs[GS];
-	dmc->gregs[REG_FS] = (greg_t)(uint32_t)smc->gregs[FS];
-	dmc->gregs[REG_ES] = (greg_t)(uint32_t)smc->gregs[ES];
-	dmc->gregs[REG_DS] = (greg_t)(uint32_t)smc->gregs[DS];
-	dmc->gregs[REG_RDI] = (greg_t)(uint32_t)smc->gregs[EDI];
-	dmc->gregs[REG_RSI] = (greg_t)(uint32_t)smc->gregs[ESI];
-	dmc->gregs[REG_RBP] = (greg_t)(uint32_t)smc->gregs[EBP];
-	dmc->gregs[REG_RBX] = (greg_t)(uint32_t)smc->gregs[EBX];
-	dmc->gregs[REG_RDX] = (greg_t)(uint32_t)smc->gregs[EDX];
-	dmc->gregs[REG_RCX] = (greg_t)(uint32_t)smc->gregs[ECX];
-	dmc->gregs[REG_RAX] = (greg_t)(uint32_t)smc->gregs[EAX];
-	dmc->gregs[REG_TRAPNO] = (greg_t)(uint32_t)smc->gregs[TRAPNO];
-	dmc->gregs[REG_ERR] = (greg_t)(uint32_t)smc->gregs[ERR];
-	dmc->gregs[REG_RIP] = (greg_t)(uint32_t)smc->gregs[EIP];
-	dmc->gregs[REG_CS] = (greg_t)(uint32_t)smc->gregs[CS];
-	dmc->gregs[REG_RFL] = (greg_t)(uint32_t)smc->gregs[EFL];
-	dmc->gregs[REG_RSP] = (greg_t)(uint32_t)smc->gregs[UESP];
-	dmc->gregs[REG_SS] = (greg_t)(uint32_t)smc->gregs[SS];
+	dmc->gregs[REG_GS] = (greg_t)(uint32_t)smc->gregs[REG32_GS];
+	dmc->gregs[REG_FS] = (greg_t)(uint32_t)smc->gregs[REG32_FS];
+	dmc->gregs[REG_ES] = (greg_t)(uint32_t)smc->gregs[REG32_ES];
+	dmc->gregs[REG_DS] = (greg_t)(uint32_t)smc->gregs[REG32_DS];
+	dmc->gregs[REG_RDI] = (greg_t)(uint32_t)smc->gregs[REG32_EDI];
+	dmc->gregs[REG_RSI] = (greg_t)(uint32_t)smc->gregs[REG32_ESI];
+	dmc->gregs[REG_RBP] = (greg_t)(uint32_t)smc->gregs[REG32_EBP];
+	dmc->gregs[REG_RBX] = (greg_t)(uint32_t)smc->gregs[REG32_EBX];
+	dmc->gregs[REG_RDX] = (greg_t)(uint32_t)smc->gregs[REG32_EDX];
+	dmc->gregs[REG_RCX] = (greg_t)(uint32_t)smc->gregs[REG32_ECX];
+	dmc->gregs[REG_RAX] = (greg_t)(uint32_t)smc->gregs[REG32_EAX];
+	dmc->gregs[REG_TRAPNO] = (greg_t)(uint32_t)smc->gregs[REG32_TRAPNO];
+	dmc->gregs[REG_ERR] = (greg_t)(uint32_t)smc->gregs[REG32_ERR];
+	dmc->gregs[REG_RIP] = (greg_t)(uint32_t)smc->gregs[REG32_EIP];
+	dmc->gregs[REG_CS] = (greg_t)(uint32_t)smc->gregs[REG32_CS];
+	dmc->gregs[REG_RFL] = (greg_t)(uint32_t)smc->gregs[REG32_EFL];
+	dmc->gregs[REG_RSP] = (greg_t)(uint32_t)smc->gregs[REG32_UESP];
+	dmc->gregs[REG_SS] = (greg_t)(uint32_t)smc->gregs[REG32_SS];
 
 	/*
 	 * A valid fpregs is only copied in if uc.uc_flags has UC_FPU set
