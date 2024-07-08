@@ -128,26 +128,26 @@ prgregset_32ton(klwp_t *lwp, prgregset32_t src, prgregset_t dst)
 	dst[REG_GSBASE] = lwp->lwp_pcb.pcb_gsbase;
 	dst[REG_FSBASE] = lwp->lwp_pcb.pcb_fsbase;
 
-	dst[REG_DS] = (uint16_t)src[DS];
-	dst[REG_ES] = (uint16_t)src[ES];
+	dst[REG_DS] = (uint16_t)src[REG32_DS];
+	dst[REG_ES] = (uint16_t)src[REG32_ES];
 
-	dst[REG_GS] = (uint16_t)src[GS];
-	dst[REG_FS] = (uint16_t)src[FS];
-	dst[REG_SS] = (uint16_t)src[SS];
-	dst[REG_RSP] = (uint32_t)src[UESP];
+	dst[REG_GS] = (uint16_t)src[REG32_GS];
+	dst[REG_FS] = (uint16_t)src[REG32_FS];
+	dst[REG_SS] = (uint16_t)src[REG32_SS];
+	dst[REG_RSP] = (uint32_t)src[REG32_UESP];
 	dst[REG_RFL] =
-	    (rp->r_ps & ~PSL_USERMASK) | (src[EFL] & PSL_USERMASK);
-	dst[REG_CS] = (uint16_t)src[CS];
-	dst[REG_RIP] = (uint32_t)src[EIP];
-	dst[REG_ERR] = (uint32_t)src[ERR];
-	dst[REG_TRAPNO] = (uint32_t)src[TRAPNO];
-	dst[REG_RAX] = (uint32_t)src[EAX];
-	dst[REG_RCX] = (uint32_t)src[ECX];
-	dst[REG_RDX] = (uint32_t)src[EDX];
-	dst[REG_RBX] = (uint32_t)src[EBX];
-	dst[REG_RBP] = (uint32_t)src[EBP];
-	dst[REG_RSI] = (uint32_t)src[ESI];
-	dst[REG_RDI] = (uint32_t)src[EDI];
+	    (rp->r_ps & ~PSL_USERMASK) | (src[REG32_EFL] & PSL_USERMASK);
+	dst[REG_CS] = (uint16_t)src[REG32_CS];
+	dst[REG_RIP] = (uint32_t)src[REG32_EIP];
+	dst[REG_ERR] = (uint32_t)src[REG32_ERR];
+	dst[REG_TRAPNO] = (uint32_t)src[REG32_TRAPNO];
+	dst[REG_RAX] = (uint32_t)src[REG32_EAX];
+	dst[REG_RCX] = (uint32_t)src[REG32_ECX];
+	dst[REG_RDX] = (uint32_t)src[REG32_EDX];
+	dst[REG_RBX] = (uint32_t)src[REG32_EBX];
+	dst[REG_RBP] = (uint32_t)src[REG32_EBP];
+	dst[REG_RSI] = (uint32_t)src[REG32_ESI];
+	dst[REG_RDI] = (uint32_t)src[REG32_EDI];
 	dst[REG_R8] = dst[REG_R9] = dst[REG_R10] = dst[REG_R11] =
 	    dst[REG_R12] = dst[REG_R13] = dst[REG_R14] = dst[REG_R15] = 0;
 }
