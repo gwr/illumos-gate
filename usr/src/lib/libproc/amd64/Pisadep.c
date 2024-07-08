@@ -234,25 +234,25 @@ ucontext_32_to_prgregs(const ucontext32_t *uc, prgregset_t dst)
 {
 	const greg32_t *src = &uc->uc_mcontext.gregs[0];
 
-	dst[REG_DS] = (uint16_t)src[DS];
-	dst[REG_ES] = (uint16_t)src[ES];
+	dst[REG_DS] = (uint16_t)src[REG32_DS];
+	dst[REG_ES] = (uint16_t)src[REG32_ES];
 
-	dst[REG_GS] = (uint16_t)src[GS];
-	dst[REG_FS] = (uint16_t)src[FS];
-	dst[REG_SS] = (uint16_t)src[SS];
-	dst[REG_RSP] = (uint32_t)src[UESP];
-	dst[REG_RFL] = src[EFL];
-	dst[REG_CS] = (uint16_t)src[CS];
-	dst[REG_RIP] = (uint32_t)src[EIP];
-	dst[REG_ERR] = (uint32_t)src[ERR];
-	dst[REG_TRAPNO] = (uint32_t)src[TRAPNO];
-	dst[REG_RAX] = (uint32_t)src[EAX];
-	dst[REG_RCX] = (uint32_t)src[ECX];
-	dst[REG_RDX] = (uint32_t)src[EDX];
-	dst[REG_RBX] = (uint32_t)src[EBX];
-	dst[REG_RBP] = (uint32_t)src[EBP];
-	dst[REG_RSI] = (uint32_t)src[ESI];
-	dst[REG_RDI] = (uint32_t)src[EDI];
+	dst[REG_GS] = (uint16_t)src[REG32_GS];
+	dst[REG_FS] = (uint16_t)src[REG32_FS];
+	dst[REG_SS] = (uint16_t)src[REG32_SS];
+	dst[REG_RSP] = (uint32_t)src[REG32_UESP];
+	dst[REG_RFL] = src[REG32_EFL];
+	dst[REG_CS] = (uint16_t)src[REG32_CS];
+	dst[REG_RIP] = (uint32_t)src[REG32_EIP];
+	dst[REG_ERR] = (uint32_t)src[REG32_ERR];
+	dst[REG_TRAPNO] = (uint32_t)src[REG32_TRAPNO];
+	dst[REG_RAX] = (uint32_t)src[REG32_EAX];
+	dst[REG_RCX] = (uint32_t)src[REG32_ECX];
+	dst[REG_RDX] = (uint32_t)src[REG32_EDX];
+	dst[REG_RBX] = (uint32_t)src[REG32_EBX];
+	dst[REG_RBP] = (uint32_t)src[REG32_EBP];
+	dst[REG_RSI] = (uint32_t)src[REG32_ESI];
+	dst[REG_RDI] = (uint32_t)src[REG32_EDI];
 }
 
 static int

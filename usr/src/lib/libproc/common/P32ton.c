@@ -214,24 +214,24 @@ prgregset_32_to_n(const prgreg32_t *src, prgreg_t *dst)
 {
 #ifdef __amd64
 	(void) memset(dst, 0, NPRGREG * sizeof (prgreg_t));
-	dst[REG_GS] = (uint32_t)src[GS];
-	dst[REG_FS] = (uint32_t)src[FS];
-	dst[REG_DS] = (uint32_t)src[DS];
-	dst[REG_ES] = (uint32_t)src[ES];
-	dst[REG_RDI] = (uint32_t)src[EDI];
-	dst[REG_RSI] = (uint32_t)src[ESI];
-	dst[REG_RBP] = (uint32_t)src[EBP];
-	dst[REG_RBX] = (uint32_t)src[EBX];
-	dst[REG_RDX] = (uint32_t)src[EDX];
-	dst[REG_RCX] = (uint32_t)src[ECX];
-	dst[REG_RAX] = (uint32_t)src[EAX];
-	dst[REG_TRAPNO] = (uint32_t)src[TRAPNO];
-	dst[REG_ERR] = (uint32_t)src[ERR];
-	dst[REG_RIP] = (uint32_t)src[EIP];
-	dst[REG_CS] = (uint32_t)src[CS];
-	dst[REG_RFL] = (uint32_t)src[EFL];
-	dst[REG_RSP] = (uint32_t)src[UESP];
-	dst[REG_SS] = (uint32_t)src[SS];
+	dst[REG_GS] = (uint32_t)src[REG32_GS];
+	dst[REG_FS] = (uint32_t)src[REG32_FS];
+	dst[REG_DS] = (uint32_t)src[REG32_DS];
+	dst[REG_ES] = (uint32_t)src[REG32_ES];
+	dst[REG_RDI] = (uint32_t)src[REG32_EDI];
+	dst[REG_RSI] = (uint32_t)src[REG32_ESI];
+	dst[REG_RBP] = (uint32_t)src[REG32_EBP];
+	dst[REG_RBX] = (uint32_t)src[REG32_EBX];
+	dst[REG_RDX] = (uint32_t)src[REG32_EDX];
+	dst[REG_RCX] = (uint32_t)src[REG32_ECX];
+	dst[REG_RAX] = (uint32_t)src[REG32_EAX];
+	dst[REG_TRAPNO] = (uint32_t)src[REG32_TRAPNO];
+	dst[REG_ERR] = (uint32_t)src[REG32_ERR];
+	dst[REG_RIP] = (uint32_t)src[REG32_EIP];
+	dst[REG_CS] = (uint32_t)src[REG32_CS];
+	dst[REG_RFL] = (uint32_t)src[REG32_EFL];
+	dst[REG_RSP] = (uint32_t)src[REG32_UESP];
+	dst[REG_SS] = (uint32_t)src[REG32_SS];
 #else
 	int i;
 
@@ -551,24 +551,24 @@ prgregset_n_to_32(const prgreg_t *src, prgreg32_t *dst)
 {
 #ifdef __amd64
 	(void) memset(dst, 0, NPRGREG32 * sizeof (prgreg32_t));
-	dst[GS] = src[REG_GS];
-	dst[FS] = src[REG_FS];
-	dst[DS] = src[REG_DS];
-	dst[ES] = src[REG_ES];
-	dst[EDI] = src[REG_RDI];
-	dst[ESI] = src[REG_RSI];
-	dst[EBP] = src[REG_RBP];
-	dst[EBX] = src[REG_RBX];
-	dst[EDX] = src[REG_RDX];
-	dst[ECX] = src[REG_RCX];
-	dst[EAX] = src[REG_RAX];
-	dst[TRAPNO] = src[REG_TRAPNO];
-	dst[ERR] = src[REG_ERR];
-	dst[EIP] = src[REG_RIP];
-	dst[CS] = src[REG_CS];
-	dst[EFL] = src[REG_RFL];
-	dst[UESP] = src[REG_RSP];
-	dst[SS] = src[REG_SS];
+	dst[REG32_GS] = src[REG_GS];
+	dst[REG32_FS] = src[REG_FS];
+	dst[REG32_DS] = src[REG_DS];
+	dst[REG32_ES] = src[REG_ES];
+	dst[REG32_EDI] = src[REG_RDI];
+	dst[REG32_ESI] = src[REG_RSI];
+	dst[REG32_EBP] = src[REG_RBP];
+	dst[REG32_EBX] = src[REG_RBX];
+	dst[REG32_EDX] = src[REG_RDX];
+	dst[REG32_ECX] = src[REG_RCX];
+	dst[REG32_EAX] = src[REG_RAX];
+	dst[REG32_TRAPNO] = src[REG_TRAPNO];
+	dst[REG32_ERR] = src[REG_ERR];
+	dst[REG32_EIP] = src[REG_RIP];
+	dst[REG32_CS] = src[REG_CS];
+	dst[REG32_EFL] = src[REG_RFL];
+	dst[REG32_UESP] = src[REG_RSP];
+	dst[REG32_SS] = src[REG_SS];
 #else
 	int i;
 
