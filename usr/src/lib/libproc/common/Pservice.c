@@ -307,7 +307,7 @@ ps_lgetLDT(struct ps_prochandle *P, lwpid_t lwpid, struct ssd *ldt)
 	if ((error = ps_lgetregs(P, lwpid, regs)) != PS_OK)
 		return (error);
 
-	gs = regs[GS];
+	gs = regs[REG32_GS];
 
 	if ((nldt = Pldt(P, NULL, 0)) <= 0 ||
 	    (ldtarray = malloc(nldt * sizeof (struct ssd))) == NULL)

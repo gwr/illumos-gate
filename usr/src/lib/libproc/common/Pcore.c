@@ -606,24 +606,24 @@ lx_prstatus32_to_lwp(lx_prstatus32_t *prs32, lwp_info_t *lwp)
 	lwp->lwp_status.pr_reg[REG_RSP] = prs32->pr_reg.lxr_sp;
 	lwp->lwp_status.pr_reg[REG_SS] = prs32->pr_reg.lxr_ss;
 #else /* __amd64 */
-	lwp->lwp_status.pr_reg[EBX] = prs32->pr_reg.lxr_bx;
-	lwp->lwp_status.pr_reg[ECX] = prs32->pr_reg.lxr_cx;
-	lwp->lwp_status.pr_reg[EDX] = prs32->pr_reg.lxr_dx;
-	lwp->lwp_status.pr_reg[ESI] = prs32->pr_reg.lxr_si;
-	lwp->lwp_status.pr_reg[EDI] = prs32->pr_reg.lxr_di;
-	lwp->lwp_status.pr_reg[EBP] = prs32->pr_reg.lxr_bp;
-	lwp->lwp_status.pr_reg[EAX] = prs32->pr_reg.lxr_ax;
-	lwp->lwp_status.pr_reg[EIP] = prs32->pr_reg.lxr_ip;
-	lwp->lwp_status.pr_reg[UESP] = prs32->pr_reg.lxr_sp;
+	lwp->lwp_status.pr_reg[REG32_EBX] = prs32->pr_reg.lxr_bx;
+	lwp->lwp_status.pr_reg[REG32_ECX] = prs32->pr_reg.lxr_cx;
+	lwp->lwp_status.pr_reg[REG32_EDX] = prs32->pr_reg.lxr_dx;
+	lwp->lwp_status.pr_reg[REG32_ESI] = prs32->pr_reg.lxr_si;
+	lwp->lwp_status.pr_reg[REG32_EDI] = prs32->pr_reg.lxr_di;
+	lwp->lwp_status.pr_reg[REG32_EBP] = prs32->pr_reg.lxr_bp;
+	lwp->lwp_status.pr_reg[REG32_EAX] = prs32->pr_reg.lxr_ax;
+	lwp->lwp_status.pr_reg[REG32_EIP] = prs32->pr_reg.lxr_ip;
+	lwp->lwp_status.pr_reg[REG32_UESP] = prs32->pr_reg.lxr_sp;
 
-	lwp->lwp_status.pr_reg[DS] = prs32->pr_reg.lxr_ds;
-	lwp->lwp_status.pr_reg[ES] = prs32->pr_reg.lxr_es;
-	lwp->lwp_status.pr_reg[FS] = prs32->pr_reg.lxr_fs;
-	lwp->lwp_status.pr_reg[GS] = prs32->pr_reg.lxr_gs;
-	lwp->lwp_status.pr_reg[CS] = prs32->pr_reg.lxr_cs;
-	lwp->lwp_status.pr_reg[SS] = prs32->pr_reg.lxr_ss;
+	lwp->lwp_status.pr_reg[REG32_DS] = prs32->pr_reg.lxr_ds;
+	lwp->lwp_status.pr_reg[REG32_ES] = prs32->pr_reg.lxr_es;
+	lwp->lwp_status.pr_reg[REG32_FS] = prs32->pr_reg.lxr_fs;
+	lwp->lwp_status.pr_reg[REG32_GS] = prs32->pr_reg.lxr_gs;
+	lwp->lwp_status.pr_reg[REG32_CS] = prs32->pr_reg.lxr_cs;
+	lwp->lwp_status.pr_reg[REG32_SS] = prs32->pr_reg.lxr_ss;
 
-	lwp->lwp_status.pr_reg[EFL] = prs32->pr_reg.lxr_flags;
+	lwp->lwp_status.pr_reg[REG32_EFL] = prs32->pr_reg.lxr_flags;
 #endif	/* !__amd64 */
 }
 
