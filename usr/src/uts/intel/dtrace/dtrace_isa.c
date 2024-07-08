@@ -171,8 +171,8 @@ dtrace_getustack_common(uint64_t *pcstack, int pcstack_limit, uintptr_t pc,
 				ucontext32_t *ucp = (ucontext32_t *)oldcontext;
 				greg32_t *gregs = ucp->uc_mcontext.gregs;
 
-				sp = dtrace_fuword32(&gregs[EBP]);
-				pc = dtrace_fuword32(&gregs[EIP]);
+				sp = dtrace_fuword32(&gregs[REG32_EBP]);
+				pc = dtrace_fuword32(&gregs[REG32_EIP]);
 
 				oldcontext = dtrace_fuword32(&ucp->uc_link);
 			}
@@ -375,8 +375,8 @@ dtrace_getufpstack(uint64_t *pcstack, uint64_t *fpstack, int pcstack_limit)
 				ucontext_t *ucp = (ucontext_t *)oldcontext;
 				greg_t *gregs = ucp->uc_mcontext.gregs;
 
-				sp = dtrace_fuword32(&gregs[EBP]);
-				pc = dtrace_fuword32(&gregs[EIP]);
+				sp = dtrace_fuword32(&gregs[REG32_EBP]);
+				pc = dtrace_fuword32(&gregs[REG32_EIP]);
 
 				oldcontext = dtrace_fuword32(&ucp->uc_link);
 			}
@@ -557,7 +557,7 @@ static const int dtrace_regmap[] = {
 ulong_t
 dtrace_getreg(struct regs *rp, uint_t reg)
 {
-	if (reg <= SS) {
+	if (reg <= REG32_SS) {
 		if (reg >= sizeof (dtrace_regmap) / sizeof (int)) {
 			DTRACE_CPUFLAG_SET(CPU_DTRACE_ILLOP);
 			return (0);
@@ -565,7 +565,7 @@ dtrace_getreg(struct regs *rp, uint_t reg)
 
 		reg = dtrace_regmap[reg];
 	} else {
-		reg -= SS + 1;
+		reg -= REG32_SS + 1;
 	}
 
 	switch (reg) {
@@ -631,12 +631,12 @@ dtrace_getreg(struct regs *rp, uint_t reg)
 void
 dtrace_setreg(struct regs *rp, uint_t reg, ulong_t val)
 {
-	if (reg <= SS) {
+	if (reg <= REG32_SS) {
 		ASSERT(reg < (sizeof (dtrace_regmap) / sizeof (int)));
 
 		reg = dtrace_regmap[reg];
 	} else {
-		reg -= SS + 1;
+		reg -= REG32_SS + 1;
 	}
 
 	switch (reg) {
