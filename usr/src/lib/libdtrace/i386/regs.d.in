@@ -27,45 +27,45 @@
  * Copyright 2011 Joyent, Inc.  All rights reserved.
  */
 
-inline int R_GS = @GS@;
+inline int R_GS = @REG32_GS@;
 #pragma D binding "1.0" R_GS
-inline int R_FS = @FS@;
+inline int R_FS = @REG32_FS@;
 #pragma D binding "1.0" R_FS
-inline int R_ES = @ES@;
+inline int R_ES = @REG32_ES@;
 #pragma D binding "1.0" R_ES
-inline int R_DS = @DS@;
+inline int R_DS = @REG32_DS@;
 #pragma D binding "1.0" R_DS
 
-inline int R_EDI = @EDI@;
+inline int R_EDI = @REG32_EDI@;
 #pragma D binding "1.0" R_EDI
-inline int R_ESI = @ESI@;
+inline int R_ESI = @REG32_ESI@;
 #pragma D binding "1.0" R_ESI
-inline int R_EBP = @EBP@;
+inline int R_EBP = @REG32_EBP@;
 #pragma D binding "1.0" R_EBP
-inline int R_ESP = @ESP@;
+inline int R_ESP = @REG32_ESP@;
 #pragma D binding "1.0" R_ESP
-inline int R_EBX = @EBX@;
+inline int R_EBX = @REG32_EBX@;
 #pragma D binding "1.0" R_EBX
-inline int R_EDX = @EDX@;
+inline int R_EDX = @REG32_EDX@;
 #pragma D binding "1.0" R_EDX
-inline int R_ECX = @ECX@;
+inline int R_ECX = @REG32_ECX@;
 #pragma D binding "1.0" R_ECX
-inline int R_EAX = @EAX@;
+inline int R_EAX = @REG32_EAX@;
 #pragma D binding "1.0" R_EAX
 
-inline int R_TRAPNO = @TRAPNO@;
+inline int R_TRAPNO = @REG32_TRAPNO@;
 #pragma D binding "1.0" R_TRAPNO
-inline int R_ERR = @ERR@;
+inline int R_ERR = @REG32_ERR@;
 #pragma D binding "1.0" R_ERR
-inline int R_EIP = @EIP@;
+inline int R_EIP = @REG32_EIP@;
 #pragma D binding "1.0" R_EIP
-inline int R_CS = @CS@;
+inline int R_CS = @REG32_CS@;
 #pragma D binding "1.0" R_CS
-inline int R_EFL = @EFL@;
+inline int R_EFL = @REG32_EFL@;
 #pragma D binding "1.0" R_EFL
-inline int R_UESP = @UESP@;
+inline int R_UESP = @REG32_UESP@;
 #pragma D binding "1.0" R_UESP
-inline int R_SS = @SS@;
+inline int R_SS = @REG32_SS@;
 #pragma D binding "1.0" R_SS
 
 inline int R_PC = R_EIP;

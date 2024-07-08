@@ -531,26 +531,29 @@ dtrace_getstackdepth(int aframes)
 	return (depth - aframes);
 }
 
+/*
+ * Map i386 REG32_<> register numbers to amd64 REG_<> register numbers.
+ */
 static const int dtrace_regmap[] = {
-	REG_GS,		/* GS */
-	REG_FS,		/* FS */
-	REG_ES,		/* ES */
-	REG_DS,		/* DS */
-	REG_RDI,	/* EDI */
-	REG_RSI,	/* ESI */
-	REG_RBP,	/* EBP */
-	REG_RSP,	/* ESP */
-	REG_RBX,	/* EBX */
-	REG_RDX,	/* EDX */
-	REG_RCX,	/* ECX */
-	REG_RAX,	/* EAX */
-	REG_TRAPNO,	/* TRAPNO */
-	REG_ERR,	/* ERR */
-	REG_RIP,	/* EIP */
-	REG_CS,		/* CS */
-	REG_RFL,	/* EFL */
-	REG_RSP,	/* UESP */
-	REG_SS		/* SS */
+	REG_GS,		/* REG32_GS */
+	REG_FS,		/* REG32_FS */
+	REG_ES,		/* REG32_ES */
+	REG_DS,		/* REG32_DS */
+	REG_RDI,	/* REG32_EDI */
+	REG_RSI,	/* REG32_ESI */
+	REG_RBP,	/* REG32_EBP */
+	REG_RSP,	/* REG32_ESP */
+	REG_RBX,	/* REG32_EBX */
+	REG_RDX,	/* REG32_EDX */
+	REG_RCX,	/* REG32_ECX */
+	REG_RAX,	/* REG32_EAX */
+	REG_TRAPNO,	/* REG32_TRAPNO */
+	REG_ERR,	/* REG32_ERR */
+	REG_RIP,	/* REG32_EIP */
+	REG_CS,		/* REG32_CS */
+	REG_RFL,	/* REG32_EFL */
+	REG_RSP,	/* REG32_UESP */
+	REG_SS		/* REG32_SS */
 };
 
 
