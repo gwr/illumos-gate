@@ -238,7 +238,7 @@ void fex_log_entry(const char *msg)
 #if defined(__sparc) || defined(__amd64)
 	fp = FRAMEP(uc.uc_mcontext.gregs[REG_SP]);
 #elif defined(__i386)	/* !defined(__amd64) */
-	fp = FRAMEP(uc.uc_mcontext.gregs[EBP]);
+	fp = FRAMEP(uc.uc_mcontext.gregs[REG_FP]);
 #else
 #error Unknown architecture
 #endif
@@ -303,8 +303,8 @@ __fex_mklog(ucontext_t *uap, char *addr, int f, enum fex_exception e,
 	stk = (char*)uap->uc_mcontext.gregs[REG_PC];
 	fp = FRAMEP(uap->uc_mcontext.gregs[REG_RBP]);
 #elif defined(__i386)	/* !defined(__amd64) */
-	stk = (char*)uap->uc_mcontext.gregs[PC];
-	fp = FRAMEP(uap->uc_mcontext.gregs[EBP]);
+	stk = (char*)uap->uc_mcontext.gregs[REG_PC];
+	fp = FRAMEP(uap->uc_mcontext.gregs[REG_FP]);
 #else
 #error Unknown architecture
 #endif
