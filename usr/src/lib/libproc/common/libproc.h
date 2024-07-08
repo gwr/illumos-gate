@@ -95,10 +95,10 @@ extern	int	_libproc_incore_elf;	/* only use in-core elf data */
 #define	R_RVAL1	REG_RAX		/* register holding a function return value */
 #define	R_RVAL2	REG_RDX		/* 32 more bits for a 64-bit return value */
 #elif defined(__i386)
-#define	R_PC	EIP
-#define	R_SP	UESP
-#define	R_RVAL1	EAX		/* register holding a function return value */
-#define	R_RVAL2	EDX		/* 32 more bits for a 64-bit return value */
+#define	R_PC	REG32_EIP
+#define	R_SP	REG32_UESP
+#define	R_RVAL1	REG32_EAX	/* register holding a function return value */
+#define	R_RVAL2	REG32_EDX	/* 32 more bits for a 64-bit return value */
 #endif	/* __amd64 || __i386 */
 
 #define	R_RVAL	R_RVAL1		/* simple function return value register */
