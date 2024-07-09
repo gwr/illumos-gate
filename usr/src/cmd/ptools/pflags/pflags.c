@@ -508,24 +508,24 @@ void
 prgregset_n_to_32(const prgreg_t *src, prgreg32_t *dst)
 {
 	bzero(dst, NPRGREG32 * sizeof (prgreg32_t));
-	dst[GS] = src[REG_GS];
-	dst[FS] = src[REG_FS];
-	dst[DS] = src[REG_DS];
-	dst[ES] = src[REG_ES];
-	dst[EDI] = src[REG_RDI];
-	dst[ESI] = src[REG_RSI];
-	dst[EBP] = src[REG_RBP];
-	dst[EBX] = src[REG_RBX];
-	dst[EDX] = src[REG_RDX];
-	dst[ECX] = src[REG_RCX];
-	dst[EAX] = src[REG_RAX];
-	dst[TRAPNO] = src[REG_TRAPNO];
-	dst[ERR] = src[REG_ERR];
-	dst[EIP] = src[REG_RIP];
-	dst[CS] = src[REG_CS];
-	dst[EFL] = src[REG_RFL];
-	dst[UESP] = src[REG_RSP];
-	dst[SS] = src[REG_SS];
+	dst[REG32_GS] = src[REG_GS];
+	dst[REG32_FS] = src[REG_FS];
+	dst[REG32_DS] = src[REG_DS];
+	dst[REG32_ES] = src[REG_ES];
+	dst[REG32_EDI] = src[REG_RDI];
+	dst[REG32_ESI] = src[REG_RSI];
+	dst[REG32_EBP] = src[REG_RBP];
+	dst[REG32_EBX] = src[REG_RBX];
+	dst[REG32_EDX] = src[REG_RDX];
+	dst[REG32_ECX] = src[REG_RCX];
+	dst[REG32_EAX] = src[REG_RAX];
+	dst[REG32_TRAPNO] = src[REG_TRAPNO];
+	dst[REG32_ERR] = src[REG_ERR];
+	dst[REG32_EIP] = src[REG_RIP];
+	dst[REG32_CS] = src[REG_CS];
+	dst[REG32_EFL] = src[REG_RFL];
+	dst[REG32_UESP] = src[REG_RSP];
+	dst[REG32_SS] = src[REG_SS];
 }
 
 #elif defined(__i386)
