@@ -58,14 +58,14 @@ display_all_regs(struct ps_prochandle *ph)
 		return (RET_FAILED);
 	}
 	(void) printf("registers:\n");
-	disp_reg_line(ph, &pstatus, "gs", GS, "fs", FS);
-	disp_reg_line(ph, &pstatus, "es", ES, "ds", DS);
-	disp_reg_line(ph, &pstatus, "edi", EDI, "esi", ESI);
-	disp_reg_line(ph, &pstatus, "ebp", EBP, "esp", ESP);
-	disp_reg_line(ph, &pstatus, "ebx", EBX, "edx", EDX);
-	disp_reg_line(ph, &pstatus, "ecx", ECX, "eax", EAX);
-	disp_reg_line(ph, &pstatus, "trapno", TRAPNO, "err", ERR);
-	disp_reg_line(ph, &pstatus, "eip", EIP, "cs", CS);
-	disp_reg_line(ph, &pstatus, "efl", EFL, "uesp", UESP);
+	disp_reg_line(ph, &pstatus, "gs", REG32_GS, "fs", REG32_FS);
+	disp_reg_line(ph, &pstatus, "es", REG32_ES, "ds", REG32_DS);
+	disp_reg_line(ph, &pstatus, "edi", REG32_EDI, "esi", REG32_ESI);
+	disp_reg_line(ph, &pstatus, "ebp", REG32_EBP, "esp", REG32_ESP);
+	disp_reg_line(ph, &pstatus, "ebx", REG32_EBX, "edx", REG32_EDX);
+	disp_reg_line(ph, &pstatus, "ecx", REG32_ECX, "eax", REG32_EAX);
+	disp_reg_line(ph, &pstatus, "trapno", REG32_TRAPNO, "err", REG32_ERR);
+	disp_reg_line(ph, &pstatus, "eip", REG32_EIP, "cs", REG32_CS);
+	disp_reg_line(ph, &pstatus, "efl", REG32_EFL, "uesp", REG32_UESP);
 	return (RET_OK);
 }
