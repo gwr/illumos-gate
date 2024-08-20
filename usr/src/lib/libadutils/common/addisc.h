@@ -22,6 +22,7 @@
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2024 RackTop Systems, Inc.
  */
 
 #ifndef	_ADINFO_H
@@ -85,6 +86,7 @@ typedef struct ad_disc_ds {
 	struct sockaddr_storage addr;
 	uint32_t flags;
 	uint32_t ttl;
+	boolean_t ads_paused;
 } ad_disc_ds_t;
 
 ad_disc_t ad_disc_init(void);
@@ -102,7 +104,7 @@ ad_disc_get_DomainGUID(ad_disc_t ctx, boolean_t *auto_discovered);
 
 ad_disc_ds_t *
 ad_disc_get_DomainController(ad_disc_t ctx,
-		enum ad_disc_req req, boolean_t *auto_discovered);
+    enum ad_disc_req req, boolean_t *auto_discovered);
 
 ad_disc_ds_t *
 ad_disc_get_PreferredDC(ad_disc_t ctx, boolean_t *auto_discovered);
@@ -115,7 +117,7 @@ ad_disc_get_ForestName(ad_disc_t ctx, boolean_t *auto_discovered);
 
 ad_disc_ds_t *
 ad_disc_get_GlobalCatalog(ad_disc_t ctx, enum ad_disc_req,
-				boolean_t *auto_discovered);
+    boolean_t *auto_discovered);
 
 ad_disc_trusteddomains_t *
 ad_disc_get_TrustedDomains(ad_disc_t ctx,  boolean_t *auto_discovered);
@@ -136,7 +138,7 @@ ad_disc_set_DomainGUID(ad_disc_t ctx, uchar_t *u);
 
 int
 ad_disc_set_DomainController(ad_disc_t ctx,
-		const ad_disc_ds_t *domainController);
+    const ad_disc_ds_t *domainController);
 int
 ad_disc_set_PreferredDC(ad_disc_t ctx, const ad_disc_ds_t *dc);
 
@@ -148,7 +150,7 @@ ad_disc_set_ForestName(ad_disc_t ctx, const char *forestName);
 
 int
 ad_disc_set_GlobalCatalog(ad_disc_t ctx,
-		const ad_disc_ds_t *globalCatalog);
+    const ad_disc_ds_t *globalCatalog);
 
 /*
  * This function sets a FILE * on which this library will write

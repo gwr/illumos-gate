@@ -21,6 +21,7 @@
 /*
  * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2024 RackTop Systems, Inc.
  */
 
 #ifndef	_ADDISC_IMPL_H
@@ -62,13 +63,13 @@ typedef struct ad_subnet {
 typedef struct ad_item {
 	enum ad_item_state	state;
 	enum ad_data_type	type;
-	void 			*value;
-	time_t 			expires;
-	unsigned int 		version;	/* Version is only changed */
+	void			*value;
+	time_t			expires;
+	unsigned int		version;	/* Version is only changed */
 						/* if the value changes */
 #define	PARAM1		0
 #define	PARAM2		1
-	int 		param_version[2];
+	int		param_version[2];
 					/* These holds the version of */
 					/* dependents so that a dependent */
 					/* change can be detected */
@@ -95,11 +96,6 @@ typedef struct ad_disc {
 						/* array */
 	ad_item_t	trusted_domains;	/* DNS domainname and trust */
 						/* direction array */
-	/* Site specfic versions */
-	ad_item_t	site_domain_controller;	/* Directory hostname and */
-						/* port array */
-	ad_item_t	site_global_catalog;	/* Directory hostname and */
-						/* port array */
 	/* Optional FILE * for DC Location status. */
 	struct __FILE_TAG *status_fp;
 
@@ -110,6 +106,8 @@ typedef struct ad_disc {
 typedef struct ad_disc_cds {
 	struct ad_disc_ds cds_ds;
 	struct addrinfo *cds_ai;
+	hrtime_t cds_start;
+	hrtime_t cds_lat;
 } ad_disc_cds_t;
 
 ad_disc_ds_t *ldap_ping(ad_disc_t, ad_disc_cds_t *, char *, int);
