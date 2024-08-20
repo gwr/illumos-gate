@@ -11,6 +11,7 @@
 
 /*
  * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2024 RackTop Systems, Inc.
  */
 
 #include <stdio.h>
@@ -124,9 +125,9 @@ cldap_escape_le64(char *buf, uint64_t val, int bytes)
  */
 BerElement *
 cldap_build_request(const char *dname,
-	const char *host, uint32_t ntver, uint16_t msgid)
+    const char *host, uint32_t ntver, uint16_t msgid)
 {
-	BerElement 	*ber;
+	BerElement	*ber;
 	int		len = 0;
 	char		*basedn = "";
 	int scope = LDAP_SCOPE_BASE, deref = LDAP_DEREF_NEVER,
@@ -254,6 +255,16 @@ decode_name(uchar_t *base, uchar_t *cp, char *str)
 	return ((tmp == NULL ? cp + 1 : tmp) - st);
 }
 
+/*
+ * [MS-ADTS] 6.3.1.3 "Operation Code"
+ *
+ * See 6.3.3.2 "Domain Controller Response to an LDAP Ping" for conditions
+ * under which the DC returns these opcodes.
+ */
+#define	SAM_LOGON_RESPONSE_EX	23	/* Normal response */
+#define	SAM_PAUSE_RESPONSE_EX	24	/* DC isn't ready */
+#define	SAM_USER_UNKNOWN_EX	25	/* Specified user unknown */
+
 static int
 cldap_parse(ad_disc_t ctx, ad_disc_cds_t *cds, BerElement *ber)
 {
@@ -273,6 +284,12 @@ cldap_parse(ad_disc_t ctx, ad_disc_cds_t *cds, BerElement *ber)
 		goto out;
 	}
 
+	if (l == 0) {
+		if (DBG(DISC, 1))
+			logger(LOG_DEBUG, "0-length response");
+		goto out;
+	}
+
 	for (base = cp; ((cp - base) < l) && (f <= LM_20_TOKEN); f++) {
 		val[0] = '\0';
 		switch (f) {
@@ -281,6 +298,10 @@ cldap_parse(ad_disc_t ctx, ad_disc_cds_t *cds, BerElement *ber)
 			/* cp +=2; */
 			opcode = *cp++;
 			opcode |= (*cp++ << 8);
+
+			if (DBG(DISC, 1))
+				logger(LOG_DEBUG, "opcode: %d", opcode);
+			dc->ads_paused = (opcode == SAM_PAUSE_RESPONSE_EX);
 			break;
 		case SBZ:
 			cp += 2;
@@ -292,6 +313,9 @@ cldap_parse(ad_disc_t ctx, ad_disc_cds_t *cds, BerElement *ber)
 			dc->flags |= (*cp++ << 8);
 			dc->flags |= (*cp++ << 16);
 			dc->flags |= (*cp++ << 26);
+
+			if (DBG(DISC, 1))
+				logger(LOG_DEBUG, "flags: %#x", dc->flags);
 			break;
 		case DOMAIN_GUID:
 			if (ctx != NULL)
@@ -302,6 +326,9 @@ cldap_parse(ad_disc_t ctx, ad_disc_cds_t *cds, BerElement *ber)
 			cp += decode_name(base, cp, val);
 			if (ctx != NULL)
 				auto_set_ForestName(ctx, val);
+
+			if (DBG(DISC, 1))
+				logger(LOG_DEBUG, "forest: %s", val);
 			break;
 		case DNS_DOMAIN_NAME:
 			/*
@@ -309,6 +336,9 @@ cldap_parse(ad_disc_t ctx, ad_disc_cds_t *cds, BerElement *ber)
 			 * (Could validate it here.)
 			 */
 			cp += decode_name(base, cp, val);
+
+			if (DBG(DISC, 1))
+				logger(LOG_DEBUG, "domain: %s", val);
 			break;
 		case DNS_HOST_NAME:
 			cp += decode_name(base, cp, val);
@@ -316,6 +346,9 @@ cldap_parse(ad_disc_t ctx, ad_disc_cds_t *cds, BerElement *ber)
 				logger(LOG_ERR, "DC name %s != %s?",
 				    val, dc->host);
 			}
+
+			if (DBG(DISC, 1))
+				logger(LOG_DEBUG, "hostname: %s", val);
 			break;
 		case NET_DOMAIN_NAME:
 			/*
@@ -332,15 +365,24 @@ cldap_parse(ad_disc_t ctx, ad_disc_cds_t *cds, BerElement *ber)
 		case USER_NAME:
 			/* not needed */
 			cp += decode_name(base, cp, val);
+
+			if (DBG(DISC, 1))
+				logger(LOG_DEBUG, "username: %s", val);
 			break;
 		case DC_SITE_NAME:
 			cp += decode_name(base, cp, val);
 			(void) strlcpy(dc->site, val, sizeof (dc->site));
+
+			if (DBG(DISC, 1))
+				logger(LOG_DEBUG, "DC site: %s", val);
 			break;
 		case CLIENT_SITE_NAME:
 			cp += decode_name(base, cp, val);
 			if (ctx != NULL)
 				auto_set_SiteName(ctx, val);
+
+			if (DBG(DISC, 1))
+				logger(LOG_DEBUG, "Client site: %s", val);
 			break;
 		/*
 		 * These are all possible, but we don't really care about them.
@@ -364,9 +406,13 @@ out:
 		free(base);
 	else if (cp)
 		free(cp);
+	if (rc != 0) {
+		logger(LOG_DEBUG,
+		    "cldap_parse: rc %d msgid %d l %d (cp - base) %d",
+		    rc, msgid, l, cp - base);
+	}
 	return (rc);
 }
-
 
 /*
  * Filter out unresponsive servers, and save the domain info
@@ -480,10 +526,15 @@ try_again:
 
 			(void) cldap_parse(ctx, recv_ds, res);
 			if ((recv_ds->cds_ds.flags & reqflags) != reqflags) {
-				logger(LOG_ERR, "Skip %s"
+				logger(LOG_ERR, "Skip %s "
 				    "due to flags 0x%X",
 				    recv_ds->cds_ds.host,
 				    recv_ds->cds_ds.flags);
+				recv_ds = NULL;
+			} else if (recv_ds->cds_ds.ads_paused) {
+				logger(LOG_ERR, "Skip %s: "
+				    "DC is Paused",
+				    recv_ds->cds_ds.host);
 				recv_ds = NULL;
 			}
 		}
@@ -524,6 +575,9 @@ send_to_cds(ad_disc_cds_t *send_cds, char *ber_buf, size_t be_len, int fd)
 	if (DBG(DISC, 2)) {
 		logger(LOG_DEBUG, "send to: %s", send_cds->cds_ds.host);
 	}
+
+	send_cds->cds_start = gethrtime();
+	send_cds->cds_lat = 0;
 
 	for (ai = send_cds->cds_ai; ai != NULL; ai = ai->ai_next) {
 
@@ -605,6 +659,13 @@ find_cds_by_addr(ad_disc_cds_t *dclist, struct sockaddr_in6 *sin6from)
 found:
 	if (DBG(DISC, 2)) {
 		logger(LOG_DEBUG, "  from %s", ds->cds_ds.host);
+	}
+
+	if (ds->cds_lat == 0) {
+		ds->cds_lat = gethrtime() - ds->cds_start;
+		if (DBG(DISC, 1))
+			logger(LOG_DEBUG, "latency: %llu ms",
+			    NSEC2MSEC(ds->cds_lat));
 	}
 	save_ai(ds, ai);
 	return (ds);

@@ -22,6 +22,7 @@
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2019 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2024 RackTop Systems, Inc.
  */
 
 /*
@@ -942,9 +943,6 @@ ad_disc_init(void)
 	ctx->global_catalog.type = AD_DIRECTORY;
 	ctx->domains_in_forest.type = AD_DOMAINS_IN_FOREST;
 	ctx->trusted_domains.type = AD_TRUSTED_DOMAINS;
-	/* Site specific versions */
-	ctx->site_domain_controller.type = AD_DIRECTORY;
-	ctx->site_global_catalog.type = AD_DIRECTORY;
 	return (ctx);
 }
 
@@ -987,13 +985,6 @@ ad_disc_fini(ad_disc_t ctx)
 	if (ctx->trusted_domains.value != NULL)
 		free(ctx->trusted_domains.value);
 
-	/* Site specific versions */
-	if (ctx->site_domain_controller.value != NULL)
-		free(ctx->site_domain_controller.value);
-
-	if (ctx->site_global_catalog.value != NULL)
-		free(ctx->site_global_catalog.value);
-
 	free(ctx);
 }
 
@@ -1033,12 +1024,6 @@ ad_disc_refresh(ad_disc_t ctx)
 
 	if (ctx->trusted_domains.state == AD_STATE_AUTO)
 		ctx->trusted_domains.state  = AD_STATE_INVALID;
-
-	if (ctx->site_domain_controller.state == AD_STATE_AUTO)
-		ctx->site_domain_controller.state  = AD_STATE_INVALID;
-
-	if (ctx->site_global_catalog.state == AD_STATE_AUTO)
-		ctx->site_global_catalog.state = AD_STATE_INVALID;
 }
 
 
@@ -1204,19 +1189,53 @@ ad_disc_get_DomainName(ad_disc_t ctx, boolean_t *auto_discovered)
 	return (domain_name);
 }
 
+static ad_disc_ds_t *
+select_dc(ad_disc_t ctx, char *dns_query, char *domain_name,
+    ad_disc_ds_t *prefer_dc)
+{
+	ad_disc_ds_t *dc = NULL;
+	ad_disc_cds_t *cdc = NULL;
+
+	DO_RES_NINIT(ctx);
+	cdc = srv_query(&ctx->res_state, dns_query, domain_name, prefer_dc);
+
+	if (cdc == NULL) {
+		DEBUG1STATUS(ctx, "(no DNS response)");
+		return (NULL);
+	}
+	log_cds(ctx, cdc);
+
+	/*
+	 * Filter out unresponsive servers, and
+	 * save the domain info we get back.
+	 */
+	dc = ldap_ping(
+	    ctx,
+	    cdc,
+	    domain_name,
+	    DS_DS_FLAG);
+	srv_free(cdc);
+	cdc = NULL;
+
+	if (dc == NULL) {
+		DEBUG1STATUS(ctx, "(no LDAP response)");
+		return (NULL);
+	}
+	log_ds(ctx, dc);
+
+	return (dc);
+}
 
 /* Discover domain controllers */
 static ad_item_t *
 validate_DomainController(ad_disc_t ctx, enum ad_disc_req req)
 {
 	ad_disc_ds_t *dc = NULL;
-	ad_disc_cds_t *cdc = NULL;
 	boolean_t validate_global = B_FALSE;
 	boolean_t validate_site = B_FALSE;
 	ad_item_t *domain_name_item;
 	char *domain_name;
-	ad_item_t *site_name_item = NULL;
-	char *site_name;
+	ad_item_t *site_name_item;
 	ad_item_t *prefer_dc_item;
 	ad_disc_ds_t *prefer_dc = NULL;
 
@@ -1231,15 +1250,23 @@ validate_DomainController(ad_disc_t ctx, enum ad_disc_req req)
 	}
 	domain_name = (char *)domain_name_item->value;
 
+	site_name_item = &ctx->site_name;
+
+	if (is_valid(&ctx->domain_controller) &&
+	    !is_changed(&ctx->domain_controller, PARAM1,
+	    domain_name_item) &&
+	    !is_changed(&ctx->domain_controller, PARAM2,
+	    site_name_item))
+		return (&ctx->domain_controller);
+
 	/* Get (optional) preferred DC. */
 	prefer_dc_item = validate_PreferredDC(ctx);
 	if (prefer_dc_item != NULL)
 		prefer_dc = prefer_dc_item->value;
-
 	if (req == AD_DISC_GLOBAL)
 		validate_global = B_TRUE;
 	else {
-		if (is_fixed(&ctx->site_name))
+		if (is_valid(&ctx->site_name))
 			validate_site = B_TRUE;
 		if (req == AD_DISC_PREFER_SITE)
 			validate_global = B_TRUE;
@@ -1250,114 +1277,71 @@ validate_DomainController(ad_disc_t ctx, enum ad_disc_req req)
 	 * try the site-specific first, then fall-back.
 	 */
 	if (validate_site) {
-		site_name_item = &ctx->site_name;
-		site_name = (char *)site_name_item->value;
+		/*
+		 * Lookup DNS SRV RR named
+		 * _ldap._tcp.<SiteName>._sites.dc._msdcs.<DomainName>
+		 */
+		char rr_name[DNS_MAX_NAME];
+		char *site_name = (char *)site_name_item->value;
 
-		if (!is_valid(&ctx->site_domain_controller) ||
-		    is_changed(&ctx->site_domain_controller, PARAM1,
-		    domain_name_item) ||
-		    is_changed(&ctx->site_domain_controller, PARAM2,
-		    site_name_item)) {
+		DEBUG1STATUS(ctx, "DNS SRV query, dom=%s, site=%s",
+		    domain_name, site_name);
+		(void) snprintf(rr_name, sizeof (rr_name),
+		    LDAP_SRV_HEAD SITE_SRV_MIDDLE DC_SRV_TAIL,
+		    site_name);
+
+		dc = select_dc(ctx, rr_name, domain_name, prefer_dc);
+	}
+
+	if (dc == NULL && validate_global) {
+		/*
+		 * Lookup DNS SRV RR named
+		 * _ldap._tcp.dc._msdcs.<DomainName>
+		 */
+		DEBUG1STATUS(ctx, "DNS SRV query, dom=%s", domain_name);
+
+		dc = select_dc(ctx, LDAP_SRV_HEAD DC_SRV_TAIL,
+		    domain_name, prefer_dc);
+
+		if (dc == NULL)
+			return (NULL);
+
+		/*
+		 * If we haven't already done site-specific discovery and the
+		 * discovered DC is neither our preferred_dc nor in our site,
+		 * use the auto-discovered site name to perform site-specific
+		 * discovery now.
+		 */
+		if (!validate_site && is_valid(&ctx->site_name) &&
+		    (dc->flags & DS_CLOSEST_FLAG) == 0 &&
+		    (prefer_dc == NULL ||
+		    ad_disc_compare_ds(dc, prefer_dc) != 0)) {
 			char rr_name[DNS_MAX_NAME];
+			ad_disc_ds_t *sdc;
+			char *site_name = (char *)site_name_item->value;
 
-			/*
-			 * Lookup DNS SRV RR named
-			 * _ldap._tcp.<SiteName>._sites.dc._msdcs.<DomainName>
-			 */
+			DEBUG1STATUS(ctx, "Looking for DC in closer site");
 			DEBUG1STATUS(ctx, "DNS SRV query, dom=%s, site=%s",
 			    domain_name, site_name);
 			(void) snprintf(rr_name, sizeof (rr_name),
 			    LDAP_SRV_HEAD SITE_SRV_MIDDLE DC_SRV_TAIL,
 			    site_name);
-			DO_RES_NINIT(ctx);
-			cdc = srv_query(&ctx->res_state, rr_name,
-			    domain_name, prefer_dc);
 
-			if (cdc == NULL) {
-				DEBUG1STATUS(ctx, "(no DNS response)");
-				goto try_global;
+			sdc = select_dc(ctx, rr_name, domain_name, NULL);
+			if (sdc != NULL) {
+				free(dc);
+				dc = sdc;
 			}
-			log_cds(ctx, cdc);
-
-			/*
-			 * Filter out unresponsive servers, and
-			 * save the domain info we get back.
-			 */
-			dc = ldap_ping(
-			    ctx,
-			    cdc,
-			    domain_name,
-			    DS_DS_FLAG);
-			srv_free(cdc);
-			cdc = NULL;
-
-			if (dc == NULL) {
-				DEBUG1STATUS(ctx, "(no LDAP response)");
-				goto try_global;
-			}
-			log_ds(ctx, dc);
-
-			update_item(&ctx->site_domain_controller, dc,
-			    AD_STATE_AUTO, dc->ttl);
-			update_version(&ctx->site_domain_controller, PARAM1,
-			    domain_name_item);
-			update_version(&ctx->site_domain_controller, PARAM2,
-			    site_name_item);
 		}
-		return (&ctx->site_domain_controller);
 	}
 
-try_global:
+	if (dc == NULL)
+		return (NULL);
 
-	if (validate_global) {
-		if (!is_valid(&ctx->domain_controller) ||
-		    is_changed(&ctx->domain_controller, PARAM1,
-		    domain_name_item)) {
-
-			/*
-			 * Lookup DNS SRV RR named
-			 * _ldap._tcp.dc._msdcs.<DomainName>
-			 */
-			DEBUG1STATUS(ctx, "DNS SRV query, dom=%s",
-			    domain_name);
-			DO_RES_NINIT(ctx);
-			cdc = srv_query(&ctx->res_state,
-			    LDAP_SRV_HEAD DC_SRV_TAIL,
-			    domain_name, prefer_dc);
-
-			if (cdc == NULL) {
-				DEBUG1STATUS(ctx, "(no DNS response)");
-				return (NULL);
-			}
-			log_cds(ctx, cdc);
-
-			/*
-			 * Filter out unresponsive servers, and
-			 * save the domain info we get back.
-			 */
-			dc = ldap_ping(
-			    ctx,
-			    cdc,
-			    domain_name,
-			    DS_DS_FLAG);
-			srv_free(cdc);
-			cdc = NULL;
-
-			if (dc == NULL) {
-				DEBUG1STATUS(ctx, "(no LDAP response)");
-				return (NULL);
-			}
-			log_ds(ctx, dc);
-
-			update_item(&ctx->domain_controller, dc,
-			    AD_STATE_AUTO, dc->ttl);
-			update_version(&ctx->domain_controller, PARAM1,
-			    domain_name_item);
-		}
-		return (&ctx->domain_controller);
-	}
-
-	return (NULL);
+	update_item(&ctx->domain_controller, dc, AD_STATE_AUTO, dc->ttl);
+	update_version(&ctx->domain_controller, PARAM1, domain_name_item);
+	update_version(&ctx->domain_controller, PARAM2, site_name_item);
+	return (&ctx->domain_controller);
 }
 
 ad_disc_ds_t *
@@ -1508,20 +1492,53 @@ ad_disc_get_ForestName(ad_disc_t ctx, boolean_t *auto_discovered)
 	return (forest_name);
 }
 
+static ad_disc_ds_t *
+select_gc(ad_disc_t ctx, char *dns_query, char *forest_name)
+{
+	ad_disc_ds_t *gc = NULL;
+	ad_disc_cds_t *cgc = NULL;
+
+	DO_RES_NINIT(ctx);
+	cgc = srv_query(&ctx->res_state, dns_query, forest_name, NULL);
+
+	if (cgc == NULL) {
+		DEBUG1STATUS(ctx, "(no DNS response)");
+		return (NULL);
+	}
+	log_cds(ctx, cgc);
+
+	/*
+	 * Filter out unresponsive servers, and
+	 * save the domain info we get back.
+	 */
+	gc = ldap_ping(
+	    NULL,
+	    cgc,
+	    forest_name,
+	    DS_GC_FLAG);
+	srv_free(cgc);
+	cgc = NULL;
+
+	if (gc == NULL) {
+		DEBUG1STATUS(ctx, "(no LDAP response)");
+		return (NULL);
+	}
+	log_ds(ctx, gc);
+
+	return (gc);
+}
 
 /* Discover global catalog servers */
 static ad_item_t *
 validate_GlobalCatalog(ad_disc_t ctx, enum ad_disc_req req)
 {
 	ad_disc_ds_t *gc = NULL;
-	ad_disc_cds_t *cgc = NULL;
 	boolean_t validate_global = B_FALSE;
 	boolean_t validate_site = B_FALSE;
 	ad_item_t *dc_item;
 	ad_item_t *forest_name_item;
 	ad_item_t *site_name_item;
 	char *forest_name;
-	char *site_name;
 
 	/* If the values is fixed there will not be a site specific version */
 	if (is_fixed(&ctx->global_catalog))
@@ -1534,10 +1551,34 @@ validate_GlobalCatalog(ad_disc_t ctx, enum ad_disc_req req)
 	}
 	forest_name = (char *)forest_name_item->value;
 
+	site_name_item = &ctx->site_name;
+
+	if (is_valid(&ctx->global_catalog) &&
+	    !is_changed(&ctx->global_catalog, PARAM1, forest_name_item) &&
+	    !is_changed(&ctx->global_catalog, PARAM2, site_name_item))
+		return (&ctx->global_catalog);
+
+	/*
+	 * See if our DC is also a GC.
+	 */
+	dc_item = validate_DomainController(ctx, req);
+	if (dc_item != NULL) {
+		ad_disc_ds_t *ds = dc_item->value;
+		if ((ds->flags & DS_GC_FLAG) != 0) {
+			DEBUG1STATUS(ctx,
+			    "DC is also a GC for %s", forest_name);
+			gc = ds_dup(ds);
+			if (gc != NULL) {
+				gc->port = GC_PORT;
+				goto update_gc;
+			}
+		}
+	}
+
 	if (req == AD_DISC_GLOBAL)
 		validate_global = B_TRUE;
 	else {
-		if (is_fixed(&ctx->site_name))
+		if (is_valid(&ctx->site_name))
 			validate_site = B_TRUE;
 		if (req == AD_DISC_PREFER_SITE)
 			validate_global = B_TRUE;
@@ -1548,152 +1589,70 @@ validate_GlobalCatalog(ad_disc_t ctx, enum ad_disc_req req)
 	 * try the site-specific first, then fall-back.
 	 */
 	if (validate_site) {
-		site_name_item = &ctx->site_name;
-		site_name = (char *)site_name_item->value;
+		/*
+		 * Lookup DNS SRV RR named:
+		 * _ldap._tcp.<siteName>._sites.gc._msdcs.<ForestName>
+		 */
+		char rr_name[DNS_MAX_NAME];
+		char *site_name = (char *)site_name_item->value;
 
-		if (!is_valid(&ctx->site_global_catalog) ||
-		    is_changed(&ctx->site_global_catalog, PARAM1,
-		    forest_name_item) ||
-		    is_changed(&ctx->site_global_catalog, PARAM2,
-		    site_name_item)) {
-			char rr_name[DNS_MAX_NAME];
+		DEBUG1STATUS(ctx, "DNS SRV query, forest=%s, site=%s",
+		    forest_name, site_name);
+		(void) snprintf(rr_name, sizeof (rr_name),
+		    LDAP_SRV_HEAD SITE_SRV_MIDDLE GC_SRV_TAIL,
+		    site_name);
 
-			/*
-			 * See if our DC is also a GC.
-			 */
-			dc_item = validate_DomainController(ctx, req);
-			if (dc_item != NULL) {
-				ad_disc_ds_t *ds = dc_item->value;
-				if ((ds->flags & DS_GC_FLAG) != 0) {
-					DEBUG1STATUS(ctx,
-					    "DC is also a GC for %s in %s",
-					    forest_name, site_name);
-					gc = ds_dup(ds);
-					if (gc != NULL) {
-						gc->port = GC_PORT;
-						goto update_site;
-					}
-				}
-			}
+		gc = select_gc(ctx, rr_name, forest_name);
+	}
 
+	if (gc == NULL && validate_global) {
+		/*
+		 * Lookup DNS SRV RR named:
+		 * _ldap._tcp.gc._msdcs.<ForestName>
+		 */
+		DEBUG1STATUS(ctx, "DNS SRV query, forest=%s", forest_name);
+
+		gc = select_gc(ctx, LDAP_SRV_HEAD GC_SRV_TAIL, forest_name);
+
+		/*
+		 * If we haven't already done site-specific discovery and the
+		 * discovered GC is not in our site, use the auto-discovered
+		 * site name to perform site-specific discovery now.
+		 */
+		if (!validate_site && is_valid(&ctx->site_name) &&
+		    (gc->flags & DS_CLOSEST_FLAG) == 0) {
 			/*
 			 * Lookup DNS SRV RR named:
-			 * _ldap._tcp.<siteName>._sites.gc.
-			 *	_msdcs.<ForestName>
+			 * _ldap._tcp.<siteName>._sites.gc._msdcs.<ForestName>
 			 */
+			char rr_name[DNS_MAX_NAME];
+			char *site_name = (char *)site_name_item->value;
+			ad_disc_ds_t *sgc;
+
+			DEBUG1STATUS(ctx, "Looking for GC in closer site");
 			DEBUG1STATUS(ctx, "DNS SRV query, forest=%s, site=%s",
 			    forest_name, site_name);
 			(void) snprintf(rr_name, sizeof (rr_name),
 			    LDAP_SRV_HEAD SITE_SRV_MIDDLE GC_SRV_TAIL,
 			    site_name);
-			DO_RES_NINIT(ctx);
-			cgc = srv_query(&ctx->res_state, rr_name,
-			    forest_name, NULL);
 
-			if (cgc == NULL) {
-				DEBUG1STATUS(ctx, "(no DNS response)");
-				goto try_global;
+			sgc = select_gc(ctx, rr_name, forest_name);
+			if (sgc != NULL) {
+				free(gc);
+				gc = sgc;
 			}
-			log_cds(ctx, cgc);
-
-			/*
-			 * Filter out unresponsive servers, and
-			 * save the domain info we get back.
-			 */
-			gc = ldap_ping(
-			    NULL,
-			    cgc,
-			    forest_name,
-			    DS_GC_FLAG);
-			srv_free(cgc);
-			cgc = NULL;
-
-			if (gc == NULL) {
-				DEBUG1STATUS(ctx, "(no LDAP response)");
-				goto try_global;
-			}
-			log_ds(ctx, gc);
-
-		update_site:
-			update_item(&ctx->site_global_catalog, gc,
-			    AD_STATE_AUTO, gc->ttl);
-			update_version(&ctx->site_global_catalog, PARAM1,
-			    forest_name_item);
-			update_version(&ctx->site_global_catalog, PARAM2,
-			    site_name_item);
 		}
-		return (&ctx->site_global_catalog);
 	}
 
-try_global:
+	if (gc == NULL)
+		return (NULL);
 
-	if (validate_global) {
-		if (!is_valid(&ctx->global_catalog) ||
-		    is_changed(&ctx->global_catalog, PARAM1,
-		    forest_name_item)) {
+update_gc:
+	update_item(&ctx->global_catalog, gc, AD_STATE_AUTO, gc->ttl);
+	update_version(&ctx->global_catalog, PARAM1, forest_name_item);
+	update_version(&ctx->global_catalog, PARAM2, site_name_item);
 
-			/*
-			 * See if our DC is also a GC.
-			 */
-			dc_item = validate_DomainController(ctx, req);
-			if (dc_item != NULL) {
-				ad_disc_ds_t *ds = dc_item->value;
-				if ((ds->flags & DS_GC_FLAG) != 0) {
-					DEBUG1STATUS(ctx,
-					    "DC is also a GC for %s",
-					    forest_name);
-					gc = ds_dup(ds);
-					if (gc != NULL) {
-						gc->port = GC_PORT;
-						goto update_global;
-					}
-				}
-			}
-
-			/*
-			 * Lookup DNS SRV RR named:
-			 * _ldap._tcp.gc._msdcs.<ForestName>
-			 */
-			DEBUG1STATUS(ctx, "DNS SRV query, forest=%s",
-			    forest_name);
-			DO_RES_NINIT(ctx);
-			cgc = srv_query(&ctx->res_state,
-			    LDAP_SRV_HEAD GC_SRV_TAIL,
-			    forest_name, NULL);
-
-			if (cgc == NULL) {
-				DEBUG1STATUS(ctx, "(no DNS response)");
-				return (NULL);
-			}
-			log_cds(ctx, cgc);
-
-			/*
-			 * Filter out unresponsive servers, and
-			 * save the domain info we get back.
-			 */
-			gc = ldap_ping(
-			    NULL,
-			    cgc,
-			    forest_name,
-			    DS_GC_FLAG);
-			srv_free(cgc);
-			cgc = NULL;
-
-			if (gc == NULL) {
-				DEBUG1STATUS(ctx, "(no LDAP response)");
-				return (NULL);
-			}
-			log_ds(ctx, gc);
-
-		update_global:
-			update_item(&ctx->global_catalog, gc,
-			    AD_STATE_AUTO, gc->ttl);
-			update_version(&ctx->global_catalog, PARAM1,
-			    forest_name_item);
-		}
-		return (&ctx->global_catalog);
-	}
-	return (NULL);
+	return (&ctx->global_catalog);
 }
 
 
@@ -2088,8 +2047,6 @@ ad_disc_get_TTL(ad_disc_t ctx)
 
 	expires = MIN_GT_ZERO(ctx->domain_controller.expires,
 	    ctx->global_catalog.expires);
-	expires = MIN_GT_ZERO(expires, ctx->site_domain_controller.expires);
-	expires = MIN_GT_ZERO(expires, ctx->site_global_catalog.expires);
 
 	if (expires == -1) {
 		return (-1);
