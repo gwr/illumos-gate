@@ -11,7 +11,7 @@
 
 /*
  * Copyright 2013-2021 Tintri by DDN, Inc. All rights reserved.
- * Copyright 2020-2023 RackTop Systems, Inc.
+ * Copyright 2020-2024 RackTop Systems, Inc.
  */
 
 /*
@@ -167,14 +167,16 @@ typedef struct smb2_neg_ctxs {
 #define	NEG_CTX_MAX_COUNT	(16)
 #define	NEG_CTX_MAX_DATALEN	(256)
 
-#define	STATUS_SMB_NO_PREAUTH_INEGRITY_HASH_OVERLAP	(0xC05D0000)
+#define	STATUS_SMB_NO_PREAUTH_INTEGRITY_HASH_OVERLAP	(0xC05D0000)
 
 #define	STATUS_PREAUTH_HASH_OVERLAP \
-    STATUS_SMB_NO_PREAUTH_INEGRITY_HASH_OVERLAP
+    STATUS_SMB_NO_PREAUTH_INTEGRITY_HASH_OVERLAP
 
 typedef struct smb2_arg_negotiate {
 	struct smb2_neg_ctxs	neg_in_ctxs;
 	struct smb2_neg_ctxs	neg_out_ctxs;
+	smb2_neg_ctx_t		neg_cur_ctx;
+	const char		*neg_err_rsn;
 	uint16_t		neg_dialect_cnt;
 	uint16_t		neg_dialects[SMB2_NEGOTIATE_MAX_DIALECTS];
 	uint16_t		neg_highest_dialect;
@@ -214,9 +216,9 @@ smb2_find_best_dialect(smb_session_t *s, uint16_t cl_versions[],
  * This function should be called only for dialect >= 0x311
  * Negotiate context list should contain exactly one
  * SMB2_PREAUTH_INTEGRITY_CAPS context.
- * Otherwise STATUS_INVALID_PARAMETER.
- * It should contain at least 1 hash algorith what server does support.
- * Otehrwise STATUS_SMB_NO_PREAUTH_INEGRITY_HASH_OVERLAP.
+ * Otherwise return STATUS_INVALID_PARAMETER.
+ * It should contain at least 1 supported hash algorithm.
+ * Otherwise return STATUS_SMB_NO_PREAUTH_INTEGRITY_HASH_OVERLAP.
  */
 static uint32_t
 smb31_decode_neg_ctxs(smb_request_t *sr)
@@ -227,6 +229,7 @@ smb31_decode_neg_ctxs(smb_request_t *sr)
 	smb2_encrypt_caps_t *encap = &neg_ctxs->encrypt_ctx.encrypt_caps;
 	smb2_sign_caps_t *sicap = &neg_ctxs->sign_ctx.sign_caps;
 	uint32_t status = 0;
+	int32_t ctx_next_off;
 	int32_t skip;
 	int found_preauth_ctx = 0;
 	int found_encrypt_ctx = 0;
@@ -237,72 +240,83 @@ smb31_decode_neg_ctxs(smb_request_t *sr)
 	/*
 	 * There should be exactly 1 SMB2_PREAUTH_INTEGRITY_CAPS negotiate ctx.
 	 * Everything else is optional, but no more than one of each type.
-	 * If there is no contexts or there are too many then stop parsing.
+	 * If there are no contexts or there are too many then stop parsing.
 	 */
 	cnt = neg_ctxs->count;
 	if (cnt < 1 || cnt > NEG_CTX_MAX_COUNT) {
 		status = NT_STATUS_INVALID_PARAMETER;
+		nego->neg_err_rsn = "Bad context count";
 		goto errout;
 	}
 
 	/*
-	 * Cannot proceed parsing if the first context isn't aligned by 8.
+	 * The first context MUST be 8-byte aligned.
 	 */
 	if (neg_ctxs->offset % 8 != 0) {
 		status = NT_STATUS_INVALID_PARAMETER;
+		nego->neg_err_rsn = "First context unaligned";
 		goto errout;
 	}
 
-	if ((skip = neg_ctxs->offset - sr->command.chain_offset) != 0 &&
-	    smb_mbc_decodef(&sr->command, "#.", skip) != 0) {
-		status = NT_STATUS_INVALID_PARAMETER;
-		goto errout;
-	}
+	ctx_next_off = neg_ctxs->offset;
 
 	/*
 	 * Parse negotiate contexts. Ignore non-decoding errors to fill
 	 * as much as possible data for dtrace probe.
 	 */
 	for (i = 0; i < cnt; i++) {
-		smb2_neg_ctx_t neg_ctx;
-		int32_t ctx_end_off;
-		int32_t ctx_next_off;
-
-		if (i > 0) {
-			if ((skip = ctx_next_off - ctx_end_off) != 0 &&
-			    smb_mbc_decodef(&sr->command, "#.", skip) != 0) {
-				status = NT_STATUS_INVALID_PARAMETER;
-				goto errout;
-			}
+		/*
+		 * Advance to the start of the context.
+		 * This skips alignment bytes and any bytes left undecoded
+		 * by the below switch case (errors, unsupported types).
+		 * skip < 0 means someone gave us a bad 'datalen' value.
+		 */
+		skip = ctx_next_off - sr->command.chain_offset;
+		if (skip < 0) {
+			status = NT_STATUS_INVALID_PARAMETER;
+			nego->neg_err_rsn = "skip < 0";
+			goto errout;
+		}
+		if (skip > 0 &&
+		    smb_mbc_decodef(&sr->command, "#.", skip) != 0) {
+			status = NT_STATUS_INVALID_PARAMETER;
+			nego->neg_err_rsn = "Failed to skip to context";
+			goto errout;
 		}
 
 		rc = smb_mbc_decodef(
 		    &sr->command, "ww4.",
-		    &neg_ctx.type,	/* w */
-		    &neg_ctx.datalen);	/* w */
+		    &nego->neg_cur_ctx.type,	/* w */
+		    &nego->neg_cur_ctx.datalen);	/* w */
+
+		DTRACE_PROBE2(new__ctx, smb_request_t *, sr,
+		    smb2_arg_negotiate_t *, nego);
+
 		if (rc != 0) {
 			status = NT_STATUS_INVALID_PARAMETER;
+			nego->neg_err_rsn = "Decoding header failed";
 			goto errout;
 		}
 
 		/*
 		 * We got something crazy
 		 */
-		if (neg_ctx.datalen > NEG_CTX_MAX_DATALEN) {
+		if (nego->neg_cur_ctx.datalen > NEG_CTX_MAX_DATALEN) {
 			status = NT_STATUS_INVALID_PARAMETER;
+			nego->neg_err_rsn = "Invalid context length";
 			goto errout;
 		}
 
-		ctx_end_off = sr->command.chain_offset + neg_ctx.datalen;
-		ctx_next_off = P2ROUNDUP(ctx_end_off, 8);
+		ctx_next_off = P2ROUNDUP(
+		    sr->command.chain_offset + nego->neg_cur_ctx.datalen, 8);
 
-		switch (neg_ctx.type) {
+		switch (nego->neg_cur_ctx.type) {
 		case SMB2_PREAUTH_INTEGRITY_CAPS:
-			memcpy(&neg_ctxs->preauth_ctx.neg_ctx, &neg_ctx,
-			    sizeof (neg_ctx));
+			neg_ctxs->preauth_ctx.neg_ctx = nego->neg_cur_ctx;
 
 			if (found_preauth_ctx++ != 0) {
 				status = NT_STATUS_INVALID_PARAMETER;
+				nego->neg_err_rsn = "Multiple preauth contexts";
 				continue;
 			}
 
@@ -315,6 +329,7 @@ smb31_decode_neg_ctxs(smb_request_t *sr)
 			if (rc != 0 || picap->picap_hash_count >
 			    MAX_HASHID_NUM) {
 				status = NT_STATUS_INVALID_PARAMETER;
+				nego->neg_err_rsn = "Bad preauth lengths";
 				goto errout;
 			}
 
@@ -327,6 +342,8 @@ smb31_decode_neg_ctxs(smb_request_t *sr)
 			    &picap->picap_hash_ids[0]);	/* w */
 			if (rc != 0) {
 				status = NT_STATUS_INVALID_PARAMETER;
+				nego->neg_err_rsn =
+				    "Failed to decode preauth hashes";
 				goto errout;
 			}
 
@@ -339,16 +356,18 @@ smb31_decode_neg_ctxs(smb_request_t *sr)
 			    &picap->picap_salt[0]);	/* w */
 			if (rc != 0) {
 				status = NT_STATUS_INVALID_PARAMETER;
+				nego->neg_err_rsn =
+				    "Failed to decode preauth salt";
 				goto errout;
 			}
 
 			break;
 		case SMB2_ENCRYPTION_CAPS:
-			memcpy(&neg_ctxs->encrypt_ctx.neg_ctx, &neg_ctx,
-			    sizeof (neg_ctx));
+			neg_ctxs->encrypt_ctx.neg_ctx = nego->neg_cur_ctx;
 
 			if (found_encrypt_ctx++ != 0) {
 				status = NT_STATUS_INVALID_PARAMETER;
+				nego->neg_err_rsn = "Multiple encrypt contexts";
 				continue;
 			}
 
@@ -361,6 +380,8 @@ smb31_decode_neg_ctxs(smb_request_t *sr)
 			if (rc != 0 || encap->encap_cipher_count >
 			    MAX_CIPHER_NUM) {
 				status = NT_STATUS_INVALID_PARAMETER;
+				nego->neg_err_rsn =
+				    "Bad encryption cipher count";
 				goto errout;
 			}
 
@@ -373,16 +394,18 @@ smb31_decode_neg_ctxs(smb_request_t *sr)
 			    &encap->encap_cipher_ids[0]);	/* w */
 			if (rc != 0) {
 				status = NT_STATUS_INVALID_PARAMETER;
+				nego->neg_err_rsn =
+				    "Failed to decode encryption ciphers";
 				goto errout;
 			}
 
 			break;
 		case SMB2_SIGNING_CAPS:
-			memcpy(&neg_ctxs->sign_ctx.neg_ctx, &neg_ctx,
-			    sizeof (neg_ctx));
+			neg_ctxs->sign_ctx.neg_ctx = nego->neg_cur_ctx;
 
 			if (found_signing_ctx++ != 0) {
 				status = NT_STATUS_INVALID_PARAMETER;
+				nego->neg_err_rsn = "Multiple signing contexts";
 				continue;
 			}
 
@@ -394,6 +417,8 @@ smb31_decode_neg_ctxs(smb_request_t *sr)
 			if (rc != 0 || sicap->sicap_alg_count >
 			    MAX_CIPHER_NUM || sicap->sicap_alg_count == 0) {
 				status = NT_STATUS_INVALID_PARAMETER;
+				nego->neg_err_rsn =
+				    "Bad signing algorithm count";
 				goto errout;
 			}
 
@@ -406,16 +431,22 @@ smb31_decode_neg_ctxs(smb_request_t *sr)
 			    &sicap->sicap_alg_ids[0]);	/* w */
 			if (rc != 0) {
 				status = NT_STATUS_INVALID_PARAMETER;
+				nego->neg_err_rsn =
+				    "Failed to decode signing algorithms";
 				goto errout;
 			}
 
 			break;
 		default:
-			;
+			DTRACE_PROBE2(unknown, smb_request_t *, sr,
+			    smb2_arg_negotiate_t *, nego);
+			break;
 		}
 	}
 
 errout:
+	DTRACE_PROBE3(decode, smb_request_t *, sr, smb2_arg_negotiate_t *, nego,
+	    uint32_t, status);
 	return (status);
 }
 
