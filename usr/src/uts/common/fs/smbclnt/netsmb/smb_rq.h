@@ -36,6 +36,7 @@
  * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
  * Portions Copyright (C) 2001 - 2012 Apple Inc. All rights reserved.
  * Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2024 RackTop Systems, Inc.
  */
 
 #ifndef _NETSMB_SMB_RQ_H_

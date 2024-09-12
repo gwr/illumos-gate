@@ -11,7 +11,7 @@
 
 /*
  * Copyright 2017-2021 Tintri by DDN, Inc. All rights reserved.
- * Copyright 2022 RackTop Systems, Inc.
+ * Copyright 2022-2024 RackTop Systems, Inc.
  */
 
 #ifndef _NSMB_KCRYPT_H_

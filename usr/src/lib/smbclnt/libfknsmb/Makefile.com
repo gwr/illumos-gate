@@ -23,8 +23,8 @@
 # Use is subject to license terms.
 #
 # Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
-#
 # Copyright 2019, Joyent, Inc.
+# Copyright 2024 RackTop Systems, Inc.
 #
 
 LIBRARY =	libfknsmb.a
