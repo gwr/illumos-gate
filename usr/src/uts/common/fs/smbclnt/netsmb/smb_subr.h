@@ -186,6 +186,9 @@ void nsmb_crypt_init_mech(struct smb_vc *);
 void nsmb_crypt_free_mech(struct smb_vc *);
 void nsmb_crypt_init_keys(struct smb_vc *);
 
+int smb3_msg_encrypt(struct smb_vc *vcp, mblk_t **mpp);
+int smb3_msg_decrypt(struct smb_vc *vcp, mblk_t **mpp);
+
 /*
  * SMB protocol level functions
  */

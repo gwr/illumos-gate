@@ -26,7 +26,7 @@
  * Might want to later factor these out from client and server,
  * but that severely amplifies the test burden when working on
  * either one, so keeping them separate for now.  Do try to keep
- * the structs consistent between this and smbsrv.
+ * the *_kcrypt.h structs consistent between this and smbsrv.
  */
 
 #ifdef	_KERNEL

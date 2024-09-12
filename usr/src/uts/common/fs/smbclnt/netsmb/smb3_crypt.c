@@ -97,7 +97,7 @@ nsmb_crypt_init_keys(struct smb_vc *vcp)
 	 * request that requires (en/de)cryption can't be (en/de)crypted.
 	 * Also don't bother initializing if we don't have a mechanism. XXX
 	 */
-	if (vcp->vc_mackeylen <= 0)
+	if (vcp->vc_ssnkeylen <= 0)
 		return;
 
 	/*
@@ -134,10 +134,9 @@ nsmb_crypt_init_keys(struct smb_vc *vcp)
  * Any non-zero return is an error (values not used).
  */
 int
-smb3_rq_encrypt(struct smb_rq *rqp, mblk_t **mpp)
+smb3_msg_encrypt(struct smb_vc *vcp, mblk_t **mpp)
 {
 	smb_enc_ctx_t ctx;
-	struct smb_vc *vcp = rqp->sr_vc;
 	mblk_t *body, *thdr, *lastm;
 	struct mbchain	mbp_store;
 	struct mbchain *mbp = &mbp_store;

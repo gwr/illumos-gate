@@ -46,7 +46,7 @@ find_mech(smb_crypto_mech_t *mech, const char *name)
 
 	t = crypto_mech2id(name);
 	if (t == CRYPTO_MECH_INVALID) {
-		cmn_err(CE_NOTE, "smb: no kcf mech: %s", name);
+		cmn_err(CE_NOTE, "nsmb: no kcf mech: %s", name);
 		return (-1);
 	}
 	mech->cm_type = t;
@@ -178,7 +178,7 @@ nsmb_encrypt_mblks(smb_enc_ctx_t *ctxp, mblk_t *mp, size_t clearlen)
 	rv = crypto_encrypt(&ctxp->mech, &in_cd,
 	    &ctxp->ckey, tmpl, &out_cd, NULL);
 	if (rv != CRYPTO_SUCCESS) {
-		cmn_err(CE_WARN, "crypto_encrypt failed: 0x%x", rv);
+		cmn_err(CE_WARN, "nsmb: crypto_encrypt failed: 0x%x", rv);
 		return (-1);
 	}
 
@@ -217,7 +217,7 @@ nsmb_decrypt_mblks(smb_enc_ctx_t *ctxp, mblk_t *mp, size_t cipherlen)
 	rv = crypto_decrypt(&ctxp->mech, &in_cd,
 	    &ctxp->ckey, tmpl, &out_cd, NULL);
 	if (rv != CRYPTO_SUCCESS) {
-		cmn_err(CE_WARN, "crypto_encrypt failed: 0x%x", rv);
+		cmn_err(CE_WARN, "nsmb: crypto_decrypt failed: 0x%x", rv);
 		return (-1);
 	}
 

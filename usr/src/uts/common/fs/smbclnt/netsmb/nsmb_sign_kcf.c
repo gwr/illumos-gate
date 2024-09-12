@@ -20,7 +20,7 @@
  *
  * There are two implementations of these functions:
  * This one (for kernel) and another for user space:
- * See: lib/smbclnt/libfksmbcrypt/common/fksmb_sign_pkcs.c
+ * See: lib/smbclnt/libfknsmb/common/fksmb_sign_pkcs.c
  */
 
 #include <sys/types.h>
@@ -42,7 +42,7 @@ find_mech(smb_crypto_mech_t *mech, const char *name)
 
 	t = crypto_mech2id(name);
 	if (t == CRYPTO_MECH_INVALID) {
-		cmn_err(CE_NOTE, "smb: no kcf mech: %s", name);
+		cmn_err(CE_NOTE, "nsmb: no kcf mech: %s", name);
 		return (-1);
 	}
 	mech->cm_type = t;

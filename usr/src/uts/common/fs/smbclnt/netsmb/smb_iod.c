@@ -393,7 +393,7 @@ smb2_iod_sendrq(struct smb_rq *rqp)
 	}
 
 	if (encrypt) {
-		error = smb3_rq_encrypt(rqp, &top_m);
+		error = smb3_msg_encrypt(vcp, &top_m);
 		if (error != 0)
 			goto fatal;
 	}
