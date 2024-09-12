@@ -19,7 +19,7 @@
  *
  * There are two implementations of these functions:
  * This one (for user space) and another for kernel.
- * See: uts/common/fs/smbcrypt/smb_sign_kcf.c
+ * See: uts/common/fs/smbclnt/netsmb/smb_sign_kcf.c
  *
  * Contrary to what one might assume from the file name,
  * there should be NO SMB implementation knowledge here

@@ -20,7 +20,7 @@
  *
  * There are two implementations of these functions:
  * This one (for kernel) and another for user space:
- * See: lib/smbclnt/libfksmbcrypt/common/fksmb_encrypt_pkcs.c
+ * See: lib/smbclnt/libfknsmb/common/fksmb_crypt_pkcs.c
  *
  * Contrary to what one might assume from the file name,
  * there should be NO SMB implementation knowledge here
