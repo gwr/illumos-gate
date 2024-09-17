@@ -1,0 +1,168 @@
+#
+# This file and its contents are supplied under the terms of the
+# Common Development and Distribution License ("CDDL"), version 1.0.
+# You may only use this file in accordance with the terms of version
+# 1.0 of the CDDL.
+#
+# A full copy of the text of the CDDL should have accompanied this
+# source.  A copy of the CDDL is also available via the Internet at
+# http://www.illumos.org/license/CDDL.
+#
+#
+# Copyright 2021 Tintri by DDN, Inc. All rights reserved.
+# Copyright 2022-2024 RackTop Systems, Inc.
+#
+
+#
+# smbtorture tests we choose to skip, either because the
+# tests hang, or we disagree with the test, or whatever.
+#
+
+smb2.aio_delay
+smb2.bench-oplock
+smb2.change_notify_disabled
+smb2.check-sharemode
+smb2.hold-sharemode
+smb2.hold-oplock
+smb2.maxfid
+smb2.multichannel
+smb2.notify.invalid-reauth
+smb2.replay
+smb2.scan
+smb2.session.reauth*
+smb2.timestamps
+
+##################################################################
+# For our "robot" test automation, suppress all the known failures
+# Add this line to the end of your smbsrv-tests config file:
+# export excl_smb2=$SMBSRV_TESTS/include/smbtor-excl-smb2-nofail.txt
+
+# These tests have problems
+smb2.acls
+
+# create.c:160) Incorrect status NT_STATUS_OK
+# - should be NT_STATUS_INVALID_PARAMETER
+smb2.create.gentest
+
+# test problems
+smb2.compound.related2
+smb2.compound.related3
+smb2.compound.invalid3
+smb2.compound.invalid4
+smb2.compound.interim2
+smb2.compound.compound-padding
+
+# create.c:636 condition violated: smb2_util_verify_sd...
+# SD has inheriated stuff that's not expected.
+smb2.create.aclfile
+smb2.create.acldir
+smb2.create.nulldacl
+
+# test assumptions invalid
+smb2.credits.session_setup_credits_granted
+smb2.credits.single_req_credits_granted
+smb2.credits.skipped_mid
+
+# times etc not exactly as test expects
+smb2.dir.one
+smb2.dir.many
+
+# unsupported "hide dot files"
+smb2.dosmode.dosmode
+
+# Test problems
+smb2.durable-open.delete_on_close1
+smb2.durable-open.lease
+
+# returned timeout differs (maybe should fix)
+smb2.durable-v2-open.create-blob
+smb2.durable-v2-open.reopen1
+smb2.durable-v2-open.reopen1a
+smb2.durable-v2-open.reopen1a-lease
+smb2.durable-v2-open.reopen2
+smb2.durable-v2-open.reopen2b
+smb2.durable-v2-open.reopen2-lease
+smb2.durable-v2-open.reopen2-lease-v2
+smb2.durable-v2-open.app-instance
+
+# fails because the test requires EAs (not supported)
+smb2.getinfo.complex
+
+# fails because it requests object IDs (not supported)
+smb2.getinfo.fsinfo
+
+# Maybe our bug (?) or a test bug: getinfo.c:528:
+# status was STATUS_BUFFER_OVERFLOW, expected NT_STATUS_INFO_LENGTH_MISMATCH:
+#  Wrong error code small buffer? bug?
+smb2.getinfo.qfs_buffercheck
+
+# fails because the test requires EAs (not supported)
+smb2.getinfo.qfile_buffercheck
+
+# fails because name has :$DATA appended (bug?)
+smb2.getinfo.normalized
+
+# test problem
+smb2.ioctl.copy_chunk_bad_access
+smb2.ioctl.copy_chunk_across_shares
+smb2.ioctl.copy_chunk_across_shares3
+smb2.ioctl.compress_notsup_get
+smb2.ioctl.compress_notsup_set
+
+# requires a CA share?
+smb2.ioctl.resiliency
+
+# this test has races. Sometimes passes, sometimes fails with:
+# lease.c:4695: Lease break wrong status NT_STATUS_OBJECT_NAME_NOT_FOUND
+smb2.lease.close_break
+
+# lock.c:3019: status was NT_STATUS_OK, expected NT_STATUS_LOCK_NOT_GRANTED
+# We don't fully support replay yet.
+smb2.lock.replay
+
+# Test problem (number of events)
+# and limitations on smb notify sub-tree etc.
+# Also notify.mask which runs a long time.
+smb2.notify.valid-req
+smb2.notify.dir
+smb2.notify.double
+smb2.notify.mask*
+smb2.notify.tree
+smb2.notify.rec
+smb2.notify-inotify
+
+# test problems and not supported features
+smb2.oplock.exclusive6
+smb2.oplock.batch19
+smb2.oplock.batch20
+smb2.kernel-oplocks.*
+
+# read.c:63: status was NT_STATUS_OK, expected NT_STATUS_END_OF_FILE
+smb2.read.eof
+
+# read.c:277: status was NT_STATUS_FILE_IS_A_DIRECTORY,
+#  expected NT_STATUS_INVALID_DEVICE_REQUEST
+smb2.read.dir
+
+# read.c:356: status was NT_STATUS_ACCESS_DENIED, expected NT_STATUS_OK
+smb2.read.access
+
+# obscure share mode cases
+smb2.rename.share_delete_and_delete_access
+smb2.rename.no_share_delete_but_delete_access
+smb2.rename.no_share_delete_no_delete_access
+
+# rename.c:1016) Incorrect status NT_STATUS_OBJECT_NAME_COLLISION
+# - should be NT_STATUS_ACCESS_DENIED (fix?)
+smb2.rename.rename_dir_openfile
+
+# disagreement about nlink return
+smb2.setinfo.setinfo
+
+# obscure cases we don't care about
+smb2.streams.dir
+smb2.streams.names2
+smb2.streams.rename
+smb2.streams.rename2
+smb2.streams.attributes
+smb2.streams.delete
