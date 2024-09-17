@@ -13,13 +13,14 @@
 
 #
 # Copyright 2021 Tintri by DDN, Inc. All rights reserved.
+# Copyright 2024 RackTop Systems, Inc.
 #
 
 export SMBSRV_TESTS="/opt/smbsrv-tests"
 export SMBTOR="/usr/bin/smbtorture"
 
 runsmbtor=$SMBSRV_TESTS/bin/run_smbtorture
-excl_file=$SMBSRV_TESTS/include/smbtor-excl-rpc.txt
+excl_rpc=$SMBSRV_TESTS/include/smbtor-excl-rpc.txt
 
 cfgfile=${CFGFILE:-$SMBSRV_TESTS/include/default.cfg}
 outdir=${OUTDIR:-/var/tmp/test_results/smbsrv-tests}
@@ -76,7 +77,7 @@ $SMBTOR -U "$SMBT_USER%${SMBT_PASS}" //$SMBT_HOST/IPC\$	\
     fail "Cannot connect to //$SMBT_HOST/IPC\$"
 
 echo "Running smbtorture/RPC tests with //$SMBT_HOST/IPC\$"
-$runsmbtor $match -e $excl_file -o $logfile $timeout \
+$runsmbtor $match -e $excl_rpc -o $logfile $timeout \
     "$SMBT_HOST" "IPC\$" "$SMBT_USER" "${SMBT_PASS}" |
      tee $outfile
 

@@ -13,13 +13,14 @@
 
 #
 # Copyright 2021 Tintri by DDN, Inc. All rights reserved.
+# Copyright 2024 RackTop Systems, Inc.
 #
 
 export SMBSRV_TESTS="/opt/smbsrv-tests"
 export SMBTOR="/usr/bin/smbtorture"
 
 runsmbtor=$SMBSRV_TESTS/bin/run_smbtorture
-excl_file=$SMBSRV_TESTS/include/smbtor-excl-smb2.txt
+excl_smb2=$SMBSRV_TESTS/include/smbtor-excl-smb2.txt
 
 cfgfile=${CFGFILE:-$SMBSRV_TESTS/include/default.cfg}
 outdir=${OUTDIR:-/var/tmp/test_results/smbsrv-tests}
@@ -76,7 +77,7 @@ $SMBTOR -U "$SMBT_USER%${SMBT_PASS}" //$SMBT_HOST/$SMBT_SHARE smb2.dir.find \
     fail "Cannot connect to //$SMBT_HOST/$SMBT_SHARE"
 
 echo "Running smbtorture/smb2 tests with //$SMBT_HOST/$SMBT_SHARE"
-$runsmbtor $match -e $excl_file -o $logfile $timeout \
+$runsmbtor $match -e $excl_smb2 -o $logfile $timeout \
     "$SMBT_HOST" "$SMBT_SHARE" "$SMBT_USER" "${SMBT_PASS}" |
      tee $outfile
 
