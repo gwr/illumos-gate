@@ -69,12 +69,6 @@ typedef enum {
 	LM_20_TOKEN
 } field_5ex_t;
 
-struct _berelement {
-	char	*ber_buf;
-	char	*ber_ptr;
-	char	*ber_end;
-};
-
 extern int ldap_put_filter(BerElement *ber, char *);
 static void send_to_cds(ad_disc_cds_t *, char *, size_t, int);
 static ad_disc_cds_t *find_cds_by_addr(ad_disc_cds_t *, struct sockaddr_in6 *);
@@ -414,6 +408,8 @@ out:
 	return (rc);
 }
 
+#define	PING_MSG_SIZE	1024	/* like BER's EXTBUFSIZ */
+
 /*
  * Filter out unresponsive servers, and save the domain info
  * returned by the "LDAP ping" in the returned object.
@@ -433,14 +429,17 @@ ldap_ping(ad_disc_t ctx, ad_disc_cds_t *dclist, char *dname, int reqflags)
 	ad_disc_cds_t *recv_ds = NULL;
 	ad_disc_ds_t *ret_ds = NULL;
 	BerElement *req = NULL;
-	BerElement *res = NULL;
-	struct _berelement *be, *rbe;
-	size_t be_len, rbe_len;
+	BerValue *bv = NULL, rbv;
+	size_t rbv_len = PING_MSG_SIZE;
 	int fd = -1;
 	int tries = 3;
 	int waitsec;
 	int r;
 	uint16_t msgid;
+
+	rbv.bv_val = malloc(rbv_len);
+	if (rbv.bv_val == NULL)
+		goto fail;
 
 	/* One plus a null entry. */
 	ret_ds = calloc(2, sizeof (ad_disc_ds_t));
@@ -469,13 +468,12 @@ ldap_ping(ad_disc_t ctx, ad_disc_cds_t *dclist, char *dname, int reqflags)
 	    NETLOGON_NT_VERSION_5EX, msgid);
 	if (req == NULL)
 		goto fail;
-	be = (struct _berelement *)req;
-	be_len = be->ber_end - be->ber_buf;
 
-	if ((res = ber_alloc()) == NULL)
+	r = ber_flatten(req, &bv);
+	ber_free(req, 1);
+
+	if (r != 0)
 		goto fail;
-	rbe = (struct _berelement *)res;
-	rbe_len = rbe->ber_end - rbe->ber_buf;
 
 	pingchk.fd = fd;
 	pingchk.events = POLLIN;
@@ -490,7 +488,7 @@ try_again:
 		 * If there is another candidate, send to it.
 		 */
 		if (send_ds->cds_ds.host[0] != '\0') {
-			send_to_cds(send_ds, be->ber_buf, be_len, fd);
+			send_to_cds(send_ds, bv->bv_val, bv->bv_len, fd);
 			send_ds++;
 
 			/*
@@ -516,15 +514,24 @@ try_again:
 			/*
 			 * Got a response.
 			 */
+			BerElement *res;
 			(void) memset(&addr6, 0, addrlen = sizeof (addr6));
-			r = recvfrom(fd, rbe->ber_buf, rbe_len, 0,
+			r = recvfrom(fd, rbv.bv_val, rbv_len, 0,
 			    (struct sockaddr *)&addr6, &addrlen);
+
+			if (r <= 0)
+				continue;
 
 			recv_ds = find_cds_by_addr(dclist, &addr6);
 			if (recv_ds == NULL)
 				continue;
 
+			rbv.bv_len = r;
+			if ((res = ber_init(&rbv)) == NULL)
+				goto fail;
+
 			(void) cldap_parse(ctx, recv_ds, res);
+			ber_free(res, 1);
 			if ((recv_ds->cds_ds.flags & reqflags) != reqflags) {
 				logger(LOG_ERR, "Skip %s "
 				    "due to flags 0x%X",
@@ -548,14 +555,14 @@ try_again:
 
 	(void) memcpy(ret_ds, recv_ds, sizeof (*ret_ds));
 
-	ber_free(res, 1);
-	ber_free(req, 1);
+	free(rbv.bv_val);
+	ber_bvfree(bv);
 	(void) close(fd);
 	return (ret_ds);
 
 fail:
-	ber_free(res, 1);
-	ber_free(req, 1);
+	free(rbv.bv_val);
+	ber_bvfree(bv);
 	(void) close(fd);
 	free(ret_ds);
 	return (NULL);
