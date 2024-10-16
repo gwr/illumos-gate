@@ -23,6 +23,7 @@
  * Use is subject to license terms.
  *
  * Copyright 2013-2021 Tintri by DDN, Inc. All rights reserved.
+ * Copyright 2024 RackTop Systems, Inc.
  */
 
 #ifndef _SMBSRV_SMB_FSOPS_H
@@ -127,13 +128,15 @@ void smb_fsop_unshrlock(cred_t *, smb_node_t *, uint32_t);
 int smb_fsop_frlock(smb_node_t *, smb_lock_t *, boolean_t, cred_t *);
 
 /*
- * Lookup-related flags
+ * FSOP flags
  *
  * SMB_FOLLOW_LINKS	Follow symbolic links.
  * SMB_IGNORE_CASE	Perform case-insensitive lookup.
  * SMB_CATIA		Perform CATIA character substitution.
  * SMB_ABE		Perform Access based enumeration/lookup.
  * SMB_CASE_SENSITIVE	Don't set SMB_IGNORE_CASE based on tree.
+ * SMB_EDIRENT		Use EDIRENTs for READDIR (V_RDDIR_ENTFLAGS)
+ * SMB_NOACLCHECK	Ask FS to avoid ACL checks (handle semantics)
  */
 
 #define	SMB_FOLLOW_LINKS	0x00000001
@@ -142,6 +145,7 @@ int smb_fsop_frlock(smb_node_t *, smb_lock_t *, boolean_t, cred_t *);
 #define	SMB_ABE			0x00000008
 #define	SMB_CASE_SENSITIVE	0x00000010
 #define	SMB_EDIRENT		0x00000020
+#define	SMB_NOACLCHECK		0x00000040
 
 /*
  * Increased MAXPATHLEN for SMB.  Essentially, we want to allow a

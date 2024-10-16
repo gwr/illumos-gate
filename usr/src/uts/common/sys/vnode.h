@@ -1518,6 +1518,13 @@ typedef enum {
 #define	ATTR_NOACLCHECK	0x20	/* Don't check ACL when checking permissions */
 #define	ATTR_TRIGGER	0x40	/* Mount first if vnode is a trigger mount */
 #define	ATTR_NOIMPLICIT	0x80	/* Disable any implicit owner rights */
+
+/*
+ * Flags to VOP_REMOVE.
+ * 0x01-0x10 are unused.
+ */
+#define	REMOVE_NOACLCHECK	0x20 /* Don't check ACL when checking perms */
+
 /*
  * Generally useful macros.
  */

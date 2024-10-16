@@ -2703,7 +2703,7 @@ int zfs_write_implies_delete_child = 1;
  * zfs_write_implies_delete_child
  */
 int
-zfs_zaccess_delete(znode_t *dzp, znode_t *zp, cred_t *cr)
+zfs_zaccess_delete(znode_t *dzp, znode_t *zp, cred_t *cr, boolean_t skipaclchk)
 {
 	uint32_t wanted_dirperms;
 	uint32_t dzp_working_mode = 0;
@@ -2730,7 +2730,7 @@ zfs_zaccess_delete(znode_t *dzp, znode_t *zp, cred_t *cr)
 	 * (This is part of why we're checking the target first.)
 	 */
 	zp_error = zfs_zaccess_common(zp, ACE_DELETE, &zp_working_mode,
-	    &zpcheck_privs, B_FALSE, cr);
+	    &zpcheck_privs, skipaclchk, cr);
 	if (zp_error == EACCES) {
 		/* We hit a DENY ACE. */
 		if (!zpcheck_privs)
@@ -2855,14 +2855,14 @@ zfs_zaccess_rename(znode_t *sdzp, znode_t *szp, znode_t *tdzp,
 	 * If that succeeds then check for add_file/add_subdir permissions
 	 */
 
-	if (error = zfs_zaccess_delete(sdzp, szp, cr))
+	if (error = zfs_zaccess_delete(sdzp, szp, cr, B_FALSE))
 		return (error);
 
 	/*
 	 * If we have a tzp, see if we can delete it?
 	 */
 	if (tzp) {
-		if (error = zfs_zaccess_delete(tdzp, tzp, cr))
+		if (error = zfs_zaccess_delete(tdzp, tzp, cr, B_FALSE))
 			return (error);
 	}
 
