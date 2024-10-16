@@ -21,7 +21,7 @@
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2020 Tintri by DDN, Inc. All rights reserved.
- * Copyright 2023 RackTop Systems, Inc.
+ * Copyright 2023-2024 RackTop Systems, Inc.
  */
 
 #ifndef	_SYS_FS_ZFS_ACL_H
@@ -219,7 +219,7 @@ extern int zfs_zaccess_rwx(struct znode *, mode_t, int, cred_t *);
 extern int zfs_zaccess_unix(struct znode *, mode_t, cred_t *);
 extern int zfs_acl_access(struct znode *, int, cred_t *);
 int zfs_acl_chmod_setattr(struct znode *, zfs_acl_t **, uint64_t);
-int zfs_zaccess_delete(struct znode *, struct znode *, cred_t *);
+int zfs_zaccess_delete(struct znode *, struct znode *, cred_t *, boolean_t);
 int zfs_zaccess_rename(struct znode *, struct znode *,
     struct znode *, struct znode *, cred_t *cr);
 void zfs_acl_free(zfs_acl_t *);

@@ -21,7 +21,7 @@
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2013-2021 Tintri by DDN, Inc. All rights reserved.
- * Copyright 2023 RackTop Systems, Inc.
+ * Copyright 2022-2024 RackTop Systems, Inc.
  */
 
 #include <sys/types.h>
@@ -863,6 +863,9 @@ smb_vop_remove(vnode_t *dvp, char *name, int flags, cred_t *cr)
 	if (flags & SMB_IGNORE_CASE)
 		option_flags = FIGNORECASE;
 
+	if (flags & SMB_NOACLCHECK)
+		option_flags |= REMOVE_NOACLCHECK;
+
 	if (flags & SMB_CATIA)
 		np = smb_vop_catia_v5tov4(name, namebuf, sizeof (namebuf));
 
@@ -1002,6 +1005,9 @@ smb_vop_rmdir(vnode_t *dvp, char *name, int flags, cred_t *cr)
 
 	if (flags & SMB_IGNORE_CASE)
 		option_flags = FIGNORECASE;
+
+	if (flags & SMB_NOACLCHECK)
+		option_flags |= REMOVE_NOACLCHECK;
 
 	if (flags & SMB_CATIA)
 		np = smb_vop_catia_v5tov4(name, namebuf, sizeof (namebuf));

@@ -1848,6 +1848,7 @@ zfs_remove(vnode_t *dvp, char *name, cred_t *cr, caller_context_t *ct,
 	int		error;
 	int		zflg = ZEXISTS;
 	boolean_t	waited = B_FALSE;
+	boolean_t	skipaclchk = ((flags & REMOVE_NOACLCHECK) != 0);
 
 	ZFS_ENTER(zfsvfs);
 	ZFS_VERIFY_ZP(dzp);
@@ -1859,6 +1860,7 @@ zfs_remove(vnode_t *dvp, char *name, cred_t *cr, caller_context_t *ct,
 		realnmp = &realnm;
 	}
 
+	flags &= ~REMOVE_NOACLCHECK;
 top:
 	xattr_obj = 0;
 	xzp = NULL;
@@ -1875,7 +1877,7 @@ top:
 
 	vp = ZTOV(zp);
 
-	if (error = zfs_zaccess_delete(dzp, zp, cr)) {
+	if (error = zfs_zaccess_delete(dzp, zp, cr, skipaclchk)) {
 		goto out;
 	}
 
@@ -2259,6 +2261,7 @@ zfs_rmdir(vnode_t *dvp, char *name, vnode_t *cwd, cred_t *cr,
 	int		error;
 	int		zflg = ZEXISTS;
 	boolean_t	waited = B_FALSE;
+	boolean_t	skipaclchk = ((flags & REMOVE_NOACLCHECK) != 0);
 
 	ZFS_ENTER(zfsvfs);
 	ZFS_VERIFY_ZP(dzp);
@@ -2266,6 +2269,8 @@ zfs_rmdir(vnode_t *dvp, char *name, vnode_t *cwd, cred_t *cr,
 
 	if (flags & FIGNORECASE)
 		zflg |= ZCILOOK;
+
+	flags &= ~REMOVE_NOACLCHECK;
 top:
 	zp = NULL;
 
@@ -2280,7 +2285,7 @@ top:
 
 	vp = ZTOV(zp);
 
-	if (error = zfs_zaccess_delete(dzp, zp, cr)) {
+	if (error = zfs_zaccess_delete(dzp, zp, cr, skipaclchk)) {
 		goto out;
 	}
 

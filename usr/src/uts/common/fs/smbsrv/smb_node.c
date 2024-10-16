@@ -21,7 +21,7 @@
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2020 Tintri by DDN, Inc. All rights reserved.
- * Copyright 2022-2023 RackTop Systems, Inc.
+ * Copyright 2022-2024 RackTop Systems, Inc.
  */
 /*
  * SMB Node State Machine
@@ -558,7 +558,7 @@ smb_node_delete_on_close(smb_node_t *node)
 
 	node->flags &= ~NODE_FLAGS_DELETE_ON_CLOSE;
 	node->flags |= NODE_FLAGS_DELETE_COMMITTED;
-	flags = node->n_delete_on_close_flags;
+	flags = node->n_delete_on_close_flags | SMB_NOACLCHECK;
 	ASSERT(node->od_name != NULL);
 
 	if (smb_node_is_dir(node))
