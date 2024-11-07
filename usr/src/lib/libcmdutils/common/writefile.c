@@ -197,6 +197,10 @@ writefile(int fi, int fo, const char *infile, const char *outfile,
 		for (;;) {
 			n = read(fi, buf, sizeof (buf));
 			if (n == 0) {
+				if (srcbuf != NULL)
+					free(srcbuf);
+				if (targbuf != NULL)
+					free(targbuf);
 				return (0);
 			} else if (n < 0) {
 				(void) close(fi);
