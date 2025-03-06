@@ -30,6 +30,7 @@
  * Copyright 2017 Joyent, Inc.
  * Copyright 2017 RackTop Systems.
  * Copyright 2018 OmniOS Community Edition (OmniOSce) Association.
+ * Copyright 2022-2025 RackTop Systems, Inc.
  */
 
 /*
@@ -1097,6 +1098,50 @@ int
 zfs_unshareall_bypath(zfs_handle_t *zhp, const char *mountpoint)
 {
 	return (zfs_unshare_proto(zhp, mountpoint, share_all_proto));
+}
+
+/*
+ * Delete (purge) all files under .zfs/shares
+ * Called from changelist_postfix() after setting sharesmb=off
+ */
+int
+zfs_unshare_purge_smb(zfs_handle_t *zhp)
+{
+	struct mnttab entry;
+	libzfs_handle_t *hdl = zhp->zfs_hdl;
+	char *mntpt = NULL;
+	const char *dsname;
+	int rc;
+
+	dsname = zfs_get_name(zhp);
+	rc = libzfs_mnttab_find(hdl, dsname, &entry);
+	if (rc != 0) {
+		(void) zfs_error_fmt(hdl, EZFS_UNSHARESMBFAILED,
+		    dgettext(TEXT_DOMAIN,
+		    "error unsharing '%s' (not mounted)"), dsname);
+		return (-1);
+	}
+	mntpt = zfs_strdup(hdl, entry.mnt_mountp);
+
+	if (zfs_smb_acl_purge(hdl, (char *) dsname, mntpt) != 0)
+		rc = errno;
+
+	/*
+	 * Could also delete the SMB quota dir & file, but
+	 * that's harmless, and visible in the share root
+	 * in case the admin wants to remove it by hand.
+	 */
+
+	free(mntpt);
+
+	if (rc != 0 && rc != ENOENT) {
+		(void) zfs_error_fmt(hdl, EZFS_UNSHARESMBFAILED,
+		    dgettext(TEXT_DOMAIN,
+		    "error unsharing '%s' (%s)"), dsname, strerror(rc));
+		return (-1);
+	}
+
+	return (0);
 }
 
 /*

@@ -28,6 +28,7 @@
  * Copyright (c) 2014 Integros [integros.com]
  * Copyright 2016 Nexenta Systems, Inc.
  * Copyright (c) 2017 Datto Inc.
+ * Copyright 2023-2025 RackTop Systems, Inc.
  */
 
 #ifndef	_LIBZFS_H
@@ -795,6 +796,7 @@ extern int zfs_share_smb(zfs_handle_t *);
 extern int zfs_shareall(zfs_handle_t *);
 extern int zfs_unshare_nfs(zfs_handle_t *, const char *);
 extern int zfs_unshare_smb(zfs_handle_t *, const char *);
+extern int zfs_unshare_purge_smb(zfs_handle_t *);
 extern int zfs_unshareall_nfs(zfs_handle_t *);
 extern int zfs_unshareall_smb(zfs_handle_t *);
 extern int zfs_unshareall_bypath(zfs_handle_t *, const char *);
