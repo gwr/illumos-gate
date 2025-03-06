@@ -50,6 +50,9 @@
 #include <sys/cityhash.h>
 #include <sys/dsl_crypt.h>
 #include <sys/stdbool.h>
+#ifdef _KERNEL
+#include <sys/vmsystm.h>
+#endif
 
 /*
  * ==========================================================================
@@ -236,10 +239,16 @@ void *
 zio_buf_alloc(size_t size)
 {
 	size_t c = (size - 1) >> SPA_MINBLOCKSHIFT;
+	int kmflag = KM_SLEEP;
+
+#ifdef _KERNEL
+	if (NOMEMWAIT())
+		kmflag |= KM_PUSHPAGE;
+#endif
 
 	VERIFY3U(c, <, SPA_MAXBLOCKSIZE >> SPA_MINBLOCKSHIFT);
 
-	return (kmem_cache_alloc(zio_buf_cache[c], KM_PUSHPAGE));
+	return (kmem_cache_alloc(zio_buf_cache[c], kmflag));
 }
 
 /*
@@ -252,10 +261,16 @@ void *
 zio_data_buf_alloc(size_t size)
 {
 	size_t c = (size - 1) >> SPA_MINBLOCKSHIFT;
+	int kmflag = KM_SLEEP;
+
+#ifdef _KERNEL
+	if (NOMEMWAIT())
+		kmflag |= KM_PUSHPAGE;
+#endif
 
 	VERIFY3U(c, <, SPA_MAXBLOCKSIZE >> SPA_MINBLOCKSHIFT);
 
-	return (kmem_cache_alloc(zio_data_buf_cache[c], KM_PUSHPAGE));
+	return (kmem_cache_alloc(zio_data_buf_cache[c], kmflag));
 }
 
 void
@@ -707,6 +722,18 @@ zio_create(zio_t *pio, spa_t *spa, uint64_t txg, const blkptr_t *bp,
 	ASSERT(vd || stage == ZIO_STAGE_OPEN);
 
 	IMPLY(lsize != psize, (flags & ZIO_FLAG_RAW_COMPRESS) != 0);
+
+	/*
+	 * If we have a parent ZIO and the parent is marked PUSHPAGE,
+	 * or if the calling thread is helping free memory, then
+	 * this ZIO should get the PUSHPAGE flag.
+	 */
+	if (pio != NULL && (pio->io_flags & ZIO_FLAG_PUSHPAGE) != 0)
+		flags |= ZIO_FLAG_PUSHPAGE;
+#ifdef _KERNEL
+	if (NOMEMWAIT())
+		flags |= ZIO_FLAG_PUSHPAGE;
+#endif
 
 	zio = kmem_cache_alloc(zio_cache, KM_SLEEP);
 	bzero(zio, sizeof (zio_t));
@@ -1863,7 +1890,8 @@ zio_execute(zio_t *zio)
 		 * reserved pool in order to try to make forward progress.
 		 */
 		bool set_pushpage = false;
-		if (!(curthread->t_flag & T_PUSHPAGE)) {
+		if ((zio->io_flags & ZIO_FLAG_PUSHPAGE) != 0 &&
+		    (curthread->t_flag & T_PUSHPAGE) == 0) {
 			/*
 			 * We can be called recursively, so we need to remember
 			 * if this frame was the one that first set the flag or

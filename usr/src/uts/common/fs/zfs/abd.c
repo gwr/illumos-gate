@@ -92,6 +92,9 @@
 #include <sys/zio.h>
 #include <sys/zfs_context.h>
 #include <sys/zfs_znode.h>
+#ifdef _KERNEL
+#include <sys/vmsystm.h>
+#endif
 
 typedef struct abd_stats {
 	kstat_named_t abdstat_struct_size;
@@ -193,7 +196,14 @@ extern inline void abd_zero(abd_t *abd, size_t size);
 static void *
 abd_alloc_chunk()
 {
-	void *c = kmem_cache_alloc(abd_chunk_cache, KM_PUSHPAGE);
+	int kmflag = KM_SLEEP;
+
+#ifdef _KERNEL
+	if (NOMEMWAIT())
+		kmflag |= KM_PUSHPAGE;
+#endif
+
+	void *c = kmem_cache_alloc(abd_chunk_cache, kmflag);
 	ASSERT3P(c, !=, NULL);
 	return (c);
 }
@@ -280,7 +290,14 @@ static inline abd_t *
 abd_alloc_struct(size_t chunkcnt)
 {
 	size_t size = offsetof(abd_t, abd_u.abd_scatter.abd_chunks[chunkcnt]);
-	abd_t *abd = kmem_alloc(size, KM_PUSHPAGE);
+	int kmflag = KM_SLEEP;
+
+#ifdef _KERNEL
+	if (NOMEMWAIT())
+		kmflag |= KM_PUSHPAGE;
+#endif
+
+	abd_t *abd = kmem_alloc(size, kmflag);
 	ASSERT3P(abd, !=, NULL);
 	ABDSTAT_INCR(abdstat_struct_size, size);
 

@@ -304,6 +304,9 @@
 #include <sys/aggsum.h>
 #include <sys/cityhash.h>
 #include <sys/param.h>
+#ifdef _KERNEL
+#include <sys/vmsystm.h>
+#endif
 
 #ifndef _KERNEL
 /* set with ZFS_DEBUG=watch, to enable watchpoints on frozen buffers */
@@ -2540,6 +2543,12 @@ arc_buf_alloc_impl(arc_buf_hdr_t *hdr, spa_t *spa, const zbookmark_phys_t *zb,
 {
 	arc_buf_t *buf;
 	arc_fill_flags_t flags = ARC_FILL_LOCKED;
+	int kmflag = KM_SLEEP;
+
+#ifdef _KERNEL
+	if (NOMEMWAIT())
+		kmflag |= KM_PUSHPAGE;
+#endif
 
 	ASSERT(HDR_HAS_L1HDR(hdr));
 	ASSERT3U(HDR_GET_LSIZE(hdr), >, 0);
@@ -2549,7 +2558,7 @@ arc_buf_alloc_impl(arc_buf_hdr_t *hdr, spa_t *spa, const zbookmark_phys_t *zb,
 	ASSERT3P(*ret, ==, NULL);
 	IMPLY(encrypted, compressed);
 
-	buf = *ret = kmem_cache_alloc(buf_cache, KM_PUSHPAGE);
+	buf = *ret = kmem_cache_alloc(buf_cache, kmflag);
 	buf->b_hdr = hdr;
 	buf->b_data = NULL;
 	buf->b_next = hdr->b_l1hdr.b_buf;
@@ -3105,12 +3114,18 @@ arc_hdr_alloc(uint64_t spa, int32_t psize, int32_t lsize,
 {
 	arc_buf_hdr_t *hdr;
 	int flags = ARC_HDR_DO_ADAPT;
+	int kmflag = KM_SLEEP;
+
+#ifdef _KERNEL
+	if (NOMEMWAIT())
+		kmflag |= KM_PUSHPAGE;
+#endif
 
 	VERIFY(type == ARC_BUFC_DATA || type == ARC_BUFC_METADATA);
 	if (protected) {
-		hdr = kmem_cache_alloc(hdr_full_crypt_cache, KM_PUSHPAGE);
+		hdr = kmem_cache_alloc(hdr_full_crypt_cache, kmflag);
 	} else {
-		hdr = kmem_cache_alloc(hdr_full_cache, KM_PUSHPAGE);
+		hdr = kmem_cache_alloc(hdr_full_cache, kmflag);
 	}
 	flags |= alloc_rdata ? ARC_HDR_ALLOC_RDATA : 0;
 	ASSERT(HDR_EMPTY(hdr));
@@ -3152,6 +3167,13 @@ arc_hdr_alloc(uint64_t spa, int32_t psize, int32_t lsize,
 static arc_buf_hdr_t *
 arc_hdr_realloc(arc_buf_hdr_t *hdr, kmem_cache_t *old, kmem_cache_t *new)
 {
+	int kmflag = KM_SLEEP;
+
+#ifdef _KERNEL
+	if (NOMEMWAIT())
+		kmflag |= KM_PUSHPAGE;
+#endif
+
 	ASSERT(HDR_HAS_L2HDR(hdr));
 
 	arc_buf_hdr_t *nhdr;
@@ -3170,7 +3192,7 @@ arc_hdr_realloc(arc_buf_hdr_t *hdr, kmem_cache_t *old, kmem_cache_t *new)
 	if (HDR_PROTECTED(hdr) && old == hdr_full_cache)
 		old = hdr_full_crypt_cache;
 
-	nhdr = kmem_cache_alloc(new, KM_PUSHPAGE);
+	nhdr = kmem_cache_alloc(new, kmflag);
 
 	ASSERT(MUTEX_HELD(HDR_LOCK(hdr)));
 	buf_hash_remove(hdr);
@@ -3273,6 +3295,12 @@ arc_hdr_realloc_crypt(arc_buf_hdr_t *hdr, boolean_t need_crypt)
 	arc_buf_hdr_t *nhdr;
 	arc_buf_t *buf;
 	kmem_cache_t *ncache, *ocache;
+	int kmflag = KM_SLEEP;
+
+#ifdef _KERNEL
+	if (NOMEMWAIT())
+		kmflag |= KM_PUSHPAGE;
+#endif
 
 	/*
 	 * This function requires that hdr is in the arc_anon state.
@@ -3295,7 +3323,7 @@ arc_hdr_realloc_crypt(arc_buf_hdr_t *hdr, boolean_t need_crypt)
 		ocache = hdr_full_crypt_cache;
 	}
 
-	nhdr = kmem_cache_alloc(ncache, KM_PUSHPAGE);
+	nhdr = kmem_cache_alloc(ncache, kmflag);
 
 	/*
 	 * Copy all members that aren't locks or condvars to the new header.
@@ -4729,6 +4757,10 @@ arc_adjust_cb(void *arg, zthr_t *zthr)
 {
 	uint64_t evicted = 0;
 
+#ifdef _KERNEL
+	curthread->t_flag |= T_PUSHPAGE;
+#endif
+
 	/* Evict from cache */
 	evicted = arc_adjust();
 
@@ -4800,6 +4832,10 @@ static void
 arc_reap_cb(void *arg, zthr_t *zthr)
 {
 	int64_t free_memory;
+
+#ifdef _KERNEL
+	curthread->t_flag |= T_PUSHPAGE;
+#endif
 
 	/*
 	 * Kick off asynchronous kmem_reap()'s of all our caches.
@@ -8507,13 +8543,19 @@ l2arc_write_buffers(spa_t *spa, l2arc_dev_t *dev, uint64_t target_sz)
 	zio_t			*pio, *wzio;
 	uint64_t		guid = spa_load_guid(spa);
 	l2arc_dev_hdr_phys_t	*l2dhdr = dev->l2ad_dev_hdr;
+	int kmflag = KM_SLEEP;
+
+#ifdef _KERNEL
+	if (NOMEMWAIT())
+		kmflag |= KM_PUSHPAGE;
+#endif
 
 	ASSERT3P(dev->l2ad_vdev, !=, NULL);
 
 	pio = NULL;
 	write_lsize = write_asize = write_psize = 0;
 	full = B_FALSE;
-	head = kmem_cache_alloc(hdr_l2only_cache, KM_PUSHPAGE);
+	head = kmem_cache_alloc(hdr_l2only_cache, kmflag);
 	arc_hdr_set_flags(head, ARC_FLAG_L2_WRITE_HEAD | ARC_FLAG_HAS_L2HDR);
 
 	/*
