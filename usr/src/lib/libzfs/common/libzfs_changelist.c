@@ -26,6 +26,7 @@
  * Portions Copyright 2007 Ramprakash Jelari
  * Copyright (c) 2014, 2016 by Delphix. All rights reserved.
  * Copyright 2016 Igor Kozhukhov <ikozhukhov@gmail.com>
+ * Copyright 2022-2025 RackTop Systems.
  */
 
 #include <libintl.h>
@@ -283,6 +284,13 @@ changelist_postfix(prop_changelist_t *clp)
 			errors += zfs_share_smb(cn->cn_handle);
 		else if (cn->cn_shared || clp->cl_waslegacy)
 			errors += zfs_unshare_smb(cn->cn_handle, NULL);
+		/*
+		 * Additional cleanup after set sharesmb=off
+		 */
+		if (mounted && !sharesmb && cn->cn_shared &&
+		    clp->cl_prop == ZFS_PROP_SHARESMB) {
+			(void) zfs_unshare_purge_smb(cn->cn_handle);
+		}
 	}
 
 	return (errors ? -1 : 0);

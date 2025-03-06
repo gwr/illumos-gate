@@ -20,7 +20,7 @@
  *
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2018 Nexenta Systems, Inc. All rights reserved.
- * Copyright 2019 RackTop Systems.
+ * Copyright 2020-2025 RackTop Systems.
  */
 
 /*
@@ -553,28 +553,15 @@ smb_shr_remove(char *sharename)
 	}
 
 	/*
-	 * If path is ZFS, remove the .zfs/shares/<share> entry.  Need
-	 * to remove before cleanup of cache occurs.  These actions
-	 * require temporary elevation of privileges.
+	 * We could remove the .zfs/shares/<share> entry here,
+	 * (calling smb_shr_zfs_remove(si)) but that would mean
+	 * re-creating these files every time the share comes
+	 * back on-line, discarding changes to the share ACL
+	 * stored on that file.  Instead, leave those files
+	 * in place across unshare/share, and clean them out
+	 * via libzfs`zfs_unshare_purge_smb() if and when the
+	 * dataset sharesmb property is set to "off".
 	 */
-	if (smb_proc_takesem() == 0) {
-
-		(void) priv_set(PRIV_ON, PRIV_EFFECTIVE,
-		    PRIV_FILE_DAC_READ,
-		    PRIV_FILE_DAC_SEARCH,
-		    PRIV_FILE_DAC_WRITE,
-		    NULL);
-
-		smb_shr_zfs_remove(si);
-
-		(void) priv_set(PRIV_OFF, PRIV_EFFECTIVE,
-		    PRIV_FILE_DAC_READ,
-		    PRIV_FILE_DAC_SEARCH,
-		    PRIV_FILE_DAC_WRITE,
-		    NULL);
-
-		smb_proc_givesem();
-	}
 
 	(void) smb_shr_encode(si, &shrlist);
 
@@ -833,7 +820,7 @@ smb_shr_modify(smb_share_t *new_si)
 		    PRIV_FILE_DAC_WRITE,
 		    NULL);
 
-		smb_shr_zfs_remove(&old_si);
+		/* This does add or remove of quota dir */
 		smb_shr_zfs_add(si);
 
 		(void) priv_set(PRIV_OFF, PRIV_EFFECTIVE,
@@ -2257,6 +2244,10 @@ smb_shr_zfs_add(smb_share_t *si)
 		return;
 	}
 
+	/*
+	 * It's normal that the share ACL will already exist,
+	 * and zfs_smb_acl_add will return EEXIST.
+	 */
 	errno = 0;
 	ret = zfs_smb_acl_add(libhd, buf, si->shr_path, si->shr_name);
 	if (ret != 0 && errno != EAGAIN && errno != EEXIST)
