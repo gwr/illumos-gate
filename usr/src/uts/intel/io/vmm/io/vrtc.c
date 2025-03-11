@@ -1154,7 +1154,7 @@ vrtc_write(struct vrtc *vrtc, uint8_t offset, uint8_t val)
 	uint8_t *rtc_raw = (uint8_t *)&vrtc->rtcdev;
 
 	ASSERT(VRTC_LOCKED(vrtc));
-	ASSERT(offset < sizeof (struct rtcdev));
+	VERIFY(offset < sizeof (struct rtcdev));
 
 	switch (offset) {
 	case RTC_STATUSA:

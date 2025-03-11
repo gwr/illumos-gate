@@ -228,7 +228,7 @@ vmm_gpt_lvl_mask(vmm_gpt_node_level_t level)
 static inline uint64_t
 vmm_gpt_lvl_len(vmm_gpt_node_level_t level)
 {
-	ASSERT(level < MAX_GPT_LEVEL);
+	VERIFY(level < MAX_GPT_LEVEL);
 
 	const uint64_t gpa_len[] = {
 		[LEVEL4] = 0x8000000000ul,	/* entries cover 512G */
