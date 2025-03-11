@@ -47,14 +47,41 @@ extern "C" {
 #endif
 
 /*
+ * The historical assfail() and assfail3() can technically return.
+ * For VERIFY macros, if assfail* returns, call a "panic" helper
+ * (panic or upanic, marked __NORETURN) so that code following a
+ * failed VERIFY* can never be reached.
+ */
+#if defined(_STANDALONE) || defined(_MDB)
+#define _VERIFY_PANIC(M)	((void)0)
+#else
+#if defined(_KERNEL)
+#define _VERIFY_PANIC(M)	panic(M)
+extern void panic(const char *, ...) __KPRINTFLIKE(1) __NORETURN;
+#else
+#define _VERIFY_PANIC(M)	upanic(M, sizeof (M))
+extern _NORETURN_KYWD void upanic(const char *, size_t) __NORETURN;
+#endif
+#endif
+
+extern void assfail(const char *, const char *, int);
+extern void assfail3(const char *, uintmax_t, const char *, uintmax_t,
+    const char *, int);
+
+/*
  * ASSERT(ex) causes a panic or debugger entry if expression ex is not
  * true.  ASSERT() is included only for debugging, and is a no-op in
  * production kernels.  VERIFY(ex), on the other hand, behaves like
  * ASSERT and is evaluated on both debug and non-debug kernels.
  */
 
-extern void assfail(const char *, const char *, int);
-#define	VERIFY(EX) ((void)((EX) || (assfail(#EX, __FILE__, __LINE__), 0)))
+#define	VERIFY(EX) do { \
+	if (!(EX)) { \
+		assfail(#EX, __FILE__, __LINE__); \
+		_VERIFY_PANIC("VERIFY"); \
+	} \
+_NOTE(CONSTCOND) } while (0)
+
 #if DEBUG
 #define	ASSERT(EX) ((void)((EX) || (assfail(#EX, __FILE__, __LINE__), 0)))
 #else
@@ -100,15 +127,15 @@ extern void assfail(const char *, const char *, int);
  * for unsigned, and ASSERT3P() is for pointers.  The VERIFY3*() macros
  * have the same relationship as above.
  */
-extern void assfail3(const char *, uintmax_t, const char *, uintmax_t,
-    const char *, int);
 #define	VERIFY3_IMPL(LEFT, OP, RIGHT, TYPE) do { \
 	const TYPE __left = (TYPE)(LEFT); \
 	const TYPE __right = (TYPE)(RIGHT); \
-	if (!(__left OP __right)) \
+	if (!(__left OP __right)) { \
 		assfail3(#LEFT " " #OP " " #RIGHT, \
 			(uintmax_t)__left, #OP, (uintmax_t)__right, \
 			__FILE__, __LINE__); \
+		_VERIFY_PANIC("VERIFY"); \
+	} \
 _NOTE(CONSTCOND) } while (0)
 
 #define	VERIFY3B(x, y, z)	VERIFY3_IMPL(x, y, z, boolean_t)
@@ -117,12 +144,21 @@ _NOTE(CONSTCOND) } while (0)
 #define	VERIFY3P(x, y, z)	VERIFY3_IMPL(x, y, z, uintptr_t)
 #define	VERIFY0(x)		VERIFY3_IMPL(x, ==, 0, uintmax_t)
 
+#define	ASSERT3_IMPL(LEFT, OP, RIGHT, TYPE) do { \
+	const TYPE __left = (TYPE)(LEFT); \
+	const TYPE __right = (TYPE)(RIGHT); \
+	if (!(__left OP __right)) \
+		assfail3(#LEFT " " #OP " " #RIGHT, \
+			(uintmax_t)__left, #OP, (uintmax_t)__right, \
+			__FILE__, __LINE__); \
+_NOTE(CONSTCOND) } while (0)
+
 #if DEBUG
-#define	ASSERT3B(x, y, z)	VERIFY3_IMPL(x, y, z, boolean_t)
-#define	ASSERT3S(x, y, z)	VERIFY3_IMPL(x, y, z, int64_t)
-#define	ASSERT3U(x, y, z)	VERIFY3_IMPL(x, y, z, uint64_t)
-#define	ASSERT3P(x, y, z)	VERIFY3_IMPL(x, y, z, uintptr_t)
-#define	ASSERT0(x)		VERIFY3_IMPL(x, ==, 0, uintmax_t)
+#define	ASSERT3B(x, y, z)	ASSERT3_IMPL(x, y, z, boolean_t)
+#define	ASSERT3S(x, y, z)	ASSERT3_IMPL(x, y, z, int64_t)
+#define	ASSERT3U(x, y, z)	ASSERT3_IMPL(x, y, z, uint64_t)
+#define	ASSERT3P(x, y, z)	ASSERT3_IMPL(x, y, z, uintptr_t)
+#define	ASSERT0(x)		ASSERT3_IMPL(x, ==, 0, uintmax_t)
 #else
 #define	ASSERT3B(x, y, z)	((void)0)
 #define	ASSERT3S(x, y, z)	((void)0)
