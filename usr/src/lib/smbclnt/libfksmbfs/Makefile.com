@@ -26,6 +26,8 @@
 #
 # Copyright 2019, Joyent, Inc.
 #
+# Copyright 2025 RackTop Systems, Inc.
+#
 
 LIBRARY =	libfksmbfs.a
 VERS =		.1
@@ -34,6 +36,7 @@ OBJS_LOCAL = \
 	fksmbfs_rwlock.o \
 	fake_fssub.o \
 	fake_getdents.o \
+	fake_getdents_ex.o \
 	fake_lookup.o \
 	fake_misc.o \
 	fake_modconf.o \
