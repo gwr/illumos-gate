@@ -24,6 +24,7 @@
  * Copyright 2017, Joyent, Inc.
  * Copyright (c) 2011, 2017 by Delphix. All rights reserved.
  * Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2025 RackTop Systems, Inc.
  */
 
 /*	Copyright (c) 1983, 1984, 1985, 1986, 1987, 1988, 1989 AT&T	*/
@@ -169,6 +170,8 @@ top:
 			error = VOP_LOOKUP(vp, NULL, &xvp, NULL,
 			    LOOKUP_XATTR, rootdir, CRED(), NULL,
 			    NULL, NULL);
+			if (error != 0)
+				goto out;
 			VN_RELE(vp);
 			vp = xvp;
 			/* continue with vp */

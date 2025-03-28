@@ -37,6 +37,7 @@
  * Copyright 2013, Joyent, Inc. All rights reserved.
  * Copyright (c) 2016 by Delphix. All rights reserved.
  * Copyright 2017 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2025 RackTop Systems, Inc.
  */
 
 #include <sys/systm.h>
@@ -705,6 +706,7 @@ smbfs_mount(vfs_t *vfsp, vnode_t *mvp, struct mounta *uap, cred_t *cr)
 	/* PSARC 2007/227 VFS Feature Registration */
 	vfs_set_feature(vfsp, VFSFT_XVATTR);
 	vfs_set_feature(vfsp, VFSFT_SYSATTR_VIEWS);
+	vfs_set_feature(vfsp, VFSFT_DIRENTFLAGS);
 
 	/*
 	 * Create the root vnode, which we need in unmount

@@ -51,6 +51,7 @@
 #include <sys/vfs.h>
 #include <sys/filio.h>
 #include <sys/uio.h>
+#include <sys/extdirent.h>
 #include <sys/dirent.h>
 #include <sys/errno.h>
 #include <sys/sunddi.h>
@@ -144,7 +145,7 @@ static int	smbfsrename(vnode_t *odvp, vnode_t *ovp, vnode_t *ndvp,
 static int	smbfssetattr(vnode_t *, struct vattr *, int, cred_t *);
 static int	smbfs_accessx(void *, int, cred_t *);
 static int	smbfs_readvdir(vnode_t *vp, uio_t *uio, cred_t *cr, int *eofp,
-			caller_context_t *);
+			caller_context_t *, int flags);
 static int	smbfsflush(smbnode_t *, struct smb_cred *);
 static void	smbfs_rele_fid(smbnode_t *, struct smb_cred *);
 static uint32_t xvattr_to_dosattr(smbnode_t *, struct vattr *);
@@ -3356,17 +3357,26 @@ smbfs_readdir(vnode_t *vp, struct uio *uiop, cred_t *cr, int *eofp,
 	if (smbfs_rw_enter_sig(&np->r_lkserlock, RW_WRITER, SMBINTR(vp)))
 		return (EINTR);
 
-	error = smbfs_readvdir(vp, uiop, cr, eofp, ct);
+	error = smbfs_readvdir(vp, uiop, cr, eofp, ct, flags);
 
 	smbfs_rw_exit(&np->r_lkserlock);
 
 	return (error);
 }
 
+/*
+ * edirent_t ed_eflags values
+ *
+ * These are (apparently) the S_IFMT bits from sys/stat.h
+ * Only these two are presented by smbfs.
+ */
+#define	EDTYPE_DIR	4	/* S_IFDIR >> 12 */
+#define	EDTYPE_FILE	8	/* S_IFREG >> 12 */
+
 /* ARGSUSED */
 static int
 smbfs_readvdir(vnode_t *vp, uio_t *uio, cred_t *cr, int *eofp,
-	caller_context_t *ct)
+	caller_context_t *ct, int flags)
 {
 	/*
 	 * Note: "limit" tells the SMB-level FindFirst/FindNext
@@ -3380,16 +3390,18 @@ smbfs_readvdir(vnode_t *vp, uio_t *uio, cred_t *cr, int *eofp,
 	 */
 	static const int limit = 1000;
 	/* Largest possible dirent size. */
-	static const size_t dbufsiz = DIRENT64_RECLEN(SMB_MAXFNAMELEN);
+	static const size_t dbufsiz = EDIRENT_RECLEN(SMB_MAXFNAMELEN);
 	struct smb_cred scred;
-	vnode_t		*newvp;
+	vnode_t		*newvp = NULL;
 	struct smbnode	*np = VTOSMB(vp);
 	struct smbfs_fctx *ctx;
-	struct dirent64 *dp;
+	edirent_t	*edp;
+	dirent64_t	*dp;
 	ssize_t		save_resid;
 	offset_t	save_offset; /* 64 bits */
 	int		offset; /* yes, 32 bits */
-	int		nmlen, error;
+	int		nmlen;
+	int		error;
 	ushort_t	reclen;
 
 	ASSERT(curproc->p_zone == VTOSMI(vp)->smi_zone_ref.zref_zone);
@@ -3414,7 +3426,8 @@ smbfs_readvdir(vnode_t *vp, uio_t *uio, cred_t *cr, int *eofp,
 
 	SMBVDEBUG("dirname='%s'\n", np->n_rpath);
 	smb_credinit(&scred, cr);
-	dp = kmem_alloc(dbufsiz, KM_SLEEP);
+	edp = kmem_alloc(dbufsiz, KM_SLEEP);
+	dp = (dirent64_t *)edp;
 
 	save_resid = uio->uio_resid;
 	save_offset = uio->uio_loffset;
@@ -3431,36 +3444,62 @@ smbfs_readvdir(vnode_t *vp, uio_t *uio, cred_t *cr, int *eofp,
 	 */
 	while (offset < FIRST_DIROFS) {
 		/*
-		 * Tricky bit filling in the first two:
-		 * offset 0 is ".", offset 1 is ".."
-		 * so strlen of these is offset+1.
+		 * Tricky bit filling in the first two names:
+		 * offset 0 is ".", offset 1 is ".." so
+		 * nmlen for these is offset+1.
 		 */
-		reclen = DIRENT64_RECLEN(offset + 1);
+		ino64_t		ino;
+		char dots[FIRST_DIROFS + 1] = "..";
+		nmlen = offset + 1;
+		dots[nmlen] = '\0';
+
+		/*
+		 * Make sure there's room
+		 */
+		if (flags & V_RDDIR_ENTFLAGS)
+			reclen = EDIRENT_RECLEN(nmlen);
+		else
+			reclen = DIRENT64_RECLEN(nmlen);
 		if (uio->uio_resid < reclen)
 			goto out;
-		bzero(dp, reclen);
-		dp->d_reclen = reclen;
-		dp->d_name[0] = '.';
-		dp->d_name[1] = '.';
-		dp->d_name[offset + 1] = '\0';
+
 		/*
 		 * Want the real I-numbers for the "." and ".."
 		 * entries.  For these two names, we know that
 		 * smbfslookup can get the nodes efficiently.
 		 */
-		error = smbfslookup(vp, dp->d_name, &newvp, cr, 1, ct);
+		error = smbfslookup(vp, dots, &newvp, cr, 1, ct);
 		if (error) {
-			dp->d_ino = np->n_ino + offset; /* fiction */
+			ino = np->n_ino + offset; /* fiction */
 		} else {
-			dp->d_ino = VTOSMB(newvp)->n_ino;
+			ino = VTOSMB(newvp)->n_ino;
 			VN_RELE(newvp);
+			newvp = NULL;
 		}
+
 		/*
+		 * Fill in the dirent or edirent.
+		 *
 		 * Note: d_off is the offset that a user-level program
 		 * should seek to for reading the NEXT directory entry.
 		 * See libc: readdir, telldir, seekdir
 		 */
-		dp->d_off = offset + 1;
+		bzero(edp, reclen);
+		if (flags & V_RDDIR_ENTFLAGS) {
+			edp->ed_ino = ino;
+			edp->ed_off = offset + 1;
+			edp->ed_eflags = EDTYPE_DIR;
+			edp->ed_reclen = reclen;
+			bcopy(dots, edp->ed_name, nmlen);
+			edp->ed_name[nmlen] = '\0';
+		} else {
+			dp->d_ino = ino;
+			dp->d_off = offset + 1;
+			dp->d_reclen = reclen;
+			bcopy(dots, dp->d_name, nmlen);
+			dp->d_name[nmlen] = '\0';
+		}
+
 		error = uiomove(dp, reclen, UIO_READ, uio);
 		if (error)
 			goto out;
@@ -3527,17 +3566,35 @@ smbfs_readvdir(vnode_t *vp, uio_t *uio, cred_t *cr, int *eofp,
 		if (smbfs_fastlookup) {
 			/* See comment at smbfs_fastlookup above. */
 			if (smbfs_nget(vp, ctx->f_name, nmlen,
-			    &ctx->f_attr, &newvp) == 0)
+			    &ctx->f_attr, &newvp) == 0) {
 				VN_RELE(newvp);
+				newvp = NULL;
+			}
 		}
 
-		reclen = DIRENT64_RECLEN(nmlen);
-		bzero(dp, reclen);
-		dp->d_reclen = reclen;
-		bcopy(ctx->f_name, dp->d_name, nmlen);
-		dp->d_name[nmlen] = '\0';
-		dp->d_ino = ctx->f_inum;
-		dp->d_off = offset + 1;	/* See d_off comment above */
+		if (flags & V_RDDIR_ENTFLAGS) {
+			reclen = EDIRENT_RECLEN(nmlen);
+			bzero(edp, reclen);
+
+			edp->ed_ino = ctx->f_inum;
+			edp->ed_off = offset + 1;
+			edp->ed_eflags =
+				(ctx->f_attr.fa_attr & SMB_FA_DIR) ?
+				EDTYPE_DIR : EDTYPE_FILE;
+			edp->ed_reclen = reclen;
+			bcopy(ctx->f_name, edp->ed_name, nmlen);
+			edp->ed_name[nmlen] = '\0';
+		} else {
+			reclen = DIRENT64_RECLEN(nmlen);
+			bzero(dp, reclen);
+
+			dp->d_ino = ctx->f_inum;
+			dp->d_off = offset + 1;
+			dp->d_reclen = reclen;
+			bcopy(ctx->f_name, dp->d_name, nmlen);
+			dp->d_name[nmlen] = '\0';
+		}
+
 		error = uiomove(dp, reclen, UIO_READ, uio);
 		if (error)
 			goto out;
