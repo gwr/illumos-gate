@@ -11,6 +11,7 @@
 
 /*
  * Copyright 2017 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2025 RackTop Systems, Inc.
  */
 
 #ifndef _LIBFKSMBFS_H_
@@ -48,6 +49,7 @@ int	fake_lookup(vnode_t *, char *, vnode_t **);
 int	fake_lookup_dir(char *, vnode_t **, char **);
 int	fake_stat(vnode_t *, struct stat64 *, int);
 int	fake_getdents(vnode_t *, offset_t *, void *, size_t);
+int	fake_getdents_ex(vnode_t *, offset_t *, void *, size_t, int);
 ssize_t	fake_pread(vnode_t *, void *, size_t, off_t);
 ssize_t	fake_pwrite(vnode_t *, void *, size_t, off_t);
 int	fake_unlink(char *, int);

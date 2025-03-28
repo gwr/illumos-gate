@@ -11,6 +11,7 @@
 
 /*
  * Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2025 RackTop Systems, Inc.
  */
 
 /*
@@ -41,6 +42,10 @@
 #include <libfknsmb/common/libfknsmb.h>
 #include <libfksmbfs/common/libfksmbfs.h>
 
+#define	_FAKE_KERNEL 1
+#include <sys/extdirent.h>
+#undef	_FAKE_KERNEL
+
 #if _FILE_OFFSET_BITS != 64
 #error "This calls (fake) VFS code which requires 64-bit off_t"
 #endif
@@ -62,6 +67,7 @@ static char *server = NULL;
 static vfs_t *vfsp = NULL;
 
 static void show_dents(vnode_t *, offset_t *, char *, int);
+static void show_dents_ex(vnode_t *, offset_t *, char *, int);
 static void run_cli(void);
 
 #define	TBUFSZ 8192
@@ -472,7 +478,7 @@ do_dirx(int argc, char **argv)
 	else
 		rdir = "";
 
-	error = vn_open(rdir, 0, FREAD|FXATTRDIROPEN, 0, &vp, 0, 0);
+	error = vn_open(rdir, 0, FREAD, 0, &vp, 0, 0);
 	if (error != 0) {
 		fprintf(stderr, "do_dirx, vn_open error=%d\n", error);
 		return;
@@ -480,9 +486,51 @@ do_dirx(int argc, char **argv)
 
 	off = 0;
 	do {
+		cnt = fake_getdents_ex(vp, &off, tbuf, TBUFSZ,
+				V_RDDIR_ENTFLAGS);
+		if (cnt < 0) {
+			fprintf(stderr, "do_dirx, getdents_ex %d\n", -cnt);
+			break;
+		}
+		show_dents_ex(vp, &off, tbuf, cnt);
+	} while (cnt > 0);
+
+	if (vp != NULL)
+		vn_close_rele(vp, 0);
+}
+
+/*
+ * Show the xattr's (named streams) under a file or directory
+ */
+void
+do_xattr(int argc, char **argv)
+{
+	char *rdir;
+	vnode_t *vp = NULL;
+	offset_t off;
+	int cnt;
+	int error;
+
+	if (vfsp == NULL) {
+		fprintf(stderr, "mnt required first\n");
+		return;
+	}
+	if (argc > 1)
+		rdir = argv[1];
+	else
+		rdir = "";
+
+	error = vn_open(rdir, 0, FREAD|FXATTRDIROPEN, 0, &vp, 0, 0);
+	if (error != 0) {
+		fprintf(stderr, "do_xattr, vn_open error=%d\n", error);
+		return;
+	}
+
+	off = 0;
+	do {
 		cnt = fake_getdents(vp, &off, tbuf, TBUFSZ);
 		if (cnt < 0) {
-			fprintf(stderr, "do_dirx, getdents %d\n", -cnt);
+			fprintf(stderr, "do_xattr, getdents %d\n", -cnt);
 			break;
 		}
 		show_dents(vp, &off, tbuf, cnt);
@@ -545,6 +593,80 @@ show_dents(vnode_t *dvp, offset_t *offp, char *buf, int cnt)
 		    (uint64_t)st.st_size,
 		    time_buf,
 		    d->d_name);
+	}
+	*offp = offset;
+}
+
+/*
+ * edirent_t ed_eflags values
+ *
+ * These are (apparently) the S_IFMT bits from sys/stat.h
+ */
+#define	EDTYPE_DIR	4	/* S_IFDIR >> 12 */
+#define	EDTYPE_FILE	8	/* S_IFREG >> 12 */
+
+static void
+show_dents_ex(vnode_t *dvp, offset_t *offp, char *buf, int cnt)
+{
+	char time_buf[40];
+	struct stat64 st;
+	vnode_t *vp;
+	char *p;
+	edirent_t *ed;
+	offset_t offset = (offset_t)-1L;
+	int error;
+	uint_t mode;
+	char type;
+	char eflags;
+
+	p = buf;
+	while (p < (buf + cnt)) {
+		ed = (edirent_t *)(void *)p;
+		p += ed->ed_reclen;
+		offset = ed->ed_off;
+
+		error = fake_lookup(dvp, ed->ed_name, &vp);
+		if (error != 0) {
+			fprintf(stderr, "%s: lookup error=%d\n",
+			    ed->ed_name, error);
+			continue;
+		}
+		error = fake_stat(vp, &st, 0);
+		vn_rele(vp);
+		if (error != 0) {
+			fprintf(stderr, "%s: stat error=%d\n",
+			    ed->ed_name, error);
+			continue;
+		}
+
+		/*
+		 * Print type, mode, size, name
+		 * First mode (only dir, file expected here)
+		 */
+		if (S_ISDIR(st.st_mode)) {
+			type = 'd';
+			eflags = EDTYPE_DIR;
+		} else if (S_ISREG(st.st_mode)) {
+			type = ' ';
+			eflags = EDTYPE_FILE;
+		} else {
+			type = '?';
+			eflags = 0;
+		}
+		mode = st.st_mode & 0777;
+		(void) strftime(time_buf, sizeof (time_buf),
+		    "%b %e %T %Y", localtime(&st.st_mtime));
+
+		printf("%c 0%3o %9" PRIu64 "  %s  %s\n",
+		    type, mode,
+		    (uint64_t)st.st_size,
+		    time_buf,
+		    ed->ed_name);
+
+		if (ed->ed_eflags != eflags) {
+			printf("[Error: de_eflags = %d]\n", ed->ed_eflags);
+		}
+
 	}
 	*offp = offset;
 }
@@ -881,8 +1003,8 @@ cmd_tbl[] = {
 	{ do_unmount,	"umount", "" },
 	{ do_unmount,	"unmount", "" },
 	{ do_statfs,	"statfs", "" },
-	{ do_dir,	"dir",  "{rdir} [lfile]" },
-	{ do_dirx,	"dirx", "{rdir} [lfile]" },
+	{ do_dir,	"dir",  "{rdir}" },
+	{ do_dirx,	"dirx", "{rdir}" },
 	{ do_get,	"get",  "{rfile} [lfile]" },
 	{ do_put,	"put",  "{lfile} [rfile]" },
 	{ do_mv,	"mv",   "{from} {to}" },
@@ -890,6 +1012,7 @@ cmd_tbl[] = {
 	{ do_mkdir,	"mkdir", "{rfile}" },
 	{ do_rmdir,	"rmdir", "{rfile}" },
 	{ do_opt,	"opt",   "{option}" },
+	{ do_xattr,	"xattr", "{rfile}" },
 	{ NULL, NULL, NULL }
 };
 
