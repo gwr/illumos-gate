@@ -114,6 +114,50 @@ smb2_rq_fillhdr(struct smb_rq *rqp)
 	mb_done(mbp);
 }
 
+/*
+ * Compound request and reply
+ *
+ * Note: caller must set sr_timo in each request.
+ * The *eret vector gets the returns from smb2_rq_reply
+ * on each command in the compound, so the length of
+ * the *eret vector should match the compound length.
+ *
+ * Function return is from smb2_rq_enqueue (send etc.)
+ */
+int
+smb2_rq_compound(struct smb_rq *rqp)
+{
+	struct smb_rq *c_rqp;	/* compound req */
+	int error;
+
+	ASSERT(rqp->sr_timo != 0);
+	rqp->sr_flags &= ~SMBR_RESTART;
+	rqp->sr_state = SMBRQ_NOTSENT;
+
+	c_rqp = rqp->sr2_compound_next;
+	while (c_rqp != NULL) {
+		ASSERT(c_rqp->sr_timo != 0);
+		c_rqp->sr_flags &= ~SMBR_RESTART;
+		c_rqp->sr_state = SMBRQ_NOTSENT;
+		c_rqp = c_rqp->sr2_compound_next;
+	}
+
+	error = smb2_rq_enqueue(rqp);
+	if (error != 0)
+		goto out;
+
+	rqp->sr_lerror = smb2_rq_reply(rqp);
+
+	c_rqp = rqp->sr2_compound_next;
+	while (c_rqp != NULL) {
+		c_rqp->sr_lerror = smb2_rq_reply(c_rqp);
+		c_rqp = c_rqp->sr2_compound_next;
+	}
+
+out:
+	return (error);
+}
+
 int
 smb2_rq_simple(struct smb_rq *rqp)
 {
@@ -139,12 +183,17 @@ smb2_rq_simple_timed(struct smb_rq *rqp, int timeout)
 	return (error);
 }
 
-
+/*
+ * Enqueue the request (possibly a compound),
+ * first waiting for a reconnect if necessary.
+ * See next: smb2_iod_addrq, smb2_iod_sendrq
+ */
 static int
 smb2_rq_enqueue(struct smb_rq *rqp)
 {
 	struct smb_vc *vcp = rqp->sr_vc;
 	struct smb_share *ssp = rqp->sr_share;
+	struct smb_rq *c_rqp;	/* compound req */
 	int error = 0;
 
 	ASSERT((vcp->vc_flags & SMBV_SMB2) != 0);
@@ -189,10 +238,21 @@ smb2_rq_enqueue(struct smb_rq *rqp)
 	/*
 	 * We now know what UID + TID to use.
 	 * Store them in the request.
+	 *
+	 * The only compounds constructed have the same
+	 * VC and Share in all commands.
 	 */
 ok_out:
 	rqp->sr2_rqsessionid = vcp->vc2_session_id;
 	rqp->sr2_rqtreeid = ssp ? ssp->ss2_tree_id : SMB2_TID_UNKNOWN;
+	c_rqp = rqp->sr2_compound_next;
+	while (c_rqp != NULL) {
+		ASSERT(c_rqp->sr_vc == vcp);
+		ASSERT(c_rqp->sr_share == ssp);
+		c_rqp->sr2_rqsessionid = rqp->sr2_rqsessionid;
+		c_rqp->sr2_rqtreeid    = rqp->sr2_rqtreeid;
+		c_rqp = c_rqp->sr2_compound_next;
+	}
 	error = smb2_iod_addrq(rqp);
 
 	return (error);
@@ -265,6 +325,7 @@ smb2_rq_internal(struct smb_rq *rqp, int timeout)
 
 /*
  * Wait for a reply to this request, then parse it.
+ * If a compound, called for each request/reply.
  */
 static int
 smb2_rq_reply(struct smb_rq *rqp)

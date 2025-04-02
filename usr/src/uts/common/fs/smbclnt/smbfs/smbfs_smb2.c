@@ -83,6 +83,10 @@ smbfs_smb2_locking(struct smbnode *np, int op, uint32_t pid,
  * For SMB2 we need to do an attribute-only open.  The
  * data returned by open gets us everything we need, so
  * just close the handle and we're done.
+ *
+ * This uses a compound with two "related" commands:
+ * SMB2_CREATE, SMB2_CLOSE.  The server will do both,
+ * with the close using the FID from the create (open).
  */
 int
 smbfs_smb2_getpattr(
@@ -90,25 +94,111 @@ smbfs_smb2_getpattr(
 	struct smbfattr *fap,
 	struct smb_cred *scrp)
 {
-	smb_fh_t tmp_fh;
+	smb2fid_t fid;
+	struct mbchain name_mb;
+	struct smb_rq *open_rqp = NULL;
+	struct smb_rq *close_rqp = NULL;
 	struct smb_share *ssp = np->n_mount->smi_share;
-	uint32_t rights = (STD_RIGHT_READ_CONTROL_ACCESS |
-	    SA_RIGHT_FILE_READ_ATTRIBUTES);
 	int error;
 
-	bzero(&tmp_fh, sizeof (tmp_fh));
-	error = smbfs_smb_ntcreatex(np,
-	    NULL, 0, 0,	/* name nmlen xattr */
-	    rights, SMB_EFA_NORMAL,
-	    NTCREATEX_SHARE_ACCESS_ALL,
-	    NTCREATEX_DISP_OPEN,
-	    0, /* create options */
-	    scrp, &tmp_fh,
-	    NULL, fap);
-	if (error == 0) {
-		(void) smb_smb_close(ssp, &tmp_fh, scrp);
-	}
+	/*
+	 * Lots of args for SMB2_CREATE
+	 * Locals for readability.
+	 */
+	uint32_t cr_flags = 0;	/* NTCREATEX_FLAGS... */
+	uint32_t req_access = (
+		STD_RIGHT_READ_CONTROL_ACCESS |
+		SA_RIGHT_FILE_READ_ATTRIBUTES );
+	uint32_t efa = SMB_EFA_NORMAL;
+	uint32_t share_acc = NTCREATEX_SHARE_ACCESS_ALL;
+	uint32_t open_disp = NTCREATEX_DISP_OPEN;
+	uint32_t createopt = 0; /* create options */
+	uint32_t impersonate = NTCREATEX_IMPERSONATION_IMPERSONATION;
+	uint32_t cr_act;	/* create action (ret) */
 
+	mb_init(&name_mb);
+	error = smbfs_fullpath(&name_mb, SSTOVC(ssp),
+	    np, NULL, 0, '\\');
+	if (error != 0)
+		goto out;
+
+	/*
+	 * Build the SMB2_CREATE request, compounded.
+	 */
+	error = smb_rq_alloc(SSTOCP(ssp), SMB2_CREATE, scrp, &open_rqp);
+	if (error)
+		goto out;
+	error = smb2_smb_ntcreate_mkreq(open_rqp, &name_mb, NULL,
+	   cr_flags, req_access, efa, share_acc, open_disp,
+	   createopt, impersonate);
+	if (error)
+		goto out;
+
+	/*
+	 * Build the SMB2_CLOSE request, compounded.
+	 *
+	 * Special "all ones" FID will be replaced with the FID
+	 * from the compounted create on the server side, as
+	 * this close will be a "related" request.
+	 */
+	fid.fid_persistent = ~(0LL);
+	fid.fid_volatile = ~(0LL);
+	error = smb_rq_alloc(SSTOCP(ssp), SMB2_CLOSE, scrp, &close_rqp);
+	if (error)
+		goto out;
+	error = smb2_smb_close_mkreq(close_rqp, &fid);
+	if (error)
+		goto out;
+
+	/*
+	 * Setup the compound linkage
+	 */
+	(void) mb_put_align8(&open_rqp->sr_rq);
+	open_rqp->sr2_nextcmd = open_rqp->sr_rq.mb_count;
+	open_rqp->sr2_compound_next = close_rqp;
+	close_rqp->sr2_rqflags |= SMB2_FLAGS_RELATED_OPERATIONS;
+
+	/*
+	 * Run the compound command(s).  We don't really care about
+	 * the close, so that can use a short timeout. (5 sec.)
+	 */
+	open_rqp->sr_timo = smb2_timo_default;
+	close_rqp->sr_timo = 5; /* sec. */
+	error = smb2_rq_compound(open_rqp);
+	if (error)
+		goto out;
+
+	/*
+	 * Handle the SMB2_CREATE reply
+	 */
+	if (open_rqp->sr_lerror != 0) {
+		DTRACE_PROBE1(reply0, struct smb_rq, open_rqp);
+		error = open_rqp->sr_lerror;
+		goto out;
+	}
+	error = smb2_smb_ntcreate_parse(open_rqp, NULL, &fid, &cr_act, fap);
+	if (error != 0)
+		goto out;
+
+	/*
+	 * Handle the SMB2_CLOSE reply
+	 * Ignore any errors from this.
+	 */
+	if (close_rqp->sr_lerror != 0) {
+		DTRACE_PROBE1(reply1, struct smb_rq, close_rqp);
+		SMBSDEBUG("smbfs_smb2_getpattr close err=%d",
+			close_rqp->sr_lerror);
+		/* Keep error from above. */
+		goto out;
+	}
+	(void) smb2_smb_close_parse(close_rqp);
+
+out:
+	if (close_rqp != NULL)
+		smb_rq_done(close_rqp);
+	if (open_rqp != NULL)
+		smb_rq_done(open_rqp);
+	mb_done(&name_mb);
 	return (error);
 }
 
@@ -526,6 +616,8 @@ out:
  *	zero: caller should continue reading
  *	ENOENT: at end of directory, no records copied
  *	other, eg EIO: something unexpected happened
+ *
+ * Todo: Use a compound here to detect EOF.
  */
 static int
 smbfs_smb2_qdir(struct smbfs_fctx *ctx)
@@ -707,7 +799,8 @@ smbfs_smb2_findopen(struct smbfs_fctx *ctx, struct smbnode *dnp,
 	ASSERT(ctx->f_dnp == dnp);
 
 	/*
-	 * Get a file handle on the directory
+	 * Get a file handle on the directory,
+	 * saved in the find context.
 	 */
 	error = smb_fh_create(ctx->f_ssp, &fhp);
 	if (error != 0)
@@ -800,47 +893,41 @@ smbfs_smb2_findnext(struct smbfs_fctx *ctx, uint16_t limit)
 /*
  * Helper for smbfs_xa_get_streaminfo
  * Query stream info
+ *
+ * Todo: Use a compound here.
  */
 int
 smbfs_smb2_get_streaminfo(smbnode_t *np, struct mdchain *mdp,
 	struct smb_cred *scrp)
 {
 	smb_share_t *ssp = np->n_mount->smi_share;
-	smb_fh_t *fhp = NULL;
+	smb_fh_t tmp_fh;
 	uint32_t rights =
 	    STD_RIGHT_READ_CONTROL_ACCESS |
 	    SA_RIGHT_FILE_READ_ATTRIBUTES;
 	uint32_t iolen = INT16_MAX;
 	int error;
 
-	/*
-	 * Get a file handle on the object
-	 * with read attr. rights.
-	 */
-	error = smb_fh_create(ssp, &fhp);
-	if (error != 0)
-		goto out;
+	bzero(&tmp_fh, sizeof (tmp_fh));
 	error = smbfs_smb_ntcreatex(np,
 	    NULL, 0, 0,	/* name nmlen xattr */
 	    rights, SMB_EFA_NORMAL,
 	    NTCREATEX_SHARE_ACCESS_ALL,
 	    NTCREATEX_DISP_OPEN,
 	    0, /* create options */
-	    scrp, fhp, NULL, NULL);
+	    scrp, &tmp_fh, NULL, NULL);
 	if (error != 0)
 		goto out;
-
-	smb_fh_opened(fhp);
 
 	/*
 	 * Query stream info
 	 */
-	error = smbfs_smb2_query_info(ssp, &fhp->fh_fid2, mdp, &iolen,
+	error = smbfs_smb2_query_info(ssp, &tmp_fh.fh_fid2, mdp, &iolen,
 	    SMB2_0_INFO_FILE, FileStreamInformation, 0, scrp);
 
+	(void) smb_smb_close(ssp, &tmp_fh, scrp);
+
 out:
-	if (fhp != NULL)
-		smb_fh_rele(fhp);
 	return (error);
 }
 
