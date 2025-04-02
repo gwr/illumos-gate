@@ -62,6 +62,7 @@ SYMBOL_VERSION SUNWprivate {
 	mb_done;
 	mb_init;
 	mb_initm;
+	mb_put_align8;
 	mb_put_mbchain;
 	mb_put_mbuf;
 	mb_put_mem;
@@ -129,10 +130,16 @@ SYMBOL_VERSION SUNWprivate {
 	smb_timo_read;
 	smb_timo_write;
 
+	smb2_rq_compound;
 	smb2_rq_simple;
 	smb2_rq_simple_timed;
 	smb2_smb_close;
+	smb2_smb_close_mkreq;
+	smb2_smb_close_parse;
 	smb2_smb_ntcreate;
+	smb2_smb_ntcreate_mkreq;
+	smb2_smb_ntcreate_parse;
+	smb2_timo_default;
 
     local:
 	*;

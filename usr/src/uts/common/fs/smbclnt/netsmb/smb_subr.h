@@ -230,16 +230,35 @@ int  smb2_smb_echo(smb_vc_t *vcp, smb_cred_t *scred, int timo);
 int  smb2_smb_treeconnect(smb_share_t *ssp, smb_cred_t *scred);
 int  smb2_smb_treedisconnect(smb_share_t *ssp, smb_cred_t *scred);
 
-int
-smb2_smb_ntcreate(struct smb_share *ssp, struct mbchain *name_mb,
+int smb2_smb_ntcreate(
+	struct smb_share *ssp, struct mbchain *name_mb,
 	struct mbchain *cctx_in, struct mdchain *cctx_out,
 	uint32_t crflag, uint32_t req_acc, uint32_t efa, uint32_t sh_acc,
 	uint32_t disp, uint32_t createopt,  uint32_t impersonate,
 	struct smb_cred *scrp, smb2fid_t *fidp,
 	uint32_t *cr_act_p, struct smbfattr *fap);
+int smb2_smb_ntcreate_mkreq(
+	struct smb_rq *rqp,
+	struct mbchain	*name_mb,
+	struct mbchain	*cctx_in,
+	uint32_t cr_flags,
+	uint32_t req_acc,
+	uint32_t efa,
+	uint32_t share_acc,
+	uint32_t open_disp,
+	uint32_t createopt,
+	uint32_t impersonate);
+int smb2_smb_ntcreate_parse(
+	struct smb_rq *rqp,
+	struct mdchain *cctx_out,
+	smb2fid_t *fidp,
+	uint32_t *cr_act_p,
+	struct smbfattr *fap);
 
 int  smb2_smb_close(struct smb_share *ssp, smb2fid_t *fid,
 	struct smb_cred *scrp);
+int smb2_smb_close_mkreq(struct smb_rq *rqp, smb2fid_t *fid);
+int smb2_smb_close_parse(struct smb_rq *rqp);
 
 int smb2_smb_ioctl(struct smb_share *ssp, smb2fid_t *fid,
 	struct mbchain *data_in, struct mdchain *data_out,

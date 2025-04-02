@@ -83,6 +83,10 @@ smbfs_smb2_locking(struct smbnode *np, int op, uint32_t pid,
  * For SMB2 we need to do an attribute-only open.  The
  * data returned by open gets us everything we need, so
  * just close the handle and we're done.
+ *
+ * This uses a compound with two "related" commands:
+ * SMB2_CREATE, SMB2_CLOSE.  The server will do both,
+ * with the close using the FID from the create (open).
  */
 int
 smbfs_smb2_getpattr(
@@ -90,25 +94,111 @@ smbfs_smb2_getpattr(
 	struct smbfattr *fap,
 	struct smb_cred *scrp)
 {
-	smb_fh_t tmp_fh;
+	smb2fid_t fid;
+	struct mbchain name_mb;
+	struct smb_rq *open_rqp = NULL;
+	struct smb_rq *close_rqp = NULL;
 	struct smb_share *ssp = np->n_mount->smi_share;
-	uint32_t rights = (STD_RIGHT_READ_CONTROL_ACCESS |
-	    SA_RIGHT_FILE_READ_ATTRIBUTES);
 	int error;
 
-	bzero(&tmp_fh, sizeof (tmp_fh));
-	error = smbfs_smb_ntcreatex(np,
-	    NULL, 0, 0,	/* name nmlen xattr */
-	    rights, SMB_EFA_NORMAL,
-	    NTCREATEX_SHARE_ACCESS_ALL,
-	    NTCREATEX_DISP_OPEN,
-	    0, /* create options */
-	    scrp, &tmp_fh,
-	    NULL, fap);
-	if (error == 0) {
-		(void) smb_smb_close(ssp, &tmp_fh, scrp);
-	}
+	/*
+	 * Lots of args for SMB2_CREATE
+	 * Locals for readability.
+	 */
+	uint32_t cr_flags = 0;	/* NTCREATEX_FLAGS... */
+	uint32_t req_access = (
+		STD_RIGHT_READ_CONTROL_ACCESS |
+		SA_RIGHT_FILE_READ_ATTRIBUTES );
+	uint32_t efa = SMB_EFA_NORMAL;
+	uint32_t share_acc = NTCREATEX_SHARE_ACCESS_ALL;
+	uint32_t open_disp = NTCREATEX_DISP_OPEN;
+	uint32_t createopt = 0; /* create options */
+	uint32_t impersonate = NTCREATEX_IMPERSONATION_IMPERSONATION;
+	uint32_t cr_act;	/* create action (ret) */
 
+	mb_init(&name_mb);
+	error = smbfs_fullpath(&name_mb, SSTOVC(ssp),
+	    np, NULL, 0, '\\');
+	if (error != 0)
+		goto out;
+
+	/*
+	 * Build the SMB2_CREATE request, compounded.
+	 */
+	error = smb_rq_alloc(SSTOCP(ssp), SMB2_CREATE, scrp, &open_rqp);
+	if (error)
+		goto out;
+	error = smb2_smb_ntcreate_mkreq(open_rqp, &name_mb, NULL,
+	   cr_flags, req_access, efa, share_acc, open_disp,
+	   createopt, impersonate);
+	if (error)
+		goto out;
+
+	/*
+	 * Build the SMB2_CLOSE request, compounded.
+	 *
+	 * Special "all ones" FID will be replaced with the FID
+	 * from the compounted create on the server side, as
+	 * this close will be a "related" request.
+	 */
+	fid.fid_persistent = ~(0LL);
+	fid.fid_volatile = ~(0LL);
+	error = smb_rq_alloc(SSTOCP(ssp), SMB2_CLOSE, scrp, &close_rqp);
+	if (error)
+		goto out;
+	error = smb2_smb_close_mkreq(close_rqp, &fid);
+	if (error)
+		goto out;
+
+	/*
+	 * Setup the compound linkage
+	 */
+	(void) mb_put_align8(&open_rqp->sr_rq);
+	open_rqp->sr2_nextcmd = open_rqp->sr_rq.mb_count;
+	open_rqp->sr2_compound_next = close_rqp;
+	close_rqp->sr2_rqflags |= SMB2_FLAGS_RELATED_OPERATIONS;
+
+	/*
+	 * Run the compound command(s).  We don't really care about
+	 * the close, so that can use a short timeout. (5 sec.)
+	 */
+	open_rqp->sr_timo = smb2_timo_default;
+	close_rqp->sr_timo = 5; /* sec. */
+	error = smb2_rq_compound(open_rqp);
+	if (error)
+		goto out;
+
+	/*
+	 * Handle the SMB2_CREATE reply
+	 */
+	if (open_rqp->sr_lerror != 0) {
+		DTRACE_PROBE1(reply0, struct smb_rq, open_rqp);
+		error = open_rqp->sr_lerror;
+		goto out;
+	}
+	error = smb2_smb_ntcreate_parse(open_rqp, NULL, &fid, &cr_act, fap);
+	if (error != 0)
+		goto out;
+
+	/*
+	 * Handle the SMB2_CLOSE reply
+	 * Ignore any errors from this.
+	 */
+	if (close_rqp->sr_lerror != 0) {
+		DTRACE_PROBE1(reply1, struct smb_rq, close_rqp);
+		SMBSDEBUG("smbfs_smb2_getpattr close err=%d",
+			close_rqp->sr_lerror);
+		/* Keep error from above. */
+		goto out;
+	}
+	(void) smb2_smb_close_parse(close_rqp);
+
+out:
+	if (close_rqp != NULL)
+		smb_rq_done(close_rqp);
+	if (open_rqp != NULL)
+		smb_rq_done(open_rqp);
+	mb_done(&name_mb);
 	return (error);
 }
 
@@ -526,6 +616,8 @@ out:
  *	zero: caller should continue reading
  *	ENOENT: at end of directory, no records copied
  *	other, eg EIO: something unexpected happened
+ *
+ * Todo: Use a compound here to detect EOF.
  */
 static int
 smbfs_smb2_qdir(struct smbfs_fctx *ctx)
@@ -534,12 +626,7 @@ smbfs_smb2_qdir(struct smbfs_fctx *ctx)
 	smb_share_t *ssp = ctx->f_ssp;
 	smb_vc_t *vcp = SSTOVC(ssp);
 	struct smb_rq *rqp;
-	struct mbchain *mbp;
-	struct mdchain *mdp;
-	uint16_t *name_lenp;
 	uint8_t level, flags;
-	uint16_t ssize = 0;
-	uint16_t obuf_off = 0;
 	uint32_t obuf_len = 0;
 	uint32_t obuf_req;
 	int error;
@@ -570,41 +657,21 @@ smbfs_smb2_qdir(struct smbfs_fctx *ctx)
 	/*
 	 * Build an SMB2 Query Dir req.
 	 */
-	smb_rq_getrequest(rqp, &mbp);
+	error = smbfs_smb2_qdir_mkreq(
+		rqp,
+		level,
+		flags,
+		ctx->f_rkey,
+		&fhp->fh_fid2,
+		obuf_req,
+		ctx->f_wildcard,
+		ctx->f_wclen);
+	if (error != 0)
+		goto out;
 
-	mb_put_uint16le(mbp, 33);			/* Struct size */
-	mb_put_uint8(mbp, level);
-	mb_put_uint8(mbp, flags);
-	mb_put_uint32le(mbp, ctx->f_rkey);		/* FileIndex */
-
-	mb_put_uint64le(mbp, fhp->fh_fid2.fid_persistent);
-	mb_put_uint64le(mbp, fhp->fh_fid2.fid_volatile);
-
-	mb_put_uint16le(mbp, 96);
-	name_lenp = mb_reserve(mbp, sizeof (uint16_t));	/* FileNameLen */
-	mb_put_uint32le(mbp, obuf_req);			/* Output Buf Len */
-
-	/* Add in the name if any */
-	if (ctx->f_wclen > 0) {
-		int base, len;
-
-		/* Put the match pattern. */
-		base = mbp->mb_count;
-		error = smb_put_dmem(mbp, vcp,
-		    ctx->f_wildcard, ctx->f_wclen,
-		    SMB_CS_NONE, NULL);
-		if (error)
-			return (error);
-
-		/* Update the FileNameLen */
-		len = mbp->mb_count - base;
-		*name_lenp = htoles(len);
-	} else {
-		/* Empty string */
-		mb_put_uint16le(mbp, 0);
-		*name_lenp = 0;
-	}
-
+	/*
+	 * Run the request
+	 */
 	error = smb2_rq_simple(rqp);
 	if (error != 0)
 		goto out;
@@ -612,18 +679,13 @@ smbfs_smb2_qdir(struct smbfs_fctx *ctx)
 	/*
 	 * Parse the SMB2 Query Dir response
 	 */
-	smb_rq_getreply(rqp, &mdp);
-
-	/* Check structure size is 9 */
-	md_get_uint16le(mdp, &ssize);
-	if (ssize != 9) {
-		error = EBADRPC;
+	md_done(&ctx->f_mdchain);
+	error = smbfs_smb2_qdir_parse(
+		rqp,
+		&obuf_len,
+		&ctx->f_mdchain);
+	if (error != 0)
 		goto out;
-	}
-
-	/* Get output buffer offset, length */
-	md_get_uint16le(mdp, &obuf_off);
-	md_get_uint32le(mdp, &obuf_len);
 
 	/*
 	 * After read at EOF we'll have just one word:
@@ -632,27 +694,6 @@ smbfs_smb2_qdir(struct smbfs_fctx *ctx)
 	if (obuf_len < 8) {
 		error = ENOENT;
 		goto out;
-	}
-
-	/*
-	 * Have data. Put the payload in ctx->f_mdchain
-	 * Current offset is SMB2_HDRLEN + 8.
-	 */
-	{
-		mblk_t *m = NULL;
-		int skip = (int)obuf_off - (SMB2_HDRLEN + 8);
-		if (skip < 0) {
-			error = EBADRPC;
-			goto out;
-		}
-		if (skip > 0) {
-			md_get_mem(mdp, NULL, skip, MB_MSYSTEM);
-		}
-		error = md_get_mbuf(mdp, obuf_len, &m);
-		if (error)
-			goto out;
-		md_done(&ctx->f_mdchain);
-		md_initm(&ctx->f_mdchain, m);
 	}
 
 	/*
@@ -679,6 +720,121 @@ out:
 	return (error);
 }
 
+/*
+ * smbfs_smb2_qdir() -- request builder
+ */
+int
+smbfs_smb2_qdir_mkreq(
+	struct smb_rq *rqp,
+	uint8_t level,
+	uint8_t flags,
+	uint32_t resume_key,
+	smb2fid_t *fid,
+	uint32_t obuf_req,
+	const char *wcname,
+	int wclen)
+{
+	struct mbchain *mbp;
+	uint16_t *name_lenp;
+	int error;
+
+	/*
+	 * Build an SMB2 Query Dir req.
+	 */
+	smb_rq_getrequest(rqp, &mbp);
+
+	mb_put_uint16le(mbp, 33);			/* Struct size */
+	mb_put_uint8(mbp, level);
+	mb_put_uint8(mbp, flags);
+	mb_put_uint32le(mbp, resume_key);		/* FileIndex */
+
+	mb_put_uint64le(mbp, fid->fid_persistent);
+	mb_put_uint64le(mbp, fid->fid_volatile);
+
+	mb_put_uint16le(mbp, 96);			/* FileNameOffset */
+	name_lenp = mb_reserve(mbp, sizeof (uint16_t));	/* FileNameLen */
+	mb_put_uint32le(mbp, obuf_req);			/* Output Buf Len */
+
+	/* Add in the name if any */
+	if (wclen > 0) {
+		int base, len;
+
+		/* Put the match pattern. */
+		base = mbp->mb_count;
+		error = smb_put_dmem(mbp, rqp->sr_vc,
+		    wcname, wclen,
+		    SMB_CS_NONE, NULL);
+
+		/* Update the FileNameLen */
+		len = mbp->mb_count - base;
+		*name_lenp = htoles(len);
+	} else {
+		/* Empty string */
+		error = mb_put_uint16le(mbp, 0);
+		*name_lenp = 0;
+	}
+
+	return (error);
+}
+
+/*
+ * smbfs_smb2_qdir() -- response parse
+ */
+int
+smbfs_smb2_qdir_parse(
+	struct smb_rq *rqp,
+	uint32_t *out_len,
+	struct mdchain *out_mdp)
+{
+	struct mdchain *mdp;
+	uint16_t ssize = 0;
+	uint16_t obuf_off = 0;
+	uint32_t obuf_len = 0;
+	int error;
+
+	*out_len = 0;
+
+	/*
+	 * Parse the SMB2 Query Dir response
+	 */
+	smb_rq_getreply(rqp, &mdp);
+
+	/* Check structure size is 9 */
+	md_get_uint16le(mdp, &ssize);
+	if (ssize != 9) {
+		error = EBADRPC;
+		goto out;
+	}
+
+	/* Get output buffer offset, length */
+	md_get_uint16le(mdp, &obuf_off);
+	md_get_uint32le(mdp, &obuf_len);
+
+	/*
+	 * Have data. Put the payload in out_mdp
+	 * Current offset is SMB2_HDRLEN + 8.
+	 */
+	if (obuf_len != 0) {
+		mblk_t *m = NULL;
+		int skip = (int)obuf_off - (SMB2_HDRLEN + 8);
+		if (skip < 0) {
+			error = EBADRPC;
+			goto out;
+		}
+		if (skip > 0) {
+			md_get_mem(mdp, NULL, skip, MB_MSYSTEM);
+		}
+		error = md_get_mbuf(mdp, obuf_len, &m);
+		if (error)
+			goto out;
+		md_initm(out_mdp, m);
+	}
+	*out_len = obuf_len;
+
+out:
+	return (error);
+}
+
 int
 smbfs_smb2_findopen(struct smbfs_fctx *ctx, struct smbnode *dnp,
     const char *wildcard, int wclen, uint32_t attr)
@@ -698,7 +854,8 @@ smbfs_smb2_findopen(struct smbfs_fctx *ctx, struct smbnode *dnp,
 	ASSERT(ctx->f_dnp == dnp);
 
 	/*
-	 * Get a file handle on the directory
+	 * Get a file handle on the directory,
+	 * saved in the find context.
 	 */
 	error = smb_fh_create(ctx->f_ssp, &fhp);
 	if (error != 0)
@@ -787,54 +944,279 @@ smbfs_smb2_findnext(struct smbfs_fctx *ctx, uint16_t limit)
 	return (error);
 }
 
-
 /*
  * Helper for smbfs_xa_get_streaminfo
  * Query stream info
+ *
+ * Todo: Use a compound here.
  */
 int
 smbfs_smb2_get_streaminfo(smbnode_t *np, struct mdchain *mdp,
 	struct smb_cred *scrp)
 {
 	smb_share_t *ssp = np->n_mount->smi_share;
-	smb_fh_t *fhp = NULL;
+	smb_fh_t tmp_fh;
 	uint32_t rights =
 	    STD_RIGHT_READ_CONTROL_ACCESS |
 	    SA_RIGHT_FILE_READ_ATTRIBUTES;
 	uint32_t iolen = INT16_MAX;
 	int error;
 
-	/*
-	 * Get a file handle on the object
-	 * with read attr. rights.
-	 */
-	error = smb_fh_create(ssp, &fhp);
-	if (error != 0)
-		goto out;
+	bzero(&tmp_fh, sizeof (tmp_fh));
 	error = smbfs_smb_ntcreatex(np,
 	    NULL, 0, 0,	/* name nmlen xattr */
 	    rights, SMB_EFA_NORMAL,
 	    NTCREATEX_SHARE_ACCESS_ALL,
 	    NTCREATEX_DISP_OPEN,
 	    0, /* create options */
-	    scrp, fhp, NULL, NULL);
+	    scrp, &tmp_fh, NULL, NULL);
 	if (error != 0)
 		goto out;
-
-	smb_fh_opened(fhp);
 
 	/*
 	 * Query stream info
 	 */
-	error = smbfs_smb2_query_info(ssp, &fhp->fh_fid2, mdp, &iolen,
+	error = smbfs_smb2_query_info(ssp, &tmp_fh.fh_fid2, mdp, &iolen,
 	    SMB2_0_INFO_FILE, FileStreamInformation, 0, scrp);
 
+	(void) smb_smb_close(ssp, &tmp_fh, scrp);
+
 out:
-	if (fhp != NULL)
-		smb_fh_rele(fhp);
 	return (error);
 }
 
+/*
+ * OTW function to lookup a name in a directory for SMB2.
+ *
+ * Note: On success, this sets *namep to an allocated copy
+ * of the actual name found (which may differ in case).
+ * The caller must free that with smbfs_name_free().
+ *
+ * This a "fast path" optimization for: smbfs_smb_lookup()
+ * This can be called frequently, so this function implements
+ * a compound request, getting the information about the file
+ * with a single round-trip to the server instead of three.
+ *
+ * General outline for using a compound:
+ *	Build all the requests for the compound
+ *	Link them together and run them
+ *	Process all responses
+ */
+int
+smbfs_smb2_lookup(struct smbnode *dnp, const char **namep, int *nmlenp,
+	smbfattr_t *fap, struct smb_cred *scrp)
+{
+	smb_share_t *ssp = dnp->n_mount->smi_share;
+	const char *in_name = *namep;
+	int in_nmlen = *nmlenp;
+	char *out_name = NULL;
+	int out_nmlen;
+	int out_allocsz = SMB_MAXFNAMELEN + 1;
+	struct mbchain name_mb;
+	struct mdchain obuf_mdc;
+	struct smb_rq *open_rqp = NULL;
+	struct smb_rq *qdir_rqp = NULL;
+	struct smb_rq *close_rqp = NULL;
+	smb2fid_t tmp_fid;
+	uint32_t obuf_len = 0;
+	uint32_t obuf_req;
+	int error;
+
+	ASSERT((dnp->n_flag & N_XATTR) == 0);
+
+	bzero(&name_mb, sizeof (name_mb));
+	bzero(&obuf_mdc, sizeof (obuf_mdc));
+
+	/*
+	 * Special "all ones" FID will be replaced with the FID
+	 * from the compounted create on the server side, and the
+	 * query_dir and close will use that fid instead of this
+	 * place holder via the "related" request feature.
+	 */
+	tmp_fid.fid_persistent = ~(0LL);
+	tmp_fid.fid_volatile = ~(0LL);
+
+	/*
+	 * Build all the requests for the compound
+	 */
+
+	/*
+	 * Build an SMB2_CREATE request.
+	 * Lots of args for NtCreate.
+	 * Locals for readability.
+	 */
+	uint32_t cr_flags = 0;	/* NTCREATEX_FLAGS... */
+	uint32_t req_access =
+	    STD_RIGHT_READ_CONTROL_ACCESS |
+	    SA_RIGHT_FILE_READ_ATTRIBUTES |
+	    SA_RIGHT_FILE_READ_DATA;
+	uint32_t efa = SMB_EFA_NORMAL;
+	uint32_t share_acc = NTCREATEX_SHARE_ACCESS_ALL;
+	uint32_t open_disp = NTCREATEX_DISP_OPEN;
+	uint32_t createopt = NTCREATEX_OPTIONS_DIRECTORY;
+	uint32_t impersonate = NTCREATEX_IMPERSONATION_IMPERSONATION;
+
+	mb_init(&name_mb);
+	error = smbfs_fullpath(&name_mb, SSTOVC(ssp),
+	    dnp, NULL, 0, '\\');
+	if (error != 0)
+		goto out;
+
+	error = smb_rq_alloc(SSTOCP(ssp), SMB2_CREATE, scrp, &open_rqp);
+	if (error)
+		goto out;
+	error = smb2_smb_ntcreate_mkreq(open_rqp, &name_mb, NULL,
+	   cr_flags, req_access, efa, share_acc, open_disp,
+	   createopt, impersonate);
+	if (error)
+		goto out;
+
+	/*
+	 * Build an SMB2 Query Dir request.
+	 *
+	 * The out buf size must be > the OTW length of
+	 * FileFullDirectoryInformation with max name
+	 * length of SMB_MAXFNAMELEN (about 64 + 512)
+	 * See smbfs_decode_dirent_full()
+	 */
+	obuf_req = 1024;
+	error = smb_rq_alloc(SSTOCP(ssp), SMB2_QUERY_DIRECTORY,
+	    scrp, &qdir_rqp);
+	if (error != 0)
+		goto out;
+	error = smbfs_smb2_qdir_mkreq(
+		qdir_rqp,
+		FileFullDirectoryInformation,
+		SMB2_QDIR_FLAG_SINGLE,
+		0,	/* resume key */
+		&tmp_fid,
+		obuf_req,
+		in_name,
+		in_nmlen);
+	if (error != 0)
+		goto out;
+
+	/*
+	 * Build an SMB2_CLOSE request
+	 */
+	error = smb_rq_alloc(SSTOCP(ssp), SMB2_CLOSE, scrp, &close_rqp);
+	if (error)
+		goto out;
+	error = smb2_smb_close_mkreq(close_rqp, &tmp_fid);
+	if (error)
+		goto out;
+
+	/*
+	 * Setup the compound linkages
+	 */
+	(void) mb_put_align8(&open_rqp->sr_rq);
+	open_rqp->sr2_nextcmd = open_rqp->sr_rq.mb_count;
+	open_rqp->sr2_compound_next = qdir_rqp;
+	qdir_rqp->sr2_rqflags |= SMB2_FLAGS_RELATED_OPERATIONS;
+
+	(void) mb_put_align8(&qdir_rqp->sr_rq);
+	qdir_rqp->sr2_nextcmd = qdir_rqp->sr_rq.mb_count;
+	qdir_rqp->sr2_compound_next = close_rqp;
+	close_rqp->sr2_rqflags |= SMB2_FLAGS_RELATED_OPERATIONS;
+
+	/*
+	 * Run the compound command(s).  Timeouts for each are
+	 * somewhat arbitrary.  Open can be slow.
+	 */
+	open_rqp->sr_timo = smb2_timo_default;
+	qdir_rqp->sr_timo = 10; /* sec. */
+	close_rqp->sr_timo = 5; /* sec. */
+	error = smb2_rq_compound(open_rqp);
+	if (error)
+		goto out;
+
+	/*
+	 * Requests sent and responses received.
+	 */
+
+	/*
+	 * Handle the SMB2_CREATE reply
+	 */
+	if (open_rqp->sr_lerror != 0) {
+		DTRACE_PROBE1(reply0, struct smb_rq *, open_rqp);
+		error = open_rqp->sr_lerror;
+		goto out;
+	}
+	error = smb2_smb_ntcreate_parse(open_rqp, NULL, &tmp_fid, NULL, NULL);
+	if (error != 0)
+		goto out;
+
+	/*
+	 * Handle the SMB2 Query Dir response
+	 */
+	if (qdir_rqp->sr_lerror != 0) {
+		DTRACE_PROBE1(reply1, struct smb_rq *, qdir_rqp);
+		error = qdir_rqp->sr_lerror;
+		goto out;
+	}
+	error = smbfs_smb2_qdir_parse(
+		qdir_rqp,
+		&obuf_len,
+		&obuf_mdc);
+	if (error != 0)
+		goto out;
+
+	/*
+	 * Note: out_nmlen is an in/out parameter of smbfs_decode_dirent.
+	 * On input, it's the length of the name buffer allocated.
+	 * On output, its the lenght used in that buffer.
+	 */
+	out_nmlen = out_allocsz;
+	out_name = kmem_zalloc(out_allocsz, KM_SLEEP);
+
+	/* Skip NextEntryOffset */
+	(void) md_get_uint32le(&obuf_mdc, NULL);
+
+	error = smbfs_decode_dirent_full(
+		ssp, &obuf_mdc,
+		NULL, 	/* resume_key */
+		fap,	/* file attributes (output) */
+		out_name,
+		&out_nmlen);
+	if (error != 0)
+		goto out;
+
+	/*
+	 * Success!
+	 * smbfs_decode_dirent_full() filled in *fap
+	 * now return the actual file name etc.
+	 */
+	*namep = (const char *)smbfs_name_alloc(
+	    out_name, out_nmlen);
+	*nmlenp = out_nmlen;
+
+	/*
+	 * Handle the SMB2_CLOSE reply
+	 * Ignore any errors from this.
+	 */
+	if (close_rqp->sr_lerror != 0) {
+		DTRACE_PROBE1(reply2, struct smb_rq *, close_rqp);
+		SMBSDEBUG("smbfs_smb2_lookup close err=%d",
+			close_rqp->sr_lerror);
+		/* Keep error from above. */
+	}
+	(void) smb2_smb_close_parse(close_rqp);
+
+out:
+	if (out_name != NULL)
+		kmem_free(out_name, out_allocsz);
+
+	if (close_rqp != NULL)
+		smb_rq_done(close_rqp);
+	if (qdir_rqp != NULL)
+		smb_rq_done(qdir_rqp);
+	if (open_rqp != NULL)
+		smb_rq_done(open_rqp);
+	md_done(&obuf_mdc);
+	mb_done(&name_mb);
+
+	return (error);
+}
 
 /*
  * OTW function to Get a security descriptor (SD).
