@@ -699,7 +699,16 @@ smbfs_smb_findclose(struct smbfs_fctx *ctx, struct smb_cred *scrp)
 	return (error);
 }
 
-
+/*
+ * OTW function to lookup a name in a directory.
+ *
+ * Note: On success, this sets *namep to an allocated copy
+ * of the actual name found (which may differ in case).
+ * The caller must free that with smbfs_name_free().
+ *
+ * Todo: Could use a compound here, though that would need a
+ * "fast path" here for SMB2 into smbfs_smb2_findnext etc.
+ */
 int
 smbfs_smb_lookup(struct smbnode *dnp, const char **namep, int *nmlenp,
 	struct smbfattr *fap, struct smb_cred *scrp)

@@ -40,5 +40,6 @@ void smb2_rq_fillhdr(struct smb_rq *rqp);
 int smb2_rq_simple(struct smb_rq *rqp);
 int smb2_rq_simple_timed(struct smb_rq *rqp, int timeout);
 int smb2_rq_internal(struct smb_rq *rqp, int timeout);
+int smb2_rq_compound(struct smb_rq *rqp);
 
 #endif	/* _NETSMB_SMB2_RQ_H_ */
