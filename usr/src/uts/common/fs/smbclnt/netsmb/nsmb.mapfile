@@ -82,10 +82,16 @@ SYMBOL_VERSION ILLUMOSprivate {
 
 	nsmb_version;
 
+	smb2_rq_compound;
 	smb2_rq_simple;
 	smb2_rq_simple_timed;
 	smb2_smb_close;
+	smb2_smb_close_mkreq;
+	smb2_smb_close_parse;
 	smb2_smb_ntcreate;
+	smb2_smb_ntcreate_mkreq;
+	smb2_smb_ntcreate_parse;
+	smb2_timo_default;
 
 	smb_credinit;
 	smb_credrele;
