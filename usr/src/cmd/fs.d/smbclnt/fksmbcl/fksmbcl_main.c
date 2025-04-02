@@ -397,6 +397,78 @@ do_unmount(int argc, char **argv)
 }
 
 void
+do_stat(int argc, char **argv)
+{
+	char time_buf[40];
+	struct stat64 st;
+	vnode_t *vp;
+	int error;
+	uint_t mode;
+	char type;
+
+	if (vfsp == NULL) {
+		fprintf(stderr, "Not mounted\n");
+		return;
+	}
+
+	if (argc < 2) {
+		fprintf(stderr, "%s: missing path name\n", argv[0]);
+		return;
+	}
+
+	error = fake_lookup(NULL, argv[1], &vp);
+	if (error != 0) {
+		fprintf(stderr, "%s: lookup error=%d\n",
+			argv[1], error);
+		return;
+	}
+	error = fake_stat(vp, &st, 0);
+	vn_rele(vp);
+	if (error != 0) {
+		fprintf(stderr, "%s: stat error=%d\n",
+			argv[1], error);
+		return;
+	}
+
+	/*
+	 * Print type, mode, size, ...
+	 * First mode (only dir, file expected here)
+	 */
+	if (S_ISDIR(st.st_mode)) {
+		type = 'd';
+	} else if (S_ISREG(st.st_mode)) {
+		type = 'f';
+	} else {
+		type = '?';
+	}
+	mode = st.st_mode & 0777;
+
+	printf("type=%c mode=0%3o size=%" PRIu64 "\n",
+	       type, mode,
+	       (uint64_t)st.st_size);
+
+	printf("dev=%" PRIu64 " ino=%" PRIu64 "\n",
+	       (uint64_t)st.st_dev,
+	       (uint64_t)st.st_ino);
+
+	(void) strftime(time_buf, sizeof (time_buf),
+		"%b %e %T %Y", localtime(&st.st_atime));
+	printf("atime=%s\n", time_buf);
+
+	(void) strftime(time_buf, sizeof (time_buf),
+		"%b %e %T %Y", localtime(&st.st_mtime));
+	printf("mtime=%s\n", time_buf);
+
+	(void) strftime(time_buf, sizeof (time_buf),
+		"%b %e %T %Y", localtime(&st.st_ctime));
+	printf("ctime=%s\n", time_buf);
+
+	printf("blksize=%" PRIu64 " blocks=%" PRIu64 "\n",
+		(uint64_t)st.st_blksize,
+		(uint64_t)st.st_blocks);
+}
+
+void
 do_statfs(int argc, char **argv)
 {
 	statvfs64_t st;
@@ -999,6 +1071,7 @@ cmd_tbl[] = {
 	{ do_mount,	"mount",  "{share} [optstr]" },
 	{ do_unmount,	"umount", "" },
 	{ do_unmount,	"unmount", "" },
+	{ do_stat,	"stat",  "{rfile}" },
 	{ do_statfs,	"statfs", "" },
 	{ do_dir,	"dir",  "{rdir}" },
 	{ do_dirx,	"dirx", "{rdir}" },

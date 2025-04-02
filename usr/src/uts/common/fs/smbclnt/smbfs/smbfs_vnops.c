@@ -2671,7 +2671,7 @@ smbfs_create(vnode_t *dvp, char *nm, struct vattr *va, enum vcexcl exclusive,
 	 * from what we passed to create (case, etc.)
 	 * so call lookup to get the (opened) name.
 	 *
-	 * XXX: Could avoid this extra lookup if the
+	 * Todo: Could avoid this extra lookup if the
 	 * "createact" result from NT_CREATE says we
 	 * created the object.
 	 */

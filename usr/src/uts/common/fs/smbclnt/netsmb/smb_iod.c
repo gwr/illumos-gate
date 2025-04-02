@@ -404,6 +404,7 @@ smb2_iod_sendrq(struct smb_rq *rqp)
 			goto fatal;
 		}
 		linkb(top_m, cur_m);
+		c_rqp = c_rqp->sr2_compound_next;
 	}
 
 	if (encrypt) {
@@ -780,12 +781,13 @@ smb1_iod_process(smb_vc_t *vcp, mblk_t *m)
  * rather than waiting for the owner to wake up.
  */
 static int
-smb2_iod_process(smb_vc_t *vcp, mblk_t *m)
+smb2_iod_process(smb_vc_t *vcp, mblk_t *first_m)
 {
 	struct mdchain md;
 	struct smb_rq *rqp;
 	uint8_t sig[4];
-	mblk_t *next_m = NULL;
+	mblk_t *m = first_m;
+	mblk_t *next_m;
 	uint64_t message_id, async_id;
 	uint32_t flags, next_cmd_off, status;
 	uint16_t command, credits_granted;
@@ -796,6 +798,7 @@ top:
 	m = m_pullup(m, SMB2_HDRLEN);
 	if (m == NULL)
 		return (ENOMEM);
+	next_m = NULL;
 
 	/*
 	 * Note: Intentionally do NOT md_done(&md)
@@ -809,8 +812,10 @@ top:
 	 * (and later, could be SMB3 encrypted)
 	 */
 	err = md_get_mem(&md, sig, 4, MB_MSYSTEM);
-	if (err)
+	if (err) {
+		m_freem(m);
 		return (err);
+	}
 	if (sig[1] != 'S' || sig[2] != 'M' || sig[3] != 'B') {
 		goto bad_hdr;
 	}
@@ -1051,9 +1056,6 @@ recheck:
 
 	/*
 	 * Add this request to the active list and send it.
-	 * For SMB2 we may have a sequence of compounded
-	 * requests, in which case we must add them all.
-	 * They're sent as a compound in smb2_iod_sendrq.
 	 */
 	rqp->sr_mid = vcp->vc_next_mid++;
 	/* If signing, set the signing sequence numbers. */
@@ -1162,7 +1164,8 @@ recheck:
 	/*
 	 * Add this request to the active list and send it.
 	 * For SMB2 we may have a sequence of compounded
-	 * requests, in which case we must add them all.
+	 * requests, in which case we must add all to the
+	 * iod_rqlist as they may get separate responses.
 	 * They're sent as a compound in smb2_iod_sendrq.
 	 */
 
@@ -1177,7 +1180,7 @@ recheck:
 		TAILQ_INSERT_TAIL(&vcp->iod_rqlist, c_rqp, sr_link);
 		c_rqp = c_rqp->sr2_compound_next;
 	}
-	smb2_iod_sendrq(rqp);
+	smb2_iod_sendrq(rqp);	/* sends the compound */
 
 	rw_exit(&vcp->iod_rqlock);
 	return (0);
@@ -1341,7 +1344,8 @@ smb_iod_waitrq(struct smb_rq *rqp)
 	}
 
 	/*
-	 * Keep waiting until tmo2 is expired.
+	 * Keep waiting until tmo2 is expired, or until
+	 * smb_iod_rqprocessed bumps sr_rpgen
 	 */
 	while (rqp->sr_rpgen == rqp->sr_rplast) {
 		if (rqp->sr_flags & SMBR_NOINTR_RECV)

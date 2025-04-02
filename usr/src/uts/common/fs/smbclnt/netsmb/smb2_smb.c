@@ -929,27 +929,85 @@ smb2_smb_ntcreate(
 	uint32_t *cr_act_p,	/* optional create action */
 	struct smbfattr *fap)	/* optional attributes */
 {
-	struct smbfattr fa;
 	struct smb_rq *rqp;
-	struct mbchain *mbp;
-	struct mdchain *mdp;
-	uint16_t *name_offp;
-	uint16_t *name_lenp;
-	uint32_t *cctx_offp;
-	uint32_t *cctx_lenp;
-	uint32_t rcc_off, rcc_len;
-	smb2fid_t smb2_fid;
-	uint64_t llongint;
-	uint32_t longint, createact;
-	uint_t off, len;
 	int error;
-	uint16_t StructSize = 57;	// [MS-SMB2]
-
-	bzero(&fa, sizeof (fa));
 
 	error = smb_rq_alloc(SSTOCP(ssp), SMB2_CREATE, scrp, &rqp);
 	if (error)
 		return (error);
+
+	/*
+	 * Todo: Assemble creat contexts (if needed)
+	 * into an mbchain.
+	 */
+
+	/*
+	 * Build the SMB 2/3 Create Request
+	 */
+	error = smb2_smb_ntcreate_mkreq(
+		rqp,
+		name_mb,
+		cctx_in,
+		cr_flags,
+		req_acc,
+		efa,
+		share_acc,
+		open_disp,
+		createopt,
+		impersonate);
+	if (error)
+		goto out;
+
+	/*
+	 * Run the request with the "nointr" flag.
+	 * Don't want to risk missing a successful
+	 * open response, or we could "leak" FIDs.
+	 */
+	rqp->sr_flags |= SMBR_NOINTR_RECV;
+	error = smb2_rq_simple_timed(rqp, smb2_timo_open);
+	if (error)
+		goto out;
+
+	/*
+	 * Parse SMB 2/3 Create Response
+	 */
+	error = smb2_smb_ntcreate_parse(
+		rqp,
+		cctx_out,
+		fidp,
+		cr_act_p,
+		fap);
+
+
+out:
+	smb_rq_done(rqp);
+	return (error);
+}
+
+/*
+ * smb2_smb_ntcreate() -- request builder
+ */
+int
+smb2_smb_ntcreate_mkreq(
+	struct smb_rq *rqp,
+	struct mbchain	*name_mb,
+	struct mbchain	*cctx_in,
+	uint32_t cr_flags,	/* create flags */
+	uint32_t req_acc,	/* requested access */
+	uint32_t efa,		/* ext. file attrs (DOS attr +) */
+	uint32_t share_acc,
+	uint32_t open_disp,	/* open disposition */
+	uint32_t createopt,	/* NTCREATEX_OPTIONS_ */
+	uint32_t impersonate)	/* NTCREATEX_IMPERSONATION_... */
+{
+	struct mbchain *mbp;
+	uint16_t *name_offp;
+	uint16_t *name_lenp;
+	uint32_t *cctx_offp;
+	uint32_t *cctx_lenp;
+	uint_t off, len;
+	int error;
+	uint16_t StructSize = 57;	// [MS-SMB2]
 
 	/*
 	 * Todo: Assemble creat contexts (if needed)
@@ -1012,21 +1070,38 @@ smb2_smb_ntcreate(
 	if (mbp->mb_count < (StructSize + SMB2_HDRLEN))
 		mb_put_uint8(mbp, 0);
 
-	/*
-	 * Don't want to risk missing a successful
-	 * open response, or we could "leak" FIDs.
-	 */
-	rqp->sr_flags |= SMBR_NOINTR_RECV;
-	error = smb2_rq_simple_timed(rqp, smb2_timo_open);
-	if (error)
-		goto out;
+out:
+	return (error);
+}
+
+/*
+ * smb2_smb_ntcreate() -- response parse
+ */
+int
+smb2_smb_ntcreate_parse(
+	struct smb_rq *rqp,
+	struct mdchain *cctx_out,
+	smb2fid_t *fidp,	/* returned FID */
+	uint32_t *cr_act_p,	/* optional create action */
+	struct smbfattr *fap)	/* optional attributes */
+{
+	struct smbfattr fa;
+	struct mdchain *mdp;
+	uint32_t rcc_off, rcc_len;
+	smb2fid_t smb2_fid;
+	uint64_t llongint;
+	uint32_t longint, createact;
+	int error;
+	uint16_t StructSize;
+
+	bzero(&fa, sizeof (fa));
 
 	/*
 	 * Parse SMB 2/3 Create Response
 	 */
 	smb_rq_getreply(rqp, &mdp);
 
-	/* Check structure size is 89 */
+	/* Check structure size is 89 [MS-SMB2] */
 	error = md_get_uint16le(mdp, &StructSize);
 	if (StructSize != 89) {
 		error = EBADRPC;
@@ -1092,7 +1167,6 @@ smb2_smb_ntcreate(
 	}
 
 out:
-	smb_rq_done(rqp);
 	if (error)
 		return (error);
 
@@ -1109,7 +1183,6 @@ int
 smb2_smb_close(struct smb_share *ssp, smb2fid_t *fid, struct smb_cred *scrp)
 {
 	struct smb_rq *rqp;
-	struct mbchain *mbp;
 	int error;
 
 	error = smb_rq_alloc(SSTOCP(ssp), SMB2_CLOSE, scrp, &rqp);
@@ -1119,18 +1192,78 @@ smb2_smb_close(struct smb_share *ssp, smb2fid_t *fid, struct smb_cred *scrp)
 	/*
 	 * Build the SMB 2/3 Close Request
 	 */
+	error = smb2_smb_close_mkreq(rqp, fid);
+	if (error)
+		goto out;
+
+	/* Make sure we send, but only if already connected */
+	rqp->sr_flags |= (SMBR_NOINTR_SEND | SMBR_NORECONNECT);
+	error = smb2_rq_simple(rqp);
+	if (error)
+		goto out;
+
+	error = smb2_smb_close_parse(rqp);
+
+out:
+	smb_rq_done(rqp);
+	return (error);
+}
+
+/*
+ * smb2_smb_close() -- build request
+ */
+int
+smb2_smb_close_mkreq(struct smb_rq *rqp, smb2fid_t *fid)
+{
+	struct mbchain *mbp;
+	int error;
+
 	smb_rq_getrequest(rqp, &mbp);
 	mb_put_uint16le(mbp, 24);		/* Struct size */
 	mb_put_uint16le(mbp, 0);		/* Flags */
 	mb_put_uint32le(mbp, 0);		/* Reserved */
 
 	mb_put_uint64le(mbp, fid->fid_persistent);
-	mb_put_uint64le(mbp, fid->fid_volatile);
+	error = mb_put_uint64le(mbp, fid->fid_volatile);
 
-	/* Make sure we send, but only if already connected */
-	rqp->sr_flags |= (SMBR_NOINTR_SEND | SMBR_NORECONNECT);
-	error = smb2_rq_simple(rqp);
-	smb_rq_done(rqp);
+	return (error);
+}
+
+/*
+ * smb2_smb_close() -- parse response
+ */
+int
+smb2_smb_close_parse(struct smb_rq *rqp)
+{
+	struct mdchain *mdp;
+	int error;
+	uint16_t StructSize;
+
+	smb_rq_getreply(rqp, &mdp);
+
+	/* Check structure size is 60 [MS-SMB2] */
+	error = md_get_uint16le(mdp, &StructSize);
+	if (StructSize != 60) {
+		error = EBADRPC;
+		goto out;
+	}
+
+	/*
+	 * We don't need these, so just skip:
+	 * u16	Close Flags
+	 * u32	Reserved
+	 * u64	Create time
+	 * u64	Last Access time
+	 * u64	Last Write time
+	 * u64	Last Change time
+	 * u64	Allocation Size
+	 * u64	End Of File
+	 * u32	File Attributes
+	 * [ Total: 58 bytes, or StructSize - 2 ]
+	 */
+	error = md_get_mem(mdp, NULL, 58, MB_MSYSTEM);
+
+out:
 	return (error);
 }
 
