@@ -228,9 +228,6 @@ smbfs_decode_dirent(struct smbfs_fctx *ctx)
 {
 	struct mdchain entry_mdc;
 	struct mdchain *mdp = &ctx->f_mdchain;
-	size_t nmlen;
-	uint64_t llongint;
-	uint32_t nmsize, dattr;
 	uint32_t nextoff = 0;
 	int error;
 
@@ -264,87 +261,172 @@ smbfs_decode_dirent(struct smbfs_fctx *ctx)
 	}
 
 	/*
-	 * Decode the fixed-size parts
+	 * Decode according to info. level
+	 *
+	 * Note: f_nmlen is used in/out:
+	 *	in: max name len
+	 *	out: actual len
 	 */
 	switch (ctx->f_infolevel) {
-	case FileFullDirectoryInformation:
-	case SMB_FIND_FULL_DIRECTORY_INFO:
-		md_get_uint32le(mdp, &ctx->f_rkey);	/* resume key (idx) */
-		md_get_uint64le(mdp, &llongint);	/* creation time */
-		smb_time_NT2local(llongint, &ctx->f_attr.fa_createtime);
-		md_get_uint64le(mdp, &llongint);
-		smb_time_NT2local(llongint, &ctx->f_attr.fa_atime);
-		md_get_uint64le(mdp, &llongint);
-		smb_time_NT2local(llongint, &ctx->f_attr.fa_mtime);
-		md_get_uint64le(mdp, &llongint);
-		smb_time_NT2local(llongint, &ctx->f_attr.fa_ctime);
-		md_get_uint64le(mdp, &llongint);	/* file size */
-		ctx->f_attr.fa_size = llongint;
-		md_get_uint64le(mdp, &llongint);	/* alloc. size */
-		ctx->f_attr.fa_allocsz = llongint;
-		md_get_uint32le(mdp, &dattr);	/* ext. file attributes */
-		ctx->f_attr.fa_attr = dattr;
-		error = md_get_uint32le(mdp, &nmsize);	/* name size (otw) */
-		if (error)
-			goto errout;
-		md_get_uint32le(mdp, NULL);	/* Ea size */
+	case FileFullDirectoryInformation: /* 2 */
+	case SMB_FIND_FULL_DIRECTORY_INFO: /* 0x102 */
+		ctx->f_nmlen = ctx->f_namesz;
+		error = smbfs_decode_dirent_full(
+			ctx->f_ssp, mdp,
+			&ctx->f_rkey,
+			&ctx->f_attr,
+			ctx->f_name, &ctx->f_nmlen);
 		break;
 
-	case FileStreamInformation:
-		error = md_get_uint32le(mdp, &nmsize);	/* name size (otw) */
-		md_get_uint64le(mdp, &llongint);	/* file size */
-		ctx->f_attr.fa_size = llongint;
-		md_get_uint64le(mdp, &llongint);	/* alloc. size */
-		ctx->f_attr.fa_allocsz = llongint;
-		/*
-		 * Stream names start with a ':' that we want to skip.
-		 * This is the easiest place to take care of that.
-		 * Always unicode here.
-		 */
-		if (nmsize >= 2) {
-			struct mdchain save_mdc;
-			uint16_t wch;
-			save_mdc = *mdp;
-			md_get_uint16le(mdp, &wch);
-			if (wch == ':') {
-				/* OK, we skipped the ':' */
-				nmsize -= 2;
-			} else {
-				SMBVDEBUG("No leading : in stream?\n");
-				/* restore position */
-				*mdp = save_mdc;
-			}
-		}
+	case FileStreamInformation: /* 22 */
+		ctx->f_nmlen = ctx->f_namesz;
+		error = smbfs_decode_dirent_stream(
+			ctx->f_ssp, mdp,
+			&ctx->f_attr,
+			ctx->f_name, &ctx->f_nmlen);
 		break;
 
 	default:
 		SMBVDEBUG("unexpected info level %d\n", ctx->f_infolevel);
 		error = EINVAL;
-		goto errout;
+		break;
+	}
+
+	if (error != 0) {
+	errout:
+		SMBVDEBUG("error = %d\n", error);
+		ctx->f_eofs = ctx->f_left;
+	}
+
+	md_done(&entry_mdc);
+	return (error);
+}
+
+/*
+ * Decode Query Dir result for level FileAllInformation (2)
+ * Just the parts after NextEntryOffset.
+ *
+ * Note *nmlenp is in/out:
+ *	in: max name len
+ *	out: actual len
+ */
+int
+smbfs_decode_dirent_full(
+	struct smb_share *ssp,
+	struct mdchain *mdp,
+	uint32_t *resume_key,
+	smbfattr_t *fap,
+	char *name,
+	int *nmlenp)
+{
+	uint64_t llongint;
+	uint32_t dattr, nmsize;
+	size_t nmlen;
+	int error;
+
+	md_get_uint32le(mdp, resume_key);
+
+	md_get_uint64le(mdp, &llongint);	/* creation time */
+	smb_time_NT2local(llongint, &fap->fa_createtime);
+
+	md_get_uint64le(mdp, &llongint);	/* atime */
+	smb_time_NT2local(llongint, &fap->fa_atime);
+
+	md_get_uint64le(mdp, &llongint);	/* mtime */
+	smb_time_NT2local(llongint, &fap->fa_mtime);
+
+	md_get_uint64le(mdp, &llongint);	/* ctime */
+	smb_time_NT2local(llongint, &fap->fa_ctime);
+
+	md_get_uint64le(mdp, &llongint);	/* file size */
+	fap->fa_size = llongint;
+
+	md_get_uint64le(mdp, &llongint);	/* alloc. size */
+	fap->fa_allocsz = llongint;
+
+	md_get_uint32le(mdp, &dattr);	/* ext. file attributes */
+	fap->fa_attr = dattr;
+
+	error = md_get_uint32le(mdp, &nmsize);	/* name size (otw) */
+	if (error)
+		return (error);
+
+	md_get_uint32le(mdp, NULL);	/* Ea size (skip) */
+
+	/*
+	 * Get the filename, and convert to utf-8
+	 * Caller allocated name at size *nmlen
+	 */
+	nmlen = *nmlenp;
+	error = smb_get_dstring(mdp, SSTOVC(ssp),
+	    name, &nmlen, nmsize);
+	if (error == 0)
+		*nmlenp = (int)nmlen;
+
+	return (error);
+}
+
+/*
+ * Decode Query Dir result for level FileStreamInformation (22)
+ * Just the parts after NextEntryOffset.
+ *
+ * Note *nmlenp is in/out:
+ *	in: max name len
+ *	out: actual len
+ */
+int
+smbfs_decode_dirent_stream(
+	struct smb_share *ssp,
+	struct mdchain *mdp,
+	smbfattr_t *fap,
+	char *name,
+	int *nmlenp)
+{
+	uint64_t llongint;
+	uint32_t nmsize;
+	size_t nmlen;
+	int error;
+
+	error = md_get_uint32le(mdp, &nmsize);	/* name size (otw) */
+	if (error)
+		return (error);
+
+	md_get_uint64le(mdp, &llongint);	/* file size */
+	fap->fa_size = llongint;
+
+	md_get_uint64le(mdp, &llongint);	/* alloc. size */
+	fap->fa_allocsz = llongint;
+
+	/*
+	 * Stream names start with a ':' that we want to skip.
+	 * This is the easiest place to take care of that.
+	 * Always unicode here.
+	 */
+	if (nmsize >= 2) {
+		struct mdchain save_mdc;
+		uint16_t wch;
+		save_mdc = *mdp;
+		md_get_uint16le(mdp, &wch);
+		if (wch == ':') {
+			/* OK, we skipped the ':' */
+			nmsize -= 2;
+		} else {
+			SMBVDEBUG("No leading : in stream?\n");
+			/* restore position */
+			*mdp = save_mdc;
+		}
 	}
 
 	/*
 	 * Get the filename, and convert to utf-8
-	 * Allocated f_name in findopen
+	 * Caller allocated name at size *nmlen
 	 */
-	nmlen = ctx->f_namesz;
-	error = smb_get_dstring(mdp, SSTOVC(ctx->f_ssp),
-	    ctx->f_name, &nmlen, nmsize);
-	if (error != 0)
-		goto errout;
-	ctx->f_nmlen = (int)nmlen;
-	md_done(&entry_mdc);
-	return (0);
+	nmlen = *nmlenp;
+	error = smb_get_dstring(mdp, SSTOVC(ssp),
+	    name, &nmlen, nmsize);
+	if (error == 0)
+		*nmlenp = (int)nmlen;
 
-errout:
-	/*
-	 * Something bad has happened and we ran out of data
-	 * before we could parse all f_ecnt entries expected.
-	 * Give up on the current buffer.
-	 */
-	SMBVDEBUG("ran out of data\n");
-	ctx->f_eofs = ctx->f_left;
-	md_done(&entry_mdc);
 	return (error);
 }
 
