@@ -296,6 +296,24 @@ int smbfs_smb2_findclose(struct smbfs_fctx *ctx);
 int smbfs_smb2_get_streaminfo(smbnode_t *np, struct mdchain *mdp,
 	struct smb_cred *scrp);
 
+int smbfs_smb2_qdir_mkreq(
+	struct smb_rq *rqp,
+	uint8_t level,
+	uint8_t flags,
+	uint32_t resume_key,
+	smb2fid_t *fid,
+	uint32_t obuf_req,
+	const char *wcname,
+	int wclen);
+
+int smbfs_smb2_qdir_parse(
+	struct smb_rq *rqp,
+	uint32_t *out_len,
+	struct mdchain *out_mdp);
+
+int smbfs_smb2_lookup(struct smbnode *dnp, const char **namep, int *nmlenp,
+	struct smbfattr *fap, struct smb_cred *scrp);
+
 int smbfs_smb2_getsec(struct smb_share *ssp, smb2fid_t *fid,
 	uint32_t selector, mblk_t **res, uint32_t *reslen,
 	struct smb_cred *scrp);
@@ -309,6 +327,20 @@ int smbfs_smb2_setsec(struct smb_share *ssp, smb2fid_t *fid,
 int  smbfs_fullpath(struct mbchain *mbp, struct smb_vc *vcp,
 	struct smbnode *dnp, const char *name, int nmlen, uint8_t sep);
 int smbfs_decode_dirent(struct smbfs_fctx *ctx);
+
+int smbfs_decode_dirent_full(
+	struct smb_share *ssp,
+	struct mdchain *mdp,
+	uint32_t *resume_key,
+	smbfattr_t *fap,
+	char *name, int *nmlen);
+
+int smbfs_decode_dirent_stream(
+	struct smb_share *ssp,
+	struct mdchain *mdp,
+	smbfattr_t *fap,
+	char *name, int *nmlen);
+
 int smbfs_decode_file_all_info(struct smb_share *ssp,
 	struct mdchain *mdp, struct smbfattr *fap);
 int smbfs_decode_fs_attr_info(struct smb_share *ssp,

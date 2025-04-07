@@ -705,21 +705,17 @@ smbfs_smb_findclose(struct smbfs_fctx *ctx, struct smb_cred *scrp)
  * Note: On success, this sets *namep to an allocated copy
  * of the actual name found (which may differ in case).
  * The caller must free that with smbfs_name_free().
- *
- * Todo: Could use a compound here, though that would need a
- * "fast path" here for SMB2 into smbfs_smb2_findnext etc.
  */
 int
 smbfs_smb_lookup(struct smbnode *dnp, const char **namep, int *nmlenp,
 	struct smbfattr *fap, struct smb_cred *scrp)
 {
+	struct smb_share *ssp = dnp->n_mount->smi_share;
+	struct smb_vc *vcp = SSTOVC(ssp);
 	struct smbfs_fctx *ctx;
 	int error, intr;
 	const char *name = (namep ? *namep : NULL);
 	int nmlen = (nmlenp ? *nmlenp : 0);
-
-	/* This is no longer called with a null dnp */
-	ASSERT(dnp);
 
 	/*
 	 * Should not get here with "" anymore.
@@ -736,6 +732,15 @@ smbfs_smb_lookup(struct smbnode *dnp, const char **namep, int *nmlenp,
 	    (nmlen == 2 && name[0] == '.' && name[1] == '.')) {
 		DEBUG_ENTER("smbfs_smb_lookup: name is '.' or '..'");
 		return (EINVAL);
+	}
+
+	/*
+	 * Fast-path for SMB2 (and not XATTR dir).
+	 */
+	if ((dnp->n_flag & N_XATTR) == 0 &&
+	    (vcp->vc_flags & SMBV_SMB2) != 0) {
+		error = smbfs_smb2_lookup(dnp, namep, nmlenp, fap, scrp);
+		return (error);
 	}
 
 	/*
