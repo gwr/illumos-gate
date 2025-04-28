@@ -167,6 +167,12 @@ sn_inactive(smbnode_t *np)
 	vnode_t		*vp;
 
 	/*
+	 * smbfs_close should already have cleaned out any FIDs.
+	 */
+	ASSERT3P(np->n_fid,==,NULL);
+	ASSERT3P(np->n_dirseq,==,NULL);
+
+	/*
 	 * Here NFS has:
 	 * Flush and invalidate all pages (done by caller)
 	 * Free any held credentials and caches...
