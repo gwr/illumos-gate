@@ -22,6 +22,7 @@
 /*
  * Copyright (c) 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2017 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2025 RackTop Systems, Inc.
  */
 
 /*
@@ -120,6 +121,12 @@ smbrdr_ctx_new(struct smb_ctx **ctx_p, char *server,
 
 	if ((err = smb_ctx_alloc(&ctx)) != 0)
 		return (NT_STATUS_NO_MEMORY);
+
+	/*
+	 * Require SMB 2.1 or later, and require signing.
+	 */
+	(void) smb_ctx_setminver(ctx, SMB_VERS_2_1);
+	(void) smb_ctx_setsigning(ctx, B_TRUE, B_TRUE);
 
 	/*
 	 * Set server, share, domain, user
