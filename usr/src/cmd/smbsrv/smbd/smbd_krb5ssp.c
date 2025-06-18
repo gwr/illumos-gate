@@ -11,6 +11,7 @@
 
 /*
  * Copyright 2022 Tintri by DDN, Inc. All rights reserved.
+ * Copyright 2025 RackTop Systems, Inc.
  */
 
 /*
@@ -117,6 +118,7 @@ smbd_krb5ssp_work(authsvc_context_t *ctx)
 {
 	gss_buffer_desc	intok, outtok;
 	gss_buffer_desc namebuf;
+	char ipstr[INET6_ADDRSTRLEN];
 	krb5ssp_backend_t *be = ctx->ctx_backend;
 	gss_name_t gname = NULL;
 	OM_uint32 major, minor, ret_flags;
@@ -125,6 +127,8 @@ smbd_krb5ssp_work(authsvc_context_t *ctx)
 	krb5_error_code kerr;
 	uint32_t status;
 	smb_token_t *token = NULL;
+	smb_inaddr_t *cli_ip = &ctx->ctx_clinfo.lci_clnt_ipaddr;
+	const char *msg;
 
 	intok.length = ctx->ctx_ibodylen;
 	intok.value  = ctx->ctx_ibodybuf;
@@ -136,7 +140,9 @@ smbd_krb5ssp_work(authsvc_context_t *ctx)
 	/* Do this early, for error message support. */
 	kerr = krb5_init_context(&be->be_kctx);
 	if (kerr != 0) {
-		smbd_report("krb5ssp, krb5_init_ctx: %s",
+		smbd_report("krb5ssp[%s], krb5_init_ctx: %s",
+		    smb_inet_ntop(cli_ip, ipstr,
+		    SMB_IPSTRLEN(cli_ip->a_family)),
 		    krb5_get_error_message(be->be_kctx, kerr));
 		return (NT_STATUS_INTERNAL_ERROR);
 	}
@@ -161,8 +167,10 @@ smbd_krb5ssp_work(authsvc_context_t *ctx)
 	}
 
 	if (GSS_ERROR(major)) {
-		smbd_report("krb5ssp: gss_accept_sec_context, "
+		smbd_report("krb5ssp[%s]: gss_accept_sec_context, "
 		    "mech=0x%x, major=0x%x, minor=0x%x",
+		    smb_inet_ntop(cli_ip, ipstr,
+		    SMB_IPSTRLEN(cli_ip->a_family)),
 		    (int)mech_type, major, minor);
 		smbd_report(" krb5: %s",
 		    krb5_get_error_message(be->be_kctx, minor));
@@ -174,6 +182,13 @@ smbd_krb5ssp_work(authsvc_context_t *ctx)
 	case GSS_S_COMPLETE:
 		break;
 	case GSS_S_CONTINUE_NEEDED:
+		msg = krb5_get_error_message(be->be_kctx, minor);
+		if (msg != NULL) {
+			smbd_report("krb5ssp[%s]: CONTINUE_NEEDED",
+			    smb_inet_ntop(cli_ip, ipstr,
+			    SMB_IPSTRLEN(cli_ip->a_family)));
+			smbd_report(" krb5: %s", msg);
+		}
 		if (outtok.length > 0) {
 			ctx->ctx_orawtype = LSA_MTYPE_ES_CONT;
 			/* becomes NT_STATUS_MORE_PROCESSING_REQUIRED */
@@ -214,7 +229,9 @@ smbd_krb5ssp_work(authsvc_context_t *ctx)
 	kerr = krb5_pac_parse(be->be_kctx, be->be_authz_pac.value,
 	    be->be_authz_pac.length, &be->be_kpac);
 	if (kerr) {
-		smbd_report("krb5ssp, krb5_pac_parse: %s",
+		smbd_report("krb5ssp[%s], krb5_pac_parse: %s",
+		    smb_inet_ntop(cli_ip, ipstr,
+		    SMB_IPSTRLEN(cli_ip->a_family)),
 		    krb5_get_error_message(be->be_kctx, kerr));
 		status = NT_STATUS_UNSUCCESSFUL;
 		goto out;
@@ -223,7 +240,9 @@ smbd_krb5ssp_work(authsvc_context_t *ctx)
 	kerr = krb5_pac_get_buffer(be->be_kctx, be->be_kpac,
 	    PAC_LOGON_INFO, &be->be_pac);
 	if (kerr) {
-		smbd_report("krb5ssp, krb5_pac_get_buffer: %s",
+		smbd_report("krb5ssp[%s], krb5_pac_get_buffer: %s",
+		    smb_inet_ntop(cli_ip, ipstr,
+		    SMB_IPSTRLEN(cli_ip->a_family)),
 		    krb5_get_error_message(be->be_kctx, kerr));
 		status = NT_STATUS_UNSUCCESSFUL;
 		goto out;
