@@ -11,6 +11,7 @@
 
 /*
  * Copyright 2018 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2025 RackTop Systems, Inc.
  */
 
 /*
@@ -18,6 +19,9 @@
  * FSCTL_SRV_COPYCHUNK
  * FSCTL_SRV_COPYCHUNK_WRITE
  * (and related)
+ *
+ * This is a legacy interface. Modern clients should use:
+ * FSCTL_OFFLOAD_READ, FSCTL_OFFLOAD_WRITE
  */
 
 #include <smbsrv/smb2_kproto.h>
@@ -45,9 +49,28 @@ typedef struct copychunk_args {
 	chunk_t cvec[1]; /* actually longer */
 } copychunk_args_t;
 
+/*
+ * The "max_seg" size below limits the size of each segment in a
+ * "copy chunks" array.  We'll allocate a buffer of that size.
+ * Note: We kmem_alloc this, so don't make it HUGE.  It only
+ * needs to be large enough to allow the copy to proceed with
+ * reasonable efficiency. 1M is currently the largest possible
+ * block size with ZFS, so that's what we'd like to use.
+ *
+ * However, allocating a buffer larger than KMEM_BIG_MAXBUF (128k)
+ * would cause this allocation to bypass the kmem caches, which
+ * can cause a busy system to have contention in page_create via
+ * vmem_alloc(kmem_oversize_arena, ...)  Therefore, let the size
+ * of the allocated buffer be 128k.  If kmem is improved, revisit.
+ *
+ * We further limit the amount of actual data copied during a
+ * "copy chunks" request to help maintain I/O load fairness.
+ * smb2_copychunk_max_total is that limit.
+ */
+
 uint32_t smb2_copychunk_max_cnt = 256;
-uint32_t smb2_copychunk_max_seg = (1<<20); /* 1M, == smb2_max_rwsize */
-uint32_t smb2_copychunk_max_total = (1<<24); /* 16M */
+uint32_t smb2_copychunk_max_seg = (1<<17); /* 128k */
+uint32_t smb2_copychunk_max_total = (1<<20); /* 1M */
 
 static uint32_t smb2_fsctl_copychunk_decode(smb_request_t *, mbuf_chain_t *);
 static uint32_t smb2_fsctl_copychunk_array(smb_request_t *, smb_ofile_t *,
@@ -196,8 +219,7 @@ smb2_fsctl_copychunk(smb_request_t *sr, smb_fsctl_t *fsctl)
 		goto out;
 
 	/*
-	 * Get a buffer used for copying, always
-	 * smb2_copychunk_max_seg (1M)
+	 * Get a buffer used for copying.
 	 *
 	 * Rather than sleep for this relatively large allocation,
 	 * allow the allocation to fail and return an error.
@@ -499,7 +521,7 @@ smb2_fsctl_copychunk_1(smb_request_t *sr, smb_ofile_t *src_ofile,
 	 */
 	status = smb2_sparse_copy(sr, src_ofile, dst_ofile,
 	    cc->src_off, cc->dst_off, &cc->length,
-	    args->buffer, args->bufsize);
+	    args->buffer, args->bufsize, smb2_copychunk_max_seg);
 
 	return (status);
 }

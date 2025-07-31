@@ -11,7 +11,7 @@
 
 /*
  * Copyright 2014-2021 Tintri by DDN, Inc. All rights reserved.
- * Copyright 2020-2024 RackTop Systems, Inc.
+ * Copyright 2020-2025 RackTop Systems, Inc.
  */
 
 #ifndef _SMB2_KPROTO_H_
@@ -90,7 +90,7 @@ uint32_t smb2_fsctl_query_file_regions(smb_request_t *, smb_fsctl_t *);
 uint32_t smb2_sparse_copy(smb_request_t *sr,
     smb_ofile_t *src_ofile, smb_ofile_t *dst_ofile,
     off64_t src_off, off64_t dst_off, uint32_t *residp,
-    void *buffer, size_t bufsize);
+    void *buffer, size_t bufsize, uint32_t wlimit);
 
 uint32_t smb2_nego_validate(smb_request_t *, smb_fsctl_t *);
 

@@ -11,6 +11,7 @@
 
 /*
  * Copyright 2020 Tintri by DDN, Inc.  All rights reserved.
+ * Copyright 2025 RackTop Systems, Inc.
  */
 
 /*
@@ -286,6 +287,12 @@ smb2_fsctl_query_alloc_ranges(smb_request_t *sr, smb_fsctl_t *fsctl)
  * On entry, *residp is the length to copy.
  * On return, it's the "resid" (amount not copied)
  *
+ * For fairness across various kinds of I/O load, we want to limit
+ * the amount of actual data copying this does, while allowing the
+ * traversal of "holes" to remain unaffected by that limit.
+ * The "wlimit" parameter lets the caller speicify a write limit,
+ * which if passed, will cause the copying loop below to stop.
+ *
  * If this gets an error from any I/O, return it, even if some data
  * have already been copied.  The caller should normally ignore an
  * error when some data have been copied.
@@ -295,19 +302,20 @@ smb2_sparse_copy(
 	smb_request_t *sr,
 	smb_ofile_t *src_ofile, smb_ofile_t *dst_ofile,
 	off64_t src_off, off64_t dst_off, uint32_t *residp,
-	void *buffer, size_t bufsize)
+	void *buffer, size_t bufsize, uint32_t wlimit)
 {
 	iovec_t iov;
 	uio_t uio;
 	off64_t data, hole;
 	uint32_t xfer;
 	uint32_t status = 0;
+	uint32_t wcount = 0;
 	int rc;
 
 	while (*residp > 0) {
 
 		if (sr->sr_state != SMB_REQ_STATE_ACTIVE)
-			break;
+			return (NT_STATUS_CANCELLED);
 
 		data = src_off;
 		rc = smb_fsop_next_alloc_range(src_ofile->f_cr,
@@ -340,7 +348,7 @@ smb2_sparse_copy(
 			data = hole;
 
 		/*
-		 * If there's a gap (src_off .. data)
+		 * If there's a hole (src_off .. data)
 		 * skip in src_ofile, zero in dst_ofile
 		 */
 		if (src_off < data) {
@@ -362,7 +370,17 @@ smb2_sparse_copy(
 		 * Copy this segment: src_off .. hole
 		 */
 		while (src_off < hole) {
-			ssize_t tsize = hole - src_off;
+			ssize_t tsize;
+
+			/* No point continuing if cancelled. */
+			if (sr->sr_state != SMB_REQ_STATE_ACTIVE)
+				return (NT_STATUS_CANCELLED);
+
+			/* This allows up to bufsize over. That's OK */
+			if (wcount >= wlimit)
+				return (NT_STATUS_PARTIAL_COPY);
+
+			tsize = hole - src_off;
 			if (tsize > bufsize)
 				tsize = bufsize;
 
@@ -410,6 +428,7 @@ smb2_sparse_copy(
 			}
 			ASSERT(xfer <= tsize);
 
+			wcount += xfer;
 			src_off += xfer;
 			dst_off += xfer;
 			*residp -= xfer;

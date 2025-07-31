@@ -11,7 +11,7 @@
 
 /*
  * Copyright 2018-2021 Tintri by DDN, Inc.  All rights reserved.
- * Copyright 2022 RackTop Systems, Inc.
+ * Copyright 2022-2025 RackTop Systems, Inc.
  */
 
 /*
@@ -114,22 +114,37 @@ static uint32_t smb2_fsctl_odx_write_native1(smb_request_t *,
 int smb2_odx_enable = 1;
 
 /*
- * These two variables determine the intervals of offload_read and
+ * These variables determine the intervals for offload_read and
  * offload_write calls (respectively) during an offload copy.
+ * See "Summary of how offload data transfer works" above.
  *
- * For the offload read token we could offer a token representing
- * the whole file, but we'll have the client come back for a new
+ * smb2_odx_read_max limits the range covered by each read token.
+ * For an offload read token we could use something representing
+ * the whole file, but we'd like the client come back for a new
  * "token" after each 256M so we have a chance to look for "holes".
  * This lets us use the special "zero" token while we're in any
  * un-allocated parts of the file, so offload_write can use the
  * (more efficient) smb_fsop_freesp instead of copying.
  *
- * We limit the size of offload_write to 16M per request so we
- * don't end up taking so long with I/O that the client might
- * time out the request.  Keep: write_max <= read_max
+ * smb2_odx_write_max limits the range traversed while performing
+ * an OSX write operation with token type "native1" (which is the
+ * private form we use when there is some data).  Note that this
+ * limit does NOT apply with the "zeros" token, used when the
+ * range covered by the read token is entirely in a "hole".
+ *
+ * One may further limit the amount of data copied during an
+ * OSX write operation to help maintain I/O load fairness by
+ * setting smb2_odx_copy_max lower than smb2_odx_write_max.
+ * Note: This limit applies only to data copying, not "holes".
+ * By default it's the same as smb2_odx_write_max which means
+ * smb2_sparse_copy() can copy a full 16M of data if needed.
+ * It can be reduced to as low as 1M with little impact.
+ *
+ * Note, keep: buf_size <= copy_max <= write_max <= read_max
  */
 uint32_t smb2_odx_read_max = (1<<28); /* 256M */
 uint32_t smb2_odx_write_max = (1<<24); /* 16M */
+uint32_t smb2_odx_copy_max = (1<<24); /* 16M */
 
 /*
  * This buffer size determines the I/O size for the copy during
@@ -137,10 +152,13 @@ uint32_t smb2_odx_write_max = (1<<24); /* 16M */
  * Note: We kmem_alloc this, so don't make it HUGE.  It only
  * needs to be large enough to allow the copy to proceed with
  * reasonable efficiency.  1M is currently the largest possible
- * block size with ZFS, so that's what we'll use here.
+ * block size with ZFS, so that's what we'd like to use.
  *
- * Actually, limit this to kmem_max_cached, to avoid contention
- * allocating from kmem_oversize_arena.
+ * However, allocating a buffer larger than KMEM_BIG_MAXBUF (128k)
+ * would cause this allocation to bypass the kmem caches, which
+ * can cause a busy system to have contention in page_create via
+ * vmem_alloc(kmem_oversize_arena, ...)  Therefore, let the size
+ * of the allocated buffer be 128k.  If kmem is improved, revisit.
  */
 uint32_t smb2_odx_buf_size = (1<<17); /* 128k */
 
@@ -769,7 +787,8 @@ smb2_fsctl_odx_write_native1(smb_request_t *sr,
 	 */
 	resid = xlen;
 	status = smb2_sparse_copy(sr, src_ofile, dst_ofile,
-	    src_offset, args->in_dstoff, &resid, buffer, bufsize);
+	    src_offset, args->in_dstoff, &resid, buffer, bufsize,
+	    smb2_odx_copy_max);
 
 	/*
 	 * If the result was a partial copy, round down the reported
