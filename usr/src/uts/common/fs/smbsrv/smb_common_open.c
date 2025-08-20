@@ -22,7 +22,7 @@
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2020 Tintri by DDN, Inc. All rights reserved.
- * Copyright 2022 RackTop Systems, Inc.
+ * Copyright 2022-2025 RackTop Systems, Inc.
  */
 
 /*
@@ -401,6 +401,20 @@ smb_common_open(smb_request_t *sr)
 	}
 	dnode = op->fqi.fq_dnode;
 	dnode_held = B_TRUE;
+
+	/*
+	 * [MS-SMB2] 3.3.5.9 'Receiving an SMB2 CREATE Request'
+	 *
+	 * Make sure the DesiredAccess is allowed by the Share ACL.
+	 */
+	if ((sr->tid_tree->t_res_type & STYPE_MASK) == STYPE_DISKTREE) {
+		uint32_t desired = op->desired_access & ~ACCESS_SYSTEM_SECURITY;
+
+		if ((desired & sr->tid_tree->t_access) != desired) {
+			status = NT_STATUS_ACCESS_DENIED;
+			goto errout;
+		}
+	}
 
 	/*
 	 * Lock the parent dir node in case another create
