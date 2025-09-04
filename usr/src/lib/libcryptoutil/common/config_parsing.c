@@ -52,9 +52,13 @@ get_pkcs11conf_info(uentrylist_t **ppliblist)
 	uentrylist_t *pcur;
 	int rc = SUCCESS;
 
+	char *conf = getenv("PATH_PKCS11_CONF");
+	if (conf == NULL)
+		conf = _PATH_PKCS11_CONF;
+
 	*ppliblist = NULL;
-	if ((pfile = fopen(_PATH_PKCS11_CONF, "rF")) == NULL) {
-		cryptoerror(LOG_ERR, "failed to open %s.\n", _PATH_PKCS11_CONF);
+	if ((pfile = fopen(conf, "rF")) == NULL) {
+		cryptoerror(LOG_ERR, "failed to open %s.\n", conf);
 		return (FAILURE);
 	}
 

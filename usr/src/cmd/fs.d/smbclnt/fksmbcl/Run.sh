@@ -28,5 +28,8 @@
 LD_LIBRARY_PATH=$ROOT/usr/lib/smbfs:$ROOT/usr/lib:$ROOT/lib
 export LD_LIBRARY_PATH
 
+PATH_PKCS11_CONF="$ROOT/etc/crypto/pkcs11.conf"
+export PATH_PKCS11_CONF
+
 # run with the passed options
 exec $ROOT/usr/lib/smbfs/fksmbcl "$@"
