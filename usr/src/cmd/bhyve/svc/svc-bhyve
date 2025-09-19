@@ -1,0 +1,76 @@
+#!/usr/bin/sh
+#
+# This file and its contents are supplied under the terms of the
+# Common Development and Distribution License ("CDDL"), version 1.0.
+# You may only use this file in accordance with the terms of version
+# 1.0 of the CDDL.
+#
+# A full copy of the text of the CDDL should have accompanied this
+# source.  A copy of the CDDL is also available via the Internet at
+# http://www.illumos.org/license/CDDL.
+#
+
+#
+# Copyright 2025 OmniOS Community Edition (OmniOSce) Association.
+#
+
+#
+# Start/stop a bhyve service instance
+#
+
+#
+# A bhyve instance typically has many options, and rather than keep
+# those many options in SMF, this service method runs bhyve using a
+# config file located in the root directory of the instance.
+# The only SMF configuration items are the instance name and the
+# root directory for the instance ("vm/inst_root").
+#
+
+. /lib/svc/share/smf_include.sh
+
+if [ -z "$SMF_FMRI" ]; then
+	echo "this script can only be invoked by smf(7)"	
+	exit $SMF_EXIT_ERR_NOSMF
+fi
+
+# The service configuration invokes this script with "%m" "%i"
+# (method name, instance name)
+
+inst="$2"
+if [ -z "$inst" ]; then
+	exit $SMF_EXIT_ERR_CONFIG
+fi
+
+case "$1" in
+'start')
+
+	# In case a VM instance remains in the kernel, destroy it.
+	/usr/sbin/bhyvectl --vm="$inst" --destroy
+
+	# Make sure vm/inst_root is configured.
+	dir=`svcprop -p vm/inst_root "$SMF_FMRI" 2>/dev/null`
+	if [ -z "$dir" ]; then
+		exit $SMF_EXIT_ERR_CONFIG
+	fi
+
+	# Make sure the config file exists.
+	if [ ! -f "$dir" ]; then
+		exit $SMF_EXIT_ERR_CONFIG
+	fi
+	/usr/sbin/bhyve -k "$dir/config" "$inst" &
+	;;
+
+'stop')
+	ctid=`svcprop -p restarter/contract $SMF_FMRI`
+	if [ -n "$ctid" ]; then
+		smf_kill_contract $ctid TERM 1
+	fi
+	;;
+
+*)
+	echo "Usage: $0 { start | stop }"
+	exit 1
+	;;
+esac
+exit $SMF_EXIT_OK
+

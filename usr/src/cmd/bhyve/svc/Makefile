@@ -10,23 +10,22 @@
 #
 
 #
-# Copyright 2024 OmniOS Community Edition (OmniOSce) Association.
+# Copyright 2025 OmniOS Community Edition (OmniOSce) Association.
 #
 
-include         $(SRC)/cmd/Makefile.cmd
+MANIFEST=	bhyve.xml
+SVCMETHOD=	svc-bhyve
 
-SUBDIRS = $(MACH64) svc test
+include $(SRC)/cmd/Makefile.cmd
 
-all :=          TARGET = all
-clean :=        TARGET = clean
-clobber :=      TARGET = clobber
-install :=      TARGET = install
+ROOTMANIFESTDIR= $(ROOTSVCAPPLICATION)
 
-.KEEP_STATE:
+all:
 
-all clean clobber install: $(SUBDIRS)
+install:	$(ROOTMANIFEST) $(ROOTSVCMETHOD)
 
-$(SUBDIRS): FRC
-	@cd $@; pwd; $(MAKE) $(TARGET)
+clean:
 
-FRC:
+check:		$(CHKMANIFEST)
+
+include $(SRC)/cmd/Makefile.targ
