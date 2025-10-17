@@ -45,7 +45,7 @@ case "$1" in
 'start')
 
 	# In case a VM instance remains in the kernel, destroy it.
-	/usr/sbin/bhyvectl --vm="$inst" --destroy
+	/usr/sbin/bhyvectl --vm="$inst" --destroy || true
 
 	# Make sure vm/inst_root is configured.
 	dir=`svcprop -p vm/inst_root "$SMF_FMRI" 2>/dev/null`
@@ -54,7 +54,8 @@ case "$1" in
 	fi
 
 	# Make sure the config file exists.
-	if [ ! -f "$dir" ]; then
+	if [ ! -f "$dir/config" ]; then
+		echo "Missing $dir/config" 1>&2
 		exit $SMF_EXIT_ERR_CONFIG
 	fi
 	/usr/sbin/bhyve -k "$dir/config" "$inst" &
@@ -63,7 +64,8 @@ case "$1" in
 'stop')
 	ctid=`svcprop -p restarter/contract $SMF_FMRI`
 	if [ -n "$ctid" ]; then
-		smf_kill_contract $ctid TERM 1
+		smf_kill_contract $ctid TERM 1 30 ||
+		/usr/sbin/bhyvectl --vm="$inst" --destroy
 	fi
 	;;
 

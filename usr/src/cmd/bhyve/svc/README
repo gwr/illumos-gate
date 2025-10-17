@@ -1,3 +1,42 @@
 
-Creating a bhyve service instance...
+Creating a bew bhyve service instance "ootest"
+with config file under /tank/vm/ootest/
 
+Create a directory for this VM, eg. /tank/zone/ootest
+Create some virtual disks (typicall under this location)
+eg. zfs create -V 40G tank/zone/ootest/disk0
+
+First create a vnic for the new VM, eg
+ dladm create-vnic -l igb0 bhyve0
+
+Craft a bhyve(8) command using that vnic=bhyve0
+then test/adjust until you're happy with it.
+Save your bhyve invocation to a script, eg run-ootest.sh
+
+Create a "config" file for bhyve based on the script, eg.
+ bhyve ...normal...options... -o config.dump=true
+and redirect the output to "config".
+The output file will contain config.dump=true
+which you should remove with an editor.
+
+Save the "config" file to the directory the VM will use.
+You can check it by running: bhyve -k config
+
+Now setup a service instance for this VM:
+
+Create an instance like this:
+ name=ootest
+ svccfg -s svc:/application/bhyve add $name
+ svccfg -s svc:/application/bhyve:$name addpg vm application
+ svccfg -s svc:/application/bhyve:$name setprop vm/inst_root=/tank/zone/$name
+
+Look at the properties:
+ svcprop -p vm application/bhyve:$name
+
+If your config file is OK, you can now just:
+svcadm enable application/bhyve:$name
+
+Things to watch out for:
+Each VM needs its own vnic (bhyve0, bhyve1, ...)
+Eavh VM using rfb needs a listneing port (5900, 59001, ...)
+Each VM using serial ports needs a unique UNIX sock name.
