@@ -50,6 +50,10 @@ LDLIBS += -lc
 CFLAGS +=	$(CCVERBOSE)
 CPPFLAGS +=	-D_REENTRANT -D_POSIX_PTHREAD_SEMANTICS -I$(SRCDIR)
 
+# Uncomment to use pkcs11 libs from proto area, or use
+# $(NOT_RELEASE_BUILD) ...
+# CPPFLAGS +=	-DDEBUG_PKCS11
+
 CERRWARN +=	-_gcc=-Wno-parentheses
 CERRWARN +=	$(CNOWARN_UNINIT)
 

@@ -29,6 +29,7 @@
 #include <strings.h>
 #include <locale.h>
 #include <stdlib.h>
+#include <dlfcn.h>
 #include "cryptoutil.h"
 
 static int uef_interpret(char *, uentry_t **);
@@ -44,7 +45,7 @@ static boolean_t is_fips(char *);
 int
 get_pkcs11conf_info(uentrylist_t **ppliblist)
 {
-	FILE *pfile;
+	FILE *pfile = NULL;
 	char buffer[BUFSIZ];
 	size_t len;
 	uentry_t *pent;
@@ -52,8 +53,38 @@ get_pkcs11conf_info(uentrylist_t **ppliblist)
 	uentrylist_t *pcur;
 	int rc = SUCCESS;
 
+#ifdef	DEBUG_PKCS11
+	/*
+	 * In a debug build, look first in $ROOT/etc/...
+	 * dli.dli_fname contains the full path to this lib,
+	 * (eg. $ROOT/etc/crypto/pkcs11.conf) where one may
+	 * configure $ROOT/usr/lib/security/... paths.
+	 */
+	Dl_info dli;
+	const char *libname =
+		"/lib"
+#ifdef	_LP64
+		"/amd64"
+#endif
+		"/libcryptoutil.so";
+
+	if (dladdr((void *)get_pkcs11conf_info, &dli) != 0) {
+		char *p;
+		(void) strlcpy(buffer, dli.dli_fname, BUFSIZ);
+		if ((p = strstr(buffer, libname)) != NULL) {
+			*p = '\0';
+			(void)strlcat(buffer, _PATH_PKCS11_CONF, BUFSIZ);
+			pfile = fopen(buffer, "rF");
+		}
+	}
+#endif
+
 	*ppliblist = NULL;
-	if ((pfile = fopen(_PATH_PKCS11_CONF, "rF")) == NULL) {
+
+	if (pfile == NULL)
+		pfile = fopen(_PATH_PKCS11_CONF, "rF");
+
+	if (pfile == NULL) {
 		cryptoerror(LOG_ERR, "failed to open %s.\n", _PATH_PKCS11_CONF);
 		return (FAILURE);
 	}
