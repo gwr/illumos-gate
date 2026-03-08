@@ -20,6 +20,7 @@
  */
 /*
  * Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright 2026 Edgecast Cloud LLC.
  */
 
 /* auditd smf(7)/libscf(3LIB) interface - set and display audit parameters */
@@ -29,14 +30,21 @@
 /* propvec array must be NULL terminated */
 scf_propvec_t	prop_vect[MAX_PROPVECS + 1];
 
+#ifdef DEBUG
+FILE	*dbfp;		/* debug file pointer */
+#define	DPRINT(x)	{ if (dbfp == NULL) dbfp = __auditd_debug_file_open(); \
+			    (void) fprintf x; (void) fflush(dbfp); }
+#else
+#define	DPRINT(x)
+#endif
+
 /*
  * prt_error() - prt_error_va() wrapper; see prt_error_va() for more contextual
  * information. Note, that the function disregards errno; if you need to print
  * out strerror()/errno use directly prt_error_va().
  * Inputs - program error format and message.
  */
-/*PRINTFLIKE1*/
-static void
+static void __PRINTFLIKE(1)
 prt_error(char *fmt, ...)
 {
 	va_list 	args;
@@ -54,8 +62,7 @@ prt_error(char *fmt, ...)
  * by the preceding functions.
  *
  */
-/*PRINTFLIKE1*/
-void
+void __VPRINTFLIKE(1)
 prt_error_va(char *fmt, va_list args)
 {
 	(void) vfprintf(stderr, fmt, args);
@@ -377,7 +384,7 @@ get_plugin_kva(asi_scfhandle_t *handle, asi_scfhandle_iter_t *handle_iter,
 		}
 	}
 
-#if DEBUG
+#ifdef DEBUG
 	{
 		scf_plugin_kva_node_t	*node_debug = node_head;
 		char			attr_string[PLUGIN_MAXATT];

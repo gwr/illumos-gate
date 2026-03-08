@@ -30,9 +30,7 @@
 #include <assert.h>
 #include "plugin.h"
 
-#define	DEBUG	0
-
-#if DEBUG
+#ifdef DEBUG
 extern FILE *dbfp;
 extern FILE *__auditd_debug_file_open();
 #define	DPRINT(x) { (void) fprintf x; }
@@ -47,7 +45,7 @@ audit_queue_init(au_queue_t *q)
 	q->auq_tail = NULL;
 	(void) pthread_mutex_init(&q->auq_lock, NULL);
 	q->auq_count = 0;
-#if DEBUG
+#ifdef DEBUG
 	if (dbfp == NULL) {
 		dbfp = __auditd_debug_file_open();
 	}

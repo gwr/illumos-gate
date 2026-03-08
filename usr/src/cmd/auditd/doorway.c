@@ -70,14 +70,7 @@
 #include <bsm/audit_door_infc.h>
 #include "queue.h"
 
-#define	DEBUG		0
-
-/* gettext() obfuscation routine for lint */
-#ifdef __lint
-#define	gettext(x)	x
-#endif
-
-#if DEBUG
+#ifdef DEBUG
 static FILE *dbfp;
 #define	DUMP(w, x, y, z) dump_state(w, x, y, z)
 #define	DPRINT(x) { (void) fprintf x; }

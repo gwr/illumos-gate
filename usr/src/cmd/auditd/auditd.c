@@ -43,7 +43,6 @@
 
 /* #define	DEBUG    - define for debug messages to be generated */
 /* #define	MEM_TEST - define to generate core dump on exit */
-#define	DEBUG		0
 #define	MEM_TEST	0
 
 #include <assert.h>
@@ -79,6 +78,15 @@
 #if !defined(TEXT_DOMAIN)
 #define	TEXT_DOMAIN	"SUNW_OST_OSCMD"
 #endif
+
+#ifdef DEBUG
+FILE	*dbfp;		/* debug file pointer */
+#define	DPRINT(x)	{ if (dbfp == NULL) dbfp = __auditd_debug_file_open(); \
+			    (void) fprintf x; (void) fflush(dbfp); }
+#else
+#define DPRINT(x)
+#endif
+
 /*
  * After we get a SIGTERM, we want to set a timer for 2 seconds
  * and let c2audit write as many records as it can until the timer
@@ -114,15 +122,15 @@ static int	reset_file = 1; /* 1 to close/open binary log */
 
 static int	auditing_set = 0;	/* 1 if auditon(A_SETCOND, on... */
 
-static void	my_sleep();
+static void	my_sleep(void);
 static void	*signal_thread(void *);
-static void	loadauditlist();
-static void	block_signals();
-static int	do_sethost();
+static void	loadauditlist(void);
+static void	block_signals(void);
+static int	do_sethost(void);
 
-static void	conf_to_kernel();
-static void	scf_to_kernel_qctrl();
-static void	scf_to_kernel_policy();
+static void	conf_to_kernel(void);
+static void	scf_to_kernel_qctrl(void);
+static void	scf_to_kernel_policy(void);
 
 /*
  * err_exit() - exit function after the unsuccessful call to auditon();
@@ -161,7 +169,7 @@ auditd_exit(int status)
 		(void) auditon(A_SETCOND, (caddr_t)&turn_audit_off,
 		    sizeof (int));
 
-#if DEBUG
+#ifdef DEBUG
 	(void) fclose(dbfp);
 #endif
 
@@ -178,7 +186,7 @@ main(int argc, char *argv[])
 	plugin_t		*p;
 	pid_t			pid;
 
-#if DEBUG
+#ifdef DEBUG
 #if MEM_TEST
 	char	*envp;
 #endif
@@ -245,7 +253,7 @@ main(int argc, char *argv[])
 
 	auditing_set = 1;
 
-#if DEBUG && MEM_TEST
+#if defined(DEBUG) && MEM_TEST
 	envp = getenv("UMEM_DEBUG");
 	if (envp != NULL)
 		DPRINT((dbfp, "UMEM_DEBUG=%s\n", envp));
@@ -433,7 +441,7 @@ main(int argc, char *argv[])
  */
 
 static void
-my_sleep()
+my_sleep(void)
 {
 	DPRINT((dbfp, "auditd: sleeping for 20 seconds\n"));
 	/*
@@ -585,7 +593,7 @@ init_plugin(char *name, kva_t *list, int cnt_flag)
  * {+|-}cnt entry per plugin with auditconfig providing the default)
  */
 static void
-loadauditlist()
+loadauditlist(void)
 {
 	char			*value;
 	char			*endptr;
@@ -606,7 +614,7 @@ loadauditlist()
 	DPRINT((dbfp, "loadauditlist: policy is to %s\n", (cnt_flag == 1) ?
 	    "continue" : "block"));
 
-#if DEBUG
+#ifdef DEBUG
 	{
 		int	acresult;
 		if (auditon(A_GETCOND, (caddr_t)&acresult, sizeof (int)) != 0) {
@@ -707,7 +715,7 @@ loadauditlist()
  */
 
 static void
-block_signals()
+block_signals(void)
 {
 	sigset_t	set;
 

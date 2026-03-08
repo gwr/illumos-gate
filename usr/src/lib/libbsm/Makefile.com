@@ -22,6 +22,7 @@
 # Copyright (c) 1997, 2010, Oracle and/or its affiliates. All rights reserved.
 #
 # Copyright (c) 2018, Joyent, Inc.
+# Copyright 2026 Edgecast Cloud LLC.
 
 LIBRARY =	libbsm.a
 VERS =		.1
@@ -88,6 +89,7 @@ SMATCH=off
 COMDIR=		../common
 AUDITD=		$(SRC)/cmd/auditd
 
+$(NOT_RELEASE_BUILD)CPPFLAGS += -DDEBUG
 CPPFLAGS += -I$(COMDIR) -I$(AUDITD)
 CPPFLAGS += -D_REENTRANT
 

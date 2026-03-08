@@ -20,6 +20,7 @@
  */
 /*
  * Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright 2026 Edgecast Cloud LLC.
  */
 
 #ifndef _AUDIT_SCF_H
@@ -43,23 +44,6 @@ extern "C" {
 #include <sys/varargs.h>
 #include <ucontext.h>
 #include <zone.h>
-
-/* gettext() obfuscation routine for lint */
-#ifdef __lint
-#define	gettext(x)	x
-#endif
-
-#ifndef DEBUG
-#define	DEBUG	0
-#endif
-
-#if DEBUG
-FILE	*dbfp;		  /* debug file pointer */
-#define	DPRINT(x)	{ if (dbfp == NULL) dbfp = __auditd_debug_file_open(); \
-			    (void) fprintf x; (void) fflush(dbfp); }
-#else	/* ! DEBUG */
-#define	DPRINT(x)
-#endif
 
 /* Audit subsystem service instances */
 #define	AUDITD_FMRI	"svc:/system/auditd:default"

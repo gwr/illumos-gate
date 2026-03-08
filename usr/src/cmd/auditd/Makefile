@@ -37,6 +37,7 @@ AUDITD = $(SRC)/cmd/auditd
 
 CPPFLAGS += -D_REENTRANT
 CPPFLAGS += -I$(LIBBSM) -I$(AUDITD)
+$(NOT_RELEASE_BUILD)CPPFLAGS += -DDEBUG
 
 CERRWARN += -_gcc=-Wno-parentheses
 
@@ -60,8 +61,6 @@ install:	all $(ROOTUSRSBINPROG) \
 $(PROG):	$(SRCS) $(OBJS)
 		$(LINK.c) $(OBJS) -o $@ $(LDLIBS)
 		$(POST_PROCESS)
-
-lint:		lint_SRCS
 
 $(POFILE): $(MSGFILES)
 		$(BUILDPO.msgfiles)
