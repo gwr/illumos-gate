@@ -757,6 +757,7 @@ nlm_call_lock(vnode_t *vp, struct flock64 *flp,
 	struct nlm_slock *nslp = NULL;
 	uint32_t xid;
 	int error = 0;
+	boolean_t did_rebind = B_FALSE;
 
 	bzero(&args, sizeof (args));
 	g = zone_getspecific(nlm_zone_key, curzone);
@@ -796,8 +797,15 @@ nlm_call_lock(vnode_t *vp, struct flock64 *flp,
 		if (error != 0) {
 			if (error == EAGAIN)
 				continue;
-			if (error == ECONNRESET)
-				nlm_host_invalidate_binding(hostp);
+			if (error == ECONNRESET) {
+				if (!did_rebind) {
+					did_rebind = B_TRUE;
+					nlm_host_invalidate_binding(hostp);
+					continue;
+				}
+				/* Report this as... */
+				error = EIO;
+			}
 
 			goto out;
 		}
@@ -955,6 +963,7 @@ nlm_call_cancel(struct nlm4_lockargs *largs,
 	nlm4_cancargs cargs;
 	uint32_t xid;
 	int error, retries;
+	boolean_t did_rebind = B_FALSE;
 
 	bzero(&cargs, sizeof (cargs));
 
@@ -992,8 +1001,15 @@ nlm_call_cancel(struct nlm4_lockargs *largs,
 		if (error != 0) {
 			if (error == EAGAIN)
 				continue;
-			if (error == ECONNRESET)
-				nlm_host_invalidate_binding(hostp);
+			if (error == ECONNRESET) {
+				if (!did_rebind) {
+					did_rebind = B_TRUE;
+					nlm_host_invalidate_binding(hostp);
+					continue;
+				}
+				/* Report this as... */
+				error = EIO;
+			}
 
 			return (error);
 		}
@@ -1046,6 +1062,7 @@ nlm_call_unlock(struct flock64 *flp, struct nlm_host *hostp,
 	enum nlm4_stats nlm_err;
 	uint32_t xid;
 	int error;
+	boolean_t did_rebind = B_FALSE;
 
 	bzero(&args, sizeof (args));
 	nlm_init_lock(&args.alock, flp, fhp, &oh);
@@ -1072,8 +1089,15 @@ nlm_call_unlock(struct flock64 *flp, struct nlm_host *hostp,
 		if (error != 0) {
 			if (error == EAGAIN)
 				continue;
-			if (error == ECONNRESET)
-				nlm_host_invalidate_binding(hostp);
+			if (error == ECONNRESET) {
+				if (!did_rebind) {
+					did_rebind = B_TRUE;
+					nlm_host_invalidate_binding(hostp);
+					continue;
+				}
+				/* Report this as... */
+				error = EIO;
+			}
 
 			return (error);
 		}
@@ -1119,6 +1143,7 @@ nlm_call_test(struct flock64 *flp, struct nlm_host *hostp,
 	enum nlm4_stats nlm_err;
 	uint32_t xid;
 	int error;
+	boolean_t did_rebind = B_FALSE;
 
 	bzero(&args, sizeof (args));
 	nlm_init_lock(&args.alock, flp, fhp, &oh);
@@ -1146,8 +1171,15 @@ nlm_call_test(struct flock64 *flp, struct nlm_host *hostp,
 		if (error != 0) {
 			if (error == EAGAIN)
 				continue;
-			if (error == ECONNRESET)
-				nlm_host_invalidate_binding(hostp);
+			if (error == ECONNRESET) {
+				if (!did_rebind) {
+					did_rebind = B_TRUE;
+					nlm_host_invalidate_binding(hostp);
+					continue;
+				}
+				/* Report this as... */
+				error = EIO;
+			}
 
 			return (error);
 		}
@@ -1352,6 +1384,7 @@ nlm_call_share(struct shrlock *shr, struct nlm_host *host,
 	enum nlm4_stats nlm_err;
 	uint32_t xid;
 	int error;
+	boolean_t did_rebind = B_FALSE;
 
 	bzero(&args, sizeof (args));
 	nlm_init_share(&args.share, shr, fh);
@@ -1360,7 +1393,6 @@ nlm_call_share(struct shrlock *shr, struct nlm_host *host,
 	xid = atomic_inc_32_nv(&nlm_xid);
 	args.cookie.n_len = sizeof (xid);
 	args.cookie.n_bytes = (char *)&xid;
-
 
 	for (;;) {
 		nlm_rpc_t *rpcp;
@@ -1379,8 +1411,15 @@ nlm_call_share(struct shrlock *shr, struct nlm_host *host,
 		if (error != 0) {
 			if (error == EAGAIN)
 				continue;
-			if (error == ECONNRESET)
-				nlm_host_invalidate_binding(host);
+			if (error == ECONNRESET) {
+				if (!did_rebind) {
+					did_rebind = B_TRUE;
+					nlm_host_invalidate_binding(host);
+					continue;
+				}
+				/* Report this as... */
+				error = EIO;
+			}
 
 			return (error);
 		}
@@ -1433,6 +1472,7 @@ nlm_call_unshare(struct shrlock *shr, struct nlm_host *host,
 	enum nlm4_stats nlm_err;
 	uint32_t xid;
 	int error;
+	boolean_t did_rebind = B_FALSE;
 
 	bzero(&args, sizeof (args));
 	nlm_init_share(&args.share, shr, fh);
@@ -1458,8 +1498,15 @@ nlm_call_unshare(struct shrlock *shr, struct nlm_host *host,
 		if (error != 0) {
 			if (error == EAGAIN)
 				continue;
-			if (error == ECONNRESET)
-				nlm_host_invalidate_binding(host);
+			if (error == ECONNRESET) {
+				if (!did_rebind) {
+					did_rebind = B_TRUE;
+					nlm_host_invalidate_binding(host);
+					continue;
+				}
+				/* Report this as... */
+				error = EIO;
+			}
 
 			return (error);
 		}
