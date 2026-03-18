@@ -796,6 +796,8 @@ nlm_call_lock(vnode_t *vp, struct flock64 *flp,
 		if (error != 0) {
 			if (error == EAGAIN)
 				continue;
+			if (error == ECONNRESET)
+				nlm_host_invalidate_binding(hostp);
 
 			goto out;
 		}
@@ -990,6 +992,8 @@ nlm_call_cancel(struct nlm4_lockargs *largs,
 		if (error != 0) {
 			if (error == EAGAIN)
 				continue;
+			if (error == ECONNRESET)
+				nlm_host_invalidate_binding(hostp);
 
 			return (error);
 		}
@@ -1068,6 +1072,8 @@ nlm_call_unlock(struct flock64 *flp, struct nlm_host *hostp,
 		if (error != 0) {
 			if (error == EAGAIN)
 				continue;
+			if (error == ECONNRESET)
+				nlm_host_invalidate_binding(hostp);
 
 			return (error);
 		}
@@ -1140,6 +1146,8 @@ nlm_call_test(struct flock64 *flp, struct nlm_host *hostp,
 		if (error != 0) {
 			if (error == EAGAIN)
 				continue;
+			if (error == ECONNRESET)
+				nlm_host_invalidate_binding(hostp);
 
 			return (error);
 		}
@@ -1371,6 +1379,8 @@ nlm_call_share(struct shrlock *shr, struct nlm_host *host,
 		if (error != 0) {
 			if (error == EAGAIN)
 				continue;
+			if (error == ECONNRESET)
+				nlm_host_invalidate_binding(host);
 
 			return (error);
 		}
@@ -1448,6 +1458,8 @@ nlm_call_unshare(struct shrlock *shr, struct nlm_host *host,
 		if (error != 0) {
 			if (error == EAGAIN)
 				continue;
+			if (error == ECONNRESET)
+				nlm_host_invalidate_binding(host);
 
 			return (error);
 		}
@@ -1593,8 +1605,23 @@ nlm_map_clnt_stat(enum clnt_stat stat)
 	case RPC_SUCCESS:
 		return (0);
 
-	case RPC_TIMEDOUT:
+	case RPC_AUTHERROR:
+		return (EACCES);
+
+	/*
+	 * Including relevant status codes from
+	 * nlm_rpc_handle.c NLM_STALE_CLNT()
+	 * Should re-bind for these.
+	 */
+	case RPC_VERSMISMATCH:
 	case RPC_PROGUNAVAIL:
+	case RPC_PROGVERSMISMATCH:
+	case RPC_PROCUNAVAIL:
+	case RPC_CANTCONNECT:
+	case RPC_XPRTFAILED:
+		return (ECONNRESET);
+
+	case RPC_TIMEDOUT:
 		return (EAGAIN);
 
 	case RPC_INTR:

@@ -48,10 +48,11 @@
 /*
  * The following errors codes from nlm_null_rpc indicate that the port we have
  * cached for the client's NLM service is stale and that we need to establish
- * a new RPC client.
+ * a new RPC client.  Similar to rpc/clnt.h IS_UNRECOVERABLE_RPC()
  */
-#define	NLM_STALE_CLNT(_status)			\
-	((_status) == RPC_PROGUNAVAIL ||	\
+#define	NLM_STALE_CLNT(_status)	(		\
+	(_status) == RPC_VERSMISMATCH ||	\
+	(_status) == RPC_PROGUNAVAIL ||		\
 	(_status) == RPC_PROGVERSMISMATCH ||	\
 	(_status) == RPC_PROCUNAVAIL ||		\
 	(_status) == RPC_CANTCONNECT ||		\

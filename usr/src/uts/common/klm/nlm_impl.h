@@ -614,6 +614,7 @@ void nlm_copy_netobj(struct netobj *, struct netobj *);
 
 int nlm_host_get_rpc(struct nlm_host *, int, nlm_rpc_t **);
 void nlm_host_rele_rpc(struct nlm_host *, nlm_rpc_t *);
+void nlm_host_invalidate_binding(struct nlm_host *);
 
 /*
  * NLM server functions (nlm_service.c)
