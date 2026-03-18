@@ -241,6 +241,10 @@ refresh_nlm_rpc(struct nlm_host *hostp, nlm_rpc_t *rpcp)
 			 * delay for 10 seconds before returning an error. For
 			 * example the no delay on error option is not honored
 			 * for RPC_XPRTFAILED errors (see clnt_cots_kcallit).
+			 *
+			 * XXX: With nlm_host_invalidate_binding now called
+			 * where it shoudl be, we can just drop this.
+			 * (Or maybe do it just after a new binding)
 			 */
 			stat = nlm_null_rpc(rpcp->nr_handle, rpcp->nr_vers);
 			if (NLM_STALE_CLNT(stat)) {
@@ -303,6 +307,8 @@ again:
 		 * If so, start RPC binding update operation.
 		 * NOTE: the operation can be executed by only
 		 * one thread at time.
+		 *
+		 * XXX Holding hostp->nh_lock during I/O here!
 		 */
 		if (hostp->nh_rpcb_state == NRPCB_NEED_UPDATE)
 			update_host_rpcbinding(hostp, vers);
@@ -332,6 +338,11 @@ again:
 
 	/*
 	 * Refresh RPC binding
+	 *
+	 * XXX Could do this conditionally?
+	 * Right now, it always calls nlm_null_rpc
+	 * Now that we can invalidate, maybe we can do this
+	 * only when we had to do rpcbind above?
 	 */
 	rc = refresh_nlm_rpc(hostp, rpcp);
 	if (rc != 0) {
