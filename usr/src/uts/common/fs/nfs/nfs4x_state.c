@@ -45,6 +45,10 @@ extern void *clientid_mkkey(rfs4_entry_t);
 slotid4 rfs4_max_slots		= MAXSLOTS;		/* fore channel */
 slotid4 rfs4_back_max_slots	= MAXSLOTS_BACK;	/* back channel */
 
+static const callback_sec_parms4 rfs4x_cbsec_none = {
+	.cb_secflavor = AUTH_NONE
+};
+
 typedef union {
 	/* Both members have the same size */
 	struct {
@@ -521,6 +525,7 @@ rfs4_session_create(rfs4_entry_t u_entry, void *arg)
 	SVCMASTERXPRT		*mxprt;
 	struct svc_req		*req;
 	sess_bcsd_t		*bsdp;
+	callback_sec_parms4	*secp = NULL;
 
 	nfs4_srv_t *nsrv4 = nfs4_get_srv();
 
@@ -570,14 +575,17 @@ rfs4_session_create(rfs4_entry_t u_entry, void *arg)
 	sp->sn_bc.progno = ap->cs_aotw.csa_cb_program;
 	sp->sn_bc.cr = crget();
 
-	if ((ap->cs_aotw.csa_sec_parms.csa_sec_parms_len == 0) ||
-	    (ap->cs_aotw.csa_sec_parms.csa_sec_parms_val == NULL)) {
+	if (ap->cs_aotw.csa_sec_parms.csa_sec_parms_len == 0) {
+		secp = (callback_sec_parms4 *)&rfs4x_cbsec_none;
+	} else if (ap->cs_aotw.csa_sec_parms.csa_sec_parms_val != NULL) {
+		secp = ap->cs_aotw.csa_sec_parms.csa_sec_parms_val;
+	} else {
 		cmn_err(CE_WARN, "Invalid backchannel security.");
 		ap->cs_error = NFS4ERR_INVAL;
 		goto err;
 	}
 
-	if (!rfs4x_cbsec_valid(ap->cs_aotw.csa_sec_parms.csa_sec_parms_val)) {
+	if (!rfs4x_cbsec_valid(secp)) {
 		cmn_err(CE_WARN, "Unsupported backchannel security.");
 		ap->cs_error = NFS4ERR_INVAL;
 		goto err;
@@ -586,7 +594,7 @@ rfs4_session_create(rfs4_entry_t u_entry, void *arg)
 	sp->sn_bc.secprms.csa_sec_parms_val = (callback_sec_parms4 *)
 	    kmem_zalloc(sizeof (callback_sec_parms4), KM_SLEEP);
 	rfs4x_cbsec_init(sp->sn_bc.secprms.csa_sec_parms_val,
-	    ap->cs_aotw.csa_sec_parms.csa_sec_parms_val);
+	    secp);
 
 	/*
 	 * Initialize some overall sessions values
