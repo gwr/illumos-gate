@@ -1024,7 +1024,7 @@ rfs41_file_still_delegated(rfs4_deleg_state_t *dsp)
 	}
 
 	/* check deleg cnt */
-	if (list_next(&fp->rf_delegstatelist, dsp) == NULL) {
+	if (list_head(&fp->rf_delegstatelist) == NULL) {
 		rfs4_dbe_unlock(fp->rf_dbe);
 		return (FALSE);
 	}
