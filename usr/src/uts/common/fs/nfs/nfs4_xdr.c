@@ -5111,6 +5111,10 @@ xdr_snfs_cb_argop4(XDR *xdrs, nfs_cb_argop4 *objp)
 	if (!XDR_PUTINT32(xdrs, (int32_t *)&objp->argop))
 		return (FALSE);
 
+	/*
+	 * Operations that differ between server and client are here,
+	 * and the common ones are in xdr_nfs_cb_argop4 via default:
+	 */
 	switch (objp->argop) {
 	case OP_CB_GETATTR:
 		gargs = &objp->nfs_cb_argop4_u.opcbgetattr;
@@ -5131,6 +5135,7 @@ xdr_snfs_cb_argop4(XDR *xdrs, nfs_cb_argop4 *objp)
 	case OP_CB_ILLEGAL:
 		return (TRUE);
 	default:
+		/* OP_CB_SEQUENCE, OP_CB_NOTIFY, OP_CB_RECALL_... */
 		return (xdr_nfs_cb_argop4(xdrs, objp));
 	}
 }
@@ -5149,6 +5154,15 @@ xdr_cnfs_cb_argop4(XDR *xdrs, nfs_cb_argop4 *objp)
 
 	if (!xdr_u_int(xdrs, &objp->argop))
 		return (FALSE);
+
+	/*
+	 * Operations that differ between server and client are here,
+	 * and the common ones are in xdr_nfs_cb_argop4 via default:
+	 *
+	 * The client does not handle CB_SEQUENCE yet (v4.0 only)
+	 * but we should be prepared to decode so we can return a
+	 * proper "proc not supported" error instead of XDR failed.
+	 */
 	switch (objp->argop) {
 	case OP_CB_GETATTR:
 		gargs = &objp->nfs_cb_argop4_u.opcbgetattr;
@@ -5170,8 +5184,10 @@ xdr_cnfs_cb_argop4(XDR *xdrs, nfs_cb_argop4 *objp)
 		    (uint_t *)&rargs->fh.nfs_fh4_len, NFS4_FHSIZE));
 	case OP_CB_ILLEGAL:
 		return (TRUE);
+	default:
+		/* OP_CB_SEQUENCE, OP_CB_NOTIFY, OP_CB_RECALL_... */
+		return (xdr_nfs_cb_argop4(xdrs, objp));
 	}
-	return (FALSE);
 }
 
 /*
