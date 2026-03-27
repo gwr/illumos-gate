@@ -39,6 +39,19 @@ rfs4_err_resp(COMPOUND4args *args, COMPOUND4res *resp, nfsstat4 err)
 	resp->status = resp->array[0].nfs_resop4_u.opillegal.status = err;
 }
 
+static void
+rfs4x_shrink_oversize_reply(COMPOUND4res *resp, nfsstat4 err)
+{
+	rfs4_compound_free(resp);
+	bzero(resp, sizeof (*resp));
+
+	resp->status = err;
+	resp->array_len = 1;
+	resp->array = kmem_zalloc(sizeof (nfs_resop4), KM_SLEEP);
+	resp->array[0].resop = OP_SEQUENCE;
+	resp->array[0].nfs_resop4_u.opsequence.sr_status = err;
+}
+
 /*
  * The function checks if given compound operation is allowed
  * to be the very fist operation in compound array.
@@ -100,9 +113,33 @@ xdr_compound_wrapper(XDR *xdrs, compound_state_t *cs)
 	COMPOUND4res *resp = cs->cmpresp;
 	bool_t res = FALSE;
 	bool_t isreal = (xdrs->x_handy != 0);    /* real data encoding ? */
+	uint_t start_pos = 0;
 
 	if (!(cs->cs_flags & RFS4_DISPATCH_DONE)) {
+		if (isreal)
+			start_pos = xdr_getpos(xdrs);
+
 		res = xdr_COMPOUND4res_srv(xdrs, resp);
+
+		if (res && isreal && rfs4_has_session(cs)) {
+			uint_t end_pos = xdr_getpos(xdrs);
+			uint32_t limit = cs->cachethis ?
+			    cs->sp->cn_attrs.ca_maxresponsesize_cached :
+			    cs->sp->cn_attrs.ca_maxresponsesize;
+			nfsstat4 err = cs->cachethis ?
+			    NFS4ERR_REP_TOO_BIG_TO_CACHE : NFS4ERR_REP_TOO_BIG;
+
+			if (end_pos > limit) {
+				if (xdr_setpos(xdrs, start_pos)) {
+					rfs4x_shrink_oversize_reply(resp, err);
+					*cs->statusp = resp->status;
+					res = xdr_COMPOUND4res_srv(xdrs, resp);
+				} else {
+					res = FALSE;
+				}
+			}
+		}
+
 		if (isreal)
 			rfs4x_dispatch_done(cs);
 	}
