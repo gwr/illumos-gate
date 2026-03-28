@@ -7043,7 +7043,7 @@ static void
 rfs4_do_open(struct compound_state *cs, struct svc_req *req __unused,
     rfs4_openowner_t *oo, delegreq_t deleg,
     uint32_t access, uint32_t deny,
-    OPEN4res *resp, int deleg_cur, bool_t isminor_40)
+    OPEN4res *resp, int deleg_cur, bool_t has_session)
 {
 	rfs4_state_t *sp;
 	rfs4_file_t *fp;
@@ -7269,7 +7269,7 @@ again:
 	 * set the recall flag.
 	 */
 
-	dsp = rfs4_grant_delegation(deleg, sp, &recall, isminor_40);
+	dsp = rfs4_grant_delegation(deleg, sp, &recall, has_session);
 
 	cs->deleg = (fp->rf_dinfo.rd_dtype == OPEN_DELEGATE_WRITE);
 
@@ -7282,11 +7282,11 @@ again:
 
 	if (dsp) {
 		rfs4_set_deleg_response(dsp, &resp->delegation, NULL, recall);
-		if (!isminor_40) {
+		if (has_session) {
 			rfs4x_rs_record(cs, dsp);
 		}
 		rfs4_deleg_state_rele(dsp);
-	} else if (!isminor_40) {
+	} else if (has_session) {
 		open_delegation4 *delegation = &resp->delegation;
 		delegation->delegation_type = OPEN_DELEGATE_NONE_EXT;
 		delegation->
@@ -7303,19 +7303,19 @@ static void
 rfs4_do_openfh(struct compound_state *cs, struct svc_req *req, OPEN4args *args,
     rfs4_openowner_t *oo, OPEN4res *resp)
 {
-	bool_t isminor_40;
+	bool_t has_session;
 	int deleg;
 
 	/* cs->vp and cs->fh have been updated by putfh. */
-	isminor_40 = !rfs4_has_session(cs);
-	if (isminor_40) {
+	has_session = rfs4_has_session(cs);
+	if (!has_session) {
 		deleg = oo->ro_need_confirm ? DELEG_NONE : DELEG_ANY;
 	} else {
 		deleg = do_4x_deleg_hack(args->deleg_want);
 	}
 	rfs4_do_open(cs, req, oo, deleg,
 	    (args->share_access & 0xff), args->share_deny, resp, 0,
-	    !rfs4_has_session(cs));
+	    rfs4_has_session(cs));
 }
 
 static void
@@ -7324,7 +7324,7 @@ rfs4_do_opennull(struct compound_state *cs, struct svc_req *req,
 {
 	change_info4 *cinfo = &resp->cinfo;
 	bitmap4 *attrset = &resp->attrset;
-	bool_t isminor_40;
+	bool_t has_session;
 	int deleg;
 
 	if (args->opentype == OPEN4_NOCREATE)
@@ -7344,15 +7344,15 @@ rfs4_do_opennull(struct compound_state *cs, struct svc_req *req,
 
 		/* cs->vp cs->fh now reference the desired file */
 
-		isminor_40 = !rfs4_has_session(cs);
-		if (isminor_40) {
+		has_session = rfs4_has_session(cs);
+		if (!has_session) {
 			deleg = oo->ro_need_confirm ? DELEG_NONE : DELEG_ANY;
 		} else {
 			deleg = do_4x_deleg_hack(args->deleg_want);
 		}
 		rfs4_do_open(cs, req, oo,
 		    deleg, args->share_access,
-		    args->share_deny, resp, 0, isminor_40);
+		    args->share_deny, resp, 0, has_session);
 
 		/*
 		 * If rfs4_createfile set attrset, we must
@@ -7422,7 +7422,7 @@ rfs4_do_openprev(struct compound_state *cs, struct svc_req *req,
 	rfs4_do_open(cs, req, oo,
 	    NFS4_DELEG4TYPE2REQTYPE(args->claim.open_claim4_u.delegate_type),
 	    args->share_access, args->share_deny, resp, 0,
-	    !rfs4_has_session(cs));
+	    rfs4_has_session(cs));
 }
 
 static void
@@ -7478,7 +7478,7 @@ rfs4_do_opendelcur(struct compound_state *cs, struct svc_req *req,
 	rfs4_deleg_state_rele(dsp);
 	rfs4_do_open(cs, req, oo, DELEG_NONE,
 	    args->share_access, args->share_deny, resp, 1,
-	    !rfs4_has_session(cs));
+	    rfs4_has_session(cs));
 }
 
 static void

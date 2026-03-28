@@ -1688,7 +1688,7 @@ rfs4_delegation_policy(nfs4_srv_t *nsrv4, open_delegation_type4 dtype,
  */
 rfs4_deleg_state_t *
 rfs4_grant_delegation(delegreq_t dreq, rfs4_state_t *sp, int *recall,
-    bool_t isminor_40)
+    bool_t has_session)
 {
 	nfs4_srv_t *nsrv4;
 	rfs4_file_t *fp = sp->rs_finfo;
@@ -1756,10 +1756,10 @@ rfs4_grant_delegation(delegreq_t dreq, rfs4_state_t *sp, int *recall,
 		 * If a valid callback path does not exist, no delegation may
 		 * be granted.
 		 */
-		if (isminor_40) {
-			cb_ok = rfs4_cbcheck(sp);
-		} else {
+		if (has_session) {
 			cb_ok = rfs4x_cbcheck(sp);
+		} else {
+			cb_ok = rfs4_cbcheck(sp);
 		}
 		if (!cb_ok) {
 			cmn_err(CE_WARN, "rfs4_grant_delegation: no cb\n");
