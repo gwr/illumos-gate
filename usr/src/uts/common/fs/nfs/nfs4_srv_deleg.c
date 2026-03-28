@@ -1506,7 +1506,6 @@ void
 rfs4_recall_deleg(rfs4_file_t *fp, bool_t trunc, rfs4_client_t *cp)
 {
 	time_t elapsed1, elapsed2;
-	rfs4_session_t *sp;
 
 	if (fp->rf_dinfo.rd_time_recalled != 0) {
 		elapsed1 = gethrestime_sec() - fp->rf_dinfo.rd_time_recalled;
@@ -1524,12 +1523,10 @@ rfs4_recall_deleg(rfs4_file_t *fp, bool_t trunc, rfs4_client_t *cp)
 		if (elapsed1 <= ((rfs4_lease_time * 20) / 100))
 			return;
 	}
-	if (cp == NULL ||
-	    (sp = rfs4x_findsession_by_clid(cp->rc_clientid)) == NULL) {
+	if (cp == NULL || cp->rc_minorversion == 0) {
 		rfs4_recall_file(fp, rfs4_do_cb_recall, trunc, cp);
 	} else {
-		rfs4_recall_file(fp, rfs4x_do_cb_recall, trunc, sp->sn_clnt);
-		rfs4x_session_rele(sp);
+		rfs4_recall_file(fp, rfs4x_do_cb_recall, trunc, cp);
 	}
 }
 

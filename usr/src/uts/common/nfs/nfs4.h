@@ -515,6 +515,7 @@ typedef struct rfs4_client {
 	clientid4		rc_clientid;
 	nfs_client_id4		rc_nfs_client;
 	verifier4		rc_confirm_verf;
+	uint8_t			rc_minorversion;    /* NFS minor version (0, 1, 2) */
 	unsigned		rc_need_confirm:1;
 	unsigned		rc_unlksys_completed:1;
 	unsigned		rc_can_reclaim:1;
