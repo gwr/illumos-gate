@@ -8504,6 +8504,8 @@ retry:
 			res->SETCLIENTID4res_u.client_using.r_netid = netid;
 
 			rfs4_client_rele(cp_confirmed);
+			cp_confirmed = NULL;
+			goto out;
 		}
 
 		/*
