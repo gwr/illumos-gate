@@ -8654,6 +8654,7 @@ rfs4_op_setclientid_confirm(nfs_argop4 *argop, nfs_resop4 *resop,
 
 	rfs4_dbe_lock(cp->rc_dbe);
 	cp->rc_need_confirm = FALSE;
+	cp->rc_minorversion = 0;	/* NFSv4.0 client */
 	if (cp->rc_cp_confirmed) {
 		cptoclose = cp->rc_cp_confirmed;
 		cptoclose->rc_ss_remove = 1;

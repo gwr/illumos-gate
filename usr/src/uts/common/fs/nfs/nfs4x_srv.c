@@ -407,6 +407,7 @@ out:
 	rok->eir_flags = 0;
 	if (resp->eir_status == NFS4_OK && !cp->rc_need_confirm)
 		rok->eir_flags |= EXCHGID4_FLAG_CONFIRMED_R;
+	cp->rc_minorversion = cs->minorversion;
 
 	/*
 	 * State Protection (See sec. 2.10.8.3)
