@@ -2423,11 +2423,9 @@ rfs4x_cb_chinit(rfs4_session_t *sp)
 	}
 
 	/*
-	 * Adjust cred as per backchannel security
-	 * TODO:
-	 * Only AUTH supported is AUTH_UNIX, though AUTH_NONE is supported,
-	 * kernel defaults to AUTH_UNIX, Refer: clnt_cots_kcreate() which calls
-	 * authkern_create(). [authnone_create() needs to be explored later.]
+	 * Adjust cred as per backchannel security.  clnt_tli_kcreate() always
+	 * installs AUTH_UNIX (via authkern_create()), so for AUTH_NONE we
+	 * replace it with authnone_create() after the client handle exists.
 	 */
 	(void) crsetugid(cr, rfs4x_cbsec_getuid(secp),
 	    rfs4x_cbsec_getgid(secp));
@@ -2440,6 +2438,10 @@ rfs4x_cb_chinit(rfs4_session_t *sp)
 	}
 
 	if (ch != NULL) {
+		if (secp->cb_secflavor == AUTH_NONE) {
+			AUTH_DESTROY(ch->cl_auth);
+			ch->cl_auth = authnone_create();
+		}
 		CLNT_CONTROL(ch, CLSET_CBCLIENT, NULL);
 		CLNT_CONTROL(ch, CLSET_TAG, sntag);
 	}
