@@ -1528,8 +1528,8 @@ rfs4_recall_deleg(rfs4_file_t *fp, bool_t trunc, rfs4_client_t *cp)
 	    (sp = rfs4x_findsession_by_clid(cp->rc_clientid)) == NULL) {
 		rfs4_recall_file(fp, rfs4_do_cb_recall, trunc, cp);
 	} else {
-		rfs4x_session_rele(sp);
 		rfs4_recall_file(fp, rfs4x_do_cb_recall, trunc, sp->sn_clnt);
+		rfs4x_session_rele(sp);
 	}
 }
 
