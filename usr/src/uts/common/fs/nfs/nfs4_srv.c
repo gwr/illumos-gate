@@ -8945,9 +8945,14 @@ lock_denied(LOCK4denied *dp, struct flock64 *flk)
 	lo = rfs4_findlockowner_by_pid(flk->l_pid);
 	if (lo != NULL) {
 		cp = lo->rl_client;
+		/*
+		 * Hold cp before releasing lo because cp is "borrowed"
+		 * from lo->rl_client and rfs4_lockowner_rele() might
+		 * destroy lo->rl_client before we can hold it.
+		 */
+		rfs4_dbe_hold(cp->rc_dbe);
 		if (rfs4_lease_expired(cp)) {
 			rfs4_lockowner_rele(lo);
-			rfs4_dbe_hold(cp->rc_dbe);
 			rfs4_client_close(cp);
 			return (NFS4ERR_EXPIRED);
 		}
@@ -8957,6 +8962,7 @@ lock_denied(LOCK4denied *dp, struct flock64 *flk)
 		bcopy(lo->rl_owner.owner_val, dp->owner.owner_val, len);
 		dp->owner.owner_len = len;
 		rfs4_lockowner_rele(lo);
+		rfs4_client_rele(cp);
 		goto finish;
 	}
 
