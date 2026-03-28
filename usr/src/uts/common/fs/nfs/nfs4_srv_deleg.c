@@ -2210,10 +2210,9 @@ rfs4_return_deleg(rfs4_deleg_state_t *dsp, bool_t revoked)
 	list_remove(&fp->rf_delegstatelist, dsp);
 
 	/*
-	 * If (for some reason) we don't
-	 * find the sp, the worse that'll happen is that we'll
-	 * leak some state (ie. won't be able to clean up the
-	 * hold). But nothing to get too excited about.
+	 * If (for any reason) we don't find the session, we need to
+	 * rfs4x_rs_erase() to avoid a lingering delegation (and its
+	 * file and session) preventing server shutdown.
 	 */
 	sp = rfs4x_findsession_by_id(dsp->rds_rs.sessid);
 	if (sp != NULL) {
@@ -2235,6 +2234,9 @@ rfs4_return_deleg(rfs4_deleg_state_t *dsp, bool_t revoked)
 			mutex_exit(&slp->se_lock);
 		}
 		rfs4x_session_rele(sp);
+	} else {
+		/* Session is gone. Clean up delegations. */
+		rfs4x_rs_erase(dsp);
 	}
 
 	if (list_is_empty(&fp->rf_delegstatelist)) {
