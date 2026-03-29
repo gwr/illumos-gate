@@ -1160,6 +1160,8 @@ rfs4x_op_sequence(nfs_argop4 *argop, nfs_resop4 *resop,
 	    sp->cn_attrs.ca_maxrequests - 1;
 	rok->sr_target_highest_slotid =
 	    sp->cn_attrs.ca_maxrequests - 1;
+	if (cs->client->rc_deleg_revoked > 0)
+		cbstat |= SEQ4_STATUS_RECALLABLE_STATE_REVOKED;
 	rok->sr_status_flags |= cbstat;
 	rfs4_dbe_unlock(sp->sn_dbe);
 
@@ -1506,11 +1508,57 @@ rfs4x_op_free_stateid(nfs_argop4 *argop, nfs_resop4 *resop,
 	case DELEGID: {
 		rfs4_deleg_state_t *dsp;
 
-		status = rfs4_get_deleg_state(sid, &dsp);
+		/*
+		 * Use rfs4_get_deleg_any() to retrieve the delegation even
+		 * if it has been revoked — FREE_STATEID must acknowledge
+		 * revoked delegations and return NFS4_OK (RFC 5661 §18.38).
+		 *
+		 * If this succeeds, must call rfs4_deleg_state_rele()
+		 */
+		status = rfs4_get_deleg_any(sid, &dsp);
 		if (status != NFS4_OK)
 			goto final;
 
 		rfs4_update_lease(dsp->rds_client);
+
+		/*
+		 * Compare with rfs4_get_deleg_state()
+		 * Except here in FREE_STATEID, if revoked:
+		 * we now invalidate the revoked delegation.
+		 */
+		rfs4_dbe_lock(dsp->rds_dbe);
+		if (dsp->rds_revoked) {
+			dsp->rds_revoked = FALSE;
+			rfs4_dbe_invalidate(dsp->rds_dbe);
+			rfs4_dbe_unlock(dsp->rds_dbe);
+
+			/*
+			 * Adjust client's revoked count.
+			 */
+			rfs4_dbe_lock(dsp->rds_client->rc_dbe);
+			if (dsp->rds_client->rc_deleg_revoked > 0)
+				dsp->rds_client->rc_deleg_revoked--;
+			rfs4_dbe_unlock(dsp->rds_client->rc_dbe);
+
+			rfs4_deleg_state_rele(dsp);
+			status = NFS4_OK;
+			goto final;
+		}
+		rfs4_dbe_unlock(dsp->rds_dbe);
+
+		/*
+		 * Compare with rfs4_get_deleg_state()
+		 * lease expired?
+		 */
+		if (rfs4_lease_expired(dsp->rds_client)) {
+			rfs4_deleg_state_rele(dsp);
+			status = NFS4ERR_EXPIRED;
+			goto final;
+		}
+
+		/*
+		 * Finally the original FREE_STATEID actions.
+		 */
 		rfs4_deleg_state_rele(dsp);
 		status = NFS4ERR_LOCKS_HELD;
 		break;

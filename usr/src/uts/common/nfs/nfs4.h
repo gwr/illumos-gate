@@ -680,6 +680,7 @@ typedef struct rfs4_deleg_state {
 	time_t			rds_time_granted;
 	time_t			rds_time_recalled;
 	time_t			rds_time_revoked;
+	bool_t			rds_revoked;	/* revoked, awaiting FREE_STATEID */
 	struct rfs4_file	*rds_finfo;
 	rfs4_client_t		*rds_client;
 	list_node_t		rds_node;
@@ -986,6 +987,8 @@ extern nfsstat4		rfs4_get_state_nolock(stateid4 *, rfs4_state_t **,
 					rfs4_dbsearch_type_t);
 extern void rfs4_state_rele_nounlock(rfs4_state_t *);
 
+extern	nfsstat4	rfs4_get_deleg_any(stateid4 *,
+					rfs4_deleg_state_t **);
 extern	nfsstat4	rfs4_get_deleg_state(stateid4 *,
 					rfs4_deleg_state_t **);
 extern	nfsstat4	rfs4_get_lo_state(stateid4 *, rfs4_lo_state_t **,
