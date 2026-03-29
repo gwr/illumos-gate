@@ -7059,9 +7059,9 @@ close_expired_state(rfs4_entry_t u_entry)
 
 static void
 rfs4_do_open(struct compound_state *cs, struct svc_req *req __unused,
-    rfs4_openowner_t *oo, delegreq_t deleg,
+    rfs4_openowner_t *oo, delegreq_t dreq,
     uint32_t access, uint32_t deny,
-    OPEN4res *resp, int deleg_cur, bool_t has_session)
+    OPEN4res *resp, int deleg_cur, bool_t has_session, bool_t is_reclaim)
 {
 	rfs4_state_t *sp;
 	rfs4_file_t *fp;
@@ -7281,13 +7281,13 @@ again:
 	fp->rf_share_access |= access;
 
 	/*
-	 * Check for delegation here. if the deleg argument is not
-	 * DELEG_ANY, then this is a reclaim from a client and
-	 * we must honor the delegation requested. If necessary we can
-	 * set the recall flag.
+	 * Check for delegation here. For CLAIM_PREVIOUS reclaim opens,
+	 * is_reclaim=TRUE so rfs4_grant_delegation() will skip callback
+	 * and policy checks, and grant with recall=TRUE on vnode conflict
+	 * as required by RFC 7530 §16.16.3 / RFC 5661 §18.16.3.
 	 */
 
-	dsp = rfs4_grant_delegation(deleg, sp, &recall, has_session);
+	dsp = rfs4_grant_delegation(dreq, sp, &recall, is_reclaim);
 
 	cs->deleg = (fp->rf_dinfo.rd_dtype == OPEN_DELEGATE_WRITE);
 
@@ -7304,11 +7304,46 @@ again:
 			rfs4x_rs_record(cs, dsp);
 		}
 		rfs4_deleg_state_rele(dsp);
-	} else if (has_session) {
+	} else if (has_session && dreq != DELEG_DISABLE) {
+		/*
+		 * RFC 5661 §18.16.3: when the client sent WANT flags and no
+		 * delegation was granted, respond with OPEN_DELEGATE_NONE_EXT
+		 * and an appropriate ond_why code.
+		 */
 		open_delegation4 *delegation = &resp->delegation;
+		why_no_delegation4 why;
+
+		switch (dreq) {
+		case DELEG_WANT_NONE:
+			why = WND4_NOT_WANTED;
+			break;
+		case DELEG_WANT_CANCEL:
+			why = WND4_CANCELLED;
+			break;
+		case DELEG_WANT_READ:
+		case DELEG_WANT_WRITE:
+		case DELEG_WANT_ANY:
+			why = WND4_CONTENTION;
+			break;
+		default:	/* DELEG_WANT_NO_PREF */
+			why = WND4_RESOURCE;
+			break;
+		}
 		delegation->delegation_type = OPEN_DELEGATE_NONE_EXT;
-		delegation->
-		    open_delegation4_u.od_whynone.ond_why = WND4_NOT_WANTED;
+		delegation->open_delegation4_u.od_whynone.ond_why = why;
+	} else {
+		/*
+		 * No delegation granted and no extended response needed.
+		 * Two cases reach here:
+		 *   - v4.0 client (!has_session): OPEN_DELEGATE_NONE_EXT does
+		 *     not exist in RFC 7530; plain OPEN_DELEGATE_NONE is
+		 *     correct.
+		 *   - Session client with DELEG_DISABLE: the server suppressed
+		 *     delegation as a policy decision (e.g. CLAIM_DELEGATE_CUR,
+		 *     unconfirmed open owner), not in response to a client hint,
+		 *     so no ond_why explanation is expected.
+		 */
+		resp->delegation.delegation_type = OPEN_DELEGATE_NONE;
 	}
 
 	rfs4_file_rele(fp);
@@ -7322,18 +7357,24 @@ rfs4_do_openfh(struct compound_state *cs, struct svc_req *req, OPEN4args *args,
     rfs4_openowner_t *oo, OPEN4res *resp)
 {
 	bool_t has_session;
-	int deleg;
+	delegreq_t dreq;
 
 	/* cs->vp and cs->fh have been updated by putfh. */
 	has_session = rfs4_has_session(cs);
 	if (!has_session) {
-		deleg = oo->ro_need_confirm ? DELEG_NONE : DELEG_ANY;
+		/*
+		 * Non-session (v4.0) client: suppress delegation if the open
+		 * owner is unconfirmed (server policy), otherwise no preference.
+		 * DELEG_DISABLE rather than DELEG_WANT_NONE because this is a
+		 * server decision, not a client hint.
+		 */
+		dreq = oo->ro_need_confirm ? DELEG_DISABLE : DELEG_WANT_NO_PREF;
 	} else {
-		deleg = do_4x_deleg_hack(args->deleg_want);
+		dreq = nfs4x_share_to_delegreq(args->deleg_want);
 	}
-	rfs4_do_open(cs, req, oo, deleg,
+	rfs4_do_open(cs, req, oo, dreq,
 	    (args->share_access & 0xff), args->share_deny, resp, 0,
-	    rfs4_has_session(cs));
+	    rfs4_has_session(cs), B_FALSE);
 }
 
 static void
@@ -7343,7 +7384,7 @@ rfs4_do_opennull(struct compound_state *cs, struct svc_req *req,
 	change_info4 *cinfo = &resp->cinfo;
 	bitmap4 *attrset = &resp->attrset;
 	bool_t has_session;
-	int deleg;
+	delegreq_t dreq;
 
 	if (args->opentype == OPEN4_NOCREATE)
 		resp->status = rfs4_lookupfile(&args->claim.open_claim4_u.file,
@@ -7364,13 +7405,21 @@ rfs4_do_opennull(struct compound_state *cs, struct svc_req *req,
 
 		has_session = rfs4_has_session(cs);
 		if (!has_session) {
-			deleg = oo->ro_need_confirm ? DELEG_NONE : DELEG_ANY;
+			/*
+			 * Non-session (v4.0) client: suppress delegation if the
+			 * open owner is unconfirmed (server policy), otherwise
+			 * no preference.  DELEG_DISABLE rather than
+			 * DELEG_WANT_NONE because this is a server decision,
+			 * not a client hint.
+			 */
+			dreq = oo->ro_need_confirm ? DELEG_DISABLE :
+			    DELEG_WANT_NO_PREF;
 		} else {
-			deleg = do_4x_deleg_hack(args->deleg_want);
+			dreq = nfs4x_share_to_delegreq(args->deleg_want);
 		}
-		rfs4_do_open(cs, req, oo,
-		    deleg, args->share_access,
-		    args->share_deny, resp, 0, has_session);
+		rfs4_do_open(cs, req, oo, dreq,
+		    args->share_access,
+		    args->share_deny, resp, 0, has_session, B_FALSE);
 
 		/*
 		 * If rfs4_createfile set attrset, we must
@@ -7387,6 +7436,17 @@ rfs4_do_opennull(struct compound_state *cs, struct svc_req *req,
 		rfs4_enable_delegation();
 }
 
+/*
+ * Handle OPEN with CLAIM_PREVIOUS (RFC 7530 §16.16.3 / RFC 5661 §18.16.3).
+ *
+ * The delegate_type field describes what delegation the client held before
+ * the server restarted.  When it is READ or WRITE, the server must re-grant
+ * that delegation; is_reclaim=TRUE causes rfs4_grant_delegation() to skip
+ * the normal cb/recall/policy checks and set recall=TRUE on vnode conflict.
+ * When delegate_type is OPEN_DELEGATE_NONE the client held no prior
+ * delegation; DELEG_WANT_NONE causes rfs4_grant_delegation() to exit early
+ * and no delegation is offered.
+ */
 static void
 rfs4_do_openprev(struct compound_state *cs, struct svc_req *req,
     OPEN4args *args, rfs4_openowner_t *oo, OPEN4res *resp)
@@ -7394,6 +7454,8 @@ rfs4_do_openprev(struct compound_state *cs, struct svc_req *req,
 	change_info4 *cinfo = &resp->cinfo;
 	vattr_t va;
 	vtype_t v_type = cs->vp->v_type;
+	open_delegation_type4 dt;
+	delegreq_t dreq;
 	int error = 0;
 
 	/* Verify that we have a regular file */
@@ -7437,12 +7499,40 @@ rfs4_do_openprev(struct compound_state *cs, struct svc_req *req,
 	cinfo->after = 0;
 	cinfo->atomic = FALSE;
 
-	rfs4_do_open(cs, req, oo,
-	    NFS4_DELEG4TYPE2REQTYPE(args->claim.open_claim4_u.delegate_type),
+	/*
+	 * See above re. delegation and is_reclaim = B_TRUE
+	 */
+	dt = args->claim.open_claim4_u.delegate_type;
+	switch (dt) {
+	case OPEN_DELEGATE_READ:
+		dreq = DELEG_WANT_READ;
+		break;
+	case OPEN_DELEGATE_WRITE:
+		dreq = DELEG_WANT_WRITE;
+		break;
+	default:
+		dreq = DELEG_WANT_NONE;
+		break;
+	}
+	rfs4_do_open(cs, req, oo, dreq,
 	    args->share_access, args->share_deny, resp, 0,
-	    rfs4_has_session(cs));
+	    rfs4_has_session(cs), B_TRUE);
 }
 
+/*
+ * Handle OPEN with CLAIM_DELEGATE_CUR (RFC 7530 §16.16.3).
+ *
+ * This claim type is used when the client already holds a delegation on the
+ * file and needs to obtain a formal open stateid — most commonly in response
+ * to a CB_RECALL, where the client must establish an open before it can
+ * return the delegation.  The client presents its current delegation stateid
+ * as proof of access.
+ *
+ * Because the client is in the process of converting delegation-based access
+ * to open-stateid-based access (and the delegation is expected to be returned
+ * afterward), we pass DELEG_DISABLE to rfs4_do_open().  Granting a new
+ * delegation here would be circular and is not expected by the client.
+ */
 static void
 rfs4_do_opendelcur(struct compound_state *cs, struct svc_req *req,
     OPEN4args *args, rfs4_openowner_t *oo, OPEN4res *resp)
@@ -7474,11 +7564,6 @@ rfs4_do_opendelcur(struct compound_state *cs, struct svc_req *req,
 
 	ASSERT(dsp->rds_finfo->rf_dinfo.rd_dtype != OPEN_DELEGATE_NONE);
 
-	/*
-	 * New lock owner, create state. Since this was probably called
-	 * in response to a CB_RECALL we set deleg to DELEG_NONE
-	 */
-
 	ASSERT(cs->vp != NULL);
 	VN_RELE(cs->vp);
 	VN_HOLD(dsp->rds_finfo->rf_vp);
@@ -7494,9 +7579,9 @@ rfs4_do_opendelcur(struct compound_state *cs, struct svc_req *req,
 	/* Mark progress for delegation returns */
 	dsp->rds_finfo->rf_dinfo.rd_time_lastwrite = gethrestime_sec();
 	rfs4_deleg_state_rele(dsp);
-	rfs4_do_open(cs, req, oo, DELEG_NONE,
+	rfs4_do_open(cs, req, oo, DELEG_DISABLE,
 	    args->share_access, args->share_deny, resp, 1,
-	    rfs4_has_session(cs));
+	    rfs4_has_session(cs), B_FALSE);
 }
 
 static void

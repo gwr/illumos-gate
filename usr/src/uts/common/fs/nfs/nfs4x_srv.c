@@ -1774,23 +1774,50 @@ rfs4x_cbsec_fini(rfs4_session_t *sp)
 	}
 }
 
+/*
+ * We could implement nfs4x_share_to_delegreq() as just
+ * (deleg_want & mask) >> 8, but let's not, for now.
+ */
+CTASSERT((DELEG_WANT_NO_PREF << 8) == OPEN4_SHARE_WANT_NO_PREFERENCE);
+CTASSERT((DELEG_WANT_READ    << 8) == OPEN4_SHARE_WANT_READ_DELEG);
+CTASSERT((DELEG_WANT_WRITE   << 8) == OPEN4_SHARE_WANT_WRITE_DELEG);
+CTASSERT((DELEG_WANT_ANY     << 8) == OPEN4_SHARE_WANT_ANY_DELEG);
+CTASSERT((DELEG_WANT_NONE    << 8) == OPEN4_SHARE_WANT_NO_DELEG);
+CTASSERT((DELEG_WANT_CANCEL  << 8) == OPEN4_SHARE_WANT_CANCEL);
+
+/*
+ * The OPEN4_SHARE_WANT_*_DELEG flags were stashed in OPEN4args.deleg_want
+ * by the (custom) XDR code in xdr_OPEN4args().  This converts those flags
+ * to one of the delegreq_t values.
+ */
 delegreq_t
-do_4x_deleg_hack(int osa)
+nfs4x_share_to_delegreq(uint32_t deleg_want)
 {
-	switch (osa) {
+	delegreq_t dreq;
+
+	switch (deleg_want & OPEN4_SHARE_WANT_MASK) {
+
+	default:
+	case OPEN4_SHARE_WANT_NO_PREFERENCE:
+		dreq = DELEG_WANT_NO_PREF;
+		break;
 	case OPEN4_SHARE_WANT_READ_DELEG:
-		return (DELEG_READ);
-
+		dreq = DELEG_WANT_READ;
+		break;
 	case OPEN4_SHARE_WANT_WRITE_DELEG:
-		return (DELEG_WRITE);
-
+		dreq = DELEG_WANT_WRITE;
+		break;
 	case OPEN4_SHARE_WANT_ANY_DELEG:
-		return (DELEG_ANY);
-
+		dreq = DELEG_WANT_ANY;
+		break;
 	case OPEN4_SHARE_WANT_NO_DELEG:
-		return (DELEG_WANT_NONE);
+		dreq = DELEG_WANT_NONE;
+		break;
+	case OPEN4_SHARE_WANT_CANCEL:
+		dreq = DELEG_WANT_CANCEL;
+		break;
 	}
-	return (DELEG_ANY);
+	return (dreq);
 }
 
 void

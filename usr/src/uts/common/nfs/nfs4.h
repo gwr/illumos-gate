@@ -782,19 +782,21 @@ typedef enum {
 extern void rfs4_disable_delegation(void), rfs4_enable_delegation(void);
 
 /*
- * Request types for delegation. These correspond with
- * open_delegation_type4 with the addition of a new value, DELEG_ANY,
- * to reqequest any delegation.
+ * Delegation want type.  The values DELEG_WANT_NO_PREF through
+ * DELEG_WANT_CANCEL correspond to the OPEN4_SHARE_WANT_* wire flags
+ * (see nfs4x_share_to_delegreq()).  DELEG_DISABLE is a server-side
+ * sentinel meaning "do not attempt a delegation at this call site"
+ * (e.g. CLAIM_DELEGATE_CUR, unconfirmed open owner).
  */
 typedef enum {
-	DELEG_NONE = 0,		/* Corresponds to OPEN_DELEG_NONE */
-	DELEG_READ = 1,		/* Corresponds to OPEN_DELEG_READ */
-	DELEG_WRITE = 2,	/* Corresponds to OPEN_DELEG_WRITE */
-	DELEG_WANT_NONE = 3,	/* Corresponds to ACCESS_WANT_NO_DELEG */
-	DELEG_ANY = -1		/* New value to request any delegation type */
+	DELEG_WANT_NO_PREF	= 0,	/* server chooses type freely */
+	DELEG_WANT_READ		= 1,	/* client prefers read delegation */
+	DELEG_WANT_WRITE	= 2,	/* client prefers write delegation */
+	DELEG_WANT_ANY		= 3,	/* client accepts any delegation */
+	DELEG_WANT_NONE		= 4,	/* client does not want a delegation */
+	DELEG_WANT_CANCEL	= 5,	/* client cancels a prior want */
+	DELEG_DISABLE		= -1	/* caller suppresses delegation */
 } delegreq_t;
-
-#define	NFS4_DELEG4TYPE2REQTYPE(x) (delegreq_t)(x)
 
 /*
  * Zone global variables of NFSv4 server
@@ -1048,7 +1050,7 @@ extern	void		rfs4_deleg_state_rele(rfs4_deleg_state_t *);
 extern	bool_t		rfs4_check_delegated_byfp(int, rfs4_file_t *,
 					bool_t, bool_t, bool_t, clientid4 *);
 extern	void		rfs4_clear_dont_grant(rfs4_file_t *);
-extern delegreq_t	do_4x_deleg_hack(int);
+extern delegreq_t	nfs4x_share_to_delegreq(uint32_t);
 extern void		rfs4x_rs_erase(void *);
 extern void		rfs4x_rs_record(struct compound_state *,
 				rfs4_deleg_state_t *);
