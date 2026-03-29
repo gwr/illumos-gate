@@ -250,6 +250,7 @@ static void	rfs4_op_setclientid_confirm(nfs_argop4 *, nfs_resop4 *,
 static void	rfs4_op_secinfo(nfs_argop4 *, nfs_resop4 *, struct svc_req *,
 		    struct compound_state *);
 static void	rfs4_op_secinfo_free(nfs_resop4 *);
+static void	rfs4_op_test_stateid_free(nfs_resop4 *);
 
 void rfs4x_op_exchange_id(nfs_argop4 *argop, nfs_resop4 *resop,
     struct svc_req *req, struct compound_state *cs);
@@ -278,6 +279,8 @@ void rfs4x_op_secinfo_noname(nfs_argop4 *argop, nfs_resop4 *resop,
 void rfs4x_op_free_stateid(nfs_argop4 *argop, nfs_resop4 *resop,
     struct svc_req *req, compound_state_t *cs);
 void rfs4x_op_backchannel_ctl(nfs_argop4 *argop, nfs_resop4 *resop,
+    struct svc_req *req, compound_state_t *cs);
+void rfs4x_op_test_stateid(nfs_argop4 *argop, nfs_resop4 *resop,
     struct svc_req *req, compound_state_t *cs);
 
 static nfsstat4 check_open_access(uint32_t, struct compound_state *,
@@ -496,7 +499,7 @@ static struct rfsv4disp rfsv4disptab[] = {
 	{rfs4_op_notsup,  nullfree,  0},
 
 	/* OP_TEST_STATEID = 55 */
-	{rfs4_op_notsup,  nullfree,  0},
+	{rfs4x_op_test_stateid, rfs4_op_test_stateid_free,  0},
 
 	/* OP_WANT_DELEGATION = 56 */
 	{rfs4_op_notsup,  nullfree,  0},
@@ -1552,6 +1555,21 @@ rfs4_op_secinfo_free(nfs_resop4 *resop)
 	kmem_free(resok_val, count * sizeof (secinfo4));
 	resp->SECINFO4resok_len = 0;
 	resp->SECINFO4resok_val = NULL;
+}
+
+static void
+rfs4_op_test_stateid_free(nfs_resop4 *resop)
+{
+	TEST_STATEID4res	*resp = &resop->nfs_resop4_u.optest_stateid;
+	TEST_STATEID4resok	*rok  = &resp->TEST_STATEID4res_u.tsr_resok4;
+
+	if (resp->tsr_status == NFS4_OK) {
+		uint_t    len = rok->tsr_status_codes.tsr_status_codes_len;
+		nfsstat4 *val = rok->tsr_status_codes.tsr_status_codes_val;
+		if (len > 0 && val != NULL) {
+			kmem_free(val, len * sizeof (nfsstat4));
+		}
+	}
 }
 
 /* ARGSUSED */
