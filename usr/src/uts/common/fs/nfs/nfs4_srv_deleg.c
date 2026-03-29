@@ -1684,11 +1684,12 @@ rfs4_delegation_policy(nfs4_srv_t *nsrv4, open_delegation_type4 dtype,
  * The state and associate file entry must be locked
  */
 rfs4_deleg_state_t *
-rfs4_grant_delegation(delegreq_t dreq, rfs4_state_t *sp, int *recall,
-    bool_t has_session)
+rfs4_grant_delegation(delegreq_t dreq, rfs4_state_t *sp,
+    int *recall, bool_t is_reclaim)
 {
 	nfs4_srv_t *nsrv4;
 	rfs4_file_t *fp = sp->rs_finfo;
+	rfs4_client_t *cp = sp->rs_owner->ro_client;
 	open_delegation_type4 dtype;
 	int no_delegation;
 	bool_t cb_ok;
@@ -1700,7 +1701,8 @@ rfs4_grant_delegation(delegreq_t dreq, rfs4_state_t *sp, int *recall,
 
 	/* Is the server even providing delegations or client even asking? */
 	if (nsrv4->nfs4_deleg_policy == SRV_NEVER_DELEGATE ||
-	    dreq == DELEG_NONE || dreq == DELEG_WANT_NONE) {
+	    dreq == DELEG_DISABLE || dreq == DELEG_WANT_NONE ||
+	    dreq == DELEG_WANT_CANCEL) {
 		return (NULL);
 	}
 
@@ -1733,27 +1735,12 @@ rfs4_grant_delegation(delegreq_t dreq, rfs4_state_t *sp, int *recall,
 		return (NULL);
 	}
 
-	/*
-	 * Based on the type of delegation request passed in, take the
-	 * appropriate action (DELEG_NONE is handled above)
-	 */
-	switch (dreq) {
-
-	case DELEG_READ:
-	case DELEG_WRITE:
+	if (!is_reclaim) {
 		/*
-		 * The server "must" grant the delegation in this case.
-		 * Client is using open previous
+		 * If a valid callback path does not exist, no delegation
+		 * may be granted.
 		 */
-		dtype = (open_delegation_type4)dreq;
-		*recall = 1;
-		break;
-	case DELEG_ANY:
-		/*
-		 * If a valid callback path does not exist, no delegation may
-		 * be granted.
-		 */
-		if (has_session) {
+		if (cp->rc_minorversion != 0) {
 			cb_ok = rfs4x_cbcheck(sp);
 		} else {
 			cb_ok = rfs4_cbcheck(sp);
@@ -1780,29 +1767,56 @@ rfs4_grant_delegation(delegreq_t dreq, rfs4_state_t *sp, int *recall,
 		 * well as if the file is being recalled we would likely
 		 * recall this file again.
 		 */
-
 		if (fp->rf_dinfo.rd_time_recalled != 0 ||
 		    fp->rf_dinfo.rd_time_rm_delayed != 0)
 			return (NULL);
+	}
 
-		/* Get the "best" delegation candidate */
-		dtype = rfs4_check_delegation(sp, fp);
+	/* Get the "best" delegation type given the current open and conflicts */
+	dtype = rfs4_check_delegation(sp, fp);
 
-		if (dtype == OPEN_DELEGATE_NONE)
+	if (dtype == OPEN_DELEGATE_NONE)
+		return (NULL);
+
+	/*
+	 * Filter against client's type preference — skip types the client
+	 * did not request to avoid unnecessary work.
+	 */
+	switch (dreq) {
+	case DELEG_WANT_READ:
+		if (dtype != OPEN_DELEGATE_READ)
 			return (NULL);
+		break;
+	case DELEG_WANT_WRITE:
+		if (dtype != OPEN_DELEGATE_WRITE)
+			return (NULL);
+		break;
+	case DELEG_WANT_ANY:
+	case DELEG_WANT_NO_PREF:
+		break;
+	default:
+		/* All others handled above. */
+		return (NULL);
+	}
 
+	if (!is_reclaim) {
 		/*
 		 * Based on policy and the history of the file get the
 		 * actual delegation.
 		 */
 		dtype = rfs4_delegation_policy(nsrv4, dtype, &fp->rf_dinfo,
-		    sp->rs_owner->ro_client->rc_clientid);
+		    cp->rc_clientid);
 
 		if (dtype == OPEN_DELEGATE_NONE)
 			return (NULL);
-		break;
-	default:
-		return (NULL);
+	} else {
+		/*
+		 * For CLAIM_PREVIOUS reclaim, the RFC requires that the
+		 * delegation always be granted.  Pre-set *recall=1 so
+		 * rfs4_deleg_state() will grant even on vnode conflict,
+		 * returning the delegation with recall=TRUE in the response.
+		 */
+		*recall = 1;
 	}
 
 	/* set the delegation for the state */
