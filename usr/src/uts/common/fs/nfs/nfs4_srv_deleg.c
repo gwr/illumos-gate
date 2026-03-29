@@ -1532,9 +1532,15 @@ rfs4_recall_deleg(rfs4_file_t *fp, bool_t trunc, rfs4_client_t *cp)
 
 /*
  * rfs4_check_recall is called from rfs4_do_open to determine if the current
- * open conflicts with the delegation.
- * Return true if we need recall otherwise false.
- * Assumes entry locks for sp and sp->rs_finfo are held.
+ * open conflicts with the delegation and a recall is needed.  Returns TRUE if
+ * a recall is needed, FALSE otherwise.  Assumes entry locks for sp and
+ * sp->rs_finfo are held.
+ *
+ * RFC 5661 §10.4.4 / RFC 7530 §10.4: when the client holding the delegation
+ * makes a conflicting open, the server must proceed as if no delegation
+ * exists — no recall, no NFS4ERR_DELAY.  rfs4_is_deleg() returns TRUE only
+ * when a *different* client holds the delegation, so both the READ and WRITE
+ * cases correctly suppress recall for self-conflicts.
  */
 bool_t
 rfs4_check_recall(rfs4_state_t *sp, uint32_t access)
@@ -1546,16 +1552,9 @@ rfs4_check_recall(rfs4_state_t *sp, uint32_t access)
 		/* Not currently delegated so there is nothing to do */
 		return (FALSE);
 	case OPEN_DELEGATE_READ:
-		/*
-		 * If the access is only asking for READ then there is
-		 * no conflict and nothing to do.  If it is asking
-		 * for write, then there will be conflict and the read
-		 * delegation should be recalled.
-		 */
 		if (access == OPEN4_SHARE_ACCESS_READ)
 			return (FALSE);
-		else
-			return (TRUE);
+		return (rfs4_is_deleg(sp));
 	case OPEN_DELEGATE_WRITE:
 		/* Check to see if this client has the delegation */
 		return (rfs4_is_deleg(sp));
