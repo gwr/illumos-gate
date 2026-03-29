@@ -2289,16 +2289,23 @@ rfs4_return_deleg(rfs4_deleg_state_t *dsp, bool_t revoked)
 
 	dsp->rds_dtype = OPEN_DELEGATE_NONE;
 
-	if (revoked == TRUE)
+	if (revoked == TRUE) {
 		dsp->rds_time_revoked = gethrestime_sec();
-
-	rfs4_dbe_invalidate(dsp->rds_dbe);
+		/*
+		 * Mark the delegation revoked but do NOT invalidate it yet.
+		 * It remains a live protocol object until the client sends
+		 * FREE_STATEID or the client record is cleaned up.
+		 */
+		dsp->rds_revoked = TRUE;
+	} else {
+		rfs4_dbe_invalidate(dsp->rds_dbe);
+	}
 
 	rfs4_dbe_unlock(dsp->rds_dbe);
 
 	if (revoked == TRUE) {
 		rfs4_dbe_lock(dsp->rds_client->rc_dbe);
-		dsp->rds_client->rc_deleg_revoked++;	/* observability */
+		dsp->rds_client->rc_deleg_revoked++;	/* for SEQ4_STATUS */
 		rfs4_dbe_unlock(dsp->rds_client->rc_dbe);
 	}
 }

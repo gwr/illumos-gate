@@ -3111,6 +3111,14 @@ rfs4_deleg_state_expiry(rfs4_entry_t u_entry)
 	if (rfs4_dbe_is_invalid(dsp->rds_dbe))
 		return (TRUE);
 
+	/*
+	 * Revoked delegations are live protocol objects awaiting FREE_STATEID.
+	 * Don't let the reaper collect them; FREE_STATEID or client close will
+	 * invalidate them explicitly.
+	 */
+	if (dsp->rds_revoked)
+		return (FALSE);
+
 	if (dsp->rds_dtype == OPEN_DELEGATE_NONE)
 		return (TRUE);
 
@@ -3141,6 +3149,7 @@ rfs4_deleg_state_create(rfs4_entry_t u_entry, void *argp)
 
 	dsp->rds_time_granted = gethrestime_sec();	/* observability */
 	dsp->rds_time_revoked = 0;
+	dsp->rds_revoked = FALSE;
 
 	list_link_init(&dsp->rds_node);
 
@@ -3154,6 +3163,21 @@ rfs4_deleg_state_destroy(rfs4_entry_t u_entry)
 
 	/* return delegation if necessary */
 	rfs4_return_deleg(dsp, FALSE);
+
+	/*
+	 * If the delegation was revoked but FREE_STATEID was never called
+	 * (e.g. client crash), decr. the client rc_deleg_revoked count now.
+	 *
+	 * This is working on the last ref. of this delegation, so
+	 * there's no need to rfs4_dbe_lock/unlock the dsp->rds_dbe
+	 */
+	if (dsp->rds_revoked) {
+		dsp->rds_revoked = FALSE;
+		rfs4_dbe_lock(dsp->rds_client->rc_dbe);
+		if (dsp->rds_client->rc_deleg_revoked > 0)
+			dsp->rds_client->rc_deleg_revoked--;
+		rfs4_dbe_unlock(dsp->rds_client->rc_dbe);
+	}
 
 	/* Were done with the file */
 	rfs4_file_rele(dsp->rds_finfo);
@@ -3635,8 +3659,12 @@ rfs4_check_lo_stateid_seqid(rfs4_lo_state_t *lsp, stateid4 *stateid,
 	return (NFS4_CHECK_STATEID_OKAY);
 }
 
+/*
+ * Use rfs4_get_deleg_any() to retrieve the delegation even
+ * if it has been revoked.  For FREE_STATEID
+ */
 nfsstat4
-rfs4_get_deleg_state(stateid4 *stateid, rfs4_deleg_state_t **dspp)
+rfs4_get_deleg_any(stateid4 *stateid, rfs4_deleg_state_t **dspp)
 {
 	stateid_t *id = (stateid_t *)stateid;
 	rfs4_deleg_state_t *dsp;
@@ -3648,8 +3676,29 @@ rfs4_get_deleg_state(stateid4 *stateid, rfs4_deleg_state_t **dspp)
 		return (NFS4ERR_STALE_STATEID);
 
 	dsp = rfs4_finddelegstate(id);
-	if (dsp == NULL) {
+	if (dsp == NULL)
 		return (what_stateid_error(id, DELEGID));
+
+	*dspp = dsp;
+	return (NFS4_OK);
+}
+
+nfsstat4
+rfs4_get_deleg_state(stateid4 *stateid, rfs4_deleg_state_t **dspp)
+{
+	nfsstat4 status;
+	rfs4_deleg_state_t *dsp;
+
+	*dspp = NULL;
+
+	status = rfs4_get_deleg_any(stateid, &dsp);
+	if (status != NFS4_OK) {
+		return (status);
+	}
+
+	if (dsp->rds_revoked) {
+		rfs4_deleg_state_rele(dsp);
+		return (NFS4ERR_DELEG_REVOKED);
 	}
 
 	if (rfs4_lease_expired(dsp->rds_client)) {
@@ -3658,7 +3707,6 @@ rfs4_get_deleg_state(stateid4 *stateid, rfs4_deleg_state_t **dspp)
 	}
 
 	*dspp = dsp;
-
 	return (NFS4_OK);
 }
 
