@@ -4522,35 +4522,13 @@ rfs4_op_remove(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 				error = ENOTEMPTY;
 		}
 	} else {
-		if ((error = VOP_REMOVE(dvp, name, cs->cr, NULL, 0)) == 0 &&
-		    fp != NULL) {
-			struct vattr va;
-			vnode_t *tvp;
-
-			rfs4_dbe_lock(fp->rf_dbe);
-			tvp = fp->rf_vp;
-			if (tvp)
-				VN_HOLD(tvp);
-			rfs4_dbe_unlock(fp->rf_dbe);
-
-			if (tvp) {
-				/*
-				 * This is va_seq safe because we are not
-				 * manipulating dvp.
-				 */
-				va.va_mask = AT_NLINK;
-				if (!VOP_GETATTR(tvp, &va, 0, cs->cr, NULL) &&
-				    va.va_nlink == 0) {
-					/* Remove state on file remove */
-					if (in_crit) {
-						nbl_end_crit(vp);
-						in_crit = 0;
-					}
-					rfs4_close_all_state(fp);
-				}
-				VN_RELE(tvp);
-			}
-		}
+		error = VOP_REMOVE(dvp, name, cs->cr, NULL, 0);
+		/*
+		 * The file name is unlinked, but access via any remaining
+		 * open file handles must continue, and OP_CLOSE should work.
+		 * It would not be correct to dump all open state here.
+		 * XXX: Had rfs4_close_all_state(fp) if nlink == 0
+		 */
 	}
 
 	if (in_crit)
@@ -4629,7 +4607,7 @@ rfs4_op_rename(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 	int error;
 	vnode_t *odvp;
 	vnode_t *ndvp;
-	vnode_t *srcvp, *targvp, *tvp;
+	vnode_t *srcvp, *targvp;
 	struct vattr obdva, oidva, oadva;
 	struct vattr nbdva, nidva, nadva;
 	char *onm, *nnm;
@@ -4637,7 +4615,6 @@ rfs4_op_rename(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 	rfs4_file_t *fp, *sfp;
 	int in_crit_src, in_crit_targ;
 	int fp_rele_grant_hold, sfp_rele_grant_hold;
-	int unlinked;
 	bslabel_t *clabel;
 	struct sockaddr *ca;
 	char *converted_onm = NULL;
@@ -4648,10 +4625,9 @@ rfs4_op_rename(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 	    RENAME4args *, args);
 
 	fp = sfp = NULL;
-	srcvp = targvp = tvp = NULL;
+	srcvp = targvp = NULL;
 	in_crit_src = in_crit_targ = 0;
 	fp_rele_grant_hold = sfp_rele_grant_hold = 0;
-	unlinked = 0;
 
 	/* CURRENT_FH: target directory */
 	ndvp = cs->vp;
@@ -4862,41 +4838,15 @@ rfs4_op_rename(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 
 	error = VOP_RENAME(odvp, converted_onm, ndvp, converted_nnm, cs->cr,
 	    NULL, 0);
-
-	/*
-	 * If target existed and was unlinked by VOP_RENAME, state will need
-	 * closed. To avoid deadlock, rfs4_close_all_state will be done after
-	 * any necessary nbl_end_crit on srcvp and tgtvp.
-	 */
-	if (error == 0 && fp != NULL) {
-		rfs4_dbe_lock(fp->rf_dbe);
-		tvp = fp->rf_vp;
-		if (tvp)
-			VN_HOLD(tvp);
-		rfs4_dbe_unlock(fp->rf_dbe);
-
-		if (tvp) {
-			struct vattr va;
-			va.va_mask = AT_NLINK;
-
-			if (!VOP_GETATTR(tvp, &va, 0, cs->cr, NULL) &&
-			    va.va_nlink == 0) {
-				unlinked = 1;
-
-				/* DEBUG data */
-				if ((srcvp == targvp) || (tvp != targvp)) {
-					cmn_err(CE_WARN, "rfs4_op_rename: "
-					    "srcvp %p, targvp: %p, tvp: %p",
-					    (void *)srcvp, (void *)targvp,
-					    (void *)tvp);
-				}
-			} else {
-				VN_RELE(tvp);
-			}
-		}
-	}
 	if (error == 0)
 		vn_renamepath(ndvp, srcvp, nnm, nlen - 1);
+
+	/*
+	 * The old name is unlinked, but access via any remaining
+	 * open file handles must continue, and OP_CLOSE should work.
+	 * It would not be correct to dump all open state here.
+	 * XXX: Had rfs4_close_all_state(fp) if nlink == 0
+	 */
 
 	if (in_crit_src)
 		nbl_end_crit(srcvp);
@@ -4906,21 +4856,6 @@ rfs4_op_rename(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 		nbl_end_crit(targvp);
 	if (targvp)
 		VN_RELE(targvp);
-
-	if (unlinked) {
-		ASSERT(fp != NULL);
-		ASSERT(tvp != NULL);
-
-		/* DEBUG data */
-		if (RW_READ_HELD(&tvp->v_nbllock)) {
-			cmn_err(CE_WARN, "rfs4_op_rename: "
-			    "RW_READ_HELD(%p)", (void *)tvp);
-		}
-
-		/* The file is gone and so should the state */
-		rfs4_close_all_state(fp);
-		VN_RELE(tvp);
-	}
 
 	if (sfp) {
 		rfs4_clear_dont_grant(sfp);
