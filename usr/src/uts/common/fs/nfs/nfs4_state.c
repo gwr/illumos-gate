@@ -3737,7 +3737,7 @@ rfs4_get_lo_state(stateid4 *stateid, rfs4_lo_state_t **lspp, bool_t lock_fp)
 	return (NFS4_OK);
 }
 
-static nfsstat4
+nfsstat4
 rfs4_get_all_state(stateid4 *sid, rfs4_state_t **spp,
     rfs4_deleg_state_t **dspp, rfs4_lo_state_t **lspp)
 {

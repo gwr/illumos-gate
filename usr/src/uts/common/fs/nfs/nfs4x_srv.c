@@ -1424,6 +1424,59 @@ out:
 }
 
 /*
+ * TEST_STATEID (RFC 5661 §18.48): for each input stateid, return
+ * a status code indicating its current validity.  The compound
+ * always succeeds; individual errors are in the per-stateid array.
+ */
+void
+rfs4x_op_test_stateid(nfs_argop4 *argop, nfs_resop4 *resop,
+    struct svc_req *req __unused, compound_state_t *cs)
+{
+	TEST_STATEID4args	*args = &argop->nfs_argop4_u.optest_stateid;
+	TEST_STATEID4res	*resp = &resop->nfs_resop4_u.optest_stateid;
+	TEST_STATEID4resok	*rok  = &resp->TEST_STATEID4res_u.tsr_resok4;
+	nfsstat4		*codes = NULL;
+	uint_t			i, n;
+
+	DTRACE_NFSV4_2(op__test__stateid__start,
+	    struct compound_state *, cs,
+	    TEST_STATEID4args *, args);
+
+	n = args->ts_stateids.ts_stateids_len;
+	if (n > 0)
+		codes = kmem_alloc(n * sizeof (nfsstat4), KM_SLEEP);
+
+	for (i = 0; i < n; i++) {
+		stateid4 *sid = &args->ts_stateids.ts_stateids_val[i];
+		rfs4_state_t *sp = NULL;
+		rfs4_deleg_state_t *dsp = NULL;
+		rfs4_lo_state_t *lsp = NULL;
+		nfsstat4 st;
+
+		get_stateid4(cs, sid);
+		st = rfs4_get_all_state(sid, &sp, &dsp, &lsp);
+		if (st == NFS4_OK) {
+			if (sp != NULL)
+				rfs4_state_rele(sp);
+			if (dsp != NULL)
+				rfs4_deleg_state_rele(dsp);
+			if (lsp != NULL)
+				rfs4_lo_state_rele(lsp, FALSE);
+		}
+		codes[i] = st;
+	}
+
+	rok->tsr_status_codes.tsr_status_codes_len = n;
+	rok->tsr_status_codes.tsr_status_codes_val = codes;
+
+	*cs->statusp = resp->tsr_status = NFS4_OK;
+
+	DTRACE_NFSV4_2(op__test__stateid__done,
+	    struct compound_state *, cs,
+	    TEST_STATEID4res *, resp);
+}
+
+/*
  * Used to free a stateid that no longer has any associated locks.
  * If there are valid locks, error NFS4ERR_LOCKS_HELD is returned.
  * NB: Actual freeing of stateid will be taken care by reaper_thread().

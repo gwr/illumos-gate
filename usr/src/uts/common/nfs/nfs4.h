@@ -993,6 +993,9 @@ extern	nfsstat4	rfs4_get_deleg_state(stateid4 *,
 					rfs4_deleg_state_t **);
 extern	nfsstat4	rfs4_get_lo_state(stateid4 *, rfs4_lo_state_t **,
 					bool_t);
+extern	nfsstat4	rfs4_get_all_state(stateid4 *, rfs4_state_t **,
+				rfs4_deleg_state_t **, rfs4_lo_state_t **);
+
 struct compound_state;
 extern	nfsstat4	rfs4_check_stateid(int, vnode_t *, stateid4 *,
 					bool_t, bool_t *, bool_t,
