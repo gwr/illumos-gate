@@ -1054,6 +1054,10 @@ extern delegreq_t	nfs4x_share_to_delegreq(uint32_t);
 extern void		rfs4x_rs_erase(void *);
 extern void		rfs4x_rs_record(struct compound_state *,
 				rfs4_deleg_state_t *);
+extern bool_t		rfs4_find_write_deleg_byfp(rfs4_file_t *, rfs4_deleg_state_t **);
+extern bool_t		rfs4_find_write_deleg(vnode_t *, rfs4_deleg_state_t **);
+extern void		rfs4_cb_getattr(rfs4_deleg_state_t *,
+				fattr4_change *, fattr4_size *);
 
 /*
  * nfs4 monitored operations.

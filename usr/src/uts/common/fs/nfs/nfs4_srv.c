@@ -2602,6 +2602,33 @@ do_rfs4_op_getattr(bitmap4 breq, fattr4 *fattrp,
 		}
 	}
 
+	/*
+	 * If CHANGE or SIZE were requested and the file has a write delegation,
+	 * the holder (C1) is authoritative for those attributes
+	 * (RFC 7530 §10.4.3, RFC 5661 §20.1).  Compute direct pointers into
+	 * the ntov array so rfs4_cb_getattr() can overwrite them in place.
+	 * On any failure the VOP_GETATTR-derived values remain.
+	 * Note: this call may block on a network round-trip.
+	 */
+	if (breq & (FATTR4_CHANGE_MASK | FATTR4_SIZE_MASK)) {
+		rfs4_deleg_state_t	*dsp;
+
+		if (rfs4_find_write_deleg(sargp->cs->vp, &dsp)) {
+			fattr4_change	*change_p = NULL;
+			fattr4_size	*size_p = NULL;
+			int		j;
+
+			for (j = 0; j < ntov.attrcnt; j++) {
+				if (ntov.amap[j] == FATTR4_CHANGE)
+					change_p = &ntov.na[j].change;
+				if (ntov.amap[j] == FATTR4_SIZE)
+					size_p = &ntov.na[j].size;
+			}
+			rfs4_cb_getattr(dsp, change_p, size_p);
+			rfs4_deleg_state_rele(dsp);
+		}
+	}
+
 	xdr_size = 0;
 	na = ntov.na;
 	amap = ntov.amap;
