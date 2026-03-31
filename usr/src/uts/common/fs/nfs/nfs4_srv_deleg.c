@@ -73,6 +73,7 @@ static rfs4_deleg_state_t *rfs4_deleg_state(rfs4_state_t *,
     open_delegation_type4, int *);
 static CLIENT *rfs4x_cb_chinit(rfs4_session_t *);
 int rfs4x_cbrecall_no_session = 0;
+int rfs4x_cbgetattr_no_session = 0;
 
 /*
  * Convert a universal address to an transport specific
@@ -914,11 +915,9 @@ retry:
 }
 
 /*
- * Used by the NFSv4 server to get attributes for a file while
- * handling the case where a file has been write delegated.  For the
- * time being, VOP_GETATTR() is called and CB_GETATTR processing is
- * not undertaken.  This call site is maintained in case the server is
- * updated in the future to handle write delegation space guarantees.
+ * Used by the NFSv4 server to get attributes for a file.  CB_GETATTR
+ * processing (RFC 7530 §10.4.3, RFC 5661 §20.1) is handled at the protocol
+ * layer in do_rfs4_op_getattr(), not here.
  */
 nfsstat4
 rfs4_vop_getattr(vnode_t *vp, vattr_t *vap, int flag, cred_t *cr)
@@ -1068,6 +1067,7 @@ rfs4x_do_cb_recall(rfs4_deleg_state_t *dsp, bool_t trunc)
 	CB_COMPOUND4res		cb4_res;
 	CB_SEQUENCE4args	*cbsap;
 	CB_RECALL4args		*cbrap;
+	CB_RECALL4res		*cbrrp;
 	slot_ent_t		*p;
 	nfs_cb_argop4		*argops;
 	int			numops;
@@ -1177,13 +1177,18 @@ rfs4x_do_cb_recall(rfs4_deleg_state_t *dsp, bool_t trunc)
 	timeout.tv_sec = (rfs4_lease_time * 80) / 100;
 	timeout.tv_usec = 0;
 
+	DTRACE_NFSV4_3(cb__recall__start, rfs4_client_t *, dsp->rds_client,
+	    rfs4_deleg_state_t *, dsp, CB_RECALL4args *, cbrap);
+
 retry:
+
 	ch = rfs4x_cb_getch(sp);
 	(void) CLNT_CONTROL(ch, CLSET_XID, (char *)&zilch);
 	call_stat = clnt_call(ch, CB_COMPOUND,
 	    xdr_CB_COMPOUND4args_srv, (caddr_t)&cb4_args,
 	    xdr_CB_COMPOUND4res, (caddr_t)&cb4_res, timeout);
 	rfs4x_cb_freech(sp, ch);
+
 	/*
 	 * If the back channel is down, then mark session(s) appropriately
 	 * (SEQ4_STATUS_CB_PATH_DOWN). On NFS4ERR_DELAY, retry the callback
@@ -1244,7 +1249,13 @@ retry:
 		}
 	}
 	svc_slot_cb_seqid(&cb4_res, p);
-	done:
+done:
+
+	cbrrp = (cb4_res.array_len < 2) ? NULL :
+	    &cb4_res.array[1].nfs_cb_resop4_u.opcbrecall;
+	DTRACE_NFSV4_3(cb__recall__done, rfs4_client_t *, dsp->rds_client,
+	    rfs4_deleg_state_t *, dsp, CB_RECALL4res *, cbrrp);
+
 	if (rcl)
 		rfs41_deleg_rs_rele(dsp);
 	svc_slot_free(sp, p);
@@ -1312,9 +1323,9 @@ rfs4_do_cb_recall(rfs4_deleg_state_t *dsp, bool_t trunc)
 
 	call_stat = rfs4_do_callback(dsp->rds_client, &cb4_args, &cb4_res,
 	    timeout);
+
 	rec_resp = (cb4_res.array_len == 0) ? NULL :
 	    &cb4_res.array[0].nfs_cb_resop4_u.opcbrecall;
-
 	DTRACE_NFSV4_3(cb__recall__done, rfs4_client_t *, dsp->rds_client,
 	    rfs4_deleg_state_t *, dsp, CB_RECALL4res *, rec_resp);
 
@@ -1323,6 +1334,345 @@ rfs4_do_cb_recall(rfs4_deleg_state_t *dsp, bool_t trunc)
 	}
 
 	rfs4freeargres(&cb4_args, &cb4_res);
+}
+
+/*
+ * Find a write delegation on fp and return a held reference to its
+ * rfs4_deleg_state_t via *dspp.  The caller must release with
+ * rfs4_deleg_state_rele().  Returns TRUE if a write delegation is found,
+ * FALSE otherwise.  Intended for callers that already hold an rfs4_file_t;
+ * see rfs4_find_write_deleg() for the vp-based wrapper.
+ *
+ * fp->rf_dinfo.rd_dtype is a single enum describing the shared file's
+ * delegation state; it is set to OPEN_DELEGATE_WRITE only when a write
+ * delegation is in force.  Because at most one write delegation may exist
+ * at a time, list_head(&fp->rf_delegstatelist) is sufficient to find it.
+ */
+bool_t
+rfs4_find_write_deleg_byfp(rfs4_file_t *fp, rfs4_deleg_state_t **dspp)
+{
+	nfs4_srv_t		*nsrv4 = nfs4_get_srv();
+	rfs4_deleg_state_t	*dsp;
+	bool_t			found = FALSE;
+
+	if (nsrv4->nfs4_deleg_policy == SRV_NEVER_DELEGATE)
+		return (FALSE);
+
+	rfs4_dbe_lock(fp->rf_dbe);
+	if (fp->rf_dinfo.rd_dtype == OPEN_DELEGATE_WRITE) {
+		dsp = list_head(&fp->rf_delegstatelist);
+		if (dsp != NULL && !rfs4_dbe_is_invalid(dsp->rds_dbe)) {
+			rfs4_dbe_hold(dsp->rds_dbe);
+			*dspp = dsp;
+			found = TRUE;
+		}
+	}
+	rfs4_dbe_unlock(fp->rf_dbe);
+
+	return (found);
+}
+
+/*
+ * Find a write delegation on vp and return a held reference to its
+ * rfs4_deleg_state_t via *dspp.  The caller must release with
+ * rfs4_deleg_state_rele().  Returns TRUE if a write delegation is found,
+ * FALSE otherwise.
+ */
+bool_t
+rfs4_find_write_deleg(vnode_t *vp, rfs4_deleg_state_t **dspp)
+{
+	nfs4_srv_t	*nsrv4 = nfs4_get_srv();
+	rfs4_file_t	*fp;
+	bool_t		create = FALSE;
+	bool_t		found;
+
+	if (nsrv4->nfs4_deleg_policy == SRV_NEVER_DELEGATE)
+		return (FALSE);
+
+	fp = rfs4_findfile(vp, NULL, &create);
+	if (fp == NULL)
+		return (FALSE);
+
+	found = rfs4_find_write_deleg_byfp(fp, dspp);
+	rfs4_file_rele(fp);
+
+	return (found);
+}
+
+/*
+ * Send CB_GETATTR to a v4.0 delegation holder.  The server asks for
+ * FATTR4_CHANGE and FATTR4_SIZE; the client is authoritative for both
+ * while it holds the write delegation (RFC 7530 §10.4.3).
+ *
+ * Returns a bitmask of attrs successfully decoded from the response
+ * (FATTR4_CHANGE_MASK, FATTR4_SIZE_MASK, or 0 on failure).
+ */
+static bitmap4
+rfs4_do_cb_getattr(rfs4_deleg_state_t *dsp,
+    fattr4_change *changep, fattr4_size *sizep)
+{
+	CB_COMPOUND4args	cb4_args;
+	CB_COMPOUND4res		cb4_res;
+	CB_GETATTR4args		*ga_args;
+	CB_GETATTR4res		*ga_res;
+	nfs_cb_argop4		*argop;
+	struct timeval		timeout;
+	nfs_fh4			*fhp;
+	enum clnt_stat		call_stat;
+	XDR			xdr;
+	bitmap4			attrmask;
+	bitmap4			ret = 0;
+
+	argop = kmem_zalloc(sizeof (nfs_cb_argop4), KM_SLEEP);
+	argop->argop = OP_CB_GETATTR;
+	ga_args = &argop->nfs_cb_argop4_u.opcbgetattr;
+
+	(void) str_to_utf8("cb_getattr", &cb4_args.tag);
+	cb4_args.minorversion = CB4_MINORVERSION_v0;
+	cb4_args.array_len = 1;
+	cb4_args.array = argop;
+
+	/*
+	 * fill in the args struct
+	 */
+	fhp = &dsp->rds_finfo->rf_filehandle;
+	ga_args->fh.nfs_fh4_val = kmem_alloc(fhp->nfs_fh4_len, KM_SLEEP);
+	nfs_fh4_copy(fhp, &ga_args->fh);
+	ga_args->attr_request = FATTR4_CHANGE_MASK | FATTR4_SIZE_MASK;
+
+	cb4_res.tag.utf8string_val = NULL;
+	cb4_res.array = NULL;
+
+	/*
+	 * Set up the timeout for the callback and make the actual call.
+	 * Timeout will be 80% of the lease period for this server.
+	 */
+	timeout.tv_sec = (rfs4_lease_time * 80) / 100;
+	timeout.tv_usec = 0;
+
+	DTRACE_NFSV4_3(cb__getattr__start, rfs4_client_t *, dsp->rds_client,
+	    rfs4_deleg_state_t *, dsp, CB_GETATTR4args *, ga_args);
+
+	call_stat = rfs4_do_callback(dsp->rds_client, &cb4_args, &cb4_res,
+	    timeout);
+
+	ga_res = (cb4_res.array_len == 0) ? NULL :
+	    &cb4_res.array[0].nfs_cb_resop4_u.opcbgetattr;
+	DTRACE_NFSV4_3(cb__getattr__done, rfs4_client_t *, dsp->rds_client,
+	    rfs4_deleg_state_t *, dsp, CB_GETATTR4res *, ga_res);
+
+	if (call_stat != RPC_SUCCESS || cb4_res.status != NFS4_OK ||
+	    cb4_res.array_len == 0)
+		goto fail;
+
+	/*
+	 * Parse result
+	 */
+	ga_res = &cb4_res.array[0].nfs_cb_resop4_u.opcbgetattr;
+	if (ga_res->status != NFS4_OK ||
+	    ga_res->obj_attributes.attrlist4 == NULL ||
+	    ga_res->obj_attributes.attrlist4_len == 0)
+		goto fail;
+
+	attrmask = ga_res->obj_attributes.attrmask;
+	xdrmem_create(&xdr, ga_res->obj_attributes.attrlist4,
+	    ga_res->obj_attributes.attrlist4_len, XDR_DECODE);
+
+	if ((attrmask & FATTR4_CHANGE_MASK) != 0 &&
+	    xdr_uint64_t(&xdr, changep))
+		ret |= FATTR4_CHANGE_MASK;
+
+	if ((attrmask & FATTR4_SIZE_MASK) != 0 &&
+	    xdr_uint64_t(&xdr, sizep))
+		ret |=FATTR4_SIZE_MASK;
+
+fail:
+	rfs4freeargres(&cb4_args, &cb4_res);
+	return (ret);
+}
+
+/*
+ * Send CB_GETATTR to a v4.1 delegation holder via the session back channel.
+ * The server asks for FATTR4_CHANGE and FATTR4_SIZE; the client is authoritative
+ * for both while it holds the write delegation (RFC 7530 §10.4.3).
+ * Wraps the request in CB_SEQUENCE + CB_GETATTR per RFC 5661 §20.1.
+ *
+ * Returns a bitmask of attrs successfully decoded from the response
+ * (FATTR4_CHANGE_MASK, FATTR4_SIZE_MASK, or 0 on failure).
+ */
+static bitmap4
+rfs4x_do_cb_getattr(rfs4_deleg_state_t *dsp,
+    fattr4_change *changep, fattr4_size *sizep)
+{
+	CB_COMPOUND4args	cb4_args;
+	CB_COMPOUND4res		cb4_res;
+	CB_SEQUENCE4args	*seq_args;
+	CB_GETATTR4args		*ga_args;
+	CB_GETATTR4res		*ga_res;
+	slot_ent_t		*p;
+	nfs_cb_argop4		*argops;
+	int			numops;
+	int			argoplist_size;
+	struct timeval		timeout;
+	nfs_fh4			*fhp;
+	enum clnt_stat		call_stat = RPC_FAILED;
+	int			zilch = 0;
+	CLIENT			*ch;
+	rfs4_session_t		*sp;
+	XDR			xdr;
+	bitmap4			attrmask;
+	bitmap4			ret = 0;
+
+	sp = rfs4x_findsession_by_clid(dsp->rds_client->rc_clientid);
+	ASSERT(sp != NULL);
+	if (sp == NULL) {
+		/*
+		 * this shouldn't ever happen.  if it does, just
+		 * increment a counter for now and return.
+		 */
+		rfs4x_cbgetattr_no_session++;
+		cmn_err(CE_WARN, "rfs4x_do_cb_getattr: no session\n");
+		return (0);
+	}
+
+	/*
+	 * set up the compound args
+	 */
+	numops = 2;	/* CB_SEQUENCE + CB_GETATTR */
+	argoplist_size = numops * sizeof (nfs_cb_argop4);
+	argops = kmem_zalloc(argoplist_size, KM_SLEEP);
+
+	argops[0].argop = OP_CB_SEQUENCE;
+	seq_args = &argops[0].nfs_cb_argop4_u.opcbsequence;
+
+	argops[1].argop = OP_CB_GETATTR;
+	ga_args = &argops[1].nfs_cb_argop4_u.opcbgetattr;
+
+	(void) str_to_utf8("rfs4x_cb_getattr", &cb4_args.tag);
+	cb4_args.minorversion = CB4_MINORVERSION_v1;
+
+	cb4_args.callback_ident = sp->sn_bc.progno;
+	cb4_args.array_len = numops;
+	cb4_args.array = argops;
+
+	cb4_res.tag.utf8string_val = NULL;
+	cb4_res.array = NULL;
+
+	/*
+	 * CB_SEQUENCE
+	 */
+	seq_args->csa_highest_slotid = svc_slot_maxslot(sp) - 1;
+	bcopy(sp->sn_sessid, seq_args->csa_sessionid, sizeof (sessionid4));
+	p = svc_slot_alloc(sp);
+	mutex_enter(&p->se_lock);
+	seq_args->csa_slotid = p->se_sltno;
+	seq_args->csa_sequenceid = p->se_seqid;
+	seq_args->csa_cachethis = FALSE;
+	seq_args->csa_rcall_llen = 0;
+	seq_args->csa_rcall_lval = NULL;
+	mutex_exit(&p->se_lock);
+
+	/*
+	 * CB_GETATTR
+	 */
+	fhp = &dsp->rds_finfo->rf_filehandle;
+	ga_args->fh.nfs_fh4_val = kmem_alloc(fhp->nfs_fh4_len, KM_SLEEP);
+	nfs_fh4_copy(fhp, &ga_args->fh);
+	ga_args->attr_request = FATTR4_CHANGE_MASK | FATTR4_SIZE_MASK;
+
+	/*
+	 * Set up the timeout for the callback and make the actual call.
+	 * Timeout will be 80% of the lease period for this server.
+	 */
+	timeout.tv_sec = (rfs4_lease_time * 80) / 100;
+	timeout.tv_usec = 0;
+
+	DTRACE_NFSV4_3(cb__getattr__start, rfs4_client_t *, dsp->rds_client,
+	    rfs4_deleg_state_t *, dsp, CB_GETATTR4args *, ga_args);
+
+	ch = rfs4x_cb_getch(sp);
+	(void) CLNT_CONTROL(ch, CLSET_XID, (char *)&zilch);
+	call_stat = clnt_call(ch, CB_COMPOUND,
+	    xdr_CB_COMPOUND4args_srv, (caddr_t)&cb4_args,
+	    xdr_CB_COMPOUND4res, (caddr_t)&cb4_res, timeout);
+	rfs4x_cb_freech(sp, ch);
+
+	ga_res = (cb4_res.array_len < 2) ? NULL :
+	    &cb4_res.array[1].nfs_cb_resop4_u.opcbgetattr;
+	DTRACE_NFSV4_3(cb__getattr__done, rfs4_client_t *, dsp->rds_client,
+	    rfs4_deleg_state_t *, dsp, CB_GETATTR4res *, ga_res);
+
+	if (call_stat != RPC_SUCCESS || cb4_res.status != NFS4_OK ||
+	    cb4_res.array_len < 2)
+		goto done;
+
+	/*
+	 * Parse result
+	 */
+	ga_res = &cb4_res.array[1].nfs_cb_resop4_u.opcbgetattr;
+	if (ga_res->status != NFS4_OK ||
+	    ga_res->obj_attributes.attrlist4 == NULL ||
+	    ga_res->obj_attributes.attrlist4_len == 0)
+		goto done;
+
+	attrmask = ga_res->obj_attributes.attrmask;
+	xdrmem_create(&xdr, ga_res->obj_attributes.attrlist4,
+	    ga_res->obj_attributes.attrlist4_len, XDR_DECODE);
+
+	if ((attrmask & FATTR4_CHANGE_MASK) != 0 &&
+	    xdr_uint64_t(&xdr, changep))
+		ret |= FATTR4_CHANGE_MASK;
+
+	if ((attrmask & FATTR4_SIZE_MASK) != 0 &&
+	    xdr_uint64_t(&xdr, sizep))
+		ret |=FATTR4_SIZE_MASK;
+
+done:
+	svc_slot_cb_seqid(&cb4_res, p);
+	svc_slot_free(sp, p);
+	rfs4freeargres(&cb4_args, &cb4_res);
+	rfs4x_session_rele(sp);
+	return (ret);
+}
+
+/*
+ * CB_GETATTR dispatcher, called from do_rfs4_op_getattr.
+ *
+ * While a client (C1) holds a write delegation, it is authoritative for
+ * FATTR4_CHANGE and FATTR4_SIZE (RFC 7530 §10.4.3, RFC 5661 §20.1).  When a
+ * third party (C2) requests those attributes, the server must ask C1 via
+ * CB_GETATTR and use C1's reply values in its GETATTR response.
+ *
+ * dsp must be a held rfs4_deleg_state_t (from rfs4_find_write_deleg); the
+ * caller retains ownership and must call rfs4_deleg_state_rele() after return.
+ *
+ * out_change and out_size are written only when C1 returns the corresponding
+ * attribute; pass NULL for any attribute that is not of interest.
+ *
+ * This function may block on a network round-trip; no locks are held across
+ * the RPC.  On any failure the out pointers are left unchanged and the caller
+ * proceeds with its own VOP_GETATTR values.
+ */
+void
+rfs4_cb_getattr(rfs4_deleg_state_t *dsp, fattr4_change *out_change,
+    fattr4_size *out_size)
+{
+	fattr4_change	cb_change = 0;
+	fattr4_size	cb_size = 0;
+	bitmap4		got_mask;
+
+	if (dsp->rds_client->rc_minorversion == 0)
+		got_mask = rfs4_do_cb_getattr(dsp, &cb_change, &cb_size);
+	else
+		got_mask = rfs4x_do_cb_getattr(dsp, &cb_change, &cb_size);
+
+	if (got_mask == 0)
+		return;
+
+	if (out_change != NULL && (got_mask & FATTR4_CHANGE_MASK) != 0)
+		*out_change = cb_change;
+	if (out_size != NULL && (got_mask & FATTR4_SIZE_MASK) != 0)
+		*out_size = cb_size;
 }
 
 struct recall_arg {
