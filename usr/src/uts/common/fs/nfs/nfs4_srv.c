@@ -7362,13 +7362,13 @@ again:
 		/*
 		 * No delegation granted and no extended response needed.
 		 * Two cases reach here:
-		 *   - v4.0 client (!has_session): OPEN_DELEGATE_NONE_EXT does
-		 *     not exist in RFC 7530; plain OPEN_DELEGATE_NONE is
-		 *     correct.
-		 *   - Session client with DELEG_DISABLE: the server suppressed
-		 *     delegation as a policy decision (e.g. CLAIM_DELEGATE_CUR,
-		 *     unconfirmed open owner), not in response to a client hint,
-		 *     so no ond_why explanation is expected.
+		 * - v4.0 client (!has_session): OPEN_DELEGATE_NONE_EXT does
+		 *   not exist in RFC 7530; plain OPEN_DELEGATE_NONE is
+		 *   correct.
+		 * - Session client with DELEG_DISABLE: the server suppressed
+		 *   delegation as a policy decision (e.g. CLAIM_DELEGATE_CUR,
+		 *   unconfirmed open owner), not in response to a client hint,
+		 *   so no ond_why explanation is expected.
 		 */
 		resp->delegation.delegation_type = OPEN_DELEGATE_NONE;
 	}
@@ -7390,10 +7390,11 @@ rfs4_do_openfh(struct compound_state *cs, struct svc_req *req, OPEN4args *args,
 	has_session = rfs4_has_session(cs);
 	if (!has_session) {
 		/*
-		 * Non-session (v4.0) client: suppress delegation if the open
-		 * owner is unconfirmed (server policy), otherwise no preference.
-		 * DELEG_DISABLE rather than DELEG_WANT_NONE because this is a
-		 * server decision, not a client hint.
+		 * Non-session (v4.0) client: suppress delegation if the
+		 * open owner is unconfirmed (server policy), otherwise
+		 * no preference. Using DELEG_DISABLE to indicate this
+		 * is a server decision, where DELEG_WANT_NONE would
+		 * indicate the client request.
 		 */
 		dreq = oo->ro_need_confirm ? DELEG_DISABLE : DELEG_WANT_NO_PREF;
 	} else {
@@ -7433,11 +7434,11 @@ rfs4_do_opennull(struct compound_state *cs, struct svc_req *req,
 		has_session = rfs4_has_session(cs);
 		if (!has_session) {
 			/*
-			 * Non-session (v4.0) client: suppress delegation if the
-			 * open owner is unconfirmed (server policy), otherwise
-			 * no preference.  DELEG_DISABLE rather than
+			 * Non-session (v4.0) client: suppress delegation
+			 * if the open owner is unconfirmed (server policy),
+			 * otherwise no preference.  DELEG_DISABLE rather than
 			 * DELEG_WANT_NONE because this is a server decision,
-			 * not a client hint.
+			 * not based on the client request.
 			 */
 			dreq = oo->ro_need_confirm ? DELEG_DISABLE :
 			    DELEG_WANT_NO_PREF;

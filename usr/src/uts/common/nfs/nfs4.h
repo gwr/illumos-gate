@@ -515,7 +515,7 @@ typedef struct rfs4_client {
 	clientid4		rc_clientid;
 	nfs_client_id4		rc_nfs_client;
 	verifier4		rc_confirm_verf;
-	uint8_t			rc_minorversion;    /* NFS minor version (0, 1, 2) */
+	uint8_t			rc_minorversion;
 	unsigned		rc_need_confirm:1;
 	unsigned		rc_unlksys_completed:1;
 	unsigned		rc_can_reclaim:1;
@@ -680,7 +680,7 @@ typedef struct rfs4_deleg_state {
 	time_t			rds_time_granted;
 	time_t			rds_time_recalled;
 	time_t			rds_time_revoked;
-	bool_t			rds_revoked;	/* revoked, awaiting FREE_STATEID */
+	bool_t			rds_revoked;	/* awaiting FREE_STATEID */
 	struct rfs4_file	*rds_finfo;
 	rfs4_client_t		*rds_client;
 	list_node_t		rds_node;
@@ -1054,7 +1054,8 @@ extern delegreq_t	nfs4x_share_to_delegreq(uint32_t);
 extern void		rfs4x_rs_erase(void *);
 extern void		rfs4x_rs_record(struct compound_state *,
 				rfs4_deleg_state_t *);
-extern bool_t		rfs4_find_write_deleg_byfp(rfs4_file_t *, rfs4_deleg_state_t **);
+extern bool_t		rfs4_find_write_deleg_byfp(rfs4_file_t *,
+				rfs4_deleg_state_t **);
 extern bool_t		rfs4_find_write_deleg(vnode_t *, rfs4_deleg_state_t **);
 extern void		rfs4_cb_getattr(rfs4_deleg_state_t *,
 				fattr4_change *, fattr4_size *);

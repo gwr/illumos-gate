@@ -1058,7 +1058,81 @@ rfs41_cb_seq_rcl_args(CB_SEQUENCE4args *ap, rfs4_deleg_state_t *dsp)
 }
 
 /*
- * Place the actual cb_recall otw call to client. (using slot_XXX api)
+ * Place the actual cb_recall otw call to (v4.0) client.
+ */
+static void
+rfs4_do_cb_recall(rfs4_deleg_state_t *dsp, bool_t trunc)
+{
+	CB_COMPOUND4args	cb4_args;
+	CB_COMPOUND4res		cb4_res;
+	CB_RECALL4args		*rec_argp;
+	CB_RECALL4res		*rec_resp;
+	nfs_cb_argop4		*argop;
+	int			numops;
+	int			argoplist_size;
+	struct timeval		timeout;
+	nfs_fh4			*fhp;
+	enum clnt_stat		call_stat;
+
+	/*
+	 * set up the compound args
+	 */
+	numops = 1;	/* CB_RECALL only */
+
+	argoplist_size = numops * sizeof (nfs_cb_argop4);
+	argop = kmem_zalloc(argoplist_size, KM_SLEEP);
+	argop->argop = OP_CB_RECALL;
+	rec_argp = &argop->nfs_cb_argop4_u.opcbrecall;
+
+	(void) str_to_utf8("cb_recall", &cb4_args.tag);
+	cb4_args.minorversion = CB4_MINORVERSION_v0;
+	/* cb4_args.callback_ident is set in rfs4_do_callback() */
+	cb4_args.array_len = numops;
+	cb4_args.array = argop;
+
+	/*
+	 * fill in the args struct
+	 */
+	bcopy(&dsp->rds_delegid.stateid, &rec_argp->stateid, sizeof (stateid4));
+	rec_argp->truncate = trunc;
+
+	fhp = &dsp->rds_finfo->rf_filehandle;
+	rec_argp->fh.nfs_fh4_val = kmem_alloc(sizeof (char) *
+	    fhp->nfs_fh4_len, KM_SLEEP);
+	nfs_fh4_copy(fhp, &rec_argp->fh);
+
+	/* Keep track of when we did this for observability */
+	dsp->rds_time_recalled = gethrestime_sec();
+
+	/*
+	 * Set up the timeout for the callback and make the actual call.
+	 * Timeout will be 80% of the lease period for this server.
+	 */
+	timeout.tv_sec = (rfs4_lease_time * 80) / 100;
+	timeout.tv_usec = 0;
+
+	DTRACE_NFSV4_3(cb__recall__start, rfs4_client_t *, dsp->rds_client,
+	    rfs4_deleg_state_t *, dsp, CB_RECALL4args *, rec_argp);
+
+	call_stat = rfs4_do_callback(dsp->rds_client, &cb4_args, &cb4_res,
+	    timeout);
+
+	rec_resp = (cb4_res.array_len == 0) ? NULL :
+	    &cb4_res.array[0].nfs_cb_resop4_u.opcbrecall;
+	DTRACE_NFSV4_3(cb__recall__done, rfs4_client_t *, dsp->rds_client,
+	    rfs4_deleg_state_t *, dsp, CB_RECALL4res *, rec_resp);
+
+	if (call_stat != RPC_SUCCESS || cb4_res.status != NFS4_OK) {
+		rfs4_return_deleg(dsp, TRUE);
+	}
+
+	rfs4freeargres(&cb4_args, &cb4_res);
+}
+
+/*
+ * Place the actual cb_recall otw call to (v4.1+) client.
+ * Wraps the request in CB_SEQUENCE + CB_GETATTR per RFC 5661
+ * and uses the session back-channel.
  */
 void
 rfs4x_do_cb_recall(rfs4_deleg_state_t *dsp, bool_t trunc)
@@ -1265,78 +1339,6 @@ done:
 }
 
 /*
- * Place the actual cb_recall otw call to client.
- */
-static void
-rfs4_do_cb_recall(rfs4_deleg_state_t *dsp, bool_t trunc)
-{
-	CB_COMPOUND4args	cb4_args;
-	CB_COMPOUND4res		cb4_res;
-	CB_RECALL4args		*rec_argp;
-	CB_RECALL4res		*rec_resp;
-	nfs_cb_argop4		*argop;
-	int			numops;
-	int			argoplist_size;
-	struct timeval		timeout;
-	nfs_fh4			*fhp;
-	enum clnt_stat		call_stat;
-
-	/*
-	 * set up the compound args
-	 */
-	numops = 1;	/* CB_RECALL only */
-
-	argoplist_size = numops * sizeof (nfs_cb_argop4);
-	argop = kmem_zalloc(argoplist_size, KM_SLEEP);
-	argop->argop = OP_CB_RECALL;
-	rec_argp = &argop->nfs_cb_argop4_u.opcbrecall;
-
-	(void) str_to_utf8("cb_recall", &cb4_args.tag);
-	cb4_args.minorversion = CB4_MINORVERSION_v0;
-	/* cb4_args.callback_ident is set in rfs4_do_callback() */
-	cb4_args.array_len = numops;
-	cb4_args.array = argop;
-
-	/*
-	 * fill in the args struct
-	 */
-	bcopy(&dsp->rds_delegid.stateid, &rec_argp->stateid, sizeof (stateid4));
-	rec_argp->truncate = trunc;
-
-	fhp = &dsp->rds_finfo->rf_filehandle;
-	rec_argp->fh.nfs_fh4_val = kmem_alloc(sizeof (char) *
-	    fhp->nfs_fh4_len, KM_SLEEP);
-	nfs_fh4_copy(fhp, &rec_argp->fh);
-
-	/* Keep track of when we did this for observability */
-	dsp->rds_time_recalled = gethrestime_sec();
-
-	/*
-	 * Set up the timeout for the callback and make the actual call.
-	 * Timeout will be 80% of the lease period for this server.
-	 */
-	timeout.tv_sec = (rfs4_lease_time * 80) / 100;
-	timeout.tv_usec = 0;
-
-	DTRACE_NFSV4_3(cb__recall__start, rfs4_client_t *, dsp->rds_client,
-	    rfs4_deleg_state_t *, dsp, CB_RECALL4args *, rec_argp);
-
-	call_stat = rfs4_do_callback(dsp->rds_client, &cb4_args, &cb4_res,
-	    timeout);
-
-	rec_resp = (cb4_res.array_len == 0) ? NULL :
-	    &cb4_res.array[0].nfs_cb_resop4_u.opcbrecall;
-	DTRACE_NFSV4_3(cb__recall__done, rfs4_client_t *, dsp->rds_client,
-	    rfs4_deleg_state_t *, dsp, CB_RECALL4res *, rec_resp);
-
-	if (call_stat != RPC_SUCCESS || cb4_res.status != NFS4_OK) {
-		rfs4_return_deleg(dsp, TRUE);
-	}
-
-	rfs4freeargres(&cb4_args, &cb4_res);
-}
-
-/*
  * Find a write delegation on fp and return a held reference to its
  * rfs4_deleg_state_t via *dspp.  The caller must release with
  * rfs4_deleg_state_rele().  Returns TRUE if a write delegation is found,
@@ -1484,7 +1486,7 @@ rfs4_do_cb_getattr(rfs4_deleg_state_t *dsp,
 
 	if ((attrmask & FATTR4_SIZE_MASK) != 0 &&
 	    xdr_uint64_t(&xdr, sizep))
-		ret |=FATTR4_SIZE_MASK;
+		ret |= FATTR4_SIZE_MASK;
 
 fail:
 	rfs4freeargres(&cb4_args, &cb4_res);
@@ -1492,10 +1494,12 @@ fail:
 }
 
 /*
- * Send CB_GETATTR to a v4.1 delegation holder via the session back channel.
- * The server asks for FATTR4_CHANGE and FATTR4_SIZE; the client is authoritative
- * for both while it holds the write delegation (RFC 7530 §10.4.3).
+ * Send CB_GETATTR to a v4.1+ delegation holder.  The server asks for
+ * FATTR4_CHANGE and FATTR4_SIZE; the client is authoritative for both
+ * while it holds the write delegation (RFC 7530 §10.4.3).
+ *
  * Wraps the request in CB_SEQUENCE + CB_GETATTR per RFC 5661 §20.1.
+ * and uses the session back-channel.
  *
  * Returns a bitmask of attrs successfully decoded from the response
  * (FATTR4_CHANGE_MASK, FATTR4_SIZE_MASK, or 0 on failure).
@@ -1625,7 +1629,7 @@ rfs4x_do_cb_getattr(rfs4_deleg_state_t *dsp,
 
 	if ((attrmask & FATTR4_SIZE_MASK) != 0 &&
 	    xdr_uint64_t(&xdr, sizep))
-		ret |=FATTR4_SIZE_MASK;
+		ret |= FATTR4_SIZE_MASK;
 
 done:
 	svc_slot_cb_seqid(&cb4_res, p);
@@ -2121,7 +2125,10 @@ rfs4_grant_delegation(delegreq_t dreq, rfs4_state_t *sp,
 			return (NULL);
 	}
 
-	/* Get the "best" delegation type given the current open and conflicts */
+	/*
+	 * Get the "best" available delegation type given the
+	 * current open and any conflicts.
+	 */
 	dtype = rfs4_check_delegation(sp, fp);
 
 	if (dtype == OPEN_DELEGATE_NONE)

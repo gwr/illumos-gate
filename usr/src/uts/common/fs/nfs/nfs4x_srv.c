@@ -1368,7 +1368,7 @@ rfs4x_op_bind_conn_to_session(nfs_argop4 *argop, nfs_resop4 *resop,
 		cbargs.tag = (void *)sp->sn_sessid;
 
 		(void) SVC_CTL(req->rq_xprt,
-		     SVCCTL_SET_CBCONN, (void *)&cbargs);
+		    SVCCTL_SET_CBCONN, (void *)&cbargs);
 		break;
 	default:
 		break;
@@ -1778,12 +1778,14 @@ rfs4x_cbsec_fini(rfs4_session_t *sp)
  * We could implement nfs4x_share_to_delegreq() as just
  * (deleg_want & mask) >> 8, but let's not, for now.
  */
+/* BEGIN CSTYLED */
 CTASSERT((DELEG_WANT_NO_PREF << 8) == OPEN4_SHARE_WANT_NO_PREFERENCE);
 CTASSERT((DELEG_WANT_READ    << 8) == OPEN4_SHARE_WANT_READ_DELEG);
 CTASSERT((DELEG_WANT_WRITE   << 8) == OPEN4_SHARE_WANT_WRITE_DELEG);
 CTASSERT((DELEG_WANT_ANY     << 8) == OPEN4_SHARE_WANT_ANY_DELEG);
 CTASSERT((DELEG_WANT_NONE    << 8) == OPEN4_SHARE_WANT_NO_DELEG);
 CTASSERT((DELEG_WANT_CANCEL  << 8) == OPEN4_SHARE_WANT_CANCEL);
+/* END CSTYLED */
 
 /*
  * The OPEN4_SHARE_WANT_*_DELEG flags were stashed in OPEN4args.deleg_want
