@@ -1297,7 +1297,7 @@ rfs4x_bc_setup(rfs4_session_t *sp)
 	rfs4_dbe_unlock(sp->sn_dbe);
 
 	/* now set the conn's state so we know a ping is needed */
-	atomic_add_32(&sp->sn_bc.pngcnt, 1);
+	atomic_inc_32(&sp->sn_bc.pngcnt);
 }
 
 void
@@ -1673,7 +1673,7 @@ rfs4x_op_backchannel_ctl(nfs_argop4 *argop, nfs_resop4 *resop,
 	 * 2. Mark the backchannel that PING is needed
 	 */
 	rfs4x_cb_chflush(sp);
-	atomic_add_32(&sp->sn_bc.pngcnt, 1);
+	atomic_inc_32(&sp->sn_bc.pngcnt);
 
 final:
 	*cs->statusp = resp->bcr_status = status;

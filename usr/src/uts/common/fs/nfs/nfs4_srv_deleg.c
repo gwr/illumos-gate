@@ -862,7 +862,7 @@ svc_slot_cb_seqid(CB_COMPOUND4res *resp, slot_ent_t *p)
 	ASSERT(resp->array->resop == OP_CB_SEQUENCE);
 	rp = &resp->array->nfs_cb_resop4_u.opcbsequence;
 	if (rp->csr_status == NFS4_OK) {
-		slot_incr_seq(p, 1);
+		slot_incr_seq(p);
 	}
 }
 

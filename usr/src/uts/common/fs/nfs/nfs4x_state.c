@@ -420,7 +420,7 @@ nfs4x_csa_flags_valid(uint32_t flags)
 void
 rfs41_deleg_rs_hold(rfs4_deleg_state_t *dsp)
 {
-	atomic_add_32(&dsp->rds_rs.refcnt, 1);
+	atomic_inc_32(&dsp->rds_rs.refcnt);
 }
 
 void

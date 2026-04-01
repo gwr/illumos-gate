@@ -181,7 +181,7 @@ static const struct rpc_cots_server {
 
 #define	RSSTAT_INCR(s, x)	\
 	if ((s) != NULL)	\
-		atomic_add_64(&(s)->x.value.ui64, 1)
+		atomic_inc_64(&(s)->x.value.ui64)
 
 static rpc_tag_hd_t svc_tag_hd;
 

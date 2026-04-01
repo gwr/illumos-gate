@@ -294,7 +294,7 @@ extern void rfs41_deleg_rs_rele(struct rfs4_deleg_state *);
 extern int slot_alloc(stok_t *, slt_wait_t, slot_ent_t **);
 extern void slot_free(stok_t *, slot_ent_t *);
 extern void slot_table_create(stok_t **, int);
-extern void slot_incr_seq(slot_ent_t *, int);
+extern void slot_incr_seq(slot_ent_t *);
 extern void slot_table_destroy(stok_t *);
 extern void slot_table_query(stok_t *, slt_query_t, void *);
 extern slot_ent_t *slot_get(stok_t *, slotid4);

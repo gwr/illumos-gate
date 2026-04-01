@@ -323,9 +323,9 @@ retry:
 }
 
 void
-slot_incr_seq(slot_ent_t *p, int incr)
+slot_incr_seq(slot_ent_t *p)
 {
-	atomic_add_32(&p->se_seqid, incr);
+	atomic_inc_32(&p->se_seqid);
 }
 
 void
