@@ -4567,35 +4567,14 @@ rfs4_op_remove(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 				error = ENOTEMPTY;
 		}
 	} else {
-		if ((error = VOP_REMOVE(dvp, name, cs->cr, NULL, 0)) == 0 &&
-		    fp != NULL) {
-			struct vattr va;
-			vnode_t *tvp;
-
-			rfs4_dbe_lock(fp->rf_dbe);
-			tvp = fp->rf_vp;
-			if (tvp)
-				VN_HOLD(tvp);
-			rfs4_dbe_unlock(fp->rf_dbe);
-
-			if (tvp) {
-				/*
-				 * This is va_seq safe because we are not
-				 * manipulating dvp.
-				 */
-				va.va_mask = AT_NLINK;
-				if (!VOP_GETATTR(tvp, &va, 0, cs->cr, NULL) &&
-				    va.va_nlink == 0) {
-					/* Remove state on file remove */
-					if (in_crit) {
-						nbl_end_crit(vp);
-						in_crit = 0;
-					}
-					rfs4_close_all_state(fp);
-				}
-				VN_RELE(tvp);
-			}
-		}
+		/*
+		 * Per RFC 7530 §16.28.4, an open file that is removed must
+		 * remain accessible through its filehandle until all opens
+		 * are closed.  Do not force-close state here; rfs4_state_close
+		 * (via CLOSE or lease expiry) will call VOP_CLOSE and release
+		 * the vnode naturally.
+		 */
+		error = VOP_REMOVE(dvp, name, cs->cr, NULL, 0);
 	}
 
 	if (in_crit)
@@ -4909,9 +4888,10 @@ rfs4_op_rename(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 	    NULL, 0);
 
 	/*
-	 * If target existed and was unlinked by VOP_RENAME, state will need
-	 * closed. To avoid deadlock, rfs4_close_all_state will be done after
-	 * any necessary nbl_end_crit on srcvp and tgtvp.
+	 * If the target existed and was unlinked by VOP_RENAME, check whether
+	 * it is still referenced.  Per RFC 7530 §16.30.4, the displaced target
+	 * must remain accessible until all opens are closed; we leave state
+	 * intact and let rfs4_state_close handle cleanup naturally.
 	 */
 	if (error == 0 && fp != NULL) {
 		rfs4_dbe_lock(fp->rf_dbe);
@@ -4962,8 +4942,13 @@ rfs4_op_rename(nfs_argop4 *argop, nfs_resop4 *resop, struct svc_req *req,
 			    "RW_READ_HELD(%p)", (void *)tvp);
 		}
 
-		/* The file is gone and so should the state */
-		rfs4_close_all_state(fp);
+		/*
+		 * Per RFC 7530 §16.30.4, the displaced target must remain
+		 * accessible through its filehandle until all opens are
+		 * closed.  Leave open state intact; rfs4_state_close (via
+		 * CLOSE or lease expiry) will call VOP_CLOSE and release
+		 * the vnode naturally.
+		 */
 		VN_RELE(tvp);
 	}
 
