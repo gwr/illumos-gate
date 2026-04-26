@@ -76,11 +76,13 @@ extern double modf(double, double *);
 extern double pow(double, double);
 extern double sqrt(double);
 
+extern double abs(double);
 extern double ceil(double);
 extern double fabs(double);
 extern double floor(double);
 extern double fmod(double, double);
 
+#if defined(__SUNPRO_CC)
 #if defined(__MATHERR_ERRNO_DONTCARE)
 #pragma does_not_read_global_data(acos, asin, atan, atan2)
 #pragma does_not_read_global_data(cos, sin, tan, cosh, sinh, tanh)
@@ -234,6 +236,7 @@ extern "C++" {
 	inline long double tanh(long double __X) { return __tanhl(__X); }
 }	/* end of extern "C++" */
 #endif	/* __cplusplus >= 199711L */
+#endif	/* __SUNPRO_CC */
 
 #if __cplusplus >= 199711L
 }	/* end of namespace std */
