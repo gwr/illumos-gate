@@ -45,13 +45,19 @@ CFGS = README \
 	symbols/ucontext_h.cfg \
 	symbols/unistd_h.cfg \
 	symbols/wchar_h.cfg \
-	symbols/wctype_h.cfg
+	symbols/wctype_h.cfg \
+	sym-cxx/compilation.cfg \
+	sym-cxx/math_iso_h.cfg \
+	sym-cxx/math_c99_h.cfg \
+	sym-cxx/math_h.cfg \
+	sym-cxx/cmath_h.cfg
 
 ROOTOPTPKG = $(ROOT)/opt/libc-tests
 ROOTOPTPKGCFG = $(ROOT)/opt/libc-tests/cfg
 ROOTOPTPKGDIRS = $(ROOTOPTPKG) \
 	$(ROOTOPTPKGCFG) \
-	$(ROOTOPTPKGCFG)/symbols
+	$(ROOTOPTPKGCFG)/symbols \
+	$(ROOTOPTPKGCFG)/sym-cxx
 
 FILES = $(CFGS:%=$(ROOTOPTPKGCFG)/%)
 $(FILES) := FILEMODE = 0444
