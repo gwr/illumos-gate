@@ -66,7 +66,7 @@ static const char *compilers[] = {
  * some compilers (e.g. clang-16).
  */
 static const char *compiler = NULL;
-static const char *common_flags = "-Wall -Werror -nostdinc -isystem "
+static char *common_flags = "-Wall -Werror -nostdinc -isystem "
 	"/usr/include -Wno-format-security";
 static const char *cxx11flags = "-std=c++11";
 static const char *cxx14flags = "-std=c++14";
@@ -863,6 +863,98 @@ find_compiler(void)
 	test_failed(t, "No compiler found.");
 }
 
+/*
+ * Query the compiler for its internal include directory and derive the
+ * full set of C++ include paths from it.  We keep -nostdinc so that only
+ * the paths we construct explicitly are searched, avoiding GCC's
+ * include-fixed copies of system headers (see "fixincludes").
+ *
+ * The compiler reports its internal include directory as, e.g.:
+ *   /opt/gcc-14/lib/gcc/x86_64-pc-solaris2.11/14.2.0/include
+ *   /usr/gcc/14/lib/gcc/x86_64-pc-solaris2.11/14.2.0/include
+ *
+ * From that we parse out prefix, target triple, and version, then
+ * construct three -isystem paths:
+ *   1. prefix/include/c++/version           C++ standard headers
+ *   2. prefix/include/c++/version/target    target-specific C++ headers
+ *   3. prefix/lib/gcc/target/version/include  GCC internals (stddef.h etc.)
+ * plus /usr/include for the system headers under test.
+ */
+static void
+find_cxx_includes(void)
+{
+	FILE *f;
+	char buf[512];
+	char cmd[512];
+	char *p, *rest, *slash;
+	char prefix[256], target[128], version[64];
+	char *newflags;
+	test_t t;
+
+	t = test_start("finding C++ include paths");
+
+	(void) snprintf(cmd, sizeof (cmd),
+	    "%s -print-file-name=include 2>/dev/null", compiler);
+
+	if ((f = popen(cmd, "r")) == NULL) {
+		test_failed(t, "popen(%s): %s", cmd, strerror(errno));
+		return;
+	}
+	if (fgets(buf, sizeof (buf), f) == NULL) {
+		(void) pclose(f);
+		test_failed(t, "no output from: %s", cmd);
+		return;
+	}
+	(void) pclose(f);
+
+	buf[strcspn(buf, "\n")] = '\0';
+
+	p = strstr(buf, "/lib/gcc/");
+	if (p == NULL) {
+		test_failed(t,
+		    "unexpected -print-file-name=include output: %s", buf);
+		return;
+	}
+
+	/* prefix: everything before "/lib/gcc/" */
+	(void) strlcpy(prefix, buf, (size_t)(p - buf + 1));
+
+	/* rest: "target/version/include" */
+	rest = p + strlen("/lib/gcc/");
+
+	/* target: up to first '/' */
+	slash = strchr(rest, '/');
+	if (slash == NULL) {
+		test_failed(t, "can't parse target from: %s", buf);
+		return;
+	}
+	(void) strlcpy(target, rest, (size_t)(slash - rest + 1));
+	rest = slash + 1;
+
+	/* version: up to next '/' */
+	slash = strchr(rest, '/');
+	if (slash == NULL) {
+		test_failed(t, "can't parse version from: %s", buf);
+		return;
+	}
+	(void) strlcpy(version, rest, (size_t)(slash - rest + 1));
+
+	myasprintf(&newflags,
+	    "-Wall -Werror -nostdinc "
+	    "-isystem %s/include/c++/%s "
+	    "-isystem %s/include/c++/%s/%s "
+	    "-isystem %s/lib/gcc/%s/%s/include "
+	    "-isystem /usr/include "
+	    "-Wno-format-security",
+	    prefix, version,
+	    prefix, version, target,
+	    prefix, target, version);
+
+	common_flags = newflags;
+	test_debugf(t, "C++ include flags: %s", newflags);
+	test_passed(t);
+}
+
 static int
 do_compile(test_t t, struct sym_test *st, struct compile_env *cenv, int need)
 {
@@ -1051,6 +1143,7 @@ main(int argc, char **argv)
 	}
 
 	find_compiler();
+	find_cxx_includes();
 	if (!optC)
 		test_compile();
 
