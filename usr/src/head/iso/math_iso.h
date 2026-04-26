@@ -81,6 +81,27 @@ extern double fabs(double);
 extern double floor(double);
 extern double fmod(double, double);
 
+/*
+ * Getting correct declarations for abs() is quite tricky.
+ * They should not be exposed in C code or it causes conflicts.
+ * Only declare them if we're inside the C++ std namespace.
+ * All three floating-point overloads must be present so that GCC's
+ * <cmath> can resolve std::abs(long double) internally (C++17 mode).
+ * fabsf() and fabsl() are C99 functions in libm; they're declared
+ * here because math_c99.h is included after math_iso.h in math.h.
+ */
+#if __cplusplus >= 199711L
+extern float fabsf(float);
+extern long double fabsl(long double);
+#undef	__X
+extern "C++" {
+	inline double abs(double __X) { return fabs(__X); }
+	inline float abs(float __X) { return fabsf(__X); }
+	inline long double abs(long double __X) { return fabsl(__X); }
+}
+#endif
+
+#if defined(__SUNPRO_CC)
 #if defined(__MATHERR_ERRNO_DONTCARE)
 #pragma does_not_read_global_data(acos, asin, atan, atan2)
 #pragma does_not_read_global_data(cos, sin, tan, cosh, sinh, tanh)
@@ -149,7 +170,6 @@ extern long double __tanhl(long double);
 extern "C++" {
 #undef	__X
 #undef	__Y
-	inline double abs(double __X) { return fabs(__X); }
 
 	inline double pow(double __X, int __Y) {
 		return (pow(__X, (double)(__Y)));
@@ -234,6 +254,7 @@ extern "C++" {
 	inline long double tanh(long double __X) { return __tanhl(__X); }
 }	/* end of extern "C++" */
 #endif	/* __cplusplus >= 199711L */
+#endif	/* __SUNPRO_CC */
 
 #if __cplusplus >= 199711L
 }	/* end of namespace std */
