@@ -50,7 +50,12 @@ CFGS = README \
 	sym-cxx/math_iso_h.cfg \
 	sym-cxx/math_c99_h.cfg \
 	sym-cxx/math_h.cfg \
-	sym-cxx/cmath_h.cfg
+	sym-cxx/cmath_h.cfg \
+	sym-cxx/cstdlib_h.cfg \
+	sym-cxx/cstring_h.cfg \
+	sym-cxx/cstdio_h.cfg \
+	sym-cxx/cwchar_h.cfg \
+	sym-cxx/ctime_h.cfg
 
 ROOTOPTPKG = $(ROOT)/opt/libc-tests
 ROOTOPTPKGCFG = $(ROOT)/opt/libc-tests/cfg
