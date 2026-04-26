@@ -35,7 +35,14 @@
 #include <iso/math_iso.h>
 #include <iso/math_c99.h>
 
-#if __cplusplus >= 199711L
+/*
+ * When GCC's <cmath> does #include_next <math.h>, it defines
+ * _GLIBCXX_INCLUDE_NEXT_C_HEADERS and takes responsibility for
+ * populating namespace std itself.  Suppress the using-declarations
+ * in that case to avoid exporting float/long-double overloads into
+ * the global namespace, which would make log(1) ambiguous.
+ */
+#if __cplusplus >= 199711L && !defined(_GLIBCXX_INCLUDE_NEXT_C_HEADERS)
 using std::abs;
 using std::acos;
 using std::asin;
