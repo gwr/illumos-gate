@@ -218,3 +218,13 @@ tests = [
 	'wctype_h'
 	 ]
 timeout = 180
+
+[/opt/libc-tests/tests/sym-cxx]
+pre = setup
+tests = [
+	'cmath_h',
+	'math_c99_h',
+	'math_h',
+	'math_iso_h'
+	 ]
+timeout = 180

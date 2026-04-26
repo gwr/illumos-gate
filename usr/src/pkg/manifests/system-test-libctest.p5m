@@ -61,6 +61,12 @@ file path=opt/libc-tests/cfg/symbols/ucontext_h.cfg mode=0444
 file path=opt/libc-tests/cfg/symbols/unistd_h.cfg mode=0444
 file path=opt/libc-tests/cfg/symbols/wchar_h.cfg mode=0444
 file path=opt/libc-tests/cfg/symbols/wctype_h.cfg mode=0444
+dir  path=opt/libc-tests/cfg/sym-cxx
+file path=opt/libc-tests/cfg/sym-cxx/cmath_h.cfg mode=0444
+file path=opt/libc-tests/cfg/sym-cxx/compilation.cfg mode=0444
+file path=opt/libc-tests/cfg/sym-cxx/math_c99_h.cfg mode=0444
+file path=opt/libc-tests/cfg/sym-cxx/math_h.cfg mode=0444
+file path=opt/libc-tests/cfg/sym-cxx/math_iso_h.cfg mode=0444
 dir  path=opt/libc-tests/runfiles
 file path=opt/libc-tests/runfiles/default.run mode=0444
 dir  path=opt/libc-tests/tests
@@ -274,6 +280,14 @@ hardlink path=opt/libc-tests/tests/symbols/ucontext_h target=setup
 hardlink path=opt/libc-tests/tests/symbols/unistd_h target=setup
 hardlink path=opt/libc-tests/tests/symbols/wchar_h target=setup
 hardlink path=opt/libc-tests/tests/symbols/wctype_h target=setup
+dir  path=opt/libc-tests/tests/sym-cxx
+hardlink path=opt/libc-tests/tests/sym-cxx/cmath_h target=setup
+hardlink path=opt/libc-tests/tests/sym-cxx/math_c99_h target=setup
+hardlink path=opt/libc-tests/tests/sym-cxx/math_h target=setup
+hardlink path=opt/libc-tests/tests/sym-cxx/math_iso_h target=setup
+file path=opt/libc-tests/tests/sym-cxx/setup mode=0555
+file path=opt/libc-tests/tests/sym-cxx/sym_cxx_test.$(ARCH) mode=0555
+file path=opt/libc-tests/tests/sym-cxx/sym_cxx_test.$(ARCH64) mode=0555
 file path=opt/libc-tests/tests/thread_name mode=0555
 file path=opt/libc-tests/tests/timespec_get.32 mode=0555
 file path=opt/libc-tests/tests/timespec_get.64 mode=0555
