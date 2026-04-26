@@ -82,14 +82,22 @@ extern double floor(double);
 extern double fmod(double, double);
 
 /*
- * Getting a correct declaration for abs(double) is tricky.
- * It should not be exposed in C code or it causes conflicts.
- * Only declare if if we're inside the C++ std namespace.
+ * Getting correct declarations for abs() is quite tricky.
+ * They should not be exposed in C code or it causes conflicts.
+ * Only declare them if we're inside the C++ std namespace.
+ * All three floating-point overloads must be present so that GCC's
+ * <cmath> can resolve std::abs(long double) internally (C++17 mode).
+ * fabsf() and fabsl() are C99 functions in libm; they're declared
+ * here because math_c99.h is included after math_iso.h in math.h.
  */
 #if __cplusplus >= 199711L
+extern float fabsf(float);
+extern long double fabsl(long double);
 #undef	__X
 extern "C++" {
 	inline double abs(double __X) { return fabs(__X); }
+	inline float abs(float __X) { return fabsf(__X); }
+	inline long double abs(long double __X) { return fabsl(__X); }
 }
 #endif
 
