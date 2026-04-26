@@ -145,10 +145,14 @@ extern "C" {
  * restricted namespace when using Sun compilers. To allow both GNU and Sun
  * interpretations to peacefully co-exist, we use the following Sun
  * implementation _STRICT_STDC_ macro:
+ *
+ * Keep the defined(__GNUC__) parts first in these expressions to
+ * avoid "always defined" warnings from gcc.
  */
 
-#if (__STDC__ - 0 == 1 && !defined(__GNUC__)) || \
-	(defined(__GNUC__) && defined(__STRICT_ANSI__))
+#if (defined(__GNUC__) && defined(__STRICT_ANSI__)) || \
+	(!defined(__GNUC__) && __STDC__ - 0 == 1)
+
 #define	_STRICT_STDC
 #else
 #undef	_STRICT_STDC
