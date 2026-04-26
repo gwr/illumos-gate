@@ -36,6 +36,7 @@ SUBDIRS = \
 	select \
 	stdio \
 	symbols \
+	sym-cxx \
 	threads \
 	wcsrtombs \
 	wctype
