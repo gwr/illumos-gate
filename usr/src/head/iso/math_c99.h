@@ -386,8 +386,9 @@ extern long double fminl(long double, long double);
 
 extern long double fmal(long double, long double, long double);
 
-#if !defined(_STRICT_STDC) && !defined(_NO_LONGLONG) || defined(_STDC_C99) || \
-	defined(__C99FEATURES__)
+#if !defined(_STRICT_STDC) && !defined(_NO_LONGLONG) || \
+    defined(_STDC_C99) || defined(__C99FEATURES__)
+
 extern long long int llrint(double);
 extern long long int llround(double);
 

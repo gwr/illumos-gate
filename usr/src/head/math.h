@@ -59,7 +59,169 @@ using std::sinh;
 using std::sqrt;
 using std::tan;
 using std::tanh;
-#endif
+
+#if defined(__EXTENSIONS__) || defined(_STDC_C99) || \
+    (!defined(_STRICT_STDC) && !defined(__XOPEN_OR_POSIX)) || \
+    defined(__C99FEATURES__)
+
+using std::acosh;
+using std::acoshf;
+using std::acoshl;
+using std::acosf;
+using std::acosl;
+using std::asinhf;
+using std::asinhl;
+using std::asinh;
+using std::asinf;
+using std::asinl;
+using std::atan2f;
+using std::atan2l;
+using std::atanf;
+using std::atanl;
+using std::atanhf;
+using std::atanhl;
+using std::atanh;
+using std::cbrt;
+using std::cbrtf;
+using std::cbrtl;
+using std::ceilf;
+using std::ceill;
+using std::copysign;
+using std::copysignf;
+using std::copysignl;
+using std::cosf;
+using std::cosl;
+using std::coshf;
+using std::coshl;
+using std::erf;
+using std::erff;
+using std::erfl;
+using std::erfc;
+using std::erfcf;
+using std::erfcl;
+using std::exp2;
+using std::exp2f;
+using std::exp2l;
+using std::expf;
+using std::expl;
+using std::expm1;
+using std::expm1f;
+using std::expm1l;
+using std::fabsf;
+using std::fabsl;
+using std::fdim;
+using std::fdimf;
+using std::fdiml;
+using std::floorf;
+using std::floorl;
+using std::fma;
+using std::fmaf;
+using std::fmal;
+using std::fmax;
+using std::fmaxf;
+using std::fmaxl;
+using std::fmin;
+using std::fminf;
+using std::fminl;
+using std::fmodf;
+using std::fmodl;
+using std::frexpf;
+using std::frexpl;
+using std::hypot;
+using std::hypotf;
+using std::hypotl;
+using std::ilogb;
+using std::ilogbf;
+using std::ilogbl;
+using std::ldexpf;
+using std::ldexpl;
+using std::lgamma;
+using std::lgammaf;
+using std::lgammal;
+using std::log10f;
+using std::log10l;
+using std::log1p;
+using std::log1pf;
+using std::log1pl;
+using std::log2;
+using std::log2f;
+using std::log2l;
+using std::logb;
+using std::logbf;
+using std::logbl;
+using std::logf;
+using std::logl;
+using std::lrint;
+using std::lrintf;
+using std::lrintl;
+using std::lround;
+using std::lroundf;
+using std::lroundl;
+using std::modff;
+using std::modfl;
+using std::nan;
+using std::nanf;
+using std::nanl;
+using std::nearbyint;
+using std::nearbyintf;
+using std::nearbyintl;
+using std::nextafter;
+using std::nextafterf;
+using std::nextafterl;
+using std::nexttoward;
+using std::nexttowardf;
+using std::nexttowardl;
+using std::powf;
+using std::powl;
+using std::remainder;
+using std::remainderf;
+using std::remainderl;
+using std::remquo;
+using std::remquof;
+using std::remquol;
+using std::rint;
+using std::rintf;
+using std::rintl;
+using std::round;
+using std::roundf;
+using std::roundl;
+using std::scalbln;
+using std::scalblnf;
+using std::scalblnl;
+using std::scalbn;
+using std::scalbnf;
+using std::scalbnl;
+using std::sinf;
+using std::sinl;
+using std::sinhf;
+using std::sinhl;
+using std::sqrtf;
+using std::sqrtl;
+using std::tanf;
+using std::tanl;
+using std::tanhf;
+using std::tanhl;
+using std::tgamma;
+using std::tgammaf;
+using std::tgammal;
+using std::trunc;
+using std::truncf;
+using std::truncl;
+
+#if !defined(_STRICT_STDC) && !defined(_NO_LONGLONG) || \
+    defined(_STDC_C99) || defined(__C99FEATURES__)
+
+using std::llrint;
+using std::llrintf;
+using std::llrintl;
+using std::llround;
+using std::llroundf;
+using std::llroundl;
+
+#endif	/* !_STRICT_STDC ... C99 */
+#endif  /* __EXTENSIONS__ || _STDC_C99 || ... */
+
+#endif	/* __cplusplus >= 199711L */
 
 #ifdef __cplusplus
 extern "C" {

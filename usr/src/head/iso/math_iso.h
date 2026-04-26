@@ -84,11 +84,9 @@ extern double fmod(double, double);
 /*
  * Getting a correct declaration for abs(double) is tricky.
  * It should not be exposed in C code or it causes conflicts.
- * Only declare if if we're inside the C++ std namespace,
- * and suppress it for GCC's <cmath> or <stdlib> which do
- * their own namespace management.
+ * Only declare if if we're inside the C++ std namespace.
  */
-#if __cplusplus >= 199711L && !defined(_GLIBCXX_INCLUDE_NEXT_C_HEADERS)
+#if __cplusplus >= 199711L
 #undef	__X
 extern "C++" {
 	inline double abs(double __X) { return fabs(__X); }
