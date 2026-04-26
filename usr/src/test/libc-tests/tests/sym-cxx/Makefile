@@ -24,7 +24,12 @@ SYMTESTS = \
 	cmath_h \
 	math_h \
 	math_iso_h \
-	math_c99_h
+	math_c99_h \
+	cstdlib_h \
+	cstring_h \
+	cstdio_h \
+	cwchar_h \
+	ctime_h
 
 EXTRAPROG += $(SYMTESTS)
 

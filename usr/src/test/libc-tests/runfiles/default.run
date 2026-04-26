@@ -224,6 +224,11 @@ timeout = 180
 pre = setup
 tests = [
 	'cmath_h',
+	'cstdio_h',
+	'cstdlib_h',
+	'cstring_h',
+	'ctime_h',
+	'cwchar_h',
 	'math_c99_h',
 	'math_h',
 	'math_iso_h'
