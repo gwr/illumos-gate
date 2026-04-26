@@ -210,6 +210,10 @@ typedef long double double_t;
 #undef	math_errhandling
 #define	math_errhandling	MATH_ERREXCEPT
 
+#if __cplusplus >= 199711L
+namespace std {
+#endif
+
 extern double acosh(double);
 extern double asinh(double);
 extern double atanh(double);
@@ -392,6 +396,10 @@ extern long long int llroundf(float);
 
 extern long long int llrintl(long double);
 extern long long int llroundl(long double);
+#endif	/* !_STRICT_STDC ... _STDC_C99 */
+
+#if __cplusplus >= 199711L
+}	/* end of namespace std */
 #endif
 
 #endif	/* defined(__EXTENSIONS__) || defined(_STDC_C99) || ... */
