@@ -81,28 +81,7 @@ extern double fabs(double);
 extern double floor(double);
 extern double fmod(double, double);
 
-/*
- * Getting correct declarations for abs() is quite tricky.
- * They should not be exposed in C code or it causes conflicts.
- * Only declare them if we're inside the C++ std namespace.
- * All three floating-point overloads must be present so that GCC's
- * <cmath> can resolve std::abs(long double) internally (C++17 mode).
- * fabsf() and fabsl() are C99 functions in libm; they're declared
- * here because math_c99.h is included after math_iso.h in math.h.
- */
-#if __cplusplus >= 199711L
-extern float fabsf(float);
-extern long double fabsl(long double);
-#undef	__X
-extern "C++" {
-	inline double abs(double __X) { return fabs(__X); }
-	inline float abs(float __X) { return fabsf(__X); }
-	inline long double abs(long double __X) { return fabsl(__X); }
-}
-#endif
-
-#if defined(__SUNPRO_CC)
-#if defined(__MATHERR_ERRNO_DONTCARE)
+#if defined(__SUNPRO_CC) && defined(__MATHERR_ERRNO_DONTCARE)
 #pragma does_not_read_global_data(acos, asin, atan, atan2)
 #pragma does_not_read_global_data(cos, sin, tan, cosh, sinh, tanh)
 #pragma does_not_read_global_data(exp, log, log10, pow, sqrt)
@@ -120,7 +99,19 @@ extern "C++" {
 #pragma no_side_effect(ceil, fabs, floor, fmod)
 #endif
 
+/*
+ * ISO C++98 and later require float/long double overloads of all
+ * C90 math functions.
+ */
 #if __cplusplus >= 199711L
+
+/*
+ * Forward declarations for the required inlines below.  The *f/*l
+ * names are also declared in math_c99.h, but only under C99/XPG6
+ * feature-test macros.  C++ requires these overloads unconditionally.
+ */
+#if defined(__SUNPRO_CC)
+
 extern float __acosf(float);
 extern float __asinf(float);
 extern float __atanf(float);
@@ -167,9 +158,62 @@ extern long double __sqrtl(long double);
 extern long double __tanl(long double);
 extern long double __tanhl(long double);
 
+#else	/* !__SUNPRO_CC */
+
+extern float acosf(float);
+extern float asinf(float);
+extern float atanf(float);
+extern float atan2f(float, float);
+extern float ceilf(float);
+extern float cosf(float);
+extern float coshf(float);
+extern float expf(float);
+extern float fabsf(float);
+extern float floorf(float);
+extern float fmodf(float, float);
+extern float frexpf(float, int *);
+extern float ldexpf(float, int);
+extern float logf(float);
+extern float log10f(float);
+extern float modff(float, float *);
+extern float powf(float, float);
+extern float sinf(float);
+extern float sinhf(float);
+extern float sqrtf(float);
+extern float tanf(float);
+extern float tanhf(float);
+
+extern long double acosl(long double);
+extern long double asinl(long double);
+extern long double atanl(long double);
+extern long double atan2l(long double, long double);
+extern long double ceill(long double);
+extern long double cosl(long double);
+extern long double coshl(long double);
+extern long double expl(long double);
+extern long double fabsl(long double);
+extern long double floorl(long double);
+extern long double fmodl(long double, long double);
+extern long double frexpl(long double, int *);
+extern long double ldexpl(long double, int);
+extern long double logl(long double);
+extern long double log10l(long double);
+extern long double modfl(long double, long double *);
+extern long double powl(long double, long double);
+extern long double sinl(long double);
+extern long double sinhl(long double);
+extern long double sqrtl(long double);
+extern long double tanl(long double);
+extern long double tanhl(long double);
+
+#endif	/* __SUNPRO_CC */
+
 extern "C++" {
 #undef	__X
 #undef	__Y
+
+#if defined(__SUNPRO_CC)
+	inline double abs(double __X) { return fabs(__X); }
 
 	inline double pow(double __X, int __Y) {
 		return (pow(__X, (double)(__Y)));
@@ -252,9 +296,84 @@ extern "C++" {
 	inline long double sqrt(long double __X) { return __sqrtl(__X); }
 	inline long double tan(long double __X) { return __tanl(__X); }
 	inline long double tanh(long double __X) { return __tanhl(__X); }
+
+#else	/* !__SUNPRO_CC */
+
+	inline double abs(double __X) { return fabs(__X); }
+	/* inline double pow(double, int) not needed */
+
+	inline float abs(float __X) { return fabsf(__X); }
+	inline float acos(float __X) { return acosf(__X); }
+	inline float asin(float __X) { return asinf(__X); }
+	inline float atan(float __X) { return atanf(__X); }
+	inline float atan2(float __X, float __Y) { return atan2f(__X, __Y); }
+	inline float ceil(float __X) { return ceilf(__X); }
+	inline float cos(float __X) { return cosf(__X); }
+	inline float cosh(float __X) { return coshf(__X); }
+	inline float exp(float __X) { return expf(__X); }
+	inline float fabs(float __X) { return fabsf(__X); }
+	inline float floor(float __X) { return floorf(__X); }
+	inline float fmod(float __X, float __Y) { return fmodf(__X, __Y); }
+	inline float frexp(float __X, int *__Y) { return frexpf(__X, __Y); }
+	inline float ldexp(float __X, int __Y) { return ldexpf(__X, __Y); }
+	inline float log(float __X) { return logf(__X); }
+	inline float log10(float __X) { return log10f(__X); }
+	inline float modf(float __X, float *__Y) { return modff(__X, __Y); }
+	inline float pow(float __X, float __Y) { return powf(__X, __Y); }
+	inline float sin(float __X) { return sinf(__X); }
+	inline float sinh(float __X) { return sinhf(__X); }
+	inline float sqrt(float __X) { return sqrtf(__X); }
+	inline float tan(float __X) { return tanf(__X); }
+	inline float tanh(float __X) { return tanhf(__X); }
+
+	inline long double abs(long double __X) { return fabsl(__X); }
+	inline long double acos(long double __X) { return acosl(__X); }
+	inline long double asin(long double __X) { return asinl(__X); }
+	inline long double atan(long double __X) { return atanl(__X); }
+
+	inline long double atan2(long double __X, long double __Y) {
+		return (atan2l(__X, __Y));
+	}
+
+	inline long double ceil(long double __X) { return ceill(__X); }
+	inline long double cos(long double __X) { return cosl(__X); }
+	inline long double cosh(long double __X) { return coshl(__X); }
+	inline long double exp(long double __X) { return expl(__X); }
+	inline long double fabs(long double __X) { return fabsl(__X); }
+	inline long double floor(long double __X) { return floorl(__X); }
+
+	inline long double fmod(long double __X, long double __Y) {
+		return (fmodl(__X, __Y));
+	}
+
+	inline long double frexp(long double __X, int *__Y) {
+		return (frexpl(__X, __Y));
+	}
+
+	inline long double ldexp(long double __X, int __Y) {
+		return (ldexpl(__X, __Y));
+	}
+
+	inline long double log(long double __X) { return logl(__X); }
+	inline long double log10(long double __X) { return log10l(__X); }
+
+	inline long double modf(long double __X, long double *__Y) {
+		return (modfl(__X, __Y));
+	}
+
+	inline long double pow(long double __X, long double __Y) {
+		return (powl(__X, __Y));
+	}
+
+	inline long double sin(long double __X) { return sinl(__X); }
+	inline long double sinh(long double __X) { return sinhl(__X); }
+	inline long double sqrt(long double __X) { return sqrtl(__X); }
+	inline long double tan(long double __X) { return tanl(__X); }
+	inline long double tanh(long double __X) { return tanhl(__X); }
+
+#endif	/* __SUNPRO_CC */
 }	/* end of extern "C++" */
 #endif	/* __cplusplus >= 199711L */
-#endif	/* __SUNPRO_CC */
 
 #if __cplusplus >= 199711L
 }	/* end of namespace std */
