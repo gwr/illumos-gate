@@ -420,7 +420,21 @@ mkprog(struct sym_test *st)
 		 */
 		addprogfmt(")%s\n{\n\t", s);
 
+		/*
+		 * For non-void, non-function-pointer return types, use
+		 * brace-initialisation for the local result variable.
+		 * List-initialisation prohibits narrowing conversions
+		 * ([dcl.init.list]/7), so a missing float or long double
+		 * overload that would silently promote through double is
+		 * caught as a compile error rather than a silent pass.
+		 * Function pointer return types (s != "") are left with
+		 * the plain return form since brace-init does not compose
+		 * with declarator syntax.
+		 */
 		if (strcmp(st->st_rtype, "") != 0 &&
+		    strcmp(st->st_rtype, "void") != 0 && *s == '\0') {
+			addprogfmt("%s result{", st->st_rtype);
+		} else if (strcmp(st->st_rtype, "") != 0 &&
 		    strcmp(st->st_rtype, "void") != 0) {
 			addprogstr("return ");
 		}
@@ -434,7 +448,12 @@ mkprog(struct sym_test *st)
 			}
 		}
 
-		addprogstr(");\n}");
+		if (strcmp(st->st_rtype, "") != 0 &&
+		    strcmp(st->st_rtype, "void") != 0 && *s == '\0') {
+			addprogstr(")};\n\treturn result;\n}");
+		} else {
+			addprogstr(");\n}");
+		}
 		break;
 	}
 
