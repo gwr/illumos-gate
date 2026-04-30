@@ -908,7 +908,12 @@ find_cxx_includes(void)
 	char *p, *rest, *slash;
 	char prefix[256], target[128], version[64];
 	char *newflags;
+	const char *sysroot;
 	test_t t;
+
+	sysroot = getenv("SYM_CXX_ROOT");
+	(void) printf("TEST INFO: SYM_CXX_ROOT=%s\n",
+	    sysroot != NULL ? sysroot : "(not set)");
 
 	t = test_start("finding C++ include paths");
 
@@ -963,11 +968,12 @@ find_cxx_includes(void)
 	    "-isystem %s/include/c++/%s "
 	    "-isystem %s/include/c++/%s/%s "
 	    "-isystem %s/lib/gcc/%s/%s/include "
-	    "-isystem /usr/include "
+	    "-isystem %s/usr/include "
 	    "-Wno-format-security",
 	    prefix, version,
 	    prefix, version, target,
-	    prefix, target, version);
+	    prefix, target, version,
+	    sysroot != NULL ? sysroot : "");
 
 	common_flags = newflags;
 	test_debugf(t, "C++ include flags: %s", newflags);
