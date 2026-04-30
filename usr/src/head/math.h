@@ -35,7 +35,7 @@
  * IL-15209: Temporary sentinel used by iso/math_iso.h and iso/math_c99.h
  * to detect whether this (updated) math.h is in the include chain.
  * Remove once all supported build hosts carry the updated headers.
- * Without this, g++ compiles of end up with old math.h and new iso
+ * Without this, g++ compiles end up with old math.h and new iso
  * headers that don't work together.
  */
 #define	_ILLUMOS_MATH_H_2026_04	1
@@ -69,8 +69,8 @@ using std::tan;
 using std::tanh;
 
 #if defined(__EXTENSIONS__) || defined(_STDC_C99) || \
-    (!defined(_STRICT_STDC) && !defined(__XOPEN_OR_POSIX)) || \
-    defined(__C99FEATURES__)
+	(!defined(_STRICT_STDC) && !defined(__XOPEN_OR_POSIX)) || \
+	defined(__C99FEATURES__)
 
 using std::acosh;
 using std::acoshf;
