@@ -305,17 +305,20 @@ extern "C++" {
  * updated headers.  Without this, g++ compiles end up with old math.h
  * and new iso headers that don't work together.
  *
- * abs(double) is kept outside the sentinel guard: it is the only path
- * that puts abs into namespace std before math.h's "using std::abs"
- * fires (GCC's <cmath> provides std::abs only after #include_next
- * returns).  A single double overload does not create the float/ldbl
- * ambiguity that causes IL-15209.
+ * The abs() overloads are kept outside the sentinel guard: abs(double)
+ * is the only path that puts abs into namespace std before math.h's
+ * "using std::abs" fires (GCC's <cmath> provides std::abs only after
+ * #include_next returns).  float/ldbl are also kept out for C++17
+ * compatibility (tr1 headers need an exact match).  None of the abs
+ * overloads cause the IL-15209 ambiguity.
  */
 	inline double abs(double __X) { return fabs(__X); }
+	inline float abs(float __X) { return fabsf(__X); }
+	inline long double abs(long double __X) { return fabsl(__X); }
 	/* inline double pow(double, int) not needed */
 
 #if !defined(_ILLUMOS_MATH_H_2026_04)
-	inline float abs(float __X) { return fabsf(__X); }
+
 	inline float acos(float __X) { return acosf(__X); }
 	inline float asin(float __X) { return asinf(__X); }
 	inline float atan(float __X) { return atanf(__X); }
@@ -339,7 +342,6 @@ extern "C++" {
 	inline float tan(float __X) { return tanf(__X); }
 	inline float tanh(float __X) { return tanhf(__X); }
 
-	inline long double abs(long double __X) { return fabsl(__X); }
 	inline long double acos(long double __X) { return acosl(__X); }
 	inline long double asin(long double __X) { return asinl(__X); }
 	inline long double atan(long double __X) { return atanl(__X); }
