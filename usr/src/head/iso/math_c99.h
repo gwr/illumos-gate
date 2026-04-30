@@ -210,7 +210,14 @@ typedef long double double_t;
 #undef	math_errhandling
 #define	math_errhandling	MATH_ERREXCEPT
 
-#if __cplusplus >= 199711L
+/*
+ * IL-15209: Temporary sentinel: if _ILLUMOS_MATH_H_2026_04 is defined,
+ * the updated math.h is in the include chain and this file should use
+ * the new behaviour.  Remove once all supported build hosts carry the
+ * updated headers.  Without this, g++ compiles end up with old math.h
+ * and new iso headers that don't work together.
+ */
+#if __cplusplus >= 199711L && defined(_ILLUMOS_MATH_H_2026_04)
 namespace std {
 #endif
 
@@ -399,7 +406,7 @@ extern long long int llrintl(long double);
 extern long long int llroundl(long double);
 #endif	/* !_STRICT_STDC ... _STDC_C99 */
 
-#if __cplusplus >= 199711L
+#if __cplusplus >= 199711L && defined(_ILLUMOS_MATH_H_2026_04)
 }	/* end of namespace std */
 #endif
 

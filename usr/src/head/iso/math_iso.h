@@ -106,7 +106,7 @@ extern double fmod(double, double);
 #if __cplusplus >= 199711L
 
 /*
- * Forward declarations for the required inlines below.  The *f/*l
+ * Forward declarations for the required inlines below.  The float/ldbl
  * names are also declared in math_c99.h, but only under C99/XPG6
  * feature-test macros.  C++ requires these overloads unconditionally.
  */
@@ -298,7 +298,14 @@ extern "C++" {
 	inline long double tanh(long double __X) { return __tanhl(__X); }
 
 #else	/* !__SUNPRO_CC */
-
+/*
+ * IL-15209: Temporary sentinel: if _ILLUMOS_MATH_H_2026_04 is defined,
+ * the updated math.h is in the include chain and this file should use
+ * the new behaviour.  Remove once all supported build hosts carry the
+ * updated headers.  Without this, g++ compiles end up with old math.h
+ * and new iso headers that don't work together.
+ */
+#if !defined(_ILLUMOS_MATH_H_2026_04)
 	inline double abs(double __X) { return fabs(__X); }
 	/* inline double pow(double, int) not needed */
 
@@ -371,6 +378,7 @@ extern "C++" {
 	inline long double tan(long double __X) { return tanl(__X); }
 	inline long double tanh(long double __X) { return tanhl(__X); }
 
+#endif	/* !_ILLUMOS_MATH_H_2026_04 */
 #endif	/* __SUNPRO_CC */
 }	/* end of extern "C++" */
 #endif	/* __cplusplus >= 199711L */

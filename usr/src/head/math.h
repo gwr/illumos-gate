@@ -31,6 +31,14 @@
 
 #ifndef _MATH_H
 #define	_MATH_H
+/*
+ * IL-15209: Temporary sentinel used by iso/math_iso.h and iso/math_c99.h
+ * to detect whether this (updated) math.h is in the include chain.
+ * Remove once all supported build hosts carry the updated headers.
+ * Without this, g++ compiles of end up with old math.h and new iso
+ * headers that don't work together.
+ */
+#define	_ILLUMOS_MATH_H_2026_04	1
 
 #include <iso/math_iso.h>
 #include <iso/math_c99.h>
