@@ -1027,9 +1027,22 @@ do_compile(test_t t, struct sym_test *st, struct compile_env *cenv, int need)
 		return (-1);
 	}
 
-	myasprintf(&cmd, "%s %s %s %s -c %s -o %s >>%s 2>&1",
-	    compiler, cflags, common_flags, env_defs(cenv), cfile, ofile,
-	    lfile);
+	/*
+	 * Transitional (IL-15209): when a test directly includes
+	 * iso/math_c99.h, inject the sentinel that math.h normally
+	 * provides.  Remove this block once math.h ships everywhere.
+	 */
+	const char *extra_defs = "";
+	for (int i = 0; i < MAXHDR && st->st_hdrs[i] != NULL; i++) {
+		if (strcmp(st->st_hdrs[i], "iso/math_c99.h") == 0) {
+			extra_defs = "-D_ILLUMOS_MATH_H_2026_04";
+			break;
+		}
+	}
+
+	myasprintf(&cmd, "%s %s %s %s %s -c %s -o %s >>%s 2>&1",
+	    compiler, cflags, common_flags, env_defs(cenv), extra_defs,
+	    cfile, ofile, lfile);
 
 	if (extra_debug) {
 		test_debugf(t, "command: %s", cmd);
