@@ -304,11 +304,17 @@ extern "C++" {
  * the new behaviour.  Remove once all supported build hosts carry the
  * updated headers.  Without this, g++ compiles end up with old math.h
  * and new iso headers that don't work together.
+ *
+ * abs(double) is kept outside the sentinel guard: it is the only path
+ * that puts abs into namespace std before math.h's "using std::abs"
+ * fires (GCC's <cmath> provides std::abs only after #include_next
+ * returns).  A single double overload does not create the float/ldbl
+ * ambiguity that causes IL-15209.
  */
-#if !defined(_ILLUMOS_MATH_H_2026_04)
 	inline double abs(double __X) { return fabs(__X); }
 	/* inline double pow(double, int) not needed */
 
+#if !defined(_ILLUMOS_MATH_H_2026_04)
 	inline float abs(float __X) { return fabsf(__X); }
 	inline float acos(float __X) { return acosf(__X); }
 	inline float asin(float __X) { return asinf(__X); }
