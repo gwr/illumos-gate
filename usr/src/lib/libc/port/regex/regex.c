@@ -40,7 +40,7 @@
 
 #include "lint.h"
 /* CONSTANTS SHARED WITH regcmp() */
-#include "regex.h"
+#include "libc_regex.h"
 #include "mtlib.h"
 #include <limits.h>
 #include <stdarg.h>

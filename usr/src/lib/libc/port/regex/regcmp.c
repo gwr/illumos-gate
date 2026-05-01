@@ -51,7 +51,7 @@
 
 /* CONSTANTS SHARED WITH regex() */
 
-#include "regex.h"
+#include "libc_regex.h"
 
 /* PRIVATE CONSTANTS */
 
