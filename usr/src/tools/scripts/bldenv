@@ -374,7 +374,7 @@ fi
 [[ "$MULTI_PROTO" == "yes" ]] && export ROOT="${ROOT}${SUFFIX}"
 
 ENVLDLIBS1="-L$ROOT/lib -L$ROOT/usr/lib"
-ENVCPPFLAGS1="-I$ROOT/usr/include"
+ENVCPPFLAGS1="-isystem $ROOT/usr/include"
 
 # Per usr/src/cmd/make/bin/main.cc, MAKEFLAGS could be in one of two styles.
 # If '-' or '=' is present, it is a new-style MAKEFLAGS which could be
