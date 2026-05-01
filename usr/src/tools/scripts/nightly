@@ -146,12 +146,14 @@ function run_hook {
 
 # Return library search directive as function of given root.
 function myldlibs {
+	# XXX Maybe add -nostdlib later?
 	echo "-L$1/lib -L$1/usr/lib"
 }
 
 # Return header search directive as function of given root.
 function myheaders {
-	echo "-I$1/usr/include"
+	# XXX Maybe use --sysroot later?
+	echo "-isystem $1/usr/include"
 }
 
 #
