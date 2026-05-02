@@ -86,7 +86,6 @@ HDRS=   $($(MACH)_HDRS)	\
 	fnmatch.h	\
 	fts.h		\
 	ftw.h		\
-	gelf.h		\
 	getopt.h	\
 	getwidth.h	\
 	glob.h		\
