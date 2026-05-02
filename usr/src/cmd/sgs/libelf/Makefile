@@ -23,7 +23,24 @@
 # Copyright 2006 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
 #
-# ident	"%Z%%M%	%I%	%E% SMI"
 #
 
 include		$(SRC)/cmd/sgs/Makefile.sub
+
+HDRS =		gelf.h
+HDRDIR =	common
+
+
+# Header install
+
+ROOTHDRDIR=	$(ROOT)/usr/include
+ROOTHDRS=	$(HDRS:%=$(ROOTHDRDIR)/%)
+HDRSRCS=	$(HDRS:%=$(HDRDIR)/%)
+CHECKHDRS=	$(HDRSRCS:%.h=%.check)
+
+install_h: $(ROOTHDRS)
+
+check: $(CHECKHDRS)
+
+$(ROOTHDRDIR)/%: $(HDRDIR)/%
+	$(INS.file)

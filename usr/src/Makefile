@@ -222,6 +222,7 @@ cmdheaders: FRC
 	@cd cmd/devfsadm; pwd; $(MAKE) install_h
 	@cd cmd/fm; pwd; $(MAKE) install_h
 	@cd cmd/mdb; pwd; $(MAKE) install_h
+	@cd cmd/sgs; pwd; $(MAKE) install_h
 
 FRC:
 

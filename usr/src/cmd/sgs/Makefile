@@ -82,6 +82,8 @@ SUBDIRS=	 libconv	\
 		.WAIT		\
 		demo_rdb
 
+HDRSUBDIRS=	libelf
+
 # Messaging support
 #
 POSUBDIRS=	m4		nm	tsort		yacc
@@ -100,6 +102,7 @@ MSGDIR=		messages
 
 all :=		TARGET= all
 install :=	TARGET= install
+install_h :=	TARGET= install_h
 clean :=	TARGET= clean
 clobber :=	TARGET= clobber
 _msg :=		TARGET= catalog
@@ -114,6 +117,8 @@ check :=	TARGET= check
 .PARALLEL:	$(SUBDIRS)
 
 all install:	$(SUBDIRS)
+
+install_h:	$(HDRSUBDIRS)
 
 include		$(SRC)/cmd/Makefile.targ
 
@@ -137,7 +142,7 @@ $(MSGDIR):	$(MSGSUBDIRS) FRC
 
 chkmsg:		libconv $(MSGSUBDIRS) FRC
 
-check:		chkmsg $(CHKSUBDIRS)
+check:		chkmsg $(CHKSUBDIRS) $(HDRSUBDIRS)
 
 # built from lib/Makefile
 install_lib:	FRC
