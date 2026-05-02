@@ -44,10 +44,10 @@ elf_end(Elf *elf)
 	if (elf == NULL)
 		return (0);
 
-	ELFWLOCK(elf)
+	ELFWLOCK(elf);
 	if (--elf->ed_activ != 0) {
 		rc = elf->ed_activ;
-		ELFUNLOCK(elf)
+		ELFUNLOCK(elf);
 		return (rc);
 	}
 
@@ -124,7 +124,7 @@ elf_end(Elf *elf)
 
 		trail = (Elf_Void *)elf;
 		elf = elf->ed_parent;
-		ELFUNLOCK(trail)
+		ELFUNLOCK(trail);
 		free(trail);
 		trail = NULL;
 
@@ -134,12 +134,12 @@ elf_end(Elf *elf)
 		 * If parent is inactive we close
 		 * it too, so we need to lock it too.
 		 */
-		ELFWLOCK(elf)
+		ELFWLOCK(elf);
 		--elf->ed_activ;
 	}
 
 	if (elf != NULL) {
-		ELFUNLOCK(elf)
+		ELFUNLOCK(elf);
 	}
 
 	return (0);

@@ -46,7 +46,7 @@ elf_flagdata(Elf_Data * data, Elf_Cmd cmd, unsigned flags)
 	scn = d->db_scn;
 	elf = scn->s_elf;
 
-	READLOCKS(elf, scn)
+	READLOCKS(elf, scn);
 
 	if (cmd == ELF_C_SET) {
 		rc = d->db_uflags |= flags;
@@ -54,7 +54,7 @@ elf_flagdata(Elf_Data * data, Elf_Cmd cmd, unsigned flags)
 		rc = d->db_uflags &= ~flags;
 	} else
 		_elf_seterr(EREQ_FLAG, 0);
-	READUNLOCKS(elf, scn)
+	READUNLOCKS(elf, scn);
 	return (rc);
 }
 
@@ -66,15 +66,15 @@ elf_flagehdr(Elf * elf, Elf_Cmd cmd, unsigned flags)
 	if (elf == 0)
 		return (0);
 	if (cmd == ELF_C_SET) {
-		ELFWLOCK(elf)
+		ELFWLOCK(elf);
 		rc = elf->ed_ehflags |= flags;
-		ELFUNLOCK(elf)
+		ELFUNLOCK(elf);
 		return (rc);
 	}
 	if (cmd == ELF_C_CLR) {
-		ELFWLOCK(elf)
+		ELFWLOCK(elf);
 		rc = elf->ed_ehflags &= ~flags;
-		ELFUNLOCK(elf)
+		ELFUNLOCK(elf);
 		return (rc);
 	}
 	_elf_seterr(EREQ_FLAG, 0);
@@ -89,15 +89,15 @@ elf_flagelf(Elf * elf, Elf_Cmd cmd, unsigned flags)
 	if (elf == 0)
 		return (0);
 	if (cmd == ELF_C_SET) {
-		ELFWLOCK(elf)
+		ELFWLOCK(elf);
 		rc = elf->ed_uflags |= flags;
-		ELFUNLOCK(elf)
+		ELFUNLOCK(elf);
 		return (rc);
 	}
 	if (cmd == ELF_C_CLR) {
-		ELFWLOCK(elf)
+		ELFWLOCK(elf);
 		rc = elf->ed_uflags &= ~flags;
-		ELFUNLOCK(elf)
+		ELFUNLOCK(elf);
 		return (rc);
 	}
 	_elf_seterr(EREQ_FLAG, 0);
@@ -139,15 +139,15 @@ elf_flagscn(Elf_Scn * scn, Elf_Cmd cmd, unsigned flags)
 
 	elf = scn->s_elf;
 	if (cmd == ELF_C_SET) {
-		READLOCKS(elf, scn)
+		READLOCKS(elf, scn);
 		rc = scn->s_uflags |= flags;
-		READUNLOCKS(elf, scn)
+		READUNLOCKS(elf, scn);
 		return (rc);
 	}
 	if (cmd == ELF_C_CLR) {
-		READLOCKS(elf, scn)
+		READLOCKS(elf, scn);
 		rc = scn->s_uflags &= ~flags;
-		READUNLOCKS(elf, scn)
+		READUNLOCKS(elf, scn);
 		return (rc);
 	}
 	_elf_seterr(EREQ_FLAG, 0);
@@ -165,15 +165,15 @@ elf_flagshdr(Elf_Scn * scn, Elf_Cmd cmd, unsigned flags)
 
 	elf = scn->s_elf;
 	if (cmd == ELF_C_SET) {
-		READLOCKS(elf, scn)
+		READLOCKS(elf, scn);
 		rc = scn->s_shflags |= flags;
-		READUNLOCKS(elf, scn)
+		READUNLOCKS(elf, scn);
 		return (rc);
 	}
 	if (cmd == ELF_C_CLR) {
-		READLOCKS(elf, scn)
+		READLOCKS(elf, scn);
 		rc = scn->s_shflags &= ~flags;
-		READUNLOCKS(elf, scn)
+		READUNLOCKS(elf, scn);
 		return (rc);
 	}
 	_elf_seterr(EREQ_FLAG, 0);

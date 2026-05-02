@@ -37,9 +37,9 @@ elf_getbase(Elf *elf)
 	off_t	rc;
 	if (elf == NULL)
 		return (-1);
-	ELFRLOCK(elf)
+	ELFRLOCK(elf);
 	rc = elf->ed_baseoff;
-	ELFUNLOCK(elf)
+	ELFUNLOCK(elf);
 	return (rc);
 }
 
@@ -57,13 +57,13 @@ _elf_getarhdrbase(Elf *elf)
 	off_t	rc;
 	if (elf == NULL)
 		return (-1);
-	ELFRLOCK(elf)
+	ELFRLOCK(elf);
 	if (elf->ed_parent == NULL) {
 		_elf_seterr(EREQ_AR, 0);
 		ELFUNLOCK(elf);
 		return (-1);
 	}
 	rc = elf->ed_baseoff - sizeof (struct ar_hdr);
-	ELFUNLOCK(elf)
+	ELFUNLOCK(elf);
 	return (rc);
 }

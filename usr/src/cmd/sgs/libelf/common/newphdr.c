@@ -71,13 +71,13 @@ elf_newphdr(Elf * elf, size_t count)
 
 	if (elf == 0)
 		return (0);
-	ELFRLOCK(elf)
+	ELFRLOCK(elf);
 	if (elf->ed_class != ELFCLASS) {
 		_elf_seterr(EREQ_CLASS, 0);
-		ELFUNLOCK(elf)
+		ELFUNLOCK(elf);
 		return (0);
 	}
-	ELFUNLOCK(elf)
+	ELFUNLOCK(elf);
 	if (elf_getehdr(elf) == 0) {		/* this cooks if necessary */
 		_elf_seterr(ESEQ_EHDR, 0);
 		return (0);
@@ -89,7 +89,7 @@ elf_newphdr(Elf * elf, size_t count)
 	 * would be negligible, and code would be more complicated.
 	 */
 
-	ELFWLOCK(elf)
+	ELFWLOCK(elf);
 	if (elf->ed_myflags & EDF_PHALLOC) {
 		elf->ed_myflags &= ~EDF_PHALLOC;
 		rc = elf->ed_phdr;
@@ -100,14 +100,14 @@ elf_newphdr(Elf * elf, size_t count)
 	 * Delete the header if count is zero.
 	 */
 
-	ELFACCESSDATA(work, _elf_work)
+	ELFACCESSDATA(work, _elf_work);
 	if ((sz = count * _elf_msize(ELF_T_PHDR, work)) == 0) {
 		elf->ed_phflags &= ~ELF_F_DIRTY;
 		elf->ed_phdr = 0;
 		((Ehdr*)elf->ed_ehdr)->e_phnum = 0;
 		((Ehdr*)elf->ed_ehdr)->e_phentsize = 0;
 		elf->ed_phdrsz = 0;
-		ELFUNLOCK(elf)
+		ELFUNLOCK(elf);
 		return (0);
 	}
 
@@ -118,7 +118,7 @@ elf_newphdr(Elf * elf, size_t count)
 		((Ehdr*)elf->ed_ehdr)->e_phnum = 0;
 		((Ehdr*)elf->ed_ehdr)->e_phentsize = 0;
 		elf->ed_phdrsz = 0;
-		ELFUNLOCK(elf)
+		ELFUNLOCK(elf);
 		return (0);
 	}
 
@@ -133,6 +133,6 @@ elf_newphdr(Elf * elf, size_t count)
 	elf->ed_phdrsz = sz;
 	elf->ed_phdr = rc = ph;
 
-	ELFUNLOCK(elf)
+	ELFUNLOCK(elf);
 	return (rc);
 }

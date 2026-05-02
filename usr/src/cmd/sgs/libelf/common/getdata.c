@@ -115,19 +115,21 @@ _elf_locked_getdata(Elf_Scn * scn, Elf_Data * data)
 	Elf_Data	src;
 	unsigned	work;
 
-	assert(!elf_threaded || RW_LOCK_HELD(&(scn->s_elf->ed_rwlock)));
-	assert(!elf_threaded || MUTEX_HELD(&(scn->s_mutex)));
+#if 0	/* no portable way to do this? */
+	assert(RW_LOCK_HELD(&(scn->s_elf->ed_rwlock)));
+	assert(MUTEX_HELD(&(scn->s_mutex)));
+#endif
 	elf = scn->s_elf;
 
 	if ((scn->s_myflags & SF_READY) == 0) {
-		UPGRADELOCKS(elf, scn)
+		UPGRADELOCKS(elf, scn);
 		/*
 		 * make sure someone else didn't come along and cook
 		 * this stuff.
 		 */
 		if ((scn->s_myflags & SF_READY) == 0)
 			(void) _elf_cookscn(scn);
-		DOWNGRADELOCKS(elf, scn)
+		DOWNGRADELOCKS(elf, scn);
 	}
 
 	if (d == 0)
@@ -164,7 +166,7 @@ _elf_locked_getdata(Elf_Scn * scn, Elf_Data * data)
 	 * frozen by now.  Translate cooked files in place if possible.
 	 */
 
-	ELFACCESSDATA(work, _elf_work)
+	ELFACCESSDATA(work, _elf_work);
 	d->db_data.d_version = work;
 	if ((d->db_off == 0) || (d->db_fsz == 0)) {
 		d->db_myflags |= DBF_READY;
@@ -216,12 +218,12 @@ _elf_locked_getdata(Elf_Scn * scn, Elf_Data * data)
 	src.d_type = d->db_data.d_type;
 	src.d_version = elf->ed_version;
 	if (elf->ed_vm) {
-		UPGRADELOCKS(elf, scn)
+		UPGRADELOCKS(elf, scn);
 		if (_elf_vm(elf, (size_t)d->db_off, d->db_fsz) != OK_YES) {
-			DOWNGRADELOCKS(elf, scn)
+			DOWNGRADELOCKS(elf, scn);
 			return (0);
 		}
-		DOWNGRADELOCKS(elf, scn)
+		DOWNGRADELOCKS(elf, scn);
 	}
 
 	/*

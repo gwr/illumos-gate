@@ -43,17 +43,17 @@ elf_getscn(Elf * elf, size_t index)
 	if (elf == 0)
 		return (0);
 
-	ELFRLOCK(elf)
+	ELFRLOCK(elf);
 	tabsz = elf->ed_scntabsz;
 	if (elf->ed_hdscn == 0) {
-		ELFUNLOCK(elf)
-		ELFWLOCK(elf)
+		ELFUNLOCK(elf);
+		ELFWLOCK(elf);
 		if ((elf->ed_hdscn == 0) && (_elf_cook(elf) != OK_YES)) {
 			ELFUNLOCK(elf);
 			return (0);
 		}
 		ELFUNLOCK(elf);
-		ELFRLOCK(elf)
+		ELFRLOCK(elf);
 	}
 	/*
 	 * If the section in question is part of a table allocated
@@ -73,24 +73,24 @@ elf_getscn(Elf * elf, size_t index)
 
 	for (prev_s = 0; s != 0; prev_s = s, s = s->s_next) {
 		if (prev_s) {
-			SCNUNLOCK(prev_s)
+			SCNUNLOCK(prev_s);
 		}
-		SCNLOCK(s)
+		SCNLOCK(s);
 		if (j == 0) {
 			if (s->s_index == index) {
-				SCNUNLOCK(s)
+				SCNUNLOCK(s);
 				ELFUNLOCK(elf);
 				return (s);
 			}
 			_elf_seterr(EBUG_SCNLIST, 0);
-			SCNUNLOCK(s)
-			ELFUNLOCK(elf)
+			SCNUNLOCK(s);
+			ELFUNLOCK(elf);
 			return (0);
 		}
 		--j;
 	}
 	if (prev_s) {
-		SCNUNLOCK(prev_s)
+		SCNUNLOCK(prev_s);
 	}
 
 	_elf_seterr(EREQ_NDX, 0);

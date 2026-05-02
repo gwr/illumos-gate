@@ -835,19 +835,19 @@ elf_version(unsigned ver)
 		_elf_seterr(EREQ_VER, 0);
 		return EV_NONE;
 	}
-	(void) mutex_lock(&_elf_globals_mutex);
+	(void) pthread_mutex_lock(&_elf_globals_mutex);
 	if (_elf_work != EV_NONE)
 	{
 		j = _elf_work;
 		_elf_work = ver;
-		(void) mutex_unlock(&_elf_globals_mutex);
+		(void) pthread_mutex_unlock(&_elf_globals_mutex);
 		return j;
 	}
 	_elf_work = ver;
 
 	_elf_encode = _elf_sys_encoding();
 
-	(void) mutex_unlock(&_elf_globals_mutex);
+	(void) pthread_mutex_unlock(&_elf_globals_mutex);
 
 	return ver;
 }
@@ -894,7 +894,7 @@ xlate(Elf_Data *dst, const Elf_Data *src, unsigned encode, int tof)
 		return (0);
 	}
 
-	ELFACCESSDATA(_encode, _elf_encode)
+	ELFACCESSDATA(_encode, _elf_encode);
 	if ((_encode == (encode + 1)) && (dsz == ssz)) {
 		/*
 		 *	ld(1) frequently produces empty sections (eg. .dynsym,
