@@ -38,7 +38,7 @@ elf_getident(Elf *elf, size_t *ptr)
 	char	*id = 0;
 
 	if (elf != 0) {
-		ELFRLOCK(elf)
+		ELFRLOCK(elf);
 		if (elf->ed_identsz != 0) {
 			if ((elf->ed_vm == 0) || (elf->ed_status !=
 			    ES_COOKED)) {
@@ -46,8 +46,8 @@ elf_getident(Elf *elf, size_t *ptr)
 				 * We need to upgrade to a Writers
 				 * lock
 				 */
-				ELFUNLOCK(elf)
-				ELFWLOCK(elf)
+				ELFUNLOCK(elf);
+				ELFWLOCK(elf);
 				if ((_elf_cook(elf) == OK_YES) &&
 				    (_elf_vm(elf, (size_t)0,
 				    elf->ed_identsz) == OK_YES)) {
@@ -59,7 +59,7 @@ elf_getident(Elf *elf, size_t *ptr)
 				sz = elf->ed_identsz;
 			}
 		}
-		ELFUNLOCK(elf)
+		ELFUNLOCK(elf);
 	}
 	if (ptr != 0)
 		*ptr = sz;

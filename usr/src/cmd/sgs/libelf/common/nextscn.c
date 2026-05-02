@@ -39,18 +39,18 @@ elf_nextscn(Elf * elf, Elf_Scn * scn)
 	if (elf == 0)
 		return (0);
 	if (scn != 0) {
-		READLOCKS(elf, scn)
+		READLOCKS(elf, scn);
 		ret_scn = scn->s_next;
-		READUNLOCKS(elf, scn)
+		READUNLOCKS(elf, scn);
 	} else {
-		ELFWLOCK(elf)
+		ELFWLOCK(elf);
 		if (elf->ed_hdscn == 0) {
 			if (elf->ed_hdscn == 0)
 				(void) _elf_cook(elf);
 		}
 		if ((scn = elf->ed_hdscn) != 0)
 			ret_scn = scn->s_next;
-		ELFUNLOCK(elf)
+		ELFUNLOCK(elf);
 	}
 	return (ret_scn);
 }

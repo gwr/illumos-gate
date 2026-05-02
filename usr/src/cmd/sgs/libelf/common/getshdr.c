@@ -40,15 +40,15 @@ getshdr(Elf_Scn * scn, int class)
 	if (scn == 0)
 		return (0);
 	elf = scn->s_elf;
-	READLOCKS(elf, scn)
+	READLOCKS(elf, scn);
 	if (elf->ed_class != class) {
-		READUNLOCKS(elf, scn)
+		READUNLOCKS(elf, scn);
 		_elf_seterr(EREQ_CLASS, 0);
 		return (0);
 	}
 
 	rc = scn->s_shdr;
-	READUNLOCKS(elf, scn)
+	READUNLOCKS(elf, scn);
 	return (rc);
 }
 

@@ -207,8 +207,8 @@ elf_getarsym(Elf *elf, size_t *ptr)
 	/*
 	 * We're gonna need a write lock.
 	 */
-	ELFUNLOCK(elf)
-	ELFWLOCK(elf)
+	ELFUNLOCK(elf);
+	ELFWLOCK(elf);
 	sz = elf->ed_arsymsz;
 	if (_elf_vm(elf, (size_t)(as - (Byte *)elf->ed_ident), sz) !=
 	    OK_YES) {

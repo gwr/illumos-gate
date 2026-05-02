@@ -45,13 +45,13 @@ elf_strptr(Elf * elf, size_t ndx, size_t off)
 		_elf_seterr(EREQ_STRSCN, 0);
 		return (0);
 	}
-	READLOCKS(elf, s)
+	READLOCKS(elf, s);
 	if (elf->ed_class == ELFCLASS32) {
 		Elf32_Shdr* sh = (Elf32_Shdr*)s->s_shdr;
 
 		if ((sh == 0) || (sh->sh_type != SHT_STRTAB)) {
 			_elf_seterr(EREQ_STRSCN, 0);
-			READUNLOCKS(elf, s)
+			READUNLOCKS(elf, s);
 			return (0);
 		}
 	} else if (elf->ed_class == ELFCLASS64) {
@@ -59,12 +59,12 @@ elf_strptr(Elf * elf, size_t ndx, size_t off)
 
 		if ((sh == 0) || (sh->sh_type != SHT_STRTAB)) {
 			_elf_seterr(EREQ_STRSCN, 0);
-			READUNLOCKS(elf, s)
+			READUNLOCKS(elf, s);
 			return (0);
 		}
 	} else {
 		_elf_seterr(EREQ_STRSCN, 0);
-		READUNLOCKS(elf, s)
+		READUNLOCKS(elf, s);
 		return (0);
 	}
 
@@ -83,7 +83,7 @@ elf_strptr(Elf * elf, size_t ndx, size_t off)
 			if ((off >= d->d_off) &&
 			    (off < d->d_off + d->d_size)) {
 				rc = (char *)d->d_buf + off - d->d_off;
-				READUNLOCKS(elf, s)
+				READUNLOCKS(elf, s);
 				return (rc);
 			}
 		}
@@ -100,7 +100,7 @@ elf_strptr(Elf * elf, size_t ndx, size_t off)
 			if (d->d_buf != 0) {
 				if (off < d->d_size) {
 					rc = (char *)d->d_buf + off;
-					READUNLOCKS(elf, s)
+					READUNLOCKS(elf, s);
 					return (rc);
 				}
 			}
@@ -111,6 +111,6 @@ elf_strptr(Elf * elf, size_t ndx, size_t off)
 		}
 	}
 	_elf_seterr(EREQ_STROFF, 0);
-	READUNLOCKS(elf, s)
+	READUNLOCKS(elf, s);
 	return (0);
 }

@@ -155,7 +155,7 @@ _elf_config(Elf * elf)
 		 * This is only necessary if the file must be translating
 		 * from one encoding to another.
 		 */
-		ELFACCESSDATA(encode, _elf_encode)
+		ELFACCESSDATA(encode, _elf_encode);
 		if ((elf->ed_vm == 0) && ((elf->ed_myflags & EDF_WRITE) == 0) &&
 		    (elf->ed_encode != encode)) {
 			if (mprotect((char *)elf->ed_image, elf->ed_imagesz,
@@ -200,7 +200,7 @@ elf_memory(char *image, size_t sz)
 	/*
 	 * version() no called yet?
 	 */
-	ELFACCESSDATA(work, _elf_work)
+	ELFACCESSDATA(work, _elf_work);
 	if (work == EV_NONE) {
 		_elf_seterr(ESEQ_VER, 0);
 		return (0);
@@ -297,7 +297,7 @@ elf_begin(int fd, Elf_Cmd cmd, Elf *ref)
 	unsigned	work;
 	unsigned	flags = 0;
 
-	ELFACCESSDATA(work, _elf_work)
+	ELFACCESSDATA(work, _elf_work);
 	if (work == EV_NONE)	/* version() not called yet */
 	{
 		_elf_seterr(ESEQ_VER, 0);

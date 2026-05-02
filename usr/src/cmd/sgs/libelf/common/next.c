@@ -38,20 +38,20 @@ elf_next(Elf * elf)
 
 	if (elf == 0)
 		return (ELF_C_NULL);
-	ELFRLOCK(elf)
+	ELFRLOCK(elf);
 	if ((parent = elf->ed_parent) == 0) {
 		ELFUNLOCK(elf);
 		return (ELF_C_NULL);
 	}
-	ELFWLOCK(parent)
+	ELFWLOCK(parent);
 	if (elf->ed_siboff >= parent->ed_fsz) {
-		ELFUNLOCK(parent)
+		ELFUNLOCK(parent);
 		ELFUNLOCK(elf);
 		return (ELF_C_NULL);
 	}
 
 	parent->ed_nextoff = elf->ed_siboff;
-	ELFUNLOCK(parent)
+	ELFUNLOCK(parent);
 	ELFUNLOCK(elf);
 	return (ELF_C_READ);
 }

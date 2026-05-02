@@ -885,7 +885,7 @@ xlate(Elf_Data *dst, const Elf_Data *src, unsigned encode, int tof)
 		return (0);
 	}
 
-	ELFACCESSDATA(_encode, _elf_encode)
+	ELFACCESSDATA(_encode, _elf_encode);
 	if ((_encode == (encode + 1)) && (dsz == ssz)) {
 		/*
 		 *	ld(1) frequently produces empty sections (eg. .dynsym,

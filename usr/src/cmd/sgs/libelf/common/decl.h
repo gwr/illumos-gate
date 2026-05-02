@@ -29,7 +29,7 @@
 #ifndef	_DECL_H
 #define	_DECL_H
 
-#include <thread.h>
+#include <pthread.h>
 #include <_libelf.h>
 #include <sys/machelf.h>
 #include <msg.h>
@@ -132,7 +132,7 @@ struct	Dnode
 
 struct	Elf_Scn
 {
-	mutex_t		s_mutex;
+	pthread_mutex_t	s_mutex;
 	Elf_Scn		*s_next;	/* next section */
 	Elf		*s_elf; 	/* parent file */
 	Dnode		*s_hdnode;	/* head Dnode */
@@ -146,45 +146,37 @@ struct	Elf_Scn
 	Dnode		s_dnode;	/* every scn needs one */
 };
 
-/*
- * Designates whether or not we are in a threaded_app.
- */
-extern int *_elf_libc_threaded;
-#define	elf_threaded	(_elf_libc_threaded && *_elf_libc_threaded)
-
 #define	SCNLOCK(x) \
-	if (elf_threaded) \
-		(void) mutex_lock(&((Elf_Scn *)x)->s_mutex);
+	(void) pthread_mutex_lock(&((Elf_Scn *)x)->s_mutex)
 
 #define	SCNUNLOCK(x) \
-	if (elf_threaded) \
-		(void) mutex_unlock(&((Elf_Scn *)x)->s_mutex);
+	(void) pthread_mutex_unlock(&((Elf_Scn *)x)->s_mutex)
 
-#define	UPGRADELOCKS(e, s)\
-	if (elf_threaded) { \
-		(void) mutex_unlock(&((Elf_Scn *)s)->s_mutex); \
-		(void) rw_unlock(&((Elf *)e)->ed_rwlock); \
-		(void) rw_wrlock(&((Elf *)e)->ed_rwlock); \
-	}
+#define	UPGRADELOCKS(e, s) \
+	do { \
+		(void) pthread_mutex_unlock(&((Elf_Scn *)s)->s_mutex); \
+		(void) pthread_rwlock_unlock(&((Elf *)e)->ed_rwlock); \
+		(void) pthread_rwlock_wrlock(&((Elf *)e)->ed_rwlock); \
+	} while (0)
 
-#define	DOWNGRADELOCKS(e, s)\
-	if (elf_threaded) { \
-		(void) rw_unlock(&((Elf *)e)->ed_rwlock); \
-		(void) rw_rdlock(&((Elf *)e)->ed_rwlock); \
-		(void) mutex_lock(&((Elf_Scn *)s)->s_mutex); \
-	}
+#define	DOWNGRADELOCKS(e, s) \
+	do { \
+		(void) pthread_rwlock_unlock(&((Elf *)e)->ed_rwlock); \
+		(void) pthread_rwlock_rdlock(&((Elf *)e)->ed_rwlock); \
+		(void) pthread_mutex_lock(&((Elf_Scn *)s)->s_mutex); \
+	} while (0)
 
 #define	READLOCKS(e, s) \
-	if (elf_threaded) { \
-		(void) rw_rdlock(&((Elf *)e)->ed_rwlock); \
-		(void) mutex_lock(&((Elf_Scn *)s)->s_mutex); \
-	}
+	do { \
+		(void) pthread_rwlock_rdlock(&((Elf *)e)->ed_rwlock); \
+		(void) pthread_mutex_lock(&((Elf_Scn *)s)->s_mutex); \
+	} while (0)
 
 #define	READUNLOCKS(e, s) \
-	if (elf_threaded) { \
-		(void) mutex_unlock(&((Elf_Scn *)s)->s_mutex); \
-		(void) rw_unlock(&((Elf *)e)->ed_rwlock); \
-	}
+	do { \
+		(void) pthread_mutex_unlock(&((Elf_Scn *)s)->s_mutex); \
+		(void) pthread_rwlock_unlock(&((Elf *)e)->ed_rwlock); \
+	} while (0)
 
 #define	SF_ALLOC	0x1	/* applies to Scn */
 #define	SF_READY	0x2	/* has section been cooked */
@@ -261,7 +253,7 @@ typedef enum
 
 struct Elf
 {
-	rwlock_t	ed_rwlock;
+	pthread_rwlock_t ed_rwlock;
 	Elf		*ed_parent;	/* archive parent */
 	int		ed_activ;	/* activation count */
 	int		ed_fd;		/* file descriptor */
@@ -306,16 +298,13 @@ struct Elf
 };
 
 #define	ELFRLOCK(e) \
-	if (elf_threaded) \
-		(void) rw_rdlock(&((Elf *)e)->ed_rwlock);
+	(void) pthread_rwlock_rdlock(&((Elf *)e)->ed_rwlock)
 
 #define	ELFWLOCK(e) \
-	if (elf_threaded) \
-		(void) rw_wrlock(&((Elf *)e)->ed_rwlock);
+	(void) pthread_rwlock_wrlock(&((Elf *)e)->ed_rwlock)
 
 #define	ELFUNLOCK(e) \
-	if (elf_threaded) \
-		(void) rw_unlock(&((Elf *)e)->ed_rwlock);
+	(void) pthread_rwlock_unlock(&((Elf *)e)->ed_rwlock)
 
 #define	EDF_ASALLOC	0x1	/* applies to ed_arsym */
 #define	EDF_EHALLOC	0x2	/* applies to ed_ehdr */
@@ -350,22 +339,17 @@ typedef enum
  * General thread management macros
  */
 #define	ELFACCESSDATA(a, b) \
-	if (elf_threaded) { \
-		(void) mutex_lock(&_elf_globals_mutex); \
+	do { \
+		(void) pthread_mutex_lock(&_elf_globals_mutex); \
 		a = b; \
-		(void) mutex_unlock(&_elf_globals_mutex); \
-	} else \
-		a = b;
+		(void) pthread_mutex_unlock(&_elf_globals_mutex); \
+	} while (0)
 
 #define	ELFRWLOCKINIT(lock) \
-	if (elf_threaded) { \
-		(void) rwlock_init((lock), USYNC_THREAD, 0); \
-	}
+	(void) pthread_rwlock_init((lock), NULL)
 
 #define	ELFMUTEXINIT(lock) \
-	if (elf_threaded) { \
-		(void) mutex_init(lock, USYNC_THREAD, 0); \
-	}
+	(void) pthread_mutex_init(lock, NULL)
 
 extern Member		*_elf_armem(Elf *, char *, size_t);
 extern void		_elf_arinit(Elf *);
@@ -405,7 +389,7 @@ extern const Snode32	_elf32_snode_init;
 extern const Snode64	_elf64_snode_init;
 extern const Dnode	_elf_dnode_init;
 extern unsigned		_elf_work;
-extern mutex_t		_elf_globals_mutex;
+extern pthread_mutex_t	_elf_globals_mutex;
 extern off_t		_elf64_update(Elf * elf, Elf_Cmd cmd);
 extern int		_elf64_swap_wrimage(Elf *elf);
 
