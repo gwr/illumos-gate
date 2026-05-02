@@ -43,11 +43,11 @@ elf_rawfile(Elf *elf, size_t *ptr)
 		return (0);
 	}
 
-	ELFWLOCK(elf)
+	ELFWLOCK(elf);
 	if ((sz = elf->ed_fsz) == 0) {
 		if (ptr != 0)
 			*ptr = 0;
-		ELFUNLOCK(elf)
+		ELFUNLOCK(elf);
 		return (0);
 	}
 
@@ -69,6 +69,6 @@ elf_rawfile(Elf *elf, size_t *ptr)
 	}
 	if (ptr != 0)
 		*ptr = sz;
-	ELFUNLOCK(elf)
+	ELFUNLOCK(elf);
 	return (p);
 }

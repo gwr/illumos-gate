@@ -165,7 +165,7 @@ _elf_cookscn(Elf_Scn * s)
 	d->db_off = sh->sh_offset;
 	d->db_data.d_align = sh->sh_addralign;
 	d->db_data.d_version = elf->ed_version;
-	ELFACCESSDATA(work, _elf_work)
+	ELFACCESSDATA(work, _elf_work);
 	d->db_data.d_type = _elf_mtype(elf, sh->sh_type, work);
 	d->db_data.d_buf = 0;
 	d->db_data.d_off = 0;
@@ -303,7 +303,7 @@ _elf_phdr(Elf * elf, int inplace)
 	}
 
 	fsz *= eh->e_phnum;
-	ELFACCESSDATA(work, _elf_work)
+	ELFACCESSDATA(work, _elf_work);
 	msz = _elf_msize(ELF_T_PHDR, work) * eh->e_phnum;
 	if ((eh->e_phoff == 0) ||
 	    (elf->ed_fsz <= eh->e_phoff) ||

@@ -47,17 +47,6 @@
  *			sections. See _elf_execfill().
  */
 
-/*
- * __libc_threaded is a private symbol exported from libc in Solaris 10.
- * It is used to tell if we are running in a threaded world or not.
- * Between Solaris 2.5 and Solaris 9, this was named __threaded.
- * The name had to be changed because the Sun Workshop 6 update 1
- * compilation system used it to mean "we are linked with libthread"
- * rather than its true meaning in Solaris 10, "more than one thread exists".
- */
-#pragma weak		__libc_threaded
-extern int		__libc_threaded;
-
 int			_elf_byte = 0;
 const Elf32_Ehdr	_elf32_ehdr_init = { 0 };
 const Elf64_Ehdr	_elf64_ehdr_init = { 0 };
@@ -67,6 +56,4 @@ const Snode32		_elf32_snode_init = { 0 };
 const Snode64		_elf64_snode_init = { 0 };
 const Dnode		_elf_dnode_init = { 0 };
 unsigned		_elf_work = EV_NONE;
-mutex_t			_elf_globals_mutex = DEFAULTMUTEX;
-
-int			*_elf_libc_threaded = &__libc_threaded;
+pthread_mutex_t		_elf_globals_mutex = PTHREAD_MUTEX_INITIALIZER;

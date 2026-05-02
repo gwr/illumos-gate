@@ -40,18 +40,18 @@ elf_newscn(Elf * elf)
 	if (elf == 0)
 		return (0);
 
-	ELFWLOCK(elf)
+	ELFWLOCK(elf);
 	/*
 	 * if no sections yet, the file either isn't cooked
 	 * or it truly is empty.  Then allocate shdr[0]
 	 */
 	if ((elf->ed_hdscn == 0) && (_elf_cook(elf) != OK_YES)) {
-		ELFUNLOCK(elf)
+		ELFUNLOCK(elf);
 		return (0);
 	}
 	if (elf->ed_ehdr == 0) {
 		_elf_seterr(ESEQ_EHDR, 0);
-		ELFUNLOCK(elf)
+		ELFUNLOCK(elf);
 		return (0);
 	}
 
@@ -60,7 +60,7 @@ elf_newscn(Elf * elf)
 
 		if (elf->ed_hdscn == 0)	{
 			if ((s = _elf32_snode()) == 0) {
-				ELFUNLOCK(elf)
+				ELFUNLOCK(elf);
 				return (0);
 			}
 			s->sb_scn.s_elf = elf;
@@ -68,7 +68,7 @@ elf_newscn(Elf * elf)
 			s->sb_scn.s_uflags |= ELF_F_DIRTY;
 		}
 		if ((s = _elf32_snode()) == 0) {
-			ELFUNLOCK(elf)
+			ELFUNLOCK(elf);
 			return (0);
 		}
 		tl = elf->ed_tlscn;
@@ -80,14 +80,14 @@ elf_newscn(Elf * elf)
 		    = (Elf32_Half)(tl->s_index + 2);
 		s->sb_scn.s_uflags |= ELF_F_DIRTY;
 		tl = &s->sb_scn;
-		ELFUNLOCK(elf)
+		ELFUNLOCK(elf);
 		return (tl);
 	} else if (elf->ed_class == ELFCLASS64) {
 		Snode64	*s;
 
 		if (elf->ed_hdscn == 0)	{
 			if ((s = _elf64_snode()) == 0) {
-				ELFUNLOCK(elf)
+				ELFUNLOCK(elf);
 				return (0);
 			}
 			s->sb_scn.s_elf = elf;
@@ -95,7 +95,7 @@ elf_newscn(Elf * elf)
 			s->sb_scn.s_uflags |= ELF_F_DIRTY;
 		}
 		if ((s = _elf64_snode()) == 0) {
-			ELFUNLOCK(elf)
+			ELFUNLOCK(elf);
 			return (0);
 		}
 		tl = elf->ed_tlscn;
@@ -107,11 +107,11 @@ elf_newscn(Elf * elf)
 		    = (Elf64_Half)(tl->s_index + 2);
 		s->sb_scn.s_uflags |= ELF_F_DIRTY;
 		tl = &s->sb_scn;
-		ELFUNLOCK(elf)
+		ELFUNLOCK(elf);
 		return (tl);
 	} else {
 		_elf_seterr(EREQ_CLASS, 0);
-		ELFUNLOCK(elf)
+		ELFUNLOCK(elf);
 		return (0);
 	}
 }

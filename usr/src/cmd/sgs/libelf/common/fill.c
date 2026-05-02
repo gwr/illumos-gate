@@ -34,11 +34,11 @@
 void
 elf_fill(int fill)
 {
-	ELFACCESSDATA(_elf_byte, fill)
+	ELFACCESSDATA(_elf_byte, fill);
 }
 
 void
 _elf_execfill(_elf_execfill_func_t *execfill_func)
 {
-	ELFACCESSDATA(_elf_execfill_func, execfill_func)
+	ELFACCESSDATA(_elf_execfill_func, execfill_func);
 }

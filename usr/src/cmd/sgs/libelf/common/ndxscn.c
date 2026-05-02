@@ -40,8 +40,8 @@ elf_ndxscn(Elf_Scn * scn)
 	if (scn == 0)
 		return (SHN_UNDEF);
 	elf = scn->s_elf;
-	READLOCKS(elf, scn)
+	READLOCKS(elf, scn);
 	rc = scn->s_index;
-	READUNLOCKS(elf, scn)
+	READUNLOCKS(elf, scn);
 	return (rc);
 }

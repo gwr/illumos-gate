@@ -558,7 +558,7 @@ wrt(Elf * elf, Xword outsz, unsigned fill, int update_cmd)
 		src.d_buf = (Elf_Void *)elf->ed_phdr;
 		src.d_type = ELF_T_PHDR;
 		src.d_size = elf->ed_phdrsz;
-		ELFACCESSDATA(work, _elf_work)
+		ELFACCESSDATA(work, _elf_work);
 		src.d_version = work;
 		dst.d_buf = (Elf_Void *)(image + eh->e_phoff);
 		dst.d_size = eh->e_phnum * eh->e_phentsize;
@@ -747,24 +747,24 @@ _elfxx_update(Elf * elf, Elf_Cmd cmd)
 	unsigned	u;
 	Ehdr		*eh = elf->ed_ehdr;
 
-	ELFWLOCK(elf)
+	ELFWLOCK(elf);
 	switch (cmd) {
 	default:
 		_elf_seterr(EREQ_UPDATE, 0);
-		ELFUNLOCK(elf)
+		ELFUNLOCK(elf);
 		return (-1);
 
 	case ELF_C_WRIMAGE:
 		if ((elf->ed_myflags & EDF_WRITE) == 0) {
 			_elf_seterr(EREQ_UPDWRT, 0);
-			ELFUNLOCK(elf)
+			ELFUNLOCK(elf);
 			return (-1);
 		}
 		break;
 	case ELF_C_WRITE:
 		if ((elf->ed_myflags & EDF_WRITE) == 0) {
 			_elf_seterr(EREQ_UPDWRT, 0);
-			ELFUNLOCK(elf)
+			ELFUNLOCK(elf);
 			return (-1);
 		}
 		if (elf->ed_wrimage) {
@@ -798,13 +798,13 @@ _elfxx_update(Elf * elf, Elf_Cmd cmd)
 
 	if (eh == 0) {
 		_elf_seterr(ESEQ_EHDR, 0);
-		ELFUNLOCK(elf)
+		ELFUNLOCK(elf);
 		return (-1);
 	}
 
 	if ((u = eh->e_version) > EV_CURRENT) {
 		_elf_seterr(EREQ_VER, 0);
-		ELFUNLOCK(elf)
+		ELFUNLOCK(elf);
 		return (-1);
 	}
 
@@ -814,10 +814,10 @@ _elfxx_update(Elf * elf, Elf_Cmd cmd)
 	if ((u = eh->e_ident[EI_DATA]) == ELFDATANONE) {
 		unsigned	encode;
 
-		ELFACCESSDATA(encode, _elf_encode)
+		ELFACCESSDATA(encode, _elf_encode);
 		if (encode == ELFDATANONE) {
 			_elf_seterr(EREQ_ENCODE, 0);
-			ELFUNLOCK(elf)
+			ELFUNLOCK(elf);
 			return (-1);
 		}
 		/* LINTED */
@@ -835,11 +835,11 @@ _elfxx_update(Elf * elf, Elf_Cmd cmd)
 		sz = wrt(elf, (Xword)sz, u, cmd);
 
 	if (sz == 0) {
-		ELFUNLOCK(elf)
+		ELFUNLOCK(elf);
 		return (-1);
 	}
 
-	ELFUNLOCK(elf)
+	ELFUNLOCK(elf);
 	return ((off_t)sz);
 }
 
@@ -895,7 +895,7 @@ _elfxx_swap_wrimage(Elf *elf)
 		src.d_buf = dst.d_buf = (Elf_Void *)elf->ed_phdr;
 		src.d_type = dst.d_type = ELF_T_PHDR;
 		src.d_size = dst.d_size = elf->ed_phdrsz;
-		ELFACCESSDATA(work, _elf_work)
+		ELFACCESSDATA(work, _elf_work);
 		src.d_version = dst.d_version = work;
 		if (elf_xlatetof(&dst, &src, encode) == 0) {
 			ELFUNLOCK(elf);
