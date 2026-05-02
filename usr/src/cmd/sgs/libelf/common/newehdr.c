@@ -70,13 +70,13 @@ elf_newehdr(Elf * elf)
 	 * If reading file, return its hdr
 	 */
 
-	ELFWLOCK(elf)
+	ELFWLOCK(elf);
 	if (elf->ed_myflags & EDF_READ) {
-		ELFUNLOCK(elf)
+		ELFUNLOCK(elf);
 		if ((eh = (Ehdr *)getehdr(elf)) != 0) {
-			ELFWLOCK(elf)
+			ELFWLOCK(elf);
 			elf->ed_ehflags |= ELF_F_DIRTY;
-			ELFUNLOCK(elf)
+			ELFUNLOCK(elf);
 		}
 		return (eh);
 	}
@@ -89,27 +89,27 @@ elf_newehdr(Elf * elf)
 		elf->ed_class = ELFCLASS;
 	else if (elf->ed_class != ELFCLASS) {
 		_elf_seterr(EREQ_CLASS, 0);
-		ELFUNLOCK(elf)
+		ELFUNLOCK(elf);
 		return (0);
 	}
 	ELFUNLOCK(elf);
 	if ((eh = (Ehdr *)getehdr(elf)) != 0) {	/* this cooks if necessary */
-		ELFWLOCK(elf)
+		ELFWLOCK(elf);
 		elf->ed_ehflags |= ELF_F_DIRTY;
-		ELFUNLOCK(elf)
+		ELFUNLOCK(elf);
 		return (eh);
 	}
-	ELFWLOCK(elf)
+	ELFWLOCK(elf);
 
 	if ((eh = (Ehdr *)malloc(sizeof (Ehdr))) == 0) {
 		_elf_seterr(EMEM_EHDR, errno);
-		ELFUNLOCK(elf)
+		ELFUNLOCK(elf);
 		return (0);
 	}
 	*eh = _elf_ehdr_init;
 	elf->ed_myflags |= EDF_EHALLOC;
 	elf->ed_ehflags |= ELF_F_DIRTY;
 	elf->ed_ehdr = eh;
-	ELFUNLOCK(elf)
+	ELFUNLOCK(elf);
 	return (eh);
 }

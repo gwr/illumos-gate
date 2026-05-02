@@ -24,7 +24,6 @@
  * Use is subject to license terms.
  */
 
-#include <thread.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
@@ -41,11 +40,27 @@
  * _elf_err has two values encoded in it, both the _elf_err # and
  * the system errno value (if relevant).  These values are encoded
  * in the upper & lower 16 bits of the 4 byte integer.
+ *
+ * Both the error code key and message buffer key are initialized once
+ * via pthread_once and stored in thread-specific storage, so every
+ * thread (including main) gets its own private copies.
  */
-static int		_elf_err = 0;
+static pthread_key_t	errkey;
+static pthread_once_t	errkey_once = PTHREAD_ONCE_INIT;
+static pthread_key_t	bufkey;
+static pthread_once_t	bufkey_once = PTHREAD_ONCE_INIT;
 
-static thread_key_t	errkey = THR_ONCE_KEY;
-static thread_key_t	bufkey = THR_ONCE_KEY;
+static void
+errkey_init(void)
+{
+	(void) pthread_key_create(&errkey, NULL);
+}
+
+static void
+bufkey_init(void)
+{
+	(void) pthread_key_create(&bufkey, free);
+}
 
 const char *
 _libelf_msg(Msg mid)
@@ -60,18 +75,14 @@ _elf_seterr(Msg lib_err, int sys_err)
 	intptr_t encerr = ((int)lib_err << ELFERRSHIFT) |
 	    (sys_err & SYSERRMASK);
 
-	if (thr_main()) {
-		_elf_err = (int)encerr;
-		return;
-	}
-	(void) thr_keycreate_once(&errkey, 0);
-	(void) thr_setspecific(errkey, (void *)encerr);
+	(void) pthread_once(&errkey_once, errkey_init);
+	(void) pthread_setspecific(errkey, (void *)encerr);
 }
 
 int
-_elf_geterr() {
-	if (thr_main())
-		return (_elf_err);
+_elf_geterr(void)
+{
+	(void) pthread_once(&errkey_once, errkey_init);
 	return ((uintptr_t)pthread_getspecific(errkey));
 }
 
@@ -80,10 +91,9 @@ elf_errmsg(int err)
 {
 	char			*errno_str;
 	char			*elferr_str;
-	char			*buffer = 0;
+	char			*buffer;
 	int			syserr;
 	int			elferr;
-	static char		intbuf[MAXELFERR];
 
 	if (err == 0) {
 		if ((err = _elf_geterr()) == 0)
@@ -94,26 +104,20 @@ elf_errmsg(int err)
 			err = (int)EINF_NULLERROR << ELFERRSHIFT;
 	}
 
-	if (thr_main())
-		buffer = intbuf;
-	else {
-		/*
-		 * If this is a threaded APP then we store the
-		 * errmsg buffer in Thread Specific Storage.
-		 *
-		 * Each thread has its own private buffer.
-		 */
-		if (thr_keycreate_once(&bufkey, free) != 0)
-			return (MSG_INTL(EBUG_THRDKEY));
-		buffer = pthread_getspecific(bufkey);
+	/*
+	 * Store the errmsg buffer in thread-specific storage so that
+	 * each thread has its own private buffer.
+	 */
+	if (pthread_once(&bufkey_once, bufkey_init) != 0)
+		return (MSG_INTL(EBUG_THRDKEY));
+	buffer = pthread_getspecific(bufkey);
 
-		if (!buffer) {
-			if ((buffer = malloc(MAXELFERR)) == 0)
-				return (MSG_INTL(EMEM_ERRMSG));
-			if (thr_setspecific(bufkey, buffer) != 0) {
-				free(buffer);
-				return (MSG_INTL(EBUG_THRDSET));
-			}
+	if (!buffer) {
+		if ((buffer = malloc(MAXELFERR)) == 0)
+			return (MSG_INTL(EMEM_ERRMSG));
+		if (pthread_setspecific(bufkey, buffer) != 0) {
+			free(buffer);
+			return (MSG_INTL(EBUG_THRDSET));
 		}
 	}
 

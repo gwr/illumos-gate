@@ -42,9 +42,9 @@ elf_getarhdr(Elf * elf)
 
 	if (elf == 0)
 		return (0);
-	ELFRLOCK(elf)
+	ELFRLOCK(elf);
 	if ((mh = elf->ed_armem) == 0) {
-		ELFUNLOCK(elf)
+		ELFUNLOCK(elf);
 		_elf_seterr(EREQ_AR, 0);
 		return (0);
 	}
@@ -55,6 +55,6 @@ elf_getarhdr(Elf * elf)
 		return (0);
 	}
 	rc = &elf->ed_armem->m_hdr;
-	ELFUNLOCK(elf)
+	ELFUNLOCK(elf);
 	return (rc);
 }

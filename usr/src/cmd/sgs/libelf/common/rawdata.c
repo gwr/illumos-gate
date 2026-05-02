@@ -44,12 +44,12 @@ elf_rawdata(Elf_Scn * scn, Elf_Data * data)
 	if (scn == 0)
 		return (0);
 	elf = scn->s_elf;
-	READLOCKS(elf, scn)
+	READLOCKS(elf, scn);
 	if ((scn->s_myflags & SF_READY) == 0) {
-		UPGRADELOCKS(elf, scn)
+		UPGRADELOCKS(elf, scn);
 		if ((scn->s_myflags & SF_READY) == 0)
 			(void) _elf_cookscn(scn);
-		DOWNGRADELOCKS(elf, scn)
+		DOWNGRADELOCKS(elf, scn);
 	}
 
 	if (d == 0)
@@ -58,13 +58,13 @@ elf_rawdata(Elf_Scn * scn, Elf_Data * data)
 		d = d->db_next;
 
 	if (d == 0) {
-		READUNLOCKS(elf, scn)
+		READUNLOCKS(elf, scn);
 		return (0);
 	}
 
 	if (d->db_scn != scn) {
 		_elf_seterr(EREQ_DATA, 0);
-		READUNLOCKS(elf, scn)
+		READUNLOCKS(elf, scn);
 		return (0);
 	}
 
@@ -76,12 +76,12 @@ elf_rawdata(Elf_Scn * scn, Elf_Data * data)
 
 	if (d->db_raw != 0) {
 		rc = &d->db_raw->db_data;
-		READUNLOCKS(elf, scn)
+		READUNLOCKS(elf, scn);
 		return (rc);
 	}
 
 	if ((raw = _elf_dnode()) == 0)  {
-		READUNLOCKS(elf, scn)
+		READUNLOCKS(elf, scn);
 		return (0);
 	}
 	raw->db_myflags |= DBF_READY;
@@ -89,7 +89,7 @@ elf_rawdata(Elf_Scn * scn, Elf_Data * data)
 		d->db_raw = raw;
 		raw->db_data.d_size = d->db_shsz;
 		rc = &raw->db_data;
-		READUNLOCKS(elf, scn)
+		READUNLOCKS(elf, scn);
 		return (rc);
 	}
 
@@ -102,7 +102,7 @@ elf_rawdata(Elf_Scn * scn, Elf_Data * data)
 	    (elf->ed_fsz - d->db_off < d->db_fsz)) {
 		_elf_seterr(EFMT_DATA, 0);
 		free(raw);
-		READUNLOCKS(elf, scn)
+		READUNLOCKS(elf, scn);
 		return (0);
 	}
 	raw->db_data.d_size = d->db_fsz;
@@ -110,19 +110,19 @@ elf_rawdata(Elf_Scn * scn, Elf_Data * data)
 		raw->db_data.d_buf = (Elf_Void *)(elf->ed_raw + d->db_off);
 		d->db_raw = raw;
 		rc = &raw->db_data;
-		READUNLOCKS(elf, scn)
+		READUNLOCKS(elf, scn);
 		return (rc);
 	}
 	raw->db_buf = (Elf_Void *)_elf_read(elf->ed_fd,
 	    elf->ed_baseoff + d->db_off, d->db_fsz);
 	if (raw->db_buf == 0) {
 		free(raw);
-		READUNLOCKS(elf, scn)
+		READUNLOCKS(elf, scn);
 		return (0);
 	}
 	raw->db_data.d_buf = raw->db_buf;
 	d->db_raw = raw;
 	rc = &raw->db_data;
-	READUNLOCKS(elf, scn)
+	READUNLOCKS(elf, scn);
 	return (rc);
 }
