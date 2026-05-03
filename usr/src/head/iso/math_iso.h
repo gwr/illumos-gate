@@ -317,7 +317,7 @@ extern "C++" {
 	inline long double abs(long double __X) { return fabsl(__X); }
 	/* inline double pow(double, int) not needed */
 
-#if !defined(_ILLUMOS_MATH_H_2026_04)
+#if 1 /* !defined(_ILLUMOS_MATH_H_2026_04) XXX */
 
 	inline float acos(float __X) { return acosf(__X); }
 	inline float asin(float __X) { return asinf(__X); }
