@@ -299,25 +299,21 @@ extern "C++" {
 
 #else	/* !__SUNPRO_CC */
 /*
- * IL-15209: Temporary sentinel: if _ILLUMOS_MATH_H_2026_04 is defined,
- * the updated math.h is in the include chain and this file should use
- * the new behaviour.  Remove once all supported build hosts carry the
- * updated headers.  Without this, g++ compiles end up with old math.h
- * and new iso headers that don't work together.
+ * The SunPro block above calls the double-underscore names in the
+ * body of its inlines (those are always declared for SUNPRO).
+ * GCC and clang do not recognize those names as builtins, so this
+ * block uses the plain names (sinhl, coshl etc.) instead, allowing
+ * GCC to apply its standard built-in optimizations to these inlines.
  *
- * The abs() overloads are kept outside the sentinel guard: abs(double)
- * is the only path that puts abs into namespace std before math.h's
- * "using std::abs" fires (GCC's <cmath> provides std::abs only after
- * #include_next returns).  float/ldbl are also kept out for C++17
- * compatibility (tr1 headers need an exact match).  None of the abs
- * overloads cause the IL-15209 ambiguity.
+ * The abs() overloads must appear before the float/long double block
+ * because math.h's "using std::abs" fires while #include_next is still
+ * unwinding; the float and long double forms are also needed for C++17
+ * code that requires an exact match (e.g. tr1 Bessel functions).
  */
 	inline double abs(double __X) { return fabs(__X); }
 	inline float abs(float __X) { return fabsf(__X); }
 	inline long double abs(long double __X) { return fabsl(__X); }
 	/* inline double pow(double, int) not needed */
-
-#if 1 /* !defined(_ILLUMOS_MATH_H_2026_04) XXX */
 
 	inline float acos(float __X) { return acosf(__X); }
 	inline float asin(float __X) { return asinf(__X); }
@@ -386,7 +382,6 @@ extern "C++" {
 	inline long double tan(long double __X) { return tanl(__X); }
 	inline long double tanh(long double __X) { return tanhl(__X); }
 
-#endif	/* !_ILLUMOS_MATH_H_2026_04 */
 #endif	/* __SUNPRO_CC */
 }	/* end of extern "C++" */
 #endif	/* __cplusplus >= 199711L */

@@ -32,11 +32,19 @@
 #ifndef _MATH_H
 #define	_MATH_H
 /*
- * IL-15209: Temporary sentinel used by iso/math_iso.h and iso/math_c99.h
- * to detect whether this (updated) math.h is in the include chain.
- * Remove once all supported build hosts carry the updated headers.
- * Without this, g++ compiles end up with old math.h and new iso
- * headers that don't work together.
+ * IL-15209: Temporary sentinel.  When building software against proto
+ * headers using -I proto/usr/include, g++'s <cmath> reaches this file
+ * via #include_next <math.h>, which bypasses -I directories and finds
+ * the build system math.h directly.  Meanwhile iso/math_iso.h and
+ * iso/math_c99.h may be the newer versions from the proto area.
+ *
+ * This sentinel lets those iso files detect whether they are paired
+ * with the updated math.h (which provides the necessary "using std::"
+ * declarations for C99 names) or the old one (which does not).
+ * See related #if in iso/math_c99.h
+ *
+ * This can be removed once build systems have the updated math.h
+ * in the /usr/include directory.
  */
 #define	_ILLUMOS_MATH_H_2026_04	1
 

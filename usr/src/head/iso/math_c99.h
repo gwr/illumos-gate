@@ -211,11 +211,21 @@ typedef long double double_t;
 #define	math_errhandling	MATH_ERREXCEPT
 
 /*
- * IL-15209: Temporary sentinel: if _ILLUMOS_MATH_H_2026_04 is defined,
- * the updated math.h is in the include chain and this file should use
- * the new behaviour.  Remove once all supported build hosts carry the
- * updated headers.  Without this, g++ compiles end up with old math.h
- * and new iso headers that don't work together.
+ * IL-15209: Temporary sentinel.  Place C99 math declarations into
+ * namespace std only when the updated math.h is present.  When building
+ * against proto headers with -I proto/usr/include, g++'s <cmath> reaches
+ * math.h via #include_next, which bypasses -I and finds the old system
+ * math.h.  That old math.h has no "using std::acosh" etc., so if this
+ * file placed C99 names into namespace std unconditionally, they would
+ * be accessible as std::acosh but not as plain ::acosh, violating the
+ * C++ standard's requirement that both forms work.
+ *
+ * This cpp conditional ensures that the namespace std wrapper is only
+ * active when the updated math.h (which provides the matching "using"
+ * declarations) is the one that #include_next found.
+ *
+ * This can be removed once build systems have the updated math.h
+ * in their /usr/include directory.
  */
 #if __cplusplus >= 199711L && defined(_ILLUMOS_MATH_H_2026_04)
 namespace std {
