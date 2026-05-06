@@ -71,7 +71,7 @@
 #include "queue.h"
 
 #ifdef DEBUG
-static FILE *dbfp;
+extern FILE *dbfp;
 #define	DUMP(w, x, y, z) dump_state(w, x, y, z)
 #define	DPRINT(x) { (void) fprintf x; }
 #else
@@ -444,9 +444,6 @@ auditd_thread_init()
 
 	if (!threads_ready) {
 		struct sched_param	param;
-#if DEBUG
-		dbfp = __auditd_debug_file_open();
-#endif
 		doorfd = door_create((void(*)())input, 0,
 		    DOOR_REFUSE_DESC | DOOR_NO_CANCEL);
 		if (doorfd < 0)

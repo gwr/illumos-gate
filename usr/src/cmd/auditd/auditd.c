@@ -81,8 +81,10 @@
 
 #ifdef DEBUG
 FILE	*dbfp;		/* debug file pointer */
-#define	DPRINT(x)	{ if (dbfp == NULL) dbfp = __auditd_debug_file_open(); \
-			    (void) fprintf x; (void) fflush(dbfp); }
+#define	DPRINT(x)	{ if (dbfp != NULL) { \
+			    (void) fprintf x; \
+			    (void) fflush(dbfp); \
+			} }
 #else
 #define DPRINT(x)
 #endif
@@ -176,6 +178,24 @@ auditd_exit(int status)
 	exit(status);
 }
 
+/*
+ * debug use - open a file for auditd and its plugins for debug
+ */
+#ifdef	DEBUG
+static FILE *
+auditd_debug_file_open(void)
+{
+	FILE	*fp = NULL;
+
+	if ((fp = fopen("/var/audit/dump", "aF")) == NULL)
+		(void) fprintf(stderr, "failed to open debug file:  %s\n",
+		    strerror(errno));
+
+	return (fp);
+}
+#endif	/* DEBUG */
+
+
 /* ARGSUSED */
 int
 main(int argc, char *argv[])
@@ -187,11 +207,12 @@ main(int argc, char *argv[])
 	pid_t			pid;
 
 #ifdef DEBUG
-#if MEM_TEST
 	char	*envp;
-#endif
-	if (dbfp == NULL) {
-		dbfp = __auditd_debug_file_open();
+
+	envp = getenv("AUDITD_DEBUG");
+	if (envp != NULL) {
+		dbfp = auditd_debug_file_open();
+		audit_debug_set_file(dbfp); /* libbsm */
 	}
 #endif
 	(void) setsid();

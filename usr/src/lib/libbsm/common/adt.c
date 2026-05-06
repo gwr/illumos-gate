@@ -53,6 +53,7 @@
 #include <arpa/inet.h>
 #include <net/if.h>
 #include <libinetutil.h>
+#include "audit_private.h"
 
 static int adt_selected(struct adt_event_state *, au_event_t, int);
 static int adt_init(adt_internal_state_t *, int);
@@ -62,11 +63,9 @@ static void adt_setto_unaudited(adt_internal_state_t *);
 static int adt_get_local_address(int, struct ifaddrlist *);
 
 #ifdef C2_DEBUG
-#define	DPRINTF(x) { (void) printf x; }
-#define	DFLUSH (void) fflush(stdout);
+#define	DPRINTF(x) { audit_debug_printf x; }
 #else
 #define	DPRINTF(x)
-#define	DFLUSH
 #endif
 
 /*

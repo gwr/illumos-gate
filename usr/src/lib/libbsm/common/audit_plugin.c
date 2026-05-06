@@ -34,6 +34,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
 #include <sys/file.h>
 #include <sys/stat.h>
@@ -42,6 +43,7 @@
 #include <unistd.h>
 #include <wait.h>
 #include "audit_plugin.h"
+#include "audit_private.h"
 
 static char	auditwarn[] = "/etc/security/audit_warn";
 static pthread_mutex_t	syslog_lock;
@@ -244,17 +246,26 @@ __logpost(char *name)
 }
 
 /*
- * debug use - open a file for auditd and its plugins for debug
+ * debug output file ptr for auditd and its plugins
  */
-FILE *
-__auditd_debug_file_open() {
-	static FILE	*fp = NULL;
+FILE * audit_debug_file = NULL;
+void
+audit_debug_set_file(FILE *fp)
+{
+	audit_debug_file = fp;
+}
 
-	if (fp != NULL)
-		return (fp);
-	if ((fp = fopen("/var/audit/dump", "aF")) == NULL)
-		(void) fprintf(stderr, "failed to open debug file:  %s\n",
-		    strerror(errno));
+void
+audit_debug_printf(const char *fmt, ...)
+{
+	va_list ap;
+	FILE *fp;
 
-	return (fp);
+	if ((fp = audit_debug_file) == NULL)
+		return;
+
+	va_start(ap, fmt);
+	(void) vfprintf(fp, fmt, ap);
+	fflush(fp);
+	va_end(ap);
 }

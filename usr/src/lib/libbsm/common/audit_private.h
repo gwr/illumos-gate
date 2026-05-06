@@ -177,6 +177,15 @@ extern	void	audit_rexd_success(char *, char *, uid_t, gid_t,
     char *, char **);
 extern	void	audit_rexd_setup(void);
 
+/*
+ * audit_debug.c
+ * interface user
+ * auditd
+ */
+extern FILE * audit_debug_file;
+/* PRINTFLIKE1 */
+extern void audit_debug_printf(const char *fmt, ...);
+
 #ifdef	__cplusplus
 }
 #endif

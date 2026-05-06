@@ -195,6 +195,11 @@ extern int	setaudit_addr(auditinfo_addr_t *, int);
 extern int	setauid(au_id_t *);
 
 /*
+ * Internal libbsm debug feature
+ */
+extern void audit_debug_set_file(FILE *);
+
+/*
  * Defines for au_preselect(3)
  */
 #define	AU_PRS_SUCCESS	1

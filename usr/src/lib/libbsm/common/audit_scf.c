@@ -24,18 +24,17 @@
  */
 
 /* auditd smf(7)/libscf(3LIB) interface - set and display audit parameters */
-#include <audit_scf.h>
-#include <audit_policy.h>
+#include "audit_scf.h"
+#include "audit_policy.h"
+#include "audit_private.h"
 
 /* propvec array must be NULL terminated */
 scf_propvec_t	prop_vect[MAX_PROPVECS + 1];
 
 #ifdef DEBUG
-FILE	*dbfp;		/* debug file pointer */
-#define	DPRINT(x)	{ if (dbfp == NULL) dbfp = __auditd_debug_file_open(); \
-			    (void) fprintf x; (void) fflush(dbfp); }
+#define	DPRINTF(x) { audit_debug_printf x; }
 #else
-#define	DPRINT(x)
+#define	DPRINTF(x)
 #endif
 
 /*
@@ -180,7 +179,7 @@ chk_prop_vect(scf_propvec_t **prop_vect_ptr, char *pgrp_str)
 {
 	if (*prop_vect_ptr < prop_vect ||
 	    *prop_vect_ptr >= (prop_vect + MAX_PROPVECS)) {
-		DPRINT((dbfp, "prop_vect is full; flushing\n"));
+		DPRINTF(("prop_vect is full; flushing\n"));
 		if (!set_val_scf(prop_vect, pgrp_str)) {
 			return (B_FALSE);
 		}
@@ -392,10 +391,10 @@ get_plugin_kva(asi_scfhandle_t *handle, asi_scfhandle_iter_t *handle_iter,
 		while (node_debug != NULL) {
 			if (_kva2str(node_debug->plugin_kva, attr_string,
 			    PLUGIN_MAXATT, "=", ";") == 0) {
-				DPRINT((dbfp, "Found plugin - %s: %s\n",
+				DPRINTF(("Found plugin - %s: %s\n",
 				    node_debug->plugin_name, attr_string));
 			} else {
-				DPRINT((dbfp, "Could not get attribute string "
+				DPRINTF(("Could not get attribute string "
 				    "for %s\n", node_debug->plugin_name));
 			}
 			node_debug = node_debug->prev;
@@ -527,10 +526,10 @@ chk_policy_context(char *policy_str)
 	 * sub/set of auditing policies, are not stored in the
 	 * AUDITD_FMRI service instance configuration.
 	 */
-	DPRINT((dbfp, "Walking policy - %s: ", policy_str));
+	DPRINTF(("Walking policy - %s: ", policy_str));
 	if (strcmp("all", policy_str) == 0 ||
 	    strcmp("none", policy_str) == 0) {
-		DPRINT((dbfp, "skipped\n"));
+		DPRINTF(("skipped\n"));
 		return (B_FALSE);
 	}
 	/*
@@ -541,7 +540,7 @@ chk_policy_context(char *policy_str)
 	if ((getzoneid() != GLOBAL_ZONEID) &&
 	    (strcmp("ahlt", policy_str) == 0 ||
 	    strcmp("perzone", policy_str) == 0)) {
-		DPRINT((dbfp, "skipped\n"));
+		DPRINTF(("skipped\n"));
 		return (B_FALSE);
 	}
 
@@ -707,7 +706,7 @@ do_getpolicy_scf(uint32_t *policy_mask)
 		if (!chk_policy_context(cur_policy_str)) {
 			continue;
 		}
-		DPRINT((dbfp, "will be queried\n"));
+		DPRINTF(("will be queried\n"));
 
 		add_prop_vect_scf(prop_vect_ptr++, cur_policy_str,
 		    SCF_TYPE_BOOLEAN, &policy_arr_ptr->flag);
@@ -766,7 +765,7 @@ do_setpolicy_scf(uint32_t policy)
 			*bool_arr_ptr = B_FALSE;
 		}
 
-		DPRINT((dbfp, "%s%s\n", (*bool_arr_ptr == B_TRUE ? "+" : "-"),
+		DPRINTF(("%s%s\n", (*bool_arr_ptr == B_TRUE ? "+" : "-"),
 		    cur_policy_str));
 
 		add_prop_vect_scf(prop_vect_ptr++, cur_policy_str,
@@ -1012,7 +1011,7 @@ plugin_avail_scf(const char *plugin_str)
 	}
 
 	if ((sh = scf_general_pg_setup(AUDITD_FMRI, plugin_str)) == NULL) {
-		DPRINT((dbfp, "No such plugin found: %s (%s)\n", plugin_str,
+		DPRINTF(("No such plugin found: %s (%s)\n", plugin_str,
 		    scf_strerror(scf_error())));
 		return (B_FALSE);
 	}
@@ -1048,7 +1047,7 @@ do_getpluginconfig_scf(char *plugin_str, scf_plugin_kva_node_t **plugin_kva_ll)
 			return (B_FALSE);
 		}
 	}
-	DPRINT((dbfp, "%s will be decoded\n", asi_fmri));
+	DPRINTF(("%s will be decoded\n", asi_fmri));
 
 	if (!scf_init(&handle)) {
 		prt_error(gettext("Unable to initialize scf handles."));
@@ -1105,7 +1104,7 @@ do_setpluginconfig_scf(char *plugin_str, boolean_t plugin_state,
 	boolean_t		rval = B_TRUE;
 	uint64_t		plugin_qsize_l = (uint64_t)plugin_qsize;
 
-	DPRINT((dbfp, "Auditd plugin configuration to be set:\n\tplugin=%s\n\t"
+	DPRINTF(("Auditd plugin configuration to be set:\n\tplugin=%s\n\t"
 	    "state=%d (%s)\n\tattributes=%s\n\tqsize=%d%s\n", plugin_str,
 	    plugin_state, plugin_state == B_TRUE ? "active" : "inactive",
 	    plugin_att == NULL ? " (unspecified)" : plugin_att,
@@ -1126,7 +1125,7 @@ do_setpluginconfig_scf(char *plugin_str, boolean_t plugin_state,
 			}
 			*plugin_att_clr_ptr = '\0';
 		}
-		DPRINT((dbfp, "attributes (no white-space): %s\n", plugin_att));
+		DPRINTF(("attributes (no white-space): %s\n", plugin_att));
 
 		/* allow empty plugin_att */
 		if (*plugin_att == '\0') {
@@ -1149,7 +1148,7 @@ do_setpluginconfig_scf(char *plugin_str, boolean_t plugin_state,
 	/* set state */
 	add_prop_vect_scf(prop_vect_ptr++, PLUGIN_ACTIVE, SCF_TYPE_BOOLEAN,
 	    &plugin_state);
-	DPRINT((dbfp, "Prepared active -> %d\n", plugin_state));
+	DPRINTF(("Prepared active -> %d\n", plugin_state));
 
 	/* set attributes */
 	while (cnt) {
@@ -1224,7 +1223,7 @@ do_setpluginconfig_scf(char *plugin_str, boolean_t plugin_state,
 			break;
 		}
 
-		DPRINT((dbfp, "Prepared %s -> %s\n", data->key, data->value));
+		DPRINTF(("Prepared %s -> %s\n", data->key, data->value));
 		scf_simple_prop_free(plugin_prop);
 		data++;
 		cnt--;
@@ -1239,7 +1238,7 @@ do_setpluginconfig_scf(char *plugin_str, boolean_t plugin_state,
 	if (plugin_qsize != -1) {
 		add_prop_vect_scf(prop_vect_ptr, PLUGIN_QSIZE, SCF_TYPE_COUNT,
 		    &plugin_qsize_l);
-		DPRINT((dbfp, "Prepared qsize -> %d\n", plugin_qsize));
+		DPRINTF(("Prepared qsize -> %d\n", plugin_qsize));
 	}
 
 	if (!set_val_scf(prop_vect, plugin_str)) {

@@ -188,7 +188,8 @@ SYMBOL_VERSION SUNWprivate_1.1 {
 	audit_crontab_not_allowed;
 	audit_crontab_process_not_audited;
 	audit_cron_user_acct_expired;
-	__auditd_debug_file_open;
+	audit_debug_printf;
+	audit_debug_set_file;
 	auditdoor;
 	__audit_dowarn;
 	__audit_dowarn2;

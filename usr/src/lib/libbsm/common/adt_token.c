@@ -49,9 +49,10 @@
 
 #include <tsol/label.h>
 
+#include "audit_private.h"
+
 #ifdef	C2_DEBUG
-#define	DPRINTF(x) { (void) printf x; }
-#define	DFLUSH (void) fflush(stdout);
+#define	DPRINTF(x) { audit_debug_printf x; }
 
 /* 0x + Classification + Compartments + end of string */
 #define	HEX_SIZE 2 + 2*2 + 2*32 + 1
@@ -72,7 +73,6 @@ dprt_label(m_label_t *label)
 }
 #else	/* !C2_DEBUG */
 #define	DPRINTF(x)
-#define	DFLUSH
 #endif	/* C2_DEBUG */
 
 static adt_token_func_t adt_getTokenFunction(char);
@@ -124,7 +124,6 @@ adt_generate_token(struct entry *p_entry, void *p_data,
 	DPRINTF(("p_entry=%p, p_data=%p, offset=%llu, msgFmt=%s\n",
 	    (void *)p_entry, p_data, (long long)p_entry->en_offset,
 	    p_entry->en_msg_format));
-	DFLUSH
 
 	(*p_func)(p_entry->en_type_def,
 	    (char *)p_data + p_entry->en_offset, p_entry->en_required, event,
@@ -314,7 +313,6 @@ adt_to_label(datadef *def, void *p_data, int required,
 
 	if (label != NULL) {
 		DPRINTF(("  label=%s\n", dprt_label(label)));
-		DFLUSH
 		(void) au_write(event->ae_event_handle, au_to_label(label));
 	} else {
 		DPRINTF(("  Null label\n"));
@@ -814,7 +812,6 @@ adt_to_text(datadef *def, void *p_data, int required,
 		}
 		break;
 	}
-	DFLUSH
 }
 
 /*
