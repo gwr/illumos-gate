@@ -177,9 +177,18 @@ extern "C++" { namespace std {
 	using ::tan;
 	using ::tanh;
 
+/*
+ * For compatibility with GCC and GLIBCXX, let cstdlib provide both
+ * the integer and floating point abs() inlines.  If that's included
+ * before this, the #define prevents redefinition errors.
+ */
+#ifndef _CXX_ABS_FLOAT_DEFINED
+#define _CXX_ABS_FLOAT_DEFINED
 	inline double abs(double __X) { return fabs(__X); }
 	inline float abs(float __X) { return fabsf(__X); }
 	inline long double abs(long double __X) { return fabsl(__X); }
+#endif /* _CXX_ABS_FLOAT_DEFINED */
+
 	/* inline double pow(double, int) not needed */
 
 	inline float acos(float __X) { return acosf(__X); }
