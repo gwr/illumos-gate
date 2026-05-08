@@ -264,8 +264,8 @@ smbfs_open(vnode_t **vpp, int flag, cred_t *cr, caller_context_t *ct)
 			    &scred, &np->n_dirseq);
 			if (error != 0)
 				goto out;
+			np->n_dirofs = FIRST_DIROFS;
 		}
-		np->n_dirofs = FIRST_DIROFS;
 		np->n_dirrefs++;
 		goto have_fid;
 	}
