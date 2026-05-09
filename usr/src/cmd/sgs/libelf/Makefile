@@ -27,7 +27,7 @@
 
 include		$(SRC)/cmd/sgs/Makefile.sub
 
-HDRS =		gelf.h
+HDRS =		gelf.h libelf.h
 HDRDIR =	common
 
 

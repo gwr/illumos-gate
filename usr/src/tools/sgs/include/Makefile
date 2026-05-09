@@ -27,8 +27,6 @@ include ../../../Makefile.master
 #
 
 ROOTHDRS=	dlfcn.h \
-		gelf.h \
-		libelf.h \
 		proc_service.h \
 		rtld_db.h \
 		link.h
