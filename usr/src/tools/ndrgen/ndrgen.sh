@@ -48,6 +48,8 @@ ndrgen_usage()
 
 	echo "usage: $PROGNAME [options] file.ndl [file.ndl]..."
 	echo "	options: -Y cc-path -Ddefine -Iinclude"
+	echo "	         --sysroot=dir -isysroot dir"
+	echo "	         -isystem dir -nostdinc"
 	exit 1
 }
 
@@ -84,16 +86,29 @@ EOF
 }
 
 
-while getopts "D:I:Y:V" FLAG
-do
-	case $FLAG in
-	D|I)	CPPFLAGS="$CPPFLAGS -${FLAG}${OPTARG}";;
-	Y)	CPP="$OPTARG";;
-	V)	V_FLAG="V";;
-	*)	ndrgen_usage;;
+# Parse options, forwarding cpp-compatible flags to CPPFLAGS.
+# Recognized options:
+#   -Y cc-path      set the cpp command (default: $CC -E)
+#   -Ddefine        preprocessor define
+#   -Iinclude       include path
+#   -isystem dir    system include path (lower precedence than -I)
+#   --sysroot=dir   GCC-style sysroot for cross-compilation
+#   -isysroot dir   clang-style sysroot
+#   -nostdinc       suppress default system includes
+while [[ $# -gt 0 ]] ; do
+	case "$1" in
+	-D*|-I*)	CPPFLAGS="$CPPFLAGS $1"; shift;;
+	-isystem|-isysroot)
+			CPPFLAGS="$CPPFLAGS $1 $2"; shift 2;;
+	--sysroot=*)	CPPFLAGS="$CPPFLAGS $1"; shift;;
+	-nostdinc)	CPPFLAGS="$CPPFLAGS $1"; shift;;
+	-Y)		CPP="$2"; shift 2;;
+	-V)		V_FLAG="V"; shift;;
+	--)		shift; break;;
+	-*)		ndrgen_usage "unknown option: $1";;
+	*)		break;;
 	esac
 done
-shift $(($OPTIND - 1))
 
 if [[ $# -lt 1 ]] ; then
 	ndrgen_usage
