@@ -37,7 +37,7 @@
 #include <pthread.h>
 #include <sys/mman.h>
 #include <time.h>
-#include "solaris-int.h"
+#include <ldap/solaris-int.h>
 #include "ns_connmgmt.h"
 #include "ns_cache_door.h"
 #include "ns_internal.h"
