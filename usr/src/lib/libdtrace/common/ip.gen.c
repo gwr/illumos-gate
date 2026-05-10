@@ -23,11 +23,10 @@
  */
 
 /*
- * This file is a sed script which is first preprocessed by cpp or cc -E to
- * define a set of sed directives which replace #define tokens with their
- * values.  After preprocessing, the sed script is run over ip.d.in to
- * replace the #define tokens listed below to create the finished ip.d.
- * Refer to the rules in libdtrace/Makefile.com for more information.
+ * This file and it's companion *.d.in are processed by make to
+ * create a *.d library file.  The *.d.in file is a template that
+ * needs substitutions.  This file creates the dictionary of what
+ * names may be substituted.  See Makefile.com for details.
  */
 
 #include <sys/netstack.h>
@@ -36,7 +35,8 @@
 #include <inet/ip.h>
 #include <inet/tcp.h>
 
-#define	SED_REPLACE(x)	s/#x/x/g
+/* This used to be processed by "sed". */
+#define	SED_REPLACE(x)	XYZZY_BEGIN #x = x XYZZY_END
 
 SED_REPLACE(AF_INET)
 SED_REPLACE(AF_INET6)

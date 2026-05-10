@@ -82,44 +82,30 @@ LIBDAUDIT = libdtrace_forceload.so
 
 DLINKSRCS = dlink_common.c dlink_init.c dlink_audit.c
 
+# These are the generated *.d files.  See Makefile for the static ones.
+# Note i386/Makefile sets this = regs.d (effectively prepended)
 DLIBSRCS += \
 	errno.d \
-	fc.d \
 	io.d \
 	ip.d \
-	iscsit.d \
 	net.d \
-	nfs.d \
-	nfssrv.d \
 	procfs.d \
-	regs.d \
-	sched.d \
 	signal.d \
-	scsi.d \
-	smb.d \
-	srp.d \
 	sysevent.d \
 	tcp.d \
-	udp.d \
-	unistd.d
+	udp.d
 
 include ../../Makefile.lib
 
+CSTD = $(CSTD_GNU99)
 SRCS = $(LIBSRCS:%.c=../common/%.c) $(LIBISASRCS:%.c=../$(MACH)/%.c)
 LIBS = $(DYNLIB)
 
 SRCDIR = ../common
 
 CLEANFILES += dt_lex.c dt_grammar.c dt_grammar.h y.output
-CLEANFILES += ../common/procfs.sed ../common/procfs.d
-CLEANFILES += ../common/io.sed ../common/io.d
-CLEANFILES += ../common/ip.sed ../common/ip.d
-CLEANFILES += ../common/net.sed ../common/net.d
-CLEANFILES += ../common/errno.d ../common/signal.d
-CLEANFILES += ../common/dt_errtags.c ../common/dt_names.c
-CLEANFILES += ../common/sysevent.sed ../common/sysevent.d
-CLEANFILES += ../common/tcp.sed ../common/tcp.d
-CLEANFILES += ../common/udp.sed ../common/udp.d
+CLEANFILES += dt_errtags.c dt_names.c
+CLEANFILES += $(DLIBSRCS)
 CLEANFILES += $(LIBDAUDITOBJS) $(DRTIOBJS)
 
 CLOBBERFILES += $(LIBDAUDIT) drti.o
@@ -163,7 +149,10 @@ ROOTDOBJS64 = $(ROOTDLIBDIR64)/$(DRTIOBJ) $(ROOTDLIBDIR64)/$(LIBDAUDIT)
 # requirement right now. While in theory this could be handled by libc,
 # this will make the overall default transition smoother.
 #
-$(DRTIOBJ) := STACKPROTECT = none
+# Need both DRTIOBJ, DRTIOBJS here or make rebuilds every time
+# ouf of confusion over when this assignment applies.
+#
+$(DRTIOBJ) $(DRTIOBJS) := STACKPROTECT = none
 
 $(ROOTDLIBDIR)/%.d := FILEMODE=444
 $(ROOTDLIBDIR)/%.o := FILEMODE=444
@@ -173,8 +162,11 @@ $(ROOTDLIBDIR64)/%.so := FILEMODE=555
 
 .KEEP_STATE:
 
-all: $(LIBS) $(DRTIOBJ) $(LIBDAUDIT)
+all: $(LIBS) $(DRTIOBJ) $(LIBDAUDIT) $(DLIBSRCS)
 
+genlibs: $(DLIBSRCS)
+
+rootlibs: $(ROOTDLIBS)
 
 dt_lex.c: $(SRCDIR)/dt_lex.l dt_grammar.h
 	$(LEX) $(LFLAGS) $(SRCDIR)/dt_lex.l > $@
@@ -187,42 +179,25 @@ dt_grammar.c dt_grammar.h: $(SRCDIR)/dt_grammar.y
 pics/dt_lex.o pics/dt_grammar.o := CFLAGS += $(YYCFLAGS)
 pics/dt_lex.o pics/dt_grammar.o := CFLAGS64 += $(YYCFLAGS)
 
-../common/dt_errtags.c: ../common/mkerrtags.sh ../common/dt_errtags.h
+dt_errtags.c: ../common/mkerrtags.sh ../common/dt_errtags.h
 	sh ../common/mkerrtags.sh < ../common/dt_errtags.h > $@
 
-../common/dt_names.c: ../common/mknames.sh $(SRC)/uts/common/sys/dtrace.h
+dt_names.c: ../common/mknames.sh $(SRC)/uts/common/sys/dtrace.h
 	sh ../common/mknames.sh < $(SRC)/uts/common/sys/dtrace.h > $@
 
-../common/errno.d: ../common/mkerrno.sh $(SRC)/uts/common/sys/errno.h
+errno.d: ../common/mkerrno.sh $(SRC)/uts/common/sys/errno.h
 	sh ../common/mkerrno.sh < $(SRC)/uts/common/sys/errno.h > $@
 
-../common/signal.d: ../common/mksignal.sh $(SRC)/uts/common/sys/iso/signal_iso.h
+signal.d: ../common/mksignal.sh $(SRC)/uts/common/sys/iso/signal_iso.h
 	sh ../common/mksignal.sh < $(SRC)/uts/common/sys/iso/signal_iso.h > $@
 
-../common/%.sed: ../common/%.sed.in
-	$(COMPILE.cpp) -D_KERNEL $< | tr -d ' ' | tr '"' '@' | \
-	    sed 's/\&/\\\&/g' | grep '^s/' > $@
 
-../common/procfs.d: ../common/procfs.sed ../common/procfs.d.in
-	sed -f ../common/procfs.sed < ../common/procfs.d.in > $@
-
-../common/io.d: ../common/io.sed ../common/io.d.in
-	sed -f ../common/io.sed < ../common/io.d.in > $@
-
-../common/ip.d: ../common/ip.sed ../common/ip.d.in
-	sed -f ../common/ip.sed < ../common/ip.d.in > $@
-
-../common/net.d: ../common/net.sed ../common/net.d.in
-	sed -f ../common/net.sed < ../common/net.d.in > $@
-
-../common/sysevent.d: ../common/sysevent.sed ../common/sysevent.d.in
-	sed -f ../common/sysevent.sed < ../common/sysevent.d.in > $@
-
-../common/tcp.d: ..//common/tcp.sed ../common/tcp.d.in
-	sed -f ../common/tcp.sed < ../common/tcp.d.in > $@
-
-../common/udp.d: ../common/udp.sed ../common/udp.d.in
-	sed -f ../common/udp.sed < ../common/udp.d.in > $@
+%.d: ../common/%.d.in ../common/%.gen.c
+	$(COMPILE.c) -o $*.gen.i -D_KERNEL -E ../common/$*.gen.c
+	nawk -f ../common/xyzzy2d.awk $*.gen.i \
+	    ../common/$*.d.in > $*.tmp
+	mv -f $*.tmp $*.d
+	rm $*.gen.i
 
 pics/%.o: ../$(MACH)/%.c
 	$(COMPILE.c) -o $@ $<
@@ -247,12 +222,6 @@ $(ROOTDLIBDIR):
 
 $(ROOTDLIBDIR64): $(ROOTDLIBDIR)
 	$(INS.dir)
-
-$(ROOTDLIBDIR)/%.d: ../common/%.d
-	$(INS.file)
-
-$(ROOTDLIBDIR)/%.d: ../$(MACH)/%.d
-	$(INS.file)
 
 $(ROOTDLIBDIR)/%.d: %.d
 	$(INS.file)

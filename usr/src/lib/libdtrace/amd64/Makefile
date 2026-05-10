@@ -34,10 +34,10 @@ SRCS += $(SRC)/common/dis/i386/dis_tables.c
 CPPFLAGS += -I$(SRC)/common/dis/i386
 CPPFLAGS += -D_ELF64
 
-
 pics/%.o: $(SRC)/common/dis/i386/%.c
 	$(COMPILE.c) -o $@ $<
 	$(POST_PROCESS_O)
 
+# ../i386 install does $(ROOTDLIBS) so this should not.
 install yydebug: all $(ROOTLIBS64) $(ROOTLINKS64) \
-	$(ROOTDLIBS) $(ROOTDOBJS64)
+	$(ROOTDOBJS64)
