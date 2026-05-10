@@ -48,8 +48,6 @@ CPPFLAGS.first += -I../../../lib/libfakekernel/common
 CPPFLAGS.first += -I../../../lib/smbsrv/libfksmbsrv/common
 
 INCS +=	-I../../../uts/common
-INCS +=	-I../../../uts/common/smbsrv
-INCS +=	-I../../../common/smbsrv
 
 CSTD=		$(CSTD_GNU99)
 
