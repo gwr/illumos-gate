@@ -35,7 +35,7 @@
 #include <sys/modctl.h>
 
 #include "findstack.h"
-#include "thread.h"
+#include "mdb_thread.h"
 #include "sobj.h"
 
 #define	TOO_BIG_FOR_A_STACK (1024 * 1024)

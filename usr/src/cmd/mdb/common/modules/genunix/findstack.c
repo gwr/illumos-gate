@@ -37,7 +37,7 @@
 #include <assert.h>
 
 #include "findstack.h"
-#include "thread.h"
+#include "mdb_thread.h"
 #include "sobj.h"
 
 /*

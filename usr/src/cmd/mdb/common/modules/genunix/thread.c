@@ -41,7 +41,7 @@
 #include <sys/disp.h>
 #include <sys/taskq_impl.h>
 #include <sys/stack.h>
-#include "thread.h"
+#include "mdb_thread.h"
 
 #ifndef	STACK_BIAS
 #define	STACK_BIAS	0
