@@ -28,7 +28,7 @@
 #ifndef LDAP_PR_H
 #define LDAP_PR_H
 
-#include "nspr.h"
+#include <mps/nspr.h>
 
 /*
  * ldappr.h - prototypes for functions that tie libldap into NSPR (Netscape

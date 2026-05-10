@@ -48,18 +48,18 @@
 #endif /* OSF1V4D */
 
 #include <errno.h>
-#include <nspr.h>
-#include <cert.h>
-#include <key.h>
-#include <ssl.h>
-#include <sslproto.h>
-#include <sslerr.h>
-#include <prnetdb.h>
+#include <mps/nspr.h>
+#include <mps/cert.h>
+#include <mps/keyhi.h>
+#include <mps/ssl.h>
+#include <mps/sslproto.h>
+#include <mps/sslerr.h>
+#include <mps/prnetdb.h>
 
 #include <ldap.h>
 
 #include <ldappr.h>
-#include <pk11func.h>
+#include <mps/pk11func.h>
 
 #ifdef _SOLARIS_SDK
 #include "solaris-int.h"

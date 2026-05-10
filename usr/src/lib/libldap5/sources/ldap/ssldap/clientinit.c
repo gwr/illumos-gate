@@ -36,19 +36,19 @@
 #include "proto-ntutil.h"
 #endif
 
-#include <nspr.h>
-#include <plstr.h>
+#include <mps/nspr.h>
+#include <mps/plstr.h>
 #include <synch.h>
-#include <cert.h>
-#include <key.h>
-#include <ssl.h>
-#include <sslproto.h>
+#include <mps/cert.h>
+#include <mps/keyhi.h>
+#include <mps/ssl.h>
+#include <mps/sslproto.h>
 #include <ldap.h>
 #include <ldappr.h>
 #include <solaris-int.h>
 
 
-#include <nss.h>
+#include <mps/nss.h>
 
 /* XXX:mhein The following is a workaround for the redefinition of */
 /*	     const problem on OSF.  Fix to be provided by NSS */

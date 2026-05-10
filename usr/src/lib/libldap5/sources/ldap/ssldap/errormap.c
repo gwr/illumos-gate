@@ -52,8 +52,8 @@
 #include "proto-ntutil.h"
 #endif
 
-#include <nspr.h>
-#include <ssl.h>
+#include <mps/nspr.h>
+#include <mps/ssl.h>
 
 #include <ldap.h>
 
@@ -100,7 +100,6 @@ ldapssl_err2string( const int prerrno )
  *	#ifdef NS_DIRECTORY.
  ****************************************************************************
  */
-#include "nspr.h"
 
 /*
  * XXXceb as a hack, we will locally define NS_DIRECTORY
@@ -122,8 +121,8 @@ typedef struct tuple_str tuple_str;
 #define ER3(a,b,c) {a, NULL},
 #endif
 
-#include "secerr.h"
-#include "sslerr.h"
+#include <mps/secerr.h>
+#include <mps/sslerr.h>
 
 #ifndef _SOLARIS_SDK
 const tuple_str errStrings[] = {
