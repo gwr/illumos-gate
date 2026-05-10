@@ -43,7 +43,7 @@
 #include <sys/policy.h>
 #include <sys/x86_archext.h>
 #include <sys/cpu_module.h>
-#include <qsort.h>
+#include <util/qsort.h>
 #include <sys/pci_cfgspace.h>
 #include <sys/mc.h>
 #include <sys/mc_amd.h>
