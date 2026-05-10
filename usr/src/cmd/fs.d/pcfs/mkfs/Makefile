@@ -44,7 +44,7 @@ catalog:        $(POFILE)
 
 CPPFLAGS +=	-D_LARGEFILE64_SOURCE
 CPPFLAGS +=	-I../common
-CPPFLAGS +=	-I$(SRC)/common/util
+CPPFLAGS +=	-I$(SRC)/common
 CPPFLAGS +=	-I$(SRC)/uts/common
 CPPFLAGS +=	-I$(SRC)/cmd/boot/installboot/i386
 $(NOT_RELEASE_BUILD)CPPFLAGS += -DDEBUG

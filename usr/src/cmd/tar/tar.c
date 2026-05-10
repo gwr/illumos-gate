@@ -87,7 +87,7 @@ extern int defcntl();
 #include <tsol/label.h>
 #include <sys/tsol/label_macro.h>
 
-#include "getresponse.h"
+#include "util/getresponse.h"
 /*
  * Source compatibility
  */

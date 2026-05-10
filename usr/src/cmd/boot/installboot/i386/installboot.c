@@ -59,7 +59,7 @@
 #include "bblk_einfo.h"
 #include "boot_utils.h"
 #include "mboot_extra.h"
-#include "getresponse.h"
+#include "util/getresponse.h"
 
 #ifndef	TEXT_DOMAIN
 #define	TEXT_DOMAIN	"SUNW_OST_OSCMD"

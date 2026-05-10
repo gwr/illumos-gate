@@ -53,7 +53,7 @@ catalog:        $(POFILE)
 
 CPPFLAGS +=	-D_LARGEFILE64_SOURCE
 CPPFLAGS +=	-I../common
-CPPFLAGS +=	-I$(SRC)/common/util
+CPPFLAGS +=	-I$(SRC)/common
 
 CERRWARN +=	-_gcc=-Wno-parentheses
 CERRWARN +=	-_gcc=-Wno-unused-variable

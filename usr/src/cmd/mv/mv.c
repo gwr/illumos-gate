@@ -157,7 +157,7 @@
 #include <libcmdutils.h>
 #include <aclutils.h>
 #include <assert.h>
-#include "getresponse.h"
+#include "util/getresponse.h"
 
 #define	FTYPE(A)	(A.st_mode)
 #define	FMODE(A)	(A.st_mode)

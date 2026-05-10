@@ -49,7 +49,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <installboot.h>
-#include "getresponse.h"
+#include "util/getresponse.h"
 #include "pcfs_bpb.h"
 #include "pcfs_common.h"
 

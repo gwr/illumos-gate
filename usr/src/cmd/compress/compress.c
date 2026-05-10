@@ -129,7 +129,7 @@ static char rcs_ident[] =
 #include <setjmp.h>
 #include <aclutils.h>
 #include <libcmdutils.h>
-#include "getresponse.h"
+#include "util/getresponse.h"
 
 
 static int n_bits;			/* number of bits/code */

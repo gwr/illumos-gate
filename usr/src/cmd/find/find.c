@@ -63,7 +63,7 @@
 #include <libgen.h>
 #include <err.h>
 #include <regex.h>
-#include "getresponse.h"
+#include "util/getresponse.h"
 
 #define	A_DAY		(long)(60*60*24)	/* a day full of seconds */
 #define	A_MIN		(long)(60)
