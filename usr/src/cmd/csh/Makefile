@@ -37,7 +37,7 @@ sh.print.o sh.proc.o sh.sem.o sh.set.o\
 sh.tchar.o sh.time.o wait3.o printf.o
 
 CPPFLAGS +=	-D_FILE_OFFSET_BITS=64
-CPPFLAGS +=	-I ../sh
+CPPFLAGS +=	-I ..
 
 .KEEP_STATE:
 
