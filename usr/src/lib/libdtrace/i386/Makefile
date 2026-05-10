@@ -33,15 +33,14 @@ include ../Makefile.com
 SRCS += $(SRC)/common/dis/i386/dis_tables.c
 CPPFLAGS += -I$(SRC)/common/dis/i386
 
+CLEANFILES += regs.d
 
-CLEANFILES += regs.sed regs.d
-
-%.sed: %.sed.in
-	$(COMPILE.cpp) -D_KERNEL $< | \
-	tr -d ' ' | tr '@' ' ' | tr '"' '@' | grep '^s/' > $@
-
-../$(MACH)/regs.d: regs.sed regs.d.in
-	sed -f regs.sed < regs.d.in > $@
+regs.d: regs.d.in regs.gen.c
+	$(COMPILE.c) -o regs.gen.i -D_KERNEL -E regs.gen.c
+	nawk -f ../common/xyzzy2d.awk regs.gen.i \
+	    regs.d.in > regs.tmp
+	mv -f regs.tmp $@
+	rm regs.gen.i
 
 pics/%.o: $(SRC)/common/dis/i386/%.c
 	$(COMPILE.c) -o $@ $<

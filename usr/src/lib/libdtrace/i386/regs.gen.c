@@ -25,19 +25,17 @@
  */
 
 /*
- * This file is a sed script which is first preprocessed by cpp or cc -E to
- * define a set of sed directives which replace #define tokens with their
- * values.  After preprocessing, whitespace is eliminated, and any @ symbols
- * are translated into single space.  The resulting sed script is then run
- * over regs.d.in to replace the #define tokens listed below to create the
- * finished regs.d.  Refer to the rules in libdtrace/i386/Makefile for more
- * information.
+ * This file and it's companion *.d.in are processed by make to
+ * create a *.d library file.  The *.d.in file is a template that
+ * needs substitutions.  This file creates the dictionary of what
+ * names may be substituted.  See Makefile.com for details.
  */
 
 #include <sys/regset.h>
 
-#define	SED_REPLACE(x)		s/#x/x/g
-#define	SED_REPLACE64(x)	s/#x/SS @+@1@+@ x/g
+/* This used to be processed by "sed". */
+#define	SED_REPLACE(x)		XYZZY_BEGIN #x = x XYZZY_END
+#define	SED_REPLACE64(x)	XYZZY_BEGIN #x = x XYZZY_END
 
 SED_REPLACE(GS)
 SED_REPLACE(FS)
@@ -77,4 +75,3 @@ SED_REPLACE64(REG_R12)
 SED_REPLACE64(REG_R13)
 SED_REPLACE64(REG_R14)
 SED_REPLACE64(REG_R15)
-

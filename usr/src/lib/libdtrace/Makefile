@@ -28,6 +28,21 @@ include ../Makefile.lib
 HDRS = dtrace.h
 HDRDIR = common
 
+# These are the static *.d files.  See Makefile.com for the generated ones.
+DLIBSRCS = \
+	fc.d \
+	iscsit.d \
+	nfs.d \
+	nfssrv.d \
+	sched.d \
+	scsi.d \
+	smb.d \
+	srp.d \
+	unistd.d
+
+ROOTDLIBDIR = $(ROOT)/usr/lib/dtrace
+ROOTDLIBS = $(DLIBSRCS:%=$(ROOTDLIBDIR)/%)
+
 SUBDIRS = $(MACH)
 $(BUILD64)SUBDIRS += $(MACH64)
 
@@ -41,7 +56,7 @@ yydebug := TARGET = yydebug
 
 all clean clobber yydebug: $(SUBDIRS)
 
-install: install_h $(SUBDIRS)
+install: install_h $(SUBDIRS) $(ROOTDLIBS)
 
 install_h: $(ROOTHDRS)
 
@@ -51,6 +66,13 @@ $(SUBDIRS): FRC
 	@cd $@; pwd; $(MAKE) $(TARGET)
 
 FRC:
+
+rootlibs: $(ROOTDLIBS)
+
+$(ROOTDLIBDIR)/%.d: common/%.d
+	$(INS.file)
+
+$(ROOTDLIBS): $(ROOTDLIBDIR)
 
 include ../Makefile.targ
 

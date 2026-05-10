@@ -23,10 +23,17 @@
  * Use is subject to license terms.
  */
 
-#include <sys/sysevent_impl.h>
+/*
+ * This file and it's companion *.d.in are processed by make to
+ * create a *.d library file.  The *.d.in file is a template that
+ * needs substitutions.  This file creates the dictionary of what
+ * names may be substituted.  See Makefile.com for details.
+ */
 
-#define	SED_MACRO(x)	s/#x(ev)/x(ev)/g
+#include <sys/socket.h>
 
-SED_MACRO(SE_CLASS_NAME)
-SED_MACRO(SE_SUBCLASS_NAME)
-SED_MACRO(SE_PUB_NAME)
+/* This used to be processed by "sed". */
+#define	SED_REPLACE(x)	XYZZY_BEGIN #x = x XYZZY_END
+
+SED_REPLACE(AF_INET)
+SED_REPLACE(AF_INET6)

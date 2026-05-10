@@ -19,11 +19,22 @@
  * CDDL HEADER END
  */
 /*
- * Copyright (c) 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright 2007 Sun Microsystems, Inc.  All rights reserved.
+ * Use is subject to license terms.
  */
 
-#include <inet/ip.h>
+/*
+ * This file and it's companion *.d.in are processed by make to
+ * create a *.d library file.  The *.d.in file is a template that
+ * needs substitutions.  This file creates the dictionary of what
+ * names may be substituted.  See Makefile.com for details.
+ */
 
-#define	SED_REPLACE(x)	s/#x/x/g
+#include <sys/sysevent_impl.h>
 
-SED_REPLACE(UDPH_SIZE)
+/* This used to be processed by "sed". */
+#define	SED_MACRO(x)	XYZZY_BEGIN #x = x(ev) XYZZY_END
+
+SED_MACRO(SE_CLASS_NAME)
+SED_MACRO(SE_SUBCLASS_NAME)
+SED_MACRO(SE_PUB_NAME)

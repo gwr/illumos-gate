@@ -79,41 +79,41 @@ inline int R_R0 = R_EAX;
 inline int R_R1 = R_EBX;
 #pragma D binding "1.0" R_R1
 
-inline int R_RSP = @REG_RSP@;
+inline int R_RSP = @SS@ + 1 + @REG_RSP@;
 #pragma D binding "1.0" R_RSP
-inline int R_RFL = @REG_RFL@;
+inline int R_RFL = @SS@ + 1 + @REG_RFL@;
 #pragma D binding "1.0" R_RFL
-inline int R_RIP = @REG_RIP@;
+inline int R_RIP = @SS@ + 1 + @REG_RIP@;
 #pragma D binding "1.0" R_RIP
-inline int R_RAX = @REG_RAX@;
+inline int R_RAX = @SS@ + 1 + @REG_RAX@;
 #pragma D binding "1.0" R_RAX
-inline int R_RCX = @REG_RCX@;
+inline int R_RCX = @SS@ + 1 + @REG_RCX@;
 #pragma D binding "1.0" R_RCX
-inline int R_RDX = @REG_RDX@;
+inline int R_RDX = @SS@ + 1 + @REG_RDX@;
 #pragma D binding "1.0" R_RDX
-inline int R_RBX = @REG_RBX@;
+inline int R_RBX = @SS@ + 1 + @REG_RBX@;
 #pragma D binding "1.0" R_RBX
-inline int R_RBP = @REG_RBP@;
+inline int R_RBP = @SS@ + 1 + @REG_RBP@;
 #pragma D binding "1.0" R_RBP
-inline int R_RSI = @REG_RSI@;
+inline int R_RSI = @SS@ + 1 + @REG_RSI@;
 #pragma D binding "1.0" R_RSI
-inline int R_RDI = @REG_RDI@;
+inline int R_RDI = @SS@ + 1 + @REG_RDI@;
 #pragma D binding "1.0" R_RDI
-inline int R_R8 = @REG_R8@;
+inline int R_R8 = @SS@ + 1 + @REG_R8@;
 #pragma D binding "1.0" R_R8
-inline int R_R9 = @REG_R9@;
+inline int R_R9 = @SS@ + 1 + @REG_R9@;
 #pragma D binding "1.0" R_R9
-inline int R_R10 = @REG_R10@;
+inline int R_R10 = @SS@ + 1 + @REG_R10@;
 #pragma D binding "1.0" R_R10
-inline int R_R11 = @REG_R11@;
+inline int R_R11 = @SS@ + 1 + @REG_R11@;
 #pragma D binding "1.0" R_R11
-inline int R_R12 = @REG_R12@;
+inline int R_R12 = @SS@ + 1 + @REG_R12@;
 #pragma D binding "1.0" R_R12
-inline int R_R13 = @REG_R13@;
+inline int R_R13 = @SS@ + 1 + @REG_R13@;
 #pragma D binding "1.0" R_R13
-inline int R_R14 = @REG_R14@;
+inline int R_R14 = @SS@ + 1 + @REG_R14@;
 #pragma D binding "1.0" R_R14
-inline int R_R15 = @REG_R15@;
+inline int R_R15 = @SS@ + 1 + @REG_R15@;
 #pragma D binding "1.0" R_R15
 
 enum vmregs_vmx {

@@ -22,10 +22,18 @@
  * Copyright (c) 2010, Oracle and/or its affiliates. All rights reserved.
  */
 
+/*
+ * This file and it's companion *.d.in are processed by make to
+ * create a *.d library file.  The *.d.in file is a template that
+ * needs substitutions.  This file creates the dictionary of what
+ * names may be substituted.  See Makefile.com for details.
+ */
+
 #include <inet/tcp.h>
 #include <sys/netstack.h>
 
-#define	SED_REPLACE(x)	s/#x/x/g
+/* This used to be processed by "sed". */
+#define	SED_REPLACE(x)	XYZZY_BEGIN #x = x XYZZY_END
 
 SED_REPLACE(TH_FIN)
 SED_REPLACE(TH_SYN)
