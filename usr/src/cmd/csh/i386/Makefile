@@ -21,7 +21,7 @@ include ../../Makefile.cmd
 MBCHAR	= -DMBCHAR	# Define this line to include multibyte input support
 DEFS	=  -DVFORK -DFILEC -DBSD_COMP -DFIVE	# No TELL when MBCHAR
 CPPFLAGS= -I. $(DEFS) $(MBCHAR) $(CPPFLAGS.master)
-CPPFLAGS +=	-I../../sh
+CPPFLAGS +=	-I../..
 CPPFLAGS += -D_FILE_OFFSET_BITS=64
 LDLIBS += -lcurses
 
