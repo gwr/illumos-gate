@@ -58,7 +58,6 @@ OBJECTS=	$(BEROBJS) $(LDAPOBJS) $(SSLDAPOBJS) $(PRLDAPOBJS) \
 include ../../Makefile.lib
 
 NSS_LIBS=	-lnspr4 -lplc4 -lnss3 -lssl3
-NSS_HDRS=	$(ADJUNCT_PROTO)/usr/include/mps
 NSS_LDPATH=	/usr/lib/mps
 NSS_LDPATH64=	$(NSS_LDPATH)/64
 
@@ -72,8 +71,7 @@ LDAP_FLAGS=     -DSVR4 -DSYSV -D__svr4 -D__svr4__ -DSOLARIS \
 
 
 # Include directories for all files
-COM_INC=	-I$(SRC)/lib/libldap5/include/ldap \
-		-I$(NSS_HDRS)
+COM_INC=	-I$(SRC)/lib/libldap5/include/ldap
 
 SRCS=		$(BEROBJS:%.o=../sources/ldap/ber/%.c) \
 		$(LDAPOBJS:%.o=../sources/ldap/common/%.c) \

@@ -31,8 +31,8 @@
  *
  */
 
+#include <mps/nspr.h>
 #include <ldap.h>
-#include <nspr.h>
 #include <ldappr.h>
 
 #include <errno.h>

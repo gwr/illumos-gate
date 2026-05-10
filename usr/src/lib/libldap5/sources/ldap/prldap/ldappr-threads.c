@@ -34,8 +34,8 @@
 #ifdef _SOLARIS_SDK
 #include <thread.h>
 #include <synch.h>
-#include <prinit.h>
-#include <prthread.h>
+#include <mps/prinit.h>
+#include <mps/prthread.h>
 #include <syslog.h>
 #include <string.h>
 #include <sys/types.h>
