@@ -60,8 +60,6 @@ CPPFLAGS.first += -I../../../lib/smbsrv/libfksmbsrv/common
 
 INCS += -I../smbd
 INCS +=	-I../../../uts/common
-INCS +=	-I../../../uts/common/smbsrv
-INCS +=	-I../../../common/smbsrv
 
 # Should not have to do this, but the Kerberos includes are a mess.
 INCS += -I $(ROOT)/usr/include/kerberosv5
