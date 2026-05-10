@@ -93,7 +93,7 @@
 #include <sys/zone.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include "strtolctype.h"
+#include <util/strtolctype.h>
 
 /*
  * DTrace Tunable Variables
