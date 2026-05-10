@@ -36,13 +36,13 @@
 #include <sys/mman.h>
 #include <nsswitch.h>
 #include <nss_dbdefs.h>
-#include "solaris-priv.h"
-#include "solaris-int.h"
+#include <ldap/solaris-priv.h>
+#include <ldap/solaris-int.h>
 #include "ns_sldap.h"
 #include "ns_internal.h"
 #include "ns_cache_door.h"
 #include "ns_connmgmt.h"
-#include "ldappr.h"
+#include <ldap/ldappr.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <procfs.h>
