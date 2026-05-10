@@ -35,7 +35,7 @@ include ../Makefile.cmd
 CFLAGS += $(CCVERBOSE)
 CERRWARN += -_gcc=-Wno-parentheses
 CERRWARN += -_gcc=-Wno-clobbered
-CPPFLAGS += -D_FILE_OFFSET_BITS=64 -I $(SRC)/common/util
+CPPFLAGS += -D_FILE_OFFSET_BITS=64 -I $(SRC)/common
 LINTFLAGS += -u
 
 LDLIBS += -lcmdutils -lsec

@@ -43,7 +43,7 @@
 #include <stropts.h>
 #include <sys/fcntl.h>
 #include <sys/dktp/fdisk.h>
-#include "getresponse.h"
+#include "util/getresponse.h"
 #include "pcfs_common.h"
 #include "fsck_pcfs.h"
 #include "pcfs_bpb.h"

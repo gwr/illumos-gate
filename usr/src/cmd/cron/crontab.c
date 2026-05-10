@@ -51,7 +51,7 @@
 #include <limits.h>
 #include <libzoneinfo.h>
 #include "cron.h"
-#include "getresponse.h"
+#include "util/getresponse.h"
 
 #if defined(XPG4)
 #define	VIPATH	"/usr/xpg4/bin/vi"

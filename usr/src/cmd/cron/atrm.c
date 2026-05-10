@@ -35,7 +35,7 @@
 #include <stdlib.h>
 #include <libintl.h>
 #include "cron.h"
-#include "getresponse.h"
+#include "util/getresponse.h"
 
 extern time_t	num();
 extern char	*errmsg();

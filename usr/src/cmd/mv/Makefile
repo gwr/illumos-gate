@@ -43,7 +43,7 @@ CLOBBERFILES += $(CPFILE) $(LNFILE)
 CFLAGS	+=	$(CCVERBOSE)
 $(XPG4) := CFLAGS += -DXPG4
 XGETFLAGS += -a -x mv.xcl
-CPPFLAGS += -D_FILE_OFFSET_BITS=64 -I $(SRC)/common/util
+CPPFLAGS += -D_FILE_OFFSET_BITS=64 -I $(SRC)/common
 
 $(PROG) := LDLIBS += -lcmdutils -lavl -lsec -lnvpair
 $(XPG4) := LDLIBS += -lcmdutils -lavl -lsec -lnvpair

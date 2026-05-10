@@ -34,7 +34,7 @@ SRCS=			$(OBJS1:%.o=%.c) $(SRC)/common/util/getresponse.c
 
 include ../Makefile.cmd
 
-CPPFLAGS += -I $(SRC)/common/util
+CPPFLAGS += -I $(SRC)/common
 LINTFLAGS += -u
 
 CERRWARN += -_gcc=-Wno-parentheses

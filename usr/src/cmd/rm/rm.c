@@ -49,7 +49,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <values.h>
-#include "getresponse.h"
+#include "util/getresponse.h"
 
 #define	DIR_CANTCLOSE		1
 

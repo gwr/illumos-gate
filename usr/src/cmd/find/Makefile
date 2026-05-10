@@ -33,7 +33,7 @@ SRCS=		$(FINDOBJS1:%.o=%.c) $(SRC)/common/util/getresponse.c
 include ../Makefile.cmd
 
 $(XPG4)	:= CFLAGS += -DXPG4
-CPPFLAGS += -D_FILE_OFFSET_BITS=64 -I $(SRC)/common/util
+CPPFLAGS += -D_FILE_OFFSET_BITS=64 -I $(SRC)/common
 
 CERRWARN += -_gcc=-Wno-switch
 CERRWARN += -_gcc=-Wno-parentheses

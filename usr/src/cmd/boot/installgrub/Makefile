@@ -36,7 +36,7 @@ SBINLINKS= $(PROG)
 include ../Makefile.com
 
 CPPFLAGS += -I$(SRC)/uts/i86pc -I$(SRC)/uts/intel -I$(SRC)/uts/common
-CPPFLAGS += -I$(SRC)/common/util
+CPPFLAGS += -I$(SRC)/common
 
 # not linted
 SMATCH=off

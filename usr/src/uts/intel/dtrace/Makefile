@@ -46,7 +46,7 @@ CERRWARN	+= $(CNOWARN_UNINIT)
 # needs work
 $(OBJS_DIR)/dtrace.o := SMOFF += deref_check
 
-CPPFLAGS	+= -I$(SRC)/common/util
+CPPFLAGS	+= -I$(SRC)/common
 
 ALL_TARGET	= $(BINARY) $(SRC_CONFILE)
 INSTALL_TARGET	= $(BINARY) $(ROOTMODULE) $(ROOT_CONFFILE)

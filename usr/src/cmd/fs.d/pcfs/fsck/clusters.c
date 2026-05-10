@@ -40,7 +40,7 @@
 #include <sys/fs/pc_fs.h>
 #include <sys/fs/pc_dir.h>
 #include <sys/fs/pc_label.h>
-#include "getresponse.h"
+#include "util/getresponse.h"
 #include "pcfs_common.h"
 #include "fsck_pcfs.h"
 

@@ -16,7 +16,7 @@ include ../Makefile.com
 OBJS +=		getresponse.o
 SRCS +=		$(SRC)/common/util/getresponse.c
 
-CPPFLAGS +=	-I../../common -I$(SRC)/common/util
+CPPFLAGS +=	-I../../common -I$(SRC)/common
 LDLIBS +=	-ladm -lfdisk -lefi -lfstyp -luuid -lumem
 
 .KEEP_STATE:

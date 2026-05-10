@@ -56,7 +56,7 @@
 #include <errno.h>
 #include <stdarg.h>
 #include <sys/fork.h>
-#include "getresponse.h"
+#include "util/getresponse.h"
 
 #define	HEAD	0
 #define	TAIL	1
