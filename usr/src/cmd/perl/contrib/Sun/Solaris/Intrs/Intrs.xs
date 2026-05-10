@@ -35,9 +35,9 @@
 /* Non-shipping header - see Makefile.PL */
 #include <sys/pci_tools.h>
 
-#include "EXTERN.h"
-#include "perl.h"
-#include "XSUB.h"
+#include "CORE/EXTERN.h"
+#include "CORE/perl.h"
+#include "CORE/XSUB.h"
 
 static int
 open_dev(char *path)

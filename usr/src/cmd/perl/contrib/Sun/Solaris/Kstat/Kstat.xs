@@ -95,9 +95,9 @@
 #undef SP
 
 /* Perl XS includes */
-#include "EXTERN.h"
-#include "perl.h"
-#include "XSUB.h"
+#include "CORE/EXTERN.h"
+#include "CORE/perl.h"
+#include "CORE/XSUB.h"
 
 /* Debug macros */
 #define	DEBUG_ID "Sun::Solaris::Kstat"
