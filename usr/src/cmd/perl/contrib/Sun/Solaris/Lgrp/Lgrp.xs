@@ -39,9 +39,9 @@
 #undef SP
 
 /* Perl XS includes. */
-#include "EXTERN.h"
-#include "perl.h"
-#include "XSUB.h"
+#include "CORE/EXTERN.h"
+#include "CORE/perl.h"
+#include "CORE/XSUB.h"
 
 /* Return undef in scalar context and empty list in list context */
 #define LGRP_BADVAL() {			\

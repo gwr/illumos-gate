@@ -16,9 +16,9 @@
 #include <stdio.h>
 
 /* Perl includes. */
-#include "EXTERN.h"
-#include "perl.h"
-#include "XSUB.h"
+#include "CORE/EXTERN.h"
+#include "CORE/perl.h"
+#include "CORE/XSUB.h"
 
 /*
  * Convert and save a struct project on the perl XS return stack.

@@ -9,9 +9,9 @@
 #include <sys/task.h>
 
 /* Perl includes. */
-#include "EXTERN.h"
-#include "perl.h"
-#include "XSUB.h"
+#include "CORE/EXTERN.h"
+#include "CORE/perl.h"
+#include "CORE/XSUB.h"
 
 /*
  * The XS code exported to perl is below here.  Note that the XS preprocessor
