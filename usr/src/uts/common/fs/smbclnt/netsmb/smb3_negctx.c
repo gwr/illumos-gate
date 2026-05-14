@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2021-2025 RackTop Systems, Inc.
+ * Copyright 2021-2026 RackTop Systems, Inc.
  */
 
 #include <sys/param.h>
@@ -412,6 +412,16 @@ smb3_negctxs_decode(struct smb_vc *vcp, struct mdchain *mdp,
 			err = EINVAL;
 			break;
 		}
+	}
+
+	/*
+	 * [MS-SMB2] 3.2.5.2  The server might not have set the ENCRYPTION
+	 * flag in its negotiate response. The outcome of THIS negotiation
+	 * determines whether we can encrypt.  Update the flags we use
+	 * everywhere to track whether we can encrypt.
+	 */
+	if (vcp->vc3_enc_cipherid != SMB3_CIPHER_NONE) {
+		vcp->vc_sopt.sv2_capabilities |= SMB2_CAP_ENCRYPTION;
 	}
 
 errout:
