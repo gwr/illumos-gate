@@ -18,40 +18,40 @@ include $(SRC)/Makefile.master
 
 CFGS = README \
 	compilation.cfg \
-	symbols/README \
-	symbols/assert_h.cfg \
-	symbols/ctype_h.cfg \
-	symbols/dirent_h.cfg \
-	symbols/fcntl_h.cfg \
-	symbols/locale_h.cfg \
-	symbols/math_h.cfg \
-	symbols/netdb_h.cfg \
-	symbols/pthread_h.cfg \
-	symbols/signal_h.cfg \
-	symbols/stdalign_h.cfg \
-	symbols/stddef_h.cfg \
-	symbols/stdio_h.cfg \
-	symbols/stdlib_h.cfg \
-	symbols/stdnoreturn_h.cfg \
-	symbols/string_h.cfg \
-	symbols/strings_h.cfg \
-	symbols/sys_atomic_h.cfg \
-	symbols/sys_mman_h.cfg \
-	symbols/sys_stat_h.cfg \
-	symbols/sys_time_h.cfg \
-	symbols/sys_timeb_h.cfg \
-	symbols/time_h.cfg \
-	symbols/threads_h.cfg \
-	symbols/ucontext_h.cfg \
-	symbols/unistd_h.cfg \
-	symbols/wchar_h.cfg \
-	symbols/wctype_h.cfg
+	c-symbols/README \
+	c-symbols/assert_h.cfg \
+	c-symbols/ctype_h.cfg \
+	c-symbols/dirent_h.cfg \
+	c-symbols/fcntl_h.cfg \
+	c-symbols/locale_h.cfg \
+	c-symbols/math_h.cfg \
+	c-symbols/netdb_h.cfg \
+	c-symbols/pthread_h.cfg \
+	c-symbols/signal_h.cfg \
+	c-symbols/stdalign_h.cfg \
+	c-symbols/stddef_h.cfg \
+	c-symbols/stdio_h.cfg \
+	c-symbols/stdlib_h.cfg \
+	c-symbols/stdnoreturn_h.cfg \
+	c-symbols/string_h.cfg \
+	c-symbols/strings_h.cfg \
+	c-symbols/sys_atomic_h.cfg \
+	c-symbols/sys_mman_h.cfg \
+	c-symbols/sys_stat_h.cfg \
+	c-symbols/sys_time_h.cfg \
+	c-symbols/sys_timeb_h.cfg \
+	c-symbols/time_h.cfg \
+	c-symbols/threads_h.cfg \
+	c-symbols/ucontext_h.cfg \
+	c-symbols/unistd_h.cfg \
+	c-symbols/wchar_h.cfg \
+	c-symbols/wctype_h.cfg
 
-ROOTOPTPKG = $(ROOT)/opt/libc-tests
-ROOTOPTPKGCFG = $(ROOT)/opt/libc-tests/cfg
+ROOTOPTPKG = $(ROOT)/opt/header-tests
+ROOTOPTPKGCFG = $(ROOT)/opt/header-tests/cfg
 ROOTOPTPKGDIRS = $(ROOTOPTPKG) \
 	$(ROOTOPTPKGCFG) \
-	$(ROOTOPTPKGCFG)/symbols
+	$(ROOTOPTPKGCFG)/c-symbols
 
 FILES = $(CFGS:%=$(ROOTOPTPKGCFG)/%)
 $(FILES) := FILEMODE = 0444

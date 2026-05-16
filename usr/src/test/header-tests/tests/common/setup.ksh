@@ -15,7 +15,7 @@
 # Copyright 2014 Garrett D'Amore <garrett@damore.org>
 #
 
-export STF_SUITE=/opt/libc-tests
+export STF_SUITE=/opt/header-tests
 
 # First we set $dir to dirname $0, using efficient ksh builtins.
 case $0 in
@@ -29,9 +29,9 @@ case $0 in
 	;;
 esac
 
-cfg=symbols/${prog%.ksh}.cfg
+cfg=c-symbols/${prog%.ksh}.cfg
 
-if [[ ! -f ${cfg} && $cfg == symbols/setup.cfg ]]
+if [[ ! -f ${cfg} && $cfg == c-symbols/setup.cfg ]]
 then
 	# compiler check only
 	cfg=-C

@@ -14,9 +14,18 @@
 # Copyright 2014 Garrett D'Amore <garrett@damore.org>
 #
 
-.PARALLEL: $(SUBDIRS)
-
-SUBDIRS = cmd runfiles tests doc
-CHKSUBDIRS = runfiles
-
+include $(SRC)/Makefile.master
+include $(SRC)/cmd/Makefile.cmd
 include $(SRC)/test/Makefile.com
+
+CSTD = $(CSTD_GNU99)
+CPPFLAGS += -I$(ROOT)/usr/include -I../common
+
+ROOTOPTPKG = $(ROOT)/opt/header-tests
+TESTDIR = $(ROOTOPTPKG)/tests/$(TESTSUBDIR)
+
+$(TESTDIR):
+	$(INS.dir)
+
+$(TESTDIR)/%: %
+	$(INS.file)
