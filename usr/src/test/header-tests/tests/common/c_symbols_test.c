@@ -30,7 +30,7 @@
 #include <libcustr.h>
 #include <sys/wait.h>
 #include <stdbool.h>
-#include "test_common.h"
+#include "hdr_test_common.h"
 
 char *dname;
 char *cfile;

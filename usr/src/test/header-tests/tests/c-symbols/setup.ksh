@@ -15,7 +15,7 @@
 # Copyright 2014 Garrett D'Amore <garrett@damore.org>
 #
 
-export STF_SUITE=/opt/libc-tests
+export STF_SUITE=/opt/header-tests
 
 # First we set $dir to dirname $0, using efficient ksh builtins.
 case $0 in
@@ -29,15 +29,16 @@ case $0 in
 	;;
 esac
 
-cfg=symbols/${prog%.ksh}.cfg
+cfg=c-symbols/${prog%.ksh}.cfg
 
-if [[ ! -f ${cfg} && $cfg == symbols/setup.cfg ]]
+if [[ ! -f ${cfg} && $cfg == c-symbols/setup.cfg ]]
 then
 	# compiler check only
 	cfg=-C
 fi
 
-prog=symbols_test
+pdir=$dir/../common
+prog=c_symbols_test
 
 for a in $* 
 do
@@ -55,9 +56,9 @@ do
 	found=
 	[[ -n $debug ]] && print "Checking for arch $f:"
 	for p in \
-		${dir}/${prog}.${f} \
-		${dir}/${f}/${prog}.${f} \
-		${dir}/${f}/${prog}
+		${pdir}/${prog}.${f} \
+		${pdir}/${f}/${prog}.${f} \
+		${pdir}/${f}/${prog}
 	do
 		[[ -n $found ]] && continue
 		[[ -n $debug ]] && print -n "     $p"
