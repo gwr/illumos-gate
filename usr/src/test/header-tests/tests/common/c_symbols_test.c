@@ -30,7 +30,7 @@
 #include <libcustr.h>
 #include <sys/wait.h>
 #include <stdbool.h>
-#include "test_common.h"
+#include "hdr_test_common.h"
 
 char *dname;
 char *cfile;
@@ -44,7 +44,7 @@ static int good_count = 0;
 static int fail_count = 0;
 static int full_count = 0;
 static int extra_debug = 0;
-static char *compilation = "compilation.cfg";
+static char *compilation = "c-symbols-env.cfg";
 
 #if defined(_LP64)
 #define	MFLAG "-m64"
