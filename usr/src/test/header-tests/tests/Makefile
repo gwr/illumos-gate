@@ -11,11 +11,10 @@
 
 #
 # Copyright (c) 2012 by Delphix. All rights reserved.
-# Copyright 2014 Garrett D'Amore <garrett@damore.org>
+# Copyright 2015 Garrett D'Amore <garrett@damore.org>
 #
 
-.PARALLEL: $(SUBDIRS)
+SUBDIRS = c-symbols
 
-SUBDIRS = cmd runfiles tests doc
-
+include $(SRC)/Makefile.master
 include $(SRC)/test/Makefile.com

@@ -16,7 +16,7 @@
 
 include $(SRC)/Makefile.master
 
-TESTSUBDIR = symbols
+TESTSUBDIR = c-symbols
 PROG = symbols_test
 KSHPROG = setup
 SYMTESTS = \
