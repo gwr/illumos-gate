@@ -40,6 +40,13 @@ my $idle_sleeptime = 45;		# time to sleep when idle
 my $onecpu_sleeptime = (60 * 15);	# used if only 1 CPU on system
 my $sleeptime = $normal_sleeptime;	# either normal_ or idle_ or onecpu_
 
+sub set_sleeptime($) {
+	my ($new) = @_;
+	return if $new == $sleeptime;
+	syslog('debug', "sleeptime: %d -> %d", $sleeptime, $new);
+	$sleeptime = $new;
+}
+
 my $idle_intrload = .1;			# idle if interrupt load < 10%
 
 my $timerange_toohi    = .01;
@@ -201,7 +208,7 @@ sub getstat($$)
 	}
 
 	if ($cpucnt <= 1) {
-		$sleeptime = $onecpu_sleeptime;
+		set_sleeptime($onecpu_sleeptime);
 		return (0);	# nothing to do with 1 CPU
 	}
 
@@ -407,6 +414,9 @@ sub generate_delta($$)
 	my $intrnsec;
 	my $cpus;
 
+	$delta{avgintrload} = 0;
+	$delta{avgintrnsec} = 0;
+
 	# Take the worstcase timerange
 	$delta{minsnap} = $stat->{snaptime};
 	$delta{maxsnap} = $newstat->{snaptime};
@@ -450,6 +460,7 @@ sub generate_delta($$)
 		$delta{$cpu}{tot} = 1 if $delta{$cpu}{tot} == 0;
 		$delta{$cpu}{intrs} = 0;
 		$delta{$cpu}{bigintr} = 0;
+		$delta{$cpu}{intrload} = 0;
 
 		my %ivecs = ();
 		$delta{$cpu}{ivecs} = \%ivecs;
@@ -613,8 +624,8 @@ sub compress_deltas ($)
 		$newdelta{avgintrnsec} = $intrs / $cpus;
 		$newdelta{avgintrload} = $intrs / $tot;
 	}
-	$sleeptime = ($high_intrload < $idle_intrload) ? $idle_sleeptime :
-	    $normal_sleeptime;
+	set_sleeptime(($high_intrload < $idle_intrload) ? $idle_sleeptime :
+	    $normal_sleeptime);
 	return (\%newdelta);
 }
 
@@ -872,7 +883,8 @@ sub do_reconfig($)
 		next if !ref($cpu);	# skip non-cpu entries
 
 		push(@cpusortlist, $cpuid);
-		while (my ($inum, $ivec) = each %{$cpu->{ivecs}}) {
+		for my $inum (sort keys %{$cpu->{ivecs}}) {
+			my $ivec = $cpu->{ivecs}{$inum};
 			$ivec->{origcpu} = $cpuid;
 			$ivec->{nowcpu} = $cpuid;
 			$ivec->{inum} = $inum;
@@ -891,7 +903,8 @@ sub do_reconfig($)
 		# move interrupts around.
 
 		@cpusortlist =
-		    sort({$delta->{$b}{intrload} <=> $delta->{$a}{intrload}}
+		    sort({$delta->{$b}{intrload} <=> $delta->{$a}{intrload}
+		        || $a <=> $b}
 		    @cpusortlist);
 
 		my $cpu = shift(@cpusortlist);
@@ -931,9 +944,10 @@ sub do_reconfig($)
 
 	my $ret = 1;
 	my $warned = 0;
-	while (my ($cpuid, $cpu) = each %$delta) {
+	for my $cpuid (sort keys %$delta) {
 		next if $cpuid =~ /\D/;
-		while (my ($inum, $ivec) = each %{$cpu->{ivecs}}) {
+		for my $inum (sort keys %{$delta->{$cpuid}{ivecs}}) {
+			my $ivec = $delta->{$cpuid}{ivecs}{$inum};
 			next if ($ivec->{origcpu} == $cpuid);
 
 			if (!intrmove($ivec->{buspath}, $ivec->{origcpu},
