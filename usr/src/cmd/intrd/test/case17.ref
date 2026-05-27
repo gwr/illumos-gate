@@ -1,0 +1,27 @@
+syslog debug intrd is starting (debug)
+syslog debug GOODNESS: 35.00%
+syslog debug GOODNESS: 35.00%
+syslog debug GOODNESS: 35.00%
+syslog debug GOODNESS: 35.00%
+syslog debug GOODNESS: 35.00%
+syslog debug GOODNESS: 35.00%
+syslog notice Optimizing interrupt assignments
+syslog debug goodness 35.00% -->  0.00%
+intrmove: buspath=/pci@0,0 oldcpu=0 ino=34 newcpu=2 num_ino=1
+syslog warning Unable to move interrupts
+intrmove: buspath=/pci@0,0 oldcpu=0 ino=33 newcpu=3 num_ino=1
+syslog notice Interrupt assignments optimized
+syslog debug do_reconfig FAILED!
+syslog debug GOODNESS: 35.00%
+syslog debug GOODNESS: 35.00%
+syslog debug GOODNESS: 35.00%
+syslog debug GOODNESS: 35.00%
+syslog debug GOODNESS: 35.00%
+syslog debug GOODNESS: 35.00%
+syslog notice Optimizing interrupt assignments
+syslog debug goodness 35.00% -->  0.00%
+intrmove: buspath=/pci@0,0 oldcpu=0 ino=34 newcpu=2 num_ino=1
+intrmove: buspath=/pci@0,0 oldcpu=0 ino=33 newcpu=3 num_ino=1
+syslog notice Interrupt assignments optimized
+syslog debug GOODNESS: 35.00%
+syslog debug GOODNESS: 35.00%

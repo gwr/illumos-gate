@@ -1,0 +1,15 @@
+syslog debug intrd is starting (debug)
+syslog debug GOODNESS: 15.00%
+syslog debug GOODNESS: 15.00%
+syslog debug GOODNESS: 15.00%
+syslog debug GOODNESS: 15.00%
+syslog debug GOODNESS: 15.00%
+syslog debug GOODNESS: 15.00%
+syslog notice Optimizing interrupt assignments
+syslog debug goodness already near optimum, don't reconfig
+syslog debug setting new baseline of 0.15
+syslog debug GOODNESS: 15.00%
+syslog debug GOODNESS: 15.00%
+syslog debug GOODNESS: 15.00%
+syslog debug GOODNESS: 15.00%
+syslog debug GOODNESS: 15.00%

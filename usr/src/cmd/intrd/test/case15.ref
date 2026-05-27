@@ -1,0 +1,13 @@
+syslog debug intrd is starting (debug)
+syslog debug GOODNESS: 31.25%
+syslog debug GOODNESS: 31.25%
+syslog debug GOODNESS: 31.25%
+syslog debug GOODNESS: 31.25%
+syslog debug GOODNESS: 31.25%
+syslog debug GOODNESS: 31.25%
+syslog notice Optimizing interrupt assignments
+syslog debug goodness 31.25% --> 11.25%
+intrmove: buspath=/pci@0,0 oldcpu=0 ino=33 newcpu=1 num_ino=1
+syslog notice Interrupt assignments optimized
+syslog debug GOODNESS: 31.25%
+syslog debug GOODNESS: 31.25%
