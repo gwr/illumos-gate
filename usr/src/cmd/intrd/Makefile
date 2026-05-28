@@ -27,10 +27,12 @@
 #
 
 PROG=		intrd
+TESTPROG=	intrd-prks intrd-test
 MANIFEST=	intrd.xml
 SVCMETHOD=	svc-intrd
 
 include ../Makefile.cmd
+include ../Makefile.cmd.64
 
 TARGET=	all
 
@@ -41,19 +43,52 @@ ROOTMANIFESTDIR=	$(ROOTSVCSYSTEM)
 ROOTPROG=	$(ROOTLIB)/$(PROG)
 $(ROOTPROG)	:= FILEMODE= 555
 
+CCFLAGS += $(CCVERBOSE)
+CCFLAGS += -_g++=-std=c++17
+# CCFLAGS +=  -_g++=-mfpmath=sse -_g++=-msse2
+CCFLAGS64 += $(CCVERBOSE)
+CCFLAGS64 += -_g++=-std=c++17
+CSTD = $(CSTD_GNU17)
+
 .KEEP_STATE:
 
-all: $(PROG)
+all: $(PROG) $(TESTPROG)
 
 install: all .WAIT $(ROOTPROG) $(ROOTMANIFEST) $(ROOTSVCMETHOD)
 
-clean:
+clean: FRC
+	-rm -f *.o $(PROG) $(TESTPROG)
 
 check:	$(CHKMANIFEST)
+
+test: $(TESTPROG)
 
 ${ROOTLIB}/%: %
 	${INS.file}
 
 lint:
+
+FRC:
+
+
+intrd := LDLIBS +=  -lkstat -lm -lc
+PROG_OBJS= intrd-main.o intrd-kstat.o intrd-move.o
+intrd: $(PROG_OBJS)
+	$(LINK.cc) $(PROG_OBJS) -o $@ $(LDLIBS)
+	$(POST_PROCESS)
+
+
+intrd-prks := LDLIBS +=  -lkstat -lc
+PRKS_OBJS= intrd-prks.o intrd-kstat.o
+intrd-prks: $(PRKS_OBJS)
+	$(LINK.cc) $(PRKS_OBJS) -o $@ $(LDLIBS)
+	$(POST_PROCESS)
+
+intrd-test := LDLIBS += -lm -lc
+TEST_OBJS= intrd-main.o intrd-test.o
+intrd-test: $(TEST_OBJS)
+	$(LINK.cc) $(TEST_OBJS) -o $@ $(LDLIBS)
+	$(POST_PROCESS)
+
 
 include ../Makefile.targ
