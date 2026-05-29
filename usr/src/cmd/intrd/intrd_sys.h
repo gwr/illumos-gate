@@ -29,9 +29,15 @@
 #include <sys/types.h>
 #include <sys/time.h>
 #include <stdint.h>
+
 #include <map>
 #include <string>
 #include <vector>
+
+/* Allow building on non-illumos platforms. */
+#ifndef	__sun
+typedef int64_t		hrtime_t;
+#endif
 
 /*
  * Common kstat identity fields, corresponding to the kstat_t header.
