@@ -322,6 +322,23 @@ User: %s
         self.result.runtime = '%02d:%02d' % (m, s)
         self.result.result = 'SKIP'
 
+    def not_found(self):
+        """
+        Initialize enough of the test result that we can log a test whose
+        file was not found on disk. Reported as a failure.
+        """
+        global retcode
+        Result.total += 1
+        Result.runresults['FAIL'] += 1
+        retcode = 1
+        self.result.stdout = []
+        self.result.stderr = [(datetime.now(),
+                               'Test file not found: %s' % self.pathname)]
+        self.result.starttime = time()
+        m, s = divmod(time() - self.result.starttime, 60)
+        self.result.runtime = '%02d:%02d' % (m, s)
+        self.result.result = 'FAIL'
+
     def log(self, logger, options):
         """
         This function is responsible for writing all output. This includes
@@ -479,6 +496,7 @@ class TestGroup(Test):
     def __init__(self, pathname, tests=None, **kwargs):
         super(TestGroup, self).__init__(pathname, **kwargs)
         self.tests = tests or []
+        self.missing_tests = set()
 
     def __str__(self):
         post_user = pre_user = ''
@@ -538,9 +556,11 @@ Tags: %s
                             self.pathname)
                 return False
 
-        # If one of the tests is invalid, delete it, log it, and drive on.
-        self.tests[:] = [f for f in self.tests if
-          verify_file(os.path.join(self.pathname, f))]
+        # If one of the tests is invalid, record it as missing so it can be
+        # reported as a failure, rather than silently dropping it.
+        self.missing_tests = set(f for f in self.tests
+                                 if not verify_file(os.path.join(self.pathname,
+                                                                 f)))
 
         return len(self.tests) != 0
 
@@ -573,7 +593,9 @@ Tags: %s
                            outputdir=os.path.join(self.outputdir, fname),
                            timeout=self.timeout, user=self.user,
                            identifier=self.identifier)
-                if cont:
+                if fname in self.missing_tests:
+                    test.not_found()
+                elif cont:
                     test.run(options)
                 else:
                     test.skip()
