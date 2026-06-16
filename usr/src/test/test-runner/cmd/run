@@ -771,7 +771,12 @@ class TestRun(object):
                 for prop in TestGroup.props:
                     for sect in ['DEFAULT', section]:
                         if config.has_option(sect, prop):
-                            setattr(testgroup, prop, config.get(sect, prop))
+                            if prop == 'tags':
+                                setattr(testgroup, prop,
+                                        eval(config.get(sect, prop)))
+                            else:
+                                setattr(testgroup, prop,
+                                        config.get(sect, prop))
 
                 filenames = os.listdir(pathname)
                 # Only executable files starting with "tst." are tests.
