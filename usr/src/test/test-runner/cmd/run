@@ -774,8 +774,10 @@ class TestRun(object):
                             setattr(testgroup, prop, config.get(sect, prop))
 
                 filenames = os.listdir(pathname)
-                # only files starting with "tst." are considered tests
-                filenames = [f for f in filenames if f.startswith("tst.")]
+                # Only executable files starting with "tst." are tests.
+                # data files might have that prefix but are not tests.
+                filenames = [f for f in filenames if f.startswith("tst.") and
+                             verify_file(os.path.join(pathname, f))]
                 testgroup.tests = sorted(filenames)
 
                 if testgroup.verify(logger):
