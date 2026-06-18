@@ -20,11 +20,11 @@ TESTSUBDIR = common
 PROG = c_symbols_test
 
 OBJS = $(PROG:%=%.o) hdr_test_common.o
-OBJS32 = $(OBJS:%.o=%.$(MACH).o)
-PROG32 = $(PROG:%=%.$(MACH))
+$(BUILD32) OBJS32 = $(OBJS:%.o=%_32.o)
+$(BUILD32) PROG32 = $(PROG:%=%_32)
 
-$(BUILD64) OBJS64 = $(OBJS:%.o=%.$(MACH64).o)
-$(BUILD64) PROG64= $(PROG:%=%.$(MACH64))
+$(BUILD64) OBJS64 = $(OBJS:%.o=%_64.o)
+$(BUILD64) PROG64= $(PROG:%=%_64)
 
 SRCS = $(PROG:%=%.c) hdr_test_common.c
 
@@ -58,8 +58,8 @@ $(PROG64): $(OBJS64)
 	$(LINK64.c) $(OBJS64) -o $@ $(LDLIBS64)
 	$(POST_PROCESS)
 
-%.$(MACH).o: %.c
+%_32.o: %.c
 	$(COMPILE.c) -o $@ $(CFLAGS_$(MACH)) -DARCH=\"$(MACH)\" $<
 
-%.$(MACH64).o: %.c
+%_64.o: %.c
 	$(COMPILE64.c) -o $@ $(CFLAGS_$(MACH64)) -DARCH=\"$(MACH64)\" $<

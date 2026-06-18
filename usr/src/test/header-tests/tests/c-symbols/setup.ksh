@@ -40,37 +40,38 @@ fi
 pdir=$dir/../common
 prog=c_symbols_test
 
-for a in $* 
+for arg in $*
 do
-	if [[ $a == "-d" ]]
+	if [[ $arg == "-d" ]]
 	then
 		debug=yes
 	fi
 done
 
-# We look for architecture specific versions of the program,
-# searching in several candidate directories.  We run each one as
-# we find it.
-for f in $(/usr/bin/isainfo)
+# Run the architecture specific versions of the program,
+# either ..._64 or ..._32 or both, depending on isainfo
+# If we don't find any program, be sure to error out.
+found=
+for isa in $(/usr/bin/isainfo)
 do
-	found=
-	[[ -n $debug ]] && print "Checking for arch $f:"
-	for p in \
-		${pdir}/${prog}.${f} \
-		${pdir}/${f}/${prog}.${f} \
-		${pdir}/${f}/${prog}
-	do
-		[[ -n $found ]] && continue
-		[[ -n $debug ]] && print -n "     $p"
-		if [[ -f $p ]]; then
-			[[ -n $debug ]] && print " FOUND"
-			[[ -n $debug ]] && print "Executing $p $* ${cfg}"
-			found=yes
-			$p $* ${cfg} || exit 1
-		else
-			[[ -n $debug ]] && print
-		fi
-	done
-	[[ -z $found ]] && [[ -n $debug ]] && print "NOT PRESENT"
+	case $isa in
+	amd64|sparcv9)	sfx=_64 ;;
+	i386|sparc)	sfx=_32 ;;
+	aarch64)	sfx=_64 ;;
+	*)
+		[[ -n $debug ]] && print "Skipping unknown ISA: $isa"
+		continue
+		;;
+	esac
+
+	p=${pdir}/${prog}${sfx}
+	[[ -n $debug ]] && print "Executing $p $* ${cfg}"
+	[[ -f $p ]] || { print "ERROR: $p not found" >&2; exit 1; }
+	found=yes
+	$p $* ${cfg} || exit 1
 done
+if [[ -z $found ]]; then
+	print "ERROR: no known ISA found in isainfo output" >&2
+	exit 1
+fi
 exit 0
