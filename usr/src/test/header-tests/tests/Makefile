@@ -14,7 +14,7 @@
 # Copyright 2015 Garrett D'Amore <garrett@damore.org>
 #
 
-SUBDIRS = common .WAIT c-symbols
+SUBDIRS = common .WAIT c-symbols cxx-symbols
 
 include $(SRC)/Makefile.master
 include $(SRC)/test/Makefile.com

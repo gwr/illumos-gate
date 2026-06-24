@@ -48,12 +48,12 @@ install the Utils Header Test Suite.
 Note, the framework will be installed automatically, as this test suite
 depends on it.
 
-A C compiler is also required on the test system.
+C and C++ compilers are also required on the test system.
 
 3. Running this Header Test Suite
 
 The pre-requisites for running the this Header Test Suite are:
-	- GCC or Clang compiler installed.
+	- GCC or Clang C and C++ compilers installed.
 
 Once the pre-requisites are satisfied, simply run the headertest script:
 
