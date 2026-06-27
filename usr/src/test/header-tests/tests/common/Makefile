@@ -26,8 +26,6 @@ $(BUILD32) PROG32 = $(PROG:%=%_32)
 $(BUILD64) OBJS64 = $(OBJS:%.o=%_64.o)
 $(BUILD64) PROG64= $(PROG:%=%_64)
 
-SRCS = $(PROG:%=%.c) hdr_test_common.c
-
 # This gets CSTD, *FLAGS, *DIR
 include ../Makefile.com
 
