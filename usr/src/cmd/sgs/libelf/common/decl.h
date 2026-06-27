@@ -29,6 +29,7 @@
 #ifndef	_DECL_H
 #define	_DECL_H
 
+#include <stdlib.h>
 #include <pthread.h>
 #include <_libelf.h>
 #include <sys/machelf.h>
@@ -147,36 +148,38 @@ struct	Elf_Scn
 };
 
 #define	SCNLOCK(x) \
-	(void) pthread_mutex_lock(&((Elf_Scn *)x)->s_mutex)
+	(void)(pthread_mutex_lock(&((Elf_Scn *)x)->s_mutex) == 0 || \
+	 (abort(), 0))
 
 #define	SCNUNLOCK(x) \
-	(void) pthread_mutex_unlock(&((Elf_Scn *)x)->s_mutex)
+	(void)pthread_mutex_unlock(&((Elf_Scn *)x)->s_mutex)
 
-#define	UPGRADELOCKS(e, s) \
-	do { \
-		(void) pthread_mutex_unlock(&((Elf_Scn *)s)->s_mutex); \
-		(void) pthread_rwlock_unlock(&((Elf *)e)->ed_rwlock); \
-		(void) pthread_rwlock_wrlock(&((Elf *)e)->ed_rwlock); \
-	} while (0)
+#define	UPGRADELOCKS(e, s) do { \
+	(void)pthread_mutex_unlock(&((Elf_Scn *)s)->s_mutex); \
+	(void)pthread_rwlock_unlock(&((Elf *)e)->ed_rwlock); \
+	(void)(pthread_rwlock_wrlock(&((Elf *)e)->ed_rwlock) == 0 || \
+	 (abort(), 0)); \
+} while (0)
 
-#define	DOWNGRADELOCKS(e, s) \
-	do { \
-		(void) pthread_rwlock_unlock(&((Elf *)e)->ed_rwlock); \
-		(void) pthread_rwlock_rdlock(&((Elf *)e)->ed_rwlock); \
-		(void) pthread_mutex_lock(&((Elf_Scn *)s)->s_mutex); \
-	} while (0)
+#define	DOWNGRADELOCKS(e, s) do { \
+	(void)pthread_rwlock_unlock(&((Elf *)e)->ed_rwlock); \
+	(void)(pthread_rwlock_rdlock(&((Elf *)e)->ed_rwlock) == 0 || \
+	 (abort(), 0)); \
+	(void)(pthread_mutex_lock(&((Elf_Scn *)s)->s_mutex) == 0 || \
+	 (abort(), 0)); \
+} while (0)
 
-#define	READLOCKS(e, s) \
-	do { \
-		(void) pthread_rwlock_rdlock(&((Elf *)e)->ed_rwlock); \
-		(void) pthread_mutex_lock(&((Elf_Scn *)s)->s_mutex); \
-	} while (0)
+#define	READLOCKS(e, s) do { \
+	(void)(pthread_rwlock_rdlock(&((Elf *)e)->ed_rwlock) == 0 || \
+	 (abort(), 0)); \
+	(void)(pthread_mutex_lock(&((Elf_Scn *)s)->s_mutex) == 0 || \
+	 (abort(), 0)); \
+} while (0)
 
-#define	READUNLOCKS(e, s) \
-	do { \
-		(void) pthread_mutex_unlock(&((Elf_Scn *)s)->s_mutex); \
-		(void) pthread_rwlock_unlock(&((Elf *)e)->ed_rwlock); \
-	} while (0)
+#define	READUNLOCKS(e, s) do { \
+	(void) pthread_mutex_unlock(&((Elf_Scn *)s)->s_mutex); \
+	(void) pthread_rwlock_unlock(&((Elf *)e)->ed_rwlock); \
+} while (0)
 
 #define	SF_ALLOC	0x1	/* applies to Scn */
 #define	SF_READY	0x2	/* has section been cooked */
@@ -298,10 +301,12 @@ struct Elf
 };
 
 #define	ELFRLOCK(e) \
-	(void) pthread_rwlock_rdlock(&((Elf *)e)->ed_rwlock)
+	(void)(pthread_rwlock_rdlock(&((Elf *)e)->ed_rwlock) == 0 || \
+	 (abort(), 0))
 
 #define	ELFWLOCK(e) \
-	(void) pthread_rwlock_wrlock(&((Elf *)e)->ed_rwlock)
+	(void)(pthread_rwlock_wrlock(&((Elf *)e)->ed_rwlock) == 0 || \
+	 (abort(), 0))
 
 #define	ELFUNLOCK(e) \
 	(void) pthread_rwlock_unlock(&((Elf *)e)->ed_rwlock)
@@ -338,12 +343,12 @@ typedef enum
 /*
  * General thread management macros
  */
-#define	ELFACCESSDATA(a, b) \
-	do { \
-		(void) pthread_mutex_lock(&_elf_globals_mutex); \
-		a = b; \
-		(void) pthread_mutex_unlock(&_elf_globals_mutex); \
-	} while (0)
+#define	ELFACCESSDATA(a, b) do { \
+	(void)(pthread_mutex_lock(&_elf_globals_mutex) == 0 || \
+	 (abort(), 0)); \
+	a = b; \
+	(void) pthread_mutex_unlock(&_elf_globals_mutex); \
+} while (0)
 
 #define	ELFRWLOCKINIT(lock) \
 	(void) pthread_rwlock_init((lock), NULL)
