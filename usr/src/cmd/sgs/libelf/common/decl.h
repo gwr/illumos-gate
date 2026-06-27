@@ -29,6 +29,7 @@
 #ifndef	_DECL_H
 #define	_DECL_H
 
+#include <stdlib.h>
 #include <pthread.h>
 #include <_libelf.h>
 #include <sys/machelf.h>
@@ -145,38 +146,6 @@ struct	Elf_Scn
 	unsigned	s_myflags;	/* SF_... */
 	Dnode		s_dnode;	/* every scn needs one */
 };
-
-#define	SCNLOCK(x) \
-	(void) pthread_mutex_lock(&((Elf_Scn *)x)->s_mutex)
-
-#define	SCNUNLOCK(x) \
-	(void) pthread_mutex_unlock(&((Elf_Scn *)x)->s_mutex)
-
-#define	UPGRADELOCKS(e, s) \
-	do { \
-		(void) pthread_mutex_unlock(&((Elf_Scn *)s)->s_mutex); \
-		(void) pthread_rwlock_unlock(&((Elf *)e)->ed_rwlock); \
-		(void) pthread_rwlock_wrlock(&((Elf *)e)->ed_rwlock); \
-	} while (0)
-
-#define	DOWNGRADELOCKS(e, s) \
-	do { \
-		(void) pthread_rwlock_unlock(&((Elf *)e)->ed_rwlock); \
-		(void) pthread_rwlock_rdlock(&((Elf *)e)->ed_rwlock); \
-		(void) pthread_mutex_lock(&((Elf_Scn *)s)->s_mutex); \
-	} while (0)
-
-#define	READLOCKS(e, s) \
-	do { \
-		(void) pthread_rwlock_rdlock(&((Elf *)e)->ed_rwlock); \
-		(void) pthread_mutex_lock(&((Elf_Scn *)s)->s_mutex); \
-	} while (0)
-
-#define	READUNLOCKS(e, s) \
-	do { \
-		(void) pthread_mutex_unlock(&((Elf_Scn *)s)->s_mutex); \
-		(void) pthread_rwlock_unlock(&((Elf *)e)->ed_rwlock); \
-	} while (0)
 
 #define	SF_ALLOC	0x1	/* applies to Scn */
 #define	SF_READY	0x2	/* has section been cooked */
@@ -297,14 +266,118 @@ struct Elf
 	unsigned	ed_uflags;	/* elf descriptor flags */
 };
 
-#define	ELFRLOCK(e) \
-	(void) pthread_rwlock_rdlock(&((Elf *)e)->ed_rwlock)
+/*
+ * Inline functions for mutex and rwlock access patterns.
+ * Capital names only because they used to be macros.
+ */
 
-#define	ELFWLOCK(e) \
-	(void) pthread_rwlock_wrlock(&((Elf *)e)->ed_rwlock)
+extern void _elf_lock_panic(void *obj, int err, const char *s);
+extern void _elf_unlock_warn(void *obj, int err, const char *s);
 
-#define	ELFUNLOCK(e) \
-	(void) pthread_rwlock_unlock(&((Elf *)e)->ed_rwlock)
+extern __GNU_INLINE void SCNLOCK(Elf_Scn *scn)
+{
+	int err;
+	err = pthread_mutex_lock(&scn->s_mutex);
+	if (err != 0) {
+		_elf_lock_panic(scn, err, "SCNLOCK");
+	}
+}
+
+extern __GNU_INLINE void SCNUNLOCK(Elf_Scn *scn)
+{
+	int err;
+	err = pthread_mutex_unlock(&scn->s_mutex);
+	if (err != 0) {
+		_elf_unlock_warn(scn, err, "SCNUNLOCK");
+	}
+}
+
+extern __GNU_INLINE void UPGRADELOCKS(Elf *elf, Elf_Scn *scn)
+{
+	int err;
+	err = pthread_mutex_unlock(&scn->s_mutex);
+	if (err != 0) {
+		_elf_unlock_warn(scn, err, "UPGRADELOCKS");
+	}
+	err = pthread_rwlock_unlock(&elf->ed_rwlock);
+	if (err != 0) {
+		_elf_unlock_warn(elf, err, "UPGRADELOCKS");
+	}
+	err = pthread_rwlock_wrlock(&elf->ed_rwlock);
+	if (err != 0) {
+		_elf_lock_panic(elf, err, "UPGRADELOCKS");
+	}
+}
+
+extern __GNU_INLINE void DOWNGRADELOCKS(Elf *elf, Elf_Scn *scn)
+{
+	int err;
+	err = pthread_rwlock_unlock(&elf->ed_rwlock);
+	if (err != 0) {
+		_elf_unlock_warn(elf, err, "DOWNGRADELOCKS");
+	}
+	err = pthread_rwlock_rdlock(&elf->ed_rwlock);
+	if (err != 0) {
+		_elf_lock_panic(elf, err, "DOWNGRADELOCKS");
+	}
+	err = pthread_mutex_lock(&scn->s_mutex);
+	if (err != 0) {
+		_elf_lock_panic(scn, err, "DOWNGRADELOCKS");
+	}
+}
+
+extern __GNU_INLINE void READLOCKS(Elf *elf, Elf_Scn *scn)
+{
+	int err;
+	err = pthread_rwlock_rdlock(&elf->ed_rwlock);
+	if (err != 0) {
+		_elf_lock_panic(elf, err, "READLOCKS");
+	}
+	err = pthread_mutex_lock(&scn->s_mutex);
+	if (err != 0) {
+		_elf_lock_panic(scn, err, "READLOCKS");
+	}
+}
+
+extern __GNU_INLINE void READUNLOCKS(Elf *elf, Elf_Scn *scn)
+{
+	int err;
+	err = pthread_mutex_unlock(&scn->s_mutex);
+	if (err != 0) {
+		_elf_unlock_warn(scn, err, "READUNLOCKS");
+	}
+	err = pthread_rwlock_unlock(&elf->ed_rwlock);
+	if (err != 0) {
+		_elf_unlock_warn(elf, err, "READUNLOCKS");
+	}
+}
+
+extern __GNU_INLINE void ELFRLOCK(Elf *elf)
+{
+	int err;
+	err = pthread_rwlock_rdlock(&elf->ed_rwlock);
+	if (err != 0) {
+		_elf_lock_panic(elf, err, "ELFRLOCK");
+	}
+}
+
+extern __GNU_INLINE void ELFWLOCK(Elf *elf)
+{
+	int err;
+	err = pthread_rwlock_wrlock(&elf->ed_rwlock);
+	if (err != 0) {
+		_elf_lock_panic(elf, err, "ELFWLOCK");
+	}
+}
+
+extern __GNU_INLINE void ELFUNLOCK(Elf *elf)
+{
+	int err;
+	err = pthread_rwlock_unlock(&elf->ed_rwlock);
+	if (err != 0) {
+		_elf_unlock_warn(elf, err, "ELFUNLOCK");
+	}
+}
 
 #define	EDF_ASALLOC	0x1	/* applies to ed_arsym */
 #define	EDF_EHALLOC	0x2	/* applies to ed_ehdr */
@@ -338,18 +411,35 @@ typedef enum
 /*
  * General thread management macros
  */
-#define	ELFACCESSDATA(a, b) \
-	do { \
-		(void) pthread_mutex_lock(&_elf_globals_mutex); \
-		a = b; \
-		(void) pthread_mutex_unlock(&_elf_globals_mutex); \
-	} while (0)
 
-#define	ELFRWLOCKINIT(lock) \
-	(void) pthread_rwlock_init((lock), NULL)
 
-#define	ELFMUTEXINIT(lock) \
-	(void) pthread_mutex_init(lock, NULL)
+#define	ELFACCESSDATA(a, b) do { \
+	int err = pthread_mutex_lock(&_elf_globals_mutex); \
+	if (err != 0)					   \
+		_elf_lock_panic(&_elf_globals_mutex, err, "ELFACCESSDATA"); \
+	a = b; \
+	err = pthread_mutex_unlock(&_elf_globals_mutex); \
+	if (err != 0)					   \
+		_elf_unlock_warn(&_elf_globals_mutex, err, "ELFACCESSDATA"); \
+} while (0)
+
+extern __GNU_INLINE void ELFRWLOCKINIT(pthread_rwlock_t *lock)
+{
+	int err;
+	err = pthread_rwlock_init(lock, NULL);
+	if (err != 0) {
+		_elf_lock_panic(lock, err, "ELFRWLOCKINIT");
+	}
+}
+
+extern __GNU_INLINE void ELFMUTEXINIT(pthread_mutex_t *lock)
+{
+	int err;
+	err = pthread_mutex_init(lock, NULL);
+	if (err != 0) {
+		_elf_lock_panic(lock, err, "ELFMUTEXINIT");
+	}
+}
 
 extern Member		*_elf_armem(Elf *, char *, size_t);
 extern void		_elf_arinit(Elf *);

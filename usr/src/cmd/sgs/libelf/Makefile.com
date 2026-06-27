@@ -35,7 +35,7 @@ COMOBJS=	ar.o		begin.o		cntl.o		cook.o \
 		getehdr.o	getident.o	getphdr.o	getscn.o \
 		getshdr.o \
 		getphnum.o	getshnum.o	getshstrndx.o \
-		hash.o		input.o		kind.o \
+		hash.o		input.o		kind.o		locks.o \
 		ndxscn.o	newdata.o	newehdr.o	newphdr.o \
 		newscn.o	next.o		nextscn.o	output.o \
 		rand.o		rawdata.o	rawfile.o	rawput.o \
@@ -65,12 +65,15 @@ ROOTDEMODIRS=   $(ROOTDEMODIRBASE)
 
 include $(SRC)/cmd/sgs/Makefile.com
 
+CSTD=	$(CSTD_GNU99)
+
 MAPFILES =	$(SRCDIR)/common/mapfile-vers
 
 DYNFLAGS +=	$(VERSREF)
 LDLIBS +=	$(CONVLIBDIR) -lconv -lc
 
-SMOFF += indenting
+pics/xlate.o := SMOFF += indenting
+pics/xlate64.o := SMOFF += indenting
 
 BLTDEFS=	msg.h
 BLTDATA=	msg.c
