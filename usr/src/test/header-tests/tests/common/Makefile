@@ -23,13 +23,13 @@ PROG = c_symbols_test cxx_symbols_test
 $(BUILD32) PROG32 = $(PROG:%=%_32)
 $(BUILD64) PROG64= $(PROG:%=%_64)
 
-   SRCS = $(PROG:%=%.c) hdr_test_common.c
-  COBJS = c_symbols_test.o hdr_test_common.o
+SRCS = $(PROG:%=%.c) hdr_test_common.c
+COBJS = c_symbols_test.o hdr_test_common.o
 CXXOBJS = cxx_symbols_test.o hdr_test_common.o
 
-  COBJS32 = $(COBJS:%.o=%_32.o)
+COBJS32 = $(COBJS:%.o=%_32.o)
 CXXOBJS32 = $(CXXOBJS:%.o=%_32.o)
-  COBJS64 = $(COBJS:%.o=%_64.o)
+COBJS64 = $(COBJS:%.o=%_64.o)
 CXXOBJS64 = $(CXXOBJS:%.o=%_64.o)
 
 # This gets CSTD, *FLAGS, *DIR
@@ -72,6 +72,8 @@ cxx_symbols_test_64: $(CXXOBJS64)
 
 %_32.o: %.c
 	$(COMPILE.c) -o $@ $(CFLAGS_$(MACH)) -DARCH=\"$(MACH)\" $<
+	$(POST_PROCESS_O)
 
 %_64.o: %.c
 	$(COMPILE64.c) -o $@ $(CFLAGS_$(MACH64)) -DARCH=\"$(MACH64)\" $<
+	$(POST_PROCESS_O)

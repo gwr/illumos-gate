@@ -70,4 +70,4 @@ tests = [
 	'math_h',
 	'math_iso_h'
 	 ]
-tags = ['cxx-symbols', 'cxx']
+tags = ['cxx-symbols']

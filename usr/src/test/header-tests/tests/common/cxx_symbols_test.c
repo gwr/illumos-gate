@@ -68,9 +68,11 @@ static const char *compilers[] = {
 static const char *compiler = NULL;
 static char *common_flags = "-Wall -Werror -nostdinc -isystem "
 	"/usr/include -Wno-format-security";
+static const char *cxx98flags = "-std=c++98";
 static const char *cxx11flags = "-std=c++11";
 static const char *cxx14flags = "-std=c++14";
 static const char *cxx17flags = "-std=c++17";
+static const char *cxx20flags = "-std=c++20";
 
 #define	MAXENV	64	/* maximum number of environments (bitmask width) */
 #define	MAXHDR	10	/* maximum # headers to require to access symbol */
@@ -421,20 +423,16 @@ mkprog(struct sym_test *st)
 		addprogfmt(")%s\n{\n\t", s);
 
 		/*
-		 * For non-void, non-function-pointer return types, use
-		 * brace-initialisation for the local result variable.
-		 * List-initialisation prohibits narrowing conversions,
-		 * so a missing float or long double overload that would
-		 * silently promote through double is caught as a compile
-		 * error rather than a silent pass.  Function pointer
-		 * return types are left with the plain return form since
-		 * brace-init does not compose with declarator syntax.
+		 * Use brace-initialisation for non-void return values.
+		 * See ./README.md for generated program examples and
+		 * rationale.
 		 */
-		if (strcmp(st->st_rtype, "") != 0 &&
-		    strcmp(st->st_rtype, "void") != 0 && *s == '\0') {
+		bool has_rtype = (strcmp(st->st_rtype, "") != 0 &&
+		    strcmp(st->st_rtype, "void") != 0);
+
+		if (has_rtype && *s == '\0') {
 			addprogfmt("%s result{", st->st_rtype);
-		} else if (strcmp(st->st_rtype, "") != 0 &&
-		    strcmp(st->st_rtype, "void") != 0) {
+		} else if (has_rtype) {
 			addprogstr("return ");
 		}
 
@@ -447,8 +445,7 @@ mkprog(struct sym_test *st)
 			}
 		}
 
-		if (strcmp(st->st_rtype, "") != 0 &&
-		    strcmp(st->st_rtype, "void") != 0 && *s == '\0') {
+		if (has_rtype && *s == '\0') {
 			addprogstr(")};\n\treturn result;\n}");
 		} else {
 			addprogstr(");\n}");
@@ -905,7 +902,7 @@ find_cxx_includes(void)
 	char buf[512];
 	char cmd[512];
 	char *p, *rest, *slash;
-	char prefix[256], target[128], version[64];
+	char prefix[512], target[512], version[512];
 	char *newflags;
 	test_t t;
 
@@ -943,7 +940,8 @@ find_cxx_includes(void)
 	}
 
 	/* prefix: everything before "/lib/gcc/" */
-	(void) strlcpy(prefix, buf, (size_t)(p - buf + 1));
+	(void) memcpy(prefix, buf, (size_t)(p - buf));
+	prefix[p - buf] = '\0';
 
 	/*
 	 * rest now points to "target/version/include", where:
@@ -959,7 +957,8 @@ find_cxx_includes(void)
 		test_failed(t, "can't parse target from: %s", buf);
 		return;
 	}
-	(void) strlcpy(target, rest, (size_t)(slash - rest + 1));
+	(void) memcpy(target, rest, (size_t)(slash - rest));
+	target[slash - rest] = '\0';
 	rest = slash + 1;
 
 	/* version: up to next slash, e.g. "14.2.0" */
@@ -968,7 +967,8 @@ find_cxx_includes(void)
 		test_failed(t, "can't parse version from: %s", buf);
 		return;
 	}
-	(void) strlcpy(version, rest, (size_t)(slash - rest + 1));
+	(void) memcpy(version, rest, (size_t)(slash - rest));
+	version[slash - rest] = '\0';
 
 	myasprintf(&newflags,
 	    "-Wall -Werror -nostdinc "
@@ -1013,7 +1013,10 @@ do_compile(test_t t, struct sym_test *st, struct compile_env *cenv, int need)
 
 	(void) unlink(ofile);
 
-	if (strcmp(env_lang(cenv), "c++11") == 0) {
+	if (strcmp(env_lang(cenv), "c++98") == 0) {
+		lang = "c++98";
+		cflags = cxx98flags;
+	} else if (strcmp(env_lang(cenv), "c++11") == 0) {
 		lang = "c++11";
 		cflags = cxx11flags;
 	} else if (strcmp(env_lang(cenv), "c++14") == 0) {
@@ -1022,9 +1025,12 @@ do_compile(test_t t, struct sym_test *st, struct compile_env *cenv, int need)
 	} else if (strcmp(env_lang(cenv), "c++17") == 0) {
 		lang = "c++17";
 		cflags = cxx17flags;
+	} else if (strcmp(env_lang(cenv), "c++20") == 0) {
+		lang = "c++20";
+		cflags = cxx20flags;
 	} else {
-		lang = "c++11";
-		cflags = cxx11flags;
+		test_failed(t, "unknown language: %s", env_lang(cenv));
+		return (-1);
 	}
 
 	if (cflags == NULL) {
@@ -1034,8 +1040,8 @@ do_compile(test_t t, struct sym_test *st, struct compile_env *cenv, int need)
 	}
 
 	myasprintf(&cmd, "%s %s %s %s -c %s -o %s >>%s 2>&1",
-	    compiler, cflags, common_flags, env_defs(cenv),
-	    cfile, ofile, lfile);
+	    compiler, cflags, common_flags, env_defs(cenv), cfile, ofile,
+	    lfile);
 
 	if (extra_debug) {
 		test_debugf(t, "command: %s", cmd);
