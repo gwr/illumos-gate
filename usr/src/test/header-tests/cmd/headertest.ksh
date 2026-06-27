@@ -14,7 +14,7 @@
 #
 # Copyright (c) 2012 by Delphix. All rights reserved.
 # Copyright 2014, OmniTI Computer Consulting, Inc. All rights reserved.
-# Copyright 2014 Garrett D'Amore <garrett@damore.org>
+# Copyright 2016, Joyent, Inc.
 #
 
 export MY_TESTS="/opt/header-tests"
@@ -29,16 +29,7 @@ function fail
 function find_runfile
 {
 	typeset distro=
-	if [[ -d /opt/delphix && -h /etc/delphix/version ]]; then
-		distro=delphix
-	elif [[ 0 -ne $(grep -c OpenIndiana /etc/release 2>/dev/null) ]]; then
-		distro=openindiana
-	elif [[ 0 -ne $(grep -c OmniOS /etc/release 2>/dev/null) ]]; then
-		distro=omnios
-	fi
-
-	if [[ ! -f $MY_TESTS/runfiles/$distro.run ]] && \
-	   [[ -f $MY_TESTS/runfiles/default.run ]]; then
+	if [[ -f $MY_TESTS/runfiles/default.run ]]; then
 		distro=default
 	fi
 
@@ -59,5 +50,3 @@ shift $((OPTIND - 1))
 [[ -z $runfile ]] && fail "Couldn't determine distro"
 
 $runner -c $runfile
-
-exit $?
