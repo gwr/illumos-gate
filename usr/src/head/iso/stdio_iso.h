@@ -234,12 +234,32 @@ extern int	putchar(int);
 #endif
 
 /*
- * ISO/IEC C11 removed gets from the standard library. Therefore if a strict C11
- * environment has been requested, we remove it.
+ * gets() was marked obsolescent in C99/C++11 and removed in C11/C++14.
+ * - C89 / C++98: plain declaration
+ * - C99 / C++11, deprecated declaration
+ * - C11+ / C++14+: no declaration
  */
-#if !defined(_STDC_C11) || defined(__EXTENSIONS__)
-extern char	*gets(char *);
-#endif
+#if defined(__cplusplus)
+#if __cplusplus < 201103L
+/* C++98: plain */
+extern char *gets(char *);
+#elif __cplusplus < 201402L
+/* C++11: deprecated */
+extern char *gets(char *) __attribute__((__deprecated__));
+#endif /* __cplusplus vers */
+/* C++14+: gets() not declared */
+#else /* __cplusplus */
+#if !defined(__STDC_VERSION__) || __STDC_VERSION__ < 199901L
+/* C89: plain declaration */
+extern char *gets(char *);
+#elif !defined(_STDC_C11)
+/* C99: deprecated */
+extern char *gets(char *) __attribute__((__deprecated__));
+#else
+/* C11+: gets() not declared */
+#endif /* __STDC_VERSION__ */
+#endif /* __cplusplus */
+
 extern int	puts(const char *);
 extern int	ungetc(int, FILE *);
 extern size_t	fread(void *_RESTRICT_KYWD, size_t, size_t,
