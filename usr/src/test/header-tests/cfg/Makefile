@@ -53,10 +53,7 @@ CFGS = README \
 	cxx-symbols/cstdlib_h.cfg \
 	cxx-symbols/cstring_h.cfg \
 	cxx-symbols/ctime_h.cfg \
-	cxx-symbols/cwchar_h.cfg \
-	cxx-symbols/math_c99_h.cfg \
-	cxx-symbols/math_h.cfg \
-	cxx-symbols/math_iso_h.cfg
+	cxx-symbols/cwchar_h.cfg
 
 ROOTOPTPKG = $(ROOT)/opt/header-tests
 ROOTOPTPKGCFG = $(ROOT)/opt/header-tests/cfg

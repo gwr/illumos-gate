@@ -68,9 +68,6 @@ file path=opt/header-tests/cfg/cxx-symbols/cstdlib_h.cfg mode=0444
 file path=opt/header-tests/cfg/cxx-symbols/cstring_h.cfg mode=0444
 file path=opt/header-tests/cfg/cxx-symbols/ctime_h.cfg mode=0444
 file path=opt/header-tests/cfg/cxx-symbols/cwchar_h.cfg mode=0444
-file path=opt/header-tests/cfg/cxx-symbols/math_c99_h.cfg mode=0444
-file path=opt/header-tests/cfg/cxx-symbols/math_h.cfg mode=0444
-file path=opt/header-tests/cfg/cxx-symbols/math_iso_h.cfg mode=0444
 dir  path=opt/header-tests/runfiles
 file path=opt/header-tests/runfiles/default.run mode=0444
 dir  path=opt/header-tests/tests

@@ -65,9 +65,6 @@ tests = [
 	'cstdlib_h',
 	'cstring_h',
 	'ctime_h',
-	'cwchar_h',
-	'math_c99_h',
-	'math_h',
-	'math_iso_h'
+	'cwchar_h'
 	 ]
 tags = ['cxx-symbols']

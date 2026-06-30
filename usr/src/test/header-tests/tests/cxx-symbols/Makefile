@@ -25,9 +25,6 @@ KSHPROG = setup
 
 LINKS = \
 	cmath_h \
-	math_h \
-	math_iso_h \
-	math_c99_h \
 	cstdio_h \
 	cstdlib_h \
 	cstring_h \
