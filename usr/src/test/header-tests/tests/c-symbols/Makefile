@@ -71,3 +71,9 @@ $(KSHPROG): $(KSHPROG).ksh
 $(LINKS:%=$(TESTDIR)/%): $(TESTDIR)/setup
 	-$(RM) $@
 	$(LN) $(TESTDIR)/setup $@
+
+# Handy rule for running from the proto area.
+test: FRC
+	( export HEADER_TEST_ROOT=$(ROOT) ;\
+	cd $(TESTDIR) && \
+	for t in $(LINKS); do ./$$t ; done )
