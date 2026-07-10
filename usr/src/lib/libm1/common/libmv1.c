@@ -28,52 +28,132 @@
  */
 
 #pragma weak _lib_version = __libm_lib_version
+
 #pragma weak acos = __acos
+#pragma weak acosf = __acosf
+#pragma weak acosl = __acosl
+
 #pragma weak acosh = __acosh
+
 #pragma weak asin = __asin
+#pragma weak asinf = __asinf
+#pragma weak asinl = __asinl
+
 #pragma weak asinh = __asinh
+
 #pragma weak atan = __atan
-#pragma weak atan2 = __atan2
+#pragma weak atanf = __atanf
+#pragma weak atanl = __atanl
+
 #pragma weak atanh = __atanh
+
+#pragma weak atan2 = __atan2
+#pragma weak atan2f = __atan2f
+#pragma weak atan2l = __atan2l
+
 #pragma weak cbrt = __cbrt
+
 #pragma weak ceil = __ceil
+#pragma weak ceilf = __ceilf
+#pragma weak ceill = __ceill
+
 #pragma weak copysign = __copysign
+
 #pragma weak cos = __cos
+#pragma weak cosf = __cosf
+#pragma weak cosl = __cosl
+
 #pragma weak cosh = __cosh
+#pragma weak coshf = __coshf
+#pragma weak coshl = __coshl
+
 #pragma weak erf = __erf
 #pragma weak erfc = __erfc
+
 #pragma weak exp = __exp
+#pragma weak expf = __expf
+#pragma weak expl = __expl
+
 #pragma weak expm1 = __expm1
+
 #pragma weak fabs = __fabs
+#pragma weak fabsf = __fabsf
+#pragma weak fabsl = __fabsl
+
 #pragma weak floor = __floor
+#pragma weak floorf = __floorf
+#pragma weak floorl = __floorl
+
 #pragma weak fmod = __fmod
+#pragma weak fmodf = __fmodf
+#pragma weak fmodl = __fmodl
+
+#pragma weak frexpf = __frexpf
+#pragma weak frexpl = __frexpl
+
 #pragma weak gamma = __gamma
 #pragma weak gamma_r = __gamma_r
+
 #pragma weak hypot = __hypot
 #pragma weak ilogb = __ilogb
 #pragma weak isnan = __isnan
 #pragma weak j0 = __j0
 #pragma weak j1 = __j1
 #pragma weak jn = __jn
+
+#pragma weak ldexpf = __ldexpf
+#pragma weak ldexpl = __ldexpl
+
 #pragma weak lgamma = __lgamma
 #pragma weak lgamma_r = __lgamma_r
+
 #pragma weak log = __log
+#pragma weak logf = __logf
+#pragma weak logl = __logl
+
 #pragma weak log10 = __log10
+#pragma weak log10f = __log10f
+#pragma weak log10l = __log10l
+
 #pragma weak log1p = __log1p
 #pragma weak logb = __logb
+
+#pragma weak modff = __modff
+#pragma weak modfl = __modfl
+
 #pragma weak nextafter = __nextafter
+
 #pragma weak pow = __pow
+#pragma weak powf = __powf
+#pragma weak powl = __powl
+
 #pragma weak remainder = __remainder
 #pragma weak rint = __rint
 #pragma weak scalb = __scalb
 #pragma weak scalbn = __scalbn
 #pragma weak signgam = __signgam
 #pragma weak significand = __significand
+
 #pragma weak sin = __sin
+#pragma weak sinf = __sinf
+#pragma weak sinl = __sinl
+
 #pragma weak sinh = __sinh
+#pragma weak sinhf = __sinhf
+#pragma weak sinhl = __sinhl
+
 #pragma weak sqrt = __sqrt
+#pragma weak sqrtf = __sqrtf
+#pragma weak sqrtl = __sqrtl
+
 #pragma weak tan = __tan
+#pragma weak tanf = __tanf
+#pragma weak tanl = __tanl
+
 #pragma weak tanh = __tanh
+#pragma weak tanhf = __tanhf
+#pragma weak tanhl = __tanhl
+
 #pragma weak y0 = __y0
 #pragma weak y1 = __y1
 #pragma weak yn = __yn
@@ -102,6 +182,15 @@ int
 __libm__rem_pio2m(double *x, double *y, int e0, int nx, int p, const int *ip) {
 	return (0);
 }
+
+/*
+ * Stub functions for all the weak symbols here.
+ *
+ * Note that NONE of these are ever actually called, because this library
+ * is built as a "filter" (see ../Makefile.com -F'libm.so.2') and the
+ * symbol references in the maptfile here are actually resolved in the
+ * later libm.so.2 (see ../../libm).
+ */
 
 /* ARGSUSED */
 double

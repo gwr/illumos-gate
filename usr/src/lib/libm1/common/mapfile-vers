@@ -70,6 +70,54 @@ $if _x86 && _ELF64
 $add amd64
 $endif
 
+SYMBOL_VERSION ILLUMOS_1.2 {
+    global:
+	acosf;
+	acosl;
+	asinf;
+	asinl;
+	atan2f;
+	atan2l;
+	atanf;
+	atanl;
+	ceilf;
+	ceill;
+	cosf;
+	coshf;
+	coshl;
+	cosl;
+	expf;
+	expl;
+	fabsf;
+	fabsl;
+	floorf;
+	floorl;
+	fmodf;
+	fmodl;
+	frexpf;
+	frexpl;
+	ldexpf;
+	ldexpl;
+	log10f;
+	log10l;
+	logf;
+	logl;
+	modff;
+	modfl;
+	powf;
+	powl;
+	sinf;
+	sinhf;
+	sinhl;
+	sinl;
+	sqrtf;
+	sqrtl;
+	tanf;
+	tanhf;
+	tanhl;
+	tanl;
+} SUNW_1.1.1;
+
 SYMBOL_VERSION SUNW_1.1.1 {
     global:
 	__acosf;
