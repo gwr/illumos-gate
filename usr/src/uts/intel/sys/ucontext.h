@@ -48,10 +48,13 @@ extern "C" {
 /*
  * Inclusion of <sys/signal.h> for sigset_t and stack_t definitions
  * breaks XPG4v2 namespace.  Therefore we must duplicate the defines
- * for these types here when _XPG4_2 is defined.
+ * for these types here when we did not include <sys/signal.h> OR
+ * when <sys/signal.h> would not have declared them.  See the
+ * inverse of this condition in <sys/signal.h>
  */
+#if !defined(_XPG4_2) && !defined(__EXTENSIONS__) && !defined(_KERNEL) && \
+    (defined(_STRICT_STDC) || defined(__XOPEN_OR_POSIX))
 
-#if defined(_XPG4_2) && !defined(__EXTENSIONS__)
 #ifndef	_SIGSET_T
 #define	_SIGSET_T
 typedef	struct {	/* signal set type */
@@ -67,7 +70,7 @@ typedef	struct {
 	int	ss_flags;
 } stack_t;
 #endif /* _STACK_T */
-#endif /* defined(_XPG4_2) && !defined(__EXTENSIONS__) */
+#endif /* !defined(_XPG4_2) && !defined(__EXTENSIONS__) && ... */
 
 #if !defined(_XPG4_2) || defined(__EXTENSIONS__)
 typedef	struct ucontext ucontext_t;
