@@ -46,7 +46,9 @@
  * does NOT include sys/regset.h anymore.
  */
 #if !defined(_XPG4_2) || defined(__EXTENSIONS__)
+#if !defined(_POSIX_C_SOURCE) || defined(__EXTENSIONS__)
 #include <sys/regset.h>
+#endif
 #include <sys/siginfo.h>
 #include <inttypes.h>
 #endif
@@ -85,7 +87,10 @@ extern int setustack(stack_t *);
 extern int stack_getbounds(stack_t *);
 extern int stack_setbounds(const stack_t *);
 extern int stack_inbounds(void *);
+#if defined(__EXTENSIONS__) || \
+	!defined(_POSIX_C_SOURCE) || (_POSIX_C_SOURCE > 2)
 extern int stack_violation(int, const siginfo_t *, const ucontext_t *);
+#endif
 
 extern void *_stack_grow(void *);
 #endif	/* !_XPG4_2 || __EXTENSIONS__ */
