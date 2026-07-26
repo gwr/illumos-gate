@@ -85,7 +85,16 @@ extern int setustack(stack_t *);
 extern int stack_getbounds(stack_t *);
 extern int stack_setbounds(const stack_t *);
 extern int stack_inbounds(void *);
+
+/*
+ * Can only declare this if siginfo_t is declared.
+ * See <sys/signal.h> above and the conditions under which
+ * that includes <sys/siginfo.h> to give us siginfo_t.
+ */
+#if defined(__EXTENSIONS__) || \
+	!defined(_POSIX_C_SOURCE) || (_POSIX_C_SOURCE > 2)
 extern int stack_violation(int, const siginfo_t *, const ucontext_t *);
+#endif
 
 extern void *_stack_grow(void *);
 #endif	/* !_XPG4_2 || __EXTENSIONS__ */
