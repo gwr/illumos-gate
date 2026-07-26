@@ -201,7 +201,10 @@ struct sigaltstack {
 	int	ss_flags;
 };
 
+#ifndef	_STACK_T
+#define	_STACK_T
 typedef struct sigaltstack stack_t;
+#endif /* _STACK_T */
 
 #endif /* __STDC__ && !POSIX */
 
