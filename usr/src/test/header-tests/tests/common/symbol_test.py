@@ -482,7 +482,8 @@ class Job:
 
     __slots__ = ('index', 'entry', 'env', 'expect_pass', 'lang',
                  'compiler', 'mflag', 'arch', 'std_flag', 'base_flags',
-                 'tmpdir', 'debug', 'extra_debug', 'force')
+                 'tmpdir', 'debug', 'extra_debug', 'force',
+                 'output', 'done')
 
     def __init__(self, index, entry, env, expect_pass, lang,
                  compiler, mflag, arch, std_flag, base_flags,
@@ -501,6 +502,8 @@ class Job:
         self.debug       = debug         # -d: show probe + compiler output on failure
         self.extra_debug = extra_debug   # -D: also show compiler command on pass
         self.force       = force         # -f: continue after failures
+        self.output      = None         # buffered text, set once the job finishes
+        self.done        = False        # True once this job has finished
 
 
 # ---------------------------------------------------------------------------
@@ -523,6 +526,7 @@ class TestDriver:
         lock = threading.Lock()
         stop = threading.Event()
         counters = {'pass': 0, 'fail': 0}
+        next_to_print = 0
 
         orig_sigint  = signal.getsignal(signal.SIGINT)
         orig_sigterm = signal.getsignal(signal.SIGTERM)
@@ -533,9 +537,22 @@ class TestDriver:
         signal.signal(signal.SIGINT,  handle_signal)
         signal.signal(signal.SIGTERM, handle_signal)
 
+        # drain() prints a run of now-finished jobs starting at
+        # next_to_print, stopping at the first unfinished job.
+        # This makes output appears in job (array) order even
+        # though jobs complete in a non-deterministic order.
+        # Must be called with lock held.
+        def drain():
+            nonlocal next_to_print
+            while next_to_print < len(jobs) and jobs[next_to_print].done:
+                if jobs[next_to_print].output:
+                    print(jobs[next_to_print].output, flush=True)
+                    jobs[next_to_print].output = None
+                next_to_print += 1
+
         # run_job() is the worker function called by each thread in the pool.
         # It captures all output for one job in a local buffer, then acquires
-        # the lock to write (flush) it contiguously to the output stream.
+        # the lock to record it and drain any now-printable jobs in order.
         def run_job(job):
             if stop.is_set():
                 return
@@ -592,13 +609,15 @@ class TestDriver:
                 out.append(f'TEST {verb} {label}: {reason}')
 
             with lock:
-                print('\n'.join(out), flush=True)
+                job.output = '\n'.join(out)
+                job.done   = True
                 if passed:
                     counters['pass'] += 1
                 else:
                     counters['fail'] += 1
                     if not job.force:
                         stop.set()
+                drain()
 
         # Build the list of jobs to run.
         jobs = []
@@ -636,6 +655,18 @@ class TestDriver:
         with ThreadPoolExecutor(max_workers=opts.j) as executor:
             for job in jobs:
                 executor.submit(run_job, job)
+
+        # All job threads have finished. Print any remaining finished jobs.
+        # Note that in this case, unlike the drain() above, there may be
+        # unfinished jobs in the array among the finish jobs, so scan the
+        # remainder of the jobs array for finished jobs and print them.
+        with lock:
+            while next_to_print < len(jobs):
+                if jobs[next_to_print].done and jobs[next_to_print].output:
+                    print(jobs[next_to_print].output, flush=True)
+                    # Could free jobs[].output here but we're
+                    # about to exit so just skip that work.
+                next_to_print += 1
 
         signal.signal(signal.SIGINT,  orig_sigint)
         signal.signal(signal.SIGTERM, orig_sigterm)
