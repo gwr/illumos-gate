@@ -16,9 +16,16 @@
 
 include $(SRC)/Makefile.master
 
-CFGS = README \
-	c-symbols-env.cfg \
+DOCS = \
+	README \
 	c-symbols/README \
+	cxx-symbols/README
+
+ENVS = \
+	c-symbols-env.cfg \
+	cxx-symbols-env.cfg
+
+CFGS = \
 	c-symbols/assert_h.cfg \
 	c-symbols/ctype_h.cfg \
 	c-symbols/dirent_h.cfg \
@@ -46,8 +53,6 @@ CFGS = README \
 	c-symbols/unistd_h.cfg \
 	c-symbols/wchar_h.cfg \
 	c-symbols/wctype_h.cfg \
-	cxx-symbols-env.cfg \
-	cxx-symbols/README \
 	cxx-symbols/cmath_h.cfg \
 	cxx-symbols/cstdio_h.cfg \
 	cxx-symbols/cstdlib_h.cfg \
@@ -62,7 +67,9 @@ ROOTOPTPKGDIRS = $(ROOTOPTPKG) \
 	$(ROOTOPTPKGCFG)/c-symbols \
 	$(ROOTOPTPKGCFG)/cxx-symbols
 
-FILES = $(CFGS:%=$(ROOTOPTPKGCFG)/%)
+FILES = $(CFGS:%=$(ROOTOPTPKGCFG)/%) \
+	$(DOCS:%=$(ROOTOPTPKGCFG)/%) \
+	$(ENVS:%=$(ROOTOPTPKGCFG)/%)
 $(FILES) := FILEMODE = 0444
 
 all: $(CFGS)
@@ -70,6 +77,9 @@ all: $(CFGS)
 install: $(ROOTOPTPKG) $(ROOTOPTPKGCFG) $(FILES)
 
 clean lint clobber:
+
+check:
+	$(PYTHON3) ./check_all.py $(CFGS)
 
 $(ROOTOPTPKGDIRS):
 	$(INS.dir)
