@@ -1,0 +1,1 @@
+annotations.c:6:1: _NOTE(MUTEX_PROTECTS_DATA(event_state::LOCK_MEMBER, event_state::{ value count }))

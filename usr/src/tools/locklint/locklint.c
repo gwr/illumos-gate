@@ -18,6 +18,7 @@
 #include "lib.h"
 #include "linearize.h"
 #include "access.h"
+#include "annotations.h"
 #include "events.h"
 #include "parse.h"
 #include "symbol.h"
@@ -25,6 +26,7 @@
 static bool dump_parsed;
 static bool dump_linearized;
 static bool dump_accesses;
+static bool dump_annotations;
 static bool dump_events;
 
 /*
@@ -40,7 +42,7 @@ usage(FILE *stream)
 {
 	(void) fprintf(stream,
 	    "usage: locklint [--dump-parsed] [--dump-linearized] "
-	    "[--dump-accesses] [--dump-events] "
+	    "[--dump-accesses] [--dump-annotations] [--dump-events] "
 	    "[sparse-options] file.c ...\n");
 }
 
@@ -57,12 +59,15 @@ options(int argc, char **argv)
 			dump_linearized = true;
 		} else if (strcmp(argv[i], "--dump-accesses") == 0) {
 			dump_accesses = true;
+		} else if (strcmp(argv[i], "--dump-annotations") == 0) {
+			dump_annotations = true;
 		} else if (strcmp(argv[i], "--dump-events") == 0) {
 			dump_events = true;
 		} else if (strcmp(argv[i], "--dump-all") == 0) {
 			dump_parsed = true;
 			dump_linearized = true;
 			dump_accesses = true;
+			dump_annotations = true;
 			dump_events = true;
 		} else if (strcmp(argv[i], "--help") == 0) {
 			usage(stdout);
@@ -151,11 +156,15 @@ main(int argc, char **argv)
 		return (EXIT_FAILURE);
 	}
 
+	if (dump_annotations)
+		locklint_annotations_enable();
 	do_output = 0;
 	process_symbols(sparse_initialize(argc, argv, &filelist));
 	FOR_EACH_PTR(filelist, file) {
 		process_symbols(sparse(file));
 	} END_FOR_EACH_PTR(file);
+	if (dump_annotations)
+		locklint_show_annotations(stdout);
 
 	return (has_error ? EXIT_FAILURE : EXIT_SUCCESS);
 }

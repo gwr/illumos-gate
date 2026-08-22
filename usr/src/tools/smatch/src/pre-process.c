@@ -51,6 +51,45 @@ static int false_nesting = 0;
 static int counter_macro = 0;		// __COUNTER__ expansion
 static int include_level = 0;
 
+struct macro_expansion_hook {
+	char *name;
+	macro_expansion_hook_t hook;
+	void *data;
+	struct macro_expansion_hook *next;
+};
+
+static struct macro_expansion_hook *macro_expansion_hooks;
+
+void
+add_macro_expansion_hook(const char *name, macro_expansion_hook_t hook,
+    void *data)
+{
+	struct macro_expansion_hook *entry;
+
+	entry = malloc(sizeof (*entry));
+	if (entry == NULL)
+		die("out of memory registering macro expansion hook");
+	entry->name = xstrdup(name);
+	entry->hook = hook;
+	entry->data = data;
+	entry->next = macro_expansion_hooks;
+	macro_expansion_hooks = entry;
+}
+
+static void
+call_macro_expansion_hooks(const struct token *macro,
+    const struct token *open)
+{
+	struct macro_expansion_hook *entry;
+	const char *name = show_ident(macro->ident);
+
+	for (entry = macro_expansion_hooks; entry != NULL;
+	    entry = entry->next) {
+		if (strcmp(entry->name, name) == 0)
+			entry->hook(macro, open, entry->data);
+	}
+}
+
 #define INCLUDEPATHS 300
 const char *includepath[INCLUDEPATHS+1] = {
 	"",
@@ -767,8 +806,11 @@ static int expand(struct token **list, struct symbol *sym)
 	}
 
 	if (sym->arglist) {
-		if (!match_op(scan_next(&token->next), '('))
+		struct token *open = scan_next(&token->next);
+
+		if (!match_op(open, '('))
 			return 1;
+		call_macro_expansion_hooks(token, open);
 		if (!collect_arguments(token->next, sym->arglist, args, token))
 			return 1;
 		expand_arguments(nargs, args);

@@ -198,6 +198,14 @@ struct token {
 	};
 };
 
+/*
+ * Macro hooks run after recognizing a function-like invocation but before
+ * collecting or expanding its arguments.
+ */
+typedef void (*macro_expansion_hook_t)(const struct token *,
+    const struct token *, void *);
+void add_macro_expansion_hook(const char *, macro_expansion_hook_t, void *);
+
 #define MAX_STRING 8191
 
 static inline struct token *containing_token(struct token **p)

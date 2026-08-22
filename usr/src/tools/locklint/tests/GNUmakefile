@@ -28,6 +28,8 @@ test:
 	grep -q 'store static_value ' accesses.out
 	$(LOCKLINT) --dump-events events.c > events.out
 	diff -u events.ref events.out
+	$(LOCKLINT) --dump-annotations annotations.c > annotations.out
+	diff -u annotations.ref annotations.out
 
 clean:
-	rm -f parsed.out linearized.out accesses.out events.out
+	rm -f parsed.out linearized.out accesses.out annotations.out events.out
