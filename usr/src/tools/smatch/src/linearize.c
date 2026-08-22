@@ -914,6 +914,7 @@ struct access_data {
 	struct symbol *btype;		// base type of bitfields
 	pseudo_t address;		// pseudo containing address ..
 	unsigned int offset;		// byte offset
+	struct expression *expr;
 };
 
 static int linearize_simple_address(struct entrypoint *ep,
@@ -959,6 +960,7 @@ static int linearize_address_gen(struct entrypoint *ep,
 	if (!ctype)
 		return 0;
 	ad->type = ctype;
+	ad->expr = expr;
 	if (expr->type == EXPR_PREOP && expr->op == '*')
 		return linearize_simple_address(ep, expr->unop, ad);
 
@@ -980,6 +982,7 @@ static pseudo_t add_load(struct entrypoint *ep, struct access_data *ad)
 	insn->target = new;
 	insn->offset = ad->offset;
 	insn->is_volatile = ad->type && (ad->type->ctype.modifiers & MOD_VOLATILE);
+	insn->access = ad->expr;
 	use_pseudo(insn, ad->address, &insn->src);
 	add_one_insn(ep, insn);
 	return new;
@@ -996,6 +999,7 @@ static void add_store(struct entrypoint *ep, struct access_data *ad, pseudo_t va
 	store = alloc_typed_instruction(OP_STORE, ad->btype);
 	store->offset = ad->offset;
 	store->is_volatile = ad->type && (ad->type->ctype.modifiers & MOD_VOLATILE);
+	store->access = ad->expr;
 	use_pseudo(store, value, &store->target);
 	use_pseudo(store, ad->address, &store->src);
 	add_one_insn(ep, store);
@@ -1497,6 +1501,7 @@ static pseudo_t linearize_call_expression(struct entrypoint *ep, struct expressi
 	if (!expr->ctype)
 		return VOID;
 
+	insn->call_expr = expr;
 	fn = expr->fn;
 	fntype = fn->ctype;
 	ctype = &fntype->ctype;

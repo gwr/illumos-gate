@@ -136,6 +136,8 @@ struct instruction {
 			pseudo_t func;
 			struct pseudo_list *arguments;
 			struct symbol_list *fntypes;
+			/* Source expression for OP_CALL. */
+			struct expression *call_expr;
 		};
 		struct /* context */ {
 			int increment;
@@ -147,6 +149,8 @@ struct instruction {
 			struct asm_rules *asm_rules;
 		};
 	};
+	/* Source expression for OP_LOAD and OP_STORE. */
+	struct expression *access;
 };
 
 struct basic_block_list;
@@ -327,4 +331,3 @@ const char *show_instruction(struct instruction *insn);
 const char *show_label(struct basic_block *bb);
 
 #endif /* LINEARIZE_H */
-

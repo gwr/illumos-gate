@@ -1755,7 +1755,15 @@ static struct symbol *degenerate(struct expression *expr)
 			expression_error(expr, "strange non-value function or array");
 			return &bad_ctype;
 		}
-		*expr = *expr->unop;
+		{
+			/* Preserve member identity across array degeneration. */
+			struct expression *member_base = expr->member_base;
+			struct ident *member_ident = expr->member_ident;
+
+			*expr = *expr->unop;
+			expr->member_base = member_base;
+			expr->member_ident = member_ident;
+		}
 		ctype = create_pointer(expr, ctype, 1);
 		expr->ctype = ctype;
 	default:
@@ -1767,6 +1775,8 @@ static struct symbol *degenerate(struct expression *expr)
 static struct symbol *evaluate_addressof(struct expression *expr)
 {
 	struct expression *op = expr->unop;
+	struct expression *member_base = op->member_base;
+	struct ident *member_ident = op->member_ident;
 	struct symbol *ctype;
 
 	if (op->op != '*' || op->type != EXPR_PREOP) {
@@ -1775,6 +1785,8 @@ static struct symbol *evaluate_addressof(struct expression *expr)
 	}
 	ctype = op->ctype;
 	*expr = *op->unop;
+	expr->member_base = member_base;
+	expr->member_ident = member_ident;
 
 	if (expr->type == EXPR_SYMBOL) {
 		struct symbol *sym = expr->symbol;
@@ -2105,6 +2117,9 @@ static struct symbol *evaluate_member_dereference(struct expression *expr)
 				type, namelen, name);
 		return NULL;
 	}
+	/* Retain the member path before rewriting EXPR_DEREF. */
+	expr->member_base = deref;
+	expr->member_ident = ident;
 
 	/*
 	 * The member needs to take on the address space and modifiers of
