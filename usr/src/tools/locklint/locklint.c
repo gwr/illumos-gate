@@ -150,8 +150,6 @@ process_symbols(struct symbol_list *symbols)
 		if (dump_events)
 			locklint_show_events(ep);
 	} END_FOR_EACH_PTR(sym);
-	if (check_locks)
-		locklint_check_all();
 }
 
 int
@@ -177,6 +175,8 @@ main(int argc, char **argv)
 			locklint_resolve_annotations();
 		process_symbols(symbols);
 	} END_FOR_EACH_PTR(file);
+	if (check_locks)
+		locklint_check_all();
 	if (dump_annotations)
 		locklint_show_annotations(stdout);
 

@@ -1,5 +1,6 @@
 #include <stdbool.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "lib.h"
 #include "expression.h"
@@ -329,10 +330,44 @@ find_function(struct entrypoint *ep)
 	return (NULL);
 }
 
+static bool
+same_ident(struct ident *left, struct ident *right)
+{
+	return (left != NULL && right != NULL &&
+	    left->len == right->len &&
+	    memcmp(left->name, right->name, left->len) == 0);
+}
+
+static struct function_info *
+find_external_function(struct symbol *symbol, bool *ambiguous)
+{
+	struct function_info *function;
+	struct function_info *found = NULL;
+
+	*ambiguous = false;
+	if (symbol->ident == NULL ||
+	    (symbol->ctype.modifiers & MOD_STATIC) != 0)
+		return (NULL);
+	for (function = functions; function != NULL; function = function->next) {
+		struct symbol *definition = function->ep->name;
+
+		if ((definition->ctype.modifiers & MOD_STATIC) != 0 ||
+		    !same_ident(symbol->ident, definition->ident))
+			continue;
+		if (found != NULL) {
+			*ambiguous = true;
+			return (NULL);
+		}
+		found = function;
+	}
+	return (found);
+}
+
 static struct function_info *
 direct_callee(struct instruction *insn)
 {
 	struct symbol *symbol;
+	bool ambiguous;
 
 	if (insn->opcode != OP_CALL || insn->func == NULL ||
 	    insn->func->type != PSEUDO_SYM || insn->func->sym == NULL)
@@ -340,7 +375,26 @@ direct_callee(struct instruction *insn)
 	symbol = insn->func->sym;
 	if (symbol->ep == NULL && symbol->definition != NULL)
 		symbol = symbol->definition;
-	return (symbol->ep != NULL ? find_function(symbol->ep) : NULL);
+	if (symbol->ep != NULL)
+		return (find_function(symbol->ep));
+	return (find_external_function(symbol, &ambiguous));
+}
+
+static bool
+ambiguous_external_callee(struct instruction *insn)
+{
+	struct symbol *symbol;
+	bool ambiguous;
+
+	if (insn->opcode != OP_CALL || insn->func == NULL ||
+	    insn->func->type != PSEUDO_SYM || insn->func->sym == NULL)
+		return (false);
+	symbol = insn->func->sym;
+	if (symbol->ep != NULL ||
+	    (symbol->definition != NULL && symbol->definition->ep != NULL))
+		return (false);
+	(void) find_external_function(symbol, &ambiguous);
+	return (ambiguous);
 }
 
 static bool
@@ -378,6 +432,29 @@ call_argument(struct instruction *insn, unsigned int index)
 			return (argument);
 	} END_FOR_EACH_PTR(argument);
 	return (NULL);
+}
+
+static struct symbol *
+argument_member(struct expression *argument, struct symbol *member)
+{
+	struct symbol *type;
+	int offset = 0;
+
+	if (member == NULL || member->ident == NULL || argument == NULL)
+		return (member);
+	type = argument->ctype;
+	while (type != NULL && type->type == SYM_NODE)
+		type = type->ctype.base_type;
+	if (type != NULL && type->type == SYM_PTR)
+		type = get_base_type(type);
+	while (type != NULL && type->type == SYM_NODE)
+		type = type->ctype.base_type;
+	if (type == NULL ||
+	    (type->type != SYM_STRUCT && type->type != SYM_UNION))
+		return (member);
+	examine_symbol_type(type);
+	type = find_identifier(member->ident, type->symbol_list, &offset);
+	return (type != NULL ? type : member);
 }
 
 static struct symbol *
@@ -445,7 +522,7 @@ transfer_call_effects(struct state_entry **states, struct instruction *insn)
 		if (!locklint_get_access(argument, &access))
 			continue;
 		lock.root = access.root;
-		lock.member = transfer->lock_member;
+		lock.member = argument_member(argument, transfer->lock_member);
 		state = get_state(*states, &lock);
 		set_state(states, &lock, transfer->output[state]);
 	}
@@ -629,7 +706,8 @@ propagate_transfer_candidates(struct function_info *function)
 				    &argument))
 					continue;
 				(void) add_transfer(function, argument,
-				    transfer->lock_member, &added);
+				    argument_member(actual,
+				    transfer->lock_member), &added);
 				if (added)
 					changed = true;
 			}
@@ -677,7 +755,8 @@ simulate_instruction(struct locklint_access *target,
 			if (!locklint_get_access(actual, &access))
 				continue;
 			lock.root = access.root;
-			lock.member = transfer->lock_member;
+			lock.member = argument_member(actual,
+			    transfer->lock_member);
 			if (!same_lock(target, &lock))
 				continue;
 			*invalid |= transfer->invalid[*state];
@@ -904,13 +983,14 @@ propagate_call_requirements(struct function_info *function,
 		if (!locklint_get_access(argument, &access))
 			continue;
 		lock.root = access.root;
-		lock.member = requirement->lock_member;
+		lock.member = argument_member(argument,
+		    requirement->lock_member);
 		if (get_state(states, &lock) != LOCK_NOT_HELD ||
 		    !formal_argument(function->ep, access.root,
 		    &caller_argument))
 			continue;
 		if (add_requirement(function, caller_argument,
-		    requirement->lock_member, requirement->data_member,
+		    lock.member, requirement->data_member,
 		    requirement->pos))
 			changed = true;
 	}
@@ -979,8 +1059,15 @@ check_direct_call(struct function_info *function,
 	struct requirement *requirement;
 	struct position pos;
 
-	if (callee == NULL)
+	if (callee == NULL) {
+		if (ambiguous_external_callee(insn)) {
+			pos = insn->call_expr != NULL ?
+			    insn->call_expr->pos : insn->pos;
+			warning(pos, "locklint: direct call has multiple "
+			    "external definitions");
+		}
 		return;
+	}
 	pos = insn->call_expr != NULL ? insn->call_expr->pos : insn->pos;
 	if (callee != function) {
 		for (requirement = callee->requirements; requirement != NULL;
@@ -995,7 +1082,8 @@ check_direct_call(struct function_info *function,
 			if (!locklint_get_access(argument, &access))
 				continue;
 			lock.root = access.root;
-			lock.member = requirement->lock_member;
+			lock.member = argument_member(argument,
+			    requirement->lock_member);
 			state = get_state(*states, &lock);
 			if (state == LOCK_HELD)
 				continue;
@@ -1031,7 +1119,8 @@ check_direct_call(struct function_info *function,
 			if (!locklint_get_access(argument, &access))
 				continue;
 			lock.root = access.root;
-			lock.member = transfer->lock_member;
+			lock.member = argument_member(argument,
+			    transfer->lock_member);
 			state = get_state(*states, &lock);
 			if (transfer->invalid[state] & INVALID_ACQUIRE) {
 				warning(pos, "locklint: call to '%s' may acquire "
