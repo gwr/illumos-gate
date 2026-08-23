@@ -13,11 +13,16 @@
 
 LOCKLINT = ../locklint
 
-.PHONY: all test clean
+CHECK_REFS = check.ref calls.ref effects.ref assertions.ref user-mutex.ref
+REFS = events.ref annotations.ref $(CHECK_REFS) cross.ref
+
+.PHONY: all test clean smoke-test assertion-events-test $(REFS)
 
 all: test
 
-test:
+test: smoke-test $(REFS) assertion-events-test
+
+smoke-test:
 	$(LOCKLINT) --dump-parsed smoke.c > parsed.out
 	grep -q 'smoke' parsed.out
 	$(LOCKLINT) --dump-linearized smoke.c > linearized.out
@@ -28,27 +33,29 @@ test:
 	grep -q 'store local.values ' accesses.out
 	grep -q 'load arg.next.value ' accesses.out
 	grep -q 'store static_value ' accesses.out
+
+events.ref: events.c
 	$(LOCKLINT) --dump-events events.c > events.out
 	diff -u events.ref events.out
+
+annotations.ref: annotations.c
 	$(LOCKLINT) --dump-annotations annotations.c > annotations.out
 	diff -u annotations.ref annotations.out
-	$(LOCKLINT) --check-locks check.c > check.out 2>&1
-	diff -u check.ref check.out
-	$(LOCKLINT) --check-locks calls.c > calls.out 2>&1
-	diff -u calls.ref calls.out
-	$(LOCKLINT) --check-locks effects.c > effects.out 2>&1
-	diff -u effects.ref effects.out
-	$(LOCKLINT) --check-locks user-mutex.c > user-mutex.out 2>&1
-	diff -u user-mutex.ref user-mutex.out
-	$(LOCKLINT) --check-locks assertions.c > assertions.out 2>&1
-	diff -u assertions.ref assertions.out
+
+$(CHECK_REFS): %.ref: %.c
+	$(LOCKLINT) --check-locks $< > $*.out 2>&1
+	diff -u $@ $*.out
+
+cross.ref: cross-caller.c cross-callee.c cross.h
+	$(LOCKLINT) --check-locks cross-caller.c cross-callee.c \
+	    > cross.out 2>&1
+	diff -u cross.ref cross.out
+
+assertion-events-test: assertions.c
 	$(LOCKLINT) --check-locks --dump-events assertions.c \
 	    > assertion-events.out 2>&1
 	grep -q 'CALL mutex_owned' assertion-events.out
 	! grep -q 'CALL assfail' assertion-events.out
-	$(LOCKLINT) --check-locks cross-caller.c cross-callee.c \
-	    > cross.out 2>&1
-	diff -u cross.ref cross.out
 
 clean:
 	rm -f parsed.out linearized.out accesses.out annotations.out \

@@ -1,12 +1,12 @@
-../locklint: effects.c:20:22: warning: locklint: lock 'lock' held on return from 'acquire_lock'
-../locklint: effects.c:26:22: warning: locklint: lock 'lock' held on return from 'acquire_wrapper'
-../locklint: effects.c:46:30: warning: locklint: lock 'lock' held on only some paths returning from 'conditional_acquire'
-../locklint: effects.c:55:30: warning: locklint: lock 'lock' held on only some paths returning from 'recursive_acquire'
-../locklint: effects.c:84:21: warning: locklint: call to 'acquire_lock' may acquire already-held lock 'lock'
-../locklint: effects.c:93:22: warning: locklint: protected member 'value' accessed without holding 'lock'
-../locklint: effects.c:99:21: warning: locklint: call to 'release_lock' may release lock 'lock' that is not held
-../locklint: effects.c:106:22: warning: locklint: protected member 'value' accessed without holding 'lock'
-../locklint: effects.c:113:22: warning: locklint: lock 'lock' is not held on every path accessing protected member 'value'
-../locklint: effects.c:113:17: warning: locklint: lock 'lock' held on only some paths returning from 'check_conditional_effect'
-../locklint: effects.c:122:22: warning: locklint: lock 'lock' is not held on every path accessing protected member 'value'
-../locklint: effects.c:123:19: warning: locklint: lock 'lock' may not be held
+../locklint: effects.c:41:22: warning: locklint: lock 'lock' held on return from 'acquire_lock'
+../locklint: effects.c:47:22: warning: locklint: lock 'lock' held on return from 'acquire_wrapper'
+../locklint: effects.c:67:30: warning: locklint: lock 'lock' held on only some paths returning from 'conditional_acquire'
+../locklint: effects.c:76:30: warning: locklint: lock 'lock' held on only some paths returning from 'recursive_acquire'
+../locklint: effects.c:105:21: warning: locklint: call to 'acquire_lock' may acquire already-held lock 'lock'
+../locklint: effects.c:114:22: warning: locklint: protected member 'value' accessed without holding 'lock'
+../locklint: effects.c:120:21: warning: locklint: call to 'release_lock' may release lock 'lock' that is not held
+../locklint: effects.c:127:22: warning: locklint: protected member 'value' accessed without holding 'lock'
+../locklint: effects.c:134:22: warning: locklint: lock 'lock' is not held on every path accessing protected member 'value'
+../locklint: effects.c:134:17: warning: locklint: lock 'lock' held on only some paths returning from 'check_conditional_effect'
+../locklint: effects.c:143:22: warning: locklint: lock 'lock' is not held on every path accessing protected member 'value'
+../locklint: effects.c:144:19: warning: locklint: lock 'lock' may not be held
