@@ -157,13 +157,13 @@ main(int argc, char **argv)
 		return (EXIT_FAILURE);
 	}
 
-	if (dump_annotations)
+	if (dump_annotations || dump_events)
 		locklint_annotations_enable();
 	do_output = 0;
 	process_symbols(sparse_initialize(argc, argv, &filelist));
 	FOR_EACH_PTR(filelist, file) {
 		symbols = sparse(file);
-		if (dump_annotations)
+		if (dump_annotations || dump_events)
 			locklint_resolve_annotations();
 		process_symbols(symbols);
 	} END_FOR_EACH_PTR(file);

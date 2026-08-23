@@ -254,6 +254,7 @@ struct expression {
 	/* Member access retained when evaluation rewrites the expression. */
 	struct expression *member_base;
 	struct ident *member_ident;
+	struct symbol *member_symbol;
 };
 
 ///

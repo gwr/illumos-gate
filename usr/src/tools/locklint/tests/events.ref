@@ -1,8 +1,9 @@
 function event_sequence
 block .L0
-  events.c:19:22 READ state.value offset=0
-  events.c:20:20 ACQUIRE state.lock
-  events.c:21:14 WRITE state.value offset=0
-  events.c:22:21 CALL event_helper
-  events.c:23:19 RELEASE state.lock
-  events.c:25:22 READ state.value offset=0
+  events.c:27:22 READ state.value offset=0 protected-by=lock
+  events.c:28:23 READ state.other offset=4
+  events.c:29:20 ACQUIRE state.lock
+  events.c:30:14 WRITE state.value offset=0 protected-by=lock
+  events.c:31:21 CALL event_helper
+  events.c:32:19 RELEASE state.lock
+  events.c:34:22 READ state.value offset=0 protected-by=lock

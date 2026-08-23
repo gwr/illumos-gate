@@ -33,6 +33,7 @@ struct annotation {
 	struct member_ref *data;
 	bool parsed;
 	bool processed;
+	bool resolved;
 	struct annotation *next;
 };
 
@@ -312,7 +313,28 @@ locklint_resolve_annotations(void)
 			if (!resolve_member_ref(ref))
 				break;
 		}
+		if (ref == NULL)
+			annotation->resolved = true;
 	}
+}
+
+struct symbol *
+locklint_protecting_member(struct symbol *member)
+{
+	struct annotation *annotation;
+
+	for (annotation = annotations; annotation != NULL;
+	    annotation = annotation->next) {
+		struct member_ref *ref;
+
+		if (!annotation->resolved)
+			continue;
+		for (ref = annotation->data; ref != NULL; ref = ref->next) {
+			if (ref->member == member)
+				return (annotation->lock->member);
+		}
+	}
+	return (NULL);
 }
 
 static void

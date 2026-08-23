@@ -5,6 +5,7 @@
 #include "expression.h"
 #include "linearize.h"
 #include "access.h"
+#include "annotations.h"
 #include "events.h"
 #include "symbol.h"
 
@@ -28,6 +29,8 @@ call_name(struct instruction *insn)
 static bool
 show_memory_event(struct instruction *insn)
 {
+	struct locklint_access access;
+	struct symbol *protector;
 	const char *event;
 
 	if (insn->access == NULL)
@@ -41,7 +44,13 @@ show_memory_event(struct instruction *insn)
 
 	show_event_position(insn->access->pos, event);
 	locklint_show_access(stdout, insn->access);
-	(void) printf(" offset=%u\n", insn->offset);
+	(void) printf(" offset=%u", insn->offset);
+	if (locklint_get_access(insn->access, &access) &&
+	    access.member != NULL &&
+	    (protector = locklint_protecting_member(access.member)) != NULL) {
+		(void) printf(" protected-by=%s", show_ident(protector->ident));
+	}
+	(void) printf("\n");
 	return (true);
 }
 

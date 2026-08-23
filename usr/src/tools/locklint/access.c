@@ -90,6 +90,17 @@ show_member(FILE *stream, struct expression *expr)
 	(void) fprintf(stream, ".%s", show_ident(expr->member_ident));
 }
 
+bool
+locklint_get_access(struct expression *expr, struct locklint_access *access)
+{
+	struct expression *member;
+
+	access->root = find_root(expr);
+	member = find_member(expr);
+	access->member = member != NULL ? member->member_symbol : NULL;
+	return (access->root != NULL);
+}
+
 void
 locklint_show_access(FILE *stream, struct expression *expr)
 {
