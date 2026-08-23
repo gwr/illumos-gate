@@ -7,6 +7,7 @@
 #include "linearize.h"
 #include "access.h"
 #include "annotations.h"
+#include "assertions.h"
 #include "check.h"
 #include "events.h"
 #include "symbol.h"
@@ -24,6 +25,7 @@ enum lock_state {
 struct state_entry {
 	struct locklint_access lock;
 	enum lock_state state;
+	bool side_effect;
 	struct state_entry *next;
 };
 
@@ -94,6 +96,7 @@ alloc_state(const struct locklint_access *lock, enum lock_state state)
 		die("out of memory analyzing lock state");
 	entry->lock = *lock;
 	entry->state = state;
+	entry->side_effect = true;
 	return (entry);
 }
 
@@ -120,6 +123,19 @@ get_state(struct state_entry *states, const struct locklint_access *lock)
 	return (LOCK_NOT_HELD);
 }
 
+static bool
+has_side_effect(struct state_entry *states,
+    const struct locklint_access *lock)
+{
+	struct state_entry *entry;
+
+	for (entry = states; entry != NULL; entry = entry->next) {
+		if (same_lock(&entry->lock, lock))
+			return (entry->side_effect);
+	}
+	return (false);
+}
+
 static void
 set_state(struct state_entry **states, const struct locklint_access *lock,
     enum lock_state state)
@@ -135,6 +151,8 @@ set_state(struct state_entry **states, const struct locklint_access *lock,
 			*link = old->next;
 			free(old);
 		} else {
+			if ((*link)->state != state)
+				(*link)->side_effect = true;
 			(*link)->state = state;
 		}
 		return;
@@ -147,6 +165,28 @@ set_state(struct state_entry **states, const struct locklint_access *lock,
 	}
 }
 
+static void
+set_asserted_state(struct state_entry **states,
+    const struct locklint_access *lock, enum lock_state state)
+{
+	struct state_entry *entry;
+
+	for (entry = *states; entry != NULL; entry = entry->next) {
+		if (!same_lock(&entry->lock, lock))
+			continue;
+		if (state == LOCK_NOT_HELD) {
+			set_state(states, lock, state);
+		} else {
+			entry->state = state;
+		}
+		return;
+	}
+	if (state != LOCK_NOT_HELD) {
+		set_state(states, lock, state);
+		(*states)->side_effect = false;
+	}
+}
+
 static struct state_entry *
 copy_states(struct state_entry *states)
 {
@@ -156,6 +196,7 @@ copy_states(struct state_entry *states)
 
 	for (entry = states; entry != NULL; entry = entry->next) {
 		*tail = alloc_state(&entry->lock, entry->state);
+		(*tail)->side_effect = entry->side_effect;
 		tail = &(*tail)->next;
 	}
 	return (copy);
@@ -167,11 +208,13 @@ same_states(struct state_entry *left, struct state_entry *right)
 	struct state_entry *entry;
 
 	for (entry = left; entry != NULL; entry = entry->next) {
-		if (get_state(right, &entry->lock) != entry->state)
+		if (get_state(right, &entry->lock) != entry->state ||
+		    has_side_effect(right, &entry->lock) != entry->side_effect)
 			return (false);
 	}
 	for (entry = right; entry != NULL; entry = entry->next) {
-		if (get_state(left, &entry->lock) != entry->state)
+		if (get_state(left, &entry->lock) != entry->state ||
+		    has_side_effect(left, &entry->lock) != entry->side_effect)
 			return (false);
 	}
 	return (true);
@@ -183,12 +226,22 @@ merge_states(struct state_entry **merged, struct state_entry *incoming)
 	struct state_entry *entry;
 
 	for (entry = *merged; entry != NULL; entry = entry->next) {
+		struct state_entry *other;
+
+		for (other = incoming; other != NULL; other = other->next) {
+			if (same_lock(&entry->lock, &other->lock)) {
+				entry->side_effect |= other->side_effect;
+				break;
+			}
+		}
 		if (get_state(incoming, &entry->lock) != entry->state)
 			entry->state = LOCK_MAYBE_HELD;
 	}
 	for (entry = incoming; entry != NULL; entry = entry->next) {
-		if (get_state(*merged, &entry->lock) == LOCK_NOT_HELD)
+		if (get_state(*merged, &entry->lock) == LOCK_NOT_HELD) {
 			set_state(merged, &entry->lock, LOCK_MAYBE_HELD);
+			(*merged)->side_effect = entry->side_effect;
+		}
 	}
 }
 
@@ -218,10 +271,24 @@ transfer_lock_action(struct state_entry **states, struct instruction *insn)
 }
 
 static void
+transfer_assertion(struct state_entry **states, struct instruction *insn)
+{
+	struct locklint_access lock;
+	enum locklint_assertion assertion;
+
+	assertion = locklint_get_assertion(insn, &lock);
+	if (assertion == LOCKLINT_ASSERT_HELD)
+		set_asserted_state(states, &lock, LOCK_HELD);
+	else if (assertion == LOCKLINT_ASSERT_NOT_HELD)
+		set_asserted_state(states, &lock, LOCK_NOT_HELD);
+}
+
+static void
 transfer_instruction(struct state_entry **states, struct instruction *insn)
 {
 	transfer_call_effects(states, insn);
 	transfer_lock_action(states, insn);
+	transfer_assertion(states, insn);
 }
 
 static struct state_entry *
@@ -1179,7 +1246,7 @@ check_lock_action(struct function_info *function,
 }
 
 static void
-check_return_state(struct entrypoint *ep, struct block_info *block,
+check_return_state(struct function_info *function, struct block_info *block,
     struct state_entry *states)
 {
 	struct instruction *insn;
@@ -1195,13 +1262,16 @@ check_return_state(struct entrypoint *ep, struct block_info *block,
 		return;
 	pos = ret->pos;
 	for (entry = states; entry != NULL; entry = entry->next) {
+		if (!entry->side_effect)
+			continue;
 		if (entry->state == LOCK_HELD) {
 			warning(pos, "locklint: lock '%s' held on return from '%s'",
-			    lock_name(&entry->lock), show_ident(ep->name->ident));
+			    lock_name(&entry->lock),
+			    show_ident(function->ep->name->ident));
 		} else {
 			warning(pos, "locklint: lock '%s' held on only some paths "
 			    "returning from '%s'", lock_name(&entry->lock),
-			    show_ident(ep->name->ident));
+			    show_ident(function->ep->name->ident));
 		}
 	}
 }
@@ -1224,8 +1294,9 @@ emit_diagnostics(struct function_info *function)
 			check_access(function, states, insn);
 			check_direct_call(function, &states, insn);
 			check_lock_action(function, &states, insn);
+			transfer_assertion(&states, insn);
 		} END_FOR_EACH_PTR(insn);
-		check_return_state(function->ep, block, states);
+		check_return_state(function, block, states);
 		free_states(states);
 	}
 }

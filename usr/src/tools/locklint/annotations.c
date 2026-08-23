@@ -73,7 +73,7 @@ annotation_end(const struct token *open)
 	return (NULL);
 }
 
-static void
+static int
 capture_annotation(const struct token *macro,
     const struct token *open, void *data)
 {
@@ -86,7 +86,7 @@ capture_annotation(const struct token *macro,
 
 	end = annotation_end(open);
 	if (end == NULL)
-		return;
+		return (0);
 
 	annotation = calloc(1, sizeof (*annotation));
 	if (annotation == NULL)
@@ -109,6 +109,7 @@ capture_annotation(const struct token *macro,
 
 	*annotations_tail = annotation;
 	annotations_tail = &annotation->next;
+	return (0);
 }
 
 void

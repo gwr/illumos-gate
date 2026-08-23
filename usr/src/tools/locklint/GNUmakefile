@@ -61,7 +61,7 @@ SPARSE_SRCS = \
 	unssa.c \
 	utils.c
 
-LOCAL_OBJS = locklint.o access.o annotations.o check.o events.o
+LOCAL_OBJS = locklint.o access.o annotations.o assertions.o check.o events.o
 SPARSE_OBJS = $(SPARSE_SRCS:%.c=%.o) hashtable.o
 OBJS = $(LOCAL_OBJS) $(SPARSE_OBJS)
 

@@ -19,6 +19,7 @@
 #include "linearize.h"
 #include "access.h"
 #include "annotations.h"
+#include "assertions.h"
 #include "check.h"
 #include "events.h"
 #include "parse.h"
@@ -167,6 +168,8 @@ main(int argc, char **argv)
 
 	if (dump_annotations || dump_events || check_locks)
 		locklint_annotations_enable();
+	if (check_locks)
+		locklint_assertions_enable();
 	do_output = 0;
 	process_symbols(sparse_initialize(argc, argv, &filelist));
 	FOR_EACH_PTR(filelist, file) {

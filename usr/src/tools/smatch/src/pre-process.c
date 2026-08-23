@@ -76,18 +76,21 @@ add_macro_expansion_hook(const char *name, macro_expansion_hook_t hook,
 	macro_expansion_hooks = entry;
 }
 
-static void
+static int
 call_macro_expansion_hooks(const struct token *macro,
     const struct token *open)
 {
 	struct macro_expansion_hook *entry;
 	const char *name = show_ident(macro->ident);
+	int preserve_argument = 0;
 
 	for (entry = macro_expansion_hooks; entry != NULL;
 	    entry = entry->next) {
 		if (strcmp(entry->name, name) == 0)
-			entry->hook(macro, open, entry->data);
+			preserve_argument |= entry->hook(macro, open,
+			    entry->data);
 	}
+	return preserve_argument;
 }
 
 #define INCLUDEPATHS 300
@@ -798,6 +801,7 @@ static int expand(struct token **list, struct symbol *sym)
 	struct ident *expanding = token->ident;
 	struct token **tail;
 	int nargs = sym->arglist ? sym->arglist->count.normal : 0;
+	int preserve_argument = 0;
 	struct arg args[nargs];
 
 	if (expanding->tainted) {
@@ -810,16 +814,33 @@ static int expand(struct token **list, struct symbol *sym)
 
 		if (!match_op(open, '('))
 			return 1;
-		call_macro_expansion_hooks(token, open);
+		preserve_argument = call_macro_expansion_hooks(token, open);
 		if (!collect_arguments(token->next, sym->arglist, args, token))
 			return 1;
+		if (preserve_argument && nargs != 0)
+			args[0].n_normal = 1;
 		expand_arguments(nargs, args);
 	}
 
 	expanding->tainted = 1;
 
 	last = token->next;
-	tail = substitute(list, sym->expansion, args);
+	if (preserve_argument && nargs != 0) {
+		struct token argument = { 0 };
+		struct token untaint = { 0 };
+
+		argument.pos = token->pos;
+		token_type(&argument) = TOKEN_MACRO_ARGUMENT;
+		argument.argnum = 0;
+		argument.next = &untaint;
+		untaint.pos = token->pos;
+		token_type(&untaint) = TOKEN_UNTAINT;
+		untaint.ident = expanding;
+		untaint.next = &eof_token_entry;
+		tail = substitute(list, &argument, args);
+	} else {
+		tail = substitute(list, sym->expansion, args);
+	}
 	/*
 	 * Note that it won't be eof - at least TOKEN_UNTAINT will be there.
 	 * We still can lose the newline flag if the sucker expands to nothing,

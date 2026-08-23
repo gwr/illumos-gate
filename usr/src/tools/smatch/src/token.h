@@ -200,9 +200,10 @@ struct token {
 
 /*
  * Macro hooks run after recognizing a function-like invocation but before
- * collecting or expanding its arguments.
+ * collecting or expanding its arguments.  A non-zero return preserves the
+ * expanded first argument in place of the configured macro body.
  */
-typedef void (*macro_expansion_hook_t)(const struct token *,
+typedef int (*macro_expansion_hook_t)(const struct token *,
     const struct token *, void *);
 void add_macro_expansion_hook(const char *, macro_expansion_hook_t, void *);
 
