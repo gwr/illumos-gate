@@ -36,12 +36,19 @@ test:
 	diff -u calls.ref calls.out
 	$(LOCKLINT) --check-locks effects.c > effects.out 2>&1
 	diff -u effects.ref effects.out
+	$(LOCKLINT) --check-locks user-mutex.c > user-mutex.out 2>&1
+	diff -u user-mutex.ref user-mutex.out
 	$(LOCKLINT) --check-locks assertions.c > assertions.out 2>&1
 	diff -u assertions.ref assertions.out
+	$(LOCKLINT) --check-locks --dump-events assertions.c \
+	    > assertion-events.out 2>&1
+	grep -q 'CALL mutex_owned' assertion-events.out
+	! grep -q 'CALL assfail' assertion-events.out
 	$(LOCKLINT) --check-locks cross-caller.c cross-callee.c \
 	    > cross.out 2>&1
 	diff -u cross.ref cross.out
 
 clean:
 	rm -f parsed.out linearized.out accesses.out annotations.out \
-	    assertions.out calls.out check.out cross.out effects.out events.out
+	    assertion-events.out assertions.out calls.out check.out cross.out \
+	    effects.out events.out user-mutex.out

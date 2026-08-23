@@ -1,0 +1,2 @@
+../locklint: user-mutex.c:24:22: warning: locklint: protected member 'value' accessed without holding 'lock'
+../locklint: user-mutex.c:41:28: warning: locklint: lock 'lock' held on return from 'user_mutex_acquire'

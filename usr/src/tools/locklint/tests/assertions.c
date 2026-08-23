@@ -19,6 +19,13 @@ _NOTE(MUTEX_PROTECTS_DATA(assertion_state::lock,
 extern int mutex_owned(mutex_t *);
 extern void mutex_enter(mutex_t *);
 extern void mutex_exit(mutex_t *);
+extern int assertion_unprotected(struct assertion_state *);
+extern int assertion_macro_held(struct assertion_state *);
+extern int assertion_direct_held(struct assertion_state *);
+extern int assertion_macro_not_held(struct assertion_state *);
+extern int assertion_negated(struct assertion_state *);
+extern int assertion_zero_comparison(struct assertion_state *);
+extern int assertion_active_held(struct assertion_state *);
 
 int
 assertion_unprotected(struct assertion_state *state)

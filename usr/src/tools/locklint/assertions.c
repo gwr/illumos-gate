@@ -10,6 +10,7 @@
 #include "token.h"
 
 struct assertion {
+	struct position invocation;
 	struct position predicate;
 	struct position argument_start;
 	struct position argument_end;
@@ -140,6 +141,7 @@ capture_assertion(const struct token *macro, const struct token *open,
 		assertion = calloc(1, sizeof (*assertion));
 		if (assertion == NULL)
 			die("out of memory recording lock assertion");
+		assertion->invocation = macro->pos;
 		assertion->predicate = token->pos;
 		assertion->argument_start = predicate_open->next->pos;
 		assertion->argument_end = predicate_close->pos;
@@ -177,6 +179,7 @@ locklint_get_assertion(struct instruction *insn,
 {
 	struct expression *argument;
 	struct assertion *assertion;
+	enum locklint_assertion state = LOCKLINT_ASSERT_NONE;
 
 	access->root = NULL;
 	access->member = NULL;
@@ -187,15 +190,29 @@ locklint_get_assertion(struct instruction *insn,
 		return (LOCKLINT_ASSERT_NONE);
 	for (assertion = assertions; assertion != NULL;
 	    assertion = assertion->next) {
-		if (assertion->predicate.stream != argument->pos.stream ||
-		    (!position_in_range(argument->pos,
-		    assertion->argument_start, assertion->argument_end) &&
-		    (insn->call_expr->pos.line != assertion->predicate.line ||
-		    insn->call_expr->pos.pos != assertion->predicate.pos)))
+		bool invocation_match;
+
+		if (assertion->predicate.stream != argument->pos.stream)
 			continue;
-		if (!locklint_get_access(argument, access))
+		if (position_in_range(argument->pos,
+		    assertion->argument_start, assertion->argument_end) ||
+		    (insn->call_expr->pos.line == assertion->predicate.line &&
+		    insn->call_expr->pos.pos == assertion->predicate.pos)) {
+			state = assertion->state;
+			break;
+		}
+		invocation_match =
+		    insn->call_expr->pos.line == assertion->invocation.line &&
+		    insn->call_expr->pos.pos == assertion->invocation.pos;
+		if (!invocation_match)
+			continue;
+		if (state != LOCKLINT_ASSERT_NONE &&
+		    state != assertion->state)
 			return (LOCKLINT_ASSERT_NONE);
-		return (assertion->state);
+		state = assertion->state;
 	}
-	return (LOCKLINT_ASSERT_NONE);
+	if (state == LOCKLINT_ASSERT_NONE ||
+	    !locklint_get_access(argument, access))
+		return (LOCKLINT_ASSERT_NONE);
+	return (state);
 }

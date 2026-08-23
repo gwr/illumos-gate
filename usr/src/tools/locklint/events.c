@@ -40,9 +40,11 @@ locklint_get_lock_action(struct instruction *insn,
 		return (LOCKLINT_LOCK_NONE);
 
 	name = call_name(insn);
-	if (strcmp(name, "mutex_enter") == 0)
+	if (strcmp(name, "mutex_enter") == 0 ||
+	    strcmp(name, "mutex_lock") == 0)
 		action = LOCKLINT_LOCK_ACQUIRE;
-	else if (strcmp(name, "mutex_exit") == 0)
+	else if (strcmp(name, "mutex_exit") == 0 ||
+	    strcmp(name, "mutex_unlock") == 0)
 		action = LOCKLINT_LOCK_RELEASE;
 	else
 		return (LOCKLINT_LOCK_NONE);

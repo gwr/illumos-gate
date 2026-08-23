@@ -1,1 +1,1 @@
-../locklint: assertions.c:27:16: warning: locklint: protected member 'value' accessed without holding 'lock'
+../locklint: assertions.c:33:22: warning: locklint: protected member 'value' accessed without holding 'lock'
