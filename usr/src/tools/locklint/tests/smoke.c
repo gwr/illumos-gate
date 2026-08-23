@@ -9,6 +9,15 @@
  * http://www.illumos.org/license/CDDL.
  */
 
+/*
+ * Copyright 2026 Gordon W. Ross
+ */
+
+/*
+ * This is the frontend and source-identity smoke test.  It contains nested
+ * members, arrays, pointers, and local/global/static objects.
+ */
+
 struct smoke_inner {
 	int first;
 	int value;

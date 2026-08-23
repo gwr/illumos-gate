@@ -1,0 +1,174 @@
+# Locklint tests
+
+<details>
+<summary>Copyright and license</summary>
+
+
+```
+This file and its contents are supplied under the terms of the
+Common Development and Distribution License ("CDDL"), version 1.0.
+You may only use this file in accordance with the terms of version
+1.0 of the CDDL.
+
+A full copy of the text of the CDDL should have accompanied this
+source.  A copy of the CDDL is also available via the Internet at
+http://www.illumos.org/license/CDDL.
+
+Copyright 2026 Gordon W. Ross
+```
+
+</details>
+
+## Overview
+
+These tests exercise locklint from Sparse parsing through interprocedural
+lock analysis.
+
+Most tests pair a C source file with a `.ref` file containing the exact
+expected output.  The test makefile writes command output to an untracked
+`.out` file and compares it with the reference using `diff -u`.  The earliest
+smoke tests instead use `grep` to check selected properties of larger debug
+dumps.
+
+The suite intentionally includes both valid locking and expected diagnostics.
+A successful test run means that locklint emitted exactly the expected
+warnings; it does not mean that every fixture is warning-free.
+
+## Running the tests
+
+From `usr/src/tools/locklint`, build locklint and run the complete suite:
+
+```sh
+make test
+```
+
+After the `locklint` executable has been built, the tests can be rerun
+directly:
+
+```sh
+(cd tests ; make test)
+```
+
+Remove the executable, object files, generated `version.h`, and test output
+files with:
+
+```sh
+make clean
+```
+
+When a golden-output test fails, inspect the unified diff printed by `make`
+and the corresponding `.out` file.  Update a `.ref` file only after confirming
+that the changed output is intentional.
+
+## Test coverage
+
+These test notes are ordered by the sequence in which the features
+were developed.
+
+### `smoke.c`
+
+This is the frontend and source-identity smoke test.  It contains nested
+members, arrays, pointers, local objects, global objects, and static objects.
+
+The makefile processes it three ways:
+
+- `--dump-parsed` must produce the parsed function;
+- `--dump-linearized` must contain memory loads or stores; and
+- `--dump-accesses` must retain selected normalized paths such as
+  `arg.nested.value`, `arg.next.value`, and `local.values`.
+
+These checks establish that Sparse can parse and lower the fixture without
+losing the source identity needed by later analysis.
+
+### `events.c` and `events.ref`
+
+This test covers ordered source events.  The fixture accesses protected and
+unprotected members around `mutex_enter()` and `mutex_exit()`, and includes a
+direct function call.
+
+`--dump-events` must match `events.ref`, proving that locklint emits reads,
+writes, calls, acquisitions, and releases in control-flow order and marks the
+member associated with `MUTEX_PROTECTS_DATA`.
+
+### `annotations.c` and `annotations.ref`
+
+This test covers preprocessing-time `_NOTE` capture and annotation
+resolution.  It includes an unsupported annotation that must remain in raw
+form and a `MUTEX_PROTECTS_DATA` annotation using a generated member list.
+
+`--dump-annotations` must match `annotations.ref`, proving that raw arguments
+survive macro processing and that supported type and member names resolve to
+individual protection relations.
+
+### `check.c` and `check.ref`
+
+This is the intraprocedural locking test.  It covers:
+
+- protected access before acquisition and after release;
+- protected access while the mutex is held;
+- an unrelated member;
+- divergent branches that merge to uncertain lock state;
+- loops; and
+- conditional lock state at function return.
+
+`--check-locks` must match `check.ref`, exercising the `HELD`, `NOT_HELD`, and
+`MAYBE_HELD` control-flow states and their diagnostics.
+
+### `calls.c` and `calls.ref`
+
+This test covers lock requirements propagated through direct calls.  Its
+functions exercise direct and transitive callees, recursion, and conservative
+analysis roots.
+
+`--check-locks` must match `calls.ref`, proving that formal-argument
+requirements map to actual caller objects, a caller-held mutex satisfies the
+callee, and unsatisfied requirements are reported at appropriate call sites.
+
+### `effects.c` and `effects.ref`
+
+This test covers mutex side-effect summaries.  It includes functions that
+acquire, release, preserve, or conditionally change a formal argument's lock,
+as well as transitive and recursive call chains.
+
+`--check-locks` must match `effects.ref`, proving that three-state transfer
+tables are solved and applied at call sites and that invalid acquire or release
+conditions propagate through direct calls.
+
+### `cross.h`, `cross-caller.c`, `cross-callee.c`, and `cross.ref`
+
+These files cover analysis across translation units.  The shared header
+declares the protected structure and external functions; one source file
+contains callers and the other contains accessor and acquisition helpers.
+
+Locklint analyzes both C files in one invocation.  The result must match
+`cross.ref`, proving that unique external definitions are resolved, protected
+member requirements and mutex effects cross file boundaries, and member
+symbols are remapped through caller argument types.
+
+### `assertions.c` and `assertions.ref`
+
+This test covers `ASSERT` and `VERIFY` as lock-state assumptions.  It includes:
+
+- an `ASSERT` definition that expands to nothing;
+- an active definition whose body would call `assfail()`;
+- `VERIFY`;
+- `MUTEX_HELD` and `MUTEX_NOT_HELD`;
+- direct `mutex_owned()` predicates;
+- negation; and
+- comparison with zero.
+
+The diagnostic output must match `assertions.ref`.  A second event dump checks
+that `mutex_owned()` remains visible while `assfail()` does not, proving that
+locklint analyzes the assertion condition independently of the configured
+macro body.
+
+### `user-mutex.c` and `user-mutex.ref`
+
+This test covers the user-level synchronization interfaces `mutex_lock()` and
+`mutex_unlock()`.  It includes a protected access while directly locked, an
+unprotected control access, and a helper whose acquisition effect is applied
+by its caller.
+
+`--check-locks` must match `user-mutex.ref`, proving that the user-level calls
+are decoded as mutex acquisition and release and participate in the same
+interprocedural effect analysis as `mutex_enter()` and `mutex_exit()`.

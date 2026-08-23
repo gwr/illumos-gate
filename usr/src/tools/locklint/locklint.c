@@ -9,6 +9,16 @@
  * http://www.illumos.org/license/CDDL.
  */
 
+/*
+ * Copyright 2026 Gordon W. Ross
+ */
+
+/*
+ * Provide the locklint command-line interface and drive Sparse parsing and
+ * lock analysis.  This program builds upon the features of the "sparse"
+ * library over in ../smatch/src/ (See Documentation/sparse-README.txt)
+ */
+
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>

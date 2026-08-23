@@ -414,6 +414,7 @@ usr/src/tools/btxld/btxld.c
 usr/src/tools/btxld/elfh.c
 usr/src/tools/btxld/elfh.h
 usr/src/tools/btxld/imgact_aout.h
+usr/src/tools/locklint/tests/*.ref
 usr/src/tools/smatch/src/*
 usr/src/uts/intel/nsmb/ioc_check.ref
 usr/src/uts/intel/os/splashimage.xpm
