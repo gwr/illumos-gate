@@ -19,6 +19,7 @@
 #include "linearize.h"
 #include "access.h"
 #include "annotations.h"
+#include "check.h"
 #include "events.h"
 #include "parse.h"
 #include "symbol.h"
@@ -28,6 +29,7 @@ static bool dump_linearized;
 static bool dump_accesses;
 static bool dump_annotations;
 static bool dump_events;
+static bool check_locks;
 
 /*
  * Effectively force -nostdinc for now
@@ -41,7 +43,8 @@ static void
 usage(FILE *stream)
 {
 	(void) fprintf(stream,
-	    "usage: locklint [--dump-parsed] [--dump-linearized] "
+	    "usage: locklint [--check-locks] [--dump-parsed] "
+	    "[--dump-linearized] "
 	    "[--dump-accesses] [--dump-annotations] [--dump-events] "
 	    "[sparse-options] file.c ...\n");
 }
@@ -53,7 +56,9 @@ options(int argc, char **argv)
 	int i;
 
 	for (i = 1; i < argc; i++) {
-		if (strcmp(argv[i], "--dump-parsed") == 0) {
+		if (strcmp(argv[i], "--check-locks") == 0) {
+			check_locks = true;
+		} else if (strcmp(argv[i], "--dump-parsed") == 0) {
 			dump_parsed = true;
 		} else if (strcmp(argv[i], "--dump-linearized") == 0) {
 			dump_linearized = true;
@@ -129,7 +134,8 @@ process_symbols(struct symbol_list *symbols)
 		if (dump_parsed)
 			show_symbol(sym);
 
-		if (!dump_linearized && !dump_accesses && !dump_events)
+		if (!dump_linearized && !dump_accesses && !dump_events &&
+		    !check_locks)
 			continue;
 
 		ep = linearize_symbol(sym);
@@ -139,6 +145,8 @@ process_symbols(struct symbol_list *symbols)
 			show_entry(ep);
 		if (dump_accesses)
 			show_accesses(ep);
+		if (check_locks)
+			locklint_check(ep);
 		if (dump_events)
 			locklint_show_events(ep);
 	} END_FOR_EACH_PTR(sym);
@@ -157,13 +165,13 @@ main(int argc, char **argv)
 		return (EXIT_FAILURE);
 	}
 
-	if (dump_annotations || dump_events)
+	if (dump_annotations || dump_events || check_locks)
 		locklint_annotations_enable();
 	do_output = 0;
 	process_symbols(sparse_initialize(argc, argv, &filelist));
 	FOR_EACH_PTR(filelist, file) {
 		symbols = sparse(file);
-		if (dump_annotations || dump_events)
+		if (dump_annotations || dump_events || check_locks)
 			locklint_resolve_annotations();
 		process_symbols(symbols);
 	} END_FOR_EACH_PTR(file);

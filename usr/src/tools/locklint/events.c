@@ -26,6 +26,33 @@ call_name(struct instruction *insn)
 	return ("<indirect>");
 }
 
+enum locklint_lock_action
+locklint_get_lock_action(struct instruction *insn,
+    struct locklint_access *access)
+{
+	struct expression *arg;
+	enum locklint_lock_action action;
+	const char *name;
+
+	access->root = NULL;
+	access->member = NULL;
+	if (insn->opcode != OP_CALL)
+		return (LOCKLINT_LOCK_NONE);
+
+	name = call_name(insn);
+	if (strcmp(name, "mutex_enter") == 0)
+		action = LOCKLINT_LOCK_ACQUIRE;
+	else if (strcmp(name, "mutex_exit") == 0)
+		action = LOCKLINT_LOCK_RELEASE;
+	else
+		return (LOCKLINT_LOCK_NONE);
+
+	arg = insn->call_expr != NULL ?
+	    first_expression(insn->call_expr->args) : NULL;
+	(void) locklint_get_access(arg, access);
+	return (action);
+}
+
 static bool
 show_memory_event(struct instruction *insn)
 {
@@ -57,7 +84,9 @@ show_memory_event(struct instruction *insn)
 static bool
 show_call_event(struct instruction *insn)
 {
+	struct locklint_access access;
 	struct expression *arg;
+	enum locklint_lock_action action;
 	const char *event;
 	char name[128];
 
@@ -65,9 +94,10 @@ show_call_event(struct instruction *insn)
 		return (false);
 
 	(void) snprintf(name, sizeof (name), "%s", call_name(insn));
-	if (strcmp(name, "mutex_enter") == 0)
+	action = locklint_get_lock_action(insn, &access);
+	if (action == LOCKLINT_LOCK_ACQUIRE)
 		event = "ACQUIRE";
-	else if (strcmp(name, "mutex_exit") == 0)
+	else if (action == LOCKLINT_LOCK_RELEASE)
 		event = "RELEASE";
 	else
 		event = "CALL";

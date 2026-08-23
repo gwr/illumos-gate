@@ -30,6 +30,9 @@ test:
 	diff -u events.ref events.out
 	$(LOCKLINT) --dump-annotations annotations.c > annotations.out
 	diff -u annotations.ref annotations.out
+	$(LOCKLINT) --check-locks check.c > check.out 2>&1
+	diff -u check.ref check.out
 
 clean:
-	rm -f parsed.out linearized.out accesses.out annotations.out events.out
+	rm -f parsed.out linearized.out accesses.out annotations.out check.out \
+	    events.out
