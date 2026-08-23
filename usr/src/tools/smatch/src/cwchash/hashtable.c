@@ -5,7 +5,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <math.h>
 
 /*
 Credit for primes table: Aaron Krowne
@@ -23,6 +22,15 @@ static const unsigned int primes[] = {
 };
 const unsigned int prime_table_length = sizeof(primes)/sizeof(primes[0]);
 const float max_load_factor = 0.65;
+
+/* Helper to avoid dragging in libm */
+static unsigned int
+ceil_to_uint(float value)
+{
+    unsigned int result = (unsigned int)value;
+
+    return (result < value) ? result + 1 : result;
+}
 
 /*****************************************************************************/
 struct hashtable *
@@ -48,7 +56,7 @@ create_hashtable(unsigned int minsize,
     h->entrycount   = 0;
     h->hashfn       = hashf;
     h->eqfn         = eqf;
-    h->loadlimit    = (unsigned int) ceil(size * max_load_factor);
+    h->loadlimit    = ceil_to_uint(size * max_load_factor);
     return h;
 }
 
@@ -121,7 +129,7 @@ hashtable_expand(struct hashtable *h)
         }
     }
     h->tablelength = newsize;
-    h->loadlimit   = (unsigned int) ceil(newsize * max_load_factor);
+    h->loadlimit   = ceil_to_uint(newsize * max_load_factor);
     return -1;
 }
 
