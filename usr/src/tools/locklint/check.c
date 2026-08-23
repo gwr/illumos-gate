@@ -13,8 +13,12 @@
 enum lock_state {
 	LOCK_NOT_HELD,
 	LOCK_HELD,
-	LOCK_MAYBE_HELD
+	LOCK_MAYBE_HELD,
+	LOCK_STATE_COUNT
 };
+
+#define	INVALID_ACQUIRE	0x1
+#define	INVALID_RELEASE	0x2
 
 struct state_entry {
 	struct locklint_access lock;
@@ -30,6 +34,16 @@ struct block_info {
 	struct block_info *next;
 };
 
+struct transfer_block_info {
+	struct basic_block *bb;
+	bool reachable;
+	enum lock_state in;
+	enum lock_state out;
+	unsigned int invalid_in;
+	unsigned int invalid_out;
+	struct transfer_block_info *next;
+};
+
 struct requirement {
 	unsigned int argument;
 	struct symbol *lock_member;
@@ -38,10 +52,19 @@ struct requirement {
 	struct requirement *next;
 };
 
+struct lock_transfer {
+	unsigned int argument;
+	struct symbol *lock_member;
+	enum lock_state output[LOCK_STATE_COUNT];
+	unsigned int invalid[LOCK_STATE_COUNT];
+	struct lock_transfer *next;
+};
+
 struct function_info {
 	struct entrypoint *ep;
 	struct block_info *blocks;
 	struct requirement *requirements;
+	struct lock_transfer *transfers;
 	bool has_direct_caller;
 	bool reachable_from_root;
 	struct function_info *next;
@@ -49,6 +72,9 @@ struct function_info {
 
 static struct function_info *functions;
 static struct function_info **functions_tail = &functions;
+
+static void transfer_call_effects(struct state_entry **,
+    struct instruction *);
 
 static bool
 same_lock(const struct locklint_access *left,
@@ -190,6 +216,13 @@ transfer_lock_action(struct state_entry **states, struct instruction *insn)
 		set_state(states, &lock, LOCK_NOT_HELD);
 }
 
+static void
+transfer_instruction(struct state_entry **states, struct instruction *insn)
+{
+	transfer_call_effects(states, insn);
+	transfer_lock_action(states, insn);
+}
+
 static struct state_entry *
 transfer_block(struct basic_block *bb, struct state_entry *in)
 {
@@ -199,7 +232,7 @@ transfer_block(struct basic_block *bb, struct state_entry *in)
 	FOR_EACH_PTR(bb->insns, insn) {
 		if (insn->bb == NULL)
 			continue;
-		transfer_lock_action(&out, insn);
+		transfer_instruction(&out, insn);
 	} END_FOR_EACH_PTR(insn);
 
 	return (out);
@@ -347,6 +380,77 @@ call_argument(struct instruction *insn, unsigned int index)
 	return (NULL);
 }
 
+static struct symbol *
+formal_symbol(struct entrypoint *ep, unsigned int index)
+{
+	struct symbol *type = ep->name->ctype.base_type;
+	struct symbol *argument;
+	unsigned int current = 0;
+
+	while (type != NULL && type->type == SYM_NODE)
+		type = type->ctype.base_type;
+	if (type == NULL || type->type != SYM_FN)
+		return (NULL);
+	FOR_EACH_PTR(type->arguments, argument) {
+		if (current++ == index)
+			return (argument);
+	} END_FOR_EACH_PTR(argument);
+	return (NULL);
+}
+
+static struct lock_transfer *
+add_transfer(struct function_info *function, unsigned int argument,
+    struct symbol *lock_member, bool *added)
+{
+	struct lock_transfer *transfer;
+	unsigned int state;
+
+	for (transfer = function->transfers; transfer != NULL;
+	    transfer = transfer->next) {
+		if (transfer->argument == argument &&
+		    transfer->lock_member == lock_member) {
+			*added = false;
+			return (transfer);
+		}
+	}
+	transfer = calloc(1, sizeof (*transfer));
+	if (transfer == NULL)
+		die("out of memory recording lock transfer");
+	transfer->argument = argument;
+	transfer->lock_member = lock_member;
+	for (state = 0; state < LOCK_STATE_COUNT; state++)
+		transfer->output[state] = state;
+	transfer->next = function->transfers;
+	function->transfers = transfer;
+	*added = true;
+	return (transfer);
+}
+
+static void
+transfer_call_effects(struct state_entry **states, struct instruction *insn)
+{
+	struct function_info *callee = direct_callee(insn);
+	struct lock_transfer *transfer;
+
+	if (callee == NULL)
+		return;
+	for (transfer = callee->transfers; transfer != NULL;
+	    transfer = transfer->next) {
+		struct locklint_access access;
+		struct locklint_access lock;
+		struct expression *argument;
+		enum lock_state state;
+
+		argument = call_argument(insn, transfer->argument);
+		if (!locklint_get_access(argument, &access))
+			continue;
+		lock.root = access.root;
+		lock.member = transfer->lock_member;
+		state = get_state(*states, &lock);
+		set_state(states, &lock, transfer->output[state]);
+	}
+}
+
 static bool
 add_requirement(struct function_info *function, unsigned int argument,
     struct symbol *lock_member, struct symbol *data_member,
@@ -465,6 +569,287 @@ mark_direct_callers(void)
 	}
 }
 
+static bool
+collect_local_transfers(struct function_info *function)
+{
+	struct basic_block *bb;
+	bool changed = false;
+
+	FOR_EACH_PTR(function->ep->bbs, bb) {
+		struct instruction *insn;
+
+		FOR_EACH_PTR(bb->insns, insn) {
+			struct locklint_access lock;
+			enum locklint_lock_action action;
+			unsigned int argument;
+			bool added;
+
+			if (insn->bb == NULL)
+				continue;
+			action = locklint_get_lock_action(insn, &lock);
+			if (action == LOCKLINT_LOCK_NONE || lock.root == NULL ||
+			    !formal_argument(function->ep, lock.root, &argument))
+				continue;
+			(void) add_transfer(function, argument, lock.member, &added);
+			if (added)
+				changed = true;
+		} END_FOR_EACH_PTR(insn);
+	} END_FOR_EACH_PTR(bb);
+	return (changed);
+}
+
+static bool
+propagate_transfer_candidates(struct function_info *function)
+{
+	struct basic_block *bb;
+	bool changed = false;
+
+	FOR_EACH_PTR(function->ep->bbs, bb) {
+		struct instruction *insn;
+
+		FOR_EACH_PTR(bb->insns, insn) {
+			struct function_info *callee;
+			struct lock_transfer *transfer;
+
+			if (insn->bb == NULL)
+				continue;
+			callee = direct_callee(insn);
+			if (callee == NULL)
+				continue;
+			for (transfer = callee->transfers; transfer != NULL;
+			    transfer = transfer->next) {
+				struct locklint_access access;
+				struct expression *actual;
+				unsigned int argument;
+				bool added;
+
+				actual = call_argument(insn, transfer->argument);
+				if (!locklint_get_access(actual, &access) ||
+				    !formal_argument(function->ep, access.root,
+				    &argument))
+					continue;
+				(void) add_transfer(function, argument,
+				    transfer->lock_member, &added);
+				if (added)
+					changed = true;
+			}
+		} END_FOR_EACH_PTR(insn);
+	} END_FOR_EACH_PTR(bb);
+	return (changed);
+}
+
+static struct transfer_block_info *
+find_transfer_block(struct transfer_block_info *blocks,
+    struct basic_block *bb)
+{
+	struct transfer_block_info *block;
+
+	for (block = blocks; block != NULL; block = block->next) {
+		if (block->bb == bb)
+			return (block);
+	}
+	return (NULL);
+}
+
+static enum lock_state
+merge_lock_state(enum lock_state left, enum lock_state right)
+{
+	return (left == right ? left : LOCK_MAYBE_HELD);
+}
+
+static void
+simulate_instruction(struct locklint_access *target,
+    enum lock_state *state, unsigned int *invalid, struct instruction *insn)
+{
+	struct function_info *callee;
+	struct lock_transfer *transfer;
+	struct locklint_access lock;
+	enum locklint_lock_action action;
+
+	callee = direct_callee(insn);
+	if (callee != NULL) {
+		for (transfer = callee->transfers; transfer != NULL;
+		    transfer = transfer->next) {
+			struct locklint_access access;
+			struct expression *actual;
+
+			actual = call_argument(insn, transfer->argument);
+			if (!locklint_get_access(actual, &access))
+				continue;
+			lock.root = access.root;
+			lock.member = transfer->lock_member;
+			if (!same_lock(target, &lock))
+				continue;
+			*invalid |= transfer->invalid[*state];
+			*state = transfer->output[*state];
+		}
+	}
+
+	action = locklint_get_lock_action(insn, &lock);
+	if (action == LOCKLINT_LOCK_NONE || !same_lock(target, &lock))
+		return;
+	if (action == LOCKLINT_LOCK_ACQUIRE) {
+		if (*state != LOCK_NOT_HELD)
+			*invalid |= INVALID_ACQUIRE;
+		*state = LOCK_HELD;
+	} else {
+		if (*state != LOCK_HELD)
+			*invalid |= INVALID_RELEASE;
+		*state = LOCK_NOT_HELD;
+	}
+}
+
+static void
+simulate_block(struct transfer_block_info *block,
+    struct locklint_access *target, enum lock_state in,
+    unsigned int invalid_in, enum lock_state *out,
+    unsigned int *invalid_out)
+{
+	struct instruction *insn;
+
+	*out = in;
+	*invalid_out = invalid_in;
+	FOR_EACH_PTR(block->bb->insns, insn) {
+		if (insn->bb != NULL)
+			simulate_instruction(target, out, invalid_out, insn);
+	} END_FOR_EACH_PTR(insn);
+}
+
+static enum lock_state
+simulate_transfer(struct function_info *function,
+    struct lock_transfer *transfer, enum lock_state input,
+    unsigned int *invalid)
+{
+	struct transfer_block_info *blocks = NULL;
+	struct transfer_block_info **tail = &blocks;
+	struct transfer_block_info *block;
+	struct basic_block *bb;
+	struct locklint_access target;
+	enum lock_state result = input;
+	unsigned int result_invalid = 0;
+	bool found_return = false;
+	bool changed;
+
+	target.root = formal_symbol(function->ep, transfer->argument);
+	target.member = transfer->lock_member;
+	FOR_EACH_PTR(function->ep->bbs, bb) {
+		block = calloc(1, sizeof (*block));
+		if (block == NULL)
+			die("out of memory summarizing lock transfer");
+		block->bb = bb;
+		*tail = block;
+		tail = &block->next;
+	} END_FOR_EACH_PTR(bb);
+
+	do {
+		changed = false;
+		for (block = blocks; block != NULL; block = block->next) {
+			enum lock_state in = input;
+			unsigned int invalid_in = 0;
+			struct basic_block *parent;
+			bool reachable = block->bb == function->ep->entry->bb;
+			bool first = true;
+			enum lock_state out;
+			unsigned int invalid_out;
+
+			if (!reachable) {
+				FOR_EACH_PTR(block->bb->parents, parent) {
+					struct transfer_block_info *parent_block;
+
+					parent_block = find_transfer_block(blocks,
+					    parent);
+					if (parent_block == NULL ||
+					    !parent_block->reachable)
+						continue;
+					if (first) {
+						in = parent_block->out;
+						invalid_in =
+						    parent_block->invalid_out;
+						first = false;
+					} else {
+						in = merge_lock_state(in,
+						    parent_block->out);
+						invalid_in |=
+						    parent_block->invalid_out;
+					}
+					reachable = true;
+				} END_FOR_EACH_PTR(parent);
+			}
+			if (!reachable)
+				continue;
+			simulate_block(block, &target, in, invalid_in, &out,
+			    &invalid_out);
+			if (!block->reachable || block->in != in ||
+			    block->out != out ||
+			    block->invalid_in != invalid_in ||
+			    block->invalid_out != invalid_out)
+				changed = true;
+			block->reachable = true;
+			block->in = in;
+			block->out = out;
+			block->invalid_in = invalid_in;
+			block->invalid_out = invalid_out;
+		}
+	} while (changed);
+
+	for (block = blocks; block != NULL; block = block->next) {
+		struct instruction *insn;
+		bool returns = false;
+
+		if (!block->reachable)
+			continue;
+		FOR_EACH_PTR(block->bb->insns, insn) {
+			if (insn->bb != NULL && insn->opcode == OP_RET)
+				returns = true;
+		} END_FOR_EACH_PTR(insn);
+		if (!returns)
+			continue;
+		if (!found_return) {
+			result = block->out;
+			result_invalid = block->invalid_out;
+			found_return = true;
+		} else {
+			result = merge_lock_state(result, block->out);
+			result_invalid |= block->invalid_out;
+		}
+	}
+	while (blocks != NULL) {
+		struct transfer_block_info *next = blocks->next;
+
+		free(blocks);
+		blocks = next;
+	}
+	*invalid = result_invalid;
+	return (result);
+}
+
+static bool
+solve_function_transfers(struct function_info *function)
+{
+	struct lock_transfer *transfer;
+	bool changed = false;
+
+	for (transfer = function->transfers; transfer != NULL;
+	    transfer = transfer->next) {
+		unsigned int input;
+
+		for (input = 0; input < LOCK_STATE_COUNT; input++) {
+			enum lock_state output;
+			unsigned int invalid;
+
+			output = simulate_transfer(function, transfer, input,
+			    &invalid);
+			if (transfer->output[input] != output ||
+			    transfer->invalid[input] != invalid) {
+				transfer->output[input] = output;
+				transfer->invalid[input] = invalid;
+				changed = true;
+			}
+		}
+	}
+	return (changed);
+}
+
 static void
 collect_local_requirements(struct function_info *function)
 {
@@ -492,7 +877,7 @@ collect_local_requirements(struct function_info *function)
 				(void) add_requirement(function, argument,
 				    lock.member, data_member, insn->access->pos);
 			}
-			transfer_lock_action(&states, insn);
+			transfer_instruction(&states, insn);
 		} END_FOR_EACH_PTR(insn);
 		free_states(states);
 	}
@@ -550,7 +935,7 @@ propagate_function_requirements(struct function_info *function)
 				continue;
 			if (propagate_call_requirements(function, states, insn))
 				changed = true;
-			transfer_lock_action(&states, insn);
+			transfer_instruction(&states, insn);
 		} END_FOR_EACH_PTR(insn);
 		free_states(states);
 	}
@@ -588,77 +973,115 @@ check_access(struct function_info *function, struct state_entry *states,
 
 static void
 check_direct_call(struct function_info *function,
-    struct state_entry *states, struct instruction *insn)
+    struct state_entry **states, struct instruction *insn)
 {
 	struct function_info *callee = direct_callee(insn);
 	struct requirement *requirement;
 	struct position pos;
 
-	if (callee == NULL || callee == function)
+	if (callee == NULL)
 		return;
 	pos = insn->call_expr != NULL ? insn->call_expr->pos : insn->pos;
-	for (requirement = callee->requirements; requirement != NULL;
-	    requirement = requirement->next) {
-		struct locklint_access access;
-		struct locklint_access lock;
-		struct expression *argument;
-		enum lock_state state;
-		unsigned int caller_argument;
+	if (callee != function) {
+		for (requirement = callee->requirements; requirement != NULL;
+		    requirement = requirement->next) {
+			struct locklint_access access;
+			struct locklint_access lock;
+			struct expression *argument;
+			enum lock_state state;
+			unsigned int caller_argument;
 
-		argument = call_argument(insn, requirement->argument);
-		if (!locklint_get_access(argument, &access))
-			continue;
-		lock.root = access.root;
-		lock.member = requirement->lock_member;
-		state = get_state(states, &lock);
-		if (state == LOCK_HELD)
-			continue;
-		if (state == LOCK_NOT_HELD &&
-		    defer_formal_requirements(function) &&
-		    formal_argument(function->ep, access.root,
-		    &caller_argument))
-			continue;
-		if (state == LOCK_NOT_HELD) {
-			warning(pos, "locklint: call to '%s' accesses protected "
-			    "member '%s' without holding '%s'",
-			    show_ident(callee->ep->name->ident),
-			    show_ident(requirement->data_member->ident),
-			    lock_name(&lock));
-		} else {
-			warning(pos, "locklint: lock '%s' is not held on every "
-			    "path calling '%s'", lock_name(&lock),
-			    show_ident(callee->ep->name->ident));
+			argument = call_argument(insn, requirement->argument);
+			if (!locklint_get_access(argument, &access))
+				continue;
+			lock.root = access.root;
+			lock.member = requirement->lock_member;
+			state = get_state(*states, &lock);
+			if (state == LOCK_HELD)
+				continue;
+			if (state == LOCK_NOT_HELD &&
+			    defer_formal_requirements(function) &&
+			    formal_argument(function->ep, access.root,
+			    &caller_argument))
+				continue;
+			if (state == LOCK_NOT_HELD) {
+				warning(pos, "locklint: call to '%s' accesses "
+				    "protected member '%s' without holding '%s'",
+				    show_ident(callee->ep->name->ident),
+				    show_ident(requirement->data_member->ident),
+				    lock_name(&lock));
+			} else {
+				warning(pos, "locklint: lock '%s' is not held on "
+				    "every path calling '%s'", lock_name(&lock),
+				    show_ident(callee->ep->name->ident));
+			}
+		}
+	}
+	{
+		struct lock_transfer *transfer;
+
+		for (transfer = callee->transfers; transfer != NULL;
+		    transfer = transfer->next) {
+			struct locklint_access access;
+			struct locklint_access lock;
+			struct expression *argument;
+			enum lock_state state;
+
+			argument = call_argument(insn, transfer->argument);
+			if (!locklint_get_access(argument, &access))
+				continue;
+			lock.root = access.root;
+			lock.member = transfer->lock_member;
+			state = get_state(*states, &lock);
+			if (transfer->invalid[state] & INVALID_ACQUIRE) {
+				warning(pos, "locklint: call to '%s' may acquire "
+				    "already-held lock '%s'",
+				    show_ident(callee->ep->name->ident),
+				    lock_name(&lock));
+			}
+			if (transfer->invalid[state] & INVALID_RELEASE) {
+				warning(pos, "locklint: call to '%s' may release "
+				    "lock '%s' that is not held",
+				    show_ident(callee->ep->name->ident),
+				    lock_name(&lock));
+			}
+			set_state(states, &lock, transfer->output[state]);
 		}
 	}
 }
 
 static void
-check_lock_action(struct state_entry **states, struct instruction *insn)
+check_lock_action(struct function_info *function,
+    struct state_entry **states, struct instruction *insn)
 {
 	struct locklint_access lock;
 	enum locklint_lock_action action;
 	enum lock_state state;
 	struct position pos;
+	unsigned int argument;
+	bool defer;
 
 	action = locklint_get_lock_action(insn, &lock);
 	if (action == LOCKLINT_LOCK_NONE || lock.root == NULL)
 		return;
 	state = get_state(*states, &lock);
+	defer = defer_formal_requirements(function) &&
+	    formal_argument(function->ep, lock.root, &argument);
 	pos = insn->call_expr != NULL ? insn->call_expr->pos : insn->pos;
 	if (action == LOCKLINT_LOCK_ACQUIRE) {
-		if (state == LOCK_HELD) {
+		if (state == LOCK_HELD && !defer) {
 			warning(pos, "locklint: lock '%s' is already held",
 			    lock_name(&lock));
-		} else if (state == LOCK_MAYBE_HELD) {
+		} else if (state == LOCK_MAYBE_HELD && !defer) {
 			warning(pos, "locklint: lock '%s' may already be held",
 			    lock_name(&lock));
 		}
 		set_state(states, &lock, LOCK_HELD);
 	} else {
-		if (state == LOCK_NOT_HELD) {
+		if (state == LOCK_NOT_HELD && !defer) {
 			warning(pos, "locklint: lock '%s' is not held",
 			    lock_name(&lock));
-		} else if (state == LOCK_MAYBE_HELD) {
+		} else if (state == LOCK_MAYBE_HELD && !defer) {
 			warning(pos, "locklint: lock '%s' may not be held",
 			    lock_name(&lock));
 		}
@@ -710,8 +1133,8 @@ emit_diagnostics(struct function_info *function)
 			if (insn->bb == NULL)
 				continue;
 			check_access(function, states, insn);
-			check_direct_call(function, states, insn);
-			check_lock_action(&states, insn);
+			check_direct_call(function, &states, insn);
+			check_lock_action(function, &states, insn);
 		} END_FOR_EACH_PTR(insn);
 		check_return_state(function->ep, block, states);
 		free_states(states);
@@ -740,7 +1163,6 @@ locklint_check_add(struct entrypoint *ep)
 	if (function == NULL)
 		die("out of memory registering function analysis");
 	function->ep = ep;
-	function->blocks = analyze_blocks(ep);
 	*functions_tail = function;
 	functions_tail = &function->next;
 }
@@ -752,6 +1174,23 @@ locklint_check_all(void)
 	bool changed;
 
 	mark_direct_callers();
+	for (function = functions; function != NULL; function = function->next)
+		(void) collect_local_transfers(function);
+	do {
+		changed = false;
+		for (function = functions; function != NULL;
+		    function = function->next) {
+			if (propagate_transfer_candidates(function))
+				changed = true;
+		}
+		for (function = functions; function != NULL;
+		    function = function->next) {
+			if (solve_function_transfers(function))
+				changed = true;
+		}
+	} while (changed);
+	for (function = functions; function != NULL; function = function->next)
+		function->blocks = analyze_blocks(function->ep);
 	for (function = functions; function != NULL; function = function->next)
 		collect_local_requirements(function);
 	do {
@@ -768,12 +1207,19 @@ locklint_check_all(void)
 	while (functions != NULL) {
 		struct function_info *next = functions->next;
 		struct requirement *requirement = functions->requirements;
+		struct lock_transfer *transfer = functions->transfers;
 
 		while (requirement != NULL) {
 			struct requirement *requirement_next = requirement->next;
 
 			free(requirement);
 			requirement = requirement_next;
+		}
+		while (transfer != NULL) {
+			struct lock_transfer *transfer_next = transfer->next;
+
+			free(transfer);
+			transfer = transfer_next;
 		}
 		free_blocks(functions->blocks);
 		free(functions);

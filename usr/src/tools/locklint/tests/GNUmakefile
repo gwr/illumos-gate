@@ -34,7 +34,9 @@ test:
 	diff -u check.ref check.out
 	$(LOCKLINT) --check-locks calls.c > calls.out 2>&1
 	diff -u calls.ref calls.out
+	$(LOCKLINT) --check-locks effects.c > effects.out 2>&1
+	diff -u effects.ref effects.out
 
 clean:
 	rm -f parsed.out linearized.out accesses.out annotations.out calls.out \
-	    check.out events.out
+	    check.out effects.out events.out
