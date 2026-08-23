@@ -3,6 +3,7 @@
 
 struct entrypoint;
 
-void locklint_check(struct entrypoint *);
+void locklint_check_add(struct entrypoint *);
+void locklint_check_all(void);
 
 #endif

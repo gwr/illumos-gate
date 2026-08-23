@@ -32,7 +32,9 @@ test:
 	diff -u annotations.ref annotations.out
 	$(LOCKLINT) --check-locks check.c > check.out 2>&1
 	diff -u check.ref check.out
+	$(LOCKLINT) --check-locks calls.c > calls.out 2>&1
+	diff -u calls.ref calls.out
 
 clean:
-	rm -f parsed.out linearized.out accesses.out annotations.out check.out \
-	    events.out
+	rm -f parsed.out linearized.out accesses.out annotations.out calls.out \
+	    check.out events.out

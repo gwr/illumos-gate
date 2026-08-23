@@ -141,15 +141,17 @@ process_symbols(struct symbol_list *symbols)
 		ep = linearize_symbol(sym);
 		if (ep == NULL)
 			continue;
+		if (check_locks)
+			locklint_check_add(ep);
 		if (dump_linearized)
 			show_entry(ep);
 		if (dump_accesses)
 			show_accesses(ep);
-		if (check_locks)
-			locklint_check(ep);
 		if (dump_events)
 			locklint_show_events(ep);
 	} END_FOR_EACH_PTR(sym);
+	if (check_locks)
+		locklint_check_all();
 }
 
 int

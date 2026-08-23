@@ -30,6 +30,26 @@ struct block_info {
 	struct block_info *next;
 };
 
+struct requirement {
+	unsigned int argument;
+	struct symbol *lock_member;
+	struct symbol *data_member;
+	struct position pos;
+	struct requirement *next;
+};
+
+struct function_info {
+	struct entrypoint *ep;
+	struct block_info *blocks;
+	struct requirement *requirements;
+	bool has_direct_caller;
+	bool reachable_from_root;
+	struct function_info *next;
+};
+
+static struct function_info *functions;
+static struct function_info **functions_tail = &functions;
+
 static bool
 same_lock(const struct locklint_access *left,
     const struct locklint_access *right)
@@ -157,6 +177,19 @@ find_block(struct block_info *blocks, struct basic_block *bb)
 	return (NULL);
 }
 
+static void
+transfer_lock_action(struct state_entry **states, struct instruction *insn)
+{
+	struct locklint_access lock;
+	enum locklint_lock_action action;
+
+	action = locklint_get_lock_action(insn, &lock);
+	if (action == LOCKLINT_LOCK_ACQUIRE && lock.root != NULL)
+		set_state(states, &lock, LOCK_HELD);
+	else if (action == LOCKLINT_LOCK_RELEASE && lock.root != NULL)
+		set_state(states, &lock, LOCK_NOT_HELD);
+}
+
 static struct state_entry *
 transfer_block(struct basic_block *bb, struct state_entry *in)
 {
@@ -164,16 +197,9 @@ transfer_block(struct basic_block *bb, struct state_entry *in)
 	struct instruction *insn;
 
 	FOR_EACH_PTR(bb->insns, insn) {
-		struct locklint_access lock;
-		enum locklint_lock_action action;
-
 		if (insn->bb == NULL)
 			continue;
-		action = locklint_get_lock_action(insn, &lock);
-		if (action == LOCKLINT_LOCK_ACQUIRE && lock.root != NULL)
-			set_state(&out, &lock, LOCK_HELD);
-		else if (action == LOCKLINT_LOCK_RELEASE && lock.root != NULL)
-			set_state(&out, &lock, LOCK_NOT_HELD);
+		transfer_lock_action(&out, insn);
 	} END_FOR_EACH_PTR(insn);
 
 	return (out);
@@ -258,6 +284,105 @@ analyze_blocks(struct entrypoint *ep)
 	return (blocks);
 }
 
+static struct function_info *
+find_function(struct entrypoint *ep)
+{
+	struct function_info *function;
+
+	for (function = functions; function != NULL; function = function->next) {
+		if (function->ep == ep)
+			return (function);
+	}
+	return (NULL);
+}
+
+static struct function_info *
+direct_callee(struct instruction *insn)
+{
+	struct symbol *symbol;
+
+	if (insn->opcode != OP_CALL || insn->func == NULL ||
+	    insn->func->type != PSEUDO_SYM || insn->func->sym == NULL)
+		return (NULL);
+	symbol = insn->func->sym;
+	if (symbol->ep == NULL && symbol->definition != NULL)
+		symbol = symbol->definition;
+	return (symbol->ep != NULL ? find_function(symbol->ep) : NULL);
+}
+
+static bool
+formal_argument(struct entrypoint *ep, struct symbol *symbol,
+    unsigned int *index)
+{
+	struct symbol *type = ep->name->ctype.base_type;
+	struct symbol *argument;
+	unsigned int current = 0;
+
+	while (type != NULL && type->type == SYM_NODE)
+		type = type->ctype.base_type;
+	if (type == NULL || type->type != SYM_FN)
+		return (false);
+	FOR_EACH_PTR(type->arguments, argument) {
+		if (argument == symbol) {
+			*index = current;
+			return (true);
+		}
+		current++;
+	} END_FOR_EACH_PTR(argument);
+	return (false);
+}
+
+static struct expression *
+call_argument(struct instruction *insn, unsigned int index)
+{
+	struct expression *argument;
+	unsigned int current = 0;
+
+	if (insn->call_expr == NULL)
+		return (NULL);
+	FOR_EACH_PTR(insn->call_expr->args, argument) {
+		if (current++ == index)
+			return (argument);
+	} END_FOR_EACH_PTR(argument);
+	return (NULL);
+}
+
+static bool
+add_requirement(struct function_info *function, unsigned int argument,
+    struct symbol *lock_member, struct symbol *data_member,
+    struct position pos)
+{
+	struct requirement *requirement;
+
+	for (requirement = function->requirements; requirement != NULL;
+	    requirement = requirement->next) {
+		if (requirement->argument == argument &&
+		    requirement->lock_member == lock_member &&
+		    requirement->data_member == data_member)
+			return (false);
+	}
+	requirement = calloc(1, sizeof (*requirement));
+	if (requirement == NULL)
+		die("out of memory recording lock requirement");
+	requirement->argument = argument;
+	requirement->lock_member = lock_member;
+	requirement->data_member = data_member;
+	requirement->pos = pos;
+	requirement->next = function->requirements;
+	function->requirements = requirement;
+	return (true);
+}
+
+static bool
+defer_formal_requirements(struct function_info *function)
+{
+	unsigned long modifiers = function->ep->name->ctype.modifiers;
+
+	return (function->reachable_from_root && function->has_direct_caller &&
+	    (modifiers & MOD_STATIC) != 0 &&
+	    (modifiers & MOD_ADDRESSABLE) == 0);
+}
+
 static const char *
 lock_name(const struct locklint_access *lock)
 {
@@ -268,35 +393,242 @@ lock_name(const struct locklint_access *lock)
 	return ("<unknown>");
 }
 
-static void
-check_access(struct state_entry *states, struct instruction *insn)
+static bool
+protected_access(struct instruction *insn, struct locklint_access *access,
+    struct locklint_access *lock, struct symbol **data_member)
 {
-	struct locklint_access access;
-	struct locklint_access lock;
 	struct symbol *protector;
-	enum lock_state state;
 
 	if (insn->access == NULL ||
 	    (insn->opcode != OP_LOAD && insn->opcode != OP_STORE) ||
-	    !locklint_get_access(insn->access, &access) ||
-	    access.member == NULL)
-		return;
-	protector = locklint_protecting_member(access.member);
+	    !locklint_get_access(insn->access, access) ||
+	    access->member == NULL)
+		return (false);
+	protector = locklint_protecting_member(access->member);
 	if (protector == NULL)
+		return (false);
+	lock->root = access->root;
+	lock->member = protector;
+	*data_member = access->member;
+	return (true);
+}
+
+static void
+mark_reachable(struct function_info *function)
+{
+	struct basic_block *bb;
+
+	if (function->reachable_from_root)
 		return;
-	lock.root = access.root;
-	lock.member = protector;
+	function->reachable_from_root = true;
+	FOR_EACH_PTR(function->ep->bbs, bb) {
+		struct instruction *insn;
+
+		FOR_EACH_PTR(bb->insns, insn) {
+			struct function_info *callee;
+
+			if (insn->bb == NULL)
+				continue;
+			callee = direct_callee(insn);
+			if (callee != NULL)
+				mark_reachable(callee);
+		} END_FOR_EACH_PTR(insn);
+	} END_FOR_EACH_PTR(bb);
+}
+
+static void
+mark_direct_callers(void)
+{
+	struct function_info *function;
+
+	for (function = functions; function != NULL; function = function->next) {
+		struct basic_block *bb;
+
+		FOR_EACH_PTR(function->ep->bbs, bb) {
+			struct instruction *insn;
+
+			FOR_EACH_PTR(bb->insns, insn) {
+				struct function_info *callee;
+
+				if (insn->bb == NULL)
+					continue;
+				callee = direct_callee(insn);
+				if (callee != NULL && callee != function)
+					callee->has_direct_caller = true;
+			} END_FOR_EACH_PTR(insn);
+		} END_FOR_EACH_PTR(bb);
+	}
+	for (function = functions; function != NULL; function = function->next) {
+		if (!function->has_direct_caller ||
+		    (function->ep->name->ctype.modifiers & MOD_STATIC) == 0)
+			mark_reachable(function);
+	}
+}
+
+static void
+collect_local_requirements(struct function_info *function)
+{
+	struct block_info *block;
+
+	for (block = function->blocks; block != NULL; block = block->next) {
+		struct state_entry *states;
+		struct instruction *insn;
+
+		if (!block->reachable)
+			continue;
+		states = copy_states(block->in);
+		FOR_EACH_PTR(block->bb->insns, insn) {
+			struct locklint_access access;
+			struct locklint_access lock;
+			struct symbol *data_member;
+			unsigned int argument;
+
+			if (insn->bb == NULL)
+				continue;
+			if (protected_access(insn, &access, &lock, &data_member) &&
+			    get_state(states, &lock) == LOCK_NOT_HELD &&
+			    formal_argument(function->ep, access.root,
+			    &argument)) {
+				(void) add_requirement(function, argument,
+				    lock.member, data_member, insn->access->pos);
+			}
+			transfer_lock_action(&states, insn);
+		} END_FOR_EACH_PTR(insn);
+		free_states(states);
+	}
+}
+
+static bool
+propagate_call_requirements(struct function_info *function,
+    struct state_entry *states, struct instruction *insn)
+{
+	struct function_info *callee = direct_callee(insn);
+	struct requirement *requirement;
+	bool changed = false;
+
+	if (callee == NULL)
+		return (false);
+	for (requirement = callee->requirements; requirement != NULL;
+	    requirement = requirement->next) {
+		struct locklint_access access;
+		struct locklint_access lock;
+		struct expression *argument;
+		unsigned int caller_argument;
+
+		argument = call_argument(insn, requirement->argument);
+		if (!locklint_get_access(argument, &access))
+			continue;
+		lock.root = access.root;
+		lock.member = requirement->lock_member;
+		if (get_state(states, &lock) != LOCK_NOT_HELD ||
+		    !formal_argument(function->ep, access.root,
+		    &caller_argument))
+			continue;
+		if (add_requirement(function, caller_argument,
+		    requirement->lock_member, requirement->data_member,
+		    requirement->pos))
+			changed = true;
+	}
+	return (changed);
+}
+
+static bool
+propagate_function_requirements(struct function_info *function)
+{
+	struct block_info *block;
+	bool changed = false;
+
+	for (block = function->blocks; block != NULL; block = block->next) {
+		struct state_entry *states;
+		struct instruction *insn;
+
+		if (!block->reachable)
+			continue;
+		states = copy_states(block->in);
+		FOR_EACH_PTR(block->bb->insns, insn) {
+			if (insn->bb == NULL)
+				continue;
+			if (propagate_call_requirements(function, states, insn))
+				changed = true;
+			transfer_lock_action(&states, insn);
+		} END_FOR_EACH_PTR(insn);
+		free_states(states);
+	}
+	return (changed);
+}
+
+static void
+check_access(struct function_info *function, struct state_entry *states,
+    struct instruction *insn)
+{
+	struct locklint_access access;
+	struct locklint_access lock;
+	struct symbol *data_member;
+	enum lock_state state;
+	unsigned int argument;
+
+	if (!protected_access(insn, &access, &lock, &data_member))
+		return;
 	state = get_state(states, &lock);
 	if (state == LOCK_NOT_HELD) {
+		if (defer_formal_requirements(function) &&
+		    formal_argument(function->ep, access.root, &argument))
+			return;
 		warning(insn->access->pos,
 		    "locklint: protected member '%s' accessed without "
-		    "holding '%s'", show_ident(access.member->ident),
+		    "holding '%s'", show_ident(data_member->ident),
 		    lock_name(&lock));
 	} else if (state == LOCK_MAYBE_HELD) {
 		warning(insn->access->pos,
 		    "locklint: lock '%s' is not held on every path "
 		    "accessing protected member '%s'", lock_name(&lock),
-		    show_ident(access.member->ident));
+		    show_ident(data_member->ident));
+	}
+}
+
+static void
+check_direct_call(struct function_info *function,
+    struct state_entry *states, struct instruction *insn)
+{
+	struct function_info *callee = direct_callee(insn);
+	struct requirement *requirement;
+	struct position pos;
+
+	if (callee == NULL || callee == function)
+		return;
+	pos = insn->call_expr != NULL ? insn->call_expr->pos : insn->pos;
+	for (requirement = callee->requirements; requirement != NULL;
+	    requirement = requirement->next) {
+		struct locklint_access access;
+		struct locklint_access lock;
+		struct expression *argument;
+		enum lock_state state;
+		unsigned int caller_argument;
+
+		argument = call_argument(insn, requirement->argument);
+		if (!locklint_get_access(argument, &access))
+			continue;
+		lock.root = access.root;
+		lock.member = requirement->lock_member;
+		state = get_state(states, &lock);
+		if (state == LOCK_HELD)
+			continue;
+		if (state == LOCK_NOT_HELD &&
+		    defer_formal_requirements(function) &&
+		    formal_argument(function->ep, access.root,
+		    &caller_argument))
+			continue;
+		if (state == LOCK_NOT_HELD) {
+			warning(pos, "locklint: call to '%s' accesses protected "
+			    "member '%s' without holding '%s'",
+			    show_ident(callee->ep->name->ident),
+			    show_ident(requirement->data_member->ident),
+			    lock_name(&lock));
+		} else {
+			warning(pos, "locklint: lock '%s' is not held on every "
+			    "path calling '%s'", lock_name(&lock),
+			    show_ident(callee->ep->name->ident));
+		}
 	}
 }
 
@@ -363,11 +695,11 @@ check_return_state(struct entrypoint *ep, struct block_info *block,
 }
 
 static void
-emit_diagnostics(struct entrypoint *ep, struct block_info *blocks)
+emit_diagnostics(struct function_info *function)
 {
 	struct block_info *block;
 
-	for (block = blocks; block != NULL; block = block->next) {
+	for (block = function->blocks; block != NULL; block = block->next) {
 		struct state_entry *states;
 		struct instruction *insn;
 
@@ -377,10 +709,11 @@ emit_diagnostics(struct entrypoint *ep, struct block_info *blocks)
 		FOR_EACH_PTR(block->bb->insns, insn) {
 			if (insn->bb == NULL)
 				continue;
-			check_access(states, insn);
+			check_access(function, states, insn);
+			check_direct_call(function, states, insn);
 			check_lock_action(&states, insn);
 		} END_FOR_EACH_PTR(insn);
-		check_return_state(ep, block, states);
+		check_return_state(function->ep, block, states);
 		free_states(states);
 	}
 }
@@ -399,11 +732,52 @@ free_blocks(struct block_info *blocks)
 }
 
 void
-locklint_check(struct entrypoint *ep)
+locklint_check_add(struct entrypoint *ep)
 {
-	struct block_info *blocks;
+	struct function_info *function;
 
-	blocks = analyze_blocks(ep);
-	emit_diagnostics(ep, blocks);
-	free_blocks(blocks);
+	function = calloc(1, sizeof (*function));
+	if (function == NULL)
+		die("out of memory registering function analysis");
+	function->ep = ep;
+	function->blocks = analyze_blocks(ep);
+	*functions_tail = function;
+	functions_tail = &function->next;
+}
+
+void
+locklint_check_all(void)
+{
+	struct function_info *function;
+	bool changed;
+
+	mark_direct_callers();
+	for (function = functions; function != NULL; function = function->next)
+		collect_local_requirements(function);
+	do {
+		changed = false;
+		for (function = functions; function != NULL;
+		    function = function->next) {
+			if (propagate_function_requirements(function))
+				changed = true;
+		}
+	} while (changed);
+	for (function = functions; function != NULL; function = function->next)
+		emit_diagnostics(function);
+
+	while (functions != NULL) {
+		struct function_info *next = functions->next;
+		struct requirement *requirement = functions->requirements;
+
+		while (requirement != NULL) {
+			struct requirement *requirement_next = requirement->next;
+
+			free(requirement);
+			requirement = requirement_next;
+		}
+		free_blocks(functions->blocks);
+		free(functions);
+		functions = next;
+	}
+	functions_tail = &functions;
 }
