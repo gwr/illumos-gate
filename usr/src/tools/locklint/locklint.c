@@ -148,6 +148,7 @@ int
 main(int argc, char **argv)
 {
 	struct string_list *filelist = NULL;
+	struct symbol_list *symbols;
 	char *file;
 
 	argc = options(argc, argv);
@@ -161,7 +162,10 @@ main(int argc, char **argv)
 	do_output = 0;
 	process_symbols(sparse_initialize(argc, argv, &filelist));
 	FOR_EACH_PTR(filelist, file) {
-		process_symbols(sparse(file));
+		symbols = sparse(file);
+		if (dump_annotations)
+			locklint_resolve_annotations();
+		process_symbols(symbols);
 	} END_FOR_EACH_PTR(file);
 	if (dump_annotations)
 		locklint_show_annotations(stdout);

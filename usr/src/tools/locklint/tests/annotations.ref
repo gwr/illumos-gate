@@ -1,1 +1,3 @@
-annotations.c:6:1: _NOTE(MUTEX_PROTECTS_DATA(event_state::LOCK_MEMBER, event_state::{ value count }))
+annotations.c:12:1: _NOTE(READ_ONLY_DATA(event_state::LOCK_MEMBER))
+annotations.c:13:1: MUTEX_PROTECTS_DATA event_state::lock -> event_state::value
+annotations.c:13:1: MUTEX_PROTECTS_DATA event_state::lock -> event_state::count
