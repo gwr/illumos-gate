@@ -30,7 +30,7 @@
 
 #define	DO_LIST(l__, p__, expr__)		\
 	do {					\
-		typeof(l__->list[0]) p__;	\
+		__typeof__(l__->list[0]) p__;	\
 		FOR_EACH_PTR(l__, p__)		\
 			expr__;			\
 		END_FOR_EACH_PTR(p__);		\
@@ -38,8 +38,8 @@
 
 #define	DO_2_LIST(l1__,l2__, p1__,p2__, expr__)	\
 	do {					\
-		typeof(l1__->list[0]) p1__;	\
-		typeof(l2__->list[0]) p2__;	\
+		__typeof__(l1__->list[0]) p1__;	\
+		__typeof__(l2__->list[0]) p2__;	\
 		PREPARE_PTR_LIST(l1__, p1__);	\
 		FOR_EACH_PTR(l2__, p2__)	\
 			expr__;			\
