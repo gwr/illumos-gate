@@ -231,6 +231,11 @@ file path=opt/libc-tests/tests/timespec_getres.32 mode=0555
 file path=opt/libc-tests/tests/timespec_getres.64 mode=0555
 file path=opt/libc-tests/tests/uchar.32 mode=0555
 file path=opt/libc-tests/tests/uchar.64 mode=0555
+dir  path=opt/libc-tests/tests/ucontext
+file path=opt/libc-tests/tests/ucontext/ucontext-abi.gnu89.32 mode=0555
+file path=opt/libc-tests/tests/ucontext/ucontext-abi.gnu89.64 mode=0555
+file path=opt/libc-tests/tests/ucontext/ucontext-abi.xpg4v2.32 mode=0555
+file path=opt/libc-tests/tests/ucontext/ucontext-abi.xpg4v2.64 mode=0555
 file path=opt/libc-tests/tests/utimes.32 mode=0555
 file path=opt/libc-tests/tests/utimes.64 mode=0555
 file path=opt/libc-tests/tests/wcsftime.32 mode=0555

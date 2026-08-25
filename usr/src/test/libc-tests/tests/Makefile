@@ -36,6 +36,7 @@ SUBDIRS = \
 	select \
 	stdio \
 	threads \
+	ucontext \
 	wcsrtombs \
 	wctype
 

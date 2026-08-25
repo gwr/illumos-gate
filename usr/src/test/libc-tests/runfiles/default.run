@@ -201,6 +201,14 @@ user = root
 [/opt/libc-tests/tests/timespec_getres.64]
 [/opt/libc-tests/tests/uchar.32]
 [/opt/libc-tests/tests/uchar.64]
+[/opt/libc-tests/tests/ucontext]
+tests = [
+	'ucontext-abi.gnu89.32',
+	'ucontext-abi.gnu89.64',
+	'ucontext-abi.xpg4v2.32',
+	'ucontext-abi.xpg4v2.64'
+	]
+
 [/opt/libc-tests/tests/utimes.32]
 [/opt/libc-tests/tests/utimes.64]
 [/opt/libc-tests/tests/wcsftime.32]
