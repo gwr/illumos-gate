@@ -69,6 +69,7 @@ struct transfer_block_info {
 struct requirement {
 	unsigned int argument;
 	struct symbol *lock_member;
+	unsigned long lock_offset;
 	struct symbol *data_member;
 	struct position pos;
 	struct requirement *next;
@@ -77,6 +78,7 @@ struct requirement {
 struct lock_transfer {
 	unsigned int argument;
 	struct symbol *lock_member;
+	unsigned long lock_offset;
 	enum lock_state output[LOCK_STATE_COUNT];
 	unsigned int invalid[LOCK_STATE_COUNT];
 	struct lock_transfer *next;
@@ -102,7 +104,9 @@ static bool
 same_lock(const struct locklint_access *left,
     const struct locklint_access *right)
 {
-	return (left->root == right->root && left->member == right->member);
+	return (left->root == right->root &&
+	    left->member == right->member &&
+	    left->offset == right->offset);
 }
 
 static struct state_entry *
@@ -543,6 +547,17 @@ argument_member(struct expression *argument, struct symbol *member)
 	return (type != NULL ? type : member);
 }
 
+static bool
+argument_lock(struct expression *argument, struct symbol *member,
+    unsigned long offset, struct locklint_access *lock)
+{
+	if (!locklint_get_access(argument, lock))
+		return (false);
+	lock->member = argument_member(argument, member);
+	lock->offset += offset;
+	return (true);
+}
+
 static struct symbol *
 formal_symbol(struct entrypoint *ep, unsigned int index)
 {
@@ -563,7 +578,7 @@ formal_symbol(struct entrypoint *ep, unsigned int index)
 
 static struct lock_transfer *
 add_transfer(struct function_info *function, unsigned int argument,
-    struct symbol *lock_member, bool *added)
+    struct symbol *lock_member, unsigned long lock_offset, bool *added)
 {
 	struct lock_transfer *transfer;
 	unsigned int state;
@@ -571,7 +586,8 @@ add_transfer(struct function_info *function, unsigned int argument,
 	for (transfer = function->transfers; transfer != NULL;
 	    transfer = transfer->next) {
 		if (transfer->argument == argument &&
-		    transfer->lock_member == lock_member) {
+		    transfer->lock_member == lock_member &&
+		    transfer->lock_offset == lock_offset) {
 			*added = false;
 			return (transfer);
 		}
@@ -581,6 +597,7 @@ add_transfer(struct function_info *function, unsigned int argument,
 		die("out of memory recording lock transfer");
 	transfer->argument = argument;
 	transfer->lock_member = lock_member;
+	transfer->lock_offset = lock_offset;
 	for (state = 0; state < LOCK_STATE_COUNT; state++)
 		transfer->output[state] = state;
 	transfer->next = function->transfers;
@@ -599,16 +616,14 @@ transfer_call_effects(struct state_entry **states, struct instruction *insn)
 		return;
 	for (transfer = callee->transfers; transfer != NULL;
 	    transfer = transfer->next) {
-		struct locklint_access access;
 		struct locklint_access lock;
 		struct expression *argument;
 		enum lock_state state;
 
 		argument = call_argument(insn, transfer->argument);
-		if (!locklint_get_access(argument, &access))
+		if (!argument_lock(argument, transfer->lock_member,
+		    transfer->lock_offset, &lock))
 			continue;
-		lock.root = access.root;
-		lock.member = argument_member(argument, transfer->lock_member);
 		state = get_state(*states, &lock);
 		set_state(states, &lock, transfer->output[state]);
 	}
@@ -616,7 +631,8 @@ transfer_call_effects(struct state_entry **states, struct instruction *insn)
 
 static bool
 add_requirement(struct function_info *function, unsigned int argument,
-    struct symbol *lock_member, struct symbol *data_member,
+    struct symbol *lock_member, unsigned long lock_offset,
+    struct symbol *data_member,
     struct position pos)
 {
 	struct requirement *requirement;
@@ -625,6 +641,7 @@ add_requirement(struct function_info *function, unsigned int argument,
 	    requirement = requirement->next) {
 		if (requirement->argument == argument &&
 		    requirement->lock_member == lock_member &&
+		    requirement->lock_offset == lock_offset &&
 		    requirement->data_member == data_member)
 			return (false);
 	}
@@ -633,6 +650,7 @@ add_requirement(struct function_info *function, unsigned int argument,
 		die("out of memory recording lock requirement");
 	requirement->argument = argument;
 	requirement->lock_member = lock_member;
+	requirement->lock_offset = lock_offset;
 	requirement->data_member = data_member;
 	requirement->pos = pos;
 	requirement->next = function->requirements;
@@ -664,19 +682,14 @@ static bool
 protected_access(struct instruction *insn, struct locklint_access *access,
     struct locklint_access *lock, struct symbol **data_member)
 {
-	struct symbol *protector;
-
 	if (insn->access == NULL ||
 	    (insn->opcode != OP_LOAD && insn->opcode != OP_STORE) ||
-	    !locklint_get_access(insn->access, access) ||
-	    access->member == NULL)
+	    !locklint_get_access(insn->access, access))
 		return (false);
-	protector = locklint_protecting_member(access->member);
-	if (protector == NULL)
+	if (!locklint_protecting_access(access, lock))
 		return (false);
-	lock->root = access->root;
-	lock->member = protector;
-	*data_member = access->member;
+	*data_member = access->member != NULL ?
+	    access->member : access->root;
 	return (true);
 }
 
@@ -753,7 +766,8 @@ collect_local_transfers(struct function_info *function)
 			if (action == LOCKLINT_LOCK_NONE || lock.root == NULL ||
 			    !formal_argument(function->ep, lock.root, &argument))
 				continue;
-			(void) add_transfer(function, argument, lock.member, &added);
+			(void) add_transfer(function, argument, lock.member,
+			    lock.offset, &added);
 			if (added)
 				changed = true;
 		} END_FOR_EACH_PTR(insn);
@@ -793,7 +807,8 @@ propagate_transfer_candidates(struct function_info *function)
 					continue;
 				(void) add_transfer(function, argument,
 				    argument_member(actual,
-				    transfer->lock_member), &added);
+				    transfer->lock_member),
+				    access.offset + transfer->lock_offset, &added);
 				if (added)
 					changed = true;
 			}
@@ -834,15 +849,12 @@ simulate_instruction(struct locklint_access *target,
 	if (callee != NULL) {
 		for (transfer = callee->transfers; transfer != NULL;
 		    transfer = transfer->next) {
-			struct locklint_access access;
 			struct expression *actual;
 
 			actual = call_argument(insn, transfer->argument);
-			if (!locklint_get_access(actual, &access))
+			if (!argument_lock(actual, transfer->lock_member,
+			    transfer->lock_offset, &lock))
 				continue;
-			lock.root = access.root;
-			lock.member = argument_member(actual,
-			    transfer->lock_member);
 			if (!same_lock(target, &lock))
 				continue;
 			*invalid |= transfer->invalid[*state];
@@ -896,7 +908,10 @@ simulate_transfer(struct function_info *function,
 	bool changed;
 
 	target.root = formal_symbol(function->ep, transfer->argument);
+	target.type = NULL;
 	target.member = transfer->lock_member;
+	target.offset = transfer->lock_offset;
+	target.expr = NULL;
 	FOR_EACH_PTR(function->ep->bbs, bb) {
 		block = calloc(1, sizeof (*block));
 		if (block == NULL)
@@ -1040,7 +1055,8 @@ collect_local_requirements(struct function_info *function)
 			    formal_argument(function->ep, access.root,
 			    &argument)) {
 				(void) add_requirement(function, argument,
-				    lock.member, data_member, insn->access->pos);
+				    lock.member, lock.offset, data_member,
+				    insn->access->pos);
 			}
 			transfer_instruction(&states, insn);
 		} END_FOR_EACH_PTR(insn);
@@ -1060,23 +1076,20 @@ propagate_call_requirements(struct function_info *function,
 		return (false);
 	for (requirement = callee->requirements; requirement != NULL;
 	    requirement = requirement->next) {
-		struct locklint_access access;
 		struct locklint_access lock;
 		struct expression *argument;
 		unsigned int caller_argument;
 
 		argument = call_argument(insn, requirement->argument);
-		if (!locklint_get_access(argument, &access))
+		if (!argument_lock(argument, requirement->lock_member,
+		    requirement->lock_offset, &lock))
 			continue;
-		lock.root = access.root;
-		lock.member = argument_member(argument,
-		    requirement->lock_member);
 		if (get_state(states, &lock) != LOCK_NOT_HELD ||
-		    !formal_argument(function->ep, access.root,
+		    !formal_argument(function->ep, lock.root,
 		    &caller_argument))
 			continue;
 		if (add_requirement(function, caller_argument,
-		    lock.member, requirement->data_member,
+		    lock.member, lock.offset, requirement->data_member,
 		    requirement->pos))
 			changed = true;
 	}
@@ -1158,24 +1171,21 @@ check_direct_call(struct function_info *function,
 	if (callee != function) {
 		for (requirement = callee->requirements; requirement != NULL;
 		    requirement = requirement->next) {
-			struct locklint_access access;
 			struct locklint_access lock;
 			struct expression *argument;
 			enum lock_state state;
 			unsigned int caller_argument;
 
 			argument = call_argument(insn, requirement->argument);
-			if (!locklint_get_access(argument, &access))
+			if (!argument_lock(argument, requirement->lock_member,
+			    requirement->lock_offset, &lock))
 				continue;
-			lock.root = access.root;
-			lock.member = argument_member(argument,
-			    requirement->lock_member);
 			state = get_state(*states, &lock);
 			if (state == LOCK_HELD)
 				continue;
 			if (state == LOCK_NOT_HELD &&
 			    defer_formal_requirements(function) &&
-			    formal_argument(function->ep, access.root,
+			    formal_argument(function->ep, lock.root,
 			    &caller_argument))
 				continue;
 			if (state == LOCK_NOT_HELD) {
@@ -1196,17 +1206,14 @@ check_direct_call(struct function_info *function,
 
 		for (transfer = callee->transfers; transfer != NULL;
 		    transfer = transfer->next) {
-			struct locklint_access access;
 			struct locklint_access lock;
 			struct expression *argument;
 			enum lock_state state;
 
 			argument = call_argument(insn, transfer->argument);
-			if (!locklint_get_access(argument, &access))
+			if (!argument_lock(argument, transfer->lock_member,
+			    transfer->lock_offset, &lock))
 				continue;
-			lock.root = access.root;
-			lock.member = argument_member(argument,
-			    transfer->lock_member);
 			state = get_state(*states, &lock);
 			if (transfer->invalid[state] & INVALID_ACQUIRE) {
 				warning(pos, "locklint: call to '%s' may acquire "

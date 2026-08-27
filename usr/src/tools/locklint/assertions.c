@@ -202,7 +202,10 @@ locklint_get_assertion(struct instruction *insn,
 	enum locklint_assertion state = LOCKLINT_ASSERT_NONE;
 
 	access->root = NULL;
+	access->type = NULL;
 	access->member = NULL;
+	access->offset = 0;
+	access->expr = NULL;
 	if (!is_lock_predicate(insn) || insn->call_expr == NULL)
 		return (LOCKLINT_ASSERT_NONE);
 	argument = first_expression(insn->call_expr->args);

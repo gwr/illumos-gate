@@ -54,6 +54,7 @@ install.bin/install.bin
 lex/lex
 lintdump/lintdump
 localedef/localedef
+locklint/version.h
 make/bin/make
 makesoftcore/makesoftcore
 mandoc/mandoc

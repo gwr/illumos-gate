@@ -140,6 +140,42 @@ run_capture "user mutex" user-mutex.out \
 compare "user mutex" user-mutex.ref user-mutex.out
 
 #
+# Verify unresolved mutex annotation names produce diagnostics.
+#
+echo "test: annotation errors"
+if "$LOCKLINT" --dump-annotations annotation-errors.c \
+    > annotation-errors.out 2>&1; then
+	fail "annotation errors: command unexpectedly succeeded"
+fi
+require_match "annotation errors" \
+    "unresolved annotation name 'missing_lock'" annotation-errors.out
+require_match "annotation errors" \
+    "unresolved annotation name 'error_object.missing_lock'" \
+    annotation-errors.out
+require_match "annotation errors" \
+    "unresolved annotation name 'error_state::missing_value'" \
+    annotation-errors.out
+
+#
+# Verify complete mutex annotation names and recursive expansion.
+#
+run_capture "annotation names" annotation-names.raw \
+    "$LOCKLINT" --check-locks annotation-names.c
+sed 's/\(.*:[0-9][0-9]*\):[0-9][0-9]*: warning/\1: warning/' \
+    annotation-names.raw > annotation-names.out
+compare "annotation names" annotation-names.ref annotation-names.out
+
+#
+# Verify later protection declarations report override provenance.
+#
+run_capture "annotation name dump" annotation-names-dump.out \
+    "$LOCKLINT" --dump-annotations annotation-names.c
+require_match "annotation name dump" \
+    'replaced by annotation-names.c:61:1' annotation-names-dump.out
+require_match "annotation name dump" \
+    'replaces annotation-names.c:59:1' annotation-names-dump.out
+
+#
 # Final report
 #
 if [ "$failures" -ne 0 ]; then

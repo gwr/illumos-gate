@@ -1,0 +1,32 @@
+/*
+ * This file and its contents are supplied under the terms of the
+ * Common Development and Distribution License ("CDDL"), version 1.0.
+ * You may only use this file in accordance with the terms of version
+ * 1.0 of the CDDL.
+ *
+ * A full copy of the text of the CDDL should have accompanied this
+ * source.  A copy of the CDDL is also available via the Internet at
+ * http://www.illumos.org/license/CDDL.
+ */
+
+/*
+ * Copyright 2026 RackTop Systems Inc.
+ */
+
+/*
+ * Test diagnostics for recognized annotations whose names cannot be
+ * resolved.
+ */
+
+#define	_NOTE(arg)
+
+typedef struct error_state {
+	int lock;
+	int value;
+} error_state_t;
+
+static error_state_t error_object;
+
+_NOTE(MUTEX_PROTECTS_DATA(missing_lock, error_object.value))
+_NOTE(MUTEX_PROTECTS_DATA(error_object.missing_lock, error_object.value))
+_NOTE(MUTEX_PROTECTS_DATA(error_state::lock, error_state::missing_value))

@@ -55,7 +55,10 @@ locklint_get_lock_action(struct instruction *insn,
 	const char *name;
 
 	access->root = NULL;
+	access->type = NULL;
 	access->member = NULL;
+	access->offset = 0;
+	access->expr = NULL;
 	if (insn->opcode != OP_CALL)
 		return (LOCKLINT_LOCK_NONE);
 
@@ -79,7 +82,7 @@ static bool
 show_memory_event(struct instruction *insn)
 {
 	struct locklint_access access;
-	struct symbol *protector;
+	struct locklint_access protector;
 	const char *event;
 
 	if (insn->access == NULL)
@@ -95,9 +98,13 @@ show_memory_event(struct instruction *insn)
 	locklint_show_access(stdout, insn->access);
 	(void) printf(" offset=%u", insn->offset);
 	if (locklint_get_access(insn->access, &access) &&
-	    access.member != NULL &&
-	    (protector = locklint_protecting_member(access.member)) != NULL) {
-		(void) printf(" protected-by=%s", show_ident(protector->ident));
+	    locklint_protecting_access(&access, &protector)) {
+		struct symbol *name = protector.member != NULL ?
+		    protector.member : protector.root;
+
+		(void) printf(" protected-by=%s",
+		    name != NULL && name->ident != NULL ?
+		    show_ident(name->ident) : "<unknown>");
 	}
 	(void) printf("\n");
 	return (true);

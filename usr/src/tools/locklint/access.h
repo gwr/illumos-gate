@@ -24,10 +24,15 @@ struct symbol;
 
 struct locklint_access {
 	struct symbol *root;
+	struct symbol *type;
 	struct symbol *member;
+	unsigned long offset;
+	struct expression *expr;
 };
 
 bool locklint_get_access(struct expression *, struct locklint_access *);
+bool locklint_access_base(const struct locklint_access *, struct symbol *,
+    unsigned long, unsigned long *);
 void locklint_show_access(FILE *, struct expression *);
 
 #endif /* ACCESS_H */

@@ -100,6 +100,28 @@ form and a `MUTEX_PROTECTS_DATA` annotation using a generated member list.
 survive macro processing and that supported type and member names resolve to
 individual protection relations.
 
+### `annotation-names.c` and `annotation-names.ref`
+
+This test covers the complete mutex-protection name forms.  It includes:
+
+- named global locks and data;
+- concrete object/member paths;
+- nested generated member paths;
+- recursive expansion of structure-valued data;
+- type-scoped protection applied to embedded structures; and
+- overlapping declarations where the last protection declaration wins.
+
+The diagnostic comparison removes only warning column numbers, which vary
+with frontend positioning details, while retaining source lines and complete
+messages.  A separate annotation dump check verifies that replaced and
+effective declarations identify one another.
+
+### `annotation-errors.c`
+
+This test covers recognized annotations whose global, object-path, or
+type-member names cannot be resolved.  Locklint must fail and identify every
+unresolved name rather than silently ignoring the contract.
+
 ### `check.c` and `check.ref`
 
 This is the intraprocedural locking test.  It covers:

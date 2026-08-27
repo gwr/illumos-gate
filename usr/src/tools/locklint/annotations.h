@@ -16,12 +16,15 @@
 #ifndef ANNOTATIONS_H
 #define	ANNOTATIONS_H
 
+#include <stdbool.h>
 #include <stdio.h>
 
+struct locklint_access;
 struct symbol;
 
 void locklint_annotations_enable(void);
-struct symbol *locklint_protecting_member(struct symbol *);
+bool locklint_protecting_access(const struct locklint_access *,
+    struct locklint_access *);
 void locklint_resolve_annotations(void);
 void locklint_show_annotations(FILE *);
 

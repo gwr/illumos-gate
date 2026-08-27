@@ -110,15 +110,88 @@ show_member(FILE *stream, struct expression *expr)
 	(void) fprintf(stream, ".%s", show_ident(expr->member_ident));
 }
 
+static unsigned long
+member_offset(struct expression *expr)
+{
+	struct expression *member;
+	unsigned long offset = 0;
+
+	member = find_member(expr);
+	while (member != NULL) {
+		offset += member->member_path_offset;
+		member = find_member(member->member_base);
+	}
+	return (offset);
+}
+
+static struct symbol *
+root_type(struct symbol *root)
+{
+	struct symbol *type;
+
+	if (root == NULL)
+		return (NULL);
+	type = root->ctype.base_type;
+	while (type != NULL && type->type == SYM_NODE)
+		type = type->ctype.base_type;
+	if (type != NULL && type->type == SYM_PTR)
+		type = type->ctype.base_type;
+	while (type != NULL && type->type == SYM_NODE)
+		type = type->ctype.base_type;
+	return (type);
+}
+
+static struct symbol *
+compound_type(struct symbol *type)
+{
+	while (type != NULL && type->type == SYM_NODE)
+		type = type->ctype.base_type;
+	if (type == NULL ||
+	    (type->type != SYM_STRUCT && type->type != SYM_UNION))
+		return (NULL);
+	return (type);
+}
+
 bool
 locklint_get_access(struct expression *expr, struct locklint_access *access)
 {
 	struct expression *member;
 
 	access->root = find_root(expr);
+	access->type = root_type(access->root);
 	member = find_member(expr);
 	access->member = member != NULL ? member->member_symbol : NULL;
+	access->offset = member_offset(expr);
+	access->expr = expr;
 	return (access->root != NULL);
+}
+
+bool
+locklint_access_base(const struct locklint_access *access,
+    struct symbol *owner_type, unsigned long relative_offset,
+    unsigned long *base_offset)
+{
+	struct expression *member;
+	unsigned long suffix = 0;
+
+	if (access->type == owner_type && access->offset == relative_offset) {
+		*base_offset = 0;
+		return (true);
+	}
+	for (member = find_member(access->expr); member != NULL;
+	    member = find_member(member->member_base)) {
+		struct symbol *type;
+
+		suffix += member->member_path_offset;
+		if (suffix > access->offset)
+			return (false);
+		type = compound_type(member->member_base->ctype);
+		if (type == owner_type && suffix == relative_offset) {
+			*base_offset = access->offset - suffix;
+			return (true);
+		}
+	}
+	return (false);
 }
 
 void
