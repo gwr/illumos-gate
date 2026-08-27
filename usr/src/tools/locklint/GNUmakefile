@@ -93,8 +93,8 @@ version.h:
 	@printf '%s\n' '#define SPARSE_VERSION "locklint prototype"' > $@
 
 test: $(PROG)
-	$(MAKE) -C tests test
+	(cd tests && ./RunTests.sh)
 
 clean:
 	rm -f $(OBJS) version.h $(PROG)
-	$(MAKE) -C tests clean
+	rm -f tests/*.out tests/*.raw

@@ -111,11 +111,11 @@ version.h:
 	echo '#define SPARSE_VERSION "$(SPARSE_VERSION)"' > $@
 
 test: $(PROG)
-	(cd tests && $(MAKE) test)
+	(cd tests && ./RunTests.sh)
 
 clean: FRC
-	rm -f $(OBJS) version.h $(PROG)
-	(cd tests && $(MAKE) clean)
+	$(RM) -f $(OBJS) version.h $(PROG)
+	$(RM) -f tests/*.out tests/*.raw
 
 FRC:
 
