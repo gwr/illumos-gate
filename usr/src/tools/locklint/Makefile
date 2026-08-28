@@ -26,6 +26,7 @@ SPARSE_SRCDIR = ../smatch/src
 SPARSE_VERSION = 0.6.1-rc1-il-7-locklint
 
 include ../Makefile.tools
+include ../../Makefile.master.64
 
 CSTD = $(CSTD_GNU99)
 CPPFLAGS += -I. -I$(SPARSE_SRCDIR)
@@ -85,7 +86,8 @@ LOCAL_OBJS = \
 	assertions.o \
 	check.o \
 	events.o \
-	identity.o
+	identity.o \
+	avl.o
 
 OBJS = $(LOCAL_OBJS) $(SPARSE_OBJS) hashtable.o
 
