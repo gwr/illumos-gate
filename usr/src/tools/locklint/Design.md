@@ -28,6 +28,12 @@ built on the other.  In the illumos source tree, the maintained Sparse
 sources reside under `usr/src/tools/smatch/src`.  Locklint compiles the Sparse
 source modules it needs directly and does not use smatch's checker code.
 
+The long-term goal for locklint is to provide illumos with locking analysis
+equivalent to historical Solaris `lock_lint`.  Its annotations and behavior
+define the compatibility target, with the historical tools used for
+comparison.  Lock-specific behavior remains in locklint where practical so
+changes to the shared Sparse frontend stay minimal.
+
 This document describes the implemented design.  It is intended to evolve
 with the code and eventually provide:
 
