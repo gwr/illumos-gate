@@ -68,6 +68,7 @@ struct transfer_block_info {
 
 struct requirement {
 	unsigned int argument;
+	struct symbol *lock_root;
 	struct symbol *lock_member;
 	unsigned long lock_offset;
 	struct symbol *data_member;
@@ -558,6 +559,31 @@ argument_lock(struct expression *argument, struct symbol *member,
 	return (true);
 }
 
+static bool
+map_call_requirement(struct instruction *insn,
+    const struct requirement *requirement, struct locklint_access *object,
+    struct locklint_access *lock)
+{
+	struct expression *argument;
+
+	argument = call_argument(insn, requirement->argument);
+	if (!locklint_get_access(argument, object))
+		return (false);
+	if (requirement->lock_root == NULL) {
+		*lock = *object;
+		lock->member = argument_member(argument,
+		    requirement->lock_member);
+		lock->offset += requirement->lock_offset;
+	} else {
+		lock->root = requirement->lock_root;
+		lock->type = requirement->lock_root->ctype.base_type;
+		lock->member = requirement->lock_member;
+		lock->offset = requirement->lock_offset;
+		lock->expr = NULL;
+	}
+	return (true);
+}
+
 static struct symbol *
 formal_symbol(struct entrypoint *ep, unsigned int index)
 {
@@ -631,15 +657,15 @@ transfer_call_effects(struct state_entry **states, struct instruction *insn)
 
 static bool
 add_requirement(struct function_info *function, unsigned int argument,
-    struct symbol *lock_member, unsigned long lock_offset,
-    struct symbol *data_member,
-    struct position pos)
+    struct symbol *lock_root, struct symbol *lock_member,
+    unsigned long lock_offset, struct symbol *data_member, struct position pos)
 {
 	struct requirement *requirement;
 
 	for (requirement = function->requirements; requirement != NULL;
 	    requirement = requirement->next) {
 		if (requirement->argument == argument &&
+		    requirement->lock_root == lock_root &&
 		    requirement->lock_member == lock_member &&
 		    requirement->lock_offset == lock_offset &&
 		    requirement->data_member == data_member)
@@ -649,6 +675,7 @@ add_requirement(struct function_info *function, unsigned int argument,
 	if (requirement == NULL)
 		die("out of memory recording lock requirement");
 	requirement->argument = argument;
+	requirement->lock_root = lock_root;
 	requirement->lock_member = lock_member;
 	requirement->lock_offset = lock_offset;
 	requirement->data_member = data_member;
@@ -1055,6 +1082,7 @@ collect_local_requirements(struct function_info *function)
 			    formal_argument(function->ep, access.root,
 			    &argument)) {
 				(void) add_requirement(function, argument,
+				    lock.root != access.root ? lock.root : NULL,
 				    lock.member, lock.offset, data_member,
 				    insn->access->pos);
 			}
@@ -1076,21 +1104,19 @@ propagate_call_requirements(struct function_info *function,
 		return (false);
 	for (requirement = callee->requirements; requirement != NULL;
 	    requirement = requirement->next) {
+		struct locklint_access object;
 		struct locklint_access lock;
-		struct expression *argument;
 		unsigned int caller_argument;
 
-		argument = call_argument(insn, requirement->argument);
-		if (!argument_lock(argument, requirement->lock_member,
-		    requirement->lock_offset, &lock))
+		if (!map_call_requirement(insn, requirement, &object, &lock))
 			continue;
 		if (get_state(states, &lock) != LOCK_NOT_HELD ||
-		    !formal_argument(function->ep, lock.root,
+		    !formal_argument(function->ep, object.root,
 		    &caller_argument))
 			continue;
 		if (add_requirement(function, caller_argument,
-		    lock.member, lock.offset, requirement->data_member,
-		    requirement->pos))
+		    requirement->lock_root, lock.member, lock.offset,
+		    requirement->data_member, requirement->pos))
 			changed = true;
 	}
 	return (changed);
@@ -1171,21 +1197,20 @@ check_direct_call(struct function_info *function,
 	if (callee != function) {
 		for (requirement = callee->requirements; requirement != NULL;
 		    requirement = requirement->next) {
+			struct locklint_access object;
 			struct locklint_access lock;
-			struct expression *argument;
 			enum lock_state state;
 			unsigned int caller_argument;
 
-			argument = call_argument(insn, requirement->argument);
-			if (!argument_lock(argument, requirement->lock_member,
-			    requirement->lock_offset, &lock))
+			if (!map_call_requirement(insn, requirement, &object,
+			    &lock))
 				continue;
 			state = get_state(*states, &lock);
 			if (state == LOCK_HELD)
 				continue;
 			if (state == LOCK_NOT_HELD &&
 			    defer_formal_requirements(function) &&
-			    formal_argument(function->ep, lock.root,
+			    formal_argument(function->ep, object.root,
 			    &caller_argument))
 				continue;
 			if (state == LOCK_NOT_HELD) {

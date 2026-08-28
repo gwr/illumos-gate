@@ -182,7 +182,7 @@ The structures have these roles:
 | `struct function_info` | Locklint's record for one function; refers to its Sparse entrypoint and owns its block state and summaries |
 | `struct block_info` | Associates one Sparse basic block with reachability and its input and output lock-state maps |
 | `struct state_entry` | One lock and its state in a block-state map; embeds a `locklint_access` identity |
-| `struct requirement` | A caller-visible protected-access requirement associated with a formal argument |
+| `struct requirement` | A caller-visible protected-access requirement associated with a formal data argument and either a relative lock or a preserved absolute lock root |
 | `struct lock_transfer` | A function lock-effect summary for one formal lock and each possible input state |
 | `struct transfer_block_info` | Temporary per-block state used while computing one lock transfer |
 
@@ -563,28 +563,27 @@ A `requirement` summarizes a protected access that a caller may need to
 satisfy.  It currently records:
 
 - the formal argument containing the protected object;
+- an absolute lock root, or `NULL` when the lock is relative to that argument;
 - the lock member and offset;
 - the protected data member; and
 - a representative source position.
 
 `collect_local_requirements()` replays each reachable block from its stable
 input state.  Every unsatisfied protected access rooted at a formal argument
-becomes a requirement.  Deferral eligibility is applied later, while emitting
-diagnostics, to decide whether a caller-satisfiable requirement suppresses
-the local warning.
+becomes a requirement.  A protecting lock rooted at the protected object is
+recorded as argument-relative; any other root is preserved as an absolute
+lock.  Deferral eligibility is applied later, while emitting diagnostics, to
+decide whether a caller-satisfiable requirement suppresses the local warning.
+
+`map_call_requirement()` maps the protected-data argument and protecting lock
+separately.  It rebases a relative lock onto the caller's actual argument, but
+uses a preserved absolute root unchanged.  The mapped data object determines
+whether a requirement can propagate through another formal argument and
+whether its local diagnostic can be deferred.
 
 `propagate_function_requirements()` repeatedly maps callee formal arguments
 to caller actual arguments and adds unsatisfied requirements to the caller.
 The pass iterates to a fixed point, including recursive call cycles.
-
-### Requirement limitation
-
-The current requirement representation assumes that the protecting lock is
-relative to the same formal argument as the data.  An annotation that protects
-formal data with an absolute global lock loses that distinction when the
-requirement is propagated.  The summary must be extended to preserve whether
-a lock is absolute or argument-relative before this case is considered
-supported.
 
 ## Function lock effects
 
@@ -699,6 +698,7 @@ machine-readable format, or predecessor/call-chain witness.
 | `propagate_transfer_candidates()` | Carry effect candidates through calls |
 | `simulate_transfer()` | Compute one transfer-table entry |
 | `collect_local_requirements()` | Summarize deferred protected accesses |
+| `map_call_requirement()` | Map a requirement's data object and relative or absolute lock at a call |
 | `propagate_function_requirements()` | Carry requirements through calls to a fixed point |
 | `emit_diagnostics()` | Replay stable state and emit warnings |
 | `locklint_check_all()` | Order and iterate the complete analysis |
@@ -753,10 +753,12 @@ caller OP_CALL resolved to callee
 
 ```text
 callee protected access is unsatisfied
-    -> eligible formal access becomes a requirement
+    -> formal data access becomes a requirement
+    -> relative lock or absolute lock root is recorded
 caller OP_CALL resolved to callee
-    -> formal object mapped to actual argument
-    -> required lock mapped into caller translation unit
+    -> formal data object mapped to actual argument
+    -> relative lock rebased to actual object
+       or absolute lock root preserved unchanged
     -> held caller state satisfies requirement
     -> otherwise warning is emitted or requirement is deferred again
 ```
@@ -773,12 +775,14 @@ The current implementation relies on these invariants:
 5. A lock-state key is stable for the lifetime of the analysis.
 6. Absent lock-state entries mean definitely not held.
 7. Only definitely held state satisfies a protection requirement.
-8. Assertions refine state but do not create effect summaries.
-9. Interprocedural effects and requirements reach fixed points before
+8. Requirement propagation maps the protected-data argument independently
+   and never rebases an absolute lock root.
+9. Assertions refine state but do not create effect summaries.
+10. Interprocedural effects and requirements reach fixed points before
    diagnostics are emitted.
-10. Multiple external function definitions with one identifier are ambiguous,
+11. Multiple external function definitions with one identifier are ambiguous,
     not arbitrarily selected.
-11. A later protection declaration replaces an earlier relation for the same
+12. A later protection declaration replaces an earlier relation for the same
     resolved datum.
 
 Changes that invalidate one of these invariants should update this document
@@ -789,7 +793,6 @@ and add a focused regression test.
 The implemented design remains intentionally narrow.  Important missing
 areas include:
 
-- absolute/global locks in propagated function requirements;
 - anonymous-owner matching for all promoted member expressions;
 - canonical identity for external objects across translation units;
 - general alias and nested-object identity;

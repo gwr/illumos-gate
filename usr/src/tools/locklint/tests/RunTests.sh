@@ -107,7 +107,7 @@ compare "check" check.ref check.out
 #
 # Verify requirements and lock effects propagated through direct calls.
 #
-for test in calls effects
+for test in calls global-requirements effects
 do
 	run_capture "$test" "$test.out" "$LOCKLINT" --check-locks "$test.c"
 	compare "$test" "$test.ref" "$test.out"
