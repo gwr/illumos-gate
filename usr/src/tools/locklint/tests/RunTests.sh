@@ -166,6 +166,16 @@ sed 's/\(.*:[0-9][0-9]*\):[0-9][0-9]*: warning/\1: warning/' \
 compare "annotation names" annotation-names.ref annotation-names.out
 
 #
+# Verify type-scoped annotations through anonymous aggregate embedding.
+#
+run_capture "anonymous embedding" anonymous-embedding.raw \
+    "$LOCKLINT" --check-locks anonymous-embedding.c
+sed 's/\(.*:[0-9][0-9]*\):[0-9][0-9]*: warning/\1: warning/' \
+    anonymous-embedding.raw > anonymous-embedding.out
+compare "anonymous embedding" anonymous-embedding.ref \
+    anonymous-embedding.out
+
+#
 # Verify later protection declarations report override provenance.
 #
 run_capture "annotation name dump" annotation-names-dump.out \

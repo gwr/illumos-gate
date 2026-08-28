@@ -335,7 +335,10 @@ current model.  `find_member()` locates the retained member chain.
 `locklint_access_base()` attempts to determine where a type-scoped annotation
 owner occurs within a concrete access.  It walks from the final member toward
 the root, accumulating suffix offsets.  A match supplies the base offset of
-the annotated object within the concrete root.
+the annotated object within the concrete root.  Valid inline anonymous
+structures and unions do not introduce a separately named owner type;
+Sparse's retained path offset includes their promotion offsets, so an
+annotation on the enclosing type uses the normal exact offset match.
 
 ### Identity limitations
 
@@ -343,14 +346,12 @@ The identity model is deliberately smaller than an alias analysis.  It does
 not currently unify assigned aliases, container conversions, or multiple
 formal arguments that name one object.
 
-Three known cases require additional work:
+Two known cases require additional work:
 
-1. Anonymous embedding does not always expose the intermediate owner type
-   needed by `locklint_access_base()`.
-2. Externally linked object symbols parsed in separate translation units are
+1. Externally linked object symbols parsed in separate translation units are
    not yet canonicalized, so pointer identity is too strict for those
    objects.
-3. Arrays use an offset-based identity but do not yet have a documented,
+2. Arrays use an offset-based identity but do not yet have a documented,
    tested policy for distinguishing all dynamic element expressions.
 
 These are correctness boundaries, not merely diagnostic limitations.  A
@@ -793,7 +794,6 @@ and add a focused regression test.
 The implemented design remains intentionally narrow.  Important missing
 areas include:
 
-- anonymous-owner matching for all promoted member expressions;
 - canonical identity for external objects across translation units;
 - general alias and nested-object identity;
 - indirect-call and callback target resolution;
