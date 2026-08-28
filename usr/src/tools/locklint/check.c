@@ -18,10 +18,12 @@
  */
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "lib.h"
+#include "avl.h"
 #include "expression.h"
 #include "linearize.h"
 #include "access.h"
@@ -100,11 +102,14 @@ struct function_info {
 	struct lock_transfer *transfers;
 	bool has_direct_caller;
 	bool reachable_from_root;
+	avl_node_t by_entrypoint;
 	struct function_info *next;
 };
 
 static struct function_info *functions;
 static struct function_info **functions_tail = &functions;
+static avl_tree_t functions_by_entrypoint;
+static bool functions_by_entrypoint_initialized;
 
 static void transfer_call_effects(struct function_info *,
     struct state_entry **, struct instruction *);
@@ -420,16 +425,24 @@ analyze_blocks(struct function_info *function)
 	return (blocks);
 }
 
+static int
+compare_function_entrypoint(const void *left_arg, const void *right_arg)
+{
+	const struct function_info *left = left_arg;
+	const struct function_info *right = right_arg;
+
+	return (AVL_PCMP(left->ep, right->ep));
+}
+
 static struct function_info *
 find_function(struct entrypoint *ep)
 {
-	struct function_info *function;
+	struct function_info key = { 0 };
 
-	for (function = functions; function != NULL; function = function->next) {
-		if (function->ep == ep)
-			return (function);
-	}
-	return (NULL);
+	if (!functions_by_entrypoint_initialized)
+		return (NULL);
+	key.ep = ep;
+	return (avl_find(&functions_by_entrypoint, &key, NULL));
 }
 
 static bool
@@ -1457,11 +1470,18 @@ locklint_check_add(struct translation_unit *tu, struct entrypoint *ep)
 {
 	struct function_info *function;
 
+	if (!functions_by_entrypoint_initialized) {
+		avl_create(&functions_by_entrypoint, compare_function_entrypoint,
+		    sizeof (struct function_info),
+		    offsetof(struct function_info, by_entrypoint));
+		functions_by_entrypoint_initialized = true;
+	}
 	function = calloc(1, sizeof (*function));
 	if (function == NULL)
 		die("out of memory registering function analysis");
 	function->tu = tu;
 	function->ep = ep;
+	avl_add(&functions_by_entrypoint, function);
 	*functions_tail = function;
 	functions_tail = &function->next;
 }
@@ -1520,9 +1540,14 @@ locklint_check_all(void)
 			free(transfer);
 			transfer = transfer_next;
 		}
+		avl_remove(&functions_by_entrypoint, functions);
 		free_blocks(functions->blocks);
 		free(functions);
 		functions = next;
+	}
+	if (functions_by_entrypoint_initialized) {
+		avl_destroy(&functions_by_entrypoint);
+		functions_by_entrypoint_initialized = false;
 	}
 	functions_tail = &functions;
 }
