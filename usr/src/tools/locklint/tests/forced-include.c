@@ -9,17 +9,16 @@
  * http://www.illumos.org/license/CDDL.
  */
 
-/*
- * Copyright 2026 Gordon W. Ross
- */
+struct forced_state forced_object;
 
-#ifndef CHECK_H
-#define	CHECK_H
+static int
+read_forced_object(void)
+{
+	return (forced_object.value);
+}
 
-struct entrypoint;
-struct translation_unit;
-
-void locklint_check_add(struct translation_unit *, struct entrypoint *);
-void locklint_check_all(void);
-
-#endif /* CHECK_H */
+static int
+read_forced_static_object(void)
+{
+	return (forced_static_object.value);
+}

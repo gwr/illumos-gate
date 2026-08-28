@@ -25,7 +25,7 @@ These tests exercise locklint from Sparse parsing through interprocedural
 lock analysis.
 
 Most tests pair a C source file with a `.ref` file containing the exact
-expected output.  The test makefile writes command output to an untracked
+expected output.  `RunTests.sh` writes command output to an untracked
 `.out` file and compares it with the reference using `diff -u`.  The earliest
 smoke tests instead use `grep` to check selected properties of larger debug
 dumps.
@@ -46,7 +46,7 @@ After the `locklint` executable has been built, the tests can be rerun
 directly:
 
 ```sh
-(cd tests ; make test)
+(cd tests && ./RunTests.sh)
 ```
 
 Remove the executable, object files, generated `version.h`, and test output
@@ -56,9 +56,9 @@ files with:
 make clean
 ```
 
-When a golden-output test fails, inspect the unified diff printed by `make`
-and the corresponding `.out` file.  Update a `.ref` file only after confirming
-that the changed output is intentional.
+When a golden-output test fails, inspect the unified diff printed by the test
+script and the corresponding `.out` file.  Update a `.ref` file only after
+confirming that the changed output is intentional.
 
 ## Test coverage
 
@@ -70,7 +70,7 @@ were developed.
 This is the frontend and source-identity smoke test.  It contains nested
 members, arrays, pointers, local objects, global objects, and static objects.
 
-The makefile processes it three ways:
+The test driver processes it three ways:
 
 - `--dump-parsed` must produce the parsed function;
 - `--dump-linearized` must contain memory loads or stores; and
@@ -116,6 +116,16 @@ with frontend positioning details, while retaining source lines and complete
 messages.  A separate annotation dump check verifies that replaced and
 effective declarations identify one another.
 
+### `anonymous-embedding.c` and `anonymous-embedding.ref`
+
+This test covers type-scoped protection for members promoted through valid
+inline anonymous structures and unions.  It includes direct structure
+promotion and nested structure/union promotion.
+
+The diagnostic output proves that promoted data requires the correspondingly
+promoted lock and that the retained cumulative offsets identify both members
+within the enclosing type.
+
 ### `annotation-errors.c`
 
 This test covers recognized annotations whose global, object-path, or
@@ -138,13 +148,22 @@ This is the intraprocedural locking test.  It covers:
 
 ### `calls.c` and `calls.ref`
 
-This test covers lock requirements propagated through direct calls.  Its
+This test covers entry lock conditions propagated through direct calls.  Its
 functions exercise direct and transitive callees, recursion, and conservative
 analysis roots.
 
 `--check-locks` must match `calls.ref`, proving that formal-argument
-requirements map to actual caller objects, a caller-held mutex satisfies the
-callee, and unsatisfied requirements are reported at appropriate call sites.
+lock conditions map to actual caller objects, a caller-held mutex satisfies
+the callee, and unsatisfied conditions are reported at appropriate call sites.
+
+### `global-conditions.c` and `global-conditions.ref`
+
+This test covers direct and transitive lock conditions protected by absolute
+locks.  It includes both a bare global mutex and a mutex member within a
+global object.
+
+The output proves that absolute lock roots remain distinct from the formal
+data argument as lock conditions propagate through calls.
 
 ### `effects.c` and `effects.ref`
 
@@ -164,8 +183,37 @@ contains callers and the other contains accessor and acquisition helpers.
 
 Locklint analyzes both C files in one invocation.  The result must match
 `cross.ref`, proving that unique external definitions are resolved, protected
-member requirements and mutex effects cross file boundaries, and member
+member lock conditions and mutex effects cross file boundaries, and member
 symbols are remapped through caller argument types.
+
+### External object identity
+
+`external-objects.h`, `external-objects-caller.c`,
+`external-objects-callee.c`, and `external-objects.ref` cover object identity
+across translation units.  An annotation in one file protects direct accesses
+in another, and external bare and member locks satisfy propagated
+lock conditions.
+
+Same-named file-static objects in the two files remain distinct.  A later
+`extern` declaration retains a visible earlier declaration's internal
+linkage, local shadows remain local, and internal and external functions with
+the same name resolve within the correct translation unit.
+
+### `forced-include.h`, `forced-include.c`, and `forced-include.ref`
+
+This test passes the header through Sparse's command-line `-include` option.
+The header declares external and file-static objects and their protection
+annotations before Sparse parses the explicit source input.
+
+The diagnostic proves that initialization-time annotations retain provenance,
+resolve while their namespace is current, share the external object's
+canonical identity with the later definition, and retain the file-static
+object's identity when Sparse reuses its declaration in the input.
+
+The test also supplies two explicit inputs and requires locklint to reject the
+invocation.  Sparse parses the forced header only once, so locklint cannot
+represent a separate instance of its file-static object for each translation
+unit without frontend support.
 
 ### `assertions.c` and `assertions.ref`
 

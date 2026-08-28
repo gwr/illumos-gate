@@ -33,6 +33,18 @@ run_capture()
 	fi
 }
 
+run_failure()
+{
+	name=$1
+	output=$2
+	shift 2
+
+	echo "test: $name"
+	if "$@" > "$output" 2>&1; then
+		fail "$name: command unexpectedly succeeded"
+	fi
+}
+
 compare()
 {
 	name=$1
@@ -105,20 +117,46 @@ run_capture "check" check.out "$LOCKLINT" --check-locks check.c
 compare "check" check.ref check.out
 
 #
-# Verify requirements and lock effects propagated through direct calls.
+# Verify lock conditions and lock effects propagated through direct calls.
 #
-for test in calls global-requirements effects
+for test in calls global-conditions effects
 do
 	run_capture "$test" "$test.out" "$LOCKLINT" --check-locks "$test.c"
 	compare "$test" "$test.ref" "$test.out"
 done
 
 #
-# Verify calls, requirements, and effects across translation units.
+# Verify calls, lock conditions, and effects across translation units.
 #
 run_capture "cross translation unit" cross.out "$LOCKLINT" --check-locks \
     cross-caller.c cross-callee.c
 compare "cross translation unit" cross.ref cross.out
+
+#
+# Verify external object and member identity across translation units.
+#
+run_capture "external objects" external-objects.raw \
+    "$LOCKLINT" --check-locks external-objects-caller.c \
+    external-objects-callee.c
+sed 's/\(.*:[0-9][0-9]*\):[0-9][0-9]*: warning/\1: warning/' \
+    external-objects.raw > external-objects.out
+compare "external objects" external-objects.ref external-objects.out
+
+#
+# Verify annotations from a command-line forced include retain provenance.
+#
+run_capture "forced include" forced-include.raw \
+    "$LOCKLINT" --check-locks -include forced-include.h forced-include.c
+sed 's/\(.*:[0-9][0-9]*\):[0-9][0-9]*: warning/\1: warning/' \
+    forced-include.raw > forced-include.out
+compare "forced include" forced-include.ref forced-include.out
+
+run_failure "forced include multiple inputs" forced-include-multiple.out \
+    "$LOCKLINT" --check-locks -include forced-include.h forced-include.c \
+    forced-include-second.c
+require_match "forced include multiple inputs" \
+    "multiple inputs with initialization-time internal declarations" \
+    forced-include-multiple.out
 
 #
 # Verify assertion predicates refine state without exposing macro bodies.

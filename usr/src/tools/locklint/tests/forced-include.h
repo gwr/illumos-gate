@@ -9,17 +9,18 @@
  * http://www.illumos.org/license/CDDL.
  */
 
-/*
- * Copyright 2026 Gordon W. Ross
- */
+#define	_NOTE(arg)
 
-#ifndef CHECK_H
-#define	CHECK_H
+typedef int mutex_t;
 
-struct entrypoint;
-struct translation_unit;
+struct forced_state {
+	mutex_t lock;
+	int value;
+};
 
-void locklint_check_add(struct translation_unit *, struct entrypoint *);
-void locklint_check_all(void);
+extern struct forced_state forced_object;
+static struct forced_state forced_static_object;
 
-#endif /* CHECK_H */
+_NOTE(MUTEX_PROTECTS_DATA(forced_object.lock, forced_object.value))
+_NOTE(MUTEX_PROTECTS_DATA(forced_static_object.lock,
+    forced_static_object.value))

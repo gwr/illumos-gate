@@ -19,8 +19,10 @@
  */
 
 #include <stdio.h>
+#include <string.h>
 #include "expression.h"
 #include "access.h"
+#include "identity.h"
 #include "symbol.h"
 
 static struct symbol *
@@ -153,17 +155,48 @@ compound_type(struct symbol *type)
 }
 
 bool
-locklint_get_access(struct expression *expr, struct locklint_access *access)
+locklint_get_access(struct translation_unit *tu, struct expression *expr,
+    struct locklint_access *access)
 {
 	struct expression *member;
 
 	access->root = find_root(expr);
+	access->object = locklint_object_identity(tu, access->root);
 	access->type = root_type(access->root);
 	member = find_member(expr);
 	access->member = member != NULL ? member->member_symbol : NULL;
 	access->offset = member_offset(expr);
 	access->expr = expr;
 	return (access->root != NULL);
+}
+
+static bool
+same_ident(const struct ident *left, const struct ident *right)
+{
+	if (left == right)
+		return (true);
+	return (left != NULL && right != NULL &&
+	    left->len == right->len &&
+	    memcmp(left->name, right->name, left->len) == 0);
+}
+
+bool
+locklint_same_access(const struct locklint_access *left,
+    const struct locklint_access *right)
+{
+	if (left->offset != right->offset)
+		return (false);
+	/* Locals and formals have no linkage and retain Sparse identity. */
+	if (left->object == NULL && right->object == NULL) {
+		if (left->root != right->root)
+			return (false);
+		return (left->member == right->member);
+	}
+	if (left->object == NULL || left->object != right->object)
+		return (false);
+	/* Separately parsed declarations have distinct member symbols. */
+	return (same_ident(left->member != NULL ? left->member->ident : NULL,
+	    right->member != NULL ? right->member->ident : NULL));
 }
 
 bool

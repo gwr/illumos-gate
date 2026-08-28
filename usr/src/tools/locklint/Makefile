@@ -84,7 +84,8 @@ LOCAL_OBJS = \
 	annotations.o \
 	assertions.o \
 	check.o \
-	events.o
+	events.o \
+	identity.o
 
 OBJS = $(LOCAL_OBJS) $(SPARSE_OBJS) hashtable.o
 

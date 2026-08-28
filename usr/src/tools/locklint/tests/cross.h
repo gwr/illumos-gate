@@ -23,7 +23,7 @@
  *
  * Locklint analyzes both C files in one invocation to verify
  * that unique external definitions are resolved, protected member
- * requirements and mutex effects cross file boundaries, and member
+ * lock conditions and mutex effects cross file boundaries, and member
  * symbols are remapped through caller argument types.
  */
 

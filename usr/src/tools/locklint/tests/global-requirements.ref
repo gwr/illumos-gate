@@ -1,4 +1,0 @@
-../locklint: global-requirements.c:84:26: warning: locklint: call to 'read_bare' accesses protected member 'bare' without holding 'global_lock'
-../locklint: global-requirements.c:101:26: warning: locklint: call to 'wrap_bare' accesses protected member 'bare' without holding 'global_lock'
-../locklint: global-requirements.c:118:28: warning: locklint: call to 'read_member' accesses protected member 'member' without holding 'lock'
-../locklint: global-requirements.c:135:28: warning: locklint: call to 'wrap_member' accesses protected member 'member' without holding 'lock'

@@ -18,6 +18,7 @@
 
 struct instruction;
 struct locklint_access;
+struct translation_unit;
 
 enum locklint_assertion {
 	LOCKLINT_ASSERT_NONE,
@@ -26,7 +27,7 @@ enum locklint_assertion {
 };
 
 void locklint_assertions_enable(void);
-enum locklint_assertion locklint_get_assertion(struct instruction *,
-    struct locklint_access *);
+enum locklint_assertion locklint_get_assertion(struct translation_unit *,
+    struct instruction *, struct locklint_access *);
 
 #endif /* ASSERTIONS_H */

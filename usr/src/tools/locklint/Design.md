@@ -32,7 +32,9 @@ The long-term goal for locklint is to provide illumos with locking analysis
 equivalent to historical Solaris `lock_lint`.  Its annotations and behavior
 define the compatibility target, with the historical tools used for
 comparison.  Lock-specific behavior remains in locklint where practical so
-changes to the shared Sparse frontend stay minimal.
+changes to the shared Sparse frontend stay minimal and generic.  Sparse
+changes may provide reusable interfaces or preserve general source metadata,
+but do not encode locklint annotations, locking concepts, or locklint policy.
 
 This document describes the implemented design.  It is intended to evolve
 with the code and eventually provide:
@@ -77,22 +79,36 @@ not when future features should be added.
   callers.
 - **Lock effect** - The part of a function summary that describes how the
   function changes visible lock state.
-- **Requirement** - The part of a function summary that describes a lock
-  callers must hold because the function accesses protected data.
+- **Lock condition** - A required or asserted lock state at a particular
+  program point.  A function entry lock condition is part of a function
+  summary and must be established by the caller.
 - **Analysis root** - A function treated as externally reachable or as not
   safely attributable to a known caller.  Roots seed call-graph reachability
-  and are boundaries at which unsatisfied requirements cannot simply be
+  and are boundaries at which unsatisfied lock conditions cannot simply be
   deferred to a known caller.
 - **Flow analysis** - Analysis that follows possible execution paths through
   the program, including control flow within functions and calls between
   functions.
+- **Source file** - A physical file containing source text.  A header can be
+  read while parsing more than one translation unit, so a source pathname
+  alone does not identify one semantic declaration.
+- **Translation unit** - One top-level input file together with the headers
+  and macro expansions processed for that input.  Locklint treats each input
+  occurrence as a distinct translation unit even when two inputs read some of
+  the same physical source files.  Locklint also creates a synthetic
+  translation-unit record for declarations Sparse processes during
+  initialization, including command-line-included source.
+- **Object identity** - Locklint's canonical key for determining when two
+  declarations or accesses name the same C object.
+- **Source origin** - The translation unit and physical source position from
+  which a locklint record was derived.
 
 ## Operational overview
 
 Locklint reads and parses all specified C source files into an intermediate
 representation.  It records locking annotations and assertions, connects
 calls among the parsed functions, and analyzes possible execution paths to
-determine lock state, function requirements, and lock effects.  After
+determine lock state, function lock conditions, and lock effects.  After
 analysis is complete, it reports accesses that violate declared locking
 protections.
 
@@ -110,19 +126,27 @@ The main phases are:
 1. Parse locklint command-line options and leave ordinary compiler options for
    Sparse.
 2. Register preprocessing hooks for locking annotations and assertions.
-3. Initialize Sparse and process any symbols produced during initialization.
+3. Create a synthetic translation-unit record for Sparse initialization,
+   initialize Sparse, register declarations produced by initialization,
+   resolve annotations while the initialization namespace is current, and
+   process the initial symbols.
 4. For each input file:
-   1. parse and evaluate the translation unit;
-   2. resolve annotations while that translation unit's symbol namespaces are
+   1. create and make current a locklint translation-unit record;
+   2. parse and evaluate the translation unit;
+   3. register its file-scope internal-linkage declarations;
+   4. resolve annotations while that translation unit's symbol namespaces are
       current;
-   3. expand and linearize function definitions; and
-   4. retain each function entrypoint for later checking.
+   5. expand and linearize function definitions;
+   6. associate retained records and relevant Sparse symbols with the current
+      translation unit; and
+   7. retain each function entrypoint for later checking.
 5. After all files have been parsed:
-   1. identify direct callers and conservative analysis roots;
-   2. solve function lock-effect summaries;
-   3. solve intraprocedural lock state;
-   4. collect and propagate protected-access requirements; and
-   5. emit diagnostics using the stable summaries.
+   1. combine object and function declarations according to C linkage;
+   2. identify direct callers and conservative analysis roots;
+   3. solve function lock-effect summaries;
+   4. solve intraprocedural lock state;
+   5. collect and propagate protected-access lock conditions; and
+   6. emit diagnostics using the stable summaries.
 6. Emit requested annotation or development dumps.
 
 Locklint deliberately delays diagnostics until summaries stabilize.  A
@@ -131,10 +155,12 @@ callee summary.
 
 ## Data model overview
 
-Locklint's data model has two layers.  Sparse owns the parsed program and its
-intermediate representation.  Locklint retains references to that
-representation and adds records for locking declarations, normalized object
-identities, per-function state, and function summaries.
+Locklint's data model has three layers.  Sparse owns the separately parsed
+translation units and their intermediate representations.  Locklint records
+the translation-unit provenance of retained Sparse objects.  A program-wide
+semantic layer then combines declarations whose C linkage gives them one
+identity and owns locking declarations, normalized object identities,
+per-function state, and function summaries.
 
 ### Sparse intermediate representation
 
@@ -152,11 +178,107 @@ These objects form the program representation over which locklint performs
 flow analysis.  Locklint refers to them directly rather than copying the
 entire representation.
 
+### Translation units and program-wide identities
+
+Before calling `sparse(file)`, locklint creates a unique translation-unit
+record for that input occurrence and makes it current.  Records captured or
+created during that parse retain the translation-unit identity as provenance.
+The identity is an allocated record or monotonic identifier, not merely a
+pathname: parsing the same top-level pathname twice still creates two parse
+occurrences.
+
+Source location and translation-unit provenance are independent.  A position
+identifies the physical file, line, and column containing syntax.  Provenance
+identifies the top-level input whose preprocessing and parse produced the
+corresponding Sparse object.  Both are required when a header is included by
+multiple translation units.
+
+After parsing, locklint maps relevant Sparse object declarations to canonical
+object identities:
+
+```text
+local object or formal argument
+    -> Sparse symbol identity
+
+internal-linkage object
+    -> (translation-unit identity, C identifier)
+
+external-linkage object
+    -> program-wide C identifier
+```
+
+Declarations within one translation unit are resolved before declarations are
+combined across translation units.  Consequently:
+
+```c
+static int object;
+extern int object;
+```
+
+declares one internal-linkage object in that translation unit.  An external
+`object` in another translation unit has a different identity.
+
+The program layer interns canonical object identities.  State and relation
+records may continue to contain normalized accesses, but access equality uses
+the canonical root identity rather than repeating declaration-by-declaration
+comparisons.  Equivalent external declarations therefore share one root
+identity without discarding their per-translation-unit source origins.  A
+canonical identity may refer to multiple origins for diagnostics and
+ambiguity reporting.
+
+Functions remain represented by `function_info`.  Declarations and direct
+calls are associated with the matching definition according to the same C
+linkage boundaries, but object and function records are not forced into a
+common abstraction.
+
+### Headers and semantic duplication
+
+Sparse preprocesses a header in the context of each translation unit that
+includes it.  The same header pathname and line can produce different
+declarations because of conditional macros, prior declarations, packing,
+compiler options, or other preprocessing context.  Locklint therefore does
+not merge declarations, annotations, or types solely by header pathname and
+source position.
+
+Deduplication occurs only after names have been resolved in their defining
+translation units:
+
+- declarations of the same external object map to one canonical object
+  identity;
+- equivalent normalized accesses compare through that shared identity and
+  may later be interned as complete access identities;
+- equivalent resolved protection relations may share one semantic relation
+  while retaining all source origins; and
+- a function definition and summary are stored once even when several
+  translation units contain declarations for that function.
+
+Type-scoped annotations and compound types initially remain
+translation-unit-local.  C structure and union tags do not have linker
+identity, and equal tag spelling or header origin does not prove that two
+separately parsed types are compatible.  Cross-translation-unit operations
+map members through canonical object or function boundaries using resolved
+member identifiers and offsets; they do not globally intern a type by tag
+name.
+
+Raw annotation tokens are per-translation-unit observations.  They must
+remain available until name resolution is complete because Sparse releases
+preprocessing token storage.  A future memory-lifetime refinement may release
+copied tokens after resolution while retaining compact source origins and
+canonical protection relations.
+
 ### Locklint records
 
 The main locklint-owned records relate as follows:
 
 ```text
+translation units
+  `- translation_unit
+       `- retained Sparse records and source origins
+
+object identities
+  `- object_identity
+       `- declaration source origins
+
 annotations
   `- annotation
        |- annotation_token list
@@ -172,7 +294,7 @@ functions
        |- block_info list
        |    |- input state_entry list
        |    `- output state_entry list
-       |- requirement list
+       |- lock_condition list
        `- lock_transfer list
 ```
 
@@ -180,31 +302,35 @@ The structures have these roles:
 
 | Structure | Role and important relationships |
 | --- | --- |
+| `struct translation_unit` | One top-level input parse; provides provenance for retained records and internal-linkage identity |
+| `struct object_identity` | Canonical identity for one object; records its linkage, identifier, optional owning translation unit, representative Sparse symbol, and declaration origins |
 | `struct annotation` | One captured `_NOTE(...)`; owns copied tokens and refers to one lock reference and a list of data references |
 | `struct annotation_token` | A durable copy of one preprocessing token from an annotation body |
 | `struct annotation_ref` | One parsed and later resolved lock or data endpoint; refers to Sparse symbols and records replacement precedence |
 | `struct assertion` | One recognized lock predicate captured from `ASSERT(...)` or `VERIFY(...)`; records source ranges and the asserted state |
-| `struct locklint_access` | A normalized identity for an object or member access; refers to its root symbol, type, final member, cumulative offset, and source expression |
+| `struct locklint_access` | A normalized identity for an object or member access; refers to its canonical object identity or local root symbol, type, final member, cumulative offset, and source expression |
 | `struct function_info` | Locklint's record for one function; refers to its Sparse entrypoint and owns its block state and summaries |
 | `struct block_info` | Associates one Sparse basic block with reachability and its input and output lock-state maps |
 | `struct state_entry` | One lock and its state in a block-state map; embeds a `locklint_access` identity |
-| `struct requirement` | A caller-visible protected-access requirement associated with a formal data argument and either a relative lock or a preserved absolute lock root |
+| `struct lock_condition` | A caller-visible entry lock condition; a condition inferred from a protected access is associated with a formal data argument and either a relative lock or a preserved absolute lock root |
 | `struct lock_transfer` | A function lock-effect summary for one formal lock and each possible input state |
 | `struct transfer_block_info` | Temporary per-block state used while computing one lock transfer |
 
-The process-wide annotation, assertion, and function lists connect data
-captured from all input files.  References to Sparse symbols and expressions
-tie those records back to the parsed program.
+The program-wide object-identity, annotation, assertion, and function lists
+connect data captured from all input files.  Translation-unit provenance and
+references to Sparse symbols and expressions tie those records back to the
+particular parse and physical source position that produced them.
 
 ### Ownership and lifetime
 
 - Sparse owns symbols, expressions, entrypoints, blocks, and instructions.
 - Locklint borrows those objects for the duration of the process.
+- Locklint owns translation-unit and canonical object-identity records.
 - Locklint copies `_NOTE` text and positions because Sparse frees per-file
   preprocessing tokens.
 - Locklint allocates annotations, references, assertions, and copied `_NOTE`
   tokens for process lifetime.
-- Function records, requirements, transfers, CFG state maps, and
+- Function records, lock conditions, transfers, CFG state maps, and
   transfer-simulation blocks are freed after their analysis use ends.
 - The implementation is a batch command, so process-lifetime metadata is
   intentional.  A future library or daemon interface would require explicit
@@ -214,14 +340,18 @@ tie those records back to the parsed program.
 
 This section describes the Sparse interfaces and retained metadata on which
 locklint depends.  The integration boundary consists of the following entry
-points, hooks, and retained source metadata.
+points, hooks, and retained source metadata.  These facilities are
+lock-domain-neutral and can be used by other Sparse clients.
 
 ### Frontend entry points
 
 `sparse_initialize()` initializes Sparse, consumes Sparse/compiler options,
 collects input file names, creates predefined declarations, and returns any
 initial symbols.  Locklint processes those symbols before processing the
-explicit file list.
+explicit file list.  Sparse processes command-line forced includes only once
+during this initialization.  If that source introduces an internal-linkage
+declaration, locklint rejects an invocation with multiple explicit inputs
+rather than incorrectly sharing one instance across their translation units.
 
 `sparse(file)` creates a new file scope, parses and evaluates one translation
 unit, and returns its symbol list.  Sparse token storage for the file is
@@ -307,7 +437,7 @@ mapping from callee formals to caller actuals.
 
 These fields are borrowed pointers into Sparse expression storage.  Locklint
 does not free or replace them and assumes they remain valid through the
-whole-invocation analysis.
+program-wide analysis.
 
 ## Source object and member identity
 
@@ -317,21 +447,43 @@ whole-invocation analysis.
 
 | Field | Meaning |
 | --- | --- |
-| `root` | Sparse symbol at the root of the source expression |
+| `root` | Sparse symbol at the root of the source expression; retained for source traversal and local identity |
+| `object` | Canonical object identity for an internal- or external-linkage root, or `NULL` for a local root |
 | `type` | Compound type reached from the root after stripping pointer and node wrappers |
 | `member` | Final resolved member symbol, or `NULL` for a whole object |
 | `offset` | Cumulative byte offset of the selected path from the root |
 | `expr` | Retained source expression, when path traversal is still required |
 
-The current lock-state equality relation is:
+The access equality relation is:
 
 ```text
-same root symbol + same final member symbol + same cumulative offset
+same root identity + same final member identity + same cumulative offset
 ```
 
+Local roots and formal arguments have no canonical object identity and use
+Sparse symbol identity.  Internal-linkage roots map to an object identity
+keyed by translation-unit identity and C identifier.  External roots map to
+an object identity keyed by their program-wide C identifier.  Declarations
+are first combined within their translation unit so that a later `extern`
+declaration inherits the linkage of a visible earlier declaration as required
+by C.
+
+When Sparse returns a translation unit's top-level symbol list, locklint first
+registers its internal-linkage declarations by identifier.  Resolving a later
+file-scope or block-scope `extern` root consults that translation-unit table
+before considering the declaration external.  This recovers effective C
+linkage without relying on a particular redeclaration symbol's storage-class
+modifiers or changing Sparse.
+
+Members of canonical roots match by identifier because separately parsed
+declarations have different Sparse member symbols.  File-static objects in
+different translation units remain distinct even when their identifiers,
+member identifiers, and layouts are equal.
+
 The final member distinguishes fields, while the cumulative offset
-distinguishes repeated or nested occurrences of a member symbol.  The root
-distinguishes separate objects.
+distinguishes repeated or nested occurrences of a member.  The root
+distinguishes separate objects.  `locklint_same_access()` implements this
+relation for object-scoped annotations and lock-state maps.
 
 `locklint_get_access()` recovers this identity from a retained expression.
 `find_root()` searches through the expression operators supported by the
@@ -352,13 +504,17 @@ The identity model is deliberately smaller than an alias analysis.  It does
 not currently unify assigned aliases, container conversions, or multiple
 formal arguments that name one object.
 
-Two known cases require additional work:
+Known cases require additional work:
 
-1. Externally linked object symbols parsed in separate translation units are
-   not yet canonicalized, so pointer identity is too strict for those
-   objects.
-2. Arrays use an offset-based identity but do not yet have a documented,
+1. Arrays use an offset-based identity but do not yet have a documented,
    tested policy for distinguishing all dynamic element expressions.
+2. External declarations with the same identifier are canonicalized without
+   first diagnosing incompatible object types across translation units.
+3. A multi-input invocation cannot currently use initialization-time
+   internal-linkage declarations, such as file-static objects or functions
+   from a command-line forced include.  Sparse supplies only one parsed
+   instance, so locklint rejects the invocation rather than merging distinct
+   C identities.
 
 These are correctness boundaries, not merely diagnostic limitations.  A
 failed identity match can cause a protected access to be missed.
@@ -443,16 +599,14 @@ read-only data must not be represented as replacements for write protection.
 
 `locklint_protecting_access()` matches:
 
-- concrete object annotations by root symbol, final member, and root-relative
-  offset; or
+- concrete object annotations by canonical object identity, final member, and
+  root-relative offset; or
 - type-scoped annotations by final member plus a successful
   `locklint_access_base()` owner/offset match.
 
 It then constructs the concrete protecting lock identity.  A concrete lock
 keeps its own root and offset.  A type-scoped lock is based at the matched
 instance of the annotated data owner.
-
-External object identity across translation units is a known missing case.
 
 ## Assertion representation
 
@@ -556,7 +710,7 @@ Root classification is currently conservative:
 - functions with no known direct caller are roots;
 - non-static functions are roots; and
 - address-taken static functions are not eligible for deferred local
-  requirements.
+  lock conditions.
 
 Reachability from those roots is propagated through known direct calls.
 Static functions reached only by known direct calls may defer protected-data
@@ -564,10 +718,11 @@ warnings to callers.
 
 Unresolved indirect calls are not yet connected to possible targets.
 
-## Function requirements
+## Function entry lock conditions
 
-A `requirement` summarizes a protected access that a caller may need to
-satisfy.  It currently records:
+A `lock_condition` summarizes lock state that a caller must establish on
+function entry.  Conditions currently arise from protected accesses that a
+caller may satisfy.  Each condition records:
 
 - the formal argument containing the protected object;
 - an absolute lock root, or `NULL` when the lock is relative to that argument;
@@ -575,22 +730,23 @@ satisfy.  It currently records:
 - the protected data member; and
 - a representative source position.
 
-`collect_local_requirements()` replays each reachable block from its stable
+`collect_local_lock_conditions()` replays each reachable block from its stable
 input state.  Every unsatisfied protected access rooted at a formal argument
-becomes a requirement.  A protecting lock rooted at the protected object is
+becomes a lock condition.  A protecting lock rooted at the protected object is
 recorded as argument-relative; any other root is preserved as an absolute
 lock.  Deferral eligibility is applied later, while emitting diagnostics, to
-decide whether a caller-satisfiable requirement suppresses the local warning.
+decide whether a caller-satisfiable lock condition suppresses the local
+warning.
 
-`map_call_requirement()` maps the protected-data argument and protecting lock
+`map_call_lock_condition()` maps the protected-data argument and protecting lock
 separately.  It rebases a relative lock onto the caller's actual argument, but
 uses a preserved absolute root unchanged.  The mapped data object determines
-whether a requirement can propagate through another formal argument and
+whether a lock condition can propagate through another formal argument and
 whether its local diagnostic can be deferred.
 
-`propagate_function_requirements()` repeatedly maps callee formal arguments
-to caller actual arguments and adds unsatisfied requirements to the caller.
-The pass iterates to a fixed point, including recursive call cycles.
+`propagate_function_lock_conditions()` repeatedly maps callee formal arguments
+to caller actual arguments and adds unsatisfied lock conditions to the
+caller.  The pass iterates to a fixed point, including recursive call cycles.
 
 ## Function lock effects
 
@@ -634,7 +790,7 @@ reachable block in instruction order.
 For each instruction it:
 
 1. checks protected memory access against current state;
-2. checks direct-call requirements and invalid summarized effects;
+2. checks direct-call lock conditions and invalid summarized effects;
 3. checks direct acquire/release validity and applies the operation; and
 4. applies assertion refinement.
 
@@ -653,7 +809,7 @@ machine-readable format, or predecessor/call-chain witness.
 | --- | --- |
 | `options()` | Consume locklint-specific options while preserving Sparse options |
 | `process_symbols()` | Expand symbols, create entrypoints, register checking, and emit requested dumps |
-| `main()` | Register hooks, drive per-file parsing/resolution, and start whole-invocation analysis |
+| `main()` | Register hooks, drive per-file parsing/resolution, and start program-wide analysis |
 | `locklint_init_include_path()` | Replace Sparse's default include-path initialization |
 
 ### Access identity: `access.c`
@@ -663,6 +819,7 @@ machine-readable format, or predecessor/call-chain witness.
 | `find_root()` | Recover the root symbol from supported expression forms |
 | `find_member()` | Find retained member metadata in an expression |
 | `locklint_get_access()` | Construct normalized root/member/offset identity |
+| `locklint_same_access()` | Compare accesses using local or external object identity |
 | `locklint_access_base()` | Map a type-scoped relation into a concrete embedded object |
 | `locklint_show_access()` | Display a source-oriented access path |
 
@@ -704,9 +861,9 @@ machine-readable format, or predecessor/call-chain witness.
 | `collect_local_transfers()` | Discover formal lock-effect candidates |
 | `propagate_transfer_candidates()` | Carry effect candidates through calls |
 | `simulate_transfer()` | Compute one transfer-table entry |
-| `collect_local_requirements()` | Summarize deferred protected accesses |
-| `map_call_requirement()` | Map a requirement's data object and relative or absolute lock at a call |
-| `propagate_function_requirements()` | Carry requirements through calls to a fixed point |
+| `collect_local_lock_conditions()` | Summarize deferred protected accesses as caller lock conditions |
+| `map_call_lock_condition()` | Map a lock condition's data object and relative or absolute lock at a call |
+| `propagate_function_lock_conditions()` | Carry lock conditions through calls to a fixed point |
 | `emit_diagnostics()` | Replay stable state and emit warnings |
 | `locklint_check_all()` | Order and iterate the complete analysis |
 
@@ -756,18 +913,18 @@ caller OP_CALL resolved to callee
     -> output state replaces caller state
 ```
 
-### Protected-access requirement
+### Protected-access lock condition
 
 ```text
 callee protected access is unsatisfied
-    -> formal data access becomes a requirement
+    -> formal data access becomes a lock condition
     -> relative lock or absolute lock root is recorded
 caller OP_CALL resolved to callee
     -> formal data object mapped to actual argument
     -> relative lock rebased to actual object
        or absolute lock root preserved unchanged
-    -> held caller state satisfies requirement
-    -> otherwise warning is emitted or requirement is deferred again
+    -> held caller state satisfies lock condition
+    -> otherwise warning is emitted or lock condition is deferred again
 ```
 
 ## Invariants
@@ -778,18 +935,25 @@ The current implementation relies on these invariants:
 2. Raw annotation tokens needed after parsing are copied.
 3. Annotation names are resolved while their defining translation unit's
    namespaces are current.
-4. Every checked load, store, and call retains its source expression.
-5. A lock-state key is stable for the lifetime of the analysis.
-6. Absent lock-state entries mean definitely not held.
-7. Only definitely held state satisfies a protection requirement.
-8. Requirement propagation maps the protected-data argument independently
+4. Every retained record has translation-unit provenance independent of its
+   physical source position.
+5. Every checked load, store, and call retains its source expression.
+6. A lock-state key is stable for the lifetime of the analysis.
+7. Same-named external roots share one canonical object identity;
+   internal roots are qualified by translation-unit identity, and local roots
+   retain Sparse symbol identity.
+8. Header pathname and source position alone never establish semantic
+   identity across translation units.
+9. Absent lock-state entries mean definitely not held.
+10. Only definitely held state satisfies a protected-access lock condition.
+11. Lock-condition propagation maps the protected-data argument independently
    and never rebases an absolute lock root.
-9. Assertions refine state but do not create effect summaries.
-10. Interprocedural effects and requirements reach fixed points before
+12. Assertions refine state but do not create effect summaries.
+13. Interprocedural effects and lock conditions reach fixed points before
    diagnostics are emitted.
-11. Multiple external function definitions with one identifier are ambiguous,
+14. Multiple external function definitions with one identifier are ambiguous,
     not arbitrarily selected.
-12. A later protection declaration replaces an earlier relation for the same
+15. A later protection declaration replaces an earlier relation for the same
     resolved datum.
 
 Changes that invalidate one of these invariants should update this document
@@ -800,7 +964,6 @@ and add a focused regression test.
 The implemented design remains intentionally narrow.  Important missing
 areas include:
 
-- canonical identity for external objects across translation units;
 - general alias and nested-object identity;
 - indirect-call and callback target resolution;
 - module scope and auditable root configuration;

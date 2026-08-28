@@ -26,6 +26,7 @@
 #include "access.h"
 #include "annotations.h"
 #include "expression.h"
+#include "identity.h"
 #include "symbol.h"
 #include "token.h"
 
@@ -48,6 +49,7 @@ struct annotation_ref {
 	char *base_name;
 	char *path;
 	struct symbol *root;
+	struct object_identity *object;
 	struct symbol *owner_type;
 	struct symbol *type;
 	struct symbol *member;
@@ -60,6 +62,7 @@ struct annotation_ref {
 
 struct annotation {
 	struct position pos;
+	struct translation_unit *tu;
 	struct annotation_token *tokens;
 	struct annotation_ref *lock;
 	struct annotation_ref *data;
@@ -124,6 +127,8 @@ capture_annotation(const struct token *macro,
 	if (annotation == NULL)
 		die("out of memory recording locklint annotation");
 	annotation->pos = macro->pos;
+	/* The same header position can be captured in several translations. */
+	annotation->tu = locklint_translation_unit_current();
 	tail = &annotation->tokens;
 
 	for (token = open->next; token != end; token = token->next) {
@@ -498,7 +503,8 @@ resolve_path(struct annotation_ref *ref, struct symbol *type)
 }
 
 static bool
-resolve_annotation_ref(struct annotation_ref *ref, bool lock)
+resolve_annotation_ref(struct annotation_ref *ref, bool lock,
+    struct translation_unit *tu)
 {
 	struct ident *ident = built_in_ident(ref->base_name);
 	struct symbol *base;
@@ -525,8 +531,11 @@ resolve_annotation_ref(struct annotation_ref *ref, bool lock)
 	if (ref->scope != ANNOTATION_TYPE) {
 		ref->scope = ANNOTATION_OBJECT;
 		ref->root = base;
+		/* Object annotations may denote one object across translations. */
+		ref->object = locklint_object_identity(tu, base);
 		ref->type = base->ctype.base_type;
 	} else {
+		/* C tag names have no linker identity; keep Sparse type identity. */
 		ref->type = base;
 	}
 	ref->owner_type = direct_compound_type(ref->type);
@@ -559,6 +568,7 @@ clone_expanded_ref(const struct annotation_ref *source,
 	if (path != NULL)
 		ref->path = copy_string(path);
 	ref->root = source->root;
+	ref->object = source->object;
 	ref->owner_type = source->owner_type;
 	ref->type = member->ctype.base_type;
 	ref->member = member;
@@ -595,9 +605,23 @@ expand_compound_ref(struct annotation_ref *source, struct symbol *type,
 			}
 			continue;
 		}
-		if (member == lock->member &&
-		    (lock->root == NULL || lock->root == source->root))
-			continue;
+		if (member == lock->member) {
+			struct locklint_access lock_access = { 0 };
+			struct locklint_access source_access = { 0 };
+
+			/*
+			 * A type-scoped lock has no root.  Object-scoped locks
+			 * use canonical identity when available and Sparse root
+			 * identity otherwise.
+			 */
+			lock_access.root = lock->root;
+			lock_access.object = lock->object;
+			source_access.root = source->root;
+			source_access.object = source->object;
+			if (lock->root == NULL ||
+			    locklint_same_access(&lock_access, &source_access))
+				continue;
+		}
 		path = join_path(source->path, show_ident(member->ident));
 		expanded = clone_expanded_ref(source, member, path);
 		free(path);
@@ -637,10 +661,28 @@ static bool
 same_data_ref(const struct annotation_ref *left,
     const struct annotation_ref *right)
 {
-	return (left->root == right->root &&
-	    left->owner_type == right->owner_type &&
-	    left->member == right->member &&
-	    left->offset == right->offset);
+	/*
+	 * Object annotations compare canonical roots across translation units.
+	 * Type annotations remain local to their separately parsed Sparse type.
+	 */
+	if (left->root != NULL || right->root != NULL) {
+		struct locklint_access left_access = { 0 };
+		struct locklint_access right_access = { 0 };
+
+		if (left->root == NULL || right->root == NULL)
+			return (false);
+		left_access.root = left->root;
+		left_access.object = left->object;
+		left_access.member = left->member;
+		left_access.offset = left->offset;
+		right_access.root = right->root;
+		right_access.object = right->object;
+		right_access.member = right->member;
+		right_access.offset = right->offset;
+		return (locklint_same_access(&left_access, &right_access));
+	}
+	return (left->owner_type == right->owner_type &&
+	    left->member == right->member && left->offset == right->offset);
 }
 
 static void
@@ -686,10 +728,11 @@ locklint_resolve_annotations(void)
 		annotation->processed = true;
 		if (!parse_annotation(annotation))
 			continue;
-		if (!resolve_annotation_ref(annotation->lock, true))
+		if (!resolve_annotation_ref(annotation->lock, true,
+		    annotation->tu))
 			continue;
 		for (ref = annotation->data; ref != NULL; ref = ref->next) {
-			if (!resolve_annotation_ref(ref, false))
+			if (!resolve_annotation_ref(ref, false, annotation->tu))
 				break;
 		}
 		if (ref == NULL) {
@@ -717,16 +760,21 @@ locklint_protecting_access(const struct locklint_access *access,
 		for (ref = annotation->data; ref != NULL; ref = ref->next) {
 			unsigned long base;
 
-			if (ref->member != access->member)
-				continue;
 			if (ref->root != NULL) {
-				if (ref->root != access->root ||
-				    ref->offset != access->offset)
+				struct locklint_access target = { 0 };
+
+				target.root = ref->root;
+				target.object = ref->object;
+				target.member = ref->member;
+				target.offset = ref->offset;
+				if (!locklint_same_access(&target, access))
 					continue;
 				base = 0;
-			} else if (!locklint_access_base(access,
-			    ref->owner_type, ref->offset, &base)) {
-				continue;
+			} else {
+				if (ref->member != access->member ||
+				    !locklint_access_base(access,
+				    ref->owner_type, ref->offset, &base))
+					continue;
 			}
 			protector = annotation->lock;
 			protector_base = base;
@@ -736,6 +784,8 @@ locklint_protecting_access(const struct locklint_access *access,
 		return (false);
 	lock->root = protector->root != NULL ?
 	    protector->root : access->root;
+	lock->object = protector->root != NULL ?
+	    protector->object : access->object;
 	lock->type = protector->owner_type;
 	lock->member = protector->member;
 	lock->offset = (protector->root != NULL ? 0 : protector_base) +

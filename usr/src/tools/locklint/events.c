@@ -47,7 +47,7 @@ call_name(struct instruction *insn)
 }
 
 enum locklint_lock_action
-locklint_get_lock_action(struct instruction *insn,
+locklint_get_lock_action(struct translation_unit *tu, struct instruction *insn,
     struct locklint_access *access)
 {
 	struct expression *arg;
@@ -55,6 +55,7 @@ locklint_get_lock_action(struct instruction *insn,
 	const char *name;
 
 	access->root = NULL;
+	access->object = NULL;
 	access->type = NULL;
 	access->member = NULL;
 	access->offset = 0;
@@ -74,12 +75,12 @@ locklint_get_lock_action(struct instruction *insn,
 
 	arg = insn->call_expr != NULL ?
 	    first_expression(insn->call_expr->args) : NULL;
-	(void) locklint_get_access(arg, access);
+	(void) locklint_get_access(tu, arg, access);
 	return (action);
 }
 
 static bool
-show_memory_event(struct instruction *insn)
+show_memory_event(struct translation_unit *tu, struct instruction *insn)
 {
 	struct locklint_access access;
 	struct locklint_access protector;
@@ -97,7 +98,7 @@ show_memory_event(struct instruction *insn)
 	show_event_position(insn->access->pos, event);
 	locklint_show_access(stdout, insn->access);
 	(void) printf(" offset=%u", insn->offset);
-	if (locklint_get_access(insn->access, &access) &&
+	if (locklint_get_access(tu, insn->access, &access) &&
 	    locklint_protecting_access(&access, &protector)) {
 		struct symbol *name = protector.member != NULL ?
 		    protector.member : protector.root;
@@ -111,7 +112,7 @@ show_memory_event(struct instruction *insn)
 }
 
 static bool
-show_call_event(struct instruction *insn)
+show_call_event(struct translation_unit *tu, struct instruction *insn)
 {
 	struct locklint_access access;
 	struct expression *arg;
@@ -123,7 +124,7 @@ show_call_event(struct instruction *insn)
 		return (false);
 
 	(void) snprintf(name, sizeof (name), "%s", call_name(insn));
-	action = locklint_get_lock_action(insn, &access);
+	action = locklint_get_lock_action(tu, insn, &access);
 	if (action == LOCKLINT_LOCK_ACQUIRE)
 		event = "ACQUIRE";
 	else if (action == LOCKLINT_LOCK_RELEASE)
@@ -146,7 +147,7 @@ show_call_event(struct instruction *insn)
 }
 
 void
-locklint_show_events(struct entrypoint *ep)
+locklint_show_events(struct translation_unit *tu, struct entrypoint *ep)
 {
 	struct basic_block *bb;
 	char function[128];
@@ -170,9 +171,9 @@ locklint_show_events(struct entrypoint *ep)
 				(void) printf("block .L%u\n", bb->nr);
 				showed_block = true;
 			}
-			if (show_memory_event(insn))
+			if (show_memory_event(tu, insn))
 				continue;
-			(void) show_call_event(insn);
+			(void) show_call_event(tu, insn);
 		} END_FOR_EACH_PTR(insn);
 	} END_FOR_EACH_PTR(bb);
 }

@@ -19,6 +19,7 @@
 struct entrypoint;
 struct instruction;
 struct locklint_access;
+struct translation_unit;
 
 enum locklint_lock_action {
 	LOCKLINT_LOCK_NONE,
@@ -26,8 +27,8 @@ enum locklint_lock_action {
 	LOCKLINT_LOCK_RELEASE
 };
 
-enum locklint_lock_action locklint_get_lock_action(struct instruction *,
-    struct locklint_access *);
-void locklint_show_events(struct entrypoint *);
+enum locklint_lock_action locklint_get_lock_action(struct translation_unit *,
+    struct instruction *, struct locklint_access *);
+void locklint_show_events(struct translation_unit *, struct entrypoint *);
 
 #endif /* EVENTS_H */

@@ -9,17 +9,4 @@
  * http://www.illumos.org/license/CDDL.
  */
 
-/*
- * Copyright 2026 Gordon W. Ross
- */
-
-#ifndef CHECK_H
-#define	CHECK_H
-
-struct entrypoint;
-struct translation_unit;
-
-void locklint_check_add(struct translation_unit *, struct entrypoint *);
-void locklint_check_all(void);
-
-#endif /* CHECK_H */
+int forced_include_second;

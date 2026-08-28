@@ -14,7 +14,7 @@
  */
 
 /*
- * This test covers lock requirements propagated through direct calls.
+ * This test covers entry lock conditions propagated through direct calls.
  * Its functions exercise direct and transitive callees, recursion, and
  * conservative analysis roots.
  */

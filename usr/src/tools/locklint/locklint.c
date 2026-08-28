@@ -32,6 +32,7 @@
 #include "assertions.h"
 #include "check.h"
 #include "events.h"
+#include "identity.h"
 #include "parse.h"
 #include "symbol.h"
 
@@ -134,7 +135,7 @@ show_accesses(struct entrypoint *ep)
 }
 
 static void
-process_symbols(struct symbol_list *symbols)
+process_symbols(struct translation_unit *tu, struct symbol_list *symbols)
 {
 	struct symbol *sym;
 
@@ -153,14 +154,43 @@ process_symbols(struct symbol_list *symbols)
 		if (ep == NULL)
 			continue;
 		if (check_locks)
-			locklint_check_add(ep);
+			locklint_check_add(tu, ep);
 		if (dump_linearized)
 			show_entry(ep);
 		if (dump_accesses)
 			show_accesses(ep);
 		if (dump_events)
-			locklint_show_events(ep);
+			locklint_show_events(tu, ep);
 	} END_FOR_EACH_PTR(sym);
+}
+
+static bool
+multiple_inputs(struct string_list *filelist)
+{
+	unsigned int count = 0;
+	char *file;
+
+	FOR_EACH_PTR(filelist, file) {
+		(void) file;
+		count++;
+	} END_FOR_EACH_PTR(file);
+	return (count > 1);
+}
+
+static bool
+initial_internal_declarations(struct symbol_list *symbols)
+{
+	struct symbol *symbol;
+	bool found = false;
+
+	FOR_EACH_PTR(symbols, symbol) {
+		unsigned long modifiers = symbol->ctype.modifiers;
+
+		if ((modifiers & (MOD_TOPLEVEL | MOD_STATIC)) ==
+		    (MOD_TOPLEVEL | MOD_STATIC))
+			found = true;
+	} END_FOR_EACH_PTR(symbol);
+	return (found);
 }
 
 int
@@ -168,6 +198,7 @@ main(int argc, char **argv)
 {
 	struct string_list *filelist = NULL;
 	struct symbol_list *symbols;
+	struct translation_unit *tu;
 	char *file;
 
 	argc = options(argc, argv);
@@ -181,12 +212,40 @@ main(int argc, char **argv)
 	if (check_locks)
 		locklint_assertions_enable();
 	do_output = 0;
-	process_symbols(sparse_initialize(argc, argv, &filelist));
+	/*
+	 * Sparse parses predefined and command-line-included source before the
+	 * explicit inputs.  Give records captured there stable provenance, and
+	 * resolve their names while that initialization namespace is current.
+	 */
+	tu = locklint_translation_unit_begin("<Sparse initialization>");
+	symbols = sparse_initialize(argc, argv, &filelist);
+	/*
+	 * Sparse parses a forced include once during initialization rather than
+	 * once per explicit input.  Sharing its internal-linkage declarations
+	 * would conflate distinct C objects or functions, so reject that case
+	 * until the frontend can provide a separate instance for each input.
+	 */
+	if (multiple_inputs(filelist) &&
+	    initial_internal_declarations(symbols))
+		die("multiple inputs with initialization-time internal "
+		    "declarations are not supported");
+	locklint_translation_unit_register(tu, symbols);
+	if (dump_annotations || dump_events || check_locks)
+		locklint_resolve_annotations();
+	process_symbols(tu, symbols);
 	FOR_EACH_PTR(filelist, file) {
+		/*
+		 * Hooks run inside sparse(), so establish provenance first.
+		 * Register internal objects before resolving captured names.  Name
+		 * resolution must finish here: sparse() for the next input removes
+		 * this file scope and may replace the visible declaration chains.
+		 */
+		tu = locklint_translation_unit_begin(file);
 		symbols = sparse(file);
+		locklint_translation_unit_register(tu, symbols);
 		if (dump_annotations || dump_events || check_locks)
 			locklint_resolve_annotations();
-		process_symbols(symbols);
+		process_symbols(tu, symbols);
 	} END_FOR_EACH_PTR(file);
 	if (check_locks)
 		locklint_check_all();

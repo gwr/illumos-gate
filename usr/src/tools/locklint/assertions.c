@@ -27,10 +27,12 @@
 #include "linearize.h"
 #include "access.h"
 #include "assertions.h"
+#include "identity.h"
 #include "token.h"
 
 struct assertion {
 	struct position invocation;
+	struct translation_unit *tu;
 	struct position predicate;
 	struct position argument_start;
 	struct position argument_end;
@@ -162,6 +164,7 @@ capture_assertion(const struct token *macro, const struct token *open,
 		if (assertion == NULL)
 			die("out of memory recording lock assertion");
 		assertion->invocation = macro->pos;
+		assertion->tu = locklint_translation_unit_current();
 		assertion->predicate = token->pos;
 		assertion->argument_start = predicate_open->next->pos;
 		assertion->argument_end = predicate_close->pos;
@@ -194,7 +197,7 @@ is_lock_predicate(struct instruction *insn)
 }
 
 enum locklint_assertion
-locklint_get_assertion(struct instruction *insn,
+locklint_get_assertion(struct translation_unit *tu, struct instruction *insn,
     struct locklint_access *access)
 {
 	struct expression *argument;
@@ -202,6 +205,7 @@ locklint_get_assertion(struct instruction *insn,
 	enum locklint_assertion state = LOCKLINT_ASSERT_NONE;
 
 	access->root = NULL;
+	access->object = NULL;
 	access->type = NULL;
 	access->member = NULL;
 	access->offset = 0;
@@ -215,6 +219,9 @@ locklint_get_assertion(struct instruction *insn,
 	    assertion = assertion->next) {
 		bool invocation_match;
 
+		/* Identical header positions in different translations are distinct. */
+		if (assertion->tu != tu)
+			continue;
 		if (assertion->predicate.stream != argument->pos.stream)
 			continue;
 		if (position_in_range(argument->pos,
@@ -235,7 +242,7 @@ locklint_get_assertion(struct instruction *insn,
 		state = assertion->state;
 	}
 	if (state == LOCKLINT_ASSERT_NONE ||
-	    !locklint_get_access(argument, access))
+	    !locklint_get_access(tu, argument, access))
 		return (LOCKLINT_ASSERT_NONE);
 	return (state);
 }
