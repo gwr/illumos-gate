@@ -86,6 +86,14 @@ not when future features should be added.
   safely attributable to a known caller.  Roots seed call-graph reachability
   and are boundaries at which unsatisfied lock conditions cannot simply be
   deferred to a known caller.
+- **Root reason** - One independently established reason for treating a
+  function as an analysis root.  A function may have several reasons, each
+  with its own provenance.
+- **Function-pointer evidence** - A source or intermediate-representation
+  observation that a function is used as a value, or that a function pointer
+  is initialized, loaded, stored, or copied.  Evidence supports conservative
+  root classification and call-graph auditing; it does not by itself prove an
+  indirect-call target.
 - **Flow analysis** - Analysis that follows possible execution paths through
   the program, including control flow within functions and calls between
   functions.
@@ -112,9 +120,10 @@ determine lock state, function lock conditions, and lock effects.  After
 analysis is complete, it reports accesses that violate declared locking
 protections.
 
-Locklint performs flow analysis over all retained functions reachable from
-its analysis roots.  This analysis determines lock state and propagates
-function summaries through known direct calls.
+Locklint performs flow analysis over every retained function.  Analysis-root
+reachability determines whether a function entry can be attributed to known
+direct callers and therefore whether its lock conditions may be deferred.
+Function summaries propagate through known direct calls.
 
 Sparse parses C source and produces the intermediate representation used by
 locklint.  Locklint registers callbacks to capture locking information during
@@ -139,15 +148,23 @@ The main phases are:
    5. expand and linearize function definitions;
    6. associate retained records and relevant Sparse symbols with the current
       translation unit; and
-   7. retain each function entrypoint for later checking.
+   7. use Sparse's source-use walker to record function-pointer evidence from
+      evaluated initializers and function bodies; and
+   8. retain each function entrypoint for later checking.
 5. After all files have been parsed:
    1. combine object and function declarations according to C linkage;
-   2. identify direct callers and conservative analysis roots;
-   3. solve function lock-effect summaries;
-   4. solve intraprocedural lock state;
-   5. collect and propagate protected-access lock conditions; and
-   6. emit diagnostics using the stable summaries.
-6. Emit requested annotation or development dumps.
+   2. classify call sites and connect resolved direct calls;
+   3. resolve previously recorded function escapes to retained definitions
+      and build their target index;
+   4. assign additive conservative root reasons;
+   5. propagate reachability from those roots through resolved direct calls;
+   6. emit a requested call-graph audit;
+   7. solve function lock-effect summaries;
+   8. solve intraprocedural lock state;
+   9. collect and propagate protected-access lock conditions; and
+   10. emit diagnostics using the stable summaries.
+6. Emit other requested development dumps.  `--dump-all` includes the
+   whole-program call-graph audit.
 
 Locklint deliberately delays diagnostics until summaries stabilize.  A
 warning seen during an early pass could otherwise be invalidated by a later
@@ -291,11 +308,17 @@ assertions
 functions
   `- function_info
        |- borrowed Sparse entrypoint
+       |- root-reason bit mask
+       |- call-site AVL tree
        |- block_info list
        |    |- input state_entry list
        |    `- output state_entry list
        |- lock_condition list
        `- lock_transfer list
+
+function-pointer observations
+  |- function_escape
+  `- function_pointer_activity
 ```
 
 The structures have these roles:
@@ -309,17 +332,105 @@ The structures have these roles:
 | `struct annotation_ref` | One parsed and later resolved lock or data endpoint; refers to Sparse symbols and records replacement precedence |
 | `struct assertion` | One recognized lock predicate captured from `ASSERT(...)` or `VERIFY(...)`; records source ranges and the asserted state |
 | `struct locklint_access` | A normalized identity for an object or member access; refers to its canonical object identity or local root symbol, type, final member, cumulative offset, and source expression |
-| `struct function_info` | Locklint's record for one function; refers to its Sparse entrypoint and owns its block state and summaries |
+| `struct function_info` | Locklint's record for one function; refers to its Sparse entrypoint, embeds its automatic root-reason mask and function-index linkages, and owns its call-site tree, block state, and summaries |
+| `struct call_site` | One call classified as resolved direct, unresolved external, ambiguous external, or indirect; records its instruction, source position, and resolved callee when present |
+| `struct function_escape` | One source observation that an exact function was used as a value; supplies root provenance and records the relevant source or destination when known |
+| `struct function_pointer_activity` | One initializer or function-body load, store, or copy involving a function pointer for which no exact target is known |
 | `struct block_info` | Associates one Sparse basic block with reachability and its input and output lock-state maps |
 | `struct state_entry` | One lock and its state in a block-state map; embeds a `locklint_access` identity |
 | `struct lock_condition` | A caller-visible entry lock condition; a condition inferred from a protected access is associated with a formal data argument and either a relative lock or a preserved absolute lock root |
 | `struct lock_transfer` | A function lock-effect summary for one formal lock and each possible input state |
 | `struct transfer_block_info` | Temporary per-block state used while computing one lock transfer |
 
-The program-wide object-identity, annotation, assertion, and function lists
+The program-wide object-identity, annotation, assertion, and function
+collections
 connect data captured from all input files.  Translation-unit provenance and
 references to Sparse symbols and expressions tie those records back to the
 particular parse and physical source position that produced them.
+
+### Collections and indexes
+
+Owning storage and lookup indexes are separate.  The illumos AVL
+implementation does not allocate or own its nodes: an object stored in an AVL
+tree embeds an `avl_node_t` linkage.  One linkage can belong to exactly one
+tree.  An object indexed by several AVL trees therefore embeds one separately
+named linkage for each tree.
+
+An object does not embed linkage for an unbounded one-to-many relationship.
+Such a relationship uses a separate association object.  For example, many
+declaration symbols may bind to one `object_identity`; a symbol index stores
+separate declaration-binding entries rather than requiring an
+`object_identity` to embed one linkage per declaration.
+
+The module-scope records use these collections:
+
+| Object | Owning storage | Collections and indexes |
+| --- | --- | --- |
+| `function_info` | Iterable fixed-size allocation chunks | Embeds `fi_by_entrypoint` for an AVL keyed by Sparse entrypoint and `fi_by_identity` for an AVL keyed by C function identity |
+| `call_site` | Fixed-size allocation chunks; each function creates a call-site tree only if it contains calls | Embeds `cs_by_source` for its caller's AVL keyed by source position and instruction identity |
+| `function_escape` | Fixed-size allocation chunks | Embeds `fe_by_source` for deterministic source traversal and `fe_by_target` for finding every escape reason associated with a resolved function |
+| `function_pointer_activity` | Fixed-size allocation chunks created only when a call-graph audit is requested | Embeds one source-ordered AVL linkage; it has no target index because no exact target is known |
+| root-reason kinds | A bit mask embedded in `function_info` | No separate collection; source-backed escape reasons refer to `function_escape` records |
+| `translation_unit` | Existing process-lifetime sequence | No additional index in this increment |
+| `object_identity` | Existing process-lifetime records | Existing identifier and declaration-symbol hash indexes remain unchanged in this increment |
+
+Functions are inserted incrementally while translation units are processed.
+Locklint's chunks are linked blocks with an element count and stable,
+never-reallocated object storage, so they support both iteration and stable
+addresses without one allocation per function.  The two function AVL indexes
+provide `O(log n)` insertion and lookup and ordered range traversal for
+ambiguous external definitions.  Full function passes traverse the iterable
+chunks rather than a third index.
+
+Call sites are also allocated from iterable chunks.  A function with calls
+owns an AVL tree whose records are ordered by source position with the
+instruction identity as a final tie-breaker.  This permits one-pass
+construction, deterministic audit traversal, and `O(log n)` lookup among that
+function's calls.  Classification stores the resolved callee directly, so
+propagation and reachability do not repeat global function lookup.  A
+function with no calls does not allocate a call-site tree.
+
+Every AVL comparator uses a complete key that cannot compare distinct records
+as equal.  A monotonically assigned sequence number is the final tie-breaker
+where identifier, translation unit, source position, and pointer identity do
+not already guarantee uniqueness.  Prefix lookup uses `avl_find()`,
+`avl_nearest()`, and ordered traversal across the matching range:
+
+- the function-identity key includes linkage class, identifier, owning
+  translation unit for internal linkage, definition position, and sequence;
+- the function-escape source key includes translation unit, source position,
+  and sequence;
+- the function-escape target key includes the resolved `function_info`,
+  source position, and sequence; and
+- function-pointer activity uses translation unit, containing function when
+  present, source position, operation kind, and sequence.
+
+Each `function_info` and resolved `function_escape` belongs to two AVL trees
+and therefore embeds two `avl_node_t` fields.  An unresolved escape remains
+only in the source tree.  Each `call_site` and
+`function_pointer_activity` belongs to one tree.  At LP64 each linkage costs
+24 bytes.  Detailed pointer activity is retained only for an explicit audit
+so ordinary checking does not pay that potentially large memory cost.
+
+The existing object-identity hash tables serve mutable, exact-key lookups on
+hot access-analysis paths and do not require ordered traversal.  The function
+AVLs instead support incremental insertion, deterministic traversal, and
+prefix ranges such as all external definitions of one identifier.  These
+different access patterns justify retaining both collection mechanisms.
+
+Likely future indexes should follow the same rules:
+
+- an effective protection relation may need both declaration/replacement
+  order and an AVL index by protected-data identity;
+- caller-witness diagnostics may require a call site's membership in a
+  reverse index by callee, in which case `call_site` would gain a distinct
+  second AVL linkage; and
+- an AVL replacement for declaration-symbol object bindings would put the
+  linkage in separate binding records, not in `object_identity`.
+
+Those indexes are not part of the module-scope increment.  Their cardinality,
+memory cost, and lookup frequency must be reviewed before their collection
+forms are chosen.
 
 ### Ownership and lifetime
 
@@ -330,11 +441,19 @@ particular parse and physical source position that produced them.
   preprocessing tokens.
 - Locklint allocates annotations, references, assertions, and copied `_NOTE`
   tokens for process lifetime.
-- Function records, lock conditions, transfers, CFG state maps, and
-  transfer-simulation blocks are freed after their analysis use ends.
+- Locklint owns chunk-allocated function, function-escape, and optional
+  function-pointer-activity records, chunk-allocated call sites, and their AVL
+  indexes.
+- Function records, function-pointer observations, call sites, lock
+  conditions, transfers, CFG state maps, and transfer-simulation blocks are
+  freed after their analysis use ends.
 - The implementation is a batch command, so process-lifetime metadata is
   intentional.  A future library or daemon interface would require explicit
   teardown and per-invocation ownership.
+
+The illumos build compiles `usr/src/common/avl/avl.c` and uses the native
+illumos AVL headers.  The macOS development build compiles that same
+implementation unchanged against local compatibility copies of its headers.
 
 ## Sparse integration
 
@@ -692,7 +811,7 @@ Instruction transfer order is:
 
 Only `LOCK_HELD` satisfies a protected access.
 
-## Direct-call resolution and roots
+## Module scope, calls, and roots
 
 For a call whose Sparse symbol already has an entrypoint, locklint uses that
 definition directly.
@@ -705,18 +824,117 @@ at the call.
 This identifier-based remapping is necessary because separate translation
 units have separate Sparse symbol identities.
 
-Root classification is currently conservative:
+Each retained call site is classified as one of:
 
-- functions with no known direct caller are roots;
-- non-static functions are roots; and
-- address-taken static functions are not eligible for deferred local
-  lock conditions.
+- a resolved direct call, with one known callee;
+- an unresolved external call, for which no retained definition is known;
+- an ambiguous external call, for which several definitions could match; or
+- an indirect call, for which the called expression does not identify one
+  function.
+
+Only resolved direct calls create call-graph edges in this increment.
+Unresolved and ambiguous calls remain explicit audit records rather than
+silently disappearing.  Indirect target inference is separate follow-up work.
+
+### Automatic root discovery
+
+Root classification is conservative and automatic.  A function accumulates
+every applicable root reason:
+
+- **external linkage** - code outside the analyzed inputs may call it;
+- **no known direct caller** - no resolved direct edge accounts for entry;
+  and
+- **function pointer escape** - the function is used as a value outside a
+  resolved direct call.
+
+Function-pointer escape includes implicit function-to-pointer conversion, not
+only an explicit unary `&`.  Locklint therefore does not rely solely on
+Sparse's `MOD_ADDRESSABLE`.  While each translation unit's evaluated symbols
+remain available, it uses Sparse's generic `dissect()` source-use walker to
+scan object initializers, including block-scope static initializers, and
+function bodies.  A reported `U_R_AOF` use of a function establishes escape.
+The walker reports a direct callee as `U_R_PTR`, so a function used only as
+the callee of a direct call is not misclassified as escaping.  For example:
+
+```c
+static struct cb_ops cb_ops = {
+        .cb_open = driver_open
+};
+```
+
+classifies `driver_open` as a root and records the initializer destination,
+when recoverable, as evidence.  Loads, stores, and copies of function pointers
+are also recorded for audit even when they do not reveal an exact target.
+A direct call does not by itself make its callee's address escape.
+
+`MOD_ADDRESSABLE` remains a conservative fallback for any function whose
+source use is not represented by recorded evidence.  Such a reason has the
+function declaration as provenance but may lack the position and destination
+of the operation that caused the modifier.
 
 Reachability from those roots is propagated through known direct calls.
 Static functions reached only by known direct calls may defer protected-data
 warnings to callers.
 
-Unresolved indirect calls are not yet connected to possible targets.
+Every retained function is analyzed.  Root reachability determines whether a
+lock condition can safely be deferred through known callers; it does not
+select which function bodies are retained.
+
+A function may defer a lock condition only when it is reachable from an
+analysis root and has no root reason of its own.  A root, or a function not
+reachable through the resolved graph, is an independent diagnostic boundary.
+Self-recursion does not establish a direct caller for root classification.
+A mutually recursive static component with no external, escaping, or
+caller-free member may remain rootless; the audit marks its functions
+unreachable so this boundary is visible.
+
+### Call-graph audit
+
+`--dump-callgraph` emits a deterministic development audit organized by
+function.  It shows:
+
+- the function and its translation unit, so same-named file-static functions
+  remain distinguishable;
+- whether the function is reachable from an analysis root;
+- all root reasons and their source evidence;
+- resolved direct edges;
+- unresolved and ambiguous external calls;
+- unresolved indirect calls; and
+- function-pointer initializer, load, store, and copy evidence.
+
+The audit reports analysis boundaries without claiming indirect targets.
+Unresolved indirect calls do not yet produce ordinary `--check-locks`
+diagnostics; the explicit audit is the reporting interface for this
+increment.  Target inference and policy for user-facing incomplete-analysis
+diagnostics require evidence from real module audits.
+
+The existing `--check-locks` diagnostic for an ambiguous external direct call
+remains unchanged.  Audit records supplement rather than suppress ordinary
+diagnostics.
+
+Functions are ordered by translation-unit input order, source position, and
+identifier.  Root reasons use a fixed reason-kind order followed by evidence
+position; calls and function-pointer evidence use source order.  The audit
+records each distinct source operation once.  An indirect call is a call
+record rather than a duplicate function-pointer load record.  These rules
+keep golden output stable and limit redundant pointer evidence.
+
+### Future explicit roots
+
+Automatic discovery is additive and does not preclude user-supplied roots.
+Two possible future interfaces are:
+
+- command-line options for roots specific to one analysis invocation; and
+- source annotations for entry points that are properties of the source
+  module.
+
+Both would add distinct root reasons to the same function record.  A source
+annotation would resolve a file-static name in its defining translation unit.
+A command-line selector for a file-static function would require
+translation-unit qualification.  Missing or ambiguous explicit selections
+must be errors.  The syntax and implementation of both interfaces remain
+TBD.  Initially they would only add roots; suppressing an automatically
+inferred root is a separate, more dangerous operation.
 
 ## Function entry lock conditions
 
@@ -857,7 +1075,11 @@ machine-readable format, or predecessor/call-chain witness.
 | --- | --- |
 | `analyze_blocks()` | Solve intraprocedural lock-state maps |
 | `direct_callee()` | Resolve a direct call within or across translation units |
-| `mark_direct_callers()` | Classify roots and direct-call reachability |
+| `classify_calls()` | Record call sites and connect resolved direct calls |
+| `collect_function_pointer_evidence()` | Use Sparse's source-use walker to record function-valued initializers and function-pointer operations while a translation unit is current |
+| `classify_roots()` | Add every applicable conservative root reason |
+| `mark_reachable()` | Propagate root reachability through resolved direct calls |
+| `locklint_dump_callgraph()` | Emit roots, calls, and function-pointer evidence for audit |
 | `collect_local_transfers()` | Discover formal lock-effect candidates |
 | `propagate_transfer_candidates()` | Carry effect candidates through calls |
 | `simulate_transfer()` | Compute one transfer-table entry |
@@ -955,6 +1177,12 @@ The current implementation relies on these invariants:
     not arbitrarily selected.
 15. A later protection declaration replaces an earlier relation for the same
     resolved datum.
+16. Every analysis root retains all independently established reasons.
+17. A function used as a value outside a resolved direct call is a
+    conservative root, including when the conversion occurs in a static
+    initializer without explicit `&`.
+18. Unresolved, ambiguous, and indirect calls remain visible in the call-graph
+    audit and do not create invented call edges.
 
 Changes that invalidate one of these invariants should update this document
 and add a focused regression test.
@@ -966,7 +1194,7 @@ areas include:
 
 - general alias and nested-object identity;
 - indirect-call and callback target resolution;
-- module scope and auditable root configuration;
+- explicit root configuration and source annotations;
 - rwlock read/write state;
 - visibility and competing-thread policy;
 - data-policy annotations other than `MUTEX_PROTECTS_DATA`;
