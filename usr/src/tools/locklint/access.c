@@ -67,7 +67,7 @@ find_member(struct expression *expr)
 	if (expr == NULL)
 		return (NULL);
 
-	if (expr->member_ident != NULL)
+	if (expr->member_symbol != NULL)
 		return (expr);
 
 	switch (expr->type) {
@@ -109,7 +109,8 @@ show_member(FILE *stream, struct expression *expr)
 		    root != NULL && root->ident != NULL ?
 		    show_ident(root->ident) : "<unknown>");
 	}
-	(void) fprintf(stream, ".%s", show_ident(expr->member_ident));
+	(void) fprintf(stream, ".%s",
+	    show_ident(expr->member_symbol->ident));
 }
 
 static unsigned long

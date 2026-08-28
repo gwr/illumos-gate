@@ -1758,14 +1758,12 @@ static struct symbol *degenerate(struct expression *expr)
 		{
 			/* Preserve member identity across array degeneration. */
 			struct expression *member_base = expr->member_base;
-			struct ident *member_ident = expr->member_ident;
 			struct symbol *member_symbol = expr->member_symbol;
 			unsigned long member_path_offset =
 			    expr->member_path_offset;
 
 			*expr = *expr->unop;
 			expr->member_base = member_base;
-			expr->member_ident = member_ident;
 			expr->member_symbol = member_symbol;
 			expr->member_path_offset = member_path_offset;
 		}
@@ -1781,7 +1779,6 @@ static struct symbol *evaluate_addressof(struct expression *expr)
 {
 	struct expression *op = expr->unop;
 	struct expression *member_base = op->member_base;
-	struct ident *member_ident = op->member_ident;
 	struct symbol *member_symbol = op->member_symbol;
 	unsigned long member_path_offset = op->member_path_offset;
 	struct symbol *ctype;
@@ -1793,7 +1790,6 @@ static struct symbol *evaluate_addressof(struct expression *expr)
 	ctype = op->ctype;
 	*expr = *op->unop;
 	expr->member_base = member_base;
-	expr->member_ident = member_ident;
 	expr->member_symbol = member_symbol;
 	expr->member_path_offset = member_path_offset;
 
@@ -2128,7 +2124,6 @@ static struct symbol *evaluate_member_dereference(struct expression *expr)
 	}
 	/* Retain the member path before rewriting EXPR_DEREF. */
 	expr->member_base = deref;
-	expr->member_ident = ident;
 	expr->member_symbol = member;
 	expr->member_path_offset = offset;
 
