@@ -27,8 +27,10 @@ run_capture()
 	output=$2
 	shift 2
 
+	capture_failed=0
 	echo "test: $name"
 	if ! "$@" > "$output" 2>&1; then
+		capture_failed=1
 		fail "$name: command failed"
 	fi
 }
@@ -53,6 +55,23 @@ compare()
 
 	if ! diff -u "$reference" "$output"; then
 		fail "$name: output differs"
+		return 1
+	fi
+	return 0
+}
+
+compare_no_columns()
+{
+	name=$1
+	reference=$2
+	raw_output=$3
+	output=$4
+
+	sed 's/\(.*:[0-9][0-9]*\):[0-9][0-9]*: warning/\1: warning/' \
+	    "$raw_output" > "$output"
+	if compare "$name" "$reference" "$output" &&
+	    [ "$capture_failed" -eq 0 ]; then
+		rm -f "$raw_output"
 	fi
 }
 
@@ -138,18 +157,16 @@ compare "cross translation unit" cross.ref cross.out
 run_capture "external objects" external-objects.raw \
     "$LOCKLINT" --check-locks external-objects-caller.c \
     external-objects-callee.c
-sed 's/\(.*:[0-9][0-9]*\):[0-9][0-9]*: warning/\1: warning/' \
-    external-objects.raw > external-objects.out
-compare "external objects" external-objects.ref external-objects.out
+compare_no_columns "external objects" external-objects.ref \
+    external-objects.raw external-objects.out
 
 #
 # Verify annotations from a command-line forced include retain provenance.
 #
 run_capture "forced include" forced-include.raw \
     "$LOCKLINT" --check-locks -include forced-include.h forced-include.c
-sed 's/\(.*:[0-9][0-9]*\):[0-9][0-9]*: warning/\1: warning/' \
-    forced-include.raw > forced-include.out
-compare "forced include" forced-include.ref forced-include.out
+compare_no_columns "forced include" forced-include.ref forced-include.raw \
+    forced-include.out
 
 run_failure "forced include multiple inputs" forced-include-multiple.out \
     "$LOCKLINT" --check-locks -include forced-include.h forced-include.c \
@@ -199,19 +216,16 @@ require_match "annotation errors" \
 #
 run_capture "annotation names" annotation-names.raw \
     "$LOCKLINT" --check-locks annotation-names.c
-sed 's/\(.*:[0-9][0-9]*\):[0-9][0-9]*: warning/\1: warning/' \
-    annotation-names.raw > annotation-names.out
-compare "annotation names" annotation-names.ref annotation-names.out
+compare_no_columns "annotation names" annotation-names.ref \
+    annotation-names.raw annotation-names.out
 
 #
 # Verify type-scoped annotations through anonymous aggregate embedding.
 #
 run_capture "anonymous embedding" anonymous-embedding.raw \
     "$LOCKLINT" --check-locks anonymous-embedding.c
-sed 's/\(.*:[0-9][0-9]*\):[0-9][0-9]*: warning/\1: warning/' \
-    anonymous-embedding.raw > anonymous-embedding.out
-compare "anonymous embedding" anonymous-embedding.ref \
-    anonymous-embedding.out
+compare_no_columns "anonymous embedding" anonymous-embedding.ref \
+    anonymous-embedding.raw anonymous-embedding.out
 
 #
 # Verify later protection declarations report override provenance.
