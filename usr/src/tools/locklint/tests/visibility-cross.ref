@@ -1,0 +1,2 @@
+../locklint: visibility-cross-caller.c:28:14: warning: locklint: protected member 'value' accessed without holding 'lock'
+../locklint: visibility-cross-caller.c:45:32: warning: locklint: protected member 'value' accessed without holding 'lock'
