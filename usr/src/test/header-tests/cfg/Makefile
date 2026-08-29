@@ -34,6 +34,7 @@ CFGS = \
 	c-symbols/math_h.cfg \
 	c-symbols/netdb_h.cfg \
 	c-symbols/pthread_h.cfg \
+	c-symbols/setjmp_h.cfg \
 	c-symbols/signal_h.cfg \
 	c-symbols/stdalign_h.cfg \
 	c-symbols/stddef_h.cfg \
@@ -44,6 +45,7 @@ CFGS = \
 	c-symbols/strings_h.cfg \
 	c-symbols/sys_atomic_h.cfg \
 	c-symbols/sys_mman_h.cfg \
+	c-symbols/sys_regset_h.cfg \
 	c-symbols/sys_stat_h.cfg \
 	c-symbols/sys_time_h.cfg \
 	c-symbols/sys_timeb_h.cfg \
