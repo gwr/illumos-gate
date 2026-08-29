@@ -27,6 +27,7 @@
 #include "annotations.h"
 #include "expression.h"
 #include "identity.h"
+#include "linearize.h"
 #include "symbol.h"
 #include "token.h"
 
@@ -85,6 +86,8 @@ struct annotation {
 static struct annotation *annotations;
 static struct annotation **annotations_tail = &annotations;
 
+static enum locklint_execution_kind execution_kind(const struct token *);
+
 static char *
 copy_string(const char *text)
 {
@@ -133,6 +136,9 @@ capture_annotation(const struct token *macro,
 
 	(void) data;
 
+	if (execution_kind(open) != LOCKLINT_EXECUTION_NONE)
+		return (1);
+
 	end = annotation_end(open);
 	if (end == NULL)
 		return (0);
@@ -163,10 +169,57 @@ capture_annotation(const struct token *macro,
 	return (0);
 }
 
+static enum locklint_execution_kind
+execution_kind(const struct token *open)
+{
+	const struct token *name = open->next;
+	const char *text;
+
+	if (name == NULL || token_type(name) != TOKEN_IDENT)
+		return (LOCKLINT_EXECUTION_NONE);
+	text = show_token(name);
+	if (strcmp(text, "NO_COMPETING_THREADS_NOW") == 0)
+		return (LOCKLINT_EXECUTION_NO_COMPETITION);
+	if (strcmp(text, "COMPETING_THREADS_NOW") == 0)
+		return (LOCKLINT_EXECUTION_COMPETITION);
+	if (strcmp(text, "NOW_INVISIBLE_TO_OTHER_THREADS") == 0)
+		return (LOCKLINT_EXECUTION_INVISIBLE);
+	if (strcmp(text, "NOW_VISIBLE_TO_OTHER_THREADS") == 0)
+		return (LOCKLINT_EXECUTION_VISIBLE);
+	if (strcmp(text, "ASSUMING_PROTECTED") == 0)
+		return (LOCKLINT_EXECUTION_ASSUME_PROTECTED);
+	if (strcmp(text, "NO_COMPETING_THREADS_AS_SIDE_EFFECT") == 0)
+		return (LOCKLINT_EXECUTION_NO_COMPETITION_EFFECT);
+	if (strcmp(text, "COMPETING_THREADS_AS_SIDE_EFFECT") == 0)
+		return (LOCKLINT_EXECUTION_COMPETITION_EFFECT);
+	return (LOCKLINT_EXECUTION_NONE);
+}
+
 void
 locklint_annotations_enable(void)
 {
 	add_macro_expansion_hook("_NOTE", capture_annotation, NULL);
+	add_pre_buffer("#define NO_COMPETING_THREADS_NOW "
+	    "__context__(0, 0, %lu);\n",
+	    (unsigned long)LOCKLINT_EXECUTION_NO_COMPETITION);
+	add_pre_buffer("#define COMPETING_THREADS_NOW "
+	    "__context__(0, 0, %lu);\n",
+	    (unsigned long)LOCKLINT_EXECUTION_COMPETITION);
+	add_pre_buffer("#define NO_COMPETING_THREADS_AS_SIDE_EFFECT "
+	    "__context__(0, 0, %lu);\n",
+	    (unsigned long)LOCKLINT_EXECUTION_NO_COMPETITION_EFFECT);
+	add_pre_buffer("#define COMPETING_THREADS_AS_SIDE_EFFECT "
+	    "__context__(0, 0, %lu);\n",
+	    (unsigned long)LOCKLINT_EXECUTION_COMPETITION_EFFECT);
+	add_pre_buffer("#define NOW_INVISIBLE_TO_OTHER_THREADS(...) "
+	    "__context__((__VA_ARGS__), 0, %lu);\n",
+	    (unsigned long)LOCKLINT_EXECUTION_INVISIBLE);
+	add_pre_buffer("#define NOW_VISIBLE_TO_OTHER_THREADS(...) "
+	    "__context__((__VA_ARGS__), 0, %lu);\n",
+	    (unsigned long)LOCKLINT_EXECUTION_VISIBLE);
+	add_pre_buffer("#define ASSUMING_PROTECTED(...) "
+	    "__context__((__VA_ARGS__), 0, %lu);\n",
+	    (unsigned long)LOCKLINT_EXECUTION_ASSUME_PROTECTED);
 }
 
 static bool
@@ -823,6 +876,26 @@ locklint_resolve_annotations(void)
 				record_replacements(annotation);
 			annotation->resolved = true;
 		}
+	}
+}
+
+enum locklint_execution_kind
+locklint_get_execution_annotation(const struct instruction *insn)
+{
+	if (insn->opcode != OP_CONTEXT || insn->increment != 0)
+		return (LOCKLINT_EXECUTION_NONE);
+
+	switch (insn->context_tag) {
+	case LOCKLINT_EXECUTION_NO_COMPETITION:
+	case LOCKLINT_EXECUTION_COMPETITION:
+	case LOCKLINT_EXECUTION_INVISIBLE:
+	case LOCKLINT_EXECUTION_VISIBLE:
+	case LOCKLINT_EXECUTION_ASSUME_PROTECTED:
+	case LOCKLINT_EXECUTION_NO_COMPETITION_EFFECT:
+	case LOCKLINT_EXECUTION_COMPETITION_EFFECT:
+		return ((enum locklint_execution_kind)insn->context_tag);
+	default:
+		return (LOCKLINT_EXECUTION_NONE);
 	}
 }
 

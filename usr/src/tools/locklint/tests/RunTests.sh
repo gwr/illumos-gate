@@ -143,6 +143,14 @@ run_capture "data policy checks" data-policy.out \
 compare "data policy checks" data-policy.ref data-policy.out
 
 #
+# Verify executable annotations survive as ordered tagged contexts.
+#
+run_capture "execution markers" visibility-linearized.out \
+    "$LOCKLINT" --dump-annotations --dump-linearized visibility.c
+grep 'context     ' visibility-linearized.out > visibility-markers.out
+compare "execution markers" visibility-markers.ref visibility-markers.out
+
+#
 # Verify intraprocedural lock state across branches, loops, and returns.
 #
 run_capture "check" check.out "$LOCKLINT" --check-locks check.c

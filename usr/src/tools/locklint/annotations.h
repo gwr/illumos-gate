@@ -20,6 +20,7 @@
 #include <stdio.h>
 
 struct locklint_access;
+struct instruction;
 struct symbol;
 
 enum locklint_protection {
@@ -34,9 +35,22 @@ struct locklint_data_policy {
 	bool read_only;
 };
 
+enum locklint_execution_kind {
+	LOCKLINT_EXECUTION_NONE,
+	LOCKLINT_EXECUTION_NO_COMPETITION,
+	LOCKLINT_EXECUTION_COMPETITION,
+	LOCKLINT_EXECUTION_INVISIBLE,
+	LOCKLINT_EXECUTION_VISIBLE,
+	LOCKLINT_EXECUTION_ASSUME_PROTECTED,
+	LOCKLINT_EXECUTION_NO_COMPETITION_EFFECT,
+	LOCKLINT_EXECUTION_COMPETITION_EFFECT
+};
+
 void locklint_annotations_enable(void);
 bool locklint_data_policy(const struct locklint_access *,
     struct locklint_data_policy *, struct locklint_access *);
+enum locklint_execution_kind locklint_get_execution_annotation(
+    const struct instruction *);
 void locklint_resolve_annotations(void);
 void locklint_show_annotations(FILE *);
 
