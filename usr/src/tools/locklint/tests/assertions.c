@@ -107,3 +107,28 @@ assertion_active_held(struct assertion_state *state)
 	ASSERT(MUTEX_HELD(&state->lock));
 	return (state->value);
 }
+
+#define	NO_COMPETING_THREADS	1
+
+static int
+assertion_no_competing_threads(struct assertion_state *state)
+{
+	ASSERT(NO_COMPETING_THREADS);
+	return (state->value);
+}
+
+static int
+assertion_resets_competition(struct assertion_state *state)
+{
+	_NOTE(COMPETING_THREADS_NOW)
+	ASSERT(NO_COMPETING_THREADS);
+	return (state->value);
+}
+
+static int
+note_no_competing_threads(struct assertion_state *state)
+{
+	_NOTE(COMPETING_THREADS_NOW)
+	_NOTE(NO_COMPETING_THREADS)
+	return (state->value);
+}

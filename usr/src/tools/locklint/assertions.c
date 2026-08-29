@@ -26,6 +26,7 @@
 #include "expression.h"
 #include "linearize.h"
 #include "access.h"
+#include "annotations.h"
 #include "assertions.h"
 #include "identity.h"
 #include "token.h"
@@ -180,6 +181,13 @@ locklint_assertions_enable(void)
 {
 	add_macro_expansion_hook("ASSERT", capture_assertion, NULL);
 	add_macro_expansion_hook("VERIFY", capture_assertion, NULL);
+	/*
+	 * synch.h defines this predicate as 1.  Keep existing assertions but
+	 * lower their preserved argument to the ordinary no-competition event.
+	 */
+	add_pre_buffer("#strong_define NO_COMPETING_THREADS "
+	    "__context__(0, 0, %lu);\n",
+	    (unsigned long)LOCKLINT_EXECUTION_NO_COMPETITION);
 }
 
 static bool

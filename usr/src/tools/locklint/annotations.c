@@ -178,6 +178,8 @@ execution_kind(const struct token *open)
 	if (name == NULL || token_type(name) != TOKEN_IDENT)
 		return (LOCKLINT_EXECUTION_NONE);
 	text = show_token(name);
+	if (strcmp(text, "NO_COMPETING_THREADS") == 0)
+		return (LOCKLINT_EXECUTION_NO_COMPETITION);
 	if (strcmp(text, "NO_COMPETING_THREADS_NOW") == 0)
 		return (LOCKLINT_EXECUTION_NO_COMPETITION);
 	if (strcmp(text, "COMPETING_THREADS_NOW") == 0)
