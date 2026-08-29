@@ -46,3 +46,15 @@ cross_effect(struct cross_state *state)
 	mutex_exit(&state->lock);
 	return (value);
 }
+
+static int
+cross_private_helper(int value)
+{
+	return (value);
+}
+
+int
+cross_caller_private_path(int value)
+{
+	return (cross_private_helper(value));
+}

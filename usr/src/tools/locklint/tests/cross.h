@@ -50,5 +50,7 @@ extern int cross_unlocked(struct cross_state *);
 extern int cross_effect(struct cross_state *);
 extern int cross_read(struct cross_state *);
 extern void cross_acquire(struct cross_state *);
+extern int cross_caller_private_path(int);
+extern int cross_callee_private_path(int);
 
 #endif /* TEST_CROSS_H */

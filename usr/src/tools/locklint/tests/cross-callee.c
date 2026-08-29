@@ -30,3 +30,15 @@ cross_acquire(struct cross_state *state)
 {
 	mutex_enter(&state->lock);
 }
+
+static int
+cross_private_helper(int value)
+{
+	return (value);
+}
+
+int
+cross_callee_private_path(int value)
+{
+	return (cross_private_helper(value));
+}

@@ -107,3 +107,21 @@ check_isolated_recursive(struct call_state *state, int depth)
 		return (check_isolated_recursive(state, depth - 1));
 	return (state->value);
 }
+
+static int check_cycle_right(int);
+
+static int
+check_cycle_left(int depth)
+{
+	if (depth == 0)
+		return (0);
+	return (check_cycle_right(depth - 1));
+}
+
+static int
+check_cycle_right(int depth)
+{
+	if (depth == 0)
+		return (0);
+	return (check_cycle_left(depth - 1));
+}
