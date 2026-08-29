@@ -186,3 +186,92 @@ contract_markers(struct visibility_state *first,
 	_NOTE(NO_COMPETING_THREADS_AS_SIDE_EFFECT)
 	_NOTE(COMPETING_THREADS_AS_SIDE_EFFECT)
 }
+
+extern void mutex_enter(mutex_t *);
+extern void mutex_exit(mutex_t *);
+
+static int
+assuming_mutex_callee(struct visibility_state *state)
+{
+	int value = state->protected;
+
+	_NOTE(ASSUMING_PROTECTED(state->protected))
+	return (value + state->protected);
+}
+
+static int
+assuming_locked_caller(struct visibility_state *state)
+{
+	int value;
+
+	mutex_enter(&state->lock);
+	value = assuming_mutex_callee(state);
+	mutex_exit(&state->lock);
+	return (value);
+}
+
+static int
+assuming_unlocked_caller(struct visibility_state *state)
+{
+	return (assuming_mutex_callee(state));
+}
+
+static int
+assuming_quiet_caller(struct visibility_state *state)
+{
+	_NOTE(NO_COMPETING_THREADS_NOW)
+	return (assuming_mutex_callee(state));
+}
+
+static int
+assuming_invisible_caller(struct visibility_state *state)
+{
+	_NOTE(NOW_INVISIBLE_TO_OTHER_THREADS(state->protected))
+	return (assuming_mutex_callee(state));
+}
+
+static int
+assuming_generic_callee(struct visibility_state *state)
+{
+	_NOTE(ASSUMING_PROTECTED(*state))
+	return (state->sibling);
+}
+
+static int
+assuming_generic_unprotected(struct visibility_state *state)
+{
+	return (assuming_generic_callee(state));
+}
+
+static int
+assuming_generic_locked(struct visibility_state *state)
+{
+	int value;
+
+	mutex_enter(&state->lock);
+	value = assuming_generic_callee(state);
+	mutex_exit(&state->lock);
+	return (value);
+}
+
+static int
+assuming_generic_invisible(struct visibility_state *state)
+{
+	_NOTE(NOW_INVISIBLE_TO_OTHER_THREADS(*state))
+	return (assuming_generic_callee(state));
+}
+
+static void
+assuming_merge(struct visibility_state *state, int value, int assumed)
+{
+	_NOTE(COMPETING_THREADS_NOW)
+	if (assumed)
+		_NOTE(ASSUMING_PROTECTED(state->protected))
+	state->protected = value;
+}
+
+static void
+assuming_invalid(void)
+{
+	_NOTE(ASSUMING_PROTECTED(1))
+}

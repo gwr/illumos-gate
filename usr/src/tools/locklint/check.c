@@ -83,6 +83,12 @@ struct visibility_entry {
 	struct visibility_entry *next;
 };
 
+struct assumed_region {
+	struct locklint_access region;
+	struct position pos;
+	struct assumed_region *next;
+};
+
 struct analysis_state {
 	struct state_entry *locks;
 	enum competition_state competition;
@@ -124,6 +130,7 @@ struct protection_condition {
 	struct object_identity *lock_object;
 	struct symbol *lock_member;
 	unsigned long lock_offset;
+	bool has_lock;
 	struct symbol *data_member;
 	unsigned long data_offset;
 	struct position pos;
@@ -145,6 +152,7 @@ struct function_info {
 	struct entrypoint *ep;
 	struct block_info *blocks;
 	struct protection_condition *conditions;
+	struct assumed_region *assumptions;
 	struct lock_transfer *transfers;
 	unsigned int root_reasons;
 	bool has_nonself_direct_caller;
@@ -1473,7 +1481,9 @@ map_call_protection_condition(struct function_info *function,
 		base.offset = 0;
 		base.expr = NULL;
 	}
-	if (condition->lock_root == NULL) {
+	if (!condition->has_lock) {
+		*lock = (struct locklint_access){ 0 };
+	} else if (condition->lock_root == NULL) {
 		/* Relative locks move with the selected data object's base. */
 		*lock = base;
 		lock->member = argument_member(argument,
@@ -1568,12 +1578,17 @@ transfer_call_effects(struct function_info *function,
 
 static bool
 same_condition_lock(const struct protection_condition *condition,
+    bool has_lock,
     struct symbol *root, struct object_identity *object,
     struct symbol *member, unsigned long offset)
 {
 	struct locklint_access left = { 0 };
 	struct locklint_access right = { 0 };
 
+	if (condition->has_lock != has_lock)
+		return (false);
+	if (!has_lock)
+		return (true);
 	/* Different declaration symbols can still denote one absolute lock. */
 	left.root = condition->lock_root;
 	left.object = condition->lock_object;
@@ -1609,6 +1624,7 @@ static bool
 add_protection_condition(struct function_info *function,
     unsigned int argument, struct symbol *data_root,
     struct object_identity *data_object,
+    bool has_lock,
     struct symbol *lock_root, struct object_identity *lock_object,
     struct symbol *lock_member, unsigned long lock_offset,
     struct symbol *data_member, unsigned long data_offset,
@@ -1621,8 +1637,8 @@ add_protection_condition(struct function_info *function,
 		if (condition->argument == argument &&
 		    same_condition_data(condition, data_root, data_object,
 		    data_member, data_offset) &&
-		    same_condition_lock(condition, lock_root, lock_object,
-		    lock_member, lock_offset))
+		    same_condition_lock(condition, has_lock, lock_root,
+		    lock_object, lock_member, lock_offset))
 			return (false);
 	}
 	condition = calloc(1, sizeof (*condition));
@@ -1631,6 +1647,7 @@ add_protection_condition(struct function_info *function,
 	condition->argument = argument;
 	condition->data_root = data_root;
 	condition->data_object = data_object;
+	condition->has_lock = has_lock;
 	condition->lock_root = lock_root;
 	condition->lock_object = lock_object;
 	condition->lock_member = lock_member;
@@ -1677,15 +1694,43 @@ lock_name(const struct locklint_access *lock)
 	return ("<unknown>");
 }
 
-static enum protection_status
-get_protection_status(const struct analysis_state *state,
-    const struct locklint_access *object, const struct locklint_access *lock)
+static const char *
+access_name(const struct locklint_access *access)
 {
-	enum lock_state lock_state = get_state(state->locks, lock);
+	struct symbol *symbol = access->member != NULL ?
+	    access->member : access->root;
+
+	return (symbol != NULL && symbol->ident != NULL ?
+	    show_ident(symbol->ident) : "<unknown>");
+}
+
+static bool
+assumed_protected(const struct function_info *function,
+    const struct locklint_access *access)
+{
+	struct assumed_region *assumption;
+
+	for (assumption = function->assumptions; assumption != NULL;
+	    assumption = assumption->next) {
+		if (locklint_access_contains(&assumption->region, access))
+			return (true);
+	}
+	return (false);
+}
+
+static enum protection_status
+get_protection_status(const struct function_info *function,
+    const struct analysis_state *state,
+    const struct locklint_access *object, bool has_lock,
+    const struct locklint_access *lock)
+{
+	enum lock_state lock_state = has_lock ?
+	    get_state(state->locks, lock) : LOCK_NOT_HELD;
 	enum visibility_state visibility =
 	    get_visibility(state->visibility, object);
 
-	if (lock_state == LOCK_HELD ||
+	if (assumed_protected(function, object) ||
+	    lock_state == LOCK_HELD ||
 	    visibility == VISIBILITY_INVISIBLE ||
 	    state->competition == COMPETITION_NONE)
 		return (PROTECTION_DEFINITE);
@@ -2093,10 +2138,119 @@ solve_function_transfers(struct function_info *function)
 }
 
 static void
+record_assumption_expression(struct function_info *function,
+    struct expression *expr)
+{
+	struct locklint_access access;
+	struct assumed_region *assumption;
+
+	if (expr == NULL)
+		return;
+	if (expr->type == EXPR_COMMA) {
+		record_assumption_expression(function, expr->left);
+		record_assumption_expression(function, expr->right);
+		return;
+	}
+	if (!locklint_get_access(function->tu, expr, &access))
+		return;
+	for (assumption = function->assumptions; assumption != NULL;
+	    assumption = assumption->next) {
+		if (locklint_same_access(&assumption->region, &access))
+			return;
+	}
+	assumption = calloc(1, sizeof (*assumption));
+	if (assumption == NULL)
+		die("out of memory recording assumed protection");
+	assumption->region = access;
+	assumption->pos = expr->pos;
+	assumption->next = function->assumptions;
+	function->assumptions = assumption;
+}
+
+static void
+collect_function_assumptions(struct function_info *function)
+{
+	struct basic_block *bb;
+
+	/* The retained marker has a location, but its contract starts at entry. */
+	FOR_EACH_PTR(function->ep->bbs, bb) {
+		struct instruction *insn;
+
+		FOR_EACH_PTR(bb->insns, insn) {
+			if (insn->bb == NULL ||
+			    locklint_get_execution_annotation(insn) !=
+			    LOCKLINT_EXECUTION_ASSUME_PROTECTED)
+				continue;
+			record_assumption_expression(function,
+			    insn->context_expr);
+		} END_FOR_EACH_PTR(insn);
+	} END_FOR_EACH_PTR(bb);
+}
+
+static void
+collect_assumption_conditions(struct function_info *function)
+{
+	struct assumed_region *assumption;
+
+	for (assumption = function->assumptions; assumption != NULL;
+	    assumption = assumption->next) {
+		struct locklint_access *access = &assumption->region;
+		struct locklint_access lock = { 0 };
+		struct locklint_data_policy policy;
+		struct symbol *data_root;
+		struct object_identity *data_object;
+		unsigned int argument;
+		bool has_lock;
+
+		if (!condition_data_identity(function, access, &argument,
+		    &data_root, &data_object))
+			continue;
+		has_lock = locklint_data_policy(access, &policy, &lock) &&
+		    policy.protection == LOCKLINT_PROTECTION_MUTEX;
+		(void) add_protection_condition(function, argument,
+		    data_root, data_object, has_lock,
+		    has_lock && lock.root != access->root ? lock.root : NULL,
+		    has_lock && lock.root != access->root ? lock.object : NULL,
+		    has_lock ? lock.member : NULL, has_lock ? lock.offset : 0,
+		    access->member, access->offset, assumption->pos);
+	}
+}
+
+static void
+diagnose_assumption_expression(struct function_info *function,
+    struct expression *expr)
+{
+	struct locklint_access access;
+
+	if (expr == NULL)
+		return;
+	if (expr->type == EXPR_COMMA) {
+		diagnose_assumption_expression(function, expr->left);
+		diagnose_assumption_expression(function, expr->right);
+		return;
+	}
+	if (!locklint_get_access(function->tu, expr, &access)) {
+		warning(expr->pos,
+		    "locklint: ASSUMING_PROTECTED has no object");
+	}
+}
+
+static void
+diagnose_assumption(struct function_info *function,
+    const struct instruction *insn)
+{
+	if (locklint_get_execution_annotation(insn) !=
+	    LOCKLINT_EXECUTION_ASSUME_PROTECTED)
+		return;
+	diagnose_assumption_expression(function, insn->context_expr);
+}
+
+static void
 collect_local_protection_conditions(struct function_info *function)
 {
 	struct block_info *block;
 
+	collect_assumption_conditions(function);
 	for (block = function->blocks; block != NULL; block = block->next) {
 		struct analysis_state *state;
 		struct instruction *insn;
@@ -2116,12 +2270,13 @@ collect_local_protection_conditions(struct function_info *function)
 				continue;
 			if (protected_access(function, insn, &access, &lock,
 			    &data_member) &&
-			    get_protection_status(state, &access, &lock) ==
-			    PROTECTION_ABSENT &&
+			    get_protection_status(function, state, &access, true,
+			    &lock) == PROTECTION_ABSENT &&
 			    condition_data_identity(function, &access, &argument,
 			    &data_root, &data_object)) {
 				(void) add_protection_condition(function, argument,
 				    data_root, data_object,
+				    true,
 				    lock.root != access.root ? lock.root : NULL,
 				    lock.root != access.root ?
 				    lock.object : NULL,
@@ -2156,13 +2311,15 @@ propagate_call_protection_conditions(struct function_info *function,
 		if (!map_call_protection_condition(function, insn, condition,
 		    &object, &lock))
 			continue;
-		status = get_protection_status(state, &object, &lock);
+		status = get_protection_status(function, state, &object,
+		    condition->has_lock, &lock);
 		if (status != PROTECTION_ABSENT ||
 		    !condition_data_identity(function, &object,
 		    &caller_argument, &data_root, &data_object))
 			continue;
 		if (add_protection_condition(function, caller_argument,
 		    data_root, data_object,
+		    condition->has_lock,
 		    condition->lock_root, condition->lock_object,
 		    lock.member, lock.offset, object.member, object.offset,
 		    condition->pos))
@@ -2245,7 +2402,7 @@ check_access(struct function_info *function, struct analysis_state *state,
 
 	if (!protected_access(function, insn, &access, &lock, &data_member))
 		return;
-	status = get_protection_status(state, &access, &lock);
+	status = get_protection_status(function, state, &access, true, &lock);
 	if (status == PROTECTION_DEFINITE)
 		return;
 	if (status == PROTECTION_ABSENT) {
@@ -2301,7 +2458,8 @@ check_direct_call(struct function_info *function,
 			if (!map_call_protection_condition(function, insn,
 			    condition, &object, &lock))
 				continue;
-			status = get_protection_status(analysis, &object, &lock);
+			status = get_protection_status(function, analysis, &object,
+			    condition->has_lock, &lock);
 			if (status == PROTECTION_DEFINITE)
 				continue;
 			if (status == PROTECTION_ABSENT &&
@@ -2313,15 +2471,20 @@ check_direct_call(struct function_info *function,
 				    &caller_argument, &data_root, &data_object))
 					continue;
 			}
-			data_name = condition->data_member != NULL &&
-			    condition->data_member->ident != NULL ?
-			    show_ident(condition->data_member->ident) :
-			    "<unknown>";
+			data_name = access_name(&object);
 			if (status == PROTECTION_ABSENT) {
-				warning(pos, "locklint: call to '%s' accesses "
-				    "protected member '%s' without holding '%s'",
-				    show_ident(callee->ep->name->ident),
-				    data_name, lock_name(&lock));
+				if (condition->has_lock) {
+					warning(pos, "locklint: call to '%s' "
+					    "accesses protected member '%s' "
+					    "without holding '%s'",
+					    show_ident(callee->ep->name->ident),
+					    data_name, lock_name(&lock));
+				} else {
+					warning(pos, "locklint: call to '%s' "
+					    "requires protection for '%s'",
+					    show_ident(callee->ep->name->ident),
+					    data_name);
+				}
 			} else {
 				warning(pos, "locklint: protection for member "
 				    "'%s' is not established on every path "
@@ -2455,6 +2618,7 @@ emit_diagnostics(struct function_info *function)
 			transfer_assertion(function, &state->locks, insn);
 			transfer_competition_state(state, insn);
 			transfer_visibility_state(function, state, insn, true);
+			diagnose_assumption(function, insn);
 		} END_FOR_EACH_PTR(insn);
 		check_return_state(function, block, state);
 		free_analysis_state(state);
@@ -2587,6 +2751,8 @@ run_lock_checks(void)
 		}
 	} while (changed);
 	for (function = functions; function != NULL; function = function->next)
+		collect_function_assumptions(function);
+	for (function = functions; function != NULL; function = function->next)
 		function->blocks = analyze_blocks(function);
 	for (function = functions; function != NULL; function = function->next)
 		collect_local_protection_conditions(function);
@@ -2608,6 +2774,7 @@ free_functions(void)
 	while (functions != NULL) {
 		struct function_info *next = functions->next;
 		struct protection_condition *condition = functions->conditions;
+		struct assumed_region *assumption = functions->assumptions;
 		struct lock_transfer *transfer = functions->transfers;
 
 		while (condition != NULL) {
@@ -2616,6 +2783,12 @@ free_functions(void)
 
 			free(condition);
 			condition = condition_next;
+		}
+		while (assumption != NULL) {
+			struct assumed_region *assumption_next = assumption->next;
+
+			free(assumption);
+			assumption = assumption_next;
 		}
 		while (transfer != NULL) {
 			struct lock_transfer *transfer_next = transfer->next;
