@@ -1,0 +1,5 @@
+../locklint: visibility-calls.c:91:14: warning: locklint: protected member 'protected' accessed without holding 'lock'
+../locklint: visibility-calls.c:107:14: warning: locklint: protection for member 'protected' is not established on every path
+../locklint: visibility-calls.c:133:14: warning: locklint: protected member 'protected' accessed without holding 'lock'
+../locklint: visibility-calls.c:174:21: warning: locklint: protected member 'protected' accessed without holding 'lock'
+../locklint: visibility-calls.c:203:14: warning: locklint: read-only data 'read_only' modified while visible to competing threads

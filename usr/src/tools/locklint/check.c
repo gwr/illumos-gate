@@ -52,7 +52,8 @@ enum competition_state {
 enum visibility_state {
 	VISIBILITY_INVISIBLE,
 	VISIBILITY_MAYBE,
-	VISIBILITY_VISIBLE
+	VISIBILITY_VISIBLE,
+	VISIBILITY_STATE_COUNT
 };
 
 enum protection_status {
@@ -114,6 +115,14 @@ struct transfer_block_info {
 	struct transfer_block_info *next;
 };
 
+struct visibility_transfer_block_info {
+	struct basic_block *bb;
+	bool reachable;
+	enum visibility_state in;
+	enum visibility_state out;
+	struct visibility_transfer_block_info *next;
+};
+
 struct protection_condition {
 	unsigned int argument;
 	/*
@@ -146,6 +155,22 @@ struct lock_transfer {
 	struct lock_transfer *next;
 };
 
+struct visibility_transfer {
+	unsigned int argument;
+	struct symbol *data_root;
+	struct object_identity *data_object;
+	struct symbol *data_member;
+	unsigned long data_offset;
+	enum visibility_state output[VISIBILITY_STATE_COUNT];
+	struct visibility_transfer *next;
+};
+
+struct mapped_visibility_effect {
+	struct locklint_access region;
+	enum visibility_state output[VISIBILITY_STATE_COUNT];
+	struct mapped_visibility_effect *next;
+};
+
 struct function_info {
 	/* Functions and their retained Sparse objects belong to one parse. */
 	struct translation_unit *tu;
@@ -154,6 +179,7 @@ struct function_info {
 	struct protection_condition *conditions;
 	struct assumed_region *assumptions;
 	struct lock_transfer *transfers;
+	struct visibility_transfer *visibility_transfers;
 	unsigned int root_reasons;
 	bool has_nonself_direct_caller;
 	bool reachable_from_root;
@@ -222,6 +248,8 @@ static unsigned int next_function_pointer_activity_sequence;
 
 static void transfer_call_effects(struct function_info *,
     struct state_entry **, struct instruction *);
+static void transfer_call_visibility_effects(struct function_info *,
+    struct visibility_entry **, struct instruction *);
 
 static bool
 same_lock(const struct locklint_access *left,
@@ -702,6 +730,7 @@ transfer_instruction(struct function_info *function,
     struct analysis_state *state, struct instruction *insn)
 {
 	transfer_call_effects(function, &state->locks, insn);
+	transfer_call_visibility_effects(function, &state->visibility, insn);
 	transfer_lock_action(function, &state->locks, insn);
 	transfer_assertion(function, &state->locks, insn);
 	transfer_competition_state(state, insn);
@@ -1684,6 +1713,169 @@ condition_data_identity(struct function_info *function,
 	return (true);
 }
 
+static void
+visibility_transfer_access(const struct function_info *function,
+    const struct visibility_transfer *transfer, struct locklint_access *region)
+{
+	*region = (struct locklint_access){ 0 };
+	if (transfer->data_root == NULL) {
+		region->root = formal_symbol(function->ep, transfer->argument);
+	} else {
+		region->root = transfer->data_root;
+		region->object = transfer->data_object;
+		region->type = transfer->data_root->ctype.base_type;
+	}
+	region->member = transfer->data_member;
+	region->offset = transfer->data_offset;
+}
+
+static bool
+map_call_visibility_transfer(struct function_info *function,
+    struct instruction *insn, const struct visibility_transfer *transfer,
+    struct locklint_access *region)
+{
+	struct expression *argument;
+
+	if (transfer->data_root == NULL) {
+		argument = call_argument(insn, transfer->argument);
+		if (!locklint_get_access(function->tu, argument, region))
+			return (false);
+		region->member = argument_member(argument,
+		    transfer->data_member);
+		region->offset += transfer->data_offset;
+	} else {
+		region->root = transfer->data_root;
+		region->object = transfer->data_object;
+		region->type = transfer->data_root->ctype.base_type;
+		region->member = transfer->data_member;
+		region->offset = transfer->data_offset;
+		region->expr = NULL;
+	}
+	return (true);
+}
+
+static struct visibility_transfer *
+add_visibility_transfer(struct function_info *function,
+    unsigned int argument, struct symbol *data_root,
+    struct object_identity *data_object, struct symbol *data_member,
+    unsigned long data_offset, bool *added)
+{
+	struct visibility_transfer *transfer;
+	struct locklint_access candidate = { 0 };
+	unsigned int state;
+
+	candidate.root = data_root;
+	candidate.object = data_object;
+	candidate.member = data_member;
+	candidate.offset = data_offset;
+	for (transfer = function->visibility_transfers; transfer != NULL;
+	    transfer = transfer->next) {
+		struct locklint_access existing = { 0 };
+
+		existing.root = transfer->data_root;
+		existing.object = transfer->data_object;
+		existing.member = transfer->data_member;
+		existing.offset = transfer->data_offset;
+		if (transfer->argument == argument &&
+		    locklint_same_access(&existing, &candidate)) {
+			*added = false;
+			return (transfer);
+		}
+	}
+	transfer = calloc(1, sizeof (*transfer));
+	if (transfer == NULL)
+		die("out of memory recording visibility transfer");
+	transfer->argument = argument;
+	transfer->data_root = data_root;
+	transfer->data_object = data_object;
+	transfer->data_member = data_member;
+	transfer->data_offset = data_offset;
+	for (state = 0; state < VISIBILITY_STATE_COUNT; state++)
+		transfer->output[state] = state;
+	transfer->next = function->visibility_transfers;
+	function->visibility_transfers = transfer;
+	*added = true;
+	return (transfer);
+}
+
+static void
+free_mapped_visibility_effects(struct mapped_visibility_effect *effects)
+{
+	while (effects != NULL) {
+		struct mapped_visibility_effect *next = effects->next;
+
+		free(effects);
+		effects = next;
+	}
+}
+
+static struct mapped_visibility_effect *
+map_call_visibility_effects(struct function_info *function,
+    struct instruction *insn, struct function_info *callee)
+{
+	struct mapped_visibility_effect *effects = NULL;
+	struct visibility_transfer *transfer;
+
+	for (transfer = callee->visibility_transfers; transfer != NULL;
+	    transfer = transfer->next) {
+		struct mapped_visibility_effect **link;
+		struct mapped_visibility_effect *effect;
+		struct locklint_access region;
+		unsigned int state;
+
+		if (!map_call_visibility_transfer(function, insn, transfer,
+		    &region))
+			continue;
+		for (effect = effects; effect != NULL; effect = effect->next) {
+			if (!locklint_same_access(&effect->region, &region))
+				continue;
+			for (state = 0; state < VISIBILITY_STATE_COUNT; state++) {
+				effect->output[state] = merge_visibility_state(
+				    effect->output[state],
+				    transfer->output[state]);
+			}
+			break;
+		}
+		if (effect != NULL)
+			continue;
+		effect = calloc(1, sizeof (*effect));
+		if (effect == NULL)
+			die("out of memory mapping visibility effects");
+		effect->region = region;
+		for (state = 0; state < VISIBILITY_STATE_COUNT; state++)
+			effect->output[state] = transfer->output[state];
+		for (link = &effects; *link != NULL; link = &(*link)->next) {
+			if (locklint_access_contains(&region, &(*link)->region) &&
+			    !locklint_same_access(&region, &(*link)->region))
+				break;
+		}
+		effect->next = *link;
+		*link = effect;
+	}
+	return (effects);
+}
+
+static void
+transfer_call_visibility_effects(struct function_info *function,
+    struct visibility_entry **visibility, struct instruction *insn)
+{
+	struct function_info *callee = direct_callee(function, insn);
+	struct mapped_visibility_effect *effects;
+	struct mapped_visibility_effect *effect;
+
+	if (callee == NULL)
+		return;
+	effects = map_call_visibility_effects(function, insn, callee);
+	for (effect = effects; effect != NULL; effect = effect->next) {
+		enum visibility_state state =
+		    get_visibility(*visibility, &effect->region);
+
+		set_visibility(visibility, &effect->region,
+		    effect->output[state]);
+	}
+	free_mapped_visibility_effects(effects);
+}
+
 static const char *
 lock_name(const struct locklint_access *lock)
 {
@@ -2138,6 +2330,290 @@ solve_function_transfers(struct function_info *function)
 }
 
 static void
+collect_visibility_transfer_expression(struct function_info *function,
+    struct expression *expr, bool *changed)
+{
+	struct locklint_access access;
+	struct symbol *data_root;
+	struct object_identity *data_object;
+	unsigned int argument;
+	bool added;
+
+	if (expr == NULL)
+		return;
+	if (expr->type == EXPR_COMMA) {
+		collect_visibility_transfer_expression(function, expr->left,
+		    changed);
+		collect_visibility_transfer_expression(function, expr->right,
+		    changed);
+		return;
+	}
+	if (!locklint_get_access(function->tu, expr, &access) ||
+	    !condition_data_identity(function, &access, &argument, &data_root,
+	    &data_object))
+		return;
+	(void) add_visibility_transfer(function, argument, data_root,
+	    data_object, access.member, access.offset, &added);
+	*changed |= added;
+}
+
+static bool
+collect_local_visibility_transfers(struct function_info *function)
+{
+	struct basic_block *bb;
+	bool changed = false;
+
+	FOR_EACH_PTR(function->ep->bbs, bb) {
+		struct instruction *insn;
+
+		FOR_EACH_PTR(bb->insns, insn) {
+			enum locklint_execution_kind kind;
+
+			if (insn->bb == NULL)
+				continue;
+			kind = locklint_get_execution_annotation(insn);
+			if (kind != LOCKLINT_EXECUTION_INVISIBLE &&
+			    kind != LOCKLINT_EXECUTION_VISIBLE)
+				continue;
+			collect_visibility_transfer_expression(function,
+			    insn->context_expr, &changed);
+		} END_FOR_EACH_PTR(insn);
+	} END_FOR_EACH_PTR(bb);
+	return (changed);
+}
+
+static bool
+propagate_visibility_transfer_candidates(struct function_info *function)
+{
+	struct basic_block *bb;
+	bool changed = false;
+
+	FOR_EACH_PTR(function->ep->bbs, bb) {
+		struct instruction *insn;
+
+		FOR_EACH_PTR(bb->insns, insn) {
+			struct function_info *callee;
+			struct visibility_transfer *transfer;
+
+			if (insn->bb == NULL)
+				continue;
+			callee = direct_callee(function, insn);
+			if (callee == NULL)
+				continue;
+			for (transfer = callee->visibility_transfers;
+			    transfer != NULL; transfer = transfer->next) {
+				struct locklint_access access;
+				struct symbol *data_root;
+				struct object_identity *data_object;
+				unsigned int argument;
+				bool added;
+
+				if (!map_call_visibility_transfer(function, insn,
+				    transfer, &access) ||
+				    !condition_data_identity(function, &access,
+				    &argument, &data_root, &data_object))
+					continue;
+				(void) add_visibility_transfer(function, argument,
+				    data_root, data_object, access.member,
+				    access.offset, &added);
+				changed |= added;
+			}
+		} END_FOR_EACH_PTR(insn);
+	} END_FOR_EACH_PTR(bb);
+	return (changed);
+}
+
+static struct visibility_transfer_block_info *
+find_visibility_transfer_block(struct visibility_transfer_block_info *blocks,
+    struct basic_block *bb)
+{
+	struct visibility_transfer_block_info *block;
+
+	for (block = blocks; block != NULL; block = block->next) {
+		if (block->bb == bb)
+			return (block);
+	}
+	return (NULL);
+}
+
+static void
+simulate_visibility_expression(struct function_info *function,
+    struct locklint_access *target, struct expression *expr,
+    enum visibility_state assigned, enum visibility_state *state)
+{
+	struct locklint_access region;
+
+	if (expr == NULL)
+		return;
+	if (expr->type == EXPR_COMMA) {
+		simulate_visibility_expression(function, target, expr->left,
+		    assigned, state);
+		simulate_visibility_expression(function, target, expr->right,
+		    assigned, state);
+		return;
+	}
+	if (locklint_get_access(function->tu, expr, &region) &&
+	    locklint_access_contains(&region, target))
+		*state = assigned;
+}
+
+static void
+simulate_visibility_instruction(struct function_info *function,
+    struct locklint_access *target, enum visibility_state *state,
+    struct instruction *insn)
+{
+	struct function_info *callee;
+	struct mapped_visibility_effect *effects;
+	struct mapped_visibility_effect *effect;
+
+	callee = direct_callee(function, insn);
+	if (callee != NULL) {
+		effects = map_call_visibility_effects(function, insn, callee);
+		for (effect = effects; effect != NULL; effect = effect->next) {
+			if (locklint_access_contains(&effect->region, target))
+				*state = effect->output[*state];
+		}
+		free_mapped_visibility_effects(effects);
+	}
+	switch (locklint_get_execution_annotation(insn)) {
+	case LOCKLINT_EXECUTION_INVISIBLE:
+		simulate_visibility_expression(function, target,
+		    insn->context_expr, VISIBILITY_INVISIBLE, state);
+		break;
+	case LOCKLINT_EXECUTION_VISIBLE:
+		simulate_visibility_expression(function, target,
+		    insn->context_expr, VISIBILITY_VISIBLE, state);
+		break;
+	default:
+		break;
+	}
+}
+
+static enum visibility_state
+simulate_visibility_transfer(struct function_info *function,
+    struct visibility_transfer *transfer, enum visibility_state input)
+{
+	struct visibility_transfer_block_info *blocks = NULL;
+	struct visibility_transfer_block_info **tail = &blocks;
+	struct visibility_transfer_block_info *block;
+	struct basic_block *bb;
+	struct locklint_access target;
+	enum visibility_state result = input;
+	bool found_return = false;
+	bool changed;
+
+	visibility_transfer_access(function, transfer, &target);
+	FOR_EACH_PTR(function->ep->bbs, bb) {
+		block = calloc(1, sizeof (*block));
+		if (block == NULL)
+			die("out of memory summarizing visibility transfer");
+		block->bb = bb;
+		*tail = block;
+		tail = &block->next;
+	} END_FOR_EACH_PTR(bb);
+
+	do {
+		changed = false;
+		for (block = blocks; block != NULL; block = block->next) {
+			enum visibility_state in = input;
+			enum visibility_state out;
+			struct basic_block *parent;
+			bool reachable = block->bb == function->ep->entry->bb;
+			bool first = true;
+			struct instruction *insn;
+
+			if (!reachable) {
+				FOR_EACH_PTR(block->bb->parents, parent) {
+					struct visibility_transfer_block_info
+					    *parent_block;
+
+					parent_block =
+					    find_visibility_transfer_block(blocks,
+					    parent);
+					if (parent_block == NULL ||
+					    !parent_block->reachable)
+						continue;
+					if (first) {
+						in = parent_block->out;
+						first = false;
+					} else {
+						in = merge_visibility_state(in,
+						    parent_block->out);
+					}
+					reachable = true;
+				} END_FOR_EACH_PTR(parent);
+			}
+			if (!reachable)
+				continue;
+			out = in;
+			FOR_EACH_PTR(block->bb->insns, insn) {
+				if (insn->bb != NULL) {
+					simulate_visibility_instruction(function,
+					    &target, &out, insn);
+				}
+			} END_FOR_EACH_PTR(insn);
+			if (!block->reachable || block->in != in ||
+			    block->out != out)
+				changed = true;
+			block->reachable = true;
+			block->in = in;
+			block->out = out;
+		}
+	} while (changed);
+
+	for (block = blocks; block != NULL; block = block->next) {
+		struct instruction *insn;
+		bool returns = false;
+
+		if (!block->reachable)
+			continue;
+		FOR_EACH_PTR(block->bb->insns, insn) {
+			if (insn->bb != NULL && insn->opcode == OP_RET)
+				returns = true;
+		} END_FOR_EACH_PTR(insn);
+		if (!returns)
+			continue;
+		if (!found_return) {
+			result = block->out;
+			found_return = true;
+		} else {
+			result = merge_visibility_state(result, block->out);
+		}
+	}
+	while (blocks != NULL) {
+		struct visibility_transfer_block_info *next = blocks->next;
+
+		free(blocks);
+		blocks = next;
+	}
+	return (result);
+}
+
+static bool
+solve_function_visibility_transfers(struct function_info *function)
+{
+	struct visibility_transfer *transfer;
+	bool changed = false;
+
+	for (transfer = function->visibility_transfers; transfer != NULL;
+	    transfer = transfer->next) {
+		unsigned int input;
+
+		for (input = 0; input < VISIBILITY_STATE_COUNT; input++) {
+			enum visibility_state output;
+
+			output = simulate_visibility_transfer(function, transfer,
+			    input);
+			if (transfer->output[input] != output) {
+				transfer->output[input] = output;
+				changed = true;
+			}
+		}
+	}
+	return (changed);
+}
+
+static void
 record_assumption_expression(struct function_info *function,
     struct expression *expr)
 {
@@ -2524,6 +3000,7 @@ check_direct_call(struct function_info *function,
 			    transfer->output[state]);
 		}
 	}
+	transfer_call_visibility_effects(function, &analysis->visibility, insn);
 }
 
 static void
@@ -2735,18 +3212,24 @@ run_lock_checks(void)
 	struct function_info *function;
 	bool changed;
 
-	for (function = functions; function != NULL; function = function->next)
+	for (function = functions; function != NULL; function = function->next) {
 		(void) collect_local_transfers(function);
+		(void) collect_local_visibility_transfers(function);
+	}
 	do {
 		changed = false;
 		for (function = functions; function != NULL;
 		    function = function->next) {
 			if (propagate_transfer_candidates(function))
 				changed = true;
+			if (propagate_visibility_transfer_candidates(function))
+				changed = true;
 		}
 		for (function = functions; function != NULL;
 		    function = function->next) {
 			if (solve_function_transfers(function))
+				changed = true;
+			if (solve_function_visibility_transfers(function))
 				changed = true;
 		}
 	} while (changed);
@@ -2776,6 +3259,8 @@ free_functions(void)
 		struct protection_condition *condition = functions->conditions;
 		struct assumed_region *assumption = functions->assumptions;
 		struct lock_transfer *transfer = functions->transfers;
+		struct visibility_transfer *visibility_transfer =
+		    functions->visibility_transfers;
 
 		while (condition != NULL) {
 			struct protection_condition *condition_next =
@@ -2795,6 +3280,13 @@ free_functions(void)
 
 			free(transfer);
 			transfer = transfer_next;
+		}
+		while (visibility_transfer != NULL) {
+			struct visibility_transfer *transfer_next =
+			    visibility_transfer->next;
+
+			free(visibility_transfer);
+			visibility_transfer = transfer_next;
 		}
 		avl_remove(&functions_by_entrypoint, functions);
 		avl_remove(&functions_by_identity, functions);

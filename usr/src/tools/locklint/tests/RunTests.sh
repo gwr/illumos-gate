@@ -163,7 +163,7 @@ compare "check" check.ref check.out
 #
 # Verify lock conditions and lock effects propagated through direct calls.
 #
-for test in calls global-conditions effects
+for test in calls global-conditions effects visibility-calls
 do
 	run_capture "$test" "$test.out" "$LOCKLINT" --check-locks "$test.c"
 	compare "$test" "$test.ref" "$test.out"
