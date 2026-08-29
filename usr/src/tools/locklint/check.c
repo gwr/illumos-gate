@@ -43,6 +43,12 @@ enum lock_state {
 	LOCK_STATE_COUNT
 };
 
+enum function_root_reason {
+	FUNCTION_ROOT_EXTERNAL = 1 << 0,
+	FUNCTION_ROOT_NO_DIRECT_CALLER = 1 << 1,
+	FUNCTION_ROOT_POINTER_ESCAPE = 1 << 2
+};
+
 #define	INVALID_ACQUIRE	0x1
 #define	INVALID_RELEASE	0x2
 
@@ -102,8 +108,10 @@ struct function_info {
 	struct block_info *blocks;
 	struct lock_condition *conditions;
 	struct lock_transfer *transfers;
-	bool has_direct_caller;
+	unsigned int root_reasons;
+	bool has_nonself_direct_caller;
 	bool reachable_from_root;
+	bool has_exact_escape;
 	bool internal_linkage;
 	bool identity_lower_bound;
 	unsigned int identity_sequence;
@@ -732,8 +740,12 @@ resolve_function_escapes(void)
 
 		escape->target = resolve_function_symbol(escape->tu,
 		    escape->symbol, &ambiguous);
-		if (escape->target != NULL)
+		if (escape->target != NULL) {
+			escape->target->root_reasons |=
+			    FUNCTION_ROOT_POINTER_ESCAPE;
+			escape->target->has_exact_escape = true;
 			avl_add(&function_escapes_by_target, escape);
+		}
 	}
 }
 
@@ -853,11 +865,27 @@ dump_callgraph(void)
 		struct symbol *definition = function->ep->name;
 
 		(void) printf("function %s tu=%s definition=%s:%u:%u "
-		    "linkage=%s\n", function_name(function),
+		    "linkage=%s reachable=%s\n", function_name(function),
 		    locklint_translation_unit_file(function->tu),
 		    stream_name(definition->pos.stream), definition->pos.line,
 		    definition->pos.pos,
-		    function->internal_linkage ? "internal" : "external");
+		    function->internal_linkage ? "internal" : "external",
+		    function->reachable_from_root ? "yes" : "no");
+		if ((function->root_reasons & FUNCTION_ROOT_EXTERNAL) != 0)
+			(void) printf("  root external-linkage\n");
+		if ((function->root_reasons &
+		    FUNCTION_ROOT_NO_DIRECT_CALLER) != 0)
+			(void) printf("  root no-known-direct-caller\n");
+		if ((function->root_reasons &
+		    FUNCTION_ROOT_POINTER_ESCAPE) != 0) {
+			(void) printf("  root function-pointer-escape");
+			if (!function->has_exact_escape) {
+				(void) printf(" fallback=%s:%u:%u",
+				    stream_name(definition->pos.stream),
+				    definition->pos.line, definition->pos.pos);
+			}
+			(void) printf("\n");
+		}
 		dump_function_calls(function);
 	}
 	(void) printf("escapes\n");
@@ -1107,11 +1135,7 @@ add_lock_condition(struct function_info *function, unsigned int argument,
 static bool
 defer_formal_lock_conditions(struct function_info *function)
 {
-	unsigned long modifiers = function->ep->name->ctype.modifiers;
-
-	return (function->reachable_from_root && function->has_direct_caller &&
-	    (modifiers & MOD_STATIC) != 0 &&
-	    (modifiers & MOD_ADDRESSABLE) == 0);
+	return (function->reachable_from_root && function->root_reasons == 0);
 }
 
 static const char *
@@ -1164,7 +1188,7 @@ mark_reachable(struct function_info *function)
 }
 
 static void
-mark_direct_callers(void)
+classify_roots(void)
 {
 	struct function_info *function;
 
@@ -1181,13 +1205,31 @@ mark_direct_callers(void)
 					continue;
 				callee = direct_callee(function, insn);
 				if (callee != NULL && callee != function)
-					callee->has_direct_caller = true;
+					callee->has_nonself_direct_caller = true;
 			} END_FOR_EACH_PTR(insn);
 		} END_FOR_EACH_PTR(bb);
 	}
 	for (function = functions; function != NULL; function = function->next) {
-		if (!function->has_direct_caller ||
-		    (function->ep->name->ctype.modifiers & MOD_STATIC) == 0)
+		unsigned long modifiers =
+		    function->ep->name->ctype.modifiers;
+
+		if (!function->internal_linkage)
+			function->root_reasons |= FUNCTION_ROOT_EXTERNAL;
+		if (!function->has_nonself_direct_caller)
+			function->root_reasons |=
+			    FUNCTION_ROOT_NO_DIRECT_CALLER;
+		/*
+		 * Sparse marks ordinary external definitions addressable.
+		 * They are already roots, so use this fallback only where it
+		 * adds conservative information for an internal function.
+		 */
+		if (function->internal_linkage &&
+		    (modifiers & MOD_ADDRESSABLE) != 0)
+			function->root_reasons |=
+			    FUNCTION_ROOT_POINTER_ESCAPE;
+	}
+	for (function = functions; function != NULL; function = function->next) {
+		if (function->root_reasons != 0)
 			mark_reachable(function);
 	}
 }
@@ -1873,7 +1915,6 @@ run_lock_checks(void)
 	struct function_info *function;
 	bool changed;
 
-	mark_direct_callers();
 	for (function = functions; function != NULL; function = function->next)
 		(void) collect_local_transfers(function);
 	do {
@@ -1944,6 +1985,7 @@ void
 locklint_check_all(bool check_locks, bool show_callgraph)
 {
 	resolve_function_escapes();
+	classify_roots();
 	if (show_callgraph)
 		dump_callgraph();
 	if (check_locks)

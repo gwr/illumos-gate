@@ -875,10 +875,13 @@ when recoverable, as evidence.  Loads, stores, and copies of function pointers
 are also recorded for audit even when they do not reveal an exact target.
 A direct call does not by itself make its callee's address escape.
 
-`MOD_ADDRESSABLE` remains a conservative fallback for any function whose
-source use is not represented by recorded evidence.  Such a reason has the
-function declaration as provenance but may lack the position and destination
-of the operation that caused the modifier.
+`MOD_ADDRESSABLE` remains a conservative fallback for an internal-linkage
+function whose source use is not represented by recorded evidence.  Sparse
+also marks ordinary external definitions addressable, but those definitions
+are already roots and that modifier alone is not reported as separate escape
+provenance.  An internal fallback reason has the function declaration as
+provenance but may lack the position and destination of the operation that
+caused the modifier.
 
 Reachability from those roots is propagated through known direct calls.
 Static functions reached only by known direct calls may defer protected-data

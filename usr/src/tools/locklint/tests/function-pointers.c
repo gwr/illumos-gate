@@ -75,8 +75,9 @@ exercise_pointers(int value)
 {
 	copy_handler();
 	install_handler(indirect_target);
-	return (direct_only(value) + call_indirect(value) +
-	    call_block_static(value) + driver_ops.open(value));
+	return (explicit_target(value) + direct_only(value) +
+	    call_indirect(value) + call_block_static(value) +
+	    driver_ops.open(value));
 }
 
 static int (*indexed_handlers[2])(int) = {
