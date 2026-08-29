@@ -59,11 +59,15 @@ struct state_entry {
 	struct state_entry *next;
 };
 
+struct analysis_state {
+	struct state_entry *locks;
+};
+
 struct block_info {
 	struct basic_block *bb;
 	bool reachable;
-	struct state_entry *in;
-	struct state_entry *out;
+	struct analysis_state *in;
+	struct analysis_state *out;
 	struct block_info *next;
 };
 
@@ -343,6 +347,43 @@ merge_states(struct state_entry **merged, struct state_entry *incoming)
 	}
 }
 
+static struct analysis_state *
+copy_analysis_state(const struct analysis_state *state)
+{
+	struct analysis_state *copy;
+
+	copy = calloc(1, sizeof (*copy));
+	if (copy == NULL)
+		die("out of memory copying analysis state");
+	if (state != NULL)
+		copy->locks = copy_states(state->locks);
+	return (copy);
+}
+
+static void
+free_analysis_state(struct analysis_state *state)
+{
+	if (state == NULL)
+		return;
+	free_states(state->locks);
+	free(state);
+}
+
+static bool
+same_analysis_state(const struct analysis_state *left,
+    const struct analysis_state *right)
+{
+	return (same_states(left != NULL ? left->locks : NULL,
+	    right != NULL ? right->locks : NULL));
+}
+
+static void
+merge_analysis_state(struct analysis_state *merged,
+    const struct analysis_state *incoming)
+{
+	merge_states(&merged->locks, incoming->locks);
+}
+
 static struct block_info *
 find_block(struct block_info *blocks, struct basic_block *bb)
 {
@@ -385,34 +426,34 @@ transfer_assertion(struct function_info *function,
 
 static void
 transfer_instruction(struct function_info *function,
-    struct state_entry **states, struct instruction *insn)
+    struct analysis_state *state, struct instruction *insn)
 {
-	transfer_call_effects(function, states, insn);
-	transfer_lock_action(function, states, insn);
-	transfer_assertion(function, states, insn);
+	transfer_call_effects(function, &state->locks, insn);
+	transfer_lock_action(function, &state->locks, insn);
+	transfer_assertion(function, &state->locks, insn);
 }
 
-static struct state_entry *
+static struct analysis_state *
 transfer_block(struct function_info *function, struct basic_block *bb,
-    struct state_entry *in)
+    const struct analysis_state *in)
 {
-	struct state_entry *out = copy_states(in);
+	struct analysis_state *out = copy_analysis_state(in);
 	struct instruction *insn;
 
 	FOR_EACH_PTR(bb->insns, insn) {
 		if (insn->bb == NULL)
 			continue;
-		transfer_instruction(function, &out, insn);
+		transfer_instruction(function, out, insn);
 	} END_FOR_EACH_PTR(insn);
 
 	return (out);
 }
 
-static struct state_entry *
+static struct analysis_state *
 merge_parents(struct block_info *blocks, struct basic_block *bb,
     bool *reachable)
 {
-	struct state_entry *merged = NULL;
+	struct analysis_state *merged = NULL;
 	struct basic_block *parent;
 	bool first = true;
 
@@ -423,10 +464,10 @@ merge_parents(struct block_info *blocks, struct basic_block *bb,
 		if (block == NULL || !block->reachable)
 			continue;
 		if (first) {
-			merged = copy_states(block->out);
+			merged = copy_analysis_state(block->out);
 			first = false;
 		} else {
-			merge_states(&merged, block->out);
+			merge_analysis_state(merged, block->out);
 		}
 		*reachable = true;
 	} END_FOR_EACH_PTR(parent);
@@ -461,28 +502,28 @@ analyze_blocks(struct function_info *function)
 
 		changed = false;
 		for (block = blocks; block != NULL; block = block->next) {
-			struct state_entry *in;
-			struct state_entry *out;
+			struct analysis_state *in;
+			struct analysis_state *out;
 			bool reachable;
 
 			if (block->bb == ep->entry->bb) {
-				in = NULL;
+				in = copy_analysis_state(NULL);
 				reachable = true;
 			} else {
 				in = merge_parents(blocks, block->bb, &reachable);
 			}
 			if (!reachable) {
-				free_states(in);
+				free_analysis_state(in);
 				continue;
 			}
 			out = transfer_block(function, block->bb, in);
 			if (!block->reachable ||
-			    !same_states(block->in, in) ||
-			    !same_states(block->out, out)) {
+			    !same_analysis_state(block->in, in) ||
+			    !same_analysis_state(block->out, out)) {
 				changed = true;
 			}
-			free_states(block->in);
-			free_states(block->out);
+			free_analysis_state(block->in);
+			free_analysis_state(block->out);
 			block->in = in;
 			block->out = out;
 			block->reachable = true;
@@ -1715,12 +1756,12 @@ collect_local_lock_conditions(struct function_info *function)
 	struct block_info *block;
 
 	for (block = function->blocks; block != NULL; block = block->next) {
-		struct state_entry *states;
+		struct analysis_state *state;
 		struct instruction *insn;
 
 		if (!block->reachable)
 			continue;
-		states = copy_states(block->in);
+		state = copy_analysis_state(block->in);
 		FOR_EACH_PTR(block->bb->insns, insn) {
 			struct locklint_access access;
 			struct locklint_access lock;
@@ -1731,7 +1772,7 @@ collect_local_lock_conditions(struct function_info *function)
 				continue;
 			if (protected_access(function, insn, &access, &lock,
 			    &data_member) &&
-			    get_state(states, &lock) == LOCK_NOT_HELD &&
+			    get_state(state->locks, &lock) == LOCK_NOT_HELD &&
 			    formal_argument(function->ep, access.root,
 			    &argument)) {
 				(void) add_lock_condition(function, argument,
@@ -1741,15 +1782,15 @@ collect_local_lock_conditions(struct function_info *function)
 				    lock.member, lock.offset, data_member,
 				    insn->access->pos);
 			}
-			transfer_instruction(function, &states, insn);
+			transfer_instruction(function, state, insn);
 		} END_FOR_EACH_PTR(insn);
-		free_states(states);
+		free_analysis_state(state);
 	}
 }
 
 static bool
 propagate_call_lock_conditions(struct function_info *function,
-    struct state_entry *states, struct instruction *insn)
+    struct analysis_state *state, struct instruction *insn)
 {
 	struct function_info *callee = direct_callee(function, insn);
 	struct lock_condition *condition;
@@ -1766,7 +1807,7 @@ propagate_call_lock_conditions(struct function_info *function,
 		if (!map_call_lock_condition(function, insn, condition,
 		    &object, &lock))
 			continue;
-		if (get_state(states, &lock) != LOCK_NOT_HELD ||
+		if (get_state(state->locks, &lock) != LOCK_NOT_HELD ||
 		    !formal_argument(function->ep, object.root,
 		    &caller_argument))
 			continue;
@@ -1786,39 +1827,39 @@ propagate_function_lock_conditions(struct function_info *function)
 	bool changed = false;
 
 	for (block = function->blocks; block != NULL; block = block->next) {
-		struct state_entry *states;
+		struct analysis_state *state;
 		struct instruction *insn;
 
 		if (!block->reachable)
 			continue;
-		states = copy_states(block->in);
+		state = copy_analysis_state(block->in);
 		FOR_EACH_PTR(block->bb->insns, insn) {
 			if (insn->bb == NULL)
 				continue;
-			if (propagate_call_lock_conditions(function, states,
+			if (propagate_call_lock_conditions(function, state,
 			    insn))
 				changed = true;
-			transfer_instruction(function, &states, insn);
+			transfer_instruction(function, state, insn);
 		} END_FOR_EACH_PTR(insn);
-		free_states(states);
+		free_analysis_state(state);
 	}
 	return (changed);
 }
 
 static void
-check_access(struct function_info *function, struct state_entry *states,
+check_access(struct function_info *function, struct analysis_state *state,
     struct instruction *insn)
 {
 	struct locklint_access access;
 	struct locklint_access lock;
 	struct symbol *data_member;
-	enum lock_state state;
+	enum lock_state lock_state;
 	unsigned int argument;
 
 	if (!protected_access(function, insn, &access, &lock, &data_member))
 		return;
-	state = get_state(states, &lock);
-	if (state == LOCK_NOT_HELD) {
+	lock_state = get_state(state->locks, &lock);
+	if (lock_state == LOCK_NOT_HELD) {
 		if (defer_formal_lock_conditions(function) &&
 		    formal_argument(function->ep, access.root, &argument))
 			return;
@@ -1826,7 +1867,7 @@ check_access(struct function_info *function, struct state_entry *states,
 		    "locklint: protected member '%s' accessed without "
 		    "holding '%s'", show_ident(data_member->ident),
 		    lock_name(&lock));
-	} else if (state == LOCK_MAYBE_HELD) {
+	} else if (lock_state == LOCK_MAYBE_HELD) {
 		warning(insn->access->pos,
 		    "locklint: lock '%s' is not held on every path "
 		    "accessing protected member '%s'", lock_name(&lock),
@@ -1836,7 +1877,7 @@ check_access(struct function_info *function, struct state_entry *states,
 
 static void
 check_direct_call(struct function_info *function,
-    struct state_entry **states, struct instruction *insn)
+    struct analysis_state *analysis, struct instruction *insn)
 {
 	struct function_info *callee = direct_callee(function, insn);
 	struct lock_condition *condition;
@@ -1863,7 +1904,7 @@ check_direct_call(struct function_info *function,
 			if (!map_call_lock_condition(function, insn, condition,
 			    &object, &lock))
 				continue;
-			state = get_state(*states, &lock);
+			state = get_state(analysis->locks, &lock);
 			if (state == LOCK_HELD)
 				continue;
 			if (state == LOCK_NOT_HELD &&
@@ -1898,7 +1939,7 @@ check_direct_call(struct function_info *function,
 			    transfer->lock_member, transfer->lock_offset,
 			    &lock))
 				continue;
-			state = get_state(*states, &lock);
+			state = get_state(analysis->locks, &lock);
 			if (transfer->invalid[state] & INVALID_ACQUIRE) {
 				warning(pos, "locklint: call to '%s' may acquire "
 				    "already-held lock '%s'",
@@ -1911,14 +1952,15 @@ check_direct_call(struct function_info *function,
 				    show_ident(callee->ep->name->ident),
 				    lock_name(&lock));
 			}
-			set_state(states, &lock, transfer->output[state]);
+			set_state(&analysis->locks, &lock,
+			    transfer->output[state]);
 		}
 	}
 }
 
 static void
 check_lock_action(struct function_info *function,
-    struct state_entry **states, struct instruction *insn)
+    struct analysis_state *analysis, struct instruction *insn)
 {
 	struct locklint_access lock;
 	enum locklint_lock_action action;
@@ -1930,7 +1972,7 @@ check_lock_action(struct function_info *function,
 	action = locklint_get_lock_action(function->tu, insn, &lock);
 	if (action == LOCKLINT_LOCK_NONE || lock.root == NULL)
 		return;
-	state = get_state(*states, &lock);
+	state = get_state(analysis->locks, &lock);
 	defer = defer_formal_lock_conditions(function) &&
 	    formal_argument(function->ep, lock.root, &argument);
 	pos = insn->call_expr != NULL ? insn->call_expr->pos : insn->pos;
@@ -1942,7 +1984,7 @@ check_lock_action(struct function_info *function,
 			warning(pos, "locklint: lock '%s' may already be held",
 			    lock_name(&lock));
 		}
-		set_state(states, &lock, LOCK_HELD);
+		set_state(&analysis->locks, &lock, LOCK_HELD);
 	} else {
 		if (state == LOCK_NOT_HELD && !defer) {
 			warning(pos, "locklint: lock '%s' is not held",
@@ -1951,13 +1993,13 @@ check_lock_action(struct function_info *function,
 			warning(pos, "locklint: lock '%s' may not be held",
 			    lock_name(&lock));
 		}
-		set_state(states, &lock, LOCK_NOT_HELD);
+		set_state(&analysis->locks, &lock, LOCK_NOT_HELD);
 	}
 }
 
 static void
 check_return_state(struct function_info *function, struct block_info *block,
-    struct state_entry *states)
+    struct analysis_state *state)
 {
 	struct instruction *insn;
 	struct instruction *ret = NULL;
@@ -1971,7 +2013,7 @@ check_return_state(struct function_info *function, struct block_info *block,
 	if (ret == NULL)
 		return;
 	pos = ret->pos;
-	for (entry = states; entry != NULL; entry = entry->next) {
+	for (entry = state->locks; entry != NULL; entry = entry->next) {
 		if (!entry->side_effect)
 			continue;
 		if (entry->state == LOCK_HELD) {
@@ -1992,22 +2034,22 @@ emit_diagnostics(struct function_info *function)
 	struct block_info *block;
 
 	for (block = function->blocks; block != NULL; block = block->next) {
-		struct state_entry *states;
+		struct analysis_state *state;
 		struct instruction *insn;
 
 		if (!block->reachable)
 			continue;
-		states = copy_states(block->in);
+		state = copy_analysis_state(block->in);
 		FOR_EACH_PTR(block->bb->insns, insn) {
 			if (insn->bb == NULL)
 				continue;
-			check_access(function, states, insn);
-			check_direct_call(function, &states, insn);
-			check_lock_action(function, &states, insn);
-			transfer_assertion(function, &states, insn);
+			check_access(function, state, insn);
+			check_direct_call(function, state, insn);
+			check_lock_action(function, state, insn);
+			transfer_assertion(function, &state->locks, insn);
 		} END_FOR_EACH_PTR(insn);
-		check_return_state(function, block, states);
-		free_states(states);
+		check_return_state(function, block, state);
+		free_analysis_state(state);
 	}
 }
 
@@ -2017,8 +2059,8 @@ free_blocks(struct block_info *blocks)
 	while (blocks != NULL) {
 		struct block_info *next = blocks->next;
 
-		free_states(blocks->in);
-		free_states(blocks->out);
+		free_analysis_state(blocks->in);
+		free_analysis_state(blocks->out);
 		free(blocks);
 		blocks = next;
 	}
