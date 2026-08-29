@@ -202,3 +202,56 @@ published_read_only_caller(struct visibility_call_state *state)
 	publish_read_only(state);
 	state->read_only = 1;
 }
+
+static void
+maybe_hide_whole(struct visibility_call_state *state, int make_private)
+{
+	if (make_private)
+		_NOTE(NOW_INVISIBLE_TO_OTHER_THREADS(*state))
+}
+
+static void
+narrow_state_survives_broad_effect(struct visibility_call_state *state,
+    int make_private)
+{
+	_NOTE(COMPETING_THREADS_NOW)
+	_NOTE(NOW_INVISIBLE_TO_OTHER_THREADS(state->protected))
+	maybe_hide_whole(state, make_private);
+	state->protected = 1;
+}
+
+static void
+maybe_show_whole_then_hide_member(struct visibility_call_state *state,
+    int publish)
+{
+	if (publish) {
+		_NOTE(NOW_VISIBLE_TO_OTHER_THREADS(*state))
+		_NOTE(NOW_INVISIBLE_TO_OTHER_THREADS(state->protected))
+	}
+}
+
+static void
+narrow_effect_overrides_broad_effect(struct visibility_call_state *state,
+    int publish)
+{
+	_NOTE(COMPETING_THREADS_NOW)
+	_NOTE(NOW_INVISIBLE_TO_OTHER_THREADS(state->protected))
+	maybe_show_whole_then_hide_member(state, publish);
+	state->protected = 1;
+}
+
+static void
+recursive_invisible(struct visibility_call_state *state, int depth)
+{
+	_NOTE(NOW_INVISIBLE_TO_OTHER_THREADS(state->protected))
+	if (depth != 0)
+		recursive_invisible(state, depth - 1);
+}
+
+static void
+recursive_invisible_caller(struct visibility_call_state *state)
+{
+	_NOTE(COMPETING_THREADS_NOW)
+	recursive_invisible(state, 2);
+	state->protected = 1;
+}

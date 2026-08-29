@@ -1862,17 +1862,30 @@ transfer_call_visibility_effects(struct function_info *function,
 	struct function_info *callee = direct_callee(function, insn);
 	struct mapped_visibility_effect *effects;
 	struct mapped_visibility_effect *effect;
+	struct visibility_entry *original;
 
 	if (callee == NULL)
 		return;
 	effects = map_call_visibility_effects(function, insn, callee);
+	original = copy_visibility(*visibility);
 	for (effect = effects; effect != NULL; effect = effect->next) {
-		enum visibility_state state =
-		    get_visibility(*visibility, &effect->region);
+		struct visibility_entry *entry;
+		enum visibility_state state;
 
+		state = get_visibility(original, &effect->region);
 		set_visibility(visibility, &effect->region,
 		    effect->output[state]);
+		for (entry = original; entry != NULL; entry = entry->next) {
+			if (locklint_same_access(&effect->region,
+			    &entry->region) ||
+			    !locklint_access_contains(&effect->region,
+			    &entry->region))
+				continue;
+			set_visibility(visibility, &entry->region,
+			    effect->output[entry->state]);
+		}
 	}
+	free_visibility(original);
 	free_mapped_visibility_effects(effects);
 }
 
@@ -2468,11 +2481,15 @@ simulate_visibility_instruction(struct function_info *function,
 
 	callee = direct_callee(function, insn);
 	if (callee != NULL) {
+		struct mapped_visibility_effect *selected = NULL;
+
 		effects = map_call_visibility_effects(function, insn, callee);
 		for (effect = effects; effect != NULL; effect = effect->next) {
 			if (locklint_access_contains(&effect->region, target))
-				*state = effect->output[*state];
+				selected = effect;
 		}
+		if (selected != NULL)
+			*state = selected->output[*state];
 		free_mapped_visibility_effects(effects);
 	}
 	switch (locklint_get_execution_annotation(insn)) {
