@@ -108,6 +108,10 @@ annotation_end(const struct token *open)
 	return (NULL);
 }
 
+/*
+ * Preserve the unexpanded _NOTE body and its translation-unit provenance
+ * before Sparse releases the preprocessing tokens.
+ */
 static int
 capture_annotation(const struct token *macro,
     const struct token *open, void *data)
@@ -502,6 +506,10 @@ resolve_path(struct annotation_ref *ref, struct symbol *type)
 	return (true);
 }
 
+/*
+ * Resolve automatic names in the current translation unit, preferring an
+ * object over a type, and retain canonical identity only for object scope.
+ */
 static bool
 resolve_annotation_ref(struct annotation_ref *ref, bool lock,
     struct translation_unit *tu)
@@ -576,6 +584,10 @@ clone_expanded_ref(const struct annotation_ref *source,
 	return (ref);
 }
 
+/*
+ * Replace an aggregate data reference with its named leaf members.  Omit the
+ * protecting lock when it belongs to the same annotated object or type.
+ */
 static void
 expand_compound_ref(struct annotation_ref *source, struct symbol *type,
     const struct annotation_ref *lock, struct annotation_ref **head,
@@ -685,6 +697,10 @@ same_data_ref(const struct annotation_ref *left,
 	    left->member == right->member && left->offset == right->offset);
 }
 
+/*
+ * For each newly resolved datum, link the latest earlier declaration of that
+ * same datum so dumps can show last-declaration-wins provenance.
+ */
 static void
 record_replacements(struct annotation *annotation)
 {
@@ -714,6 +730,10 @@ record_replacements(struct annotation *annotation)
 	}
 }
 
+/*
+ * Resolve each annotation exactly once while the namespace of its defining
+ * translation unit is still current.
+ */
 void
 locklint_resolve_annotations(void)
 {
@@ -743,6 +763,10 @@ locklint_resolve_annotations(void)
 	}
 }
 
+/*
+ * Select the last matching protection relation and instantiate a type-scoped
+ * lock relative to the concrete object containing the access.
+ */
 bool
 locklint_protecting_access(const struct locklint_access *access,
     struct locklint_access *lock)

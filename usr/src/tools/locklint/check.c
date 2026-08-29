@@ -433,6 +433,10 @@ merge_parents(struct block_info *blocks, struct basic_block *bb,
 	return (merged);
 }
 
+/*
+ * Solve intraprocedural lock state to a fixed point and return the stable
+ * input and output state retained for every basic block.
+ */
 static struct block_info *
 analyze_blocks(struct function_info *function)
 {
@@ -1135,6 +1139,11 @@ argument_lock(struct translation_unit *tu, struct expression *argument,
 	return (true);
 }
 
+/*
+ * Map the protected object independently from its required lock.  A relative
+ * lock follows the caller's actual object; an absolute lock keeps its
+ * program-wide identity.
+ */
 static bool
 map_call_lock_condition(struct function_info *function,
     struct instruction *insn, const struct lock_condition *condition,
@@ -1343,6 +1352,11 @@ mark_reachable(struct function_info *function)
 	} END_FOR_EACH_PTR(bb);
 }
 
+/*
+ * First account for every non-self direct incoming edge, then assign all
+ * applicable root reasons and propagate reachability from the resulting
+ * roots.
+ */
 static void
 classify_roots(void)
 {
@@ -1543,6 +1557,11 @@ simulate_block(struct function_info *function,
 	} END_FOR_EACH_PTR(insn);
 }
 
+/*
+ * Simulate one transfer candidate for one possible entry state.  Merge both
+ * lock state and invalid-operation flags through the CFG and across all
+ * reachable returns.
+ */
 static enum lock_state
 simulate_transfer(struct function_info *function,
     struct lock_transfer *transfer, enum lock_state input,
@@ -2088,6 +2107,10 @@ locklint_check_add(struct translation_unit *tu, struct entrypoint *ep)
 	functions_tail = &function->next;
 }
 
+/*
+ * Stabilize transfer summaries before block state, then stabilize caller lock
+ * conditions before replaying the final states to emit diagnostics.
+ */
 static void
 run_lock_checks(void)
 {
@@ -2160,6 +2183,10 @@ free_functions(void)
 	functions_tail = &functions;
 }
 
+/*
+ * Complete module-wide resolution and root classification, run the requested
+ * audit and checks, then release all checker-owned analysis records.
+ */
 void
 locklint_check_all(bool check_locks, bool show_callgraph)
 {

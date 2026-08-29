@@ -53,8 +53,8 @@ not when future features should be added.
 
 - **Annotation** - One captured `_NOTE(...)` invocation, including its body
   and source position.  A recognized annotation such as
-  `MUTEX_PROTECTS_DATA` is resolved into a protection relation; an unsupported
-  `_NOTE` body remains recorded but has no semantic effect.
+  `MUTEX_PROTECTS_DATA` is resolved into a data policy; an unsupported `_NOTE`
+  body remains recorded but has no semantic effect.
 - **Annotation reference** (`struct annotation_ref`) - One named lock or data
   endpoint within a recognized annotation.  It begins as a parsed name and
   becomes associated with resolved symbols, types, members, and offsets.
@@ -94,6 +94,10 @@ not when future features should be added.
   is initialized, loaded, stored, or copied.  Evidence supports conservative
   root classification and call-graph auditing; it does not by itself prove an
   indirect-call target.
+- **Data policy** - The effective rules for one datum, with independent
+  dimensions for its protection mechanism, whether unlocked reads are
+  permitted, and whether writes are forbidden after visibility to competing
+  threads.
 - **Flow analysis** - Analysis that follows possible execution paths through
   the program, including control flow within functions and calls between
   functions.
@@ -355,7 +359,7 @@ The structures have these roles:
 | --- | --- |
 | `struct translation_unit` | One top-level input parse; provides provenance for retained records and internal-linkage identity |
 | `struct object_identity` | Canonical identity for one object; records its linkage, identifier, optional owning translation unit, representative Sparse symbol, and declaration origins |
-| `struct annotation` | One captured `_NOTE(...)`; owns copied tokens and refers to one lock reference and a list of data references |
+| `struct annotation` | One captured `_NOTE(...)`; owns copied tokens, records its recognized kind and optional lock or scheme description, and refers to a list of data references |
 | `struct annotation_token` | A durable copy of one preprocessing token from an annotation body |
 | `struct annotation_ref` | One parsed and later resolved lock or data endpoint; refers to Sparse symbols and records replacement precedence |
 | `struct assertion` | One recognized lock predicate captured from `ASSERT(...)` or `VERIFY(...)`; records source ranges and the asserted state |
@@ -454,8 +458,8 @@ different access patterns justify retaining both collection mechanisms.
 
 Likely future indexes should follow the same rules:
 
-- an effective protection relation may need both declaration/replacement
-  order and an AVL index by protected-data identity;
+- effective data-policy lookup may need both declaration/replacement order and
+  an AVL index by data identity;
 - caller-witness diagnostics may justify introducing retained call-site
   records and a reverse index by callee; and
 - an AVL replacement for declaration-symbol object bindings would put the
@@ -680,7 +684,8 @@ Each `_NOTE` invocation becomes an `annotation` containing:
 
 - the source position of the invocation;
 - copied raw tokens;
-- one parsed lock reference;
+- its recognized annotation kind;
+- an optional parsed lock reference or explanatory scheme text;
 - a list of parsed data references; and
 - parse, processing, and resolution state.
 
@@ -716,7 +721,17 @@ The parser accepts:
 - generated member lists such as `type::{ first second }`; and
 - nested generators such as `type::{ nested.{ first second } }`.
 
-Only `MUTEX_PROTECTS_DATA` is converted into semantic relations today.
+The data-policy parser recognizes:
+
+- `MUTEX_PROTECTS_DATA(lock, names)`;
+- `SCHEME_PROTECTS_DATA("description", names)`;
+- `DATA_READABLE_WITHOUT_LOCK(names)`; and
+- `READ_ONLY_DATA(names)`.
+
+The scheme description must be one quoted string.  It is explanatory text
+rather than a mechanically checkable lock expression.  All four forms use
+the same object/type name resolution and aggregate expansion for their data
+lists.
 
 ### Resolution and expansion
 
@@ -726,40 +741,74 @@ to the next file so the current type and object namespaces remain available.
 
 Resolution performs these steps:
 
-1. Resolve the lock name.
-2. Resolve every data name.
-3. Recursively expand structure-valued data into leaf members.
-4. Skip the protecting lock member when recursively expanding the same
+1. Resolve the lock name when the annotation names a mechanical lock.
+2. Retain the explanatory text when the annotation names a scheme.
+3. Resolve every data name.
+4. Recursively expand structure-valued data into leaf members.
+5. Skip the protecting lock member when recursively expanding the same
    object/type.
-5. Record overlaps with earlier resolved data references.
-6. Mark the annotation resolved only if every required name succeeded.
+6. Record applicable overlaps with earlier resolved data references.
+7. Mark the annotation resolved only if every required name succeeded.
 
 Anonymous aggregate carriers are transparent during recursive expansion.
 Named leaf members inherit the accumulated offset.
 
 ### Replacement semantics
 
-For a selected protected datum, the last resolved declaration in source
-processing order wins.  `record_replacements()` links the earlier and later
-references for annotation dumps.  `locklint_protecting_access()` scans
-relations in order and retains the last matching protector.
+The effective data policy has three independent dimensions:
 
-This replacement relation currently covers only the implemented mutex
-protection mechanism.  Future policy dimensions such as unlocked reads or
-read-only data must not be represented as replacements for write protection.
+| Dimension | Values in this increment |
+| --- | --- |
+| protection mechanism | none, mutex, or explanatory scheme |
+| unlocked-read permission | required protection or readable without lock |
+| write-after-visibility policy | unrestricted or read-only |
+
+For a selected datum, the last resolved protection-mechanism declaration in
+source processing order wins.  A later scheme therefore replaces an earlier
+mutex relation, and a later mutex replaces an earlier scheme.
+`record_replacements()` links those earlier and later data references for
+annotation dumps.
+
+`DATA_READABLE_WITHOUT_LOCK` and `READ_ONLY_DATA` do not replace a protection
+mechanism or each other.  They set independent policy dimensions and remain
+effective if a later annotation changes the mechanism.  There are currently
+no annotations that revoke either property.
 
 ### Matching an access
 
-`locklint_protecting_access()` matches:
+The policy lookup matches each resolved data reference against an access:
 
 - concrete object annotations by canonical object identity, final member, and
   root-relative offset; or
 - type-scoped annotations by final member plus a successful
   `locklint_access_base()` owner/offset match.
 
-It then constructs the concrete protecting lock identity.  A concrete lock
-keeps its own root and offset.  A type-scoped lock is based at the matched
-instance of the annotated data owner.
+It combines the latest matching mechanism with all matching independent
+properties.  For a mutex mechanism, it also constructs the concrete
+protecting lock identity.  A concrete lock keeps its own root and offset.  A
+type-scoped lock is based at the matched instance of the annotated data owner.
+
+### Effect on access checking
+
+An explanatory scheme excludes matching data from ordinary mechanical-lock
+checking because locklint cannot validate the convention described by the
+annotation.  It remains visible in annotation dumps rather than being treated
+as unprotected data.
+
+For a mutex-protected access:
+
+- a load requires the mutex unless unlocked-read permission is set; and
+- a store always requires the mutex.
+
+An allowed unlocked load does not create a caller lock condition.  An
+unsatisfied store, or a load without unlocked-read permission, follows the
+normal local-warning or caller-condition path.
+
+`READ_ONLY_DATA` is parsed, resolved, retained, and displayed in this
+increment, but does not yet reject stores.  Its intended rule is to reject a
+store only when the selected datum is visible to competing threads.  The
+visibility state and enforcement belong to the following roadmap increment;
+rejecting every store now would incorrectly diagnose initialization.
 
 ## Assertion representation
 
@@ -1053,7 +1102,8 @@ reachable block in instruction order.
 
 For each instruction it:
 
-1. checks protected memory access against current state;
+1. finds the effective data policy and checks the memory access against
+   current state;
 2. checks direct-call lock conditions and invalid summarized effects;
 3. checks direct acquire/release validity and applies the operation; and
 4. applies assertion refinement.
@@ -1092,12 +1142,8 @@ machine-readable format, or predecessor/call-chain witness.
 | Function | Responsibility |
 | --- | --- |
 | `capture_annotation()` | Copy `_NOTE` argument tokens before expansion/token release |
-| `parse_annotation()` | Parse supported `MUTEX_PROTECTS_DATA` syntax |
-| `resolve_annotation_ref()` | Resolve object/type scope and a symbolic path |
-| `expand_compound_ref()` | Recursively expand structure-valued data |
-| `record_replacements()` | Record last-declaration-wins provenance |
 | `locklint_resolve_annotations()` | Process newly captured annotations in the current translation unit |
-| `locklint_protecting_access()` | Find the effective protection relation and construct its concrete lock |
+| `locklint_data_policy()` | Combine the effective policy dimensions and construct a concrete mechanical lock when required |
 
 ### Assertions: `assertions.c`
 
@@ -1119,21 +1165,11 @@ machine-readable format, or predecessor/call-chain witness.
 
 | Function | Responsibility |
 | --- | --- |
-| `analyze_blocks()` | Solve intraprocedural lock-state maps |
-| `direct_callee()` | Resolve a direct call within or across translation units |
-| `resolve_function_escapes()` | Resolve exact function-valued uses after every retained definition has been indexed |
 | `locklint_check_record_pointer_evidence()` | Use Sparse's source-use walker to record function-valued uses and optional function-pointer loads and stores while a translation unit is current |
+| `locklint_check_add()` | Retain a function and add its Sparse and C-identity indexes |
 | `classify_roots()` | Add every applicable conservative root reason |
-| `mark_reachable()` | Propagate root reachability through resolved direct calls |
-| `dump_function_calls()` | Temporarily collect and source-sort one function's live call instructions for audit |
-| `dump_callgraph()` | Emit roots, calls, and function-pointer evidence for audit |
-| `collect_local_transfers()` | Discover formal lock-effect candidates |
-| `propagate_transfer_candidates()` | Carry effect candidates through calls |
-| `simulate_transfer()` | Compute one transfer-table entry |
-| `collect_local_lock_conditions()` | Summarize deferred protected accesses as caller lock conditions |
-| `map_call_lock_condition()` | Map a lock condition's data object and relative or absolute lock at a call |
-| `propagate_function_lock_conditions()` | Carry lock conditions through calls to a fixed point |
-| `emit_diagnostics()` | Replay stable state and emit warnings |
+| `analyze_blocks()` | Solve intraprocedural lock-state maps |
+| `run_lock_checks()` | Order transfer solving, block analysis, lock-condition propagation, and diagnostics |
 | `locklint_check_all()` | Order and iterate the complete analysis |
 
 ## Main action sequences
@@ -1150,9 +1186,11 @@ function is evaluated and linearized
     -> OP_LOAD/OP_STORE retains source expression
 checker visits instruction
     -> locklint_get_access constructs concrete identity
-    -> locklint_protecting_access selects effective relation
-    -> current lock state is queried
-    -> warning is emitted unless the lock is definitely held
+    -> locklint_data_policy combines effective policy dimensions
+    -> scheme-protected access is excluded from mechanical checking
+    -> unlocked-readable load is accepted
+    -> otherwise current lock state is queried
+    -> warning is emitted unless the required lock is definitely held
 ```
 
 ### Assertion to local state refinement
@@ -1224,11 +1262,15 @@ The current implementation relies on these invariants:
     not arbitrarily selected.
 15. A later protection declaration replaces an earlier relation for the same
     resolved datum.
-16. Every analysis root retains all independently established reasons.
-17. A function used as a value outside a resolved direct call is a
+16. Protection mechanism, unlocked-read permission, and read-only status are
+    independent data-policy dimensions.
+17. `READ_ONLY_DATA` does not reject initialization writes before visibility
+    state is available.
+18. Every analysis root retains all independently established reasons.
+19. A function used as a value outside a resolved direct call is a
     conservative root, including when the conversion occurs in a static
     initializer without explicit `&`.
-18. Unresolved, ambiguous, and indirect calls remain visible in the call-graph
+20. Unresolved, ambiguous, and indirect calls remain visible in the call-graph
     audit and do not create invented call edges.
 
 Changes that invalidate one of these invariants should update this document
@@ -1244,7 +1286,7 @@ areas include:
 - explicit root configuration and source annotations;
 - rwlock read/write state;
 - visibility and competing-thread policy;
-- data-policy annotations other than `MUTEX_PROTECTS_DATA`;
+- enforcement of `READ_ONLY_DATA` after visibility to competing threads;
 - explicit side-effect contracts;
 - condition waits, try-locks, upgrades, and downgrades;
 - lock-order analysis; and
