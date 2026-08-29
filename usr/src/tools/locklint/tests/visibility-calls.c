@@ -255,3 +255,25 @@ recursive_invisible_caller(struct visibility_call_state *state)
 	recursive_invisible(state, 2);
 	state->protected = 1;
 }
+
+struct visibility_wrapper {
+	int prefix;
+	struct visibility_call_state inner;
+};
+
+static void
+nested_invisible_caller(struct visibility_wrapper *wrapper)
+{
+	_NOTE(COMPETING_THREADS_NOW)
+	make_invisible(&wrapper->inner);
+	wrapper->inner.protected = 1;
+}
+
+static void
+nested_visible_caller(struct visibility_wrapper *wrapper)
+{
+	_NOTE(COMPETING_THREADS_NOW)
+	_NOTE(NOW_INVISIBLE_TO_OTHER_THREADS(wrapper->inner.protected))
+	make_visible(&wrapper->inner);
+	wrapper->inner.protected = 1;
+}
