@@ -6,7 +6,7 @@
 ../locklint: effects.c:114:22: warning: locklint: protected member 'value' accessed without holding 'lock'
 ../locklint: effects.c:120:21: warning: locklint: call to 'release_lock' may release lock 'lock' that is not held
 ../locklint: effects.c:127:22: warning: locklint: protected member 'value' accessed without holding 'lock'
-../locklint: effects.c:134:22: warning: locklint: lock 'lock' is not held on every path accessing protected member 'value'
+../locklint: effects.c:134:22: warning: locklint: protection for member 'value' is not established on every path
 ../locklint: effects.c:134:17: warning: locklint: lock 'lock' held on only some paths returning from 'check_conditional_effect'
-../locklint: effects.c:143:22: warning: locklint: lock 'lock' is not held on every path accessing protected member 'value'
+../locklint: effects.c:143:22: warning: locklint: protection for member 'value' is not established on every path
 ../locklint: effects.c:144:19: warning: locklint: lock 'lock' may not be held

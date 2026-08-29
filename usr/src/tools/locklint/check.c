@@ -80,6 +80,7 @@ struct visibility_entry {
 struct analysis_state {
 	struct state_entry *locks;
 	enum competition_state competition;
+	bool competition_path_dependent;
 	struct visibility_entry *visibility;
 };
 
@@ -522,6 +523,8 @@ copy_analysis_state(const struct analysis_state *state)
 	if (state != NULL) {
 		copy->locks = copy_states(state->locks);
 		copy->competition = state->competition;
+		copy->competition_path_dependent =
+		    state->competition_path_dependent;
 		copy->visibility = copy_visibility(state->visibility);
 	} else {
 		copy->competition = COMPETITION_POSSIBLE;
@@ -547,6 +550,8 @@ same_analysis_state(const struct analysis_state *left,
 	    right != NULL ? right->locks : NULL) &&
 	    (left == NULL ? COMPETITION_POSSIBLE : left->competition) ==
 	    (right == NULL ? COMPETITION_POSSIBLE : right->competition) &&
+	    (left != NULL && left->competition_path_dependent) ==
+	    (right != NULL && right->competition_path_dependent) &&
 	    same_visibility(left != NULL ? left->visibility : NULL,
 	    right != NULL ? right->visibility : NULL));
 }
@@ -556,8 +561,13 @@ merge_analysis_state(struct analysis_state *merged,
     const struct analysis_state *incoming)
 {
 	merge_states(&merged->locks, incoming->locks);
-	if (merged->competition != incoming->competition)
+	if (merged->competition != incoming->competition) {
 		merged->competition = COMPETITION_POSSIBLE;
+		merged->competition_path_dependent = true;
+	} else {
+		merged->competition_path_dependent |=
+		    incoming->competition_path_dependent;
+	}
 	merge_visibility(&merged->visibility, incoming->visibility);
 }
 
@@ -608,9 +618,11 @@ transfer_competition_state(struct analysis_state *state,
 	switch (locklint_get_execution_annotation(insn)) {
 	case LOCKLINT_EXECUTION_NO_COMPETITION:
 		state->competition = COMPETITION_NONE;
+		state->competition_path_dependent = false;
 		break;
 	case LOCKLINT_EXECUTION_COMPETITION:
 		state->competition = COMPETITION_PRESENT;
+		state->competition_path_dependent = false;
 		break;
 	default:
 		break;
@@ -2133,30 +2145,38 @@ check_access(struct function_info *function, struct analysis_state *state,
 	struct locklint_access access;
 	struct locklint_access lock;
 	struct symbol *data_member;
+	const char *data_name;
 	enum lock_state lock_state;
+	enum visibility_state visibility;
 	unsigned int argument;
 
 	if (!protected_access(function, insn, &access, &lock, &data_member))
 		return;
 	if (state->competition == COMPETITION_NONE)
 		return;
-	if (get_visibility(state->visibility, &access) ==
-	    VISIBILITY_INVISIBLE)
+	visibility = get_visibility(state->visibility, &access);
+	if (visibility == VISIBILITY_INVISIBLE)
 		return;
 	lock_state = get_state(state->locks, &lock);
+	if (lock_state == LOCK_HELD)
+		return;
 	if (lock_state == LOCK_NOT_HELD) {
 		if (defer_formal_lock_conditions(function) &&
 		    formal_argument(function->ep, access.root, &argument))
 			return;
+	}
+	data_name = data_member != NULL && data_member->ident != NULL ?
+	    show_ident(data_member->ident) : "<unknown>";
+	if (lock_state == LOCK_MAYBE_HELD ||
+	    visibility == VISIBILITY_MAYBE ||
+	    state->competition_path_dependent) {
+		warning(insn->access->pos,
+		    "locklint: protection for member '%s' is not "
+		    "established on every path", data_name);
+	} else {
 		warning(insn->access->pos,
 		    "locklint: protected member '%s' accessed without "
-		    "holding '%s'", show_ident(data_member->ident),
-		    lock_name(&lock));
-	} else if (lock_state == LOCK_MAYBE_HELD) {
-		warning(insn->access->pos,
-		    "locklint: lock '%s' is not held on every path "
-		    "accessing protected member '%s'", lock_name(&lock),
-		    show_ident(data_member->ident));
+		    "holding '%s'", data_name, lock_name(&lock));
 	}
 }
 
