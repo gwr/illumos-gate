@@ -73,11 +73,13 @@ call_block_static(int value)
 static int
 exercise_pointers(int value)
 {
+	int installed = current_handler != (int (*)(int))0;
+
 	copy_handler();
 	install_handler(indirect_target);
 	return (explicit_target(value) + direct_only(value) +
 	    call_indirect(value) + call_block_static(value) +
-	    driver_ops.open(value));
+	    driver_ops.open(value) + installed);
 }
 
 static int (*indexed_handlers[2])(int) = {

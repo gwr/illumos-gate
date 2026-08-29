@@ -30,3 +30,4 @@ function cross_callee_private_path tu=cross-callee.c definition=cross-callee.c:4
   root no-known-direct-caller
   call cross-callee.c:43:37 resolved cross_private_helper tu=cross-callee.c
 escapes
+pointer activity

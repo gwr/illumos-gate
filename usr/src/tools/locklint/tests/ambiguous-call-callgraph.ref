@@ -10,3 +10,4 @@ function ambiguous_target tu=ambiguous-call-second.c definition=ambiguous-call-s
   root external-linkage
   root no-known-direct-caller
 escapes
+pointer activity

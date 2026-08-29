@@ -22,8 +22,8 @@ struct entrypoint;
 struct symbol_list;
 struct translation_unit;
 
-void locklint_check_record_escapes(struct translation_unit *,
-    struct symbol_list *);
+void locklint_check_record_pointer_evidence(struct translation_unit *,
+    struct symbol_list *, bool);
 void locklint_check_add(struct translation_unit *, struct entrypoint *);
 void locklint_check_all(bool, bool);
 

@@ -12,6 +12,7 @@
 
 #define	U_R_VAL		0x04
 #define	U_W_VAL		0x08
+#define	U_CALL		0x10
 
 #define	U_R_PTR		(U_R_VAL << U_SHIFT)
 #define	U_W_PTR		(U_W_VAL << U_SHIFT)

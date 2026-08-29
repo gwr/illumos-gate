@@ -131,6 +131,22 @@ struct function_escape {
 	struct function_escape *next;
 };
 
+enum function_pointer_activity_kind {
+	FUNCTION_POINTER_LOAD,
+	FUNCTION_POINTER_STORE
+};
+
+struct function_pointer_activity {
+	struct translation_unit *tu;
+	struct symbol *symbol;
+	struct symbol *member;
+	struct position pos;
+	enum function_pointer_activity_kind kind;
+	unsigned int sequence;
+	avl_node_t by_source;
+	struct function_pointer_activity *next;
+};
+
 struct call_audit {
 	struct instruction *insn;
 	struct position pos;
@@ -150,6 +166,13 @@ static avl_tree_t function_escapes_by_target;
 static bool function_escape_indexes_initialized;
 static unsigned int next_function_escape_sequence;
 static struct translation_unit *function_escape_tu;
+static struct function_pointer_activity *function_pointer_activities;
+static struct function_pointer_activity **function_pointer_activities_tail =
+    &function_pointer_activities;
+static avl_tree_t function_pointer_activity_by_source;
+static bool function_pointer_activity_index_initialized;
+static bool record_function_pointer_activity;
+static unsigned int next_function_pointer_activity_sequence;
 
 static void transfer_call_effects(struct function_info *,
     struct state_entry **, struct instruction *);
@@ -573,6 +596,27 @@ compare_function_escape_target(const void *left_arg, const void *right_arg)
 }
 
 static int
+compare_function_pointer_activity(const void *left_arg,
+    const void *right_arg)
+{
+	const struct function_pointer_activity *left = left_arg;
+	const struct function_pointer_activity *right = right_arg;
+	int result;
+
+	result = AVL_CMP(locklint_translation_unit_id(left->tu),
+	    locklint_translation_unit_id(right->tu));
+	if (result != 0)
+		return (result);
+	result = compare_position(left->pos, right->pos);
+	if (result != 0)
+		return (result);
+	result = AVL_CMP(left->kind, right->kind);
+	if (result != 0)
+		return (result);
+	return (AVL_CMP(left->sequence, right->sequence));
+}
+
+static int
 compare_call_audit(const void *left_arg, const void *right_arg)
 {
 	const struct call_audit *left = left_arg;
@@ -593,6 +637,19 @@ function_symbol(const struct symbol *symbol)
 	if (symbol == NULL)
 		return (false);
 	type = symbol->ctype.base_type;
+	while (type != NULL && type->type == SYM_NODE)
+		type = type->ctype.base_type;
+	return (type != NULL && type->type == SYM_FN);
+}
+
+static bool
+function_pointer_type(const struct symbol *type)
+{
+	while (type != NULL && type->type == SYM_NODE)
+		type = type->ctype.base_type;
+	if (type == NULL || type->type != SYM_PTR)
+		return (false);
+	type = type->ctype.base_type;
 	while (type != NULL && type->type == SYM_NODE)
 		type = type->ctype.base_type;
 	return (type != NULL && type->type == SYM_FN);
@@ -628,12 +685,77 @@ record_function_escape(struct symbol *symbol, struct position pos)
 	function_escapes_tail = &escape->next;
 }
 
+static struct function_pointer_activity *
+alloc_function_pointer_activity(void)
+{
+	struct function_pointer_activity *activity;
+
+	activity = calloc(1, sizeof (*activity));
+	if (activity == NULL)
+		die("out of memory recording function-pointer activity");
+	*function_pointer_activities_tail = activity;
+	function_pointer_activities_tail = &activity->next;
+	return (activity);
+}
+
 static void
-report_function_escape(unsigned int mode, struct position *pos,
+record_pointer_activity(unsigned int mode, struct position pos,
+    struct symbol *symbol, struct symbol *member)
+{
+	struct function_pointer_activity *activity;
+	const struct symbol *type;
+	enum function_pointer_activity_kind kind;
+	unsigned int read_mode = U_R_VAL | U_R_PTR;
+	unsigned int store_mode = U_W_VAL | U_W_PTR;
+	unsigned int call_mode = U_CALL | (U_CALL << U_SHIFT);
+
+	if (!record_function_pointer_activity || (mode & call_mode) != 0)
+		return;
+	type = member != NULL ? member->ctype.base_type :
+	    symbol->ctype.base_type;
+	if (!function_pointer_type(type))
+		return;
+	if ((mode & store_mode) != 0) {
+		kind = FUNCTION_POINTER_STORE;
+	} else if ((mode & read_mode) != 0) {
+		kind = FUNCTION_POINTER_LOAD;
+	} else {
+		return;
+	}
+	if (!function_pointer_activity_index_initialized) {
+		avl_create(&function_pointer_activity_by_source,
+		    compare_function_pointer_activity,
+		    sizeof (struct function_pointer_activity),
+		    offsetof(struct function_pointer_activity, by_source));
+		function_pointer_activity_index_initialized = true;
+	}
+	activity = alloc_function_pointer_activity();
+	activity->tu = function_escape_tu;
+	activity->symbol = symbol;
+	activity->member = member;
+	activity->pos = pos;
+	activity->kind = kind;
+	if (++next_function_pointer_activity_sequence == 0)
+		die("too many function-pointer activity records");
+	activity->sequence = next_function_pointer_activity_sequence;
+	avl_add(&function_pointer_activity_by_source, activity);
+}
+
+static void
+report_function_pointer_symbol(unsigned int mode, struct position *pos,
     struct symbol *symbol)
 {
 	if ((mode & U_R_AOF) != 0 && function_symbol(symbol))
 		record_function_escape(symbol, *pos);
+	record_pointer_activity(mode, *pos, symbol, NULL);
+}
+
+static void
+report_function_pointer_member(unsigned int mode, struct position *pos,
+    struct symbol *symbol, struct symbol *member)
+{
+	if (member != NULL)
+		record_pointer_activity(mode, *pos, symbol, member);
 }
 
 static struct function_info *
@@ -859,6 +981,7 @@ static void
 dump_callgraph(void)
 {
 	struct function_escape *escape;
+	struct function_pointer_activity *activity;
 	struct function_info *function;
 
 	for (function = functions; function != NULL; function = function->next) {
@@ -904,6 +1027,39 @@ dump_callgraph(void)
 			    locklint_translation_unit_file(escape->target->tu));
 		} else {
 			(void) printf("unresolved\n");
+		}
+	}
+	(void) printf("pointer activity\n");
+	for (activity = function_pointer_activity_index_initialized ?
+	    avl_first(&function_pointer_activity_by_source) : NULL;
+	    activity != NULL;
+	    activity = AVL_NEXT(&function_pointer_activity_by_source,
+	    activity)) {
+		const char *kind;
+
+		switch (activity->kind) {
+		case FUNCTION_POINTER_LOAD:
+			kind = "load";
+			break;
+		case FUNCTION_POINTER_STORE:
+			kind = "store";
+			break;
+		default:
+			abort();
+		}
+		(void) printf("  %s %s:%u:%u ", kind,
+		    stream_name(activity->pos.stream), activity->pos.line,
+		    activity->pos.pos);
+		if (activity->member != NULL) {
+			(void) printf("%s.%s\n",
+			    activity->symbol->ident != NULL ?
+			    show_ident(activity->symbol->ident) : "<anonymous>",
+			    activity->member->ident != NULL ?
+			    show_ident(activity->member->ident) : "<anonymous>");
+		} else {
+			(void) printf("%s\n",
+			    activity->symbol->ident != NULL ?
+			    show_ident(activity->symbol->ident) : "<anonymous>");
 		}
 	}
 }
@@ -1866,16 +2022,39 @@ free_function_escapes(void)
 	function_escapes_tail = &function_escapes;
 }
 
+static void
+free_function_pointer_activity(void)
+{
+	while (function_pointer_activities != NULL) {
+		struct function_pointer_activity *next =
+		    function_pointer_activities->next;
+
+		avl_remove(&function_pointer_activity_by_source,
+		    function_pointer_activities);
+		free(function_pointer_activities);
+		function_pointer_activities = next;
+	}
+	if (function_pointer_activity_index_initialized) {
+		avl_destroy(&function_pointer_activity_by_source);
+		function_pointer_activity_index_initialized = false;
+	}
+	function_pointer_activities_tail = &function_pointer_activities;
+	next_function_pointer_activity_sequence = 0;
+}
+
 void
-locklint_check_record_escapes(struct translation_unit *tu,
-    struct symbol_list *symbols)
+locklint_check_record_pointer_evidence(struct translation_unit *tu,
+    struct symbol_list *symbols, bool record_activity)
 {
 	static struct reporter reporter = {
-		.r_symbol = report_function_escape,
+		.r_symbol = report_function_pointer_symbol,
+		.r_member = report_function_pointer_member,
 	};
 
 	function_escape_tu = tu;
+	record_function_pointer_activity = record_activity;
 	dissect(symbols, &reporter);
+	record_function_pointer_activity = false;
 	function_escape_tu = NULL;
 }
 
@@ -1990,6 +2169,7 @@ locklint_check_all(bool check_locks, bool show_callgraph)
 		dump_callgraph();
 	if (check_locks)
 		run_lock_checks();
+	free_function_pointer_activity();
 	free_function_escapes();
 	free_functions();
 }

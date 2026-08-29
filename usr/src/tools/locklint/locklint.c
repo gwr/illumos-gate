@@ -238,7 +238,8 @@ main(int argc, char **argv)
 	if (dump_annotations || dump_events || check_locks)
 		locklint_resolve_annotations();
 	if (check_locks || dump_callgraph)
-		locklint_check_record_escapes(tu, symbols);
+		locklint_check_record_pointer_evidence(tu, symbols,
+		    dump_callgraph);
 	process_symbols(tu, symbols);
 	FOR_EACH_PTR(filelist, file) {
 		/*
@@ -253,7 +254,8 @@ main(int argc, char **argv)
 		if (dump_annotations || dump_events || check_locks)
 			locklint_resolve_annotations();
 		if (check_locks || dump_callgraph)
-			locklint_check_record_escapes(tu, symbols);
+			locklint_check_record_pointer_evidence(tu, symbols,
+			    dump_callgraph);
 		process_symbols(tu, symbols);
 	} END_FOR_EACH_PTR(file);
 	if (check_locks || dump_callgraph)

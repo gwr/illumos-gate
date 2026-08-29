@@ -32,3 +32,4 @@ function check_cycle_left tu=calls.c definition=calls.c:114:1 linkage=internal r
 function check_cycle_right tu=calls.c definition=calls.c:122:1 linkage=internal reachable=no
   call calls.c:126:33 resolved check_cycle_left tu=calls.c
 escapes
+pointer activity

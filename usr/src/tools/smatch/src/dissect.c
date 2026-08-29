@@ -350,7 +350,7 @@ again:
 		ret = do_expression(mode, expr->cond_false);
 
 	break; case EXPR_CALL:
-		ret = do_expression(U_R_PTR, expr->fn);
+		ret = do_expression(U_R_PTR | U_CALL, expr->fn);
 		if (is_ptr(ret))
 			ret = ret->ctype.base_type;
 		DO_2_LIST(ret->arguments, expr->args, arg, val,
