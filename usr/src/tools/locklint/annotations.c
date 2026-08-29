@@ -43,6 +43,14 @@ enum annotation_scope {
 	ANNOTATION_OBJECT
 };
 
+enum annotation_kind {
+	ANNOTATION_UNSUPPORTED,
+	ANNOTATION_MUTEX_PROTECTS_DATA,
+	ANNOTATION_SCHEME_PROTECTS_DATA,
+	ANNOTATION_DATA_READABLE_WITHOUT_LOCK,
+	ANNOTATION_READ_ONLY_DATA
+};
+
 struct annotation_ref {
 	struct position pos;
 	enum annotation_scope scope;
@@ -66,6 +74,8 @@ struct annotation {
 	struct annotation_token *tokens;
 	struct annotation_ref *lock;
 	struct annotation_ref *data;
+	const char *scheme;
+	enum annotation_kind kind;
 	bool parsed;
 	bool processed;
 	bool resolved;
@@ -171,6 +181,15 @@ annotation_error(struct annotation *annotation, struct annotation_token *token,
 {
 	sparse_error(token != NULL ? token->pos : annotation->pos,
 	    "locklint: %s", message);
+	return (false);
+}
+
+static bool
+annotation_named_error(struct annotation *annotation,
+    struct annotation_token *token, const char *message, const char *name)
+{
+	sparse_error(token != NULL ? token->pos : annotation->pos,
+	    "locklint: %s %s", message, name);
 	return (false);
 }
 
@@ -361,40 +380,77 @@ parse_name_list(struct annotation *annotation,
 }
 
 static bool
+finish_data_annotation(struct annotation *annotation,
+    struct annotation_token *cursor, const char *name)
+{
+	if (!parse_name_list(annotation, &cursor, &annotation->data, ")"))
+		return (false);
+	if (!token_is(cursor, ")"))
+		return (annotation_named_error(annotation, cursor,
+		    "expected ')' after", name));
+	if (cursor->next != NULL)
+		return (annotation_named_error(annotation, cursor->next,
+		    "unexpected tokens after", name));
+	annotation->parsed = true;
+	return (true);
+}
+
+static bool
 parse_annotation(struct annotation *annotation)
 {
 	struct annotation_token *cursor = annotation->tokens;
 	struct annotation_ref *lock = NULL;
 	struct annotation_ref **tail = NULL;
+	const char *name;
 
-	if (!token_is(cursor, "MUTEX_PROTECTS_DATA"))
+	if (token_is(cursor, "MUTEX_PROTECTS_DATA")) {
+		annotation->kind = ANNOTATION_MUTEX_PROTECTS_DATA;
+	} else if (token_is(cursor, "SCHEME_PROTECTS_DATA")) {
+		annotation->kind = ANNOTATION_SCHEME_PROTECTS_DATA;
+	} else if (token_is(cursor, "DATA_READABLE_WITHOUT_LOCK")) {
+		annotation->kind = ANNOTATION_DATA_READABLE_WITHOUT_LOCK;
+	} else if (token_is(cursor, "READ_ONLY_DATA")) {
+		annotation->kind = ANNOTATION_READ_ONLY_DATA;
+	} else {
 		return (false);
+	}
+	name = cursor->text;
 	cursor = cursor->next;
 	if (!token_is(cursor, "("))
-		return (annotation_error(annotation, cursor,
-		    "expected '(' after MUTEX_PROTECTS_DATA"));
+		return (annotation_named_error(annotation, cursor,
+		    "expected '(' after", name));
 	cursor = cursor->next;
-	if (!parse_name(annotation, &cursor, &lock, &tail))
-		return (false);
-	if (lock->next != NULL)
-		return (annotation_error(annotation, cursor,
-		    "MUTEX_PROTECTS_DATA requires one lock name"));
-	if (!token_is(cursor, ","))
-		return (annotation_error(annotation, cursor,
-		    "expected ',' after protected-data lock"));
-	cursor = cursor->next;
-	if (!parse_name_list(annotation, &cursor, &annotation->data, ")"))
-		return (false);
-	if (!token_is(cursor, ")"))
-		return (annotation_error(annotation, cursor,
-		    "expected ')' after MUTEX_PROTECTS_DATA"));
-	if (cursor->next != NULL)
-		return (annotation_error(annotation, cursor->next,
-		    "unexpected tokens after MUTEX_PROTECTS_DATA"));
-
-	annotation->lock = lock;
-	annotation->parsed = true;
-	return (true);
+	switch (annotation->kind) {
+	case ANNOTATION_MUTEX_PROTECTS_DATA:
+		if (!parse_name(annotation, &cursor, &lock, &tail))
+			return (false);
+		if (lock->next != NULL)
+			return (annotation_error(annotation, cursor,
+			    "MUTEX_PROTECTS_DATA requires one lock name"));
+		if (!token_is(cursor, ","))
+			return (annotation_error(annotation, cursor,
+			    "expected ',' after protected-data lock"));
+		annotation->lock = lock;
+		cursor = cursor->next;
+		break;
+	case ANNOTATION_SCHEME_PROTECTS_DATA:
+		if (cursor == NULL || cursor->type != TOKEN_STRING)
+			return (annotation_error(annotation, cursor,
+			    "expected quoted protection scheme"));
+		annotation->scheme = cursor->text;
+		cursor = cursor->next;
+		if (!token_is(cursor, ","))
+			return (annotation_error(annotation, cursor,
+			    "expected ',' after protection scheme"));
+		cursor = cursor->next;
+		break;
+	case ANNOTATION_DATA_READABLE_WITHOUT_LOCK:
+	case ANNOTATION_READ_ONLY_DATA:
+		break;
+	default:
+		abort();
+	}
+	return (finish_data_annotation(annotation, cursor, name));
 }
 
 static struct symbol *
@@ -617,7 +673,7 @@ expand_compound_ref(struct annotation_ref *source, struct symbol *type,
 			}
 			continue;
 		}
-		if (member == lock->member) {
+		if (lock != NULL && member == lock->member) {
 			struct locklint_access lock_access = { 0 };
 			struct locklint_access source_access = { 0 };
 
@@ -714,7 +770,9 @@ record_replacements(struct annotation *annotation)
 		    earlier = earlier->next) {
 			struct annotation_ref *candidate;
 
-			if (!earlier->resolved)
+			if (!earlier->resolved ||
+			    (earlier->kind != ANNOTATION_MUTEX_PROTECTS_DATA &&
+			    earlier->kind != ANNOTATION_SCHEME_PROTECTS_DATA))
 				continue;
 			for (candidate = earlier->data; candidate != NULL;
 			    candidate = candidate->next) {
@@ -748,7 +806,8 @@ locklint_resolve_annotations(void)
 		annotation->processed = true;
 		if (!parse_annotation(annotation))
 			continue;
-		if (!resolve_annotation_ref(annotation->lock, true,
+		if (annotation->lock != NULL &&
+		    !resolve_annotation_ref(annotation->lock, true,
 		    annotation->tu))
 			continue;
 		for (ref = annotation->data; ref != NULL; ref = ref->next) {
@@ -757,24 +816,53 @@ locklint_resolve_annotations(void)
 		}
 		if (ref == NULL) {
 			expand_data_refs(annotation);
-			record_replacements(annotation);
+			if (annotation->kind ==
+			    ANNOTATION_MUTEX_PROTECTS_DATA ||
+			    annotation->kind ==
+			    ANNOTATION_SCHEME_PROTECTS_DATA)
+				record_replacements(annotation);
 			annotation->resolved = true;
 		}
 	}
 }
 
+static bool
+matching_data_ref(const struct annotation_ref *ref,
+    const struct locklint_access *access, unsigned long *base)
+{
+	if (ref->root != NULL) {
+		struct locklint_access target = { 0 };
+
+		target.root = ref->root;
+		target.object = ref->object;
+		target.member = ref->member;
+		target.offset = ref->offset;
+		if (!locklint_same_access(&target, access))
+			return (false);
+		*base = 0;
+		return (true);
+	}
+	if (ref->member != access->member ||
+	    !locklint_access_base(access, ref->owner_type, ref->offset, base))
+		return (false);
+	return (true);
+}
+
 /*
- * Select the last matching protection relation and instantiate a type-scoped
- * lock relative to the concrete object containing the access.
+ * Combine all matching policy dimensions.  The last mechanical or scheme
+ * declaration wins; unlocked-read and read-only properties are additive.
  */
 bool
-locklint_protecting_access(const struct locklint_access *access,
-    struct locklint_access *lock)
+locklint_data_policy(const struct locklint_access *access,
+    struct locklint_data_policy *policy, struct locklint_access *lock)
 {
 	struct annotation *annotation;
 	const struct annotation_ref *protector = NULL;
 	unsigned long protector_base = 0;
+	bool found = false;
 
+	(void) memset(policy, 0, sizeof (*policy));
+	(void) memset(lock, 0, sizeof (*lock));
 	for (annotation = annotations; annotation != NULL;
 	    annotation = annotation->next) {
 		struct annotation_ref *ref;
@@ -784,38 +872,42 @@ locklint_protecting_access(const struct locklint_access *access,
 		for (ref = annotation->data; ref != NULL; ref = ref->next) {
 			unsigned long base;
 
-			if (ref->root != NULL) {
-				struct locklint_access target = { 0 };
-
-				target.root = ref->root;
-				target.object = ref->object;
-				target.member = ref->member;
-				target.offset = ref->offset;
-				if (!locklint_same_access(&target, access))
-					continue;
-				base = 0;
-			} else {
-				if (ref->member != access->member ||
-				    !locklint_access_base(access,
-				    ref->owner_type, ref->offset, &base))
-					continue;
+			if (!matching_data_ref(ref, access, &base))
+				continue;
+			found = true;
+			switch (annotation->kind) {
+			case ANNOTATION_MUTEX_PROTECTS_DATA:
+				policy->protection = LOCKLINT_PROTECTION_MUTEX;
+				protector = annotation->lock;
+				protector_base = base;
+				break;
+			case ANNOTATION_SCHEME_PROTECTS_DATA:
+				policy->protection = LOCKLINT_PROTECTION_SCHEME;
+				protector = NULL;
+				break;
+			case ANNOTATION_DATA_READABLE_WITHOUT_LOCK:
+				policy->readable_without_lock = true;
+				break;
+			case ANNOTATION_READ_ONLY_DATA:
+				policy->read_only = true;
+				break;
+			default:
+				abort();
 			}
-			protector = annotation->lock;
-			protector_base = base;
 		}
 	}
-	if (protector == NULL)
-		return (false);
-	lock->root = protector->root != NULL ?
-	    protector->root : access->root;
-	lock->object = protector->root != NULL ?
-	    protector->object : access->object;
-	lock->type = protector->owner_type;
-	lock->member = protector->member;
-	lock->offset = (protector->root != NULL ? 0 : protector_base) +
-	    protector->offset;
-	lock->expr = NULL;
-	return (true);
+	if (policy->protection == LOCKLINT_PROTECTION_MUTEX) {
+		lock->root = protector->root != NULL ?
+		    protector->root : access->root;
+		lock->object = protector->root != NULL ?
+		    protector->object : access->object;
+		lock->type = protector->owner_type;
+		lock->member = protector->member;
+		lock->offset = (protector->root != NULL ? 0 :
+		    protector_base) + protector->offset;
+		lock->expr = NULL;
+	}
+	return (found);
 }
 
 static void
@@ -854,6 +946,23 @@ show_replacement(FILE *stream, const char *message,
 	    ref->annotation_pos.line, ref->annotation_pos.pos);
 }
 
+static const char *
+annotation_kind_name(enum annotation_kind kind)
+{
+	switch (kind) {
+	case ANNOTATION_MUTEX_PROTECTS_DATA:
+		return ("MUTEX_PROTECTS_DATA");
+	case ANNOTATION_SCHEME_PROTECTS_DATA:
+		return ("SCHEME_PROTECTS_DATA");
+	case ANNOTATION_DATA_READABLE_WITHOUT_LOCK:
+		return ("DATA_READABLE_WITHOUT_LOCK");
+	case ANNOTATION_READ_ONLY_DATA:
+		return ("READ_ONLY_DATA");
+	default:
+		abort();
+	}
+}
+
 void
 locklint_show_annotations(FILE *stream)
 {
@@ -872,12 +981,19 @@ locklint_show_annotations(FILE *stream)
 			continue;
 		}
 		for (ref = annotation->data; ref != NULL; ref = ref->next) {
-			(void) fprintf(stream,
-			    "%s:%u:%u: MUTEX_PROTECTS_DATA ",
+			(void) fprintf(stream, "%s:%u:%u: %s ",
 			    stream_name(annotation->pos.stream),
-			    annotation->pos.line, annotation->pos.pos);
-			show_annotation_ref(stream, annotation->lock);
-			(void) fputs(" -> ", stream);
+			    annotation->pos.line, annotation->pos.pos,
+			    annotation_kind_name(annotation->kind));
+			if (annotation->kind ==
+			    ANNOTATION_MUTEX_PROTECTS_DATA) {
+				show_annotation_ref(stream, annotation->lock);
+				(void) fputs(" -> ", stream);
+			} else if (annotation->kind ==
+			    ANNOTATION_SCHEME_PROTECTS_DATA) {
+				(void) fprintf(stream, "%s -> ",
+				    annotation->scheme);
+			}
 			show_annotation_ref(stream, ref);
 			if (ref->replaced_by != NULL)
 				show_replacement(stream, "replaced by",

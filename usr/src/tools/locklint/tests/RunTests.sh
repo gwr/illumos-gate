@@ -130,6 +130,19 @@ run_capture "annotations" annotations.out \
 compare "annotations" annotations.ref annotations.out
 
 #
+# Verify independent protection mechanism, unlocked-read, and read-only
+# policy dimensions.
+#
+run_capture "data policy annotations" data-policy-annotations.out \
+    "$LOCKLINT" --dump-annotations data-policy.c
+compare "data policy annotations" data-policy-annotations.ref \
+    data-policy-annotations.out
+
+run_capture "data policy checks" data-policy.out \
+    "$LOCKLINT" --check-locks data-policy.c
+compare "data policy checks" data-policy.ref data-policy.out
+
+#
 # Verify intraprocedural lock state across branches, loops, and returns.
 #
 run_capture "check" check.out "$LOCKLINT" --check-locks check.c
@@ -233,6 +246,17 @@ require_match "annotation errors" \
     annotation-errors.out
 require_match "annotation errors" \
     "unresolved annotation name 'error_state::missing_value'" \
+    annotation-errors.out
+require_match "annotation errors" \
+    "expected quoted protection scheme" annotation-errors.out
+require_match "annotation errors" \
+    "unresolved annotation name 'error_state::missing_scheme'" \
+    annotation-errors.out
+require_match "annotation errors" \
+    "unresolved annotation name 'error_state::missing_readable'" \
+    annotation-errors.out
+require_match "annotation errors" \
+    "unresolved annotation name 'error_state::missing_read_only'" \
     annotation-errors.out
 
 #

@@ -1318,11 +1318,15 @@ protected_access(struct function_info *function, struct instruction *insn,
     struct locklint_access *access, struct locklint_access *lock,
     struct symbol **data_member)
 {
+	struct locklint_data_policy policy;
+
 	if (insn->access == NULL ||
 	    (insn->opcode != OP_LOAD && insn->opcode != OP_STORE) ||
 	    !locklint_get_access(function->tu, insn->access, access))
 		return (false);
-	if (!locklint_protecting_access(access, lock))
+	if (!locklint_data_policy(access, &policy, lock) ||
+	    policy.protection != LOCKLINT_PROTECTION_MUTEX ||
+	    (insn->opcode == OP_LOAD && policy.readable_without_lock))
 		return (false);
 	*data_member = access->member != NULL ?
 	    access->member : access->root;

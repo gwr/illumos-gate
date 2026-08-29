@@ -84,6 +84,7 @@ show_memory_event(struct translation_unit *tu, struct instruction *insn)
 {
 	struct locklint_access access;
 	struct locklint_access protector;
+	struct locklint_data_policy policy;
 	const char *event;
 
 	if (insn->access == NULL)
@@ -99,7 +100,8 @@ show_memory_event(struct translation_unit *tu, struct instruction *insn)
 	locklint_show_access(stdout, insn->access);
 	(void) printf(" offset=%u", insn->offset);
 	if (locklint_get_access(tu, insn->access, &access) &&
-	    locklint_protecting_access(&access, &protector)) {
+	    locklint_data_policy(&access, &policy, &protector) &&
+	    policy.protection == LOCKLINT_PROTECTION_MUTEX) {
 		struct symbol *name = protector.member != NULL ?
 		    protector.member : protector.root;
 

@@ -1,0 +1,5 @@
+../locklint: data-policy.c:60:30: warning: locklint: protected member 'protected' accessed without holding 'lock'
+../locklint: data-policy.c:61:22: warning: locklint: protected member 'protected' accessed without holding 'lock'
+../locklint: data-policy.c:64:22: warning: locklint: protected member 'readable' accessed without holding 'lock'
+../locklint: data-policy.c:72:31: warning: locklint: protected member 'mutex_after_scheme' accessed without holding 'lock'
+../locklint: data-policy.c:73:22: warning: locklint: protected member 'mutex_after_scheme' accessed without holding 'lock'

@@ -16,8 +16,7 @@
 /*
  * This test covers preprocessing-time `_NOTE` capture and annotation
  * resolution.  It includes an unsupported annotation that must remain
- * in raw form and a `MUTEX_PROTECTS_DATA` annotation using a generated
- * member list.
+ * in raw form and supported data-policy annotations.
  */
 
 #define	_NOTE(arg)
@@ -31,6 +30,9 @@ typedef struct event_state {
 } event_state;
 
 _OTHER(MUTEX_PROTECTS_DATA(ignored::lock, ignored::value))
-_NOTE(READ_ONLY_DATA(event_state::LOCK_MEMBER))
+_NOTE(UNSUPPORTED_POLICY(event_state::LOCK_MEMBER))
+_NOTE(READ_ONLY_DATA(event_state::lock))
 _NOTE(MUTEX_PROTECTS_DATA(event_state::lock,
     event_state::{ value count }))
+_NOTE(DATA_READABLE_WITHOUT_LOCK(event_state::count))
+_NOTE(SCHEME_PROTECTS_DATA("external convention", event_state::value))

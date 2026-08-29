@@ -22,9 +22,21 @@
 struct locklint_access;
 struct symbol;
 
+enum locklint_protection {
+	LOCKLINT_PROTECTION_NONE,
+	LOCKLINT_PROTECTION_MUTEX,
+	LOCKLINT_PROTECTION_SCHEME
+};
+
+struct locklint_data_policy {
+	enum locklint_protection protection;
+	bool readable_without_lock;
+	bool read_only;
+};
+
 void locklint_annotations_enable(void);
-bool locklint_protecting_access(const struct locklint_access *,
-    struct locklint_access *);
+bool locklint_data_policy(const struct locklint_access *,
+    struct locklint_data_policy *, struct locklint_access *);
 void locklint_resolve_annotations(void);
 void locklint_show_annotations(FILE *);
 

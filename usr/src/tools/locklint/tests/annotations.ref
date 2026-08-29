@@ -1,3 +1,6 @@
-annotations.c:34:1: _NOTE(READ_ONLY_DATA(event_state::LOCK_MEMBER))
-annotations.c:35:1: MUTEX_PROTECTS_DATA event_state::lock -> event_state::value
+annotations.c:33:1: _NOTE(UNSUPPORTED_POLICY(event_state::LOCK_MEMBER))
+annotations.c:34:1: READ_ONLY_DATA event_state::lock
+annotations.c:35:1: MUTEX_PROTECTS_DATA event_state::lock -> event_state::value [replaced by annotations.c:38:1]
 annotations.c:35:1: MUTEX_PROTECTS_DATA event_state::lock -> event_state::count
+annotations.c:37:1: DATA_READABLE_WITHOUT_LOCK event_state::count
+annotations.c:38:1: SCHEME_PROTECTS_DATA "external convention" -> event_state::value [replaces annotations.c:35:1]
