@@ -1,0 +1,10 @@
+../locklint: visibility.c:50:26: warning: locklint: protected member 'protected' accessed without holding 'lock'
+../locklint: visibility.c:61:26: warning: locklint: protected member 'protected' accessed without holding 'lock'
+../locklint: visibility.c:72:22: warning: locklint: protected member 'protected' accessed without holding 'lock'
+../locklint: visibility.c:81:14: warning: locklint: protected member 'protected' accessed without holding 'lock'
+../locklint: visibility.c:89:14: warning: locklint: protected member 'protected' accessed without holding 'lock'
+../locklint: visibility.c:90:14: warning: locklint: protected member 'sibling' accessed without holding 'lock'
+../locklint: visibility.c:101:14: warning: locklint: protected member 'sibling' accessed without holding 'lock'
+../locklint: visibility.c:110:14: warning: locklint: protected member 'sibling' accessed without holding 'lock'
+../locklint: visibility.c:121:14: warning: locklint: protected member 'protected' accessed without holding 'lock'
+../locklint: visibility.c:139:9: warning: locklint: visibility annotation has no object

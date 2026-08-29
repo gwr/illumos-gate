@@ -181,23 +181,61 @@ same_ident(const struct ident *left, const struct ident *right)
 	    memcmp(left->name, right->name, left->len) == 0);
 }
 
+static bool
+same_access_object(const struct locklint_access *left,
+    const struct locklint_access *right)
+{
+	/* Locals and formals have no linkage and retain Sparse identity. */
+	if (left->object == NULL && right->object == NULL)
+		return (left->root == right->root);
+	return (left->object != NULL && left->object == right->object);
+}
+
 bool
 locklint_same_access(const struct locklint_access *left,
     const struct locklint_access *right)
 {
-	if (left->offset != right->offset)
+	if (left->offset != right->offset ||
+	    !same_access_object(left, right))
 		return (false);
-	/* Locals and formals have no linkage and retain Sparse identity. */
-	if (left->object == NULL && right->object == NULL) {
-		if (left->root != right->root)
-			return (false);
+	if (left->object == NULL)
 		return (left->member == right->member);
-	}
-	if (left->object == NULL || left->object != right->object)
-		return (false);
 	/* Separately parsed declarations have distinct member symbols. */
 	return (same_ident(left->member != NULL ? left->member->ident : NULL,
 	    right->member != NULL ? right->member->ident : NULL));
+}
+
+bool
+locklint_access_contains(const struct locklint_access *container,
+    const struct locklint_access *access)
+{
+	struct expression *member;
+	unsigned long suffix = 0;
+
+	if (!same_access_object(container, access))
+		return (false);
+	if (container->member == NULL)
+		return (true);
+	/*
+	 * Walk from the selected leaf toward its root.  Subtracting each
+	 * member's relative offset recovers the absolute offset of its parent.
+	 */
+	for (member = find_member(access->expr); member != NULL;
+	    member = find_member(member->member_base)) {
+		unsigned long offset;
+
+		if (suffix > access->offset)
+			return (false);
+		offset = access->offset - suffix;
+		if (offset == container->offset &&
+		    (container->object == NULL ?
+		    member->member_symbol == container->member :
+		    same_ident(member->member_symbol->ident,
+		    container->member->ident)))
+			return (true);
+		suffix += member->member_path_offset;
+	}
+	return (false);
 }
 
 bool

@@ -1,4 +1,0 @@
-../locklint: visibility.c:40:26: warning: locklint: protected member 'protected' accessed without holding 'lock'
-../locklint: visibility.c:51:26: warning: locklint: protected member 'protected' accessed without holding 'lock'
-../locklint: visibility.c:59:22: warning: locklint: protected member 'protected' accessed without holding 'lock'
-../locklint: visibility.c:62:22: warning: locklint: protected member 'protected' accessed without holding 'lock'

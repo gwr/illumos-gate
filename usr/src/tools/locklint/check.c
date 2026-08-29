@@ -49,6 +49,12 @@ enum competition_state {
 	COMPETITION_PRESENT
 };
 
+enum visibility_state {
+	VISIBILITY_INVISIBLE,
+	VISIBILITY_MAYBE,
+	VISIBILITY_VISIBLE
+};
+
 enum function_root_reason {
 	FUNCTION_ROOT_EXTERNAL = 1 << 0,
 	FUNCTION_ROOT_NO_DIRECT_CALLER = 1 << 1,
@@ -65,9 +71,16 @@ struct state_entry {
 	struct state_entry *next;
 };
 
+struct visibility_entry {
+	struct locklint_access region;
+	enum visibility_state state;
+	struct visibility_entry *next;
+};
+
 struct analysis_state {
 	struct state_entry *locks;
 	enum competition_state competition;
+	struct visibility_entry *visibility;
 };
 
 struct block_info {
@@ -354,6 +367,150 @@ merge_states(struct state_entry **merged, struct state_entry *incoming)
 	}
 }
 
+static struct visibility_entry *
+alloc_visibility(const struct locklint_access *region,
+    enum visibility_state state)
+{
+	struct visibility_entry *entry;
+
+	entry = calloc(1, sizeof (*entry));
+	if (entry == NULL)
+		die("out of memory analyzing object visibility");
+	entry->region = *region;
+	entry->state = state;
+	return (entry);
+}
+
+static void
+free_visibility(struct visibility_entry *entries)
+{
+	while (entries != NULL) {
+		struct visibility_entry *next = entries->next;
+
+		free(entries);
+		entries = next;
+	}
+}
+
+static struct visibility_entry *
+copy_visibility(struct visibility_entry *entries)
+{
+	struct visibility_entry *copy = NULL;
+	struct visibility_entry **tail = &copy;
+
+	for (; entries != NULL; entries = entries->next) {
+		*tail = alloc_visibility(&entries->region, entries->state);
+		tail = &(*tail)->next;
+	}
+	return (copy);
+}
+
+static enum visibility_state
+get_visibility(struct visibility_entry *entries,
+    const struct locklint_access *region)
+{
+	struct visibility_entry *best = NULL;
+	struct visibility_entry *entry;
+
+	/* A narrower covering fact overrides a fact about its containing object. */
+	for (entry = entries; entry != NULL; entry = entry->next) {
+		if (!locklint_access_contains(&entry->region, region))
+			continue;
+		if (best == NULL ||
+		    locklint_access_contains(&best->region, &entry->region))
+			best = entry;
+	}
+	return (best != NULL ? best->state : VISIBILITY_VISIBLE);
+}
+
+static void
+set_visibility(struct visibility_entry **entries,
+    const struct locklint_access *region, enum visibility_state state)
+{
+	struct visibility_entry **link;
+	struct visibility_entry *entry;
+
+	/* A transition for a region replaces all facts wholly within it. */
+	for (link = entries; *link != NULL; ) {
+		if (locklint_access_contains(region, &(*link)->region)) {
+			struct visibility_entry *old = *link;
+
+			*link = old->next;
+			free(old);
+		} else {
+			link = &(*link)->next;
+		}
+	}
+	entry = alloc_visibility(region, state);
+	entry->next = *entries;
+	*entries = entry;
+}
+
+static bool
+same_visibility(struct visibility_entry *left,
+    struct visibility_entry *right)
+{
+	struct visibility_entry *entry;
+
+	for (entry = left; entry != NULL; entry = entry->next) {
+		if (get_visibility(right, &entry->region) != entry->state)
+			return (false);
+	}
+	for (entry = right; entry != NULL; entry = entry->next) {
+		if (get_visibility(left, &entry->region) != entry->state)
+			return (false);
+	}
+	return (true);
+}
+
+static bool
+has_visibility_region(struct visibility_entry *entries,
+    const struct locklint_access *region)
+{
+	for (; entries != NULL; entries = entries->next) {
+		if (locklint_same_access(&entries->region, region))
+			return (true);
+	}
+	return (false);
+}
+
+static enum visibility_state
+merge_visibility_state(enum visibility_state left,
+    enum visibility_state right)
+{
+	return (left == right ? left : VISIBILITY_MAYBE);
+}
+
+static void
+merge_visibility(struct visibility_entry **merged,
+    struct visibility_entry *incoming)
+{
+	struct visibility_entry *result = NULL;
+	struct visibility_entry **tail = &result;
+	struct visibility_entry *entry;
+
+	/*
+	 * Retain every region distinguished on either path and merge its
+	 * effective state, including state inherited from a containing region.
+	 */
+	for (entry = *merged; entry != NULL; entry = entry->next) {
+		*tail = alloc_visibility(&entry->region,
+		    merge_visibility_state(entry->state,
+		    get_visibility(incoming, &entry->region)));
+		tail = &(*tail)->next;
+	}
+	for (entry = incoming; entry != NULL; entry = entry->next) {
+		if (has_visibility_region(result, &entry->region))
+			continue;
+		*tail = alloc_visibility(&entry->region,
+		    merge_visibility_state(get_visibility(*merged,
+		    &entry->region), entry->state));
+		tail = &(*tail)->next;
+	}
+	free_visibility(*merged);
+	*merged = result;
+}
+
 static struct analysis_state *
 copy_analysis_state(const struct analysis_state *state)
 {
@@ -365,6 +522,7 @@ copy_analysis_state(const struct analysis_state *state)
 	if (state != NULL) {
 		copy->locks = copy_states(state->locks);
 		copy->competition = state->competition;
+		copy->visibility = copy_visibility(state->visibility);
 	} else {
 		copy->competition = COMPETITION_POSSIBLE;
 	}
@@ -377,6 +535,7 @@ free_analysis_state(struct analysis_state *state)
 	if (state == NULL)
 		return;
 	free_states(state->locks);
+	free_visibility(state->visibility);
 	free(state);
 }
 
@@ -387,7 +546,9 @@ same_analysis_state(const struct analysis_state *left,
 	return (same_states(left != NULL ? left->locks : NULL,
 	    right != NULL ? right->locks : NULL) &&
 	    (left == NULL ? COMPETITION_POSSIBLE : left->competition) ==
-	    (right == NULL ? COMPETITION_POSSIBLE : right->competition));
+	    (right == NULL ? COMPETITION_POSSIBLE : right->competition) &&
+	    same_visibility(left != NULL ? left->visibility : NULL,
+	    right != NULL ? right->visibility : NULL));
 }
 
 static void
@@ -397,6 +558,7 @@ merge_analysis_state(struct analysis_state *merged,
 	merge_states(&merged->locks, incoming->locks);
 	if (merged->competition != incoming->competition)
 		merged->competition = COMPETITION_POSSIBLE;
+	merge_visibility(&merged->visibility, incoming->visibility);
 }
 
 static struct block_info *
@@ -456,6 +618,53 @@ transfer_competition_state(struct analysis_state *state,
 }
 
 static void
+transfer_visibility_expression(struct function_info *function,
+    struct analysis_state *state, struct expression *expr,
+    enum visibility_state visibility, bool diagnose)
+{
+	struct locklint_access region;
+
+	if (expr == NULL)
+		return;
+	if (expr->type == EXPR_COMMA) {
+		transfer_visibility_expression(function, state, expr->left,
+		    visibility, diagnose);
+		transfer_visibility_expression(function, state, expr->right,
+		    visibility, diagnose);
+		return;
+	}
+	if (!locklint_get_access(function->tu, expr, &region)) {
+		if (diagnose) {
+			warning(expr->pos,
+			    "locklint: visibility annotation has no object");
+		}
+		return;
+	}
+	set_visibility(&state->visibility, &region, visibility);
+}
+
+static void
+transfer_visibility_state(struct function_info *function,
+    struct analysis_state *state, const struct instruction *insn,
+    bool diagnose)
+{
+	enum visibility_state visibility;
+
+	switch (locklint_get_execution_annotation(insn)) {
+	case LOCKLINT_EXECUTION_INVISIBLE:
+		visibility = VISIBILITY_INVISIBLE;
+		break;
+	case LOCKLINT_EXECUTION_VISIBLE:
+		visibility = VISIBILITY_VISIBLE;
+		break;
+	default:
+		return;
+	}
+	transfer_visibility_expression(function, state, insn->context_expr,
+	    visibility, diagnose);
+}
+
+static void
 transfer_instruction(struct function_info *function,
     struct analysis_state *state, struct instruction *insn)
 {
@@ -463,6 +672,7 @@ transfer_instruction(struct function_info *function,
 	transfer_lock_action(function, &state->locks, insn);
 	transfer_assertion(function, &state->locks, insn);
 	transfer_competition_state(state, insn);
+	transfer_visibility_state(function, state, insn, false);
 }
 
 static struct analysis_state *
@@ -1805,6 +2015,8 @@ collect_local_lock_conditions(struct function_info *function)
 			if (protected_access(function, insn, &access, &lock,
 			    &data_member) &&
 			    state->competition != COMPETITION_NONE &&
+			    get_visibility(state->visibility, &access) !=
+			    VISIBILITY_INVISIBLE &&
 			    get_state(state->locks, &lock) == LOCK_NOT_HELD &&
 			    formal_argument(function->ep, access.root,
 			    &argument)) {
@@ -1892,6 +2104,9 @@ check_access(struct function_info *function, struct analysis_state *state,
 	if (!protected_access(function, insn, &access, &lock, &data_member))
 		return;
 	if (state->competition == COMPETITION_NONE)
+		return;
+	if (get_visibility(state->visibility, &access) ==
+	    VISIBILITY_INVISIBLE)
 		return;
 	lock_state = get_state(state->locks, &lock);
 	if (lock_state == LOCK_NOT_HELD) {
@@ -2083,6 +2298,7 @@ emit_diagnostics(struct function_info *function)
 			check_lock_action(function, state, insn);
 			transfer_assertion(function, &state->locks, insn);
 			transfer_competition_state(state, insn);
+			transfer_visibility_state(function, state, insn, true);
 		} END_FOR_EACH_PTR(insn);
 		check_return_state(function, block, state);
 		free_analysis_state(state);

@@ -150,10 +150,9 @@ run_capture "execution markers" visibility-linearized.out \
 grep 'context     ' visibility-linearized.out > visibility-markers.out
 compare "execution markers" visibility-markers.ref visibility-markers.out
 
-run_capture "competition state" visibility-competition.out \
+run_capture "local exposure state" visibility-state.out \
     "$LOCKLINT" --check-locks visibility.c
-compare "competition state" visibility-competition.ref \
-    visibility-competition.out
+compare "local exposure state" visibility-state.ref visibility-state.out
 
 #
 # Verify intraprocedural lock state across branches, loops, and returns.

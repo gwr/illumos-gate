@@ -37,6 +37,8 @@ bool locklint_get_access(struct translation_unit *, struct expression *,
     struct locklint_access *);
 bool locklint_same_access(const struct locklint_access *,
     const struct locklint_access *);
+bool locklint_access_contains(const struct locklint_access *,
+    const struct locklint_access *);
 bool locklint_access_base(const struct locklint_access *, struct symbol *,
     unsigned long, unsigned long *);
 void locklint_show_access(FILE *, struct expression *);
