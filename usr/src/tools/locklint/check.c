@@ -43,6 +43,12 @@ enum lock_state {
 	LOCK_STATE_COUNT
 };
 
+enum competition_state {
+	COMPETITION_NONE,
+	COMPETITION_POSSIBLE,
+	COMPETITION_PRESENT
+};
+
 enum function_root_reason {
 	FUNCTION_ROOT_EXTERNAL = 1 << 0,
 	FUNCTION_ROOT_NO_DIRECT_CALLER = 1 << 1,
@@ -61,6 +67,7 @@ struct state_entry {
 
 struct analysis_state {
 	struct state_entry *locks;
+	enum competition_state competition;
 };
 
 struct block_info {
@@ -355,8 +362,12 @@ copy_analysis_state(const struct analysis_state *state)
 	copy = calloc(1, sizeof (*copy));
 	if (copy == NULL)
 		die("out of memory copying analysis state");
-	if (state != NULL)
+	if (state != NULL) {
 		copy->locks = copy_states(state->locks);
+		copy->competition = state->competition;
+	} else {
+		copy->competition = COMPETITION_POSSIBLE;
+	}
 	return (copy);
 }
 
@@ -374,7 +385,9 @@ same_analysis_state(const struct analysis_state *left,
     const struct analysis_state *right)
 {
 	return (same_states(left != NULL ? left->locks : NULL,
-	    right != NULL ? right->locks : NULL));
+	    right != NULL ? right->locks : NULL) &&
+	    (left == NULL ? COMPETITION_POSSIBLE : left->competition) ==
+	    (right == NULL ? COMPETITION_POSSIBLE : right->competition));
 }
 
 static void
@@ -382,6 +395,8 @@ merge_analysis_state(struct analysis_state *merged,
     const struct analysis_state *incoming)
 {
 	merge_states(&merged->locks, incoming->locks);
+	if (merged->competition != incoming->competition)
+		merged->competition = COMPETITION_POSSIBLE;
 }
 
 static struct block_info *
@@ -425,12 +440,29 @@ transfer_assertion(struct function_info *function,
 }
 
 static void
+transfer_competition_state(struct analysis_state *state,
+    const struct instruction *insn)
+{
+	switch (locklint_get_execution_annotation(insn)) {
+	case LOCKLINT_EXECUTION_NO_COMPETITION:
+		state->competition = COMPETITION_NONE;
+		break;
+	case LOCKLINT_EXECUTION_COMPETITION:
+		state->competition = COMPETITION_PRESENT;
+		break;
+	default:
+		break;
+	}
+}
+
+static void
 transfer_instruction(struct function_info *function,
     struct analysis_state *state, struct instruction *insn)
 {
 	transfer_call_effects(function, &state->locks, insn);
 	transfer_lock_action(function, &state->locks, insn);
 	transfer_assertion(function, &state->locks, insn);
+	transfer_competition_state(state, insn);
 }
 
 static struct analysis_state *
@@ -1772,6 +1804,7 @@ collect_local_lock_conditions(struct function_info *function)
 				continue;
 			if (protected_access(function, insn, &access, &lock,
 			    &data_member) &&
+			    state->competition != COMPETITION_NONE &&
 			    get_state(state->locks, &lock) == LOCK_NOT_HELD &&
 			    formal_argument(function->ep, access.root,
 			    &argument)) {
@@ -1857,6 +1890,8 @@ check_access(struct function_info *function, struct analysis_state *state,
 	unsigned int argument;
 
 	if (!protected_access(function, insn, &access, &lock, &data_member))
+		return;
+	if (state->competition == COMPETITION_NONE)
 		return;
 	lock_state = get_state(state->locks, &lock);
 	if (lock_state == LOCK_NOT_HELD) {
@@ -2047,6 +2082,7 @@ emit_diagnostics(struct function_info *function)
 			check_direct_call(function, state, insn);
 			check_lock_action(function, state, insn);
 			transfer_assertion(function, &state->locks, insn);
+			transfer_competition_state(state, insn);
 		} END_FOR_EACH_PTR(insn);
 		check_return_state(function, block, state);
 		free_analysis_state(state);

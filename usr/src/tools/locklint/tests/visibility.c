@@ -41,6 +41,17 @@ competition_markers(int value)
 }
 
 static void
+competition_merge(int value, int no_competition)
+{
+	if (no_competition) {
+		_NOTE(NO_COMPETING_THREADS_NOW)
+	} else {
+		_NOTE(COMPETING_THREADS_NOW)
+	}
+	visibility_object.protected = value;
+}
+
+static void
 visibility_markers(struct visibility_state *state, int value, int invisible)
 {
 	if (invisible) {
