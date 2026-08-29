@@ -250,8 +250,17 @@ void die(const char *fmt, ...)
 	exit(1);
 }
 
-static struct token *pre_buffer_begin = NULL;
-static struct token *pre_buffer_end = NULL;
+/*
+ * Clients may add source before sparse_initialize().  Keep it as text until
+ * init_symbols() has established the canonical identifiers for keywords.
+ */
+struct pre_buffer {
+	char *text;
+	struct pre_buffer *next;
+};
+
+static struct pre_buffer *pre_buffers;
+static struct pre_buffer **pre_buffers_tail = &pre_buffers;
 
 int Waddress = 0;
 int Waddress_space = 1;
@@ -334,19 +343,43 @@ static char *cmdline_include[CMDLINE_INCLUDE];
 void add_pre_buffer(const char *fmt, ...)
 {
 	va_list args;
-	unsigned int size;
-	struct token *begin, *end;
-	char buffer[4096];
+	struct pre_buffer *buffer;
 
+	buffer = malloc(sizeof(*buffer));
+	if (!buffer)
+		die("out of memory adding predefined source");
 	va_start(args, fmt);
-	size = vsnprintf(buffer, sizeof(buffer), fmt, args);
+	buffer->text = xvasprintf(fmt, args);
 	va_end(args);
-	begin = tokenize_buffer(buffer, size, &end);
-	if (!pre_buffer_begin)
-		pre_buffer_begin = begin;
-	if (pre_buffer_end)
-		pre_buffer_end->next = begin;
-	pre_buffer_end = end;
+	buffer->next = NULL;
+	*pre_buffers_tail = buffer;
+	pre_buffers_tail = &buffer->next;
+}
+
+static struct token *tokenize_pre_buffers(void)
+{
+	struct token *begin = NULL;
+	struct token *end = NULL;
+	struct pre_buffer *buffer = pre_buffers;
+
+	while (buffer) {
+		struct pre_buffer *next = buffer->next;
+		struct token *part_begin;
+		struct token *part_end;
+
+		part_begin = tokenize_buffer(buffer->text,
+		    strlen(buffer->text), &part_end);
+		if (!begin)
+			begin = part_begin;
+		if (end)
+			end->next = part_begin;
+		end = part_end;
+		free(buffer);
+		buffer = next;
+	}
+	pre_buffers = NULL;
+	pre_buffers_tail = &pre_buffers;
+	return begin;
 }
 
 static char **handle_switch_D(char *arg, char **next)
@@ -1539,7 +1572,7 @@ static struct symbol_list *sparse_initial(void)
 	for (i = 0; i < cmdline_include_nr; i++)
 		add_pre_buffer("#argv_include \"%s\"\n", cmdline_include[i]);
 
-	return sparse_tokenstream(pre_buffer_begin);
+	return sparse_tokenstream(tokenize_pre_buffers());
 }
 
 static int endswith(const char *str, const char *suffix)

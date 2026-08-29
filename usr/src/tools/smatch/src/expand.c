@@ -1261,6 +1261,10 @@ static int expand_statement(struct statement *stmt)
 		break;
 	case STMT_CONTEXT:
 		expand_expression(stmt->expression);
+		/* Keep retained client expressions semantically normalized. */
+		if (stmt->context_tag) {
+			expand_expression(stmt->context);
+		}
 		break;
 	case STMT_RANGE:
 		expand_expression(stmt->range_expression);

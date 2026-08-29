@@ -3755,6 +3755,10 @@ struct symbol *evaluate_statement(struct statement *stmt)
 		return NULL;
 	case STMT_CONTEXT:
 		evaluate_expression(stmt->expression);
+		/* Client expressions are retained in IR but not lowered. */
+		if (stmt->context_tag) {
+			evaluate_expression(stmt->context);
+		}
 		return NULL;
 	case STMT_RANGE:
 		evaluate_expression(stmt->range_expression);

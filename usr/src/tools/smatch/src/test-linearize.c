@@ -59,6 +59,9 @@ int main(int argc, char **argv)
 	struct string_list *filelist = NULL;
 	char *file;
 
+	/* Exercise source supplied by a client before Sparse initialization. */
+	add_pre_buffer("#define __test_pre_buffer_context(expr, delta, tag) "
+	    "__context__(expr, delta, tag)\n");
 	clean_up_symbols(sparse_initialize(argc, argv, &filelist));
 	FOR_EACH_PTR(filelist, file) {
 		clean_up_symbols(sparse(file));

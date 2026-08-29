@@ -51,6 +51,9 @@ static int context_increase(struct basic_block *bb, int entry)
 			continue;
 		if (insn->opcode != OP_CONTEXT)
 			continue;
+		/* Tagged contexts are client events, not balance changes. */
+		if (insn->context_tag)
+			continue;
 		val = insn->increment;
 		if (insn->check) {
 			int current = sum + entry;

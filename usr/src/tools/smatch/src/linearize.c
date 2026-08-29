@@ -473,7 +473,10 @@ const char *show_instruction(struct instruction *insn)
 		break;
 
 	case OP_CONTEXT:
-		buf += sprintf(buf, "%s%d", insn->check ? "check: " : "", insn->increment);
+		buf += sprintf(buf, "%s%d", insn->check ? "check: " : "",
+		    insn->increment);
+		if (insn->context_tag)
+			buf += sprintf(buf, ", tag %lu", insn->context_tag);
 		break;
 	case OP_RANGE:
 		buf += sprintf(buf, "%s between %s..%s", show_pseudo(insn->src1), show_pseudo(insn->src2), show_pseudo(insn->src3));
@@ -2061,6 +2064,7 @@ static pseudo_t linearize_context(struct entrypoint *ep, struct statement *stmt)
 	struct expression *expr = stmt->expression;
 
 	insn->increment = get_expression_value(expr);
+	insn->context_tag = stmt->context_tag;
 	insn->context_expr = stmt->context;
 	add_one_insn(ep, insn);
 	return VOID;

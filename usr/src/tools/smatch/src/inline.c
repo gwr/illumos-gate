@@ -342,13 +342,20 @@ static struct statement *copy_one_statement(struct statement *stmt)
 		stmt = newstmt;
 		break;
 	}
-	case STMT_CONTEXT:
 	case STMT_EXPRESSION: {
 		struct expression *expr = copy_expression(stmt->expression);
 		if (expr == stmt->expression)
 			break;
 		stmt = dup_statement(stmt);
 		stmt->expression = expr;
+		break;
+	}
+	case STMT_CONTEXT: {
+		struct statement *newstmt = dup_statement(stmt);
+
+		newstmt->expression = copy_expression(stmt->expression);
+		newstmt->context = copy_expression(stmt->context);
+		stmt = newstmt;
 		break;
 	}
 	case STMT_RANGE: {

@@ -55,6 +55,7 @@ struct statement {
 		struct /* context */ {
 			struct expression *expression;
 			struct expression *context;
+			unsigned long context_tag;
 		};
 		struct /* return_statement */ {
 			struct expression *ret_value;

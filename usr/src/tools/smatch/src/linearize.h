@@ -142,6 +142,7 @@ struct instruction {
 		struct /* context */ {
 			int increment;
 			int check;
+			unsigned long context_tag;
 			struct expression *context_expr;
 		};
 		struct /* asm */ {

@@ -403,11 +403,13 @@ Others
 Sparse tagging (line numbers, context, whatever)
 ------------------------------------------------
 .. op:: OP_CONTEXT
-	Currently only used for lock/unlock tracking.
+	Used for lock/unlock tracking and tagged analysis events.
 
-	* .context_expr: unused
+	* .context_expr: optional expression associated with the context
 	* .increment: (1 for locking, -1 for unlocking)
 	* .check: (ignore the instruction if 0)
+	* .context_tag: optional unsigned long client-defined event tag; zero for
+	  ordinary context tracking
 
 Misc ops
 --------

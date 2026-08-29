@@ -347,6 +347,12 @@ int dominates(pseudo_t pseudo, struct instruction *insn, struct instruction *dom
 {
 	int opcode = dom->opcode;
 
+	/*
+	 * A client event may change how surrounding accesses are interpreted.
+	 * Do not combine memory operations across it.
+	 */
+	if (opcode == OP_CONTEXT && dom->context_tag)
+		return -1;
 	if (opcode == OP_CALL || opcode == OP_ENTRY)
 		return local ? 0 : -1;
 	if (opcode != OP_LOAD && opcode != OP_STORE)
@@ -451,6 +457,12 @@ static void kill_dead_stores_bb(pseudo_t pseudo, unsigned long generation, struc
 		case OP_CALL:
 			if (!local)
 				return;
+			continue;
+		case OP_CONTEXT:
+			/* Preserve accesses on both sides of a client event. */
+			if (insn->context_tag)
+				return;
+			continue;
 		default:
 			continue;
 		}
@@ -813,5 +825,4 @@ out:
 		/* nothing to do */;
 	} END_FOR_EACH_PTR(bb);
 }
-
 

@@ -2495,6 +2495,19 @@ static struct token *parse_context_statement(struct token *token, struct stateme
 		token = assignment_expression(token, &stmt->expression);
 		if (!stmt->expression)
 			unexpected(token, "expression expected after ','");
+		if (match_op(token, ',')) {
+			struct expression *tag = NULL;
+
+			token = token->next;
+			token = assignment_expression(token, &tag);
+			if (!tag) {
+				unexpected(token,
+				    "context tag expected after ','");
+			} else {
+				stmt->context_tag =
+				    get_expression_value(tag);
+			}
+		}
 	}
 	token = expect(token, ')', "at end of __context__ statement");
 	return expect(token, ';', "at end of statement");

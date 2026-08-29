@@ -149,8 +149,15 @@ require the context \fIexpression\fR (for instance, a lock) to have the value
 \fIin_context\fR (a constant nonnegative integer) when called, and return with
 the value \fIout_context\fR (a constant nonnegative integer).  For APIs
 defined via macros, use the statement form
-.BI __context__( expression , in_value , out_value )
+.BI __context__( expression , delta "\fR[,\fP" tag "\fR]\fP" )
 in the body of the macro.
+The optional
+.B unsigned long
+constant
+.I tag
+identifies a client-defined analysis event.  Tagged contexts are retained in
+the intermediate representation but are not included in Sparse's ordinary
+context-balance calculation.
 
 With \fB-Wcontext\fR Sparse will warn when it sees a function change the
 context without indicating this with a \fBcontext\fR attribute, either by
