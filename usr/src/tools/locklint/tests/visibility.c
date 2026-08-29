@@ -140,6 +140,45 @@ visibility_invalid(void)
 }
 
 static void
+read_only_competition(int value)
+{
+	_NOTE(NO_COMPETING_THREADS_NOW)
+	visibility_object.read_only = value;
+	_NOTE(COMPETING_THREADS_NOW)
+	visibility_object.read_only = value;
+}
+
+static void
+read_only_visibility(struct visibility_state *state, int value)
+{
+	_NOTE(NOW_INVISIBLE_TO_OTHER_THREADS(state->read_only))
+	state->read_only = value;
+	_NOTE(NOW_VISIBLE_TO_OTHER_THREADS(state->read_only))
+	state->read_only = value;
+}
+
+static void
+read_only_withdrawal(struct visibility_state *state, int value)
+{
+	_NOTE(COMPETING_THREADS_NOW)
+	_NOTE(NOW_INVISIBLE_TO_OTHER_THREADS(state->read_only))
+	state->read_only = value;
+	_NOTE(NOW_VISIBLE_TO_OTHER_THREADS(state->read_only))
+	state->read_only = value;
+}
+
+static void
+read_only_merge(struct visibility_state *state, int value, int invisible)
+{
+	if (invisible) {
+		_NOTE(NOW_INVISIBLE_TO_OTHER_THREADS(state->read_only))
+	} else {
+		_NOTE(NOW_VISIBLE_TO_OTHER_THREADS(state->read_only))
+	}
+	state->read_only = value;
+}
+
+static void
 contract_markers(struct visibility_state *first,
     struct visibility_state *second)
 {

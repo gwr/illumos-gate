@@ -3,3 +3,4 @@
 ../locklint: data-policy.c:64:22: warning: locklint: protected member 'readable' accessed without holding 'lock'
 ../locklint: data-policy.c:72:31: warning: locklint: protected member 'mutex_after_scheme' accessed without holding 'lock'
 ../locklint: data-policy.c:73:22: warning: locklint: protected member 'mutex_after_scheme' accessed without holding 'lock'
+../locklint: data-policy.c:77:22: warning: locklint: read-only data 'read_only' modified while it may be visible to competing threads

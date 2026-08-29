@@ -2092,6 +2092,41 @@ propagate_function_lock_conditions(struct function_info *function)
 }
 
 static void
+check_read_only_access(struct function_info *function,
+    struct analysis_state *state, struct instruction *insn)
+{
+	struct locklint_access access;
+	struct locklint_access lock;
+	struct locklint_data_policy policy;
+	struct symbol *data;
+	const char *name;
+	enum visibility_state visibility;
+
+	if (insn->opcode != OP_STORE || insn->access == NULL ||
+	    !locklint_get_access(function->tu, insn->access, &access) ||
+	    !locklint_data_policy(&access, &policy, &lock) ||
+	    !policy.read_only)
+		return;
+	visibility = get_visibility(state->visibility, &access);
+	if (state->competition == COMPETITION_NONE ||
+	    visibility == VISIBILITY_INVISIBLE)
+		return;
+	data = access.member != NULL ? access.member : access.root;
+	name = data != NULL && data->ident != NULL ?
+	    show_ident(data->ident) : "<unknown>";
+	if (state->competition == COMPETITION_PRESENT &&
+	    visibility == VISIBILITY_VISIBLE) {
+		warning(insn->access->pos,
+		    "locklint: read-only data '%s' modified while visible "
+		    "to competing threads", name);
+	} else {
+		warning(insn->access->pos,
+		    "locklint: read-only data '%s' modified while it may be "
+		    "visible to competing threads", name);
+	}
+}
+
+static void
 check_access(struct function_info *function, struct analysis_state *state,
     struct instruction *insn)
 {
@@ -2293,6 +2328,7 @@ emit_diagnostics(struct function_info *function)
 		FOR_EACH_PTR(block->bb->insns, insn) {
 			if (insn->bb == NULL)
 				continue;
+			check_read_only_access(function, state, insn);
 			check_access(function, state, insn);
 			check_direct_call(function, state, insn);
 			check_lock_action(function, state, insn);
