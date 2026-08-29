@@ -31,5 +31,21 @@ function check_cycle_left tu=calls.c definition=calls.c:114:1 linkage=internal r
   call calls.c:118:34 resolved check_cycle_right tu=calls.c
 function check_cycle_right tu=calls.c definition=calls.c:122:1 linkage=internal reachable=no
   call calls.c:126:33 resolved check_cycle_left tu=calls.c
+function check_no_competition_caller tu=calls.c definition=calls.c:130:1 linkage=internal reachable=yes
+  root no-known-direct-caller
+  call calls.c:133:30 resolved check_wrapper tu=calls.c
+function check_invisible_caller tu=calls.c definition=calls.c:137:1 linkage=internal reachable=yes
+  root no-known-direct-caller
+  call calls.c:140:30 resolved check_wrapper tu=calls.c
+function check_competition_merge_caller tu=calls.c definition=calls.c:144:1 linkage=internal reachable=yes
+  root no-known-direct-caller
+  call calls.c:151:29 resolved check_callee tu=calls.c
+function check_visibility_merge_caller tu=calls.c definition=calls.c:155:1 linkage=internal reachable=yes
+  root no-known-direct-caller
+  call calls.c:162:29 resolved check_callee tu=calls.c
+function check_lock_merge_caller tu=calls.c definition=calls.c:166:1 linkage=internal reachable=yes
+  root no-known-direct-caller
+  call calls.c:169:28 unresolved-external mutex_enter
+  call calls.c:170:29 resolved check_callee tu=calls.c
 escapes
 pointer activity

@@ -1,3 +1,7 @@
 ../locklint: calls.c:58:29: warning: locklint: call to 'check_callee' accesses protected member 'value' without holding 'lock'
 ../locklint: calls.c:81:30: warning: locklint: call to 'check_wrapper' accesses protected member 'value' without holding 'lock'
 ../locklint: calls.c:108:22: warning: locklint: protected member 'value' accessed without holding 'lock'
+../locklint: calls.c:151:29: warning: locklint: protection for member 'value' is not established on every path calling 'check_callee'
+../locklint: calls.c:162:29: warning: locklint: protection for member 'value' is not established on every path calling 'check_callee'
+../locklint: calls.c:170:29: warning: locklint: protection for member 'value' is not established on every path calling 'check_callee'
+../locklint: calls.c:170:30: warning: locklint: lock 'lock' held on only some paths returning from 'check_lock_merge_caller'

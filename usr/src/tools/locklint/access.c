@@ -216,6 +216,8 @@ locklint_access_contains(const struct locklint_access *container,
 		return (false);
 	if (container->member == NULL)
 		return (true);
+	if (locklint_same_access(container, access))
+		return (true);
 	/*
 	 * Walk from the selected leaf toward its root.  Subtracting each
 	 * member's relative offset recovers the absolute offset of its parent.

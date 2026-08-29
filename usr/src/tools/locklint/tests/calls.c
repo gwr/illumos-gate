@@ -125,3 +125,47 @@ check_cycle_right(int depth)
 		return (0);
 	return (check_cycle_left(depth - 1));
 }
+
+static int
+check_no_competition_caller(struct call_state *state)
+{
+	_NOTE(NO_COMPETING_THREADS_NOW)
+	return (check_wrapper(state));
+}
+
+static int
+check_invisible_caller(struct call_state *state)
+{
+	_NOTE(NOW_INVISIBLE_TO_OTHER_THREADS(state->value))
+	return (check_wrapper(state));
+}
+
+static int
+check_competition_merge_caller(struct call_state *state, int quiet)
+{
+	if (quiet) {
+		_NOTE(NO_COMPETING_THREADS_NOW)
+	} else {
+		_NOTE(COMPETING_THREADS_NOW)
+	}
+	return (check_callee(state));
+}
+
+static int
+check_visibility_merge_caller(struct call_state *state, int invisible)
+{
+	if (invisible) {
+		_NOTE(NOW_INVISIBLE_TO_OTHER_THREADS(state->value))
+	} else {
+		_NOTE(NOW_VISIBLE_TO_OTHER_THREADS(state->value))
+	}
+	return (check_callee(state));
+}
+
+static int
+check_lock_merge_caller(struct call_state *state, int take_lock)
+{
+	if (take_lock)
+		mutex_enter(&state->lock);
+	return (check_callee(state));
+}
