@@ -102,14 +102,20 @@ struct function_info {
 	struct lock_transfer *transfers;
 	bool has_direct_caller;
 	bool reachable_from_root;
+	bool internal_linkage;
+	bool identity_lower_bound;
+	unsigned int identity_sequence;
 	avl_node_t by_entrypoint;
+	avl_node_t by_identity;
 	struct function_info *next;
 };
 
 static struct function_info *functions;
 static struct function_info **functions_tail = &functions;
 static avl_tree_t functions_by_entrypoint;
-static bool functions_by_entrypoint_initialized;
+static avl_tree_t functions_by_identity;
+static bool function_indexes_initialized;
+static unsigned int next_function_identity_sequence;
 
 static void transfer_call_effects(struct function_info *,
     struct state_entry **, struct instruction *);
@@ -434,12 +440,77 @@ compare_function_entrypoint(const void *left_arg, const void *right_arg)
 	return (AVL_PCMP(left->ep, right->ep));
 }
 
+static int
+compare_ident(struct ident *left, struct ident *right)
+{
+	size_t length;
+	int result;
+
+	if (left == right)
+		return (0);
+	if (left == NULL)
+		return (-1);
+	if (right == NULL)
+		return (1);
+	length = left->len < right->len ? left->len : right->len;
+	result = memcmp(left->name, right->name, length);
+	if (result != 0)
+		return (AVL_ISIGN(result));
+	return (AVL_CMP(left->len, right->len));
+}
+
+static int
+compare_position(struct position left, struct position right)
+{
+	int result;
+
+	result = AVL_CMP(left.stream, right.stream);
+	if (result != 0)
+		return (result);
+	result = AVL_CMP(left.line, right.line);
+	if (result != 0)
+		return (result);
+	return (AVL_CMP(left.pos, right.pos));
+}
+
+static int
+compare_function_identity(const void *left_arg, const void *right_arg)
+{
+	const struct function_info *left = left_arg;
+	const struct function_info *right = right_arg;
+	const struct symbol *left_definition = left->ep->name;
+	const struct symbol *right_definition = right->ep->name;
+	int result;
+
+	result = AVL_CMP(left->internal_linkage, right->internal_linkage);
+	if (result != 0)
+		return (result);
+	result = compare_ident(left_definition->ident, right_definition->ident);
+	if (result != 0)
+		return (result);
+	if (left->internal_linkage) {
+		result = AVL_PCMP(left->tu, right->tu);
+		if (result != 0)
+			return (result);
+	}
+	/* A transient lower-bound key precedes every matching definition. */
+	if (left->identity_lower_bound != right->identity_lower_bound)
+		return (left->identity_lower_bound ? -1 : 1);
+	if (left->identity_lower_bound)
+		return (0);
+	result = compare_position(left_definition->pos, right_definition->pos);
+	if (result != 0)
+		return (result);
+	return (AVL_CMP(left->identity_sequence,
+	    right->identity_sequence));
+}
+
 static struct function_info *
 find_function(struct entrypoint *ep)
 {
 	struct function_info key = { 0 };
 
-	if (!functions_by_entrypoint_initialized)
+	if (!function_indexes_initialized)
 		return (NULL);
 	key.ep = ep;
 	return (avl_find(&functions_by_entrypoint, &key, NULL));
@@ -448,51 +519,61 @@ find_function(struct entrypoint *ep)
 static bool
 same_ident(struct ident *left, struct ident *right)
 {
-	return (left == right ||
-	    (left != NULL && right != NULL &&
-	    left->len == right->len &&
-	    memcmp(left->name, right->name, left->len) == 0));
+	return (compare_ident(left, right) == 0);
 }
 
 static struct function_info *
-find_internal_function(struct translation_unit *tu, struct ident *ident)
+find_identity_function(struct translation_unit *tu, struct symbol *symbol,
+    bool internal_linkage)
 {
+	struct entrypoint entrypoint = { 0 };
+	struct function_info key = { 0 };
 	struct function_info *function;
+	avl_index_t where;
 
-	for (function = functions; function != NULL; function = function->next) {
-		struct symbol *definition = function->ep->name;
+	if (!function_indexes_initialized || symbol->ident == NULL)
+		return (NULL);
+	entrypoint.name = symbol;
+	key.tu = tu;
+	key.ep = &entrypoint;
+	key.internal_linkage = internal_linkage;
+	key.identity_lower_bound = true;
+	(void) avl_find(&functions_by_identity, &key, &where);
+	function = avl_nearest(&functions_by_identity, where, AVL_AFTER);
+	if (function == NULL ||
+	    function->internal_linkage != internal_linkage ||
+	    (internal_linkage && function->tu != tu) ||
+	    !same_ident(function->ep->name->ident, symbol->ident))
+		return (NULL);
+	return (function);
+}
 
-		if (function->tu == tu &&
-		    (definition->ctype.modifiers & MOD_STATIC) != 0 &&
-		    same_ident(ident, definition->ident))
-			return (function);
-	}
-	return (NULL);
+static struct function_info *
+find_internal_function(struct translation_unit *tu, struct symbol *symbol)
+{
+	return (find_identity_function(tu, symbol, true));
 }
 
 static struct function_info *
 find_external_function(struct symbol *symbol, bool *ambiguous)
 {
 	struct function_info *function;
-	struct function_info *found = NULL;
+	struct function_info *next;
 
 	*ambiguous = false;
 	if (symbol->ident == NULL ||
 	    (symbol->ctype.modifiers & MOD_STATIC) != 0)
 		return (NULL);
-	for (function = functions; function != NULL; function = function->next) {
-		struct symbol *definition = function->ep->name;
-
-		if ((definition->ctype.modifiers & MOD_STATIC) != 0 ||
-		    !same_ident(symbol->ident, definition->ident))
-			continue;
-		if (found != NULL) {
-			*ambiguous = true;
-			return (NULL);
-		}
-		found = function;
+	function = find_identity_function(NULL, symbol, false);
+	if (function == NULL)
+		return (NULL);
+	next = AVL_NEXT(&functions_by_identity, function);
+	if (next != NULL && !next->internal_linkage &&
+	    same_ident(symbol->ident, next->ep->name->ident)) {
+		*ambiguous = true;
+		return (NULL);
 	}
-	return (found);
+	return (function);
 }
 
 static struct function_info *
@@ -506,7 +587,7 @@ direct_callee(struct function_info *caller, struct instruction *insn)
 	    insn->func->type != PSEUDO_SYM || insn->func->sym == NULL)
 		return (NULL);
 	symbol = insn->func->sym;
-	function = find_internal_function(caller->tu, symbol->ident);
+	function = find_internal_function(caller->tu, symbol);
 	/*
 	 * Prefer the translation unit's static definition only when it is
 	 * visible to this declaration.  An intervening local can make a nested
@@ -532,7 +613,7 @@ ambiguous_external_callee(struct function_info *caller,
 	    insn->func->type != PSEUDO_SYM || insn->func->sym == NULL)
 		return (false);
 	symbol = insn->func->sym;
-	if (find_internal_function(caller->tu, symbol->ident) != NULL &&
+	if (find_internal_function(caller->tu, symbol) != NULL &&
 	    locklint_symbol_can_use_internal(symbol))
 		return (false);
 	if (symbol->ep != NULL ||
@@ -1470,18 +1551,27 @@ locklint_check_add(struct translation_unit *tu, struct entrypoint *ep)
 {
 	struct function_info *function;
 
-	if (!functions_by_entrypoint_initialized) {
+	if (!function_indexes_initialized) {
 		avl_create(&functions_by_entrypoint, compare_function_entrypoint,
 		    sizeof (struct function_info),
 		    offsetof(struct function_info, by_entrypoint));
-		functions_by_entrypoint_initialized = true;
+		avl_create(&functions_by_identity, compare_function_identity,
+		    sizeof (struct function_info),
+		    offsetof(struct function_info, by_identity));
+		function_indexes_initialized = true;
 	}
 	function = calloc(1, sizeof (*function));
 	if (function == NULL)
 		die("out of memory registering function analysis");
 	function->tu = tu;
 	function->ep = ep;
+	function->internal_linkage =
+	    (ep->name->ctype.modifiers & MOD_STATIC) != 0;
+	if (++next_function_identity_sequence == 0)
+		die("too many functions for identity index");
+	function->identity_sequence = next_function_identity_sequence;
 	avl_add(&functions_by_entrypoint, function);
+	avl_add(&functions_by_identity, function);
 	*functions_tail = function;
 	functions_tail = &function->next;
 }
@@ -1541,13 +1631,16 @@ locklint_check_all(void)
 			transfer = transfer_next;
 		}
 		avl_remove(&functions_by_entrypoint, functions);
+		avl_remove(&functions_by_identity, functions);
 		free_blocks(functions->blocks);
 		free(functions);
 		functions = next;
 	}
-	if (functions_by_entrypoint_initialized) {
+	if (function_indexes_initialized) {
 		avl_destroy(&functions_by_entrypoint);
-		functions_by_entrypoint_initialized = false;
+		avl_destroy(&functions_by_identity);
+		function_indexes_initialized = false;
 	}
+	next_function_identity_sequence = 0;
 	functions_tail = &functions;
 }
