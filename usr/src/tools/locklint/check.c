@@ -111,6 +111,12 @@ struct transfer_block_info {
 struct protection_condition {
 	unsigned int argument;
 	/*
+	 * A NULL data root is relative to argument.  An absolute datum retains
+	 * both its source symbol and canonical identity.
+	 */
+	struct symbol *data_root;
+	struct object_identity *data_object;
+	/*
 	 * A NULL root is relative to argument.  An absolute root retains both
 	 * its source symbol and canonical identity across translation units.
 	 */
@@ -1451,15 +1457,25 @@ map_call_protection_condition(struct function_info *function,
     struct instruction *insn, const struct protection_condition *condition,
     struct locklint_access *object, struct locklint_access *lock)
 {
-	struct locklint_access argument_access;
+	struct locklint_access base;
 	struct expression *argument;
 
-	argument = call_argument(insn, condition->argument);
-	if (!locklint_get_access(function->tu, argument, &argument_access))
-		return (false);
+	if (condition->data_root == NULL) {
+		argument = call_argument(insn, condition->argument);
+		if (!locklint_get_access(function->tu, argument, &base))
+			return (false);
+	} else {
+		argument = NULL;
+		base.root = condition->data_root;
+		base.object = condition->data_object;
+		base.type = condition->data_root->ctype.base_type;
+		base.member = NULL;
+		base.offset = 0;
+		base.expr = NULL;
+	}
 	if (condition->lock_root == NULL) {
-		/* Relative locks move with the formal data object. */
-		*lock = argument_access;
+		/* Relative locks move with the selected data object's base. */
+		*lock = base;
 		lock->member = argument_member(argument,
 		    condition->lock_member);
 		lock->offset += condition->lock_offset;
@@ -1472,7 +1488,7 @@ map_call_protection_condition(struct function_info *function,
 		lock->offset = condition->lock_offset;
 		lock->expr = NULL;
 	}
-	*object = argument_access;
+	*object = base;
 	object->member = argument_member(argument, condition->data_member);
 	object->offset += condition->data_offset;
 	return (true);
@@ -1571,8 +1587,28 @@ same_condition_lock(const struct protection_condition *condition,
 }
 
 static bool
+same_condition_data(const struct protection_condition *condition,
+    struct symbol *root, struct object_identity *object,
+    struct symbol *member, unsigned long offset)
+{
+	struct locklint_access left = { 0 };
+	struct locklint_access right = { 0 };
+
+	left.root = condition->data_root;
+	left.object = condition->data_object;
+	left.member = condition->data_member;
+	left.offset = condition->data_offset;
+	right.root = root;
+	right.object = object;
+	right.member = member;
+	right.offset = offset;
+	return (locklint_same_access(&left, &right));
+}
+
+static bool
 add_protection_condition(struct function_info *function,
-    unsigned int argument,
+    unsigned int argument, struct symbol *data_root,
+    struct object_identity *data_object,
     struct symbol *lock_root, struct object_identity *lock_object,
     struct symbol *lock_member, unsigned long lock_offset,
     struct symbol *data_member, unsigned long data_offset,
@@ -1583,18 +1619,18 @@ add_protection_condition(struct function_info *function,
 	for (condition = function->conditions; condition != NULL;
 	    condition = condition->next) {
 		if (condition->argument == argument &&
+		    same_condition_data(condition, data_root, data_object,
+		    data_member, data_offset) &&
 		    same_condition_lock(condition, lock_root, lock_object,
-		    lock_member, lock_offset) &&
-		    same_ident(condition->data_member == NULL ? NULL :
-		    condition->data_member->ident,
-		    data_member == NULL ? NULL : data_member->ident) &&
-		    condition->data_offset == data_offset)
+		    lock_member, lock_offset))
 			return (false);
 	}
 	condition = calloc(1, sizeof (*condition));
 	if (condition == NULL)
 		die("out of memory recording protection condition");
 	condition->argument = argument;
+	condition->data_root = data_root;
+	condition->data_object = data_object;
 	condition->lock_root = lock_root;
 	condition->lock_object = lock_object;
 	condition->lock_member = lock_member;
@@ -1608,9 +1644,27 @@ add_protection_condition(struct function_info *function,
 }
 
 static bool
-defer_formal_conditions(struct function_info *function)
+defer_conditions(struct function_info *function)
 {
 	return (function->reachable_from_root && function->root_reasons == 0);
+}
+
+static bool
+condition_data_identity(struct function_info *function,
+    const struct locklint_access *access, unsigned int *argument,
+    struct symbol **root, struct object_identity **object)
+{
+	if (formal_argument(function->ep, access->root, argument)) {
+		*root = NULL;
+		*object = NULL;
+		return (true);
+	}
+	if (access->object == NULL)
+		return (false);
+	*argument = 0;
+	*root = access->root;
+	*object = access->object;
+	return (true);
 }
 
 static const char *
@@ -2054,6 +2108,8 @@ collect_local_protection_conditions(struct function_info *function)
 			struct locklint_access access;
 			struct locklint_access lock;
 			struct symbol *data_member;
+			struct symbol *data_root;
+			struct object_identity *data_object;
 			unsigned int argument;
 
 			if (insn->bb == NULL)
@@ -2062,9 +2118,10 @@ collect_local_protection_conditions(struct function_info *function)
 			    &data_member) &&
 			    get_protection_status(state, &access, &lock) ==
 			    PROTECTION_ABSENT &&
-			    formal_argument(function->ep, access.root,
-			    &argument)) {
+			    condition_data_identity(function, &access, &argument,
+			    &data_root, &data_object)) {
 				(void) add_protection_condition(function, argument,
+				    data_root, data_object,
 				    lock.root != access.root ? lock.root : NULL,
 				    lock.root != access.root ?
 				    lock.object : NULL,
@@ -2091,6 +2148,8 @@ propagate_call_protection_conditions(struct function_info *function,
 	    condition = condition->next) {
 		struct locklint_access object;
 		struct locklint_access lock;
+		struct symbol *data_root;
+		struct object_identity *data_object;
 		enum protection_status status;
 		unsigned int caller_argument;
 
@@ -2099,10 +2158,11 @@ propagate_call_protection_conditions(struct function_info *function,
 			continue;
 		status = get_protection_status(state, &object, &lock);
 		if (status != PROTECTION_ABSENT ||
-		    !formal_argument(function->ep, object.root,
-		    &caller_argument))
+		    !condition_data_identity(function, &object,
+		    &caller_argument, &data_root, &data_object))
 			continue;
 		if (add_protection_condition(function, caller_argument,
+		    data_root, data_object,
 		    condition->lock_root, condition->lock_object,
 		    lock.member, lock.offset, object.member, object.offset,
 		    condition->pos))
@@ -2189,9 +2249,14 @@ check_access(struct function_info *function, struct analysis_state *state,
 	if (status == PROTECTION_DEFINITE)
 		return;
 	if (status == PROTECTION_ABSENT) {
-		if (defer_formal_conditions(function) &&
-		    formal_argument(function->ep, access.root, &argument))
-			return;
+		if (defer_conditions(function)) {
+			struct symbol *data_root;
+			struct object_identity *data_object;
+
+			if (condition_data_identity(function, &access, &argument,
+			    &data_root, &data_object))
+				return;
+		}
 	}
 	data_name = data_member != NULL && data_member->ident != NULL ?
 	    show_ident(data_member->ident) : "<unknown>";
@@ -2240,10 +2305,14 @@ check_direct_call(struct function_info *function,
 			if (status == PROTECTION_DEFINITE)
 				continue;
 			if (status == PROTECTION_ABSENT &&
-			    defer_formal_conditions(function) &&
-			    formal_argument(function->ep, object.root,
-			    &caller_argument))
-				continue;
+			    defer_conditions(function)) {
+				struct symbol *data_root;
+				struct object_identity *data_object;
+
+				if (condition_data_identity(function, &object,
+				    &caller_argument, &data_root, &data_object))
+					continue;
+			}
 			data_name = condition->data_member != NULL &&
 			    condition->data_member->ident != NULL ?
 			    show_ident(condition->data_member->ident) :
@@ -2309,7 +2378,7 @@ check_lock_action(struct function_info *function,
 	if (action == LOCKLINT_LOCK_NONE || lock.root == NULL)
 		return;
 	state = get_state(analysis->locks, &lock);
-	defer = defer_formal_conditions(function) &&
+	defer = defer_conditions(function) &&
 	    formal_argument(function->ep, lock.root, &argument);
 	pos = insn->call_expr != NULL ? insn->call_expr->pos : insn->pos;
 	if (action == LOCKLINT_LOCK_ACQUIRE) {

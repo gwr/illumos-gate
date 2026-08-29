@@ -2,3 +2,6 @@
 ../locklint: global-conditions.c:101:26: warning: locklint: call to 'wrap_bare' accesses protected member 'bare' without holding 'global_lock'
 ../locklint: global-conditions.c:118:28: warning: locklint: call to 'read_member' accesses protected member 'member' without holding 'lock'
 ../locklint: global-conditions.c:135:28: warning: locklint: call to 'wrap_member' accesses protected member 'member' without holding 'lock'
+../locklint: global-conditions.c:166:28: warning: locklint: call to 'read_global' accesses protected member 'bare' without holding 'global_lock'
+../locklint: global-conditions.c:183:28: warning: locklint: call to 'wrap_global' accesses protected member 'bare' without holding 'global_lock'
+../locklint: global-conditions.c:236:37: warning: locklint: call to 'wrap_global_relative' accesses protected member 'value' without holding 'lock'

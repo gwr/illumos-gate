@@ -134,3 +134,104 @@ unlocked_member_transitive(struct global_condition_data *data)
 {
 	return (wrap_member(data));
 }
+
+static struct global_condition_data global_data;
+
+static int
+read_global(void)
+{
+	return (global_data.bare);
+}
+
+static int
+wrap_global(void)
+{
+	return (read_global());
+}
+
+static int
+locked_global_direct(void)
+{
+	int value;
+
+	mutex_enter(&global_lock);
+	value = read_global();
+	mutex_exit(&global_lock);
+	return (value);
+}
+
+static int
+unlocked_global_direct(void)
+{
+	return (read_global());
+}
+
+static int
+locked_global_transitive(void)
+{
+	int value;
+
+	mutex_enter(&global_lock);
+	value = wrap_global();
+	mutex_exit(&global_lock);
+	return (value);
+}
+
+static int
+unlocked_global_transitive(void)
+{
+	return (wrap_global());
+}
+
+static int
+quiet_global_transitive(void)
+{
+	_NOTE(NO_COMPETING_THREADS_NOW)
+	return (wrap_global());
+}
+
+static int
+invisible_global_transitive(void)
+{
+	_NOTE(NOW_INVISIBLE_TO_OTHER_THREADS(global_data.bare))
+	return (wrap_global());
+}
+
+struct global_relative_data {
+	mutex_t lock;
+	int value;
+};
+
+static struct global_relative_data global_relative;
+
+_NOTE(MUTEX_PROTECTS_DATA(global_relative_data::lock,
+    global_relative_data::value))
+
+static int
+read_global_relative(void)
+{
+	return (global_relative.value);
+}
+
+static int
+wrap_global_relative(void)
+{
+	return (read_global_relative());
+}
+
+static int
+locked_global_relative(void)
+{
+	int value;
+
+	mutex_enter(&global_relative.lock);
+	value = wrap_global_relative();
+	mutex_exit(&global_relative.lock);
+	return (value);
+}
+
+static int
+unlocked_global_relative(void)
+{
+	return (wrap_global_relative());
+}
