@@ -152,6 +152,30 @@ run_capture "cross translation unit" cross.out "$LOCKLINT" --check-locks \
 compare "cross translation unit" cross.ref cross.out
 
 #
+# Verify the initial call-graph audit: direct call classification, function
+# identity across translation units, and exact function-pointer escapes.
+#
+run_capture "calls callgraph" calls-callgraph.out \
+    "$LOCKLINT" --dump-callgraph calls.c
+compare "calls callgraph" calls-callgraph.ref calls-callgraph.out
+
+run_capture "cross translation unit callgraph" cross-callgraph.out \
+    "$LOCKLINT" --dump-callgraph cross-caller.c cross-callee.c
+compare "cross translation unit callgraph" cross-callgraph.ref \
+    cross-callgraph.out
+
+run_capture "function pointers callgraph" function-pointers-callgraph.out \
+    "$LOCKLINT" --dump-callgraph function-pointers.c
+compare "function pointers callgraph" function-pointers-callgraph.ref \
+    function-pointers-callgraph.out
+
+run_capture "ambiguous call callgraph" ambiguous-call-callgraph.out \
+    "$LOCKLINT" --dump-callgraph ambiguous-call-caller.c \
+    ambiguous-call-first.c ambiguous-call-second.c
+compare "ambiguous call callgraph" ambiguous-call-callgraph.ref \
+    ambiguous-call-callgraph.out
+
+#
 # Verify external object and member identity across translation units.
 #
 run_capture "external objects" external-objects.raw \

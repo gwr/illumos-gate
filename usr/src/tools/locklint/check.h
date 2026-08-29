@@ -16,10 +16,15 @@
 #ifndef CHECK_H
 #define	CHECK_H
 
+#include <stdbool.h>
+
 struct entrypoint;
+struct symbol_list;
 struct translation_unit;
 
+void locklint_check_record_escapes(struct translation_unit *,
+    struct symbol_list *);
 void locklint_check_add(struct translation_unit *, struct entrypoint *);
-void locklint_check_all(void);
+void locklint_check_all(bool, bool);
 
 #endif /* CHECK_H */

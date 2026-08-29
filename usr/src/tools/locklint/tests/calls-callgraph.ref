@@ -1,0 +1,28 @@
+function check_callee tu=calls.c definition=calls.c:39:1 linkage=internal
+function check_locked_caller tu=calls.c definition=calls.c:45:1 linkage=internal
+  call calls.c:49:20 unresolved-external mutex_enter
+  call calls.c:50:29 resolved check_callee tu=calls.c
+  call calls.c:51:19 unresolved-external mutex_exit
+function check_unlocked_caller tu=calls.c definition=calls.c:56:1 linkage=internal
+  call calls.c:58:29 resolved check_callee tu=calls.c
+function check_wrapper tu=calls.c definition=calls.c:62:1 linkage=internal
+  call calls.c:64:29 resolved check_callee tu=calls.c
+function check_locked_wrapper_caller tu=calls.c definition=calls.c:68:1 linkage=internal
+  call calls.c:72:20 unresolved-external mutex_enter
+  call calls.c:73:30 resolved check_wrapper tu=calls.c
+  call calls.c:74:19 unresolved-external mutex_exit
+function check_unlocked_wrapper_caller tu=calls.c definition=calls.c:79:1 linkage=internal
+  call calls.c:81:30 resolved check_wrapper tu=calls.c
+function check_recursive tu=calls.c definition=calls.c:85:1 linkage=internal
+  call calls.c:88:40 resolved check_recursive tu=calls.c
+function check_recursive_caller tu=calls.c definition=calls.c:93:1 linkage=internal
+  call calls.c:97:20 unresolved-external mutex_enter
+  call calls.c:98:32 resolved check_recursive tu=calls.c
+  call calls.c:99:19 unresolved-external mutex_exit
+function check_isolated_recursive tu=calls.c definition=calls.c:104:1 linkage=internal
+  call calls.c:107:49 resolved check_isolated_recursive tu=calls.c
+function check_cycle_left tu=calls.c definition=calls.c:114:1 linkage=internal
+  call calls.c:118:34 resolved check_cycle_right tu=calls.c
+function check_cycle_right tu=calls.c definition=calls.c:122:1 linkage=internal
+  call calls.c:126:33 resolved check_cycle_left tu=calls.c
+escapes

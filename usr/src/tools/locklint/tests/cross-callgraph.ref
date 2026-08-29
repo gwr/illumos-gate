@@ -1,0 +1,20 @@
+function cross_locked tu=cross-caller.c definition=cross-caller.c:23:1 linkage=external
+  call cross-caller.c:27:20 unresolved-external mutex_enter
+  call cross-caller.c:28:27 resolved cross_read tu=cross-callee.c
+  call cross-caller.c:29:19 unresolved-external mutex_exit
+function cross_unlocked tu=cross-caller.c definition=cross-caller.c:34:1 linkage=external
+  call cross-caller.c:36:27 resolved cross_read tu=cross-callee.c
+function cross_effect tu=cross-caller.c definition=cross-caller.c:40:1 linkage=external
+  call cross-caller.c:44:22 resolved cross_acquire tu=cross-callee.c
+  call cross-caller.c:45:27 resolved cross_read tu=cross-callee.c
+  call cross-caller.c:46:19 unresolved-external mutex_exit
+function cross_private_helper tu=cross-caller.c definition=cross-caller.c:51:1 linkage=internal
+function cross_caller_private_path tu=cross-caller.c definition=cross-caller.c:57:1 linkage=external
+  call cross-caller.c:59:37 resolved cross_private_helper tu=cross-caller.c
+function cross_read tu=cross-callee.c definition=cross-callee.c:23:1 linkage=external
+function cross_acquire tu=cross-callee.c definition=cross-callee.c:29:1 linkage=external
+  call cross-callee.c:31:20 unresolved-external mutex_enter
+function cross_private_helper tu=cross-callee.c definition=cross-callee.c:35:1 linkage=internal
+function cross_callee_private_path tu=cross-callee.c definition=cross-callee.c:41:1 linkage=external
+  call cross-callee.c:43:37 resolved cross_private_helper tu=cross-callee.c
+escapes

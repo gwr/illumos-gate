@@ -78,3 +78,7 @@ exercise_pointers(int value)
 	return (direct_only(value) + call_indirect(value) +
 	    call_block_static(value) + driver_ops.open(value));
 }
+
+static int (*indexed_handlers[2])(int) = {
+	[1] = indirect_target
+};

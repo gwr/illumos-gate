@@ -41,6 +41,7 @@ static bool dump_linearized;
 static bool dump_accesses;
 static bool dump_annotations;
 static bool dump_events;
+static bool dump_callgraph;
 static bool check_locks;
 
 /*
@@ -58,6 +59,7 @@ usage(FILE *stream)
 	    "usage: locklint [--check-locks] [--dump-parsed] "
 	    "[--dump-linearized] "
 	    "[--dump-accesses] [--dump-annotations] [--dump-events] "
+	    "[--dump-callgraph] "
 	    "[sparse-options] file.c ...\n");
 }
 
@@ -80,12 +82,15 @@ options(int argc, char **argv)
 			dump_annotations = true;
 		} else if (strcmp(argv[i], "--dump-events") == 0) {
 			dump_events = true;
+		} else if (strcmp(argv[i], "--dump-callgraph") == 0) {
+			dump_callgraph = true;
 		} else if (strcmp(argv[i], "--dump-all") == 0) {
 			dump_parsed = true;
 			dump_linearized = true;
 			dump_accesses = true;
 			dump_annotations = true;
 			dump_events = true;
+			dump_callgraph = true;
 		} else if (strcmp(argv[i], "--help") == 0) {
 			usage(stdout);
 			exit(EXIT_SUCCESS);
@@ -147,13 +152,13 @@ process_symbols(struct translation_unit *tu, struct symbol_list *symbols)
 			show_symbol(sym);
 
 		if (!dump_linearized && !dump_accesses && !dump_events &&
-		    !check_locks)
+		    !dump_callgraph && !check_locks)
 			continue;
 
 		ep = linearize_symbol(sym);
 		if (ep == NULL)
 			continue;
-		if (check_locks)
+		if (check_locks || dump_callgraph)
 			locklint_check_add(tu, ep);
 		if (dump_linearized)
 			show_entry(ep);
@@ -232,6 +237,8 @@ main(int argc, char **argv)
 	locklint_translation_unit_register(tu, symbols);
 	if (dump_annotations || dump_events || check_locks)
 		locklint_resolve_annotations();
+	if (check_locks || dump_callgraph)
+		locklint_check_record_escapes(tu, symbols);
 	process_symbols(tu, symbols);
 	FOR_EACH_PTR(filelist, file) {
 		/*
@@ -245,10 +252,12 @@ main(int argc, char **argv)
 		locklint_translation_unit_register(tu, symbols);
 		if (dump_annotations || dump_events || check_locks)
 			locklint_resolve_annotations();
+		if (check_locks || dump_callgraph)
+			locklint_check_record_escapes(tu, symbols);
 		process_symbols(tu, symbols);
 	} END_FOR_EACH_PTR(file);
-	if (check_locks)
-		locklint_check_all();
+	if (check_locks || dump_callgraph)
+		locklint_check_all(check_locks, dump_callgraph);
 	if (dump_annotations)
 		locklint_show_annotations(stdout);
 

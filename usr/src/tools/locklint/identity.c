@@ -188,6 +188,18 @@ locklint_translation_unit_current(void)
 	return (current_translation_unit);
 }
 
+unsigned int
+locklint_translation_unit_id(const struct translation_unit *tu)
+{
+	return (tu->id);
+}
+
+const char *
+locklint_translation_unit_file(const struct translation_unit *tu)
+{
+	return (tu->file);
+}
+
 /*
  * Decide whether a declaration may name an internal-linkage object or
  * function already registered for this translation unit.

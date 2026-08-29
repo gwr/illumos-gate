@@ -19,11 +19,13 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "lib.h"
 #include "avl.h"
+#include "dissect.h"
 #include "expression.h"
 #include "linearize.h"
 #include "access.h"
@@ -110,12 +112,36 @@ struct function_info {
 	struct function_info *next;
 };
 
+struct function_escape {
+	struct translation_unit *tu;
+	struct symbol *symbol;
+	struct function_info *target;
+	struct position pos;
+	unsigned int sequence;
+	avl_node_t by_source;
+	avl_node_t by_target;
+	struct function_escape *next;
+};
+
+struct call_audit {
+	struct instruction *insn;
+	struct position pos;
+	unsigned int sequence;
+};
+
 static struct function_info *functions;
 static struct function_info **functions_tail = &functions;
 static avl_tree_t functions_by_entrypoint;
 static avl_tree_t functions_by_identity;
 static bool function_indexes_initialized;
 static unsigned int next_function_identity_sequence;
+static struct function_escape *function_escapes;
+static struct function_escape **function_escapes_tail = &function_escapes;
+static avl_tree_t function_escapes_by_source;
+static avl_tree_t function_escapes_by_target;
+static bool function_escape_indexes_initialized;
+static unsigned int next_function_escape_sequence;
+static struct translation_unit *function_escape_tu;
 
 static void transfer_call_effects(struct function_info *,
     struct state_entry **, struct instruction *);
@@ -505,6 +531,103 @@ compare_function_identity(const void *left_arg, const void *right_arg)
 	    right->identity_sequence));
 }
 
+static int
+compare_function_escape_source(const void *left_arg, const void *right_arg)
+{
+	const struct function_escape *left = left_arg;
+	const struct function_escape *right = right_arg;
+	int result;
+
+	result = AVL_CMP(locklint_translation_unit_id(left->tu),
+	    locklint_translation_unit_id(right->tu));
+	if (result != 0)
+		return (result);
+	result = compare_position(left->pos, right->pos);
+	if (result != 0)
+		return (result);
+	return (AVL_CMP(left->sequence, right->sequence));
+}
+
+static int
+compare_function_escape_target(const void *left_arg, const void *right_arg)
+{
+	const struct function_escape *left = left_arg;
+	const struct function_escape *right = right_arg;
+	int result;
+
+	result = AVL_PCMP(left->target, right->target);
+	if (result != 0)
+		return (result);
+	result = compare_position(left->pos, right->pos);
+	if (result != 0)
+		return (result);
+	return (AVL_CMP(left->sequence, right->sequence));
+}
+
+static int
+compare_call_audit(const void *left_arg, const void *right_arg)
+{
+	const struct call_audit *left = left_arg;
+	const struct call_audit *right = right_arg;
+	int result;
+
+	result = compare_position(left->pos, right->pos);
+	if (result != 0)
+		return (result);
+	return (AVL_CMP(left->sequence, right->sequence));
+}
+
+static bool
+function_symbol(const struct symbol *symbol)
+{
+	const struct symbol *type;
+
+	if (symbol == NULL)
+		return (false);
+	type = symbol->ctype.base_type;
+	while (type != NULL && type->type == SYM_NODE)
+		type = type->ctype.base_type;
+	return (type != NULL && type->type == SYM_FN);
+}
+
+static void
+record_function_escape(struct symbol *symbol, struct position pos)
+{
+	struct function_escape *escape;
+
+	if (!function_escape_indexes_initialized) {
+		avl_create(&function_escapes_by_source,
+		    compare_function_escape_source,
+		    sizeof (struct function_escape),
+		    offsetof(struct function_escape, by_source));
+		avl_create(&function_escapes_by_target,
+		    compare_function_escape_target,
+		    sizeof (struct function_escape),
+		    offsetof(struct function_escape, by_target));
+		function_escape_indexes_initialized = true;
+	}
+	escape = calloc(1, sizeof (*escape));
+	if (escape == NULL)
+		die("out of memory recording function escape");
+	escape->tu = function_escape_tu;
+	escape->symbol = symbol;
+	escape->pos = pos;
+	if (++next_function_escape_sequence == 0)
+		die("too many function escapes");
+	escape->sequence = next_function_escape_sequence;
+	avl_add(&function_escapes_by_source, escape);
+	*function_escapes_tail = escape;
+	function_escapes_tail = &escape->next;
+}
+
+static void
+report_function_escape(unsigned int mode, struct position *pos,
+    struct symbol *symbol)
+{
+	if ((mode & U_R_AOF) != 0 && function_symbol(symbol))
+		record_function_escape(symbol, *pos);
+}
+
 static struct function_info *
 find_function(struct entrypoint *ep)
 {
@@ -577,17 +700,13 @@ find_external_function(struct symbol *symbol, bool *ambiguous)
 }
 
 static struct function_info *
-direct_callee(struct function_info *caller, struct instruction *insn)
+resolve_function_symbol(struct translation_unit *tu, struct symbol *symbol,
+    bool *ambiguous)
 {
 	struct function_info *function;
-	struct symbol *symbol;
-	bool ambiguous;
 
-	if (insn->opcode != OP_CALL || insn->func == NULL ||
-	    insn->func->type != PSEUDO_SYM || insn->func->sym == NULL)
-		return (NULL);
-	symbol = insn->func->sym;
-	function = find_internal_function(caller->tu, symbol);
+	*ambiguous = false;
+	function = find_internal_function(tu, symbol);
 	/*
 	 * Prefer the translation unit's static definition only when it is
 	 * visible to this declaration.  An intervening local can make a nested
@@ -599,28 +718,166 @@ direct_callee(struct function_info *caller, struct instruction *insn)
 		symbol = symbol->definition;
 	if (symbol->ep != NULL)
 		return (find_function(symbol->ep));
-	return (find_external_function(symbol, &ambiguous));
+	return (find_external_function(symbol, ambiguous));
+}
+
+static void
+resolve_function_escapes(void)
+{
+	struct function_escape *escape;
+
+	for (escape = function_escapes; escape != NULL;
+	    escape = escape->next) {
+		bool ambiguous;
+
+		escape->target = resolve_function_symbol(escape->tu,
+		    escape->symbol, &ambiguous);
+		if (escape->target != NULL)
+			avl_add(&function_escapes_by_target, escape);
+	}
+}
+
+static struct function_info *
+direct_callee(struct function_info *caller, struct instruction *insn)
+{
+	bool ambiguous;
+
+	if (insn->opcode != OP_CALL || insn->func == NULL ||
+	    insn->func->type != PSEUDO_SYM || insn->func->sym == NULL)
+		return (NULL);
+	return (resolve_function_symbol(caller->tu, insn->func->sym,
+	    &ambiguous));
 }
 
 static bool
 ambiguous_external_callee(struct function_info *caller,
     struct instruction *insn)
 {
-	struct symbol *symbol;
+	struct function_info *function;
 	bool ambiguous;
 
 	if (insn->opcode != OP_CALL || insn->func == NULL ||
 	    insn->func->type != PSEUDO_SYM || insn->func->sym == NULL)
 		return (false);
-	symbol = insn->func->sym;
-	if (find_internal_function(caller->tu, symbol) != NULL &&
-	    locklint_symbol_can_use_internal(symbol))
-		return (false);
-	if (symbol->ep != NULL ||
-	    (symbol->definition != NULL && symbol->definition->ep != NULL))
-		return (false);
-	(void) find_external_function(symbol, &ambiguous);
-	return (ambiguous);
+	function = resolve_function_symbol(caller->tu, insn->func->sym,
+	    &ambiguous);
+	return (function == NULL && ambiguous);
+}
+
+static struct position
+call_position(struct instruction *insn)
+{
+	return (insn->call_expr != NULL ? insn->call_expr->pos : insn->pos);
+}
+
+static const char *
+function_name(const struct function_info *function)
+{
+	struct ident *ident = function->ep->name->ident;
+
+	return (ident != NULL ? show_ident(ident) : "<anonymous>");
+}
+
+static void
+dump_function_calls(struct function_info *function)
+{
+	struct call_audit *calls;
+	struct basic_block *bb;
+	unsigned int count = 0;
+	unsigned int index = 0;
+
+	FOR_EACH_PTR(function->ep->bbs, bb) {
+		struct instruction *insn;
+
+		FOR_EACH_PTR(bb->insns, insn) {
+			if (insn->bb != NULL && insn->opcode == OP_CALL)
+				count++;
+		} END_FOR_EACH_PTR(insn);
+	} END_FOR_EACH_PTR(bb);
+	if (count == 0)
+		return;
+	calls = calloc(count, sizeof (*calls));
+	if (calls == NULL)
+		die("out of memory ordering call-graph audit");
+	FOR_EACH_PTR(function->ep->bbs, bb) {
+		struct instruction *insn;
+
+		FOR_EACH_PTR(bb->insns, insn) {
+			if (insn->bb == NULL || insn->opcode != OP_CALL)
+				continue;
+			calls[index].insn = insn;
+			calls[index].pos = call_position(insn);
+			calls[index].sequence = index;
+			index++;
+		} END_FOR_EACH_PTR(insn);
+	} END_FOR_EACH_PTR(bb);
+	qsort(calls, count, sizeof (*calls), compare_call_audit);
+	for (index = 0; index < count; index++) {
+		struct instruction *insn = calls[index].insn;
+		struct function_info *callee = direct_callee(function, insn);
+		struct symbol *symbol = NULL;
+
+		(void) printf("  call %s:%u:%u ",
+		    stream_name(calls[index].pos.stream),
+		    calls[index].pos.line, calls[index].pos.pos);
+		if (callee != NULL) {
+			(void) printf("resolved %s tu=%s\n",
+			    function_name(callee),
+			    locklint_translation_unit_file(callee->tu));
+			continue;
+		}
+		if (ambiguous_external_callee(function, insn)) {
+			(void) printf("ambiguous-external\n");
+			continue;
+		}
+		if (insn->func != NULL && insn->func->type == PSEUDO_SYM)
+			symbol = insn->func->sym;
+		if (function_symbol(symbol)) {
+			(void) printf("unresolved-external %s\n",
+			    symbol->ident != NULL ?
+			    show_ident(symbol->ident) : "<anonymous>");
+		} else {
+			(void) printf("indirect\n");
+		}
+	}
+	free(calls);
+}
+
+static void
+dump_callgraph(void)
+{
+	struct function_escape *escape;
+	struct function_info *function;
+
+	for (function = functions; function != NULL; function = function->next) {
+		struct symbol *definition = function->ep->name;
+
+		(void) printf("function %s tu=%s definition=%s:%u:%u "
+		    "linkage=%s\n", function_name(function),
+		    locklint_translation_unit_file(function->tu),
+		    stream_name(definition->pos.stream), definition->pos.line,
+		    definition->pos.pos,
+		    function->internal_linkage ? "internal" : "external");
+		dump_function_calls(function);
+	}
+	(void) printf("escapes\n");
+	for (escape = function_escape_indexes_initialized ?
+	    avl_first(&function_escapes_by_source) : NULL;
+	    escape != NULL;
+	    escape = AVL_NEXT(&function_escapes_by_source, escape)) {
+		(void) printf("  escape %s:%u:%u %s ",
+		    stream_name(escape->pos.stream), escape->pos.line,
+		    escape->pos.pos,
+		    escape->symbol->ident != NULL ?
+		    show_ident(escape->symbol->ident) : "<anonymous>");
+		if (escape->target != NULL) {
+			(void) printf("resolved %s tu=%s\n",
+			    function_name(escape->target),
+			    locklint_translation_unit_file(escape->target->tu));
+		} else {
+			(void) printf("unresolved\n");
+		}
+	}
 }
 
 static bool
@@ -1546,6 +1803,40 @@ free_blocks(struct block_info *blocks)
 	}
 }
 
+static void
+free_function_escapes(void)
+{
+	while (function_escapes != NULL) {
+		struct function_escape *next = function_escapes->next;
+
+		avl_remove(&function_escapes_by_source, function_escapes);
+		if (function_escapes->target != NULL)
+			avl_remove(&function_escapes_by_target, function_escapes);
+		free(function_escapes);
+		function_escapes = next;
+	}
+	if (function_escape_indexes_initialized) {
+		avl_destroy(&function_escapes_by_source);
+		avl_destroy(&function_escapes_by_target);
+		function_escape_indexes_initialized = false;
+	}
+	next_function_escape_sequence = 0;
+	function_escapes_tail = &function_escapes;
+}
+
+void
+locklint_check_record_escapes(struct translation_unit *tu,
+    struct symbol_list *symbols)
+{
+	static struct reporter reporter = {
+		.r_symbol = report_function_escape,
+	};
+
+	function_escape_tu = tu;
+	dissect(symbols, &reporter);
+	function_escape_tu = NULL;
+}
+
 void
 locklint_check_add(struct translation_unit *tu, struct entrypoint *ep)
 {
@@ -1576,8 +1867,8 @@ locklint_check_add(struct translation_unit *tu, struct entrypoint *ep)
 	functions_tail = &function->next;
 }
 
-void
-locklint_check_all(void)
+static void
+run_lock_checks(void)
 {
 	struct function_info *function;
 	bool changed;
@@ -1612,7 +1903,11 @@ locklint_check_all(void)
 	} while (changed);
 	for (function = functions; function != NULL; function = function->next)
 		emit_diagnostics(function);
+}
 
+static void
+free_functions(void)
+{
 	while (functions != NULL) {
 		struct function_info *next = functions->next;
 		struct lock_condition *condition = functions->conditions;
@@ -1643,4 +1938,16 @@ locklint_check_all(void)
 	}
 	next_function_identity_sequence = 0;
 	functions_tail = &functions;
+}
+
+void
+locklint_check_all(bool check_locks, bool show_callgraph)
+{
+	resolve_function_escapes();
+	if (show_callgraph)
+		dump_callgraph();
+	if (check_locks)
+		run_lock_checks();
+	free_function_escapes();
+	free_functions();
 }

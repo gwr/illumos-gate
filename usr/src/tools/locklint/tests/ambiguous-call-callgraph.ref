@@ -1,0 +1,7 @@
+../locklint: ambiguous-call-second.c:15:1: warning: multiple definitions for function 'ambiguous_target'
+../locklint: ambiguous-call-first.c:15:1:  the previous one is here
+function call_ambiguous_target tu=ambiguous-call-caller.c definition=ambiguous-call-caller.c:13:1 linkage=internal
+  call ambiguous-call-caller.c:21:41 ambiguous-external
+function ambiguous_target tu=ambiguous-call-first.c definition=ambiguous-call-first.c:15:1 linkage=external
+function ambiguous_target tu=ambiguous-call-second.c definition=ambiguous-call-second.c:15:1 linkage=external
+escapes

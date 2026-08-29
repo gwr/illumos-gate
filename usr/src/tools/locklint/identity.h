@@ -23,6 +23,8 @@ struct translation_unit;
 
 struct translation_unit *locklint_translation_unit_begin(const char *);
 struct translation_unit *locklint_translation_unit_current(void);
+unsigned int locklint_translation_unit_id(const struct translation_unit *);
+const char *locklint_translation_unit_file(const struct translation_unit *);
 void locklint_translation_unit_register(struct translation_unit *,
     struct symbol_list *);
 bool locklint_symbol_can_use_internal(const struct symbol *);

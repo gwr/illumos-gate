@@ -368,7 +368,7 @@ The module-scope records use these collections:
 | --- | --- | --- |
 | `function_info` | Iterable fixed-size allocation chunks | Embeds `fi_by_entrypoint` for an AVL keyed by Sparse entrypoint and `fi_by_identity` for an AVL keyed by C function identity |
 | `call_site` | Fixed-size allocation chunks; each function creates a call-site tree only if it contains calls | Embeds `cs_by_source` for its caller's AVL keyed by source position and instruction identity |
-| `function_escape` | Fixed-size allocation chunks | Embeds `fe_by_source` for deterministic source traversal and `fe_by_target` for finding every escape reason associated with a resolved function |
+| `function_escape` | Individually allocated records in an owning linked list | Embeds `fe_by_source` for deterministic source traversal and `fe_by_target` for finding every escape reason associated with a resolved function |
 | `function_pointer_activity` | Fixed-size allocation chunks created only when a call-graph audit is requested | Embeds one source-ordered AVL linkage; it has no target index because no exact target is known |
 | root-reason kinds | A bit mask embedded in `function_info` | No separate collection; source-backed escape reasons refer to `function_escape` records |
 | `translation_unit` | Existing process-lifetime sequence | No additional index in this increment |
@@ -389,6 +389,14 @@ construction, deterministic audit traversal, and `O(log n)` lookup among that
 function's calls.  Classification stores the resolved callee directly, so
 propagation and reachability do not repeat global function lookup.  A
 function with no calls does not allocate a call-site tree.
+
+Function-escape records are individually allocated and linked for ownership
+and full traversal.  Their source and target AVL trees are secondary indexes
+over the same stable records.  Expected escape counts are modest, so avoiding
+one allocation per record is not justified without measurements.  If module
+audits later show that allocation overhead or fragmentation is significant,
+pooled or chunk allocation can replace list ownership without changing escape
+semantics or AVL keys.
 
 Every AVL comparator uses a complete key that cannot compare distinct records
 as equal.  A monotonically assigned sequence number is the final tie-breaker
@@ -441,9 +449,9 @@ forms are chosen.
   preprocessing tokens.
 - Locklint allocates annotations, references, assertions, and copied `_NOTE`
   tokens for process lifetime.
-- Locklint owns chunk-allocated function, function-escape, and optional
-  function-pointer-activity records, chunk-allocated call sites, and their AVL
-  indexes.
+- Locklint owns chunk-allocated function and optional
+  function-pointer-activity records, chunk-allocated call sites, individually
+  allocated list-owned function-escape records, and their AVL indexes.
 - Function records, function-pointer observations, call sites, lock
   conditions, transfers, CFG state maps, and transfer-simulation blocks are
   freed after their analysis use ends.

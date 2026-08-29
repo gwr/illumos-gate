@@ -539,6 +539,15 @@ static struct symbol *do_initializer(struct symbol *type, struct expression *exp
 	break; case EXPR_INDEX:
 		do_initializer(base_type(type), expr->idx_expression);
 
+	break; case EXPR_POS:
+		/* Evaluated designators retain the selected type on the wrapper. */
+		m_type = expr->ctype;
+		if (m_type == NULL)
+			m_type = type;
+		else if (m_type->type == SYM_NODE)
+			m_type = base_type(m_type);
+		do_initializer(m_type, expr->init_expr);
+
 	break; case EXPR_INITIALIZER:
 		m_addr = 0;
 		FOR_EACH_PTR(expr->expr_list, m_expr) {
