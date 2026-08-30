@@ -221,6 +221,10 @@ run_capture "basic calls" calls-basic.out \
     "$LOCKLINT" --check-locks calls-basic.c
 compare "basic calls" calls-basic.ref calls-basic.out
 
+run_capture "indirect calls" indirect-calls.out \
+    "$LOCKLINT" --check-locks indirect-calls.c
+compare "indirect calls" indirect-calls.ref indirect-calls.out
+
 #
 # Verify calls, lock conditions, and effects across translation units.
 #
@@ -251,6 +255,11 @@ run_capture "function pointers callgraph" function-pointers-callgraph.out \
     "$LOCKLINT" --dump-callgraph function-pointers.c
 compare "function pointers callgraph" function-pointers-callgraph.ref \
     function-pointers-callgraph.out
+
+run_capture "indirect calls callgraph" indirect-calls-callgraph.out \
+    "$LOCKLINT" --dump-callgraph indirect-calls.c
+compare "indirect calls callgraph" indirect-calls-callgraph.ref \
+    indirect-calls-callgraph.out
 
 run_capture "ambiguous call callgraph" ambiguous-call-callgraph.out \
     "$LOCKLINT" --dump-callgraph ambiguous-call-caller.c \

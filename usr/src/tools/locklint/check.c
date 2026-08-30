@@ -186,7 +186,7 @@ struct function_info {
 	struct lock_transfer *transfers;
 	struct visibility_transfer *visibility_transfers;
 	unsigned int root_reasons;
-	bool has_nonself_direct_caller;
+	bool has_nonself_caller;
 	bool reachable_from_root;
 	bool has_exact_escape;
 	bool internal_linkage;
@@ -202,10 +202,23 @@ struct function_escape {
 	struct symbol *symbol;
 	struct function_info *target;
 	struct position pos;
+	bool closed_initializer;
 	unsigned int sequence;
 	avl_node_t by_source;
 	avl_node_t by_target;
 	struct function_escape *next;
+};
+
+struct indirect_target {
+	struct translation_unit *tu;
+	struct symbol *object;
+	struct symbol *member;
+	struct symbol *symbol;
+	struct function_info *target;
+	unsigned long offset;
+	struct position pos;
+	bool ambiguous;
+	struct indirect_target *next;
 };
 
 enum function_pointer_activity_kind {
@@ -243,6 +256,8 @@ static avl_tree_t function_escapes_by_target;
 static bool function_escape_indexes_initialized;
 static unsigned int next_function_escape_sequence;
 static struct translation_unit *function_escape_tu;
+static struct indirect_target *indirect_targets;
+static struct indirect_target **indirect_targets_tail = &indirect_targets;
 static struct function_pointer_activity *function_pointer_activities;
 static struct function_pointer_activity **function_pointer_activities_tail =
     &function_pointer_activities;
@@ -1124,6 +1139,113 @@ report_function_pointer_member(unsigned int mode, struct position *pos,
 		record_pointer_activity(mode, *pos, symbol, member);
 }
 
+static struct expression *
+initializer_target_expression(struct expression *expr)
+{
+	for (;;) {
+		if (expr == NULL)
+			return (NULL);
+		switch (expr->type) {
+		case EXPR_POS:
+			expr = expr->init_expr;
+			break;
+		case EXPR_CAST:
+		case EXPR_FORCE_CAST:
+		case EXPR_IMPLIED_CAST:
+			expr = expr->cast_expression;
+			break;
+		case EXPR_PREOP:
+			if (expr->op != '&')
+				return (NULL);
+			expr = expr->unop;
+			break;
+		default:
+			return (expr);
+		}
+	}
+}
+
+static void
+mark_closed_initializer_escape(struct translation_unit *tu,
+    struct symbol *target, struct position pos)
+{
+	struct function_escape *escape;
+
+	for (escape = function_escapes; escape != NULL; escape = escape->next) {
+		if (escape->tu == tu && escape->symbol == target &&
+		    compare_position(escape->pos, pos) == 0) {
+			escape->closed_initializer = true;
+			return;
+		}
+	}
+}
+
+static void
+record_indirect_target(struct translation_unit *tu, struct symbol *object,
+    struct symbol *member, unsigned long offset, struct symbol *target,
+    struct position pos)
+{
+	struct indirect_target *entry;
+
+	for (entry = indirect_targets; entry != NULL; entry = entry->next) {
+		if (entry->tu != tu || entry->object != object ||
+		    entry->member != member || entry->offset != offset)
+			continue;
+		if (entry->symbol != target)
+			entry->ambiguous = true;
+		return;
+	}
+	entry = calloc(1, sizeof (*entry));
+	if (entry == NULL)
+		die("out of memory recording indirect-call target");
+	entry->tu = tu;
+	entry->object = object;
+	entry->member = member;
+	entry->symbol = target;
+	entry->offset = offset;
+	entry->pos = pos;
+	*indirect_targets_tail = entry;
+	indirect_targets_tail = &entry->next;
+}
+
+static void
+record_static_initializer_targets(struct translation_unit *tu,
+    struct symbol *object)
+{
+	struct expression *entry;
+	struct expression *target_expr;
+	struct expression *initializer = object->initializer;
+
+	if ((object->ctype.modifiers &
+	    (MOD_TOPLEVEL | MOD_STATIC | MOD_CONST)) !=
+	    (MOD_TOPLEVEL | MOD_STATIC | MOD_CONST) ||
+	    (object->ctype.modifiers & MOD_ADDRESSABLE) != 0 ||
+	    initializer == NULL || initializer->type != EXPR_INITIALIZER)
+		return;
+	FOR_EACH_PTR(initializer->expr_list, entry) {
+		if (entry->type != EXPR_POS || entry->init_nr != 1 ||
+		    !function_pointer_type(entry->ctype))
+			continue;
+		target_expr = initializer_target_expression(entry);
+		if (target_expr == NULL || target_expr->type != EXPR_SYMBOL ||
+		    !function_symbol(target_expr->symbol))
+			continue;
+		record_indirect_target(tu, object, entry->ctype,
+		    entry->init_offset, target_expr->symbol, target_expr->pos);
+	} END_FOR_EACH_PTR(entry);
+}
+
+static void
+record_static_indirect_targets(struct translation_unit *tu,
+    struct symbol_list *symbols)
+{
+	struct symbol *symbol;
+
+	FOR_EACH_PTR(symbols, symbol) {
+		record_static_initializer_targets(tu, symbol);
+	} END_FOR_EACH_PTR(symbol);
+}
+
 static struct function_info *
 find_function(struct entrypoint *ep)
 {
@@ -1229,10 +1351,35 @@ resolve_function_escapes(void)
 		escape->target = resolve_function_symbol(escape->tu,
 		    escape->symbol, &ambiguous);
 		if (escape->target != NULL) {
-			escape->target->root_reasons |=
-			    FUNCTION_ROOT_POINTER_ESCAPE;
 			escape->target->has_exact_escape = true;
+			if (!escape->closed_initializer) {
+				escape->target->root_reasons |=
+				    FUNCTION_ROOT_POINTER_ESCAPE;
+			}
 			avl_add(&function_escapes_by_target, escape);
+		}
+	}
+}
+
+static void
+resolve_indirect_targets(void)
+{
+	struct indirect_target *entry;
+
+	for (entry = indirect_targets; entry != NULL; entry = entry->next) {
+		bool ambiguous;
+
+		if (entry->ambiguous)
+			continue;
+		entry->target = resolve_function_symbol(entry->tu, entry->symbol,
+		    &ambiguous);
+		if (ambiguous) {
+			entry->ambiguous = true;
+			continue;
+		}
+		if (entry->target != NULL) {
+			mark_closed_initializer_escape(entry->tu, entry->symbol,
+			    entry->pos);
 		}
 	}
 }
@@ -1247,6 +1394,34 @@ direct_callee(struct function_info *caller, struct instruction *insn)
 		return (NULL);
 	return (resolve_function_symbol(caller->tu, insn->func->sym,
 	    &ambiguous));
+}
+
+static struct function_info *
+indirect_callee(struct function_info *caller, struct instruction *insn)
+{
+	struct locklint_access access;
+	struct indirect_target *entry;
+
+	if (insn->opcode != OP_CALL || insn->call_expr == NULL ||
+	    !locklint_get_access(caller->tu, insn->call_expr->fn, &access))
+		return (NULL);
+	for (entry = indirect_targets; entry != NULL; entry = entry->next) {
+		if (!entry->ambiguous && entry->target != NULL &&
+		    entry->tu == caller->tu && entry->object == access.root &&
+		    entry->member == access.member &&
+		    entry->offset == access.offset)
+			return (entry->target);
+	}
+	return (NULL);
+}
+
+static struct function_info *
+call_callee(struct function_info *caller, struct instruction *insn)
+{
+	struct function_info *callee;
+
+	callee = direct_callee(caller, insn);
+	return (callee != NULL ? callee : indirect_callee(caller, insn));
 }
 
 static bool
@@ -1322,6 +1497,13 @@ dump_function_calls(struct function_info *function)
 		    calls[index].pos.line, calls[index].pos.pos);
 		if (callee != NULL) {
 			(void) printf("resolved %s tu=%s\n",
+			    function_name(callee),
+			    locklint_translation_unit_file(callee->tu));
+			continue;
+		}
+		callee = indirect_callee(function, insn);
+		if (callee != NULL) {
+			(void) printf("resolved-indirect %s tu=%s\n",
 			    function_name(callee),
 			    locklint_translation_unit_file(callee->tu));
 			continue;
@@ -1607,7 +1789,7 @@ static void
 transfer_call_effects(struct function_info *function,
     struct state_entry **states, struct instruction *insn)
 {
-	struct function_info *callee = direct_callee(function, insn);
+	struct function_info *callee = call_callee(function, insn);
 	struct lock_transfer *transfer;
 
 	if (callee == NULL)
@@ -1916,7 +2098,7 @@ static void
 transfer_call_visibility_effects(struct function_info *function,
     struct visibility_entry **visibility, struct instruction *insn)
 {
-	struct function_info *callee = direct_callee(function, insn);
+	struct function_info *callee = call_callee(function, insn);
 	struct mapped_visibility_effect *effects;
 	struct mapped_visibility_effect *effect;
 	struct visibility_entry *original;
@@ -2067,7 +2249,7 @@ mark_reachable(struct function_info *function)
 
 			if (insn->bb == NULL)
 				continue;
-			callee = direct_callee(function, insn);
+			callee = call_callee(function, insn);
 			if (callee != NULL)
 				mark_reachable(callee);
 		} END_FOR_EACH_PTR(insn);
@@ -2075,9 +2257,8 @@ mark_reachable(struct function_info *function)
 }
 
 /*
- * First account for every non-self direct incoming edge, then assign all
- * applicable root reasons and propagate reachability from the resulting
- * roots.
+ * First account for every non-self resolved incoming edge, then assign all
+ * applicable root reasons and propagate reachability from the resulting roots.
  */
 static void
 classify_roots(void)
@@ -2095,9 +2276,9 @@ classify_roots(void)
 
 				if (insn->bb == NULL)
 					continue;
-				callee = direct_callee(function, insn);
+				callee = call_callee(function, insn);
 				if (callee != NULL && callee != function)
-					callee->has_nonself_direct_caller = true;
+					callee->has_nonself_caller = true;
 			} END_FOR_EACH_PTR(insn);
 		} END_FOR_EACH_PTR(bb);
 	}
@@ -2107,16 +2288,17 @@ classify_roots(void)
 
 		if (!function->internal_linkage)
 			function->root_reasons |= FUNCTION_ROOT_EXTERNAL;
-		if (!function->has_nonself_direct_caller)
+		if (!function->has_nonself_caller)
 			function->root_reasons |=
 			    FUNCTION_ROOT_NO_DIRECT_CALLER;
 		/*
 		 * Sparse marks ordinary external definitions addressable.
-		 * They are already roots, so use this fallback only where it
-		 * adds conservative information for an internal function.
+		 * They are already roots, so use this fallback only for an
+		 * internal function without an exact recorded escape.
 		 */
 		if (function->internal_linkage &&
-		    (modifiers & MOD_ADDRESSABLE) != 0)
+		    (modifiers & MOD_ADDRESSABLE) != 0 &&
+		    !function->has_exact_escape)
 			function->root_reasons |=
 			    FUNCTION_ROOT_POINTER_ESCAPE;
 	}
@@ -2173,7 +2355,7 @@ propagate_transfer_candidates(struct function_info *function)
 
 			if (insn->bb == NULL)
 				continue;
-			callee = direct_callee(function, insn);
+			callee = call_callee(function, insn);
 			if (callee == NULL)
 				continue;
 			for (transfer = callee->transfers; transfer != NULL;
@@ -2231,7 +2413,7 @@ simulate_instruction(struct function_info *function,
 	enum locklint_lock_action action;
 	enum locklint_lock_mode mode;
 
-	callee = direct_callee(function, insn);
+	callee = call_callee(function, insn);
 	if (callee != NULL) {
 		for (transfer = callee->transfers; transfer != NULL;
 		    transfer = transfer->next) {
@@ -2498,7 +2680,7 @@ propagate_visibility_transfer_candidates(struct function_info *function)
 
 			if (insn->bb == NULL)
 				continue;
-			callee = direct_callee(function, insn);
+			callee = call_callee(function, insn);
 			if (callee == NULL)
 				continue;
 			for (transfer = callee->visibility_transfers;
@@ -2567,7 +2749,7 @@ simulate_visibility_instruction(struct function_info *function,
 	struct mapped_visibility_effect *effects;
 	struct mapped_visibility_effect *effect;
 
-	callee = direct_callee(function, insn);
+	callee = call_callee(function, insn);
 	if (callee != NULL) {
 		struct mapped_visibility_effect *selected = NULL;
 
@@ -2881,7 +3063,7 @@ static bool
 propagate_call_protection_conditions(struct function_info *function,
     struct analysis_state *state, struct instruction *insn)
 {
-	struct function_info *callee = direct_callee(function, insn);
+	struct function_info *callee = call_callee(function, insn);
 	struct protection_condition *condition;
 	bool changed = false;
 
@@ -3021,10 +3203,10 @@ check_access(struct function_info *function, struct analysis_state *state,
 }
 
 static void
-check_direct_call(struct function_info *function,
+check_call(struct function_info *function,
     struct analysis_state *analysis, struct instruction *insn)
 {
-	struct function_info *callee = direct_callee(function, insn);
+	struct function_info *callee = call_callee(function, insn);
 	struct protection_condition *condition;
 	struct position pos;
 
@@ -3209,7 +3391,7 @@ emit_diagnostics(struct function_info *function)
 				continue;
 			check_read_only_access(function, state, insn);
 			check_access(function, state, insn);
-			check_direct_call(function, state, insn);
+			check_call(function, state, insn);
 			check_lock_action(function, state, insn);
 			transfer_assertion(function, &state->locks, insn);
 			transfer_competition_state(state, insn);
@@ -3275,6 +3457,18 @@ free_function_pointer_activity(void)
 	next_function_pointer_activity_sequence = 0;
 }
 
+static void
+free_indirect_targets(void)
+{
+	while (indirect_targets != NULL) {
+		struct indirect_target *next = indirect_targets->next;
+
+		free(indirect_targets);
+		indirect_targets = next;
+	}
+	indirect_targets_tail = &indirect_targets;
+}
+
 void
 locklint_check_record_pointer_evidence(struct translation_unit *tu,
     struct symbol_list *symbols, bool record_activity)
@@ -3288,6 +3482,7 @@ locklint_check_record_pointer_evidence(struct translation_unit *tu,
 	record_function_pointer_activity = record_activity;
 	dissect(symbols, &reporter);
 	record_function_pointer_activity = false;
+	record_static_indirect_targets(tu, symbols);
 	function_escape_tu = NULL;
 }
 
@@ -3429,12 +3624,14 @@ free_functions(void)
 void
 locklint_check_all(bool check_locks, bool show_callgraph)
 {
+	resolve_indirect_targets();
 	resolve_function_escapes();
 	classify_roots();
 	if (show_callgraph)
 		dump_callgraph();
 	if (check_locks)
 		run_lock_checks();
+	free_indirect_targets();
 	free_function_pointer_activity();
 	free_function_escapes();
 	free_functions();

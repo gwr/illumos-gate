@@ -1,0 +1,13 @@
+function read_value tu=indirect-calls.c definition=indirect-calls.c:41:1 linkage=internal reachable=yes
+function locked_indirect tu=indirect-calls.c definition=indirect-calls.c:51:1 linkage=internal reachable=yes
+  root no-known-direct-caller
+  call indirect-calls.c:55:20 unresolved-external mutex_enter
+  call indirect-calls.c:56:34 resolved-indirect read_value tu=indirect-calls.c
+  call indirect-calls.c:57:19 unresolved-external mutex_exit
+function unlocked_indirect tu=indirect-calls.c definition=indirect-calls.c:62:1 linkage=internal reachable=yes
+  root no-known-direct-caller
+  call indirect-calls.c:64:34 resolved-indirect read_value tu=indirect-calls.c
+escapes
+  escape indirect-calls.c:47:17 read_value resolved read_value tu=indirect-calls.c
+pointer activity
+  store indirect-calls.c:47:10 indirect_ops.read
