@@ -1470,6 +1470,40 @@ caller OP_CALL resolved to callee
     -> otherwise warning is emitted or the condition is deferred again
 ```
 
+## Kernel and user test configurations
+
+Readers-writer lock fixtures follow the normal illumos `_KERNEL` source
+split.  In the default configuration they use the user-level `rwlock_t`
+interface:
+
+- `rw_rdlock()` for reader acquisition;
+- `rw_wrlock()` for writer acquisition; and
+- `rw_unlock()` for release.
+
+With `-D_KERNEL`, the same fixtures use `krwlock_t`, `rw_enter()` with the
+appropriate reader or writer mode, and `rw_exit()`.
+
+Locklint does not infer whether a translation unit is kernel or user code.
+Sparse preprocesses the source using the supplied compiler options, and
+locklint recognizes the operations present in the selected branch.  The test
+harness therefore analyzes each rwlock fixture both with and without
+`-D_KERNEL`.
+
+Normal automated fixtures are stand-alone.  They provide minimal local
+declarations instead of including installed platform system headers, so
+macOS and illumos runs present the same semantic input to Sparse.  A
+multi-translation-unit fixture may use a header stored with the fixture.
+System-header includes selected only by an optional compatibility branch are
+manual comparison plumbing and are not dependencies of the automated suite.
+
+Small fixture macros keep the protected accesses, control flow, and expected
+ownership semantics common between configurations while expanding to the
+actual interface calls.  Variant-specific cases are used only where one
+interface has no equivalent, such as a nonconstant `rw_enter()` mode or the
+kernel `RW_LOCK_HELD()` predicate.  Separate state golden files preserve
+those intentional differences; common interprocedural findings use one
+shared golden file.
+
 ## Invariants
 
 The current implementation relies on these invariants:

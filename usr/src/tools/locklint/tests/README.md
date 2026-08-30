@@ -54,6 +54,13 @@ directly only when debugging an already rebuilt executable:
 Keep each fixture focused on one behavior or closely related group of
 behaviors.
 
+Keep automated fixtures stand-alone.  Declare the minimal types, constants,
+macros, and function prototypes needed by the test instead of including
+installed platform system headers.  Multi-file tests may share declarations
+through a header stored in this directory.  Conditional system-header includes
+used only by optional manual compatibility tooling are permitted, but the
+normal test-suite path must not select or require them.
+
 Add the fixture and its invocation to `RunTests.sh`.  Use the helper matching
 the expected result:
 
