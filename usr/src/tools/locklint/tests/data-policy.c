@@ -13,7 +13,11 @@
  * Copyright 2026 Gordon W. Ross
  */
 
+#ifdef __lock_lint
+#include <sys/note.h>
+#else
 #define	_NOTE(arg)
+#endif
 
 typedef struct mutex {
 	int opaque;
@@ -53,34 +57,38 @@ extern void mutex_enter(mutex_t *);
 extern void mutex_exit(mutex_t *);
 
 static int
-check_data_policy(void)
+check_data_policy(struct policy_state *state)
 {
 	int value;
 
-	value = policy_object.protected;
-	policy_object.protected = value;
+	_NOTE(COMPETING_THREADS_NOW)
 
-	value += policy_object.readable;
-	policy_object.readable = value;
+	value = state->protected;
+	state->protected = value;
 
-	value += policy_object.scheme;
-	policy_object.scheme = value;
+	value += state->readable;
+	state->readable = value;
 
-	value += policy_object.scheme_group.first;
-	policy_object.scheme_group.second = value;
+	value += state->scheme;
+	state->scheme = value;
 
-	value += policy_object.mutex_after_scheme;
-	policy_object.mutex_after_scheme = value;
+	value += state->scheme_group.first;
+	state->scheme_group.second = value;
 
-	mutex_enter(&policy_object.lock);
-	value += policy_object.read_only;
-	policy_object.read_only = value;
-	mutex_exit(&policy_object.lock);
+	value += state->mutex_after_scheme;
+	state->mutex_after_scheme = value;
 
-	mutex_enter(&policy_object.lock);
-	value += policy_object.protected;
-	policy_object.protected = value;
-	mutex_exit(&policy_object.lock);
+	mutex_enter(&state->lock);
+	value += state->read_only;
+	state->read_only = value;
+	mutex_exit(&state->lock);
+
+	mutex_enter(&state->lock);
+	value += state->protected;
+	state->protected = value;
+	mutex_exit(&state->lock);
+
+	_NOTE(NO_COMPETING_THREADS_NOW)
 
 	return (value);
 }

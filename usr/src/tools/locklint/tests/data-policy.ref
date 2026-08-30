@@ -1,6 +1,6 @@
-../locklint: data-policy.c:60:30: warning: locklint: protected member 'protected' accessed without holding 'lock'
-../locklint: data-policy.c:61:22: warning: locklint: protected member 'protected' accessed without holding 'lock'
-../locklint: data-policy.c:64:22: warning: locklint: protected member 'readable' accessed without holding 'lock'
-../locklint: data-policy.c:72:31: warning: locklint: protected member 'mutex_after_scheme' accessed without holding 'lock'
-../locklint: data-policy.c:73:22: warning: locklint: protected member 'mutex_after_scheme' accessed without holding 'lock'
-../locklint: data-policy.c:77:22: warning: locklint: read-only data 'read_only' modified while it may be visible to competing threads
+../locklint: data-policy.c:66:22: warning: locklint: protected member 'protected' accessed without holding 'lock'
+../locklint: data-policy.c:67:14: warning: locklint: protected member 'protected' accessed without holding 'lock'
+../locklint: data-policy.c:70:14: warning: locklint: protected member 'readable' accessed without holding 'lock'
+../locklint: data-policy.c:78:23: warning: locklint: protected member 'mutex_after_scheme' accessed without holding 'lock'
+../locklint: data-policy.c:79:14: warning: locklint: protected member 'mutex_after_scheme' accessed without holding 'lock'
+../locklint: data-policy.c:83:14: warning: locklint: read-only data 'read_only' modified while visible to competing threads
