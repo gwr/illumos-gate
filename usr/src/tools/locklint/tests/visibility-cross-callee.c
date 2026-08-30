@@ -36,3 +36,16 @@ visibility_cross_make_global_visible(void)
 {
 	_NOTE(NOW_VISIBLE_TO_OTHER_THREADS(visibility_cross_global.value))
 }
+
+void
+visibility_cross_make_nested_invisible(
+    struct visibility_cross_state *state)
+{
+	_NOTE(NOW_INVISIBLE_TO_OTHER_THREADS(state->nested.value))
+}
+
+void
+visibility_cross_make_nested_visible(struct visibility_cross_state *state)
+{
+	_NOTE(NOW_VISIBLE_TO_OTHER_THREADS(state->nested.value))
+}

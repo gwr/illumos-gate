@@ -981,6 +981,7 @@ locklint_data_policy(const struct locklint_access *access,
 		lock->offset = (protector->root != NULL ? 0 :
 		    protector_base) + protector->offset;
 		lock->expr = NULL;
+		lock->path = NULL;
 	}
 	return (found);
 }

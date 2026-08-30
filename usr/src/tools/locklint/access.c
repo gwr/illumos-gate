@@ -19,11 +19,77 @@
  */
 
 #include <stdio.h>
+#include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
+#include "cwchash/hashtable.h"
 #include "expression.h"
 #include "access.h"
 #include "identity.h"
 #include "symbol.h"
+
+struct locklint_member_path {
+	struct locklint_member_path *parent;
+	struct ident *ident;
+	unsigned long offset;
+	unsigned int depth;
+};
+
+static struct hashtable *member_paths;
+
+static unsigned int
+member_path_hash(void *key)
+{
+	struct locklint_member_path *path = key;
+	uintptr_t parent = (uintptr_t)path->parent;
+	uintptr_t ident = (uintptr_t)path->ident;
+	unsigned long offset = path->offset;
+
+	return ((unsigned int)(parent ^ (parent >> 16) ^ ident ^
+	    (ident >> 16) ^ offset ^ (offset >> 16)));
+}
+
+static int
+same_member_path(void *left_key, void *right_key)
+{
+	struct locklint_member_path *left = left_key;
+	struct locklint_member_path *right = right_key;
+
+	return (left->parent == right->parent &&
+	    left->ident == right->ident &&
+	    left->offset == right->offset);
+}
+
+static struct locklint_member_path *
+intern_member_path(struct locklint_member_path *parent, struct ident *ident,
+    unsigned long offset)
+{
+	struct locklint_member_path key = { 0 };
+	struct locklint_member_path *path;
+
+	if (member_paths == NULL) {
+		member_paths = create_hashtable(128, member_path_hash,
+		    same_member_path);
+		if (member_paths == NULL)
+			die("out of memory creating member path table");
+	}
+	key.parent = parent;
+	key.ident = ident;
+	key.offset = offset;
+	path = hashtable_search(member_paths, &key);
+	if (path != NULL)
+		return (path);
+	path = calloc(1, sizeof (*path));
+	if (path == NULL)
+		die("out of memory recording member path");
+	path->parent = parent;
+	path->ident = ident;
+	path->offset = offset;
+	path->depth = parent != NULL ? parent->depth + 1 : 1;
+	if (!hashtable_insert(member_paths, path, path))
+		die("out of memory interning member path");
+	return (path);
+}
 
 static struct symbol *
 find_root(struct expression *expr)
@@ -127,6 +193,22 @@ member_offset(struct expression *expr)
 	return (offset);
 }
 
+static struct locklint_member_path *
+member_path(struct expression *expr)
+{
+	struct expression *member = find_member(expr);
+	struct locklint_member_path *parent;
+	unsigned long offset;
+
+	if (member == NULL)
+		return (NULL);
+	parent = member_path(member->member_base);
+	offset = (parent != NULL ? parent->offset : 0) +
+	    member->member_path_offset;
+	return (intern_member_path(parent, member->member_symbol->ident,
+	    offset));
+}
+
 static struct symbol *
 root_type(struct symbol *root)
 {
@@ -168,6 +250,7 @@ locklint_get_access(struct translation_unit *tu, struct expression *expr,
 	access->member = member != NULL ? member->member_symbol : NULL;
 	access->offset = member_offset(expr);
 	access->expr = expr;
+	access->path = member_path(expr);
 	return (access->root != NULL);
 }
 
@@ -198,11 +281,22 @@ locklint_same_access(const struct locklint_access *left,
 	if (left->offset != right->offset ||
 	    !same_access_object(left, right))
 		return (false);
+	if (left->path != NULL && right->path != NULL)
+		return (left->path == right->path);
 	if (left->object == NULL)
 		return (left->member == right->member);
 	/* Separately parsed declarations have distinct member symbols. */
 	return (same_ident(left->member != NULL ? left->member->ident : NULL,
 	    right->member != NULL ? right->member->ident : NULL));
+}
+
+static bool
+path_contains(const struct locklint_member_path *container,
+    const struct locklint_member_path *access)
+{
+	while (access != NULL && access->depth > container->depth)
+		access = access->parent;
+	return (access == container);
 }
 
 bool
@@ -214,10 +308,12 @@ locklint_access_contains(const struct locklint_access *container,
 
 	if (!same_access_object(container, access))
 		return (false);
-	if (container->member == NULL)
+	if (container->path == NULL && container->member == NULL)
 		return (true);
 	if (locklint_same_access(container, access))
 		return (true);
+	if (container->path != NULL && access->path != NULL)
+		return (path_contains(container->path, access->path));
 	/*
 	 * Walk from the selected leaf toward its root.  Subtracting each
 	 * member's relative offset recovers the absolute offset of its parent.
@@ -238,6 +334,37 @@ locklint_access_contains(const struct locklint_access *container,
 		suffix += member->member_path_offset;
 	}
 	return (false);
+}
+
+static struct locklint_member_path *
+append_member_path(struct locklint_member_path *base,
+    const struct locklint_member_path *relative, unsigned long base_offset)
+{
+	if (relative == NULL)
+		return (base);
+	base = append_member_path(base, relative->parent, base_offset);
+	return (intern_member_path(base, relative->ident,
+	    base_offset + relative->offset));
+}
+
+void
+locklint_rebase_access(const struct locklint_access *base,
+    const struct locklint_access *relative, struct locklint_access *result)
+{
+	*result = *base;
+	result->path = append_member_path(base->path, relative->path,
+	    base->offset);
+	if (relative->path != NULL) {
+		result->member = relative->member;
+		result->offset = base->offset + relative->offset;
+	}
+	result->expr = NULL;
+}
+
+unsigned int
+locklint_access_depth(const struct locklint_access *access)
+{
+	return (access->path != NULL ? access->path->depth : 0);
 }
 
 bool
@@ -266,6 +393,15 @@ locklint_access_base(const struct locklint_access *access,
 		}
 	}
 	return (false);
+}
+
+void
+locklint_access_cleanup(void)
+{
+	if (member_paths == NULL)
+		return;
+	hashtable_destroy(member_paths, 0);
+	member_paths = NULL;
 }
 
 void

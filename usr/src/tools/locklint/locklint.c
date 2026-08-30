@@ -262,6 +262,7 @@ main(int argc, char **argv)
 		locklint_check_all(check_locks, dump_callgraph);
 	if (dump_annotations)
 		locklint_show_annotations(stdout);
+	locklint_access_cleanup();
 
 	return (has_error ? EXIT_FAILURE : EXIT_SUCCESS);
 }

@@ -60,6 +60,7 @@ locklint_get_lock_action(struct translation_unit *tu, struct instruction *insn,
 	access->member = NULL;
 	access->offset = 0;
 	access->expr = NULL;
+	access->path = NULL;
 	if (insn->opcode != OP_CALL)
 		return (LOCKLINT_LOCK_NONE);
 

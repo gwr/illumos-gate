@@ -44,3 +44,20 @@ global_visible_caller(void)
 	visibility_cross_make_global_visible();
 	visibility_cross_global.value = 1;
 }
+
+static void
+nested_invisible_caller(struct visibility_cross_state *state)
+{
+	_NOTE(COMPETING_THREADS_NOW)
+	visibility_cross_make_nested_invisible(state);
+	state->nested.value = 1;
+}
+
+static void
+nested_visible_caller(struct visibility_cross_state *state)
+{
+	_NOTE(COMPETING_THREADS_NOW)
+	_NOTE(NOW_INVISIBLE_TO_OTHER_THREADS(state->nested.value))
+	visibility_cross_make_nested_visible(state);
+	state->nested.value = 1;
+}

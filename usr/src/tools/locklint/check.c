@@ -161,6 +161,7 @@ struct visibility_transfer {
 	struct object_identity *data_object;
 	struct symbol *data_member;
 	unsigned long data_offset;
+	struct locklint_member_path *data_path;
 	enum visibility_state output[VISIBILITY_STATE_COUNT];
 	struct visibility_transfer *next;
 };
@@ -1481,6 +1482,7 @@ argument_lock(struct translation_unit *tu, struct expression *argument,
 		return (false);
 	lock->member = argument_member(argument, member);
 	lock->offset += offset;
+	lock->path = NULL;
 	return (true);
 }
 
@@ -1509,6 +1511,7 @@ map_call_protection_condition(struct function_info *function,
 		base.member = NULL;
 		base.offset = 0;
 		base.expr = NULL;
+		base.path = NULL;
 	}
 	if (!condition->has_lock) {
 		*lock = (struct locklint_access){ 0 };
@@ -1518,6 +1521,7 @@ map_call_protection_condition(struct function_info *function,
 		lock->member = argument_member(argument,
 		    condition->lock_member);
 		lock->offset += condition->lock_offset;
+		lock->path = NULL;
 	} else {
 		/* Absolute locks keep their original program-wide identity. */
 		lock->root = condition->lock_root;
@@ -1526,10 +1530,12 @@ map_call_protection_condition(struct function_info *function,
 		lock->member = condition->lock_member;
 		lock->offset = condition->lock_offset;
 		lock->expr = NULL;
+		lock->path = NULL;
 	}
 	*object = base;
 	object->member = argument_member(argument, condition->data_member);
 	object->offset += condition->data_offset;
+	object->path = NULL;
 	return (true);
 }
 
@@ -1727,6 +1733,7 @@ visibility_transfer_access(const struct function_info *function,
 	}
 	region->member = transfer->data_member;
 	region->offset = transfer->data_offset;
+	region->path = transfer->data_path;
 }
 
 static bool
@@ -1734,15 +1741,19 @@ map_call_visibility_transfer(struct function_info *function,
     struct instruction *insn, const struct visibility_transfer *transfer,
     struct locklint_access *region)
 {
+	struct locklint_access base;
+	struct locklint_access relative;
 	struct expression *argument;
 
 	if (transfer->data_root == NULL) {
 		argument = call_argument(insn, transfer->argument);
-		if (!locklint_get_access(function->tu, argument, region))
+		if (!locklint_get_access(function->tu, argument, &base))
 			return (false);
-		region->member = argument_member(argument,
-		    transfer->data_member);
-		region->offset += transfer->data_offset;
+		relative = (struct locklint_access){ 0 };
+		relative.member = transfer->data_member;
+		relative.offset = transfer->data_offset;
+		relative.path = transfer->data_path;
+		locklint_rebase_access(&base, &relative, region);
 	} else {
 		region->root = transfer->data_root;
 		region->object = transfer->data_object;
@@ -1750,6 +1761,7 @@ map_call_visibility_transfer(struct function_info *function,
 		region->member = transfer->data_member;
 		region->offset = transfer->data_offset;
 		region->expr = NULL;
+		region->path = transfer->data_path;
 	}
 	return (true);
 }
@@ -1758,7 +1770,8 @@ static struct visibility_transfer *
 add_visibility_transfer(struct function_info *function,
     unsigned int argument, struct symbol *data_root,
     struct object_identity *data_object, struct symbol *data_member,
-    unsigned long data_offset, bool *added)
+    unsigned long data_offset, struct locklint_member_path *data_path,
+    bool *added)
 {
 	struct visibility_transfer *transfer;
 	struct locklint_access candidate = { 0 };
@@ -1768,6 +1781,7 @@ add_visibility_transfer(struct function_info *function,
 	candidate.object = data_object;
 	candidate.member = data_member;
 	candidate.offset = data_offset;
+	candidate.path = data_path;
 	for (transfer = function->visibility_transfers; transfer != NULL;
 	    transfer = transfer->next) {
 		struct locklint_access existing = { 0 };
@@ -1776,6 +1790,7 @@ add_visibility_transfer(struct function_info *function,
 		existing.object = transfer->data_object;
 		existing.member = transfer->data_member;
 		existing.offset = transfer->data_offset;
+		existing.path = transfer->data_path;
 		if (transfer->argument == argument &&
 		    locklint_same_access(&existing, &candidate)) {
 			*added = false;
@@ -1790,6 +1805,7 @@ add_visibility_transfer(struct function_info *function,
 	transfer->data_object = data_object;
 	transfer->data_member = data_member;
 	transfer->data_offset = data_offset;
+	transfer->data_path = data_path;
 	for (state = 0; state < VISIBILITY_STATE_COUNT; state++)
 		transfer->output[state] = state;
 	transfer->next = function->visibility_transfers;
@@ -1844,15 +1860,36 @@ map_call_visibility_effects(struct function_info *function,
 		effect->region = region;
 		for (state = 0; state < VISIBILITY_STATE_COUNT; state++)
 			effect->output[state] = transfer->output[state];
-		for (link = &effects; *link != NULL; link = &(*link)->next) {
-			if (locklint_access_contains(&region, &(*link)->region) &&
-			    !locklint_same_access(&region, &(*link)->region))
+		for (link = &effects; *link != NULL; link = &(*link)->next)
+			if (locklint_access_depth(&region) <
+			    locklint_access_depth(&(*link)->region))
 				break;
-		}
 		effect->next = *link;
 		*link = effect;
 	}
 	return (effects);
+}
+
+static void
+add_visibility_result(struct visibility_entry **results,
+    const struct locklint_access *region, enum visibility_state state)
+{
+	struct visibility_entry **link;
+	struct visibility_entry *entry;
+
+	for (entry = *results; entry != NULL; entry = entry->next) {
+		if (locklint_same_access(&entry->region, region)) {
+			entry->state = state;
+			return;
+		}
+	}
+	entry = alloc_visibility(region, state);
+	for (link = results; *link != NULL; link = &(*link)->next)
+		if (locklint_access_depth(region) <
+		    locklint_access_depth(&(*link)->region))
+			break;
+	entry->next = *link;
+	*link = entry;
 }
 
 static void
@@ -1863,28 +1900,35 @@ transfer_call_visibility_effects(struct function_info *function,
 	struct mapped_visibility_effect *effects;
 	struct mapped_visibility_effect *effect;
 	struct visibility_entry *original;
+	struct visibility_entry *results = NULL;
+	struct visibility_entry *entry;
 
 	if (callee == NULL)
 		return;
 	effects = map_call_visibility_effects(function, insn, callee);
 	original = copy_visibility(*visibility);
 	for (effect = effects; effect != NULL; effect = effect->next) {
-		struct visibility_entry *entry;
 		enum visibility_state state;
 
 		state = get_visibility(original, &effect->region);
-		set_visibility(visibility, &effect->region,
+		add_visibility_result(&results, &effect->region,
 		    effect->output[state]);
-		for (entry = original; entry != NULL; entry = entry->next) {
-			if (locklint_same_access(&effect->region,
-			    &entry->region) ||
-			    !locklint_access_contains(&effect->region,
-			    &entry->region))
-				continue;
-			set_visibility(visibility, &entry->region,
-			    effect->output[entry->state]);
-		}
 	}
+	for (entry = original; entry != NULL; entry = entry->next) {
+		struct mapped_visibility_effect *selected = NULL;
+
+		for (effect = effects; effect != NULL; effect = effect->next) {
+			if (locklint_access_contains(&effect->region,
+			    &entry->region))
+				selected = effect;
+		}
+		if (selected != NULL)
+			add_visibility_result(&results, &entry->region,
+			    selected->output[entry->state]);
+	}
+	for (entry = results; entry != NULL; entry = entry->next)
+		set_visibility(visibility, &entry->region, entry->state);
+	free_visibility(results);
 	free_visibility(original);
 	free_mapped_visibility_effects(effects);
 }
@@ -2224,6 +2268,7 @@ simulate_transfer(struct function_info *function,
 	target.member = transfer->lock_member;
 	target.offset = transfer->lock_offset;
 	target.expr = NULL;
+	target.path = NULL;
 	FOR_EACH_PTR(function->ep->bbs, bb) {
 		block = calloc(1, sizeof (*block));
 		if (block == NULL)
@@ -2366,7 +2411,7 @@ collect_visibility_transfer_expression(struct function_info *function,
 	    &data_object))
 		return;
 	(void) add_visibility_transfer(function, argument, data_root,
-	    data_object, access.member, access.offset, &added);
+	    data_object, access.member, access.offset, access.path, &added);
 	*changed |= added;
 }
 
@@ -2428,7 +2473,7 @@ propagate_visibility_transfer_candidates(struct function_info *function)
 					continue;
 				(void) add_visibility_transfer(function, argument,
 				    data_root, data_object, access.member,
-				    access.offset, &added);
+				    access.offset, access.path, &added);
 				changed |= added;
 			}
 		} END_FOR_EACH_PTR(insn);

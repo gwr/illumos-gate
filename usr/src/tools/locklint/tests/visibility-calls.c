@@ -18,12 +18,17 @@ struct visibility_call_state {
 	int protected;
 	int sibling;
 	int read_only;
+	struct {
+		int protected;
+	} nested;
 };
 
 _NOTE(MUTEX_PROTECTS_DATA(visibility_call_state::lock,
     visibility_call_state::protected))
 _NOTE(MUTEX_PROTECTS_DATA(visibility_call_state::lock,
     visibility_call_state::sibling))
+_NOTE(MUTEX_PROTECTS_DATA(visibility_call_state::lock,
+    visibility_call_state::nested.protected))
 _NOTE(READ_ONLY_DATA(visibility_call_state::read_only))
 
 static void
@@ -276,4 +281,65 @@ nested_visible_caller(struct visibility_wrapper *wrapper)
 	_NOTE(NOW_INVISIBLE_TO_OTHER_THREADS(wrapper->inner.protected))
 	make_visible(&wrapper->inner);
 	wrapper->inner.protected = 1;
+}
+
+static void
+maybe_hide_nested_member(struct visibility_call_state *state, int hide)
+{
+	_NOTE(NOW_VISIBLE_TO_OTHER_THREADS(state->nested))
+	if (hide)
+		_NOTE(NOW_INVISIBLE_TO_OTHER_THREADS(state->nested.protected))
+}
+
+static void
+nested_summary_merge_caller(struct visibility_call_state *state, int hide)
+{
+	_NOTE(COMPETING_THREADS_NOW)
+	maybe_hide_nested_member(state, hide);
+	state->nested.protected = 1;
+}
+
+static void
+show_whole_hide_nested_leaf(struct visibility_call_state *state)
+{
+	_NOTE(NOW_VISIBLE_TO_OTHER_THREADS(*state))
+	_NOTE(NOW_INVISIBLE_TO_OTHER_THREADS(state->nested.protected))
+}
+
+static void
+three_level_effect_caller(struct visibility_call_state *state)
+{
+	_NOTE(COMPETING_THREADS_NOW)
+	_NOTE(NOW_INVISIBLE_TO_OTHER_THREADS(state->nested))
+	show_whole_hide_nested_leaf(state);
+	state->nested.protected = 1;
+}
+
+static void
+hide_whole(struct visibility_call_state *state)
+{
+	_NOTE(NOW_INVISIBLE_TO_OTHER_THREADS(*state))
+}
+
+static void
+show_whole(struct visibility_call_state *state)
+{
+	_NOTE(NOW_VISIBLE_TO_OTHER_THREADS(*state))
+}
+
+static void
+nested_whole_invisible_caller(struct visibility_wrapper *wrapper)
+{
+	_NOTE(COMPETING_THREADS_NOW)
+	hide_whole(&wrapper->inner);
+	wrapper->inner.sibling = 1;
+}
+
+static void
+nested_whole_visible_caller(struct visibility_wrapper *wrapper)
+{
+	_NOTE(COMPETING_THREADS_NOW)
+	_NOTE(NOW_INVISIBLE_TO_OTHER_THREADS(wrapper->inner))
+	show_whole(&wrapper->inner);
+	wrapper->inner.sibling = 1;
 }
