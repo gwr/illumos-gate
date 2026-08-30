@@ -1,0 +1,3 @@
+../locklint: calls-basic.c:79:28: warning: locklint: call to 'read_direct' accesses protected member 'direct_value' without holding 'lock'
+../locklint: calls-basic.c:96:29: warning: locklint: call to 'read_wrapper' accesses protected member 'transitive_value' without holding 'lock'
+../locklint: calls-basic.c:113:31: warning: locklint: call to 'read_recursive' accesses protected member 'recursive_value' without holding 'lock'

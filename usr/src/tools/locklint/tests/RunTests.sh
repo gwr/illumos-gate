@@ -176,6 +176,10 @@ do
 	compare "$test" "$test.ref" "$test.out"
 done
 
+run_capture "basic calls" calls-basic.out \
+    "$LOCKLINT" --check-locks calls-basic.c
+compare "basic calls" calls-basic.ref calls-basic.out
+
 #
 # Verify calls, lock conditions, and effects across translation units.
 #
