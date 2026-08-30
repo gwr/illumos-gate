@@ -126,8 +126,8 @@ reports accesses that violate declared protection and exposure policies.
 
 Locklint performs flow analysis over every retained function.  Analysis-root
 reachability determines whether a function entry can be attributed to known
-direct callers and therefore whether its protection conditions may be deferred.
-Function summaries propagate through known direct calls.
+resolved callers and therefore whether its protection conditions may be
+deferred.  Function summaries propagate through resolved calls.
 
 Sparse parses C source and produces the intermediate representation used by
 locklint.  Locklint registers callbacks to capture locking information during
@@ -153,15 +153,17 @@ The main phases are:
    6. associate retained records and relevant Sparse symbols with the current
       translation unit; and
    7. use Sparse's source-use walker to record function-pointer evidence from
-      evaluated initializers and function bodies; and
+      evaluated initializers and function bodies, and record exact targets
+      from supported closed aggregate initializers; and
    8. retain each function entrypoint for later checking.
 5. After all files have been parsed:
    1. combine object and function declarations according to C linkage;
-   2. scan call instructions and resolve direct callees as needed;
-   3. resolve previously recorded function escapes to retained definitions
-      and build their target index;
+   2. resolve recorded exact indirect targets and function escapes to retained
+      definitions;
+   3. scan call instructions and resolve direct or supported indirect callees
+      as needed;
    4. assign additive conservative root reasons;
-   5. propagate reachability from those roots through resolved direct calls;
+   5. propagate reachability from those roots through resolved calls;
    6. emit a requested call-graph audit;
    7. solve function lock and visibility transfer summaries;
    8. solve unified intraprocedural lock, competition, and visibility state;
@@ -349,6 +351,7 @@ functions
 
 function-pointer observations
   |- function_escape
+  |- indirect_target
   `- function_pointer_activity
 
 temporary call audit
@@ -370,6 +373,7 @@ The structures have these roles:
 | `struct function_info` | Locklint's record for one function; refers to its Sparse entrypoint, embeds its automatic root-reason mask and function-index linkages, and owns its block state and summaries |
 | `struct call_audit` | One temporary source-order entry for a live call instruction while dumping a function's calls |
 | `struct function_escape` | One source observation that an exact function was used as a value; supplies root provenance through its source position and resolved target |
+| `struct indirect_target` | One exact target candidate for a member of a supported file-static constant aggregate; records translation unit, object, member, offset, source function, resolved target, and ambiguity |
 | `struct function_pointer_activity` | One initializer or function-body load or store involving a function pointer; a pointer copy is represented by its source load and destination store |
 | `struct block_info` | Associates one Sparse basic block with reachability and its input and output unified analysis states |
 | `struct analysis_state` | The lock map, competition state and path-dependence flag, and per-region visibility facts at one CFG point |
@@ -409,6 +413,7 @@ The module-scope records use these collections:
 | `function_info` | Individually allocated records in an owning linked list | Embeds `by_entrypoint` for an AVL keyed by Sparse entrypoint and `by_identity` for an AVL keyed by C function identity |
 | `call_audit` | Temporary array allocated only while dumping one function | Sorted by source position and collection sequence with `qsort()`; no persistent index |
 | `function_escape` | Individually allocated records in an owning linked list | Embeds `by_source` for deterministic source traversal and `by_target` for finding every escape reason associated with a resolved function |
+| `indirect_target` | Individually allocated records in an owning linked list | Matched by translation unit, aggregate object, member, and offset; the supported exact case needs no separate index |
 | `function_pointer_activity` | Individually allocated records in an owning linked list, created only when a call-graph audit is requested | Embeds `by_source` for one source-ordered AVL; it has no target index because no exact target is known |
 | root-reason kinds | A bit mask embedded in `function_info` | No separate collection; source-backed escape reasons refer to `function_escape` records |
 | `translation_unit` | Existing process-lifetime sequence | No additional index in this increment |
@@ -421,7 +426,7 @@ range traversal for ambiguous external definitions.
 
 Calls remain in Sparse's retained IR rather than separate persistent records.
 Root classification, reachability, lock-summary propagation, and diagnostics
-scan live call instructions and resolve their direct callees as needed.
+scan live call instructions and resolve their callees as needed.
 `dump_function_calls()` collects only the current function's live calls into
 a temporary array, sorts that array by source position, emits the audit, and
 frees it.
@@ -970,7 +975,7 @@ lock requirements by establishing no competition, but is not verified,
 diagnosed as contradictory, or propagated as a caller condition.
 
 Protected-access conditions express "this datum must be protected" rather
-than only "this mutex must be held."  At a direct call, the caller may
+than only "this mutex must be held."  At a resolved call, the caller may
 satisfy such a condition by holding the mapped mutex, by having the mapped
 datum invisible, or by being in a no-competition state.  This preserves the
 disjunction instead of arbitrarily choosing a lock requirement inside the
@@ -985,10 +990,10 @@ Callers must establish one of the accepted protection alternatives for each
 mapped actual or absolute object.  A whole-object assumption covers its
 descendants.  Invalid expressions are diagnosed during final replay.
 
-Visibility changes to formal or absolute objects are inferred as direct-call
-summaries and mapped into the caller, like existing lock transfers.  Each
+Visibility changes to formal or absolute objects are inferred as function
+summaries and mapped across resolved calls, like existing lock transfers.  Each
 summary is an input-to-output table for the three visibility states, solved
-across every reachable return and to a fixed point through direct,
+across every reachable return and to a fixed point through resolved,
 transitive, and recursive calls.  Canonical member paths preserve nested
 regions, base offsets, and identity across translation units.  Overlapping
 effects are applied from containing regions to leaves so a narrower result is
@@ -1002,9 +1007,9 @@ validate return paths for them.  Historical LockLint describes nested
 competing-thread regions, which the current three-state competition model
 cannot represent faithfully.
 
-Unresolved and indirect calls do not receive invented visibility or
-concurrency effects.  Mapping returned allocations and general aliases
-remains later object-identity work.
+Unresolved calls do not receive invented visibility or concurrency effects.
+Mapping returned allocations and general aliases remains later object-identity
+work.
 
 ### Focused validation
 
@@ -1013,7 +1018,7 @@ The tests cover:
 - initialization under no competition and while an object is invisible;
 - publication and withdrawal of whole objects and selected members;
 - visibility and competition merges across branches;
-- lock, invisibility, and no-competition alternatives at direct calls;
+- lock, invisibility, and no-competition alternatives at resolved calls;
 - `ASSERT(NO_COMPETING_THREADS)` and `ASSUMING_PROTECTED`;
 - direct, transitive, recursive, nested-object, and cross-translation-unit
   visibility summaries;
@@ -1102,7 +1107,7 @@ At a merge, equal states remain unchanged and disagreements become
 
 Instruction transfer order is:
 
-1. apply summarized direct-call effects;
+1. apply summarized effects from a resolved call;
 2. apply a direct mutex acquire or release; and
 3. apply an assertion refinement.
 
@@ -1124,15 +1129,39 @@ units have separate Sparse symbol identities.
 Each live call instruction is classified when it is scanned as one of:
 
 - a resolved direct call, with one known callee;
+- a resolved indirect call through a supported exact aggregate member;
 - an unresolved external call, for which no retained definition is known;
 - an ambiguous external call, for which several definitions could match; or
 - an indirect call, for which the called expression does not identify one
-  function.
+  supported exact target.
 
-Only resolved direct calls contribute to call-graph traversal in this
-increment.  Unresolved and ambiguous calls remain explicit in audit output
-rather than silently disappearing.  Indirect target inference is separate
-follow-up work.
+Resolved direct and indirect calls use one callee interface and contribute
+equally to root classification, reachability, lock and visibility effects,
+protection-condition propagation, and diagnostics.  Unresolved and ambiguous
+calls remain explicit in audit output rather than silently disappearing.
+
+### Exact static operations-vector targets
+
+Locklint recognizes the deliberately narrow case of a file-static `const`
+aggregate whose function-pointer member is initialized with one exact
+function.  Sparse retains evaluated aggregate entries as positioned
+initializer expressions.  Before those source structures are released,
+locklint records the translation unit, aggregate object, member, byte offset,
+source function symbol, and source position.
+
+After all functions have been registered, the source function symbol is
+resolved with the same C-linkage rules as a direct call.  An indirect call is
+resolved only when its retained source expression names the same translation
+unit, aggregate object, member, and offset, and the recorded target is unique
+and unambiguous.  Matching both member and offset avoids conflating union
+members that share storage.
+
+The aggregate must remain a closed target source.  Mutable aggregate objects,
+objects whose address escapes, unsupported initializer shapes, and
+object/member entries with more than one possible target are not resolved.
+Callback registration, pointer copies, mutable pointer variables, and indexed
+target sets likewise remain outside this exact case.  Their calls stay
+visible as unresolved indirect calls.
 
 ### Automatic root discovery
 
@@ -1140,10 +1169,11 @@ Root classification is conservative and automatic.  A function accumulates
 every applicable root reason:
 
 - **external linkage** - code outside the analyzed inputs may call it;
-- **no known direct caller** - no resolved direct edge accounts for entry;
-  and
+- **no known direct caller** - no resolved non-self edge accounts for entry;
+  the audit retains this historical label for both direct and supported
+  indirect edges; and
 - **function pointer escape** - the function is used as a value outside a
-  resolved direct call.
+  resolved call.
 
 Function-pointer escape includes implicit function-to-pointer conversion, not
 only an explicit unary `&`.  Locklint therefore does not rely solely on
@@ -1157,19 +1187,23 @@ misclassified as escaping and an indirect-call target is not duplicated as a
 pointer load.  For example:
 
 ```c
-static struct cb_ops cb_ops = {
+static const struct cb_ops cb_ops = {
         .cb_open = driver_open
 };
 ```
 
-classifies `driver_open` as a root and records the exact function use as
-evidence.  A designated operation-table member may additionally produce a
-store identified by aggregate type and member.  Indexed initializer
-destinations are not currently retained.  Other function-pointer loads and
-stores are recorded for audit even when they do not reveal an exact target.
-A pointer copy appears as the independently observed source load and
-destination store.  A direct call does not by itself make its callee's address
-escape.
+records both the exact function use and the closed member-to-target mapping.
+Calls through `cb_ops.cb_open` account for entry to `driver_open`, so the
+initializer escape does not independently make `driver_open` a root.  If the
+same function has any other unaccounted escape, that escape still supplies a
+conservative root reason.
+
+A designated operation-table member additionally produces a store identified
+by aggregate type and member.  Indexed initializer destinations are not
+currently retained as exact targets.  Other function-pointer loads and stores
+are recorded for audit even when they do not reveal an exact target.  A
+pointer copy appears as the independently observed source load and destination
+store.  A direct call does not by itself make its callee's address escape.
 
 `MOD_ADDRESSABLE` remains a conservative fallback for an internal-linkage
 function whose source use is not represented by recorded evidence.  Sparse
@@ -1179,8 +1213,8 @@ provenance.  An internal fallback reason has the function declaration as
 provenance but may lack the position and destination of the operation that
 caused the modifier.
 
-Reachability from those roots is propagated through known direct calls.
-Static functions reached only by known direct calls may defer protected-data
+Reachability from those roots is propagated through resolved calls.  Static
+functions reached only by resolved calls may defer protected-data
 warnings to callers.
 
 Every retained function is analyzed.  Root reachability determines whether a
@@ -1190,7 +1224,7 @@ select which function bodies are retained.
 A function may defer a protection condition only when it is reachable from an
 analysis root and has no root reason of its own.  A root, or a function not
 reachable through the resolved graph, is an independent diagnostic boundary.
-Self-recursion does not establish a direct caller for root classification.
+Self-recursion does not establish a caller for root classification.
 A mutually recursive static component with no external, escaping, or
 caller-free member may remain rootless; the audit marks its functions
 unreachable so this boundary is visible.
@@ -1205,16 +1239,17 @@ function.  It shows:
 - whether the function is reachable from an analysis root;
 - all root reasons and their source evidence;
 - resolved direct edges;
+- resolved indirect edges;
 - unresolved and ambiguous external calls;
 - unresolved indirect calls; and
 - exact function-valued uses and other function-pointer loads and stores;
   pointer copies appear as paired load and store uses.
 
-The audit reports analysis boundaries without claiming indirect targets.
-Unresolved indirect calls do not yet produce ordinary `--check-locks`
-diagnostics; the explicit audit is the reporting interface for this
-increment.  Target inference and policy for user-facing incomplete-analysis
-diagnostics require evidence from real module audits.
+The audit labels supported inferred edges as `resolved-indirect`.  It reports
+other indirect calls as unresolved without inventing targets.  Unresolved
+indirect calls do not yet produce ordinary `--check-locks` diagnostics; the
+explicit audit remains their reporting interface.  Policy for user-facing
+incomplete-analysis diagnostics remains later work.
 
 The existing `--check-locks` diagnostic for an ambiguous external direct call
 remains unchanged.  Audit records supplement rather than suppress ordinary
@@ -1322,7 +1357,7 @@ For each instruction it:
 1. checks `READ_ONLY_DATA` against current exposure;
 2. checks a protected memory access against mutex, visibility, competition,
    and assumed-protection alternatives;
-3. checks direct-call protection conditions and invalid summarized lock
+3. checks resolved-call protection conditions and invalid summarized lock
    effects, then applies summarized lock and visibility transfers;
 4. checks direct acquire/release validity and applies the operation; and
 5. applies assertion, competition, and visibility transitions.
@@ -1386,8 +1421,9 @@ machine-readable format, or predecessor/call-chain witness.
 
 | Function | Responsibility |
 | --- | --- |
-| `locklint_check_record_pointer_evidence()` | Use Sparse's source-use walker to record function-valued uses and optional function-pointer loads and stores while a translation unit is current |
+| `locklint_check_record_pointer_evidence()` | Use Sparse's source-use walker to record function-valued uses and optional function-pointer loads and stores, then record supported exact aggregate targets while a translation unit is current |
 | `locklint_check_add()` | Retain a function and add its Sparse and C-identity indexes |
+| `call_callee()` | Resolve one direct call or supported exact indirect call through the common semantic edge interface |
 | `classify_roots()` | Add every applicable conservative root reason |
 | `analyze_blocks()` | Solve unified intraprocedural lock, competition, and visibility state |
 | `run_lock_checks()` | Order lock and visibility transfer solving, block analysis, protection-condition propagation, and diagnostics |
@@ -1543,11 +1579,12 @@ The current implementation relies on these invariants:
     be visible to competing threads; definite invisibility or no competition
     permits the store.
 18. Every analysis root retains all independently established reasons.
-19. A function used as a value outside a resolved direct call is a
-    conservative root, including when the conversion occurs in a static
-    initializer without explicit `&`.
-20. Unresolved, ambiguous, and indirect calls remain visible in the call-graph
-    audit and do not create invented call edges.
+19. A function used as a value outside a resolved call is a conservative root,
+    except for a closed static initializer escape accounted for by its exact
+    resolved indirect edges.
+20. An exact indirect target matches translation unit, aggregate object,
+    member, and offset; unsupported, unresolved, and ambiguous calls remain
+    visible in the call-graph audit and do not create invented call edges.
 21. A structure-valued lock retains whole-object identity; recursive aggregate
     expansion applies only to protected data.
 
@@ -1560,9 +1597,10 @@ The implemented design remains intentionally narrow.  Important missing
 areas include:
 
 - general aliasing and identities reached through returned pointers;
-- indirect-call and callback target resolution;
+- indirect targets from mutable pointers, escaped tables, callback
+  registration, pointer copies, ambiguous assignments, and indexed target
+  sets;
 - explicit root configuration and source annotations;
-- rwlock read/write state;
 - declared competition side-effect semantics and nested competition regions;
 - explicit lock-side-effect annotation contracts;
 - optional, configurable validation of declared lock types;
