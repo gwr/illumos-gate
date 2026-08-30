@@ -723,6 +723,11 @@ Automatic names first resolve in the ordinary object namespace, then as a
 structure or typedef name.  A successful object lookup changes the reference
 to object scope; a successful type lookup changes it to type scope.
 
+For a mechanical lock, an object-scoped name may identify either a scalar or
+an aggregate object.  A bare compound type cannot identify a particular lock
+instance; a type-scoped lock must therefore name a member, such as
+`record::lock`.
+
 The parser accepts:
 
 - bare object or type names;
@@ -763,6 +768,10 @@ Resolution performs these steps:
 
 Anonymous aggregate carriers are transparent during recursive expansion.
 Named leaf members inherit the accumulated offset.
+
+Aggregate expansion applies only to data references.  An aggregate lock object
+retains the identity of the whole named object; its representation members are
+not treated as separate locks.
 
 ### Replacement semantics
 
@@ -1051,6 +1060,9 @@ It recognizes:
 `locklint_get_lock_action()` returns the action and normalized first argument
 for a recognized mutex operation.  Both the checker and `--dump-events` use
 this decoder so development output and semantic checking agree.
+
+Mutex recognition currently uses the operation name and argument identity.
+It does not validate that the argument's declared type is a known mutex type.
 
 The current user-level `mutex_lock()` model assumes successful acquisition.
 Its return value and robust-mutex states are not modeled.
@@ -1502,6 +1514,8 @@ The current implementation relies on these invariants:
     initializer without explicit `&`.
 20. Unresolved, ambiguous, and indirect calls remain visible in the call-graph
     audit and do not create invented call edges.
+21. A structure-valued lock retains whole-object identity; recursive aggregate
+    expansion applies only to protected data.
 
 Changes that invalidate one of these invariants should update this document
 and add a focused regression test.
@@ -1517,6 +1531,7 @@ areas include:
 - rwlock read/write state;
 - declared competition side-effect semantics and nested competition regions;
 - explicit lock-side-effect annotation contracts;
+- optional, configurable validation of declared lock types;
 - condition waits, try-locks, upgrades, and downgrades;
 - lock-order analysis; and
 - stable diagnostic identifiers, suppressions, and provenance.
