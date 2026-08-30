@@ -143,6 +143,13 @@ run_capture "data policy checks" data-policy.out \
 compare "data policy checks" data-policy.ref data-policy.out
 
 #
+# Verify structure-valued mutexes retain whole-object lock identity.
+#
+run_capture "structure-valued locks" struct-lock.out \
+    "$LOCKLINT" --check-locks struct-lock.c
+compare "structure-valued locks" struct-lock.ref struct-lock.out
+
+#
 # Verify executable annotations survive as ordered tagged contexts.
 #
 run_capture "execution markers" visibility-linearized.out \
@@ -264,6 +271,9 @@ require_match "annotation errors" \
     annotation-errors.out
 require_match "annotation errors" \
     "unresolved annotation name 'error_state::missing_value'" \
+    annotation-errors.out
+require_match "annotation errors" \
+    "annotation lock 'error_state' names a structure" \
     annotation-errors.out
 require_match "annotation errors" \
     "expected quoted protection scheme" annotation-errors.out

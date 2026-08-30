@@ -20,13 +20,13 @@
 
 #ifdef __lock_lint
 #include <sys/note.h>
-typedef struct mutex {
-	int opaque;
-} mutex_t;
 #else
 #define	_NOTE(arg)
-typedef int mutex_t;
 #endif
+
+typedef struct mutex {
+	void *_opaque[1];
+} mutex_t;
 
 typedef struct inner_state {
 	int first;

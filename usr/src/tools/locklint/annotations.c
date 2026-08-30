@@ -660,7 +660,7 @@ resolve_annotation_ref(struct annotation_ref *ref, bool lock,
 	ref->owner_type = direct_compound_type(ref->type);
 	if (ref->path != NULL && !resolve_path(ref, ref->type))
 		return (false);
-	if (lock && ref->member == NULL &&
+	if (lock && ref->scope == ANNOTATION_TYPE && ref->member == NULL &&
 	    direct_compound_type(ref->type) != NULL) {
 		char *name = annotation_ref_name(ref);
 

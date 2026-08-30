@@ -30,6 +30,7 @@ static error_state_t error_object;
 _NOTE(MUTEX_PROTECTS_DATA(missing_lock, error_object.value))
 _NOTE(MUTEX_PROTECTS_DATA(error_object.missing_lock, error_object.value))
 _NOTE(MUTEX_PROTECTS_DATA(error_state::lock, error_state::missing_value))
+_NOTE(MUTEX_PROTECTS_DATA(error_state, error_object.value))
 _NOTE(SCHEME_PROTECTS_DATA(not_quoted, error_object.value))
 _NOTE(SCHEME_PROTECTS_DATA("scheme", error_state::missing_scheme))
 _NOTE(DATA_READABLE_WITHOUT_LOCK(error_state::missing_readable))
