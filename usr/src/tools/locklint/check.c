@@ -36,12 +36,15 @@
 #include "identity.h"
 #include "symbol.h"
 
-enum lock_state {
-	LOCK_NOT_HELD,
-	LOCK_HELD,
-	LOCK_MAYBE_HELD,
-	LOCK_STATE_COUNT
-};
+typedef unsigned int lock_state_t;
+
+#define	LOCK_NOT_HELD	LOCKLINT_MODE_UNHELD
+#define	LOCK_HELD	LOCKLINT_MODE_MUTEX
+#define	LOCK_READ_HELD	LOCKLINT_MODE_READER
+#define	LOCK_WRITE_HELD	LOCKLINT_MODE_WRITER
+#define	LOCK_STATE_COUNT	(1 << 4)
+
+#define	LOCK_ANY_HELD	(LOCK_HELD | LOCK_READ_HELD | LOCK_WRITE_HELD)
 
 enum competition_state {
 	COMPETITION_NONE,
@@ -73,7 +76,7 @@ enum function_root_reason {
 
 struct state_entry {
 	struct locklint_access lock;
-	enum lock_state state;
+	lock_state_t state;
 	bool side_effect;
 	struct state_entry *next;
 };
@@ -108,8 +111,8 @@ struct block_info {
 struct transfer_block_info {
 	struct basic_block *bb;
 	bool reachable;
-	enum lock_state in;
-	enum lock_state out;
+	lock_state_t in;
+	lock_state_t out;
 	unsigned int invalid_in;
 	unsigned int invalid_out;
 	struct transfer_block_info *next;
@@ -140,6 +143,7 @@ struct protection_condition {
 	struct symbol *lock_member;
 	unsigned long lock_offset;
 	bool has_lock;
+	unsigned int required_modes;
 	struct symbol *data_member;
 	unsigned long data_offset;
 	struct position pos;
@@ -150,7 +154,7 @@ struct lock_transfer {
 	unsigned int argument;
 	struct symbol *lock_member;
 	unsigned long lock_offset;
-	enum lock_state output[LOCK_STATE_COUNT];
+	lock_state_t output[LOCK_STATE_COUNT];
 	unsigned int invalid[LOCK_STATE_COUNT];
 	struct lock_transfer *next;
 };
@@ -260,7 +264,7 @@ same_lock(const struct locklint_access *left,
 }
 
 static struct state_entry *
-alloc_state(const struct locklint_access *lock, enum lock_state state)
+alloc_state(const struct locklint_access *lock, lock_state_t state)
 {
 	struct state_entry *entry;
 
@@ -284,7 +288,7 @@ free_states(struct state_entry *states)
 	}
 }
 
-static enum lock_state
+static lock_state_t
 get_state(struct state_entry *states, const struct locklint_access *lock)
 {
 	struct state_entry *entry;
@@ -294,6 +298,20 @@ get_state(struct state_entry *states, const struct locklint_access *lock)
 			return (entry->state);
 	}
 	return (LOCK_NOT_HELD);
+}
+
+static bool
+state_definitely_held(lock_state_t state)
+{
+	return ((state & LOCK_ANY_HELD) != 0 &&
+	    (state & LOCK_NOT_HELD) == 0);
+}
+
+static bool
+state_maybe_held(lock_state_t state)
+{
+	return ((state & LOCK_ANY_HELD) != 0 &&
+	    (state & LOCK_NOT_HELD) != 0);
 }
 
 static bool
@@ -311,7 +329,7 @@ has_side_effect(struct state_entry *states,
 
 static void
 set_state(struct state_entry **states, const struct locklint_access *lock,
-    enum lock_state state)
+    lock_state_t state)
 {
 	struct state_entry **link;
 
@@ -340,7 +358,7 @@ set_state(struct state_entry **states, const struct locklint_access *lock,
 
 static void
 set_asserted_state(struct state_entry **states,
-    const struct locklint_access *lock, enum lock_state state)
+    const struct locklint_access *lock, lock_state_t state)
 {
 	struct state_entry *entry;
 
@@ -407,12 +425,12 @@ merge_states(struct state_entry **merged, struct state_entry *incoming)
 				break;
 			}
 		}
-		if (get_state(incoming, &entry->lock) != entry->state)
-			entry->state = LOCK_MAYBE_HELD;
+		entry->state |= get_state(incoming, &entry->lock);
 	}
 	for (entry = incoming; entry != NULL; entry = entry->next) {
 		if (get_state(*merged, &entry->lock) == LOCK_NOT_HELD) {
-			set_state(merged, &entry->lock, LOCK_MAYBE_HELD);
+			set_state(merged, &entry->lock,
+			    entry->state | LOCK_NOT_HELD);
 			(*merged)->side_effect = entry->side_effect;
 		}
 	}
@@ -639,10 +657,11 @@ transfer_lock_action(struct function_info *function,
 {
 	struct locklint_access lock;
 	enum locklint_lock_action action;
+	enum locklint_lock_mode mode;
 
-	action = locklint_get_lock_action(function->tu, insn, &lock);
+	action = locklint_get_lock_action(function->tu, insn, &lock, &mode);
 	if (action == LOCKLINT_LOCK_ACQUIRE && lock.root != NULL)
-		set_state(states, &lock, LOCK_HELD);
+		set_state(states, &lock, mode);
 	else if (action == LOCKLINT_LOCK_RELEASE && lock.root != NULL)
 		set_state(states, &lock, LOCK_NOT_HELD);
 }
@@ -652,13 +671,10 @@ transfer_assertion(struct function_info *function,
     struct state_entry **states, struct instruction *insn)
 {
 	struct locklint_access lock;
-	enum locklint_assertion assertion;
+	unsigned int modes;
 
-	assertion = locklint_get_assertion(function->tu, insn, &lock);
-	if (assertion == LOCKLINT_ASSERT_HELD)
-		set_asserted_state(states, &lock, LOCK_HELD);
-	else if (assertion == LOCKLINT_ASSERT_NOT_HELD)
-		set_asserted_state(states, &lock, LOCK_NOT_HELD);
+	if (locklint_get_assertion(function->tu, insn, &lock, &modes))
+		set_asserted_state(states, &lock, modes);
 }
 
 static void
@@ -1600,7 +1616,7 @@ transfer_call_effects(struct function_info *function,
 	    transfer = transfer->next) {
 		struct locklint_access lock;
 		struct expression *argument;
-		enum lock_state state;
+		lock_state_t state;
 
 		argument = call_argument(insn, transfer->argument);
 		if (!argument_lock(function->tu, argument, transfer->lock_member,
@@ -1613,7 +1629,7 @@ transfer_call_effects(struct function_info *function,
 
 static bool
 same_condition_lock(const struct protection_condition *condition,
-    bool has_lock,
+    bool has_lock, unsigned int required_modes,
     struct symbol *root, struct object_identity *object,
     struct symbol *member, unsigned long offset)
 {
@@ -1624,6 +1640,8 @@ same_condition_lock(const struct protection_condition *condition,
 		return (false);
 	if (!has_lock)
 		return (true);
+	if (condition->required_modes != required_modes)
+		return (false);
 	/* Different declaration symbols can still denote one absolute lock. */
 	left.root = condition->lock_root;
 	left.object = condition->lock_object;
@@ -1659,7 +1677,7 @@ static bool
 add_protection_condition(struct function_info *function,
     unsigned int argument, struct symbol *data_root,
     struct object_identity *data_object,
-    bool has_lock,
+    bool has_lock, unsigned int required_modes,
     struct symbol *lock_root, struct object_identity *lock_object,
     struct symbol *lock_member, unsigned long lock_offset,
     struct symbol *data_member, unsigned long data_offset,
@@ -1672,7 +1690,8 @@ add_protection_condition(struct function_info *function,
 		if (condition->argument == argument &&
 		    same_condition_data(condition, data_root, data_object,
 		    data_member, data_offset) &&
-		    same_condition_lock(condition, has_lock, lock_root,
+		    same_condition_lock(condition, has_lock, required_modes,
+		    lock_root,
 		    lock_object, lock_member, lock_offset))
 			return (false);
 	}
@@ -1683,6 +1702,7 @@ add_protection_condition(struct function_info *function,
 	condition->data_root = data_root;
 	condition->data_object = data_object;
 	condition->has_lock = has_lock;
+	condition->required_modes = required_modes;
 	condition->lock_root = lock_root;
 	condition->lock_object = lock_object;
 	condition->lock_member = lock_member;
@@ -1953,6 +1973,16 @@ access_name(const struct locklint_access *access)
 	    show_ident(symbol->ident) : "<unknown>");
 }
 
+static const char *
+required_ownership(unsigned int required_modes)
+{
+	if (required_modes == LOCK_WRITE_HELD)
+		return ("write-holding");
+	if (required_modes == (LOCK_READ_HELD | LOCK_WRITE_HELD))
+		return ("read-holding");
+	return ("holding");
+}
+
 static bool
 assumed_protected(const struct function_info *function,
     const struct locklint_access *access)
@@ -1970,20 +2000,24 @@ assumed_protected(const struct function_info *function,
 static enum protection_status
 get_protection_status(const struct function_info *function,
     const struct analysis_state *state,
-    const struct locklint_access *object, bool has_lock,
+    const struct locklint_access *object, unsigned int required_modes,
     const struct locklint_access *lock)
 {
-	enum lock_state lock_state = has_lock ?
+	lock_state_t lock_state = required_modes != 0 ?
 	    get_state(state->locks, lock) : LOCK_NOT_HELD;
 	enum visibility_state visibility =
 	    get_visibility(state->visibility, object);
+	bool lock_definite = (lock_state & required_modes) != 0 &&
+	    (lock_state & ~required_modes) == 0;
+	bool lock_partial = (lock_state & required_modes) != 0 &&
+	    (lock_state & ~required_modes) != 0;
 
 	if (assumed_protected(function, object) ||
-	    lock_state == LOCK_HELD ||
+	    lock_definite ||
 	    visibility == VISIBILITY_INVISIBLE ||
 	    state->competition == COMPETITION_NONE)
 		return (PROTECTION_DEFINITE);
-	if (lock_state == LOCK_MAYBE_HELD ||
+	if (lock_partial ||
 	    visibility == VISIBILITY_MAYBE ||
 	    state->competition_path_dependent)
 		return (PROTECTION_PATH_DEPENDENT);
@@ -1993,7 +2027,7 @@ get_protection_status(const struct function_info *function,
 static bool
 protected_access(struct function_info *function, struct instruction *insn,
     struct locklint_access *access, struct locklint_access *lock,
-    struct symbol **data_member)
+    struct symbol **data_member, unsigned int *required_modes)
 {
 	struct locklint_data_policy policy;
 
@@ -2002,9 +2036,16 @@ protected_access(struct function_info *function, struct instruction *insn,
 	    !locklint_get_access(function->tu, insn->access, access))
 		return (false);
 	if (!locklint_data_policy(access, &policy, lock) ||
-	    policy.protection != LOCKLINT_PROTECTION_MUTEX ||
+	    (policy.protection != LOCKLINT_PROTECTION_MUTEX &&
+	    policy.protection != LOCKLINT_PROTECTION_RWLOCK) ||
 	    (insn->opcode == OP_LOAD && policy.readable_without_lock))
 		return (false);
+	if (policy.protection == LOCKLINT_PROTECTION_MUTEX)
+		*required_modes = LOCK_HELD;
+	else if (insn->opcode == OP_LOAD)
+		*required_modes = LOCK_READ_HELD | LOCK_WRITE_HELD;
+	else
+		*required_modes = LOCK_WRITE_HELD;
 	*data_member = access->member != NULL ?
 	    access->member : access->root;
 	return (true);
@@ -2097,13 +2138,14 @@ collect_local_transfers(struct function_info *function)
 		FOR_EACH_PTR(bb->insns, insn) {
 			struct locklint_access lock;
 			enum locklint_lock_action action;
+			enum locklint_lock_mode mode;
 			unsigned int argument;
 			bool added;
 
 			if (insn->bb == NULL)
 				continue;
 			action = locklint_get_lock_action(function->tu, insn,
-			    &lock);
+			    &lock, &mode);
 			if (action == LOCKLINT_LOCK_NONE || lock.root == NULL ||
 			    !formal_argument(function->ep, lock.root, &argument))
 				continue;
@@ -2172,21 +2214,22 @@ find_transfer_block(struct transfer_block_info *blocks,
 	return (NULL);
 }
 
-static enum lock_state
-merge_lock_state(enum lock_state left, enum lock_state right)
+static lock_state_t
+merge_lock_state(lock_state_t left, lock_state_t right)
 {
-	return (left == right ? left : LOCK_MAYBE_HELD);
+	return (left | right);
 }
 
 static void
 simulate_instruction(struct function_info *function,
-    struct locklint_access *target, enum lock_state *state,
+    struct locklint_access *target, lock_state_t *state,
     unsigned int *invalid, struct instruction *insn)
 {
 	struct function_info *callee;
 	struct lock_transfer *transfer;
 	struct locklint_access lock;
 	enum locklint_lock_action action;
+	enum locklint_lock_mode mode;
 
 	callee = direct_callee(function, insn);
 	if (callee != NULL) {
@@ -2206,15 +2249,15 @@ simulate_instruction(struct function_info *function,
 		}
 	}
 
-	action = locklint_get_lock_action(function->tu, insn, &lock);
+	action = locklint_get_lock_action(function->tu, insn, &lock, &mode);
 	if (action == LOCKLINT_LOCK_NONE || !same_lock(target, &lock))
 		return;
 	if (action == LOCKLINT_LOCK_ACQUIRE) {
-		if (*state != LOCK_NOT_HELD)
+		if ((*state & LOCK_ANY_HELD) != 0)
 			*invalid |= INVALID_ACQUIRE;
-		*state = LOCK_HELD;
+		*state = mode;
 	} else {
-		if (*state != LOCK_HELD)
+		if ((*state & LOCK_NOT_HELD) != 0)
 			*invalid |= INVALID_RELEASE;
 		*state = LOCK_NOT_HELD;
 	}
@@ -2223,8 +2266,8 @@ simulate_instruction(struct function_info *function,
 static void
 simulate_block(struct function_info *function,
     struct transfer_block_info *block,
-    struct locklint_access *target, enum lock_state in,
-    unsigned int invalid_in, enum lock_state *out,
+    struct locklint_access *target, lock_state_t in,
+    unsigned int invalid_in, lock_state_t *out,
     unsigned int *invalid_out)
 {
 	struct instruction *insn;
@@ -2243,9 +2286,9 @@ simulate_block(struct function_info *function,
  * lock state and invalid-operation flags through the CFG and across all
  * reachable returns.
  */
-static enum lock_state
+static lock_state_t
 simulate_transfer(struct function_info *function,
-    struct lock_transfer *transfer, enum lock_state input,
+    struct lock_transfer *transfer, lock_state_t input,
     unsigned int *invalid)
 {
 	struct transfer_block_info *blocks = NULL;
@@ -2253,7 +2296,7 @@ simulate_transfer(struct function_info *function,
 	struct transfer_block_info *block;
 	struct basic_block *bb;
 	struct locklint_access target;
-	enum lock_state result = input;
+	lock_state_t result = input;
 	unsigned int result_invalid = 0;
 	bool found_return = false;
 	bool changed;
@@ -2281,12 +2324,12 @@ simulate_transfer(struct function_info *function,
 	do {
 		changed = false;
 		for (block = blocks; block != NULL; block = block->next) {
-			enum lock_state in = input;
+			lock_state_t in = input;
 			unsigned int invalid_in = 0;
 			struct basic_block *parent;
 			bool reachable = block->bb == function->ep->entry->bb;
 			bool first = true;
-			enum lock_state out;
+			lock_state_t out;
 			unsigned int invalid_out;
 
 			if (!reachable) {
@@ -2370,8 +2413,8 @@ solve_function_transfers(struct function_info *function)
 	    transfer = transfer->next) {
 		unsigned int input;
 
-		for (input = 0; input < LOCK_STATE_COUNT; input++) {
-			enum lock_state output;
+		for (input = 1; input < LOCK_STATE_COUNT; input++) {
+			lock_state_t output;
 			unsigned int invalid;
 
 			output = simulate_transfer(function, transfer, input,
@@ -2738,15 +2781,21 @@ collect_assumption_conditions(struct function_info *function)
 		struct symbol *data_root;
 		struct object_identity *data_object;
 		unsigned int argument;
+		unsigned int required_modes = 0;
 		bool has_lock;
 
 		if (!condition_data_identity(function, access, &argument,
 		    &data_root, &data_object))
 			continue;
 		has_lock = locklint_data_policy(access, &policy, &lock) &&
-		    policy.protection == LOCKLINT_PROTECTION_MUTEX;
+		    (policy.protection == LOCKLINT_PROTECTION_MUTEX ||
+		    policy.protection == LOCKLINT_PROTECTION_RWLOCK);
+		if (policy.protection == LOCKLINT_PROTECTION_MUTEX)
+			required_modes = LOCK_HELD;
+		else if (policy.protection == LOCKLINT_PROTECTION_RWLOCK)
+			required_modes = LOCK_WRITE_HELD;
 		(void) add_protection_condition(function, argument,
-		    data_root, data_object, has_lock,
+		    data_root, data_object, has_lock, required_modes,
 		    has_lock && lock.root != access->root ? lock.root : NULL,
 		    has_lock && lock.root != access->root ? lock.object : NULL,
 		    has_lock ? lock.member : NULL, has_lock ? lock.offset : 0,
@@ -2803,18 +2852,19 @@ collect_local_protection_conditions(struct function_info *function)
 			struct symbol *data_root;
 			struct object_identity *data_object;
 			unsigned int argument;
+			unsigned int required_modes;
 
 			if (insn->bb == NULL)
 				continue;
 			if (protected_access(function, insn, &access, &lock,
-			    &data_member) &&
-			    get_protection_status(function, state, &access, true,
-			    &lock) == PROTECTION_ABSENT &&
+			    &data_member, &required_modes) &&
+			    get_protection_status(function, state, &access,
+			    required_modes, &lock) == PROTECTION_ABSENT &&
 			    condition_data_identity(function, &access, &argument,
 			    &data_root, &data_object)) {
 				(void) add_protection_condition(function, argument,
 				    data_root, data_object,
-				    true,
+				    true, required_modes,
 				    lock.root != access.root ? lock.root : NULL,
 				    lock.root != access.root ?
 				    lock.object : NULL,
@@ -2850,14 +2900,14 @@ propagate_call_protection_conditions(struct function_info *function,
 		    &object, &lock))
 			continue;
 		status = get_protection_status(function, state, &object,
-		    condition->has_lock, &lock);
+		    condition->required_modes, &lock);
 		if (status != PROTECTION_ABSENT ||
 		    !condition_data_identity(function, &object,
 		    &caller_argument, &data_root, &data_object))
 			continue;
 		if (add_protection_condition(function, caller_argument,
 		    data_root, data_object,
-		    condition->has_lock,
+		    condition->has_lock, condition->required_modes,
 		    condition->lock_root, condition->lock_object,
 		    lock.member, lock.offset, object.member, object.offset,
 		    condition->pos))
@@ -2937,10 +2987,13 @@ check_access(struct function_info *function, struct analysis_state *state,
 	const char *data_name;
 	enum protection_status status;
 	unsigned int argument;
+	unsigned int required_modes;
 
-	if (!protected_access(function, insn, &access, &lock, &data_member))
+	if (!protected_access(function, insn, &access, &lock, &data_member,
+	    &required_modes))
 		return;
-	status = get_protection_status(function, state, &access, true, &lock);
+	status = get_protection_status(function, state, &access, required_modes,
+	    &lock);
 	if (status == PROTECTION_DEFINITE)
 		return;
 	if (status == PROTECTION_ABSENT) {
@@ -2962,7 +3015,8 @@ check_access(struct function_info *function, struct analysis_state *state,
 	} else {
 		warning(insn->access->pos,
 		    "locklint: protected member '%s' accessed without "
-		    "holding '%s'", data_name, lock_name(&lock));
+		    "%s '%s'", data_name, required_ownership(required_modes),
+		    lock_name(&lock));
 	}
 }
 
@@ -2997,7 +3051,7 @@ check_direct_call(struct function_info *function,
 			    condition, &object, &lock))
 				continue;
 			status = get_protection_status(function, analysis, &object,
-			    condition->has_lock, &lock);
+			    condition->required_modes, &lock);
 			if (status == PROTECTION_DEFINITE)
 				continue;
 			if (status == PROTECTION_ABSENT &&
@@ -3014,9 +3068,11 @@ check_direct_call(struct function_info *function,
 				if (condition->has_lock) {
 					warning(pos, "locklint: call to '%s' "
 					    "accesses protected member '%s' "
-					    "without holding '%s'",
+					    "without %s '%s'",
 					    show_ident(callee->ep->name->ident),
-					    data_name, lock_name(&lock));
+					    data_name, required_ownership(
+					    condition->required_modes),
+					    lock_name(&lock));
 				} else {
 					warning(pos, "locklint: call to '%s' "
 					    "requires protection for '%s'",
@@ -3038,7 +3094,7 @@ check_direct_call(struct function_info *function,
 		    transfer = transfer->next) {
 			struct locklint_access lock;
 			struct expression *argument;
-			enum lock_state state;
+			lock_state_t state;
 
 			argument = call_argument(insn, transfer->argument);
 			if (!argument_lock(function->tu, argument,
@@ -3071,12 +3127,13 @@ check_lock_action(struct function_info *function,
 {
 	struct locklint_access lock;
 	enum locklint_lock_action action;
-	enum lock_state state;
+	enum locklint_lock_mode mode;
+	lock_state_t state;
 	struct position pos;
 	unsigned int argument;
 	bool defer;
 
-	action = locklint_get_lock_action(function->tu, insn, &lock);
+	action = locklint_get_lock_action(function->tu, insn, &lock, &mode);
 	if (action == LOCKLINT_LOCK_NONE || lock.root == NULL)
 		return;
 	state = get_state(analysis->locks, &lock);
@@ -3084,19 +3141,19 @@ check_lock_action(struct function_info *function,
 	    formal_argument(function->ep, lock.root, &argument);
 	pos = insn->call_expr != NULL ? insn->call_expr->pos : insn->pos;
 	if (action == LOCKLINT_LOCK_ACQUIRE) {
-		if (state == LOCK_HELD && !defer) {
+		if (state_definitely_held(state) && !defer) {
 			warning(pos, "locklint: lock '%s' is already held",
 			    lock_name(&lock));
-		} else if (state == LOCK_MAYBE_HELD && !defer) {
+		} else if (state_maybe_held(state) && !defer) {
 			warning(pos, "locklint: lock '%s' may already be held",
 			    lock_name(&lock));
 		}
-		set_state(&analysis->locks, &lock, LOCK_HELD);
+		set_state(&analysis->locks, &lock, mode);
 	} else {
 		if (state == LOCK_NOT_HELD && !defer) {
 			warning(pos, "locklint: lock '%s' is not held",
 			    lock_name(&lock));
-		} else if (state == LOCK_MAYBE_HELD && !defer) {
+		} else if ((state & LOCK_NOT_HELD) != 0 && !defer) {
 			warning(pos, "locklint: lock '%s' may not be held",
 			    lock_name(&lock));
 		}
@@ -3123,7 +3180,7 @@ check_return_state(struct function_info *function, struct block_info *block,
 	for (entry = state->locks; entry != NULL; entry = entry->next) {
 		if (!entry->side_effect)
 			continue;
-		if (entry->state == LOCK_HELD) {
+		if (state_definitely_held(entry->state)) {
 			warning(pos, "locklint: lock '%s' held on return from '%s'",
 			    lock_name(&entry->lock),
 			    show_ident(function->ep->name->ident));

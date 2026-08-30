@@ -46,14 +46,30 @@ call_name(struct instruction *insn)
 	return ("<indirect>");
 }
 
+static struct expression *
+call_argument(struct instruction *insn, unsigned int index)
+{
+	struct expression *argument;
+	unsigned int current = 0;
+
+	if (insn->call_expr == NULL)
+		return (NULL);
+	FOR_EACH_PTR(insn->call_expr->args, argument) {
+		if (current++ == index)
+			return (argument);
+	} END_FOR_EACH_PTR(argument);
+	return (NULL);
+}
+
 enum locklint_lock_action
 locklint_get_lock_action(struct translation_unit *tu, struct instruction *insn,
-    struct locklint_access *access)
+    struct locklint_access *access, enum locklint_lock_mode *mode)
 {
 	struct expression *arg;
 	enum locklint_lock_action action;
 	const char *name;
 
+	*mode = LOCKLINT_MODE_UNHELD;
 	access->root = NULL;
 	access->object = NULL;
 	access->type = NULL;
@@ -66,16 +82,39 @@ locklint_get_lock_action(struct translation_unit *tu, struct instruction *insn,
 
 	name = call_name(insn);
 	if (strcmp(name, "mutex_enter") == 0 ||
-	    strcmp(name, "mutex_lock") == 0)
+	    strcmp(name, "mutex_lock") == 0) {
 		action = LOCKLINT_LOCK_ACQUIRE;
-	else if (strcmp(name, "mutex_exit") == 0 ||
-	    strcmp(name, "mutex_unlock") == 0)
-		action = LOCKLINT_LOCK_RELEASE;
-	else
-		return (LOCKLINT_LOCK_NONE);
+		*mode = LOCKLINT_MODE_MUTEX;
+	} else if (strcmp(name, "rw_rdlock") == 0) {
+		action = LOCKLINT_LOCK_ACQUIRE;
+		*mode = LOCKLINT_MODE_READER;
+	} else if (strcmp(name, "rw_wrlock") == 0) {
+		action = LOCKLINT_LOCK_ACQUIRE;
+		*mode = LOCKLINT_MODE_WRITER;
+	} else if (strcmp(name, "rw_enter") == 0) {
+		struct expression *rw_mode = call_argument(insn, 1);
+		unsigned long long value;
 
-	arg = insn->call_expr != NULL ?
-	    first_expression(insn->call_expr->args) : NULL;
+		if (rw_mode == NULL || rw_mode->type != EXPR_VALUE)
+			return (LOCKLINT_LOCK_NONE);
+		value = rw_mode->value;
+		if (value == 0)
+			*mode = LOCKLINT_MODE_WRITER;
+		else if (value == 1 || value == 2)
+			*mode = LOCKLINT_MODE_READER;
+		else
+			return (LOCKLINT_LOCK_NONE);
+		action = LOCKLINT_LOCK_ACQUIRE;
+	} else if (strcmp(name, "mutex_exit") == 0 ||
+	    strcmp(name, "mutex_unlock") == 0 ||
+	    strcmp(name, "rw_exit") == 0 ||
+	    strcmp(name, "rw_unlock") == 0) {
+		action = LOCKLINT_LOCK_RELEASE;
+	} else {
+		return (LOCKLINT_LOCK_NONE);
+	}
+
+	arg = call_argument(insn, 0);
 	(void) locklint_get_access(tu, arg, access);
 	return (action);
 }
@@ -102,7 +141,8 @@ show_memory_event(struct translation_unit *tu, struct instruction *insn)
 	(void) printf(" offset=%u", insn->offset);
 	if (locklint_get_access(tu, insn->access, &access) &&
 	    locklint_data_policy(&access, &policy, &protector) &&
-	    policy.protection == LOCKLINT_PROTECTION_MUTEX) {
+	    (policy.protection == LOCKLINT_PROTECTION_MUTEX ||
+	    policy.protection == LOCKLINT_PROTECTION_RWLOCK)) {
 		struct symbol *name = protector.member != NULL ?
 		    protector.member : protector.root;
 
@@ -120,6 +160,7 @@ show_call_event(struct translation_unit *tu, struct instruction *insn)
 	struct locklint_access access;
 	struct expression *arg;
 	enum locklint_lock_action action;
+	enum locklint_lock_mode mode;
 	const char *event;
 	char name[128];
 
@@ -127,9 +168,15 @@ show_call_event(struct translation_unit *tu, struct instruction *insn)
 		return (false);
 
 	(void) snprintf(name, sizeof (name), "%s", call_name(insn));
-	action = locklint_get_lock_action(tu, insn, &access);
-	if (action == LOCKLINT_LOCK_ACQUIRE)
-		event = "ACQUIRE";
+	action = locklint_get_lock_action(tu, insn, &access, &mode);
+	if (action == LOCKLINT_LOCK_ACQUIRE) {
+		if (mode == LOCKLINT_MODE_READER)
+			event = "ACQUIRE-READ";
+		else if (mode == LOCKLINT_MODE_WRITER)
+			event = "ACQUIRE-WRITE";
+		else
+			event = "ACQUIRE";
+	}
 	else if (action == LOCKLINT_LOCK_RELEASE)
 		event = "RELEASE";
 	else

@@ -1,0 +1,4 @@
+../locklint: rwlock-calls.c:65:20: warning: locklint: call to 'write_value' accesses protected member 'value' without write-holding 'lock'
+../locklint: rwlock-calls.c:91:32: warning: locklint: lock 'lock' held on return from 'acquire_reader'
+../locklint: rwlock-calls.c:97:32: warning: locklint: lock 'lock' held on return from 'acquire_writer'
+../locklint: rwlock-calls.c:113:14: warning: locklint: protected member 'value' accessed without write-holding 'lock'

@@ -16,18 +16,14 @@
 #ifndef ASSERTIONS_H
 #define	ASSERTIONS_H
 
+#include <stdbool.h>
+
 struct instruction;
 struct locklint_access;
 struct translation_unit;
 
-enum locklint_assertion {
-	LOCKLINT_ASSERT_NONE,
-	LOCKLINT_ASSERT_HELD,
-	LOCKLINT_ASSERT_NOT_HELD
-};
-
 void locklint_assertions_enable(void);
-enum locklint_assertion locklint_get_assertion(struct translation_unit *,
-    struct instruction *, struct locklint_access *);
+bool locklint_get_assertion(struct translation_unit *, struct instruction *,
+    struct locklint_access *, unsigned int *);
 
 #endif /* ASSERTIONS_H */

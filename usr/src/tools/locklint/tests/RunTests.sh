@@ -142,6 +142,28 @@ run_capture "data policy checks" data-policy.out \
     "$LOCKLINT" --check-locks data-policy.c
 compare "data policy checks" data-policy.ref data-policy.out
 
+run_capture "rwlock annotations" rwlock-annotations.out \
+    "$LOCKLINT" --dump-annotations rwlock.c
+compare "rwlock annotations" rwlock-annotations.ref \
+    rwlock-annotations.out
+
+run_capture "rwlock state" rwlock.out \
+    "$LOCKLINT" --check-locks rwlock.c
+compare "rwlock state" rwlock.ref rwlock.out
+
+run_capture "rwlock events" rwlock-events.out \
+    "$LOCKLINT" --dump-events rwlock.c
+require_match "rwlock reader event" "ACQUIRE-READ state.lock" \
+    rwlock-events.out
+require_match "rwlock writer event" "ACQUIRE-WRITE state.lock" \
+    rwlock-events.out
+require_match "rwlock release event" "RELEASE state.lock" rwlock-events.out
+require_match "rwlock unknown-mode call" "CALL rw_enter" rwlock-events.out
+
+run_capture "rwlock calls" rwlock-calls.out \
+    "$LOCKLINT" --check-locks rwlock-calls.c
+compare "rwlock calls" rwlock-calls.ref rwlock-calls.out
+
 #
 # Verify structure-valued mutexes retain whole-object lock identity.
 #

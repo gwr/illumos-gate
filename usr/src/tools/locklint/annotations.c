@@ -47,6 +47,7 @@ enum annotation_scope {
 enum annotation_kind {
 	ANNOTATION_UNSUPPORTED,
 	ANNOTATION_MUTEX_PROTECTS_DATA,
+	ANNOTATION_RWLOCK_PROTECTS_DATA,
 	ANNOTATION_SCHEME_PROTECTS_DATA,
 	ANNOTATION_DATA_READABLE_WITHOUT_LOCK,
 	ANNOTATION_READ_ONLY_DATA
@@ -460,6 +461,8 @@ parse_annotation(struct annotation *annotation)
 
 	if (token_is(cursor, "MUTEX_PROTECTS_DATA")) {
 		annotation->kind = ANNOTATION_MUTEX_PROTECTS_DATA;
+	} else if (token_is(cursor, "RWLOCK_PROTECTS_DATA")) {
+		annotation->kind = ANNOTATION_RWLOCK_PROTECTS_DATA;
 	} else if (token_is(cursor, "SCHEME_PROTECTS_DATA")) {
 		annotation->kind = ANNOTATION_SCHEME_PROTECTS_DATA;
 	} else if (token_is(cursor, "DATA_READABLE_WITHOUT_LOCK")) {
@@ -477,11 +480,16 @@ parse_annotation(struct annotation *annotation)
 	cursor = cursor->next;
 	switch (annotation->kind) {
 	case ANNOTATION_MUTEX_PROTECTS_DATA:
+	case ANNOTATION_RWLOCK_PROTECTS_DATA:
 		if (!parse_name(annotation, &cursor, &lock, &tail))
 			return (false);
-		if (lock->next != NULL)
+		if (lock->next != NULL) {
 			return (annotation_error(annotation, cursor,
-			    "MUTEX_PROTECTS_DATA requires one lock name"));
+			    annotation->kind ==
+			    ANNOTATION_MUTEX_PROTECTS_DATA ?
+			    "MUTEX_PROTECTS_DATA requires one lock name" :
+			    "RWLOCK_PROTECTS_DATA requires one lock name"));
+		}
 		if (!token_is(cursor, ","))
 			return (annotation_error(annotation, cursor,
 			    "expected ',' after protected-data lock"));
@@ -827,6 +835,7 @@ record_replacements(struct annotation *annotation)
 
 			if (!earlier->resolved ||
 			    (earlier->kind != ANNOTATION_MUTEX_PROTECTS_DATA &&
+			    earlier->kind != ANNOTATION_RWLOCK_PROTECTS_DATA &&
 			    earlier->kind != ANNOTATION_SCHEME_PROTECTS_DATA))
 				continue;
 			for (candidate = earlier->data; candidate != NULL;
@@ -873,6 +882,8 @@ locklint_resolve_annotations(void)
 			expand_data_refs(annotation);
 			if (annotation->kind ==
 			    ANNOTATION_MUTEX_PROTECTS_DATA ||
+			    annotation->kind ==
+			    ANNOTATION_RWLOCK_PROTECTS_DATA ||
 			    annotation->kind ==
 			    ANNOTATION_SCHEME_PROTECTS_DATA)
 				record_replacements(annotation);
@@ -956,6 +967,11 @@ locklint_data_policy(const struct locklint_access *access,
 				protector = annotation->lock;
 				protector_base = base;
 				break;
+			case ANNOTATION_RWLOCK_PROTECTS_DATA:
+				policy->protection = LOCKLINT_PROTECTION_RWLOCK;
+				protector = annotation->lock;
+				protector_base = base;
+				break;
 			case ANNOTATION_SCHEME_PROTECTS_DATA:
 				policy->protection = LOCKLINT_PROTECTION_SCHEME;
 				protector = NULL;
@@ -971,7 +987,8 @@ locklint_data_policy(const struct locklint_access *access,
 			}
 		}
 	}
-	if (policy->protection == LOCKLINT_PROTECTION_MUTEX) {
+	if (policy->protection == LOCKLINT_PROTECTION_MUTEX ||
+	    policy->protection == LOCKLINT_PROTECTION_RWLOCK) {
 		lock->root = protector->root != NULL ?
 		    protector->root : access->root;
 		lock->object = protector->root != NULL ?
@@ -1028,6 +1045,8 @@ annotation_kind_name(enum annotation_kind kind)
 	switch (kind) {
 	case ANNOTATION_MUTEX_PROTECTS_DATA:
 		return ("MUTEX_PROTECTS_DATA");
+	case ANNOTATION_RWLOCK_PROTECTS_DATA:
+		return ("RWLOCK_PROTECTS_DATA");
 	case ANNOTATION_SCHEME_PROTECTS_DATA:
 		return ("SCHEME_PROTECTS_DATA");
 	case ANNOTATION_DATA_READABLE_WITHOUT_LOCK:
@@ -1062,7 +1081,9 @@ locklint_show_annotations(FILE *stream)
 			    annotation->pos.line, annotation->pos.pos,
 			    annotation_kind_name(annotation->kind));
 			if (annotation->kind ==
-			    ANNOTATION_MUTEX_PROTECTS_DATA) {
+			    ANNOTATION_MUTEX_PROTECTS_DATA ||
+			    annotation->kind ==
+			    ANNOTATION_RWLOCK_PROTECTS_DATA) {
 				show_annotation_ref(stream, annotation->lock);
 				(void) fputs(" -> ", stream);
 			} else if (annotation->kind ==

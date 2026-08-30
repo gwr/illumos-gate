@@ -28,6 +28,7 @@
 #include "access.h"
 #include "annotations.h"
 #include "assertions.h"
+#include "events.h"
 #include "identity.h"
 #include "token.h"
 
@@ -37,7 +38,7 @@ struct assertion {
 	struct position predicate;
 	struct position argument_start;
 	struct position argument_end;
-	enum locklint_assertion state;
+	unsigned int modes;
 	struct assertion *next;
 };
 
@@ -88,16 +89,39 @@ token_is(const struct token *token, const char *name)
 }
 
 static bool
-predicate_state(const struct token *token, enum locklint_assertion *state)
+predicate_modes(const struct token *token, unsigned int *positive,
+    unsigned int *negative)
 {
 	if (token_is(token, "MUTEX_HELD") ||
 	    token_is(token, "mutex_owned") ||
 	    token_is(token, "_mutex_held")) {
-		*state = LOCKLINT_ASSERT_HELD;
+		*positive = LOCKLINT_MODE_MUTEX;
+		*negative = LOCKLINT_MODE_UNHELD;
 		return (true);
 	}
 	if (token_is(token, "MUTEX_NOT_HELD")) {
-		*state = LOCKLINT_ASSERT_NOT_HELD;
+		*positive = LOCKLINT_MODE_UNHELD;
+		*negative = LOCKLINT_MODE_MUTEX;
+		return (true);
+	}
+	if (token_is(token, "RW_READ_HELD") ||
+	    token_is(token, "rw_read_held") ||
+	    token_is(token, "_rw_read_held")) {
+		*positive = LOCKLINT_MODE_READER;
+		*negative = LOCKLINT_MODE_UNHELD | LOCKLINT_MODE_WRITER;
+		return (true);
+	}
+	if (token_is(token, "RW_WRITE_HELD") ||
+	    token_is(token, "rw_write_held") ||
+	    token_is(token, "_rw_write_held")) {
+		*positive = LOCKLINT_MODE_WRITER;
+		*negative = LOCKLINT_MODE_UNHELD | LOCKLINT_MODE_READER;
+		return (true);
+	}
+	if (token_is(token, "RW_LOCK_HELD") ||
+	    token_is(token, "rw_lock_held")) {
+		*positive = LOCKLINT_MODE_READER | LOCKLINT_MODE_WRITER;
+		*negative = LOCKLINT_MODE_UNHELD;
 		return (true);
 	}
 	return (false);
@@ -110,9 +134,9 @@ is_special(const struct token *token, unsigned int special)
 	    token->special == special);
 }
 
-static enum locklint_assertion
-adjust_state(const struct token *previous, const struct token *close,
-    enum locklint_assertion state)
+static unsigned int
+adjust_modes(const struct token *previous, const struct token *close,
+    unsigned int positive, unsigned int negative)
 {
 	const struct token *operator = close->next;
 	const struct token *value = operator != NULL ? operator->next : NULL;
@@ -126,10 +150,9 @@ adjust_state(const struct token *previous, const struct token *close,
 			invert = !invert;
 	}
 	if (invert) {
-		state = state == LOCKLINT_ASSERT_HELD ?
-		    LOCKLINT_ASSERT_NOT_HELD : LOCKLINT_ASSERT_HELD;
+		return (negative);
 	}
-	return (state);
+	return (positive);
 }
 
 static int
@@ -151,9 +174,10 @@ capture_assertion(const struct token *macro, const struct token *open,
 		const struct token *predicate_open;
 		const struct token *predicate_close;
 		struct assertion *assertion;
-		enum locklint_assertion state;
+		unsigned int positive;
+		unsigned int negative;
 
-		if (!predicate_state(token, &state))
+		if (!predicate_modes(token, &positive, &negative))
 			continue;
 		predicate_open = token->next;
 		if (!is_special(predicate_open, '('))
@@ -169,7 +193,8 @@ capture_assertion(const struct token *macro, const struct token *open,
 		assertion->predicate = token->pos;
 		assertion->argument_start = predicate_open->next->pos;
 		assertion->argument_end = predicate_close->pos;
-		assertion->state = adjust_state(previous, predicate_close, state);
+		assertion->modes = adjust_modes(previous, predicate_close,
+		    positive, negative);
 		*assertions_tail = assertion;
 		assertions_tail = &assertion->next;
 	}
@@ -201,17 +226,23 @@ is_lock_predicate(struct instruction *insn)
 		return (false);
 	name = show_ident(insn->func->sym->ident);
 	return (strcmp(name, "mutex_owned") == 0 ||
-	    strcmp(name, "_mutex_held") == 0);
+	    strcmp(name, "_mutex_held") == 0 ||
+	    strcmp(name, "rw_read_held") == 0 ||
+	    strcmp(name, "_rw_read_held") == 0 ||
+	    strcmp(name, "rw_write_held") == 0 ||
+	    strcmp(name, "_rw_write_held") == 0 ||
+	    strcmp(name, "rw_lock_held") == 0);
 }
 
-enum locklint_assertion
+bool
 locklint_get_assertion(struct translation_unit *tu, struct instruction *insn,
-    struct locklint_access *access)
+    struct locklint_access *access, unsigned int *modes)
 {
 	struct expression *argument;
 	struct assertion *assertion;
-	enum locklint_assertion state = LOCKLINT_ASSERT_NONE;
+	unsigned int selected = 0;
 
+	*modes = 0;
 	access->root = NULL;
 	access->object = NULL;
 	access->type = NULL;
@@ -220,10 +251,10 @@ locklint_get_assertion(struct translation_unit *tu, struct instruction *insn,
 	access->expr = NULL;
 	access->path = NULL;
 	if (!is_lock_predicate(insn) || insn->call_expr == NULL)
-		return (LOCKLINT_ASSERT_NONE);
+		return (false);
 	argument = first_expression(insn->call_expr->args);
 	if (argument == NULL)
-		return (LOCKLINT_ASSERT_NONE);
+		return (false);
 	for (assertion = assertions; assertion != NULL;
 	    assertion = assertion->next) {
 		bool invocation_match;
@@ -237,7 +268,7 @@ locklint_get_assertion(struct translation_unit *tu, struct instruction *insn,
 		    assertion->argument_start, assertion->argument_end) ||
 		    (insn->call_expr->pos.line == assertion->predicate.line &&
 		    insn->call_expr->pos.pos == assertion->predicate.pos)) {
-			state = assertion->state;
+			selected = assertion->modes;
 			break;
 		}
 		invocation_match =
@@ -245,13 +276,13 @@ locklint_get_assertion(struct translation_unit *tu, struct instruction *insn,
 		    insn->call_expr->pos.pos == assertion->invocation.pos;
 		if (!invocation_match)
 			continue;
-		if (state != LOCKLINT_ASSERT_NONE &&
-		    state != assertion->state)
-			return (LOCKLINT_ASSERT_NONE);
-		state = assertion->state;
+		if (selected != 0 && selected != assertion->modes)
+			return (false);
+		selected = assertion->modes;
 	}
-	if (state == LOCKLINT_ASSERT_NONE ||
+	if (selected == 0 ||
 	    !locklint_get_access(tu, argument, access))
-		return (LOCKLINT_ASSERT_NONE);
-	return (state);
+		return (false);
+	*modes = selected;
+	return (true);
 }
