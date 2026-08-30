@@ -1,18 +1,18 @@
-../locklint: visibility.c:50:26: warning: locklint: protected member 'protected' accessed without holding 'lock'
-../locklint: visibility.c:61:26: warning: locklint: protection for member 'protected' is not established on every path
-../locklint: visibility.c:72:22: warning: locklint: protected member 'protected' accessed without holding 'lock'
-../locklint: visibility.c:81:14: warning: locklint: protected member 'protected' accessed without holding 'lock'
-../locklint: visibility.c:89:14: warning: locklint: protected member 'protected' accessed without holding 'lock'
-../locklint: visibility.c:90:14: warning: locklint: protected member 'sibling' accessed without holding 'lock'
-../locklint: visibility.c:101:14: warning: locklint: protected member 'sibling' accessed without holding 'lock'
-../locklint: visibility.c:110:14: warning: locklint: protected member 'sibling' accessed without holding 'lock'
-../locklint: visibility.c:121:14: warning: locklint: protection for member 'protected' is not established on every path
-../locklint: visibility.c:139:9: warning: locklint: visibility annotation has no object
-../locklint: visibility.c:148:26: warning: locklint: read-only data 'read_only' modified while visible to competing threads
-../locklint: visibility.c:157:14: warning: locklint: read-only data 'read_only' modified while it may be visible to competing threads
-../locklint: visibility.c:167:14: warning: locklint: read-only data 'read_only' modified while visible to competing threads
-../locklint: visibility.c:178:14: warning: locklint: read-only data 'read_only' modified while it may be visible to competing threads
-../locklint: visibility.c:216:38: warning: locklint: call to 'assuming_mutex_callee' accesses protected member 'protected' without holding 'lock'
-../locklint: visibility.c:243:40: warning: locklint: call to 'assuming_generic_callee' requires protection for 'state'
-../locklint: visibility.c:252:40: warning: locklint: call to 'assuming_generic_callee' requires protection for 'state'
-../locklint: visibility.c:276:9: warning: locklint: ASSUMING_PROTECTED has no object
+../locklint: visibility.c:54:26: warning: locklint: protected member 'protected' accessed without holding 'lock'
+../locklint: visibility.c:65:26: warning: locklint: protection for member 'protected' is not established on every path
+../locklint: visibility.c:76:22: warning: locklint: protected member 'protected' accessed without holding 'lock'
+../locklint: visibility.c:85:14: warning: locklint: protected member 'protected' accessed without holding 'lock'
+../locklint: visibility.c:93:14: warning: locklint: protected member 'protected' accessed without holding 'lock'
+../locklint: visibility.c:94:14: warning: locklint: protected member 'sibling' accessed without holding 'lock'
+../locklint: visibility.c:105:14: warning: locklint: protected member 'sibling' accessed without holding 'lock'
+../locklint: visibility.c:114:14: warning: locklint: protected member 'sibling' accessed without holding 'lock'
+../locklint: visibility.c:125:14: warning: locklint: protection for member 'protected' is not established on every path
+../locklint: visibility.c:143:9: warning: locklint: visibility annotation has no object
+../locklint: visibility.c:152:26: warning: locklint: read-only data 'read_only' modified while visible to competing threads
+../locklint: visibility.c:161:14: warning: locklint: read-only data 'read_only' modified while it may be visible to competing threads
+../locklint: visibility.c:171:14: warning: locklint: read-only data 'read_only' modified while visible to competing threads
+../locklint: visibility.c:182:14: warning: locklint: read-only data 'read_only' modified while it may be visible to competing threads
+../locklint: visibility.c:220:38: warning: locklint: call to 'assuming_mutex_callee' accesses protected member 'protected' without holding 'lock'
+../locklint: visibility.c:247:40: warning: locklint: call to 'assuming_generic_callee' requires protection for 'state'
+../locklint: visibility.c:256:40: warning: locklint: call to 'assuming_generic_callee' requires protection for 'state'
+../locklint: visibility.c:281:9: warning: locklint: ASSUMING_PROTECTED has no object

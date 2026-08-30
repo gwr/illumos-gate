@@ -13,7 +13,11 @@
  * Copyright 2026 Gordon W. Ross
  */
 
+#ifdef __lock_lint
+#include <sys/note.h>
+#else
 #define	_NOTE(arg)
+#endif
 
 typedef struct mutex {
 	int opaque;
@@ -265,8 +269,9 @@ static void
 assuming_merge(struct visibility_state *state, int value, int assumed)
 {
 	_NOTE(COMPETING_THREADS_NOW)
-	if (assumed)
+	if (assumed) {
 		_NOTE(ASSUMING_PROTECTED(state->protected))
+	}
 	state->protected = value;
 }
 
