@@ -18,9 +18,15 @@
  * and replacement of earlier protection declarations.
  */
 
+#ifdef __lock_lint
+#include <sys/note.h>
+typedef struct mutex {
+	int opaque;
+} mutex_t;
+#else
 #define	_NOTE(arg)
-
-typedef int kmutex_t;
+typedef int mutex_t;
+#endif
 
 typedef struct inner_state {
 	int first;
@@ -28,12 +34,12 @@ typedef struct inner_state {
 } inner_state_t;
 
 typedef struct generated_state {
-	kmutex_t lock;
+	mutex_t lock;
 	inner_state_t nested;
 } generated_state_t;
 
 typedef struct recursive_state {
-	kmutex_t lock;
+	mutex_t lock;
 	int direct;
 	inner_state_t nested;
 	union {
@@ -42,12 +48,12 @@ typedef struct recursive_state {
 } recursive_state_t;
 
 typedef struct override_state {
-	kmutex_t first_lock;
-	kmutex_t last_lock;
+	mutex_t first_lock;
+	mutex_t last_lock;
 	int value;
 } override_state_t;
 
-static kmutex_t global_lock;
+static mutex_t global_lock;
 static int global_value;
 static recursive_state_t global_state;
 
@@ -61,8 +67,8 @@ _NOTE(MUTEX_PROTECTS_DATA(override_state::first_lock,
 _NOTE(MUTEX_PROTECTS_DATA(override_state::last_lock,
     override_state::value))
 
-extern void mutex_enter(kmutex_t *);
-extern void mutex_exit(kmutex_t *);
+extern void mutex_enter(mutex_t *);
+extern void mutex_exit(mutex_t *);
 
 static void
 check_global_names(void)
