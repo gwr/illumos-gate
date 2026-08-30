@@ -147,22 +147,41 @@ run_capture "rwlock annotations" rwlock-annotations.out \
 compare "rwlock annotations" rwlock-annotations.ref \
     rwlock-annotations.out
 
-run_capture "rwlock state" rwlock.out \
+run_capture "user rwlock state" rwlock-user.out \
     "$LOCKLINT" --check-locks rwlock.c
-compare "rwlock state" rwlock.ref rwlock.out
+compare "user rwlock state" rwlock-user.ref rwlock-user.out
 
-run_capture "rwlock events" rwlock-events.out \
+run_capture "kernel rwlock state" rwlock-kernel.out \
+    "$LOCKLINT" -D_KERNEL --check-locks rwlock.c
+compare "kernel rwlock state" rwlock-kernel.ref rwlock-kernel.out
+
+run_capture "user rwlock events" rwlock-events-user.out \
     "$LOCKLINT" --dump-events rwlock.c
-require_match "rwlock reader event" "ACQUIRE-READ state.lock" \
-    rwlock-events.out
-require_match "rwlock writer event" "ACQUIRE-WRITE state.lock" \
-    rwlock-events.out
-require_match "rwlock release event" "RELEASE state.lock" rwlock-events.out
-require_match "rwlock unknown-mode call" "CALL rw_enter" rwlock-events.out
+require_match "user rwlock reader event" "ACQUIRE-READ state.lock" \
+    rwlock-events-user.out
+require_match "user rwlock writer event" "ACQUIRE-WRITE state.lock" \
+    rwlock-events-user.out
+require_match "user rwlock release event" "RELEASE state.lock" \
+    rwlock-events-user.out
 
-run_capture "rwlock calls" rwlock-calls.out \
+run_capture "kernel rwlock events" rwlock-events-kernel.out \
+    "$LOCKLINT" -D_KERNEL --dump-events rwlock.c
+require_match "kernel rwlock reader event" "ACQUIRE-READ state.lock" \
+    rwlock-events-kernel.out
+require_match "kernel rwlock writer event" "ACQUIRE-WRITE state.lock" \
+    rwlock-events-kernel.out
+require_match "kernel rwlock release event" "RELEASE state.lock" \
+    rwlock-events-kernel.out
+require_match "rwlock unknown-mode call" "CALL rw_enter" \
+    rwlock-events-kernel.out
+
+run_capture "user rwlock calls" rwlock-calls-user.out \
     "$LOCKLINT" --check-locks rwlock-calls.c
-compare "rwlock calls" rwlock-calls.ref rwlock-calls.out
+compare "user rwlock calls" rwlock-calls.ref rwlock-calls-user.out
+
+run_capture "kernel rwlock calls" rwlock-calls-kernel.out \
+    "$LOCKLINT" -D_KERNEL --check-locks rwlock-calls.c
+compare "kernel rwlock calls" rwlock-calls.ref rwlock-calls-kernel.out
 
 #
 # Verify structure-valued mutexes retain whole-object lock identity.

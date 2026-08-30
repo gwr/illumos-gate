@@ -13,27 +13,62 @@
  * Test interprocedural readers-writer lock conditions and effects.
  */
 
+#ifdef __lock_lint
+#include <sys/note.h>
+#ifdef _KERNEL
+#include <sys/rwlock.h>
+#else
+#include <synch.h>
+#endif
+#else
 #define	_NOTE(arg)
 
+#ifdef _KERNEL
+typedef struct _krwlock {
+	void *_opaque[1];
+} krwlock_t;
+
+typedef enum krw {
+	RW_WRITER,
+	RW_READER
+} krw_t;
+#else
 typedef struct rwlock {
 	void *_opaque[1];
 } rwlock_t;
+#endif
+#endif
 
-typedef enum rw_type {
-	RW_WRITER,
-	RW_READER
-} rw_type_t;
+#ifdef _KERNEL
+typedef krwlock_t test_rwlock_t;
+#define	RWLOCK_READ_ENTER(lock)	rw_enter((lock), RW_READER)
+#define	RWLOCK_WRITE_ENTER(lock)	rw_enter((lock), RW_WRITER)
+#define	RWLOCK_EXIT(lock)	rw_exit(lock)
+#else
+typedef rwlock_t test_rwlock_t;
+#define	RWLOCK_READ_ENTER(lock)	((void) rw_rdlock(lock))
+#define	RWLOCK_WRITE_ENTER(lock)	((void) rw_wrlock(lock))
+#define	RWLOCK_EXIT(lock)	((void) rw_unlock(lock))
+#endif
 
 typedef struct rwlock_call_state {
-	rwlock_t lock;
+	test_rwlock_t lock;
 	int value;
 } rwlock_call_state_t;
 
 _NOTE(RWLOCK_PROTECTS_DATA(rwlock_call_state::lock,
     rwlock_call_state::value))
 
-extern void rw_enter(rwlock_t *, rw_type_t);
-extern void rw_exit(rwlock_t *);
+#ifndef __lock_lint
+#ifdef _KERNEL
+extern void rw_enter(krwlock_t *, krw_t);
+extern void rw_exit(krwlock_t *);
+#else
+extern int rw_rdlock(rwlock_t *);
+extern int rw_wrlock(rwlock_t *);
+extern int rw_unlock(rwlock_t *);
+#endif
+#endif
 
 static int
 read_value(rwlock_call_state_t *state)
@@ -52,18 +87,18 @@ call_read_as_reader(rwlock_call_state_t *state)
 {
 	int value;
 
-	rw_enter(&state->lock, RW_READER);
+	RWLOCK_READ_ENTER(&state->lock);
 	value = read_value(state);
-	rw_exit(&state->lock);
+	RWLOCK_EXIT(&state->lock);
 	return (value);
 }
 
 static void
 call_write_as_reader(rwlock_call_state_t *state)
 {
-	rw_enter(&state->lock, RW_READER);
+	RWLOCK_READ_ENTER(&state->lock);
 	write_value(state);
-	rw_exit(&state->lock);
+	RWLOCK_EXIT(&state->lock);
 }
 
 static int
@@ -71,36 +106,45 @@ call_read_as_writer(rwlock_call_state_t *state)
 {
 	int value;
 
-	rw_enter(&state->lock, RW_WRITER);
+	RWLOCK_WRITE_ENTER(&state->lock);
 	value = read_value(state);
-	rw_exit(&state->lock);
+	RWLOCK_EXIT(&state->lock);
 	return (value);
 }
 
 static void
 call_write_as_writer(rwlock_call_state_t *state)
 {
-	rw_enter(&state->lock, RW_WRITER);
+	RWLOCK_WRITE_ENTER(&state->lock);
 	write_value(state);
-	rw_exit(&state->lock);
+	RWLOCK_EXIT(&state->lock);
 }
 
 static void
 acquire_reader(rwlock_call_state_t *state)
 {
-	rw_enter(&state->lock, RW_READER);
+#ifdef __lock_lint
+	_NOTE(READ_LOCK_ACQUIRED_AS_SIDE_EFFECT(state->lock))
+#endif
+	RWLOCK_READ_ENTER(&state->lock);
 }
 
 static void
 acquire_writer(rwlock_call_state_t *state)
 {
-	rw_enter(&state->lock, RW_WRITER);
+#ifdef __lock_lint
+	_NOTE(WRITE_LOCK_ACQUIRED_AS_SIDE_EFFECT(state->lock))
+#endif
+	RWLOCK_WRITE_ENTER(&state->lock);
 }
 
 static void
 release_lock(rwlock_call_state_t *state)
 {
-	rw_exit(&state->lock);
+#ifdef __lock_lint
+	_NOTE(LOCK_RELEASED_AS_SIDE_EFFECT(state->lock))
+#endif
+	RWLOCK_EXIT(&state->lock);
 }
 
 static int

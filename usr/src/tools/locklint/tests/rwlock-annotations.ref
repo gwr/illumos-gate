@@ -1,4 +1,4 @@
-rwlock.c:39:1: RWLOCK_PROTECTS_DATA rwlock_state::lock -> rwlock_state::value
-rwlock.c:39:1: RWLOCK_PROTECTS_DATA rwlock_state::lock -> rwlock_state::readable
-rwlock.c:41:1: DATA_READABLE_WITHOUT_LOCK rwlock_state::readable
-rwlock.c:42:1: SCHEME_PROTECTS_DATA "external" -> rwlock_state::scheme
+rwlock.c:77:1: RWLOCK_PROTECTS_DATA rwlock_state::lock -> rwlock_state::value
+rwlock.c:78:1: RWLOCK_PROTECTS_DATA rwlock_state::lock -> rwlock_state::readable
+rwlock.c:79:1: DATA_READABLE_WITHOUT_LOCK rwlock_state::readable
+rwlock.c:80:1: SCHEME_PROTECTS_DATA "external" -> rwlock_state::scheme
