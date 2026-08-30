@@ -70,21 +70,21 @@ not when future features should be added.
   Here, `record` is an object in the program.  The annotation contains one
   lock reference for `record.lock` and one data reference for `record.field`.
 - **Assertion** - An `ASSERT(...)` or `VERIFY(...)` invocation that provides
-  local lock-state facts rather than a persistent protection rule.
+  a local analysis fact rather than a persistent protection rule.
 - **Protection relation** - An association between protected data and the
   lock required when accessing it.
 - **Lock state** - Locklint's estimate that a lock is held, not held, or
   possibly held at a particular program point.
 - **Function summary** - Information computed about a function for use by its
-  callers.
+  callers, including required protection and lock or visibility transfers.
 - **Lock effect** - The part of a function summary that describes how the
   function changes visible lock state.
-- **Lock condition** - A required or asserted lock state at a particular
-  program point.  A function entry lock condition is part of a function
-  summary and must be established by the caller.
+- **Protection condition** - A function-entry requirement that selected data
+  be protected by its mutex, invisibility, or absence of competing threads.
+  It is part of a function summary and must be established by the caller.
 - **Analysis root** - A function treated as externally reachable or as not
   safely attributable to a known caller.  Roots seed call-graph reachability
-  and are boundaries at which unsatisfied lock conditions cannot simply be
+  and are boundaries at which unsatisfied protection conditions cannot simply be
   deferred to a known caller.
 - **Root reason** - One independently established reason for treating a
   function as an analysis root.  A function may have several reasons, each
@@ -96,7 +96,7 @@ not when future features should be added.
   indirect-call target.
 - **Data policy** - The effective rules for one datum, with independent
   dimensions for its protection mechanism, whether unlocked reads are
-  permitted, and whether writes are forbidden after visibility to competing
+  permitted, and whether writes are forbidden while exposed to competing
   threads.
 - **Flow analysis** - Analysis that follows possible execution paths through
   the program, including control flow within functions and calls between
@@ -120,13 +120,13 @@ not when future features should be added.
 Locklint reads and parses all specified C source files into an intermediate
 representation.  It records locking annotations and assertions, connects
 calls among the parsed functions, and analyzes possible execution paths to
-determine lock state, function lock conditions, and lock effects.  After
-analysis is complete, it reports accesses that violate declared locking
-protections.
+determine lock, competition, and visibility state, function protection
+conditions, and lock or visibility effects.  After analysis is complete, it
+reports accesses that violate declared protection and exposure policies.
 
 Locklint performs flow analysis over every retained function.  Analysis-root
 reachability determines whether a function entry can be attributed to known
-direct callers and therefore whether its lock conditions may be deferred.
+direct callers and therefore whether its protection conditions may be deferred.
 Function summaries propagate through known direct calls.
 
 Sparse parses C source and produces the intermediate representation used by
@@ -163,9 +163,9 @@ The main phases are:
    4. assign additive conservative root reasons;
    5. propagate reachability from those roots through resolved direct calls;
    6. emit a requested call-graph audit;
-   7. solve function lock-effect summaries;
-   8. solve intraprocedural lock state;
-   9. collect and propagate protected-access lock conditions; and
+   7. solve function lock and visibility transfer summaries;
+   8. solve unified intraprocedural lock, competition, and visibility state;
+   9. collect and propagate protection conditions; and
    10. emit diagnostics using the stable summaries.
 6. Emit other requested development dumps.  `--dump-all` includes the
    whole-program call-graph audit.
@@ -340,10 +340,12 @@ functions
        |- borrowed Sparse entrypoint
        |- root-reason bit mask
        |- block_info list
-       |    |- input state_entry list
-       |    `- output state_entry list
-       |- lock_condition list
-       `- lock_transfer list
+       |    |- input analysis_state
+       |    `- output analysis_state
+       |- protection_condition list
+       |- assumed_region list
+       |- lock_transfer list
+       `- visibility_transfer list
 
 function-pointer observations
   |- function_escape
@@ -363,16 +365,22 @@ The structures have these roles:
 | `struct annotation_token` | A durable copy of one preprocessing token from an annotation body |
 | `struct annotation_ref` | One parsed and later resolved lock or data endpoint; refers to Sparse symbols and records replacement precedence |
 | `struct assertion` | One recognized lock predicate captured from `ASSERT(...)` or `VERIFY(...)`; records source ranges and the asserted state |
-| `struct locklint_access` | A normalized identity for an object or member access; refers to its canonical object identity or local root symbol, type, final member, cumulative offset, and source expression |
+| `struct locklint_access` | A normalized identity for an object or member access; refers to its canonical object identity or local root symbol, type, final member, cumulative offset, source expression, and interned canonical member path |
+| `struct locklint_member_path` | One immutable, interned member-path component; links to its containing path and records a member identifier, cumulative offset, and depth |
 | `struct function_info` | Locklint's record for one function; refers to its Sparse entrypoint, embeds its automatic root-reason mask and function-index linkages, and owns its block state and summaries |
 | `struct call_audit` | One temporary source-order entry for a live call instruction while dumping a function's calls |
 | `struct function_escape` | One source observation that an exact function was used as a value; supplies root provenance through its source position and resolved target |
 | `struct function_pointer_activity` | One initializer or function-body load or store involving a function pointer; a pointer copy is represented by its source load and destination store |
-| `struct block_info` | Associates one Sparse basic block with reachability and its input and output lock-state maps |
-| `struct state_entry` | One lock and its state in a block-state map; embeds a `locklint_access` identity |
-| `struct lock_condition` | A caller-visible entry lock condition; a condition inferred from a protected access is associated with a formal data argument and either a relative lock or a preserved absolute lock root |
+| `struct block_info` | Associates one Sparse basic block with reachability and its input and output unified analysis states |
+| `struct analysis_state` | The lock map, competition state and path-dependence flag, and per-region visibility facts at one CFG point |
+| `struct state_entry` | One lock and its state in an analysis-state lock map; embeds a `locklint_access` identity |
+| `struct visibility_entry` | One object region and its visible, invisible, or maybe-visible state |
+| `struct protection_condition` | A caller-visible entry protection condition for formal-relative or absolute data, with an optional relative or absolute mutex |
+| `struct assumed_region` | One function-wide region selected by `ASSUMING_PROTECTED` |
 | `struct lock_transfer` | A function lock-effect summary for one formal lock and each possible input state |
 | `struct transfer_block_info` | Temporary per-block state used while computing one lock transfer |
+| `struct visibility_transfer` | A function visibility summary for one formal-relative or absolute region and each possible input visibility state |
+| `struct visibility_transfer_block_info` | Temporary per-block state used while computing one visibility transfer |
 
 The program-wide object-identity, annotation, assertion, and function
 collections
@@ -482,9 +490,11 @@ forms are chosen.
   function-escape, and optional function-pointer-activity records and their
   AVL indexes.
 - Temporary call-audit arrays are freed after each function is dumped.
-- Function records, function-pointer observations, lock conditions, transfers,
-  CFG state maps, and transfer-simulation blocks are freed after their
-  analysis use ends.
+- Function records, function-pointer observations, protection conditions,
+  assumptions, transfers, CFG state maps, and transfer-simulation blocks are
+  freed after their analysis use ends.
+- Interned member paths are immutable during analysis and are freed after all
+  requested checks and dumps complete.
 - The implementation is a batch command, so process-lifetime metadata is
   intentional.  A future library or daemon interface would require explicit
   teardown and per-invocation ownership.
@@ -736,8 +746,9 @@ lists.
 ### Resolution and expansion
 
 `locklint_resolve_annotations()` processes only annotations not handled by an
-earlier translation-unit pass.  Resolution occurs before the driver advances
-to the next file so the current type and object namespaces remain available.
+earlier translation-unit pass.  Resolution occurs before locklint advances to
+the next input file, so the current type and object namespaces remain
+available.
 
 Resolution performs these steps:
 
@@ -800,15 +811,206 @@ For a mutex-protected access:
 - a load requires the mutex unless unlocked-read permission is set; and
 - a store always requires the mutex.
 
-An allowed unlocked load does not create a caller lock condition.  An
+An allowed unlocked load does not create a caller protection condition.  An
 unsatisfied store, or a load without unlocked-read permission, follows the
-normal local-warning or caller-condition path.
+normal local-warning or protection-condition path.
 
-`READ_ONLY_DATA` is parsed, resolved, retained, and displayed in this
-increment, but does not yet reject stores.  Its intended rule is to reject a
-store only when the selected datum is visible to competing threads.  The
-visibility state and enforcement belong to the following roadmap increment;
-rejecting every store now would incorrectly diagnose initialization.
+`READ_ONLY_DATA` is parsed, resolved, retained, and displayed independently
+of the selected protection mechanism.  Its exposure-dependent store rule is
+described below.
+
+## Visibility and competing-thread state
+
+Locklint combines lock ownership, competing-thread state, and per-object
+visibility in one flow-sensitive analysis state.  The same stable CFG state
+is used to infer caller conditions and to replay diagnostics.
+
+### Execution markers
+
+Visibility and concurrency annotations appear within executable statements,
+but the normal `_NOTE(...)` definition expands to nothing.  Matching a
+captured source position with the nearest surviving instruction would be
+incorrect in branches, empty blocks, and macros.
+
+Locklint preserves recognized execution annotations as tagged,
+zero-delta Sparse context instructions.  This extends the existing tagging
+operation rather than adding a separate annotation opcode or representing
+annotations as synthetic calls.
+
+The existing two-argument form remains accepted:
+
+```c
+__context__(expression, delta);
+```
+
+The generic syntax and `OP_CONTEXT` representation support an optional client
+tag:
+
+```c
+__context__(expression, delta, tag);
+```
+
+Existing context operations use tag zero and retain their current
+lock-balance meaning.  A nonzero tag identifies a client-defined analysis
+event.  Locklint tags use a delta of zero, so they do not alter Sparse's
+ordinary context count.  Sparse preserves the instruction at its exact CFG
+location and otherwise assigns no locking or visibility meaning to a
+Locklint tag.
+
+Locklint-only predefined forms expand recognized annotation bodies to
+tagged `__context__` statements, and the `_NOTE` hook requests
+preservation only for those forms.  For example, an object visibility marker
+has this conceptual expansion:
+
+```c
+__context__((object), 0, LOCKLINT_CONTEXT_INVISIBLE);
+```
+
+Multiple selected expressions are retained as a comma-expression tree in
+`context_expr`.  They are not evaluated and therefore create no synthetic
+loads, stores, calls, or function arguments.  Locklint flattens that tree
+when applying the transition.
+
+The public Sparse pre-buffer facility is usable before
+`sparse_initialize()`.  It previously tokenized added text before
+`init_symbols()` installed canonical keyword identifiers, so a preloaded
+`__context__` token was not later recognized as the reserved statement
+keyword.  Sparse now defers tokenization of pre-buffer text until after symbol
+and keyword initialization.  This is a generic initialization-ordering fix;
+it contains no Locklint annotation names or policy.
+
+Declaration annotations continue to disappear after their tokens are
+captured.  During assertion analysis, a strong preprocessing definition
+causes `ASSERT(NO_COMPETING_THREADS)` to retain the same tagged context marker
+as `_NOTE(NO_COMPETING_THREADS_NOW)` instead of becoming the constant
+expression supplied by system headers.  `_NOTE(NO_COMPETING_THREADS)` is
+accepted as the same compatibility spelling.  The marker tag, retained
+expression, source position, and translation-unit provenance provide all
+information needed by Locklint; it does not infer execution order from source
+positions.
+
+The shared Sparse changes are limited to deferred pre-buffer tokenization,
+the optional context tag in parsing and IR, preservation and display of that
+tag, and focused generic Sparse validation.  Interpretation of every nonzero
+tag remains with the client that introduced it.
+
+### State domains
+
+Competition is one flow-sensitive state for the executing path:
+
+| State | Meaning |
+| --- | --- |
+| no competition | Other threads cannot access data used by this path |
+| possible competition | Competition is not established consistently |
+| competition present | Other threads may access the same data |
+
+Function entry starts with possible competition.
+`NO_COMPETING_THREADS_NOW` establishes no competition, and
+`COMPETING_THREADS_NOW` establishes competition.  Merging different incoming
+states produces possible competition and records that the uncertainty is
+path-dependent.  The conservative possible state at function entry is not
+itself described as a branch-dependent fact.
+
+Visibility is flow-sensitive state associated with an object region:
+
+| State | Meaning |
+| --- | --- |
+| invisible | Other threads cannot access the region |
+| maybe visible | The region is invisible on only some incoming paths |
+| visible | Other threads may access the region |
+
+An unmentioned region is visible.  `NOW_INVISIBLE_TO_OTHER_THREADS` and
+`NOW_VISIBLE_TO_OTHER_THREADS` set the selected regions to the corresponding
+definite state.  A whole-object selection covers its members.  A member
+selection affects that member and nested data within it but not its siblings.
+When overlapping whole-object and member facts exist, the most specific
+covering fact determines the queried state.  Updating a region removes
+obsolete facts wholly covered by that update.
+
+At a control-flow merge, Locklint computes the effective state of every
+region distinguished on either incoming path.  Agreement remains definite;
+disagreement becomes maybe visible.
+
+### Protection and read-only decisions
+
+A mutex-protected access is accepted when any one of these facts is definite:
+
+1. the required mutex is held;
+2. the selected datum is invisible; or
+3. there are no competing threads.
+
+If no fact is definite but at least one is path-dependent, the diagnostic
+states that protection is not established on every path.  Otherwise the
+access is diagnosed as unprotected.  `DATA_READABLE_WITHOUT_LOCK` continues
+to accept matching loads independently.  Explanatory scheme protection
+remains outside mechanical lock checking.
+
+`READ_ONLY_DATA` is checked independently of the selected protection
+mechanism.  A matching store is rejected only when the datum may currently be
+visible to competing threads.  A definitely invisible datum or a definite
+no-competition state permits initialization or private teardown writes.  The
+policy is based on current exposure, not a permanent seal after first
+publication; an explicit withdrawal can therefore permit later private
+modification.
+
+### Assertions, conditions, and calls
+
+`ASSERT(NO_COMPETING_THREADS)` is treated as an advisory local transition,
+equivalent to `_NOTE(NO_COMPETING_THREADS_NOW)`.  It suppresses subsequent
+lock requirements by establishing no competition, but is not verified,
+diagnosed as contradictory, or propagated as a caller condition.
+
+Protected-access conditions express "this datum must be protected" rather
+than only "this mutex must be held."  At a direct call, the caller may
+satisfy such a condition by holding the mapped mutex, by having the mapped
+datum invisible, or by being in a no-competition state.  This preserves the
+disjunction instead of arbitrarily choosing a lock requirement inside the
+callee.  Conditions preserve the selected data member and offset and may
+refer either to a formal-relative region or to an absolute canonical object.
+An optional mutex is likewise relative or absolute.
+
+`ASSUMING_PROTECTED(exprs)` is a function-entry contract regardless of where
+its retained marker appears.  It creates a protection condition for each
+selected expression and permits matching accesses throughout the function.
+Callers must establish one of the accepted protection alternatives for each
+mapped actual or absolute object.  A whole-object assumption covers its
+descendants.  Invalid expressions are diagnosed during final replay.
+
+Visibility changes to formal or absolute objects are inferred as direct-call
+summaries and mapped into the caller, like existing lock transfers.  Each
+summary is an input-to-output table for the three visibility states, solved
+across every reachable return and to a fixed point through direct,
+transitive, and recursive calls.  Canonical member paths preserve nested
+regions, base offsets, and identity across translation units.  Overlapping
+effects are applied from containing regions to leaves so a narrower result is
+not erased by a broader one.  Visibility changes to unreturned local objects
+require no summary.
+
+Ordinary concurrency transitions remain local.  Locklint recognizes and
+retains `NO_COMPETING_THREADS_AS_SIDE_EFFECT` and
+`COMPETING_THREADS_AS_SIDE_EFFECT`, but does not yet change caller state or
+validate return paths for them.  Historical LockLint describes nested
+competing-thread regions, which the current three-state competition model
+cannot represent faithfully.
+
+Unresolved and indirect calls do not receive invented visibility or
+concurrency effects.  Mapping returned allocations and general aliases
+remains later object-identity work.
+
+### Focused validation
+
+The tests cover:
+
+- initialization under no competition and while an object is invisible;
+- publication and withdrawal of whole objects and selected members;
+- visibility and competition merges across branches;
+- lock, invisibility, and no-competition alternatives at direct calls;
+- `ASSERT(NO_COMPETING_THREADS)` and `ASSUMING_PROTECTED`;
+- direct, transitive, recursive, nested-object, and cross-translation-unit
+  visibility summaries;
+- retained concurrency side-effect markers without assigning semantics; and
+- `READ_ONLY_DATA` stores before publication, while exposed, and after
+  withdrawal.
 
 ## Assertion representation
 
@@ -970,10 +1172,10 @@ Static functions reached only by known direct calls may defer protected-data
 warnings to callers.
 
 Every retained function is analyzed.  Root reachability determines whether a
-lock condition can safely be deferred through known callers; it does not
+protection condition can safely be deferred through known callers; it does not
 select which function bodies are retained.
 
-A function may defer a lock condition only when it is reachable from an
+A function may defer a protection condition only when it is reachable from an
 analysis root and has no root reason of its own.  A root, or a function not
 reachable through the resolved graph, is an independent diagnostic boundary.
 Self-recursion does not establish a direct caller for root classification.
@@ -1031,35 +1233,38 @@ must be errors.  The syntax and implementation of both interfaces remain
 TBD.  Initially they would only add roots; suppressing an automatically
 inferred root is a separate, more dangerous operation.
 
-## Function entry lock conditions
+## Function entry protection conditions
 
-A `lock_condition` summarizes lock state that a caller must establish on
-function entry.  Conditions currently arise from protected accesses that a
-caller may satisfy.  Each condition records:
+A `protection_condition` summarizes data protection that a caller must
+establish on function entry.  Conditions arise from protected accesses that a
+known caller may satisfy and from `ASSUMING_PROTECTED` contracts.  Each
+condition records:
 
-- the formal argument containing the protected object;
-- an absolute lock root, or `NULL` when the lock is relative to that argument;
-- the lock member and offset;
-- the protected data member; and
+- a formal argument or absolute canonical root containing the protected data;
+- the selected data member and offset;
+- whether a known mutex is available;
+- a relative or absolute mutex identity when available; and
 - a representative source position.
 
-`collect_local_lock_conditions()` replays each reachable block from its stable
-input state.  Every unsatisfied protected access rooted at a formal argument
-becomes a lock condition.  A protecting lock rooted at the protected object is
-recorded as argument-relative; any other root is preserved as an absolute
-lock.  Deferral eligibility is applied later, while emitting diagnostics, to
-decide whether a caller-satisfiable lock condition suppresses the local
-warning.
+`collect_local_protection_conditions()` replays each reachable block from its
+stable input state.  Every unsatisfied protected access with a caller-mappable
+identity becomes a protection condition.  It also records function-wide
+assumed-protection regions.  A mutex rooted at the protected object is
+recorded as data-relative; any other canonical root is preserved as absolute.
+Deferral eligibility is applied later, while emitting diagnostics, to decide
+whether a caller-satisfiable condition suppresses the local warning.
 
-`map_call_lock_condition()` maps the protected-data argument and protecting lock
-separately.  It rebases a relative lock onto the caller's actual argument, but
-uses a preserved absolute root unchanged.  The mapped data object determines
-whether a lock condition can propagate through another formal argument and
-whether its local diagnostic can be deferred.
+`map_call_protection_condition()` maps the protected datum and optional mutex
+separately.  It rebases a relative mutex onto the caller's actual argument,
+but uses a preserved absolute root unchanged.  The mapped data object
+determines whether an unsatisfied condition can propagate through another
+formal argument.
 
-`propagate_function_lock_conditions()` repeatedly maps callee formal arguments
-to caller actual arguments and adds unsatisfied lock conditions to the
+`propagate_function_protection_conditions()` repeatedly maps callee conditions
+to caller actual or absolute objects and adds unsatisfied conditions to the
 caller.  The pass iterates to a fixed point, including recursive call cycles.
+At a call site, definite mutex ownership, definite invisibility, or definite
+absence of competition satisfies the condition.
 
 ## Function lock effects
 
@@ -1102,11 +1307,13 @@ reachable block in instruction order.
 
 For each instruction it:
 
-1. finds the effective data policy and checks the memory access against
-   current state;
-2. checks direct-call lock conditions and invalid summarized effects;
-3. checks direct acquire/release validity and applies the operation; and
-4. applies assertion refinement.
+1. checks `READ_ONLY_DATA` against current exposure;
+2. checks a protected memory access against mutex, visibility, competition,
+   and assumed-protection alternatives;
+3. checks direct-call protection conditions and invalid summarized lock
+   effects, then applies summarized lock and visibility transfers;
+4. checks direct acquire/release validity and applies the operation; and
+5. applies assertion, competition, and visibility transitions.
 
 After the block, a return instruction triggers checks for locks held on all or
 some return paths.  Assertion-only held state is excluded from those
@@ -1132,8 +1339,10 @@ machine-readable format, or predecessor/call-chain witness.
 | --- | --- |
 | `find_root()` | Recover the root symbol from supported expression forms |
 | `find_member()` | Find retained member metadata in an expression |
-| `locklint_get_access()` | Construct normalized root/member/offset identity |
-| `locklint_same_access()` | Compare accesses using local or external object identity |
+| `locklint_get_access()` | Construct normalized object and canonical member-path identity |
+| `locklint_rebase_access()` | Compose a callee-relative member path onto a caller object |
+| `locklint_same_access()` | Compare accesses using object and canonical member-path identity |
+| `locklint_access_contains()` | Test whole-object and nested-member containment |
 | `locklint_access_base()` | Map a type-scoped relation into a concrete embedded object |
 | `locklint_show_access()` | Display a source-oriented access path |
 
@@ -1168,8 +1377,8 @@ machine-readable format, or predecessor/call-chain witness.
 | `locklint_check_record_pointer_evidence()` | Use Sparse's source-use walker to record function-valued uses and optional function-pointer loads and stores while a translation unit is current |
 | `locklint_check_add()` | Retain a function and add its Sparse and C-identity indexes |
 | `classify_roots()` | Add every applicable conservative root reason |
-| `analyze_blocks()` | Solve intraprocedural lock-state maps |
-| `run_lock_checks()` | Order transfer solving, block analysis, lock-condition propagation, and diagnostics |
+| `analyze_blocks()` | Solve unified intraprocedural lock, competition, and visibility state |
+| `run_lock_checks()` | Order lock and visibility transfer solving, block analysis, protection-condition propagation, and diagnostics |
 | `locklint_check_all()` | Order and iterate the complete analysis |
 
 ## Main action sequences
@@ -1189,8 +1398,9 @@ checker visits instruction
     -> locklint_data_policy combines effective policy dimensions
     -> scheme-protected access is excluded from mechanical checking
     -> unlocked-readable load is accepted
-    -> otherwise current lock state is queried
-    -> warning is emitted unless the required lock is definitely held
+    -> otherwise current protection alternatives are queried
+    -> warning is emitted unless mutex ownership, invisibility,
+       no competition, or an assumed-protection contract applies
 ```
 
 ### Assertion to local state refinement
@@ -1220,18 +1430,32 @@ caller OP_CALL resolved to callee
     -> output state replaces caller state
 ```
 
-### Protected-access lock condition
+### Direct callee visibility transfer
+
+```text
+callee visibility candidate discovered
+    -> transfer table solved for INVISIBLE, MAYBE, and VISIBLE inputs
+    -> every reachable return contributes to the output
+caller OP_CALL resolved to callee
+    -> callee-relative member path composed onto caller actual object
+       or absolute object identity preserved unchanged
+    -> current caller visibility selects transfer-table entry
+    -> overlapping results collected from the original caller state
+    -> containing regions installed before narrower leaves
+```
+
+### Protected-access condition
 
 ```text
 callee protected access is unsatisfied
-    -> formal data access becomes a lock condition
-    -> relative lock or absolute lock root is recorded
+    -> formal-relative or absolute data becomes a protection condition
+    -> optional relative or absolute mutex is recorded
 caller OP_CALL resolved to callee
     -> formal data object mapped to actual argument
     -> relative lock rebased to actual object
        or absolute lock root preserved unchanged
-    -> held caller state satisfies lock condition
-    -> otherwise warning is emitted or lock condition is deferred again
+    -> mutex, invisibility, or no competition satisfies the condition
+    -> otherwise warning is emitted or the condition is deferred again
 ```
 
 ## Invariants
@@ -1245,27 +1469,33 @@ The current implementation relies on these invariants:
 4. Every retained record has translation-unit provenance independent of its
    physical source position.
 5. Every checked load, store, and call retains its source expression.
-6. A lock-state key is stable for the lifetime of the analysis.
+6. Lock and visibility keys are stable for the lifetime of the analysis;
+   immutable member paths are interned and shared by copied accesses.
 7. Same-named external roots share one canonical object identity;
    internal roots are qualified by translation-unit identity, and local roots
    retain Sparse symbol identity.
 8. Header pathname and source position alone never establish semantic
    identity across translation units.
 9. Absent lock-state entries mean definitely not held.
-10. Only definitely held state satisfies a protected-access lock condition.
-11. Lock-condition propagation maps the protected-data argument independently
-   and never rebases an absolute lock root.
-12. Assertions refine state but do not create effect summaries.
-13. Interprocedural effects and lock conditions reach fixed points before
-   diagnostics are emitted.
+10. A protected access or entry condition is satisfied by any definite
+    protection alternative: mutex ownership, invisibility, no competition, or
+    a matching function-wide assumed-protection region.
+11. Protection-condition propagation maps the protected-data identity
+    independently and never rebases an absolute data or mutex root.
+12. Lock assertions refine local lock state without creating effects;
+    `ASSERT(NO_COMPETING_THREADS)` is an advisory local competition
+    transition and does not create a caller condition.
+13. Interprocedural lock and visibility effects and protection conditions
+    reach fixed points before diagnostics are emitted.
 14. Multiple external function definitions with one identifier are ambiguous,
     not arbitrarily selected.
 15. A later protection declaration replaces an earlier relation for the same
     resolved datum.
 16. Protection mechanism, unlocked-read permission, and read-only status are
     independent data-policy dimensions.
-17. `READ_ONLY_DATA` does not reject initialization writes before visibility
-    state is available.
+17. `READ_ONLY_DATA` rejects stores only when the selected datum may currently
+    be visible to competing threads; definite invisibility or no competition
+    permits the store.
 18. Every analysis root retains all independently established reasons.
 19. A function used as a value outside a resolved direct call is a
     conservative root, including when the conversion occurs in a static
@@ -1281,13 +1511,12 @@ and add a focused regression test.
 The implemented design remains intentionally narrow.  Important missing
 areas include:
 
-- general alias and nested-object identity;
+- general aliasing and identities reached through returned pointers;
 - indirect-call and callback target resolution;
 - explicit root configuration and source annotations;
 - rwlock read/write state;
-- visibility and competing-thread policy;
-- enforcement of `READ_ONLY_DATA` after visibility to competing threads;
-- explicit side-effect contracts;
+- declared competition side-effect semantics and nested competition regions;
+- explicit lock-side-effect annotation contracts;
 - condition waits, try-locks, upgrades, and downgrades;
 - lock-order analysis; and
 - stable diagnostic identifiers, suppressions, and provenance.
