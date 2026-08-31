@@ -84,6 +84,7 @@ LOCAL_OBJS = \
 	access.o \
 	annotations.o \
 	assertions.o \
+	callgraph.o \
 	check.o \
 	events.o \
 	identity.o \

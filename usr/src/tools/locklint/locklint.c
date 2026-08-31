@@ -30,6 +30,7 @@
 #include "access.h"
 #include "annotations.h"
 #include "assertions.h"
+#include "callgraph.h"
 #include "check.h"
 #include "events.h"
 #include "identity.h"
@@ -159,7 +160,7 @@ process_symbols(struct translation_unit *tu, struct symbol_list *symbols)
 		if (ep == NULL)
 			continue;
 		if (check_locks || dump_callgraph)
-			locklint_check_add(tu, ep);
+			callgraph_add(tu, ep);
 		if (dump_linearized)
 			show_entry(ep);
 		if (dump_accesses)
@@ -238,7 +239,7 @@ main(int argc, char **argv)
 	if (dump_annotations || dump_events || check_locks)
 		locklint_resolve_annotations();
 	if (check_locks || dump_callgraph)
-		locklint_check_record_pointer_evidence(tu, symbols,
+		callgraph_record_pointer_evidence(tu, symbols,
 		    dump_callgraph);
 	process_symbols(tu, symbols);
 	FOR_EACH_PTR(filelist, file) {
@@ -254,7 +255,7 @@ main(int argc, char **argv)
 		if (dump_annotations || dump_events || check_locks)
 			locklint_resolve_annotations();
 		if (check_locks || dump_callgraph)
-			locklint_check_record_pointer_evidence(tu, symbols,
+			callgraph_record_pointer_evidence(tu, symbols,
 			    dump_callgraph);
 		process_symbols(tu, symbols);
 	} END_FOR_EACH_PTR(file);

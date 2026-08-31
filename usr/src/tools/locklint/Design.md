@@ -338,16 +338,16 @@ assertions
   `- assertion
 
 functions
-  `- function_info
-       |- borrowed Sparse entrypoint
-       |- root-reason bit mask
-       |- block_info list
-       |    |- input analysis_state
-       |    `- output analysis_state
-       |- protection_condition list
-       |- assumed_region list
-       |- lock_transfer list
-       `- visibility_transfer list
+  `- function_record
+       |- borrowed Sparse entrypoint and callgraph state
+       `- function_info
+            |- block_info list
+            |    |- input analysis_state
+            |    `- output analysis_state
+            |- protection_condition list
+            |- assumed_region list
+            |- lock_transfer list
+            `- visibility_transfer list
 
 function-pointer observations
   |- function_escape
@@ -370,7 +370,8 @@ The structures have these roles:
 | `struct assertion` | One recognized lock predicate captured from `ASSERT(...)` or `VERIFY(...)`; records source ranges and the asserted state |
 | `struct locklint_access` | A normalized identity for an object or member access; refers to its canonical object identity or local root symbol, type, final member, cumulative offset, source expression, and interned canonical member path |
 | `struct locklint_member_path` | One immutable, interned member-path component; links to its containing path and records a member identifier, cumulative offset, and depth |
-| `struct function_info` | Locklint's record for one function; refers to its Sparse entrypoint, embeds its automatic root-reason mask and function-index linkages, and owns its block state and summaries |
+| `struct function_record` | Callgraph-private owning record for one function; contains its shared `function_info`, root and reachability bookkeeping, collection linkage, and AVL linkages |
+| `struct function_info` | Shared semantic view of one function; refers to its translation unit and Sparse entrypoint and carries checker-owned block state and summaries |
 | `struct call_audit` | One temporary source-order entry for a live call instruction while dumping a function's calls |
 | `struct function_escape` | One source observation that an exact function was used as a value; supplies root provenance through its source position and resolved target |
 | `struct indirect_target` | One exact target candidate for a member of a supported file-static constant aggregate; records translation unit, object, member, offset, source function, resolved target, and ambiguity |
@@ -410,7 +411,7 @@ The module-scope records use these collections:
 
 | Object | Owning storage | Collections and indexes |
 | --- | --- | --- |
-| `function_info` | Individually allocated records in an owning linked list | Embeds `by_entrypoint` for an AVL keyed by Sparse entrypoint and `by_identity` for an AVL keyed by C function identity |
+| `function_record` | Individually allocated records in a callgraph-private owning linked list | Embeds `by_entrypoint` for an AVL keyed by Sparse entrypoint and `by_identity` for an AVL keyed by C function identity |
 | `call_audit` | Temporary array allocated only while dumping one function | Sorted by source position and collection sequence with `qsort()`; no persistent index |
 | `function_escape` | Individually allocated records in an owning linked list | Embeds `by_source` for deterministic source traversal and `by_target` for finding every escape reason associated with a resolved function |
 | `indirect_target` | Individually allocated records in an owning linked list | Matched by translation unit, aggregate object, member, and offset; the supported exact case needs no separate index |
@@ -420,9 +421,11 @@ The module-scope records use these collections:
 | `object_identity` | Existing process-lifetime records | Existing identifier and declaration-symbol hash indexes remain unchanged in this increment |
 
 Functions are inserted incrementally while translation units are processed.
-Their owning list provides stable addresses and full-function traversal.  The
-two function AVL indexes provide `O(log n)` insertion and lookup and ordered
-range traversal for ambiguous external definitions.
+The callgraph-private owning list provides stable addresses.  Checker passes
+traverse the ready function set through allocated callgraph iterators rather
+than accessing that list.  The two function AVL indexes provide `O(log n)`
+insertion and lookup and ordered range traversal for ambiguous external
+definitions.
 
 Calls remain in Sparse's retained IR rather than separate persistent records.
 Root classification, reachability, lock-summary propagation, and diagnostics
@@ -456,12 +459,13 @@ not already guarantee uniqueness.  Prefix lookup uses `avl_find()`,
 - function-pointer activity uses translation unit, source position, operation
   kind, and sequence.
 
-Each `function_info` and resolved `function_escape` belongs to two AVL trees
-and therefore embeds two `avl_node_t` fields.  An unresolved escape remains
-only in the source tree.  Each `function_pointer_activity` belongs to one
-tree.  At LP64 each linkage costs 24 bytes.  Detailed pointer activity is
-retained only for an explicit audit so ordinary checking does not pay that
-potentially large memory cost.
+Each private `function_record` and resolved `function_escape` belongs to two
+AVL trees and therefore embeds two `avl_node_t` fields.  The shared
+`function_info` exposes none of those collection details.  An unresolved
+escape remains only in the source tree.  Each `function_pointer_activity`
+belongs to one tree.  At LP64 each linkage costs 24 bytes.  Detailed pointer
+activity is retained only for an explicit audit so ordinary checking does not
+pay that potentially large memory cost.
 
 The existing object-identity hash tables serve mutable, exact-key lookups on
 hot access-analysis paths and do not require ordered traversal.  The function
@@ -491,13 +495,16 @@ forms are chosen.
   preprocessing tokens.
 - Locklint allocates annotations, references, assertions, and copied `_NOTE`
   tokens for process lifetime.
-- Locklint owns individually allocated, list-owned function,
+- The callgraph owns individually allocated, list-owned function,
   function-escape, and optional function-pointer-activity records and their
   AVL indexes.
+- The checker owns block maps, protection conditions, assumptions, lock
+  transfers, and visibility transfers attached to each shared
+  `function_info`.
 - Temporary call-audit arrays are freed after each function is dumped.
-- Function records, function-pointer observations, protection conditions,
-  assumptions, transfers, CFG state maps, and transfer-simulation blocks are
-  freed after their analysis use ends.
+- Checker attachments are freed before callgraph cleanup releases function
+  records, pointer observations, and indexes.  Callgraph cleanup rejects open
+  iterators or remaining checker attachments.
 - Interned member paths are immutable during analysis and are freed after all
   requested checks and dumps complete.
 - The implementation is a batch command, so process-lifetime metadata is
@@ -1115,6 +1122,32 @@ Only `LOCK_HELD` satisfies a protected access.
 
 ## Module scope, calls, and roots
 
+Callgraph construction and checking are separated by an explicit lifecycle:
+
+```text
+CONSTRUCTING -> RESOLVING -> READY -> CLEANED
+```
+
+While constructing, `locklint.c` adds each linearized function and records
+function-address escapes, optional function-pointer activity, and exact target
+candidates from supported static constant initializers.  Resolution is
+deferred until all translation units have been processed so C identity,
+ambiguous external definitions, exact indirect targets, roots, and
+reachability are determined with complete program knowledge.
+
+`callgraph_resolve()` closes construction and makes the graph ready.
+Whole-function checker passes use opaque allocated iterators, and callee
+queries and audit output are accepted only in the ready state.  Each opened
+iterator must be closed.  After checker-owned attachments have been released,
+`callgraph_cleanup()` requires that no iterators remain open and transitions
+the graph to the cleaned state.  Construction cannot resume after resolution.
+
+`callgraph.h` declares the module interface while keeping callgraph-owned
+collections and indexes opaque.  `function_info.h` privately defines the
+per-function representation shared by `callgraph.c` and `check.c`; it exposes
+the Sparse function identity and checker attachments but not the owning list
+or AVL linkages in the private `function_record`.
+
 For a call whose Sparse symbol already has an entrypoint, locklint uses that
 definition directly.
 
@@ -1376,7 +1409,7 @@ machine-readable format, or predecessor/call-chain witness.
 | Function | Responsibility |
 | --- | --- |
 | `options()` | Consume locklint-specific options while preserving Sparse options |
-| `process_symbols()` | Expand symbols, create entrypoints, register checking, and emit requested dumps |
+| `process_symbols()` | Expand symbols, create entrypoints, add functions to the callgraph, and emit requested dumps |
 | `main()` | Register hooks, drive per-file parsing/resolution, and start program-wide analysis |
 | `locklint_init_include_path()` | Replace Sparse's default include-path initialization |
 
@@ -1417,17 +1450,26 @@ machine-readable format, or predecessor/call-chain witness.
 | `locklint_get_lock_action()` | Decode supported mutex acquire/release calls |
 | `locklint_show_events()` | Display relevant instructions in CFG order |
 
+### Callgraph: `callgraph.c`
+
+| Function | Responsibility |
+| --- | --- |
+| `callgraph_record_pointer_evidence()` | Use Sparse's source-use walker to record function-valued uses and optional function-pointer loads and stores, then record supported exact aggregate targets while a translation unit is current |
+| `callgraph_add()` | Retain a function and add its Sparse and C-identity indexes during construction |
+| `callgraph_resolve()` | Resolve identities and exact targets, classify roots, propagate reachability, and make the complete graph ready |
+| `callgraph_iter_open()`, `callgraph_iter_next()`, `callgraph_iter_close()` | Allocate, advance, and dispose an opaque cursor over the ready function set |
+| `callgraph_callee()` | Resolve one direct call or supported exact indirect call through the common semantic edge interface |
+| `callgraph_ambiguous_callee()` | Report whether a direct call has multiple matching external definitions |
+| `callgraph_dump()` | Emit the deterministic callgraph audit to a caller-supplied stream |
+| `callgraph_cleanup()` | Verify iterator and attachment lifetimes, then release all callgraph-owned records and indexes |
+
 ### Checker: `check.c`
 
 | Function | Responsibility |
 | --- | --- |
-| `locklint_check_record_pointer_evidence()` | Use Sparse's source-use walker to record function-valued uses and optional function-pointer loads and stores, then record supported exact aggregate targets while a translation unit is current |
-| `locklint_check_add()` | Retain a function and add its Sparse and C-identity indexes |
-| `call_callee()` | Resolve one direct call or supported exact indirect call through the common semantic edge interface |
-| `classify_roots()` | Add every applicable conservative root reason |
 | `analyze_blocks()` | Solve unified intraprocedural lock, competition, and visibility state |
 | `run_lock_checks()` | Order lock and visibility transfer solving, block analysis, protection-condition propagation, and diagnostics |
-| `locklint_check_all()` | Order and iterate the complete analysis |
+| `locklint_check_all()` | Resolve the callgraph, order and iterate the complete analysis, release checker attachments, and clean up the callgraph |
 
 ## Main action sequences
 
@@ -1587,6 +1629,10 @@ The current implementation relies on these invariants:
     visible in the call-graph audit and do not create invented call edges.
 21. A structure-valued lock retains whole-object identity; recursive aggregate
     expansion applies only to protected data.
+22. Callgraph mutation is confined to construction; iteration, callee queries,
+    and audit output require the ready state.
+23. Every callgraph iterator is explicitly closed, and checker attachments are
+    released before callgraph-owned function records.
 
 Changes that invalidate one of these invariants should update this document
 and add a focused regression test.
