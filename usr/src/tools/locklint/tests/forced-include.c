@@ -9,6 +9,15 @@
  * http://www.illumos.org/license/CDDL.
  */
 
+/*
+ * Verify that annotations introduced by a forced include apply to both its
+ * external object and its translation-unit-local object.  The two unlocked
+ * reads prove that each declaration retains the identity established while
+ * processing the forced header.
+ *
+ * This test also uses forced-include.h and forced-include-second.c.
+ */
+
 struct forced_state forced_object;
 
 static int

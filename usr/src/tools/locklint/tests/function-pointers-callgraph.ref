@@ -1,39 +1,39 @@
-function driver_open tu=function-pointers.c definition=function-pointers.c:17:1 linkage=internal reachable=yes
+function driver_open tu=function-pointers.c definition=function-pointers.c:24:1 linkage=internal reachable=yes
   root no-known-direct-caller
   root function-pointer-escape
-function explicit_target tu=function-pointers.c definition=function-pointers.c:23:1 linkage=internal reachable=yes
+function explicit_target tu=function-pointers.c definition=function-pointers.c:30:1 linkage=internal reachable=yes
   root function-pointer-escape
-function indirect_target tu=function-pointers.c definition=function-pointers.c:29:1 linkage=internal reachable=yes
+function indirect_target tu=function-pointers.c definition=function-pointers.c:36:1 linkage=internal reachable=yes
   root no-known-direct-caller
   root function-pointer-escape
-function direct_only tu=function-pointers.c definition=function-pointers.c:35:1 linkage=internal reachable=yes
-function copy_handler tu=function-pointers.c definition=function-pointers.c:48:1 linkage=internal reachable=yes
-function install_handler tu=function-pointers.c definition=function-pointers.c:54:1 linkage=internal reachable=yes
-function call_indirect tu=function-pointers.c definition=function-pointers.c:60:1 linkage=internal reachable=yes
-  call function-pointers.c:62:32 indirect
-function call_block_static tu=function-pointers.c definition=function-pointers.c:66:1 linkage=internal reachable=yes
-  call function-pointers.c:70:24 indirect
-function exercise_pointers tu=function-pointers.c definition=function-pointers.c:74:1 linkage=internal reachable=yes
+function direct_only tu=function-pointers.c definition=function-pointers.c:42:1 linkage=internal reachable=yes
+function copy_handler tu=function-pointers.c definition=function-pointers.c:55:1 linkage=internal reachable=yes
+function install_handler tu=function-pointers.c definition=function-pointers.c:61:1 linkage=internal reachable=yes
+function call_indirect tu=function-pointers.c definition=function-pointers.c:67:1 linkage=internal reachable=yes
+  call function-pointers.c:69:32 indirect
+function call_block_static tu=function-pointers.c definition=function-pointers.c:73:1 linkage=internal reachable=yes
+  call function-pointers.c:77:24 indirect
+function exercise_pointers tu=function-pointers.c definition=function-pointers.c:81:1 linkage=internal reachable=yes
   root no-known-direct-caller
-  call function-pointers.c:78:21 resolved copy_handler tu=function-pointers.c
-  call function-pointers.c:79:24 resolved install_handler tu=function-pointers.c
-  call function-pointers.c:80:32 resolved explicit_target tu=function-pointers.c
-  call function-pointers.c:80:53 resolved direct_only tu=function-pointers.c
-  call function-pointers.c:81:26 resolved call_indirect tu=function-pointers.c
-  call function-pointers.c:81:53 resolved call_block_static tu=function-pointers.c
-  call function-pointers.c:82:28 indirect
+  call function-pointers.c:85:21 resolved copy_handler tu=function-pointers.c
+  call function-pointers.c:86:24 resolved install_handler tu=function-pointers.c
+  call function-pointers.c:87:32 resolved explicit_target tu=function-pointers.c
+  call function-pointers.c:87:53 resolved direct_only tu=function-pointers.c
+  call function-pointers.c:88:26 resolved call_indirect tu=function-pointers.c
+  call function-pointers.c:88:53 resolved call_block_static tu=function-pointers.c
+  call function-pointers.c:89:28 indirect
 escapes
-  escape function-pointers.c:41:17 driver_open resolved driver_open tu=function-pointers.c
-  escape function-pointers.c:44:40 explicit_target resolved explicit_target tu=function-pointers.c
-  escape function-pointers.c:68:38 indirect_target resolved indirect_target tu=function-pointers.c
-  escape function-pointers.c:79:25 indirect_target resolved indirect_target tu=function-pointers.c
-  escape function-pointers.c:86:15 indirect_target resolved indirect_target tu=function-pointers.c
+  escape function-pointers.c:48:17 driver_open resolved driver_open tu=function-pointers.c
+  escape function-pointers.c:51:40 explicit_target resolved explicit_target tu=function-pointers.c
+  escape function-pointers.c:75:38 indirect_target resolved indirect_target tu=function-pointers.c
+  escape function-pointers.c:86:25 indirect_target resolved indirect_target tu=function-pointers.c
+  escape function-pointers.c:93:15 indirect_target resolved indirect_target tu=function-pointers.c
 pointer activity
-  store function-pointers.c:41:10 callback_ops.open
-  store function-pointers.c:44:12 explicit_handler
-  store function-pointers.c:50:9 current_handler
-  load function-pointers.c:50:27 explicit_handler
-  store function-pointers.c:56:9 current_handler
-  load function-pointers.c:56:27 handler
-  store function-pointers.c:68:20 handler
-  load function-pointers.c:76:25 current_handler
+  store function-pointers.c:48:10 callback_ops.open
+  store function-pointers.c:51:12 explicit_handler
+  store function-pointers.c:57:9 current_handler
+  load function-pointers.c:57:27 explicit_handler
+  store function-pointers.c:63:9 current_handler
+  load function-pointers.c:63:27 handler
+  store function-pointers.c:75:20 handler
+  load function-pointers.c:83:25 current_handler

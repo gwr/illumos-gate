@@ -10,7 +10,11 @@
  */
 
 /*
- * Test local readers-writer lock policy, state, operations, and assertions.
+ * Verify local readers-writer lock state and access requirements.  The same
+ * members are read and written while unlocked, reader-held, and writer-held
+ * so read and write protection cannot be conflated.  Branch merges,
+ * mismatched operations, and held/not-held assertions then test conservative
+ * state tracking, including the kernel-only lock modes and predicates.
  */
 
 #ifdef __lock_lint

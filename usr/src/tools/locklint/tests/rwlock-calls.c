@@ -10,7 +10,10 @@
  */
 
 /*
- * Test interprocedural readers-writer lock conditions and effects.
+ * Verify readers-writer lock conditions and effects across calls.  The same
+ * read and write callees are invoked under reader and writer ownership to
+ * distinguish their required modes; separate acquire helpers then prove that
+ * reader and writer effects propagate with their mode intact to the caller.
  */
 
 #ifdef __lock_lint

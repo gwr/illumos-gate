@@ -390,9 +390,9 @@ compare_no_columns "anonymous embedding" anonymous-embedding.ref \
 run_capture "annotation name dump" annotation-names-dump.out \
     "$LOCKLINT" --dump-annotations annotation-names.c
 require_match "annotation name dump" \
-    'replaced by annotation-names.c:67:1' annotation-names-dump.out
+    'replaced by annotation-names.c:71:1' annotation-names-dump.out
 require_match "annotation name dump" \
-    'replaces annotation-names.c:65:1' annotation-names-dump.out
+    'replaces annotation-names.c:69:1' annotation-names-dump.out
 
 #
 # Final report

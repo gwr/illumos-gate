@@ -14,8 +14,12 @@
  */
 
 /*
- * Test annotation names, generated paths, recursive structure expansion,
- * and replacement of earlier protection declarations.
+ * Verify that annotation names become the intended complete object paths.
+ * Unlocked/locked access pairs exercise global, generated, recursive,
+ * anonymous, and embedded paths.  Applying two protectors to one member shows
+ * that the later declaration replaces the earlier one rather than combining
+ * them, while an embedded object proves that type-relative paths are rebased
+ * at each use.
  */
 
 #ifdef __lock_lint

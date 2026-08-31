@@ -14,8 +14,10 @@
  */
 
 /*
- * Verify type-scoped protection for members promoted through valid inline
- * anonymous structures and unions.
+ * Verify type-scoped protection for members promoted through anonymous
+ * structures and unions.  Each promoted member is first accessed unlocked
+ * and then through its correspondingly promoted lock; the nested case shows
+ * that path construction survives more than one anonymous aggregate level.
  */
 
 #define	_NOTE(arg)

@@ -9,6 +9,15 @@
  * http://www.illumos.org/license/CDDL.
  */
 
+/*
+ * Verify that visibility effects cross translation-unit boundaries for
+ * formal, global, and nested objects.  Each invisible/visible caller pair
+ * performs the same protected access after opposite callee effects, making
+ * incorrect effect resolution visible without relying on callee-local state.
+ *
+ * This test also uses visibility-cross.h and visibility-cross-callee.c.
+ */
+
 #include "visibility-cross.h"
 
 static void

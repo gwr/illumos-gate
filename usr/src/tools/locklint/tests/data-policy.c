@@ -13,6 +13,14 @@
  * Copyright 2026 Gordon W. Ross
  */
 
+/*
+ * Verify how overlapping data policies affect reads and writes.  Each
+ * annotated member is accessed without a lock so that read-only permission,
+ * scheme protection, and mutex protection can be distinguished; the final
+ * locked accesses show that the mutex-protected cases become valid while a
+ * write to read-only data remains invalid.
+ */
+
 #ifdef __lock_lint
 #include <sys/note.h>
 #else

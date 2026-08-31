@@ -9,6 +9,13 @@
  * http://www.illumos.org/license/CDDL.
  */
 
+/*
+ * Verify call-graph treatment of functions whose addresses escape.  Targets
+ * are stored through structure members, globals, locals, parameters, and
+ * indexed initializers; direct calls must still resolve normally, while calls
+ * through loaded pointers remain indirect and escaped targets remain roots.
+ */
+
 struct callback_ops {
 	int (*open)(int);
 };

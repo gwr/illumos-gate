@@ -13,6 +13,14 @@
  * Copyright 2026 Gordon W. Ross
  */
 
+/*
+ * Verify local competition, visibility, and assumed-protection state.
+ * Adjacent accesses after opposing annotations expose which state applies;
+ * branch pairs test conservative merging, and whole-object/member sequences
+ * test that a narrower visibility rule overrides an enclosing one.  The
+ * read-only and callee sections apply the same distinctions to their policies.
+ */
+
 #ifdef __lock_lint
 #include <sys/note.h>
 #else

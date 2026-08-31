@@ -1,2 +1,2 @@
-../locklint: forced-include.c:17: warning: locklint: protected member 'value' accessed without holding 'lock'
-../locklint: forced-include.c:23: warning: locklint: protected member 'value' accessed without holding 'lock'
+../locklint: forced-include.c:26: warning: locklint: protected member 'value' accessed without holding 'lock'
+../locklint: forced-include.c:32: warning: locklint: protected member 'value' accessed without holding 'lock'

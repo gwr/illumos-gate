@@ -14,7 +14,10 @@
  */
 
 /*
- * This test covers the user-level mutex_lock / unlock
+ * Verify that user-level mutex_lock() and mutex_unlock() use the common mutex
+ * model.  Paired unlocked and locally locked reads test direct operations,
+ * while the acquire helper shows that a held-lock effect propagates to its
+ * caller and is still diagnosed at the helper's own return.
  */
 
 #define	_NOTE(arg)

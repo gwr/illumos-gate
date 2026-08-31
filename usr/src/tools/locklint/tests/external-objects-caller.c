@@ -13,6 +13,15 @@
  * Copyright 2026 Gordon W. Ross
  */
 
+/*
+ * Verify object, lock, and function identity across translation units and C
+ * linkage scopes.  Locked/unlocked call pairs test external protection
+ * propagation, while same-named file and block declarations test that a
+ * caller-local object is not confused with the callee's external definition.
+ *
+ * This test also uses external-objects.h and external-objects-callee.c.
+ */
+
 #include "external-objects.h"
 
 static struct external_state file_state;

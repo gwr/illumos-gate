@@ -9,6 +9,14 @@
  * http://www.illumos.org/license/CDDL.
  */
 
+/*
+ * Verify propagation of visibility effects through calls.  Direct, wrapped,
+ * recursive, global, and nested-object callees establish or withdraw
+ * visibility before protected accesses; conditional callees show that an
+ * effect is usable only when it occurs on every path, and overlapping
+ * whole-object/member effects test most-specific-state precedence.
+ */
+
 #define	_NOTE(arg)
 
 typedef int mutex_t;

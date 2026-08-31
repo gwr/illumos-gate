@@ -9,6 +9,15 @@
  * http://www.illumos.org/license/CDDL.
  */
 
+/*
+ * Verify that an external call is not resolved arbitrarily when multiple
+ * translation units define its target.  The block-scope declaration refers
+ * to either external definition, so the call graph must retain an ambiguous
+ * call rather than choosing one definition.
+ *
+ * This test also uses ambiguous-call-first.c and ambiguous-call-second.c.
+ */
+
 static int
 call_ambiguous_target(int value)
 {

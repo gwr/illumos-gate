@@ -14,7 +14,11 @@
  */
 
 /*
- * Test covering `ASSERT` and `VERIFY` as lock-state annotations.
+ * Verify that recognized ASSERT and VERIFY predicates refine lock state
+ * without analyzing the macro implementation.  Equivalent held and not-held
+ * spellings distinguish predicate polarity, an active macro body proves that
+ * helper calls such as assfail() remain hidden, and competition assertions
+ * show the analogous state transition for unprotected access.
  */
 
 #define	_NOTE(arg)
