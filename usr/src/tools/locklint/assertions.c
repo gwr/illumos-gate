@@ -243,13 +243,7 @@ locklint_get_assertion(struct translation_unit *tu, struct instruction *insn,
 	unsigned int selected = 0;
 
 	*modes = 0;
-	access->root = NULL;
-	access->object = NULL;
-	access->type = NULL;
-	access->member = NULL;
-	access->offset = 0;
-	access->expr = NULL;
-	access->path = NULL;
+	*access = (struct locklint_access){ 0 };
 	if (!is_lock_predicate(insn) || insn->call_expr == NULL)
 		return (false);
 	argument = first_expression(insn->call_expr->args);

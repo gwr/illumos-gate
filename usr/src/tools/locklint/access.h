@@ -17,11 +17,14 @@
 #define	ACCESS_H
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 
 struct expression;
+struct instruction;
 struct locklint_member_path;
 struct object_identity;
+struct pseudo;
 struct symbol;
 struct translation_unit;
 
@@ -33,10 +36,16 @@ struct locklint_access {
 	unsigned long offset;
 	struct expression *expr;
 	struct locklint_member_path *path;
+	struct pseudo *address_base;
+	int64_t address_offset;
 };
 
 bool locklint_get_access(struct translation_unit *, struct expression *,
     struct locklint_access *);
+bool locklint_get_instruction_access(struct translation_unit *,
+    const struct instruction *, struct locklint_access *);
+bool locklint_get_call_argument_access(struct translation_unit *,
+    const struct instruction *, unsigned int, struct locklint_access *);
 void locklint_rebase_access(const struct locklint_access *,
     const struct locklint_access *, struct locklint_access *);
 bool locklint_same_access(const struct locklint_access *,

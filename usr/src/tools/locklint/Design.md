@@ -368,7 +368,7 @@ The structures have these roles:
 | `struct annotation_token` | A durable copy of one preprocessing token from an annotation body |
 | `struct annotation_ref` | One parsed and later resolved lock or data endpoint; refers to Sparse symbols and records replacement precedence |
 | `struct assertion` | One recognized lock predicate captured from `ASSERT(...)` or `VERIFY(...)`; records source ranges and the asserted state |
-| `struct locklint_access` | A normalized identity for an object or member access; refers to its canonical object identity or local root symbol, type, final member, cumulative offset, source expression, and interned canonical member path |
+| `struct locklint_access` | Dual source and computed-address identity for an object or member access; retains annotation and diagnostic provenance while optionally referring to the exact Sparse address pseudo and displacement |
 | `struct locklint_member_path` | One immutable, interned member-path component; links to its containing path and records a member identifier, cumulative offset, and depth |
 | `struct function_record` | Callgraph-private owning record for one function; contains its shared `function_info`, root and reachability bookkeeping, collection linkage, and AVL linkages |
 | `struct function_info` | Shared semantic view of one function; refers to its translation unit and Sparse entrypoint and carries checker-owned block state and summaries |
@@ -632,8 +632,22 @@ program-wide analysis.
 | `member` | Final resolved member symbol, or `NULL` for a whole object |
 | `offset` | Cumulative byte offset of the selected path from the root |
 | `expr` | Retained source expression, when path traversal is still required |
+| `path` | Interned source member path used for exact nested-member identity |
+| `address_base` | Optional Sparse pseudo for the computed instruction address |
+| `address_offset` | Signed byte displacement from `address_base` |
 
-The access equality relation is:
+An access therefore retains two complementary identities.  Source identity
+selects annotations, supports diagnostics, and remains available where no
+lowered instruction exists.  Computed-address identity relates the actual
+addresses used by memory instructions and call arguments.
+
+When both accesses have computed addresses, the equality relation is:
+
+```text
+same address-base pseudo + same signed displacement
+```
+
+Otherwise equality falls back to the source relation:
 
 ```text
 same root identity + same final member identity + same cumulative offset
@@ -661,32 +675,40 @@ member identifiers, and layouts are equal.
 
 The final member distinguishes fields, while the cumulative offset
 distinguishes repeated or nested occurrences of a member.  The root
-distinguishes separate objects.  `locklint_same_access()` implements this
-relation for object-scoped annotations and lock-state maps.
+distinguishes separate objects.  Exact computed addresses additionally
+recognize local pointer copies and constant container conversions, and keep
+unrelated symbolic array indices distinct.
 
 `locklint_get_access()` recovers this identity from a retained expression.
 `find_root()` searches through the expression operators supported by the
 current model.  `find_member()` locates the retained member chain.
-`member_offset()` sums `member_path_offset` across that chain.
+`member_offset()` sums `member_path_offset` across that chain.  The
+instruction and call-argument constructors augment this source identity with
+the corresponding Sparse pseudo.  Address normalization strips pointer casts
+and folds exact constant additions and subtractions.  Other computed pseudos
+remain opaque: repeated uses compare equal, while unrelated computations are
+not guessed to be aliases.
 
 `locklint_access_base()` attempts to determine where a type-scoped annotation
 owner occurs within a concrete access.  It walks from the final member toward
-the root, accumulating suffix offsets.  A match supplies the base offset of
-the annotated object within the concrete root.  Valid inline anonymous
-structures and unions do not introduce a separately named owner type;
-Sparse's retained path offset includes their promotion offsets, so an
-annotation on the enclosing type uses the normal exact offset match.
+the root, accumulating suffix offsets.  At a pointer root, it also recognizes
+repeated owner-sized array elements.  A match supplies the base offset of the
+annotated object within the concrete root.  Valid inline anonymous structures
+and unions do not introduce a separately named owner type; Sparse's retained
+path offset includes their promotion offsets, so an annotation on the
+enclosing type uses the normal exact offset match.
 
 ### Identity limitations
 
-The identity model is deliberately smaller than an alias analysis.  It does
-not currently unify assigned aliases, container conversions, or multiple
-formal arguments that name one object.
+The exact-address model is deliberately smaller than a general alias
+analysis.  It recognizes relationships already made exact by Sparse, but does
+not infer equality through unrelated pseudos or specialize a callee according
+to relationships among its actual arguments.
 
 Known cases require additional work:
 
-1. Arrays use an offset-based identity but do not yet have a documented,
-   tested policy for distinguishing all dynamic element expressions.
+1. Multiple formal arguments that receive one object require a
+   context-sensitive or relational function summary.
 2. External declarations with the same identifier are canonicalized without
    first diagnosing incompatible object types across translation units.
 3. A multi-input invocation cannot currently use initialization-time
@@ -819,6 +841,10 @@ It combines the latest matching mechanism with all matching independent
 properties.  For a mutex mechanism, it also constructs the concrete
 protecting lock identity.  A concrete lock keeps its own root and offset.  A
 type-scoped lock is based at the matched instance of the annotated data owner.
+When the data access has an exact computed address, the required lock address
+is derived by replacing the protected member's relative offset with the
+protector's relative offset.  The lock consequently stays within the same
+alias, array element, or recovered container.
 
 ### Effect on access checking
 
@@ -1420,8 +1446,10 @@ machine-readable format, or predecessor/call-chain witness.
 | `find_root()` | Recover the root symbol from supported expression forms |
 | `find_member()` | Find retained member metadata in an expression |
 | `locklint_get_access()` | Construct normalized object and canonical member-path identity |
+| `locklint_get_instruction_access()` | Add the normalized address used by a load or store |
+| `locklint_get_call_argument_access()` | Add the normalized address passed as a call argument |
 | `locklint_rebase_access()` | Compose a callee-relative member path onto a caller object |
-| `locklint_same_access()` | Compare accesses using object and canonical member-path identity |
+| `locklint_same_access()` | Prefer exact computed-address equality, falling back to source identity |
 | `locklint_access_contains()` | Test whole-object and nested-member containment |
 | `locklint_access_base()` | Map a type-scoped relation into a concrete embedded object |
 | `locklint_show_access()` | Display a source-oriented access path |
@@ -1633,6 +1661,10 @@ The current implementation relies on these invariants:
     and audit output require the ready state.
 23. Every callgraph iterator is explicitly closed, and checker attachments are
     released before callgraph-owned function records.
+24. Exact address identity strips only pointer casts and constant pointer
+    displacements; unrelated computed pseudos are never assumed equal.
+25. A type-scoped protector is rebased from the observed data address so it
+    remains within the same alias, array element, or recovered container.
 
 Changes that invalidate one of these invariants should update this document
 and add a focused regression test.
@@ -1642,7 +1674,8 @@ and add a focused regression test.
 The implemented design remains intentionally narrow.  Important missing
 areas include:
 
-- general aliasing and identities reached through returned pointers;
+- context-sensitive formal aliases, general pointer relationships, and
+  identities reached through returned pointers;
 - indirect targets from mutable pointers, escaped tables, callback
   registration, pointer copies, ambiguous assignments, and indexed target
   sets;

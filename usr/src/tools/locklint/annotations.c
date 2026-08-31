@@ -945,6 +945,7 @@ locklint_data_policy(const struct locklint_access *access,
 	struct annotation *annotation;
 	const struct annotation_ref *protector = NULL;
 	unsigned long protector_base = 0;
+	unsigned long protected_offset = 0;
 	bool found = false;
 
 	(void) memset(policy, 0, sizeof (*policy));
@@ -966,11 +967,13 @@ locklint_data_policy(const struct locklint_access *access,
 				policy->protection = LOCKLINT_PROTECTION_MUTEX;
 				protector = annotation->lock;
 				protector_base = base;
+				protected_offset = ref->offset;
 				break;
 			case ANNOTATION_RWLOCK_PROTECTS_DATA:
 				policy->protection = LOCKLINT_PROTECTION_RWLOCK;
 				protector = annotation->lock;
 				protector_base = base;
+				protected_offset = ref->offset;
 				break;
 			case ANNOTATION_SCHEME_PROTECTS_DATA:
 				policy->protection = LOCKLINT_PROTECTION_SCHEME;
@@ -999,6 +1002,19 @@ locklint_data_policy(const struct locklint_access *access,
 		    protector_base) + protector->offset;
 		lock->expr = NULL;
 		lock->path = NULL;
+		if (protector->root == NULL &&
+		    access->address_base != NULL &&
+		    protected_offset <= INT64_MAX &&
+		    protector->offset <= INT64_MAX &&
+		    access->address_offset >=
+		    INT64_MIN + (int64_t)protected_offset &&
+		    access->address_offset - (int64_t)protected_offset <=
+		    INT64_MAX - (int64_t)protector->offset) {
+			lock->address_base = access->address_base;
+			lock->address_offset = access->address_offset -
+			    (int64_t)protected_offset +
+			    (int64_t)protector->offset;
+		}
 	}
 	return (found);
 }

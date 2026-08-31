@@ -24,9 +24,11 @@
 #include <string.h>
 #include "cwchash/hashtable.h"
 #include "expression.h"
+#include "linearize.h"
 #include "access.h"
 #include "identity.h"
 #include "symbol.h"
+#include "target.h"
 
 struct locklint_member_path {
 	struct locklint_member_path *parent;
@@ -251,7 +253,122 @@ locklint_get_access(struct translation_unit *tu, struct expression *expr,
 	access->offset = member_offset(expr);
 	access->expr = expr;
 	access->path = member_path(expr);
+	access->address_base = NULL;
+	access->address_offset = 0;
 	return (access->root != NULL);
+}
+
+static bool
+add_address_offset(int64_t *offset, long long value)
+{
+	if ((value > 0 && *offset > INT64_MAX - value) ||
+	    (value < 0 && *offset < INT64_MIN - value))
+		return (false);
+	*offset += value;
+	return (true);
+}
+
+/*
+ * Retain only exact address-preserving transformations.  Other computed
+ * pseudos remain useful opaque bases: repeated uses compare equal, while
+ * unrelated symbolic computations do not.
+ */
+static void
+set_address(struct locklint_access *access, struct pseudo *pseudo,
+    unsigned long offset)
+{
+	struct pseudo *original = pseudo;
+	int64_t displacement = 0;
+
+	if (offset > (uint64_t)INT64_MAX)
+		return;
+	while (pseudo != NULL && pseudo->type == PSEUDO_REG &&
+	    pseudo->def != NULL) {
+		struct instruction *def = pseudo->def;
+		struct pseudo *next = NULL;
+		long long value = 0;
+
+		switch (def->opcode) {
+		case OP_PTRCAST:
+			next = def->src;
+			break;
+		case OP_ADD:
+			if (def->src1 != NULL &&
+			    def->src1->type == PSEUDO_VAL) {
+				value = def->src1->value;
+				next = def->src2;
+			} else if (def->src2 != NULL &&
+			    def->src2->type == PSEUDO_VAL) {
+				value = def->src2->value;
+				next = def->src1;
+			}
+			break;
+		case OP_SUB:
+			if (def->src2 != NULL &&
+			    def->src2->type == PSEUDO_VAL &&
+			    def->src2->value != INT64_MIN) {
+				value = -def->src2->value;
+				next = def->src1;
+			}
+			break;
+		default:
+			break;
+		}
+		if (next == NULL)
+			break;
+		if (!add_address_offset(&displacement, value)) {
+			pseudo = original;
+			displacement = 0;
+			break;
+		}
+		pseudo = next;
+	}
+	if (!add_address_offset(&displacement, (long long)offset))
+		return;
+	access->address_base = pseudo;
+	access->address_offset = displacement;
+}
+
+bool
+locklint_get_instruction_access(struct translation_unit *tu,
+    const struct instruction *insn, struct locklint_access *access)
+{
+	if (insn == NULL || insn->access == NULL ||
+	    (insn->opcode != OP_LOAD && insn->opcode != OP_STORE) ||
+	    !locklint_get_access(tu, insn->access, access))
+		return (false);
+	set_address(access, insn->addr, insn->offset);
+	return (true);
+}
+
+bool
+locklint_get_call_argument_access(struct translation_unit *tu,
+    const struct instruction *insn, unsigned int index,
+    struct locklint_access *access)
+{
+	struct expression *argument = NULL;
+	struct pseudo *pseudo = NULL;
+	struct pseudo_list *arguments;
+	unsigned int current = 0;
+
+	if (insn == NULL || insn->opcode != OP_CALL || insn->call_expr == NULL)
+		return (false);
+	FOR_EACH_PTR(insn->call_expr->args, argument) {
+		if (current++ == index)
+			break;
+	} END_FOR_EACH_PTR(argument);
+	if (argument == NULL)
+		return (false);
+	current = 0;
+	arguments = insn->arguments;
+	FOR_EACH_PTR(arguments, pseudo) {
+		if (current++ == index)
+			break;
+	} END_FOR_EACH_PTR(pseudo);
+	if (pseudo == NULL || !locklint_get_access(tu, argument, access))
+		return (false);
+	set_address(access, pseudo, 0);
+	return (true);
 }
 
 static bool
@@ -278,6 +395,10 @@ bool
 locklint_same_access(const struct locklint_access *left,
     const struct locklint_access *right)
 {
+	if (left->address_base != NULL && right->address_base != NULL) {
+		return (left->address_base == right->address_base &&
+		    left->address_offset == right->address_offset);
+	}
 	if (left->offset != right->offset ||
 	    !same_access_object(left, right))
 		return (false);
@@ -354,9 +475,18 @@ locklint_rebase_access(const struct locklint_access *base,
 	*result = *base;
 	result->path = append_member_path(base->path, relative->path,
 	    base->offset);
-	if (relative->path != NULL) {
+	if (relative->member != NULL)
 		result->member = relative->member;
-		result->offset = base->offset + relative->offset;
+	result->offset = base->offset + relative->offset;
+	if (base->address_base != NULL) {
+		if (relative->offset <= INT64_MAX &&
+		    add_address_offset(&result->address_offset,
+		    (long long)relative->offset)) {
+			result->address_base = base->address_base;
+		} else {
+			result->address_base = NULL;
+			result->address_offset = 0;
+		}
 	}
 	result->expr = NULL;
 }
@@ -375,9 +505,15 @@ locklint_access_base(const struct locklint_access *access,
 	struct expression *member;
 	unsigned long suffix = 0;
 
-	if (access->type == owner_type && access->offset == relative_offset) {
-		*base_offset = 0;
-		return (true);
+	if (access->type == owner_type && access->offset >= relative_offset) {
+		unsigned long displacement = access->offset - relative_offset;
+		int owner_size = bits_to_bytes(owner_type->bit_size);
+
+		if (displacement == 0 ||
+		    (owner_size > 0 && displacement % owner_size == 0)) {
+			*base_offset = displacement;
+			return (true);
+		}
 	}
 	for (member = find_member(access->expr); member != NULL;
 	    member = find_member(member->member_base)) {

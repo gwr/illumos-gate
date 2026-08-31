@@ -277,6 +277,14 @@ compare_no_columns "external objects" external-objects.ref \
     external-objects.raw external-objects.out
 
 #
+# Verify exact local aliases, array-element identity, and constant container
+# recovery.  Formal-argument alias relationships remain context-sensitive.
+#
+run_capture "object aliases" identity-aliases.out \
+    "$LOCKLINT" --check-locks identity-aliases.c
+compare "object aliases" identity-aliases.ref identity-aliases.out
+
+#
 # Verify annotations from a command-line forced include retain provenance.
 #
 run_capture "forced include" forced-include.raw \

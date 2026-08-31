@@ -834,13 +834,19 @@ argument_member(struct expression *argument, struct symbol *member)
 }
 
 static bool
-argument_lock(struct translation_unit *tu, struct expression *argument,
-    struct symbol *member, unsigned long offset, struct locklint_access *lock)
+argument_lock(struct translation_unit *tu, struct instruction *insn,
+    unsigned int index, struct symbol *member, unsigned long offset,
+    struct locklint_access *lock)
 {
-	if (!locklint_get_access(tu, argument, lock))
+	struct locklint_access base = { 0 };
+	struct locklint_access relative = { 0 };
+	struct expression *argument = call_argument(insn, index);
+
+	if (!locklint_get_call_argument_access(tu, insn, index, &base))
 		return (false);
-	lock->member = argument_member(argument, member);
-	lock->offset += offset;
+	relative.member = argument_member(argument, member);
+	relative.offset = offset;
+	locklint_rebase_access(&base, &relative, lock);
 	lock->path = NULL;
 	return (true);
 }
@@ -855,12 +861,15 @@ map_call_protection_condition(struct function_info *function,
     struct instruction *insn, const struct protection_condition *condition,
     struct locklint_access *object, struct locklint_access *lock)
 {
-	struct locklint_access base;
+	struct locklint_access base = { 0 };
 	struct expression *argument;
 
+	*object = (struct locklint_access){ 0 };
+	*lock = (struct locklint_access){ 0 };
 	if (condition->data_root == NULL) {
 		argument = call_argument(insn, condition->argument);
-		if (!locklint_get_access(function->tu, argument, &base))
+		if (!locklint_get_call_argument_access(function->tu, insn,
+		    condition->argument, &base))
 			return (false);
 	} else {
 		argument = NULL;
@@ -872,16 +881,16 @@ map_call_protection_condition(struct function_info *function,
 		base.expr = NULL;
 		base.path = NULL;
 	}
-	if (!condition->has_lock) {
-		*lock = (struct locklint_access){ 0 };
-	} else if (condition->lock_root == NULL) {
+	if (condition->has_lock && condition->lock_root == NULL) {
+		struct locklint_access relative = { 0 };
+
 		/* Relative locks move with the selected data object's base. */
-		*lock = base;
-		lock->member = argument_member(argument,
+		relative.member = argument_member(argument,
 		    condition->lock_member);
-		lock->offset += condition->lock_offset;
+		relative.offset = condition->lock_offset;
+		locklint_rebase_access(&base, &relative, lock);
 		lock->path = NULL;
-	} else {
+	} else if (condition->has_lock) {
 		/* Absolute locks keep their original program-wide identity. */
 		lock->root = condition->lock_root;
 		lock->object = condition->lock_object;
@@ -891,9 +900,14 @@ map_call_protection_condition(struct function_info *function,
 		lock->expr = NULL;
 		lock->path = NULL;
 	}
-	*object = base;
-	object->member = argument_member(argument, condition->data_member);
-	object->offset += condition->data_offset;
+	{
+		struct locklint_access relative = { 0 };
+
+		relative.member = argument_member(argument,
+		    condition->data_member);
+		relative.offset = condition->data_offset;
+		locklint_rebase_access(&base, &relative, object);
+	}
 	object->path = NULL;
 	return (true);
 }
@@ -958,12 +972,10 @@ transfer_call_effects(struct function_info *function,
 	for (transfer = callee->transfers; transfer != NULL;
 	    transfer = transfer->next) {
 		struct locklint_access lock;
-		struct expression *argument;
 		lock_state_t state;
 
-		argument = call_argument(insn, transfer->argument);
-		if (!argument_lock(function->tu, argument, transfer->lock_member,
-		    transfer->lock_offset, &lock))
+		if (!argument_lock(function->tu, insn, transfer->argument,
+		    transfer->lock_member, transfer->lock_offset, &lock))
 			continue;
 		state = get_state(*states, &lock);
 		set_state(states, &lock, transfer->output[state]);
@@ -1104,13 +1116,12 @@ map_call_visibility_transfer(struct function_info *function,
     struct instruction *insn, const struct visibility_transfer *transfer,
     struct locklint_access *region)
 {
-	struct locklint_access base;
+	struct locklint_access base = { 0 };
 	struct locklint_access relative;
-	struct expression *argument;
 
 	if (transfer->data_root == NULL) {
-		argument = call_argument(insn, transfer->argument);
-		if (!locklint_get_access(function->tu, argument, &base))
+		if (!locklint_get_call_argument_access(function->tu, insn,
+		    transfer->argument, &base))
 			return (false);
 		relative = (struct locklint_access){ 0 };
 		relative.member = transfer->data_member;
@@ -1118,6 +1129,7 @@ map_call_visibility_transfer(struct function_info *function,
 		relative.path = transfer->data_path;
 		locklint_rebase_access(&base, &relative, region);
 	} else {
+		*region = (struct locklint_access){ 0 };
 		region->root = transfer->data_root;
 		region->object = transfer->data_object;
 		region->type = transfer->data_root->ctype.base_type;
@@ -1374,9 +1386,7 @@ protected_access(struct function_info *function, struct instruction *insn,
 {
 	struct locklint_data_policy policy;
 
-	if (insn->access == NULL ||
-	    (insn->opcode != OP_LOAD && insn->opcode != OP_STORE) ||
-	    !locklint_get_access(function->tu, insn->access, access))
+	if (!locklint_get_instruction_access(function->tu, insn, access))
 		return (false);
 	if (!locklint_data_policy(access, &policy, lock) ||
 	    (policy.protection != LOCKLINT_PROTECTION_MUTEX &&
@@ -1452,7 +1462,8 @@ propagate_transfer_candidates(struct function_info *function)
 				bool added;
 
 				actual = call_argument(insn, transfer->argument);
-				if (!locklint_get_access(function->tu, actual,
+				if (!locklint_get_call_argument_access(
+				    function->tu, insn, transfer->argument,
 				    &access) ||
 				    !formal_argument(function->ep, access.root,
 				    &argument))
@@ -1503,10 +1514,8 @@ simulate_instruction(struct function_info *function,
 	if (callee != NULL) {
 		for (transfer = callee->transfers; transfer != NULL;
 		    transfer = transfer->next) {
-			struct expression *actual;
-
-			actual = call_argument(insn, transfer->argument);
-			if (!argument_lock(function->tu, actual,
+			if (!argument_lock(function->tu, insn,
+			    transfer->argument,
 			    transfer->lock_member,
 			    transfer->lock_offset, &lock))
 				continue;
@@ -1563,7 +1572,7 @@ simulate_transfer(struct function_info *function,
 	struct transfer_block_info **tail = &blocks;
 	struct transfer_block_info *block;
 	struct basic_block *bb;
-	struct locklint_access target;
+	struct locklint_access target = { 0 };
 	lock_state_t result = input;
 	unsigned int result_invalid = 0;
 	bool found_return = false;
@@ -2221,8 +2230,8 @@ check_read_only_access(struct function_info *function,
 	const char *name;
 	enum visibility_state visibility;
 
-	if (insn->opcode != OP_STORE || insn->access == NULL ||
-	    !locklint_get_access(function->tu, insn->access, &access) ||
+	if (insn->opcode != OP_STORE ||
+	    !locklint_get_instruction_access(function->tu, insn, &access) ||
 	    !locklint_data_policy(&access, &policy, &lock) ||
 	    !policy.read_only)
 		return;
@@ -2361,11 +2370,10 @@ check_call(struct function_info *function,
 		for (transfer = callee->transfers; transfer != NULL;
 		    transfer = transfer->next) {
 			struct locklint_access lock;
-			struct expression *argument;
 			lock_state_t state;
 
-			argument = call_argument(insn, transfer->argument);
-			if (!argument_lock(function->tu, argument,
+			if (!argument_lock(function->tu, insn,
+			    transfer->argument,
 			    transfer->lock_member, transfer->lock_offset,
 			    &lock))
 				continue;

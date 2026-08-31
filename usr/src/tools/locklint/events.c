@@ -65,18 +65,11 @@ enum locklint_lock_action
 locklint_get_lock_action(struct translation_unit *tu, struct instruction *insn,
     struct locklint_access *access, enum locklint_lock_mode *mode)
 {
-	struct expression *arg;
 	enum locklint_lock_action action;
 	const char *name;
 
 	*mode = LOCKLINT_MODE_UNHELD;
-	access->root = NULL;
-	access->object = NULL;
-	access->type = NULL;
-	access->member = NULL;
-	access->offset = 0;
-	access->expr = NULL;
-	access->path = NULL;
+	*access = (struct locklint_access){ 0 };
 	if (insn->opcode != OP_CALL)
 		return (LOCKLINT_LOCK_NONE);
 
@@ -114,8 +107,7 @@ locklint_get_lock_action(struct translation_unit *tu, struct instruction *insn,
 		return (LOCKLINT_LOCK_NONE);
 	}
 
-	arg = call_argument(insn, 0);
-	(void) locklint_get_access(tu, arg, access);
+	(void) locklint_get_call_argument_access(tu, insn, 0, access);
 	return (action);
 }
 
@@ -139,7 +131,7 @@ show_memory_event(struct translation_unit *tu, struct instruction *insn)
 	show_event_position(insn->access->pos, event);
 	locklint_show_access(stdout, insn->access);
 	(void) printf(" offset=%u", insn->offset);
-	if (locklint_get_access(tu, insn->access, &access) &&
+	if (locklint_get_instruction_access(tu, insn, &access) &&
 	    locklint_data_policy(&access, &policy, &protector) &&
 	    (policy.protection == LOCKLINT_PROTECTION_MUTEX ||
 	    policy.protection == LOCKLINT_PROTECTION_RWLOCK)) {
