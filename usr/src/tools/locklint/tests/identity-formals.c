@@ -10,8 +10,16 @@
  */
 
 /*
- * Characterize exact actual-argument identity at one call site.  Compiling
- * with FORMAL_ALIAS_DIFFERENT passes distinct objects instead.
+ * Exercise protection that depends on relationships between actual
+ * arguments.  Inside a callee, data and owner are distinct formal symbols,
+ * so the callee cannot decide whether owner->lock protects data->value.
+ * Locklint must retain that conditional relationship and evaluate it after
+ * mapping both formals to actual arguments.
+ *
+ * The default variant passes state for every related formal.  Defining
+ * FORMAL_ALIAS_DIFFERENT substitutes other where the relationship is meant
+ * to fail.  The same source therefore exercises both sides without placing
+ * both relationships in one analysis.
  */
 
 #ifdef __lock_lint
@@ -36,6 +44,10 @@ extern void mutex_exit(mutex_t *);
 
 static int formal_alias_root(formal_state_t *, formal_state_t *);
 
+/*
+ * Establish the basic relationship: owner->lock protects the access only
+ * when data and owner denote the same formal_state instance.
+ */
 static int
 formal_alias_callee(formal_state_t *data, formal_state_t *owner)
 {
@@ -47,12 +59,57 @@ formal_alias_callee(formal_state_t *data, formal_state_t *owner)
 	return (value);
 }
 
+/*
+ * Preserve the relationship through an otherwise transparent caller.  This
+ * prevents an implementation from succeeding only by inspecting the direct
+ * call made by formal_alias_root().
+ */
+static int
+formal_alias_wrapper(formal_state_t *data, formal_state_t *owner)
+{
+	return (formal_alias_callee(data, owner));
+}
+
+/*
+ * Create two independent protection requirements for the same data and
+ * ordinary required lock.  Each access has a different conditionally
+ * satisfying formal lock.  The conditions must remain separate: combining
+ * their alternatives would let first satisfy the access protected only by
+ * second.
+ */
+static int
+formal_alias_two_locks(formal_state_t *data, formal_state_t *first,
+    formal_state_t *second)
+{
+	int value;
+
+	mutex_enter(&first->lock);
+	value = data->value;
+	mutex_exit(&first->lock);
+	mutex_enter(&second->lock);
+	value += data->value;
+	mutex_exit(&second->lock);
+	return (value);
+}
+
+/*
+ * Supply the actual-argument relationships for the direct, wrapped, and
+ * independent-condition cases above.  This is the only analysis root, so all
+ * conclusions about the helper formals must come from these calls.
+ */
 static int
 formal_alias_root(formal_state_t *state, formal_state_t *other)
 {
+	int value;
+
 #ifdef FORMAL_ALIAS_DIFFERENT
-	return (formal_alias_callee(state, other));
+	value = formal_alias_callee(state, other);
+	value += formal_alias_wrapper(state, other);
+	value += formal_alias_two_locks(state, state, other);
 #else
-	return (formal_alias_callee(state, state));
+	value = formal_alias_callee(state, state);
+	value += formal_alias_wrapper(state, state);
+	value += formal_alias_two_locks(state, state, state);
 #endif
+	return (value);
 }

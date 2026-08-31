@@ -1,4 +1,4 @@
-../locklint: identity-aliases.c:77:22: warning: locklint: protected member 'value' accessed without holding 'lock'
-../locklint: identity-aliases.c:104:26: warning: locklint: protected member 'value' accessed without holding 'lock'
-../locklint: identity-aliases.c:127:31: warning: locklint: protected member 'value' accessed without holding 'lock'
-../locklint: identity-aliases.c:159:22: warning: locklint: protected member 'value' accessed without holding 'lock'
+../locklint: identity-aliases.c:83:22: warning: locklint: protected member 'value' accessed without holding 'lock'
+../locklint: identity-aliases.c:115:26: warning: locklint: protected member 'value' accessed without holding 'lock'
+../locklint: identity-aliases.c:138:31: warning: locklint: protected member 'value' accessed without holding 'lock'
+../locklint: identity-aliases.c:173:22: warning: locklint: protected member 'value' accessed without holding 'lock'

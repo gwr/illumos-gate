@@ -1,1 +1,0 @@
-../locklint: identity-formals.c:56:36: warning: locklint: call to 'formal_alias_callee' accesses protected member 'value' without holding 'lock'

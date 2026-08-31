@@ -120,6 +120,13 @@ struct visibility_transfer_block_info {
 	struct visibility_transfer_block_info *next;
 };
 
+struct protection_alternative {
+	unsigned int argument;
+	struct symbol *lock_member;
+	unsigned long lock_offset;
+	struct protection_alternative *next;
+};
+
 struct protection_condition {
 	unsigned int argument;
 	/*
@@ -141,6 +148,7 @@ struct protection_condition {
 	struct symbol *data_member;
 	unsigned long data_offset;
 	struct position pos;
+	struct protection_alternative *alternatives;
 	struct protection_condition *next;
 };
 
@@ -231,6 +239,13 @@ state_maybe_held(lock_state_t state)
 {
 	return ((state & LOCK_ANY_HELD) != 0 &&
 	    (state & LOCK_NOT_HELD) != 0);
+}
+
+static bool
+state_satisfies_modes(lock_state_t state, unsigned int required_modes)
+{
+	return ((state & required_modes) != 0 &&
+	    (state & ~required_modes) == 0);
 }
 
 static bool
@@ -851,6 +866,25 @@ argument_lock(struct translation_unit *tu, struct instruction *insn,
 	return (true);
 }
 
+static bool
+condition_alternative_satisfied(struct function_info *function,
+    struct instruction *insn, const struct protection_condition *condition,
+    const struct locklint_access *required)
+{
+	const struct protection_alternative *alternative;
+
+	for (alternative = condition->alternatives; alternative != NULL;
+	    alternative = alternative->next) {
+		struct locklint_access candidate;
+
+		if (argument_lock(function->tu, insn, alternative->argument,
+		    alternative->lock_member, alternative->lock_offset,
+		    &candidate) && same_lock(required, &candidate))
+			return (true);
+	}
+	return (false);
+}
+
 /*
  * Map the protected object independently from its required lock.  A relative
  * lock follows the caller's actual object; an absolute lock keeps its
@@ -1029,6 +1063,86 @@ same_condition_data(const struct protection_condition *condition,
 }
 
 static bool
+same_protection_alternatives(const struct protection_alternative *left,
+    const struct protection_alternative *right)
+{
+	const struct protection_alternative *alternative;
+	unsigned int left_count = 0;
+	unsigned int right_count = 0;
+
+	for (alternative = left; alternative != NULL;
+	    alternative = alternative->next)
+		left_count++;
+	for (alternative = right; alternative != NULL;
+	    alternative = alternative->next)
+		right_count++;
+	if (left_count != right_count)
+		return (false);
+	for (; left != NULL; left = left->next) {
+		for (alternative = right; alternative != NULL;
+		    alternative = alternative->next) {
+			if (left->argument == alternative->argument &&
+			    left->lock_member == alternative->lock_member &&
+			    left->lock_offset == alternative->lock_offset)
+				break;
+		}
+		if (alternative == NULL)
+			return (false);
+	}
+	return (true);
+}
+
+static void
+free_protection_alternatives(struct protection_alternative *alternatives)
+{
+	while (alternatives != NULL) {
+		struct protection_alternative *next = alternatives->next;
+
+		free(alternatives);
+		alternatives = next;
+	}
+}
+
+static bool
+add_protection_alternative(struct protection_alternative **alternatives,
+    unsigned int argument, struct symbol *lock_member,
+    unsigned long lock_offset)
+{
+	struct protection_alternative *alternative;
+
+	for (alternative = *alternatives; alternative != NULL;
+	    alternative = alternative->next) {
+		if (alternative->argument == argument &&
+		    alternative->lock_member == lock_member &&
+		    alternative->lock_offset == lock_offset)
+			return (false);
+	}
+	alternative = calloc(1, sizeof (*alternative));
+	if (alternative == NULL)
+		die("out of memory recording protection alternative");
+	alternative->argument = argument;
+	alternative->lock_member = lock_member;
+	alternative->lock_offset = lock_offset;
+	alternative->next = *alternatives;
+	*alternatives = alternative;
+	return (true);
+}
+
+static struct protection_alternative *
+copy_protection_alternatives(
+    const struct protection_alternative *alternatives)
+{
+	struct protection_alternative *copy = NULL;
+
+	for (; alternatives != NULL; alternatives = alternatives->next) {
+		(void) add_protection_alternative(&copy,
+		    alternatives->argument, alternatives->lock_member,
+		    alternatives->lock_offset);
+	}
+	return (copy);
+}
+
+static bool
 add_protection_condition(struct function_info *function,
     unsigned int argument, struct symbol *data_root,
     struct object_identity *data_object,
@@ -1036,7 +1150,8 @@ add_protection_condition(struct function_info *function,
     struct symbol *lock_root, struct object_identity *lock_object,
     struct symbol *lock_member, unsigned long lock_offset,
     struct symbol *data_member, unsigned long data_offset,
-    struct position pos)
+    struct position pos,
+    const struct protection_alternative *alternatives)
 {
 	struct protection_condition *condition;
 
@@ -1047,8 +1162,11 @@ add_protection_condition(struct function_info *function,
 		    data_member, data_offset) &&
 		    same_condition_lock(condition, has_lock, required_modes,
 		    lock_root,
-		    lock_object, lock_member, lock_offset))
+		    lock_object, lock_member, lock_offset) &&
+		    same_protection_alternatives(condition->alternatives,
+		    alternatives)) {
 			return (false);
+		}
 	}
 	condition = calloc(1, sizeof (*condition));
 	if (condition == NULL)
@@ -1065,9 +1183,30 @@ add_protection_condition(struct function_info *function,
 	condition->data_member = data_member;
 	condition->data_offset = data_offset;
 	condition->pos = pos;
+	condition->alternatives =
+	    copy_protection_alternatives(alternatives);
 	condition->next = function->conditions;
 	function->conditions = condition;
 	return (true);
+}
+
+static struct protection_alternative *
+collect_state_protection_alternatives(struct function_info *function,
+    unsigned int required_modes, const struct analysis_state *state)
+{
+	const struct state_entry *entry;
+	struct protection_alternative *alternatives = NULL;
+
+	for (entry = state->locks; entry != NULL; entry = entry->next) {
+		unsigned int argument;
+
+		if (!state_satisfies_modes(entry->state, required_modes) ||
+		    !formal_argument(function->ep, entry->lock.root, &argument))
+			continue;
+		(void) add_protection_alternative(&alternatives, argument,
+		    entry->lock.member, entry->lock.offset);
+	}
+	return (alternatives);
 }
 
 static bool
@@ -2076,7 +2215,7 @@ collect_assumption_conditions(struct function_info *function)
 		    has_lock && lock.root != access->root ? lock.root : NULL,
 		    has_lock && lock.root != access->root ? lock.object : NULL,
 		    has_lock ? lock.member : NULL, has_lock ? lock.offset : 0,
-		    access->member, access->offset, assumption->pos);
+		    access->member, access->offset, assumption->pos, NULL);
 	}
 }
 
@@ -2139,14 +2278,22 @@ collect_local_protection_conditions(struct function_info *function)
 			    required_modes, &lock) == PROTECTION_ABSENT &&
 			    condition_data_identity(function, &access, &argument,
 			    &data_root, &data_object)) {
-				(void) add_protection_condition(function, argument,
+				struct protection_alternative *alternatives;
+
+				alternatives =
+				    collect_state_protection_alternatives(
+				    function, required_modes, state);
+				(void) add_protection_condition(function,
+				    argument,
 				    data_root, data_object,
 				    true, required_modes,
 				    lock.root != access.root ? lock.root : NULL,
 				    lock.root != access.root ?
 				    lock.object : NULL,
 				    lock.member, lock.offset, data_member,
-				    access.offset, insn->access->pos);
+				    access.offset, insn->access->pos,
+				    alternatives);
+				free_protection_alternatives(alternatives);
 			}
 			transfer_instruction(function, state, insn);
 		} END_FOR_EACH_PTR(insn);
@@ -2172,9 +2319,14 @@ propagate_call_protection_conditions(struct function_info *function,
 		struct object_identity *data_object;
 		enum protection_status status;
 		unsigned int caller_argument;
+		struct protection_alternative *alternative;
+		struct protection_alternative *alternatives = NULL;
 
 		if (!map_call_protection_condition(function, insn, condition,
 		    &object, &lock))
+			continue;
+		if (condition_alternative_satisfied(function, insn, condition,
+		    &lock))
 			continue;
 		status = get_protection_status(function, state, &object,
 		    condition->required_modes, &lock);
@@ -2182,13 +2334,29 @@ propagate_call_protection_conditions(struct function_info *function,
 		    !condition_data_identity(function, &object,
 		    &caller_argument, &data_root, &data_object))
 			continue;
+		for (alternative = condition->alternatives;
+		    alternative != NULL; alternative = alternative->next) {
+			struct locklint_access candidate;
+			unsigned int argument;
+
+			if (!argument_lock(function->tu, insn,
+			    alternative->argument,
+			    alternative->lock_member,
+			    alternative->lock_offset, &candidate) ||
+			    !formal_argument(function->ep,
+			    candidate.root, &argument))
+				continue;
+			(void) add_protection_alternative(&alternatives,
+			    argument, candidate.member, candidate.offset);
+		}
 		if (add_protection_condition(function, caller_argument,
 		    data_root, data_object,
 		    condition->has_lock, condition->required_modes,
 		    condition->lock_root, condition->lock_object,
 		    lock.member, lock.offset, object.member, object.offset,
-		    condition->pos))
+		    condition->pos, alternatives))
 			changed = true;
+		free_protection_alternatives(alternatives);
 	}
 	return (changed);
 }
@@ -2326,6 +2494,9 @@ check_call(struct function_info *function,
 
 			if (!map_call_protection_condition(function, insn,
 			    condition, &object, &lock))
+				continue;
+			if (condition_alternative_satisfied(function, insn,
+			    condition, &lock))
 				continue;
 			status = get_protection_status(function, analysis, &object,
 			    condition->required_modes, &lock);
@@ -2602,6 +2773,7 @@ free_checker_attachments(void)
 			struct protection_condition *condition_next =
 			    condition->next;
 
+			free_protection_alternatives(condition->alternatives);
 			free(condition);
 			condition = condition_next;
 		}

@@ -1,1 +1,3 @@
-../locklint: identity-formals.c:54:36: warning: locklint: call to 'formal_alias_callee' accesses protected member 'value' without holding 'lock'
+../locklint: identity-formals.c:106:36: warning: locklint: call to 'formal_alias_callee' accesses protected member 'value' without holding 'lock'
+../locklint: identity-formals.c:107:38: warning: locklint: call to 'formal_alias_wrapper' accesses protected member 'value' without holding 'lock'
+../locklint: identity-formals.c:108:40: warning: locklint: call to 'formal_alias_two_locks' accesses protected member 'value' without holding 'lock'

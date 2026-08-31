@@ -380,7 +380,8 @@ The structures have these roles:
 | `struct analysis_state` | The lock map, competition state and path-dependence flag, and per-region visibility facts at one CFG point |
 | `struct state_entry` | One lock and its state in an analysis-state lock map; embeds a `locklint_access` identity |
 | `struct visibility_entry` | One object region and its visible, invisible, or maybe-visible state |
-| `struct protection_condition` | A caller-visible entry protection condition for formal-relative or absolute data, with an optional relative or absolute mutex |
+| `struct protection_condition` | A caller-visible entry protection condition for formal-relative or absolute data, with an optional mutex and exact formal-lock alternatives |
+| `struct protection_alternative` | One definitely held formal-relative lock whose mapped address may equal and satisfy a condition's required lock |
 | `struct assumed_region` | One function-wide region selected by `ASSUMING_PROTECTED` |
 | `struct lock_transfer` | A function lock-effect summary for one formal lock and each possible input state |
 | `struct transfer_block_info` | Temporary per-block state used while computing one lock transfer |
@@ -1350,6 +1351,8 @@ condition records:
 - the selected data member and offset;
 - whether a known mutex is available;
 - a relative or absolute mutex identity when available; and
+- zero or more definitely held formal-relative locks that may be the same
+  concrete lock at a call site; and
 - a representative source position.
 
 `collect_local_protection_conditions()` replays each reachable block from its
@@ -1357,6 +1360,11 @@ stable input state.  Every unsatisfied protected access with a caller-mappable
 identity becomes a protection condition.  It also records function-wide
 assumed-protection regions.  A mutex rooted at the protected object is
 recorded as data-relative; any other canonical root is preserved as absolute.
+When another formal-relative lock is definitely held at the access, that lock
+is recorded as an alternative.  Alternatives from one access are disjunctive,
+but separate access conditions remain conjunctive.  Condition identity
+therefore includes the complete alternative set rather than merging
+alternatives from different accesses.
 Deferral eligibility is applied later, while emitting diagnostics, to decide
 whether a caller-satisfiable condition suppresses the local warning.
 
@@ -1364,13 +1372,16 @@ whether a caller-satisfiable condition suppresses the local warning.
 separately.  It rebases a relative mutex onto the caller's actual argument,
 but uses a preserved absolute root unchanged.  The mapped data object
 determines whether an unsatisfied condition can propagate through another
-formal argument.
+formal argument.  A mapped alternative satisfies the condition only when its
+normalized address exactly equals the mapped required lock address.
 
 `propagate_function_protection_conditions()` repeatedly maps callee conditions
 to caller actual or absolute objects and adds unsatisfied conditions to the
-caller.  The pass iterates to a fixed point, including recursive call cycles.
-At a call site, definite mutex ownership, definite invisibility, or definite
-absence of competition satisfies the condition.
+caller.  Formal-relative alternatives are mapped and retained through
+wrappers; alternatives that map to concrete unequal objects are discarded.
+The pass iterates to a fixed point, including recursive call cycles.  At a
+call site, an exact alternative match, definite mutex ownership, definite
+invisibility, or definite absence of competition satisfies the condition.
 
 ## Function lock effects
 
@@ -1568,11 +1579,13 @@ caller OP_CALL resolved to callee
 callee protected access is unsatisfied
     -> formal-relative or absolute data becomes a protection condition
     -> optional relative or absolute mutex is recorded
+    -> definitely held formal-relative locks become exact alternatives
 caller OP_CALL resolved to callee
     -> formal data object mapped to actual argument
     -> relative lock rebased to actual object
        or absolute lock root preserved unchanged
-    -> mutex, invisibility, or no competition satisfies the condition
+    -> an alternative whose mapped address equals the required lock,
+       mutex ownership, invisibility, or no competition satisfies the condition
     -> otherwise warning is emitted or the condition is deferred again
 ```
 
@@ -1671,6 +1684,10 @@ The current implementation relies on these invariants:
     displacements; unrelated computed pseudos are never assumed equal.
 25. A type-scoped protector is rebased from the observed data address so it
     remains within the same alias, array element, or recovered container.
+26. Formal-lock alternatives from one protected access are OR choices;
+    conditions from distinct accesses remain independently required.
+27. A formal-lock alternative satisfies a caller condition only when both
+    mapped normalized lock addresses are exactly equal.
 
 Changes that invalidate one of these invariants should update this document
 and add a focused regression test.
@@ -1680,8 +1697,8 @@ and add a focused regression test.
 The implemented design remains intentionally narrow.  Important missing
 areas include:
 
-- context-sensitive formal aliases, general pointer relationships, and
-  identities reached through returned pointers;
+- general pointer relationships and identities reached through returned
+  pointers;
 - indirect targets from mutable pointers, escaped tables, callback
   registration, pointer copies, ambiguous assignments, and indexed target
   sets;

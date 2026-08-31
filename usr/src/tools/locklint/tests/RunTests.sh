@@ -97,6 +97,16 @@ reject_match()
 	fi
 }
 
+require_empty()
+{
+	name=$1
+	output=$2
+
+	if [ -s "$output" ]; then
+		fail "$name: unexpected output"
+	fi
+}
+
 #
 # Verify initial Sparse parsing, lowering, and source access identity.
 #
@@ -286,8 +296,7 @@ compare "object aliases" identity-aliases.ref identity-aliases.out
 
 run_capture "same-object formal aliases" identity-formals-same.out \
     "$LOCKLINT" --check-locks identity-formals.c
-compare "same-object formal aliases" identity-formals-same.ref \
-    identity-formals-same.out
+require_empty "same-object formal aliases" identity-formals-same.out
 
 run_capture "different-object formal aliases" identity-formals-different.out \
     "$LOCKLINT" -DFORMAL_ALIAS_DIFFERENT --check-locks identity-formals.c
