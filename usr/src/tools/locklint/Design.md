@@ -1602,6 +1602,12 @@ multi-translation-unit fixture may use a header stored with the fixture.
 System-header includes selected only by an optional compatibility branch are
 manual comparison plumbing and are not dependencies of the automated suite.
 
+Object-identity characterization uses two complementary fixtures.
+`identity-aliases.c` covers direct aliases, array elements, and constant
+container recovery.  `identity-formals.c` is analyzed both normally and with
+`FORMAL_ALIAS_DIFFERENT`, giving each run one call whose actual arguments are
+either equal or distinct.
+
 Small fixture macros keep the protected accesses, control flow, and expected
 ownership semantics common between configurations while expanding to the
 actual interface calls.  Variant-specific cases are used only where one

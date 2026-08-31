@@ -284,6 +284,16 @@ run_capture "object aliases" identity-aliases.out \
     "$LOCKLINT" --check-locks identity-aliases.c
 compare "object aliases" identity-aliases.ref identity-aliases.out
 
+run_capture "same-object formal aliases" identity-formals-same.out \
+    "$LOCKLINT" --check-locks identity-formals.c
+compare "same-object formal aliases" identity-formals-same.ref \
+    identity-formals-same.out
+
+run_capture "different-object formal aliases" identity-formals-different.out \
+    "$LOCKLINT" -DFORMAL_ALIAS_DIFFERENT --check-locks identity-formals.c
+compare "different-object formal aliases" identity-formals-different.ref \
+    identity-formals-different.out
+
 #
 # Verify annotations from a command-line forced include retain provenance.
 #

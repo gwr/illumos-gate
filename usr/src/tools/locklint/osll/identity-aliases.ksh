@@ -37,8 +37,6 @@ run_session()
 	for root in \
 	    direct_alias_same \
 	    direct_alias_different \
-	    formal_alias_same \
-	    formal_alias_different \
 	    array_same_constant \
 	    array_different_constant \
 	    array_same_symbolic \

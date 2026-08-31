@@ -80,34 +80,6 @@ direct_alias_different(alias_state_t *state, alias_state_t *other)
 }
 
 /*
- * The first call gives both formals the same object.  The second does not.
- * Proving the first safe requires preserving an exact actual-argument alias
- * relationship when analyzing the callee.
- */
-static int
-formal_alias_callee(alias_state_t *data, alias_state_t *owner)
-{
-	int value;
-
-	mutex_enter(&owner->lock);
-	value = data->value;
-	mutex_exit(&owner->lock);
-	return (value);
-}
-
-static int
-formal_alias_same(alias_state_t *state)
-{
-	return (formal_alias_callee(state, state));
-}
-
-static int
-formal_alias_different(alias_state_t *state, alias_state_t *other)
-{
-	return (formal_alias_callee(state, other));
-}
-
-/*
  * Equal constant or symbolic indices identify the same element.  Different
  * constant indices are distinct, and unrelated symbolic indices must not be
  * assumed equal.
