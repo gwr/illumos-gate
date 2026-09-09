@@ -79,6 +79,13 @@ not when future features should be added.
   callers, including required protection and lock or visibility transfers.
 - **Lock effect** - The part of a function summary that describes how the
   function changes visible lock state.
+- **Declared lock order** - A directed relation stating that one semantic
+  lock role must be acquired before another.
+- **Observed lock order** - A directed relation from a held lock to a lock
+  acquired while it remains held.
+- **Acquisition summary** - A caller-mappable lock acquisition together with
+  sparse transfer vectors describing entry-visible locks changed before that
+  acquisition.
 - **Protection condition** - A function-entry requirement that selected data
   be protected by its mutex, invisibility, or absence of competing threads.
   It is part of a function summary and must be established by the caller.
@@ -165,10 +172,13 @@ The main phases are:
    4. assign additive conservative root reasons;
    5. propagate reachability from those roots through resolved calls;
    6. emit a requested call-graph audit;
-   7. solve function lock and visibility transfer summaries;
-   8. solve unified intraprocedural lock, competition, and visibility state;
-   9. collect and propagate protection conditions; and
-   10. emit diagnostics using the stable summaries.
+   7. build and validate the declared lock-order graph;
+   8. solve function lock and visibility transfer summaries;
+   9. solve unified intraprocedural lock, competition, and visibility state;
+   10. collect and propagate acquisition summaries;
+   11. collect and propagate protection conditions;
+   12. emit diagnostics while collecting observed acquisition edges; and
+   13. report cycles in the observed lock-order graph.
 6. Emit other requested development dumps.  `--dump-all` includes the
    whole-program call-graph audit.
 
@@ -346,6 +356,8 @@ functions
             |    `- output analysis_state
             |- protection_condition list
             |- assumed_region list
+            |- acquisition_candidate list
+            |- acquisition_summary list
             |- lock_transfer list
             `- visibility_transfer list
 
@@ -383,6 +395,9 @@ The structures have these roles:
 | `struct protection_condition` | A caller-visible entry protection condition for formal-relative or absolute data, with an optional mutex and exact formal-lock alternatives |
 | `struct protection_alternative` | One definitely held formal-relative lock whose mapped address may equal and satisfy a condition's required lock |
 | `struct assumed_region` | One function-wide region selected by `ASSUMING_PROTECTED` |
+| `struct acquisition_candidate` | One formal-relative or canonical absolute lock role that can affect an acquisition summary |
+| `struct acquisition_summary` | One caller-mappable acquisition with representative source provenance and sparse prefix effects |
+| `struct acquisition_prefix` | The state of one changed entry-visible lock role immediately before a summarized acquisition, represented for every input-state mask |
 | `struct lock_transfer` | A function lock-effect summary for one formal lock and each possible input state |
 | `struct transfer_block_info` | Temporary per-block state used while computing one lock transfer |
 | `struct visibility_transfer` | A function visibility summary for one formal-relative or absolute region and each possible input visibility state |
@@ -499,9 +514,9 @@ forms are chosen.
 - The callgraph owns individually allocated, list-owned function,
   function-escape, and optional function-pointer-activity records and their
   AVL indexes.
-- The checker owns block maps, protection conditions, assumptions, lock
-  transfers, and visibility transfers attached to each shared
-  `function_info`.
+- The checker owns block maps, protection conditions, assumptions,
+  acquisition roles and summaries, lock transfers, and visibility transfers
+  attached to each shared `function_info`.
 - Temporary call-audit arrays are freed after each function is dumped.
 - Checker attachments are freed before callgraph cleanup releases function
   records, pointer observations, and indexes.  Callgraph cleanup rejects open
@@ -1417,6 +1432,106 @@ At a call site, the formal lock member is resolved through the actual
 argument's type.  This remaps member symbols when caller and callee came from
 different translation units.
 
+## Lock-order analysis
+
+### Declared order
+
+`LOCK_ORDER` accepts a sequence of at least two lock names.  Whitespace,
+commas, or a mixture of both may separate names; leading, repeated, and
+trailing commas are errors.  A declaration:
+
+```c
+_NOTE(LOCK_ORDER(A B C))
+```
+
+adds adjacent directed edges `A -> B` and `B -> C`.  Direction means permitted
+acquisition order, and reachability gives the transitive order.  Holding `B`
+while acquiring `A` therefore violates `A -> B`.
+
+After annotation resolution, `lock_order.c` builds one module-wide declared
+graph over semantic lock roles.  Object-scoped roles use canonical object
+identity.  Type-scoped roles use the owning type, member identity, and offset.
+Reader, writer, and mutex ownership modes share the same ordering graph.
+
+A strongly connected declared component is invalid even when no function
+observes the cycle.  Locklint reports one deterministic warning per cyclic
+component and the declarations that contribute its edges.  Acquisition
+diagnostics that depend on a cyclic declared component are suppressed because
+the declaration cannot establish a consistent order.
+
+During final instruction replay, each direct acquisition is checked
+independently against every currently held lock.  This preserves separate held
+sequences when a function releases and later reacquires the same lock.
+Definite ownership produces an `acquired out of declared order` warning;
+path-dependent ownership produces the corresponding `may be acquired`
+warning.  A transitive violation reports every declaration edge in its proof.
+
+### Interprocedural acquisitions
+
+Net lock transfers cannot represent a callee that acquires and releases a
+lock before returning.  Locklint therefore builds separate acquisition
+summaries.  Each summary records:
+
+- the acquired formal-relative or canonical absolute lock role;
+- a representative acquisition source position; and
+- sparse prefix effects for entry-visible lock roles whose state may differ
+  immediately before that acquisition.
+
+A prefix effect contains the same 16-entry state-transfer vector used by the
+lock-state domain.  A role absent from the sparse list is unchanged from
+function entry.  This distinguishes:
+
+```text
+release B; acquire A
+acquire A; release B
+```
+
+even though both functions may have the same return state.
+
+Reachable local operations seed per-function role sets and acquisition
+events.  Roles first propagate through resolved calls to a fixed point.
+Acquisition events then map through calls and propagate to a second fixed
+point.  Wrapper state before the call is composed with the callee event's
+prefix effects.  Event equality includes the acquired role and complete
+prefix semantics but excludes source position, preventing provenance from
+causing recursive summary growth.  Equivalent events retain one
+representative source position; events for the same acquired role remain
+separate when their prefix effects differ.
+
+At final call replay, mapped prefix effects determine which caller locks
+remain held at the summarized acquisition.  The caller's call expression is
+the primary location for a declared-order warning, and the representative
+callee acquisition is supporting provenance.  Existing net transfers remain
+responsible for state after the call.
+
+If distinct callee roles map to the same caller lock, their independently
+computed vectors cannot be composed exactly.  The role set detects this
+case.  Only comparison with that ambiguous lock is suppressed; the
+acquisition event and comparisons with unrelated held locks remain usable.
+Exact alias-aware composition is deferred to the function-contract work.
+
+### Observed order
+
+Every otherwise unexplained acquisition contributes an observed edge:
+
+```text
+held lock -> acquired lock
+```
+
+Local acquisitions and summarized acquisitions reached through calls and
+wrappers contribute to the same module-wide graph.  Formal and local
+structure-member accesses are normalized to type-relative roles so
+observations from different functions can combine.  The edge retains
+representative held-lock and acquisition positions plus whether the held state
+was path-dependent.  Source positions are evidence, not part of semantic edge
+identity.
+
+An observed cyclic component indicates a possible multi-thread deadlock.
+Locklint reports one deterministic warning per component with the nested
+acquisitions that establish the cycle.  An acquisition already diagnosed as a
+declared-order inversion is not added to the observed graph, avoiding a
+redundant potential-deadlock warning for the same conflict.
+
 ## Diagnostic sequence
 
 After summaries and block states stabilize, `emit_diagnostics()` replays each
@@ -1427,14 +1542,16 @@ For each instruction it:
 1. checks `READ_ONLY_DATA` against current exposure;
 2. checks a protected memory access against mutex, visibility, competition,
    and assumed-protection alternatives;
-3. checks resolved-call protection conditions and invalid summarized lock
-   effects, then applies summarized lock and visibility transfers;
+3. checks resolved-call protection conditions, summarized acquisitions, and
+   invalid summarized lock effects, then applies summarized lock and
+   visibility transfers;
 4. checks direct acquire/release validity and applies the operation; and
 5. applies assertion, competition, and visibility transitions.
 
 After the block, a return instruction triggers checks for locks held on all or
 some return paths.  Assertion-only held state is excluded from those
-side-effect diagnostics.
+side-effect diagnostics.  After all functions have been replayed, observed
+lock-order cycles are reported.
 
 Diagnostics currently have human-readable text but no stable identifier,
 machine-readable format, or predecessor/call-chain witness.
@@ -1507,8 +1624,18 @@ machine-readable format, or predecessor/call-chain witness.
 | Function | Responsibility |
 | --- | --- |
 | `analyze_blocks()` | Solve unified intraprocedural lock, competition, and visibility state |
-| `run_lock_checks()` | Order lock and visibility transfer solving, block analysis, protection-condition propagation, and diagnostics |
+| `run_lock_checks()` | Order transfer solving, block analysis, acquisition and protection-summary propagation, diagnostics, and observed-cycle reporting |
 | `locklint_check_all()` | Resolve the callgraph, order and iterate the complete analysis, release checker attachments, and clean up the callgraph |
+
+### Lock order: `lock_order.c`
+
+| Function | Responsibility |
+| --- | --- |
+| `locklint_order_build()` | Build the module-wide declared graph from resolved adjacent annotation edges |
+| `locklint_order_report_declared_cycles()` | Diagnose cyclic components of the declared graph |
+| `locklint_order_check_declared()` | Check one held/acquired pair and report its transitive declaration proof |
+| `locklint_order_record_observed()` | Add one non-redundant held-to-acquired edge with provenance |
+| `locklint_order_report_observed_cycles()` | Diagnose cyclic components of the observed graph |
 
 ## Main action sequences
 
@@ -1571,6 +1698,22 @@ caller OP_CALL resolved to callee
     -> current caller visibility selects transfer-table entry
     -> overlapping results collected from the original caller state
     -> containing regions installed before narrower leaves
+```
+
+### Interprocedural lock acquisition
+
+```text
+reachable local lock roles collected
+    -> roles mapped through resolved calls to a fixed point
+local acquisition encountered
+    -> sparse entry-state prefix vectors recorded
+callee acquisition mapped through a wrapper
+    -> wrapper prefix composed with callee prefix
+    -> semantic event deduplicated and propagated to a fixed point
+caller OP_CALL replayed
+    -> mapped prefix selects effective held state at acquisition
+    -> declared order checked at the call site
+    -> unexplained held-to-acquired edge added to observed graph
 ```
 
 ### Protected-access condition
@@ -1688,6 +1831,16 @@ The current implementation relies on these invariants:
     conditions from distinct accesses remain independently required.
 27. A formal-lock alternative satisfies a caller condition only when both
     mapped normalized lock addresses are exactly equal.
+28. Declared lock-order edges point from earlier to later permitted
+    acquisitions; transitive reachability has the same force as a direct edge.
+29. Acquisition source positions are provenance, not part of summary identity;
+    distinct prefix semantics prevent separate held sequences from being
+    coalesced.
+30. A missing acquisition-prefix entry means that entry-visible lock is
+    unchanged at the acquisition.
+31. Declared-order inversions do not also contribute observed-order edges.
+32. Ambiguous composition of aliased callee roles suppresses only comparisons
+    involving the ambiguous caller lock.
 
 Changes that invalidate one of these invariants should update this document
 and add a focused regression test.
@@ -1705,9 +1858,10 @@ areas include:
 - explicit root configuration and source annotations;
 - declared competition side-effect semantics and nested competition regions;
 - explicit lock-side-effect annotation contracts;
+- exact acquisition-prefix composition when distinct callee roles map to the
+  same caller lock;
 - optional, configurable validation of declared lock types;
 - condition waits, try-locks, upgrades, and downgrades;
-- lock-order analysis; and
 - stable diagnostic identifiers, suppressions, and provenance.
 
 These limitations should remain visible here as the implementation evolves.
