@@ -73,6 +73,8 @@ struct state_entry {
 	struct locklint_access lock;
 	lock_state_t state;
 	bool side_effect;
+	bool has_acquire_pos;
+	struct position acquire_pos;
 	struct state_entry *next;
 };
 
@@ -292,6 +294,21 @@ set_state(struct state_entry **states, const struct locklint_access *lock,
 }
 
 static void
+set_acquire_position(struct state_entry *states,
+    const struct locklint_access *lock, struct position pos)
+{
+	struct state_entry *entry;
+
+	for (entry = states; entry != NULL; entry = entry->next) {
+		if (!same_lock(&entry->lock, lock))
+			continue;
+		entry->has_acquire_pos = true;
+		entry->acquire_pos = pos;
+		return;
+	}
+}
+
+static void
 set_asserted_state(struct state_entry **states,
     const struct locklint_access *lock, lock_state_t state)
 {
@@ -323,6 +340,8 @@ copy_states(struct state_entry *states)
 	for (entry = states; entry != NULL; entry = entry->next) {
 		*tail = alloc_state(&entry->lock, entry->state);
 		(*tail)->side_effect = entry->side_effect;
+		(*tail)->has_acquire_pos = entry->has_acquire_pos;
+		(*tail)->acquire_pos = entry->acquire_pos;
 		tail = &(*tail)->next;
 	}
 	return (copy);
@@ -357,6 +376,11 @@ merge_states(struct state_entry **merged, struct state_entry *incoming)
 		for (other = incoming; other != NULL; other = other->next) {
 			if (same_lock(&entry->lock, &other->lock)) {
 				entry->side_effect |= other->side_effect;
+				if (!entry->has_acquire_pos &&
+				    other->has_acquire_pos) {
+					entry->has_acquire_pos = true;
+					entry->acquire_pos = other->acquire_pos;
+				}
 				break;
 			}
 		}
@@ -367,6 +391,8 @@ merge_states(struct state_entry **merged, struct state_entry *incoming)
 			set_state(merged, &entry->lock,
 			    entry->state | LOCK_NOT_HELD);
 			(*merged)->side_effect = entry->side_effect;
+			(*merged)->has_acquire_pos = entry->has_acquire_pos;
+			(*merged)->acquire_pos = entry->acquire_pos;
 		}
 	}
 }
@@ -595,10 +621,13 @@ transfer_lock_action(struct function_info *function,
 	enum locklint_lock_mode mode;
 
 	action = locklint_get_lock_action(function->tu, insn, &lock, &mode);
-	if (action == LOCKLINT_LOCK_ACQUIRE && lock.root != NULL)
+	if (action == LOCKLINT_LOCK_ACQUIRE && lock.root != NULL) {
 		set_state(states, &lock, mode);
-	else if (action == LOCKLINT_LOCK_RELEASE && lock.root != NULL)
+		set_acquire_position(*states, &lock,
+		    insn->call_expr != NULL ? insn->call_expr->pos : insn->pos);
+	} else if (action == LOCKLINT_LOCK_RELEASE && lock.root != NULL) {
 		set_state(states, &lock, LOCK_NOT_HELD);
+	}
 }
 
 static void
@@ -2592,11 +2621,18 @@ check_lock_action(struct function_info *function,
 		struct state_entry *held;
 
 		for (held = analysis->locks; held != NULL; held = held->next) {
+			bool explained;
+
 			if ((held->state & LOCK_ANY_HELD) == 0 ||
 			    locklint_same_access(&lock, &held->lock))
 				continue;
-			(void) locklint_order_check_declared(&lock, &held->lock,
-			    &pos, !state_definitely_held(held->state));
+			explained = locklint_order_check_declared(&lock,
+			    &held->lock, &pos,
+			    !state_definitely_held(held->state));
+			locklint_order_record_observed(&held->lock, &lock,
+			    held->has_acquire_pos ? &held->acquire_pos : NULL,
+			    &pos, !state_definitely_held(held->state),
+			    explained);
 		}
 		if (state_definitely_held(state) && !defer) {
 			warning(pos, "locklint: lock '%s' is already held",
@@ -2606,6 +2642,7 @@ check_lock_action(struct function_info *function,
 			    lock_name(&lock));
 		}
 		set_state(&analysis->locks, &lock, mode);
+		set_acquire_position(analysis->locks, &lock, pos);
 	} else {
 		if (state == LOCK_NOT_HELD && !defer) {
 			warning(pos, "locklint: lock '%s' is not held",
@@ -2764,6 +2801,7 @@ run_lock_checks(void)
 	while ((function = callgraph_iter_next(iter)) != NULL)
 		emit_diagnostics(function);
 	callgraph_iter_close(iter);
+	locklint_order_report_observed_cycles();
 }
 
 static void

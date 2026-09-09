@@ -171,6 +171,11 @@ run_capture "local lock order" lock-order.out \
     "$LOCKLINT" --check-locks lock-order.c
 compare "local lock order" lock-order.ref lock-order.out
 
+run_capture "observed lock order" lock-order-observed.out \
+    "$LOCKLINT" --check-locks lock-order-observed.c
+compare "observed lock order" lock-order-observed.ref \
+    lock-order-observed.out
+
 #
 # Verify independent protection mechanism, unlocked-read, and read-only
 # policy dimensions.

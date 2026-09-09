@@ -31,6 +31,17 @@
 
 struct order_vertex;
 
+struct observed_edge {
+	struct order_vertex *before;
+	struct order_vertex *after;
+	struct position held_pos;
+	struct position acquire_pos;
+	bool has_held_pos;
+	bool possible;
+	struct observed_edge *next;
+	struct observed_edge *next_from;
+};
+
 struct order_edge {
 	struct order_vertex *before;
 	struct order_vertex *after;
@@ -44,13 +55,16 @@ struct order_vertex {
 	char *name;
 	unsigned int visit;
 	unsigned int component;
+	unsigned int observed_component;
 	struct order_edge *path_edge;
 	struct order_edge *edges;
+	struct observed_edge *observed_edges;
 	struct order_vertex *next;
 };
 
 static struct order_vertex *vertices;
 static struct order_edge *edges;
+static struct observed_edge *observed_edges;
 static unsigned int visit_generation;
 static unsigned int component_generation;
 
@@ -152,6 +166,61 @@ add_vertex(const struct locklint_access *role, const char *name)
 	vertex->next = vertices;
 	vertices = vertex;
 	return (vertex);
+}
+
+static char *
+join_role_name(const char *base, const char *member, const char *separator)
+{
+	char *name;
+	size_t base_len = base != NULL ? strlen(base) : 0;
+	size_t member_len = member != NULL ? strlen(member) : 0;
+	size_t separator_len = base_len != 0 && member_len != 0 ?
+	    strlen(separator) : 0;
+
+	name = malloc(base_len + separator_len + member_len + 1);
+	if (name == NULL)
+		die("out of memory naming lock-order role");
+	if (base_len != 0)
+		(void) memcpy(name, base, base_len);
+	if (separator_len != 0)
+		(void) memcpy(name + base_len, separator, separator_len);
+	if (member_len != 0) {
+		(void) memcpy(name + base_len + separator_len, member,
+		    member_len);
+	}
+	name[base_len + separator_len + member_len] = '\0';
+	return (name);
+}
+
+static char *
+observed_role(const struct locklint_access *access,
+    struct locklint_access *role)
+{
+	const char *base;
+	const char *member;
+	const char *separator;
+
+	*role = *access;
+	role->expr = NULL;
+	role->path = NULL;
+	role->address_base = NULL;
+	role->address_offset = 0;
+	member = access->member != NULL && access->member->ident != NULL ?
+	    show_ident(access->member->ident) : NULL;
+	if (access->object == NULL && access->member != NULL &&
+	    access->type != NULL) {
+		role->root = NULL;
+		base = access->type->ident != NULL ?
+		    show_ident(access->type->ident) : NULL;
+		separator = "::";
+	} else {
+		base = access->root != NULL && access->root->ident != NULL ?
+		    show_ident(access->root->ident) : NULL;
+		separator = ".";
+	}
+	if (base == NULL && member == NULL)
+		return (copy_string("<unknown>"));
+	return (join_role_name(base, member, separator));
 }
 
 static void
@@ -342,6 +411,56 @@ locklint_order_check_declared(const struct locklint_access *acquired,
 	return (false);
 }
 
+void
+locklint_order_record_observed(const struct locklint_access *held,
+    const struct locklint_access *acquired, const struct position *held_pos,
+    const struct position *acquire_pos, bool possible, bool explained)
+{
+	struct locklint_access held_role;
+	struct locklint_access acquired_role;
+	struct order_vertex *before;
+	struct order_vertex *after;
+	struct observed_edge *edge;
+	char *held_name;
+	char *acquired_name;
+
+	if (explained)
+		return;
+	held_name = observed_role(held, &held_role);
+	acquired_name = observed_role(acquired, &acquired_role);
+	before = add_vertex(&held_role, held_name);
+	after = add_vertex(&acquired_role, acquired_name);
+	free(held_name);
+	free(acquired_name);
+	for (edge = before->observed_edges; edge != NULL;
+	    edge = edge->next_from) {
+		if (edge->after != after)
+			continue;
+		edge->possible &= possible;
+		if (compare_position(*acquire_pos, edge->acquire_pos) < 0) {
+			edge->acquire_pos = *acquire_pos;
+			edge->has_held_pos = held_pos != NULL;
+			if (held_pos != NULL)
+				edge->held_pos = *held_pos;
+		}
+		return;
+	}
+	edge = calloc(1, sizeof (*edge));
+	if (edge == NULL)
+		die("out of memory recording observed lock order");
+	edge->before = before;
+	edge->after = after;
+	edge->acquire_pos = *acquire_pos;
+	edge->possible = possible;
+	edge->has_held_pos = held_pos != NULL;
+	if (held_pos != NULL)
+		edge->held_pos = *held_pos;
+	edge->next_from = before->observed_edges;
+	before->observed_edges = edge;
+	edge->next = observed_edges;
+	observed_edges = edge;
+}
+
 static int
 compare_edge_position(const void *left, const void *right)
 {
@@ -406,9 +525,134 @@ locklint_order_report_declared_cycles(void)
 	}
 }
 
+static bool
+observed_reachable(struct order_vertex *from,
+    const struct order_vertex *target)
+{
+	struct observed_edge *edge;
+
+	if (from == target)
+		return (true);
+	from->visit = visit_generation;
+	for (edge = from->observed_edges; edge != NULL;
+	    edge = edge->next_from) {
+		if (edge->after->visit == visit_generation)
+			continue;
+		if (observed_reachable(edge->after, target))
+			return (true);
+	}
+	return (false);
+}
+
+static bool
+observed_path_exists(struct order_vertex *from, struct order_vertex *to)
+{
+	struct order_vertex *vertex;
+
+	if (++visit_generation == 0) {
+		for (vertex = vertices; vertex != NULL; vertex = vertex->next)
+			vertex->visit = 0;
+		visit_generation = 1;
+	}
+	return (observed_reachable(from, to));
+}
+
+static bool
+observed_vertex_is_cyclic(struct order_vertex *vertex)
+{
+	struct observed_edge *edge;
+
+	for (edge = vertex->observed_edges; edge != NULL;
+	    edge = edge->next_from) {
+		if (observed_path_exists(edge->after, vertex))
+			return (true);
+	}
+	return (false);
+}
+
+static int
+compare_observed_edge_position(const void *left, const void *right)
+{
+	const struct observed_edge *const *left_edge = left;
+	const struct observed_edge *const *right_edge = right;
+
+	return (compare_position((*left_edge)->acquire_pos,
+	    (*right_edge)->acquire_pos));
+}
+
+static void
+report_observed_component(unsigned int component)
+{
+	struct observed_edge **component_edges;
+	struct observed_edge *edge;
+	size_t count = 0;
+	size_t index = 0;
+
+	for (edge = observed_edges; edge != NULL; edge = edge->next) {
+		if (edge->before->observed_component == component &&
+		    edge->after->observed_component == component)
+			count++;
+	}
+	component_edges = calloc(count, sizeof (*component_edges));
+	if (component_edges == NULL)
+		die("out of memory reporting observed lock-order cycle");
+	for (edge = observed_edges; edge != NULL; edge = edge->next) {
+		if (edge->before->observed_component == component &&
+		    edge->after->observed_component == component)
+			component_edges[index++] = edge;
+	}
+	qsort(component_edges, count, sizeof (*component_edges),
+	    compare_observed_edge_position);
+	warning(component_edges[0]->acquire_pos,
+	    "locklint: observed lock acquisitions form a potential deadlock");
+	for (index = 0; index < count; index++) {
+		edge = component_edges[index];
+		if (edge->has_held_pos) {
+			info(edge->held_pos, "locklint: lock '%s' acquired here",
+			    edge->before->name);
+		}
+		info(edge->acquire_pos, "locklint: lock '%s' %sacquired while "
+		    "holding '%s'", edge->after->name,
+		    edge->possible ? "may be " : "",
+		    edge->before->name);
+	}
+	free(component_edges);
+}
+
+void
+locklint_order_report_observed_cycles(void)
+{
+	struct order_vertex *vertex;
+
+	for (vertex = vertices; vertex != NULL; vertex = vertex->next) {
+		struct order_vertex *candidate;
+
+		if (vertex->observed_component != 0 ||
+		    !observed_vertex_is_cyclic(vertex))
+			continue;
+		component_generation++;
+		for (candidate = vertices; candidate != NULL;
+		    candidate = candidate->next) {
+			if (candidate->observed_component == 0 &&
+			    observed_path_exists(vertex, candidate) &&
+			    observed_path_exists(candidate, vertex)) {
+				candidate->observed_component =
+				    component_generation;
+			}
+		}
+		report_observed_component(component_generation);
+	}
+}
+
 void
 locklint_order_cleanup(void)
 {
+	while (observed_edges != NULL) {
+		struct observed_edge *next = observed_edges->next;
+
+		free(observed_edges);
+		observed_edges = next;
+	}
 	while (edges != NULL) {
 		struct order_edge *next = edges->next;
 

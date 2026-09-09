@@ -29,6 +29,10 @@ void locklint_order_build(void);
 void locklint_order_report_declared_cycles(void);
 bool locklint_order_check_declared(const struct locklint_access *,
     const struct locklint_access *, const struct position *, bool);
+void locklint_order_record_observed(const struct locklint_access *,
+    const struct locklint_access *, const struct position *,
+    const struct position *, bool, bool);
+void locklint_order_report_observed_cycles(void);
 void locklint_order_cleanup(void);
 
 #endif /* LOCK_ORDER_H */
