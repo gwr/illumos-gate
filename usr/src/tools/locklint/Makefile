@@ -88,6 +88,7 @@ LOCAL_OBJS = \
 	check.o \
 	events.o \
 	identity.o \
+	lock_order.o \
 	avl.o
 
 OBJS = $(LOCAL_OBJS) $(SPARSE_OBJS) hashtable.o

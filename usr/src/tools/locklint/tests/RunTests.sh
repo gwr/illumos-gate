@@ -162,6 +162,11 @@ require_match "lock order trailing comma" \
     "lock-order-errors.c:35:.*trailing comma in LOCK_ORDER" \
     lock-order-errors.out
 
+run_capture "lock order declaration cycle" lock-order-cycle.out \
+    "$LOCKLINT" -DLOCK_ORDER_DECLARATION_CYCLE --check-locks lock-order.c
+compare "lock order declaration cycle" lock-order-cycle.ref \
+    lock-order-cycle.out
+
 #
 # Verify independent protection mechanism, unlocked-read, and read-only
 # policy dimensions.

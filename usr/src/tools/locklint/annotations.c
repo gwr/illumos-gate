@@ -1079,6 +1079,51 @@ locklint_data_policy(const struct locklint_access *access,
 	return (found);
 }
 
+/*
+ * Present resolved adjacent LOCK_ORDER pairs without exposing parser-owned
+ * annotation records.  Names are valid only for the duration of the callback;
+ * resolved Sparse and identity pointers remain borrowed for the process.
+ */
+void
+locklint_for_each_order_edge(locklint_order_edge_f callback, void *data)
+{
+	struct annotation *annotation;
+
+	for (annotation = annotations; annotation != NULL;
+	    annotation = annotation->next) {
+		struct annotation_ref *left;
+
+		if (!annotation->resolved ||
+		    annotation->kind != ANNOTATION_LOCK_ORDER)
+			continue;
+		for (left = annotation->order; left != NULL &&
+		    left->next != NULL; left = left->next) {
+			struct annotation_ref *right = left->next;
+			struct locklint_access left_access = { 0 };
+			struct locklint_access right_access = { 0 };
+			char *left_name;
+			char *right_name;
+
+			left_access.root = left->root;
+			left_access.object = left->object;
+			left_access.type = left->owner_type;
+			left_access.member = left->member;
+			left_access.offset = left->offset;
+			right_access.root = right->root;
+			right_access.object = right->object;
+			right_access.type = right->owner_type;
+			right_access.member = right->member;
+			right_access.offset = right->offset;
+			left_name = annotation_ref_name(left);
+			right_name = annotation_ref_name(right);
+			callback(&left_access, left_name, &right_access,
+			    right_name, &annotation->pos, data);
+			free(left_name);
+			free(right_name);
+		}
+	}
+}
+
 static void
 show_raw_annotation(FILE *stream, struct annotation *annotation)
 {

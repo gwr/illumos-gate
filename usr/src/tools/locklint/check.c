@@ -34,6 +34,7 @@
 #include "function_info.h"
 #include "events.h"
 #include "identity.h"
+#include "lock_order.h"
 #include "symbol.h"
 
 typedef unsigned int lock_state_t;
@@ -2816,8 +2817,12 @@ locklint_check_all(bool check_locks, bool show_callgraph)
 	callgraph_resolve();
 	if (show_callgraph)
 		callgraph_dump(stdout);
-	if (check_locks)
+	if (check_locks) {
+		locklint_order_build();
+		locklint_order_report_declared_cycles();
 		run_lock_checks();
+		locklint_order_cleanup();
+	}
 	free_checker_attachments();
 	callgraph_cleanup();
 }
