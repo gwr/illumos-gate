@@ -44,6 +44,7 @@ struct order_vertex {
 	char *name;
 	unsigned int visit;
 	unsigned int component;
+	struct order_edge *path_edge;
 	struct order_edge *edges;
 	struct order_vertex *next;
 };
@@ -230,6 +231,113 @@ vertex_is_cyclic(struct order_vertex *vertex)
 	for (edge = vertex->edges; edge != NULL; edge = edge->next_from) {
 		if (path_exists(edge->after, vertex))
 			return (true);
+	}
+	return (false);
+}
+
+static bool
+role_matches_access(const struct order_vertex *vertex,
+    const struct locklint_access *access)
+{
+	unsigned long base;
+
+	if (vertex->role.root != NULL)
+		return (locklint_same_access(&vertex->role, access));
+	if (!same_ident(vertex->role.member != NULL ?
+	    vertex->role.member->ident : NULL,
+	    access->member != NULL ? access->member->ident : NULL))
+		return (false);
+	return (locklint_access_base(access, vertex->role.type,
+	    vertex->role.offset, &base));
+}
+
+static bool
+find_path(struct order_vertex *from, struct order_vertex *to)
+{
+	struct order_edge *edge;
+
+	from->visit = visit_generation;
+	if (from == to)
+		return (true);
+	for (edge = from->edges; edge != NULL; edge = edge->next_from) {
+		if (edge->after->visit == visit_generation)
+			continue;
+		edge->after->path_edge = edge;
+		if (find_path(edge->after, to))
+			return (true);
+	}
+	return (false);
+}
+
+static bool
+declared_path(struct order_vertex *from, struct order_vertex *to)
+{
+	struct order_vertex *vertex;
+
+	if (from == to)
+		return (false);
+	if (++visit_generation == 0) {
+		for (vertex = vertices; vertex != NULL; vertex = vertex->next)
+			vertex->visit = 0;
+		visit_generation = 1;
+	}
+	from->path_edge = NULL;
+	return (find_path(from, to));
+}
+
+static bool
+path_uses_declared_cycle(struct order_vertex *from, struct order_vertex *to)
+{
+	struct order_vertex *vertex;
+
+	for (vertex = to; vertex != from;
+	    vertex = vertex->path_edge->before) {
+		if (vertex->component != 0)
+			return (true);
+	}
+	return (from->component != 0);
+}
+
+static void
+report_declared_path(struct order_vertex *from, struct order_vertex *to)
+{
+	struct order_edge *edge = to->path_edge;
+
+	if (edge->before != from)
+		report_declared_path(from, edge->before);
+	info(edge->pos, "locklint: declared order requires '%s' before '%s'",
+	    edge->before->name, edge->after->name);
+}
+
+bool
+locklint_order_check_declared(const struct locklint_access *acquired,
+    const struct locklint_access *held, const struct position *pos,
+    bool possible)
+{
+	struct order_vertex *before;
+
+	for (before = vertices; before != NULL; before = before->next) {
+		struct order_vertex *after;
+
+		if (!role_matches_access(before, acquired))
+			continue;
+		for (after = vertices; after != NULL; after = after->next) {
+			if (!role_matches_access(after, held) ||
+			    !declared_path(before, after) ||
+			    path_uses_declared_cycle(before, after))
+				continue;
+			if (possible) {
+				warning(*pos, "locklint: lock '%s' may be acquired "
+				    "out of declared order while holding '%s'",
+				    before->name, after->name);
+			} else {
+				warning(*pos, "locklint: lock '%s' acquired out "
+				    "of declared order while holding '%s'",
+				    before->name, after->name);
+			}
+			report_declared_path(before, after);
+			return (true);
+		}
 	}
 	return (false);
 }

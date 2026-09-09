@@ -2589,6 +2589,15 @@ check_lock_action(struct function_info *function,
 	    formal_argument(function->ep, lock.root, &argument);
 	pos = insn->call_expr != NULL ? insn->call_expr->pos : insn->pos;
 	if (action == LOCKLINT_LOCK_ACQUIRE) {
+		struct state_entry *held;
+
+		for (held = analysis->locks; held != NULL; held = held->next) {
+			if ((held->state & LOCK_ANY_HELD) == 0 ||
+			    locklint_same_access(&lock, &held->lock))
+				continue;
+			(void) locklint_order_check_declared(&lock, &held->lock,
+			    &pos, !state_definitely_held(held->state));
+		}
 		if (state_definitely_held(state) && !defer) {
 			warning(pos, "locklint: lock '%s' is already held",
 			    lock_name(&lock));

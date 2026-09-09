@@ -163,9 +163,13 @@ require_match "lock order trailing comma" \
     lock-order-errors.out
 
 run_capture "lock order declaration cycle" lock-order-cycle.out \
-    "$LOCKLINT" -DLOCK_ORDER_DECLARATION_CYCLE --check-locks lock-order.c
+    "$LOCKLINT" --check-locks lock-order-cycle.c
 compare "lock order declaration cycle" lock-order-cycle.ref \
     lock-order-cycle.out
+
+run_capture "local lock order" lock-order.out \
+    "$LOCKLINT" --check-locks lock-order.c
+compare "local lock order" lock-order.ref lock-order.out
 
 #
 # Verify independent protection mechanism, unlocked-read, and read-only

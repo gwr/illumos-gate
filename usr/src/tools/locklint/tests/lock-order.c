@@ -23,8 +23,9 @@
  * The callee cases prove that an acquire-and-release operation must remain
  * visible to callers even though it has no net lock-state effect.  The mixed
  * case establishes that mutex and readers-writer lock roles share one order
- * graph.  LOCK_ORDER_DECLARATION_CYCLE enables an isolated invalid declaration
- * set, while LOCK_ORDER_COMMAS exercises locklint's optional comma syntax.
+ * graph.  The companion lock-order-cycle.c fixture isolates an invalid
+ * declaration set, while LOCK_ORDER_COMMAS exercises locklint's optional
+ * comma syntax.
  */
 
 #ifdef __lock_lint
@@ -62,16 +63,6 @@ struct mixed_order_state {
 };
 
 _NOTE(LOCK_ORDER(mixed_order_state::mutex mixed_order_state::rwlock))
-
-#ifdef LOCK_ORDER_DECLARATION_CYCLE
-struct cycle_order_state {
-	mutex_t first;
-	mutex_t second;
-};
-
-_NOTE(LOCK_ORDER(cycle_order_state::first cycle_order_state::second))
-_NOTE(LOCK_ORDER(cycle_order_state::second cycle_order_state::first))
-#endif
 
 #ifndef __lock_lint
 extern int mutex_lock(mutex_t *);

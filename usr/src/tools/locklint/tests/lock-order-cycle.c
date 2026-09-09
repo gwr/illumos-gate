@@ -13,22 +13,14 @@
  * Copyright 2026 Gordon W. Ross
  */
 
-/*
- * Build, query, and release the module-wide lock-order graphs.
- */
+#define	_NOTE(arg)
 
-#ifndef LOCK_ORDER_H
-#define	LOCK_ORDER_H
+typedef int mutex_t;
 
-#include <stdbool.h>
+struct cycle_order_state {
+	mutex_t first;
+	mutex_t second;
+};
 
-struct locklint_access;
-struct position;
-
-void locklint_order_build(void);
-void locklint_order_report_declared_cycles(void);
-bool locklint_order_check_declared(const struct locklint_access *,
-    const struct locklint_access *, const struct position *, bool);
-void locklint_order_cleanup(void);
-
-#endif /* LOCK_ORDER_H */
+_NOTE(LOCK_ORDER(cycle_order_state::first cycle_order_state::second))
+_NOTE(LOCK_ORDER(cycle_order_state::second cycle_order_state::first))

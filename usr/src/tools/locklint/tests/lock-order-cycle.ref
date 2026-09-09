@@ -1,3 +1,3 @@
-../locklint: lock-order.c:72:1: warning: locklint: declared lock order contains a cycle
-../locklint: lock-order.c:72:1: locklint: 'cycle_order_state::first' must precede 'cycle_order_state::second'
-../locklint: lock-order.c:73:1: locklint: 'cycle_order_state::second' must precede 'cycle_order_state::first'
+../locklint: lock-order-cycle.c:25:1: warning: locklint: declared lock order contains a cycle
+../locklint: lock-order-cycle.c:25:1: locklint: 'cycle_order_state::first' must precede 'cycle_order_state::second'
+../locklint: lock-order-cycle.c:26:1: locklint: 'cycle_order_state::second' must precede 'cycle_order_state::first'
