@@ -15,10 +15,10 @@
 
 /*
  * Verify deadlock detection from observed acquisitions without LOCK_ORDER
- * declarations.  The first function contributes first-before-second and the
- * second contributes second-before-first, so together they form a cycle.
- * Each function alone is balanced and locally consistent; the conflict is
- * visible only after combining the module-wide observations.
+ * declarations.  One direction crosses a direct call and the other crosses a
+ * wrapper, so together they form a cycle only after interprocedural
+ * acquisitions are combined module-wide.  Each function remains balanced and
+ * locally consistent.
  */
 
 #define	_NOTE(arg)
@@ -36,19 +36,37 @@ extern void mutex_enter(mutex_t *);
 extern void mutex_exit(mutex_t *);
 
 static void
+observed_acquire_second(struct observed_order_state *state)
+{
+	mutex_enter(&state->second);
+	mutex_exit(&state->second);
+}
+
+static void
 observed_first_then_second(struct observed_order_state *state)
 {
 	mutex_enter(&state->first);
-	mutex_enter(&state->second);
-	mutex_exit(&state->second);
+	observed_acquire_second(state);
 	mutex_exit(&state->first);
+}
+
+static void
+observed_acquire_first(struct observed_order_state *state)
+{
+	mutex_enter(&state->first);
+	mutex_exit(&state->first);
+}
+
+static void
+observed_acquire_first_wrapper(struct observed_order_state *state)
+{
+	observed_acquire_first(state);
 }
 
 static void
 observed_second_then_first(struct observed_order_state *state)
 {
 	mutex_enter(&state->second);
-	mutex_enter(&state->first);
-	mutex_exit(&state->first);
+	observed_acquire_first_wrapper(state);
 	mutex_exit(&state->second);
 }

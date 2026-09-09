@@ -2979,7 +2979,7 @@ static lock_state_t
 acquisition_prefix_state(struct function_info *function,
     struct instruction *insn, const struct function_info *callee,
     const struct acquisition_summary *summary, const struct state_entry *held,
-    bool *known)
+    bool *known, bool *transformed)
 {
 	const struct acquisition_candidate *candidate;
 	const struct acquisition_prefix *prefix;
@@ -2997,6 +2997,7 @@ acquisition_prefix_state(struct function_info *function,
 	}
 	if (aliases > 1) {
 		*known = false;
+		*transformed = false;
 		return (held->state);
 	}
 
@@ -3009,12 +3010,14 @@ acquisition_prefix_state(struct function_info *function,
 			continue;
 		if (prefix->unknown) {
 			*known = false;
+			*transformed = false;
 			return (held->state);
 		}
 		state |= prefix->output[held->state];
 		found = true;
 	}
 	*known = true;
+	*transformed = found;
 	return (found ? state : held->state);
 }
 
@@ -3034,21 +3037,30 @@ check_call_acquisitions(struct function_info *function,
 		    &acquired))
 			continue;
 		for (held = analysis->locks; held != NULL; held = held->next) {
+			const struct position *held_pos;
 			lock_state_t state;
+			bool explained;
 			bool known;
+			bool transformed;
 
 			if (locklint_same_access(&acquired, &held->lock))
 				continue;
 			state = acquisition_prefix_state(function, insn, callee,
-			    summary, held, &known);
+			    summary, held, &known, &transformed);
 			if (!known || (state & LOCK_ANY_HELD) == 0)
 				continue;
-			if (!locklint_order_check_declared(&acquired,
-			    &held->lock, &pos, !state_definitely_held(state)))
-				continue;
-			info(summary->pos, "locklint: lock acquisition reached "
-			    "through callee '%s'",
-			    show_ident(callee->ep->name->ident));
+			explained = locklint_order_check_declared(&acquired,
+			    &held->lock, &pos, !state_definitely_held(state));
+			held_pos = !transformed && held->has_acquire_pos ?
+			    &held->acquire_pos : NULL;
+			locklint_order_record_observed(&held->lock, &acquired,
+			    held_pos, &summary->pos,
+			    !state_definitely_held(state), explained);
+			if (explained) {
+				info(summary->pos, "locklint: lock acquisition "
+				    "reached through callee '%s'",
+				    show_ident(callee->ep->name->ident));
+			}
 		}
 	}
 }
