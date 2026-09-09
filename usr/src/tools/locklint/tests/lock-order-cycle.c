@@ -13,9 +13,16 @@
  * Copyright 2026 Gordon W. Ross
  */
 
+#ifdef __lock_lint
+#include <sys/note.h>
+#include <synch.h>
+#else
 #define	_NOTE(arg)
 
-typedef int mutex_t;
+typedef struct mutex {
+	int opaque;
+} mutex_t;
+#endif
 
 struct cycle_order_state {
 	mutex_t first;

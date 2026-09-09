@@ -164,6 +164,30 @@ struct lock_transfer {
 	struct lock_transfer *next;
 };
 
+struct acquisition_role {
+	struct locklint_access access;
+	unsigned int argument;
+	bool relative;
+};
+
+struct acquisition_prefix {
+	struct acquisition_role role;
+	lock_state_t output[LOCK_STATE_COUNT];
+	struct acquisition_prefix *next;
+};
+
+struct acquisition_summary {
+	struct acquisition_role acquired;
+	struct position pos;
+	struct acquisition_prefix *prefixes;
+	struct acquisition_summary *next;
+};
+
+struct acquisition_candidate {
+	struct acquisition_role role;
+	struct acquisition_candidate *next;
+};
+
 struct visibility_transfer {
 	unsigned int argument;
 	struct symbol *data_root;
@@ -185,6 +209,7 @@ static void transfer_call_effects(struct function_info *,
     struct state_entry **, struct instruction *);
 static void transfer_call_visibility_effects(struct function_info *,
     struct visibility_entry **, struct instruction *);
+static struct symbol *formal_symbol(struct entrypoint *, unsigned int);
 
 static bool
 same_lock(const struct locklint_access *left,
@@ -894,6 +919,59 @@ argument_lock(struct translation_unit *tu, struct instruction *insn,
 	locklint_rebase_access(&base, &relative, lock);
 	lock->path = NULL;
 	return (true);
+}
+
+static bool
+acquisition_role(struct function_info *function,
+    const struct locklint_access *lock, struct acquisition_role *role)
+{
+	*role = (struct acquisition_role){ 0 };
+	role->access = *lock;
+	if (formal_argument(function->ep, lock->root, &role->argument)) {
+		role->relative = true;
+		return (true);
+	}
+	if (lock->address_base != NULL &&
+	    lock->address_base->type == PSEUDO_ARG) {
+		role->relative = true;
+		role->argument = lock->address_base->nr;
+		role->access.root = formal_symbol(function->ep, role->argument);
+		role->access.object = NULL;
+		return (true);
+	}
+	if (lock->object == NULL)
+		return (false);
+	role->access.expr = NULL;
+	role->access.address_base = NULL;
+	role->access.address_offset = 0;
+	return (true);
+}
+
+static bool
+same_acquisition_role(const struct acquisition_role *left,
+    const struct acquisition_role *right)
+{
+	if (left->relative != right->relative)
+		return (false);
+	if (left->relative) {
+		return (left->argument == right->argument &&
+		    left->access.member == right->access.member &&
+		    left->access.offset == right->access.offset);
+	}
+	return (locklint_same_access(&left->access, &right->access));
+}
+
+static bool
+map_acquisition_role(struct function_info *function,
+    struct instruction *insn, const struct acquisition_role *role,
+    struct locklint_access *lock)
+{
+	if (!role->relative) {
+		*lock = role->access;
+		return (true);
+	}
+	return (argument_lock(function->tu, insn, role->argument,
+	    role->access.member, role->access.offset, lock));
 }
 
 static bool
@@ -1670,7 +1748,7 @@ merge_lock_state(lock_state_t left, lock_state_t right)
 
 static void
 simulate_instruction(struct function_info *function,
-    struct locklint_access *target, lock_state_t *state,
+    const struct locklint_access *target, lock_state_t *state,
     unsigned int *invalid, struct instruction *insn)
 {
 	struct function_info *callee;
@@ -1712,7 +1790,7 @@ simulate_instruction(struct function_info *function,
 static void
 simulate_block(struct function_info *function,
     struct transfer_block_info *block,
-    struct locklint_access *target, lock_state_t in,
+    const struct locklint_access *target, lock_state_t in,
     unsigned int invalid_in, lock_state_t *out,
     unsigned int *invalid_out)
 {
@@ -1727,37 +1805,16 @@ simulate_block(struct function_info *function,
 	} END_FOR_EACH_PTR(insn);
 }
 
-/*
- * Simulate one transfer candidate for one possible entry state.  Merge both
- * lock state and invalid-operation flags through the CFG and across all
- * reachable returns.
- */
-static lock_state_t
-simulate_transfer(struct function_info *function,
-    struct lock_transfer *transfer, lock_state_t input,
-    unsigned int *invalid)
+static struct transfer_block_info *
+solve_transfer_blocks(struct function_info *function,
+    const struct locklint_access *target, lock_state_t input)
 {
 	struct transfer_block_info *blocks = NULL;
 	struct transfer_block_info **tail = &blocks;
 	struct transfer_block_info *block;
 	struct basic_block *bb;
-	struct locklint_access target = { 0 };
-	lock_state_t result = input;
-	unsigned int result_invalid = 0;
-	bool found_return = false;
 	bool changed;
 
-	/*
-	 * A transfer target is relative to a formal argument, which has no C
-	 * linkage and therefore deliberately has no canonical object identity.
-	 */
-	target.root = formal_symbol(function->ep, transfer->argument);
-	target.object = NULL;
-	target.type = NULL;
-	target.member = transfer->lock_member;
-	target.offset = transfer->lock_offset;
-	target.expr = NULL;
-	target.path = NULL;
 	FOR_EACH_PTR(function->ep->bbs, bb) {
 		block = calloc(1, sizeof (*block));
 		if (block == NULL)
@@ -1803,7 +1860,7 @@ simulate_transfer(struct function_info *function,
 			}
 			if (!reachable)
 				continue;
-			simulate_block(function, block, &target, in, invalid_in,
+			simulate_block(function, block, target, in, invalid_in,
 			    &out, &invalid_out);
 			if (!block->reachable || block->in != in ||
 			    block->out != out ||
@@ -1817,6 +1874,45 @@ simulate_transfer(struct function_info *function,
 			block->invalid_out = invalid_out;
 		}
 	} while (changed);
+	return (blocks);
+}
+
+static void
+free_transfer_blocks(struct transfer_block_info *blocks)
+{
+	while (blocks != NULL) {
+		struct transfer_block_info *next = blocks->next;
+
+		free(blocks);
+		blocks = next;
+	}
+}
+
+/*
+ * Simulate one transfer candidate for one possible entry state.  Merge both
+ * lock state and invalid-operation flags through the CFG and across all
+ * reachable returns.
+ */
+static lock_state_t
+simulate_transfer(struct function_info *function,
+    struct lock_transfer *transfer, lock_state_t input,
+    unsigned int *invalid)
+{
+	struct transfer_block_info *blocks;
+	struct transfer_block_info *block;
+	struct locklint_access target = { 0 };
+	lock_state_t result = input;
+	unsigned int result_invalid = 0;
+	bool found_return = false;
+
+	/*
+	 * A transfer target is relative to a formal argument, which has no C
+	 * linkage and therefore deliberately has no canonical object identity.
+	 */
+	target.root = formal_symbol(function->ep, transfer->argument);
+	target.member = transfer->lock_member;
+	target.offset = transfer->lock_offset;
+	blocks = solve_transfer_blocks(function, &target, input);
 
 	for (block = blocks; block != NULL; block = block->next) {
 		struct instruction *insn;
@@ -1839,14 +1935,42 @@ simulate_transfer(struct function_info *function,
 			result_invalid |= block->invalid_out;
 		}
 	}
-	while (blocks != NULL) {
-		struct transfer_block_info *next = blocks->next;
-
-		free(blocks);
-		blocks = next;
-	}
+	free_transfer_blocks(blocks);
 	*invalid = result_invalid;
 	return (result);
+}
+
+static lock_state_t
+simulate_acquisition_prefix(struct function_info *function,
+    const struct acquisition_role *role, lock_state_t input,
+    struct instruction *acquisition)
+{
+	struct transfer_block_info *blocks;
+	struct transfer_block_info *block;
+	lock_state_t state = input;
+	unsigned int invalid = 0;
+
+	blocks = solve_transfer_blocks(function, &role->access, input);
+	block = find_transfer_block(blocks, acquisition->bb);
+	if (block == NULL || !block->reachable) {
+		free_transfer_blocks(blocks);
+		return (input);
+	}
+	state = block->in;
+	invalid = block->invalid_in;
+	{
+		struct instruction *insn;
+
+		FOR_EACH_PTR(block->bb->insns, insn) {
+			if (insn == acquisition)
+				break;
+			if (insn->bb != NULL)
+				simulate_instruction(function, &role->access,
+				    &state, &invalid, insn);
+		} END_FOR_EACH_PTR(insn);
+	}
+	free_transfer_blocks(blocks);
+	return (state);
 }
 
 static bool
@@ -1874,6 +1998,157 @@ solve_function_transfers(struct function_info *function)
 		}
 	}
 	return (changed);
+}
+
+static void
+add_acquisition_candidate(struct acquisition_candidate **candidates,
+    const struct acquisition_role *role)
+{
+	struct acquisition_candidate **tail;
+
+	for (tail = candidates; *tail != NULL; tail = &(*tail)->next) {
+		if (same_acquisition_role(&(*tail)->role, role))
+			return;
+	}
+	*tail = calloc(1, sizeof (**tail));
+	if (*tail == NULL)
+		die("out of memory collecting acquisition summary roles");
+	(*tail)->role = *role;
+}
+
+static struct acquisition_candidate *
+collect_acquisition_candidates(struct function_info *function)
+{
+	struct acquisition_candidate *candidates = NULL;
+	struct lock_transfer *transfer;
+	struct basic_block *bb;
+
+	for (transfer = function->transfers; transfer != NULL;
+	    transfer = transfer->next) {
+		struct acquisition_role role = { 0 };
+
+		role.relative = true;
+		role.argument = transfer->argument;
+		role.access.root = formal_symbol(function->ep,
+		    transfer->argument);
+		role.access.member = transfer->lock_member;
+		role.access.offset = transfer->lock_offset;
+		add_acquisition_candidate(&candidates, &role);
+	}
+	FOR_EACH_PTR(function->ep->bbs, bb) {
+		struct instruction *insn;
+
+		FOR_EACH_PTR(bb->insns, insn) {
+			struct locklint_access lock;
+			struct acquisition_role role;
+			enum locklint_lock_action action;
+			enum locklint_lock_mode mode;
+
+			if (insn->bb == NULL)
+				continue;
+			action = locklint_get_lock_action(function->tu, insn,
+			    &lock, &mode);
+			if (action != LOCKLINT_LOCK_NONE &&
+			    lock.root != NULL &&
+			    acquisition_role(function, &lock, &role))
+				add_acquisition_candidate(&candidates, &role);
+		} END_FOR_EACH_PTR(insn);
+	} END_FOR_EACH_PTR(bb);
+	return (candidates);
+}
+
+static bool
+acquisition_block_reachable(struct function_info *function,
+    struct basic_block *bb)
+{
+	struct block_info *block;
+
+	for (block = function->blocks; block != NULL; block = block->next) {
+		if (block->bb == bb)
+			return (block->reachable);
+	}
+	return (false);
+}
+
+static void
+free_acquisition_candidates(struct acquisition_candidate *candidates)
+{
+	while (candidates != NULL) {
+		struct acquisition_candidate *next = candidates->next;
+
+		free(candidates);
+		candidates = next;
+	}
+}
+
+static void
+collect_local_acquisition_summaries(struct function_info *function)
+{
+	struct acquisition_candidate *candidates;
+	struct acquisition_summary **tail = &function->acquisitions;
+	struct basic_block *bb;
+
+	candidates = collect_acquisition_candidates(function);
+	while (*tail != NULL)
+		tail = &(*tail)->next;
+	FOR_EACH_PTR(function->ep->bbs, bb) {
+		struct instruction *insn;
+
+		FOR_EACH_PTR(bb->insns, insn) {
+			struct locklint_access lock;
+			struct acquisition_role acquired;
+			struct acquisition_candidate *candidate;
+			struct acquisition_summary *summary;
+			struct acquisition_prefix **prefix_tail;
+			enum locklint_lock_action action;
+			enum locklint_lock_mode mode;
+
+			if (insn->bb == NULL ||
+			    !acquisition_block_reachable(function, insn->bb))
+				continue;
+			action = locklint_get_lock_action(function->tu, insn,
+			    &lock, &mode);
+			if (action != LOCKLINT_LOCK_ACQUIRE ||
+			    lock.root == NULL ||
+			    !acquisition_role(function, &lock, &acquired))
+				continue;
+			summary = calloc(1, sizeof (*summary));
+			if (summary == NULL)
+				die("out of memory collecting acquisitions");
+			summary->acquired = acquired;
+			summary->pos = insn->call_expr != NULL ?
+			    insn->call_expr->pos : insn->pos;
+			prefix_tail = &summary->prefixes;
+			for (candidate = candidates; candidate != NULL;
+			    candidate = candidate->next) {
+				struct acquisition_prefix *prefix;
+				unsigned int input;
+				bool changed = false;
+
+				prefix = calloc(1, sizeof (*prefix));
+				if (prefix == NULL)
+					die("out of memory summarizing acquisition");
+				prefix->role = candidate->role;
+				for (input = 1; input < LOCK_STATE_COUNT;
+				    input++) {
+					prefix->output[input] =
+					    simulate_acquisition_prefix(function,
+					    &candidate->role, input, insn);
+					if (prefix->output[input] != input)
+						changed = true;
+				}
+				if (!changed) {
+					free(prefix);
+					continue;
+				}
+				*prefix_tail = prefix;
+				prefix_tail = &prefix->next;
+			}
+			*tail = summary;
+			tail = &summary->next;
+		} END_FOR_EACH_PTR(insn);
+	} END_FOR_EACH_PTR(bb);
+	free_acquisition_candidates(candidates);
 }
 
 static void
@@ -2495,6 +2770,68 @@ check_access(struct function_info *function, struct analysis_state *state,
 	}
 }
 
+static lock_state_t
+acquisition_prefix_state(struct function_info *function,
+    struct instruction *insn, const struct acquisition_summary *summary,
+    const struct state_entry *held, bool *known)
+{
+	const struct acquisition_prefix *prefix;
+	lock_state_t state = 0;
+	unsigned int matches = 0;
+
+	for (prefix = summary->prefixes; prefix != NULL;
+	    prefix = prefix->next) {
+		struct locklint_access mapped;
+
+		if (!map_acquisition_role(function, insn, &prefix->role,
+		    &mapped) || !same_lock(&held->lock, &mapped))
+			continue;
+		state |= prefix->output[held->state];
+		matches++;
+	}
+	/*
+	 * Independent transfer vectors cannot be composed when distinct callee
+	 * roles alias the same caller lock.  Defer that case rather than report
+	 * an order violation from an inexact prefix state.
+	 */
+	*known = matches <= 1;
+	return (matches != 0 ? state : held->state);
+}
+
+static void
+check_call_acquisitions(struct function_info *function,
+    struct analysis_state *analysis, struct instruction *insn,
+    struct function_info *callee, struct position pos)
+{
+	struct acquisition_summary *summary;
+
+	for (summary = callee->acquisitions; summary != NULL;
+	    summary = summary->next) {
+		struct locklint_access acquired;
+		struct state_entry *held;
+
+		if (!map_acquisition_role(function, insn, &summary->acquired,
+		    &acquired))
+			continue;
+		for (held = analysis->locks; held != NULL; held = held->next) {
+			lock_state_t state;
+			bool known;
+
+			if (locklint_same_access(&acquired, &held->lock))
+				continue;
+			state = acquisition_prefix_state(function, insn, summary,
+			    held, &known);
+			if (!known || (state & LOCK_ANY_HELD) == 0)
+				continue;
+			if (!locklint_order_check_declared(&acquired,
+			    &held->lock, &pos, !state_definitely_held(state)))
+				continue;
+			info(summary->pos, "locklint: lock acquired in callee "
+			    "'%s'", show_ident(callee->ep->name->ident));
+		}
+	}
+}
+
 static void
 check_call(struct function_info *function,
     struct analysis_state *analysis, struct instruction *insn)
@@ -2568,6 +2905,7 @@ check_call(struct function_info *function,
 	{
 		struct lock_transfer *transfer;
 
+		check_call_acquisitions(function, analysis, insn, callee, pos);
 		for (transfer = callee->transfers; transfer != NULL;
 		    transfer = transfer->next) {
 			struct locklint_access lock;
@@ -2786,6 +3124,10 @@ run_lock_checks(void)
 	callgraph_iter_close(iter);
 	iter = function_iter_open();
 	while ((function = callgraph_iter_next(iter)) != NULL)
+		collect_local_acquisition_summaries(function);
+	callgraph_iter_close(iter);
+	iter = function_iter_open();
+	while ((function = callgraph_iter_next(iter)) != NULL)
 		collect_local_protection_conditions(function);
 	callgraph_iter_close(iter);
 	do {
@@ -2811,6 +3153,8 @@ free_checker_attachments(void)
 	struct function_info *function;
 
 	while ((function = callgraph_iter_next(iter)) != NULL) {
+		struct acquisition_summary *acquisition =
+		    function->acquisitions;
 		struct protection_condition *condition = function->conditions;
 		struct assumed_region *assumption = function->assumptions;
 		struct lock_transfer *transfer = function->transfers;
@@ -2831,6 +3175,22 @@ free_checker_attachments(void)
 			free(assumption);
 			assumption = assumption_next;
 		}
+		while (acquisition != NULL) {
+			struct acquisition_summary *acquisition_next =
+			    acquisition->next;
+			struct acquisition_prefix *prefix =
+			    acquisition->prefixes;
+
+			while (prefix != NULL) {
+				struct acquisition_prefix *prefix_next =
+				    prefix->next;
+
+				free(prefix);
+				prefix = prefix_next;
+			}
+			free(acquisition);
+			acquisition = acquisition_next;
+		}
 		while (transfer != NULL) {
 			struct lock_transfer *transfer_next = transfer->next;
 
@@ -2848,6 +3208,7 @@ free_checker_attachments(void)
 		function->blocks = NULL;
 		function->conditions = NULL;
 		function->assumptions = NULL;
+		function->acquisitions = NULL;
 		function->transfers = NULL;
 		function->visibility_transfers = NULL;
 	}

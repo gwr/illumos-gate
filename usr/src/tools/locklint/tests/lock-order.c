@@ -25,7 +25,8 @@
  * case establishes that mutex and readers-writer lock roles share one order
  * graph.  The companion lock-order-cycle.c fixture isolates an invalid
  * declaration set, while LOCK_ORDER_COMMAS exercises locklint's optional
- * comma syntax.
+ * comma syntax.  The release-before and release-after callees distinguish
+ * whether an entry-held lock remains held at the summarized acquisition.
  */
 
 #ifdef __lock_lint
@@ -139,6 +140,42 @@ order_wrapped_callee_inversion(struct order_state *state)
 	(void) mutex_lock(&state->second);
 	acquire_first_wrapper(state);
 	(void) mutex_unlock(&state->second);
+}
+
+static void
+release_second_then_acquire_first(struct order_state *state)
+{
+#ifdef __lock_lint
+	_NOTE(LOCK_RELEASED_AS_SIDE_EFFECT(state->second))
+#endif
+	(void) mutex_unlock(&state->second);
+	(void) mutex_lock(&state->first);
+	(void) mutex_unlock(&state->first);
+}
+
+static void
+order_release_before_acquire(struct order_state *state)
+{
+	(void) mutex_lock(&state->second);
+	release_second_then_acquire_first(state);
+}
+
+static void
+acquire_first_then_release_second(struct order_state *state)
+{
+#ifdef __lock_lint
+	_NOTE(LOCK_RELEASED_AS_SIDE_EFFECT(state->second))
+#endif
+	(void) mutex_lock(&state->first);
+	(void) mutex_unlock(&state->first);
+	(void) mutex_unlock(&state->second);
+}
+
+static void
+order_acquire_before_release(struct order_state *state)
+{
+	(void) mutex_lock(&state->second);
+	acquire_first_then_release_second(state);
 }
 
 static void
