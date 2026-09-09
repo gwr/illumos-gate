@@ -140,6 +140,29 @@ run_capture "annotations" annotations.out \
 compare "annotations" annotations.ref annotations.out
 
 #
+# Verify LOCK_ORDER name resolution and optional comma separators.
+#
+run_capture "lock order annotations" lock-order-annotations.out \
+    "$LOCKLINT" --dump-annotations lock-order-annotations.c
+compare "lock order annotations" lock-order-annotations.ref \
+    lock-order-annotations.out
+
+run_failure "lock order annotation errors" lock-order-errors.out \
+    "$LOCKLINT" --dump-annotations lock-order-errors.c
+require_match "lock order minimum names" \
+    "lock-order-errors.c:32:.*LOCK_ORDER requires at least two lock names" \
+    lock-order-errors.out
+require_match "lock order leading comma" \
+    "lock-order-errors.c:33:.*unexpected comma in LOCK_ORDER" \
+    lock-order-errors.out
+require_match "lock order repeated comma" \
+    "lock-order-errors.c:34:.*unexpected comma in LOCK_ORDER" \
+    lock-order-errors.out
+require_match "lock order trailing comma" \
+    "lock-order-errors.c:35:.*trailing comma in LOCK_ORDER" \
+    lock-order-errors.out
+
+#
 # Verify independent protection mechanism, unlocked-read, and read-only
 # policy dimensions.
 #

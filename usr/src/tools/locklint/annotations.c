@@ -50,7 +50,8 @@ enum annotation_kind {
 	ANNOTATION_RWLOCK_PROTECTS_DATA,
 	ANNOTATION_SCHEME_PROTECTS_DATA,
 	ANNOTATION_DATA_READABLE_WITHOUT_LOCK,
-	ANNOTATION_READ_ONLY_DATA
+	ANNOTATION_READ_ONLY_DATA,
+	ANNOTATION_LOCK_ORDER
 };
 
 struct annotation_ref {
@@ -76,6 +77,7 @@ struct annotation {
 	struct annotation_token *tokens;
 	struct annotation_ref *lock;
 	struct annotation_ref *data;
+	struct annotation_ref *order;
 	const char *scheme;
 	enum annotation_kind kind;
 	bool parsed;
@@ -452,6 +454,49 @@ finish_data_annotation(struct annotation *annotation,
 }
 
 static bool
+finish_order_annotation(struct annotation *annotation,
+    struct annotation_token *cursor, const char *name)
+{
+	struct annotation_ref **tail = NULL;
+	struct annotation_ref *ref;
+	unsigned int count = 0;
+	bool after_comma = false;
+
+	while (cursor != NULL && !token_is(cursor, ")")) {
+		if (token_is(cursor, ",")) {
+			if (annotation->order == NULL || after_comma) {
+				return (annotation_error(annotation, cursor,
+				    "unexpected comma in LOCK_ORDER"));
+			}
+			after_comma = true;
+			cursor = cursor->next;
+			continue;
+		}
+		if (!parse_name(annotation, &cursor, &annotation->order, &tail))
+			return (false);
+		after_comma = false;
+	}
+	if (after_comma) {
+		return (annotation_error(annotation, cursor,
+		    "trailing comma in LOCK_ORDER"));
+	}
+	for (ref = annotation->order; ref != NULL; ref = ref->next)
+		count++;
+	if (count < 2) {
+		return (annotation_error(annotation, cursor,
+		    "LOCK_ORDER requires at least two lock names"));
+	}
+	if (!token_is(cursor, ")"))
+		return (annotation_named_error(annotation, cursor,
+		    "expected ')' after", name));
+	if (cursor->next != NULL)
+		return (annotation_named_error(annotation, cursor->next,
+		    "unexpected tokens after", name));
+	annotation->parsed = true;
+	return (true);
+}
+
+static bool
 parse_annotation(struct annotation *annotation)
 {
 	struct annotation_token *cursor = annotation->tokens;
@@ -469,6 +514,8 @@ parse_annotation(struct annotation *annotation)
 		annotation->kind = ANNOTATION_DATA_READABLE_WITHOUT_LOCK;
 	} else if (token_is(cursor, "READ_ONLY_DATA")) {
 		annotation->kind = ANNOTATION_READ_ONLY_DATA;
+	} else if (token_is(cursor, "LOCK_ORDER")) {
+		annotation->kind = ANNOTATION_LOCK_ORDER;
 	} else {
 		return (false);
 	}
@@ -510,6 +557,8 @@ parse_annotation(struct annotation *annotation)
 	case ANNOTATION_DATA_READABLE_WITHOUT_LOCK:
 	case ANNOTATION_READ_ONLY_DATA:
 		break;
+	case ANNOTATION_LOCK_ORDER:
+		return (finish_order_annotation(annotation, cursor, name));
 	default:
 		abort();
 	}
@@ -870,6 +919,17 @@ locklint_resolve_annotations(void)
 		annotation->processed = true;
 		if (!parse_annotation(annotation))
 			continue;
+		if (annotation->kind == ANNOTATION_LOCK_ORDER) {
+			for (ref = annotation->order; ref != NULL;
+			    ref = ref->next) {
+				if (!resolve_annotation_ref(ref, true,
+				    annotation->tu))
+					break;
+			}
+			if (ref == NULL)
+				annotation->resolved = true;
+			continue;
+		}
 		if (annotation->lock != NULL &&
 		    !resolve_annotation_ref(annotation->lock, true,
 		    annotation->tu))
@@ -1069,6 +1129,8 @@ annotation_kind_name(enum annotation_kind kind)
 		return ("DATA_READABLE_WITHOUT_LOCK");
 	case ANNOTATION_READ_ONLY_DATA:
 		return ("READ_ONLY_DATA");
+	case ANNOTATION_LOCK_ORDER:
+		return ("LOCK_ORDER");
 	default:
 		abort();
 	}
@@ -1088,6 +1150,20 @@ locklint_show_annotations(FILE *stream)
 			    stream_name(annotation->pos.stream),
 			    annotation->pos.line, annotation->pos.pos);
 			show_raw_annotation(stream, annotation);
+			(void) fputc('\n', stream);
+			continue;
+		}
+		if (annotation->kind == ANNOTATION_LOCK_ORDER) {
+			(void) fprintf(stream, "%s:%u:%u: %s ",
+			    stream_name(annotation->pos.stream),
+			    annotation->pos.line, annotation->pos.pos,
+			    annotation_kind_name(annotation->kind));
+			for (ref = annotation->order; ref != NULL;
+			    ref = ref->next) {
+				if (ref != annotation->order)
+					(void) fputs(" -> ", stream);
+				show_annotation_ref(stream, ref);
+			}
 			(void) fputc('\n', stream);
 			continue;
 		}

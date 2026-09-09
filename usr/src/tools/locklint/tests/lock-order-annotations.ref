@@ -1,0 +1,3 @@
+lock-order-annotations.c:34:1: LOCK_ORDER order_annotation_state::first -> order_annotation_state::second
+lock-order-annotations.c:36:1: LOCK_ORDER order_annotation_state::first -> order_annotation_state::second -> order_annotation_state::third
+lock-order-annotations.c:38:1: LOCK_ORDER order_annotation_state::first -> order_annotation_state::second -> order_annotation_state::third -> order_annotation_state::fourth
