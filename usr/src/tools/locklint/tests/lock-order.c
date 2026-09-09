@@ -21,12 +21,13 @@
  * of the same lock is checked against the state at that second sequence.
  *
  * The callee cases prove that an acquire-and-release operation must remain
- * visible to callers even though it has no net lock-state effect.  The mixed
- * case establishes that mutex and readers-writer lock roles share one order
- * graph.  The companion lock-order-cycle.c fixture isolates an invalid
- * declaration set, while LOCK_ORDER_COMMAS exercises locklint's optional
- * comma syntax.  The release-before and release-after callees distinguish
- * whether an entry-held lock remains held at the summarized acquisition.
+ * visible through direct calls and wrappers even though it has no net
+ * lock-state effect.  The mixed case establishes that mutex and
+ * readers-writer lock roles share one order graph.  The companion
+ * lock-order-cycle.c fixture isolates an invalid declaration set, while
+ * LOCK_ORDER_COMMAS exercises locklint's optional comma syntax.  The
+ * release-before and release-after callees and wrappers distinguish whether
+ * an entry-held lock remains held at the summarized acquisition.
  */
 
 #ifdef __lock_lint
@@ -135,10 +136,16 @@ acquire_first_wrapper(struct order_state *state)
 }
 
 static void
+acquire_first_outer_wrapper(struct order_state *state)
+{
+	acquire_first_wrapper(state);
+}
+
+static void
 order_wrapped_callee_inversion(struct order_state *state)
 {
 	(void) mutex_lock(&state->second);
-	acquire_first_wrapper(state);
+	acquire_first_outer_wrapper(state);
 	(void) mutex_unlock(&state->second);
 }
 
@@ -176,6 +183,32 @@ order_acquire_before_release(struct order_state *state)
 {
 	(void) mutex_lock(&state->second);
 	acquire_first_then_release_second(state);
+}
+
+static void
+release_before_wrapper(struct order_state *state)
+{
+	release_second_then_acquire_first(state);
+}
+
+static void
+order_wrapped_release_before(struct order_state *state)
+{
+	(void) mutex_lock(&state->second);
+	release_before_wrapper(state);
+}
+
+static void
+acquire_before_wrapper(struct order_state *state)
+{
+	acquire_first_then_release_second(state);
+}
+
+static void
+order_wrapped_acquire_before(struct order_state *state)
+{
+	(void) mutex_lock(&state->second);
+	acquire_before_wrapper(state);
 }
 
 static void

@@ -19,6 +19,7 @@
 #include <stdbool.h>
 
 struct assumed_region;
+struct acquisition_candidate;
 struct acquisition_summary;
 struct block_info;
 struct entrypoint;
@@ -38,6 +39,7 @@ struct function_info {
 	struct block_info *blocks;
 	struct protection_condition *conditions;
 	struct assumed_region *assumptions;
+	struct acquisition_candidate *acquisition_roles;
 	struct acquisition_summary *acquisitions;
 	struct lock_transfer *transfers;
 	struct visibility_transfer *visibility_transfers;

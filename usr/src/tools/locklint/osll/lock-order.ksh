@@ -46,6 +46,8 @@ run_session()
 		    order_wrapped_callee_inversion \
 		    order_release_before_acquire \
 		    order_acquire_before_release \
+		    order_wrapped_release_before \
+		    order_wrapped_acquire_before \
 		    mixed_order_valid \
 		    mixed_order_inversion
 		do

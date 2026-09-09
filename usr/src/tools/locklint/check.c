@@ -173,6 +173,7 @@ struct acquisition_role {
 struct acquisition_prefix {
 	struct acquisition_role role;
 	lock_state_t output[LOCK_STATE_COUNT];
+	bool unknown;
 	struct acquisition_prefix *next;
 };
 
@@ -210,6 +211,8 @@ static void transfer_call_effects(struct function_info *,
 static void transfer_call_visibility_effects(struct function_info *,
     struct visibility_entry **, struct instruction *);
 static struct symbol *formal_symbol(struct entrypoint *, unsigned int);
+static bool acquisition_block_reachable(struct function_info *,
+    struct basic_block *);
 
 static bool
 same_lock(const struct locklint_access *left,
@@ -2000,7 +2003,7 @@ solve_function_transfers(struct function_info *function)
 	return (changed);
 }
 
-static void
+static bool
 add_acquisition_candidate(struct acquisition_candidate **candidates,
     const struct acquisition_role *role)
 {
@@ -2008,33 +2011,20 @@ add_acquisition_candidate(struct acquisition_candidate **candidates,
 
 	for (tail = candidates; *tail != NULL; tail = &(*tail)->next) {
 		if (same_acquisition_role(&(*tail)->role, role))
-			return;
+			return (false);
 	}
 	*tail = calloc(1, sizeof (**tail));
 	if (*tail == NULL)
 		die("out of memory collecting acquisition summary roles");
 	(*tail)->role = *role;
+	return (true);
 }
 
-static struct acquisition_candidate *
-collect_acquisition_candidates(struct function_info *function)
+static void
+collect_local_acquisition_roles(struct function_info *function)
 {
-	struct acquisition_candidate *candidates = NULL;
-	struct lock_transfer *transfer;
 	struct basic_block *bb;
 
-	for (transfer = function->transfers; transfer != NULL;
-	    transfer = transfer->next) {
-		struct acquisition_role role = { 0 };
-
-		role.relative = true;
-		role.argument = transfer->argument;
-		role.access.root = formal_symbol(function->ep,
-		    transfer->argument);
-		role.access.member = transfer->lock_member;
-		role.access.offset = transfer->lock_offset;
-		add_acquisition_candidate(&candidates, &role);
-	}
 	FOR_EACH_PTR(function->ep->bbs, bb) {
 		struct instruction *insn;
 
@@ -2044,17 +2034,18 @@ collect_acquisition_candidates(struct function_info *function)
 			enum locklint_lock_action action;
 			enum locklint_lock_mode mode;
 
-			if (insn->bb == NULL)
+			if (insn->bb == NULL ||
+			    !acquisition_block_reachable(function, insn->bb))
 				continue;
 			action = locklint_get_lock_action(function->tu, insn,
 			    &lock, &mode);
 			if (action != LOCKLINT_LOCK_NONE &&
 			    lock.root != NULL &&
 			    acquisition_role(function, &lock, &role))
-				add_acquisition_candidate(&candidates, &role);
+				(void) add_acquisition_candidate(
+				    &function->acquisition_roles, &role);
 		} END_FOR_EACH_PTR(insn);
 	} END_FOR_EACH_PTR(bb);
-	return (candidates);
 }
 
 static bool
@@ -2070,6 +2061,43 @@ acquisition_block_reachable(struct function_info *function,
 	return (false);
 }
 
+static bool
+propagate_acquisition_roles(struct function_info *function)
+{
+	struct basic_block *bb;
+	bool changed = false;
+
+	FOR_EACH_PTR(function->ep->bbs, bb) {
+		struct instruction *insn;
+
+		FOR_EACH_PTR(bb->insns, insn) {
+			struct function_info *callee;
+			struct acquisition_candidate *candidate;
+
+			if (insn->bb == NULL ||
+			    !acquisition_block_reachable(function, insn->bb))
+				continue;
+			callee = callgraph_callee(function, insn);
+			if (callee == NULL)
+				continue;
+			for (candidate = callee->acquisition_roles;
+			    candidate != NULL; candidate = candidate->next) {
+				struct locklint_access mapped;
+				struct acquisition_role role;
+
+				if (!map_acquisition_role(function, insn,
+				    &candidate->role, &mapped) ||
+				    !acquisition_role(function, &mapped, &role))
+					continue;
+				if (add_acquisition_candidate(
+				    &function->acquisition_roles, &role))
+					changed = true;
+			}
+		} END_FOR_EACH_PTR(insn);
+	} END_FOR_EACH_PTR(bb);
+	return (changed);
+}
+
 static void
 free_acquisition_candidates(struct acquisition_candidate *candidates)
 {
@@ -2082,24 +2110,172 @@ free_acquisition_candidates(struct acquisition_candidate *candidates)
 }
 
 static void
+free_acquisition_prefixes(struct acquisition_prefix *prefixes)
+{
+	while (prefixes != NULL) {
+		struct acquisition_prefix *next = prefixes->next;
+
+		free(prefixes);
+		prefixes = next;
+	}
+}
+
+static bool
+apply_callee_acquisition_prefix(struct function_info *function,
+    struct instruction *insn, const struct function_info *callee,
+    const struct acquisition_summary *callee_summary,
+    const struct acquisition_role *role, lock_state_t *state)
+{
+	const struct acquisition_candidate *candidate;
+	const struct acquisition_prefix *prefix;
+	unsigned int matches = 0;
+	lock_state_t output = 0;
+
+	for (candidate = callee->acquisition_roles; candidate != NULL;
+	    candidate = candidate->next) {
+		struct locklint_access mapped;
+
+		if (map_acquisition_role(function, insn, &candidate->role,
+		    &mapped) && same_lock(&role->access, &mapped))
+			matches++;
+	}
+	if (matches > 1)
+		return (false);
+	matches = 0;
+	for (prefix = callee_summary->prefixes; prefix != NULL;
+	    prefix = prefix->next) {
+		struct locklint_access mapped;
+
+		if (!map_acquisition_role(function, insn, &prefix->role,
+		    &mapped) || !same_lock(&role->access, &mapped))
+			continue;
+		if (prefix->unknown)
+			return (false);
+		output |= prefix->output[*state];
+		matches++;
+	}
+	if (matches > 1)
+		return (false);
+	if (matches == 1)
+		*state = output;
+	return (true);
+}
+
+static void
+summarize_acquisition_prefix(struct function_info *function,
+    struct acquisition_candidate *candidates, struct instruction *insn,
+    const struct function_info *callee,
+    const struct acquisition_summary *callee_summary,
+    struct acquisition_summary *summary)
+{
+	struct acquisition_candidate *candidate;
+	struct acquisition_prefix **tail = &summary->prefixes;
+
+	for (candidate = candidates; candidate != NULL;
+	    candidate = candidate->next) {
+		struct acquisition_prefix *prefix;
+		unsigned int input;
+		bool changed = false;
+
+		prefix = calloc(1, sizeof (*prefix));
+		if (prefix == NULL)
+			die("out of memory summarizing acquisition");
+		prefix->role = candidate->role;
+		for (input = 1; input < LOCK_STATE_COUNT; input++) {
+			lock_state_t state;
+
+			state = simulate_acquisition_prefix(function,
+			    &candidate->role, input, insn);
+			if (callee_summary != NULL &&
+			    !apply_callee_acquisition_prefix(function, insn,
+			    callee, callee_summary, &candidate->role,
+			    &state)) {
+				prefix->unknown = true;
+				state = input;
+			}
+			prefix->output[input] = state;
+			if (prefix->unknown || state != input)
+				changed = true;
+		}
+		if (!changed) {
+			free(prefix);
+			continue;
+		}
+		*tail = prefix;
+		tail = &prefix->next;
+	}
+}
+
+static const struct acquisition_prefix *
+find_acquisition_prefix(const struct acquisition_summary *summary,
+    const struct acquisition_role *role)
+{
+	const struct acquisition_prefix *prefix;
+
+	for (prefix = summary->prefixes; prefix != NULL;
+	    prefix = prefix->next) {
+		if (same_acquisition_role(&prefix->role, role))
+			return (prefix);
+	}
+	return (NULL);
+}
+
+static bool
+same_acquisition_summary(const struct acquisition_summary *left,
+    const struct acquisition_summary *right)
+{
+	const struct acquisition_prefix *prefix;
+	unsigned int left_count = 0;
+	unsigned int right_count = 0;
+
+	if (!same_acquisition_role(&left->acquired, &right->acquired))
+		return (false);
+	for (prefix = left->prefixes; prefix != NULL; prefix = prefix->next) {
+		const struct acquisition_prefix *other;
+
+		left_count++;
+		other = find_acquisition_prefix(right, &prefix->role);
+		if (other == NULL ||
+		    prefix->unknown != other->unknown ||
+		    memcmp(prefix->output, other->output,
+		    sizeof (prefix->output)) != 0)
+			return (false);
+	}
+	for (prefix = right->prefixes; prefix != NULL; prefix = prefix->next)
+		right_count++;
+	return (left_count == right_count);
+}
+
+static bool
+add_acquisition_summary(struct function_info *function,
+    struct acquisition_summary *summary)
+{
+	struct acquisition_summary **tail;
+
+	for (tail = &function->acquisitions; *tail != NULL;
+	    tail = &(*tail)->next) {
+		if (!same_acquisition_summary(*tail, summary))
+			continue;
+		free_acquisition_prefixes(summary->prefixes);
+		free(summary);
+		return (false);
+	}
+	*tail = summary;
+	return (true);
+}
+
+static void
 collect_local_acquisition_summaries(struct function_info *function)
 {
-	struct acquisition_candidate *candidates;
-	struct acquisition_summary **tail = &function->acquisitions;
 	struct basic_block *bb;
 
-	candidates = collect_acquisition_candidates(function);
-	while (*tail != NULL)
-		tail = &(*tail)->next;
 	FOR_EACH_PTR(function->ep->bbs, bb) {
 		struct instruction *insn;
 
 		FOR_EACH_PTR(bb->insns, insn) {
 			struct locklint_access lock;
 			struct acquisition_role acquired;
-			struct acquisition_candidate *candidate;
 			struct acquisition_summary *summary;
-			struct acquisition_prefix **prefix_tail;
 			enum locklint_lock_action action;
 			enum locklint_lock_mode mode;
 
@@ -2118,37 +2294,66 @@ collect_local_acquisition_summaries(struct function_info *function)
 			summary->acquired = acquired;
 			summary->pos = insn->call_expr != NULL ?
 			    insn->call_expr->pos : insn->pos;
-			prefix_tail = &summary->prefixes;
-			for (candidate = candidates; candidate != NULL;
-			    candidate = candidate->next) {
-				struct acquisition_prefix *prefix;
-				unsigned int input;
-				bool changed = false;
-
-				prefix = calloc(1, sizeof (*prefix));
-				if (prefix == NULL)
-					die("out of memory summarizing acquisition");
-				prefix->role = candidate->role;
-				for (input = 1; input < LOCK_STATE_COUNT;
-				    input++) {
-					prefix->output[input] =
-					    simulate_acquisition_prefix(function,
-					    &candidate->role, input, insn);
-					if (prefix->output[input] != input)
-						changed = true;
-				}
-				if (!changed) {
-					free(prefix);
-					continue;
-				}
-				*prefix_tail = prefix;
-				prefix_tail = &prefix->next;
-			}
-			*tail = summary;
-			tail = &summary->next;
+			summarize_acquisition_prefix(function,
+			    function->acquisition_roles, insn, NULL, NULL,
+			    summary);
+			(void) add_acquisition_summary(function, summary);
 		} END_FOR_EACH_PTR(insn);
 	} END_FOR_EACH_PTR(bb);
-	free_acquisition_candidates(candidates);
+}
+
+static bool
+propagate_acquisition_summaries(struct function_info *function)
+{
+	struct basic_block *bb;
+	bool changed = false;
+
+	FOR_EACH_PTR(function->ep->bbs, bb) {
+		struct instruction *insn;
+
+		FOR_EACH_PTR(bb->insns, insn) {
+			struct function_info *callee;
+			struct acquisition_summary *summary;
+			struct acquisition_summary *last;
+
+			if (insn->bb == NULL ||
+			    !acquisition_block_reachable(function, insn->bb))
+				continue;
+			callee = callgraph_callee(function, insn);
+			if (callee == NULL || callee->acquisitions == NULL)
+				continue;
+			last = callee->acquisitions;
+			while (last->next != NULL)
+				last = last->next;
+			for (summary = callee->acquisitions; summary != NULL;
+			    summary = summary->next) {
+				struct locklint_access mapped;
+				struct acquisition_role acquired;
+				struct acquisition_summary *propagated;
+				bool at_last = summary == last;
+
+				if (!map_acquisition_role(function, insn,
+				    &summary->acquired, &mapped) ||
+				    !acquisition_role(function, &mapped,
+				    &acquired))
+					goto next_summary;
+				propagated = calloc(1, sizeof (*propagated));
+				if (propagated == NULL)
+					die("out of memory propagating acquisition");
+				propagated->acquired = acquired;
+				propagated->pos = summary->pos;
+				summarize_acquisition_prefix(function,
+				    function->acquisition_roles, insn, callee,
+				    summary, propagated);
+				if (add_acquisition_summary(function, propagated))
+					changed = true;
+next_summary:
+				if (at_last)
+					break;
+			}
+		} END_FOR_EACH_PTR(insn);
+	} END_FOR_EACH_PTR(bb);
+	return (changed);
 }
 
 static void
@@ -2772,12 +2977,28 @@ check_access(struct function_info *function, struct analysis_state *state,
 
 static lock_state_t
 acquisition_prefix_state(struct function_info *function,
-    struct instruction *insn, const struct acquisition_summary *summary,
-    const struct state_entry *held, bool *known)
+    struct instruction *insn, const struct function_info *callee,
+    const struct acquisition_summary *summary, const struct state_entry *held,
+    bool *known)
 {
+	const struct acquisition_candidate *candidate;
 	const struct acquisition_prefix *prefix;
 	lock_state_t state = 0;
-	unsigned int matches = 0;
+	unsigned int aliases = 0;
+	bool found = false;
+
+	for (candidate = callee->acquisition_roles; candidate != NULL;
+	    candidate = candidate->next) {
+		struct locklint_access mapped;
+
+		if (map_acquisition_role(function, insn, &candidate->role,
+		    &mapped) && same_lock(&held->lock, &mapped))
+			aliases++;
+	}
+	if (aliases > 1) {
+		*known = false;
+		return (held->state);
+	}
 
 	for (prefix = summary->prefixes; prefix != NULL;
 	    prefix = prefix->next) {
@@ -2786,16 +3007,15 @@ acquisition_prefix_state(struct function_info *function,
 		if (!map_acquisition_role(function, insn, &prefix->role,
 		    &mapped) || !same_lock(&held->lock, &mapped))
 			continue;
+		if (prefix->unknown) {
+			*known = false;
+			return (held->state);
+		}
 		state |= prefix->output[held->state];
-		matches++;
+		found = true;
 	}
-	/*
-	 * Independent transfer vectors cannot be composed when distinct callee
-	 * roles alias the same caller lock.  Defer that case rather than report
-	 * an order violation from an inexact prefix state.
-	 */
-	*known = matches <= 1;
-	return (matches != 0 ? state : held->state);
+	*known = true;
+	return (found ? state : held->state);
 }
 
 static void
@@ -2819,15 +3039,16 @@ check_call_acquisitions(struct function_info *function,
 
 			if (locklint_same_access(&acquired, &held->lock))
 				continue;
-			state = acquisition_prefix_state(function, insn, summary,
-			    held, &known);
+			state = acquisition_prefix_state(function, insn, callee,
+			    summary, held, &known);
 			if (!known || (state & LOCK_ANY_HELD) == 0)
 				continue;
 			if (!locklint_order_check_declared(&acquired,
 			    &held->lock, &pos, !state_definitely_held(state)))
 				continue;
-			info(summary->pos, "locklint: lock acquired in callee "
-			    "'%s'", show_ident(callee->ep->name->ident));
+			info(summary->pos, "locklint: lock acquisition reached "
+			    "through callee '%s'",
+			    show_ident(callee->ep->name->ident));
 		}
 	}
 }
@@ -2910,6 +3131,8 @@ check_call(struct function_info *function,
 		    transfer = transfer->next) {
 			struct locklint_access lock;
 			lock_state_t state;
+			unsigned int argument;
+			bool defer;
 
 			if (!argument_lock(function->tu, insn,
 			    transfer->argument,
@@ -2917,13 +3140,17 @@ check_call(struct function_info *function,
 			    &lock))
 				continue;
 			state = get_state(analysis->locks, &lock);
-			if (transfer->invalid[state] & INVALID_ACQUIRE) {
+			defer = defer_conditions(function) &&
+			    formal_argument(function->ep, lock.root, &argument);
+			if (!defer &&
+			    (transfer->invalid[state] & INVALID_ACQUIRE) != 0) {
 				warning(pos, "locklint: call to '%s' may acquire "
 				    "already-held lock '%s'",
 				    show_ident(callee->ep->name->ident),
 				    lock_name(&lock));
 			}
-			if (transfer->invalid[state] & INVALID_RELEASE) {
+			if (!defer &&
+			    (transfer->invalid[state] & INVALID_RELEASE) != 0) {
 				warning(pos, "locklint: call to '%s' may release "
 				    "lock '%s' that is not held",
 				    show_ident(callee->ep->name->ident),
@@ -3124,8 +3351,30 @@ run_lock_checks(void)
 	callgraph_iter_close(iter);
 	iter = function_iter_open();
 	while ((function = callgraph_iter_next(iter)) != NULL)
+		collect_local_acquisition_roles(function);
+	callgraph_iter_close(iter);
+	do {
+		changed = false;
+		iter = function_iter_open();
+		while ((function = callgraph_iter_next(iter)) != NULL) {
+			if (propagate_acquisition_roles(function))
+				changed = true;
+		}
+		callgraph_iter_close(iter);
+	} while (changed);
+	iter = function_iter_open();
+	while ((function = callgraph_iter_next(iter)) != NULL)
 		collect_local_acquisition_summaries(function);
 	callgraph_iter_close(iter);
+	do {
+		changed = false;
+		iter = function_iter_open();
+		while ((function = callgraph_iter_next(iter)) != NULL) {
+			if (propagate_acquisition_summaries(function))
+				changed = true;
+		}
+		callgraph_iter_close(iter);
+	} while (changed);
 	iter = function_iter_open();
 	while ((function = callgraph_iter_next(iter)) != NULL)
 		collect_local_protection_conditions(function);
@@ -3153,6 +3402,8 @@ free_checker_attachments(void)
 	struct function_info *function;
 
 	while ((function = callgraph_iter_next(iter)) != NULL) {
+		struct acquisition_candidate *acquisition_role =
+		    function->acquisition_roles;
 		struct acquisition_summary *acquisition =
 		    function->acquisitions;
 		struct protection_condition *condition = function->conditions;
@@ -3175,6 +3426,7 @@ free_checker_attachments(void)
 			free(assumption);
 			assumption = assumption_next;
 		}
+		free_acquisition_candidates(acquisition_role);
 		while (acquisition != NULL) {
 			struct acquisition_summary *acquisition_next =
 			    acquisition->next;
@@ -3208,6 +3460,7 @@ free_checker_attachments(void)
 		function->blocks = NULL;
 		function->conditions = NULL;
 		function->assumptions = NULL;
+		function->acquisition_roles = NULL;
 		function->acquisitions = NULL;
 		function->transfers = NULL;
 		function->visibility_transfers = NULL;
