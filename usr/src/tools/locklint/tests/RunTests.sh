@@ -279,6 +279,11 @@ run_capture "competition depth" competition-depth.raw \
 compare_no_columns "competition depth" competition-depth.ref \
     competition-depth.raw competition-depth.out
 
+run_capture "competition calls" competition-calls.raw \
+    "$LOCKLINT" --check-locks competition-calls.c
+compare_no_columns "competition calls" competition-calls.ref \
+    competition-calls.raw competition-calls.out
+
 #
 # Verify intraprocedural lock state across branches, loops, and returns.
 #

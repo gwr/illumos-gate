@@ -109,6 +109,28 @@ struct block_info {
 	struct block_info *next;
 };
 
+struct competition_transfer {
+	struct competition_state output;
+	struct competition_state ambient_output;
+	int minimum_prefix;
+	bool minimum_prefix_unbounded;
+	int ambient_minimum_prefix;
+	bool ambient_minimum_prefix_unbounded;
+};
+
+struct competition_transfer_block_info {
+	struct basic_block *bb;
+	bool reachable;
+	bool input_complete;
+	struct competition_state in;
+	struct competition_state out;
+	int minimum_prefix_in;
+	int minimum_prefix_out;
+	bool minimum_prefix_in_unbounded;
+	bool minimum_prefix_out_unbounded;
+	struct competition_transfer_block_info *next;
+};
+
 struct transfer_block_info {
 	struct basic_block *bb;
 	bool reachable;
@@ -751,6 +773,67 @@ transfer_assertion(struct function_info *function,
 }
 
 static void
+shift_competition_state(struct competition_state *state, int change)
+{
+	if (!state->minimum_unbounded)
+		state->minimum += change;
+	if (!state->maximum_unbounded)
+		state->maximum += change;
+}
+
+static void
+change_competition_state(struct competition_state *state, int change)
+{
+	if (state->ambient) {
+		state->minimum = change > 0 ? change : change + 1;
+		state->maximum = state->minimum;
+		state->ambient = false;
+	} else {
+		shift_competition_state(state, change);
+	}
+}
+
+static void
+apply_competition_transfer(struct competition_state *state,
+    const struct competition_transfer *transfer)
+{
+	struct competition_state input;
+
+	if (state->ambient) {
+		*state = transfer->ambient_output;
+		return;
+	}
+	input = *state;
+	state->minimum_unbounded |= transfer->output.minimum_unbounded;
+	state->maximum_unbounded |= transfer->output.maximum_unbounded;
+	if (state->minimum_unbounded) {
+		state->minimum = 0;
+	} else {
+		state->minimum = input.minimum + transfer->output.minimum;
+	}
+	if (state->maximum_unbounded) {
+		state->maximum = 0;
+	} else {
+		state->maximum = input.maximum + transfer->output.maximum;
+	}
+	state->path_dependent |= transfer->output.path_dependent ||
+	    transfer->output.minimum_unbounded ||
+	    transfer->output.maximum_unbounded ||
+	    transfer->output.minimum != transfer->output.maximum;
+	state->ambient = false;
+}
+
+static void
+transfer_call_competition_effect(struct function_info *function,
+    struct competition_state *state, const struct instruction *insn)
+{
+	struct function_info *callee = callgraph_callee(function, insn);
+
+	if (callee != NULL && callee->competition_transfer != NULL)
+		apply_competition_transfer(state, callee->competition_transfer);
+}
+
+static void
 transfer_competition_state(struct analysis_state *state,
     const struct instruction *insn)
 {
@@ -764,28 +847,10 @@ transfer_competition_state(struct analysis_state *state,
 		state->competition.ambient = false;
 		break;
 	case LOCKLINT_EXECUTION_NO_COMPETITION:
-		if (state->competition.ambient) {
-			state->competition.minimum = 0;
-			state->competition.maximum = 0;
-			state->competition.ambient = false;
-		} else {
-			if (!state->competition.minimum_unbounded)
-				state->competition.minimum--;
-			if (!state->competition.maximum_unbounded)
-				state->competition.maximum--;
-		}
+		change_competition_state(&state->competition, -1);
 		break;
 	case LOCKLINT_EXECUTION_COMPETITION:
-		if (state->competition.ambient) {
-			state->competition.minimum = 1;
-			state->competition.maximum = 1;
-			state->competition.ambient = false;
-		} else {
-			if (!state->competition.minimum_unbounded)
-				state->competition.minimum++;
-			if (!state->competition.maximum_unbounded)
-				state->competition.maximum++;
-		}
+		change_competition_state(&state->competition, 1);
 		break;
 	default:
 		break;
@@ -845,6 +910,7 @@ transfer_instruction(struct function_info *function,
 {
 	transfer_call_effects(function, &state->locks, insn);
 	transfer_call_visibility_effects(function, &state->visibility, insn);
+	transfer_call_competition_effect(function, &state->competition, insn);
 	transfer_lock_action(function, &state->locks, insn);
 	transfer_assertion(function, &state->locks, insn);
 	transfer_competition_state(state, insn);
@@ -960,6 +1026,330 @@ analyze_blocks(struct function_info *function)
 	} while (changed);
 
 	return (blocks);
+}
+
+static struct competition_transfer_block_info *
+find_competition_transfer_block(struct competition_transfer_block_info *blocks,
+    struct basic_block *bb)
+{
+	struct competition_transfer_block_info *block;
+
+	for (block = blocks; block != NULL; block = block->next) {
+		if (block->bb == bb)
+			return (block);
+	}
+	return (NULL);
+}
+
+static void
+update_competition_minimum_prefix(const struct competition_state *state,
+    int *minimum, bool *unbounded)
+{
+	if (*unbounded)
+		return;
+	if (state->minimum_unbounded) {
+		*minimum = 0;
+		*unbounded = true;
+	} else if (state->minimum < *minimum) {
+		*minimum = state->minimum;
+	}
+}
+
+static void
+simulate_competition_transfer_instruction(struct function_info *function,
+    struct competition_state *state, int *minimum_prefix,
+    bool *minimum_prefix_unbounded, struct instruction *insn)
+{
+	struct function_info *callee = callgraph_callee(function, insn);
+	enum locklint_execution_kind kind;
+
+	if (callee != NULL && callee->competition_transfer != NULL) {
+		struct competition_transfer *transfer =
+		    callee->competition_transfer;
+		int callee_minimum;
+		bool callee_minimum_unbounded;
+
+		if (state->ambient) {
+			callee_minimum = transfer->ambient_minimum_prefix;
+			callee_minimum_unbounded =
+			    transfer->ambient_minimum_prefix_unbounded;
+		} else {
+			callee_minimum = state->minimum +
+			    transfer->minimum_prefix;
+			callee_minimum_unbounded =
+			    transfer->minimum_prefix_unbounded ||
+			    state->minimum_unbounded;
+		}
+		if (callee_minimum_unbounded ||
+		    state->minimum_unbounded) {
+			*minimum_prefix = 0;
+			*minimum_prefix_unbounded = true;
+		} else if (!*minimum_prefix_unbounded &&
+		    callee_minimum < *minimum_prefix) {
+			*minimum_prefix = callee_minimum;
+		}
+		apply_competition_transfer(state, transfer);
+		update_competition_minimum_prefix(state, minimum_prefix,
+		    minimum_prefix_unbounded);
+	}
+
+	kind = locklint_get_execution_annotation(insn);
+	if (kind == LOCKLINT_EXECUTION_NO_COMPETITION)
+		change_competition_state(state, -1);
+	else if (kind == LOCKLINT_EXECUTION_COMPETITION)
+		change_competition_state(state, 1);
+	else
+		return;
+	update_competition_minimum_prefix(state, minimum_prefix,
+	    minimum_prefix_unbounded);
+}
+
+static void
+merge_competition_transfer_prefix(int *minimum, bool *unbounded,
+    int incoming_minimum, bool incoming_unbounded)
+{
+	if (incoming_unbounded) {
+		*minimum = 0;
+		*unbounded = true;
+	} else if (!*unbounded && incoming_minimum < *minimum) {
+		*minimum = incoming_minimum;
+	}
+}
+
+static struct competition_transfer_block_info *
+solve_competition_transfer_blocks(struct function_info *function,
+    const struct competition_state *input)
+{
+	struct competition_transfer_block_info *blocks = NULL;
+	struct competition_transfer_block_info **tail = &blocks;
+	struct competition_transfer_block_info *block;
+	struct basic_block *bb;
+	bool changed;
+
+	FOR_EACH_PTR(function->ep->bbs, bb) {
+		block = calloc(1, sizeof (*block));
+		if (block == NULL)
+			die("out of memory summarizing competition transfer");
+		block->bb = bb;
+		*tail = block;
+		tail = &block->next;
+	} END_FOR_EACH_PTR(bb);
+
+	do {
+		changed = false;
+		for (block = blocks; block != NULL; block = block->next) {
+			struct competition_state in = *input;
+			struct competition_state out;
+			struct basic_block *parent;
+			int minimum_prefix_in = 0;
+			int minimum_prefix_out;
+			bool minimum_prefix_in_unbounded = false;
+			bool minimum_prefix_out_unbounded;
+			bool reachable = block->bb == function->ep->entry->bb;
+			bool complete = true;
+			bool first = true;
+			struct instruction *insn;
+
+			if (!reachable) {
+				FOR_EACH_PTR(block->bb->parents, parent) {
+					struct competition_transfer_block_info
+					    *parent_block;
+
+					parent_block =
+					    find_competition_transfer_block(blocks,
+					    parent);
+					if (parent_block == NULL ||
+					    !parent_block->reachable) {
+						complete = false;
+						continue;
+					}
+					if (first) {
+						in = parent_block->out;
+						minimum_prefix_in =
+						    parent_block->
+						    minimum_prefix_out;
+						minimum_prefix_in_unbounded =
+						    parent_block->
+						    minimum_prefix_out_unbounded;
+						first = false;
+					} else {
+						merge_competition_state(&in,
+						    &parent_block->out);
+						merge_competition_transfer_prefix(
+						    &minimum_prefix_in,
+						    &minimum_prefix_in_unbounded,
+						    parent_block->
+						    minimum_prefix_out,
+						    parent_block->
+						    minimum_prefix_out_unbounded);
+					}
+					reachable = true;
+				} END_FOR_EACH_PTR(parent);
+			}
+			if (!reachable)
+				continue;
+			if (block->input_complete && complete) {
+				widen_competition_state(&in, &block->in);
+				if (block->minimum_prefix_in_unbounded ||
+				    (!minimum_prefix_in_unbounded &&
+				    minimum_prefix_in <
+				    block->minimum_prefix_in)) {
+					minimum_prefix_in = 0;
+					minimum_prefix_in_unbounded = true;
+				}
+			}
+			out = in;
+			minimum_prefix_out = minimum_prefix_in;
+			minimum_prefix_out_unbounded =
+			    minimum_prefix_in_unbounded;
+			FOR_EACH_PTR(block->bb->insns, insn) {
+				if (insn->bb != NULL) {
+					simulate_competition_transfer_instruction(
+					    function, &out,
+					    &minimum_prefix_out,
+					    &minimum_prefix_out_unbounded, insn);
+				}
+			} END_FOR_EACH_PTR(insn);
+			if (!block->reachable ||
+			    !same_competition_state(&block->in, &in) ||
+			    !same_competition_state(&block->out, &out) ||
+			    block->minimum_prefix_in != minimum_prefix_in ||
+			    block->minimum_prefix_out != minimum_prefix_out ||
+			    block->minimum_prefix_in_unbounded !=
+			    minimum_prefix_in_unbounded ||
+			    block->minimum_prefix_out_unbounded !=
+			    minimum_prefix_out_unbounded)
+				changed = true;
+			block->reachable = true;
+			block->input_complete = complete;
+			block->in = in;
+			block->out = out;
+			block->minimum_prefix_in = minimum_prefix_in;
+			block->minimum_prefix_out = minimum_prefix_out;
+			block->minimum_prefix_in_unbounded =
+			    minimum_prefix_in_unbounded;
+			block->minimum_prefix_out_unbounded =
+			    minimum_prefix_out_unbounded;
+		}
+	} while (changed);
+	return (blocks);
+}
+
+static struct competition_state
+simulate_competition_transfer(struct function_info *function,
+    const struct competition_state *input, int *minimum_prefix,
+    bool *minimum_prefix_unbounded)
+{
+	struct competition_transfer_block_info *blocks;
+	struct competition_transfer_block_info *block;
+	struct competition_state result = *input;
+	bool found_return = false;
+
+	*minimum_prefix = 0;
+	*minimum_prefix_unbounded = false;
+	blocks = solve_competition_transfer_blocks(function, input);
+	for (block = blocks; block != NULL; block = block->next) {
+		if (!block->reachable)
+			continue;
+		merge_competition_transfer_prefix(minimum_prefix,
+		    minimum_prefix_unbounded, block->minimum_prefix_out,
+		    block->minimum_prefix_out_unbounded);
+	}
+	for (block = blocks; block != NULL; block = block->next) {
+		struct instruction *insn;
+		bool returns = false;
+
+		if (!block->reachable)
+			continue;
+		FOR_EACH_PTR(block->bb->insns, insn) {
+			if (insn->bb != NULL && insn->opcode == OP_RET)
+				returns = true;
+		} END_FOR_EACH_PTR(insn);
+		if (!returns)
+			continue;
+		if (!found_return) {
+			result = block->out;
+			found_return = true;
+		} else {
+			merge_competition_state(&result, &block->out);
+		}
+	}
+	while (blocks != NULL) {
+		struct competition_transfer_block_info *next = blocks->next;
+
+		free(blocks);
+		blocks = next;
+	}
+	return (result);
+}
+
+static bool
+solve_function_competition_transfer(struct function_info *function,
+    bool widen)
+{
+	const struct competition_state exact_input = { 0 };
+	const struct competition_state ambient_input = {
+		.minimum = 0,
+		.maximum = 1,
+		.ambient = true
+	};
+	struct competition_transfer *transfer = function->competition_transfer;
+	struct competition_state output;
+	struct competition_state ambient_output;
+	int minimum_prefix;
+	int ambient_minimum_prefix;
+	bool minimum_prefix_unbounded;
+	bool ambient_minimum_prefix_unbounded;
+
+	output = simulate_competition_transfer(function, &exact_input,
+	    &minimum_prefix, &minimum_prefix_unbounded);
+	ambient_output = simulate_competition_transfer(function, &ambient_input,
+	    &ambient_minimum_prefix, &ambient_minimum_prefix_unbounded);
+	if (widen) {
+		merge_competition_state(&output, &transfer->output);
+		widen_competition_state(&output, &transfer->output);
+		merge_competition_state(&ambient_output,
+		    &transfer->ambient_output);
+		widen_competition_state(&ambient_output,
+		    &transfer->ambient_output);
+		if (transfer->minimum_prefix_unbounded ||
+		    (!minimum_prefix_unbounded &&
+		    minimum_prefix < transfer->minimum_prefix)) {
+			minimum_prefix = 0;
+			minimum_prefix_unbounded = true;
+		} else if (minimum_prefix > transfer->minimum_prefix) {
+			minimum_prefix = transfer->minimum_prefix;
+		}
+		if (transfer->ambient_minimum_prefix_unbounded ||
+		    (!ambient_minimum_prefix_unbounded &&
+		    ambient_minimum_prefix <
+		    transfer->ambient_minimum_prefix)) {
+			ambient_minimum_prefix = 0;
+			ambient_minimum_prefix_unbounded = true;
+		} else if (ambient_minimum_prefix >
+		    transfer->ambient_minimum_prefix) {
+			ambient_minimum_prefix =
+			    transfer->ambient_minimum_prefix;
+		}
+	}
+	if (same_competition_state(&transfer->output, &output) &&
+	    same_competition_state(&transfer->ambient_output,
+	    &ambient_output) &&
+	    transfer->minimum_prefix == minimum_prefix &&
+	    transfer->minimum_prefix_unbounded ==
+	    minimum_prefix_unbounded &&
+	    transfer->ambient_minimum_prefix == ambient_minimum_prefix &&
+	    transfer->ambient_minimum_prefix_unbounded ==
+	    ambient_minimum_prefix_unbounded)
+		return (false);
+	transfer->output = output;
+	transfer->ambient_output = ambient_output;
+	transfer->minimum_prefix = minimum_prefix;
+	transfer->minimum_prefix_unbounded = minimum_prefix_unbounded;
+	transfer->ambient_minimum_prefix = ambient_minimum_prefix;
+	transfer->ambient_minimum_prefix_unbounded =
+	    ambient_minimum_prefix_unbounded;
+	return (true);
 }
 
 static bool
@@ -3654,6 +4044,31 @@ check_call(struct function_info *function,
 		}
 	}
 	transfer_call_visibility_effects(function, &analysis->visibility, insn);
+	if (callee->competition_transfer != NULL) {
+		struct competition_transfer *transfer =
+		    callee->competition_transfer;
+		bool underflows;
+
+		if (analysis->competition.ambient) {
+			underflows =
+			    transfer->ambient_minimum_prefix_unbounded ||
+			    transfer->ambient_minimum_prefix < 0;
+		} else {
+			underflows = transfer->minimum_prefix_unbounded;
+			if (!underflows && transfer->minimum_prefix < 0) {
+				underflows =
+				    analysis->competition.minimum_unbounded ||
+				    analysis->competition.minimum +
+				    transfer->minimum_prefix < 0;
+			}
+		}
+		if (underflows && !defer_conditions(function)) {
+			warning(pos, "locklint: call to '%s' may decrement "
+			    "competition depth below zero",
+			    show_ident(callee->ep->name->ident));
+		}
+		apply_competition_transfer(&analysis->competition, transfer);
+	}
 }
 
 static void
@@ -3737,6 +4152,29 @@ function_declares_lock_effect(struct function_info *function,
 }
 
 static void
+check_competition_transition(struct function_info *function,
+    const struct analysis_state *state, const struct instruction *insn)
+{
+	struct position pos;
+
+	if (locklint_get_execution_annotation(insn) !=
+	    LOCKLINT_EXECUTION_NO_COMPETITION ||
+	    state->competition.ambient ||
+	    (!state->competition.minimum_unbounded &&
+	    state->competition.minimum > 0) ||
+	    defer_conditions(function))
+		return;
+	pos = insn->pos;
+	if (!state->competition.maximum_unbounded &&
+	    state->competition.maximum <= 0) {
+		warning(pos, "locklint: competition depth decremented below zero");
+	} else {
+		warning(pos, "locklint: competition depth may be decremented "
+		    "below zero");
+	}
+}
+
+static void
 check_return_state(struct function_info *function, struct block_info *block,
     struct analysis_state *state)
 {
@@ -3789,6 +4227,7 @@ emit_diagnostics(struct function_info *function)
 			check_call(function, state, insn);
 			check_lock_action(function, state, insn);
 			transfer_assertion(function, &state->locks, insn);
+			check_competition_transition(function, state, insn);
 			transfer_competition_state(state, insn);
 			transfer_visibility_state(function, state, insn, true);
 			diagnose_assumption(function, insn);
@@ -3832,10 +4271,22 @@ run_lock_checks(void)
 {
 	struct callgraph_iter *iter;
 	struct function_info *function;
+	unsigned int function_count = 0;
+	unsigned int competition_round;
 	bool changed;
 
 	iter = function_iter_open();
 	while ((function = callgraph_iter_next(iter)) != NULL) {
+		struct competition_transfer *competition_transfer;
+
+		competition_transfer = calloc(1,
+		    sizeof (*competition_transfer));
+		if (competition_transfer == NULL)
+			die("out of memory recording competition transfer");
+		competition_transfer->ambient_output.maximum = 1;
+		competition_transfer->ambient_output.ambient = true;
+		function->competition_transfer = competition_transfer;
+		function_count++;
 		(void) collect_local_transfers(function);
 		(void) collect_local_visibility_transfers(function);
 	}
@@ -3855,6 +4306,18 @@ run_lock_checks(void)
 			if (solve_function_transfers(function))
 				changed = true;
 			if (solve_function_visibility_transfers(function))
+				changed = true;
+		}
+		callgraph_iter_close(iter);
+	} while (changed);
+	competition_round = 0;
+	do {
+		changed = false;
+		competition_round++;
+		iter = function_iter_open();
+		while ((function = callgraph_iter_next(iter)) != NULL) {
+			if (solve_function_competition_transfer(function,
+			    competition_round > function_count))
 				changed = true;
 		}
 		callgraph_iter_close(iter);
@@ -3943,6 +4406,8 @@ free_checker_attachments(void)
 		    function->acquisitions;
 		struct assertion_requirement *requirement =
 		    function->assertion_requirements;
+		struct competition_transfer *competition_transfer =
+		    function->competition_transfer;
 		struct protection_condition *condition = function->conditions;
 		struct assumed_region *assumption = function->assumptions;
 		struct lock_transfer *transfer = function->transfers;
@@ -4000,11 +4465,13 @@ free_checker_attachments(void)
 			free(visibility_transfer);
 			visibility_transfer = transfer_next;
 		}
+		free(competition_transfer);
 		free_blocks(function->blocks);
 		function->blocks = NULL;
 		function->conditions = NULL;
 		function->assumptions = NULL;
 		function->assertion_requirements = NULL;
+		function->competition_transfer = NULL;
 		function->acquisition_roles = NULL;
 		function->acquisitions = NULL;
 		function->transfers = NULL;
