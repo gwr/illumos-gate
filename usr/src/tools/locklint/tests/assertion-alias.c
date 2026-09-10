@@ -39,7 +39,9 @@ extern int mutex_owned(mutex_t *);
 extern int mutex_lock(mutex_t *);
 extern int mutex_unlock(mutex_t *);
 
-#if ASSERTION_ALIAS_VARIANT == 1 || ASSERTION_ALIAS_VARIANT == 2
+#if ASSERTION_ALIAS_VARIANT == 1 || ASSERTION_ALIAS_VARIANT == 2 || \
+    ASSERTION_ALIAS_VARIANT == 4 || ASSERTION_ALIAS_VARIANT == 5 || \
+    ASSERTION_ALIAS_VARIANT == 6
 
 static void
 acquire_first_require_second(struct assertion_alias_state *first,
@@ -48,6 +50,27 @@ acquire_first_require_second(struct assertion_alias_state *first,
 	(void) mutex_lock(&first->lock);
 	ASSERT(MUTEX_HELD(&second->lock));
 	(void) mutex_unlock(&first->lock);
+}
+
+#endif
+
+#if ASSERTION_ALIAS_VARIANT == 4 || ASSERTION_ALIAS_VARIANT == 5
+
+static void
+acquire_first_require_second_wrapper(struct assertion_alias_state *first,
+    struct assertion_alias_state *second)
+{
+	acquire_first_require_second(first, second);
+}
+
+#endif
+
+#if ASSERTION_ALIAS_VARIANT == 6
+
+static void
+acquire_satisfies_internal_alias(struct assertion_alias_state *state)
+{
+	acquire_first_require_second(state, state);
 }
 
 #endif
@@ -125,6 +148,33 @@ same_opposite_requirements_held(struct assertion_alias_state *state)
 	(void) mutex_lock(&state->lock);
 	require_held_and_not_held(state, state);
 	(void) mutex_unlock(&state->lock);
+}
+
+#elif ASSERTION_ALIAS_VARIANT == 4
+
+static void
+same_acquire_satisfies_wrapped_requirement(
+    struct assertion_alias_state *state)
+{
+	acquire_first_require_second_wrapper(state, state);
+}
+
+#elif ASSERTION_ALIAS_VARIANT == 5
+
+static void
+distinct_acquire_does_not_satisfy_wrapped_requirement(
+    struct assertion_alias_state *first,
+    struct assertion_alias_state *second)
+{
+	acquire_first_require_second_wrapper(first, second);
+}
+
+#elif ASSERTION_ALIAS_VARIANT == 6
+
+static void
+call_internal_assertion_alias(struct assertion_alias_state *state)
+{
+	acquire_satisfies_internal_alias(state);
 }
 
 #else

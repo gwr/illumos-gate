@@ -187,10 +187,17 @@ struct acquisition_role {
 	bool relative;
 };
 
+struct assertion_alternative {
+	struct acquisition_role role;
+	unsigned int accepted_inputs;
+	struct assertion_alternative *next;
+};
+
 struct assertion_requirement {
 	struct acquisition_role role;
 	unsigned int modes;
 	unsigned int accepted_inputs;
+	struct assertion_alternative *alternatives;
 	struct function_info *source_function;
 	struct instruction *checkpoint;
 	struct position pos;
@@ -2953,12 +2960,102 @@ same_requirement_origin(const struct assertion_requirement *requirement,
 	    requirement->pos.pos == pos.pos);
 }
 
+static const struct assertion_alternative *
+find_assertion_alternative(const struct assertion_alternative *alternatives,
+    const struct acquisition_role *role)
+{
+	for (; alternatives != NULL; alternatives = alternatives->next) {
+		if (same_acquisition_role(&alternatives->role, role))
+			return (alternatives);
+	}
+	return (NULL);
+}
+
+static bool
+add_assertion_alternative(struct assertion_alternative **alternatives,
+    const struct acquisition_role *role, unsigned int accepted_inputs)
+{
+	struct assertion_alternative *alternative;
+
+	for (alternative = *alternatives; alternative != NULL;
+	    alternative = alternative->next) {
+		if (same_acquisition_role(&alternative->role, role))
+			break;
+	}
+	if (alternative != NULL) {
+		unsigned int merged =
+		    alternative->accepted_inputs & accepted_inputs;
+
+		if (merged == alternative->accepted_inputs)
+			return (false);
+		alternative->accepted_inputs = merged;
+		return (true);
+	}
+	alternative = calloc(1, sizeof (*alternative));
+	if (alternative == NULL)
+		die("out of memory recording assertion alias alternative");
+	alternative->role = *role;
+	alternative->accepted_inputs = accepted_inputs;
+	alternative->next = *alternatives;
+	*alternatives = alternative;
+	return (true);
+}
+
+static void
+free_assertion_alternatives(struct assertion_alternative *alternatives)
+{
+	while (alternatives != NULL) {
+		struct assertion_alternative *next = alternatives->next;
+
+		free(alternatives);
+		alternatives = next;
+	}
+}
+
+/*
+ * Merge alternatives from another path.  A missing alternative on either
+ * path contributes that path's ordinary accepted-input mask.
+ */
+static bool
+merge_assertion_alternatives(struct assertion_requirement *requirement,
+    const struct assertion_alternative *incoming, unsigned int old_base,
+    unsigned int incoming_base)
+{
+	struct assertion_alternative *alternative;
+	const struct assertion_alternative *other;
+	bool changed = false;
+
+	for (alternative = requirement->alternatives; alternative != NULL;
+	    alternative = alternative->next) {
+		unsigned int accepted_inputs;
+
+		other = find_assertion_alternative(incoming,
+		    &alternative->role);
+		accepted_inputs = alternative->accepted_inputs &
+		    (other != NULL ? other->accepted_inputs : incoming_base);
+		if (accepted_inputs != alternative->accepted_inputs) {
+			alternative->accepted_inputs = accepted_inputs;
+			changed = true;
+		}
+	}
+	for (other = incoming; other != NULL; other = other->next) {
+		if (find_assertion_alternative(requirement->alternatives,
+		    &other->role) != NULL)
+			continue;
+		if (add_assertion_alternative(&requirement->alternatives,
+		    &other->role, other->accepted_inputs & old_base))
+			changed = true;
+	}
+	return (changed);
+}
+
 static bool
 add_assertion_requirement(struct function_info *function,
     const struct acquisition_role *role, unsigned int modes,
     unsigned int accepted_inputs, struct translation_unit *origin_tu,
     struct position pos, struct function_info *source_function,
-    struct instruction *checkpoint)
+    struct instruction *checkpoint,
+    const struct assertion_alternative *alternatives)
 {
 	struct assertion_requirement **link;
 
@@ -2967,17 +3064,20 @@ add_assertion_requirement(struct function_info *function,
 	for (link = &function->assertion_requirements; *link != NULL;
 	    link = &(*link)->next) {
 		struct assertion_requirement *requirement = *link;
+		unsigned int old_base;
 		unsigned int merged;
 
 		if (requirement->modes != modes ||
 		    !same_acquisition_role(&requirement->role, role) ||
 		    !same_requirement_origin(requirement, origin_tu, pos))
 			continue;
+		old_base = requirement->accepted_inputs;
 		merged = requirement->accepted_inputs & accepted_inputs;
-		if (merged == requirement->accepted_inputs)
-			return (false);
-		requirement->accepted_inputs = merged;
-		return (true);
+		if (merged != requirement->accepted_inputs)
+			requirement->accepted_inputs = merged;
+		return (merge_assertion_alternatives(requirement,
+		    alternatives, old_base, accepted_inputs) ||
+		    merged != old_base);
 	}
 	*link = calloc(1, sizeof (**link));
 	if (*link == NULL)
@@ -2989,7 +3089,62 @@ add_assertion_requirement(struct function_info *function,
 	(*link)->checkpoint = checkpoint;
 	(*link)->origin_tu = origin_tu;
 	(*link)->pos = pos;
+	for (; alternatives != NULL; alternatives = alternatives->next) {
+		(void) add_assertion_alternative(&(*link)->alternatives,
+		    &alternatives->role, alternatives->accepted_inputs);
+	}
 	return (true);
+}
+
+/*
+ * Record each other transfer role that changes the assertion's accepted
+ * inputs when both roles denote one lock.  Alternatives remain independent;
+ * callers conservatively ignore them if several map to the asserted lock.
+ */
+static struct assertion_alternative *
+collect_assertion_alternatives(struct function_info *function,
+    const struct acquisition_role *asserted_role, unsigned int modes,
+    unsigned int ordinary_inputs, struct instruction *checkpoint)
+{
+	struct assertion_alternative *alternatives = NULL;
+	struct lock_transfer asserted_transfer = { 0 };
+	struct mapped_transfer_role asserted = { 0 };
+	struct lock_transfer *transfer;
+
+	asserted_transfer.role = *asserted_role;
+	asserted.transfer = &asserted_transfer;
+	for (transfer = function->transfers; transfer != NULL;
+	    transfer = transfer->next) {
+		struct mapped_transfer_role candidate = { 0 };
+		struct alias_replay_frame frame;
+		struct transfer_target target = { 0 };
+		unsigned int accepted_inputs = 0;
+		unsigned int input;
+		bool reachable = false;
+
+		if (same_acquisition_role(&transfer->role, asserted_role))
+			continue;
+		candidate.transfer = transfer;
+		asserted.next = &candidate;
+		frame.function = function;
+		frame.next = NULL;
+		target.roles = &asserted;
+		target.replay = &frame;
+		for (input = 1; input < LOCK_STATE_COUNT; input++) {
+			lock_state_t state;
+
+			state = simulate_lock_prefix_target(function, &target,
+			    input, checkpoint, &reachable);
+			if ((state & ~modes) == 0)
+				accepted_inputs |= 1U << input;
+		}
+		if (reachable && accepted_inputs != ordinary_inputs) {
+			(void) add_assertion_alternative(&alternatives,
+			    &transfer->role, accepted_inputs);
+		}
+	}
+	asserted.next = NULL;
+	return (alternatives);
 }
 
 static void
@@ -3005,6 +3160,7 @@ collect_assertion_requirements(struct function_info *function)
 			struct locklint_access lock;
 			struct position pos;
 			unsigned int accepted_inputs = 0;
+			struct assertion_alternative *alternatives;
 			bool reachable = false;
 			unsigned int input;
 			unsigned int modes;
@@ -3026,8 +3182,12 @@ collect_assertion_requirements(struct function_info *function)
 			}
 			if (!reachable)
 				continue;
+			alternatives = collect_assertion_alternatives(function,
+			    &role, modes, accepted_inputs, insn);
 			(void) add_assertion_requirement(function, &role, modes,
-			    accepted_inputs, function->tu, pos, function, insn);
+			    accepted_inputs, function->tu, pos, function, insn,
+			    alternatives);
+			free_assertion_alternatives(alternatives);
 		} END_FOR_EACH_PTR(insn);
 	} END_FOR_EACH_PTR(bb);
 }
@@ -4118,21 +4278,21 @@ assertion_requirement_name(unsigned int modes)
 }
 
 static bool
-assertion_requirement_accepts(const struct assertion_requirement *requirement,
+assertion_input_mask_accepts(unsigned int accepted_inputs,
     lock_state_t state)
 {
-	return ((requirement->accepted_inputs & (1U << state)) != 0);
+	return ((accepted_inputs & (1U << state)) != 0);
 }
 
 static bool
-assertion_requirement_accepts_part(
-    const struct assertion_requirement *requirement, lock_state_t state)
+assertion_input_mask_accepts_part(unsigned int accepted_inputs,
+    lock_state_t state)
 {
 	lock_state_t mode;
 
 	for (mode = 1; mode < LOCK_STATE_COUNT; mode <<= 1) {
 		if ((state & mode) != 0 &&
-		    assertion_requirement_accepts(requirement, mode))
+		    assertion_input_mask_accepts(accepted_inputs, mode))
 			return (true);
 	}
 	return (false);
@@ -4141,7 +4301,7 @@ assertion_requirement_accepts_part(
 static unsigned int
 assertion_call_accepted_inputs(struct function_info *function,
     struct instruction *insn, const struct acquisition_role *role,
-    const struct assertion_requirement *callee_requirement, bool *reachable)
+    unsigned int callee_accepted_inputs, bool *reachable)
 {
 	unsigned int accepted_inputs = 0;
 	unsigned int input;
@@ -4152,7 +4312,50 @@ assertion_call_accepted_inputs(struct function_info *function,
 
 		state = simulate_lock_prefix(function, role, input, insn,
 		    reachable);
-		if (assertion_requirement_accepts(callee_requirement, state))
+		if (assertion_input_mask_accepts(callee_accepted_inputs,
+		    state))
+			accepted_inputs |= 1U << input;
+	}
+	return (accepted_inputs);
+}
+
+/*
+ * Propagate an alternative through a wrapper while treating its role and the
+ * asserted role as one lock.  This preserves wrapper-prefix operations that
+ * become relevant only when the caller aliases the two formals.
+ */
+static unsigned int
+assertion_aliased_call_accepted_inputs(struct function_info *function,
+    struct instruction *insn, const struct acquisition_role *role,
+    const struct acquisition_role *alternative,
+    unsigned int callee_accepted_inputs, bool *reachable)
+{
+	struct lock_transfer role_transfer = { 0 };
+	struct lock_transfer alternative_transfer = { 0 };
+	struct mapped_transfer_role role_target = { 0 };
+	struct mapped_transfer_role alternative_target = { 0 };
+	struct alias_replay_frame frame;
+	struct transfer_target target = { 0 };
+	unsigned int accepted_inputs = 0;
+	unsigned int input;
+
+	role_transfer.role = *role;
+	alternative_transfer.role = *alternative;
+	role_target.transfer = &role_transfer;
+	role_target.next = &alternative_target;
+	alternative_target.transfer = &alternative_transfer;
+	frame.function = function;
+	frame.next = NULL;
+	target.roles = &role_target;
+	target.replay = &frame;
+	*reachable = false;
+	for (input = 1; input < LOCK_STATE_COUNT; input++) {
+		lock_state_t state;
+
+		state = simulate_lock_prefix_target(function, &target, input,
+		    insn, reachable);
+		if (assertion_input_mask_accepts(callee_accepted_inputs,
+		    state))
 			accepted_inputs |= 1U << input;
 	}
 	return (accepted_inputs);
@@ -4179,7 +4382,12 @@ propagate_assertion_requirements(struct function_info *function)
 			for (requirement = callee->assertion_requirements;
 			    requirement != NULL; requirement = requirement->next) {
 				struct acquisition_role role;
+				struct assertion_alternative *alternatives = NULL;
+				const struct assertion_alternative *alternative;
+				const struct assertion_alternative *internal = NULL;
 				struct locklint_access lock;
+				unsigned int internal_count = 0;
+				unsigned int callee_accepted_inputs;
 				unsigned int accepted_inputs;
 				bool reachable;
 
@@ -4187,16 +4395,73 @@ propagate_assertion_requirements(struct function_info *function)
 				    &requirement->role, &lock) ||
 				    !acquisition_role(function, &lock, &role))
 					continue;
+				for (alternative = requirement->alternatives;
+				    alternative != NULL;
+				    alternative = alternative->next) {
+					struct locklint_access alternative_lock;
+
+					if (!map_acquisition_role(function, insn,
+					    &alternative->role,
+					    &alternative_lock) ||
+					    !same_lock(&lock, &alternative_lock))
+						continue;
+					internal = alternative;
+					internal_count++;
+				}
+				callee_accepted_inputs = internal_count == 1 ?
+				    internal->accepted_inputs :
+				    requirement->accepted_inputs;
 				accepted_inputs = assertion_call_accepted_inputs(
-				    function, insn, &role, requirement,
+				    function, insn, &role,
+				    callee_accepted_inputs,
 				    &reachable);
+				if (internal_count == 0) {
+					for (alternative =
+					    requirement->alternatives;
+					    alternative != NULL;
+					    alternative = alternative->next) {
+						struct acquisition_role
+						    alternative_role;
+						struct locklint_access
+						    alternative_lock;
+						unsigned int alternative_inputs;
+						bool alternative_reachable;
+
+						if (!map_acquisition_role(
+						    function, insn,
+						    &alternative->role,
+						    &alternative_lock) ||
+						    !acquisition_role(function,
+						    &alternative_lock,
+						    &alternative_role) ||
+						    same_acquisition_role(&role,
+						    &alternative_role))
+							continue;
+						alternative_inputs =
+						    assertion_aliased_call_accepted_inputs(
+						    function, insn, &role,
+						    &alternative_role,
+						    alternative->accepted_inputs,
+						    &alternative_reachable);
+						if (alternative_reachable &&
+						    alternative_inputs !=
+						    accepted_inputs) {
+							(void)
+							    add_assertion_alternative(
+							    &alternatives,
+							    &alternative_role,
+							    alternative_inputs);
+						}
+					}
+				}
 				if (reachable &&
 				    add_assertion_requirement(function, &role,
 				    requirement->modes, accepted_inputs,
 				    requirement->origin_tu, requirement->pos,
 				    requirement->source_function,
-				    requirement->checkpoint))
+				    requirement->checkpoint, alternatives))
 					changed = true;
+				free_assertion_alternatives(alternatives);
 			}
 		} END_FOR_EACH_PTR(insn);
 	} END_FOR_EACH_PTR(bb);
@@ -4264,6 +4529,32 @@ assertion_alias_call_state(struct function_info *function,
 	return (reachable);
 }
 
+static bool
+assertion_alias_accepted_inputs(struct function_info *function,
+    struct instruction *insn, const struct assertion_requirement *requirement,
+    const struct locklint_access *requirement_lock,
+    unsigned int *accepted_inputs)
+{
+	const struct assertion_alternative *alternative;
+	const struct assertion_alternative *matched = NULL;
+	unsigned int count = 0;
+
+	for (alternative = requirement->alternatives; alternative != NULL;
+	    alternative = alternative->next) {
+		struct locklint_access lock;
+
+		if (!map_acquisition_role(function, insn, &alternative->role,
+		    &lock) || !same_lock(&lock, requirement_lock))
+			continue;
+		matched = alternative;
+		count++;
+	}
+	if (count != 1)
+		return (false);
+	*accepted_inputs = matched->accepted_inputs;
+	return (true);
+}
+
 static void
 check_call_assertion_requirements(struct function_info *function,
     struct analysis_state *analysis, struct instruction *insn,
@@ -4276,6 +4567,7 @@ check_call_assertion_requirements(struct function_info *function,
 		struct locklint_access lock;
 		lock_state_t state;
 		const char *name;
+		unsigned int accepted_inputs;
 		bool accepted;
 		bool accepted_part;
 
@@ -4288,10 +4580,13 @@ check_call_assertion_requirements(struct function_info *function,
 			accepted = (state & ~requirement->modes) == 0;
 			accepted_part = (state & requirement->modes) != 0;
 		} else {
-			accepted = assertion_requirement_accepts(requirement,
-			    state);
-			accepted_part = assertion_requirement_accepts_part(
-			    requirement, state);
+			if (!assertion_alias_accepted_inputs(function, insn,
+			    requirement, &lock, &accepted_inputs))
+				accepted_inputs = requirement->accepted_inputs;
+			accepted = assertion_input_mask_accepts(
+			    accepted_inputs, state);
+			accepted_part = assertion_input_mask_accepts_part(
+			    accepted_inputs, state);
 		}
 		if (accepted)
 			continue;
@@ -4853,6 +5148,7 @@ free_checker_attachments(void)
 			struct assertion_requirement *requirement_next =
 			    requirement->next;
 
+			free_assertion_alternatives(requirement->alternatives);
 			free(requirement);
 			requirement = requirement_next;
 		}

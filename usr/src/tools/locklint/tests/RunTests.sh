@@ -467,6 +467,26 @@ compare_no_columns "opposite same-actual assertion requirements" \
     assertion-alias-opposite.ref assertion-alias-opposite.raw \
     assertion-alias-opposite.out
 
+run_capture "wrapped same-actual assertion requirements" \
+    assertion-alias-wrapper-same.out "$LOCKLINT" \
+    -DASSERTION_ALIAS_VARIANT=4 --check-locks assertion-alias.c
+require_empty "wrapped same-actual assertion requirements" \
+    assertion-alias-wrapper-same.out
+
+run_capture "wrapped distinct-actual assertion requirements" \
+    assertion-alias-wrapper-distinct.raw "$LOCKLINT" \
+    -DASSERTION_ALIAS_VARIANT=5 --check-locks assertion-alias.c
+compare_no_columns "wrapped distinct-actual assertion requirements" \
+    assertion-alias-wrapper-distinct.ref \
+    assertion-alias-wrapper-distinct.raw \
+    assertion-alias-wrapper-distinct.out
+
+run_capture "internally aliased assertion requirements" \
+    assertion-alias-wrapper-internal.out "$LOCKLINT" \
+    -DASSERTION_ALIAS_VARIANT=6 --check-locks assertion-alias.c
+require_empty "internally aliased assertion requirements" \
+    assertion-alias-wrapper-internal.out
+
 run_capture "assertion requirement wrappers" \
     assertion-requirement-wrappers.raw "$LOCKLINT" --check-locks \
     assertion-requirement-wrappers.c

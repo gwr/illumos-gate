@@ -152,5 +152,9 @@ run_variant 2 "distinct_acquire_does_not_satisfy_requirement \
 distinct_opposite_requirements" || exit $?
 run_variant 3 "same_opposite_requirements_unheld \
 same_opposite_requirements_held" || exit $?
+run_variant 4 "same_acquire_satisfies_wrapped_requirement" || exit $?
+run_variant 5 \
+    "distinct_acquire_does_not_satisfy_wrapped_requirement" || exit $?
+run_variant 6 "call_internal_assertion_alias" || exit $?
 
 print "Results: $run_root"
