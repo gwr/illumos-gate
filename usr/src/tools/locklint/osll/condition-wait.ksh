@@ -41,10 +41,17 @@ run_session()
 	for root in \
 	    wait_while_held \
 	    wait_without_lock \
+	    wait_variants_while_held \
+	    wait_sig_without_lock \
+	    timedwait_without_lock \
+	    timedwait_sig_without_lock \
+	    reltimedwait_without_lock \
+	    reltimedwait_sig_without_lock \
 	    wrapped_wait_while_held \
 	    wrapped_wait_reacquire_inversion \
 	    wait_reacquire_in_order \
-	    wait_reacquire_inversion
+	    wait_reacquire_inversion \
+	    timedwait_sig_reacquire_inversion
 	do
 		run_command "declare-root-$root" "$LOCK_LINT" declare root \
 		    "condition-wait.c:$root" || exit $?

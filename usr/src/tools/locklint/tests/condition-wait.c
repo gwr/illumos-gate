@@ -32,6 +32,9 @@ typedef struct kmutex {
 typedef struct kcondvar {
 	int opaque;
 } kcondvar_t;
+
+typedef long clock_t;
+typedef int time_res_t;
 #endif
 
 struct condition_wait_state {
@@ -50,6 +53,12 @@ extern void mutex_enter(kmutex_t *);
 extern void mutex_exit(kmutex_t *);
 extern int mutex_owned(const kmutex_t *);
 extern void cv_wait(kcondvar_t *, kmutex_t *);
+extern int cv_wait_sig(kcondvar_t *, kmutex_t *);
+extern clock_t cv_timedwait(kcondvar_t *, kmutex_t *, clock_t);
+extern clock_t cv_timedwait_sig(kcondvar_t *, kmutex_t *, clock_t);
+extern clock_t cv_reltimedwait(kcondvar_t *, kmutex_t *, clock_t, time_res_t);
+extern clock_t cv_reltimedwait_sig(kcondvar_t *, kmutex_t *, clock_t,
+    time_res_t);
 
 static void
 wait_wrapper(kcondvar_t *cv, kmutex_t *mutex)
@@ -74,6 +83,61 @@ static void
 wait_without_lock(struct condition_wait_state *state)
 {
 	cv_wait(&state->cv_first, &state->first);
+	mutex_exit(&state->first);
+}
+
+static int
+wait_variants_while_held(struct condition_wait_state *state)
+{
+	int value = 0;
+
+	mutex_enter(&state->first);
+	if (cv_wait_sig(&state->cv_first, &state->first) == 0)
+		value += state->value;
+	if (cv_timedwait(&state->cv_first, &state->first, 1) < 0)
+		value += state->value;
+	if (cv_timedwait_sig(&state->cv_first, &state->first, 1) <= 0)
+		value += state->value;
+	if (cv_reltimedwait(&state->cv_first, &state->first, 1, 0) < 0)
+		value += state->value;
+	if (cv_reltimedwait_sig(&state->cv_first, &state->first, 1, 0) <= 0)
+		value += state->value;
+	mutex_exit(&state->first);
+	return (value);
+}
+
+static void
+wait_sig_without_lock(struct condition_wait_state *state)
+{
+	(void) cv_wait_sig(&state->cv_first, &state->first);
+	mutex_exit(&state->first);
+}
+
+static void
+timedwait_without_lock(struct condition_wait_state *state)
+{
+	(void) cv_timedwait(&state->cv_first, &state->first, 1);
+	mutex_exit(&state->first);
+}
+
+static void
+timedwait_sig_without_lock(struct condition_wait_state *state)
+{
+	(void) cv_timedwait_sig(&state->cv_first, &state->first, 1);
+	mutex_exit(&state->first);
+}
+
+static void
+reltimedwait_without_lock(struct condition_wait_state *state)
+{
+	(void) cv_reltimedwait(&state->cv_first, &state->first, 1, 0);
+	mutex_exit(&state->first);
+}
+
+static void
+reltimedwait_sig_without_lock(struct condition_wait_state *state)
+{
+	(void) cv_reltimedwait_sig(&state->cv_first, &state->first, 1, 0);
 	mutex_exit(&state->first);
 }
 
@@ -115,6 +179,16 @@ wait_reacquire_inversion(struct condition_wait_state *state)
 	mutex_enter(&state->first);
 	mutex_enter(&state->second);
 	cv_wait(&state->cv_first, &state->first);
+	mutex_exit(&state->second);
+	mutex_exit(&state->first);
+}
+
+static void
+timedwait_sig_reacquire_inversion(struct condition_wait_state *state)
+{
+	mutex_enter(&state->first);
+	mutex_enter(&state->second);
+	(void) cv_timedwait_sig(&state->cv_first, &state->first, 1);
 	mutex_exit(&state->second);
 	mutex_exit(&state->first);
 }

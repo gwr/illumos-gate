@@ -1,6 +1,13 @@
-../locklint: condition-wait.c:76: warning: locklint: lock 'first' is not held
-../locklint: condition-wait.c:97: warning: locklint: lock 'condition_wait_state::first' acquired out of declared order while holding 'condition_wait_state::second'
-../locklint: condition-wait.c:45: locklint: declared order requires 'condition_wait_state::first' before 'condition_wait_state::second'
-../locklint: condition-wait.c:58: locklint: lock acquisition reached through callee 'wait_wrapper'
-../locklint: condition-wait.c:117: warning: locklint: lock 'condition_wait_state::first' acquired out of declared order while holding 'condition_wait_state::second'
-../locklint: condition-wait.c:45: locklint: declared order requires 'condition_wait_state::first' before 'condition_wait_state::second'
+../locklint: condition-wait.c:85: warning: locklint: lock 'first' is not held
+../locklint: condition-wait.c:112: warning: locklint: lock 'first' is not held
+../locklint: condition-wait.c:119: warning: locklint: lock 'first' is not held
+../locklint: condition-wait.c:126: warning: locklint: lock 'first' is not held
+../locklint: condition-wait.c:133: warning: locklint: lock 'first' is not held
+../locklint: condition-wait.c:140: warning: locklint: lock 'first' is not held
+../locklint: condition-wait.c:161: warning: locklint: lock 'condition_wait_state::first' acquired out of declared order while holding 'condition_wait_state::second'
+../locklint: condition-wait.c:48: locklint: declared order requires 'condition_wait_state::first' before 'condition_wait_state::second'
+../locklint: condition-wait.c:67: locklint: lock acquisition reached through callee 'wait_wrapper'
+../locklint: condition-wait.c:181: warning: locklint: lock 'condition_wait_state::first' acquired out of declared order while holding 'condition_wait_state::second'
+../locklint: condition-wait.c:48: locklint: declared order requires 'condition_wait_state::first' before 'condition_wait_state::second'
+../locklint: condition-wait.c:191: warning: locklint: lock 'condition_wait_state::first' acquired out of declared order while holding 'condition_wait_state::second'
+../locklint: condition-wait.c:48: locklint: declared order requires 'condition_wait_state::first' before 'condition_wait_state::second'

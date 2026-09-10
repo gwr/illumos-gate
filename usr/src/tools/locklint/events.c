@@ -104,7 +104,12 @@ locklint_get_lock_action(struct translation_unit *tu, struct instruction *insn,
 	    strcmp(name, "rw_exit") == 0 ||
 	    strcmp(name, "rw_unlock") == 0) {
 		action = LOCKLINT_LOCK_RELEASE;
-	} else if (strcmp(name, "cv_wait") == 0) {
+	} else if (strcmp(name, "cv_wait") == 0 ||
+	    strcmp(name, "cv_wait_sig") == 0 ||
+	    strcmp(name, "cv_timedwait") == 0 ||
+	    strcmp(name, "cv_timedwait_sig") == 0 ||
+	    strcmp(name, "cv_reltimedwait") == 0 ||
+	    strcmp(name, "cv_reltimedwait_sig") == 0) {
 		action = LOCKLINT_LOCK_WAIT;
 		*mode = LOCKLINT_MODE_MUTEX;
 		argument = 1;
