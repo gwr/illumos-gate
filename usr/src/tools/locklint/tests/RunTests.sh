@@ -326,6 +326,18 @@ run_capture "distinct-actual lock composition" alias-composition-distinct.out \
 require_empty "distinct-actual lock composition" \
     alias-composition-distinct.out
 
+run_capture "same-actual wrapped lock composition" \
+    alias-composition-wrapped-same.out "$LOCKLINT" \
+    -DALIAS_COMPOSITION_VARIANT=3 --check-locks alias-composition.c
+require_empty "same-actual wrapped lock composition" \
+    alias-composition-wrapped-same.out
+
+run_capture "distinct-actual wrapped lock composition" \
+    alias-composition-wrapped-distinct.out "$LOCKLINT" \
+    -DALIAS_COMPOSITION_VARIANT=4 --check-locks alias-composition.c
+require_empty "distinct-actual wrapped lock composition" \
+    alias-composition-wrapped-distinct.out
+
 run_capture "basic calls" calls-basic.out \
     "$LOCKLINT" --check-locks calls-basic.c
 compare "basic calls" calls-basic.ref calls-basic.out

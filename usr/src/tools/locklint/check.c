@@ -215,9 +215,15 @@ struct mapped_lock_transfer {
 	struct mapped_lock_transfer *next;
 };
 
+struct alias_replay_frame {
+	struct function_info *function;
+	const struct alias_replay_frame *next;
+};
+
 struct transfer_target {
 	const struct locklint_access *single;
 	const struct mapped_transfer_role *roles;
+	const struct alias_replay_frame *replay;
 };
 
 struct acquisition_prefix {
@@ -262,6 +268,9 @@ static void transfer_call_visibility_effects(struct function_info *,
     struct visibility_entry **, struct instruction *);
 static lock_state_t simulate_aliased_transfer(struct function_info *,
     const struct mapped_transfer_role *, lock_state_t, unsigned int *);
+static lock_state_t simulate_aliased_transfer_context(struct function_info *,
+    const struct mapped_transfer_role *, lock_state_t, unsigned int *,
+    const struct alias_replay_frame *);
 static struct symbol *formal_symbol(struct entrypoint *, unsigned int);
 static bool acquisition_block_reachable(struct function_info *,
     struct basic_block *);
@@ -1684,18 +1693,23 @@ map_call_lock_transfers(struct function_info *function,
 }
 
 static void
+free_mapped_transfer_roles(struct mapped_transfer_role *roles)
+{
+	while (roles != NULL) {
+		struct mapped_transfer_role *next = roles->next;
+
+		free(roles);
+		roles = next;
+	}
+}
+
+static void
 free_mapped_lock_transfers(struct mapped_lock_transfer *mapped)
 {
 	while (mapped != NULL) {
 		struct mapped_lock_transfer *next = mapped->next;
 
-		while (mapped->roles != NULL) {
-			struct mapped_transfer_role *role_next =
-			    mapped->roles->next;
-
-			free(mapped->roles);
-			mapped->roles = role_next;
-		}
+		free_mapped_transfer_roles(mapped->roles);
 		free(mapped);
 		mapped = next;
 	}
@@ -2588,18 +2602,45 @@ simulate_instruction(struct function_info *function,
 	enum locklint_lock_mode mode;
 
 	callee = callgraph_callee(function, insn);
-	if (callee != NULL) {
-		/*
-		 * Direct aliased roles use contextual replay at the outer call.
-		 * Nested alias composition remains factored pending its own
-		 * wrapper characterization.
-		 */
+	if (callee != NULL && target->roles != NULL) {
+		struct mapped_transfer_role *roles = NULL;
+		struct mapped_transfer_role **tail = &roles;
+		unsigned int role_count = 0;
+
 		for (transfer = callee->transfers; transfer != NULL;
 		    transfer = transfer->next) {
+			struct mapped_transfer_role *role;
+
 			if (!map_acquisition_role(function, insn,
 			    &transfer->role, &lock))
 				continue;
 			if (!transfer_target_matches(target, &lock))
+				continue;
+			role = calloc(1, sizeof (*role));
+			if (role == NULL)
+				die("out of memory replaying aliased call");
+			role->transfer = transfer;
+			*tail = role;
+			tail = &role->next;
+			role_count++;
+		}
+		if (role_count == 1) {
+			*invalid |= roles->transfer->invalid[*state];
+			*state = roles->transfer->output[*state];
+		} else if (role_count > 1) {
+			unsigned int nested_invalid;
+
+			*state = simulate_aliased_transfer_context(callee, roles,
+			    *state, &nested_invalid, target->replay);
+			*invalid |= nested_invalid;
+		}
+		free_mapped_transfer_roles(roles);
+	} else if (callee != NULL) {
+		for (transfer = callee->transfers; transfer != NULL;
+		    transfer = transfer->next) {
+			if (!map_acquisition_role(function, insn,
+			    &transfer->role, &lock) ||
+			    !transfer_target_matches(target, &lock))
 				continue;
 			*invalid |= transfer->invalid[*state];
 			*state = transfer->output[*state];
@@ -2768,7 +2809,7 @@ simulate_transfer(struct function_info *function,
 {
 	struct transfer_block_info *blocks;
 	struct locklint_access target = { 0 };
-	struct transfer_target simulation_target;
+	struct transfer_target simulation_target = { 0 };
 	lock_state_t result;
 
 	target = transfer->role.access;
@@ -2780,20 +2821,45 @@ simulate_transfer(struct function_info *function,
 	return (result);
 }
 
+/*
+ * Replay an aliased transfer group as one shared lock state.  Transparent
+ * wrappers recursively replay their own aliased groups; recursive call cycles
+ * terminate with a conservative state and both possible operation failures.
+ */
+static lock_state_t
+simulate_aliased_transfer_context(struct function_info *function,
+    const struct mapped_transfer_role *roles, lock_state_t input,
+    unsigned int *invalid, const struct alias_replay_frame *replay)
+{
+	const struct alias_replay_frame *ancestor;
+	struct alias_replay_frame frame;
+	struct transfer_target target = { 0 };
+	struct transfer_block_info *blocks;
+	lock_state_t result;
+
+	for (ancestor = replay; ancestor != NULL; ancestor = ancestor->next) {
+		if (ancestor->function == function) {
+			*invalid = INVALID_ACQUIRE | INVALID_RELEASE;
+			return (LOCK_NOT_HELD | LOCK_ANY_HELD);
+		}
+	}
+	frame.function = function;
+	frame.next = replay;
+	target.roles = roles;
+	target.replay = &frame;
+	blocks = solve_transfer_blocks(function, &target, input);
+	result = transfer_blocks_result(blocks, input, invalid);
+	free_transfer_blocks(blocks);
+	return (result);
+}
+
 static lock_state_t
 simulate_aliased_transfer(struct function_info *function,
     const struct mapped_transfer_role *roles, lock_state_t input,
     unsigned int *invalid)
 {
-	struct transfer_target target = { 0 };
-	struct transfer_block_info *blocks;
-	lock_state_t result;
-
-	target.roles = roles;
-	blocks = solve_transfer_blocks(function, &target, input);
-	result = transfer_blocks_result(blocks, input, invalid);
-	free_transfer_blocks(blocks);
-	return (result);
+	return (simulate_aliased_transfer_context(function, roles, input,
+	    invalid, NULL));
 }
 
 static lock_state_t
@@ -2803,7 +2869,7 @@ simulate_lock_prefix(struct function_info *function,
 {
 	struct transfer_block_info *blocks;
 	struct transfer_block_info *block;
-	struct transfer_target target;
+	struct transfer_target target = { 0 };
 	lock_state_t state = input;
 	unsigned int invalid = 0;
 
