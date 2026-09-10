@@ -2337,6 +2337,75 @@ validate_declared_effects(struct function_info *function)
 }
 
 static bool
+competition_output_contains(const struct competition_state *output,
+    int expected)
+{
+	return ((output->minimum_unbounded || output->minimum <= expected) &&
+	    (output->maximum_unbounded || output->maximum >= expected));
+}
+
+static enum declared_effect_status
+declared_competition_effect_status(const struct competition_state *output,
+    int expected)
+{
+	if (!output->minimum_unbounded && !output->maximum_unbounded &&
+	    output->minimum == expected && output->maximum == expected)
+		return (DECLARED_EFFECT_MATCHES);
+	if (competition_output_contains(output, expected))
+		return (DECLARED_EFFECT_CONDITIONAL);
+	return (DECLARED_EFFECT_CONFLICTS);
+}
+
+static void
+validate_declared_competition_effects(struct function_info *function)
+{
+	struct competition_transfer *transfer = function->competition_transfer;
+	struct basic_block *bb;
+
+	if (transfer == NULL)
+		return;
+	FOR_EACH_PTR(function->ep->bbs, bb) {
+		struct instruction *insn;
+
+		FOR_EACH_PTR(bb->insns, insn) {
+			enum declared_effect_status status;
+			enum locklint_execution_kind kind;
+			const char *description;
+			int expected;
+
+			if (insn->bb == NULL)
+				continue;
+			kind = locklint_get_execution_annotation(insn);
+			if (kind == LOCKLINT_EXECUTION_NO_COMPETITION_EFFECT) {
+				description = "competition-depth decrease";
+				expected = -1;
+			} else if (kind ==
+			    LOCKLINT_EXECUTION_COMPETITION_EFFECT) {
+				description = "competition-depth increase";
+				expected = 1;
+			} else {
+				continue;
+			}
+			status = declared_competition_effect_status(
+			    &transfer->output, expected);
+			if (status == DECLARED_EFFECT_MATCHES)
+				continue;
+			if (status == DECLARED_EFFECT_CONDITIONAL) {
+				warning(insn->pos, "locklint: declared %s is not "
+				    "established on every return from '%s'",
+				    description,
+				    show_ident(function->ep->name->ident));
+			} else {
+				warning(insn->pos, "locklint: function '%s' does "
+				    "not establish declared %s",
+				    show_ident(function->ep->name->ident),
+				    description);
+			}
+		} END_FOR_EACH_PTR(insn);
+	} END_FOR_EACH_PTR(bb);
+}
+
+static bool
 propagate_transfer_candidates(struct function_info *function)
 {
 	struct basic_block *bb;
@@ -4336,8 +4405,10 @@ run_lock_checks(void)
 		callgraph_iter_close(iter);
 	} while (changed);
 	iter = function_iter_open();
-	while ((function = callgraph_iter_next(iter)) != NULL)
+	while ((function = callgraph_iter_next(iter)) != NULL) {
 		validate_declared_effects(function);
+		validate_declared_competition_effects(function);
+	}
 	callgraph_iter_close(iter);
 	iter = function_iter_open();
 	while ((function = callgraph_iter_next(iter)) != NULL)

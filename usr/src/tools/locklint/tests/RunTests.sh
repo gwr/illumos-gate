@@ -284,6 +284,11 @@ run_capture "competition calls" competition-calls.raw \
 compare_no_columns "competition calls" competition-calls.ref \
     competition-calls.raw competition-calls.out
 
+run_capture "competition contracts" competition-contracts.raw \
+    "$LOCKLINT" --check-locks competition-contracts.c
+compare_no_columns "competition contracts" competition-contracts.ref \
+    competition-contracts.raw competition-contracts.out
+
 #
 # Verify intraprocedural lock state across branches, loops, and returns.
 #

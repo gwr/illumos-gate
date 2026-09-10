@@ -1,3 +1,5 @@
+../locklint: visibility.c:198:9: warning: locklint: function 'contract_markers' does not establish declared competition-depth decrease
+../locklint: visibility.c:199:9: warning: locklint: function 'contract_markers' does not establish declared competition-depth increase
 ../locklint: visibility.c:62:26: warning: locklint: protected member 'protected' accessed without holding 'lock'
 ../locklint: visibility.c:73:26: warning: locklint: protection for member 'protected' is not established on every path
 ../locklint: visibility.c:84:22: warning: locklint: protected member 'protected' accessed without holding 'lock'

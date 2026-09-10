@@ -1,0 +1,5 @@
+../locklint: competition-contracts.c:77: warning: locklint: function 'declared_missing' does not establish declared competition-depth decrease
+../locklint: competition-contracts.c:83: warning: locklint: declared competition-depth decrease is not established on every return from 'declared_conditional'
+../locklint: competition-contracts.c:91: warning: locklint: function 'declared_opposite' does not establish declared competition-depth decrease
+../locklint: competition-contracts.c:98: warning: locklint: declared competition-depth increase is not established on every return from 'declared_enter_conditional'
+../locklint: competition-contracts.c:106: warning: locklint: function 'declared_nonreturning' does not establish declared competition-depth increase

@@ -173,7 +173,7 @@ The main phases are:
    5. propagate reachability from those roots through resolved calls;
    6. emit a requested call-graph audit;
    7. build and validate the declared lock-order graph;
-   8. solve function lock and visibility transfer summaries;
+   8. solve function lock, competition, and visibility transfer summaries;
    9. solve unified intraprocedural lock, competition, and visibility state;
    10. collect and propagate acquisition summaries;
    11. collect and propagate protection conditions;
@@ -389,7 +389,10 @@ The structures have these roles:
 | `struct indirect_target` | One exact target candidate for a member of a supported file-static constant aggregate; records translation unit, object, member, offset, source function, resolved target, and ambiguity |
 | `struct function_pointer_activity` | One initializer or function-body load or store involving a function pointer; a pointer copy is represented by its source load and destination store |
 | `struct block_info` | Associates one Sparse basic block with reachability and its input and output unified analysis states |
-| `struct analysis_state` | The lock map, competition state and path-dependence flag, and per-region visibility facts at one CFG point |
+| `struct analysis_state` | The lock map, competition-depth interval, and per-region visibility facts at one CFG point |
+| `struct competition_state` | Minimum and maximum competition depth, unbounded-endpoint flags, path provenance, and ambient-entry provenance |
+| `struct competition_transfer` | Caller-visible exact-depth and ambient competition outputs plus minimum-prefix information |
+| `struct competition_transfer_block_info` | Temporary per-block state used while computing one competition transfer |
 | `struct state_entry` | One lock and its state in an analysis-state lock map; embeds a `locklint_access` identity |
 | `struct visibility_entry` | One object region and its visible, invisible, or maybe-visible state |
 | `struct protection_condition` | A caller-visible entry protection condition for formal-relative or absolute data, with an optional mutex and exact formal-lock alternatives |
@@ -945,13 +948,12 @@ it contains no Locklint annotation names or policy.
 
 Declaration annotations continue to disappear after their tokens are
 captured.  During assertion analysis, a strong preprocessing definition
-causes `ASSERT(NO_COMPETING_THREADS)` to retain the same tagged context marker
-as `_NOTE(NO_COMPETING_THREADS_NOW)` instead of becoming the constant
-expression supplied by system headers.  `_NOTE(NO_COMPETING_THREADS)` is
-accepted as the same compatibility spelling.  The marker tag, retained
-expression, source position, and translation-unit provenance provide all
-information needed by Locklint; it does not infer execution order from source
-positions.
+causes `ASSERT(NO_COMPETING_THREADS)` to retain a tagged absolute local
+refinement instead of becoming the constant expression supplied by system
+headers.  `_NOTE(NO_COMPETING_THREADS)` is accepted as the same compatibility
+spelling.  The marker tag, retained expression, source position, and
+translation-unit provenance provide all information needed by Locklint; it
+does not infer execution order from source positions.
 
 The shared Sparse changes are limited to deferred pre-buffer tokenization,
 the optional context tag in parsing and IR, preservation and display of that
@@ -960,20 +962,18 @@ tag remains with the client that introduced it.
 
 ### State domains
 
-Competition is one flow-sensitive state for the executing path:
+Competition is a flow-sensitive interval of anonymous nesting depths.
+Maximum depth at or below zero means no competition, minimum depth above zero
+means definite competition, and an interval spanning zero means possible
+competition.  Differing incoming depths retain path-dependent provenance.
+Loop bounds that do not stabilize widen to an unbounded endpoint.
 
-| State | Meaning |
-| --- | --- |
-| no competition | Other threads cannot access data used by this path |
-| possible competition | Competition is not established consistently |
-| competition present | Other threads may access the same data |
-
-Function entry starts with possible competition.
-`NO_COMPETING_THREADS_NOW` establishes no competition, and
-`COMPETING_THREADS_NOW` establishes competition.  Merging different incoming
-states produces possible competition and records that the uncertainty is
-path-dependent.  The conservative possible state at function entry is not
-itself described as a branch-dependent fact.
+Function entry starts with an ambient interval from zero through one.
+The first `NO_COMPETING_THREADS_NOW` consumes the possible implicit competing
+level and establishes depth zero; the first `COMPETING_THREADS_NOW`
+establishes depth one.  Subsequent annotations decrement or increment exact
+nesting depth.  Negative depth is retained so an unmatched decrement can be
+diagnosed when caller context is available.
 
 Visibility is flow-sensitive state associated with an object region:
 
@@ -1019,10 +1019,10 @@ modification.
 
 ### Assertions, conditions, and calls
 
-`ASSERT(NO_COMPETING_THREADS)` is treated as an advisory local transition,
-equivalent to `_NOTE(NO_COMPETING_THREADS_NOW)`.  It suppresses subsequent
-lock requirements by establishing no competition, but is not verified,
-diagnosed as contradictory, or propagated as a caller condition.
+`ASSERT(NO_COMPETING_THREADS)` is treated as an advisory absolute local
+refinement.  It suppresses subsequent lock requirements by setting competition
+depth to zero, but is not verified, diagnosed as contradictory, included in a
+function effect summary, or propagated as a caller condition.
 
 Protected-access conditions express "this datum must be protected" rather
 than only "this mutex must be held."  At a resolved call, the caller may
@@ -1050,12 +1050,22 @@ effects are applied from containing regions to leaves so a narrower result is
 not erased by a broader one.  Visibility changes to unreturned local objects
 require no summary.
 
-Ordinary concurrency transitions remain local.  Locklint recognizes and
-retains `NO_COMPETING_THREADS_AS_SIDE_EFFECT` and
-`COMPETING_THREADS_AS_SIDE_EFFECT`, but does not yet change caller state or
-validate return paths for them.  Historical LockLint describes nested
-competing-thread regions, which the current three-state competition model
-cannot represent faithfully.
+Competition changes are inferred as function summaries and applied across
+resolved calls.  A summary retains the net output interval from exact depth
+zero, the separate output from ambient entry, and the minimum prefix for both
+inputs.  The prefix detects a decrement below the caller's available depth
+even when later increments restore the return depth or the path does not
+return.  Summaries stabilize through nested and recursive calls; unbounded
+loops and call cycles widen.  Internal wrappers defer underflow diagnostics
+until caller state or a root boundary is available.
+
+`COMPETING_THREADS_AS_SIDE_EFFECT` declares an exact net increase of one;
+`NO_COMPETING_THREADS_AS_SIDE_EFFECT` declares an exact net decrease of one.
+Locklint validates declarations against the inferred exact-depth output on
+every return.  A matching output satisfies the contract, an interval
+containing the declared output is conditional, and a disjoint output
+conflicts.  Invalid decrements are diagnosed independently.  Following the
+inference-first policy, undeclared inferred competition effects remain valid.
 
 Unresolved calls do not receive invented visibility or concurrency effects.
 Mapping returned allocations and general aliases remains later object-identity
@@ -1067,12 +1077,14 @@ The tests cover:
 
 - initialization under no competition and while an object is invisible;
 - publication and withdrawal of whole objects and selected members;
-- visibility and competition merges across branches;
+- nested competition, branch merges, and widening loops;
 - lock, invisibility, and no-competition alternatives at resolved calls;
 - `ASSERT(NO_COMPETING_THREADS)` and `ASSUMING_PROTECTED`;
 - direct, transitive, recursive, nested-object, and cross-translation-unit
   visibility summaries;
-- retained concurrency side-effect markers without assigning semantics; and
+- direct, wrapped, conditional, and recursive competition summaries;
+- declared, conditional, conflicting, and non-returning competition
+  contracts; and
 - `READ_ONLY_DATA` stores before publication, while exposed, and after
   withdrawal.
 
@@ -1579,9 +1591,9 @@ For each instruction it:
 1. checks `READ_ONLY_DATA` against current exposure;
 2. checks a protected memory access against mutex, visibility, competition,
    and assumed-protection alternatives;
-3. checks resolved-call protection conditions, summarized acquisitions, and
-   invalid summarized lock effects, then applies summarized lock and
-   visibility transfers;
+3. checks resolved-call protection conditions, summarized acquisitions,
+   invalid summarized lock effects, and competition underflow, then applies
+   summarized lock, competition, and visibility transfers;
 4. checks direct acquire/release validity and applies the operation; and
 5. applies assertion, competition, and visibility transitions.
 
@@ -1863,8 +1875,8 @@ The current implementation relies on these invariants:
     that propagate to a fixed point; `ASSERT(NO_COMPETING_THREADS)` remains
     an advisory local competition transition and does not create a caller
     condition.
-13. Interprocedural lock and visibility effects and protection conditions
-    reach fixed points before diagnostics are emitted.
+13. Interprocedural lock, competition, and visibility effects and protection
+    conditions reach fixed points before diagnostics are emitted.
 14. Multiple external function definitions with one identifier are ambiguous,
     not arbitrarily selected.
 15. A later protection declaration replaces an earlier relation for the same
@@ -1920,8 +1932,6 @@ areas include:
   registration, pointer copies, ambiguous assignments, and indexed target
   sets;
 - explicit root configuration and source annotations;
-- declared competition side-effect semantics and nested competition regions;
-- explicit lock-side-effect annotation contracts;
 - exact acquisition-prefix composition when distinct callee roles map to the
   same caller lock;
 - optional, configurable validation of declared lock types;
