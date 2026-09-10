@@ -47,11 +47,19 @@ run_session()
 	    timedwait_sig_without_lock \
 	    reltimedwait_without_lock \
 	    reltimedwait_sig_without_lock \
+	    uncommon_waits_while_held \
+	    wait_stop_without_lock \
+	    timedwait_hires_without_lock \
+	    timedwait_sig_hrtime_without_lock \
+	    wait_sig_swap_without_lock \
+	    wait_sig_swap_core_without_lock \
+	    waituntil_sig_without_lock \
 	    wrapped_wait_while_held \
 	    wrapped_wait_reacquire_inversion \
 	    wait_reacquire_in_order \
 	    wait_reacquire_inversion \
-	    timedwait_sig_reacquire_inversion
+	    timedwait_sig_reacquire_inversion \
+	    wait_sig_swap_reacquire_inversion
 	do
 		run_command "declare-root-$root" "$LOCK_LINT" declare root \
 		    "condition-wait.c:$root" || exit $?

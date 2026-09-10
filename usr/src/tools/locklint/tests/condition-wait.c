@@ -34,7 +34,12 @@ typedef struct kcondvar {
 } kcondvar_t;
 
 typedef long clock_t;
+typedef long long hrtime_t;
 typedef int time_res_t;
+typedef struct timestruc {
+	long tv_sec;
+	long tv_nsec;
+} timestruc_t;
 #endif
 
 struct condition_wait_state {
@@ -59,6 +64,13 @@ extern clock_t cv_timedwait_sig(kcondvar_t *, kmutex_t *, clock_t);
 extern clock_t cv_reltimedwait(kcondvar_t *, kmutex_t *, clock_t, time_res_t);
 extern clock_t cv_reltimedwait_sig(kcondvar_t *, kmutex_t *, clock_t,
     time_res_t);
+extern void cv_wait_stop(kcondvar_t *, kmutex_t *, int);
+extern clock_t cv_timedwait_hires(kcondvar_t *, kmutex_t *, hrtime_t,
+    hrtime_t, int);
+extern int cv_timedwait_sig_hrtime(kcondvar_t *, kmutex_t *, hrtime_t);
+extern int cv_wait_sig_swap(kcondvar_t *, kmutex_t *);
+extern int cv_wait_sig_swap_core(kcondvar_t *, kmutex_t *, int *);
+extern int cv_waituntil_sig(kcondvar_t *, kmutex_t *, timestruc_t *, int);
 
 static void
 wait_wrapper(kcondvar_t *cv, kmutex_t *mutex)
@@ -142,6 +154,76 @@ reltimedwait_sig_without_lock(struct condition_wait_state *state)
 }
 
 static int
+uncommon_waits_while_held(struct condition_wait_state *state)
+{
+	timestruc_t when = { 1, 0 };
+	int sigret = 0;
+	int value = 0;
+
+	mutex_enter(&state->first);
+	cv_wait_stop(&state->cv_first, &state->first, 1);
+	if (cv_timedwait_hires(&state->cv_first, &state->first, 1, 1, 0) < 0)
+		value += state->value;
+	if (cv_timedwait_sig_hrtime(&state->cv_first, &state->first, 1) <= 0)
+		value += state->value;
+	if (cv_wait_sig_swap(&state->cv_first, &state->first) == 0)
+		value += state->value;
+	if (cv_wait_sig_swap_core(&state->cv_first, &state->first,
+	    &sigret) == 0)
+		value += state->value;
+	if (cv_waituntil_sig(&state->cv_first, &state->first, &when, 0) <= 0)
+		value += state->value;
+	mutex_exit(&state->first);
+	return (value);
+}
+
+static void
+wait_stop_without_lock(struct condition_wait_state *state)
+{
+	cv_wait_stop(&state->cv_first, &state->first, 1);
+	mutex_exit(&state->first);
+}
+
+static void
+timedwait_hires_without_lock(struct condition_wait_state *state)
+{
+	(void) cv_timedwait_hires(&state->cv_first, &state->first, 1, 1, 0);
+	mutex_exit(&state->first);
+}
+
+static void
+timedwait_sig_hrtime_without_lock(struct condition_wait_state *state)
+{
+	(void) cv_timedwait_sig_hrtime(&state->cv_first, &state->first, 1);
+	mutex_exit(&state->first);
+}
+
+static void
+wait_sig_swap_without_lock(struct condition_wait_state *state)
+{
+	(void) cv_wait_sig_swap(&state->cv_first, &state->first);
+	mutex_exit(&state->first);
+}
+
+static void
+wait_sig_swap_core_without_lock(struct condition_wait_state *state)
+{
+	int sigret;
+
+	(void) cv_wait_sig_swap_core(&state->cv_first, &state->first, &sigret);
+	mutex_exit(&state->first);
+}
+
+static void
+waituntil_sig_without_lock(struct condition_wait_state *state)
+{
+	timestruc_t when = { 1, 0 };
+
+	(void) cv_waituntil_sig(&state->cv_first, &state->first, &when, 0);
+	mutex_exit(&state->first);
+}
+
+static int
 wrapped_wait_while_held(struct condition_wait_state *state)
 {
 	int value;
@@ -189,6 +271,16 @@ timedwait_sig_reacquire_inversion(struct condition_wait_state *state)
 	mutex_enter(&state->first);
 	mutex_enter(&state->second);
 	(void) cv_timedwait_sig(&state->cv_first, &state->first, 1);
+	mutex_exit(&state->second);
+	mutex_exit(&state->first);
+}
+
+static void
+wait_sig_swap_reacquire_inversion(struct condition_wait_state *state)
+{
+	mutex_enter(&state->first);
+	mutex_enter(&state->second);
+	(void) cv_wait_sig_swap(&state->cv_first, &state->first);
 	mutex_exit(&state->second);
 	mutex_exit(&state->first);
 }

@@ -109,7 +109,13 @@ locklint_get_lock_action(struct translation_unit *tu, struct instruction *insn,
 	    strcmp(name, "cv_timedwait") == 0 ||
 	    strcmp(name, "cv_timedwait_sig") == 0 ||
 	    strcmp(name, "cv_reltimedwait") == 0 ||
-	    strcmp(name, "cv_reltimedwait_sig") == 0) {
+	    strcmp(name, "cv_reltimedwait_sig") == 0 ||
+	    strcmp(name, "cv_wait_stop") == 0 ||
+	    strcmp(name, "cv_timedwait_hires") == 0 ||
+	    strcmp(name, "cv_timedwait_sig_hrtime") == 0 ||
+	    strcmp(name, "cv_wait_sig_swap") == 0 ||
+	    strcmp(name, "cv_wait_sig_swap_core") == 0 ||
+	    strcmp(name, "cv_waituntil_sig") == 0) {
 		action = LOCKLINT_LOCK_WAIT;
 		*mode = LOCKLINT_MODE_MUTEX;
 		argument = 1;

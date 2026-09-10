@@ -209,7 +209,7 @@ require_match "condition wait second mutex event" "WAIT state.second" \
     condition-wait-events.out
 reject_match "condition wait condition-variable event" "WAIT state.cv" \
     condition-wait-events.out
-reject_match "condition wait generic call event" "CALL cv_wait" \
+reject_match "condition wait generic call event" "CALL cv_" \
     condition-wait-events.out
 
 run_capture "same-actual acquisition prefixes" \
