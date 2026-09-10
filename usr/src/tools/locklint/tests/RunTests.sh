@@ -67,7 +67,9 @@ compare_no_columns()
 	raw_output=$3
 	output=$4
 
-	sed 's/\(.*:[0-9][0-9]*\):[0-9][0-9]*: warning/\1: warning/' \
+	sed \
+	    -e 's/\(.*:[0-9][0-9]*\):[0-9][0-9]*: warning/\1: warning/' \
+	    -e 's/\(.*:[0-9][0-9]*\):[0-9][0-9]*: locklint:/\1: locklint:/' \
 	    "$raw_output" > "$output"
 	if compare "$name" "$reference" "$output" &&
 	    [ "$capture_failed" -eq 0 ]; then
@@ -395,6 +397,11 @@ require_match "forced include multiple inputs" \
 run_capture "assertions" assertions.out \
     "$LOCKLINT" --check-locks assertions.c
 compare "assertions" assertions.ref assertions.out
+
+run_capture "assertion requirements" assertion-requirements.raw \
+    "$LOCKLINT" --check-locks assertion-requirements.c
+compare_no_columns "assertion requirements" assertion-requirements.ref \
+    assertion-requirements.raw assertion-requirements.out
 
 run_capture "assertion events" assertion-events.out \
     "$LOCKLINT" --check-locks --dump-events assertions.c

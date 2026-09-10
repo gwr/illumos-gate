@@ -161,6 +161,14 @@ struct acquisition_role {
 	bool relative;
 };
 
+struct assertion_requirement {
+	struct acquisition_role role;
+	unsigned int modes;
+	unsigned int accepted_inputs;
+	struct position pos;
+	struct assertion_requirement *next;
+};
+
 struct lock_transfer {
 	struct acquisition_role role;
 	lock_state_t output[LOCK_STATE_COUNT];
@@ -2072,9 +2080,9 @@ simulate_transfer(struct function_info *function,
 }
 
 static lock_state_t
-simulate_acquisition_prefix(struct function_info *function,
+simulate_lock_prefix(struct function_info *function,
     const struct acquisition_role *role, lock_state_t input,
-    struct instruction *acquisition)
+    struct instruction *checkpoint, bool *reachable)
 {
 	struct transfer_block_info *blocks;
 	struct transfer_block_info *block;
@@ -2082,18 +2090,22 @@ simulate_acquisition_prefix(struct function_info *function,
 	unsigned int invalid = 0;
 
 	blocks = solve_transfer_blocks(function, &role->access, input);
-	block = find_transfer_block(blocks, acquisition->bb);
+	block = find_transfer_block(blocks, checkpoint->bb);
 	if (block == NULL || !block->reachable) {
+		if (reachable != NULL)
+			*reachable = false;
 		free_transfer_blocks(blocks);
 		return (input);
 	}
+	if (reachable != NULL)
+		*reachable = true;
 	state = block->in;
 	invalid = block->invalid_in;
 	{
 		struct instruction *insn;
 
 		FOR_EACH_PTR(block->bb->insns, insn) {
-			if (insn == acquisition)
+			if (insn == checkpoint)
 				break;
 			if (insn->bb != NULL)
 				simulate_instruction(function, &role->access,
@@ -2129,6 +2141,55 @@ solve_function_transfers(struct function_info *function)
 		}
 	}
 	return (changed);
+}
+
+static void
+collect_assertion_requirements(struct function_info *function)
+{
+	struct assertion_requirement **tail =
+	    &function->assertion_requirements;
+	struct basic_block *bb;
+
+	FOR_EACH_PTR(function->ep->bbs, bb) {
+		struct instruction *insn;
+
+		FOR_EACH_PTR(bb->insns, insn) {
+			struct assertion_requirement *requirement;
+			struct acquisition_role role;
+			struct locklint_access lock;
+			bool reachable = false;
+			unsigned int input;
+			unsigned int modes;
+
+			if (insn->bb == NULL ||
+			    !locklint_get_assertion(function->tu, insn, &lock,
+			    &modes) ||
+			    !acquisition_role(function, &lock, &role))
+				continue;
+			requirement = calloc(1, sizeof (*requirement));
+			if (requirement == NULL)
+				die("out of memory recording assertion "
+				    "requirement");
+			requirement->role = role;
+			requirement->modes = modes;
+			requirement->pos = insn->call_expr != NULL ?
+			    insn->call_expr->pos : insn->pos;
+			for (input = 1; input < LOCK_STATE_COUNT; input++) {
+				lock_state_t state;
+
+				state = simulate_lock_prefix(function, &role,
+				    input, insn, &reachable);
+				if ((state & ~modes) == 0)
+					requirement->accepted_inputs |= 1U << input;
+			}
+			if (!reachable) {
+				free(requirement);
+				continue;
+			}
+			*tail = requirement;
+			tail = &requirement->next;
+		} END_FOR_EACH_PTR(insn);
+	} END_FOR_EACH_PTR(bb);
 }
 
 static bool
@@ -2312,8 +2373,8 @@ summarize_acquisition_prefix(struct function_info *function,
 		for (input = 1; input < LOCK_STATE_COUNT; input++) {
 			lock_state_t state;
 
-			state = simulate_acquisition_prefix(function,
-			    &candidate->role, input, insn);
+			state = simulate_lock_prefix(function,
+			    &candidate->role, input, insn, NULL);
 			if (callee_summary != NULL &&
 			    !apply_callee_acquisition_prefix(function, insn,
 			    callee, callee_summary, &candidate->role,
@@ -3193,6 +3254,85 @@ check_call_acquisitions(struct function_info *function,
 	}
 }
 
+static const char *
+assertion_requirement_name(unsigned int modes)
+{
+	switch (modes) {
+	case LOCK_NOT_HELD:
+		return ("not-held");
+	case LOCK_HELD:
+		return ("mutex-held");
+	case LOCK_READ_HELD:
+		return ("read-held");
+	case LOCK_WRITE_HELD:
+		return ("write-held");
+	case LOCK_READ_HELD | LOCK_WRITE_HELD:
+		return ("read-or-write-held");
+	case LOCK_NOT_HELD | LOCK_WRITE_HELD:
+		return ("not-read-held");
+	case LOCK_NOT_HELD | LOCK_READ_HELD:
+		return ("not-write-held");
+	default:
+		return ("lock-state");
+	}
+}
+
+static bool
+assertion_requirement_accepts(const struct assertion_requirement *requirement,
+    lock_state_t state)
+{
+	return ((requirement->accepted_inputs & (1U << state)) != 0);
+}
+
+static bool
+assertion_requirement_accepts_part(
+    const struct assertion_requirement *requirement, lock_state_t state)
+{
+	lock_state_t mode;
+
+	for (mode = 1; mode < LOCK_STATE_COUNT; mode <<= 1) {
+		if ((state & mode) != 0 &&
+		    assertion_requirement_accepts(requirement, mode))
+			return (true);
+	}
+	return (false);
+}
+
+static void
+check_call_assertion_requirements(struct function_info *function,
+    struct analysis_state *analysis, struct instruction *insn,
+    struct function_info *callee, struct position pos)
+{
+	struct assertion_requirement *requirement;
+
+	for (requirement = callee->assertion_requirements;
+	    requirement != NULL; requirement = requirement->next) {
+		struct locklint_access lock;
+		lock_state_t state;
+		const char *name;
+
+		if (!map_acquisition_role(function, insn, &requirement->role,
+		    &lock))
+			continue;
+		state = get_state(analysis->locks, &lock);
+		if (assertion_requirement_accepts(requirement, state))
+			continue;
+		name = assertion_requirement_name(requirement->modes);
+		if (assertion_requirement_accepts_part(requirement, state)) {
+			warning(pos, "locklint: asserted %s requirement for "
+			    "lock '%s' is not established on every path "
+			    "calling '%s'", name, lock_name(&lock),
+			    show_ident(callee->ep->name->ident));
+		} else {
+			warning(pos, "locklint: call to '%s' does not satisfy "
+			    "asserted %s requirement for lock '%s'",
+			    show_ident(callee->ep->name->ident), name,
+			    lock_name(&lock));
+		}
+		info(requirement->pos, "locklint: asserted requirement is here");
+	}
+}
+
 static void
 check_call(struct function_info *function,
     struct analysis_state *analysis, struct instruction *insn)
@@ -3211,6 +3351,7 @@ check_call(struct function_info *function,
 		return;
 	}
 	pos = insn->call_expr != NULL ? insn->call_expr->pos : insn->pos;
+	check_call_assertion_requirements(function, analysis, insn, callee, pos);
 	if (callee != function) {
 		for (condition = callee->conditions; condition != NULL;
 		    condition = condition->next) {
@@ -3504,6 +3645,10 @@ run_lock_checks(void)
 	} while (changed);
 	iter = function_iter_open();
 	while ((function = callgraph_iter_next(iter)) != NULL)
+		collect_assertion_requirements(function);
+	callgraph_iter_close(iter);
+	iter = function_iter_open();
+	while ((function = callgraph_iter_next(iter)) != NULL)
 		validate_declared_effects(function);
 	callgraph_iter_close(iter);
 	iter = function_iter_open();
@@ -3571,6 +3716,8 @@ free_checker_attachments(void)
 		    function->acquisition_roles;
 		struct acquisition_summary *acquisition =
 		    function->acquisitions;
+		struct assertion_requirement *requirement =
+		    function->assertion_requirements;
 		struct protection_condition *condition = function->conditions;
 		struct assumed_region *assumption = function->assumptions;
 		struct lock_transfer *transfer = function->transfers;
@@ -3590,6 +3737,13 @@ free_checker_attachments(void)
 
 			free(assumption);
 			assumption = assumption_next;
+		}
+		while (requirement != NULL) {
+			struct assertion_requirement *requirement_next =
+			    requirement->next;
+
+			free(requirement);
+			requirement = requirement_next;
 		}
 		free_acquisition_candidates(acquisition_role);
 		while (acquisition != NULL) {
@@ -3625,6 +3779,7 @@ free_checker_attachments(void)
 		function->blocks = NULL;
 		function->conditions = NULL;
 		function->assumptions = NULL;
+		function->assertion_requirements = NULL;
 		function->acquisition_roles = NULL;
 		function->acquisitions = NULL;
 		function->transfers = NULL;

@@ -21,6 +21,7 @@
 struct assumed_region;
 struct acquisition_candidate;
 struct acquisition_summary;
+struct assertion_requirement;
 struct block_info;
 struct entrypoint;
 struct lock_transfer;
@@ -39,6 +40,7 @@ struct function_info {
 	struct block_info *blocks;
 	struct protection_condition *conditions;
 	struct assumed_region *assumptions;
+	struct assertion_requirement *assertion_requirements;
 	struct acquisition_candidate *acquisition_roles;
 	struct acquisition_summary *acquisitions;
 	struct lock_transfer *transfers;

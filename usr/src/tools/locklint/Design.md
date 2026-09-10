@@ -395,6 +395,7 @@ The structures have these roles:
 | `struct protection_condition` | A caller-visible entry protection condition for formal-relative or absolute data, with an optional mutex and exact formal-lock alternatives |
 | `struct protection_alternative` | One definitely held formal-relative lock whose mapped address may equal and satisfy a condition's required lock |
 | `struct assumed_region` | One function-wide region selected by `ASSUMING_PROTECTED` |
+| `struct assertion_requirement` | One caller-mappable asserted lock condition, with source provenance and the entry-state masks accepted after its local instruction prefix |
 | `struct acquisition_candidate` | One formal-relative or canonical absolute lock role that can affect an acquisition summary |
 | `struct acquisition_summary` | One caller-mappable acquisition with representative source provenance and sparse prefix effects |
 | `struct acquisition_prefix` | The state of one changed entry-visible lock role immediately before a summarized acquisition, represented for every input-state mask |
@@ -1086,8 +1087,9 @@ an `assertion` with:
 - predicate argument range; and
 - implied held or not-held state.
 
-Recognized predicates currently include `MUTEX_HELD`, `MUTEX_NOT_HELD`,
-`mutex_owned`, and `_mutex_held`.  A directly preceding `!` and direct
+Recognized predicates include mutex-held and not-held forms and rwlock
+read-held, write-held, and lock-held forms.  Direct predicate spellings are
+recognized alongside their macros.  A directly preceding `!` and direct
 comparison with zero adjust the implied state.
 
 After linearization, `locklint_get_assertion()` associates an `OP_CALL`
@@ -1099,6 +1101,21 @@ Assertions refine local state.  They do not acquire or release a lock and are
 not included in function effect summaries.  An asserted held state is marked
 as not being a function side effect so it does not produce a held-on-return
 warning by itself.
+
+For each assertion on a caller-mappable role,
+`collect_assertion_requirements()` samples the state immediately before the
+assertion for every nonempty entry-state mask.  Sampling uses the same prefix
+transfer solver as acquisition summaries, so preceding local and direct-callee
+lock effects are preserved.  Structurally unreachable assertions are omitted.
+The resulting `assertion_requirement` records the role, asserted modes,
+source position, and a bit set of accepted entry masks.
+
+At a resolved direct call, the callee role maps to the caller lock and the
+current caller state selects an accepted-entry bit.  A wholly incompatible
+state produces an unsatisfied-requirement warning; a merged caller state with
+both accepted and rejected components produces a path-dependent warning.  The
+assertion position is emitted as supporting information.  Requirements are
+not yet propagated through wrappers or recursive call cycles.
 
 ## Event decoding
 
@@ -1685,6 +1702,18 @@ checker visits instruction
     -> block state is refined without recording a lock side effect
 ```
 
+### Assertion requirement at a direct call
+
+```text
+caller-mappable assertion discovered
+    -> each entry-state mask is simulated to the assertion point
+    -> masks definitely satisfying the asserted modes are retained
+caller OP_CALL resolved to callee
+    -> asserted lock role mapped to caller actual or absolute lock
+    -> current caller state selects the accepted-entry table
+    -> incompatible or path-dependent requirement is diagnosed
+```
+
 ### Direct callee effect
 
 ```text
@@ -1808,9 +1837,10 @@ The current implementation relies on these invariants:
     a matching function-wide assumed-protection region.
 11. Protection-condition propagation maps the protected-data identity
     independently and never rebases an absolute data or mutex root.
-12. Lock assertions refine local lock state without creating effects;
-    `ASSERT(NO_COMPETING_THREADS)` is an advisory local competition
-    transition and does not create a caller condition.
+12. Lock assertions refine local lock state without creating effects.
+    Caller-mappable lock assertions also create point-sensitive direct-callee
+    requirements; `ASSERT(NO_COMPETING_THREADS)` remains an advisory local
+    competition transition and does not create a caller condition.
 13. Interprocedural lock and visibility effects and protection conditions
     reach fixed points before diagnostics are emitted.
 14. Multiple external function definitions with one identifier are ambiguous,
