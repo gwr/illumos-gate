@@ -3314,26 +3314,14 @@ free_acquisition_prefixes(struct acquisition_prefix *prefixes)
 
 static bool
 apply_callee_acquisition_prefix(struct function_info *function,
-    struct instruction *insn, const struct function_info *callee,
+    struct instruction *insn,
     const struct acquisition_summary *callee_summary,
     const struct acquisition_role *role, lock_state_t *state)
 {
-	const struct acquisition_candidate *candidate;
 	const struct acquisition_prefix *prefix;
 	unsigned int matches = 0;
 	lock_state_t output = 0;
 
-	for (candidate = callee->acquisition_roles; candidate != NULL;
-	    candidate = candidate->next) {
-		struct locklint_access mapped;
-
-		if (map_acquisition_role(function, insn, &candidate->role,
-		    &mapped) && same_lock(&role->access, &mapped))
-			matches++;
-	}
-	if (matches > 1)
-		return (false);
-	matches = 0;
 	for (prefix = callee_summary->prefixes; prefix != NULL;
 	    prefix = prefix->next) {
 		struct locklint_access mapped;
@@ -3356,7 +3344,6 @@ apply_callee_acquisition_prefix(struct function_info *function,
 static void
 summarize_acquisition_prefix(struct function_info *function,
     struct acquisition_candidate *candidates, struct instruction *insn,
-    const struct function_info *callee,
     const struct acquisition_summary *callee_summary,
     struct acquisition_summary *summary)
 {
@@ -3380,7 +3367,7 @@ summarize_acquisition_prefix(struct function_info *function,
 			    &candidate->role, input, insn, NULL);
 			if (callee_summary != NULL &&
 			    !apply_callee_acquisition_prefix(function, insn,
-			    callee, callee_summary, &candidate->role,
+			    callee_summary, &candidate->role,
 			    &state)) {
 				prefix->unknown = true;
 				state = input;
@@ -3492,7 +3479,7 @@ collect_local_acquisition_summaries(struct function_info *function)
 			summary->source_function = function;
 			summary->checkpoint = insn;
 			summarize_acquisition_prefix(function,
-			    function->acquisition_roles, insn, NULL, NULL,
+			    function->acquisition_roles, insn, NULL,
 			    summary);
 			(void) add_acquisition_summary(function, summary);
 		} END_FOR_EACH_PTR(insn);
@@ -3543,8 +3530,8 @@ propagate_acquisition_summaries(struct function_info *function)
 				    summary->source_function;
 				propagated->checkpoint = summary->checkpoint;
 				summarize_acquisition_prefix(function,
-				    function->acquisition_roles, insn, callee,
-				    summary, propagated);
+				    function->acquisition_roles, insn, summary,
+				    propagated);
 				if (add_acquisition_summary(function, propagated))
 					changed = true;
 next_summary:
@@ -4235,6 +4222,7 @@ acquisition_prefix_state(struct function_info *function,
 	const struct acquisition_prefix *prefix;
 	lock_state_t state = 0;
 	unsigned int aliases = 0;
+	unsigned int matches = 0;
 	bool found = false;
 
 	for (candidate = callee->acquisition_roles; candidate != NULL;
@@ -4252,9 +4240,6 @@ acquisition_prefix_state(struct function_info *function,
 			*transformed = state != held->state;
 			return (state);
 		}
-		*known = false;
-		*transformed = false;
-		return (held->state);
 	}
 
 	for (prefix = summary->prefixes; prefix != NULL;
@@ -4271,6 +4256,12 @@ acquisition_prefix_state(struct function_info *function,
 		}
 		state |= prefix->output[held->state];
 		found = true;
+		matches++;
+	}
+	if (matches > 1) {
+		*known = false;
+		*transformed = false;
+		return (held->state);
 	}
 	*known = true;
 	*transformed = found;

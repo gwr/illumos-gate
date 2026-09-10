@@ -151,5 +151,11 @@ run_variant 1 "same_release_before_target \
 same_target_before_release" || exit $?
 run_variant 2 "distinct_release_before_target \
 distinct_target_before_release" || exit $?
+run_variant 3 "same_wrapped_release_before_target \
+same_wrapped_target_before_release" || exit $?
+run_variant 4 "distinct_wrapped_release_before_target \
+distinct_wrapped_target_before_release" || exit $?
+run_variant 5 "internal_release_before_target \
+internal_target_before_release" || exit $?
 
 print "Results: $run_root"

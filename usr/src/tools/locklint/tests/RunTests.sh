@@ -213,6 +213,33 @@ compare_no_columns "distinct-actual acquisition prefixes" \
     acquisition-prefix-alias-distinct.raw \
     acquisition-prefix-alias-distinct.out
 
+run_capture "wrapped same-actual acquisition prefixes" \
+    acquisition-prefix-alias-wrapper-same.raw "$LOCKLINT" \
+    -DACQUISITION_PREFIX_ALIAS_VARIANT=3 --check-locks \
+    acquisition-prefix-alias.c
+compare_no_columns "wrapped same-actual acquisition prefixes" \
+    acquisition-prefix-alias-wrapper-same.ref \
+    acquisition-prefix-alias-wrapper-same.raw \
+    acquisition-prefix-alias-wrapper-same.out
+
+run_capture "wrapped distinct-actual acquisition prefixes" \
+    acquisition-prefix-alias-wrapper-distinct.raw "$LOCKLINT" \
+    -DACQUISITION_PREFIX_ALIAS_VARIANT=4 --check-locks \
+    acquisition-prefix-alias.c
+compare_no_columns "wrapped distinct-actual acquisition prefixes" \
+    acquisition-prefix-alias-wrapper-distinct.ref \
+    acquisition-prefix-alias-wrapper-distinct.raw \
+    acquisition-prefix-alias-wrapper-distinct.out
+
+run_capture "internally aliased acquisition prefixes" \
+    acquisition-prefix-alias-wrapper-internal.raw "$LOCKLINT" \
+    -DACQUISITION_PREFIX_ALIAS_VARIANT=5 --check-locks \
+    acquisition-prefix-alias.c
+compare_no_columns "internally aliased acquisition prefixes" \
+    acquisition-prefix-alias-wrapper-internal.ref \
+    acquisition-prefix-alias-wrapper-internal.raw \
+    acquisition-prefix-alias-wrapper-internal.out
+
 run_capture "observed lock order" lock-order-observed.out \
     "$LOCKLINT" --check-locks lock-order-observed.c
 compare "observed lock order" lock-order-observed.ref \

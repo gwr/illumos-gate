@@ -65,6 +65,49 @@ target_before_release(mutex_t *released, mutex_t *acquired, mutex_t *target)
 	(void) mutex_lock(acquired);
 }
 
+#if ACQUISITION_PREFIX_ALIAS_VARIANT == 3 || \
+    ACQUISITION_PREFIX_ALIAS_VARIANT == 4
+
+static void
+release_before_target_wrapper(mutex_t *released, mutex_t *acquired,
+    mutex_t *target)
+{
+	_NOTE(LOCK_RELEASED_AS_SIDE_EFFECT(*released))
+	_NOTE(MUTEX_ACQUIRED_AS_SIDE_EFFECT(*acquired))
+	release_before_target(released, acquired, target);
+}
+
+static void
+target_before_release_wrapper(mutex_t *released, mutex_t *acquired,
+    mutex_t *target)
+{
+	_NOTE(LOCK_RELEASED_AS_SIDE_EFFECT(*released))
+	_NOTE(MUTEX_ACQUIRED_AS_SIDE_EFFECT(*acquired))
+	target_before_release(released, acquired, target);
+}
+
+#endif
+
+#if ACQUISITION_PREFIX_ALIAS_VARIANT == 5
+
+static void
+release_before_target_internal_wrapper(mutex_t *lock, mutex_t *target)
+{
+	_NOTE(LOCK_RELEASED_AS_SIDE_EFFECT(*lock))
+	release_before_target(lock, lock, target);
+	(void) mutex_unlock(lock);
+}
+
+static void
+target_before_release_internal_wrapper(mutex_t *lock, mutex_t *target)
+{
+	_NOTE(LOCK_RELEASED_AS_SIDE_EFFECT(*lock))
+	target_before_release(lock, lock, target);
+	(void) mutex_unlock(lock);
+}
+
+#endif
+
 #if ACQUISITION_PREFIX_ALIAS_VARIANT == 1
 
 static void
@@ -107,6 +150,74 @@ distinct_target_before_release(struct prefix_alias_state *state)
 	(void) mutex_lock(&state->second);
 	target_before_release(&state->second, &state->third, &state->first);
 	(void) mutex_unlock(&state->third);
+}
+
+#elif ACQUISITION_PREFIX_ALIAS_VARIANT == 3
+
+static void
+same_wrapped_release_before_target(struct prefix_alias_state *state)
+{
+	(void) mutex_lock(&state->second);
+	release_before_target_wrapper(&state->second, &state->second,
+	    &state->first);
+	(void) mutex_unlock(&state->second);
+}
+
+static void
+same_wrapped_target_before_release(struct prefix_alias_state *state)
+{
+	(void) mutex_lock(&state->second);
+	target_before_release_wrapper(&state->second, &state->second,
+	    &state->first);
+	(void) mutex_unlock(&state->second);
+}
+
+#elif ACQUISITION_PREFIX_ALIAS_VARIANT == 4
+
+static void
+distinct_wrapped_release_before_target(struct prefix_alias_state *state)
+{
+#ifdef __lock_lint
+	_NOTE(MUTEX_ACQUIRED_AS_SIDE_EFFECT(state->second))
+	_NOTE(LOCK_RELEASED_AS_SIDE_EFFECT(state->third))
+#endif
+	(void) mutex_lock(&state->second);
+	release_before_target_wrapper(&state->second, &state->third,
+	    &state->first);
+	(void) mutex_unlock(&state->third);
+}
+
+static void
+distinct_wrapped_target_before_release(struct prefix_alias_state *state)
+{
+#ifdef __lock_lint
+	_NOTE(MUTEX_ACQUIRED_AS_SIDE_EFFECT(state->second))
+	_NOTE(LOCK_RELEASED_AS_SIDE_EFFECT(state->third))
+#endif
+	(void) mutex_lock(&state->second);
+	target_before_release_wrapper(&state->second, &state->third,
+	    &state->first);
+	(void) mutex_unlock(&state->third);
+}
+
+#elif ACQUISITION_PREFIX_ALIAS_VARIANT == 5
+
+static void
+internal_release_before_target(struct prefix_alias_state *state)
+{
+	(void) mutex_lock(&state->second);
+	release_before_target_internal_wrapper(&state->second, &state->first);
+	(void) mutex_lock(&state->second);
+	(void) mutex_unlock(&state->second);
+}
+
+static void
+internal_target_before_release(struct prefix_alias_state *state)
+{
+	(void) mutex_lock(&state->second);
+	target_before_release_internal_wrapper(&state->second, &state->first);
+	(void) mutex_lock(&state->second);
+	(void) mutex_unlock(&state->second);
 }
 
 #else
