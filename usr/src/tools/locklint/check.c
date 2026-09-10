@@ -1105,6 +1105,22 @@ add_transfer(struct function_info *function, unsigned int argument,
 	return (transfer);
 }
 
+static struct lock_transfer *
+find_transfer(struct function_info *function, unsigned int argument,
+    struct symbol *lock_member, unsigned long lock_offset)
+{
+	struct lock_transfer *transfer;
+
+	for (transfer = function->transfers; transfer != NULL;
+	    transfer = transfer->next) {
+		if (transfer->argument == argument &&
+		    transfer->lock_member == lock_member &&
+		    transfer->lock_offset == lock_offset)
+			return (transfer);
+	}
+	return (NULL);
+}
+
 static void
 transfer_call_effects(struct function_info *function,
     struct state_entry **states, struct instruction *insn)
@@ -1665,6 +1681,7 @@ collect_local_transfers(struct function_info *function)
 
 		FOR_EACH_PTR(bb->insns, insn) {
 			struct locklint_access lock;
+			enum locklint_declared_lock_effect effect;
 			enum locklint_lock_action action;
 			enum locklint_lock_mode mode;
 			unsigned int argument;
@@ -1674,9 +1691,17 @@ collect_local_transfers(struct function_info *function)
 				continue;
 			action = locklint_get_lock_action(function->tu, insn,
 			    &lock, &mode);
-			if (action == LOCKLINT_LOCK_NONE || lock.root == NULL ||
-			    !formal_argument(function->ep, lock.root, &argument))
+			if (action == LOCKLINT_LOCK_NONE) {
+				if (!locklint_get_declared_lock_effect(function->tu,
+				    insn, &effect, &lock) ||
+				    lock.root == NULL ||
+				    !formal_argument(function->ep, lock.root,
+				    &argument))
+					continue;
+			} else if (lock.root == NULL ||
+			    !formal_argument(function->ep, lock.root, &argument)) {
 				continue;
+			}
 			(void) add_transfer(function, argument, lock.member,
 			    lock.offset, &added);
 			if (added)
@@ -1684,6 +1709,128 @@ collect_local_transfers(struct function_info *function)
 		} END_FOR_EACH_PTR(insn);
 	} END_FOR_EACH_PTR(bb);
 	return (changed);
+}
+
+enum declared_effect_status {
+	DECLARED_EFFECT_MATCHES,
+	DECLARED_EFFECT_CONDITIONAL,
+	DECLARED_EFFECT_CONFLICTS
+};
+
+static const char *
+declared_effect_description(enum locklint_declared_lock_effect effect)
+{
+	switch (effect) {
+	case LOCKLINT_DECLARED_MUTEX_ACQUIRED:
+		return ("mutex acquisition");
+	case LOCKLINT_DECLARED_READ_ACQUIRED:
+		return ("read-lock acquisition");
+	case LOCKLINT_DECLARED_WRITE_ACQUIRED:
+		return ("write-lock acquisition");
+	case LOCKLINT_DECLARED_LOCK_RELEASED:
+		return ("release");
+	default:
+		abort();
+	}
+}
+
+static enum declared_effect_status
+declared_output_status(lock_state_t output, lock_state_t expected)
+{
+	if (output == expected)
+		return (DECLARED_EFFECT_MATCHES);
+	if ((output & expected) != 0)
+		return (DECLARED_EFFECT_CONDITIONAL);
+	return (DECLARED_EFFECT_CONFLICTS);
+}
+
+static enum declared_effect_status
+declared_effect_status(struct lock_transfer *transfer,
+    enum locklint_declared_lock_effect effect)
+{
+	static const lock_state_t held_inputs[] = {
+		LOCK_HELD,
+		LOCK_READ_HELD,
+		LOCK_WRITE_HELD
+	};
+	enum declared_effect_status status = DECLARED_EFFECT_MATCHES;
+	lock_state_t expected;
+	unsigned int i;
+
+	switch (effect) {
+	case LOCKLINT_DECLARED_MUTEX_ACQUIRED:
+		return (declared_output_status(
+		    transfer->output[LOCK_NOT_HELD], LOCK_HELD));
+	case LOCKLINT_DECLARED_READ_ACQUIRED:
+		return (declared_output_status(
+		    transfer->output[LOCK_NOT_HELD], LOCK_READ_HELD));
+	case LOCKLINT_DECLARED_WRITE_ACQUIRED:
+		return (declared_output_status(
+		    transfer->output[LOCK_NOT_HELD], LOCK_WRITE_HELD));
+	case LOCKLINT_DECLARED_LOCK_RELEASED:
+		expected = LOCK_NOT_HELD;
+		break;
+	default:
+		abort();
+	}
+
+	for (i = 0; i < sizeof (held_inputs) / sizeof (held_inputs[0]); i++) {
+		enum declared_effect_status current;
+
+		current = declared_output_status(
+		    transfer->output[held_inputs[i]], expected);
+		if (current == DECLARED_EFFECT_CONFLICTS)
+			return (current);
+		if (current == DECLARED_EFFECT_CONDITIONAL)
+			status = current;
+	}
+	return (status);
+}
+
+static void
+validate_declared_effects(struct function_info *function)
+{
+	struct basic_block *bb;
+
+	FOR_EACH_PTR(function->ep->bbs, bb) {
+		struct instruction *insn;
+
+		FOR_EACH_PTR(bb->insns, insn) {
+			struct locklint_access lock;
+			enum locklint_declared_lock_effect effect;
+			enum declared_effect_status status;
+			struct lock_transfer *transfer;
+			unsigned int argument;
+
+			if (insn->bb == NULL ||
+			    !locklint_get_declared_lock_effect(function->tu,
+			    insn, &effect, &lock) ||
+			    !formal_argument(function->ep, lock.root, &argument))
+				continue;
+			transfer = find_transfer(function, argument, lock.member,
+			    lock.offset);
+			if (transfer == NULL)
+				abort();
+			status = declared_effect_status(transfer, effect);
+			if (status == DECLARED_EFFECT_MATCHES)
+				continue;
+			if (status == DECLARED_EFFECT_CONDITIONAL) {
+				warning(insn->context_expr->pos,
+				    "locklint: declared %s of lock '%s' is not "
+				    "established on every return from '%s'",
+				    declared_effect_description(effect),
+				    lock_name(&lock),
+				    show_ident(function->ep->name->ident));
+			} else {
+				warning(insn->context_expr->pos,
+				    "locklint: function '%s' does not establish "
+				    "declared %s of lock '%s'",
+				    show_ident(function->ep->name->ident),
+				    declared_effect_description(effect),
+				    lock_name(&lock));
+			}
+		} END_FOR_EACH_PTR(insn);
+	} END_FOR_EACH_PTR(bb);
 }
 
 static bool
@@ -3232,6 +3379,31 @@ check_lock_action(struct function_info *function,
 	}
 }
 
+static bool
+function_declares_lock_effect(struct function_info *function,
+    const struct locklint_access *target)
+{
+	struct basic_block *bb;
+
+	FOR_EACH_PTR(function->ep->bbs, bb) {
+		struct instruction *insn;
+
+		FOR_EACH_PTR(bb->insns, insn) {
+			struct locklint_access lock;
+			enum locklint_declared_lock_effect effect;
+			unsigned int argument;
+
+			if (insn->bb != NULL &&
+			    locklint_get_declared_lock_effect(function->tu,
+			    insn, &effect, &lock) &&
+			    formal_argument(function->ep, lock.root, &argument) &&
+			    same_lock(target, &lock))
+				return (true);
+		} END_FOR_EACH_PTR(insn);
+	} END_FOR_EACH_PTR(bb);
+	return (false);
+}
+
 static void
 check_return_state(struct function_info *function, struct block_info *block,
     struct analysis_state *state)
@@ -3250,6 +3422,8 @@ check_return_state(struct function_info *function, struct block_info *block,
 	pos = ret->pos;
 	for (entry = state->locks; entry != NULL; entry = entry->next) {
 		if (!entry->side_effect)
+			continue;
+		if (function_declares_lock_effect(function, &entry->lock))
 			continue;
 		if (state_definitely_held(entry->state)) {
 			warning(pos, "locklint: lock '%s' held on return from '%s'",
@@ -3353,6 +3527,10 @@ run_lock_checks(void)
 		}
 		callgraph_iter_close(iter);
 	} while (changed);
+	iter = function_iter_open();
+	while ((function = callgraph_iter_next(iter)) != NULL)
+		validate_declared_effects(function);
+	callgraph_iter_close(iter);
 	iter = function_iter_open();
 	while ((function = callgraph_iter_next(iter)) != NULL)
 		collect_function_assumptions(function);

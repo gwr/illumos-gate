@@ -287,6 +287,11 @@ do
 	compare "$test" "$test.ref" "$test.out"
 done
 
+run_capture "declared effects" declared-effects.raw \
+    "$LOCKLINT" --check-locks declared-effects.c
+compare_no_columns "declared effects" declared-effects.ref \
+    declared-effects.raw declared-effects.out
+
 run_capture "basic calls" calls-basic.out \
     "$LOCKLINT" --check-locks calls-basic.c
 compare "basic calls" calls-basic.ref calls-basic.out
