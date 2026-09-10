@@ -315,6 +315,17 @@ compare_no_columns "absolute declared effects" \
     declared-effects-absolute.ref declared-effects-absolute.raw \
     declared-effects-absolute.out
 
+run_capture "same-actual lock composition" alias-composition-same.out \
+    "$LOCKLINT" -DALIAS_COMPOSITION_VARIANT=1 --check-locks \
+    alias-composition.c
+require_empty "same-actual lock composition" alias-composition-same.out
+
+run_capture "distinct-actual lock composition" alias-composition-distinct.out \
+    "$LOCKLINT" -DALIAS_COMPOSITION_VARIANT=2 --check-locks \
+    alias-composition.c
+require_empty "distinct-actual lock composition" \
+    alias-composition-distinct.out
+
 run_capture "basic calls" calls-basic.out \
     "$LOCKLINT" --check-locks calls-basic.c
 compare "basic calls" calls-basic.ref calls-basic.out

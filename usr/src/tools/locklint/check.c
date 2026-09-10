@@ -203,6 +203,23 @@ struct lock_transfer {
 	struct lock_transfer *next;
 };
 
+struct mapped_transfer_role {
+	struct lock_transfer *transfer;
+	struct mapped_transfer_role *next;
+};
+
+struct mapped_lock_transfer {
+	struct locklint_access lock;
+	unsigned int role_count;
+	struct mapped_transfer_role *roles;
+	struct mapped_lock_transfer *next;
+};
+
+struct transfer_target {
+	const struct locklint_access *single;
+	const struct mapped_transfer_role *roles;
+};
+
 struct acquisition_prefix {
 	struct acquisition_role role;
 	lock_state_t output[LOCK_STATE_COUNT];
@@ -243,6 +260,8 @@ static void transfer_call_effects(struct function_info *,
     struct state_entry **, struct instruction *);
 static void transfer_call_visibility_effects(struct function_info *,
     struct visibility_entry **, struct instruction *);
+static lock_state_t simulate_aliased_transfer(struct function_info *,
+    const struct mapped_transfer_role *, lock_state_t, unsigned int *);
 static struct symbol *formal_symbol(struct entrypoint *, unsigned int);
 static bool acquisition_block_reachable(struct function_info *,
     struct basic_block *);
@@ -1618,26 +1637,108 @@ find_transfer(struct function_info *function,
 	return (NULL);
 }
 
+static struct mapped_lock_transfer *
+map_call_lock_transfers(struct function_info *function,
+    struct instruction *insn, struct function_info *callee)
+{
+	struct mapped_lock_transfer *mapped = NULL;
+	struct mapped_lock_transfer **mapped_tail = &mapped;
+	struct lock_transfer *transfer;
+
+	for (transfer = callee->transfers; transfer != NULL;
+	    transfer = transfer->next) {
+		struct mapped_lock_transfer *group;
+		struct mapped_transfer_role *role;
+		struct locklint_access lock;
+
+		if (!map_acquisition_role(function, insn, &transfer->role,
+		    &lock))
+			continue;
+		for (group = mapped; group != NULL; group = group->next)
+			if (same_lock(&group->lock, &lock))
+				break;
+		if (group == NULL) {
+			group = calloc(1, sizeof (*group));
+			if (group == NULL)
+				die("out of memory mapping lock transfers");
+			group->lock = lock;
+			*mapped_tail = group;
+			mapped_tail = &group->next;
+		}
+		role = calloc(1, sizeof (*role));
+		if (role == NULL)
+			die("out of memory mapping lock transfer role");
+		role->transfer = transfer;
+		if (group->roles == NULL) {
+			group->roles = role;
+		} else {
+			struct mapped_transfer_role *last = group->roles;
+
+			while (last->next != NULL)
+				last = last->next;
+			last->next = role;
+		}
+		group->role_count++;
+	}
+	return (mapped);
+}
+
+static void
+free_mapped_lock_transfers(struct mapped_lock_transfer *mapped)
+{
+	while (mapped != NULL) {
+		struct mapped_lock_transfer *next = mapped->next;
+
+		while (mapped->roles != NULL) {
+			struct mapped_transfer_role *role_next =
+			    mapped->roles->next;
+
+			free(mapped->roles);
+			mapped->roles = role_next;
+		}
+		free(mapped);
+		mapped = next;
+	}
+}
+
 static void
 transfer_call_effects(struct function_info *function,
     struct state_entry **states, struct instruction *insn)
 {
 	struct function_info *callee = callgraph_callee(function, insn);
-	struct lock_transfer *transfer;
+	struct mapped_lock_transfer *mapped;
+	struct mapped_lock_transfer *group;
 
 	if (callee == NULL)
 		return;
-	for (transfer = callee->transfers; transfer != NULL;
-	    transfer = transfer->next) {
+	if (callee->transfers != NULL && callee->transfers->next == NULL) {
+		struct lock_transfer *transfer = callee->transfers;
 		struct locklint_access lock;
 		lock_state_t state;
 
 		if (!map_acquisition_role(function, insn, &transfer->role,
 		    &lock))
-			continue;
+			return;
 		state = get_state(*states, &lock);
 		set_state(states, &lock, transfer->output[state]);
+		return;
 	}
+	mapped = map_call_lock_transfers(function, insn, callee);
+	for (group = mapped; group != NULL; group = group->next) {
+		lock_state_t state;
+
+		state = get_state(*states, &group->lock);
+		if (group->role_count == 1) {
+			state = group->roles->transfer->output[state];
+		} else {
+			unsigned int invalid;
+
+			state = simulate_aliased_transfer(callee, group->roles,
+			    state, &invalid);
+		}
+		set_state(states, &group->lock, state);
+	}
+	free_mapped_lock_transfers(mapped);
 }
 
 static bool
@@ -2461,9 +2562,23 @@ merge_lock_state(lock_state_t left, lock_state_t right)
 	return (left | right);
 }
 
+static bool
+transfer_target_matches(const struct transfer_target *target,
+    const struct locklint_access *lock)
+{
+	const struct mapped_transfer_role *role;
+
+	if (target->single != NULL)
+		return (same_lock(target->single, lock));
+	for (role = target->roles; role != NULL; role = role->next)
+		if (same_lock(&role->transfer->role.access, lock))
+			return (true);
+	return (false);
+}
+
 static void
 simulate_instruction(struct function_info *function,
-    const struct locklint_access *target, lock_state_t *state,
+    const struct transfer_target *target, lock_state_t *state,
     unsigned int *invalid, struct instruction *insn)
 {
 	struct function_info *callee;
@@ -2474,12 +2589,17 @@ simulate_instruction(struct function_info *function,
 
 	callee = callgraph_callee(function, insn);
 	if (callee != NULL) {
+		/*
+		 * Direct aliased roles use contextual replay at the outer call.
+		 * Nested alias composition remains factored pending its own
+		 * wrapper characterization.
+		 */
 		for (transfer = callee->transfers; transfer != NULL;
 		    transfer = transfer->next) {
 			if (!map_acquisition_role(function, insn,
 			    &transfer->role, &lock))
 				continue;
-			if (!same_lock(target, &lock))
+			if (!transfer_target_matches(target, &lock))
 				continue;
 			*invalid |= transfer->invalid[*state];
 			*state = transfer->output[*state];
@@ -2487,7 +2607,8 @@ simulate_instruction(struct function_info *function,
 	}
 
 	action = locklint_get_lock_action(function->tu, insn, &lock, &mode);
-	if (action == LOCKLINT_LOCK_NONE || !same_lock(target, &lock))
+	if (action == LOCKLINT_LOCK_NONE ||
+	    !transfer_target_matches(target, &lock))
 		return;
 	if (action == LOCKLINT_LOCK_ACQUIRE) {
 		if ((*state & LOCK_ANY_HELD) != 0)
@@ -2503,7 +2624,7 @@ simulate_instruction(struct function_info *function,
 static void
 simulate_block(struct function_info *function,
     struct transfer_block_info *block,
-    const struct locklint_access *target, lock_state_t in,
+    const struct transfer_target *target, lock_state_t in,
     unsigned int invalid_in, lock_state_t *out,
     unsigned int *invalid_out)
 {
@@ -2520,7 +2641,7 @@ simulate_block(struct function_info *function,
 
 static struct transfer_block_info *
 solve_transfer_blocks(struct function_info *function,
-    const struct locklint_access *target, lock_state_t input)
+    const struct transfer_target *target, lock_state_t input)
 {
 	struct transfer_block_info *blocks = NULL;
 	struct transfer_block_info **tail = &blocks;
@@ -2601,25 +2722,14 @@ free_transfer_blocks(struct transfer_block_info *blocks)
 	}
 }
 
-/*
- * Simulate one transfer candidate for one possible entry state.  Merge both
- * lock state and invalid-operation flags through the CFG and across all
- * reachable returns.
- */
 static lock_state_t
-simulate_transfer(struct function_info *function,
-    struct lock_transfer *transfer, lock_state_t input,
-    unsigned int *invalid)
+transfer_blocks_result(struct transfer_block_info *blocks,
+    lock_state_t input, unsigned int *invalid)
 {
-	struct transfer_block_info *blocks;
 	struct transfer_block_info *block;
-	struct locklint_access target = { 0 };
 	lock_state_t result = input;
 	unsigned int result_invalid = 0;
 	bool found_return = false;
-
-	target = transfer->role.access;
-	blocks = solve_transfer_blocks(function, &target, input);
 
 	for (block = blocks; block != NULL; block = block->next) {
 		struct instruction *insn;
@@ -2642,8 +2752,47 @@ simulate_transfer(struct function_info *function,
 			result_invalid |= block->invalid_out;
 		}
 	}
-	free_transfer_blocks(blocks);
 	*invalid = result_invalid;
+	return (result);
+}
+
+/*
+ * Simulate one transfer candidate for one possible entry state.  Merge both
+ * lock state and invalid-operation flags through the CFG and across all
+ * reachable returns.
+ */
+static lock_state_t
+simulate_transfer(struct function_info *function,
+    struct lock_transfer *transfer, lock_state_t input,
+    unsigned int *invalid)
+{
+	struct transfer_block_info *blocks;
+	struct locklint_access target = { 0 };
+	struct transfer_target simulation_target;
+	lock_state_t result;
+
+	target = transfer->role.access;
+	simulation_target.single = &target;
+	simulation_target.roles = NULL;
+	blocks = solve_transfer_blocks(function, &simulation_target, input);
+	result = transfer_blocks_result(blocks, input, invalid);
+	free_transfer_blocks(blocks);
+	return (result);
+}
+
+static lock_state_t
+simulate_aliased_transfer(struct function_info *function,
+    const struct mapped_transfer_role *roles, lock_state_t input,
+    unsigned int *invalid)
+{
+	struct transfer_target target = { 0 };
+	struct transfer_block_info *blocks;
+	lock_state_t result;
+
+	target.roles = roles;
+	blocks = solve_transfer_blocks(function, &target, input);
+	result = transfer_blocks_result(blocks, input, invalid);
+	free_transfer_blocks(blocks);
 	return (result);
 }
 
@@ -2654,10 +2803,13 @@ simulate_lock_prefix(struct function_info *function,
 {
 	struct transfer_block_info *blocks;
 	struct transfer_block_info *block;
+	struct transfer_target target;
 	lock_state_t state = input;
 	unsigned int invalid = 0;
 
-	blocks = solve_transfer_blocks(function, &role->access, input);
+	target.single = &role->access;
+	target.roles = NULL;
+	blocks = solve_transfer_blocks(function, &target, input);
 	block = find_transfer_block(blocks, checkpoint->bb);
 	if (block == NULL || !block->reachable) {
 		if (reachable != NULL)
@@ -2676,7 +2828,7 @@ simulate_lock_prefix(struct function_info *function,
 			if (insn == checkpoint)
 				break;
 			if (insn->bb != NULL)
-				simulate_instruction(function, &role->access,
+				simulate_instruction(function, &target,
 				    &state, &invalid, insn);
 		} END_FOR_EACH_PTR(insn);
 	}
@@ -4080,29 +4232,31 @@ check_call(struct function_info *function,
 		}
 	}
 	{
-		struct lock_transfer *transfer;
+		struct mapped_lock_transfer *mapped;
+		struct mapped_lock_transfer *group;
 
 		check_call_acquisitions(function, analysis, insn, callee, pos);
-		for (transfer = callee->transfers; transfer != NULL;
-		    transfer = transfer->next) {
+		if (callee->transfers != NULL &&
+		    callee->transfers->next == NULL) {
+			struct lock_transfer *transfer = callee->transfers;
 			struct locklint_access lock;
 			lock_state_t state;
+			unsigned int invalid;
 			bool defer;
 
 			if (!map_acquisition_role(function, insn,
 			    &transfer->role, &lock))
-				continue;
+				goto lock_transfers_done;
 			state = get_state(analysis->locks, &lock);
+			invalid = transfer->invalid[state];
 			defer = defer_lock_diagnostics(function, &lock);
-			if (!defer &&
-			    (transfer->invalid[state] & INVALID_ACQUIRE) != 0) {
+			if (!defer && (invalid & INVALID_ACQUIRE) != 0) {
 				warning(pos, "locklint: call to '%s' may acquire "
 				    "already-held lock '%s'",
 				    show_ident(callee->ep->name->ident),
 				    lock_name(&lock));
 			}
-			if (!defer &&
-			    (transfer->invalid[state] & INVALID_RELEASE) != 0) {
+			if (!defer && (invalid & INVALID_RELEASE) != 0) {
 				warning(pos, "locklint: call to '%s' may release "
 				    "lock '%s' that is not held",
 				    show_ident(callee->ep->name->ident),
@@ -4110,7 +4264,45 @@ check_call(struct function_info *function,
 			}
 			set_state(&analysis->locks, &lock,
 			    transfer->output[state]);
+			goto lock_transfers_done;
 		}
+		mapped = map_call_lock_transfers(function, insn, callee);
+		for (group = mapped; group != NULL; group = group->next) {
+			unsigned int invalid;
+			lock_state_t state;
+			bool defer;
+
+			state = get_state(analysis->locks, &group->lock);
+			if (group->role_count == 1) {
+				struct lock_transfer *transfer =
+				    group->roles->transfer;
+
+				invalid = transfer->invalid[state];
+				state = transfer->output[state];
+			} else {
+				state = simulate_aliased_transfer(callee,
+				    group->roles, state, &invalid);
+			}
+			defer = defer_lock_diagnostics(function, &group->lock);
+			if (!defer &&
+			    (invalid & INVALID_ACQUIRE) != 0) {
+				warning(pos, "locklint: call to '%s' may acquire "
+				    "already-held lock '%s'",
+				    show_ident(callee->ep->name->ident),
+				    lock_name(&group->lock));
+			}
+			if (!defer &&
+			    (invalid & INVALID_RELEASE) != 0) {
+				warning(pos, "locklint: call to '%s' may release "
+				    "lock '%s' that is not held",
+				    show_ident(callee->ep->name->ident),
+				    lock_name(&group->lock));
+			}
+			set_state(&analysis->locks, &group->lock, state);
+		}
+		free_mapped_lock_transfers(mapped);
+lock_transfers_done:
+		;
 	}
 	transfer_call_visibility_effects(function, &analysis->visibility, insn);
 	if (callee->competition_transfer != NULL) {
