@@ -156,5 +156,8 @@ run_variant 4 "same_acquire_satisfies_wrapped_requirement" || exit $?
 run_variant 5 \
     "distinct_acquire_does_not_satisfy_wrapped_requirement" || exit $?
 run_variant 6 "call_internal_assertion_alias" || exit $?
+run_variant 8 "same_multiple_assertion_alias_direct \
+same_multiple_assertion_alias_wrapped \
+distinct_required_multiple_assertion_alias_wrapped" || exit $?
 
 print "Results: $run_root"

@@ -544,6 +544,13 @@ compare_no_columns "alias-invalidated assertion requirements" \
     assertion-alias-invalidated.ref assertion-alias-invalidated.raw \
     assertion-alias-invalidated.out
 
+run_capture "multiple assertion alias alternatives" \
+    assertion-alias-multiple.raw "$LOCKLINT" \
+    -DASSERTION_ALIAS_VARIANT=8 --check-locks assertion-alias.c
+compare_no_columns "multiple assertion alias alternatives" \
+    assertion-alias-multiple.ref assertion-alias-multiple.raw \
+    assertion-alias-multiple.out
+
 run_capture "assertion requirement wrappers" \
     assertion-requirement-wrappers.raw "$LOCKLINT" --check-locks \
     assertion-requirement-wrappers.c

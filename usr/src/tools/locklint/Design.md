@@ -399,7 +399,7 @@ The structures have these roles:
 | `struct protection_alternative` | One definitely held formal-relative lock whose mapped address may equal and satisfy a condition's required lock |
 | `struct assumed_region` | One function-wide region selected by `ASSUMING_PROTECTED` |
 | `struct assertion_requirement` | One caller-mappable asserted lock condition, with original source provenance, a local replay checkpoint, ordinary accepted entry masks, and sparse alias alternatives |
-| `struct assertion_alternative` | One other formal lock role and the entry masks accepted when it aliases an assertion requirement's primary role |
+| `struct assertion_alternative` | One set of other formal lock roles and the entry masks accepted when every member aliases an assertion requirement's primary role |
 | `struct acquisition_candidate` | One formal-relative or canonical absolute lock role that can affect an acquisition summary |
 | `struct acquisition_summary` | One caller-mappable acquisition with original source/checkpoint identity, representative provenance, and sparse prefix effects |
 | `struct acquisition_prefix` | The state of one changed entry-visible lock role immediately before a summarized acquisition, represented for every input-state mask |
@@ -1122,8 +1122,11 @@ transfer solver as acquisition summaries, so preceding local and direct-callee
 lock effects are preserved.  Structurally unreachable assertions are omitted.
 The resulting `assertion_requirement` records the role, asserted modes,
 source position, source function and checkpoint, and a bit set of accepted
-entry masks.  It also records sparse alternatives for other formal roles
-whose aliasing with the asserted role changes that accepted-input set.
+entry masks.  It also records alternatives keyed by sets of other formal roles and the
+accepted-input mask when every role in that set aliases the asserted role.
+All nonempty subsets are evaluated when any alias partition changes the
+ordinary mask; requirements without an alias-sensitive partition remain
+sparse.
 
 At each resolved call, the callee role maps to the caller lock and the caller
 prefix is sampled for every entry-state mask.  Requirements with the same
@@ -1134,11 +1137,11 @@ omitted only when they have no stricter alias alternative.
 
 For a direct call with exact same-actual roles, locklint replays the callee
 prefix to the retained assertion checkpoint with those roles sharing one
-state.  Through wrappers, each alternative role and its accepted-input mask
-maps independently.  An alternative that maps to the primary wrapper role
-becomes the wrapper's ordinary requirement.  At a final call, exactly one
-alternative mapped to the asserted lock selects its mask; multiple matching
-alternatives retain the ordinary mask conservatively.
+state.  Through wrappers, alternative role sets map to caller roles.  Roles
+that already map to the primary role are folded into the ordinary table;
+every subset of remaining caller roles retains its own table after composing
+the wrapper prefix.  At a final call, the exact set of roles mapped to the
+asserted lock selects the corresponding table.
 
 During diagnostics, the current caller state selects an accepted-entry bit.
 A wholly incompatible state produces an unsatisfied-requirement warning; a
@@ -1952,8 +1955,8 @@ The current implementation relies on these invariants:
 32. Direct same-actual transfer, assertion-prefix, and acquisition-prefix
     evaluation preserves callee operation order by replaying mapped roles
     against one shared state.
-33. A fully accepted ordinary assertion requirement is retained when aliasing
-    another role produces a stricter accepted-input mask.
+33. A fully accepted ordinary assertion requirement is retained when any
+    alias-role set produces a stricter accepted-input mask.
 34. Zero or one matching changed acquisition prefix composes through a
     wrapper; several changed matches suppress only comparisons involving the
     ambiguous caller lock.
@@ -1974,8 +1977,6 @@ areas include:
   registration, pointer copies, ambiguous assignments, and indexed target
   sets;
 - explicit root configuration and source annotations;
-- exact composition when multiple assertion alternatives simultaneously map
-  to the asserted caller lock;
 - exact wrapper composition when multiple changed acquisition prefixes map
   to the same caller lock;
 - optional, configurable validation of declared lock types;

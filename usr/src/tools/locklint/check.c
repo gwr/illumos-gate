@@ -187,8 +187,13 @@ struct acquisition_role {
 	bool relative;
 };
 
-struct assertion_alternative {
+struct assertion_alternative_role {
 	struct acquisition_role role;
+	struct assertion_alternative_role *next;
+};
+
+struct assertion_alternative {
+	struct assertion_alternative_role *roles;
 	unsigned int accepted_inputs;
 	struct assertion_alternative *next;
 };
@@ -3018,26 +3023,81 @@ same_requirement_origin(const struct assertion_requirement *requirement,
 	    requirement->pos.pos == pos.pos);
 }
 
+static bool
+same_assertion_alternative_roles(
+    const struct assertion_alternative_role *left,
+    const struct assertion_alternative_role *right)
+{
+	const struct assertion_alternative_role *role;
+	unsigned int left_count = 0;
+	unsigned int right_count = 0;
+
+	for (role = left; role != NULL; role = role->next) {
+		const struct assertion_alternative_role *other;
+
+		left_count++;
+		for (other = right; other != NULL; other = other->next) {
+			if (same_acquisition_role(&role->role, &other->role))
+				break;
+		}
+		if (other == NULL)
+			return (false);
+	}
+	for (role = right; role != NULL; role = role->next)
+		right_count++;
+	return (left_count == right_count);
+}
+
 static const struct assertion_alternative *
 find_assertion_alternative(const struct assertion_alternative *alternatives,
-    const struct acquisition_role *role)
+    const struct assertion_alternative_role *roles)
 {
 	for (; alternatives != NULL; alternatives = alternatives->next) {
-		if (same_acquisition_role(&alternatives->role, role))
+		if (same_assertion_alternative_roles(alternatives->roles, roles))
 			return (alternatives);
 	}
 	return (NULL);
 }
 
 static bool
+add_assertion_alternative_role(struct assertion_alternative_role **roles,
+    const struct acquisition_role *role)
+{
+	struct assertion_alternative_role **tail;
+
+	for (tail = roles; *tail != NULL; tail = &(*tail)->next) {
+		if (same_acquisition_role(&(*tail)->role, role))
+			return (false);
+	}
+	*tail = calloc(1, sizeof (**tail));
+	if (*tail == NULL)
+		die("out of memory recording assertion alias role");
+	(*tail)->role = *role;
+	return (true);
+}
+
+static void
+free_assertion_alternative_roles(struct assertion_alternative_role *roles)
+{
+	while (roles != NULL) {
+		struct assertion_alternative_role *next = roles->next;
+
+		free(roles);
+		roles = next;
+	}
+}
+
+static bool
 add_assertion_alternative(struct assertion_alternative **alternatives,
-    const struct acquisition_role *role, unsigned int accepted_inputs)
+    const struct assertion_alternative_role *roles,
+    unsigned int accepted_inputs)
 {
 	struct assertion_alternative *alternative;
+	const struct assertion_alternative_role *role;
 
 	for (alternative = *alternatives; alternative != NULL;
 	    alternative = alternative->next) {
-		if (same_acquisition_role(&alternative->role, role))
+		if (same_assertion_alternative_roles(alternative->roles, roles))
 			break;
 	}
 	if (alternative != NULL) {
@@ -3052,7 +3112,9 @@ add_assertion_alternative(struct assertion_alternative **alternatives,
 	alternative = calloc(1, sizeof (*alternative));
 	if (alternative == NULL)
 		die("out of memory recording assertion alias alternative");
-	alternative->role = *role;
+	for (role = roles; role != NULL; role = role->next)
+		(void) add_assertion_alternative_role(&alternative->roles,
+		    &role->role);
 	alternative->accepted_inputs = accepted_inputs;
 	alternative->next = *alternatives;
 	*alternatives = alternative;
@@ -3065,6 +3127,7 @@ free_assertion_alternatives(struct assertion_alternative *alternatives)
 	while (alternatives != NULL) {
 		struct assertion_alternative *next = alternatives->next;
 
+		free_assertion_alternative_roles(alternatives->roles);
 		free(alternatives);
 		alternatives = next;
 	}
@@ -3088,7 +3151,7 @@ merge_assertion_alternatives(struct assertion_requirement *requirement,
 		unsigned int accepted_inputs;
 
 		other = find_assertion_alternative(incoming,
-		    &alternative->role);
+		    alternative->roles);
 		accepted_inputs = alternative->accepted_inputs &
 		    (other != NULL ? other->accepted_inputs : incoming_base);
 		if (accepted_inputs != alternative->accepted_inputs) {
@@ -3098,10 +3161,10 @@ merge_assertion_alternatives(struct assertion_requirement *requirement,
 	}
 	for (other = incoming; other != NULL; other = other->next) {
 		if (find_assertion_alternative(requirement->alternatives,
-		    &other->role) != NULL)
+		    other->roles) != NULL)
 			continue;
 		if (add_assertion_alternative(&requirement->alternatives,
-		    &other->role, other->accepted_inputs & old_base))
+		    other->roles, other->accepted_inputs & old_base))
 			changed = true;
 	}
 	return (changed);
@@ -3116,8 +3179,17 @@ add_assertion_requirement(struct function_info *function,
     const struct assertion_alternative *alternatives)
 {
 	struct assertion_requirement **link;
+	const struct assertion_alternative *alternative;
+	bool meaningful = false;
 
-	if (accepted_inputs == ALL_LOCK_INPUTS && alternatives == NULL)
+	for (alternative = alternatives; alternative != NULL;
+	    alternative = alternative->next) {
+		if (alternative->accepted_inputs != accepted_inputs) {
+			meaningful = true;
+			break;
+		}
+	}
+	if (accepted_inputs == ALL_LOCK_INPUTS && !meaningful)
 		return (false);
 	for (link = &function->assertion_requirements; *link != NULL;
 	    link = &(*link)->next) {
@@ -3149,59 +3221,141 @@ add_assertion_requirement(struct function_info *function,
 	(*link)->pos = pos;
 	for (; alternatives != NULL; alternatives = alternatives->next) {
 		(void) add_assertion_alternative(&(*link)->alternatives,
-		    &alternatives->role, alternatives->accepted_inputs);
+		    alternatives->roles, alternatives->accepted_inputs);
 	}
 	return (true);
 }
 
+static unsigned int
+local_assertion_alias_inputs(struct function_info *function,
+    const struct acquisition_role *asserted_role,
+    const struct assertion_alternative_role *roles, unsigned int modes,
+    struct instruction *checkpoint, bool *reachable)
+{
+	const struct assertion_alternative_role *role;
+	struct mapped_transfer_role *mapped;
+	struct lock_transfer *transfers;
+	struct alias_replay_frame frame = { 0 };
+	struct transfer_target target = { 0 };
+	unsigned int accepted_inputs = 0;
+	unsigned int count = 1;
+	unsigned int index = 0;
+	unsigned int input;
+
+	for (role = roles; role != NULL; role = role->next)
+		count++;
+	transfers = calloc(count, sizeof (*transfers));
+	mapped = calloc(count, sizeof (*mapped));
+	if (transfers == NULL || mapped == NULL)
+		die("out of memory replaying assertion alias roles");
+	transfers[index].role = *asserted_role;
+	mapped[index].transfer = &transfers[index];
+	index++;
+	for (role = roles; role != NULL; role = role->next) {
+		transfers[index].role = role->role;
+		mapped[index].transfer = &transfers[index];
+		mapped[index - 1].next = &mapped[index];
+		index++;
+	}
+	frame.function = function;
+	target.roles = mapped;
+	target.replay = &frame;
+	*reachable = false;
+	for (input = 1; input < LOCK_STATE_COUNT; input++) {
+		lock_state_t state;
+
+		state = simulate_lock_prefix_target(function, &target, input,
+		    checkpoint, reachable);
+		if ((state & ~modes) == 0)
+			accepted_inputs |= 1U << input;
+	}
+	free(mapped);
+	free(transfers);
+	return (accepted_inputs);
+}
+
+struct assertion_subset_context {
+	struct function_info *function;
+	const struct acquisition_role *asserted_role;
+	unsigned int modes;
+	unsigned int ordinary_inputs;
+	struct instruction *checkpoint;
+	struct assertion_alternative **alternatives;
+	bool meaningful;
+};
+
 /*
- * Record each other transfer role that changes the assertion's accepted
- * inputs when both roles denote one lock.  Alternatives remain independent;
- * callers conservatively ignore them if several map to the asserted lock.
+ * Retain the accepted-input table for every nonempty subset of other transfer
+ * roles.  Exact simultaneous aliases can require a table even when a smaller
+ * subset happens to have the ordinary result.
+ */
+static void
+collect_assertion_subsets(struct assertion_subset_context *context,
+    const struct assertion_alternative_role *candidate,
+    struct assertion_alternative_role *selected)
+{
+	if (candidate == NULL) {
+		unsigned int accepted_inputs;
+		bool reachable;
+
+		if (selected == NULL)
+			return;
+		accepted_inputs = local_assertion_alias_inputs(
+		    context->function, context->asserted_role, selected,
+		    context->modes, context->checkpoint, &reachable);
+		if (!reachable)
+			return;
+		(void) add_assertion_alternative(context->alternatives,
+		    selected, accepted_inputs);
+		if (accepted_inputs != context->ordinary_inputs)
+			context->meaningful = true;
+		return;
+	}
+	collect_assertion_subsets(context, candidate->next, selected);
+	{
+		struct assertion_alternative_role included = {
+			.role = candidate->role,
+			.next = selected
+		};
+
+		collect_assertion_subsets(context, candidate->next, &included);
+	}
+}
+
+/*
+ * Record how every subset of other transfer roles changes the assertion when
+ * that subset denotes the asserted lock.  The complete subset key preserves
+ * combinations for exact selection after mapping through wrappers.
  */
 static struct assertion_alternative *
 collect_assertion_alternatives(struct function_info *function,
     const struct acquisition_role *asserted_role, unsigned int modes,
     unsigned int ordinary_inputs, struct instruction *checkpoint)
 {
+	struct assertion_alternative_role *candidates = NULL;
 	struct assertion_alternative *alternatives = NULL;
-	struct lock_transfer asserted_transfer = { 0 };
-	struct mapped_transfer_role asserted = { 0 };
+	struct assertion_subset_context context = {
+		.function = function,
+		.asserted_role = asserted_role,
+		.modes = modes,
+		.ordinary_inputs = ordinary_inputs,
+		.checkpoint = checkpoint,
+		.alternatives = &alternatives
+	};
 	struct lock_transfer *transfer;
 
-	asserted_transfer.role = *asserted_role;
-	asserted.transfer = &asserted_transfer;
 	for (transfer = function->transfers; transfer != NULL;
 	    transfer = transfer->next) {
-		struct mapped_transfer_role candidate = { 0 };
-		struct alias_replay_frame frame = { 0 };
-		struct transfer_target target = { 0 };
-		unsigned int accepted_inputs = 0;
-		unsigned int input;
-		bool reachable = false;
-
-		if (same_acquisition_role(&transfer->role, asserted_role))
-			continue;
-		candidate.transfer = transfer;
-		asserted.next = &candidate;
-		frame.function = function;
-		frame.next = NULL;
-		target.roles = &asserted;
-		target.replay = &frame;
-		for (input = 1; input < LOCK_STATE_COUNT; input++) {
-			lock_state_t state;
-
-			state = simulate_lock_prefix_target(function, &target,
-			    input, checkpoint, &reachable);
-			if ((state & ~modes) == 0)
-				accepted_inputs |= 1U << input;
-		}
-		if (reachable && accepted_inputs != ordinary_inputs) {
-			(void) add_assertion_alternative(&alternatives,
-			    &transfer->role, accepted_inputs);
-		}
+		if (!same_acquisition_role(&transfer->role, asserted_role))
+			(void) add_assertion_alternative_role(&candidates,
+			    &transfer->role);
 	}
-	asserted.next = NULL;
+	collect_assertion_subsets(&context, candidates, NULL);
+	free_assertion_alternative_roles(candidates);
+	if (!context.meaningful) {
+		free_assertion_alternatives(alternatives);
+		alternatives = NULL;
+	}
 	return (alternatives);
 }
 
@@ -4411,55 +4565,46 @@ assertion_input_mask_accepts_part(unsigned int accepted_inputs,
 	return (false);
 }
 
-static unsigned int
-assertion_call_accepted_inputs(struct function_info *function,
-    struct instruction *insn, const struct acquisition_role *role,
-    unsigned int callee_accepted_inputs, bool *reachable)
-{
-	unsigned int accepted_inputs = 0;
-	unsigned int input;
-
-	*reachable = false;
-	for (input = 1; input < LOCK_STATE_COUNT; input++) {
-		lock_state_t state;
-
-		state = simulate_lock_prefix(function, role, input, insn,
-		    reachable);
-		if (assertion_input_mask_accepts(callee_accepted_inputs,
-		    state))
-			accepted_inputs |= 1U << input;
-	}
-	return (accepted_inputs);
-}
-
 /*
- * Propagate an alternative through a wrapper while treating its role and the
- * asserted role as one lock.  This preserves wrapper-prefix operations that
- * become relevant only when the caller aliases the two formals.
+ * Propagate one alias-role set through a wrapper while treating every role
+ * and the asserted role as one lock.  This preserves wrapper-prefix
+ * operations that become relevant only under that caller alias partition.
  */
 static unsigned int
-assertion_aliased_call_accepted_inputs(struct function_info *function,
+assertion_group_call_accepted_inputs(struct function_info *function,
     struct instruction *insn, const struct acquisition_role *role,
-    const struct acquisition_role *alternative,
+    const struct assertion_alternative_role *alternatives,
     unsigned int callee_accepted_inputs, bool *reachable)
 {
-	struct lock_transfer role_transfer = { 0 };
-	struct lock_transfer alternative_transfer = { 0 };
-	struct mapped_transfer_role role_target = { 0 };
-	struct mapped_transfer_role alternative_target = { 0 };
+	const struct assertion_alternative_role *alternative;
+	struct lock_transfer *transfers;
+	struct mapped_transfer_role *mapped;
 	struct alias_replay_frame frame = { 0 };
 	struct transfer_target target = { 0 };
 	unsigned int accepted_inputs = 0;
+	unsigned int count = 1;
+	unsigned int index = 0;
 	unsigned int input;
 
-	role_transfer.role = *role;
-	alternative_transfer.role = *alternative;
-	role_target.transfer = &role_transfer;
-	role_target.next = &alternative_target;
-	alternative_target.transfer = &alternative_transfer;
+	for (alternative = alternatives; alternative != NULL;
+	    alternative = alternative->next)
+		count++;
+	transfers = calloc(count, sizeof (*transfers));
+	mapped = calloc(count, sizeof (*mapped));
+	if (transfers == NULL || mapped == NULL)
+		die("out of memory propagating assertion alias roles");
+	transfers[index].role = *role;
+	mapped[index].transfer = &transfers[index];
+	index++;
+	for (alternative = alternatives; alternative != NULL;
+	    alternative = alternative->next) {
+		transfers[index].role = alternative->role;
+		mapped[index].transfer = &transfers[index];
+		mapped[index - 1].next = &mapped[index];
+		index++;
+	}
 	frame.function = function;
-	frame.next = NULL;
-	target.roles = &role_target;
+	target.roles = mapped;
 	target.replay = &frame;
 	*reachable = false;
 	for (input = 1; input < LOCK_STATE_COUNT; input++) {
@@ -4471,7 +4616,165 @@ assertion_aliased_call_accepted_inputs(struct function_info *function,
 		    state))
 			accepted_inputs |= 1U << input;
 	}
+	free(mapped);
+	free(transfers);
 	return (accepted_inputs);
+}
+
+struct assertion_role_mapping {
+	struct acquisition_role source;
+	struct acquisition_role mapped;
+	struct assertion_role_mapping *next;
+};
+
+static bool
+assertion_role_selected(const struct assertion_alternative_role *roles,
+    const struct acquisition_role *role)
+{
+	for (; roles != NULL; roles = roles->next) {
+		if (same_acquisition_role(&roles->role, role))
+			return (true);
+	}
+	return (false);
+}
+
+static void
+free_assertion_role_mappings(struct assertion_role_mapping *mappings)
+{
+	while (mappings != NULL) {
+		struct assertion_role_mapping *next = mappings->next;
+
+		free(mappings);
+		mappings = next;
+	}
+}
+
+/*
+ * Map the callee's complete alternative-role universe into one caller.  The
+ * external list contains each distinct caller role that could later alias the
+ * mapped primary role; mappings to the primary are already internal aliases.
+ */
+static struct assertion_role_mapping *
+map_assertion_alternative_roles(struct function_info *function,
+    struct instruction *insn, const struct assertion_requirement *requirement,
+    const struct acquisition_role *primary,
+    struct assertion_alternative_role **external)
+{
+	struct assertion_role_mapping **tail;
+	const struct assertion_alternative *alternative;
+	struct assertion_role_mapping *mappings = NULL;
+
+	tail = &mappings;
+	for (alternative = requirement->alternatives; alternative != NULL;
+	    alternative = alternative->next) {
+		const struct assertion_alternative_role *source;
+
+		for (source = alternative->roles; source != NULL;
+		    source = source->next) {
+			struct assertion_role_mapping *mapping;
+			struct locklint_access lock;
+
+			for (mapping = mappings; mapping != NULL;
+			    mapping = mapping->next) {
+				if (same_acquisition_role(&mapping->source,
+				    &source->role))
+					break;
+			}
+			if (mapping != NULL ||
+			    !map_acquisition_role(function, insn,
+			    &source->role, &lock))
+				continue;
+			mapping = calloc(1, sizeof (*mapping));
+			if (mapping == NULL)
+				die("out of memory mapping assertion alias roles");
+			mapping->source = source->role;
+			if (!acquisition_role(function, &lock,
+			    &mapping->mapped)) {
+				free(mapping);
+				continue;
+			}
+			*tail = mapping;
+			tail = &mapping->next;
+			if (!same_acquisition_role(primary, &mapping->mapped))
+				(void) add_assertion_alternative_role(external,
+				    &mapping->mapped);
+		}
+	}
+	return (mappings);
+}
+
+struct assertion_propagation_context {
+	struct function_info *function;
+	struct instruction *insn;
+	const struct assertion_requirement *requirement;
+	const struct acquisition_role *primary;
+	const struct assertion_role_mapping *mappings;
+	struct assertion_alternative **alternatives;
+	unsigned int accepted_inputs;
+	bool reachable;
+};
+
+/*
+ * Compose every subset of mapped caller roles through one wrapper call.
+ * Source roles that collapse to the same selected caller role are looked up
+ * together in the callee's exact role-set table.
+ */
+static void
+propagate_assertion_subsets(struct assertion_propagation_context *context,
+    const struct assertion_alternative_role *candidate,
+    struct assertion_alternative_role *selected)
+{
+	if (candidate == NULL) {
+		const struct assertion_role_mapping *mapping;
+		struct assertion_alternative_role *callee_roles = NULL;
+		const struct assertion_alternative *alternative;
+		unsigned int callee_inputs;
+		unsigned int accepted_inputs;
+		bool reachable;
+
+		for (mapping = context->mappings; mapping != NULL;
+		    mapping = mapping->next) {
+			if (same_acquisition_role(context->primary,
+			    &mapping->mapped) ||
+			    assertion_role_selected(selected, &mapping->mapped))
+				(void) add_assertion_alternative_role(
+				    &callee_roles, &mapping->source);
+		}
+		if (callee_roles == NULL) {
+			callee_inputs =
+			    context->requirement->accepted_inputs;
+		} else {
+			alternative = find_assertion_alternative(
+			    context->requirement->alternatives, callee_roles);
+			callee_inputs = alternative != NULL ?
+			    alternative->accepted_inputs :
+			    context->requirement->accepted_inputs;
+		}
+		accepted_inputs = assertion_group_call_accepted_inputs(
+		    context->function, context->insn, context->primary,
+		    selected, callee_inputs, &reachable);
+		free_assertion_alternative_roles(callee_roles);
+		if (!reachable)
+			return;
+		context->reachable = true;
+		if (selected == NULL) {
+			context->accepted_inputs = accepted_inputs;
+		} else {
+			(void) add_assertion_alternative(
+			    context->alternatives, selected, accepted_inputs);
+		}
+		return;
+	}
+	propagate_assertion_subsets(context, candidate->next, selected);
+	{
+		struct assertion_alternative_role included = {
+			.role = candidate->role,
+			.next = selected
+		};
+
+		propagate_assertion_subsets(context, candidate->next,
+		    &included);
+	}
 }
 
 static bool
@@ -4496,85 +4799,37 @@ propagate_assertion_requirements(struct function_info *function)
 			    requirement != NULL; requirement = requirement->next) {
 				struct acquisition_role role;
 				struct assertion_alternative *alternatives = NULL;
-				const struct assertion_alternative *alternative;
-				const struct assertion_alternative *internal = NULL;
+				struct assertion_alternative_role *external = NULL;
+				struct assertion_role_mapping *mappings;
+				struct assertion_propagation_context context;
 				struct locklint_access lock;
-				unsigned int internal_count = 0;
-				unsigned int callee_accepted_inputs;
-				unsigned int accepted_inputs;
-				bool reachable;
 
 				if (!map_acquisition_role(function, insn,
 				    &requirement->role, &lock) ||
 				    !acquisition_role(function, &lock, &role))
 					continue;
-				for (alternative = requirement->alternatives;
-				    alternative != NULL;
-				    alternative = alternative->next) {
-					struct locklint_access alternative_lock;
-
-					if (!map_acquisition_role(function, insn,
-					    &alternative->role,
-					    &alternative_lock) ||
-					    !same_lock(&lock, &alternative_lock))
-						continue;
-					internal = alternative;
-					internal_count++;
-				}
-				callee_accepted_inputs = internal_count == 1 ?
-				    internal->accepted_inputs :
-				    requirement->accepted_inputs;
-				accepted_inputs = assertion_call_accepted_inputs(
-				    function, insn, &role,
-				    callee_accepted_inputs,
-				    &reachable);
-				if (internal_count == 0) {
-					for (alternative =
-					    requirement->alternatives;
-					    alternative != NULL;
-					    alternative = alternative->next) {
-						struct acquisition_role
-						    alternative_role;
-						struct locklint_access
-						    alternative_lock;
-						unsigned int alternative_inputs;
-						bool alternative_reachable;
-
-						if (!map_acquisition_role(
-						    function, insn,
-						    &alternative->role,
-						    &alternative_lock) ||
-						    !acquisition_role(function,
-						    &alternative_lock,
-						    &alternative_role) ||
-						    same_acquisition_role(&role,
-						    &alternative_role))
-							continue;
-						alternative_inputs =
-						    assertion_aliased_call_accepted_inputs(
-						    function, insn, &role,
-						    &alternative_role,
-						    alternative->accepted_inputs,
-						    &alternative_reachable);
-						if (alternative_reachable &&
-						    alternative_inputs !=
-						    accepted_inputs) {
-							(void)
-							    add_assertion_alternative(
-							    &alternatives,
-							    &alternative_role,
-							    alternative_inputs);
-						}
-					}
-				}
-				if (reachable &&
+				mappings = map_assertion_alternative_roles(function,
+				    insn, requirement, &role, &external);
+				memset(&context, 0, sizeof (context));
+				context.function = function;
+				context.insn = insn;
+				context.requirement = requirement;
+				context.primary = &role;
+				context.mappings = mappings;
+				context.alternatives = &alternatives;
+				propagate_assertion_subsets(&context, external,
+				    NULL);
+				if (context.reachable &&
 				    add_assertion_requirement(function, &role,
-				    requirement->modes, accepted_inputs,
+				    requirement->modes,
+				    context.accepted_inputs,
 				    requirement->origin_tu, requirement->pos,
 				    requirement->source_function,
 				    requirement->checkpoint, alternatives))
 					changed = true;
 				free_assertion_alternatives(alternatives);
+				free_assertion_alternative_roles(external);
+				free_assertion_role_mappings(mappings);
 			}
 		} END_FOR_EACH_PTR(insn);
 	} END_FOR_EACH_PTR(bb);
@@ -4649,22 +4904,31 @@ assertion_alias_accepted_inputs(struct function_info *function,
     unsigned int *accepted_inputs)
 {
 	const struct assertion_alternative *alternative;
-	const struct assertion_alternative *matched = NULL;
-	unsigned int count = 0;
+	struct assertion_alternative_role *matched = NULL;
 
 	for (alternative = requirement->alternatives; alternative != NULL;
 	    alternative = alternative->next) {
-		struct locklint_access lock;
+		const struct assertion_alternative_role *role;
 
-		if (!map_acquisition_role(function, insn, &alternative->role,
-		    &lock) || !same_lock(&lock, requirement_lock))
-			continue;
-		matched = alternative;
-		count++;
+		for (role = alternative->roles; role != NULL;
+		    role = role->next) {
+			struct locklint_access lock;
+
+			if (!map_acquisition_role(function, insn, &role->role,
+			    &lock) || !same_lock(&lock, requirement_lock))
+				continue;
+			(void) add_assertion_alternative_role(&matched,
+			    &role->role);
+		}
 	}
-	if (count != 1)
+	if (matched == NULL)
 		return (false);
-	*accepted_inputs = matched->accepted_inputs;
+	alternative = find_assertion_alternative(
+	    requirement->alternatives, matched);
+	free_assertion_alternative_roles(matched);
+	if (alternative == NULL)
+		return (false);
+	*accepted_inputs = alternative->accepted_inputs;
 	return (true);
 }
 

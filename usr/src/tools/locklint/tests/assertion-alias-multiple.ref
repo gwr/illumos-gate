@@ -1,0 +1,2 @@
+../locklint: assertion-alias.c:259: warning: locklint: call to 'multiple_assertion_alias_wrapper' does not satisfy asserted mutex-held requirement for lock 'lock'
+../locklint: assertion-alias.c:224: locklint: asserted requirement is here

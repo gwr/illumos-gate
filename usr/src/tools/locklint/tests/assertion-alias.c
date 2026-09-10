@@ -202,6 +202,65 @@ same_release_invalidates_requirement(struct assertion_alias_state *state)
 	acquire_first_release_second_require_first(state, state);
 }
 
+#elif ASSERTION_ALIAS_VARIANT == 8
+
+#ifdef __lock_lint
+#include <sys/note.h>
+#else
+#define	_NOTE(arg)
+#endif
+
+static void
+acquire_release_acquire_require_fourth(
+    mutex_t *first, mutex_t *second, mutex_t *third,
+    struct assertion_alias_state *required)
+{
+	_NOTE(MUTEX_ACQUIRED_AS_SIDE_EFFECT(*first))
+	_NOTE(LOCK_RELEASED_AS_SIDE_EFFECT(*second))
+	_NOTE(MUTEX_ACQUIRED_AS_SIDE_EFFECT(*third))
+	(void) mutex_lock(first);
+	(void) mutex_unlock(second);
+	(void) mutex_lock(third);
+	ASSERT(MUTEX_HELD(&required->lock));
+}
+
+static void
+multiple_assertion_alias_wrapper(mutex_t *first, mutex_t *second,
+    mutex_t *third,
+    struct assertion_alias_state *required)
+{
+	_NOTE(MUTEX_ACQUIRED_AS_SIDE_EFFECT(*first))
+	_NOTE(LOCK_RELEASED_AS_SIDE_EFFECT(*second))
+	_NOTE(MUTEX_ACQUIRED_AS_SIDE_EFFECT(*third))
+	acquire_release_acquire_require_fourth(first, second, third, required);
+}
+
+static void
+same_multiple_assertion_alias_direct(struct assertion_alias_state *state)
+{
+	acquire_release_acquire_require_fourth(&state->lock, &state->lock,
+	    &state->lock, state);
+	(void) mutex_unlock(&state->lock);
+}
+
+static void
+same_multiple_assertion_alias_wrapped(struct assertion_alias_state *state)
+{
+	multiple_assertion_alias_wrapper(&state->lock, &state->lock,
+	    &state->lock, state);
+	(void) mutex_unlock(&state->lock);
+}
+
+static void
+distinct_required_multiple_assertion_alias_wrapped(
+    struct assertion_alias_state *shared,
+    struct assertion_alias_state *required)
+{
+	multiple_assertion_alias_wrapper(&shared->lock, &shared->lock,
+	    &shared->lock, required);
+	(void) mutex_unlock(&shared->lock);
+}
+
 #else
 #error "unsupported ASSERTION_ALIAS_VARIANT"
 #endif
