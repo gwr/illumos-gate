@@ -1,0 +1,8 @@
+../locklint: declared-effects-absolute.c:46: warning: locklint: function 'declared_absolute_missing' does not establish declared mutex acquisition of lock 'absolute_mutex'
+../locklint: declared-effects-absolute.c:52: warning: locklint: declared mutex acquisition of lock 'absolute_mutex' is not established on every return from 'declared_absolute_conditional'
+../locklint: declared-effects-absolute.c:60: warning: locklint: function 'declared_absolute_wrong_mode' does not establish declared mutex acquisition of lock 'absolute_rwlock'
+../locklint: declared-effects-absolute.c:67: warning: locklint: lock 'absolute_mutex' held on return from 'undeclared_absolute_acquire'
+../locklint: declared-effects-absolute.c:82: warning: locklint: call to 'declared_absolute_acquire' may acquire already-held lock 'absolute_mutex'
+../locklint: declared-effects-absolute.c:98: warning: locklint: protected member 'absolute_value' accessed without holding 'absolute_mutex'
+../locklint: declared-effects-absolute.c:104: warning: locklint: call to 'declared_absolute_release' may release lock 'absolute_mutex' that is not held
+../locklint: declared-effects-absolute.c:110: warning: locklint: lock 'lock' held on return from 'acquire_formal'

@@ -398,7 +398,7 @@ The structures have these roles:
 | `struct acquisition_candidate` | One formal-relative or canonical absolute lock role that can affect an acquisition summary |
 | `struct acquisition_summary` | One caller-mappable acquisition with representative source provenance and sparse prefix effects |
 | `struct acquisition_prefix` | The state of one changed entry-visible lock role immediately before a summarized acquisition, represented for every input-state mask |
-| `struct lock_transfer` | A function lock-effect summary for one formal lock and each possible input state |
+| `struct lock_transfer` | A function lock-effect summary for one formal-relative or canonical absolute lock role and each possible input-state mask |
 | `struct transfer_block_info` | Temporary per-block state used while computing one lock transfer |
 | `struct visibility_transfer` | A function visibility summary for one formal-relative or absolute region and each possible input visibility state |
 | `struct visibility_transfer_block_info` | Temporary per-block state used while computing one visibility transfer |
@@ -1400,23 +1400,24 @@ invisibility, or definite absence of competition satisfies the condition.
 
 ## Function lock effects
 
-A `lock_transfer` describes the behavior of one formal lock.  It records:
+A `lock_transfer` describes the behavior of one formal-relative or canonical
+absolute lock role.  It records:
 
-- the formal argument index;
-- the lock member and offset;
-- an output state for each possible input state; and
+- the shared caller-mappable lock role;
+- an output state for each possible input-state mask; and
 - invalid-acquire and invalid-release flags for each input state.
 
-The three input states form a transfer table rather than a single effect
-label.  This permits the same representation to describe acquisition,
-release, balanced operations, and conditional effects.
+The table covers every nonempty mask of the unheld, mutex-held, read-held, and
+write-held mode bits rather than storing one effect label.  This permits the
+same representation to describe acquisition, release, balanced operations,
+conditional effects, and path-dependent input state.
 
 Effect construction has three stages:
 
-1. `collect_local_transfers()` finds formal locks used by direct mutex
-   operations.
-2. `propagate_transfer_candidates()` adds formal locks affected through
-   callees.
+1. `collect_local_transfers()` finds caller-mappable locks used by direct lock
+   operations or named by declared effects.
+2. `propagate_transfer_candidates()` adds caller-mappable locks affected
+   through callees.
 3. `solve_function_transfers()` simulates each candidate for every input
    state.
 
@@ -1428,9 +1429,20 @@ The candidate and table passes repeat together until no summary changes.
 This supports transitive effects and recursive cycles without requiring
 callees to be processed in a particular order.
 
-At a call site, the formal lock member is resolved through the actual
+At a call site, a formal-relative role is resolved through the actual
 argument's type.  This remaps member symbols when caller and callee came from
-different translation units.
+different translation units.  An absolute role retains canonical object
+identity.  Passing an absolute lock to a formal callee maps the resulting
+effect back to that absolute role in callers and wrappers.
+
+Declared mutex, read, write, and release effects are validated against the
+stabilized table.  Acquisitions are checked from the unheld input; release is
+checked from each definite held mode.  Matching declarations replace the
+generic held-on-return warning, while missing, conditional, and conflicting
+outputs receive contract-specific diagnostics.  Invalid acquire or release
+flags remain independent and are checked at the operation or in caller
+context.  Functions without declarations retain their inferred summaries and
+ordinary diagnostics.
 
 ## Lock-order analysis
 
@@ -1676,11 +1688,11 @@ checker visits instruction
 ### Direct callee effect
 
 ```text
-callee formal lock candidate discovered
-    -> transfer table solved for NOT_HELD, HELD, MAYBE_HELD
+callee lock role discovered from an operation, declaration, or callee
+    -> transfer table solved for every nonempty input-state mask
 caller OP_CALL resolved to callee
-    -> callee formal argument mapped to caller actual expression
-    -> member symbol remapped through actual argument type
+    -> formal-relative role mapped to caller actual expression and type
+    -> canonical absolute role retained unchanged
     -> current caller state selects transfer-table entry
     -> invalid operation flags are diagnosed
     -> output state replaces caller state

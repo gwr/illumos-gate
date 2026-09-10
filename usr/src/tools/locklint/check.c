@@ -155,19 +155,17 @@ struct protection_condition {
 	struct protection_condition *next;
 };
 
-struct lock_transfer {
-	unsigned int argument;
-	struct symbol *lock_member;
-	unsigned long lock_offset;
-	lock_state_t output[LOCK_STATE_COUNT];
-	unsigned int invalid[LOCK_STATE_COUNT];
-	struct lock_transfer *next;
-};
-
 struct acquisition_role {
 	struct locklint_access access;
 	unsigned int argument;
 	bool relative;
+};
+
+struct lock_transfer {
+	struct acquisition_role role;
+	lock_state_t output[LOCK_STATE_COUNT];
+	unsigned int invalid[LOCK_STATE_COUNT];
+	struct lock_transfer *next;
 };
 
 struct acquisition_prefix {
@@ -213,6 +211,8 @@ static void transfer_call_visibility_effects(struct function_info *,
 static struct symbol *formal_symbol(struct entrypoint *, unsigned int);
 static bool acquisition_block_reachable(struct function_info *,
     struct basic_block *);
+static bool function_declares_lock_effect(struct function_info *,
+    const struct locklint_access *);
 
 static bool
 same_lock(const struct locklint_access *left,
@@ -932,18 +932,15 @@ acquisition_role(struct function_info *function,
 	role->access = *lock;
 	if (formal_argument(function->ep, lock->root, &role->argument)) {
 		role->relative = true;
-		return (true);
-	}
-	if (lock->address_base != NULL &&
+	} else if (lock->address_base != NULL &&
 	    lock->address_base->type == PSEUDO_ARG) {
 		role->relative = true;
 		role->argument = lock->address_base->nr;
 		role->access.root = formal_symbol(function->ep, role->argument);
 		role->access.object = NULL;
-		return (true);
-	}
-	if (lock->object == NULL)
+	} else if (lock->object == NULL) {
 		return (false);
+	}
 	role->access.expr = NULL;
 	role->access.address_base = NULL;
 	role->access.address_offset = 0;
@@ -1076,17 +1073,15 @@ formal_symbol(struct entrypoint *ep, unsigned int index)
 }
 
 static struct lock_transfer *
-add_transfer(struct function_info *function, unsigned int argument,
-    struct symbol *lock_member, unsigned long lock_offset, bool *added)
+add_transfer(struct function_info *function,
+    const struct acquisition_role *role, bool *added)
 {
 	struct lock_transfer *transfer;
 	unsigned int state;
 
 	for (transfer = function->transfers; transfer != NULL;
 	    transfer = transfer->next) {
-		if (transfer->argument == argument &&
-		    transfer->lock_member == lock_member &&
-		    transfer->lock_offset == lock_offset) {
+		if (same_acquisition_role(&transfer->role, role)) {
 			*added = false;
 			return (transfer);
 		}
@@ -1094,9 +1089,7 @@ add_transfer(struct function_info *function, unsigned int argument,
 	transfer = calloc(1, sizeof (*transfer));
 	if (transfer == NULL)
 		die("out of memory recording lock transfer");
-	transfer->argument = argument;
-	transfer->lock_member = lock_member;
-	transfer->lock_offset = lock_offset;
+	transfer->role = *role;
 	for (state = 0; state < LOCK_STATE_COUNT; state++)
 		transfer->output[state] = state;
 	transfer->next = function->transfers;
@@ -1106,16 +1099,14 @@ add_transfer(struct function_info *function, unsigned int argument,
 }
 
 static struct lock_transfer *
-find_transfer(struct function_info *function, unsigned int argument,
-    struct symbol *lock_member, unsigned long lock_offset)
+find_transfer(struct function_info *function,
+    const struct acquisition_role *role)
 {
 	struct lock_transfer *transfer;
 
 	for (transfer = function->transfers; transfer != NULL;
 	    transfer = transfer->next) {
-		if (transfer->argument == argument &&
-		    transfer->lock_member == lock_member &&
-		    transfer->lock_offset == lock_offset)
+		if (same_acquisition_role(&transfer->role, role))
 			return (transfer);
 	}
 	return (NULL);
@@ -1135,8 +1126,8 @@ transfer_call_effects(struct function_info *function,
 		struct locklint_access lock;
 		lock_state_t state;
 
-		if (!argument_lock(function->tu, insn, transfer->argument,
-		    transfer->lock_member, transfer->lock_offset, &lock))
+		if (!map_acquisition_role(function, insn, &transfer->role,
+		    &lock))
 			continue;
 		state = get_state(*states, &lock);
 		set_state(states, &lock, transfer->output[state]);
@@ -1340,6 +1331,17 @@ static bool
 defer_conditions(struct function_info *function)
 {
 	return (function->reachable_from_root && function->root_reasons == 0);
+}
+
+static bool
+defer_lock_diagnostics(struct function_info *function,
+    const struct locklint_access *lock)
+{
+	unsigned int argument;
+
+	return (defer_conditions(function) &&
+	    (formal_argument(function->ep, lock->root, &argument) ||
+	    function_declares_lock_effect(function, lock)));
 }
 
 static bool
@@ -1680,11 +1682,11 @@ collect_local_transfers(struct function_info *function)
 		struct instruction *insn;
 
 		FOR_EACH_PTR(bb->insns, insn) {
+			struct acquisition_role role;
 			struct locklint_access lock;
 			enum locklint_declared_lock_effect effect;
 			enum locklint_lock_action action;
 			enum locklint_lock_mode mode;
-			unsigned int argument;
 			bool added;
 
 			if (insn->bb == NULL)
@@ -1693,17 +1695,12 @@ collect_local_transfers(struct function_info *function)
 			    &lock, &mode);
 			if (action == LOCKLINT_LOCK_NONE) {
 				if (!locklint_get_declared_lock_effect(function->tu,
-				    insn, &effect, &lock) ||
-				    lock.root == NULL ||
-				    !formal_argument(function->ep, lock.root,
-				    &argument))
+				    insn, &effect, &lock))
 					continue;
-			} else if (lock.root == NULL ||
-			    !formal_argument(function->ep, lock.root, &argument)) {
-				continue;
 			}
-			(void) add_transfer(function, argument, lock.member,
-			    lock.offset, &added);
+			if (!acquisition_role(function, &lock, &role))
+				continue;
+			(void) add_transfer(function, &role, &added);
 			if (added)
 				changed = true;
 		} END_FOR_EACH_PTR(insn);
@@ -1796,19 +1793,18 @@ validate_declared_effects(struct function_info *function)
 		struct instruction *insn;
 
 		FOR_EACH_PTR(bb->insns, insn) {
+			struct acquisition_role role;
 			struct locklint_access lock;
 			enum locklint_declared_lock_effect effect;
 			enum declared_effect_status status;
 			struct lock_transfer *transfer;
-			unsigned int argument;
 
 			if (insn->bb == NULL ||
 			    !locklint_get_declared_lock_effect(function->tu,
 			    insn, &effect, &lock) ||
-			    !formal_argument(function->ep, lock.root, &argument))
+			    !acquisition_role(function, &lock, &role))
 				continue;
-			transfer = find_transfer(function, argument, lock.member,
-			    lock.offset);
+			transfer = find_transfer(function, &role);
 			if (transfer == NULL)
 				abort();
 			status = declared_effect_status(transfer, effect);
@@ -1853,22 +1849,15 @@ propagate_transfer_candidates(struct function_info *function)
 				continue;
 			for (transfer = callee->transfers; transfer != NULL;
 			    transfer = transfer->next) {
-				struct locklint_access access;
-				struct expression *actual;
-				unsigned int argument;
+				struct acquisition_role role;
+				struct locklint_access lock;
 				bool added;
 
-				actual = call_argument(insn, transfer->argument);
-				if (!locklint_get_call_argument_access(
-				    function->tu, insn, transfer->argument,
-				    &access) ||
-				    !formal_argument(function->ep, access.root,
-				    &argument))
+				if (!map_acquisition_role(function, insn,
+				    &transfer->role, &lock) ||
+				    !acquisition_role(function, &lock, &role))
 					continue;
-				(void) add_transfer(function, argument,
-				    argument_member(actual,
-				    transfer->lock_member),
-				    access.offset + transfer->lock_offset, &added);
+				(void) add_transfer(function, &role, &added);
 				if (added)
 					changed = true;
 			}
@@ -1911,10 +1900,8 @@ simulate_instruction(struct function_info *function,
 	if (callee != NULL) {
 		for (transfer = callee->transfers; transfer != NULL;
 		    transfer = transfer->next) {
-			if (!argument_lock(function->tu, insn,
-			    transfer->argument,
-			    transfer->lock_member,
-			    transfer->lock_offset, &lock))
+			if (!map_acquisition_role(function, insn,
+			    &transfer->role, &lock))
 				continue;
 			if (!same_lock(target, &lock))
 				continue;
@@ -2055,13 +2042,7 @@ simulate_transfer(struct function_info *function,
 	unsigned int result_invalid = 0;
 	bool found_return = false;
 
-	/*
-	 * A transfer target is relative to a formal argument, which has no C
-	 * linkage and therefore deliberately has no canonical object identity.
-	 */
-	target.root = formal_symbol(function->ep, transfer->argument);
-	target.member = transfer->lock_member;
-	target.offset = transfer->lock_offset;
+	target = transfer->role.access;
 	blocks = solve_transfer_blocks(function, &target, input);
 
 	for (block = blocks; block != NULL; block = block->next) {
@@ -3290,17 +3271,13 @@ check_call(struct function_info *function,
 		    transfer = transfer->next) {
 			struct locklint_access lock;
 			lock_state_t state;
-			unsigned int argument;
 			bool defer;
 
-			if (!argument_lock(function->tu, insn,
-			    transfer->argument,
-			    transfer->lock_member, transfer->lock_offset,
-			    &lock))
+			if (!map_acquisition_role(function, insn,
+			    &transfer->role, &lock))
 				continue;
 			state = get_state(analysis->locks, &lock);
-			defer = defer_conditions(function) &&
-			    formal_argument(function->ep, lock.root, &argument);
+			defer = defer_lock_diagnostics(function, &lock);
 			if (!defer &&
 			    (transfer->invalid[state] & INVALID_ACQUIRE) != 0) {
 				warning(pos, "locklint: call to '%s' may acquire "
@@ -3331,15 +3308,13 @@ check_lock_action(struct function_info *function,
 	enum locklint_lock_mode mode;
 	lock_state_t state;
 	struct position pos;
-	unsigned int argument;
 	bool defer;
 
 	action = locklint_get_lock_action(function->tu, insn, &lock, &mode);
 	if (action == LOCKLINT_LOCK_NONE || lock.root == NULL)
 		return;
 	state = get_state(analysis->locks, &lock);
-	defer = defer_conditions(function) &&
-	    formal_argument(function->ep, lock.root, &argument);
+	defer = defer_lock_diagnostics(function, &lock);
 	pos = insn->call_expr != NULL ? insn->call_expr->pos : insn->pos;
 	if (action == LOCKLINT_LOCK_ACQUIRE) {
 		struct state_entry *held;
@@ -3389,15 +3364,15 @@ function_declares_lock_effect(struct function_info *function,
 		struct instruction *insn;
 
 		FOR_EACH_PTR(bb->insns, insn) {
+			struct acquisition_role role;
 			struct locklint_access lock;
 			enum locklint_declared_lock_effect effect;
-			unsigned int argument;
 
 			if (insn->bb != NULL &&
 			    locklint_get_declared_lock_effect(function->tu,
 			    insn, &effect, &lock) &&
-			    formal_argument(function->ep, lock.root, &argument) &&
-			    same_lock(target, &lock))
+			    acquisition_role(function, &lock, &role) &&
+			    same_lock(target, &role.access))
 				return (true);
 		} END_FOR_EACH_PTR(insn);
 	} END_FOR_EACH_PTR(bb);

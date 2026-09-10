@@ -292,6 +292,12 @@ run_capture "declared effects" declared-effects.raw \
 compare_no_columns "declared effects" declared-effects.ref \
     declared-effects.raw declared-effects.out
 
+run_capture "absolute declared effects" declared-effects-absolute.raw \
+    "$LOCKLINT" --check-locks declared-effects-absolute.c
+compare_no_columns "absolute declared effects" \
+    declared-effects-absolute.ref declared-effects-absolute.raw \
+    declared-effects-absolute.out
+
 run_capture "basic calls" calls-basic.out \
     "$LOCKLINT" --check-locks calls-basic.c
 compare "basic calls" calls-basic.ref calls-basic.out
