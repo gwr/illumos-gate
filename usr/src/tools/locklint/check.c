@@ -246,6 +246,8 @@ struct acquisition_summary {
 	struct acquisition_role acquired;
 	struct position pos;
 	struct acquisition_prefix *prefixes;
+	struct function_info *source_function;
+	struct instruction *checkpoint;
 	struct acquisition_summary *next;
 };
 
@@ -2901,12 +2903,13 @@ simulate_lock_prefix_target(struct function_info *function,
 
 		FOR_EACH_PTR(block->bb->insns, insn) {
 			if (insn == checkpoint)
-				break;
+				goto prefix_done;
 			if (insn->bb != NULL)
 				simulate_instruction(function, target,
 				    &state, &invalid, insn);
 		} END_FOR_EACH_PTR(insn);
 	}
+prefix_done:
 	free_transfer_blocks(blocks);
 	return (state);
 }
@@ -3419,6 +3422,9 @@ same_acquisition_summary(const struct acquisition_summary *left,
 
 	if (!same_acquisition_role(&left->acquired, &right->acquired))
 		return (false);
+	if (left->source_function != right->source_function ||
+	    left->checkpoint != right->checkpoint)
+		return (false);
 	for (prefix = left->prefixes; prefix != NULL; prefix = prefix->next) {
 		const struct acquisition_prefix *other;
 
@@ -3483,6 +3489,8 @@ collect_local_acquisition_summaries(struct function_info *function)
 			summary->acquired = acquired;
 			summary->pos = insn->call_expr != NULL ?
 			    insn->call_expr->pos : insn->pos;
+			summary->source_function = function;
+			summary->checkpoint = insn;
 			summarize_acquisition_prefix(function,
 			    function->acquisition_roles, insn, NULL, NULL,
 			    summary);
@@ -3531,6 +3539,9 @@ propagate_acquisition_summaries(struct function_info *function)
 					die("out of memory propagating acquisition");
 				propagated->acquired = acquired;
 				propagated->pos = summary->pos;
+				propagated->source_function =
+				    summary->source_function;
+				propagated->checkpoint = summary->checkpoint;
 				summarize_acquisition_prefix(function,
 				    function->acquisition_roles, insn, callee,
 				    summary, propagated);
@@ -4164,9 +4175,59 @@ check_access(struct function_info *function, struct analysis_state *state,
 	}
 }
 
+/*
+ * Replay a local acquisition prefix when several callee roles denote one
+ * held caller lock.  The callee CFG preserves the operation order that the
+ * independent prefix tables necessarily lose.
+ */
+static bool
+contextual_acquisition_prefix_state(struct function_info *function,
+    struct instruction *insn, struct function_info *callee,
+    const struct acquisition_summary *summary, const struct state_entry *held,
+    lock_state_t *state)
+{
+	struct mapped_transfer_role *roles = NULL;
+	struct mapped_transfer_role **tail = &roles;
+	const struct acquisition_candidate *candidate;
+	struct alias_replay_frame frame;
+	struct transfer_target target = { 0 };
+
+	if (summary->source_function != callee || summary->checkpoint == NULL)
+		return (false);
+	for (candidate = callee->acquisition_roles; candidate != NULL;
+	    candidate = candidate->next) {
+		struct mapped_transfer_role *role;
+		struct locklint_access mapped;
+		struct lock_transfer *transfer;
+
+		if (!map_acquisition_role(function, insn, &candidate->role,
+		    &mapped) || !same_lock(&held->lock, &mapped))
+			continue;
+		transfer = find_transfer(callee, &candidate->role);
+		if (transfer == NULL) {
+			free_mapped_transfer_roles(roles);
+			return (false);
+		}
+		role = calloc(1, sizeof (*role));
+		if (role == NULL)
+			die("out of memory replaying acquisition prefix");
+		role->transfer = transfer;
+		*tail = role;
+		tail = &role->next;
+	}
+	frame.function = callee;
+	frame.next = NULL;
+	target.roles = roles;
+	target.replay = &frame;
+	*state = simulate_lock_prefix_target(callee, &target, held->state,
+	    summary->checkpoint, NULL);
+	free_mapped_transfer_roles(roles);
+	return (true);
+}
+
 static lock_state_t
 acquisition_prefix_state(struct function_info *function,
-    struct instruction *insn, const struct function_info *callee,
+    struct instruction *insn, struct function_info *callee,
     const struct acquisition_summary *summary, const struct state_entry *held,
     bool *known, bool *transformed)
 {
@@ -4185,6 +4246,12 @@ acquisition_prefix_state(struct function_info *function,
 			aliases++;
 	}
 	if (aliases > 1) {
+		if (contextual_acquisition_prefix_state(function, insn, callee,
+		    summary, held, &state)) {
+			*known = true;
+			*transformed = state != held->state;
+			return (state);
+		}
 		*known = false;
 		*transformed = false;
 		return (held->state);

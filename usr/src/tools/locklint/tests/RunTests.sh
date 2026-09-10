@@ -196,6 +196,23 @@ run_capture "local lock order" lock-order.out \
     "$LOCKLINT" --check-locks lock-order.c
 compare "local lock order" lock-order.ref lock-order.out
 
+run_capture "same-actual acquisition prefixes" \
+    acquisition-prefix-alias-same.raw "$LOCKLINT" \
+    -DACQUISITION_PREFIX_ALIAS_VARIANT=1 --check-locks \
+    acquisition-prefix-alias.c
+compare_no_columns "same-actual acquisition prefixes" \
+    acquisition-prefix-alias-same.ref \
+    acquisition-prefix-alias-same.raw acquisition-prefix-alias-same.out
+
+run_capture "distinct-actual acquisition prefixes" \
+    acquisition-prefix-alias-distinct.raw "$LOCKLINT" \
+    -DACQUISITION_PREFIX_ALIAS_VARIANT=2 --check-locks \
+    acquisition-prefix-alias.c
+compare_no_columns "distinct-actual acquisition prefixes" \
+    acquisition-prefix-alias-distinct.ref \
+    acquisition-prefix-alias-distinct.raw \
+    acquisition-prefix-alias-distinct.out
+
 run_capture "observed lock order" lock-order-observed.out \
     "$LOCKLINT" --check-locks lock-order-observed.c
 compare "observed lock order" lock-order-observed.ref \
