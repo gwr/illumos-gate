@@ -822,6 +822,10 @@ transfer_lock_action(struct function_info *function,
 		    insn->call_expr != NULL ? insn->call_expr->pos : insn->pos);
 	} else if (action == LOCKLINT_LOCK_RELEASE && lock.root != NULL) {
 		set_state(states, &lock, LOCK_NOT_HELD);
+	} else if (action == LOCKLINT_LOCK_WAIT && lock.root != NULL) {
+		set_state(states, &lock, mode);
+		set_acquire_position(*states, &lock,
+		    insn->call_expr != NULL ? insn->call_expr->pos : insn->pos);
 	}
 }
 
@@ -2696,6 +2700,10 @@ simulate_instruction(struct function_info *function,
 		if ((*state & LOCK_ANY_HELD) != 0)
 			*invalid |= INVALID_ACQUIRE;
 		*state = mode;
+	} else if (action == LOCKLINT_LOCK_WAIT) {
+		if ((*state & LOCK_NOT_HELD) != 0)
+			*invalid |= INVALID_RELEASE;
+		*state = mode;
 	} else {
 		if ((*state & LOCK_NOT_HELD) != 0)
 			*invalid |= INVALID_RELEASE;
@@ -3913,7 +3921,8 @@ collect_local_acquisition_summaries(struct function_info *function)
 				continue;
 			action = locklint_get_lock_action(function->tu, insn,
 			    &lock, &mode);
-			if (action != LOCKLINT_LOCK_ACQUIRE ||
+			if ((action != LOCKLINT_LOCK_ACQUIRE &&
+			    action != LOCKLINT_LOCK_WAIT) ||
 			    lock.root == NULL ||
 			    !acquisition_role(function, &lock, &acquired))
 				continue;
@@ -5545,7 +5554,8 @@ check_lock_action(struct function_info *function,
 	state = get_state(analysis->locks, &lock);
 	defer = defer_lock_diagnostics(function, &lock);
 	pos = insn->call_expr != NULL ? insn->call_expr->pos : insn->pos;
-	if (action == LOCKLINT_LOCK_ACQUIRE) {
+	if (action == LOCKLINT_LOCK_ACQUIRE ||
+	    action == LOCKLINT_LOCK_WAIT) {
 		struct state_entry *held;
 
 		for (held = analysis->locks; held != NULL; held = held->next) {
@@ -5562,12 +5572,22 @@ check_lock_action(struct function_info *function,
 			    &pos, !state_definitely_held(held->state),
 			    explained);
 		}
-		if (state_definitely_held(state) && !defer) {
-			warning(pos, "locklint: lock '%s' is already held",
-			    lock_name(&lock));
-		} else if (state_maybe_held(state) && !defer) {
-			warning(pos, "locklint: lock '%s' may already be held",
-			    lock_name(&lock));
+		if (action == LOCKLINT_LOCK_ACQUIRE) {
+			if (state_definitely_held(state) && !defer) {
+				warning(pos, "locklint: lock '%s' is already held",
+				    lock_name(&lock));
+			} else if (state_maybe_held(state) && !defer) {
+				warning(pos, "locklint: lock '%s' may already be "
+				    "held", lock_name(&lock));
+			}
+		} else {
+			if (state == LOCK_NOT_HELD && !defer) {
+				warning(pos, "locklint: lock '%s' is not held",
+				    lock_name(&lock));
+			} else if ((state & LOCK_NOT_HELD) != 0 && !defer) {
+				warning(pos, "locklint: lock '%s' may not be held",
+				    lock_name(&lock));
+			}
 		}
 		set_state(&analysis->locks, &lock, mode);
 		set_acquire_position(analysis->locks, &lock, pos);

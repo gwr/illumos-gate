@@ -67,6 +67,7 @@ locklint_get_lock_action(struct translation_unit *tu, struct instruction *insn,
 {
 	enum locklint_lock_action action;
 	const char *name;
+	unsigned int argument = 0;
 
 	*mode = LOCKLINT_MODE_UNHELD;
 	*access = (struct locklint_access){ 0 };
@@ -103,11 +104,15 @@ locklint_get_lock_action(struct translation_unit *tu, struct instruction *insn,
 	    strcmp(name, "rw_exit") == 0 ||
 	    strcmp(name, "rw_unlock") == 0) {
 		action = LOCKLINT_LOCK_RELEASE;
+	} else if (strcmp(name, "cv_wait") == 0) {
+		action = LOCKLINT_LOCK_WAIT;
+		*mode = LOCKLINT_MODE_MUTEX;
+		argument = 1;
 	} else {
 		return (LOCKLINT_LOCK_NONE);
 	}
 
-	(void) locklint_get_call_argument_access(tu, insn, 0, access);
+	(void) locklint_get_call_argument_access(tu, insn, argument, access);
 	return (action);
 }
 
@@ -171,6 +176,8 @@ show_call_event(struct translation_unit *tu, struct instruction *insn)
 	}
 	else if (action == LOCKLINT_LOCK_RELEASE)
 		event = "RELEASE";
+	else if (action == LOCKLINT_LOCK_WAIT)
+		event = "WAIT";
 	else
 		event = "CALL";
 
@@ -181,8 +188,9 @@ show_call_event(struct translation_unit *tu, struct instruction *insn)
 		return (true);
 	}
 
-	arg = insn->call_expr != NULL ?
-	    first_expression(insn->call_expr->args) : NULL;
+	arg = action == LOCKLINT_LOCK_WAIT ? call_argument(insn, 1) :
+	    (insn->call_expr != NULL ?
+	    first_expression(insn->call_expr->args) : NULL);
 	locklint_show_access(stdout, arg);
 	(void) printf("\n");
 	return (true);

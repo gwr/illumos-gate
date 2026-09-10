@@ -1,0 +1,120 @@
+/*
+ * This file and its contents are supplied under the terms of the
+ * Common Development and Distribution License ("CDDL"), version 1.0.
+ * You may only use this file in accordance with the terms of version
+ * 1.0 of the CDDL.
+ *
+ * A full copy of the text of the CDDL should have accompanied this
+ * source.  A copy of the CDDL is also available via the Internet at
+ * http://www.illumos.org/license/CDDL.
+ */
+
+/*
+ * Characterize cv_wait() as a required-held mutex release and reacquisition.
+ * The cases verify post-wait ownership and lock ordering while another mutex
+ * remains held.
+ */
+
+#ifdef __lock_lint
+#include <sys/condvar.h>
+#include <sys/debug.h>
+#include <sys/mutex.h>
+#include <sys/note.h>
+#else
+#define	_NOTE(arg)
+#define	ASSERT(expr)
+#define	MUTEX_HELD(lock)	mutex_owned(lock)
+
+typedef struct kmutex {
+	int opaque;
+} kmutex_t;
+
+typedef struct kcondvar {
+	int opaque;
+} kcondvar_t;
+#endif
+
+struct condition_wait_state {
+	kmutex_t first;
+	kmutex_t second;
+	kcondvar_t cv_first;
+	kcondvar_t cv_second;
+	int value;
+};
+
+_NOTE(LOCK_ORDER(condition_wait_state::first condition_wait_state::second))
+_NOTE(MUTEX_PROTECTS_DATA(condition_wait_state::first,
+    condition_wait_state::value))
+
+extern void mutex_enter(kmutex_t *);
+extern void mutex_exit(kmutex_t *);
+extern int mutex_owned(const kmutex_t *);
+extern void cv_wait(kcondvar_t *, kmutex_t *);
+
+static void
+wait_wrapper(kcondvar_t *cv, kmutex_t *mutex)
+{
+	ASSERT(MUTEX_HELD(mutex));
+	cv_wait(cv, mutex);
+}
+
+static int
+wait_while_held(struct condition_wait_state *state)
+{
+	int value;
+
+	mutex_enter(&state->first);
+	cv_wait(&state->cv_first, &state->first);
+	value = state->value;
+	mutex_exit(&state->first);
+	return (value);
+}
+
+static void
+wait_without_lock(struct condition_wait_state *state)
+{
+	cv_wait(&state->cv_first, &state->first);
+	mutex_exit(&state->first);
+}
+
+static int
+wrapped_wait_while_held(struct condition_wait_state *state)
+{
+	int value;
+
+	mutex_enter(&state->first);
+	wait_wrapper(&state->cv_first, &state->first);
+	value = state->value;
+	mutex_exit(&state->first);
+	return (value);
+}
+
+static void
+wrapped_wait_reacquire_inversion(struct condition_wait_state *state)
+{
+	mutex_enter(&state->first);
+	mutex_enter(&state->second);
+	wait_wrapper(&state->cv_first, &state->first);
+	mutex_exit(&state->second);
+	mutex_exit(&state->first);
+}
+
+static void
+wait_reacquire_in_order(struct condition_wait_state *state)
+{
+	mutex_enter(&state->first);
+	mutex_enter(&state->second);
+	cv_wait(&state->cv_second, &state->second);
+	mutex_exit(&state->second);
+	mutex_exit(&state->first);
+}
+
+static void
+wait_reacquire_inversion(struct condition_wait_state *state)
+{
+	mutex_enter(&state->first);
+	mutex_enter(&state->second);
+	cv_wait(&state->cv_first, &state->first);
+	mutex_exit(&state->second);
+	mutex_exit(&state->first);
+}

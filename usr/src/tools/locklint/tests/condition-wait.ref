@@ -1,0 +1,6 @@
+../locklint: condition-wait.c:76: warning: locklint: lock 'first' is not held
+../locklint: condition-wait.c:97: warning: locklint: lock 'condition_wait_state::first' acquired out of declared order while holding 'condition_wait_state::second'
+../locklint: condition-wait.c:45: locklint: declared order requires 'condition_wait_state::first' before 'condition_wait_state::second'
+../locklint: condition-wait.c:58: locklint: lock acquisition reached through callee 'wait_wrapper'
+../locklint: condition-wait.c:117: warning: locklint: lock 'condition_wait_state::first' acquired out of declared order while holding 'condition_wait_state::second'
+../locklint: condition-wait.c:45: locklint: declared order requires 'condition_wait_state::first' before 'condition_wait_state::second'

@@ -24,7 +24,8 @@ struct translation_unit;
 enum locklint_lock_action {
 	LOCKLINT_LOCK_NONE,
 	LOCKLINT_LOCK_ACQUIRE,
-	LOCKLINT_LOCK_RELEASE
+	LOCKLINT_LOCK_RELEASE,
+	LOCKLINT_LOCK_WAIT
 };
 
 enum locklint_lock_mode {

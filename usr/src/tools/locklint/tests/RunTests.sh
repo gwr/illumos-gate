@@ -196,6 +196,22 @@ run_capture "local lock order" lock-order.out \
     "$LOCKLINT" --check-locks lock-order.c
 compare "local lock order" lock-order.ref lock-order.out
 
+run_capture "condition wait state and order" condition-wait.raw \
+    "$LOCKLINT" --check-locks condition-wait.c
+compare_no_columns "condition wait state and order" condition-wait.ref \
+    condition-wait.raw condition-wait.out
+
+run_capture "condition wait events" condition-wait-events.out \
+    "$LOCKLINT" --dump-events condition-wait.c
+require_match "condition wait first mutex event" "WAIT state.first" \
+    condition-wait-events.out
+require_match "condition wait second mutex event" "WAIT state.second" \
+    condition-wait-events.out
+reject_match "condition wait condition-variable event" "WAIT state.cv" \
+    condition-wait-events.out
+reject_match "condition wait generic call event" "CALL cv_wait" \
+    condition-wait-events.out
+
 run_capture "same-actual acquisition prefixes" \
     acquisition-prefix-alias-same.raw "$LOCKLINT" \
     -DACQUISITION_PREFIX_ALIAS_VARIANT=1 --check-locks \
