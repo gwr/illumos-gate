@@ -388,6 +388,12 @@ run_capture "internally aliased lock composition" \
 require_empty "internally aliased lock composition" \
     alias-composition-internal.out
 
+run_capture "recursive aliased lock composition" \
+    alias-composition-recursive.out "$LOCKLINT" \
+    -DALIAS_COMPOSITION_VARIANT=6 --check-locks alias-composition.c
+require_empty "recursive aliased lock composition" \
+    alias-composition-recursive.out
+
 run_capture "basic calls" calls-basic.out \
     "$LOCKLINT" --check-locks calls-basic.c
 compare "basic calls" calls-basic.ref calls-basic.out

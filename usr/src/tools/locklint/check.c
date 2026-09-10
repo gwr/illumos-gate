@@ -226,6 +226,11 @@ struct mapped_lock_transfer {
 
 struct alias_replay_frame {
 	struct function_info *function;
+	const struct mapped_transfer_role *roles;
+	lock_state_t input;
+	lock_state_t output;
+	unsigned int invalid;
+	bool iterative;
 	const struct alias_replay_frame *next;
 };
 
@@ -2612,6 +2617,8 @@ simulate_instruction(struct function_info *function,
 	enum locklint_lock_action action;
 	enum locklint_lock_mode mode;
 
+	if (*state == 0)
+		return;
 	callee = callgraph_callee(function, insn);
 	if (callee != NULL) {
 		struct mapped_transfer_role *roles = NULL;
@@ -2796,7 +2803,7 @@ transfer_blocks_result(struct transfer_block_info *blocks,
 			if (insn->bb != NULL && insn->opcode == OP_RET)
 				returns = true;
 		} END_FOR_EACH_PTR(insn);
-		if (!returns)
+		if (!returns || block->out == 0)
 			continue;
 		if (!found_return) {
 			result = block->out;
@@ -2835,10 +2842,35 @@ simulate_transfer(struct function_info *function,
 	return (result);
 }
 
+static bool
+same_mapped_transfer_roles(const struct mapped_transfer_role *left,
+    const struct mapped_transfer_role *right)
+{
+	const struct mapped_transfer_role *role;
+	unsigned int left_count = 0;
+	unsigned int right_count = 0;
+
+	for (role = left; role != NULL; role = role->next) {
+		const struct mapped_transfer_role *other;
+
+		left_count++;
+		for (other = right; other != NULL; other = other->next) {
+			if (other->transfer == role->transfer)
+				break;
+		}
+		if (other == NULL)
+			return (false);
+	}
+	for (role = right; role != NULL; role = role->next)
+		right_count++;
+	return (left_count == right_count);
+}
+
 /*
- * Replay an aliased transfer group as one shared lock state.  Transparent
- * wrappers recursively replay their own aliased groups; recursive call cycles
- * terminate with a conservative state and both possible operation failures.
+ * Replay an aliased transfer group as one shared lock state.  Recursive
+ * contexts iterate from the empty result to the least fixed point.  Frames
+ * installed by prefix replay have no approximation and retain the
+ * conservative recursion fallback.
  */
 static lock_state_t
 simulate_aliased_transfer_context(struct function_info *function,
@@ -2846,25 +2878,48 @@ simulate_aliased_transfer_context(struct function_info *function,
     unsigned int *invalid, const struct alias_replay_frame *replay)
 {
 	const struct alias_replay_frame *ancestor;
-	struct alias_replay_frame frame;
+	struct alias_replay_frame frame = { 0 };
 	struct transfer_target target = { 0 };
-	struct transfer_block_info *blocks;
-	lock_state_t result;
 
 	for (ancestor = replay; ancestor != NULL; ancestor = ancestor->next) {
-		if (ancestor->function == function) {
+		if (ancestor->function != function)
+			continue;
+		if (ancestor->iterative && ancestor->input == input &&
+		    same_mapped_transfer_roles(ancestor->roles, roles)) {
+			*invalid = ancestor->invalid;
+			return (ancestor->output);
+		}
+		if (!ancestor->iterative) {
 			*invalid = INVALID_ACQUIRE | INVALID_RELEASE;
 			return (LOCK_NOT_HELD | LOCK_ANY_HELD);
 		}
 	}
 	frame.function = function;
+	frame.roles = roles;
+	frame.input = input;
+	frame.iterative = true;
 	frame.next = replay;
 	target.roles = roles;
 	target.replay = &frame;
-	blocks = solve_transfer_blocks(function, &target, input);
-	result = transfer_blocks_result(blocks, input, invalid);
-	free_transfer_blocks(blocks);
-	return (result);
+	for (;;) {
+		struct transfer_block_info *blocks;
+		lock_state_t output;
+		unsigned int iteration_invalid;
+
+		blocks = solve_transfer_blocks(function, &target, input);
+		output = transfer_blocks_result(blocks, input,
+		    &iteration_invalid);
+		free_transfer_blocks(blocks);
+		output |= frame.output;
+		iteration_invalid |= frame.invalid;
+		if (output == frame.output &&
+		    iteration_invalid == frame.invalid)
+			break;
+		frame.output = output;
+		frame.invalid = iteration_invalid;
+	}
+	*invalid = frame.invalid;
+	return (frame.output);
 }
 
 static lock_state_t
@@ -3119,7 +3174,7 @@ collect_assertion_alternatives(struct function_info *function,
 	for (transfer = function->transfers; transfer != NULL;
 	    transfer = transfer->next) {
 		struct mapped_transfer_role candidate = { 0 };
-		struct alias_replay_frame frame;
+		struct alias_replay_frame frame = { 0 };
 		struct transfer_target target = { 0 };
 		unsigned int accepted_inputs = 0;
 		unsigned int input;
@@ -4176,7 +4231,7 @@ contextual_acquisition_prefix_state(struct function_info *function,
 	struct mapped_transfer_role *roles = NULL;
 	struct mapped_transfer_role **tail = &roles;
 	const struct acquisition_candidate *candidate;
-	struct alias_replay_frame frame;
+	struct alias_replay_frame frame = { 0 };
 	struct transfer_target target = { 0 };
 
 	if (summary->source_function != callee || summary->checkpoint == NULL)
@@ -4392,7 +4447,7 @@ assertion_aliased_call_accepted_inputs(struct function_info *function,
 	struct lock_transfer alternative_transfer = { 0 };
 	struct mapped_transfer_role role_target = { 0 };
 	struct mapped_transfer_role alternative_target = { 0 };
-	struct alias_replay_frame frame;
+	struct alias_replay_frame frame = { 0 };
 	struct transfer_target target = { 0 };
 	unsigned int accepted_inputs = 0;
 	unsigned int input;
@@ -4543,7 +4598,7 @@ assertion_alias_call_state(struct function_info *function,
 	struct mapped_transfer_role **tail = &assertion_role.next;
 	struct mapped_transfer_role *roles;
 	struct lock_transfer *transfer;
-	struct alias_replay_frame frame;
+	struct alias_replay_frame frame = { 0 };
 	struct transfer_target target = { 0 };
 	struct locklint_access requirement_lock;
 	bool reachable;

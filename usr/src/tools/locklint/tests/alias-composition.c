@@ -37,6 +37,8 @@ typedef struct mutex {
 extern int mutex_lock(mutex_t *);
 extern int mutex_unlock(mutex_t *);
 
+#if ALIAS_COMPOSITION_VARIANT != 6
+
 static void
 release_then_acquire(mutex_t *released, mutex_t *acquired)
 {
@@ -54,6 +56,8 @@ acquire_then_release(mutex_t *acquired, mutex_t *released)
 	(void) mutex_lock(acquired);
 	(void) mutex_unlock(released);
 }
+
+#endif
 
 #if ALIAS_COMPOSITION_VARIANT == 3 || ALIAS_COMPOSITION_VARIANT == 4
 
@@ -91,6 +95,53 @@ acquire_then_release_internal_wrapper(mutex_t *lock)
 	_NOTE(MUTEX_ACQUIRED_AS_SIDE_EFFECT(*lock))
 	acquire_then_release(lock, lock);
 	(void) mutex_lock(lock);
+}
+
+#endif
+
+#if ALIAS_COMPOSITION_VARIANT == 6
+
+/*
+ * Each formal is acquired and released before recursion, so repeating the
+ * cycle is valid for distinct roles and for one shared actual lock.
+ */
+static void
+unheld_cycle_recursive(mutex_t *first, mutex_t *second, unsigned int depth)
+{
+	(void) mutex_lock(first);
+	(void) mutex_unlock(first);
+	(void) mutex_lock(second);
+	(void) mutex_unlock(second);
+	if (depth != 0)
+		unheld_cycle_recursive(first, second, depth - 1);
+}
+
+static void mutual_unheld_cycle_right(mutex_t *, mutex_t *, unsigned int);
+
+/*
+ * Swap the formal roles across a mutually recursive edge while preserving
+ * the same balanced state at every call.
+ */
+static void
+mutual_unheld_cycle_left(mutex_t *first, mutex_t *second, unsigned int depth)
+{
+	(void) mutex_lock(first);
+	(void) mutex_unlock(first);
+	(void) mutex_lock(second);
+	(void) mutex_unlock(second);
+	if (depth != 0)
+		mutual_unheld_cycle_right(second, first, depth - 1);
+}
+
+static void
+mutual_unheld_cycle_right(mutex_t *first, mutex_t *second, unsigned int depth)
+{
+	(void) mutex_lock(first);
+	(void) mutex_unlock(first);
+	(void) mutex_lock(second);
+	(void) mutex_unlock(second);
+	if (depth != 0)
+		mutual_unheld_cycle_left(second, first, depth - 1);
 }
 
 #endif
@@ -183,6 +234,44 @@ internal_acquire_then_release(mutex_t *lock)
 {
 	acquire_then_release_internal_wrapper(lock);
 	(void) mutex_unlock(lock);
+}
+
+#elif ALIAS_COMPOSITION_VARIANT == 6
+
+static void
+same_recursive_unheld_cycle(mutex_t *lock)
+{
+	unheld_cycle_recursive(lock, lock, 1);
+	(void) mutex_lock(lock);
+	(void) mutex_unlock(lock);
+}
+
+static void
+distinct_recursive_unheld_cycle(mutex_t *first, mutex_t *second)
+{
+	unheld_cycle_recursive(first, second, 1);
+	(void) mutex_lock(first);
+	(void) mutex_unlock(first);
+	(void) mutex_lock(second);
+	(void) mutex_unlock(second);
+}
+
+static void
+same_mutual_recursive_unheld_cycle(mutex_t *lock)
+{
+	mutual_unheld_cycle_left(lock, lock, 1);
+	(void) mutex_lock(lock);
+	(void) mutex_unlock(lock);
+}
+
+static void
+distinct_mutual_recursive_unheld_cycle(mutex_t *first, mutex_t *second)
+{
+	mutual_unheld_cycle_left(first, second, 1);
+	(void) mutex_lock(first);
+	(void) mutex_unlock(first);
+	(void) mutex_lock(second);
+	(void) mutex_unlock(second);
 }
 
 #else

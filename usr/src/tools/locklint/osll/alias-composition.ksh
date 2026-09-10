@@ -152,5 +152,9 @@ run_variant 4 "distinct_wrapped_release_then_acquire \
 distinct_wrapped_acquire_then_release" || exit $?
 run_variant 5 "internal_release_then_acquire \
 internal_acquire_then_release" || exit $?
+run_variant 6 "same_recursive_unheld_cycle \
+distinct_recursive_unheld_cycle \
+same_mutual_recursive_unheld_cycle \
+distinct_mutual_recursive_unheld_cycle" || exit $?
 
 print "Results: $run_root"

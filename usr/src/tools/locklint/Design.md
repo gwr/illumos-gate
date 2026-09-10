@@ -1488,10 +1488,19 @@ applying their tables would lose operation order.  Locklint instead replays
 the callee CFG with those roles sharing one target state.  Nested calls use
 the same rule, including wrappers that introduce an alias while being solved
 for a single role.  Zero- and one-match nested calls retain the ordinary
-allocation-free table path.  A repeated function on the contextual replay
-stack terminates conservatively with unknown ownership and both possible
-invalid-operation flags; exact recursive alias composition is not yet
-modeled.
+allocation-free table path.
+
+Recursive shared-state contexts are keyed by function, aliased role set, and
+input-state mask.  A new context iterates from the empty output and no invalid
+operations, feeding its current approximation to an identical recursive
+context.  Output modes and invalid-operation flags only accumulate, so the
+finite lock-state domain reaches its least fixed point.  The empty state is
+bottom: later instructions cannot manufacture a return from it, and a return
+block with empty output does not contribute invalid-operation flags.
+Different recursive contexts may nest independently, which also permits
+mutual recursion to close when it reaches an active matching context.
+Prefix-only replay frames do not carry a complete return approximation and
+retain the conservative recursion fallback.
 
 Declared mutex, read, write, and release effects are validated against the
 stabilized table.  Acquisitions are checked from the unheld input; release is
@@ -1948,8 +1957,8 @@ The current implementation relies on these invariants:
 34. Zero or one matching changed acquisition prefix composes through a
     wrapper; several changed matches suppress only comparisons involving the
     ambiguous caller lock.
-35. Contextual transfer recursion terminates conservatively rather than
-    assuming an order-dependent result.
+35. Recursive shared-state transfer contexts converge from the empty result
+    using function, aliased role set, and input-state mask as their identity.
 
 Changes that invalidate one of these invariants should update this document
 and add a focused regression test.
@@ -1965,7 +1974,6 @@ areas include:
   registration, pointer copies, ambiguous assignments, and indexed target
   sets;
 - explicit root configuration and source annotations;
-- exact recursive same-actual transfer composition;
 - exact composition when multiple assertion alternatives simultaneously map
   to the asserted caller lock;
 - exact wrapper composition when multiple changed acquisition prefixes map
