@@ -1,0 +1,4 @@
+../locklint: assertion-alias.c:119: warning: locklint: call to 'require_held_and_not_held' does not satisfy asserted mutex-held requirement for lock 'lock'
+../locklint: assertion-alias.c:73: locklint: asserted requirement is here
+../locklint: assertion-alias.c:126: warning: locklint: call to 'require_held_and_not_held' does not satisfy asserted not-held requirement for lock 'lock'
+../locklint: assertion-alias.c:74: locklint: asserted requirement is here

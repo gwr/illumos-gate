@@ -191,6 +191,8 @@ struct assertion_requirement {
 	struct acquisition_role role;
 	unsigned int modes;
 	unsigned int accepted_inputs;
+	struct function_info *source_function;
+	struct instruction *checkpoint;
 	struct position pos;
 	struct translation_unit *origin_tu;
 	struct assertion_requirement *next;
@@ -2866,19 +2868,16 @@ simulate_aliased_transfer(struct function_info *function,
 }
 
 static lock_state_t
-simulate_lock_prefix(struct function_info *function,
-    const struct acquisition_role *role, lock_state_t input,
+simulate_lock_prefix_target(struct function_info *function,
+    const struct transfer_target *target, lock_state_t input,
     struct instruction *checkpoint, bool *reachable)
 {
 	struct transfer_block_info *blocks;
 	struct transfer_block_info *block;
-	struct transfer_target target = { 0 };
 	lock_state_t state = input;
 	unsigned int invalid = 0;
 
-	target.single = &role->access;
-	target.roles = NULL;
-	blocks = solve_transfer_blocks(function, &target, input);
+	blocks = solve_transfer_blocks(function, target, input);
 	block = find_transfer_block(blocks, checkpoint->bb);
 	if (block == NULL || !block->reachable) {
 		if (reachable != NULL)
@@ -2897,12 +2896,24 @@ simulate_lock_prefix(struct function_info *function,
 			if (insn == checkpoint)
 				break;
 			if (insn->bb != NULL)
-				simulate_instruction(function, &target,
+				simulate_instruction(function, target,
 				    &state, &invalid, insn);
 		} END_FOR_EACH_PTR(insn);
 	}
 	free_transfer_blocks(blocks);
 	return (state);
+}
+
+static lock_state_t
+simulate_lock_prefix(struct function_info *function,
+    const struct acquisition_role *role, lock_state_t input,
+    struct instruction *checkpoint, bool *reachable)
+{
+	struct transfer_target target = { 0 };
+
+	target.single = &role->access;
+	return (simulate_lock_prefix_target(function, &target, input,
+	    checkpoint, reachable));
 }
 
 static bool
@@ -2946,7 +2957,8 @@ static bool
 add_assertion_requirement(struct function_info *function,
     const struct acquisition_role *role, unsigned int modes,
     unsigned int accepted_inputs, struct translation_unit *origin_tu,
-    struct position pos)
+    struct position pos, struct function_info *source_function,
+    struct instruction *checkpoint)
 {
 	struct assertion_requirement **link;
 
@@ -2973,6 +2985,8 @@ add_assertion_requirement(struct function_info *function,
 	(*link)->role = *role;
 	(*link)->modes = modes;
 	(*link)->accepted_inputs = accepted_inputs;
+	(*link)->source_function = source_function;
+	(*link)->checkpoint = checkpoint;
 	(*link)->origin_tu = origin_tu;
 	(*link)->pos = pos;
 	return (true);
@@ -3013,7 +3027,7 @@ collect_assertion_requirements(struct function_info *function)
 			if (!reachable)
 				continue;
 			(void) add_assertion_requirement(function, &role, modes,
-			    accepted_inputs, function->tu, pos);
+			    accepted_inputs, function->tu, pos, function, insn);
 		} END_FOR_EACH_PTR(insn);
 	} END_FOR_EACH_PTR(bb);
 }
@@ -4179,12 +4193,75 @@ propagate_assertion_requirements(struct function_info *function)
 				if (reachable &&
 				    add_assertion_requirement(function, &role,
 				    requirement->modes, accepted_inputs,
-				    requirement->origin_tu, requirement->pos))
+				    requirement->origin_tu, requirement->pos,
+				    requirement->source_function,
+				    requirement->checkpoint))
 					changed = true;
 			}
 		} END_FOR_EACH_PTR(insn);
 	} END_FOR_EACH_PTR(bb);
 	return (changed);
+}
+
+/*
+ * Evaluate a local callee assertion contextually when another transfer role
+ * maps to the same caller lock.  The asserted role is represented by a
+ * synthetic target entry; matching transfer roles add the operations whose
+ * factored prefixes would otherwise be lost.
+ */
+static bool
+assertion_alias_call_state(struct function_info *function,
+    struct instruction *insn, struct function_info *callee,
+    const struct assertion_requirement *requirement, lock_state_t input,
+    lock_state_t *output)
+{
+	struct lock_transfer assertion_transfer = { 0 };
+	struct mapped_transfer_role assertion_role = { 0 };
+	struct mapped_transfer_role **tail = &assertion_role.next;
+	struct mapped_transfer_role *roles;
+	struct lock_transfer *transfer;
+	struct alias_replay_frame frame;
+	struct transfer_target target = { 0 };
+	struct locklint_access requirement_lock;
+	bool reachable;
+
+	if (requirement->source_function != callee ||
+	    requirement->checkpoint == NULL ||
+	    !map_acquisition_role(function, insn, &requirement->role,
+	    &requirement_lock))
+		return (false);
+	for (transfer = callee->transfers; transfer != NULL;
+	    transfer = transfer->next) {
+		struct mapped_transfer_role *role;
+		struct locklint_access lock;
+
+		if (same_acquisition_role(&transfer->role,
+		    &requirement->role) ||
+		    !map_acquisition_role(function, insn, &transfer->role,
+		    &lock) || !same_lock(&lock, &requirement_lock))
+			continue;
+		role = calloc(1, sizeof (*role));
+		if (role == NULL)
+			die("out of memory replaying aliased assertion");
+		role->transfer = transfer;
+		*tail = role;
+		tail = &role->next;
+	}
+	if (assertion_role.next == NULL)
+		return (false);
+
+	assertion_transfer.role = requirement->role;
+	assertion_role.transfer = &assertion_transfer;
+	frame.function = callee;
+	frame.next = NULL;
+	target.roles = &assertion_role;
+	target.replay = &frame;
+	*output = simulate_lock_prefix_target(callee, &target, input,
+	    requirement->checkpoint, &reachable);
+	roles = assertion_role.next;
+	assertion_role.next = NULL;
+	free_mapped_transfer_roles(roles);
+	return (reachable);
 }
 
 static void
@@ -4199,12 +4276,24 @@ check_call_assertion_requirements(struct function_info *function,
 		struct locklint_access lock;
 		lock_state_t state;
 		const char *name;
+		bool accepted;
+		bool accepted_part;
 
 		if (!map_acquisition_role(function, insn, &requirement->role,
 		    &lock))
 			continue;
 		state = get_state(analysis->locks, &lock);
-		if (assertion_requirement_accepts(requirement, state))
+		if (assertion_alias_call_state(function, insn, callee,
+		    requirement, state, &state)) {
+			accepted = (state & ~requirement->modes) == 0;
+			accepted_part = (state & requirement->modes) != 0;
+		} else {
+			accepted = assertion_requirement_accepts(requirement,
+			    state);
+			accepted_part = assertion_requirement_accepts_part(
+			    requirement, state);
+		}
+		if (accepted)
 			continue;
 		{
 			struct acquisition_role role;
@@ -4214,7 +4303,7 @@ check_call_assertion_requirements(struct function_info *function,
 				continue;
 		}
 		name = assertion_requirement_name(requirement->modes);
-		if (assertion_requirement_accepts_part(requirement, state)) {
+		if (accepted_part) {
 			warning(pos, "locklint: asserted %s requirement for "
 			    "lock '%s' is not established on every path "
 			    "calling '%s'", name, lock_name(&lock),
