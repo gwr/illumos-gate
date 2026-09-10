@@ -398,9 +398,10 @@ The structures have these roles:
 | `struct protection_condition` | A caller-visible entry protection condition for formal-relative or absolute data, with an optional mutex and exact formal-lock alternatives |
 | `struct protection_alternative` | One definitely held formal-relative lock whose mapped address may equal and satisfy a condition's required lock |
 | `struct assumed_region` | One function-wide region selected by `ASSUMING_PROTECTED` |
-| `struct assertion_requirement` | One caller-mappable asserted lock condition, with original source provenance and the entry-state masks accepted after its local or wrapped instruction prefix |
+| `struct assertion_requirement` | One caller-mappable asserted lock condition, with original source provenance, a local replay checkpoint, ordinary accepted entry masks, and sparse alias alternatives |
+| `struct assertion_alternative` | One other formal lock role and the entry masks accepted when it aliases an assertion requirement's primary role |
 | `struct acquisition_candidate` | One formal-relative or canonical absolute lock role that can affect an acquisition summary |
-| `struct acquisition_summary` | One caller-mappable acquisition with representative source provenance and sparse prefix effects |
+| `struct acquisition_summary` | One caller-mappable acquisition with original source/checkpoint identity, representative provenance, and sparse prefix effects |
 | `struct acquisition_prefix` | The state of one changed entry-visible lock role immediately before a summarized acquisition, represented for every input-state mask |
 | `struct lock_transfer` | A function lock-effect summary for one formal-relative or canonical absolute lock role and each possible input-state mask |
 | `struct transfer_block_info` | Temporary per-block state used while computing one lock transfer |
@@ -1120,14 +1121,24 @@ assertion for every nonempty entry-state mask.  Sampling uses the same prefix
 transfer solver as acquisition summaries, so preceding local and direct-callee
 lock effects are preserved.  Structurally unreachable assertions are omitted.
 The resulting `assertion_requirement` records the role, asserted modes,
-source position, and a bit set of accepted entry masks.
+source position, source function and checkpoint, and a bit set of accepted
+entry masks.  It also records sparse alternatives for other formal roles
+whose aliasing with the asserted role changes that accepted-input set.
 
 At each resolved call, the callee role maps to the caller lock and the caller
 prefix is sampled for every entry-state mask.  Requirements with the same
 original assertion, asserted modes, and mapped role are merged by intersecting
 their accepted masks.  The pass iterates to a fixed point through transparent,
 state-changing, nested, and recursive wrappers.  Fully accepted tables are
-omitted.
+omitted only when they have no stricter alias alternative.
+
+For a direct call with exact same-actual roles, locklint replays the callee
+prefix to the retained assertion checkpoint with those roles sharing one
+state.  Through wrappers, each alternative role and its accepted-input mask
+maps independently.  An alternative that maps to the primary wrapper role
+becomes the wrapper's ordinary requirement.  At a final call, exactly one
+alternative mapped to the asserted lock selects its mask; multiple matching
+alternatives retain the ordinary mask conservatively.
 
 During diagnostics, the current caller state selects an accepted-entry bit.
 A wholly incompatible state produces an unsatisfied-requirement warning; a
@@ -1472,6 +1483,16 @@ different translation units.  An absolute role retains canonical object
 identity.  Passing an absolute lock to a formal callee maps the resulting
 effect back to that absolute role in callers and wrappers.
 
+When several callee transfer roles map to one caller lock, independently
+applying their tables would lose operation order.  Locklint instead replays
+the callee CFG with those roles sharing one target state.  Nested calls use
+the same rule, including wrappers that introduce an alias while being solved
+for a single role.  Zero- and one-match nested calls retain the ordinary
+allocation-free table path.  A repeated function on the contextual replay
+stack terminates conservatively with unknown ownership and both possible
+invalid-operation flags; exact recursive alias composition is not yet
+modeled.
+
 Declared mutex, read, write, and release effects are validated against the
 stabilized table.  Acquisitions are checked from the unheld input; release is
 checked from each definite held mode.  Matching declarations replace the
@@ -1541,11 +1562,12 @@ Reachable local operations seed per-function role sets and acquisition
 events.  Roles first propagate through resolved calls to a fixed point.
 Acquisition events then map through calls and propagate to a second fixed
 point.  Wrapper state before the call is composed with the callee event's
-prefix effects.  Event equality includes the acquired role and complete
-prefix semantics but excludes source position, preventing provenance from
-causing recursive summary growth.  Equivalent events retain one
-representative source position; events for the same acquired role remain
-separate when their prefix effects differ.
+prefix effects.  Event equality includes the acquired role, the original
+source function and instruction checkpoint, and complete prefix semantics,
+but excludes wrapper call positions so provenance does not grow through
+recursive propagation.  Events for the same acquired role remain separate
+when they arise at different original checkpoints or their prefix effects
+differ.
 
 At final call replay, mapped prefix effects determine which caller locks
 remain held at the summarized acquisition.  The caller's call expression is
@@ -1553,11 +1575,14 @@ the primary location for a declared-order warning, and the representative
 callee acquisition is supporting provenance.  Existing net transfers remain
 responsible for state after the call.
 
-If distinct callee roles map to the same caller lock, their independently
-computed vectors cannot be composed exactly.  The role set detects this
-case.  Only comparison with that ambiguous lock is suppressed; the
-acquisition event and comparisons with unrelated held locks remain usable.
-Exact alias-aware composition is deferred to the function-contract work.
+For a direct summarized acquisition, if several callee roles map to the same
+caller lock, locklint replays the original function to the acquisition
+checkpoint with those roles sharing one target state.  When carrying that
+event through a wrapper, zero matching changed prefixes are identity and one
+matching changed prefix is applied.  Several independently changed matching
+prefixes cannot yet be ordered exactly; only comparison with that ambiguous
+lock is suppressed, while the acquisition and comparisons with unrelated
+held locks remain usable.
 
 ### Observed order
 
@@ -1915,8 +1940,16 @@ The current implementation relies on these invariants:
 30. A missing acquisition-prefix entry means that entry-visible lock is
     unchanged at the acquisition.
 31. Declared-order inversions do not also contribute observed-order edges.
-32. Ambiguous composition of aliased callee roles suppresses only comparisons
-    involving the ambiguous caller lock.
+32. Direct same-actual transfer, assertion-prefix, and acquisition-prefix
+    evaluation preserves callee operation order by replaying mapped roles
+    against one shared state.
+33. A fully accepted ordinary assertion requirement is retained when aliasing
+    another role produces a stricter accepted-input mask.
+34. Zero or one matching changed acquisition prefix composes through a
+    wrapper; several changed matches suppress only comparisons involving the
+    ambiguous caller lock.
+35. Contextual transfer recursion terminates conservatively rather than
+    assuming an order-dependent result.
 
 Changes that invalidate one of these invariants should update this document
 and add a focused regression test.
@@ -1932,8 +1965,11 @@ areas include:
   registration, pointer copies, ambiguous assignments, and indexed target
   sets;
 - explicit root configuration and source annotations;
-- exact acquisition-prefix composition when distinct callee roles map to the
-  same caller lock;
+- exact recursive same-actual transfer composition;
+- exact composition when multiple assertion alternatives simultaneously map
+  to the asserted caller lock;
+- exact wrapper composition when multiple changed acquisition prefixes map
+  to the same caller lock;
 - optional, configurable validation of declared lock types;
 - condition waits, try-locks, upgrades, and downgrades;
 - stable diagnostic identifiers, suppressions, and provenance.

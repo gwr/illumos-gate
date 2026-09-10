@@ -531,6 +531,13 @@ run_capture "internally aliased assertion requirements" \
 require_empty "internally aliased assertion requirements" \
     assertion-alias-wrapper-internal.out
 
+run_capture "alias-invalidated assertion requirements" \
+    assertion-alias-invalidated.raw "$LOCKLINT" \
+    -DASSERTION_ALIAS_VARIANT=7 --check-locks assertion-alias.c
+compare_no_columns "alias-invalidated assertion requirements" \
+    assertion-alias-invalidated.ref assertion-alias-invalidated.raw \
+    assertion-alias-invalidated.out
+
 run_capture "assertion requirement wrappers" \
     assertion-requirement-wrappers.raw "$LOCKLINT" --check-locks \
     assertion-requirement-wrappers.c

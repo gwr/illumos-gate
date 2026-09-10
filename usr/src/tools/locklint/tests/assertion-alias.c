@@ -177,6 +177,31 @@ call_internal_assertion_alias(struct assertion_alias_state *state)
 	acquire_satisfies_internal_alias(state);
 }
 
+#elif ASSERTION_ALIAS_VARIANT == 7
+
+#ifdef __lock_lint
+#include <sys/note.h>
+#else
+#define	_NOTE(arg)
+#endif
+
+static void
+acquire_first_release_second_require_first(
+    struct assertion_alias_state *first,
+    struct assertion_alias_state *second)
+{
+	_NOTE(MUTEX_ACQUIRED_AS_SIDE_EFFECT(first->lock))
+	(void) mutex_lock(&first->lock);
+	(void) mutex_unlock(&second->lock);
+	ASSERT(MUTEX_HELD(&first->lock));
+}
+
+static void
+same_release_invalidates_requirement(struct assertion_alias_state *state)
+{
+	acquire_first_release_second_require_first(state, state);
+}
+
 #else
 #error "unsupported ASSERTION_ALIAS_VARIANT"
 #endif

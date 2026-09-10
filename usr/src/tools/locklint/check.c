@@ -3062,7 +3062,7 @@ add_assertion_requirement(struct function_info *function,
 {
 	struct assertion_requirement **link;
 
-	if (accepted_inputs == ALL_LOCK_INPUTS)
+	if (accepted_inputs == ALL_LOCK_INPUTS && alternatives == NULL)
 		return (false);
 	for (link = &function->assertion_requirements; *link != NULL;
 	    link = &(*link)->next) {
