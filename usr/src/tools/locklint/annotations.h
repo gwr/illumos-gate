@@ -20,6 +20,7 @@
 #include <stdio.h>
 
 struct locklint_access;
+struct entrypoint;
 struct instruction;
 struct position;
 struct symbol;
@@ -45,7 +46,19 @@ enum locklint_execution_kind {
 	LOCKLINT_EXECUTION_VISIBLE,
 	LOCKLINT_EXECUTION_ASSUME_PROTECTED,
 	LOCKLINT_EXECUTION_NO_COMPETITION_EFFECT,
-	LOCKLINT_EXECUTION_COMPETITION_EFFECT
+	LOCKLINT_EXECUTION_COMPETITION_EFFECT,
+	LOCKLINT_EXECUTION_MUTEX_ACQUIRED_EFFECT,
+	LOCKLINT_EXECUTION_READ_ACQUIRED_EFFECT,
+	LOCKLINT_EXECUTION_WRITE_ACQUIRED_EFFECT,
+	LOCKLINT_EXECUTION_LOCK_RELEASED_EFFECT
+};
+
+enum locklint_declared_lock_effect {
+	LOCKLINT_DECLARED_LOCK_NONE,
+	LOCKLINT_DECLARED_MUTEX_ACQUIRED,
+	LOCKLINT_DECLARED_READ_ACQUIRED,
+	LOCKLINT_DECLARED_WRITE_ACQUIRED,
+	LOCKLINT_DECLARED_LOCK_RELEASED
 };
 
 typedef void (*locklint_order_edge_f)(const struct locklint_access *,
@@ -58,6 +71,11 @@ bool locklint_data_policy(const struct locklint_access *,
 void locklint_for_each_order_edge(locklint_order_edge_f, void *);
 enum locklint_execution_kind locklint_get_execution_annotation(
     const struct instruction *);
+bool locklint_get_declared_lock_effect(struct translation_unit *,
+    const struct instruction *, enum locklint_declared_lock_effect *,
+    struct locklint_access *);
+void locklint_process_function_annotations(FILE *, struct translation_unit *,
+    struct entrypoint *);
 void locklint_resolve_annotations(void);
 void locklint_show_annotations(FILE *);
 

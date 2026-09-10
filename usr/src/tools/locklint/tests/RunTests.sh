@@ -139,6 +139,29 @@ run_capture "annotations" annotations.out \
     "$LOCKLINT" --dump-annotations annotations.c
 compare "annotations" annotations.ref annotations.out
 
+run_capture "declared effect annotations" declared-effect-annotations.out \
+    "$LOCKLINT" --dump-annotations declared-effect-annotations.c
+compare "declared effect annotations" declared-effect-annotations.ref \
+    declared-effect-annotations.out
+
+run_failure "declared effect errors" declared-effect-errors.out \
+    "$LOCKLINT" --dump-annotations declared-effect-errors.c
+require_match "declared mutex effect expression" \
+    "MUTEX_ACQUIRED_AS_SIDE_EFFECT requires a lock expression" \
+    declared-effect-errors.out
+require_match "declared release effect expression" \
+    "LOCK_RELEASED_AS_SIDE_EFFECT requires a lock expression" \
+    declared-effect-errors.out
+
+run_failure "declared effect check errors" declared-effect-check-errors.out \
+    "$LOCKLINT" --check-locks declared-effect-errors.c
+require_match "checked declared mutex effect expression" \
+    "MUTEX_ACQUIRED_AS_SIDE_EFFECT requires a lock expression" \
+    declared-effect-check-errors.out
+require_match "checked declared release effect expression" \
+    "LOCK_RELEASED_AS_SIDE_EFFECT requires a lock expression" \
+    declared-effect-check-errors.out
+
 #
 # Verify LOCK_ORDER name resolution and optional comma separators.
 #

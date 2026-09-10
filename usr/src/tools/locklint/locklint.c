@@ -152,8 +152,8 @@ process_symbols(struct translation_unit *tu, struct symbol_list *symbols)
 		if (dump_parsed)
 			show_symbol(sym);
 
-		if (!dump_linearized && !dump_accesses && !dump_events &&
-		    !dump_callgraph && !check_locks)
+		if (!dump_linearized && !dump_accesses && !dump_annotations &&
+		    !dump_events && !dump_callgraph && !check_locks)
 			continue;
 
 		ep = linearize_symbol(sym);
@@ -165,6 +165,9 @@ process_symbols(struct translation_unit *tu, struct symbol_list *symbols)
 			show_entry(ep);
 		if (dump_accesses)
 			show_accesses(ep);
+		if (dump_annotations || check_locks)
+			locklint_process_function_annotations(
+			    dump_annotations ? stdout : NULL, tu, ep);
 		if (dump_events)
 			locklint_show_events(tu, ep);
 	} END_FOR_EACH_PTR(sym);

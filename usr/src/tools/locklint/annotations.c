@@ -197,6 +197,14 @@ execution_kind(const struct token *open)
 		return (LOCKLINT_EXECUTION_NO_COMPETITION_EFFECT);
 	if (strcmp(text, "COMPETING_THREADS_AS_SIDE_EFFECT") == 0)
 		return (LOCKLINT_EXECUTION_COMPETITION_EFFECT);
+	if (strcmp(text, "MUTEX_ACQUIRED_AS_SIDE_EFFECT") == 0)
+		return (LOCKLINT_EXECUTION_MUTEX_ACQUIRED_EFFECT);
+	if (strcmp(text, "READ_LOCK_ACQUIRED_AS_SIDE_EFFECT") == 0)
+		return (LOCKLINT_EXECUTION_READ_ACQUIRED_EFFECT);
+	if (strcmp(text, "WRITE_LOCK_ACQUIRED_AS_SIDE_EFFECT") == 0)
+		return (LOCKLINT_EXECUTION_WRITE_ACQUIRED_EFFECT);
+	if (strcmp(text, "LOCK_RELEASED_AS_SIDE_EFFECT") == 0)
+		return (LOCKLINT_EXECUTION_LOCK_RELEASED_EFFECT);
 	return (LOCKLINT_EXECUTION_NONE);
 }
 
@@ -216,6 +224,18 @@ locklint_annotations_enable(void)
 	add_pre_buffer("#define COMPETING_THREADS_AS_SIDE_EFFECT "
 	    "__context__(0, 0, %lu);\n",
 	    (unsigned long)LOCKLINT_EXECUTION_COMPETITION_EFFECT);
+	add_pre_buffer("#define MUTEX_ACQUIRED_AS_SIDE_EFFECT(...) "
+	    "__context__((__VA_ARGS__), 0, %lu);\n",
+	    (unsigned long)LOCKLINT_EXECUTION_MUTEX_ACQUIRED_EFFECT);
+	add_pre_buffer("#define READ_LOCK_ACQUIRED_AS_SIDE_EFFECT(...) "
+	    "__context__((__VA_ARGS__), 0, %lu);\n",
+	    (unsigned long)LOCKLINT_EXECUTION_READ_ACQUIRED_EFFECT);
+	add_pre_buffer("#define WRITE_LOCK_ACQUIRED_AS_SIDE_EFFECT(...) "
+	    "__context__((__VA_ARGS__), 0, %lu);\n",
+	    (unsigned long)LOCKLINT_EXECUTION_WRITE_ACQUIRED_EFFECT);
+	add_pre_buffer("#define LOCK_RELEASED_AS_SIDE_EFFECT(...) "
+	    "__context__((__VA_ARGS__), 0, %lu);\n",
+	    (unsigned long)LOCKLINT_EXECUTION_LOCK_RELEASED_EFFECT);
 	add_pre_buffer("#define NOW_INVISIBLE_TO_OTHER_THREADS(...) "
 	    "__context__((__VA_ARGS__), 0, %lu);\n",
 	    (unsigned long)LOCKLINT_EXECUTION_INVISIBLE);
@@ -966,10 +986,105 @@ locklint_get_execution_annotation(const struct instruction *insn)
 	case LOCKLINT_EXECUTION_ASSUME_PROTECTED:
 	case LOCKLINT_EXECUTION_NO_COMPETITION_EFFECT:
 	case LOCKLINT_EXECUTION_COMPETITION_EFFECT:
+	case LOCKLINT_EXECUTION_MUTEX_ACQUIRED_EFFECT:
+	case LOCKLINT_EXECUTION_READ_ACQUIRED_EFFECT:
+	case LOCKLINT_EXECUTION_WRITE_ACQUIRED_EFFECT:
+	case LOCKLINT_EXECUTION_LOCK_RELEASED_EFFECT:
 		return ((enum locklint_execution_kind)insn->context_tag);
 	default:
 		return (LOCKLINT_EXECUTION_NONE);
 	}
+}
+
+static const char *
+declared_lock_effect_name(enum locklint_declared_lock_effect effect)
+{
+	switch (effect) {
+	case LOCKLINT_DECLARED_MUTEX_ACQUIRED:
+		return ("MUTEX_ACQUIRED_AS_SIDE_EFFECT");
+	case LOCKLINT_DECLARED_READ_ACQUIRED:
+		return ("READ_LOCK_ACQUIRED_AS_SIDE_EFFECT");
+	case LOCKLINT_DECLARED_WRITE_ACQUIRED:
+		return ("WRITE_LOCK_ACQUIRED_AS_SIDE_EFFECT");
+	case LOCKLINT_DECLARED_LOCK_RELEASED:
+		return ("LOCK_RELEASED_AS_SIDE_EFFECT");
+	default:
+		abort();
+	}
+}
+
+bool
+locklint_get_declared_lock_effect(struct translation_unit *tu,
+    const struct instruction *insn, enum locklint_declared_lock_effect *effect,
+    struct locklint_access *lock)
+{
+	*effect = LOCKLINT_DECLARED_LOCK_NONE;
+	*lock = (struct locklint_access){ 0 };
+
+	switch (locklint_get_execution_annotation(insn)) {
+	case LOCKLINT_EXECUTION_MUTEX_ACQUIRED_EFFECT:
+		*effect = LOCKLINT_DECLARED_MUTEX_ACQUIRED;
+		break;
+	case LOCKLINT_EXECUTION_READ_ACQUIRED_EFFECT:
+		*effect = LOCKLINT_DECLARED_READ_ACQUIRED;
+		break;
+	case LOCKLINT_EXECUTION_WRITE_ACQUIRED_EFFECT:
+		*effect = LOCKLINT_DECLARED_WRITE_ACQUIRED;
+		break;
+	case LOCKLINT_EXECUTION_LOCK_RELEASED_EFFECT:
+		*effect = LOCKLINT_DECLARED_LOCK_RELEASED;
+		break;
+	default:
+		return (false);
+	}
+
+	return (insn->context_expr != NULL &&
+	    locklint_get_access(tu, insn->context_expr, lock));
+}
+
+void
+locklint_process_function_annotations(FILE *stream,
+    struct translation_unit *tu, struct entrypoint *ep)
+{
+	struct basic_block *bb;
+	char function[128];
+
+	(void) snprintf(function, sizeof (function), "%s",
+	    ep->name->ident != NULL ? show_ident(ep->name->ident) :
+	    "<anonymous>");
+	FOR_EACH_PTR(ep->bbs, bb) {
+		struct instruction *insn;
+
+		FOR_EACH_PTR(bb->insns, insn) {
+			struct locklint_access lock;
+			enum locklint_declared_lock_effect effect;
+			struct position pos;
+			bool resolved;
+
+			if (insn->bb == NULL)
+				continue;
+			resolved = locklint_get_declared_lock_effect(tu, insn,
+			    &effect, &lock);
+			if (effect == LOCKLINT_DECLARED_LOCK_NONE)
+				continue;
+			if (!resolved) {
+				pos = insn->context_expr != NULL ?
+				    insn->context_expr->pos : insn->pos;
+				sparse_error(pos,
+				    "locklint: %s requires a lock expression",
+				    declared_lock_effect_name(effect));
+				continue;
+			}
+			if (stream == NULL)
+				continue;
+			pos = insn->context_expr->pos;
+			(void) fprintf(stream, "%s:%u:%u: %s ",
+			    stream_name(pos.stream), pos.line, pos.pos,
+			    declared_lock_effect_name(effect));
+			locklint_show_access(stream, insn->context_expr);
+			(void) fprintf(stream, " function=%s\n", function);
+		} END_FOR_EACH_PTR(insn);
+	} END_FOR_EACH_PTR(bb);
 }
 
 static bool
