@@ -395,7 +395,7 @@ The structures have these roles:
 | `struct protection_condition` | A caller-visible entry protection condition for formal-relative or absolute data, with an optional mutex and exact formal-lock alternatives |
 | `struct protection_alternative` | One definitely held formal-relative lock whose mapped address may equal and satisfy a condition's required lock |
 | `struct assumed_region` | One function-wide region selected by `ASSUMING_PROTECTED` |
-| `struct assertion_requirement` | One caller-mappable asserted lock condition, with source provenance and the entry-state masks accepted after its local instruction prefix |
+| `struct assertion_requirement` | One caller-mappable asserted lock condition, with original source provenance and the entry-state masks accepted after its local or wrapped instruction prefix |
 | `struct acquisition_candidate` | One formal-relative or canonical absolute lock role that can affect an acquisition summary |
 | `struct acquisition_summary` | One caller-mappable acquisition with representative source provenance and sparse prefix effects |
 | `struct acquisition_prefix` | The state of one changed entry-visible lock role immediately before a summarized acquisition, represented for every input-state mask |
@@ -1110,12 +1110,20 @@ lock effects are preserved.  Structurally unreachable assertions are omitted.
 The resulting `assertion_requirement` records the role, asserted modes,
 source position, and a bit set of accepted entry masks.
 
-At a resolved direct call, the callee role maps to the caller lock and the
-current caller state selects an accepted-entry bit.  A wholly incompatible
-state produces an unsatisfied-requirement warning; a merged caller state with
-both accepted and rejected components produces a path-dependent warning.  The
-assertion position is emitted as supporting information.  Requirements are
-not yet propagated through wrappers or recursive call cycles.
+At each resolved call, the callee role maps to the caller lock and the caller
+prefix is sampled for every entry-state mask.  Requirements with the same
+original assertion, asserted modes, and mapped role are merged by intersecting
+their accepted masks.  The pass iterates to a fixed point through transparent,
+state-changing, nested, and recursive wrappers.  Fully accepted tables are
+omitted.
+
+During diagnostics, the current caller state selects an accepted-entry bit.
+A wholly incompatible state produces an unsatisfied-requirement warning; a
+merged caller state with both accepted and rejected components produces a
+path-dependent warning.  A non-root wrapper defers an unsatisfied condition
+that it can propagate.  Root boundaries and locks without caller-mappable
+identity are diagnosed at the call, and the original assertion position is
+emitted as supporting information.
 
 ## Event decoding
 
@@ -1714,6 +1722,19 @@ caller OP_CALL resolved to callee
     -> incompatible or path-dependent requirement is diagnosed
 ```
 
+### Assertion requirement through wrappers
+
+```text
+callee assertion requirement mapped at caller OP_CALL
+    -> caller prefix sampled for every entry-state mask
+    -> accepted masks intersected by original assertion and mapped role
+    -> call graph iterated until no accepted table shrinks
+non-root wrapper with a caller-mappable unsatisfied condition
+    -> local diagnostic deferred to its caller
+root or non-mappable boundary
+    -> requirement diagnosed with original assertion provenance
+```
+
 ### Direct callee effect
 
 ```text
@@ -1838,9 +1859,10 @@ The current implementation relies on these invariants:
 11. Protection-condition propagation maps the protected-data identity
     independently and never rebases an absolute data or mutex root.
 12. Lock assertions refine local lock state without creating effects.
-    Caller-mappable lock assertions also create point-sensitive direct-callee
-    requirements; `ASSERT(NO_COMPETING_THREADS)` remains an advisory local
-    competition transition and does not create a caller condition.
+    Caller-mappable lock assertions also create point-sensitive requirements
+    that propagate to a fixed point; `ASSERT(NO_COMPETING_THREADS)` remains
+    an advisory local competition transition and does not create a caller
+    condition.
 13. Interprocedural lock and visibility effects and protection conditions
     reach fixed points before diagnostics are emitted.
 14. Multiple external function definitions with one identifier are ambiguous,

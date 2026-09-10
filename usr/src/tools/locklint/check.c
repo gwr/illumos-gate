@@ -46,6 +46,7 @@ typedef unsigned int lock_state_t;
 #define	LOCK_STATE_COUNT	(1 << 4)
 
 #define	LOCK_ANY_HELD	(LOCK_HELD | LOCK_READ_HELD | LOCK_WRITE_HELD)
+#define	ALL_LOCK_INPUTS	((1U << LOCK_STATE_COUNT) - 2)
 
 enum competition_state {
 	COMPETITION_NONE,
@@ -166,6 +167,7 @@ struct assertion_requirement {
 	unsigned int modes;
 	unsigned int accepted_inputs;
 	struct position pos;
+	struct translation_unit *origin_tu;
 	struct assertion_requirement *next;
 };
 
@@ -2143,20 +2145,65 @@ solve_function_transfers(struct function_info *function)
 	return (changed);
 }
 
+static bool
+same_requirement_origin(const struct assertion_requirement *requirement,
+    struct translation_unit *origin_tu, struct position pos)
+{
+	return (requirement->origin_tu == origin_tu &&
+	    requirement->pos.stream == pos.stream &&
+	    requirement->pos.line == pos.line &&
+	    requirement->pos.pos == pos.pos);
+}
+
+static bool
+add_assertion_requirement(struct function_info *function,
+    const struct acquisition_role *role, unsigned int modes,
+    unsigned int accepted_inputs, struct translation_unit *origin_tu,
+    struct position pos)
+{
+	struct assertion_requirement **link;
+
+	if (accepted_inputs == ALL_LOCK_INPUTS)
+		return (false);
+	for (link = &function->assertion_requirements; *link != NULL;
+	    link = &(*link)->next) {
+		struct assertion_requirement *requirement = *link;
+		unsigned int merged;
+
+		if (requirement->modes != modes ||
+		    !same_acquisition_role(&requirement->role, role) ||
+		    !same_requirement_origin(requirement, origin_tu, pos))
+			continue;
+		merged = requirement->accepted_inputs & accepted_inputs;
+		if (merged == requirement->accepted_inputs)
+			return (false);
+		requirement->accepted_inputs = merged;
+		return (true);
+	}
+	*link = calloc(1, sizeof (**link));
+	if (*link == NULL)
+		die("out of memory recording assertion requirement");
+	(*link)->role = *role;
+	(*link)->modes = modes;
+	(*link)->accepted_inputs = accepted_inputs;
+	(*link)->origin_tu = origin_tu;
+	(*link)->pos = pos;
+	return (true);
+}
+
 static void
 collect_assertion_requirements(struct function_info *function)
 {
-	struct assertion_requirement **tail =
-	    &function->assertion_requirements;
 	struct basic_block *bb;
 
 	FOR_EACH_PTR(function->ep->bbs, bb) {
 		struct instruction *insn;
 
 		FOR_EACH_PTR(bb->insns, insn) {
-			struct assertion_requirement *requirement;
 			struct acquisition_role role;
 			struct locklint_access lock;
+			struct position pos;
+			unsigned int accepted_inputs = 0;
 			bool reachable = false;
 			unsigned int input;
 			unsigned int modes;
@@ -2166,13 +2213,7 @@ collect_assertion_requirements(struct function_info *function)
 			    &modes) ||
 			    !acquisition_role(function, &lock, &role))
 				continue;
-			requirement = calloc(1, sizeof (*requirement));
-			if (requirement == NULL)
-				die("out of memory recording assertion "
-				    "requirement");
-			requirement->role = role;
-			requirement->modes = modes;
-			requirement->pos = insn->call_expr != NULL ?
+			pos = insn->call_expr != NULL ?
 			    insn->call_expr->pos : insn->pos;
 			for (input = 1; input < LOCK_STATE_COUNT; input++) {
 				lock_state_t state;
@@ -2180,14 +2221,12 @@ collect_assertion_requirements(struct function_info *function)
 				state = simulate_lock_prefix(function, &role,
 				    input, insn, &reachable);
 				if ((state & ~modes) == 0)
-					requirement->accepted_inputs |= 1U << input;
+					accepted_inputs |= 1U << input;
 			}
-			if (!reachable) {
-				free(requirement);
+			if (!reachable)
 				continue;
-			}
-			*tail = requirement;
-			tail = &requirement->next;
+			(void) add_assertion_requirement(function, &role, modes,
+			    accepted_inputs, function->tu, pos);
 		} END_FOR_EACH_PTR(insn);
 	} END_FOR_EACH_PTR(bb);
 }
@@ -3298,6 +3337,69 @@ assertion_requirement_accepts_part(
 	return (false);
 }
 
+static unsigned int
+assertion_call_accepted_inputs(struct function_info *function,
+    struct instruction *insn, const struct acquisition_role *role,
+    const struct assertion_requirement *callee_requirement, bool *reachable)
+{
+	unsigned int accepted_inputs = 0;
+	unsigned int input;
+
+	*reachable = false;
+	for (input = 1; input < LOCK_STATE_COUNT; input++) {
+		lock_state_t state;
+
+		state = simulate_lock_prefix(function, role, input, insn,
+		    reachable);
+		if (assertion_requirement_accepts(callee_requirement, state))
+			accepted_inputs |= 1U << input;
+	}
+	return (accepted_inputs);
+}
+
+static bool
+propagate_assertion_requirements(struct function_info *function)
+{
+	struct basic_block *bb;
+	bool changed = false;
+
+	FOR_EACH_PTR(function->ep->bbs, bb) {
+		struct instruction *insn;
+
+		FOR_EACH_PTR(bb->insns, insn) {
+			struct function_info *callee;
+			struct assertion_requirement *requirement;
+
+			if (insn->bb == NULL)
+				continue;
+			callee = callgraph_callee(function, insn);
+			if (callee == NULL)
+				continue;
+			for (requirement = callee->assertion_requirements;
+			    requirement != NULL; requirement = requirement->next) {
+				struct acquisition_role role;
+				struct locklint_access lock;
+				unsigned int accepted_inputs;
+				bool reachable;
+
+				if (!map_acquisition_role(function, insn,
+				    &requirement->role, &lock) ||
+				    !acquisition_role(function, &lock, &role))
+					continue;
+				accepted_inputs = assertion_call_accepted_inputs(
+				    function, insn, &role, requirement,
+				    &reachable);
+				if (reachable &&
+				    add_assertion_requirement(function, &role,
+				    requirement->modes, accepted_inputs,
+				    requirement->origin_tu, requirement->pos))
+					changed = true;
+			}
+		} END_FOR_EACH_PTR(insn);
+	} END_FOR_EACH_PTR(bb);
+	return (changed);
+}
+
 static void
 check_call_assertion_requirements(struct function_info *function,
     struct analysis_state *analysis, struct instruction *insn,
@@ -3317,6 +3419,13 @@ check_call_assertion_requirements(struct function_info *function,
 		state = get_state(analysis->locks, &lock);
 		if (assertion_requirement_accepts(requirement, state))
 			continue;
+		{
+			struct acquisition_role role;
+
+			if (defer_conditions(function) &&
+			    acquisition_role(function, &lock, &role))
+				continue;
+		}
 		name = assertion_requirement_name(requirement->modes);
 		if (assertion_requirement_accepts_part(requirement, state)) {
 			warning(pos, "locklint: asserted %s requirement for "
@@ -3647,6 +3756,15 @@ run_lock_checks(void)
 	while ((function = callgraph_iter_next(iter)) != NULL)
 		collect_assertion_requirements(function);
 	callgraph_iter_close(iter);
+	do {
+		changed = false;
+		iter = function_iter_open();
+		while ((function = callgraph_iter_next(iter)) != NULL) {
+			if (propagate_assertion_requirements(function))
+				changed = true;
+		}
+		callgraph_iter_close(iter);
+	} while (changed);
 	iter = function_iter_open();
 	while ((function = callgraph_iter_next(iter)) != NULL)
 		validate_declared_effects(function);

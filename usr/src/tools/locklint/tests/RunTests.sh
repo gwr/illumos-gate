@@ -403,6 +403,13 @@ run_capture "assertion requirements" assertion-requirements.raw \
 compare_no_columns "assertion requirements" assertion-requirements.ref \
     assertion-requirements.raw assertion-requirements.out
 
+run_capture "assertion requirement wrappers" \
+    assertion-requirement-wrappers.raw "$LOCKLINT" --check-locks \
+    assertion-requirement-wrappers.c
+compare_no_columns "assertion requirement wrappers" \
+    assertion-requirement-wrappers.ref assertion-requirement-wrappers.raw \
+    assertion-requirement-wrappers.out
+
 run_capture "assertion events" assertion-events.out \
     "$LOCKLINT" --check-locks --dump-events assertions.c
 require_match "assertion events" 'CALL mutex_owned' assertion-events.out
