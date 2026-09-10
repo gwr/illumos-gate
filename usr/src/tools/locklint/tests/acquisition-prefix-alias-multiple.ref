@@ -1,0 +1,6 @@
+../locklint: acquisition-prefix-alias.c:256: warning: locklint: lock 'prefix_alias_state::first' acquired out of declared order while holding 'prefix_alias_state::second'
+../locklint: acquisition-prefix-alias.c:36: locklint: declared order requires 'prefix_alias_state::first' before 'prefix_alias_state::second'
+../locklint: acquisition-prefix-alias.c:237: locklint: lock acquisition reached through callee 'multiple_changes_before_target'
+../locklint: acquisition-prefix-alias.c:266: warning: locklint: lock 'prefix_alias_state::first' acquired out of declared order while holding 'prefix_alias_state::second'
+../locklint: acquisition-prefix-alias.c:36: locklint: declared order requires 'prefix_alias_state::first' before 'prefix_alias_state::second'
+../locklint: acquisition-prefix-alias.c:237: locklint: lock acquisition reached through callee 'multiple_changes_before_target_wrapper'

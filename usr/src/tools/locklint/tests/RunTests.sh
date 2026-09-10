@@ -240,6 +240,15 @@ compare_no_columns "internally aliased acquisition prefixes" \
     acquisition-prefix-alias-wrapper-internal.raw \
     acquisition-prefix-alias-wrapper-internal.out
 
+run_capture "multiple changed acquisition prefixes" \
+    acquisition-prefix-alias-multiple.raw "$LOCKLINT" \
+    -DACQUISITION_PREFIX_ALIAS_VARIANT=6 --check-locks \
+    acquisition-prefix-alias.c
+compare_no_columns "multiple changed acquisition prefixes" \
+    acquisition-prefix-alias-multiple.ref \
+    acquisition-prefix-alias-multiple.raw \
+    acquisition-prefix-alias-multiple.out
+
 run_capture "observed lock order" lock-order-observed.out \
     "$LOCKLINT" --check-locks lock-order-observed.c
 compare "observed lock order" lock-order-observed.ref \
@@ -550,6 +559,19 @@ run_capture "multiple assertion alias alternatives" \
 compare_no_columns "multiple assertion alias alternatives" \
     assertion-alias-multiple.ref assertion-alias-multiple.raw \
     assertion-alias-multiple.out
+
+run_capture "merged assertion alias alternatives" \
+    assertion-alias-merged.out "$LOCKLINT" \
+    -DASSERTION_ALIAS_VARIANT=9 --check-locks assertion-alias.c
+require_empty "merged assertion alias alternatives" \
+    assertion-alias-merged.out
+
+run_capture "bounded assertion alias alternatives" \
+    assertion-alias-overflow.raw "$LOCKLINT" \
+    -DASSERTION_ALIAS_VARIANT=10 --check-locks assertion-alias.c
+compare_no_columns "bounded assertion alias alternatives" \
+    assertion-alias-overflow.ref assertion-alias-overflow.raw \
+    assertion-alias-overflow.out
 
 run_capture "assertion requirement wrappers" \
     assertion-requirement-wrappers.raw "$LOCKLINT" --check-locks \

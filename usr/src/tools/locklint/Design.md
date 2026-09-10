@@ -401,7 +401,7 @@ The structures have these roles:
 | `struct assertion_requirement` | One caller-mappable asserted lock condition, with original source provenance, a local replay checkpoint, ordinary accepted entry masks, and sparse alias alternatives |
 | `struct assertion_alternative` | One set of other formal lock roles and the entry masks accepted when every member aliases an assertion requirement's primary role |
 | `struct acquisition_candidate` | One formal-relative or canonical absolute lock role that can affect an acquisition summary |
-| `struct acquisition_summary` | One caller-mappable acquisition with original source/checkpoint identity, representative provenance, and sparse prefix effects |
+| `struct acquisition_summary` | One caller-mappable acquisition with original source/checkpoint identity, an optional bounded wrapper replay chain, representative provenance, and sparse prefix effects |
 | `struct acquisition_prefix` | The state of one changed entry-visible lock role immediately before a summarized acquisition, represented for every input-state mask |
 | `struct lock_transfer` | A function lock-effect summary for one formal-relative or canonical absolute lock role and each possible input-state mask |
 | `struct transfer_block_info` | Temporary per-block state used while computing one lock transfer |
@@ -1126,7 +1126,9 @@ entry masks.  It also records alternatives keyed by sets of other formal roles a
 accepted-input mask when every role in that set aliases the asserted role.
 All nonempty subsets are evaluated when any alias partition changes the
 ordinary mask; requirements without an alias-sensitive partition remain
-sparse.
+sparse.  Requirements merged from different paths rebuild tables over the
+union of both role sets, projecting each combination onto the roles known by
+each path before intersecting their accepted masks.
 
 At each resolved call, the callee role maps to the caller lock and the caller
 prefix is sampled for every entry-state mask.  Requirements with the same
@@ -1141,7 +1143,11 @@ state.  Through wrappers, alternative role sets map to caller roles.  Roles
 that already map to the primary role are folded into the ordinary table;
 every subset of remaining caller roles retains its own table after composing
 the wrapper prefix.  At a final call, the exact set of roles mapped to the
-asserted lock selects the corresponding table.
+asserted lock selects the corresponding table.  To bound exponential subset
+construction, at most eight alternative roles are retained per requirement;
+a larger local, propagated, or merged role set becomes a persistent rejecting
+requirement rather than risking a false negative, oscillating during fixed
+point iteration, or consuming unbounded analysis resources.
 
 During diagnostics, the current caller state selects an accepted-entry bit.
 A wholly incompatible state produces an unsatisfied-requirement warning; a
@@ -1576,10 +1582,11 @@ Acquisition events then map through calls and propagate to a second fixed
 point.  Wrapper state before the call is composed with the callee event's
 prefix effects.  Event equality includes the acquired role, the original
 source function and instruction checkpoint, and complete prefix semantics,
-but excludes wrapper call positions so provenance does not grow through
-recursive propagation.  Events for the same acquired role remain separate
-when they arise at different original checkpoints or their prefix effects
-differ.
+plus the wrapper call and nested summary identities needed for contextual
+replay.  Recursive chains become unknown, and path-distinct acyclic contexts
+are bounded as described below.  The diagnostic source position is not part
+of equality.  Events for the same acquired role remain separate when they
+arise at different original checkpoints, wrapper contexts, or prefix effects.
 
 At final call replay, mapped prefix effects determine which caller locks
 remain held at the summarized acquisition.  The caller's call expression is
@@ -1589,12 +1596,18 @@ responsible for state after the call.
 
 For a direct summarized acquisition, if several callee roles map to the same
 caller lock, locklint replays the original function to the acquisition
-checkpoint with those roles sharing one target state.  When carrying that
-event through a wrapper, zero matching changed prefixes are identity and one
-matching changed prefix is applied.  Several independently changed matching
-prefixes cannot yet be ordered exactly; only comparison with that ambiguous
-lock is suppressed, while the acquisition and comparisons with unrelated
-held locks remain usable.
+checkpoint with those roles sharing one target state.  Each propagated event
+retains an acyclic chain of wrapper function and call-site contexts back to
+that checkpoint.  If several changed prefixes map to one caller lock,
+locklint replays each wrapper prefix and descends through that chain,
+preserving the original operation order.  A repeated function marks the
+context chain unknown so recursive propagation remains finite; only comparison
+with that caller lock then remains suppressed.  A function retains at most 64
+path-distinct replay contexts; additional paths discard their prefix tables
+and collapse to one fully unknown summary per acquisition identity, bounding
+growth through wide acyclic call graphs.  A fully unknown prefix retains both
+held and unheld possibilities, so callers receive a path-dependent order
+diagnostic rather than silently losing a possible inversion.
 
 ### Observed order
 
@@ -1946,9 +1959,9 @@ The current implementation relies on these invariants:
     mapped normalized lock addresses are exactly equal.
 28. Declared lock-order edges point from earlier to later permitted
     acquisitions; transitive reachability has the same force as a direct edge.
-29. Acquisition source positions are provenance, not part of summary identity;
-    distinct prefix semantics prevent separate held sequences from being
-    coalesced.
+29. Acquisition diagnostic positions are provenance, not summary identity;
+    original checkpoints, wrapper replay contexts, and distinct prefix
+    semantics prevent separate held sequences from being coalesced.
 30. A missing acquisition-prefix entry means that entry-visible lock is
     unchanged at the acquisition.
 31. Declared-order inversions do not also contribute observed-order edges.
@@ -1957,9 +1970,8 @@ The current implementation relies on these invariants:
     against one shared state.
 33. A fully accepted ordinary assertion requirement is retained when any
     alias-role set produces a stricter accepted-input mask.
-34. Zero or one matching changed acquisition prefix composes through a
-    wrapper; several changed matches suppress only comparisons involving the
-    ambiguous caller lock.
+34. Multiple changed acquisition prefixes compose through an acyclic wrapper
+    chain by replaying each retained call context to the original checkpoint.
 35. Recursive shared-state transfer contexts converge from the empty result
     using function, aliased role set, and input-state mask as their identity.
 
@@ -1977,8 +1989,6 @@ areas include:
   registration, pointer copies, ambiguous assignments, and indexed target
   sets;
 - explicit root configuration and source annotations;
-- exact wrapper composition when multiple changed acquisition prefixes map
-  to the same caller lock;
 - optional, configurable validation of declared lock types;
 - condition waits, try-locks, upgrades, and downgrades;
 - stable diagnostic identifiers, suppressions, and provenance.

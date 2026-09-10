@@ -261,6 +261,77 @@ distinct_required_multiple_assertion_alias_wrapped(
 	(void) mutex_unlock(&shared->lock);
 }
 
+#elif ASSERTION_ALIAS_VARIANT == 9
+
+static void
+merged_alias_leaf(mutex_t *acquired, struct assertion_alias_state *required)
+{
+	(void) mutex_lock(acquired);
+	ASSERT(MUTEX_HELD(&required->lock));
+	(void) mutex_unlock(acquired);
+}
+
+static void
+merged_alias_wrapper(mutex_t *first, mutex_t *second,
+    struct assertion_alias_state *required, int select)
+{
+	if (select)
+		merged_alias_leaf(first, required);
+	else
+		merged_alias_leaf(second, required);
+}
+
+static void
+same_merged_assertion_aliases(struct assertion_alias_state *state, int select)
+{
+	merged_alias_wrapper(&state->lock, &state->lock, state, select);
+}
+
+#elif ASSERTION_ALIAS_VARIANT == 10
+
+static void
+overflow_alias_leaf(mutex_t *first, mutex_t *second, mutex_t *third,
+    mutex_t *fourth, mutex_t *fifth,
+    struct assertion_alias_state *required)
+{
+	(void) mutex_lock(first);
+	(void) mutex_lock(second);
+	(void) mutex_lock(third);
+	(void) mutex_lock(fourth);
+	(void) mutex_lock(fifth);
+	ASSERT(MUTEX_HELD(&required->lock));
+	(void) mutex_unlock(fifth);
+	(void) mutex_unlock(fourth);
+	(void) mutex_unlock(third);
+	(void) mutex_unlock(second);
+	(void) mutex_unlock(first);
+}
+
+static void
+overflow_alias_wrapper(mutex_t *first, mutex_t *second, mutex_t *third,
+    mutex_t *fourth, mutex_t *fifth, mutex_t *sixth, mutex_t *seventh,
+    mutex_t *eighth, mutex_t *ninth,
+    struct assertion_alias_state *required, int select)
+{
+	if (select) {
+		overflow_alias_leaf(first, second, third, fourth, fifth,
+		    required);
+	} else {
+		overflow_alias_leaf(fifth, sixth, seventh, eighth, ninth,
+		    required);
+	}
+}
+
+static void
+check_assertion_alias_overflow(mutex_t *first, mutex_t *second,
+    mutex_t *third, mutex_t *fourth, mutex_t *fifth, mutex_t *sixth,
+    mutex_t *seventh, mutex_t *eighth, mutex_t *ninth,
+    struct assertion_alias_state *required, int select)
+{
+	overflow_alias_wrapper(first, second, third, fourth, fifth, sixth,
+	    seventh, eighth, ninth, required, select);
+}
+
 #else
 #error "unsupported ASSERTION_ALIAS_VARIANT"
 #endif

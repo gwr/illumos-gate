@@ -157,5 +157,7 @@ run_variant 4 "distinct_wrapped_release_before_target \
 distinct_wrapped_target_before_release" || exit $?
 run_variant 5 "internal_release_before_target \
 internal_target_before_release" || exit $?
+run_variant 6 "same_multiple_changes_before_target \
+same_wrapped_multiple_changes_before_target" || exit $?
 
 print "Results: $run_root"

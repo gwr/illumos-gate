@@ -198,11 +198,17 @@ struct assertion_alternative {
 	struct assertion_alternative *next;
 };
 
+enum {
+	MAX_ASSERTION_ALIAS_ROLES = 8,
+	MAX_ACQUISITION_CONTEXTS = 64
+};
+
 struct assertion_requirement {
 	struct acquisition_role role;
 	unsigned int modes;
 	unsigned int accepted_inputs;
 	struct assertion_alternative *alternatives;
+	bool alternatives_unknown;
 	struct function_info *source_function;
 	struct instruction *checkpoint;
 	struct position pos;
@@ -258,6 +264,11 @@ struct acquisition_summary {
 	struct acquisition_prefix *prefixes;
 	struct function_info *source_function;
 	struct instruction *checkpoint;
+	struct function_info *context_function;
+	struct instruction *context_call;
+	const struct acquisition_summary *nested;
+	bool context_unknown;
+	bool prefixes_unknown;
 	struct acquisition_summary *next;
 };
 
@@ -292,6 +303,10 @@ static lock_state_t simulate_aliased_transfer(struct function_info *,
 static lock_state_t simulate_aliased_transfer_context(struct function_info *,
     const struct mapped_transfer_role *, lock_state_t, unsigned int *,
     const struct alias_replay_frame *);
+static bool contextual_acquisition_prefix_for_lock(struct function_info *,
+    struct instruction *, struct function_info *,
+    const struct acquisition_summary *, const struct locklint_access *,
+    lock_state_t, lock_state_t *);
 static struct symbol *formal_symbol(struct entrypoint *, unsigned int);
 static bool acquisition_block_reachable(struct function_info *,
     struct basic_block *);
@@ -3133,41 +3148,184 @@ free_assertion_alternatives(struct assertion_alternative *alternatives)
 	}
 }
 
+static unsigned int
+assertion_alternative_role_count(
+    const struct assertion_alternative_role *roles)
+{
+	unsigned int count = 0;
+
+	for (; roles != NULL; roles = roles->next)
+		count++;
+	return (count);
+}
+
+static bool
+assertion_role_selected(const struct assertion_alternative_role *roles,
+    const struct acquisition_role *role)
+{
+	for (; roles != NULL; roles = roles->next) {
+		if (same_acquisition_role(&roles->role, role))
+			return (true);
+	}
+	return (false);
+}
+
+static bool
+assertion_role_in_alternatives(
+    const struct assertion_alternative *alternatives,
+    const struct acquisition_role *role)
+{
+	for (; alternatives != NULL; alternatives = alternatives->next) {
+		if (assertion_role_selected(alternatives->roles, role))
+			return (true);
+	}
+	return (false);
+}
+
+static unsigned int
+assertion_projected_inputs(
+    const struct assertion_alternative *alternatives,
+    unsigned int base_inputs,
+    const struct assertion_alternative_role *selected)
+{
+	struct assertion_alternative_role *projection = NULL;
+	const struct assertion_alternative_role *role;
+	const struct assertion_alternative *alternative;
+	unsigned int accepted_inputs;
+
+	for (role = selected; role != NULL; role = role->next) {
+		if (assertion_role_in_alternatives(alternatives, &role->role))
+			(void) add_assertion_alternative_role(&projection,
+			    &role->role);
+	}
+	if (projection == NULL)
+		return (base_inputs);
+	alternative = find_assertion_alternative(alternatives, projection);
+	accepted_inputs = alternative != NULL ?
+	    alternative->accepted_inputs : base_inputs;
+	free_assertion_alternative_roles(projection);
+	return (accepted_inputs);
+}
+
+struct assertion_merge_context {
+	const struct assertion_alternative *old_alternatives;
+	const struct assertion_alternative *incoming;
+	unsigned int old_base;
+	unsigned int incoming_base;
+	struct assertion_alternative *merged;
+};
+
+static void
+merge_assertion_subsets(struct assertion_merge_context *context,
+    const struct assertion_alternative_role *candidate,
+    struct assertion_alternative_role *selected)
+{
+	if (candidate == NULL) {
+		unsigned int accepted_inputs;
+
+		if (selected == NULL)
+			return;
+		accepted_inputs = assertion_projected_inputs(
+		    context->old_alternatives, context->old_base, selected);
+		accepted_inputs &= assertion_projected_inputs(
+		    context->incoming, context->incoming_base, selected);
+		(void) add_assertion_alternative(&context->merged, selected,
+		    accepted_inputs);
+		return;
+	}
+	merge_assertion_subsets(context, candidate->next, selected);
+	{
+		struct assertion_alternative_role included = {
+			.role = candidate->role,
+			.next = selected
+		};
+
+		merge_assertion_subsets(context, candidate->next, &included);
+	}
+}
+
+static bool
+same_assertion_alternatives(const struct assertion_alternative *left,
+    const struct assertion_alternative *right)
+{
+	const struct assertion_alternative *alternative;
+	unsigned int left_count = 0;
+	unsigned int right_count = 0;
+
+	for (alternative = left; alternative != NULL;
+	    alternative = alternative->next) {
+		const struct assertion_alternative *other;
+
+		left_count++;
+		other = find_assertion_alternative(right, alternative->roles);
+		if (other == NULL ||
+		    other->accepted_inputs != alternative->accepted_inputs)
+			return (false);
+	}
+	for (alternative = right; alternative != NULL;
+	    alternative = alternative->next)
+		right_count++;
+	return (left_count == right_count);
+}
+
 /*
- * Merge alternatives from another path.  A missing alternative on either
- * path contributes that path's ordinary accepted-input mask.
+ * Merge over the union of both role universes.  Each selected set is
+ * projected onto the roles known by each path before their accepted masks
+ * are intersected.
  */
 static bool
 merge_assertion_alternatives(struct assertion_requirement *requirement,
     const struct assertion_alternative *incoming, unsigned int old_base,
     unsigned int incoming_base)
 {
-	struct assertion_alternative *alternative;
-	const struct assertion_alternative *other;
-	bool changed = false;
+	struct assertion_alternative_role *roles = NULL;
+	struct assertion_merge_context context = {
+		.old_alternatives = requirement->alternatives,
+		.incoming = incoming,
+		.old_base = old_base,
+		.incoming_base = incoming_base
+	};
+	const struct assertion_alternative *alternative;
 
 	for (alternative = requirement->alternatives; alternative != NULL;
 	    alternative = alternative->next) {
-		unsigned int accepted_inputs;
+		const struct assertion_alternative_role *role;
 
-		other = find_assertion_alternative(incoming,
-		    alternative->roles);
-		accepted_inputs = alternative->accepted_inputs &
-		    (other != NULL ? other->accepted_inputs : incoming_base);
-		if (accepted_inputs != alternative->accepted_inputs) {
-			alternative->accepted_inputs = accepted_inputs;
-			changed = true;
-		}
+		for (role = alternative->roles; role != NULL; role = role->next)
+			(void) add_assertion_alternative_role(&roles,
+			    &role->role);
 	}
-	for (other = incoming; other != NULL; other = other->next) {
-		if (find_assertion_alternative(requirement->alternatives,
-		    other->roles) != NULL)
-			continue;
-		if (add_assertion_alternative(&requirement->alternatives,
-		    other->roles, other->accepted_inputs & old_base))
-			changed = true;
+	for (alternative = incoming; alternative != NULL;
+	    alternative = alternative->next) {
+		const struct assertion_alternative_role *role;
+
+		for (role = alternative->roles; role != NULL; role = role->next)
+			(void) add_assertion_alternative_role(&roles,
+			    &role->role);
 	}
-	return (changed);
+	if (assertion_alternative_role_count(roles) >
+	    MAX_ASSERTION_ALIAS_ROLES) {
+		bool changed = requirement->accepted_inputs != 0 ||
+		    requirement->alternatives != NULL ||
+		    !requirement->alternatives_unknown;
+
+		requirement->accepted_inputs = 0;
+		free_assertion_alternatives(requirement->alternatives);
+		requirement->alternatives = NULL;
+		requirement->alternatives_unknown = true;
+		free_assertion_alternative_roles(roles);
+		return (changed);
+	}
+	merge_assertion_subsets(&context, roles, NULL);
+	free_assertion_alternative_roles(roles);
+	if (same_assertion_alternatives(requirement->alternatives,
+	    context.merged)) {
+		free_assertion_alternatives(context.merged);
+		return (false);
+	}
+	free_assertion_alternatives(requirement->alternatives);
+	requirement->alternatives = context.merged;
+	return (true);
 }
 
 static bool
@@ -3176,7 +3334,8 @@ add_assertion_requirement(struct function_info *function,
     unsigned int accepted_inputs, struct translation_unit *origin_tu,
     struct position pos, struct function_info *source_function,
     struct instruction *checkpoint,
-    const struct assertion_alternative *alternatives)
+    const struct assertion_alternative *alternatives,
+    bool alternatives_unknown)
 {
 	struct assertion_requirement **link;
 	const struct assertion_alternative *alternative;
@@ -3189,7 +3348,8 @@ add_assertion_requirement(struct function_info *function,
 			break;
 		}
 	}
-	if (accepted_inputs == ALL_LOCK_INPUTS && !meaningful)
+	if (accepted_inputs == ALL_LOCK_INPUTS && !meaningful &&
+	    !alternatives_unknown)
 		return (false);
 	for (link = &function->assertion_requirements; *link != NULL;
 	    link = &(*link)->next) {
@@ -3201,6 +3361,19 @@ add_assertion_requirement(struct function_info *function,
 		    !same_acquisition_role(&requirement->role, role) ||
 		    !same_requirement_origin(requirement, origin_tu, pos))
 			continue;
+		if (requirement->alternatives_unknown)
+			return (false);
+		if (alternatives_unknown) {
+			bool changed = requirement->accepted_inputs != 0 ||
+			    requirement->alternatives != NULL;
+
+			requirement->accepted_inputs = 0;
+			free_assertion_alternatives(
+			    requirement->alternatives);
+			requirement->alternatives = NULL;
+			requirement->alternatives_unknown = true;
+			return (changed);
+		}
 		old_base = requirement->accepted_inputs;
 		merged = requirement->accepted_inputs & accepted_inputs;
 		if (merged != requirement->accepted_inputs)
@@ -3214,12 +3387,14 @@ add_assertion_requirement(struct function_info *function,
 		die("out of memory recording assertion requirement");
 	(*link)->role = *role;
 	(*link)->modes = modes;
-	(*link)->accepted_inputs = accepted_inputs;
+	(*link)->accepted_inputs = alternatives_unknown ? 0 : accepted_inputs;
+	(*link)->alternatives_unknown = alternatives_unknown;
 	(*link)->source_function = source_function;
 	(*link)->checkpoint = checkpoint;
 	(*link)->origin_tu = origin_tu;
 	(*link)->pos = pos;
-	for (; alternatives != NULL; alternatives = alternatives->next) {
+	for (; !alternatives_unknown && alternatives != NULL;
+	    alternatives = alternatives->next) {
 		(void) add_assertion_alternative(&(*link)->alternatives,
 		    alternatives->roles, alternatives->accepted_inputs);
 	}
@@ -3330,7 +3505,8 @@ collect_assertion_subsets(struct assertion_subset_context *context,
 static struct assertion_alternative *
 collect_assertion_alternatives(struct function_info *function,
     const struct acquisition_role *asserted_role, unsigned int modes,
-    unsigned int ordinary_inputs, struct instruction *checkpoint)
+    unsigned int ordinary_inputs, struct instruction *checkpoint,
+    bool *unknown)
 {
 	struct assertion_alternative_role *candidates = NULL;
 	struct assertion_alternative *alternatives = NULL;
@@ -3344,11 +3520,18 @@ collect_assertion_alternatives(struct function_info *function,
 	};
 	struct lock_transfer *transfer;
 
+	*unknown = false;
 	for (transfer = function->transfers; transfer != NULL;
 	    transfer = transfer->next) {
 		if (!same_acquisition_role(&transfer->role, asserted_role))
 			(void) add_assertion_alternative_role(&candidates,
 			    &transfer->role);
+	}
+	if (assertion_alternative_role_count(candidates) >
+	    MAX_ASSERTION_ALIAS_ROLES) {
+		free_assertion_alternative_roles(candidates);
+		*unknown = true;
+		return (NULL);
 	}
 	collect_assertion_subsets(&context, candidates, NULL);
 	free_assertion_alternative_roles(candidates);
@@ -3373,6 +3556,7 @@ collect_assertion_requirements(struct function_info *function)
 			struct position pos;
 			unsigned int accepted_inputs = 0;
 			struct assertion_alternative *alternatives;
+			bool alternatives_unknown;
 			bool reachable = false;
 			unsigned int input;
 			unsigned int modes;
@@ -3395,10 +3579,13 @@ collect_assertion_requirements(struct function_info *function)
 			if (!reachable)
 				continue;
 			alternatives = collect_assertion_alternatives(function,
-			    &role, modes, accepted_inputs, insn);
+			    &role, modes, accepted_inputs, insn,
+			    &alternatives_unknown);
+			if (alternatives_unknown)
+				accepted_inputs = 0;
 			(void) add_assertion_requirement(function, &role, modes,
 			    accepted_inputs, function->tu, pos, function, insn,
-			    alternatives);
+			    alternatives, alternatives_unknown);
 			free_assertion_alternatives(alternatives);
 		} END_FOR_EACH_PTR(insn);
 	} END_FOR_EACH_PTR(bb);
@@ -3530,7 +3717,10 @@ apply_callee_acquisition_prefix(struct function_info *function,
 	const struct acquisition_prefix *prefix;
 	unsigned int matches = 0;
 	lock_state_t output = 0;
+	bool unknown = false;
 
+	if (callee_summary->prefixes_unknown)
+		return (false);
 	for (prefix = callee_summary->prefixes; prefix != NULL;
 	    prefix = prefix->next) {
 		struct locklint_access mapped;
@@ -3539,12 +3729,22 @@ apply_callee_acquisition_prefix(struct function_info *function,
 		    &mapped) || !same_lock(&role->access, &mapped))
 			continue;
 		if (prefix->unknown)
-			return (false);
+			unknown = true;
 		output |= prefix->output[*state];
 		matches++;
 	}
-	if (matches > 1)
-		return (false);
+	if (unknown || matches > 1) {
+		struct function_info *callee = callgraph_callee(function, insn);
+		lock_state_t contextual;
+
+		if (callee == NULL ||
+		    !contextual_acquisition_prefix_for_lock(function, insn,
+		    callee, callee_summary, &role->access, *state,
+		    &contextual))
+			return (false);
+		*state = contextual;
+		return (true);
+	}
 	if (matches == 1)
 		*state = output;
 	return (true);
@@ -3559,6 +3759,10 @@ summarize_acquisition_prefix(struct function_info *function,
 	struct acquisition_candidate *candidate;
 	struct acquisition_prefix **tail = &summary->prefixes;
 
+	if (callee_summary != NULL && callee_summary->prefixes_unknown) {
+		summary->prefixes_unknown = true;
+		return;
+	}
 	for (candidate = candidates; candidate != NULL;
 	    candidate = candidate->next) {
 		struct acquisition_prefix *prefix;
@@ -3621,6 +3825,17 @@ same_acquisition_summary(const struct acquisition_summary *left,
 	if (left->source_function != right->source_function ||
 	    left->checkpoint != right->checkpoint)
 		return (false);
+	if (left->prefixes_unknown != right->prefixes_unknown)
+		return (false);
+	if (left->prefixes_unknown)
+		return (true);
+	if (left->context_unknown != right->context_unknown)
+		return (false);
+	if (!left->context_unknown &&
+	    (left->context_function != right->context_function ||
+	    left->context_call != right->context_call ||
+	    left->nested != right->nested))
+		return (false);
 	for (prefix = left->prefixes; prefix != NULL; prefix = prefix->next) {
 		const struct acquisition_prefix *other;
 
@@ -3642,14 +3857,37 @@ add_acquisition_summary(struct function_info *function,
     struct acquisition_summary *summary)
 {
 	struct acquisition_summary **tail;
+	unsigned int contexts = 0;
 
 	for (tail = &function->acquisitions; *tail != NULL;
 	    tail = &(*tail)->next) {
-		if (!same_acquisition_summary(*tail, summary))
-			continue;
+		if (same_acquisition_summary(*tail, summary)) {
+			free_acquisition_prefixes(summary->prefixes);
+			free(summary);
+			return (false);
+		}
+		if ((*tail)->context_function != NULL &&
+		    !(*tail)->context_unknown)
+			contexts++;
+	}
+	if (summary->context_function != NULL &&
+	    !summary->context_unknown &&
+	    contexts >= MAX_ACQUISITION_CONTEXTS) {
 		free_acquisition_prefixes(summary->prefixes);
-		free(summary);
-		return (false);
+		summary->prefixes = NULL;
+		summary->context_function = NULL;
+		summary->context_call = NULL;
+		summary->nested = NULL;
+		summary->context_unknown = true;
+		summary->prefixes_unknown = true;
+		for (tail = &function->acquisitions; *tail != NULL;
+		    tail = &(*tail)->next) {
+			if (!same_acquisition_summary(*tail, summary))
+				continue;
+			free_acquisition_prefixes(summary->prefixes);
+			free(summary);
+			return (false);
+		}
 	}
 	*tail = summary;
 	return (true);
@@ -3738,6 +3976,32 @@ propagate_acquisition_summaries(struct function_info *function)
 				propagated->source_function =
 				    summary->source_function;
 				propagated->checkpoint = summary->checkpoint;
+				propagated->prefixes_unknown =
+				    summary->prefixes_unknown;
+				if (summary->prefixes_unknown ||
+				    summary->context_unknown ||
+				    summary->source_function == function) {
+					propagated->context_unknown = true;
+				} else {
+					const struct acquisition_summary *context;
+
+					for (context = summary;
+					    context->nested != NULL;
+					    context = context->nested) {
+						if (context->context_function ==
+						    function) {
+							propagated->context_unknown =
+							    true;
+							break;
+						}
+					}
+					if (!propagated->context_unknown) {
+						propagated->context_function =
+						    function;
+						propagated->context_call = insn;
+						propagated->nested = summary;
+					}
+				}
 				summarize_acquisition_prefix(function,
 				    function->acquisition_roles, insn, summary,
 				    propagated);
@@ -4372,52 +4636,141 @@ check_access(struct function_info *function, struct analysis_state *state,
 }
 
 /*
- * Replay a local acquisition prefix when several callee roles denote one
- * held caller lock.  The callee CFG preserves the operation order that the
- * independent prefix tables necessarily lose.
+ * Allocate the callee roles that map to the current shared-state target.
+ * Synthetic transfers provide role identity; nested calls still use their
+ * ordinary inferred transfer tables.
  */
-static bool
-contextual_acquisition_prefix_state(struct function_info *function,
+static unsigned int
+map_acquisition_replay_roles(struct function_info *function,
     struct instruction *insn, struct function_info *callee,
-    const struct acquisition_summary *summary, const struct state_entry *held,
-    lock_state_t *state)
+    const struct transfer_target *target, struct lock_transfer **transfersp,
+    struct mapped_transfer_role **rolesp)
 {
-	struct mapped_transfer_role *roles = NULL;
-	struct mapped_transfer_role **tail = &roles;
 	const struct acquisition_candidate *candidate;
-	struct alias_replay_frame frame = { 0 };
-	struct transfer_target target = { 0 };
+	struct lock_transfer *transfers;
+	struct mapped_transfer_role *roles;
+	unsigned int count = 0;
+	unsigned int index = 0;
 
-	if (summary->source_function != callee || summary->checkpoint == NULL)
-		return (false);
 	for (candidate = callee->acquisition_roles; candidate != NULL;
 	    candidate = candidate->next) {
-		struct mapped_transfer_role *role;
 		struct locklint_access mapped;
-		struct lock_transfer *transfer;
 
 		if (!map_acquisition_role(function, insn, &candidate->role,
-		    &mapped) || !same_lock(&held->lock, &mapped))
+		    &mapped) || !transfer_target_matches(target, &mapped))
 			continue;
-		transfer = find_transfer(callee, &candidate->role);
-		if (transfer == NULL) {
-			free_mapped_transfer_roles(roles);
-			return (false);
-		}
-		role = calloc(1, sizeof (*role));
-		if (role == NULL)
-			die("out of memory replaying acquisition prefix");
-		role->transfer = transfer;
-		*tail = role;
-		tail = &role->next;
+		count++;
 	}
-	frame.function = callee;
-	frame.next = NULL;
-	target.roles = roles;
-	target.replay = &frame;
-	*state = simulate_lock_prefix_target(callee, &target, held->state,
-	    summary->checkpoint, NULL);
-	free_mapped_transfer_roles(roles);
+	if (count == 0) {
+		*transfersp = NULL;
+		*rolesp = NULL;
+		return (0);
+	}
+	transfers = calloc(count, sizeof (*transfers));
+	roles = calloc(count, sizeof (*roles));
+	if (transfers == NULL || roles == NULL)
+		die("out of memory mapping acquisition replay roles");
+	for (candidate = callee->acquisition_roles; candidate != NULL;
+	    candidate = candidate->next) {
+		struct locklint_access mapped;
+
+		if (!map_acquisition_role(function, insn, &candidate->role,
+		    &mapped) || !transfer_target_matches(target, &mapped))
+			continue;
+		transfers[index].role = candidate->role;
+		roles[index].transfer = &transfers[index];
+		if (index != 0)
+			roles[index - 1].next = &roles[index];
+		index++;
+	}
+	*transfersp = transfers;
+	*rolesp = roles;
+	return (count);
+}
+
+/*
+ * Replay an acquisition's retained acyclic wrapper chain to its original
+ * checkpoint.  Each level maps every role denoting the shared caller lock,
+ * preserving operation order that independent prefix vectors cannot express.
+ */
+static bool
+replay_acquisition_prefix_context(struct function_info *function,
+    const struct acquisition_summary *summary,
+    const struct transfer_target *target, lock_state_t input,
+    lock_state_t *output)
+{
+	struct alias_replay_frame frame = { 0 };
+	struct transfer_target replay_target = *target;
+	struct function_info *callee;
+	struct lock_transfer *transfers;
+	struct mapped_transfer_role *roles;
+	struct transfer_target nested_target = { 0 };
+	lock_state_t state;
+
+	if (summary->context_unknown || summary->prefixes_unknown)
+		return (false);
+	frame.function = function;
+	frame.next = target->replay;
+	replay_target.replay = &frame;
+	if (summary->source_function == function) {
+		if (summary->checkpoint == NULL)
+			return (false);
+		*output = simulate_lock_prefix_target(function,
+		    &replay_target, input, summary->checkpoint, NULL);
+		return (true);
+	}
+	if (summary->context_function != function ||
+	    summary->context_call == NULL || summary->nested == NULL)
+		return (false);
+	state = simulate_lock_prefix_target(function, &replay_target, input,
+	    summary->context_call, NULL);
+	callee = callgraph_callee(function, summary->context_call);
+	if (callee == NULL)
+		return (false);
+	if (map_acquisition_replay_roles(function, summary->context_call,
+	    callee, &replay_target, &transfers, &roles) == 0) {
+		*output = state;
+		return (true);
+	}
+	nested_target.roles = roles;
+	nested_target.replay = &frame;
+	if (!replay_acquisition_prefix_context(callee, summary->nested,
+	    &nested_target, state, output)) {
+		free(roles);
+		free(transfers);
+		return (false);
+	}
+	free(roles);
+	free(transfers);
+	return (true);
+}
+
+static bool
+contextual_acquisition_prefix_for_lock(struct function_info *function,
+    struct instruction *insn, struct function_info *callee,
+    const struct acquisition_summary *summary,
+    const struct locklint_access *lock, lock_state_t input,
+    lock_state_t *output)
+{
+	struct transfer_target caller_target = {
+		.single = lock
+	};
+	struct transfer_target callee_target = { 0 };
+	struct lock_transfer *transfers;
+	struct mapped_transfer_role *roles;
+
+	if (map_acquisition_replay_roles(function, insn, callee,
+	    &caller_target, &transfers, &roles) == 0)
+		return (false);
+	callee_target.roles = roles;
+	if (!replay_acquisition_prefix_context(callee, summary,
+	    &callee_target, input, output)) {
+		free(roles);
+		free(transfers);
+		return (false);
+	}
+	free(roles);
+	free(transfers);
 	return (true);
 }
 
@@ -4434,6 +4787,11 @@ acquisition_prefix_state(struct function_info *function,
 	unsigned int matches = 0;
 	bool found = false;
 
+	if (summary->prefixes_unknown) {
+		*known = true;
+		*transformed = true;
+		return (LOCK_NOT_HELD | LOCK_ANY_HELD);
+	}
 	for (candidate = callee->acquisition_roles; candidate != NULL;
 	    candidate = candidate->next) {
 		struct locklint_access mapped;
@@ -4443,8 +4801,8 @@ acquisition_prefix_state(struct function_info *function,
 			aliases++;
 	}
 	if (aliases > 1) {
-		if (contextual_acquisition_prefix_state(function, insn, callee,
-		    summary, held, &state)) {
+		if (contextual_acquisition_prefix_for_lock(function, insn,
+		    callee, summary, &held->lock, held->state, &state)) {
 			*known = true;
 			*transformed = state != held->state;
 			return (state);
@@ -4627,17 +4985,6 @@ struct assertion_role_mapping {
 	struct assertion_role_mapping *next;
 };
 
-static bool
-assertion_role_selected(const struct assertion_alternative_role *roles,
-    const struct acquisition_role *role)
-{
-	for (; roles != NULL; roles = roles->next) {
-		if (same_acquisition_role(&roles->role, role))
-			return (true);
-	}
-	return (false);
-}
-
 static void
 free_assertion_role_mappings(struct assertion_role_mapping *mappings)
 {
@@ -4712,6 +5059,7 @@ struct assertion_propagation_context {
 	struct assertion_alternative **alternatives;
 	unsigned int accepted_inputs;
 	bool reachable;
+	bool alternatives_unknown;
 };
 
 /*
@@ -4808,24 +5156,42 @@ propagate_assertion_requirements(struct function_info *function)
 				    &requirement->role, &lock) ||
 				    !acquisition_role(function, &lock, &role))
 					continue;
-				mappings = map_assertion_alternative_roles(function,
-				    insn, requirement, &role, &external);
 				memset(&context, 0, sizeof (context));
 				context.function = function;
 				context.insn = insn;
 				context.requirement = requirement;
 				context.primary = &role;
-				context.mappings = mappings;
 				context.alternatives = &alternatives;
-				propagate_assertion_subsets(&context, external,
-				    NULL);
+				if (requirement->alternatives_unknown) {
+					mappings = NULL;
+					context.accepted_inputs = 0;
+					context.reachable = true;
+					context.alternatives_unknown = true;
+				} else {
+					mappings =
+					    map_assertion_alternative_roles(
+					    function, insn, requirement, &role,
+					    &external);
+					context.mappings = mappings;
+				}
+				if (!context.alternatives_unknown &&
+				    assertion_alternative_role_count(external) >
+				    MAX_ASSERTION_ALIAS_ROLES) {
+					context.accepted_inputs = 0;
+					context.reachable = true;
+					context.alternatives_unknown = true;
+				} else if (!context.alternatives_unknown) {
+					propagate_assertion_subsets(&context,
+					    external, NULL);
+				}
 				if (context.reachable &&
 				    add_assertion_requirement(function, &role,
 				    requirement->modes,
 				    context.accepted_inputs,
 				    requirement->origin_tu, requirement->pos,
 				    requirement->source_function,
-				    requirement->checkpoint, alternatives))
+				    requirement->checkpoint, alternatives,
+				    context.alternatives_unknown))
 					changed = true;
 				free_assertion_alternatives(alternatives);
 				free_assertion_alternative_roles(external);

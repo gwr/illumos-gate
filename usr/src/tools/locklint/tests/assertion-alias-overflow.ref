@@ -1,0 +1,2 @@
+../locklint: assertion-alias.c:331: warning: locklint: call to 'overflow_alias_wrapper' does not satisfy asserted mutex-held requirement for lock 'lock'
+../locklint: assertion-alias.c:302: locklint: asserted requirement is here

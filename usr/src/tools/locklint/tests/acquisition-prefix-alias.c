@@ -42,7 +42,7 @@ _NOTE(LOCK_ORDER(prefix_alias_state::first prefix_alias_state::second
 
 extern int mutex_lock(mutex_t *);
 extern int mutex_unlock(mutex_t *);
-
+#if ACQUISITION_PREFIX_ALIAS_VARIANT != 6
 static void
 release_before_target(mutex_t *released, mutex_t *acquired, mutex_t *target)
 {
@@ -64,7 +64,7 @@ target_before_release(mutex_t *released, mutex_t *acquired, mutex_t *target)
 	(void) mutex_unlock(released);
 	(void) mutex_lock(acquired);
 }
-
+#endif
 #if ACQUISITION_PREFIX_ALIAS_VARIANT == 3 || \
     ACQUISITION_PREFIX_ALIAS_VARIANT == 4
 
@@ -217,6 +217,54 @@ internal_target_before_release(struct prefix_alias_state *state)
 	(void) mutex_lock(&state->second);
 	target_before_release_internal_wrapper(&state->second, &state->first);
 	(void) mutex_lock(&state->second);
+	(void) mutex_unlock(&state->second);
+}
+
+#elif ACQUISITION_PREFIX_ALIAS_VARIANT == 6
+
+static void
+multiple_changes_before_target(mutex_t *first, mutex_t *second,
+    mutex_t *third, mutex_t *fourth, mutex_t *target)
+{
+	_NOTE(LOCK_RELEASED_AS_SIDE_EFFECT(*first))
+	_NOTE(MUTEX_ACQUIRED_AS_SIDE_EFFECT(*second))
+	_NOTE(LOCK_RELEASED_AS_SIDE_EFFECT(*third))
+	_NOTE(MUTEX_ACQUIRED_AS_SIDE_EFFECT(*fourth))
+	(void) mutex_unlock(first);
+	(void) mutex_lock(second);
+	(void) mutex_unlock(third);
+	(void) mutex_lock(fourth);
+	(void) mutex_lock(target);
+	(void) mutex_unlock(target);
+}
+
+static void
+multiple_changes_before_target_wrapper(mutex_t *first, mutex_t *second,
+    mutex_t *third, mutex_t *fourth, mutex_t *target)
+{
+	_NOTE(LOCK_RELEASED_AS_SIDE_EFFECT(*first))
+	_NOTE(MUTEX_ACQUIRED_AS_SIDE_EFFECT(*second))
+	_NOTE(LOCK_RELEASED_AS_SIDE_EFFECT(*third))
+	_NOTE(MUTEX_ACQUIRED_AS_SIDE_EFFECT(*fourth))
+	multiple_changes_before_target(first, second, third, fourth, target);
+}
+
+static void
+same_multiple_changes_before_target(struct prefix_alias_state *state)
+{
+	(void) mutex_lock(&state->second);
+	multiple_changes_before_target(&state->second, &state->second,
+	    &state->second, &state->second, &state->first);
+	(void) mutex_unlock(&state->second);
+}
+
+static void
+same_wrapped_multiple_changes_before_target(
+    struct prefix_alias_state *state)
+{
+	(void) mutex_lock(&state->second);
+	multiple_changes_before_target_wrapper(&state->second, &state->second,
+	    &state->second, &state->second, &state->first);
 	(void) mutex_unlock(&state->second);
 }
 
