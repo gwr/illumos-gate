@@ -274,6 +274,11 @@ run_capture "local exposure state" visibility-state.out \
     "$LOCKLINT" --check-locks visibility.c
 compare "local exposure state" visibility-state.ref visibility-state.out
 
+run_capture "competition depth" competition-depth.raw \
+    "$LOCKLINT" --check-locks competition-depth.c
+compare_no_columns "competition depth" competition-depth.ref \
+    competition-depth.raw competition-depth.out
+
 #
 # Verify intraprocedural lock state across branches, loops, and returns.
 #

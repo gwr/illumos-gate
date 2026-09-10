@@ -182,7 +182,7 @@ execution_kind(const struct token *open)
 		return (LOCKLINT_EXECUTION_NONE);
 	text = show_token(name);
 	if (strcmp(text, "NO_COMPETING_THREADS") == 0)
-		return (LOCKLINT_EXECUTION_NO_COMPETITION);
+		return (LOCKLINT_EXECUTION_ASSERT_NO_COMPETITION);
 	if (strcmp(text, "NO_COMPETING_THREADS_NOW") == 0)
 		return (LOCKLINT_EXECUTION_NO_COMPETITION);
 	if (strcmp(text, "COMPETING_THREADS_NOW") == 0)
@@ -990,6 +990,7 @@ locklint_get_execution_annotation(const struct instruction *insn)
 	case LOCKLINT_EXECUTION_READ_ACQUIRED_EFFECT:
 	case LOCKLINT_EXECUTION_WRITE_ACQUIRED_EFFECT:
 	case LOCKLINT_EXECUTION_LOCK_RELEASED_EFFECT:
+	case LOCKLINT_EXECUTION_ASSERT_NO_COMPETITION:
 		return ((enum locklint_execution_kind)insn->context_tag);
 	default:
 		return (LOCKLINT_EXECUTION_NONE);

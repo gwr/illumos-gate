@@ -1,0 +1,12 @@
+../locklint: competition-depth.c:50: warning: locklint: protected member 'protected' accessed without holding 'lock'
+../locklint: competition-depth.c:52: warning: locklint: protected member 'protected' accessed without holding 'lock'
+../locklint: competition-depth.c:54: warning: locklint: protected member 'protected' accessed without holding 'lock'
+../locklint: competition-depth.c:70: warning: locklint: protected member 'protected' accessed without holding 'lock'
+../locklint: competition-depth.c:83: warning: locklint: protected member 'protected' accessed without holding 'lock'
+../locklint: competition-depth.c:102: warning: locklint: protection for member 'protected' is not established on every path
+../locklint: competition-depth.c:113: warning: locklint: protected member 'protected' accessed without holding 'lock'
+../locklint: competition-depth.c:122: warning: locklint: read-only data 'read_only' modified while visible to competing threads
+../locklint: competition-depth.c:124: warning: locklint: read-only data 'read_only' modified while visible to competing threads
+../locklint: competition-depth.c:126: warning: locklint: read-only data 'read_only' modified while visible to competing threads
+../locklint: competition-depth.c:139: warning: locklint: protected member 'protected' accessed without holding 'lock'
+../locklint: competition-depth.c:150: warning: locklint: protection for member 'protected' is not established on every path

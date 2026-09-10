@@ -48,12 +48,6 @@ typedef unsigned int lock_state_t;
 #define	LOCK_ANY_HELD	(LOCK_HELD | LOCK_READ_HELD | LOCK_WRITE_HELD)
 #define	ALL_LOCK_INPUTS	((1U << LOCK_STATE_COUNT) - 2)
 
-enum competition_state {
-	COMPETITION_NONE,
-	COMPETITION_POSSIBLE,
-	COMPETITION_PRESENT
-};
-
 enum visibility_state {
 	VISIBILITY_INVISIBLE,
 	VISIBILITY_MAYBE,
@@ -91,16 +85,25 @@ struct assumed_region {
 	struct assumed_region *next;
 };
 
+struct competition_state {
+	int minimum;
+	int maximum;
+	bool minimum_unbounded;
+	bool maximum_unbounded;
+	bool path_dependent;
+	bool ambient;
+};
+
 struct analysis_state {
 	struct state_entry *locks;
-	enum competition_state competition;
-	bool competition_path_dependent;
+	struct competition_state competition;
 	struct visibility_entry *visibility;
 };
 
 struct block_info {
 	struct basic_block *bb;
 	bool reachable;
+	bool input_complete;
 	struct analysis_state *in;
 	struct analysis_state *out;
 	struct block_info *next;
@@ -590,11 +593,11 @@ copy_analysis_state(const struct analysis_state *state)
 	if (state != NULL) {
 		copy->locks = copy_states(state->locks);
 		copy->competition = state->competition;
-		copy->competition_path_dependent =
-		    state->competition_path_dependent;
 		copy->visibility = copy_visibility(state->visibility);
 	} else {
-		copy->competition = COMPETITION_POSSIBLE;
+		copy->competition.minimum = 0;
+		copy->competition.maximum = 1;
+		copy->competition.ambient = true;
 	}
 	return (copy);
 }
@@ -610,17 +613,91 @@ free_analysis_state(struct analysis_state *state)
 }
 
 static bool
+same_competition_state(const struct competition_state *left,
+    const struct competition_state *right)
+{
+	return (left->minimum_unbounded == right->minimum_unbounded &&
+	    left->maximum_unbounded == right->maximum_unbounded &&
+	    (left->minimum_unbounded ||
+	    left->minimum == right->minimum) &&
+	    (left->maximum_unbounded ||
+	    left->maximum == right->maximum) &&
+	    left->path_dependent == right->path_dependent &&
+	    left->ambient == right->ambient);
+}
+
+static bool
+competition_absent(const struct competition_state *state)
+{
+	return (!state->maximum_unbounded && state->maximum <= 0);
+}
+
+static bool
+competition_present(const struct competition_state *state)
+{
+	return (!state->minimum_unbounded && state->minimum > 0);
+}
+
+static bool
 same_analysis_state(const struct analysis_state *left,
     const struct analysis_state *right)
 {
+	const struct competition_state initial_competition = {
+		.minimum = 0,
+		.maximum = 1,
+		.ambient = true
+	};
+
 	return (same_states(left != NULL ? left->locks : NULL,
 	    right != NULL ? right->locks : NULL) &&
-	    (left == NULL ? COMPETITION_POSSIBLE : left->competition) ==
-	    (right == NULL ? COMPETITION_POSSIBLE : right->competition) &&
-	    (left != NULL && left->competition_path_dependent) ==
-	    (right != NULL && right->competition_path_dependent) &&
+	    same_competition_state(left != NULL ? &left->competition :
+	    &initial_competition, right != NULL ? &right->competition :
+	    &initial_competition) &&
 	    same_visibility(left != NULL ? left->visibility : NULL,
 	    right != NULL ? right->visibility : NULL));
+}
+
+static void
+merge_competition_state(struct competition_state *merged,
+    const struct competition_state *incoming)
+{
+	if (!same_competition_state(merged, incoming))
+		merged->path_dependent = true;
+	if (incoming->minimum_unbounded) {
+		merged->minimum_unbounded = true;
+		merged->minimum = 0;
+	} else if (!merged->minimum_unbounded &&
+	    incoming->minimum < merged->minimum) {
+		merged->minimum = incoming->minimum;
+	}
+	if (incoming->maximum_unbounded) {
+		merged->maximum_unbounded = true;
+		merged->maximum = 0;
+	} else if (!merged->maximum_unbounded &&
+	    incoming->maximum > merged->maximum) {
+		merged->maximum = incoming->maximum;
+	}
+	merged->ambient &= incoming->ambient;
+}
+
+static void
+widen_competition_state(struct competition_state *state,
+    const struct competition_state *previous)
+{
+	if (previous->minimum_unbounded ||
+	    (!state->minimum_unbounded && state->minimum < previous->minimum)) {
+		state->minimum_unbounded = true;
+		state->minimum = 0;
+		state->path_dependent = true;
+		state->ambient = false;
+	}
+	if (previous->maximum_unbounded ||
+	    (!state->maximum_unbounded && state->maximum > previous->maximum)) {
+		state->maximum_unbounded = true;
+		state->maximum = 0;
+		state->path_dependent = true;
+		state->ambient = false;
+	}
 }
 
 static void
@@ -628,13 +705,7 @@ merge_analysis_state(struct analysis_state *merged,
     const struct analysis_state *incoming)
 {
 	merge_states(&merged->locks, incoming->locks);
-	if (merged->competition != incoming->competition) {
-		merged->competition = COMPETITION_POSSIBLE;
-		merged->competition_path_dependent = true;
-	} else {
-		merged->competition_path_dependent |=
-		    incoming->competition_path_dependent;
-	}
+	merge_competition_state(&merged->competition, &incoming->competition);
 	merge_visibility(&merged->visibility, incoming->visibility);
 }
 
@@ -684,13 +755,37 @@ transfer_competition_state(struct analysis_state *state,
     const struct instruction *insn)
 {
 	switch (locklint_get_execution_annotation(insn)) {
+	case LOCKLINT_EXECUTION_ASSERT_NO_COMPETITION:
+		state->competition.minimum = 0;
+		state->competition.maximum = 0;
+		state->competition.minimum_unbounded = false;
+		state->competition.maximum_unbounded = false;
+		state->competition.path_dependent = false;
+		state->competition.ambient = false;
+		break;
 	case LOCKLINT_EXECUTION_NO_COMPETITION:
-		state->competition = COMPETITION_NONE;
-		state->competition_path_dependent = false;
+		if (state->competition.ambient) {
+			state->competition.minimum = 0;
+			state->competition.maximum = 0;
+			state->competition.ambient = false;
+		} else {
+			if (!state->competition.minimum_unbounded)
+				state->competition.minimum--;
+			if (!state->competition.maximum_unbounded)
+				state->competition.maximum--;
+		}
 		break;
 	case LOCKLINT_EXECUTION_COMPETITION:
-		state->competition = COMPETITION_PRESENT;
-		state->competition_path_dependent = false;
+		if (state->competition.ambient) {
+			state->competition.minimum = 1;
+			state->competition.maximum = 1;
+			state->competition.ambient = false;
+		} else {
+			if (!state->competition.minimum_unbounded)
+				state->competition.minimum++;
+			if (!state->competition.maximum_unbounded)
+				state->competition.maximum++;
+		}
 		break;
 	default:
 		break;
@@ -774,18 +869,21 @@ transfer_block(struct function_info *function, struct basic_block *bb,
 
 static struct analysis_state *
 merge_parents(struct block_info *blocks, struct basic_block *bb,
-    bool *reachable)
+    bool *reachable, bool *complete)
 {
 	struct analysis_state *merged = NULL;
 	struct basic_block *parent;
 	bool first = true;
 
 	*reachable = false;
+	*complete = true;
 	FOR_EACH_PTR(bb->parents, parent) {
 		struct block_info *block = find_block(blocks, parent);
 
-		if (block == NULL || !block->reachable)
+		if (block == NULL || !block->reachable) {
+			*complete = false;
 			continue;
+		}
 		if (first) {
 			merged = copy_analysis_state(block->out);
 			first = false;
@@ -827,17 +925,24 @@ analyze_blocks(struct function_info *function)
 		for (block = blocks; block != NULL; block = block->next) {
 			struct analysis_state *in;
 			struct analysis_state *out;
+			bool complete;
 			bool reachable;
 
 			if (block->bb == ep->entry->bb) {
 				in = copy_analysis_state(NULL);
+				complete = true;
 				reachable = true;
 			} else {
-				in = merge_parents(blocks, block->bb, &reachable);
+				in = merge_parents(blocks, block->bb, &reachable,
+				    &complete);
 			}
 			if (!reachable) {
 				free_analysis_state(in);
 				continue;
+			}
+			if (block->input_complete && complete) {
+				widen_competition_state(&in->competition,
+				    &block->in->competition);
 			}
 			out = transfer_block(function, block->bb, in);
 			if (!block->reachable ||
@@ -850,6 +955,7 @@ analyze_blocks(struct function_info *function)
 			block->in = in;
 			block->out = out;
 			block->reachable = true;
+			block->input_complete = complete;
 		}
 	} while (changed);
 
@@ -1648,11 +1754,12 @@ get_protection_status(const struct function_info *function,
 	if (assumed_protected(function, object) ||
 	    lock_definite ||
 	    visibility == VISIBILITY_INVISIBLE ||
-	    state->competition == COMPETITION_NONE)
+	    competition_absent(&state->competition))
 		return (PROTECTION_DEFINITE);
 	if (lock_partial ||
 	    visibility == VISIBILITY_MAYBE ||
-	    state->competition_path_dependent)
+	    (state->competition.path_dependent &&
+	    !competition_present(&state->competition)))
 		return (PROTECTION_PATH_DEPENDENT);
 	return (PROTECTION_ABSENT);
 }
@@ -3142,13 +3249,13 @@ check_read_only_access(struct function_info *function,
 	    !policy.read_only)
 		return;
 	visibility = get_visibility(state->visibility, &access);
-	if (state->competition == COMPETITION_NONE ||
+	if (competition_absent(&state->competition) ||
 	    visibility == VISIBILITY_INVISIBLE)
 		return;
 	data = access.member != NULL ? access.member : access.root;
 	name = data != NULL && data->ident != NULL ?
 	    show_ident(data->ident) : "<unknown>";
-	if (state->competition == COMPETITION_PRESENT &&
+	if (competition_present(&state->competition) &&
 	    visibility == VISIBILITY_VISIBLE) {
 		warning(insn->access->pos,
 		    "locklint: read-only data '%s' modified while visible "
