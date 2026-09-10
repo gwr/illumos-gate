@@ -75,6 +75,26 @@ acquire_then_release_wrapper(mutex_t *acquired, mutex_t *released)
 
 #endif
 
+#if ALIAS_COMPOSITION_VARIANT == 5
+
+static void
+release_then_acquire_internal_wrapper(mutex_t *lock)
+{
+	_NOTE(LOCK_RELEASED_AS_SIDE_EFFECT(*lock))
+	release_then_acquire(lock, lock);
+	(void) mutex_unlock(lock);
+}
+
+static void
+acquire_then_release_internal_wrapper(mutex_t *lock)
+{
+	_NOTE(MUTEX_ACQUIRED_AS_SIDE_EFFECT(*lock))
+	acquire_then_release(lock, lock);
+	(void) mutex_lock(lock);
+}
+
+#endif
+
 #if ALIAS_COMPOSITION_VARIANT == 1
 
 static void
@@ -145,6 +165,24 @@ distinct_wrapped_acquire_then_release(mutex_t *first, mutex_t *second)
 	(void) mutex_lock(second);
 	acquire_then_release_wrapper(first, second);
 	(void) mutex_unlock(first);
+}
+
+#elif ALIAS_COMPOSITION_VARIANT == 5
+
+static void
+internal_release_then_acquire(mutex_t *lock)
+{
+	(void) mutex_lock(lock);
+	release_then_acquire_internal_wrapper(lock);
+	(void) mutex_lock(lock);
+	(void) mutex_unlock(lock);
+}
+
+static void
+internal_acquire_then_release(mutex_t *lock)
+{
+	acquire_then_release_internal_wrapper(lock);
+	(void) mutex_unlock(lock);
 }
 
 #else

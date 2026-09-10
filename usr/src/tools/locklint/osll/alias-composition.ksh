@@ -150,5 +150,7 @@ run_variant 3 "same_wrapped_release_then_acquire \
 same_wrapped_acquire_then_release" || exit $?
 run_variant 4 "distinct_wrapped_release_then_acquire \
 distinct_wrapped_acquire_then_release" || exit $?
+run_variant 5 "internal_release_then_acquire \
+internal_acquire_then_release" || exit $?
 
 print "Results: $run_root"

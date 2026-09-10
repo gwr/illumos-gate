@@ -2602,9 +2602,10 @@ simulate_instruction(struct function_info *function,
 	enum locklint_lock_mode mode;
 
 	callee = callgraph_callee(function, insn);
-	if (callee != NULL && target->roles != NULL) {
+	if (callee != NULL) {
 		struct mapped_transfer_role *roles = NULL;
 		struct mapped_transfer_role **tail = &roles;
+		struct lock_transfer *first = NULL;
 		unsigned int role_count = 0;
 
 		for (transfer = callee->transfers; transfer != NULL;
@@ -2616,17 +2617,29 @@ simulate_instruction(struct function_info *function,
 				continue;
 			if (!transfer_target_matches(target, &lock))
 				continue;
+			role_count++;
+			if (role_count == 1) {
+				first = transfer;
+				continue;
+			}
+			if (role_count == 2) {
+				role = calloc(1, sizeof (*role));
+				if (role == NULL)
+					die("out of memory replaying aliased call");
+				role->transfer = first;
+				*tail = role;
+				tail = &role->next;
+			}
 			role = calloc(1, sizeof (*role));
 			if (role == NULL)
 				die("out of memory replaying aliased call");
 			role->transfer = transfer;
 			*tail = role;
 			tail = &role->next;
-			role_count++;
 		}
 		if (role_count == 1) {
-			*invalid |= roles->transfer->invalid[*state];
-			*state = roles->transfer->output[*state];
+			*invalid |= first->invalid[*state];
+			*state = first->output[*state];
 		} else if (role_count > 1) {
 			unsigned int nested_invalid;
 
@@ -2635,16 +2648,6 @@ simulate_instruction(struct function_info *function,
 			*invalid |= nested_invalid;
 		}
 		free_mapped_transfer_roles(roles);
-	} else if (callee != NULL) {
-		for (transfer = callee->transfers; transfer != NULL;
-		    transfer = transfer->next) {
-			if (!map_acquisition_role(function, insn,
-			    &transfer->role, &lock) ||
-			    !transfer_target_matches(target, &lock))
-				continue;
-			*invalid |= transfer->invalid[*state];
-			*state = transfer->output[*state];
-		}
 	}
 
 	action = locklint_get_lock_action(function->tu, insn, &lock, &mode);

@@ -338,6 +338,12 @@ run_capture "distinct-actual wrapped lock composition" \
 require_empty "distinct-actual wrapped lock composition" \
     alias-composition-wrapped-distinct.out
 
+run_capture "internally aliased lock composition" \
+    alias-composition-internal.out "$LOCKLINT" \
+    -DALIAS_COMPOSITION_VARIANT=5 --check-locks alias-composition.c
+require_empty "internally aliased lock composition" \
+    alias-composition-internal.out
+
 run_capture "basic calls" calls-basic.out \
     "$LOCKLINT" --check-locks calls-basic.c
 compare "basic calls" calls-basic.ref calls-basic.out
