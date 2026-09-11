@@ -49,6 +49,10 @@ directly only when debugging an already rebuilt executable:
 (cd usr/src/tools/locklint/tests && ./RunTests.sh)
 ```
 
+Locklint defines `__locklint__=1` in its default preprocessing mode.  Use
+`--compat=osll` to additionally define the historical `__lock_lint=1` symbol
+and select source paths intended for Solaris LockLint.
+
 ## Adding a test
 
 Keep each fixture focused on one behavior or closely related group of

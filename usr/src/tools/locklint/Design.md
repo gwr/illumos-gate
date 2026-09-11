@@ -553,6 +553,12 @@ during this initialization.  If that source introduces an internal-linkage
 declaration, locklint rejects an invocation with multiple explicit inputs
 rather than incorrectly sharing one instance across their translation units.
 
+Before `sparse_initialize()`, locklint adds `__locklint__=1` to Sparse's
+preprocessing input.  The optional `--compat=osll` mode also adds the
+historical `__lock_lint=1` symbol, selecting the same analyzer-specific source
+paths as OSLL while retaining an unambiguous identity for the new analyzer.
+Other `--compat` values are rejected by the locklint command-line layer.
+
 `sparse(file)` creates a new file scope, parses and evaluates one translation
 unit, and returns its symbol list.  Sparse token storage for the file is
 released during this operation.  Therefore, data needed after parsing must

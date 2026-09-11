@@ -44,6 +44,7 @@ static bool dump_annotations;
 static bool dump_events;
 static bool dump_callgraph;
 static bool check_locks;
+static bool compat_osll;
 
 /*
  * Effectively force -nostdinc for now
@@ -57,7 +58,7 @@ static void
 usage(FILE *stream)
 {
 	(void) fprintf(stream,
-	    "usage: locklint [--check-locks] [--dump-parsed] "
+	    "usage: locklint [--compat=osll] [--check-locks] [--dump-parsed] "
 	    "[--dump-linearized] "
 	    "[--dump-accesses] [--dump-annotations] [--dump-events] "
 	    "[--dump-callgraph] "
@@ -92,6 +93,10 @@ options(int argc, char **argv)
 			dump_annotations = true;
 			dump_events = true;
 			dump_callgraph = true;
+		} else if (strcmp(argv[i], "--compat=osll") == 0) {
+			compat_osll = true;
+		} else if (strncmp(argv[i], "--compat=", 9) == 0) {
+			die("unknown compatibility mode '%s'", argv[i] + 9);
 		} else if (strcmp(argv[i], "--help") == 0) {
 			usage(stdout);
 			exit(EXIT_SUCCESS);
@@ -102,6 +107,18 @@ options(int argc, char **argv)
 	argv[dst] = NULL;
 
 	return (dst);
+}
+
+/*
+ * Identify the new analyzer in every mode.  OSLL compatibility additionally
+ * selects historical source paths guarded for the old analyzer.
+ */
+static void
+preprocessor_compatibility_enable(void)
+{
+	add_pre_buffer("#define __locklint__ 1\n");
+	if (compat_osll)
+		add_pre_buffer("#define __lock_lint 1\n");
 }
 
 static void
@@ -216,6 +233,7 @@ main(int argc, char **argv)
 		return (EXIT_FAILURE);
 	}
 
+	preprocessor_compatibility_enable();
 	if (dump_annotations || dump_events || check_locks)
 		locklint_annotations_enable();
 	if (check_locks)

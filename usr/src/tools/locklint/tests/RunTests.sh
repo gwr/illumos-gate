@@ -121,6 +121,30 @@ if ! grep -Eq 'load|store' linearized.out; then
 	fail "linearized smoke: missing load or store"
 fi
 
+#
+# Verify native and historical preprocessor compatibility modes.
+#
+run_capture "native preprocessor mode" preprocessor-compat-native.out \
+    "$LOCKLINT" --dump-parsed preprocessor-compat.c
+require_match "native preprocessor mode" native_mode \
+    preprocessor-compat-native.out
+reject_match "native preprocessor mode" osll_compatibility_mode \
+    preprocessor-compat-native.out
+
+run_capture "OSLL preprocessor compatibility mode" \
+    preprocessor-compat-osll.out "$LOCKLINT" --compat=osll \
+    --dump-parsed preprocessor-compat.c
+require_match "OSLL preprocessor compatibility mode" \
+    osll_compatibility_mode preprocessor-compat-osll.out
+reject_match "OSLL preprocessor compatibility mode" native_mode \
+    preprocessor-compat-osll.out
+
+run_failure "unknown preprocessor compatibility mode" \
+    preprocessor-compat-unknown.out "$LOCKLINT" --compat=unknown \
+    --dump-parsed preprocessor-compat.c
+require_match "unknown preprocessor compatibility mode" \
+    "unknown compatibility mode 'unknown'" preprocessor-compat-unknown.out
+
 run_capture "access smoke" accesses.out "$LOCKLINT" --dump-accesses smoke.c
 require_match "access smoke" 'load arg.nested.value ' accesses.out
 require_match "access smoke" 'store global_smoke.head ' accesses.out
