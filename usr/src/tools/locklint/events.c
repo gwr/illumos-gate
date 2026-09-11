@@ -79,6 +79,9 @@ locklint_get_lock_action(struct translation_unit *tu, struct instruction *insn,
 	    strcmp(name, "mutex_lock") == 0) {
 		action = LOCKLINT_LOCK_ACQUIRE;
 		*mode = LOCKLINT_MODE_MUTEX;
+	} else if (strcmp(name, "mutex_tryenter") == 0) {
+		action = LOCKLINT_LOCK_TRY_ACQUIRE;
+		*mode = LOCKLINT_MODE_MUTEX;
 	} else if (strcmp(name, "rw_rdlock") == 0) {
 		action = LOCKLINT_LOCK_ACQUIRE;
 		*mode = LOCKLINT_MODE_READER;
@@ -194,6 +197,8 @@ show_call_event(struct translation_unit *tu, struct instruction *insn)
 		event = "WAIT";
 	else if (action == LOCKLINT_LOCK_DOWNGRADE)
 		event = "DOWNGRADE";
+	else if (action == LOCKLINT_LOCK_TRY_ACQUIRE)
+		event = "TRY-ACQUIRE";
 	else
 		event = "CALL";
 

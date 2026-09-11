@@ -212,6 +212,18 @@ reject_match "condition wait condition-variable event" "WAIT state.cv" \
 reject_match "condition wait generic call event" "CALL cv_" \
     condition-wait-events.out
 
+run_capture "mutex tryenter state" mutex-tryenter.raw \
+    "$LOCKLINT" --check-locks mutex-tryenter.c
+compare_no_columns "mutex tryenter state" mutex-tryenter.ref \
+    mutex-tryenter.raw mutex-tryenter.out
+
+run_capture "mutex tryenter events" mutex-tryenter-events.out \
+    "$LOCKLINT" --dump-events mutex-tryenter.c
+require_match "mutex tryenter event" "TRY-ACQUIRE state.first" \
+    mutex-tryenter-events.out
+reject_match "mutex tryenter generic call" "CALL mutex_tryenter" \
+    mutex-tryenter-events.out
+
 run_capture "same-actual acquisition prefixes" \
     acquisition-prefix-alias-same.raw "$LOCKLINT" \
     -DACQUISITION_PREFIX_ALIAS_VARIANT=1 --check-locks \

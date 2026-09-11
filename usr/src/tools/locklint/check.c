@@ -829,6 +829,8 @@ transfer_lock_action(struct function_info *function,
 		    insn->call_expr != NULL ? insn->call_expr->pos : insn->pos);
 	} else if (action == LOCKLINT_LOCK_DOWNGRADE && lock.root != NULL) {
 		set_state(states, &lock, mode);
+	} else if (action == LOCKLINT_LOCK_TRY_ACQUIRE && lock.root != NULL) {
+		set_state(states, &lock, get_state(*states, &lock) | mode);
 	}
 }
 
@@ -1004,9 +1006,66 @@ transfer_block(struct function_info *function, struct basic_block *bb,
 	return (out);
 }
 
+/*
+ * Refine a direct try-acquire result on the edge selected by its branch.
+ * Sparse normalizes truth, negation, and comparisons with zero so the raw
+ * nonzero call result always selects bb_true.  Replaying the block preserves
+ * any unrelated state changes between the call and branch.
+ */
 static struct analysis_state *
-merge_parents(struct block_info *blocks, struct basic_block *bb,
-    bool *reachable, bool *complete)
+try_acquire_edge_state(struct function_info *function,
+    struct block_info *parent, struct basic_block *child, bool *matched,
+    bool *reachable)
+{
+	struct instruction *branch = NULL;
+	struct instruction *try;
+	struct instruction *insn;
+	struct analysis_state *state;
+	struct locklint_access lock;
+	enum locklint_lock_action action;
+	enum locklint_lock_mode mode;
+
+	*matched = false;
+	*reachable = true;
+	FOR_EACH_PTR(parent->bb->insns, insn) {
+		if (insn->bb != NULL && insn->opcode == OP_CBR)
+			branch = insn;
+	} END_FOR_EACH_PTR(insn);
+	if (branch == NULL || branch->cond == NULL ||
+	    branch->cond->type != PSEUDO_REG)
+		return (NULL);
+	try = branch->cond->def;
+	if (try == NULL || try->bb != parent->bb)
+		return (NULL);
+	action = locklint_get_lock_action(function->tu, try, &lock, &mode);
+	if (action != LOCKLINT_LOCK_TRY_ACQUIRE || lock.root == NULL)
+		return (NULL);
+	*matched = true;
+
+	state = copy_analysis_state(parent->in);
+	FOR_EACH_PTR(parent->bb->insns, insn) {
+		if (insn->bb == NULL)
+			continue;
+		if (insn == try) {
+			if (child == branch->bb_true) {
+				if (state_definitely_held(get_state(state->locks,
+				    &lock))) {
+					free_analysis_state(state);
+					*reachable = false;
+					return (NULL);
+				}
+				set_state(&state->locks, &lock, mode);
+			}
+			continue;
+		}
+		transfer_instruction(function, state, insn);
+	} END_FOR_EACH_PTR(insn);
+	return (state);
+}
+
+static struct analysis_state *
+merge_parents(struct function_info *function, struct block_info *blocks,
+    struct basic_block *bb, bool *reachable, bool *complete)
 {
 	struct analysis_state *merged = NULL;
 	struct basic_block *parent;
@@ -1016,16 +1075,26 @@ merge_parents(struct block_info *blocks, struct basic_block *bb,
 	*complete = true;
 	FOR_EACH_PTR(bb->parents, parent) {
 		struct block_info *block = find_block(blocks, parent);
+		struct analysis_state *incoming;
+		bool edge_matched;
+		bool edge_reachable;
 
 		if (block == NULL || !block->reachable) {
 			*complete = false;
 			continue;
 		}
+		incoming = try_acquire_edge_state(function, block, bb,
+		    &edge_matched, &edge_reachable);
+		if (edge_matched && !edge_reachable)
+			continue;
+		if (!edge_matched)
+			incoming = copy_analysis_state(block->out);
 		if (first) {
-			merged = copy_analysis_state(block->out);
+			merged = incoming;
 			first = false;
 		} else {
-			merge_analysis_state(merged, block->out);
+			merge_analysis_state(merged, incoming);
+			free_analysis_state(incoming);
 		}
 		*reachable = true;
 	} END_FOR_EACH_PTR(parent);
@@ -1070,8 +1139,8 @@ analyze_blocks(struct function_info *function)
 				complete = true;
 				reachable = true;
 			} else {
-				in = merge_parents(blocks, block->bb, &reachable,
-				    &complete);
+				in = merge_parents(function, blocks, block->bb,
+				    &reachable, &complete);
 			}
 			if (!reachable) {
 				free_analysis_state(in);
@@ -2711,6 +2780,8 @@ simulate_instruction(struct function_info *function,
 		if ((*state & ~LOCK_WRITE_HELD) != 0)
 			*invalid |= INVALID_DOWNGRADE;
 		*state = mode;
+	} else if (action == LOCKLINT_LOCK_TRY_ACQUIRE) {
+		*state |= mode;
 	} else {
 		if ((*state & LOCK_NOT_HELD) != 0)
 			*invalid |= INVALID_RELEASE;
@@ -2734,6 +2805,60 @@ simulate_block(struct function_info *function,
 			simulate_instruction(function, target, out, invalid_out,
 			    insn);
 	} END_FOR_EACH_PTR(insn);
+}
+
+/*
+ * Replay one predecessor with a direct try-acquire result fixed by its
+ * outgoing branch.  This keeps function transfer tables consistent with the
+ * main flow analysis without attaching scalar-result state to every block.
+ */
+static bool
+simulate_try_acquire_edge(struct function_info *function,
+    struct transfer_block_info *parent, struct basic_block *child,
+    const struct transfer_target *target, lock_state_t *state,
+    unsigned int *invalid, bool *reachable)
+{
+	struct instruction *branch = NULL;
+	struct instruction *try;
+	struct instruction *insn;
+	struct locklint_access lock;
+	enum locklint_lock_action action;
+	enum locklint_lock_mode mode;
+
+	*reachable = true;
+	FOR_EACH_PTR(parent->bb->insns, insn) {
+		if (insn->bb != NULL && insn->opcode == OP_CBR)
+			branch = insn;
+	} END_FOR_EACH_PTR(insn);
+	if (branch == NULL || branch->cond == NULL ||
+	    branch->cond->type != PSEUDO_REG)
+		return (false);
+	try = branch->cond->def;
+	if (try == NULL || try->bb != parent->bb)
+		return (false);
+	action = locklint_get_lock_action(function->tu, try, &lock, &mode);
+	if (action != LOCKLINT_LOCK_TRY_ACQUIRE ||
+	    !transfer_target_matches(target, &lock))
+		return (false);
+
+	*state = parent->in;
+	*invalid = parent->invalid_in;
+	FOR_EACH_PTR(parent->bb->insns, insn) {
+		if (insn->bb == NULL)
+			continue;
+		if (insn == try) {
+			if (child == branch->bb_true) {
+				if (state_definitely_held(*state)) {
+					*reachable = false;
+					return (true);
+				}
+				*state = mode;
+			}
+			continue;
+		}
+		simulate_instruction(function, target, state, invalid, insn);
+	} END_FOR_EACH_PTR(insn);
+	return (true);
 }
 
 static struct transfer_block_info *
@@ -2775,6 +2900,36 @@ solve_transfer_blocks(struct function_info *function,
 					if (parent_block == NULL ||
 					    !parent_block->reachable)
 						continue;
+					{
+						lock_state_t edge_state;
+						unsigned int edge_invalid;
+						bool edge_reachable;
+
+						if (simulate_try_acquire_edge(
+						    function, parent_block,
+						    block->bb, target,
+						    &edge_state,
+						    &edge_invalid,
+						    &edge_reachable)) {
+							if (!edge_reachable)
+								continue;
+							if (first) {
+								in = edge_state;
+								invalid_in =
+								    edge_invalid;
+								first = false;
+							} else {
+								in =
+								    merge_lock_state(
+								    in,
+								    edge_state);
+								invalid_in |=
+								    edge_invalid;
+							}
+							reachable = true;
+							continue;
+						}
+					}
 					if (first) {
 						in = parent_block->out;
 						invalid_in =
@@ -5621,6 +5776,8 @@ check_lock_action(struct function_info *function,
 			    lock_name(&lock));
 		}
 		set_state(&analysis->locks, &lock, mode);
+	} else if (action == LOCKLINT_LOCK_TRY_ACQUIRE) {
+		set_state(&analysis->locks, &lock, state | mode);
 	} else {
 		if (state == LOCK_NOT_HELD && !defer) {
 			warning(pos, "locklint: lock '%s' is not held",
