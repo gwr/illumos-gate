@@ -63,6 +63,7 @@ enum protection_status {
 
 #define	INVALID_ACQUIRE	0x1
 #define	INVALID_RELEASE	0x2
+#define	INVALID_DOWNGRADE	0x4
 
 struct state_entry {
 	struct locklint_access lock;
@@ -406,7 +407,7 @@ set_state(struct state_entry **states, const struct locklint_access *lock,
 			*link = old->next;
 			free(old);
 		} else {
-			if ((*link)->state != state)
+			if (!state_definitely_held((*link)->state))
 				(*link)->side_effect = true;
 			(*link)->state = state;
 		}
@@ -826,6 +827,8 @@ transfer_lock_action(struct function_info *function,
 		set_state(states, &lock, mode);
 		set_acquire_position(*states, &lock,
 		    insn->call_expr != NULL ? insn->call_expr->pos : insn->pos);
+	} else if (action == LOCKLINT_LOCK_DOWNGRADE && lock.root != NULL) {
+		set_state(states, &lock, mode);
 	}
 }
 
@@ -2703,6 +2706,10 @@ simulate_instruction(struct function_info *function,
 	} else if (action == LOCKLINT_LOCK_WAIT) {
 		if ((*state & LOCK_NOT_HELD) != 0)
 			*invalid |= INVALID_RELEASE;
+		*state = mode;
+	} else if (action == LOCKLINT_LOCK_DOWNGRADE) {
+		if ((*state & ~LOCK_WRITE_HELD) != 0)
+			*invalid |= INVALID_DOWNGRADE;
 		*state = mode;
 	} else {
 		if ((*state & LOCK_NOT_HELD) != 0)
@@ -5467,6 +5474,12 @@ check_call(struct function_info *function,
 				    show_ident(callee->ep->name->ident),
 				    lock_name(&lock));
 			}
+			if (!defer && (invalid & INVALID_DOWNGRADE) != 0) {
+				warning(pos, "locklint: call to '%s' may downgrade "
+				    "lock '%s' that is not write-held",
+				    show_ident(callee->ep->name->ident),
+				    lock_name(&lock));
+			}
 			set_state(&analysis->locks, &lock,
 			    transfer->output[state]);
 			goto lock_transfers_done;
@@ -5500,6 +5513,14 @@ check_call(struct function_info *function,
 			    (invalid & INVALID_RELEASE) != 0) {
 				warning(pos, "locklint: call to '%s' may release "
 				    "lock '%s' that is not held",
+				    show_ident(callee->ep->name->ident),
+				    lock_name(&group->lock));
+			}
+			if (!defer &&
+			    (invalid & INVALID_DOWNGRADE) != 0) {
+				warning(pos, "locklint: call to '%s' may "
+				    "downgrade lock '%s' that is not "
+				    "write-held",
 				    show_ident(callee->ep->name->ident),
 				    lock_name(&group->lock));
 			}
@@ -5591,6 +5612,15 @@ check_lock_action(struct function_info *function,
 		}
 		set_state(&analysis->locks, &lock, mode);
 		set_acquire_position(analysis->locks, &lock, pos);
+	} else if (action == LOCKLINT_LOCK_DOWNGRADE) {
+		if ((state & LOCK_WRITE_HELD) == 0 && !defer) {
+			warning(pos, "locklint: lock '%s' is not write-held",
+			    lock_name(&lock));
+		} else if ((state & ~LOCK_WRITE_HELD) != 0 && !defer) {
+			warning(pos, "locklint: lock '%s' may not be write-held",
+			    lock_name(&lock));
+		}
+		set_state(&analysis->locks, &lock, mode);
 	} else {
 		if (state == LOCK_NOT_HELD && !defer) {
 			warning(pos, "locklint: lock '%s' is not held",

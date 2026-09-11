@@ -1,0 +1,4 @@
+../locklint: rwlock-downgrade.c:66: warning: locklint: protected member 'value' accessed without write-holding 'lock'
+../locklint: rwlock-downgrade.c:75: warning: locklint: lock 'lock' is not write-held
+../locklint: rwlock-downgrade.c:82: warning: locklint: lock 'lock' is not write-held
+../locklint: rwlock-downgrade.c:94: warning: locklint: protected member 'value' accessed without write-holding 'lock'

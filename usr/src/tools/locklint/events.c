@@ -119,6 +119,9 @@ locklint_get_lock_action(struct translation_unit *tu, struct instruction *insn,
 		action = LOCKLINT_LOCK_WAIT;
 		*mode = LOCKLINT_MODE_MUTEX;
 		argument = 1;
+	} else if (strcmp(name, "rw_downgrade") == 0) {
+		action = LOCKLINT_LOCK_DOWNGRADE;
+		*mode = LOCKLINT_MODE_READER;
 	} else {
 		return (LOCKLINT_LOCK_NONE);
 	}
@@ -189,6 +192,8 @@ show_call_event(struct translation_unit *tu, struct instruction *insn)
 		event = "RELEASE";
 	else if (action == LOCKLINT_LOCK_WAIT)
 		event = "WAIT";
+	else if (action == LOCKLINT_LOCK_DOWNGRADE)
+		event = "DOWNGRADE";
 	else
 		event = "CALL";
 

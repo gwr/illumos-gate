@@ -316,6 +316,18 @@ require_match "kernel rwlock release event" "RELEASE state.lock" \
 require_match "rwlock unknown-mode call" "CALL rw_enter" \
     rwlock-events-kernel.out
 
+run_capture "rwlock downgrade state" rwlock-downgrade.raw \
+    "$LOCKLINT" --check-locks rwlock-downgrade.c
+compare_no_columns "rwlock downgrade state" rwlock-downgrade.ref \
+    rwlock-downgrade.raw rwlock-downgrade.out
+
+run_capture "rwlock downgrade events" rwlock-downgrade-events.out \
+    "$LOCKLINT" --dump-events rwlock-downgrade.c
+require_match "rwlock downgrade event" "DOWNGRADE state.lock" \
+    rwlock-downgrade-events.out
+reject_match "rwlock downgrade generic call" "CALL rw_downgrade" \
+    rwlock-downgrade-events.out
+
 run_capture "user rwlock calls" rwlock-calls-user.out \
     "$LOCKLINT" --check-locks rwlock-calls.c
 compare "user rwlock calls" rwlock-calls.ref rwlock-calls-user.out
