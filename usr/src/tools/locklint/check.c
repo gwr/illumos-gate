@@ -809,6 +809,12 @@ find_block(struct block_info *blocks, struct basic_block *bb)
 	return (NULL);
 }
 
+static bool
+call_result_used(struct instruction *insn)
+{
+	return (has_use_list(insn->target) && has_users(insn->target));
+}
+
 static void
 transfer_lock_action(struct function_info *function,
     struct state_entry **states, struct instruction *insn)
@@ -818,9 +824,16 @@ transfer_lock_action(struct function_info *function,
 	enum locklint_lock_mode mode;
 
 	action = locklint_get_lock_action(function->tu, insn, &lock, &mode);
-	if ((action == LOCKLINT_LOCK_ACQUIRE ||
-	    action == LOCKLINT_LOCK_RESULT_ACQUIRE) && lock.root != NULL) {
+	if (action == LOCKLINT_LOCK_ACQUIRE && lock.root != NULL) {
 		set_state(states, &lock, mode);
+		set_acquire_position(*states, &lock,
+		    insn->call_expr != NULL ? insn->call_expr->pos : insn->pos);
+	} else if (action == LOCKLINT_LOCK_RESULT_ACQUIRE &&
+	    lock.root != NULL) {
+		lock_state_t state = call_result_used(insn) ?
+		    get_state(*states, &lock) | mode : mode;
+
+		set_state(states, &lock, state);
 		set_acquire_position(*states, &lock,
 		    insn->call_expr != NULL ? insn->call_expr->pos : insn->pos);
 	} else if (action == LOCKLINT_LOCK_RELEASE && lock.root != NULL) {
@@ -1027,7 +1040,9 @@ conditional_edge_transition(enum locklint_lock_action action,
 	if (action == LOCKLINT_LOCK_TRY_ACQUIRE) {
 		if (!nonzero)
 			return (true);
-		if (state_definitely_held(*state))
+		if (state_definitely_held(*state) &&
+		    (mode != LOCK_READ_HELD ||
+		    (*state & LOCK_READ_HELD) == 0))
 			return (false);
 		*state = mode;
 		return (true);
@@ -1052,8 +1067,6 @@ conditional_edge_transition(enum locklint_lock_action action,
 			*state |= mode;
 			return (true);
 		}
-		if (state_definitely_held(*state))
-			return (false);
 		*state = mode;
 		return (true);
 	}
@@ -2832,11 +2845,17 @@ simulate_instruction(struct function_info *function,
 	if (action == LOCKLINT_LOCK_NONE ||
 	    !transfer_target_matches(target, &lock))
 		return;
-	if (action == LOCKLINT_LOCK_ACQUIRE ||
-	    action == LOCKLINT_LOCK_RESULT_ACQUIRE) {
+	if (action == LOCKLINT_LOCK_ACQUIRE) {
 		if ((*state & LOCK_ANY_HELD) != 0)
 			*invalid |= INVALID_ACQUIRE;
 		*state = mode;
+	} else if (action == LOCKLINT_LOCK_RESULT_ACQUIRE) {
+		if ((*state & LOCK_ANY_HELD) != 0)
+			*invalid |= INVALID_ACQUIRE;
+		if (call_result_used(insn))
+			*state |= mode;
+		else
+			*state = mode;
 	} else if (action == LOCKLINT_LOCK_WAIT) {
 		if ((*state & LOCK_NOT_HELD) != 0)
 			*invalid |= INVALID_RELEASE;
@@ -5861,7 +5880,11 @@ check_lock_action(struct function_info *function,
 				    lock_name(&lock));
 			}
 		}
-		set_state(&analysis->locks, &lock, mode);
+		if (action == LOCKLINT_LOCK_RESULT_ACQUIRE &&
+		    call_result_used(insn))
+			set_state(&analysis->locks, &lock, state | mode);
+		else
+			set_state(&analysis->locks, &lock, mode);
 		set_acquire_position(analysis->locks, &lock, pos);
 	} else if (action == LOCKLINT_LOCK_DOWNGRADE) {
 		if ((state & LOCK_WRITE_HELD) == 0 && !defer) {

@@ -4,3 +4,5 @@
 ../locklint: rwlock-tryenter.c:138: warning: locklint: protection for member 'value' is not established on every path
 ../locklint: rwlock-tryenter.c:139: warning: locklint: lock 'first' may not be held
 ../locklint: rwlock-tryenter.c:146: warning: locklint: protected member 'value' accessed without write-holding 'first'
+../locklint: rwlock-tryenter.c:166: warning: locklint: protection for member 'value' is not established on every path
+../locklint: rwlock-tryenter.c:167: warning: locklint: lock 'first' may not be held

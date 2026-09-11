@@ -16,3 +16,7 @@
 ../locklint: mutex-lock-result.c:145: warning: locklint: lock 'first' is already held
 ../locklint: mutex-lock-result.c:147: warning: locklint: protection for member 'value' is not established on every path
 ../locklint: mutex-lock-result.c:148: warning: locklint: lock 'first' may not be held
+../locklint: mutex-lock-result.c:155: warning: locklint: lock 'lock' held on only some paths returning from 'return_mutex_lock'
+../locklint: mutex-lock-result.c:164: warning: locklint: protection for member 'value' is not established on every path
+../locklint: mutex-lock-result.c:166: warning: locklint: lock 'first' may not be held
+../locklint: mutex-lock-result.c:166: warning: locklint: lock 'first' held on only some paths returning from 'call_returned_mutex_lock'

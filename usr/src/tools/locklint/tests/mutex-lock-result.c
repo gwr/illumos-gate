@@ -148,3 +148,20 @@ lock_already_held(struct mutex_lock_state *state)
 	(void) mutex_unlock(&state->first);
 	return (value);
 }
+
+static int
+return_mutex_lock(mutex_t *lock)
+{
+	return (mutex_lock(lock));
+}
+
+static void
+call_returned_mutex_lock(struct mutex_lock_state *state)
+{
+	int error;
+
+	error = return_mutex_lock(&state->first);
+	state->value = 1;
+	if (error == 0)
+		(void) mutex_unlock(&state->first);
+}

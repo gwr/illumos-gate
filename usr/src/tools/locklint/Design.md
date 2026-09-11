@@ -1165,33 +1165,43 @@ It recognizes:
 - reads from `OP_LOAD`;
 - writes from `OP_STORE`;
 - calls from `OP_CALL`;
-- acquisitions by `mutex_enter()` and `mutex_lock()`; and
-- releases by `mutex_exit()` and `mutex_unlock()`.
+- mutex acquisitions and releases;
+- reader/writer lock acquisitions, releases, downgrade, and conditional
+  upgrade;
+- kernel and user try-acquisitions; and
+- the complete condition-wait family declared by illumos `condvar.h`.
 
-`locklint_get_lock_action()` returns the action and normalized first argument
-for a recognized mutex operation.  Both the checker and `--dump-events` use
-this decoder so development output and semantic checking agree.
+`locklint_get_lock_action()` returns the action, normalized lock argument, and
+ownership mode for a recognized operation.  The lock is argument zero except
+for condition waits, where argument one is the released and reacquired mutex.
+The second `rw_enter()` or `rw_tryenter()` argument selects reader or writer
+mode when it is a supported constant.  Both the checker and `--dump-events`
+use this decoder so development output and semantic checking agree.
 
-Mutex recognition currently uses the operation name and argument identity.
-It does not validate that the argument's declared type is a known mutex type.
-
-The current user-level `mutex_lock()` model assumes successful acquisition.
-Its return value and robust-mutex states are not modeled.
+Operation recognition currently uses the function name and argument identity.
+It does not validate that the argument's declared type is a known lock type.
 
 ## Intraprocedural lock state
 
 ### State domain
 
-Each tracked lock has one of three states:
+Each tracked lock state is a nonempty mask over four atomic states:
 
 | State | Meaning |
 | --- | --- |
 | `LOCK_NOT_HELD` | Definitely not held; represented by no map entry |
-| `LOCK_HELD` | Definitely held |
-| `LOCK_MAYBE_HELD` | Held on some incoming paths and not held on others |
+| `LOCK_HELD` | Mutex-held |
+| `LOCK_READ_HELD` | Rwlock reader-held |
+| `LOCK_WRITE_HELD` | Rwlock writer-held |
 
-A `state_entry` stores the normalized lock identity, its state, and a
-`side_effect` flag.  The flag distinguishes state caused by a lock operation
+A union of atomic bits represents path-dependent state.  For example,
+`LOCK_NOT_HELD | LOCK_HELD` means that a mutex is held on only some paths,
+while `LOCK_READ_HELD | LOCK_WRITE_HELD` means that an rwlock is definitely
+held but its mode is path-dependent.
+
+A `state_entry` stores the normalized lock identity, state mask, acquisition
+provenance, and a `side_effect` flag.  The flag records a change in ownership,
+not a held-to-held rwlock mode transition, and distinguishes operation effects
 from state introduced only by an assertion.
 
 ### Block analysis
@@ -1208,16 +1218,85 @@ Each `block_info` associates a Sparse basic block with:
 2. applies instructions in block order; and
 3. compares new input/output maps with the previous iteration.
 
-At a merge, equal states remain unchanged and disagreements become
-`LOCK_MAYBE_HELD`.  Iteration continues until no block changes.
+At a merge, equal states remain unchanged and differing state masks are
+unioned.  Iteration continues until no block changes.
+
+When a predecessor ends in a branch directly controlled by a recognized
+conditional lock call, the successor merge replays that predecessor with the
+call result fixed by the selected edge.  Sparse normalizes truth, negation,
+and comparisons with zero so the raw nonzero result selects `bb_true`.
+Locally saved results retain the same call-result pseudo and receive the same
+refinement.  An impossible result edge is excluded from the merge.
 
 Instruction transfer order is:
 
 1. apply summarized effects from a resolved call;
-2. apply a direct mutex acquire or release; and
+2. apply a recognized direct lock action; and
 3. apply an assertion refinement.
 
-Only `LOCK_HELD` satisfies a protected access.
+Definite mutex ownership satisfies mutex-protected access.  Definite reader or
+writer ownership satisfies an rwlock-protected read, while only definite
+writer ownership satisfies a write.
+
+### Condition waits
+
+Every recognized condition wait requires its mutex held on entry, models its
+release and reacquisition, and returns with the mutex held.  The complete
+family is `cv_wait()`, `cv_wait_sig()`, `cv_timedwait()`,
+`cv_timedwait_sig()`, `cv_reltimedwait()`, `cv_reltimedwait_sig()`,
+`cv_wait_stop()`, `cv_timedwait_hires()`,
+`cv_timedwait_sig_hrtime()`, `cv_wait_sig_swap()`,
+`cv_wait_sig_swap_core()`, and `cv_waituntil_sig()`.
+
+Reacquisition is checked against every other lock held across the wait and
+seeds an acquisition summary.  The waited mutex itself is excluded from that
+order check.  Return values from timed, signal, and swappable variants do not
+change ownership because every return path has reacquired the mutex.
+
+### Rwlock mode transitions
+
+`rw_downgrade()` requires writer-held input and atomically changes it to
+reader-held.  `rw_tryupgrade()` requires reader-held input; nonzero success
+changes it to writer-held, while zero failure preserves reader ownership.
+Ignored or unresolved upgrade results merge reader and writer modes.  Invalid
+input is retained in transfer summaries with operation-specific downgrade or
+upgrade flags so callers receive the corresponding mode diagnostic.
+
+Neither transition releases ownership or creates a lock-order edge.
+
+### Result-sensitive acquisitions
+
+The recognized conditional acquisitions have these return conventions:
+
+| Operation | Nonzero result | Zero result | Ignored | Consumed but unresolved |
+| --- | --- | --- | --- | --- |
+| `mutex_tryenter()` | mutex-held | input state | input or mutex-held | input or mutex-held |
+| `rw_tryenter()` | selected reader/writer mode | input state | input or selected mode | input or selected mode |
+| `mutex_lock()` | input or mutex-held | mutex-held | mutex-held | input or mutex-held |
+| `mutex_trylock()` | input or mutex-held | mutex-held | input or mutex-held | input or mutex-held |
+
+The nonzero user-mutex state remains conservative because robust mutex
+`EOWNERDEAD` transfers ownership while errors such as `ENOTRECOVERABLE` and
+`EBUSY` do not.  Ignored `mutex_lock()` retains definite acquisition to
+preserve the established model for ordinary `(void) mutex_lock()` calls.
+Consumed results that cannot be tied to a local branch, including values
+returned through wrappers, retain the conservative union.
+
+Try-acquisitions do not seed acquisition summaries or order edges because
+failure never blocks.  `mutex_lock()` remains a blocking acquisition and
+retains ordinary acquire diagnostics, summaries, and ordering.  A kernel
+mutex try-success edge and an incompatible rwlock try-success edge are pruned
+when current ownership makes success impossible.  Recursive-capable user
+mutex and rwlock reader success edges remain reachable, but the model does not
+track recursive hold counts; a subsequent release therefore merges to
+path-dependent ownership.
+
+Transfer-table solving performs the same branch-edge replay as local block
+analysis.  Thus a successful conditional acquisition or upgrade that is
+released before return does not leak a maybe-held effect into callers.
+Function summaries do not couple a scalar return value to alternative lock
+effects, so returning a conditional lock result through a wrapper loses the
+result relationship and remains conservative.
 
 ## Module scope, calls, and roots
 
@@ -1462,7 +1541,8 @@ absolute lock role.  It records:
 
 - the shared caller-mappable lock role;
 - an output state for each possible input-state mask; and
-- invalid-acquire and invalid-release flags for each input state.
+- invalid-acquire, invalid-release, invalid-downgrade, and invalid-upgrade
+  flags for each input state.
 
 The table covers every nonempty mask of the unheld, mutex-held, read-held, and
 write-held mode bits rather than storing one effect label.  This permits the
@@ -1480,7 +1560,8 @@ Effect construction has three stages:
 
 `simulate_transfer()` performs a CFG fixed point for one candidate/input
 combination.  It combines output states and possible invalid operations from
-all return paths.
+all return paths.  Direct result-sensitive lock branches replay the
+predecessor with the selected return outcome, matching local block analysis.
 
 The candidate and table passes repeat together until no summary changes.
 This supports transitive effects and recursive cycles without requiring
@@ -1576,8 +1657,10 @@ acquire A; release B
 
 even though both functions may have the same return state.
 
-Reachable local operations seed per-function role sets and acquisition
-events.  Roles first propagate through resolved calls to a fixed point.
+Reachable local blocking acquisitions and condition-wait reacquisitions seed
+per-function role sets and acquisition events.  Conditional try-acquisitions
+and held-to-held rwlock mode transitions do not.  Roles first propagate
+through resolved calls to a fixed point.
 Acquisition events then map through calls and propagate to a second fixed
 point.  Wrapper state before the call is composed with the callee event's
 prefix effects.  Event equality includes the acquired role, the original
@@ -1797,6 +1880,19 @@ root or non-mappable boundary
     -> requirement diagnosed with original assertion provenance
 ```
 
+### Direct conditional lock result
+
+```text
+recognized lock call produces a scalar result
+    -> ordinary transfer applies its conservative unresolved-result state
+OP_CBR consumes that call-result pseudo
+    -> predecessor block replayed from its input
+    -> call transition fixed for the selected nonzero or zero edge
+    -> impossible result edge omitted
+transfer-table solver
+    -> repeats the same edge replay for every lock input-state mask
+```
+
 ### Direct callee effect
 
 ```text
@@ -1974,6 +2070,15 @@ The current implementation relies on these invariants:
     chain by replaying each retained call context to the original checkpoint.
 35. Recursive shared-state transfer contexts converge from the empty result
     using function, aliased role set, and input-state mask as their identity.
+36. Every recognized condition wait requires held input, returns held, and
+    contributes a reacquisition event against other locks held across it.
+37. Rwlock downgrade and upgrade change ownership mode without creating
+    acquisition ownership or lock-order edges.
+38. A direct conditional lock result selects an edge-specific transition in
+    both local analysis and transfer solving; unresolved results retain the
+    documented conservative union.
+39. Try-acquisitions never contribute blocking-acquisition summaries or
+    observed order edges.
 
 Changes that invalidate one of these invariants should update this document
 and add a focused regression test.
@@ -1990,7 +2095,11 @@ areas include:
   sets;
 - explicit root configuration and source annotations;
 - optional, configurable validation of declared lock types;
-- condition waits, try-locks, upgrades, and downgrades;
+- interprocedural propagation of relationships between scalar return values
+  and conditional lock effects;
+- recursive mutex and rwlock-reader hold counts;
+- a swappable-wait policy that diagnoses unrelated locks held across
+  `cv_wait_sig_swap()` and `cv_wait_sig_swap_core()`; and
 - stable diagnostic identifiers, suppressions, and provenance.
 
 These limitations should remain visible here as the implementation evolves.

@@ -12,3 +12,5 @@
 ../locklint: mutex-trylock.c:118: warning: locklint: protection for member 'value' is not established on every path
 ../locklint: mutex-trylock.c:118: warning: locklint: lock 'first' held on only some paths returning from 'call_balanced_trylock'
 ../locklint: mutex-trylock.c:127: warning: locklint: lock 'first' held on only some paths returning from 'trylock_order_on_success'
+../locklint: mutex-trylock.c:138: warning: locklint: protection for member 'value' is not established on every path
+../locklint: mutex-trylock.c:139: warning: locklint: lock 'first' may not be held
