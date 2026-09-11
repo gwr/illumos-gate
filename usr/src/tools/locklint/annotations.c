@@ -205,6 +205,10 @@ execution_kind(const struct token *open)
 		return (LOCKLINT_EXECUTION_WRITE_ACQUIRED_EFFECT);
 	if (strcmp(text, "LOCK_RELEASED_AS_SIDE_EFFECT") == 0)
 		return (LOCKLINT_EXECUTION_LOCK_RELEASED_EFFECT);
+	if (strcmp(text, "LOCK_UPGRADED_AS_SIDE_EFFECT") == 0)
+		return (LOCKLINT_EXECUTION_LOCK_UPGRADED_EFFECT);
+	if (strcmp(text, "LOCK_DOWNGRADED_AS_SIDE_EFFECT") == 0)
+		return (LOCKLINT_EXECUTION_LOCK_DOWNGRADED_EFFECT);
 	return (LOCKLINT_EXECUTION_NONE);
 }
 
@@ -236,6 +240,12 @@ locklint_annotations_enable(void)
 	add_pre_buffer("#define LOCK_RELEASED_AS_SIDE_EFFECT(...) "
 	    "__context__((__VA_ARGS__), 0, %lu);\n",
 	    (unsigned long)LOCKLINT_EXECUTION_LOCK_RELEASED_EFFECT);
+	add_pre_buffer("#define LOCK_UPGRADED_AS_SIDE_EFFECT(...) "
+	    "__context__((__VA_ARGS__), 0, %lu);\n",
+	    (unsigned long)LOCKLINT_EXECUTION_LOCK_UPGRADED_EFFECT);
+	add_pre_buffer("#define LOCK_DOWNGRADED_AS_SIDE_EFFECT(...) "
+	    "__context__((__VA_ARGS__), 0, %lu);\n",
+	    (unsigned long)LOCKLINT_EXECUTION_LOCK_DOWNGRADED_EFFECT);
 	add_pre_buffer("#define NOW_INVISIBLE_TO_OTHER_THREADS(...) "
 	    "__context__((__VA_ARGS__), 0, %lu);\n",
 	    (unsigned long)LOCKLINT_EXECUTION_INVISIBLE);
@@ -990,6 +1000,8 @@ locklint_get_execution_annotation(const struct instruction *insn)
 	case LOCKLINT_EXECUTION_READ_ACQUIRED_EFFECT:
 	case LOCKLINT_EXECUTION_WRITE_ACQUIRED_EFFECT:
 	case LOCKLINT_EXECUTION_LOCK_RELEASED_EFFECT:
+	case LOCKLINT_EXECUTION_LOCK_UPGRADED_EFFECT:
+	case LOCKLINT_EXECUTION_LOCK_DOWNGRADED_EFFECT:
 	case LOCKLINT_EXECUTION_ASSERT_NO_COMPETITION:
 		return ((enum locklint_execution_kind)insn->context_tag);
 	default:
@@ -1009,6 +1021,10 @@ declared_lock_effect_name(enum locklint_declared_lock_effect effect)
 		return ("WRITE_LOCK_ACQUIRED_AS_SIDE_EFFECT");
 	case LOCKLINT_DECLARED_LOCK_RELEASED:
 		return ("LOCK_RELEASED_AS_SIDE_EFFECT");
+	case LOCKLINT_DECLARED_LOCK_UPGRADED:
+		return ("LOCK_UPGRADED_AS_SIDE_EFFECT");
+	case LOCKLINT_DECLARED_LOCK_DOWNGRADED:
+		return ("LOCK_DOWNGRADED_AS_SIDE_EFFECT");
 	default:
 		abort();
 	}
@@ -1034,6 +1050,12 @@ locklint_get_declared_lock_effect(struct translation_unit *tu,
 		break;
 	case LOCKLINT_EXECUTION_LOCK_RELEASED_EFFECT:
 		*effect = LOCKLINT_DECLARED_LOCK_RELEASED;
+		break;
+	case LOCKLINT_EXECUTION_LOCK_UPGRADED_EFFECT:
+		*effect = LOCKLINT_DECLARED_LOCK_UPGRADED;
+		break;
+	case LOCKLINT_EXECUTION_LOCK_DOWNGRADED_EFFECT:
+		*effect = LOCKLINT_DECLARED_LOCK_DOWNGRADED;
 		break;
 	default:
 		return (false);

@@ -34,6 +34,8 @@ formal_effects(struct declared_effect_state *state)
 	_NOTE(READ_LOCK_ACQUIRED_AS_SIDE_EFFECT(state->rwlock))
 	_NOTE(WRITE_LOCK_ACQUIRED_AS_SIDE_EFFECT(state->rwlock))
 	_NOTE(LOCK_RELEASED_AS_SIDE_EFFECT(state->rwlock))
+	_NOTE(LOCK_UPGRADED_AS_SIDE_EFFECT(state->rwlock))
+	_NOTE(LOCK_DOWNGRADED_AS_SIDE_EFFECT(state->rwlock))
 }
 
 static void
@@ -43,4 +45,6 @@ absolute_effects(void)
 	_NOTE(READ_LOCK_ACQUIRED_AS_SIDE_EFFECT(absolute_rwlock))
 	_NOTE(WRITE_LOCK_ACQUIRED_AS_SIDE_EFFECT(absolute_rwlock))
 	_NOTE(LOCK_RELEASED_AS_SIDE_EFFECT(absolute_mutex))
+	_NOTE(LOCK_UPGRADED_AS_SIDE_EFFECT(absolute_rwlock))
+	_NOTE(LOCK_DOWNGRADED_AS_SIDE_EFFECT(absolute_rwlock))
 }

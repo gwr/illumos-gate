@@ -154,6 +154,12 @@ require_match "declared mutex effect expression" \
 require_match "declared release effect expression" \
     "LOCK_RELEASED_AS_SIDE_EFFECT requires a lock expression" \
     declared-effect-errors.out
+require_match "declared upgrade effect expression" \
+    "LOCK_UPGRADED_AS_SIDE_EFFECT requires a lock expression" \
+    declared-effect-errors.out
+require_match "declared downgrade effect expression" \
+    "LOCK_DOWNGRADED_AS_SIDE_EFFECT requires a lock expression" \
+    declared-effect-errors.out
 
 run_failure "declared effect check errors" declared-effect-check-errors.out \
     "$LOCKLINT" --check-locks declared-effect-errors.c
@@ -162,6 +168,12 @@ require_match "checked declared mutex effect expression" \
     declared-effect-check-errors.out
 require_match "checked declared release effect expression" \
     "LOCK_RELEASED_AS_SIDE_EFFECT requires a lock expression" \
+    declared-effect-check-errors.out
+require_match "checked declared upgrade effect expression" \
+    "LOCK_UPGRADED_AS_SIDE_EFFECT requires a lock expression" \
+    declared-effect-check-errors.out
+require_match "checked declared downgrade effect expression" \
+    "LOCK_DOWNGRADED_AS_SIDE_EFFECT requires a lock expression" \
     declared-effect-check-errors.out
 
 #
@@ -461,6 +473,20 @@ run_capture "absolute declared effects" declared-effects-absolute.raw \
 compare_no_columns "absolute declared effects" \
     declared-effects-absolute.ref declared-effects-absolute.raw \
     declared-effects-absolute.out
+
+run_capture "declared upgrade effects" rwlock-transition-effects-1.raw \
+    "$LOCKLINT" -DRWLOCK_TRANSITION_EFFECT_VARIANT=1 --check-locks \
+    rwlock-transition-effects.c
+compare_no_columns "declared upgrade effects" \
+    rwlock-transition-effects-1.ref rwlock-transition-effects-1.raw \
+    rwlock-transition-effects-1.out
+
+run_capture "declared downgrade effects" rwlock-transition-effects-2.raw \
+    "$LOCKLINT" -DRWLOCK_TRANSITION_EFFECT_VARIANT=2 --check-locks \
+    rwlock-transition-effects.c
+compare_no_columns "declared downgrade effects" \
+    rwlock-transition-effects-2.ref rwlock-transition-effects-2.raw \
+    rwlock-transition-effects-2.out
 
 run_capture "same-actual lock composition" alias-composition-same.out \
     "$LOCKLINT" -DALIAS_COMPOSITION_VARIANT=1 --check-locks \

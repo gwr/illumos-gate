@@ -1,0 +1,6 @@
+../locklint: rwlock-transition-effects.c:154: warning: locklint: function 'declared_downgrade_missing' does not establish declared downgrade of lock 'lock' [declared-lock-effect]
+../locklint: rwlock-transition-effects.c:162: warning: locklint: declared downgrade of lock 'lock' is not established on every return from 'declared_downgrade_conditional' [declared-lock-effect]
+../locklint: rwlock-transition-effects.c:131: warning: locklint: protected member 'value' accessed without write-holding 'lock' [unprotected-access]
+../locklint: rwlock-transition-effects.c:140: warning: locklint: call to 'declared_downgrade_valid' may downgrade lock 'lock' that is not write-held [lock-maybe-not-write-held]
+../locklint: rwlock-transition-effects.c:147: warning: locklint: call to 'declared_downgrade_valid' may downgrade lock 'lock' that is not write-held [lock-maybe-not-write-held]
+../locklint: rwlock-transition-effects.c:164: warning: locklint: lock 'lock' is not write-held [lock-not-write-held]

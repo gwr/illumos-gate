@@ -1592,14 +1592,21 @@ mutual recursion to close when it reaches an active matching context.
 Prefix-only replay frames do not carry a complete return approximation and
 retain the conservative recursion fallback.
 
-Declared mutex, read, write, and release effects are validated against the
-stabilized table.  Acquisitions are checked from the unheld input; release is
-checked from each definite held mode.  Matching declarations replace the
-generic held-on-return warning, while missing, conditional, and conflicting
-outputs receive contract-specific diagnostics.  Invalid acquire or release
-flags remain independent and are checked at the operation or in caller
-context.  Functions without declarations retain their inferred summaries and
-ordinary diagnostics.
+Declared mutex, read, write, release, upgrade, and downgrade effects are
+validated against the stabilized table.  Acquisitions are checked from the
+unheld input; release is checked from each definite held mode.  Upgrade
+requires reader-held input to produce writer-held output on every return, and
+downgrade requires writer-held input to produce reader-held output on every
+return.  An ignored `rw_tryupgrade()` result remains reader-or-writer and
+therefore does not satisfy a declared upgrade; a failure path that cannot
+return permits the successful writer-held path to satisfy it.
+
+Matching declarations replace the generic held-on-return warning, while
+missing, conditional, and conflicting outputs receive contract-specific
+diagnostics.  Invalid acquire, release, downgrade, or upgrade flags remain
+independent and are checked at the operation or in caller context.  Functions
+without declarations retain their inferred summaries and ordinary
+diagnostics.
 
 ## Lock-order analysis
 

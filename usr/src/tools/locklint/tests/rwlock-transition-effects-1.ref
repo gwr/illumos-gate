@@ -1,0 +1,7 @@
+../locklint: rwlock-transition-effects.c:66: warning: locklint: declared upgrade of lock 'lock' is not established on every return from 'declared_upgrade_ignored' [declared-lock-effect]
+../locklint: rwlock-transition-effects.c:101: warning: locklint: function 'declared_upgrade_missing' does not establish declared upgrade of lock 'lock' [declared-lock-effect]
+../locklint: rwlock-transition-effects.c:109: warning: locklint: declared upgrade of lock 'lock' is not established on every return from 'declared_upgrade_conditional' [declared-lock-effect]
+../locklint: rwlock-transition-effects.c:87: warning: locklint: call to 'declared_upgrade_ignored' may upgrade lock 'lock' that is not read-held [lock-maybe-not-read-held]
+../locklint: rwlock-transition-effects.c:94: warning: locklint: call to 'declared_upgrade_ignored' may upgrade lock 'lock' that is not read-held [lock-maybe-not-read-held]
+../locklint: rwlock-transition-effects.c:95: warning: locklint: lock 'lock' is not held [lock-not-held]
+../locklint: rwlock-transition-effects.c:111: warning: locklint: lock 'lock' is not read-held [lock-not-read-held]

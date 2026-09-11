@@ -2538,6 +2538,10 @@ declared_effect_description(enum locklint_declared_lock_effect effect)
 		return ("write-lock acquisition");
 	case LOCKLINT_DECLARED_LOCK_RELEASED:
 		return ("release");
+	case LOCKLINT_DECLARED_LOCK_UPGRADED:
+		return ("upgrade");
+	case LOCKLINT_DECLARED_LOCK_DOWNGRADED:
+		return ("downgrade");
 	default:
 		abort();
 	}
@@ -2576,6 +2580,12 @@ declared_effect_status(struct lock_transfer *transfer,
 	case LOCKLINT_DECLARED_WRITE_ACQUIRED:
 		return (declared_output_status(
 		    transfer->output[LOCK_NOT_HELD], LOCK_WRITE_HELD));
+	case LOCKLINT_DECLARED_LOCK_UPGRADED:
+		return (declared_output_status(
+		    transfer->output[LOCK_READ_HELD], LOCK_WRITE_HELD));
+	case LOCKLINT_DECLARED_LOCK_DOWNGRADED:
+		return (declared_output_status(
+		    transfer->output[LOCK_WRITE_HELD], LOCK_READ_HELD));
 	case LOCKLINT_DECLARED_LOCK_RELEASED:
 		expected = LOCK_NOT_HELD;
 		break;
