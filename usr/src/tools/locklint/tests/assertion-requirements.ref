@@ -1,12 +1,12 @@
-../locklint: assertion-requirements.c:110: warning: locklint: call to 'require_mutex_held' does not satisfy asserted mutex-held requirement for lock 'mutex'
+../locklint: assertion-requirements.c:110: warning: locklint: call to 'require_mutex_held' does not satisfy asserted mutex-held requirement for lock 'mutex' [asserted-lock-requirement]
 ../locklint: assertion-requirements.c:48: locklint: asserted requirement is here
-../locklint: assertion-requirements.c:123: warning: locklint: call to 'require_mutex_not_held' does not satisfy asserted not-held requirement for lock 'mutex'
+../locklint: assertion-requirements.c:123: warning: locklint: call to 'require_mutex_not_held' does not satisfy asserted not-held requirement for lock 'mutex' [asserted-lock-requirement]
 ../locklint: assertion-requirements.c:54: locklint: asserted requirement is here
-../locklint: assertion-requirements.c:143: warning: locklint: call to 'assert_held_conditionally' does not satisfy asserted mutex-held requirement for lock 'mutex'
+../locklint: assertion-requirements.c:143: warning: locklint: call to 'assert_held_conditionally' does not satisfy asserted mutex-held requirement for lock 'mutex' [asserted-lock-requirement]
 ../locklint: assertion-requirements.c:88: locklint: asserted requirement is here
-../locklint: assertion-requirements.c:157: warning: locklint: asserted mutex-held requirement for lock 'mutex' is not established on every path calling 'require_mutex_held'
+../locklint: assertion-requirements.c:157: warning: locklint: asserted mutex-held requirement for lock 'mutex' is not established on every path calling 'require_mutex_held' [conditional-asserted-lock-requirement]
 ../locklint: assertion-requirements.c:48: locklint: asserted requirement is here
-../locklint: assertion-requirements.c:172: warning: locklint: call to 'require_read_held' does not satisfy asserted read-held requirement for lock 'rwlock'
+../locklint: assertion-requirements.c:172: warning: locklint: call to 'require_read_held' does not satisfy asserted read-held requirement for lock 'rwlock' [asserted-lock-requirement]
 ../locklint: assertion-requirements.c:60: locklint: asserted requirement is here
-../locklint: assertion-requirements.c:187: warning: locklint: call to 'require_write_held' does not satisfy asserted write-held requirement for lock 'rwlock'
+../locklint: assertion-requirements.c:187: warning: locklint: call to 'require_write_held' does not satisfy asserted write-held requirement for lock 'rwlock' [asserted-lock-requirement]
 ../locklint: assertion-requirements.c:66: locklint: asserted requirement is here

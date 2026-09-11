@@ -31,6 +31,7 @@
 #include "assertions.h"
 #include "callgraph.h"
 #include "check.h"
+#include "diagnostics.h"
 #include "function_info.h"
 #include "events.h"
 #include "identity.h"
@@ -971,8 +972,8 @@ transfer_visibility_expression(struct function_info *function,
 	}
 	if (!locklint_get_access(function->tu, expr, &region)) {
 		if (diagnose) {
-			warning(expr->pos,
-			    "locklint: visibility annotation has no object");
+			locklint_warning(LOCKLINT_DIAG_VISIBILITY_NO_OBJECT,
+			    expr->pos, "visibility annotation has no object");
 		}
 		return;
 	}
@@ -2622,15 +2623,19 @@ validate_declared_effects(struct function_info *function)
 			if (status == DECLARED_EFFECT_MATCHES)
 				continue;
 			if (status == DECLARED_EFFECT_CONDITIONAL) {
-				warning(insn->context_expr->pos,
-				    "locklint: declared %s of lock '%s' is not "
+				locklint_warning(
+				    LOCKLINT_DIAG_DECLARED_LOCK_EFFECT,
+				    insn->context_expr->pos,
+				    "declared %s of lock '%s' is not "
 				    "established on every return from '%s'",
 				    declared_effect_description(effect),
 				    lock_name(&lock),
 				    show_ident(function->ep->name->ident));
 			} else {
-				warning(insn->context_expr->pos,
-				    "locklint: function '%s' does not establish "
+				locklint_warning(
+				    LOCKLINT_DIAG_DECLARED_LOCK_EFFECT,
+				    insn->context_expr->pos,
+				    "function '%s' does not establish "
 				    "declared %s of lock '%s'",
 				    show_ident(function->ep->name->ident),
 				    declared_effect_description(effect),
@@ -2695,12 +2700,16 @@ validate_declared_competition_effects(struct function_info *function)
 			if (status == DECLARED_EFFECT_MATCHES)
 				continue;
 			if (status == DECLARED_EFFECT_CONDITIONAL) {
-				warning(insn->pos, "locklint: declared %s is not "
+				locklint_warning(
+				    LOCKLINT_DIAG_DECLARED_COMPETITION_EFFECT,
+				    insn->pos, "declared %s is not "
 				    "established on every return from '%s'",
 				    description,
 				    show_ident(function->ep->name->ident));
 			} else {
-				warning(insn->pos, "locklint: function '%s' does "
+				locklint_warning(
+				    LOCKLINT_DIAG_DECLARED_COMPETITION_EFFECT,
+				    insn->pos, "function '%s' does "
 				    "not establish declared %s",
 				    show_ident(function->ep->name->ident),
 				    description);
@@ -4673,8 +4682,8 @@ diagnose_assumption_expression(struct function_info *function,
 		return;
 	}
 	if (!locklint_get_access(function->tu, expr, &access)) {
-		warning(expr->pos,
-		    "locklint: ASSUMING_PROTECTED has no object");
+		locklint_warning(LOCKLINT_DIAG_INVALID_ASSUMING_PROTECTED,
+		    expr->pos, "ASSUMING_PROTECTED has no object");
 	}
 }
 
@@ -4852,12 +4861,14 @@ check_read_only_access(struct function_info *function,
 	    show_ident(data->ident) : "<unknown>";
 	if (competition_present(&state->competition) &&
 	    visibility == VISIBILITY_VISIBLE) {
-		warning(insn->access->pos,
-		    "locklint: read-only data '%s' modified while visible "
+		locklint_warning(LOCKLINT_DIAG_READ_ONLY_VISIBLE,
+		    insn->access->pos,
+		    "read-only data '%s' modified while visible "
 		    "to competing threads", name);
 	} else {
-		warning(insn->access->pos,
-		    "locklint: read-only data '%s' modified while it may be "
+		locklint_warning(LOCKLINT_DIAG_READ_ONLY_MAYBE_VISIBLE,
+		    insn->access->pos,
+		    "read-only data '%s' modified while it may be "
 		    "visible to competing threads", name);
 	}
 }
@@ -4894,12 +4905,14 @@ check_access(struct function_info *function, struct analysis_state *state,
 	data_name = data_member != NULL && data_member->ident != NULL ?
 	    show_ident(data_member->ident) : "<unknown>";
 	if (status == PROTECTION_PATH_DEPENDENT) {
-		warning(insn->access->pos,
-		    "locklint: protection for member '%s' is not "
+		locklint_warning(LOCKLINT_DIAG_CONDITIONAL_PROTECTION,
+		    insn->access->pos,
+		    "protection for member '%s' is not "
 		    "established on every path", data_name);
 	} else {
-		warning(insn->access->pos,
-		    "locklint: protected member '%s' accessed without "
+		locklint_warning(LOCKLINT_DIAG_UNPROTECTED_ACCESS,
+		    insn->access->pos,
+		    "protected member '%s' accessed without "
 		    "%s '%s'", data_name, required_ownership(required_modes),
 		    lock_name(&lock));
 	}
@@ -5612,12 +5625,15 @@ check_call_assertion_requirements(struct function_info *function,
 		}
 		name = assertion_requirement_name(requirement->modes);
 		if (accepted_part) {
-			warning(pos, "locklint: asserted %s requirement for "
+			locklint_warning(
+			    LOCKLINT_DIAG_CONDITIONAL_ASSERTED_LOCK_REQUIREMENT,
+			    pos, "asserted %s requirement for "
 			    "lock '%s' is not established on every path "
 			    "calling '%s'", name, lock_name(&lock),
 			    show_ident(callee->ep->name->ident));
 		} else {
-			warning(pos, "locklint: call to '%s' does not satisfy "
+			locklint_warning(LOCKLINT_DIAG_ASSERTED_LOCK_REQUIREMENT,
+			    pos, "call to '%s' does not satisfy "
 			    "asserted %s requirement for lock '%s'",
 			    show_ident(callee->ep->name->ident), name,
 			    lock_name(&lock));
@@ -5638,8 +5654,9 @@ check_call(struct function_info *function,
 		if (callgraph_ambiguous_callee(function, insn)) {
 			pos = insn->call_expr != NULL ?
 			    insn->call_expr->pos : insn->pos;
-			warning(pos, "locklint: direct call has multiple "
-			    "external definitions");
+			locklint_warning(LOCKLINT_DIAG_AMBIGUOUS_DIRECT_CALL,
+			    pos, "direct call has multiple external "
+			    "definitions");
 		}
 		return;
 	}
@@ -5676,7 +5693,9 @@ check_call(struct function_info *function,
 			data_name = access_name(&object);
 			if (status == PROTECTION_ABSENT) {
 				if (condition->has_lock) {
-					warning(pos, "locklint: call to '%s' "
+					locklint_warning(
+					    LOCKLINT_DIAG_UNPROTECTED_ACCESS,
+					    pos, "call to '%s' "
 					    "accesses protected member '%s' "
 					    "without %s '%s'",
 					    show_ident(callee->ep->name->ident),
@@ -5684,13 +5703,17 @@ check_call(struct function_info *function,
 					    condition->required_modes),
 					    lock_name(&lock));
 				} else {
-					warning(pos, "locklint: call to '%s' "
+					locklint_warning(
+					    LOCKLINT_DIAG_UNPROTECTED_ACCESS,
+					    pos, "call to '%s' "
 					    "requires protection for '%s'",
 					    show_ident(callee->ep->name->ident),
 					    data_name);
 				}
 			} else {
-				warning(pos, "locklint: protection for member "
+				locklint_warning(
+				    LOCKLINT_DIAG_CONDITIONAL_PROTECTION,
+				    pos, "protection for member "
 				    "'%s' is not established on every path "
 				    "calling '%s'", data_name,
 				    show_ident(callee->ep->name->ident));
@@ -5717,25 +5740,33 @@ check_call(struct function_info *function,
 			invalid = transfer->invalid[state];
 			defer = defer_lock_diagnostics(function, &lock);
 			if (!defer && (invalid & INVALID_ACQUIRE) != 0) {
-				warning(pos, "locklint: call to '%s' may acquire "
+				locklint_warning(
+				    LOCKLINT_DIAG_LOCK_MAYBE_ALREADY_HELD,
+				    pos, "call to '%s' may acquire "
 				    "already-held lock '%s'",
 				    show_ident(callee->ep->name->ident),
 				    lock_name(&lock));
 			}
 			if (!defer && (invalid & INVALID_RELEASE) != 0) {
-				warning(pos, "locklint: call to '%s' may release "
+				locklint_warning(
+				    LOCKLINT_DIAG_LOCK_MAYBE_NOT_HELD,
+				    pos, "call to '%s' may release "
 				    "lock '%s' that is not held",
 				    show_ident(callee->ep->name->ident),
 				    lock_name(&lock));
 			}
 			if (!defer && (invalid & INVALID_DOWNGRADE) != 0) {
-				warning(pos, "locklint: call to '%s' may downgrade "
+				locklint_warning(
+				    LOCKLINT_DIAG_LOCK_MAYBE_NOT_WRITE_HELD,
+				    pos, "call to '%s' may downgrade "
 				    "lock '%s' that is not write-held",
 				    show_ident(callee->ep->name->ident),
 				    lock_name(&lock));
 			}
 			if (!defer && (invalid & INVALID_UPGRADE) != 0) {
-				warning(pos, "locklint: call to '%s' may upgrade "
+				locklint_warning(
+				    LOCKLINT_DIAG_LOCK_MAYBE_NOT_READ_HELD,
+				    pos, "call to '%s' may upgrade "
 				    "lock '%s' that is not read-held",
 				    show_ident(callee->ep->name->ident),
 				    lock_name(&lock));
@@ -5764,21 +5795,27 @@ check_call(struct function_info *function,
 			defer = defer_lock_diagnostics(function, &group->lock);
 			if (!defer &&
 			    (invalid & INVALID_ACQUIRE) != 0) {
-				warning(pos, "locklint: call to '%s' may acquire "
+				locklint_warning(
+				    LOCKLINT_DIAG_LOCK_MAYBE_ALREADY_HELD,
+				    pos, "call to '%s' may acquire "
 				    "already-held lock '%s'",
 				    show_ident(callee->ep->name->ident),
 				    lock_name(&group->lock));
 			}
 			if (!defer &&
 			    (invalid & INVALID_RELEASE) != 0) {
-				warning(pos, "locklint: call to '%s' may release "
+				locklint_warning(
+				    LOCKLINT_DIAG_LOCK_MAYBE_NOT_HELD,
+				    pos, "call to '%s' may release "
 				    "lock '%s' that is not held",
 				    show_ident(callee->ep->name->ident),
 				    lock_name(&group->lock));
 			}
 			if (!defer &&
 			    (invalid & INVALID_DOWNGRADE) != 0) {
-				warning(pos, "locklint: call to '%s' may "
+				locklint_warning(
+				    LOCKLINT_DIAG_LOCK_MAYBE_NOT_WRITE_HELD,
+				    pos, "call to '%s' may "
 				    "downgrade lock '%s' that is not "
 				    "write-held",
 				    show_ident(callee->ep->name->ident),
@@ -5786,7 +5823,9 @@ check_call(struct function_info *function,
 			}
 			if (!defer &&
 			    (invalid & INVALID_UPGRADE) != 0) {
-				warning(pos, "locklint: call to '%s' may "
+				locklint_warning(
+				    LOCKLINT_DIAG_LOCK_MAYBE_NOT_READ_HELD,
+				    pos, "call to '%s' may "
 				    "upgrade lock '%s' that is not "
 				    "read-held",
 				    show_ident(callee->ep->name->ident),
@@ -5818,7 +5857,9 @@ lock_transfers_done:
 			}
 		}
 		if (underflows && !defer_conditions(function)) {
-			warning(pos, "locklint: call to '%s' may decrement "
+			locklint_warning(
+			    LOCKLINT_DIAG_COMPETITION_MAYBE_UNDERFLOW,
+			    pos, "call to '%s' may decrement "
 			    "competition depth below zero",
 			    show_ident(callee->ep->name->ident));
 		}
@@ -5865,18 +5906,24 @@ check_lock_action(struct function_info *function,
 		if (action == LOCKLINT_LOCK_ACQUIRE ||
 		    action == LOCKLINT_LOCK_RESULT_ACQUIRE) {
 			if (state_definitely_held(state) && !defer) {
-				warning(pos, "locklint: lock '%s' is already held",
+				locklint_warning(LOCKLINT_DIAG_LOCK_ALREADY_HELD,
+				    pos, "lock '%s' is already held",
 				    lock_name(&lock));
 			} else if (state_maybe_held(state) && !defer) {
-				warning(pos, "locklint: lock '%s' may already be "
+				locklint_warning(
+				    LOCKLINT_DIAG_LOCK_MAYBE_ALREADY_HELD,
+				    pos, "lock '%s' may already be "
 				    "held", lock_name(&lock));
 			}
 		} else {
 			if (state == LOCK_NOT_HELD && !defer) {
-				warning(pos, "locklint: lock '%s' is not held",
+				locklint_warning(LOCKLINT_DIAG_LOCK_NOT_HELD,
+				    pos, "lock '%s' is not held",
 				    lock_name(&lock));
 			} else if ((state & LOCK_NOT_HELD) != 0 && !defer) {
-				warning(pos, "locklint: lock '%s' may not be held",
+				locklint_warning(
+				    LOCKLINT_DIAG_LOCK_MAYBE_NOT_HELD,
+				    pos, "lock '%s' may not be held",
 				    lock_name(&lock));
 			}
 		}
@@ -5888,10 +5935,12 @@ check_lock_action(struct function_info *function,
 		set_acquire_position(analysis->locks, &lock, pos);
 	} else if (action == LOCKLINT_LOCK_DOWNGRADE) {
 		if ((state & LOCK_WRITE_HELD) == 0 && !defer) {
-			warning(pos, "locklint: lock '%s' is not write-held",
+			locklint_warning(LOCKLINT_DIAG_LOCK_NOT_WRITE_HELD,
+			    pos, "lock '%s' is not write-held",
 			    lock_name(&lock));
 		} else if ((state & ~LOCK_WRITE_HELD) != 0 && !defer) {
-			warning(pos, "locklint: lock '%s' may not be write-held",
+			locklint_warning(LOCKLINT_DIAG_LOCK_MAYBE_NOT_WRITE_HELD,
+			    pos, "lock '%s' may not be write-held",
 			    lock_name(&lock));
 		}
 		set_state(&analysis->locks, &lock, mode);
@@ -5901,10 +5950,12 @@ check_lock_action(struct function_info *function,
 		set_state(&analysis->locks, &lock, state | mode);
 	} else if (action == LOCKLINT_LOCK_TRY_UPGRADE) {
 		if ((state & LOCK_READ_HELD) == 0 && !defer) {
-			warning(pos, "locklint: lock '%s' is not read-held",
+			locklint_warning(LOCKLINT_DIAG_LOCK_NOT_READ_HELD,
+			    pos, "lock '%s' is not read-held",
 			    lock_name(&lock));
 		} else if ((state & ~LOCK_READ_HELD) != 0 && !defer) {
-			warning(pos, "locklint: lock '%s' may not be read-held",
+			locklint_warning(LOCKLINT_DIAG_LOCK_MAYBE_NOT_READ_HELD,
+			    pos, "lock '%s' may not be read-held",
 			    lock_name(&lock));
 		}
 		if ((state & LOCK_READ_HELD) != 0)
@@ -5912,10 +5963,12 @@ check_lock_action(struct function_info *function,
 			    state | LOCK_WRITE_HELD);
 	} else {
 		if (state == LOCK_NOT_HELD && !defer) {
-			warning(pos, "locklint: lock '%s' is not held",
+			locklint_warning(LOCKLINT_DIAG_LOCK_NOT_HELD,
+			    pos, "lock '%s' is not held",
 			    lock_name(&lock));
 		} else if ((state & LOCK_NOT_HELD) != 0 && !defer) {
-			warning(pos, "locklint: lock '%s' may not be held",
+			locklint_warning(LOCKLINT_DIAG_LOCK_MAYBE_NOT_HELD,
+			    pos, "lock '%s' may not be held",
 			    lock_name(&lock));
 		}
 		set_state(&analysis->locks, &lock, LOCK_NOT_HELD);
@@ -5963,10 +6016,11 @@ check_competition_transition(struct function_info *function,
 	pos = insn->pos;
 	if (!state->competition.maximum_unbounded &&
 	    state->competition.maximum <= 0) {
-		warning(pos, "locklint: competition depth decremented below zero");
+		locklint_warning(LOCKLINT_DIAG_COMPETITION_UNDERFLOW, pos,
+		    "competition depth decremented below zero");
 	} else {
-		warning(pos, "locklint: competition depth may be decremented "
-		    "below zero");
+		locklint_warning(LOCKLINT_DIAG_COMPETITION_MAYBE_UNDERFLOW,
+		    pos, "competition depth may be decremented below zero");
 	}
 }
 
@@ -5992,11 +6046,14 @@ check_return_state(struct function_info *function, struct block_info *block,
 		if (function_declares_lock_effect(function, &entry->lock))
 			continue;
 		if (state_definitely_held(entry->state)) {
-			warning(pos, "locklint: lock '%s' held on return from '%s'",
+			locklint_warning(LOCKLINT_DIAG_LOCK_HELD_ON_RETURN, pos,
+			    "lock '%s' held on return from '%s'",
 			    lock_name(&entry->lock),
 			    show_ident(function->ep->name->ident));
 		} else {
-			warning(pos, "locklint: lock '%s' held on only some paths "
+			locklint_warning(
+			    LOCKLINT_DIAG_LOCK_MAYBE_HELD_ON_RETURN, pos,
+			    "lock '%s' held on only some paths "
 			    "returning from '%s'", lock_name(&entry->lock),
 			    show_ident(function->ep->name->ident));
 		}

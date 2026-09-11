@@ -1,22 +1,22 @@
-../locklint: mutex-lock-result.c:44: warning: locklint: protection for member 'value' is not established on every path
-../locklint: mutex-lock-result.c:46: warning: locklint: lock 'first' held on only some paths returning from 'lock_equal_zero'
-../locklint: mutex-lock-result.c:55: warning: locklint: protection for member 'value' is not established on every path
-../locklint: mutex-lock-result.c:60: warning: locklint: lock 'first' held on only some paths returning from 'lock_not_equal_zero'
-../locklint: mutex-lock-result.c:69: warning: locklint: protection for member 'value' is not established on every path
-../locklint: mutex-lock-result.c:74: warning: locklint: lock 'first' held on only some paths returning from 'lock_truth'
-../locklint: mutex-lock-result.c:86: warning: locklint: protection for member 'value' is not established on every path
-../locklint: mutex-lock-result.c:88: warning: locklint: lock 'first' held on only some paths returning from 'lock_negated'
-../locklint: mutex-lock-result.c:102: warning: locklint: lock 'first' held on only some paths returning from 'lock_saved_result'
-../locklint: mutex-lock-result.c:120: warning: locklint: lock 'first' held on only some paths returning from 'balanced_mutex_lock'
-../locklint: mutex-lock-result.c:127: warning: locklint: protection for member 'value' is not established on every path
-../locklint: mutex-lock-result.c:127: warning: locklint: lock 'first' held on only some paths returning from 'call_balanced_mutex_lock'
-../locklint: mutex-lock-result.c:134: warning: locklint: lock 'mutex_lock_state::first' acquired out of declared order while holding 'mutex_lock_state::second'
+../locklint: mutex-lock-result.c:44: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
+../locklint: mutex-lock-result.c:46: warning: locklint: lock 'first' held on only some paths returning from 'lock_equal_zero' [lock-maybe-held-on-return]
+../locklint: mutex-lock-result.c:55: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
+../locklint: mutex-lock-result.c:60: warning: locklint: lock 'first' held on only some paths returning from 'lock_not_equal_zero' [lock-maybe-held-on-return]
+../locklint: mutex-lock-result.c:69: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
+../locklint: mutex-lock-result.c:74: warning: locklint: lock 'first' held on only some paths returning from 'lock_truth' [lock-maybe-held-on-return]
+../locklint: mutex-lock-result.c:86: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
+../locklint: mutex-lock-result.c:88: warning: locklint: lock 'first' held on only some paths returning from 'lock_negated' [lock-maybe-held-on-return]
+../locklint: mutex-lock-result.c:102: warning: locklint: lock 'first' held on only some paths returning from 'lock_saved_result' [lock-maybe-held-on-return]
+../locklint: mutex-lock-result.c:120: warning: locklint: lock 'first' held on only some paths returning from 'balanced_mutex_lock' [lock-maybe-held-on-return]
+../locklint: mutex-lock-result.c:127: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
+../locklint: mutex-lock-result.c:127: warning: locklint: lock 'first' held on only some paths returning from 'call_balanced_mutex_lock' [lock-maybe-held-on-return]
+../locklint: mutex-lock-result.c:134: warning: locklint: lock 'mutex_lock_state::first' acquired out of declared order while holding 'mutex_lock_state::second' [declared-order]
 ../locklint: mutex-lock-result.c:29: locklint: declared order requires 'mutex_lock_state::first' before 'mutex_lock_state::second'
-../locklint: mutex-lock-result.c:136: warning: locklint: lock 'first' held on only some paths returning from 'lock_order_on_success'
-../locklint: mutex-lock-result.c:145: warning: locklint: lock 'first' is already held
-../locklint: mutex-lock-result.c:147: warning: locklint: protection for member 'value' is not established on every path
-../locklint: mutex-lock-result.c:148: warning: locklint: lock 'first' may not be held
-../locklint: mutex-lock-result.c:155: warning: locklint: lock 'lock' held on only some paths returning from 'return_mutex_lock'
-../locklint: mutex-lock-result.c:164: warning: locklint: protection for member 'value' is not established on every path
-../locklint: mutex-lock-result.c:166: warning: locklint: lock 'first' may not be held
-../locklint: mutex-lock-result.c:166: warning: locklint: lock 'first' held on only some paths returning from 'call_returned_mutex_lock'
+../locklint: mutex-lock-result.c:136: warning: locklint: lock 'first' held on only some paths returning from 'lock_order_on_success' [lock-maybe-held-on-return]
+../locklint: mutex-lock-result.c:145: warning: locklint: lock 'first' is already held [lock-already-held]
+../locklint: mutex-lock-result.c:147: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
+../locklint: mutex-lock-result.c:148: warning: locklint: lock 'first' may not be held [lock-maybe-not-held]
+../locklint: mutex-lock-result.c:155: warning: locklint: lock 'lock' held on only some paths returning from 'return_mutex_lock' [lock-maybe-held-on-return]
+../locklint: mutex-lock-result.c:164: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
+../locklint: mutex-lock-result.c:166: warning: locklint: lock 'first' may not be held [lock-maybe-not-held]
+../locklint: mutex-lock-result.c:166: warning: locklint: lock 'first' held on only some paths returning from 'call_returned_mutex_lock' [lock-maybe-held-on-return]

@@ -1,1 +1,1 @@
-../locklint: indirect-calls.c:64:34: warning: locklint: call to 'read_value' accesses protected member 'value' without holding 'lock'
+../locklint: indirect-calls.c:64:34: warning: locklint: call to 'read_value' accesses protected member 'value' without holding 'lock' [unprotected-access]

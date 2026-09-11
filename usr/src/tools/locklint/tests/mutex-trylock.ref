@@ -1,16 +1,16 @@
-../locklint: mutex-trylock.c:45: warning: locklint: protection for member 'value' is not established on every path
-../locklint: mutex-trylock.c:47: warning: locklint: lock 'first' held on only some paths returning from 'trylock_equal_zero'
-../locklint: mutex-trylock.c:56: warning: locklint: protection for member 'value' is not established on every path
-../locklint: mutex-trylock.c:61: warning: locklint: lock 'first' held on only some paths returning from 'trylock_not_equal_zero'
-../locklint: mutex-trylock.c:70: warning: locklint: protection for member 'value' is not established on every path
-../locklint: mutex-trylock.c:75: warning: locklint: lock 'first' held on only some paths returning from 'trylock_truth'
-../locklint: mutex-trylock.c:87: warning: locklint: protection for member 'value' is not established on every path
-../locklint: mutex-trylock.c:89: warning: locklint: lock 'first' held on only some paths returning from 'trylock_negated'
-../locklint: mutex-trylock.c:103: warning: locklint: lock 'first' held on only some paths returning from 'trylock_saved_result'
-../locklint: mutex-trylock.c:110: warning: locklint: protection for member 'value' is not established on every path
-../locklint: mutex-trylock.c:111: warning: locklint: lock 'first' may not be held
-../locklint: mutex-trylock.c:118: warning: locklint: protection for member 'value' is not established on every path
-../locklint: mutex-trylock.c:118: warning: locklint: lock 'first' held on only some paths returning from 'call_balanced_trylock'
-../locklint: mutex-trylock.c:127: warning: locklint: lock 'first' held on only some paths returning from 'trylock_order_on_success'
-../locklint: mutex-trylock.c:138: warning: locklint: protection for member 'value' is not established on every path
-../locklint: mutex-trylock.c:139: warning: locklint: lock 'first' may not be held
+../locklint: mutex-trylock.c:45: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
+../locklint: mutex-trylock.c:47: warning: locklint: lock 'first' held on only some paths returning from 'trylock_equal_zero' [lock-maybe-held-on-return]
+../locklint: mutex-trylock.c:56: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
+../locklint: mutex-trylock.c:61: warning: locklint: lock 'first' held on only some paths returning from 'trylock_not_equal_zero' [lock-maybe-held-on-return]
+../locklint: mutex-trylock.c:70: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
+../locklint: mutex-trylock.c:75: warning: locklint: lock 'first' held on only some paths returning from 'trylock_truth' [lock-maybe-held-on-return]
+../locklint: mutex-trylock.c:87: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
+../locklint: mutex-trylock.c:89: warning: locklint: lock 'first' held on only some paths returning from 'trylock_negated' [lock-maybe-held-on-return]
+../locklint: mutex-trylock.c:103: warning: locklint: lock 'first' held on only some paths returning from 'trylock_saved_result' [lock-maybe-held-on-return]
+../locklint: mutex-trylock.c:110: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
+../locklint: mutex-trylock.c:111: warning: locklint: lock 'first' may not be held [lock-maybe-not-held]
+../locklint: mutex-trylock.c:118: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
+../locklint: mutex-trylock.c:118: warning: locklint: lock 'first' held on only some paths returning from 'call_balanced_trylock' [lock-maybe-held-on-return]
+../locklint: mutex-trylock.c:127: warning: locklint: lock 'first' held on only some paths returning from 'trylock_order_on_success' [lock-maybe-held-on-return]
+../locklint: mutex-trylock.c:138: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
+../locklint: mutex-trylock.c:139: warning: locklint: lock 'first' may not be held [lock-maybe-not-held]

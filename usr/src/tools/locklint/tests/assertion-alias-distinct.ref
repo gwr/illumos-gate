@@ -1,2 +1,2 @@
-../locklint: assertion-alias.c:125: warning: locklint: call to 'acquire_first_require_second' does not satisfy asserted mutex-held requirement for lock 'lock'
+../locklint: assertion-alias.c:125: warning: locklint: call to 'acquire_first_require_second' does not satisfy asserted mutex-held requirement for lock 'lock' [asserted-lock-requirement]
 ../locklint: assertion-alias.c:51: locklint: asserted requirement is here

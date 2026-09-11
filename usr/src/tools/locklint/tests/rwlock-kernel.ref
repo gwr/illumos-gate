@@ -1,17 +1,17 @@
-../locklint: rwlock.c:107:22: warning: locklint: protected member 'value' accessed without read-holding 'lock'
-../locklint: rwlock.c:108:14: warning: locklint: protected member 'value' accessed without write-holding 'lock'
-../locklint: rwlock.c:110:14: warning: locklint: protected member 'readable' accessed without write-holding 'lock'
-../locklint: rwlock.c:115:14: warning: locklint: protected member 'value' accessed without write-holding 'lock'
-../locklint: rwlock.c:131:14: warning: locklint: protected member 'value' accessed without write-holding 'lock'
-../locklint: rwlock.c:145:14: warning: locklint: protection for member 'value' is not established on every path
-../locklint: rwlock.c:158:22: warning: locklint: protection for member 'value' is not established on every path
-../locklint: rwlock.c:159:17: warning: locklint: lock 'lock' held on only some paths returning from 'check_unheld_merge'
-../locklint: rwlock.c:165:9: warning: locklint: lock 'lock' is not held
-../locklint: rwlock.c:168:9: warning: locklint: lock 'lock' is already held
-../locklint: rwlock.c:172:9: warning: locklint: lock 'lock' is already held
-../locklint: rwlock.c:183:14: warning: locklint: protected member 'value' accessed without write-holding 'lock'
-../locklint: rwlock.c:203:14: warning: locklint: protection for member 'value' is not established on every path
-../locklint: rwlock.c:223:22: warning: locklint: protection for member 'value' is not established on every path
-../locklint: rwlock.c:224:14: warning: locklint: protection for member 'value' is not established on every path
-../locklint: rwlock.c:234:22: warning: locklint: protection for member 'value' is not established on every path
-../locklint: rwlock.c:235:14: warning: locklint: protected member 'value' accessed without write-holding 'lock'
+../locklint: rwlock.c:107:22: warning: locklint: protected member 'value' accessed without read-holding 'lock' [unprotected-access]
+../locklint: rwlock.c:108:14: warning: locklint: protected member 'value' accessed without write-holding 'lock' [unprotected-access]
+../locklint: rwlock.c:110:14: warning: locklint: protected member 'readable' accessed without write-holding 'lock' [unprotected-access]
+../locklint: rwlock.c:115:14: warning: locklint: protected member 'value' accessed without write-holding 'lock' [unprotected-access]
+../locklint: rwlock.c:131:14: warning: locklint: protected member 'value' accessed without write-holding 'lock' [unprotected-access]
+../locklint: rwlock.c:145:14: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
+../locklint: rwlock.c:158:22: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
+../locklint: rwlock.c:159:17: warning: locklint: lock 'lock' held on only some paths returning from 'check_unheld_merge' [lock-maybe-held-on-return]
+../locklint: rwlock.c:165:9: warning: locklint: lock 'lock' is not held [lock-not-held]
+../locklint: rwlock.c:168:9: warning: locklint: lock 'lock' is already held [lock-already-held]
+../locklint: rwlock.c:172:9: warning: locklint: lock 'lock' is already held [lock-already-held]
+../locklint: rwlock.c:183:14: warning: locklint: protected member 'value' accessed without write-holding 'lock' [unprotected-access]
+../locklint: rwlock.c:203:14: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
+../locklint: rwlock.c:223:22: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
+../locklint: rwlock.c:224:14: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
+../locklint: rwlock.c:234:22: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
+../locklint: rwlock.c:235:14: warning: locklint: protected member 'value' accessed without write-holding 'lock' [unprotected-access]

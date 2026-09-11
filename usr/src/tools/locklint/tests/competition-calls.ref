@@ -1,11 +1,11 @@
-../locklint: competition-calls.c:107: warning: locklint: protected member 'protected' accessed without holding 'lock'
-../locklint: competition-calls.c:130: warning: locklint: protected member 'protected' accessed without holding 'lock'
-../locklint: competition-calls.c:138: warning: locklint: protection for member 'protected' is not established on every path
-../locklint: competition-calls.c:146: warning: locklint: protected member 'protected' accessed without holding 'lock'
-../locklint: competition-calls.c:154: warning: locklint: protection for member 'protected' is not established on every path
-../locklint: competition-calls.c:161: warning: locklint: call to 'leave_competition' may decrement competition depth below zero
-../locklint: competition-calls.c:168: warning: locklint: call to 'conditional_leave' may decrement competition depth below zero
-../locklint: competition-calls.c:174: warning: locklint: call to 'double_leave_wrapper' may decrement competition depth below zero
-../locklint: competition-calls.c:181: warning: locklint: competition depth decremented below zero
-../locklint: competition-calls.c:195: warning: locklint: call to 'anchored_underflow' may decrement competition depth below zero
-../locklint: competition-calls.c:212: warning: locklint: call to 'nonreturn_underflow' may decrement competition depth below zero
+../locklint: competition-calls.c:107: warning: locklint: protected member 'protected' accessed without holding 'lock' [unprotected-access]
+../locklint: competition-calls.c:130: warning: locklint: protected member 'protected' accessed without holding 'lock' [unprotected-access]
+../locklint: competition-calls.c:138: warning: locklint: protection for member 'protected' is not established on every path [conditional-protection]
+../locklint: competition-calls.c:146: warning: locklint: protected member 'protected' accessed without holding 'lock' [unprotected-access]
+../locklint: competition-calls.c:154: warning: locklint: protection for member 'protected' is not established on every path [conditional-protection]
+../locklint: competition-calls.c:161: warning: locklint: call to 'leave_competition' may decrement competition depth below zero [competition-maybe-underflow]
+../locklint: competition-calls.c:168: warning: locklint: call to 'conditional_leave' may decrement competition depth below zero [competition-maybe-underflow]
+../locklint: competition-calls.c:174: warning: locklint: call to 'double_leave_wrapper' may decrement competition depth below zero [competition-maybe-underflow]
+../locklint: competition-calls.c:181: warning: locklint: competition depth decremented below zero [competition-underflow]
+../locklint: competition-calls.c:195: warning: locklint: call to 'anchored_underflow' may decrement competition depth below zero [competition-maybe-underflow]
+../locklint: competition-calls.c:212: warning: locklint: call to 'nonreturn_underflow' may decrement competition depth below zero [competition-maybe-underflow]

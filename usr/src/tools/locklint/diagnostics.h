@@ -1,0 +1,56 @@
+/*
+ * This file and its contents are supplied under the terms of the
+ * Common Development and Distribution License ("CDDL"), version 1.0.
+ * You may only use this file in accordance with the terms of version
+ * 1.0 of the CDDL.
+ *
+ * A full copy of the text of the CDDL should have accompanied this
+ * source.  A copy of the CDDL is also available via the Internet at
+ * http://www.illumos.org/license/CDDL.
+ */
+
+/*
+ * Define stable identifiers and the common emission interface for locklint
+ * diagnostics.  Message wording may improve without changing these IDs.
+ */
+
+#ifndef LOCKLINT_DIAGNOSTICS_H
+#define	LOCKLINT_DIAGNOSTICS_H
+
+#include "lib.h"
+
+enum locklint_diagnostic {
+	LOCKLINT_DIAG_AMBIGUOUS_DIRECT_CALL,
+	LOCKLINT_DIAG_ASSERTED_LOCK_REQUIREMENT,
+	LOCKLINT_DIAG_COMPETITION_MAYBE_UNDERFLOW,
+	LOCKLINT_DIAG_COMPETITION_UNDERFLOW,
+	LOCKLINT_DIAG_CONDITIONAL_ASSERTED_LOCK_REQUIREMENT,
+	LOCKLINT_DIAG_CONDITIONAL_PROTECTION,
+	LOCKLINT_DIAG_DECLARED_COMPETITION_EFFECT,
+	LOCKLINT_DIAG_DECLARED_LOCK_EFFECT,
+	LOCKLINT_DIAG_DECLARED_ORDER,
+	LOCKLINT_DIAG_DECLARED_ORDER_CYCLE,
+	LOCKLINT_DIAG_DECLARED_ORDER_POSSIBLE,
+	LOCKLINT_DIAG_INVALID_ASSUMING_PROTECTED,
+	LOCKLINT_DIAG_LOCK_ALREADY_HELD,
+	LOCKLINT_DIAG_LOCK_HELD_ON_RETURN,
+	LOCKLINT_DIAG_LOCK_MAYBE_ALREADY_HELD,
+	LOCKLINT_DIAG_LOCK_MAYBE_HELD_ON_RETURN,
+	LOCKLINT_DIAG_LOCK_MAYBE_NOT_HELD,
+	LOCKLINT_DIAG_LOCK_MAYBE_NOT_READ_HELD,
+	LOCKLINT_DIAG_LOCK_MAYBE_NOT_WRITE_HELD,
+	LOCKLINT_DIAG_LOCK_NOT_HELD,
+	LOCKLINT_DIAG_LOCK_NOT_READ_HELD,
+	LOCKLINT_DIAG_LOCK_NOT_WRITE_HELD,
+	LOCKLINT_DIAG_OBSERVED_DEADLOCK,
+	LOCKLINT_DIAG_READ_ONLY_MAYBE_VISIBLE,
+	LOCKLINT_DIAG_READ_ONLY_VISIBLE,
+	LOCKLINT_DIAG_UNPROTECTED_ACCESS,
+	LOCKLINT_DIAG_VISIBILITY_NO_OBJECT,
+	LOCKLINT_DIAG_COUNT
+};
+
+void locklint_warning(enum locklint_diagnostic, struct position,
+    const char *, ...) FORMAT_ATTR(3);
+
+#endif /* LOCKLINT_DIAGNOSTICS_H */

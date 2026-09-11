@@ -1735,8 +1735,36 @@ some return paths.  Assertion-only held state is excluded from those
 side-effect diagnostics.  After all functions have been replayed, observed
 lock-order cycles are reported.
 
-Diagnostics currently have human-readable text but no stable identifier,
-machine-readable format, or predecessor/call-chain witness.
+Every primary locklint warning ends with a stable kebab-case identifier in
+square brackets:
+
+```text
+warning: locklint: lock 'lock' is not held [lock-not-held]
+```
+
+The identifier names the semantic warning class rather than one exact message.
+For example, direct and summarized releases of an unheld lock both use
+`lock-not-held`; wording and source context may differ.  Definite and
+path-dependent findings have separate identifiers where users need to
+distinguish confidence, such as `lock-not-held` and `lock-maybe-not-held`.
+Identifiers appear in default output so they are immediately available as
+durable references and future suppression keys.  Existing identifiers are not
+renamed or reused for a different semantic class when message wording changes.
+
+`diagnostics.h` defines the identifier set, and `diagnostics.c` maps it to
+output names.  `locklint_warning()` measures and allocates the complete
+formatted message before passing it to Sparse's `warning()` interface, avoiding
+a fixed-size or truncating buffer.  The central function is also the policy
+boundary for later suppression controls.  Supporting provenance emitted with
+`info()`, such as an assertion declaration or lock-order proof edge, remains
+untagged because it is subordinate to the preceding primary warning.
+
+The current identifier set covers ambiguous calls, assertion requirements,
+competition underflow, conditional protection, declared effects and order,
+invalid assumptions, lock ownership and mode errors, held-on-return state,
+observed deadlocks, read-only visibility, unprotected access, and missing
+visibility objects.  Suppression, machine-readable output, and bounded
+predecessor or call-chain witnesses remain future work.
 
 ## Important functions by subsystem
 
@@ -1808,6 +1836,12 @@ machine-readable format, or predecessor/call-chain witness.
 | `analyze_blocks()` | Solve unified intraprocedural lock, competition, and visibility state |
 | `run_lock_checks()` | Order transfer solving, block analysis, acquisition and protection-summary propagation, diagnostics, and observed-cycle reporting |
 | `locklint_check_all()` | Resolve the callgraph, order and iterate the complete analysis, release checker attachments, and clean up the callgraph |
+
+### Diagnostics: `diagnostics.c`
+
+| Function | Responsibility |
+| --- | --- |
+| `locklint_warning()` | Format and emit one primary warning with its stable diagnostic identifier |
 
 ### Lock order: `lock_order.c`
 
@@ -2079,6 +2113,8 @@ The current implementation relies on these invariants:
     documented conservative union.
 39. Try-acquisitions never contribute blocking-acquisition summaries or
     observed order edges.
+40. Every primary locklint warning carries one stable diagnostic identifier;
+    supporting `info()` provenance does not carry an independent identifier.
 
 Changes that invalidate one of these invariants should update this document
 and add a focused regression test.
@@ -2100,7 +2136,8 @@ areas include:
 - recursive mutex and rwlock-reader hold counts;
 - a swappable-wait policy that diagnoses unrelated locks held across
   `cv_wait_sig_swap()` and `cv_wait_sig_swap_core()`; and
-- stable diagnostic identifiers, suppressions, and provenance.
+- diagnostic suppressions, machine-readable output, and bounded provenance
+  witnesses.
 
 These limitations should remain visible here as the implementation evolves.
 When a limitation is removed, its replacement design, invariants, and action

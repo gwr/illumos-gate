@@ -1,4 +1,4 @@
-../locklint: lock-order-observed.c:41:20: warning: locklint: observed lock acquisitions form a potential deadlock
+../locklint: lock-order-observed.c:41:20: warning: locklint: observed lock acquisitions form a potential deadlock [observed-deadlock]
 ../locklint: lock-order-observed.c:48:20: locklint: lock 'observed_order_state::first' acquired here
 ../locklint: lock-order-observed.c:41:20: locklint: lock 'observed_order_state::second' acquired while holding 'observed_order_state::first'
 ../locklint: lock-order-observed.c:69:20: locklint: lock 'observed_order_state::second' acquired here

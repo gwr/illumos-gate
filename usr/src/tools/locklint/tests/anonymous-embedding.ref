@@ -1,2 +1,2 @@
-../locklint: anonymous-embedding.c:61: warning: locklint: protected member 'value' accessed without holding 'lock'
-../locklint: anonymous-embedding.c:70: warning: locklint: protected member 'value' accessed without holding 'lock'
+../locklint: anonymous-embedding.c:61: warning: locklint: protected member 'value' accessed without holding 'lock' [unprotected-access]
+../locklint: anonymous-embedding.c:70: warning: locklint: protected member 'value' accessed without holding 'lock' [unprotected-access]

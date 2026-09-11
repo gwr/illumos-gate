@@ -1,8 +1,8 @@
-../locklint: visibility-calls.c:104:14: warning: locklint: protected member 'protected' accessed without holding 'lock'
-../locklint: visibility-calls.c:120:14: warning: locklint: protection for member 'protected' is not established on every path
-../locklint: visibility-calls.c:146:14: warning: locklint: protected member 'protected' accessed without holding 'lock'
-../locklint: visibility-calls.c:187:21: warning: locklint: protected member 'protected' accessed without holding 'lock'
-../locklint: visibility-calls.c:216:14: warning: locklint: read-only data 'read_only' modified while visible to competing threads
-../locklint: visibility-calls.c:291:23: warning: locklint: protected member 'protected' accessed without holding 'lock'
-../locklint: visibility-calls.c:307:22: warning: locklint: protection for member 'protected' is not established on every path
-../locklint: visibility-calls.c:352:23: warning: locklint: protected member 'sibling' accessed without holding 'lock'
+../locklint: visibility-calls.c:104:14: warning: locklint: protected member 'protected' accessed without holding 'lock' [unprotected-access]
+../locklint: visibility-calls.c:120:14: warning: locklint: protection for member 'protected' is not established on every path [conditional-protection]
+../locklint: visibility-calls.c:146:14: warning: locklint: protected member 'protected' accessed without holding 'lock' [unprotected-access]
+../locklint: visibility-calls.c:187:21: warning: locklint: protected member 'protected' accessed without holding 'lock' [unprotected-access]
+../locklint: visibility-calls.c:216:14: warning: locklint: read-only data 'read_only' modified while visible to competing threads [read-only-visible]
+../locklint: visibility-calls.c:291:23: warning: locklint: protected member 'protected' accessed without holding 'lock' [unprotected-access]
+../locklint: visibility-calls.c:307:22: warning: locklint: protection for member 'protected' is not established on every path [conditional-protection]
+../locklint: visibility-calls.c:352:23: warning: locklint: protected member 'sibling' accessed without holding 'lock' [unprotected-access]

@@ -195,6 +195,10 @@ compare "lock order declaration cycle" lock-order-cycle.ref \
 run_capture "local lock order" lock-order.out \
     "$LOCKLINT" --check-locks lock-order.c
 compare "local lock order" lock-order.ref lock-order.out
+require_match "stable primary diagnostic identifier" \
+    '\[declared-order\]$' lock-order.out
+reject_match "supporting diagnostic identifier" \
+    'declared order requires.*\[[a-z-][a-z-]*\]$' lock-order.out
 
 run_capture "condition wait state and order" condition-wait.raw \
     "$LOCKLINT" --check-locks condition-wait.c

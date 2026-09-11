@@ -1,8 +1,8 @@
-../locklint: rwlock-tryupgrade.c:60: warning: locklint: protected member 'value' accessed without write-holding 'first'
-../locklint: rwlock-tryupgrade.c:71: warning: locklint: protected member 'value' accessed without write-holding 'first'
-../locklint: rwlock-tryupgrade.c:82: warning: locklint: protected member 'value' accessed without write-holding 'first'
-../locklint: rwlock-tryupgrade.c:111: warning: locklint: protection for member 'value' is not established on every path
-../locklint: rwlock-tryupgrade.c:129: warning: locklint: protected member 'value' accessed without write-holding 'first'
-../locklint: rwlock-tryupgrade.c:146: warning: locklint: lock 'first' is not read-held
-../locklint: rwlock-tryupgrade.c:148: warning: locklint: lock 'first' is not held
-../locklint: rwlock-tryupgrade.c:155: warning: locklint: lock 'first' is not read-held
+../locklint: rwlock-tryupgrade.c:60: warning: locklint: protected member 'value' accessed without write-holding 'first' [unprotected-access]
+../locklint: rwlock-tryupgrade.c:71: warning: locklint: protected member 'value' accessed without write-holding 'first' [unprotected-access]
+../locklint: rwlock-tryupgrade.c:82: warning: locklint: protected member 'value' accessed without write-holding 'first' [unprotected-access]
+../locklint: rwlock-tryupgrade.c:111: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
+../locklint: rwlock-tryupgrade.c:129: warning: locklint: protected member 'value' accessed without write-holding 'first' [unprotected-access]
+../locklint: rwlock-tryupgrade.c:146: warning: locklint: lock 'first' is not read-held [lock-not-read-held]
+../locklint: rwlock-tryupgrade.c:148: warning: locklint: lock 'first' is not held [lock-not-held]
+../locklint: rwlock-tryupgrade.c:155: warning: locklint: lock 'first' is not read-held [lock-not-read-held]

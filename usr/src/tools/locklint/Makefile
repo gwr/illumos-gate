@@ -86,6 +86,7 @@ LOCAL_OBJS = \
 	assertions.o \
 	callgraph.o \
 	check.o \
+	diagnostics.o \
 	events.o \
 	identity.o \
 	lock_order.o \

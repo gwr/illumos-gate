@@ -1,20 +1,20 @@
-../locklint: visibility.c:198:9: warning: locklint: function 'contract_markers' does not establish declared competition-depth decrease
-../locklint: visibility.c:199:9: warning: locklint: function 'contract_markers' does not establish declared competition-depth increase
-../locklint: visibility.c:62:26: warning: locklint: protected member 'protected' accessed without holding 'lock'
-../locklint: visibility.c:73:26: warning: locklint: protection for member 'protected' is not established on every path
-../locklint: visibility.c:84:22: warning: locklint: protected member 'protected' accessed without holding 'lock'
-../locklint: visibility.c:93:14: warning: locklint: protected member 'protected' accessed without holding 'lock'
-../locklint: visibility.c:101:14: warning: locklint: protected member 'protected' accessed without holding 'lock'
-../locklint: visibility.c:102:14: warning: locklint: protected member 'sibling' accessed without holding 'lock'
-../locklint: visibility.c:113:14: warning: locklint: protected member 'sibling' accessed without holding 'lock'
-../locklint: visibility.c:122:14: warning: locklint: protected member 'sibling' accessed without holding 'lock'
-../locklint: visibility.c:133:14: warning: locklint: protection for member 'protected' is not established on every path
-../locklint: visibility.c:151:9: warning: locklint: visibility annotation has no object
-../locklint: visibility.c:160:26: warning: locklint: read-only data 'read_only' modified while visible to competing threads
-../locklint: visibility.c:169:14: warning: locklint: read-only data 'read_only' modified while it may be visible to competing threads
-../locklint: visibility.c:179:14: warning: locklint: read-only data 'read_only' modified while visible to competing threads
-../locklint: visibility.c:190:14: warning: locklint: read-only data 'read_only' modified while it may be visible to competing threads
-../locklint: visibility.c:228:38: warning: locklint: call to 'assuming_mutex_callee' accesses protected member 'protected' without holding 'lock'
-../locklint: visibility.c:255:40: warning: locklint: call to 'assuming_generic_callee' requires protection for 'state'
-../locklint: visibility.c:264:40: warning: locklint: call to 'assuming_generic_callee' requires protection for 'state'
-../locklint: visibility.c:289:9: warning: locklint: ASSUMING_PROTECTED has no object
+../locklint: visibility.c:198:9: warning: locklint: function 'contract_markers' does not establish declared competition-depth decrease [declared-competition-effect]
+../locklint: visibility.c:199:9: warning: locklint: function 'contract_markers' does not establish declared competition-depth increase [declared-competition-effect]
+../locklint: visibility.c:62:26: warning: locklint: protected member 'protected' accessed without holding 'lock' [unprotected-access]
+../locklint: visibility.c:73:26: warning: locklint: protection for member 'protected' is not established on every path [conditional-protection]
+../locklint: visibility.c:84:22: warning: locklint: protected member 'protected' accessed without holding 'lock' [unprotected-access]
+../locklint: visibility.c:93:14: warning: locklint: protected member 'protected' accessed without holding 'lock' [unprotected-access]
+../locklint: visibility.c:101:14: warning: locklint: protected member 'protected' accessed without holding 'lock' [unprotected-access]
+../locklint: visibility.c:102:14: warning: locklint: protected member 'sibling' accessed without holding 'lock' [unprotected-access]
+../locklint: visibility.c:113:14: warning: locklint: protected member 'sibling' accessed without holding 'lock' [unprotected-access]
+../locklint: visibility.c:122:14: warning: locklint: protected member 'sibling' accessed without holding 'lock' [unprotected-access]
+../locklint: visibility.c:133:14: warning: locklint: protection for member 'protected' is not established on every path [conditional-protection]
+../locklint: visibility.c:151:9: warning: locklint: visibility annotation has no object [visibility-no-object]
+../locklint: visibility.c:160:26: warning: locklint: read-only data 'read_only' modified while visible to competing threads [read-only-visible]
+../locklint: visibility.c:169:14: warning: locklint: read-only data 'read_only' modified while it may be visible to competing threads [read-only-maybe-visible]
+../locklint: visibility.c:179:14: warning: locklint: read-only data 'read_only' modified while visible to competing threads [read-only-visible]
+../locklint: visibility.c:190:14: warning: locklint: read-only data 'read_only' modified while it may be visible to competing threads [read-only-maybe-visible]
+../locklint: visibility.c:228:38: warning: locklint: call to 'assuming_mutex_callee' accesses protected member 'protected' without holding 'lock' [unprotected-access]
+../locklint: visibility.c:255:40: warning: locklint: call to 'assuming_generic_callee' requires protection for 'state' [unprotected-access]
+../locklint: visibility.c:264:40: warning: locklint: call to 'assuming_generic_callee' requires protection for 'state' [unprotected-access]
+../locklint: visibility.c:289:9: warning: locklint: ASSUMING_PROTECTED has no object [invalid-assuming-protected]

@@ -1,9 +1,9 @@
-../locklint: declared-effects.c:48: warning: locklint: function 'declared_mutex_missing' does not establish declared mutex acquisition of lock 'mutex'
-../locklint: declared-effects.c:55: warning: locklint: declared mutex acquisition of lock 'mutex' is not established on every return from 'declared_mutex_conditional'
-../locklint: declared-effects.c:63: warning: locklint: function 'declared_mutex_wrong_mode' does not establish declared mutex acquisition of lock 'rwlock'
-../locklint: declared-effects.c:84: warning: locklint: function 'declared_read_wrong_mode' does not establish declared read-lock acquisition of lock 'rwlock'
-../locklint: declared-effects.c:98: warning: locklint: function 'declared_release_missing' does not establish declared release of lock 'mutex'
-../locklint: declared-effects.c:105: warning: locklint: declared release of lock 'rwlock' is not established on every return from 'declared_release_conditional'
-../locklint: declared-effects.c:92: warning: locklint: lock 'mutex' is not held
-../locklint: declared-effects.c:107: warning: locklint: lock 'rwlock' is not held
-../locklint: declared-effects.c:113: warning: locklint: lock 'mutex' held on return from 'undeclared_mutex_acquire'
+../locklint: declared-effects.c:48: warning: locklint: function 'declared_mutex_missing' does not establish declared mutex acquisition of lock 'mutex' [declared-lock-effect]
+../locklint: declared-effects.c:55: warning: locklint: declared mutex acquisition of lock 'mutex' is not established on every return from 'declared_mutex_conditional' [declared-lock-effect]
+../locklint: declared-effects.c:63: warning: locklint: function 'declared_mutex_wrong_mode' does not establish declared mutex acquisition of lock 'rwlock' [declared-lock-effect]
+../locklint: declared-effects.c:84: warning: locklint: function 'declared_read_wrong_mode' does not establish declared read-lock acquisition of lock 'rwlock' [declared-lock-effect]
+../locklint: declared-effects.c:98: warning: locklint: function 'declared_release_missing' does not establish declared release of lock 'mutex' [declared-lock-effect]
+../locklint: declared-effects.c:105: warning: locklint: declared release of lock 'rwlock' is not established on every return from 'declared_release_conditional' [declared-lock-effect]
+../locklint: declared-effects.c:92: warning: locklint: lock 'mutex' is not held [lock-not-held]
+../locklint: declared-effects.c:107: warning: locklint: lock 'rwlock' is not held [lock-not-held]
+../locklint: declared-effects.c:113: warning: locklint: lock 'mutex' held on return from 'undeclared_mutex_acquire' [lock-held-on-return]

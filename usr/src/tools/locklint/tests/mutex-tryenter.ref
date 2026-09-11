@@ -1,5 +1,5 @@
-../locklint: mutex-tryenter.c:60: warning: locklint: protected member 'value' accessed without holding 'first'
-../locklint: mutex-tryenter.c:69: warning: locklint: protected member 'value' accessed without holding 'first'
-../locklint: mutex-tryenter.c:81: warning: locklint: protected member 'value' accessed without holding 'first'
-../locklint: mutex-tryenter.c:117: warning: locklint: protection for member 'value' is not established on every path
-../locklint: mutex-tryenter.c:118: warning: locklint: lock 'first' may not be held
+../locklint: mutex-tryenter.c:60: warning: locklint: protected member 'value' accessed without holding 'first' [unprotected-access]
+../locklint: mutex-tryenter.c:69: warning: locklint: protected member 'value' accessed without holding 'first' [unprotected-access]
+../locklint: mutex-tryenter.c:81: warning: locklint: protected member 'value' accessed without holding 'first' [unprotected-access]
+../locklint: mutex-tryenter.c:117: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
+../locklint: mutex-tryenter.c:118: warning: locklint: lock 'first' may not be held [lock-maybe-not-held]

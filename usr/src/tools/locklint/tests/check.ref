@@ -1,5 +1,5 @@
-../locklint: check.c:49:22: warning: locklint: protected member 'value' accessed without holding 'lock'
-../locklint: check.c:55:30: warning: locklint: protected member 'value' accessed without holding 'lock'
-../locklint: check.c:65:22: warning: locklint: protection for member 'value' is not established on every path
-../locklint: check.c:66:19: warning: locklint: lock 'lock' may not be held
-../locklint: check.c:88:30: warning: locklint: lock 'lock' held on only some paths returning from 'check_side_effect'
+../locklint: check.c:49:22: warning: locklint: protected member 'value' accessed without holding 'lock' [unprotected-access]
+../locklint: check.c:55:30: warning: locklint: protected member 'value' accessed without holding 'lock' [unprotected-access]
+../locklint: check.c:65:22: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
+../locklint: check.c:66:19: warning: locklint: lock 'lock' may not be held [lock-maybe-not-held]
+../locklint: check.c:88:30: warning: locklint: lock 'lock' held on only some paths returning from 'check_side_effect' [lock-maybe-held-on-return]

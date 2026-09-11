@@ -1,2 +1,2 @@
-../locklint: user-mutex.c:46:22: warning: locklint: protected member 'value' accessed without holding 'lock'
-../locklint: user-mutex.c:63:28: warning: locklint: lock 'lock' held on return from 'user_mutex_acquire'
+../locklint: user-mutex.c:46:22: warning: locklint: protected member 'value' accessed without holding 'lock' [unprotected-access]
+../locklint: user-mutex.c:63:28: warning: locklint: lock 'lock' held on return from 'user_mutex_acquire' [lock-held-on-return]

@@ -26,6 +26,7 @@
 #include "lib.h"
 #include "access.h"
 #include "annotations.h"
+#include "diagnostics.h"
 #include "lock_order.h"
 #include "symbol.h"
 
@@ -396,11 +397,14 @@ locklint_order_check_declared(const struct locklint_access *acquired,
 			    path_uses_declared_cycle(before, after))
 				continue;
 			if (possible) {
-				warning(*pos, "locklint: lock '%s' may be acquired "
+				locklint_warning(
+				    LOCKLINT_DIAG_DECLARED_ORDER_POSSIBLE, *pos,
+				    "lock '%s' may be acquired "
 				    "out of declared order while holding '%s'",
 				    before->name, after->name);
 			} else {
-				warning(*pos, "locklint: lock '%s' acquired out "
+				locklint_warning(LOCKLINT_DIAG_DECLARED_ORDER,
+				    *pos, "lock '%s' acquired out "
 				    "of declared order while holding '%s'",
 				    before->name, after->name);
 			}
@@ -493,8 +497,8 @@ report_component(unsigned int component)
 	}
 	qsort(component_edges, count, sizeof (*component_edges),
 	    compare_edge_position);
-	warning(component_edges[0]->pos,
-	    "locklint: declared lock order contains a cycle");
+	locklint_warning(LOCKLINT_DIAG_DECLARED_ORDER_CYCLE,
+	    component_edges[0]->pos, "declared lock order contains a cycle");
 	for (index = 0; index < count; index++) {
 		edge = component_edges[index];
 		info(edge->pos, "locklint: '%s' must precede '%s'",
@@ -603,8 +607,9 @@ report_observed_component(unsigned int component)
 	}
 	qsort(component_edges, count, sizeof (*component_edges),
 	    compare_observed_edge_position);
-	warning(component_edges[0]->acquire_pos,
-	    "locklint: observed lock acquisitions form a potential deadlock");
+	locklint_warning(LOCKLINT_DIAG_OBSERVED_DEADLOCK,
+	    component_edges[0]->acquire_pos,
+	    "observed lock acquisitions form a potential deadlock");
 	for (index = 0; index < count; index++) {
 		edge = component_edges[index];
 		if (edge->has_held_pos) {

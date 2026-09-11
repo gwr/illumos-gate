@@ -1,21 +1,21 @@
-../locklint: lock-order.c:89:26: warning: locklint: lock 'order_state::first' acquired out of declared order while holding 'order_state::second'
+../locklint: lock-order.c:89:26: warning: locklint: lock 'order_state::first' acquired out of declared order while holding 'order_state::second' [declared-order]
 ../locklint: lock-order.c:58:1: locklint: declared order requires 'order_state::first' before 'order_state::second'
-../locklint: lock-order.c:98:26: warning: locklint: lock 'order_state::first' acquired out of declared order while holding 'order_state::third'
+../locklint: lock-order.c:98:26: warning: locklint: lock 'order_state::first' acquired out of declared order while holding 'order_state::third' [declared-order]
 ../locklint: lock-order.c:58:1: locklint: declared order requires 'order_state::first' before 'order_state::second'
 ../locklint: lock-order.c:58:1: locklint: declared order requires 'order_state::second' before 'order_state::third'
-../locklint: lock-order.c:112:26: warning: locklint: lock 'order_state::first' acquired out of declared order while holding 'order_state::second'
+../locklint: lock-order.c:112:26: warning: locklint: lock 'order_state::first' acquired out of declared order while holding 'order_state::second' [declared-order]
 ../locklint: lock-order.c:58:1: locklint: declared order requires 'order_state::first' before 'order_state::second'
-../locklint: lock-order.c:128:22: warning: locklint: lock 'order_state::first' acquired out of declared order while holding 'order_state::second'
+../locklint: lock-order.c:128:22: warning: locklint: lock 'order_state::first' acquired out of declared order while holding 'order_state::second' [declared-order]
 ../locklint: lock-order.c:58:1: locklint: declared order requires 'order_state::first' before 'order_state::second'
 ../locklint: lock-order.c:120:26: locklint: lock acquisition reached through callee 'acquire_first'
-../locklint: lock-order.c:148:36: warning: locklint: lock 'order_state::first' acquired out of declared order while holding 'order_state::second'
+../locklint: lock-order.c:148:36: warning: locklint: lock 'order_state::first' acquired out of declared order while holding 'order_state::second' [declared-order]
 ../locklint: lock-order.c:58:1: locklint: declared order requires 'order_state::first' before 'order_state::second'
 ../locklint: lock-order.c:120:26: locklint: lock acquisition reached through callee 'acquire_first_outer_wrapper'
-../locklint: lock-order.c:185:42: warning: locklint: lock 'order_state::first' acquired out of declared order while holding 'order_state::second'
+../locklint: lock-order.c:185:42: warning: locklint: lock 'order_state::first' acquired out of declared order while holding 'order_state::second' [declared-order]
 ../locklint: lock-order.c:58:1: locklint: declared order requires 'order_state::first' before 'order_state::second'
 ../locklint: lock-order.c:176:26: locklint: lock acquisition reached through callee 'acquire_first_then_release_second'
-../locklint: lock-order.c:211:31: warning: locklint: lock 'order_state::first' acquired out of declared order while holding 'order_state::second'
+../locklint: lock-order.c:211:31: warning: locklint: lock 'order_state::first' acquired out of declared order while holding 'order_state::second' [declared-order]
 ../locklint: lock-order.c:58:1: locklint: declared order requires 'order_state::first' before 'order_state::second'
 ../locklint: lock-order.c:176:26: locklint: lock acquisition reached through callee 'acquire_before_wrapper'
-../locklint: lock-order.c:227:26: warning: locklint: lock 'mixed_order_state::mutex' acquired out of declared order while holding 'mixed_order_state::rwlock'
+../locklint: lock-order.c:227:26: warning: locklint: lock 'mixed_order_state::mutex' acquired out of declared order while holding 'mixed_order_state::rwlock' [declared-order]
 ../locklint: lock-order.c:67:1: locklint: declared order requires 'mixed_order_state::mutex' before 'mixed_order_state::rwlock'
