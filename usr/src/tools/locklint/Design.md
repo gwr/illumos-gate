@@ -947,6 +947,13 @@ Multiple selected expressions are retained as a comma-expression tree in
 loads, stores, calls, or function arguments.  Locklint flattens that tree
 when applying the transition.
 
+`NOT_REACHED` expands to a tagged context followed by
+`__builtin_unreachable()`.  Sparse lowers the builtin to an `OP_UNREACH`
+terminator, so the marker ends its basic block and contributes no edge or
+state to later blocks.  Code after the marker is omitted from the linearized
+function.  This applies uniformly to lock, competition, visibility,
+acquisition, effect, and diagnostic analysis because they share the same CFG.
+
 The public Sparse pre-buffer facility is usable before
 `sparse_initialize()`.  It previously tokenized added text before
 `init_symbols()` installed canonical keyword identifiers, so a preloaded
@@ -966,8 +973,9 @@ does not infer execution order from source positions.
 
 The shared Sparse changes are limited to deferred pre-buffer tokenization,
 the optional context tag in parsing and IR, preservation and display of that
-tag, and focused generic Sparse validation.  Interpretation of every nonzero
-tag remains with the client that introduced it.
+tag, correct `__builtin_unreachable()` termination, and focused generic
+Sparse validation.  Interpretation of every nonzero tag remains with the
+client that introduced it.
 
 ### State domains
 
@@ -2144,6 +2152,8 @@ The current implementation relies on these invariants:
     cover reader may not.  Covered-lock acquisition requires either cover
     mode, and a call may not return after releasing a cover while retaining a
     covered lock.
+42. `NOT_REACHED` terminates the Sparse basic block, so state from that path is
+    never merged into a successor or return summary.
 
 Changes that invalidate one of these invariants should update this document
 and add a focused regression test.

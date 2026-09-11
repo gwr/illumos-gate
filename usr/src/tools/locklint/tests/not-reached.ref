@@ -1,0 +1,1 @@
+../locklint: not-reached.c:54: warning: locklint: protected member 'value' accessed without holding 'lock' [unprotected-access]

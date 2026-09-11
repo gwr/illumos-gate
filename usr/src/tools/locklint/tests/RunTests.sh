@@ -439,6 +439,18 @@ run_capture "execution markers" visibility-linearized.out \
 grep 'context     ' visibility-linearized.out > visibility-markers.out
 compare "execution markers" visibility-markers.ref visibility-markers.out
 
+run_capture "not reached markers" not-reached-linearized.out \
+    "$LOCKLINT" --dump-annotations --dump-linearized not-reached.c
+grep -E 'context     0, tag 15|unreach' not-reached-linearized.out \
+    > not-reached-markers.out
+compare "not reached markers" not-reached-markers.ref \
+    not-reached-markers.out
+
+run_capture "not reached state" not-reached.raw \
+    "$LOCKLINT" --check-locks not-reached.c
+compare_no_columns "not reached state" not-reached.ref \
+    not-reached.raw not-reached.out
+
 run_capture "local exposure state" visibility-state.out \
     "$LOCKLINT" --check-locks visibility.c
 compare "local exposure state" visibility-state.ref visibility-state.out

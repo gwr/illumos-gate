@@ -210,6 +210,8 @@ execution_kind(const struct token *open)
 		return (LOCKLINT_EXECUTION_LOCK_UPGRADED_EFFECT);
 	if (strcmp(text, "LOCK_DOWNGRADED_AS_SIDE_EFFECT") == 0)
 		return (LOCKLINT_EXECUTION_LOCK_DOWNGRADED_EFFECT);
+	if (strcmp(text, "NOT_REACHED") == 0)
+		return (LOCKLINT_EXECUTION_NOT_REACHED);
 	return (LOCKLINT_EXECUTION_NONE);
 }
 
@@ -256,6 +258,9 @@ locklint_annotations_enable(void)
 	add_pre_buffer("#define ASSUMING_PROTECTED(...) "
 	    "__context__((__VA_ARGS__), 0, %lu);\n",
 	    (unsigned long)LOCKLINT_EXECUTION_ASSUME_PROTECTED);
+	add_pre_buffer("#define NOT_REACHED "
+	    "__context__(0, 0, %lu); __builtin_unreachable();\n",
+	    (unsigned long)LOCKLINT_EXECUTION_NOT_REACHED);
 }
 
 static bool
@@ -1021,6 +1026,7 @@ locklint_get_execution_annotation(const struct instruction *insn)
 	case LOCKLINT_EXECUTION_LOCK_UPGRADED_EFFECT:
 	case LOCKLINT_EXECUTION_LOCK_DOWNGRADED_EFFECT:
 	case LOCKLINT_EXECUTION_ASSERT_NO_COMPETITION:
+	case LOCKLINT_EXECUTION_NOT_REACHED:
 		return ((enum locklint_execution_kind)insn->context_tag);
 	default:
 		return (LOCKLINT_EXECUTION_NONE);

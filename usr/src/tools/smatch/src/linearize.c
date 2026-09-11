@@ -179,6 +179,7 @@ static const char *opcodes[] = {
 	[OP_ENTRY] = "<entry-point>",
 
 	/* Terminator */
+	[OP_UNREACH] = "unreach",
 	[OP_RET] = "ret",
 	[OP_BR] = "br",
 	[OP_CBR] = "cbr",
@@ -1495,7 +1496,7 @@ static pseudo_t linearize_assignment(struct entrypoint *ep, struct expression *e
 static pseudo_t linearize_call_expression(struct entrypoint *ep, struct expression *expr)
 {
 	struct expression *arg, *fn;
-	struct instruction *insn = alloc_typed_instruction(OP_CALL, expr->ctype);
+	struct instruction *insn;
 	pseudo_t retval, call;
 	struct ctype *ctype = NULL;
 	struct symbol *fntype;
@@ -1504,23 +1505,32 @@ static pseudo_t linearize_call_expression(struct entrypoint *ep, struct expressi
 	if (!expr->ctype)
 		return VOID;
 
-	insn->call_expr = expr;
 	fn = expr->fn;
 	fntype = fn->ctype;
 	ctype = &fntype->ctype;
 	if (fntype->type == SYM_NODE)
 		fntype = fntype->ctype.base_type;
 
+	if (fn->type == EXPR_PREOP && fn->op == '*' && is_func_type(fn->ctype))
+		fn = fn->unop;
+
+	if (fn->type == EXPR_SYMBOL && fn->symbol->ident != NULL &&
+	    strcmp(show_ident(fn->symbol->ident),
+	    "__builtin_unreachable") == 0) {
+		insn = alloc_instruction(OP_UNREACH, 0);
+		add_one_insn(ep, insn);
+		finish_block(ep);
+		return VOID;
+	}
+
+	insn = alloc_typed_instruction(OP_CALL, expr->ctype);
+	insn->call_expr = expr;
 	add_symbol(&insn->fntypes, fntype);
 	FOR_EACH_PTR(expr->args, arg) {
 		pseudo_t new = linearize_expression(ep, arg);
 		use_pseudo(insn, new, add_pseudo(&insn->arguments, new));
 		add_symbol(&insn->fntypes, arg->ctype);
 	} END_FOR_EACH_PTR(arg);
-
-	if (fn->type == EXPR_PREOP && fn->op == '*' && is_func_type(fn->ctype))
-		fn = fn->unop;
-
 	if (fn->type == EXPR_SYMBOL) {
 		call = symbol_pseudo(ep, fn->symbol);
 	} else {
