@@ -954,6 +954,13 @@ state to later blocks.  Code after the marker is omitted from the linearized
 function.  This applies uniformly to lock, competition, visibility,
 acquisition, effect, and diagnostic analysis because they share the same CFG.
 
+Sparse also emits `OP_UNREACH` after an ordinary call whose function type has
+the C11 or GNU noreturn modifier.  Locklint therefore gets the same path
+termination from compiler-visible declarations such as illumos `__NORETURN`
+without requiring a LockLint annotation.  The explicit annotation remains
+useful for conditionally non-returning wrappers whose ordinary function type
+cannot express the call-site behavior.
+
 The public Sparse pre-buffer facility is usable before
 `sparse_initialize()`.  It previously tokenized added text before
 `init_symbols()` installed canonical keyword identifiers, so a preloaded
@@ -973,9 +980,9 @@ does not infer execution order from source positions.
 
 The shared Sparse changes are limited to deferred pre-buffer tokenization,
 the optional context tag in parsing and IR, preservation and display of that
-tag, correct `__builtin_unreachable()` termination, and focused generic
-Sparse validation.  Interpretation of every nonzero tag remains with the
-client that introduced it.
+tag, correct `__builtin_unreachable()` and noreturn-call termination, and
+focused generic Sparse validation.  Interpretation of every nonzero tag
+remains with the client that introduced it.
 
 ### State domains
 

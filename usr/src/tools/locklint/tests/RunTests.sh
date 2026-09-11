@@ -451,6 +451,10 @@ run_capture "not reached state" not-reached.raw \
 compare_no_columns "not reached state" not-reached.ref \
     not-reached.raw not-reached.out
 
+run_capture "noreturn calls" noreturn.out \
+    "$LOCKLINT" --check-locks noreturn.c
+require_empty "noreturn calls" noreturn.out
+
 run_capture "local exposure state" visibility-state.out \
     "$LOCKLINT" --check-locks visibility.c
 compare "local exposure state" visibility-state.ref visibility-state.out

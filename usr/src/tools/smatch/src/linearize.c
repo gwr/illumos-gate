@@ -1493,6 +1493,15 @@ static pseudo_t linearize_assignment(struct entrypoint *ep, struct expression *e
 	return value;
 }
 
+static void
+add_unreachable(struct entrypoint *ep)
+{
+	struct instruction *insn = alloc_instruction(OP_UNREACH, 0);
+
+	add_one_insn(ep, insn);
+	finish_block(ep);
+}
+
 static pseudo_t linearize_call_expression(struct entrypoint *ep, struct expression *expr)
 {
 	struct expression *arg, *fn;
@@ -1517,9 +1526,7 @@ static pseudo_t linearize_call_expression(struct entrypoint *ep, struct expressi
 	if (fn->type == EXPR_SYMBOL && fn->symbol->ident != NULL &&
 	    strcmp(show_ident(fn->symbol->ident),
 	    "__builtin_unreachable") == 0) {
-		insn = alloc_instruction(OP_UNREACH, 0);
-		add_one_insn(ep, insn);
-		finish_block(ep);
+		add_unreachable(ep);
 		return VOID;
 	}
 
@@ -1568,6 +1575,8 @@ static pseudo_t linearize_call_expression(struct entrypoint *ep, struct expressi
 		} END_FOR_EACH_PTR(context);
 	}
 
+	if (ctype != NULL && (ctype->modifiers & MOD_NORETURN) != 0)
+		add_unreachable(ep);
 	return retval;
 }
 
