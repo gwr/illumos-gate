@@ -97,9 +97,11 @@ locklint_get_lock_action(struct translation_unit *tu, struct instruction *insn,
 		return (LOCKLINT_LOCK_NONE);
 
 	name = call_name(insn);
-	if (strcmp(name, "mutex_enter") == 0 ||
-	    strcmp(name, "mutex_lock") == 0) {
+	if (strcmp(name, "mutex_enter") == 0) {
 		action = LOCKLINT_LOCK_ACQUIRE;
+		*mode = LOCKLINT_MODE_MUTEX;
+	} else if (strcmp(name, "mutex_lock") == 0) {
+		action = LOCKLINT_LOCK_RESULT_ACQUIRE;
 		*mode = LOCKLINT_MODE_MUTEX;
 	} else if (strcmp(name, "mutex_tryenter") == 0) {
 		action = LOCKLINT_LOCK_TRY_ACQUIRE;
@@ -202,7 +204,8 @@ show_call_event(struct translation_unit *tu, struct instruction *insn)
 
 	(void) snprintf(name, sizeof (name), "%s", call_name(insn));
 	action = locklint_get_lock_action(tu, insn, &access, &mode);
-	if (action == LOCKLINT_LOCK_ACQUIRE) {
+	if (action == LOCKLINT_LOCK_ACQUIRE ||
+	    action == LOCKLINT_LOCK_RESULT_ACQUIRE) {
 		if (mode == LOCKLINT_MODE_READER)
 			event = "ACQUIRE-READ";
 		else if (mode == LOCKLINT_MODE_WRITER)
