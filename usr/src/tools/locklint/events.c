@@ -61,6 +61,28 @@ call_argument(struct instruction *insn, unsigned int index)
 	return (NULL);
 }
 
+/*
+ * Decode the public krw_t constants used by rw_enter() and rw_tryenter().
+ * Both reader variants provide the same ownership mode to locklint.
+ */
+static bool
+call_rw_mode(struct instruction *insn, enum locklint_lock_mode *mode)
+{
+	struct expression *argument = call_argument(insn, 1);
+	unsigned long long value;
+
+	if (argument == NULL || argument->type != EXPR_VALUE)
+		return (false);
+	value = argument->value;
+	if (value == 0)
+		*mode = LOCKLINT_MODE_WRITER;
+	else if (value == 1 || value == 2)
+		*mode = LOCKLINT_MODE_READER;
+	else
+		return (false);
+	return (true);
+}
+
 enum locklint_lock_action
 locklint_get_lock_action(struct translation_unit *tu, struct instruction *insn,
     struct locklint_access *access, enum locklint_lock_mode *mode)
@@ -89,19 +111,13 @@ locklint_get_lock_action(struct translation_unit *tu, struct instruction *insn,
 		action = LOCKLINT_LOCK_ACQUIRE;
 		*mode = LOCKLINT_MODE_WRITER;
 	} else if (strcmp(name, "rw_enter") == 0) {
-		struct expression *rw_mode = call_argument(insn, 1);
-		unsigned long long value;
-
-		if (rw_mode == NULL || rw_mode->type != EXPR_VALUE)
-			return (LOCKLINT_LOCK_NONE);
-		value = rw_mode->value;
-		if (value == 0)
-			*mode = LOCKLINT_MODE_WRITER;
-		else if (value == 1 || value == 2)
-			*mode = LOCKLINT_MODE_READER;
-		else
+		if (!call_rw_mode(insn, mode))
 			return (LOCKLINT_LOCK_NONE);
 		action = LOCKLINT_LOCK_ACQUIRE;
+	} else if (strcmp(name, "rw_tryenter") == 0) {
+		if (!call_rw_mode(insn, mode))
+			return (LOCKLINT_LOCK_NONE);
+		action = LOCKLINT_LOCK_TRY_ACQUIRE;
 	} else if (strcmp(name, "mutex_exit") == 0 ||
 	    strcmp(name, "mutex_unlock") == 0 ||
 	    strcmp(name, "rw_exit") == 0 ||
@@ -197,8 +213,14 @@ show_call_event(struct translation_unit *tu, struct instruction *insn)
 		event = "WAIT";
 	else if (action == LOCKLINT_LOCK_DOWNGRADE)
 		event = "DOWNGRADE";
-	else if (action == LOCKLINT_LOCK_TRY_ACQUIRE)
-		event = "TRY-ACQUIRE";
+	else if (action == LOCKLINT_LOCK_TRY_ACQUIRE) {
+		if (mode == LOCKLINT_MODE_READER)
+			event = "TRY-ACQUIRE-READ";
+		else if (mode == LOCKLINT_MODE_WRITER)
+			event = "TRY-ACQUIRE-WRITE";
+		else
+			event = "TRY-ACQUIRE";
+	}
 	else
 		event = "CALL";
 

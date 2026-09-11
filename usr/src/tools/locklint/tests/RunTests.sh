@@ -340,6 +340,20 @@ require_match "rwlock downgrade event" "DOWNGRADE state.lock" \
 reject_match "rwlock downgrade generic call" "CALL rw_downgrade" \
     rwlock-downgrade-events.out
 
+run_capture "rwlock tryenter state" rwlock-tryenter.raw \
+    "$LOCKLINT" --check-locks rwlock-tryenter.c
+compare_no_columns "rwlock tryenter state" rwlock-tryenter.ref \
+    rwlock-tryenter.raw rwlock-tryenter.out
+
+run_capture "rwlock tryenter events" rwlock-tryenter-events.out \
+    "$LOCKLINT" --dump-events rwlock-tryenter.c
+require_match "rwlock reader tryenter event" \
+    "TRY-ACQUIRE-READ state.first" rwlock-tryenter-events.out
+require_match "rwlock writer tryenter event" \
+    "TRY-ACQUIRE-WRITE state.first" rwlock-tryenter-events.out
+reject_match "rwlock tryenter generic call" "CALL rw_tryenter" \
+    rwlock-tryenter-events.out
+
 run_capture "user rwlock calls" rwlock-calls-user.out \
     "$LOCKLINT" --check-locks rwlock-calls.c
 compare "user rwlock calls" rwlock-calls.ref rwlock-calls-user.out
