@@ -833,6 +833,9 @@ transfer_lock_action(struct function_info *function,
 		set_state(states, &lock, mode);
 	} else if (action == LOCKLINT_LOCK_TRY_ACQUIRE && lock.root != NULL) {
 		set_state(states, &lock, get_state(*states, &lock) | mode);
+	} else if (action == LOCKLINT_LOCK_TRY_ACQUIRE_ZERO &&
+	    lock.root != NULL) {
+		set_state(states, &lock, get_state(*states, &lock) | mode);
 	} else if (action == LOCKLINT_LOCK_TRY_UPGRADE && lock.root != NULL) {
 		lock_state_t state = get_state(*states, &lock);
 
@@ -1044,6 +1047,16 @@ conditional_edge_transition(enum locklint_lock_action action,
 			*state = mode;
 		return (true);
 	}
+	if (action == LOCKLINT_LOCK_TRY_ACQUIRE_ZERO) {
+		if (nonzero) {
+			*state |= mode;
+			return (true);
+		}
+		if (state_definitely_held(*state))
+			return (false);
+		*state = mode;
+		return (true);
+	}
 	return (false);
 }
 
@@ -1081,7 +1094,8 @@ conditional_lock_edge_state(struct function_info *function,
 	action = locklint_get_lock_action(function->tu, try, &lock, &mode);
 	if ((action != LOCKLINT_LOCK_TRY_ACQUIRE &&
 	    action != LOCKLINT_LOCK_TRY_UPGRADE &&
-	    action != LOCKLINT_LOCK_RESULT_ACQUIRE) || lock.root == NULL)
+	    action != LOCKLINT_LOCK_RESULT_ACQUIRE &&
+	    action != LOCKLINT_LOCK_TRY_ACQUIRE_ZERO) || lock.root == NULL)
 		return (NULL);
 	*matched = true;
 
@@ -2833,6 +2847,8 @@ simulate_instruction(struct function_info *function,
 		*state = mode;
 	} else if (action == LOCKLINT_LOCK_TRY_ACQUIRE) {
 		*state |= mode;
+	} else if (action == LOCKLINT_LOCK_TRY_ACQUIRE_ZERO) {
+		*state |= mode;
 	} else if (action == LOCKLINT_LOCK_TRY_UPGRADE) {
 		if ((*state & ~LOCK_READ_HELD) != 0)
 			*invalid |= INVALID_UPGRADE;
@@ -2895,7 +2911,8 @@ simulate_conditional_lock_edge(struct function_info *function,
 	action = locklint_get_lock_action(function->tu, try, &lock, &mode);
 	if ((action != LOCKLINT_LOCK_TRY_ACQUIRE &&
 	    action != LOCKLINT_LOCK_TRY_UPGRADE &&
-	    action != LOCKLINT_LOCK_RESULT_ACQUIRE) ||
+	    action != LOCKLINT_LOCK_RESULT_ACQUIRE &&
+	    action != LOCKLINT_LOCK_TRY_ACQUIRE_ZERO) ||
 	    !transfer_target_matches(target, &lock))
 		return (false);
 
@@ -5856,6 +5873,8 @@ check_lock_action(struct function_info *function,
 		}
 		set_state(&analysis->locks, &lock, mode);
 	} else if (action == LOCKLINT_LOCK_TRY_ACQUIRE) {
+		set_state(&analysis->locks, &lock, state | mode);
+	} else if (action == LOCKLINT_LOCK_TRY_ACQUIRE_ZERO) {
 		set_state(&analysis->locks, &lock, state | mode);
 	} else if (action == LOCKLINT_LOCK_TRY_UPGRADE) {
 		if ((state & LOCK_READ_HELD) == 0 && !defer) {

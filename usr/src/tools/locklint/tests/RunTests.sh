@@ -236,6 +236,18 @@ require_match "mutex lock result acquire event" "ACQUIRE state.first" \
 reject_match "mutex lock result generic call" "CALL mutex_lock" \
     mutex-lock-result-events.out
 
+run_capture "mutex trylock state" mutex-trylock.raw \
+    "$LOCKLINT" --check-locks mutex-trylock.c
+compare_no_columns "mutex trylock state" mutex-trylock.ref \
+    mutex-trylock.raw mutex-trylock.out
+
+run_capture "mutex trylock events" mutex-trylock-events.out \
+    "$LOCKLINT" --dump-events mutex-trylock.c
+require_match "mutex trylock event" "TRY-ACQUIRE state.first" \
+    mutex-trylock-events.out
+reject_match "mutex trylock generic call" "CALL mutex_trylock" \
+    mutex-trylock-events.out
+
 run_capture "same-actual acquisition prefixes" \
     acquisition-prefix-alias-same.raw "$LOCKLINT" \
     -DACQUISITION_PREFIX_ALIAS_VARIANT=1 --check-locks \
