@@ -118,6 +118,9 @@ locklint_get_lock_action(struct translation_unit *tu, struct instruction *insn,
 		if (!call_rw_mode(insn, mode))
 			return (LOCKLINT_LOCK_NONE);
 		action = LOCKLINT_LOCK_TRY_ACQUIRE;
+	} else if (strcmp(name, "rw_tryupgrade") == 0) {
+		action = LOCKLINT_LOCK_TRY_UPGRADE;
+		*mode = LOCKLINT_MODE_WRITER;
 	} else if (strcmp(name, "mutex_exit") == 0 ||
 	    strcmp(name, "mutex_unlock") == 0 ||
 	    strcmp(name, "rw_exit") == 0 ||
@@ -221,6 +224,8 @@ show_call_event(struct translation_unit *tu, struct instruction *insn)
 		else
 			event = "TRY-ACQUIRE";
 	}
+	else if (action == LOCKLINT_LOCK_TRY_UPGRADE)
+		event = "TRY-UPGRADE";
 	else
 		event = "CALL";
 

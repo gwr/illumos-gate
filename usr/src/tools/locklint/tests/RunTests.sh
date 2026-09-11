@@ -354,6 +354,18 @@ require_match "rwlock writer tryenter event" \
 reject_match "rwlock tryenter generic call" "CALL rw_tryenter" \
     rwlock-tryenter-events.out
 
+run_capture "rwlock tryupgrade state" rwlock-tryupgrade.raw \
+    "$LOCKLINT" --check-locks rwlock-tryupgrade.c
+compare_no_columns "rwlock tryupgrade state" rwlock-tryupgrade.ref \
+    rwlock-tryupgrade.raw rwlock-tryupgrade.out
+
+run_capture "rwlock tryupgrade events" rwlock-tryupgrade-events.out \
+    "$LOCKLINT" --dump-events rwlock-tryupgrade.c
+require_match "rwlock tryupgrade event" "TRY-UPGRADE state.first" \
+    rwlock-tryupgrade-events.out
+reject_match "rwlock tryupgrade generic call" "CALL rw_tryupgrade" \
+    rwlock-tryupgrade-events.out
+
 run_capture "user rwlock calls" rwlock-calls-user.out \
     "$LOCKLINT" --check-locks rwlock-calls.c
 compare "user rwlock calls" rwlock-calls.ref rwlock-calls-user.out

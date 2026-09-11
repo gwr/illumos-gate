@@ -64,6 +64,7 @@ enum protection_status {
 #define	INVALID_ACQUIRE	0x1
 #define	INVALID_RELEASE	0x2
 #define	INVALID_DOWNGRADE	0x4
+#define	INVALID_UPGRADE	0x8
 
 struct state_entry {
 	struct locklint_access lock;
@@ -831,6 +832,11 @@ transfer_lock_action(struct function_info *function,
 		set_state(states, &lock, mode);
 	} else if (action == LOCKLINT_LOCK_TRY_ACQUIRE && lock.root != NULL) {
 		set_state(states, &lock, get_state(*states, &lock) | mode);
+	} else if (action == LOCKLINT_LOCK_TRY_UPGRADE && lock.root != NULL) {
+		lock_state_t state = get_state(*states, &lock);
+
+		if ((state & LOCK_READ_HELD) != 0)
+			set_state(states, &lock, state | mode);
 	}
 }
 
@@ -1007,13 +1013,38 @@ transfer_block(struct function_info *function, struct basic_block *bb,
 }
 
 /*
- * Refine a direct try-acquire result on the edge selected by its branch.
+ * Apply the success or failure result of a conditional lock operation.
+ * Returning false identifies a result that is impossible for the input state.
+ */
+static bool
+conditional_edge_transition(enum locklint_lock_action action,
+    enum locklint_lock_mode mode, bool success, lock_state_t *state)
+{
+	if (!success)
+		return (true);
+	if (action == LOCKLINT_LOCK_TRY_ACQUIRE) {
+		if (state_definitely_held(*state))
+			return (false);
+		*state = mode;
+		return (true);
+	}
+	if (action == LOCKLINT_LOCK_TRY_UPGRADE) {
+		if ((*state & LOCK_READ_HELD) == 0)
+			return (false);
+		*state = LOCK_WRITE_HELD;
+		return (true);
+	}
+	return (false);
+}
+
+/*
+ * Refine a direct conditional lock result on its selected branch edge.
  * Sparse normalizes truth, negation, and comparisons with zero so the raw
  * nonzero call result always selects bb_true.  Replaying the block preserves
  * any unrelated state changes between the call and branch.
  */
 static struct analysis_state *
-try_acquire_edge_state(struct function_info *function,
+conditional_lock_edge_state(struct function_info *function,
     struct block_info *parent, struct basic_block *child, bool *matched,
     bool *reachable)
 {
@@ -1038,7 +1069,8 @@ try_acquire_edge_state(struct function_info *function,
 	if (try == NULL || try->bb != parent->bb)
 		return (NULL);
 	action = locklint_get_lock_action(function->tu, try, &lock, &mode);
-	if (action != LOCKLINT_LOCK_TRY_ACQUIRE || lock.root == NULL)
+	if ((action != LOCKLINT_LOCK_TRY_ACQUIRE &&
+	    action != LOCKLINT_LOCK_TRY_UPGRADE) || lock.root == NULL)
 		return (NULL);
 	*matched = true;
 
@@ -1047,15 +1079,15 @@ try_acquire_edge_state(struct function_info *function,
 		if (insn->bb == NULL)
 			continue;
 		if (insn == try) {
-			if (child == branch->bb_true) {
-				if (state_definitely_held(get_state(state->locks,
-				    &lock))) {
-					free_analysis_state(state);
-					*reachable = false;
-					return (NULL);
-				}
-				set_state(&state->locks, &lock, mode);
+			lock_state_t lock_state = get_state(state->locks, &lock);
+
+			if (!conditional_edge_transition(action, mode,
+			    child == branch->bb_true, &lock_state)) {
+				free_analysis_state(state);
+				*reachable = false;
+				return (NULL);
 			}
+			set_state(&state->locks, &lock, lock_state);
 			continue;
 		}
 		transfer_instruction(function, state, insn);
@@ -1083,7 +1115,7 @@ merge_parents(struct function_info *function, struct block_info *blocks,
 			*complete = false;
 			continue;
 		}
-		incoming = try_acquire_edge_state(function, block, bb,
+		incoming = conditional_lock_edge_state(function, block, bb,
 		    &edge_matched, &edge_reachable);
 		if (edge_matched && !edge_reachable)
 			continue;
@@ -2782,6 +2814,11 @@ simulate_instruction(struct function_info *function,
 		*state = mode;
 	} else if (action == LOCKLINT_LOCK_TRY_ACQUIRE) {
 		*state |= mode;
+	} else if (action == LOCKLINT_LOCK_TRY_UPGRADE) {
+		if ((*state & ~LOCK_READ_HELD) != 0)
+			*invalid |= INVALID_UPGRADE;
+		if ((*state & LOCK_READ_HELD) != 0)
+			*state |= LOCK_WRITE_HELD;
 	} else {
 		if ((*state & LOCK_NOT_HELD) != 0)
 			*invalid |= INVALID_RELEASE;
@@ -2808,12 +2845,12 @@ simulate_block(struct function_info *function,
 }
 
 /*
- * Replay one predecessor with a direct try-acquire result fixed by its
+ * Replay one predecessor with a direct conditional lock result fixed by its
  * outgoing branch.  This keeps function transfer tables consistent with the
  * main flow analysis without attaching scalar-result state to every block.
  */
 static bool
-simulate_try_acquire_edge(struct function_info *function,
+simulate_conditional_lock_edge(struct function_info *function,
     struct transfer_block_info *parent, struct basic_block *child,
     const struct transfer_target *target, lock_state_t *state,
     unsigned int *invalid, bool *reachable)
@@ -2837,7 +2874,8 @@ simulate_try_acquire_edge(struct function_info *function,
 	if (try == NULL || try->bb != parent->bb)
 		return (false);
 	action = locklint_get_lock_action(function->tu, try, &lock, &mode);
-	if (action != LOCKLINT_LOCK_TRY_ACQUIRE ||
+	if ((action != LOCKLINT_LOCK_TRY_ACQUIRE &&
+	    action != LOCKLINT_LOCK_TRY_UPGRADE) ||
 	    !transfer_target_matches(target, &lock))
 		return (false);
 
@@ -2847,12 +2885,13 @@ simulate_try_acquire_edge(struct function_info *function,
 		if (insn->bb == NULL)
 			continue;
 		if (insn == try) {
-			if (child == branch->bb_true) {
-				if (state_definitely_held(*state)) {
-					*reachable = false;
-					return (true);
-				}
-				*state = mode;
+			if (action == LOCKLINT_LOCK_TRY_UPGRADE &&
+			    (*state & ~LOCK_READ_HELD) != 0)
+				*invalid |= INVALID_UPGRADE;
+			if (!conditional_edge_transition(action, mode,
+			    child == branch->bb_true, state)) {
+				*reachable = false;
+				return (true);
 			}
 			continue;
 		}
@@ -2905,7 +2944,7 @@ solve_transfer_blocks(struct function_info *function,
 						unsigned int edge_invalid;
 						bool edge_reachable;
 
-						if (simulate_try_acquire_edge(
+						if (simulate_conditional_lock_edge(
 						    function, parent_block,
 						    block->bb, target,
 						    &edge_state,
@@ -5635,6 +5674,12 @@ check_call(struct function_info *function,
 				    show_ident(callee->ep->name->ident),
 				    lock_name(&lock));
 			}
+			if (!defer && (invalid & INVALID_UPGRADE) != 0) {
+				warning(pos, "locklint: call to '%s' may upgrade "
+				    "lock '%s' that is not read-held",
+				    show_ident(callee->ep->name->ident),
+				    lock_name(&lock));
+			}
 			set_state(&analysis->locks, &lock,
 			    transfer->output[state]);
 			goto lock_transfers_done;
@@ -5676,6 +5721,14 @@ check_call(struct function_info *function,
 				warning(pos, "locklint: call to '%s' may "
 				    "downgrade lock '%s' that is not "
 				    "write-held",
+				    show_ident(callee->ep->name->ident),
+				    lock_name(&group->lock));
+			}
+			if (!defer &&
+			    (invalid & INVALID_UPGRADE) != 0) {
+				warning(pos, "locklint: call to '%s' may "
+				    "upgrade lock '%s' that is not "
+				    "read-held",
 				    show_ident(callee->ep->name->ident),
 				    lock_name(&group->lock));
 			}
@@ -5778,6 +5831,17 @@ check_lock_action(struct function_info *function,
 		set_state(&analysis->locks, &lock, mode);
 	} else if (action == LOCKLINT_LOCK_TRY_ACQUIRE) {
 		set_state(&analysis->locks, &lock, state | mode);
+	} else if (action == LOCKLINT_LOCK_TRY_UPGRADE) {
+		if ((state & LOCK_READ_HELD) == 0 && !defer) {
+			warning(pos, "locklint: lock '%s' is not read-held",
+			    lock_name(&lock));
+		} else if ((state & ~LOCK_READ_HELD) != 0 && !defer) {
+			warning(pos, "locklint: lock '%s' may not be read-held",
+			    lock_name(&lock));
+		}
+		if ((state & LOCK_READ_HELD) != 0)
+			set_state(&analysis->locks, &lock,
+			    state | LOCK_WRITE_HELD);
 	} else {
 		if (state == LOCK_NOT_HELD && !defer) {
 			warning(pos, "locklint: lock '%s' is not held",
