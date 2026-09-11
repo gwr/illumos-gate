@@ -51,6 +51,7 @@ enum annotation_kind {
 	ANNOTATION_SCHEME_PROTECTS_DATA,
 	ANNOTATION_DATA_READABLE_WITHOUT_LOCK,
 	ANNOTATION_READ_ONLY_DATA,
+	ANNOTATION_RWLOCK_COVERS_LOCKS,
 	ANNOTATION_LOCK_ORDER
 };
 
@@ -544,6 +545,8 @@ parse_annotation(struct annotation *annotation)
 		annotation->kind = ANNOTATION_DATA_READABLE_WITHOUT_LOCK;
 	} else if (token_is(cursor, "READ_ONLY_DATA")) {
 		annotation->kind = ANNOTATION_READ_ONLY_DATA;
+	} else if (token_is(cursor, "RWLOCK_COVERS_LOCKS")) {
+		annotation->kind = ANNOTATION_RWLOCK_COVERS_LOCKS;
 	} else if (token_is(cursor, "LOCK_ORDER")) {
 		annotation->kind = ANNOTATION_LOCK_ORDER;
 	} else {
@@ -558,14 +561,25 @@ parse_annotation(struct annotation *annotation)
 	switch (annotation->kind) {
 	case ANNOTATION_MUTEX_PROTECTS_DATA:
 	case ANNOTATION_RWLOCK_PROTECTS_DATA:
+	case ANNOTATION_RWLOCK_COVERS_LOCKS:
 		if (!parse_name(annotation, &cursor, &lock, &tail))
 			return (false);
 		if (lock->next != NULL) {
-			return (annotation_error(annotation, cursor,
-			    annotation->kind ==
-			    ANNOTATION_MUTEX_PROTECTS_DATA ?
-			    "MUTEX_PROTECTS_DATA requires one lock name" :
-			    "RWLOCK_PROTECTS_DATA requires one lock name"));
+			const char *message;
+
+			if (annotation->kind ==
+			    ANNOTATION_MUTEX_PROTECTS_DATA) {
+				message =
+				    "MUTEX_PROTECTS_DATA requires one lock name";
+			} else if (annotation->kind ==
+			    ANNOTATION_RWLOCK_PROTECTS_DATA) {
+				message =
+				    "RWLOCK_PROTECTS_DATA requires one lock name";
+			} else {
+				message =
+				    "RWLOCK_COVERS_LOCKS requires one cover lock";
+			}
+			return (annotation_error(annotation, cursor, message));
 		}
 		if (!token_is(cursor, ","))
 			return (annotation_error(annotation, cursor,
@@ -965,11 +979,15 @@ locklint_resolve_annotations(void)
 		    annotation->tu))
 			continue;
 		for (ref = annotation->data; ref != NULL; ref = ref->next) {
-			if (!resolve_annotation_ref(ref, false, annotation->tu))
+			if (!resolve_annotation_ref(ref,
+			    annotation->kind == ANNOTATION_RWLOCK_COVERS_LOCKS,
+			    annotation->tu))
 				break;
 		}
 		if (ref == NULL) {
-			expand_data_refs(annotation);
+			if (annotation->kind !=
+			    ANNOTATION_RWLOCK_COVERS_LOCKS)
+				expand_data_refs(annotation);
 			if (annotation->kind ==
 			    ANNOTATION_MUTEX_PROTECTS_DATA ||
 			    annotation->kind ==
@@ -1132,6 +1150,66 @@ matching_data_ref(const struct annotation_ref *ref,
 	return (true);
 }
 
+static void
+annotation_ref_access(const struct annotation_ref *ref,
+    struct locklint_access *access)
+{
+	*access = (struct locklint_access){ 0 };
+	access->root = ref->root;
+	access->object = ref->object;
+	access->type = ref->owner_type;
+	access->member = ref->member;
+	access->offset = ref->offset;
+}
+
+bool
+locklint_get_covering_lock(const struct locklint_access *covered,
+    struct locklint_access *cover)
+{
+	struct annotation *annotation;
+
+	for (annotation = annotations; annotation != NULL;
+	    annotation = annotation->next) {
+		struct annotation_ref *ref;
+
+		if (!annotation->resolved ||
+		    annotation->kind != ANNOTATION_RWLOCK_COVERS_LOCKS)
+			continue;
+		for (ref = annotation->data; ref != NULL; ref = ref->next) {
+			unsigned long base;
+
+			if (!matching_data_ref(ref, covered, &base))
+				continue;
+			annotation_ref_access(annotation->lock, cover);
+			return (true);
+		}
+	}
+	return (false);
+}
+
+bool
+locklint_lock_covers(const struct locklint_access *cover,
+    const struct locklint_access *covered)
+{
+	struct annotation *annotation;
+
+	for (annotation = annotations; annotation != NULL;
+	    annotation = annotation->next) {
+		struct annotation_ref *ref;
+		unsigned long base;
+
+		if (!annotation->resolved ||
+		    annotation->kind != ANNOTATION_RWLOCK_COVERS_LOCKS ||
+		    !matching_data_ref(annotation->lock, cover, &base))
+			continue;
+		for (ref = annotation->data; ref != NULL; ref = ref->next) {
+			if (matching_data_ref(ref, covered, &base))
+				return (true);
+		}
+	}
+	return (false);
+}
+
 /*
  * Combine all matching policy dimensions.  The last mechanical or scheme
  * declaration wins; unlocked-read and read-only properties are additive.
@@ -1153,6 +1231,8 @@ locklint_data_policy(const struct locklint_access *access,
 		struct annotation_ref *ref;
 
 		if (!annotation->resolved)
+			continue;
+		if (annotation->kind == ANNOTATION_RWLOCK_COVERS_LOCKS)
 			continue;
 		for (ref = annotation->data; ref != NULL; ref = ref->next) {
 			unsigned long base;
@@ -1312,6 +1392,8 @@ annotation_kind_name(enum annotation_kind kind)
 		return ("DATA_READABLE_WITHOUT_LOCK");
 	case ANNOTATION_READ_ONLY_DATA:
 		return ("READ_ONLY_DATA");
+	case ANNOTATION_RWLOCK_COVERS_LOCKS:
+		return ("RWLOCK_COVERS_LOCKS");
 	case ANNOTATION_LOCK_ORDER:
 		return ("LOCK_ORDER");
 	default:
@@ -1358,7 +1440,9 @@ locklint_show_annotations(FILE *stream)
 			if (annotation->kind ==
 			    ANNOTATION_MUTEX_PROTECTS_DATA ||
 			    annotation->kind ==
-			    ANNOTATION_RWLOCK_PROTECTS_DATA) {
+			    ANNOTATION_RWLOCK_PROTECTS_DATA ||
+			    annotation->kind ==
+			    ANNOTATION_RWLOCK_COVERS_LOCKS) {
 				show_annotation_ref(stream, annotation->lock);
 				(void) fputs(" -> ", stream);
 			} else if (annotation->kind ==

@@ -1,0 +1,7 @@
+../locklint: rwlock-covers-locks.c:78: warning: locklint: protected member 'value' accessed without holding 'inner' [unprotected-access]
+../locklint: rwlock-covers-locks.c:103: warning: locklint: lock 'inner' acquired without read-holding covering rwlock 'cover' [covered-lock-without-cover]
+../locklint: rwlock-covers-locks.c:112: warning: locklint: covering rwlock 'cover' released while covered lock 'inner' is held [cover-released-while-covered]
+../locklint: rwlock-covers-locks.c:144: warning: locklint: lock 'inner' acquired without read-holding covering rwlock 'cover' [covered-lock-without-cover]
+../locklint: rwlock-covers-locks.c:160: warning: locklint: covering rwlock 'cover' released while covered lock 'inner' is held [cover-released-while-covered]
+../locklint: rwlock-covers-locks.c:182: warning: locklint: call to 'write_value' accesses protected member 'value' without holding 'inner' [unprotected-access]
+../locklint: rwlock-covers-locks.c:201: warning: locklint: lock 'absolute_inner' acquired without read-holding covering rwlock 'absolute_cover' [covered-lock-without-cover]

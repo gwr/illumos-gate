@@ -235,6 +235,8 @@ struct mapped_lock_transfer {
 	struct locklint_access lock;
 	unsigned int role_count;
 	struct mapped_transfer_role *roles;
+	lock_state_t input;
+	lock_state_t output;
 	struct mapped_lock_transfer *next;
 };
 
@@ -2432,6 +2434,90 @@ assumed_protected(const struct function_info *function,
 }
 
 static enum protection_status
+covering_lock_status(const struct analysis_state *state,
+    const struct locklint_access *covered, unsigned int required_modes)
+{
+	const struct state_entry *entry;
+	bool partial = false;
+
+	for (entry = state->locks; entry != NULL; entry = entry->next) {
+		if (!locklint_lock_covers(&entry->lock, covered))
+			continue;
+		if (state_satisfies_modes(entry->state, required_modes))
+			return (PROTECTION_DEFINITE);
+		if ((entry->state & required_modes) != 0)
+			partial = true;
+	}
+	return (partial ? PROTECTION_PATH_DEPENDENT : PROTECTION_ABSENT);
+}
+
+static void
+check_covered_acquisition(struct function_info *function,
+    const struct analysis_state *state, const struct locklint_access *covered,
+    struct position pos, bool possible)
+{
+	struct locklint_access cover;
+	enum protection_status status;
+
+	if (!locklint_get_covering_lock(covered, &cover))
+		return;
+	status = covering_lock_status(state, covered,
+	    LOCK_READ_HELD | LOCK_WRITE_HELD);
+	if (status == PROTECTION_DEFINITE ||
+	    defer_lock_diagnostics(function, covered))
+		return;
+	if (status == PROTECTION_PATH_DEPENDENT || possible) {
+		locklint_warning(
+		    LOCKLINT_DIAG_COVERED_LOCK_MAYBE_WITHOUT_COVER, pos,
+		    "lock '%s' may be acquired without read-holding "
+		    "covering rwlock '%s'", lock_name(covered),
+		    lock_name(&cover));
+	} else {
+		locklint_warning(LOCKLINT_DIAG_COVERED_LOCK_WITHOUT_COVER, pos,
+		    "lock '%s' acquired without read-holding covering "
+		    "rwlock '%s'", lock_name(covered), lock_name(&cover));
+	}
+}
+
+static void
+check_cover_release(const struct analysis_state *state,
+    const struct locklint_access *cover, struct position pos, bool possible)
+{
+	const struct state_entry *entry;
+
+	for (entry = state->locks; entry != NULL; entry = entry->next) {
+		if ((entry->state & LOCK_ANY_HELD) == 0 ||
+		    !locklint_lock_covers(cover, &entry->lock))
+			continue;
+		if (!state_definitely_held(entry->state) || possible) {
+			locklint_warning(
+			    LOCKLINT_DIAG_COVER_MAYBE_RELEASED_WHILE_COVERED,
+			    pos, "covering rwlock '%s' may be released while "
+			    "covered lock '%s' is held", lock_name(cover),
+			    lock_name(&entry->lock));
+		} else {
+			locklint_warning(
+			    LOCKLINT_DIAG_COVER_RELEASED_WHILE_COVERED, pos,
+			    "covering rwlock '%s' released while covered "
+			    "lock '%s' is held", lock_name(cover),
+			    lock_name(&entry->lock));
+		}
+	}
+}
+
+static void
+check_call_cover_release(const struct analysis_state *state,
+    const struct locklint_access *cover, lock_state_t input,
+    lock_state_t output, struct position pos)
+{
+	if ((input & LOCK_ANY_HELD) == 0 ||
+	    (output & LOCK_NOT_HELD) == 0)
+		return;
+	check_cover_release(state, cover, pos,
+	    !state_definitely_held(input) || (output & LOCK_ANY_HELD) != 0);
+}
+
+static enum protection_status
 get_protection_status(const struct function_info *function,
     const struct analysis_state *state,
     const struct locklint_access *object, unsigned int required_modes,
@@ -2439,6 +2525,9 @@ get_protection_status(const struct function_info *function,
 {
 	lock_state_t lock_state = required_modes != 0 ?
 	    get_state(state->locks, lock) : LOCK_NOT_HELD;
+	enum protection_status cover_status = required_modes != 0 ?
+	    covering_lock_status(state, lock, LOCK_WRITE_HELD) :
+	    PROTECTION_ABSENT;
 	enum visibility_state visibility =
 	    get_visibility(state->visibility, object);
 	bool lock_definite = (lock_state & required_modes) != 0 &&
@@ -2448,10 +2537,12 @@ get_protection_status(const struct function_info *function,
 
 	if (assumed_protected(function, object) ||
 	    lock_definite ||
+	    cover_status == PROTECTION_DEFINITE ||
 	    visibility == VISIBILITY_INVISIBLE ||
 	    competition_absent(&state->competition))
 		return (PROTECTION_DEFINITE);
 	if (lock_partial ||
+	    cover_status == PROTECTION_PATH_DEPENDENT ||
 	    visibility == VISIBILITY_MAYBE ||
 	    (state->competition.path_dependent &&
 	    !competition_present(&state->competition)))
@@ -5143,6 +5234,8 @@ check_call_acquisitions(struct function_info *function,
 		if (!map_acquisition_role(function, insn, &summary->acquired,
 		    &acquired))
 			continue;
+		check_covered_acquisition(function, analysis, &acquired, pos,
+		    false);
 		for (held = analysis->locks; held != NULL; held = held->next) {
 			const struct position *held_pos;
 			lock_state_t state;
@@ -5739,15 +5832,17 @@ check_call(struct function_info *function,
 		    callee->transfers->next == NULL) {
 			struct lock_transfer *transfer = callee->transfers;
 			struct locklint_access lock;
-			lock_state_t state;
+			lock_state_t input;
+			lock_state_t output;
 			unsigned int invalid;
 			bool defer;
 
 			if (!map_acquisition_role(function, insn,
 			    &transfer->role, &lock))
 				goto lock_transfers_done;
-			state = get_state(analysis->locks, &lock);
-			invalid = transfer->invalid[state];
+			input = get_state(analysis->locks, &lock);
+			output = transfer->output[input];
+			invalid = transfer->invalid[input];
 			defer = defer_lock_diagnostics(function, &lock);
 			if (!defer && (invalid & INVALID_ACQUIRE) != 0) {
 				locklint_warning(
@@ -5781,27 +5876,31 @@ check_call(struct function_info *function,
 				    show_ident(callee->ep->name->ident),
 				    lock_name(&lock));
 			}
-			set_state(&analysis->locks, &lock,
-			    transfer->output[state]);
+			check_call_cover_release(analysis, &lock, input, output,
+			    pos);
+			set_state(&analysis->locks, &lock, output);
 			goto lock_transfers_done;
 		}
 		mapped = map_call_lock_transfers(function, insn, callee);
 		for (group = mapped; group != NULL; group = group->next) {
 			unsigned int invalid;
-			lock_state_t state;
+			lock_state_t input;
+			lock_state_t output;
 			bool defer;
 
-			state = get_state(analysis->locks, &group->lock);
+			input = get_state(analysis->locks, &group->lock);
 			if (group->role_count == 1) {
 				struct lock_transfer *transfer =
 				    group->roles->transfer;
 
-				invalid = transfer->invalid[state];
-				state = transfer->output[state];
+				invalid = transfer->invalid[input];
+				output = transfer->output[input];
 			} else {
-				state = simulate_aliased_transfer(callee,
-				    group->roles, state, &invalid);
+				output = simulate_aliased_transfer(callee,
+				    group->roles, input, &invalid);
 			}
+			group->input = input;
+			group->output = output;
 			defer = defer_lock_diagnostics(function, &group->lock);
 			if (!defer &&
 			    (invalid & INVALID_ACQUIRE) != 0) {
@@ -5841,7 +5940,11 @@ check_call(struct function_info *function,
 				    show_ident(callee->ep->name->ident),
 				    lock_name(&group->lock));
 			}
-			set_state(&analysis->locks, &group->lock, state);
+			set_state(&analysis->locks, &group->lock, output);
+		}
+		for (group = mapped; group != NULL; group = group->next) {
+			check_call_cover_release(analysis, &group->lock,
+			    group->input, group->output, pos);
 		}
 		free_mapped_lock_transfers(mapped);
 lock_transfers_done:
@@ -5894,6 +5997,17 @@ check_lock_action(struct function_info *function,
 	state = get_state(analysis->locks, &lock);
 	defer = defer_lock_diagnostics(function, &lock);
 	pos = insn->call_expr != NULL ? insn->call_expr->pos : insn->pos;
+	if (action == LOCKLINT_LOCK_ACQUIRE ||
+	    action == LOCKLINT_LOCK_RESULT_ACQUIRE) {
+		check_covered_acquisition(function, analysis, &lock, pos, false);
+	} else if (action == LOCKLINT_LOCK_TRY_ACQUIRE ||
+	    action == LOCKLINT_LOCK_TRY_ACQUIRE_ZERO) {
+		check_covered_acquisition(function, analysis, &lock, pos, true);
+	} else if (action == LOCKLINT_LOCK_RELEASE &&
+	    (state & LOCK_ANY_HELD) != 0) {
+		check_cover_release(analysis, &lock, pos,
+		    !state_definitely_held(state));
+	}
 	if (action == LOCKLINT_LOCK_ACQUIRE ||
 	    action == LOCKLINT_LOCK_RESULT_ACQUIRE ||
 	    action == LOCKLINT_LOCK_WAIT) {

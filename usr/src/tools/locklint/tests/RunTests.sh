@@ -184,6 +184,11 @@ run_capture "lock order annotations" lock-order-annotations.out \
 compare "lock order annotations" lock-order-annotations.ref \
     lock-order-annotations.out
 
+run_capture "rwlock coverage annotations" rwlock-covers-locks-annotations.out \
+    "$LOCKLINT" --dump-annotations rwlock-covers-locks.c
+compare "rwlock coverage annotations" rwlock-covers-locks-annotations.ref \
+    rwlock-covers-locks-annotations.out
+
 run_failure "lock order annotation errors" lock-order-errors.out \
     "$LOCKLINT" --dump-annotations lock-order-errors.c
 require_match "lock order minimum names" \
@@ -413,6 +418,11 @@ compare "user rwlock calls" rwlock-calls.ref rwlock-calls-user.out
 run_capture "kernel rwlock calls" rwlock-calls-kernel.out \
     "$LOCKLINT" -D_KERNEL --check-locks rwlock-calls.c
 compare "kernel rwlock calls" rwlock-calls.ref rwlock-calls-kernel.out
+
+run_capture "rwlock coverage" rwlock-covers-locks.raw \
+    "$LOCKLINT" --check-locks rwlock-covers-locks.c
+compare_no_columns "rwlock coverage" rwlock-covers-locks.ref \
+    rwlock-covers-locks.raw rwlock-covers-locks.out
 
 #
 # Verify structure-valued mutexes retain whole-object lock identity.

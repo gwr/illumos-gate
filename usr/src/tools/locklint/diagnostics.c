@@ -30,6 +30,14 @@ static const char *const diagnostic_names[LOCKLINT_DIAG_COUNT] = {
 	[LOCKLINT_DIAG_CONDITIONAL_ASSERTED_LOCK_REQUIREMENT] =
 	    "conditional-asserted-lock-requirement",
 	[LOCKLINT_DIAG_CONDITIONAL_PROTECTION] = "conditional-protection",
+	[LOCKLINT_DIAG_COVER_MAYBE_RELEASED_WHILE_COVERED] =
+	    "cover-maybe-released-while-covered",
+	[LOCKLINT_DIAG_COVER_RELEASED_WHILE_COVERED] =
+	    "cover-released-while-covered",
+	[LOCKLINT_DIAG_COVERED_LOCK_MAYBE_WITHOUT_COVER] =
+	    "covered-lock-maybe-without-cover",
+	[LOCKLINT_DIAG_COVERED_LOCK_WITHOUT_COVER] =
+	    "covered-lock-without-cover",
 	[LOCKLINT_DIAG_DECLARED_COMPETITION_EFFECT] =
 	    "declared-competition-effect",
 	[LOCKLINT_DIAG_DECLARED_LOCK_EFFECT] = "declared-lock-effect",

@@ -794,6 +794,7 @@ The parser accepts:
 The data-policy parser recognizes:
 
 - `MUTEX_PROTECTS_DATA(lock, names)`;
+- `RWLOCK_COVERS_LOCKS(rwlock, locks)`;
 - `SCHEME_PROTECTS_DATA("description", names)`;
 - `DATA_READABLE_WITHOUT_LOCK(names)`; and
 - `READ_ONLY_DATA(names)`.
@@ -802,6 +803,13 @@ The scheme description must be one quoted string.  It is explanatory text
 rather than a mechanically checkable lock expression.  All four forms use
 the same object/type name resolution and aggregate expansion for their data
 lists.
+
+`RWLOCK_COVERS_LOCKS` uses the same object/type name resolution for both
+endpoints, but its second argument is a list of lock roles rather than data.
+Those roles are not recursively expanded.  Object-scoped relationships match
+canonical lock identity.  Type-scoped cover and covered roles match
+independently by owner type and member, so the held cover need not belong to
+the same structure instance as the acquired covered lock.
 
 ### Resolution and expansion
 
@@ -1236,7 +1244,17 @@ Instruction transfer order is:
 
 Definite mutex ownership satisfies mutex-protected access.  Definite reader or
 writer ownership satisfies an rwlock-protected read, while only definite
-writer ownership satisfies a write.
+writer ownership satisfies a write.  A writer-held rwlock declared to cover
+the required lock also satisfies access protection; reader ownership of the
+cover does not.
+
+Acquiring a lock named by `RWLOCK_COVERS_LOCKS` requires a matching cover role
+held for reading or writing.  This is checked for direct acquisitions and
+mapped acquisition summaries, so the requirement propagates through
+wrappers.  Releasing a cover while a covered lock remains held is diagnosed
+for direct releases and mapped lock effects.  Grouped call effects are all
+applied before the release invariant is checked, so a covered lock released
+by the same call is not mistaken for remaining held.
 
 ### Condition waits
 
@@ -2122,6 +2140,10 @@ The current implementation relies on these invariants:
     observed order edges.
 40. Every primary locklint warning carries one stable diagnostic identifier;
     supporting `info()` provenance does not carry an independent identifier.
+41. A cover writer may substitute for a covered lock's data protection; a
+    cover reader may not.  Covered-lock acquisition requires either cover
+    mode, and a call may not return after releasing a cover while retaining a
+    covered lock.
 
 Changes that invalidate one of these invariants should update this document
 and add a focused regression test.
