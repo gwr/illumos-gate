@@ -33,6 +33,7 @@ cd "$MODULE_DIR" || exit 1
 SUNPRO_BIN=${SUNPRO_BIN:-/ws/onnv-tools/SUNWspro/SS12u1/bin}
 CC="$SUNPRO_BIN/cc"
 LOCK_LINT="$SUNPRO_BIN/lock_lint"
+SSBD_INCLUDE="$SUNPRO_BIN/../prod/include/cc/ssbd"
 ANALYZE_RAW="$WORK_DIR/analyze.raw"
 FUNCTIONS_RAW="$WORK_DIR/functions.raw"
 OSLL_ROOTS='
@@ -51,9 +52,6 @@ wscons.c:wc_modechg_cb
 vcons.c:vc_avl_compare
 '
 OSLL_ADAPTER_ROOTS='
-:_init
-:_fini
-:_info
 wscons.c:wc_attach
 wscons.c:wc_info
 wscons.c:wcuwsrv
@@ -130,6 +128,30 @@ run_load()
 }
 
 #
+# An ordinary source-tree include path finds the no-op sys/note.h before
+# SunPro's LockLint annotation header.  Verify that the databases retained a
+# known source annotation so an accidentally annotation-free run cannot pass
+# merely because its actionable reference is empty.
+#
+verify_source_annotations()
+{
+	typeset output
+
+	output=$("$LOCK_LINT" vars -a vc_state::vc_flags 2>&1)
+	status=$?
+	if [[ "$status" -ne 0 ]] ||
+	    ! print -- "$output" | grep -q \
+	    '^vc_state::vc_flags[[:space:]].*assert=vc_state::vc_state_lock$'
+	then
+		print -u2 "OSLL did not retain the vc_flags protection annotation"
+		if [[ -n "$output" ]]; then
+			print -u2 -- "$output"
+		fi
+		return 1
+	fi
+}
+
+#
 # Reduce OSLL output to actionable diagnostics.  Root guidance and calls to
 # unmodeled external functions are outside this module's locking semantics.
 #
@@ -192,6 +214,8 @@ run_session()
 
 	run_load "$OSLL_WSCONS_LL" no || exit $?
 	run_load "$OSLL_VCONS_LL" yes || exit $?
+	run_load "$OSLL_ADAPTER_LL" no || exit $?
+	verify_source_annotations || exit $?
 
 	for root in $OSLL_ROOTS
 	do
@@ -244,6 +268,10 @@ if [[ ! -x "$LOCK_LINT" ]]; then
 	print -u2 "OSLL command not found: $LOCK_LINT"
 	exit 1
 fi
+if [[ ! -d "$SSBD_INCLUDE/sys" ]]; then
+	print -u2 "OSLL annotation headers not found: $SSBD_INCLUDE"
+	exit 1
+fi
 
 if [[ -e wscons.ll || -e vcons.ll ]]; then
 	print -u2 "wc module directory already contains an OSLL database"
@@ -255,8 +283,8 @@ rm -f "$ANALYZE_RAW" "$FUNCTIONS_RAW"
 
 #
 # Keep the common native compiler arguments in one place.  The source and
-# object-output arguments are supplied separately so cc -Zll leaves the two
-# databases in this directory as wscons.ll and vcons.ll.
+# object-output arguments are supplied separately so cc -Zll leaves each
+# database in this directory.
 #
 compile_source()
 {
@@ -268,7 +296,8 @@ compile_source()
 	    -Wu,-save_args -errtags=yes \
 	    -D_KERNEL -D_SYSCALL32 -D_SYSCALL32_IMPL -D_ELF64 \
 	    -D_DDI_STRICT -Dsun -D__sun -D__SVR4 -DDEBUG \
-	    -I"$SRC/uts/intel" -I"$SRC/uts/common" "$source"
+	    -I"$SSBD_INCLUDE" -I"$SRC/uts/intel" -I"$SRC/uts/common" \
+	    "$source"
 	status=$?
 	if [[ -f "$database" ]]; then
 		mv "$database" "$WORK_DIR/$database" || return 1
@@ -278,7 +307,9 @@ compile_source()
 
 print "Compiling wc sources for OSLL"
 compile_source ../../common/io/wscons.c wscons.ll &&
-    compile_source ../../common/io/vcons.c vcons.ll
+    compile_source ../../common/io/vcons.c vcons.ll &&
+    compile_source "$SCRIPT_DIR/check-kmod-wc-adapter.c" \
+    check-kmod-wc-adapter.ll
 compile_status=$?
 if [[ "$compile_status" -ne 0 ]]; then
 	print -u2 "OSLL compilation failed"
@@ -287,14 +318,17 @@ fi
 
 OSLL_WSCONS_LL="$WORK_DIR/wscons.ll"
 OSLL_VCONS_LL="$WORK_DIR/vcons.ll"
-if [[ ! -f "$OSLL_WSCONS_LL" || ! -f "$OSLL_VCONS_LL" ]]; then
-	print -u2 "OSLL compilation did not create wscons.ll and vcons.ll"
+OSLL_ADAPTER_LL="$WORK_DIR/check-kmod-wc-adapter.ll"
+if [[ ! -f "$OSLL_WSCONS_LL" || ! -f "$OSLL_VCONS_LL" ||
+    ! -f "$OSLL_ADAPTER_LL" ]]; then
+	print -u2 "OSLL compilation did not create all expected databases"
 	exit 1
 fi
 
 OSLL_SESSION_MODE=1
 TMPDIR="$WORK_DIR"
-export SRC OSLL_SESSION_MODE OSLL_WSCONS_LL OSLL_VCONS_LL TMPDIR
+export SRC OSLL_SESSION_MODE OSLL_WSCONS_LL OSLL_VCONS_LL OSLL_ADAPTER_LL
+export TMPDIR
 
 print "Running OSLL over wc"
 "$LOCK_LINT" start "$SCRIPT"
