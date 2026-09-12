@@ -290,6 +290,17 @@ calls are associated with the matching definition according to the same C
 linkage boundaries, but object and function records are not forced into a
 common abstraction.
 
+A GNU-semantics `extern inline` body is a translation-unit implementation, not
+an emitted external definition.  Sparse records the translation unit that
+created every symbol and preserves whether a function body has GNU
+extern-inline semantics.  Direct calls may resolve to the caller's
+translation-unit implementation.  Function values instead resolve to the
+single ordinary external definition, when the analyzed module contains one;
+locklint does not invent an emitted function from an inline-only body.
+Repeated GNU extern-inline bodies do not conflict across translation units,
+while two bodies in one translation unit remain invalid.  Zero or one
+ordinary external definition may accompany the inline implementations.
+
 ### Headers and semantic duplication
 
 Sparse preprocesses a header in the context of each translation unit that
@@ -308,8 +319,9 @@ translation units:
   may later be interned as complete access identities;
 - equivalent resolved protection relations may share one semantic relation
   while retaining all source origins; and
-- a function definition and summary are stored once even when several
-  translation units contain declarations for that function.
+- an ordinary external function definition and summary are stored once even
+  when several translation units contain declarations for that function;
+  GNU extern-inline implementations retain distinct translation-unit bodies.
 
 Type-scoped annotations and compound types initially remain
 translation-unit-local.  C structure and union tags do not have linker
@@ -2112,8 +2124,9 @@ The current implementation relies on these invariants:
     condition.
 13. Interprocedural lock, competition, and visibility effects and protection
     conditions reach fixed points before diagnostics are emitted.
-14. Multiple external function definitions with one identifier are ambiguous,
-    not arbitrarily selected.
+14. Multiple emitted external function definitions with one identifier are
+    ambiguous, not arbitrarily selected.  GNU extern-inline implementations
+    are translation-unit bodies and do not count as emitted definitions.
 15. A later protection declaration replaces an earlier relation for the same
     resolved datum.
 16. Protection mechanism, unlocked-read permission, and read-only status are

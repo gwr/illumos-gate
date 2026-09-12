@@ -69,6 +69,7 @@ struct function_record {
 	bool has_nonself_caller;
 	bool has_exact_escape;
 	bool internal_linkage;
+	bool inline_implementation;
 	bool identity_lower_bound;
 	unsigned int identity_sequence;
 	avl_node_t by_entrypoint;
@@ -583,6 +584,8 @@ callgraph_add(struct translation_unit *tu, struct entrypoint *ep)
 	function->info.ep = ep;
 	function->internal_linkage =
 	    (ep->name->ctype.modifiers & MOD_STATIC) != 0;
+	function->inline_implementation =
+	    ep->name->gnu_inline;
 	if (++next_function_identity_sequence == 0)
 		die("too many functions for identity index");
 	function->identity_sequence = next_function_identity_sequence;
@@ -645,27 +648,34 @@ static struct function_record *
 find_external_function(struct symbol *symbol, bool *ambiguous)
 {
 	struct function_record *function;
-	struct function_record *next;
+	struct function_record *match = NULL;
 
 	*ambiguous = false;
 	if (symbol->ident == NULL ||
 	    (symbol->ctype.modifiers & MOD_STATIC) != 0)
 		return (NULL);
+	/*
+	 * External records sort before internal records and then by identifier,
+	 * so all emitted definitions for this name form one contiguous range.
+	 */
 	function = find_identity_function(NULL, symbol, false);
-	if (function == NULL)
-		return (NULL);
-	next = AVL_NEXT(&functions_by_identity, function);
-	if (next != NULL && !next->internal_linkage &&
-	    same_ident(symbol->ident, next->info.ep->name->ident)) {
-		*ambiguous = true;
-		return (NULL);
+	for (; function != NULL && !function->internal_linkage &&
+	    same_ident(symbol->ident, function->info.ep->name->ident);
+	    function = AVL_NEXT(&functions_by_identity, function)) {
+		if (function->inline_implementation)
+			continue;
+		if (match != NULL) {
+			*ambiguous = true;
+			return (NULL);
+		}
+		match = function;
 	}
-	return (function);
+	return (match);
 }
 
 static struct function_info *
 resolve_function_symbol(struct translation_unit *tu, struct symbol *symbol,
-    bool *ambiguous)
+    bool use_inline_implementation, bool *ambiguous)
 {
 	struct function_record *function;
 
@@ -678,11 +688,17 @@ resolve_function_symbol(struct translation_unit *tu, struct symbol *symbol,
 	 */
 	if (function != NULL && locklint_symbol_can_use_internal(symbol))
 		return (&function->info);
-	if (symbol->ep == NULL && symbol->definition != NULL)
+	if (symbol->ep == NULL && symbol->definition != NULL &&
+	    (use_inline_implementation ||
+	    !symbol->definition->gnu_inline))
 		symbol = symbol->definition;
 	if (symbol->ep != NULL) {
 		function = find_function(symbol->ep);
-		return (function != NULL ? &function->info : NULL);
+		if (function != NULL && (use_inline_implementation ||
+		    !function->inline_implementation) &&
+		    (!function->inline_implementation ||
+		    function->info.tu == tu))
+			return (&function->info);
 	}
 	function = find_external_function(symbol, ambiguous);
 	return (function != NULL ? &function->info : NULL);
@@ -699,7 +715,7 @@ resolve_function_escapes(void)
 		bool ambiguous;
 
 		escape->target = resolve_function_symbol(escape->tu,
-		    escape->symbol, &ambiguous);
+		    escape->symbol, false, &ambiguous);
 		if (escape->target == NULL)
 			continue;
 		target = function_record(escape->target);
@@ -723,7 +739,7 @@ resolve_indirect_targets(void)
 		if (entry->ambiguous)
 			continue;
 		entry->target = resolve_function_symbol(entry->tu, entry->symbol,
-		    &ambiguous);
+		    false, &ambiguous);
 		if (ambiguous) {
 			entry->ambiguous = true;
 			continue;
@@ -745,7 +761,7 @@ direct_callee(const struct function_info *caller,
 	    insn->func->type != PSEUDO_SYM || insn->func->sym == NULL)
 		return (NULL);
 	return (resolve_function_symbol(caller->tu, insn->func->sym,
-	    &ambiguous));
+	    true, &ambiguous));
 }
 
 static struct function_info *
@@ -789,7 +805,7 @@ ambiguous_callee_impl(const struct function_info *caller,
 	    insn->func->type != PSEUDO_SYM || insn->func->sym == NULL)
 		return (false);
 	function = resolve_function_symbol(caller->tu, insn->func->sym,
-	    &ambiguous);
+	    true, &ambiguous);
 	return (function == NULL && ambiguous);
 }
 
@@ -863,9 +879,11 @@ classify_roots(void)
 		unsigned long modifiers =
 		    function->info.ep->name->ctype.modifiers;
 
-		if (!function->internal_linkage)
+		if (!function->internal_linkage &&
+		    !function->inline_implementation)
 			function->info.root_reasons |= FUNCTION_ROOT_EXTERNAL;
-		if (!function->has_nonself_caller)
+		if (!function->has_nonself_caller &&
+		    !function->inline_implementation)
 			function->info.root_reasons |=
 			    FUNCTION_ROOT_NO_DIRECT_CALLER;
 		/*

@@ -1,0 +1,16 @@
+function gnu_extern_inline_first tu=gnu-extern-inline-first.c definition=gnu-extern-inline-first.c:20:1 linkage=internal reachable=yes
+  root no-known-direct-caller
+function gnu_extern_inline_target tu=gnu-extern-inline-first.c definition=gnu-extern-inline.h:25:1 linkage=external reachable=no
+function gnu_extern_inline_second tu=gnu-extern-inline-second.c definition=gnu-extern-inline-second.c:20:1 linkage=internal reachable=yes
+  root no-known-direct-caller
+function gnu_extern_inline_target tu=gnu-extern-inline-second.c definition=gnu-extern-inline.h:25:1 linkage=external reachable=no
+function gnu_extern_inline_target tu=gnu-extern-inline-external.c definition=gnu-extern-inline-external.c:20:1 linkage=external reachable=yes
+  root external-linkage
+  root no-known-direct-caller
+  root function-pointer-escape
+escapes
+  escape gnu-extern-inline-first.c:28:5 gnu_extern_inline_target resolved gnu_extern_inline_target tu=gnu-extern-inline-external.c
+  escape gnu-extern-inline-second.c:28:5 gnu_extern_inline_target resolved gnu_extern_inline_target tu=gnu-extern-inline-external.c
+pointer activity
+  store gnu-extern-inline-first.c:27:12 gnu_extern_inline_first_pointer
+  store gnu-extern-inline-second.c:27:12 gnu_extern_inline_second_pointer

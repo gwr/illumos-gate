@@ -1,0 +1,7 @@
+function gnu_extern_inline_no_external tu=gnu-extern-inline-no-external.c definition=gnu-extern-inline-no-external.c:21:1 linkage=internal reachable=yes
+  root no-known-direct-caller
+function gnu_extern_inline_target tu=gnu-extern-inline-no-external.c definition=gnu-extern-inline.h:25:1 linkage=external reachable=no
+escapes
+  escape gnu-extern-inline-no-external.c:29:5 gnu_extern_inline_target unresolved
+pointer activity
+  store gnu-extern-inline-no-external.c:28:12 gnu_extern_inline_unresolved_pointer

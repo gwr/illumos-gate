@@ -624,6 +624,69 @@ compare "ambiguous call callgraph" ambiguous-call-callgraph.ref \
     ambiguous-call-callgraph.out
 
 #
+# Verify that GNU extern-inline bodies belong to their including translation
+# units and do not compete with each other or one emitted external definition.
+#
+run_capture "GNU extern inline implementations" \
+    gnu-extern-inline-callgraph.out \
+    "$LOCKLINT" --dump-callgraph gnu-extern-inline-first.c \
+    gnu-extern-inline-second.c gnu-extern-inline-external.c
+compare "GNU extern inline implementations" \
+    gnu-extern-inline-callgraph.ref gnu-extern-inline-callgraph.out
+
+run_capture "GNU extern inline reversed input order" \
+    gnu-extern-inline-reversed.out \
+    "$LOCKLINT" --dump-callgraph gnu-extern-inline-external.c \
+    gnu-extern-inline-first.c gnu-extern-inline-second.c
+reject_match "GNU extern inline reversed first implementation" \
+    "call gnu-extern-inline-first.c:22:41" \
+    gnu-extern-inline-reversed.out
+reject_match "GNU extern inline reversed second implementation" \
+    "call gnu-extern-inline-second.c:22:41" \
+    gnu-extern-inline-reversed.out
+require_match "GNU extern inline reversed first escape" \
+    "escape gnu-extern-inline-first.c:28:5.*tu=gnu-extern-inline-external.c" \
+    gnu-extern-inline-reversed.out
+require_match "GNU extern inline reversed second escape" \
+    "escape gnu-extern-inline-second.c:28:5.*tu=gnu-extern-inline-external.c" \
+    gnu-extern-inline-reversed.out
+
+run_capture "GNU extern inline bodies" gnu-extern-inline-linearized.out \
+    "$LOCKLINT" --dump-linearized gnu-extern-inline-first.c \
+    gnu-extern-inline-second.c gnu-extern-inline-external.c
+require_match "GNU extern inline first body" 'ret.32      $1' \
+    gnu-extern-inline-linearized.out
+require_match "GNU extern inline second body" 'ret.32      $2' \
+    gnu-extern-inline-linearized.out
+require_match "GNU extern inline external body" 'ret.32      $3' \
+    gnu-extern-inline-linearized.out
+
+run_capture "GNU extern inline direct only" \
+    gnu-extern-inline-direct-only.out \
+    "$LOCKLINT" --dump-linearized gnu-extern-inline-direct-only.c
+require_match "GNU extern inline direct-only implementation" \
+    'ret.32      $5' gnu-extern-inline-direct-only.out
+
+run_capture "GNU extern inline body first" \
+    gnu-extern-inline-body-first.out \
+    "$LOCKLINT" --dump-linearized gnu-extern-inline-body-first.c
+require_match "GNU extern inline body-first implementation" \
+    'ret.32      $6' gnu-extern-inline-body-first.out
+
+run_capture "forced GNU extern inline" gnu-extern-inline-forced.out \
+    "$LOCKLINT" --dump-linearized -include gnu-extern-inline-forced.h \
+    gnu-extern-inline-forced.c
+require_match "forced GNU extern inline implementation" \
+    'ret.32      $7' gnu-extern-inline-forced.out
+
+run_capture "GNU extern inline without external definition" \
+    gnu-extern-inline-no-external.out \
+    "$LOCKLINT" --dump-callgraph gnu-extern-inline-no-external.c
+compare "GNU extern inline without external definition" \
+    gnu-extern-inline-no-external.ref \
+    gnu-extern-inline-no-external.out
+
+#
 # Verify external object and member identity across translation units.
 #
 run_capture "external objects" external-objects.raw \
