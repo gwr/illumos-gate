@@ -1666,6 +1666,7 @@ struct symbol_list * sparse_keep_tokens(char *filename)
 	/* Clear previous symbol list */
 	translation_unit_used_list = NULL;
 
+	sparse_new_translation_unit();
 	new_file_scope();
 	res = sparse_file(filename);
 

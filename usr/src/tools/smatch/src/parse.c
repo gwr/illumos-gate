@@ -82,7 +82,7 @@ typedef struct token *attr_t(struct token *, struct symbol *,
 
 static attr_t
 	attribute_packed, attribute_aligned, attribute_modifier,
-	attribute_ext_visible,
+	attribute_ext_visible, attribute_gnu_inline,
 	attribute_bitwise,
 	attribute_address_space, attribute_context,
 	attribute_designated_init,
@@ -378,6 +378,10 @@ static struct symbol_op ext_visible_op = {
 	.attribute = attribute_ext_visible,
 };
 
+static struct symbol_op gnu_inline_op = {
+	.attribute = attribute_gnu_inline,
+};
+
 static struct symbol_op attr_bitwise_op = {
 	.attribute = attribute_bitwise,
 };
@@ -567,6 +571,8 @@ static struct init_keyword {
 	{"const",	NS_KEYWORD,	MOD_PURE,	.op = &attr_mod_op },
 	{"__const",	NS_KEYWORD,	MOD_PURE,	.op = &attr_mod_op },
 	{"__const__",	NS_KEYWORD,	MOD_PURE,	.op = &attr_mod_op },
+	{"gnu_inline",	NS_KEYWORD,	.op = &gnu_inline_op },
+	{"__gnu_inline__", NS_KEYWORD,	.op = &gnu_inline_op },
 	{"externally_visible",	NS_KEYWORD,	.op = &ext_visible_op },
 	{"__externally_visible__",	NS_KEYWORD,	.op = &ext_visible_op },
 
@@ -1123,6 +1129,13 @@ static struct token *attribute_modifier(struct token *token, struct symbol *attr
 static struct token *attribute_ext_visible(struct token *token, struct symbol *attr, struct decl_state *ctx)
 {
 	ctx->is_ext_visible = 1;
+	return token;
+}
+
+static struct token *attribute_gnu_inline(struct token *token,
+	struct symbol *attr, struct decl_state *ctx)
+{
+	ctx->is_gnu_inline = 1;
 	return token;
 }
 
@@ -2825,6 +2838,7 @@ static struct token *parse_function_body(struct token *token, struct symbol *dec
 	struct statement *stmt, **p;
 	struct symbol *prev;
 	struct symbol *arg;
+	int extern_inline;
 
 	old_symbol_list = function_symbol_list;
 	if (decl->ctype.modifiers & MOD_INLINE) {
@@ -2841,8 +2855,27 @@ static struct token *parse_function_body(struct token *token, struct symbol *dec
 		if (Wexternal_function_has_definition)
 			warning(decl->pos, "function '%s' with external linkage has definition", show_ident(decl->ident));
 	}
+	extern_inline =
+	    (decl->ctype.modifiers & (MOD_EXTERN | MOD_INLINE | MOD_STATIC)) ==
+	    (MOD_EXTERN | MOD_INLINE);
 	if (!(decl->ctype.modifiers & MOD_STATIC))
 		decl->ctype.modifiers |= MOD_EXTERN;
+	if (extern_inline) {
+		struct symbol *previous;
+
+		if (standard < STANDARD_C99)
+			decl->gnu_inline = 1;
+		for (previous = decl->same_symbol; previous != NULL;
+		    previous = previous->same_symbol) {
+			if (previous->translation_unit ==
+			    decl->translation_unit && previous->gnu_inline) {
+				decl->gnu_inline = 1;
+				break;
+			}
+		}
+	} else {
+		decl->gnu_inline = 0;
+	}
 
 	stmt = start_function(decl);
 
@@ -2858,7 +2891,7 @@ static struct token *parse_function_body(struct token *token, struct symbol *dec
 	if (!(decl->ctype.modifiers & MOD_INLINE))
 		add_symbol(list, decl);
 	else if (is_syscall(decl)) {
-	    add_symbol(list, decl);
+		add_symbol(list, decl);
 	    /*
 	    printf("parse.c decl: %s\n", decl->ident->name);
 	    char *macro = get_macro_name(decl->pos);
@@ -2867,17 +2900,28 @@ static struct token *parse_function_body(struct token *token, struct symbol *dec
 	}
 	check_declaration(decl);
 	decl->definition = decl;
-	prev = decl->same_symbol;
-	if (prev && prev->definition) {
+	for (prev = decl->same_symbol; prev; prev = prev->same_symbol) {
+		struct symbol *definition = prev->definition;
+
+		if (!definition || definition == decl)
+			continue;
+		if (decl->gnu_inline != definition->gnu_inline)
+			continue;
+		if (decl->gnu_inline &&
+		    decl->translation_unit != definition->translation_unit)
+			continue;
 		warning(decl->pos, "multiple definitions for function '%s'",
 			show_ident(decl->ident));
-		info(prev->definition->pos, " the previous one is here");
-	} else {
-		while (prev) {
-			rebind_scope(prev, decl->scope);
+		info(definition->pos, " the previous one is here");
+		break;
+	}
+	for (prev = decl->same_symbol; prev; prev = prev->same_symbol) {
+		if (prev->translation_unit != decl->translation_unit)
+			continue;
+		rebind_scope(prev, decl->scope);
+		if (prev->definition == NULL ||
+		    prev->definition->translation_unit != decl->translation_unit)
 			prev->definition = decl;
-			prev = prev->same_symbol;
-		}
 	}
 	function_symbol_list = old_symbol_list;
 	if (function_computed_goto_list) {
@@ -2986,6 +3030,7 @@ struct token *external_declaration(struct token *token, struct symbol_list **lis
 	struct ctype saved;
 	struct symbol *base_type;
 	unsigned long mod;
+	unsigned char saved_gnu_inline;
 	int is_typedef;
 
 	if (match_ident(token, &_Pragma_ident))
@@ -3010,12 +3055,14 @@ struct token *external_declaration(struct token *token, struct symbol_list **lis
 	}
 
 	saved = ctx.ctype;
+	saved_gnu_inline = ctx.is_gnu_inline;
 	token = declarator(token, &ctx);
 	token = handle_attributes(token, &ctx, KW_ATTRIBUTE | KW_ASM);
 	apply_modifiers(token->pos, &ctx);
 
 	decl->ctype = ctx.ctype;
 	decl->ctype.modifiers |= mod;
+	decl->gnu_inline = ctx.is_gnu_inline;
 	decl->endpos = token->pos;
 
 	/* Just a type declaration? */
@@ -3105,12 +3152,14 @@ struct token *external_declaration(struct token *token, struct symbol_list **lis
 		ident = NULL;
 		decl = alloc_symbol(token->pos, SYM_NODE);
 		ctx.ctype = saved;
+		ctx.is_gnu_inline = saved_gnu_inline;
 		token = handle_attributes(token, &ctx, KW_ATTRIBUTE);
 		token = declarator(token, &ctx);
 		token = handle_attributes(token, &ctx, KW_ATTRIBUTE | KW_ASM);
 		apply_modifiers(token->pos, &ctx);
 		decl->ctype = ctx.ctype;
 		decl->ctype.modifiers |= mod;
+		decl->gnu_inline = ctx.is_gnu_inline;
 		decl->endpos = token->pos;
 		if (!ident) {
 			sparse_error(token->pos, "expected identifier name in type definition");

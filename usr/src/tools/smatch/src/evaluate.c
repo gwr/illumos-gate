@@ -3107,6 +3107,7 @@ static int evaluate_symbol_call(struct expression *expr)
 {
 	struct expression *fn = expr->fn;
 	struct symbol *ctype = fn->ctype;
+	struct symbol *definition;
 
 	if (fn->type != EXPR_PREOP)
 		return 0;
@@ -3114,6 +3115,12 @@ static int evaluate_symbol_call(struct expression *expr)
 	if (ctype->op && ctype->op->evaluate)
 		return ctype->op->evaluate(expr);
 
+	definition = ctype->definition;
+	if (!(ctype->ctype.modifiers & MOD_INLINE) &&
+	    definition != NULL && definition->gnu_inline &&
+	    (definition->translation_unit == 0 ||
+	    definition->translation_unit == ctype->translation_unit))
+		ctype = definition;
 	if (ctype->ctype.modifiers & MOD_INLINE) {
 		int ret;
 		struct symbol *curr = current_fn;
@@ -3124,6 +3131,8 @@ static int evaluate_symbol_call(struct expression *expr)
 		current_fn = ctype->ctype.base_type;
 
 		ret = inline_function(expr, ctype);
+		if (!ret)
+			access_symbol(ctype);
 
 		/* restore the old function */
 		current_fn = curr;

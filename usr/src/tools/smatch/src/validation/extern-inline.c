@@ -1,4 +1,4 @@
-extern __inline__ int f(int);
+extern int f(int);
 
 extern __inline__ int
 f(int x)
@@ -8,7 +8,7 @@ f(int x)
 
 extern int g(int);
 
-extern __inline__ int
+extern __inline__ __attribute__((__gnu_inline__)) int
 g(int x)
 {
         return x;
@@ -16,8 +16,10 @@ g(int x)
 
 
 /*
- * check-name: extern inline function
+ * check-name: GNU extern inline across translation units
  * check-command: sparse $file $file
- * check-description: Extern inline function never emits stand alone copy
- * of the function. It allows multiple such definitions in different file.
+ * check-description: A GNU extern-inline body is a translation-unit inline
+ * implementation, not an emitted external definition.  Repeating the body
+ * in another translation unit is valid and must remain type-compatible with
+ * its ordinary external prototype.
  */

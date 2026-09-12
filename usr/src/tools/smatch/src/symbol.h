@@ -110,7 +110,7 @@ struct decl_state {
 	struct ident **ident;
 	struct symbol_op *mode;
 	unsigned char prefer_abstract, is_inline, storage_class, is_tls;
-	unsigned char is_ext_visible;
+	unsigned char is_ext_visible, is_gnu_inline;
 };
 
 struct symbol_op {
@@ -139,6 +139,8 @@ struct symbol {
 	enum type type:8;
 	enum namespace namespace:9;
 	unsigned char used:1, attr:2, enum_member:1, bound:1;
+	unsigned char gnu_inline:1;	/* extern-inline implementation only */
+	unsigned int translation_unit;	/* one sparse() parse occurrence */
 	struct position pos;		/* Where this symbol was declared */
 	struct position endpos;		/* Where this symbol ends*/
 	struct ident *ident;		/* What identifier this symbol is associated with */
@@ -248,7 +250,8 @@ struct symbol {
 #define MOD_LONG_ALL	(MOD_LONG | MOD_LONGLONG | MOD_LONGLONGLONG)
 #define MOD_SPECIFIER	(MOD_CHAR | MOD_SHORT | MOD_LONG_ALL | MOD_SIGNEDNESS)
 #define MOD_SIZE	(MOD_CHAR | MOD_SHORT | MOD_LONG_ALL)
-#define MOD_IGNORE	(MOD_STORAGE | MOD_ACCESS | MOD_USERTYPE | MOD_EXPLICITLY_SIGNED | MOD_EXT_VISIBLE)
+#define MOD_IGNORE	(MOD_STORAGE | MOD_ACCESS | MOD_USERTYPE | \
+			 MOD_EXPLICITLY_SIGNED | MOD_EXT_VISIBLE)
 #define	MOD_QUALIFIER	(MOD_CONST | MOD_VOLATILE | MOD_RESTRICT | MOD_ATOMIC)
 #define MOD_PTRINHERIT	(MOD_QUALIFIER | MOD_NODEREF | MOD_NORETURN | MOD_NOCAST)
 /* modifiers preserved by typeof() operator */
@@ -309,6 +312,7 @@ extern void declare_builtins(void);
 extern void init_ctype(void);
 extern void init_target(void);
 extern struct symbol *alloc_symbol(struct position, int type);
+extern void sparse_new_translation_unit(void);
 extern void show_type(struct symbol *);
 extern const char *modifier_string(unsigned long mod);
 extern void show_symbol(struct symbol *);

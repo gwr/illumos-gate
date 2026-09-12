@@ -74,10 +74,24 @@ struct context *alloc_context(void)
 	return __alloc_context(0);
 }
 
+static unsigned int current_translation_unit;
+
+/*
+ * Give every explicit input parse a distinct owner.  Header source positions
+ * can repeat across inputs, so positions alone cannot distinguish definitions.
+ */
+void
+sparse_new_translation_unit(void)
+{
+	if (++current_translation_unit == 0)
+		die("too many translation units");
+}
+
 struct symbol *alloc_symbol(struct position pos, int type)
 {
 	struct symbol *sym = __alloc_symbol(0);
 	sym->type = type;
+	sym->translation_unit = current_translation_unit;
 	sym->pos = pos;
 	sym->endpos.type = 0;
 	return sym;
