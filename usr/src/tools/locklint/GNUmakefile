@@ -12,6 +12,8 @@
 #
 
 PROG = locklint
+CMD_PARSE_TEST = command_parse_test
+CMD_PARSE_TEST_OBJS = command_parse.o command_parse_test.o
 SPARSE = ../smatch/src
 
 CC ?= cc
@@ -80,6 +82,12 @@ $(PROG): $(OBJS)
 $(LOCAL_OBJS): %.o: %.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
 
+command_parse.o: command_parse.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
+
+command_parse_test.o: command_parse_test.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
+
 %.o: $(SPARSE)/%.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
 
@@ -93,9 +101,16 @@ hashtable.o: $(SPARSE)/cwchash/hashtable.c
 version.h:
 	@printf '%s\n' '#define SPARSE_VERSION "locklint prototype"' > $@
 
+$(CMD_PARSE_TEST): $(CMD_PARSE_TEST_OBJS)
+	$(CC) $(LDFLAGS) -o $@ $(CMD_PARSE_TEST_OBJS) $(LDLIBS)
+
 test: $(PROG)
 	(cd tests && ./RunTests.sh)
 
+test_cmd: $(CMD_PARSE_TEST)
+	./$(CMD_PARSE_TEST) $(CMD_PARSE_TEST).in
+
 clean:
-	rm -f $(OBJS) version.h $(PROG)
+	rm -f $(OBJS) $(CMD_PARSE_TEST_OBJS) version.h $(PROG) \
+	    $(CMD_PARSE_TEST)
 	rm -f tests/*.out tests/*.raw

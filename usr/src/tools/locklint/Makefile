@@ -38,6 +38,9 @@ CERRWARN += -_gcc=-Wno-implicit-fallthrough
 # not linted
 SMATCH=off
 
+CMD_PARSE_TEST = command_parse_test
+CMD_PARSE_TEST_OBJS = command_parse.o command_parse_test.o
+
 SPARSE_OBJS = \
 	allocate.o \
 	builtin.o \
@@ -116,11 +119,22 @@ lib.o := CPPFLAGS += -Dinit_include_path=locklint_init_include_path
 version.h:
 	echo '#define SPARSE_VERSION "$(SPARSE_VERSION)"' > $@
 
+$(CMD_PARSE_TEST): $(CMD_PARSE_TEST_OBJS)
+	$(LINK.c) $(CMD_PARSE_TEST_OBJS) -o $@ $(LDLIBS)
+	$(POST_PROCESS)
+
+command_parse_test.o: command_parse_test.c
+	$(COMPILE.c) -o $@ $<
+
 test: $(PROG)
 	(cd tests && ./RunTests.sh)
 
+test_cmd: $(CMD_PARSE_TEST)
+	./$(CMD_PARSE_TEST) $(CMD_PARSE_TEST).in
+
 clean: FRC
-	$(RM) -f $(OBJS) version.h $(PROG)
+	$(RM) -f $(OBJS) $(CMD_PARSE_TEST_OBJS) version.h $(PROG) \
+	    $(CMD_PARSE_TEST)
 	$(RM) -f tests/*.out tests/*.raw
 
 FRC:
