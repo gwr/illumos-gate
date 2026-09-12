@@ -240,6 +240,13 @@ main(int argc, char **argv)
 		locklint_assertions_enable();
 	do_output = 0;
 	/*
+	 * Sparse's default warning cap is useful for broad checker runs.
+	 * Locklint diagnostics are a correctness result, so they must be
+	 * complete by default.  sparse_initialize() may still replace this
+	 * value when the user explicitly supplies -fmax-warnings.
+	 */
+	fmax_warnings = ~0U;
+	/*
 	 * Sparse parses predefined and command-line-included source before the
 	 * explicit inputs.  Give records captured there stable provenance, and
 	 * resolve their names while that initialization namespace is current.
