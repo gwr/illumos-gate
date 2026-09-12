@@ -28,6 +28,8 @@
 #include "expression.h"
 #include "identity.h"
 #include "linearize.h"
+#include "parse.h"
+#include "scope.h"
 #include "symbol.h"
 #include "token.h"
 
@@ -633,6 +635,136 @@ resolve_type(const char *name)
 	return (type);
 }
 
+static struct symbol *strip_node_type(struct symbol *);
+
+static bool
+position_before(struct position left, struct position right)
+{
+	if (left.stream != right.stream)
+		return (false);
+	if (left.line != right.line)
+		return (left.line < right.line);
+	return (left.pos < right.pos);
+}
+
+static bool
+position_in_range(struct position pos, struct position start,
+    struct position end)
+{
+	return (pos.stream == start.stream && end.stream == start.stream &&
+	    !position_before(pos, start) && !position_before(end, pos));
+}
+
+static void
+find_local_in_statement(struct statement *stmt, struct ident *ident,
+    struct position pos, struct symbol **result)
+{
+	struct statement *child;
+	struct symbol *symbol;
+
+	if (stmt == NULL)
+		return;
+
+	switch (stmt->type) {
+	case STMT_COMPOUND:
+		if (!position_in_range(pos, stmt->pos, stmt->endpos))
+			return;
+		FOR_EACH_PTR(stmt->stmts, child) {
+			if (child->type == STMT_DECLARATION &&
+			    !position_before(pos, child->pos)) {
+				FOR_EACH_PTR(child->declaration, symbol) {
+					if (symbol->namespace == NS_SYMBOL &&
+					    symbol->ident == ident)
+						*result = symbol;
+				} END_FOR_EACH_PTR(symbol);
+			}
+			find_local_in_statement(child, ident, pos, result);
+		} END_FOR_EACH_PTR(child);
+		break;
+	case STMT_IF:
+		find_local_in_statement(stmt->if_true, ident, pos, result);
+		find_local_in_statement(stmt->if_false, ident, pos, result);
+		break;
+	case STMT_ITERATOR:
+		if (!position_in_range(pos, stmt->pos, stmt->endpos))
+			return;
+		FOR_EACH_PTR(stmt->iterator_syms, symbol) {
+			if (symbol->namespace == NS_SYMBOL &&
+			    symbol->ident == ident)
+				*result = symbol;
+		} END_FOR_EACH_PTR(symbol);
+		find_local_in_statement(stmt->iterator_pre_statement, ident, pos,
+		    result);
+		find_local_in_statement(stmt->iterator_statement, ident, pos,
+		    result);
+		find_local_in_statement(stmt->iterator_post_statement, ident, pos,
+		    result);
+		break;
+	case STMT_SWITCH:
+		find_local_in_statement(stmt->switch_statement, ident, pos,
+		    result);
+		break;
+	case STMT_CASE:
+		find_local_in_statement(stmt->case_statement, ident, pos, result);
+		break;
+	case STMT_LABEL:
+		find_local_in_statement(stmt->label_statement, ident, pos, result);
+		break;
+	default:
+		break;
+	}
+}
+
+/*
+ * Recover the declaration visible at an annotation within a function body.
+ * Sparse removes block declarations from identifier lookup after parsing,
+ * but retains them in the function AST.
+ */
+static struct symbol *
+resolve_local_in_functions(struct symbol_list *symbols, struct ident *ident,
+    struct position pos)
+{
+	struct symbol *function;
+
+	FOR_EACH_PTR(symbols, function) {
+		struct symbol *argument;
+		struct symbol *local = NULL;
+		struct symbol *type = strip_node_type(function->ctype.base_type);
+		struct statement *body;
+
+		if (type == NULL || type->type != SYM_FN)
+			continue;
+		body = type->stmt != NULL ? type->stmt : type->inline_stmt;
+		if (body == NULL ||
+		    !position_in_range(pos, body->pos, body->endpos))
+			continue;
+		FOR_EACH_PTR(type->arguments, argument) {
+			if (argument->namespace == NS_SYMBOL &&
+			    argument->ident == ident)
+				local = argument;
+		} END_FOR_EACH_PTR(argument);
+		find_local_in_statement(body, ident, pos, &local);
+		if (local != NULL)
+			return (local);
+	} END_FOR_EACH_PTR(function);
+	return (NULL);
+}
+
+static struct symbol *
+resolve_local(struct symbol_list *symbols, struct ident *ident,
+    struct position pos)
+{
+	struct symbol *local;
+
+	local = resolve_local_in_functions(symbols, ident, pos);
+	if (local == NULL)
+		local = resolve_local_in_functions(file_scope->symbols, ident, pos);
+	if (local == NULL)
+		local = resolve_local_in_functions(global_scope->symbols, ident,
+		    pos);
+	return (local);
+}
+
 static struct symbol *
 strip_node_type(struct symbol *type)
 {
@@ -729,7 +861,7 @@ resolve_path(struct annotation_ref *ref, struct symbol *type)
  */
 static bool
 resolve_annotation_ref(struct annotation_ref *ref, bool lock,
-    struct translation_unit *tu)
+    struct translation_unit *tu, struct symbol_list *symbols)
 {
 	struct ident *ident = built_in_ident(ref->base_name);
 	struct symbol *base;
@@ -737,7 +869,9 @@ resolve_annotation_ref(struct annotation_ref *ref, bool lock,
 	if (ref->scope == ANNOTATION_TYPE) {
 		base = resolve_type(ref->base_name);
 	} else {
-		base = lookup_symbol(ident, NS_SYMBOL);
+		base = resolve_local(symbols, ident, ref->pos);
+		if (base == NULL)
+			base = lookup_symbol(ident, NS_SYMBOL);
 		if (base == NULL && ref->scope == ANNOTATION_AUTO) {
 			base = resolve_type(ref->base_name);
 			if (base != NULL)
@@ -955,7 +1089,7 @@ record_replacements(struct annotation *annotation)
  * translation unit is still current.
  */
 void
-locklint_resolve_annotations(void)
+locklint_resolve_annotations(struct symbol_list *symbols)
 {
 	struct annotation *annotation;
 
@@ -972,7 +1106,7 @@ locklint_resolve_annotations(void)
 			for (ref = annotation->order; ref != NULL;
 			    ref = ref->next) {
 				if (!resolve_annotation_ref(ref, true,
-				    annotation->tu))
+				    annotation->tu, symbols))
 					break;
 			}
 			if (ref == NULL)
@@ -981,12 +1115,12 @@ locklint_resolve_annotations(void)
 		}
 		if (annotation->lock != NULL &&
 		    !resolve_annotation_ref(annotation->lock, true,
-		    annotation->tu))
+		    annotation->tu, symbols))
 			continue;
 		for (ref = annotation->data; ref != NULL; ref = ref->next) {
 			if (!resolve_annotation_ref(ref,
 			    annotation->kind == ANNOTATION_RWLOCK_COVERS_LOCKS,
-			    annotation->tu))
+			    annotation->tu, symbols))
 				break;
 		}
 		if (ref == NULL) {

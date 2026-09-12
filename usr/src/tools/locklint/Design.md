@@ -835,6 +835,15 @@ Resolution performs these steps:
 6. Record applicable overlaps with earlier resolved data references.
 7. Mark the annotation resolved only if every required name succeeded.
 
+Object names inside a function first use the lexical scope at the annotation
+position.  Sparse removes block declarations from active identifier lookup
+after parsing, so locklint searches retained function declarations instead.
+Compound statements retain their closing source position, allowing lookup to
+consider only declarations in the innermost active block and its enclosing
+blocks.  If no visible local or parameter matches, resolution continues with
+the translation unit's file-scope objects and then, for automatic names,
+structure or union types.
+
 Anonymous aggregate carriers are transparent during recursive expansion.
 Named leaf members inherit the accumulated offset.
 

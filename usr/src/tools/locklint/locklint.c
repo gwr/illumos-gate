@@ -258,7 +258,7 @@ main(int argc, char **argv)
 		    "declarations are not supported");
 	locklint_translation_unit_register(tu, symbols);
 	if (dump_annotations || dump_events || check_locks)
-		locklint_resolve_annotations();
+		locklint_resolve_annotations(symbols);
 	if (check_locks || dump_callgraph)
 		callgraph_record_pointer_evidence(tu, symbols,
 		    dump_callgraph);
@@ -274,7 +274,7 @@ main(int argc, char **argv)
 		symbols = sparse(file);
 		locklint_translation_unit_register(tu, symbols);
 		if (dump_annotations || dump_events || check_locks)
-			locklint_resolve_annotations();
+			locklint_resolve_annotations(symbols);
 		if (check_locks || dump_callgraph)
 			callgraph_record_pointer_evidence(tu, symbols,
 			    dump_callgraph);

@@ -24,6 +24,7 @@ struct entrypoint;
 struct instruction;
 struct position;
 struct symbol;
+struct symbol_list;
 
 enum locklint_protection {
 	LOCKLINT_PROTECTION_NONE,
@@ -86,7 +87,7 @@ bool locklint_get_declared_lock_effect(struct translation_unit *,
     struct locklint_access *);
 void locklint_process_function_annotations(FILE *, struct translation_unit *,
     struct entrypoint *);
-void locklint_resolve_annotations(void);
+void locklint_resolve_annotations(struct symbol_list *);
 void locklint_show_annotations(FILE *);
 
 #endif /* ANNOTATIONS_H */

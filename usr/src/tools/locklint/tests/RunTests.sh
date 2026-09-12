@@ -802,6 +802,14 @@ compare_no_columns "annotation names" annotation-names.ref \
     annotation-names.raw annotation-names.out
 
 #
+# Verify annotations inside functions obey lexical object scope.
+#
+run_capture "local static annotation" local-static-annotation.raw \
+    "$LOCKLINT" --dump-annotations --check-locks local-static-annotation.c
+compare_no_columns "local static annotation" local-static-annotation.ref \
+    local-static-annotation.raw local-static-annotation.out
+
+#
 # Verify type-scoped annotations through anonymous aggregate embedding.
 #
 run_capture "anonymous embedding" anonymous-embedding.raw \

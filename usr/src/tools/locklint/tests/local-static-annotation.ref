@@ -1,0 +1,10 @@
+../locklint: local-static-annotation.c:49: warning: locklint: protected member 'polledio_inited' accessed without holding 'file_lock' [unprotected-access]
+local-static-annotation.c:28:1: MUTEX_PROTECTS_DATA file_lock -> polledio_inited
+local-static-annotation.c:29:1: MUTEX_PROTECTS_DATA file_lock -> inline_state
+local-static-annotation.c:30:1: MUTEX_PROTECTS_DATA file_lock -> loop_index
+local-static-annotation.c:37:9: SCHEME_PROTECTS_DATA "single-threaded initialization" -> polledio_inited
+local-static-annotation.c:58:9: MUTEX_PROTECTS_DATA local_lock -> shadowed [replaced by local-static-annotation.c:65:9]
+local-static-annotation.c:62:17: SCHEME_PROTECTS_DATA "inner block" -> shadowed
+local-static-annotation.c:65:9: SCHEME_PROTECTS_DATA "outer block" -> shadowed [replaces local-static-annotation.c:58:9]
+local-static-annotation.c:74:9: SCHEME_PROTECTS_DATA "inline function" -> inline_state
+local-static-annotation.c:82:17: SCHEME_PROTECTS_DATA "for initializer" -> loop_index
