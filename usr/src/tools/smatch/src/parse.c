@@ -2367,6 +2367,7 @@ static struct token *parse_for_statement(struct token *token, struct statement *
 	stmt->iterator_post_statement = make_statement(e3);
 	stmt->iterator_post_condition = NULL;
 	stmt->iterator_statement = iterator;
+	stmt->endpos = token->pos;
 	end_iterator(stmt);
 
 	return token;
@@ -2384,6 +2385,7 @@ static struct token *parse_while_statement(struct token *token, struct statement
 	stmt->iterator_pre_condition = expr;
 	stmt->iterator_post_condition = NULL;
 	stmt->iterator_statement = iterator;
+	stmt->endpos = token->pos;
 	end_iterator(stmt);
 
 	return token;
@@ -2404,6 +2406,7 @@ static struct token *parse_do_statement(struct token *token, struct statement *s
 
 	stmt->iterator_post_condition = expr;
 	stmt->iterator_statement = iterator;
+	stmt->endpos = token->pos;
 	end_iterator(stmt);
 
 	if (iterator && iterator->type != STMT_COMPOUND && Wdo_while)
@@ -2461,6 +2464,7 @@ static struct token *parse_switch_statement(struct token *token, struct statemen
 	start_switch(stmt);
 	token = parens_expression(token->next, &stmt->switch_expression, "after 'switch'");
 	token = statement(token, &stmt->switch_statement);
+	stmt->endpos = token->pos;
 	end_switch(stmt);
 	return token;
 }
@@ -2556,6 +2560,7 @@ static struct token *statement(struct token *token, struct statement **tree)
 		stmt->type = STMT_COMPOUND;
 		start_symbol_scope(stmt->pos);
 		token = compound_statement(token->next, stmt);
+		stmt->endpos = token->pos;
 		end_symbol_scope();
 		
 		return expect(token, '}', "at end of compound statement");
@@ -2847,6 +2852,7 @@ static struct token *parse_function_body(struct token *token, struct symbol *dec
 	} END_FOR_EACH_PTR(arg);
 
 	token = compound_statement(token->next, stmt);
+	stmt->endpos = token->pos;
 
 	end_function(decl); 
 	if (!(decl->ctype.modifiers & MOD_INLINE))

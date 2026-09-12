@@ -477,6 +477,7 @@ static void copy_statement(struct statement *src, struct statement *dst)
 {
 	struct statement *stmt;
 
+	dst->endpos = src->endpos;
 	FOR_EACH_PTR(src->stmts, stmt) {
 		add_statement(&dst->stmts, copy_one_statement(stmt));
 	} END_FOR_EACH_PTR(stmt);

@@ -73,6 +73,7 @@ struct token *parens_expression(struct token *token, struct expression **expr, c
 		e->statement = stmt;
 		start_symbol_scope(e->pos);
 		token = compound_statement(token->next, stmt);
+		stmt->endpos = token->pos;
 		end_symbol_scope();
 		token = expect(token, '}', "at end of statement expression");
 	} else
@@ -908,5 +909,3 @@ struct token *parse_expression(struct token *token, struct expression **tree)
 {
 	return comma_expression(token,tree);
 }
-
-
