@@ -66,7 +66,8 @@ SPARSE_SRCS = \
 	utils.c
 
 LOCAL_OBJS = locklint.o access.o annotations.o assertions.o callgraph.o \
-	check.o diagnostics.o events.o identity.o lock_order.o avl.o
+	check.o command_parse.o commands.o diagnostics.o events.o identity.o \
+	lock_order.o avl.o
 SPARSE_OBJS = $(SPARSE_SRCS:%.c=%.o) hashtable.o
 OBJS = $(LOCAL_OBJS) $(SPARSE_OBJS)
 
@@ -80,9 +81,6 @@ $(PROG): $(OBJS)
 	$(CC) $(LDFLAGS) -o $@ $(OBJS) $(LDLIBS)
 
 $(LOCAL_OBJS): %.o: %.c
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
-
-command_parse.o: command_parse.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
 
 command_parse_test.o: command_parse_test.c

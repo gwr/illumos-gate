@@ -32,6 +32,7 @@
 #include "assertions.h"
 #include "callgraph.h"
 #include "check.h"
+#include "command_parse.h"
 #include "events.h"
 #include "identity.h"
 #include "parse.h"
@@ -46,6 +47,14 @@ static bool dump_callgraph;
 static bool check_locks;
 static bool compat_osll;
 
+struct command_file {
+	const char *path;
+	struct command_file *next;
+};
+
+static struct command_file *command_files;
+static struct command_file **command_files_tail = &command_files;
+
 /*
  * Effectively force -nostdinc for now
  */
@@ -58,11 +67,28 @@ static void
 usage(FILE *stream)
 {
 	(void) fprintf(stream,
-	    "usage: locklint [--compat=osll] [--check-locks] [--dump-parsed] "
-	    "[--dump-linearized] "
+	    "usage: locklint [--cf command-file] [--compat=osll] "
+	    "[--check-locks] [--dump-parsed] [--dump-linearized] "
 	    "[--dump-accesses] [--dump-annotations] [--dump-events] "
 	    "[--dump-callgraph] "
 	    "[sparse-options] file.c ...\n");
+}
+
+/*
+ * Preserve command-file option order while removing the option and pathname
+ * from the arguments that Sparse will process.
+ */
+static void
+add_command_file(const char *path)
+{
+	struct command_file *file;
+
+	file = calloc(1, sizeof (*file));
+	if (file == NULL)
+		die("out of memory recording command file");
+	file->path = path;
+	*command_files_tail = file;
+	command_files_tail = &file->next;
 }
 
 static int
@@ -72,7 +98,11 @@ options(int argc, char **argv)
 	int i;
 
 	for (i = 1; i < argc; i++) {
-		if (strcmp(argv[i], "--check-locks") == 0) {
+		if (strcmp(argv[i], "--cf") == 0) {
+			if (++i == argc)
+				die("--cf requires a command file");
+			add_command_file(argv[i]);
+		} else if (strcmp(argv[i], "--check-locks") == 0) {
 			check_locks = true;
 		} else if (strcmp(argv[i], "--dump-parsed") == 0) {
 			dump_parsed = true;
@@ -107,6 +137,22 @@ options(int argc, char **argv)
 	argv[dst] = NULL;
 
 	return (dst);
+}
+
+/*
+ * Parse all command files only after every C translation unit has registered
+ * its types and symbols, but before whole-program checking begins.
+ */
+static bool
+parse_command_files(void)
+{
+	struct command_file *file;
+
+	for (file = command_files; file != NULL; file = file->next) {
+		if (command_parse_file(file->path) != 0)
+			return (false);
+	}
+	return (true);
 }
 
 /*
@@ -287,6 +333,10 @@ main(int argc, char **argv)
 			    dump_callgraph);
 		process_symbols(tu, symbols);
 	} END_FOR_EACH_PTR(file);
+	if (!parse_command_files()) {
+		locklint_access_cleanup();
+		return (EXIT_FAILURE);
+	}
 	if (check_locks || dump_callgraph)
 		locklint_check_all(check_locks, dump_callgraph);
 	if (dump_annotations)

@@ -548,6 +548,28 @@ The illumos and macOS builds both compile locklint's local `avl.c` and use its
 local illumos-compatible AVL headers.  Keeping the AVL layout compatible also
 permits generic AVL inspection with MDB on illumos.
 
+## Command-file input
+
+The repeatable `--cf command-file` option supplies declarative whole-program
+configuration.  Locklint removes each option and pathname before passing the
+remaining arguments to Sparse and preserves command-file order.
+
+Locklint parses all C translation units before reading any command file.
+Every type, object, and function is therefore registered before a command
+handler attempts semantic name resolution.  All command files are read before
+whole-program checking begins; commands cannot start a partial analysis or
+change analysis phases.
+
+The command parser recognizes `declare`, `assert`, and `ignore`, strips `#`
+comments, and passes the remaining whitespace-separated words to one
+`cmd_*()` handler per command.  These production handlers currently fail
+explicitly because their semantic forms have not yet been designed.  Empty
+and comment-only command files are valid.
+
+`command_parse_test` is an independent parser jig whose handlers print their
+arguments.  It is built and run with `make test_cmd`; it is not part of the
+locklint unit-test runner.
+
 ## Sparse integration
 
 This section describes the Sparse interfaces and retained metadata on which
@@ -570,6 +592,9 @@ preprocessing input.  The optional `--compat=osll` mode also adds the
 historical `__lock_lint=1` symbol, selecting the same analyzer-specific source
 paths as OSLL while retaining an unambiguous identity for the new analyzer.
 Other `--compat` values are rejected by the locklint command-line layer.
+The locklint command-line layer also collects repeatable `--cf` options before
+Sparse sees the argument vector.  Their files are not read until all calls to
+`sparse(file)` have completed.
 
 `sparse(file)` creates a new file scope, parses and evaluates one translation
 unit, and returns its symbol list.  Sparse token storage for the file is

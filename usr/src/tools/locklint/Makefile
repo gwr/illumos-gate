@@ -89,6 +89,8 @@ LOCAL_OBJS = \
 	assertions.o \
 	callgraph.o \
 	check.o \
+	command_parse.o \
+	commands.o \
 	diagnostics.o \
 	events.o \
 	identity.o \
