@@ -1,0 +1,6 @@
+# Complete semantic translation of the historical ugen.wlcmd.
+#
+# The two historical event callbacks are automatic roots because their
+# addresses escape through ugen_skel_events.  The seven bus_ops mappings to
+# warlock_dummy cannot affect ugen, whose dev_ops has no bus_ops vector.
+# Consequently this module needs no explicit locklint declarations.

@@ -19,3 +19,4 @@
 SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
 
 "$SCRIPT_DIR/check-kmod-wc.ksh" || exit $?
+"$SCRIPT_DIR/check-kmod-ugen.ksh" || exit $?
