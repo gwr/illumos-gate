@@ -1,0 +1,10 @@
+# Complete semantic translation of the historical usbskel.wlcmd.
+#
+# The four historical callbacks are automatic roots because their addresses
+# escape through request callbacks or hotplug registration.  The seven
+# bus_ops mappings to warlock_dummy cannot affect usbskel, whose dev_ops has
+# no bus_ops vector.
+#
+# OSLL produces identical analysis and function inventories with and without
+# "one usbskel_state".  New locklint already distinguishes concrete object
+# identities and needs no declaration for this focused module.
