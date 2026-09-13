@@ -186,6 +186,29 @@ static struct modlinkage modlinkage = {
 	NULL,
 };
 
+#ifdef __locklint__
+#define physio ll_physio
+
+/*
+ * Locklint cannot yet model callbacks passed to external functions.  Use a
+ * temporary usbprn-specific physio() stand-in so the synchronous minphys and
+ * strategy calls appear in its CFG.  Remove this when locklint can describe
+ * external callback behavior by other means.
+ */
+int
+ll_physio(int (*strategy)(struct buf *), struct buf *bp, dev_t dev, int rw,
+    void (*mincnt)(struct buf *), struct uio *uio)
+{
+	(void) strategy;
+	(void) dev;
+	(void) rw;
+	(void) uio;
+	usbprn_minphys(bp);
+	return (usbprn_strategy(bp));
+}
+
+#endif /* locklint */
+
 /* local variables */
 
 /* soft state structures */
