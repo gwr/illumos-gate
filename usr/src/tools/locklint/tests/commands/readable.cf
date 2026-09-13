@@ -1,0 +1,8 @@
+# Reads are permitted, but writes still require the declared mutex.
+declare readable command_state::readable
+declare readable command_state::readable_group
+declare readable command_global
+declare readable incomplete_command_object.readable
+
+# Repeating an additive declaration has no further semantic effect.
+declare readable command_state::readable

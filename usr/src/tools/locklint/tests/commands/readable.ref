@@ -1,0 +1,5 @@
+../locklint: commands/readable.c:44:23: warning: locklint: protected member 'readable' accessed without holding 'lock' [unprotected-access]
+../locklint: commands/readable.c:46:38: warning: locklint: protected member 'second' accessed without holding 'lock' [unprotected-access]
+../locklint: commands/readable.c:48:9: warning: locklint: protected member 'command_global' accessed without holding 'command_global_lock' [unprotected-access]
+../locklint: commands/readable-other.c:44:14: warning: locklint: protected member 'readable' accessed without holding 'lock' [unprotected-access]
+../locklint: commands/readable-other.c:56:34: warning: locklint: protected member 'readable' accessed without holding 'lock' [unprotected-access]

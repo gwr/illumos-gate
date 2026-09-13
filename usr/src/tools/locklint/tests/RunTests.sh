@@ -364,6 +364,62 @@ run_capture "data policy checks" data-policy.out \
     "$LOCKLINT" --check-locks data-policy.c
 compare "data policy checks" data-policy.ref data-policy.out
 
+#
+# Verify command-file readable policy after all translation units have been
+# parsed, including a type declared separately in each translation unit.
+#
+run_capture "command readable policy" command-readable.out \
+    "$LOCKLINT" --check-locks --cf commands/readable.cf \
+    commands/readable.c commands/readable-other.c
+compare "command readable policy" commands/readable.ref \
+    command-readable.out
+
+run_capture "command readable provenance" command-readable-annotations.out \
+    "$LOCKLINT" --dump-annotations --cf commands/readable.cf \
+    commands/readable.c commands/readable-other.c
+require_match "command readable type provenance" \
+    "commands/readable.cf:2: DATA_READABLE_WITHOUT_LOCK command_state::readable" \
+    command-readable-annotations.out
+require_match "command readable object provenance" \
+    "commands/readable.cf:4: DATA_READABLE_WITHOUT_LOCK command_global" \
+    command-readable-annotations.out
+
+run_failure "command readable arity" command-readable-arity.out \
+    "$LOCKLINT" --cf commands/readable-arity.cf \
+    commands/readable.c
+require_match "command readable arity" \
+    "declare readable requires one data name" command-readable-arity.out
+
+run_failure "command readable unresolved name" \
+    command-readable-unresolved.out "$LOCKLINT" \
+    --cf commands/readable-unresolved.cf commands/readable.c
+require_match "command readable unresolved name" \
+    "unresolved data name 'missing_command_object'" \
+    command-readable-unresolved.out
+
+run_failure "command object is not a type" \
+    command-readable-object-as-type.out "$LOCKLINT" \
+    --cf commands/readable-object-as-type.cf \
+    commands/readable.c
+require_match "command object is not a type" \
+    "unresolved data name 'command_object::readable'" \
+    command-readable-object-as-type.out
+
+run_failure "command enum is not an object" command-readable-enum.out \
+    "$LOCKLINT" --cf commands/readable-enum.cf \
+    commands/readable.c
+require_match "command enum is not an object" \
+    "unresolved data name 'COMMAND_READABLE_ENUM'" \
+    command-readable-enum.out
+
+run_failure "command readable ambiguous type" \
+    command-readable-ambiguous.out "$LOCKLINT" \
+    --cf commands/readable-ambiguous.cf \
+    commands/readable.c commands/readable-other.c
+require_match "command readable ambiguous type" \
+    "ambiguous data name 'duplicate_command_type::value'" \
+    command-readable-ambiguous.out
+
 run_capture "rwlock annotations" rwlock-annotations.out \
     "$LOCKLINT" --dump-annotations rwlock.c
 compare "rwlock annotations" rwlock-annotations.ref \

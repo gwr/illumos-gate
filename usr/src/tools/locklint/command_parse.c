@@ -27,6 +27,18 @@
 static const char *command_file;
 static unsigned long command_line;
 
+const char *
+command_parse_path(void)
+{
+	return (command_file);
+}
+
+unsigned long
+command_parse_line(void)
+{
+	return (command_line);
+}
+
 int
 command_parse_error(const char *format, ...)
 {
@@ -80,7 +92,7 @@ dispatch_command(const char *command, int argc, char **argv)
 }
 
 /*
- * Read and dispatch a complete command file before source analysis begins.
+ * Read and dispatch a complete command file.
  * getline() avoids imposing an arbitrary command length or argument count.
  */
 int

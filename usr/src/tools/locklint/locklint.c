@@ -36,6 +36,7 @@
 #include "events.h"
 #include "identity.h"
 #include "parse.h"
+#include "scope.h"
 #include "symbol.h"
 
 static bool dump_parsed;
@@ -265,6 +266,23 @@ initial_internal_declarations(struct symbol_list *symbols)
 	return (found);
 }
 
+/*
+ * Preserve declarations needed after Sparse leaves this translation unit's
+ * namespaces.  The returned symbol list does not necessarily include extern
+ * declarations contributed by headers, so include the active outer scopes.
+ */
+static void
+register_translation_unit_declarations(struct translation_unit *tu,
+    struct symbol_list *symbols)
+{
+	locklint_translation_unit_register(tu, symbols);
+	locklint_register_command_names(symbols);
+	locklint_translation_unit_register(tu, file_scope->symbols);
+	locklint_register_command_names(file_scope->symbols);
+	locklint_translation_unit_register(tu, global_scope->symbols);
+	locklint_register_command_names(global_scope->symbols);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -309,7 +327,7 @@ main(int argc, char **argv)
 	    initial_internal_declarations(symbols))
 		die("multiple inputs with initialization-time internal "
 		    "declarations are not supported");
-	locklint_translation_unit_register(tu, symbols);
+	register_translation_unit_declarations(tu, symbols);
 	if (dump_annotations || dump_events || check_locks)
 		locklint_resolve_annotations(symbols);
 	if (check_locks || dump_callgraph)
@@ -325,7 +343,7 @@ main(int argc, char **argv)
 		 */
 		tu = locklint_translation_unit_begin(file);
 		symbols = sparse(file);
-		locklint_translation_unit_register(tu, symbols);
+		register_translation_unit_declarations(tu, symbols);
 		if (dump_annotations || dump_events || check_locks)
 			locklint_resolve_annotations(symbols);
 		if (check_locks || dump_callgraph)

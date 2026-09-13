@@ -20,6 +20,8 @@
 
 int command_parse_file(const char *);
 int command_parse_error(const char *, ...);
+const char *command_parse_path(void);
+unsigned long command_parse_line(void);
 
 int cmd_assert(int, char **);
 int cmd_declare(int, char **);

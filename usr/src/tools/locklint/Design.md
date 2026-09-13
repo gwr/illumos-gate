@@ -562,9 +562,33 @@ change analysis phases.
 
 The command parser recognizes `declare`, `assert`, and `ignore`, strips `#`
 comments, and passes the remaining whitespace-separated words to one
-`cmd_*()` handler per command.  These production handlers currently fail
-explicitly because their semantic forms have not yet been designed.  Empty
-and comment-only command files are valid.
+`cmd_*()` handler per command.  Empty and comment-only command files are
+valid.
+
+`declare readable data-name` is the first implemented semantic form.  It is
+equivalent to `DATA_READABLE_WITHOUT_LOCK(data-name)`: matching reads do not
+require the otherwise declared protection, while writes remain protected.
+It accepts one externally linked object name or a type-member path such as
+`type::member.nested-member`.  Missing, malformed, and ambiguous names are
+errors.
+
+External objects use the same module-wide C object identity as source
+annotations and accesses.  Named aggregate types reachable from file-scope
+declarations and function signatures are retained while each translation
+unit is current.  Repeated instances of a type declaration from the same
+header source position are one command-file selection, and the declaration
+is applied to every such Sparse type instance.  Same-named types from
+different source declarations are ambiguous.  This permits one command to
+describe a header-defined structure used in several translation units without
+conflating unrelated translation-unit-local structure tags.
+
+Command-file readable declarations and source annotations use the same
+internal data-policy list.  Readable policy is additive, so exact duplicates
+are semantically harmless.  Each command declaration retains its command-file
+pathname and line number as provenance.
+
+The remaining `declare`, `assert`, and `ignore` forms continue to fail
+explicitly until their semantics are designed.
 
 `command_parse_test` is an independent parser jig whose handlers print their
 arguments.  It is built and run with `make test_cmd`; it is not part of the

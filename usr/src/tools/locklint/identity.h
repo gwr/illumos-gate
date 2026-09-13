@@ -30,5 +30,7 @@ void locklint_translation_unit_register(struct translation_unit *,
 bool locklint_symbol_can_use_internal(const struct symbol *);
 struct object_identity *locklint_object_identity(struct translation_unit *,
     struct symbol *);
+struct object_identity *locklint_external_object(const char *,
+    struct symbol **);
 
 #endif /* IDENTITY_H */

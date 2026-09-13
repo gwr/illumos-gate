@@ -127,6 +127,23 @@ record_origin(struct object_identity *object, struct translation_unit *tu,
 	if (bound == NULL &&
 	    !hashtable_insert(objects_by_symbol, symbol, object))
 		die("out of memory binding object declaration");
+	{
+		struct symbol *old_type = object->representative->ctype.base_type;
+		struct symbol *new_type = symbol->ctype.base_type;
+
+		while (old_type != NULL && old_type->type == SYM_NODE)
+			old_type = old_type->ctype.base_type;
+		while (new_type != NULL && new_type->type == SYM_NODE)
+			new_type = new_type->ctype.base_type;
+		if (old_type != NULL && new_type != NULL &&
+		    (old_type->type == SYM_STRUCT ||
+		    old_type->type == SYM_UNION) &&
+		    (new_type->type == SYM_STRUCT ||
+		    new_type->type == SYM_UNION) &&
+		    old_type->symbol_list == NULL &&
+		    new_type->symbol_list != NULL)
+			object->representative = symbol;
+	}
 	for (origin = object->origins; origin != NULL; origin = origin->next) {
 		if (origin->tu == tu && origin->symbol == symbol)
 			return;
@@ -255,13 +272,11 @@ locklint_translation_unit_register(struct translation_unit *tu,
 	FOR_EACH_PTR(symbols, symbol) {
 		unsigned long modifiers = symbol->ctype.modifiers;
 
-		if (symbol->ident == NULL || function_symbol(symbol) ||
-		    (modifiers & (MOD_TOPLEVEL | MOD_STATIC)) !=
-		    (MOD_TOPLEVEL | MOD_STATIC))
+		if (symbol->namespace != NS_SYMBOL || symbol->ident == NULL ||
+		    symbol->enum_member || function_symbol(symbol) ||
+		    (modifiers & MOD_TOPLEVEL) == 0)
 			continue;
-		if (find_object(tu->internal_by_ident, symbol->ident) == NULL)
-			(void) add_object(&tu->internal_objects,
-			    tu->internal_by_ident, tu, tu, symbol);
+		(void) locklint_object_identity(tu, symbol);
 	} END_FOR_EACH_PTR(symbol);
 }
 
@@ -313,5 +328,16 @@ locklint_object_identity(struct translation_unit *tu, struct symbol *symbol)
 		return (add_object(&external_objects, external_by_ident, NULL,
 		    tu, symbol));
 	record_origin(object, tu, symbol);
+	return (object);
+}
+
+struct object_identity *
+locklint_external_object(const char *name, struct symbol **symbol)
+{
+	struct object_identity *object;
+
+	object = find_object(external_by_ident, built_in_ident(name));
+	if (symbol != NULL)
+		*symbol = object != NULL ? object->representative : NULL;
 	return (object);
 }

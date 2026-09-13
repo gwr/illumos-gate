@@ -15,6 +15,9 @@
  * explicitly rather than appearing to configure an analysis.
  */
 
+#include <string.h>
+
+#include "annotations.h"
 #include "command_parse.h"
 
 static int
@@ -34,9 +37,33 @@ cmd_assert(int argc, char **argv)
 int
 cmd_declare(int argc, char **argv)
 {
-	(void) argc;
-	(void) argv;
-	return (not_implemented("declare"));
+	enum locklint_command_result result;
+
+	if (argc == 0)
+		return (command_parse_error("declare requires a declaration kind"));
+	if (strcmp(argv[0], "readable") != 0)
+		return (not_implemented("declare"));
+	if (argc != 2) {
+		return (command_parse_error(
+		    "declare readable requires one data name"));
+	}
+	result = locklint_declare_readable(argv[1], command_parse_path(),
+	    command_parse_line());
+	switch (result) {
+	case LOCKLINT_COMMAND_OK:
+		return (0);
+	case LOCKLINT_COMMAND_INVALID_NAME:
+		return (command_parse_error("invalid data name '%s'", argv[1]));
+	case LOCKLINT_COMMAND_UNRESOLVED_NAME:
+		return (command_parse_error("unresolved data name '%s'",
+		    argv[1]));
+	case LOCKLINT_COMMAND_AMBIGUOUS_NAME:
+		return (command_parse_error("ambiguous data name '%s'",
+		    argv[1]));
+	default:
+		return (command_parse_error(
+		    "internal error resolving data name '%s'", argv[1]));
+	}
 }
 
 int

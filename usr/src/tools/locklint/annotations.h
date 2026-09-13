@@ -25,6 +25,7 @@ struct instruction;
 struct position;
 struct symbol;
 struct symbol_list;
+struct translation_unit;
 
 enum locklint_protection {
 	LOCKLINT_PROTECTION_NONE,
@@ -68,11 +69,21 @@ enum locklint_declared_lock_effect {
 	LOCKLINT_DECLARED_LOCK_DOWNGRADED
 };
 
+enum locklint_command_result {
+	LOCKLINT_COMMAND_OK,
+	LOCKLINT_COMMAND_INVALID_NAME,
+	LOCKLINT_COMMAND_UNRESOLVED_NAME,
+	LOCKLINT_COMMAND_AMBIGUOUS_NAME
+};
+
 typedef void (*locklint_order_edge_f)(const struct locklint_access *,
     const char *, const struct locklint_access *, const char *,
     const struct position *, void *);
 
 void locklint_annotations_enable(void);
+void locklint_register_command_names(struct symbol_list *);
+enum locklint_command_result locklint_declare_readable(const char *,
+    const char *, unsigned long);
 bool locklint_get_covering_lock(const struct locklint_access *,
     struct locklint_access *);
 bool locklint_lock_covers(const struct locklint_access *,

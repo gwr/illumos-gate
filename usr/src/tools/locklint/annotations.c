@@ -77,6 +77,8 @@ struct annotation_ref {
 struct annotation {
 	struct position pos;
 	struct translation_unit *tu;
+	char *command_file;
+	unsigned long command_line;
 	struct annotation_token *tokens;
 	struct annotation_ref *lock;
 	struct annotation_ref *data;
@@ -92,7 +94,17 @@ struct annotation {
 static struct annotation *annotations;
 static struct annotation **annotations_tail = &annotations;
 
+struct command_type {
+	struct ident *name;
+	struct symbol *type;
+	struct command_type *next;
+};
+
+static struct command_type *command_types;
+
 static enum locklint_execution_kind execution_kind(const struct token *);
+static struct symbol *direct_compound_type(struct symbol *);
+static void expand_data_refs(struct annotation *);
 
 static char *
 copy_string(const char *text)
@@ -784,6 +796,308 @@ direct_compound_type(struct symbol *type)
 		return (NULL);
 	examine_symbol_type(type);
 	return (type);
+}
+
+static void
+record_command_type(struct ident *name, struct symbol *type)
+{
+	struct command_type *candidate;
+	struct command_type *record;
+
+	if (name == NULL)
+		return;
+	type = direct_compound_type(type);
+	if (type == NULL)
+		return;
+	for (candidate = command_types; candidate != NULL;
+	    candidate = candidate->next) {
+		if (candidate->name == name && candidate->type == type)
+			return;
+	}
+	record = calloc(1, sizeof (*record));
+	if (record == NULL)
+		die("out of memory recording command-file type");
+	record->name = name;
+	record->type = type;
+	record->next = command_types;
+	command_types = record;
+}
+
+static void
+register_command_type_tree(struct symbol *type)
+{
+	struct symbol *argument;
+
+	type = strip_node_type(type);
+	if (type == NULL)
+		return;
+	switch (type->type) {
+	case SYM_PTR:
+	case SYM_ARRAY:
+		register_command_type_tree(type->ctype.base_type);
+		break;
+	case SYM_FN:
+		register_command_type_tree(type->ctype.base_type);
+		FOR_EACH_PTR(type->arguments, argument) {
+			register_command_type_tree(argument->ctype.base_type);
+		} END_FOR_EACH_PTR(argument);
+		break;
+	case SYM_STRUCT:
+	case SYM_UNION:
+		record_command_type(type->ident, type);
+		break;
+	default:
+		break;
+	}
+}
+
+/*
+ * Retain the named aggregate types reachable from file-scope declarations
+ * and function signatures.  Command files are parsed after Sparse has left
+ * each translation-unit namespace, so later lookup cannot use lookup_symbol().
+ */
+void
+locklint_register_command_names(struct symbol_list *symbols)
+{
+	struct symbol *symbol;
+	struct symbol *type;
+
+	FOR_EACH_PTR(symbols, symbol) {
+		if (symbol->namespace == NS_TYPEDEF) {
+			record_command_type(symbol->ident,
+			    symbol->ctype.base_type);
+		} else if (symbol->namespace == NS_STRUCT) {
+			record_command_type(symbol->ident, symbol);
+		}
+		type = symbol->ctype.base_type;
+		register_command_type_tree(type);
+	} END_FOR_EACH_PTR(symbol);
+}
+
+static bool
+same_source_position(struct position left, struct position right)
+{
+	return (strcmp(stream_name(left.stream), stream_name(right.stream)) == 0 &&
+	    left.line == right.line && left.pos == right.pos);
+}
+
+static bool
+valid_identifier(const char *start, size_t length)
+{
+	size_t i;
+
+	if (length == 0 ||
+	    !((*start >= 'a' && *start <= 'z') ||
+	    (*start >= 'A' && *start <= 'Z') || *start == '_'))
+		return (false);
+	for (i = 1; i < length; i++) {
+		char c = start[i];
+
+		if (!((c >= 'a' && c <= 'z') ||
+		    (c >= 'A' && c <= 'Z') ||
+		    (c >= '0' && c <= '9') || c == '_'))
+			return (false);
+	}
+	return (true);
+}
+
+static bool
+valid_member_path(const char *path)
+{
+	const char *component = path;
+	const char *end;
+
+	do {
+		end = strchr(component, '.');
+		if (!valid_identifier(component, end != NULL ?
+		    (size_t)(end - component) : strlen(component)))
+			return (false);
+		component = end != NULL ? end + 1 : NULL;
+	} while (component != NULL);
+	return (true);
+}
+
+static struct annotation_ref *
+new_command_ref(const char *base, size_t base_length, const char *path,
+    enum annotation_scope scope)
+{
+	struct annotation_ref *ref;
+
+	ref = calloc(1, sizeof (*ref));
+	if (ref == NULL)
+		die("out of memory recording command-file declaration");
+	ref->base_name = malloc(base_length + 1);
+	if (ref->base_name == NULL)
+		die("out of memory recording command-file declaration");
+	(void) memcpy(ref->base_name, base, base_length);
+	ref->base_name[base_length] = '\0';
+	if (path != NULL)
+		ref->path = copy_string(path);
+	ref->scope = scope;
+	return (ref);
+}
+
+static bool
+resolve_command_path(struct annotation_ref *ref, struct symbol *type)
+{
+	const char *component = ref->path;
+	const char *end;
+
+	while (component != NULL && *component != '\0') {
+		struct ident *ident;
+		struct symbol *member;
+		char *name;
+		size_t length;
+		int offset = 0;
+
+		type = direct_compound_type(type);
+		if (type == NULL)
+			return (false);
+		end = strchr(component, '.');
+		length = end != NULL ? (size_t)(end - component) :
+		    strlen(component);
+		name = malloc(length + 1);
+		if (name == NULL)
+			die("out of memory resolving command-file declaration");
+		(void) memcpy(name, component, length);
+		name[length] = '\0';
+		ident = built_in_ident(name);
+		free(name);
+		member = find_identifier(ident, type->symbol_list, &offset);
+		if (member == NULL)
+			return (false);
+		ref->member = member;
+		ref->offset += offset;
+		type = member->ctype.base_type;
+		component = end != NULL ? end + 1 : NULL;
+	}
+	ref->type = type;
+	return (true);
+}
+
+static enum locklint_command_result
+resolve_command_type(struct annotation *annotation, const char *name,
+    const char *separator)
+{
+	struct command_type *candidate;
+	struct position origin = { 0 };
+	struct annotation_ref **tail = &annotation->data;
+	struct ident *ident;
+	size_t base_length = (size_t)(separator - name);
+	bool found = false;
+
+	if (!valid_identifier(name, base_length) ||
+	    !valid_member_path(separator + 2))
+		return (LOCKLINT_COMMAND_INVALID_NAME);
+	{
+		char *base = malloc(base_length + 1);
+
+		if (base == NULL)
+			die("out of memory resolving command-file declaration");
+		(void) memcpy(base, name, base_length);
+		base[base_length] = '\0';
+		ident = built_in_ident(base);
+		free(base);
+	}
+	for (candidate = command_types; candidate != NULL;
+	    candidate = candidate->next) {
+		struct annotation_ref *ref;
+
+		if (candidate->name != ident)
+			continue;
+		if (found && !same_source_position(origin,
+		    candidate->type->pos))
+			return (LOCKLINT_COMMAND_AMBIGUOUS_NAME);
+		origin = candidate->type->pos;
+		found = true;
+		ref = new_command_ref(name, base_length, separator + 2,
+		    ANNOTATION_TYPE);
+		ref->owner_type = candidate->type;
+		if (!resolve_command_path(ref, candidate->type))
+			return (LOCKLINT_COMMAND_UNRESOLVED_NAME);
+		*tail = ref;
+		tail = &ref->next;
+	}
+	return (found ? LOCKLINT_COMMAND_OK :
+	    LOCKLINT_COMMAND_UNRESOLVED_NAME);
+}
+
+static enum locklint_command_result
+resolve_command_object(struct annotation *annotation, const char *name)
+{
+	struct object_identity *object;
+	struct annotation_ref *ref;
+	struct symbol *root;
+	const char *dot = strchr(name, '.');
+	size_t base_length = dot != NULL ? (size_t)(dot - name) : strlen(name);
+
+	if (!valid_identifier(name, base_length) ||
+	    (dot != NULL && !valid_member_path(dot + 1)))
+		return (LOCKLINT_COMMAND_INVALID_NAME);
+	{
+		char *base = malloc(base_length + 1);
+
+		if (base == NULL)
+			die("out of memory resolving command-file declaration");
+		(void) memcpy(base, name, base_length);
+		base[base_length] = '\0';
+		object = locklint_external_object(base, &root);
+		free(base);
+	}
+	if (object == NULL)
+		return (LOCKLINT_COMMAND_UNRESOLVED_NAME);
+	ref = new_command_ref(name, base_length, dot != NULL ? dot + 1 : NULL,
+	    ANNOTATION_OBJECT);
+	ref->root = root;
+	ref->object = object;
+	ref->type = root->ctype.base_type;
+	ref->owner_type = direct_compound_type(ref->type);
+	if (ref->path != NULL && !resolve_command_path(ref, ref->type))
+		return (LOCKLINT_COMMAND_UNRESOLVED_NAME);
+	annotation->data = ref;
+	return (LOCKLINT_COMMAND_OK);
+}
+
+/*
+ * Add command-file readable policy to the same annotation list queried for
+ * source DATA_READABLE_WITHOUT_LOCK declarations.
+ */
+enum locklint_command_result
+locklint_declare_readable(const char *name, const char *file,
+    unsigned long line)
+{
+	struct annotation *annotation;
+	const char *dot;
+	const char *separator;
+	enum locklint_command_result result;
+
+	annotation = calloc(1, sizeof (*annotation));
+	if (annotation == NULL)
+		die("out of memory recording command-file declaration");
+	annotation->kind = ANNOTATION_DATA_READABLE_WITHOUT_LOCK;
+	annotation->command_file = copy_string(file);
+	annotation->command_line = line;
+
+	separator = strstr(name, "::");
+	dot = strchr(name, '.');
+	if (separator != NULL &&
+	    (strstr(separator + 2, "::") != NULL ||
+	    (dot != NULL && dot < separator))) {
+		result = LOCKLINT_COMMAND_INVALID_NAME;
+	} else if (separator != NULL) {
+		result = resolve_command_type(annotation, name, separator);
+	} else {
+		result = resolve_command_object(annotation, name);
+	}
+	if (result != LOCKLINT_COMMAND_OK)
+		return (result);
+	expand_data_refs(annotation);
+	annotation->parsed = true;
+	annotation->processed = true;
+	annotation->resolved = true;
+	*annotations_tail = annotation;
+	annotations_tail = &annotation->next;
+	return (LOCKLINT_COMMAND_OK);
 }
 
 static char *
@@ -1499,6 +1813,19 @@ show_raw_annotation(FILE *stream, struct annotation *annotation)
 }
 
 static void
+show_annotation_location(FILE *stream, const struct annotation *annotation)
+{
+	if (annotation->command_file != NULL) {
+		(void) fprintf(stream, "%s:%lu: ", annotation->command_file,
+		    annotation->command_line);
+	} else {
+		(void) fprintf(stream, "%s:%u:%u: ",
+		    stream_name(annotation->pos.stream),
+		    annotation->pos.line, annotation->pos.pos);
+	}
+}
+
+static void
 show_annotation_ref(FILE *stream, const struct annotation_ref *ref)
 {
 	if (ref->path == NULL) {
@@ -1551,17 +1878,14 @@ locklint_show_annotations(FILE *stream)
 		struct annotation_ref *ref;
 
 		if (!annotation->resolved) {
-			(void) fprintf(stream, "%s:%u:%u: ",
-			    stream_name(annotation->pos.stream),
-			    annotation->pos.line, annotation->pos.pos);
+			show_annotation_location(stream, annotation);
 			show_raw_annotation(stream, annotation);
 			(void) fputc('\n', stream);
 			continue;
 		}
 		if (annotation->kind == ANNOTATION_LOCK_ORDER) {
-			(void) fprintf(stream, "%s:%u:%u: %s ",
-			    stream_name(annotation->pos.stream),
-			    annotation->pos.line, annotation->pos.pos,
+			show_annotation_location(stream, annotation);
+			(void) fprintf(stream, "%s ",
 			    annotation_kind_name(annotation->kind));
 			for (ref = annotation->order; ref != NULL;
 			    ref = ref->next) {
@@ -1573,9 +1897,8 @@ locklint_show_annotations(FILE *stream)
 			continue;
 		}
 		for (ref = annotation->data; ref != NULL; ref = ref->next) {
-			(void) fprintf(stream, "%s:%u:%u: %s ",
-			    stream_name(annotation->pos.stream),
-			    annotation->pos.line, annotation->pos.pos,
+			show_annotation_location(stream, annotation);
+			(void) fprintf(stream, "%s ",
 			    annotation_kind_name(annotation->kind));
 			if (annotation->kind ==
 			    ANNOTATION_MUTEX_PROTECTS_DATA ||
