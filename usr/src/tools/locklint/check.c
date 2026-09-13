@@ -6148,6 +6148,40 @@ check_competition_transition(struct function_info *function,
 	}
 }
 
+/*
+ * A held return is an undeclared acquisition only if the function can be
+ * called validly with this lock unheld and return with it held.  Releases and
+ * assertions can require a held input; reacquiring such a lock merely
+ * preserves the caller's state.
+ */
+static bool
+function_acquires_unheld_lock(struct function_info *function,
+    const struct locklint_access *lock)
+{
+	struct assertion_requirement *requirement;
+	struct acquisition_role role;
+	struct lock_transfer *transfer;
+
+	if (!acquisition_role(function, lock, &role))
+		return (true);
+	transfer = find_transfer(function, &role);
+	if (transfer == NULL)
+		return (true);
+	if (transfer->invalid[LOCK_NOT_HELD] != 0)
+		return (false);
+	for (requirement = function->assertion_requirements;
+	    requirement != NULL; requirement = requirement->next) {
+		if (!same_acquisition_role(&requirement->role, &role) ||
+		    requirement->alternatives != NULL ||
+		    requirement->alternatives_unknown)
+			continue;
+		if (!assertion_input_mask_accepts(requirement->accepted_inputs,
+		    LOCK_NOT_HELD))
+			return (false);
+	}
+	return ((transfer->output[LOCK_NOT_HELD] & LOCK_ANY_HELD) != 0);
+}
+
 static void
 check_return_state(struct function_info *function, struct block_info *block,
     struct analysis_state *state)
@@ -6168,6 +6202,8 @@ check_return_state(struct function_info *function, struct block_info *block,
 		if (!entry->side_effect)
 			continue;
 		if (function_declares_lock_effect(function, &entry->lock))
+			continue;
+		if (!function_acquires_unheld_lock(function, &entry->lock))
 			continue;
 		if (state_definitely_held(entry->state)) {
 			locklint_warning(LOCKLINT_DIAG_LOCK_HELD_ON_RETURN, pos,

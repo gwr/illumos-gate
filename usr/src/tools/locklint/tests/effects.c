@@ -20,6 +20,8 @@
  */
 
 #define	_NOTE(arg)
+#define	ASSERT(expr)	((void)(expr))
+#define	MUTEX_HELD(lock)	mutex_owned(lock)
 
 typedef struct mutex {
 	int opaque;
@@ -34,6 +36,7 @@ _NOTE(MUTEX_PROTECTS_DATA(effect_state::lock, effect_state::value))
 
 extern void mutex_enter(mutex_t *);
 extern void mutex_exit(mutex_t *);
+extern int mutex_owned(mutex_t *);
 
 static void
 acquire_lock(struct effect_state *state)
@@ -58,6 +61,23 @@ balanced_lock(struct effect_state *state)
 {
 	mutex_enter(&state->lock);
 	mutex_exit(&state->lock);
+}
+
+static void
+asserted_preserve_lock(struct effect_state *state)
+{
+	ASSERT(MUTEX_HELD(&state->lock));
+	mutex_exit(&state->lock);
+	mutex_enter(&state->lock);
+}
+
+static void
+conditional_preserve_lock(struct effect_state *state, int drop)
+{
+	if (drop) {
+		mutex_exit(&state->lock);
+		mutex_enter(&state->lock);
+	}
 }
 
 static void
@@ -125,6 +145,15 @@ check_balanced_effect(struct effect_state *state)
 {
 	balanced_lock(state);
 	return (state->value);
+}
+
+static void
+check_preserved_effects(struct effect_state *state, int drop)
+{
+	mutex_enter(&state->lock);
+	asserted_preserve_lock(state);
+	conditional_preserve_lock(state, drop);
+	mutex_exit(&state->lock);
 }
 
 static int
