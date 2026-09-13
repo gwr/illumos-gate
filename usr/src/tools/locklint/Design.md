@@ -524,8 +524,9 @@ forms are chosen.
 - Sparse owns symbols, expressions, entrypoints, blocks, and instructions.
 - Locklint borrows those objects for the duration of the process.
 - Locklint owns translation-unit and canonical object-identity records.
-- Locklint copies `_NOTE` text and positions because Sparse frees per-file
-  preprocessing tokens.
+- Locklint retains all explicit-input token arenas while parsing translation
+  units, then releases them before whole-program checking.
+- Locklint copies `_NOTE` text and positions needed after that release.
 - Locklint allocates annotations, references, assertions, and copied `_NOTE`
   tokens for process lifetime.
 - The callgraph owns individually allocated, list-owned function,
@@ -618,12 +619,15 @@ paths as OSLL while retaining an unambiguous identity for the new analyzer.
 Other `--compat` values are rejected by the locklint command-line layer.
 The locklint command-line layer also collects repeatable `--cf` options before
 Sparse sees the argument vector.  Their files are not read until all calls to
-`sparse(file)` have completed.
+the Sparse frontend have completed.
 
-`sparse(file)` creates a new file scope, parses and evaluates one translation
-unit, and returns its symbol list.  Sparse token storage for the file is
-released during this operation.  Therefore, data needed after parsing must
-not retain pointers to ordinary preprocessing tokens.
+Locklint calls `sparse_keep_tokens(file)` for each explicit input, applies the
+same evaluation and error-phase handling as `sparse(file)`, and processes the
+returned symbol list immediately.  It retains all explicit-input token arenas
+until the last translation unit has been parsed because Sparse's process-wide
+macro table retains positions within those tokens.  Locklint then calls
+`clear_token_alloc()` once before whole-program checking.  Data needed during
+checking must therefore not retain pointers to ordinary preprocessing tokens.
 
 `expand_symbol()` completes Sparse expansion for a symbol.
 `linearize_symbol()` converts a function definition into an `entrypoint`
@@ -2147,7 +2151,8 @@ shared golden file.
 The current implementation relies on these invariants:
 
 1. All macro hooks are registered before Sparse starts preprocessing input.
-2. Raw annotation tokens needed after parsing are copied.
+2. Explicit-input token arenas remain live until every translation unit has
+   been parsed, and raw annotation tokens needed afterward are copied.
 3. Annotation names are resolved while their defining translation unit's
    namespaces are current.
 4. Every retained record has translation-unit provenance independent of its

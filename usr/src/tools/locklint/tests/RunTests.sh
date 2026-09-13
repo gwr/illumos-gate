@@ -644,6 +644,11 @@ run_capture "cross translation unit" cross.out "$LOCKLINT" --check-locks \
     cross-caller.c cross-callee.c
 compare "cross translation unit" cross.ref cross.out
 
+run_capture "cross translation unit macro lifetime" macro-lifetime.out \
+    "$LOCKLINT" --check-locks macro-lifetime-first.c \
+    macro-lifetime-second.c
+require_empty "cross translation unit macro lifetime" macro-lifetime.out
+
 run_capture "cross translation unit visibility" visibility-cross.out \
     "$LOCKLINT" --check-locks visibility-cross-caller.c \
     visibility-cross-callee.c

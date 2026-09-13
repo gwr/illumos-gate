@@ -283,6 +283,23 @@ register_translation_unit_declarations(struct translation_unit *tu,
 	locklint_register_command_names(global_scope->symbols);
 }
 
+/*
+ * Parse and evaluate one input without releasing its preprocessing tokens.
+ * Sparse's process-wide macro table retains token positions, so all input
+ * token arenas must remain live until the last translation unit is parsed.
+ */
+static struct symbol_list *
+locklint_sparse(char *filename)
+{
+	struct symbol_list *symbols;
+
+	symbols = sparse_keep_tokens(filename);
+	if (has_error & ERROR_CURR_PHASE)
+		has_error = ERROR_PREV_PHASE;
+	evaluate_symbol_list(symbols);
+	return (symbols);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -336,13 +353,14 @@ main(int argc, char **argv)
 	process_symbols(tu, symbols);
 	FOR_EACH_PTR(filelist, file) {
 		/*
-		 * Hooks run inside sparse(), so establish provenance first.
+		 * Hooks run while Sparse parses the file, so establish provenance
+		 * first.
 		 * Register internal objects before resolving captured names.  Name
-		 * resolution must finish here: sparse() for the next input removes
-		 * this file scope and may replace the visible declaration chains.
+		 * resolution must finish here: parsing the next input removes this
+		 * file scope and may replace the visible declaration chains.
 		 */
 		tu = locklint_translation_unit_begin(file);
-		symbols = sparse(file);
+		symbols = locklint_sparse(file);
 		register_translation_unit_declarations(tu, symbols);
 		if (dump_annotations || dump_events || check_locks)
 			locklint_resolve_annotations(symbols);
@@ -351,6 +369,7 @@ main(int argc, char **argv)
 			    dump_callgraph);
 		process_symbols(tu, symbols);
 	} END_FOR_EACH_PTR(file);
+	clear_token_alloc();
 	if (!parse_command_files()) {
 		locklint_access_cleanup();
 		return (EXIT_FAILURE);
