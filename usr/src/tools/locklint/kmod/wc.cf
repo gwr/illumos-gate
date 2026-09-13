@@ -1,0 +1,10 @@
+# External readable-data policy retained from the historical wc.wlcmd.
+#
+# The devfs side of the virtual-console implementation only reads these
+# globals; writes remain subject to their ordinary protection requirements.
+declare readable wc_dip
+declare readable vc_active_console
+declare readable vc_cons_user
+
+# vc_state_lock protects writes to vc_flags, but unlocked reads are permitted.
+declare readable vc_state::vc_flags
