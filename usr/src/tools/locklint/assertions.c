@@ -134,13 +134,34 @@ is_special(const struct token *token, unsigned int special)
 	    token->special == special);
 }
 
+/*
+ * Determine the predicate's unary polarity.  Opening parentheses preserve a
+ * pending negation, while every other token starts a new expression suffix.
+ */
+static bool
+predicate_is_inverted(const struct token *open,
+    const struct token *predicate)
+{
+	const struct token *token;
+	bool invert = false;
+
+	for (token = open->next; token != predicate; token = token->next) {
+		if (is_special(token, '!')) {
+			invert = !invert;
+		} else if (!is_special(token, '(')) {
+			invert = false;
+		}
+	}
+	return (invert);
+}
+
 static unsigned int
-adjust_modes(const struct token *previous, const struct token *close,
-    unsigned int positive, unsigned int negative)
+adjust_modes(const struct token *open, const struct token *predicate,
+    const struct token *close, unsigned int positive, unsigned int negative)
 {
 	const struct token *operator = close->next;
 	const struct token *value = operator != NULL ? operator->next : NULL;
-	bool invert = is_special(previous, '!');
+	bool invert = predicate_is_inverted(open, predicate);
 
 	if ((is_special(operator, SPECIAL_EQUAL) ||
 	    is_special(operator, SPECIAL_NOTEQUAL)) &&
@@ -160,7 +181,6 @@ capture_assertion(const struct token *macro, const struct token *open,
     void *data)
 {
 	const struct token *end;
-	const struct token *previous = open;
 	const struct token *token;
 
 	(void) macro;
@@ -169,8 +189,7 @@ capture_assertion(const struct token *macro, const struct token *open,
 	end = matching_close(open);
 	if (end == NULL)
 		return (0);
-	for (token = open->next; token != end; previous = token,
-	    token = token->next) {
+	for (token = open->next; token != end; token = token->next) {
 		const struct token *predicate_open;
 		const struct token *predicate_close;
 		struct assertion *assertion;
@@ -193,7 +212,7 @@ capture_assertion(const struct token *macro, const struct token *open,
 		assertion->predicate = token->pos;
 		assertion->argument_start = predicate_open->next->pos;
 		assertion->argument_end = predicate_close->pos;
-		assertion->modes = adjust_modes(previous, predicate_close,
+		assertion->modes = adjust_modes(open, token, predicate_close,
 		    positive, negative);
 		*assertions_tail = assertion;
 		assertions_tail = &assertion->next;

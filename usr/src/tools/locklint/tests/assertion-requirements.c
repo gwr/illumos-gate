@@ -208,3 +208,26 @@ call_assert_after_callee_acquire(struct assertion_requirement_state *state)
 {
 	assert_after_callee_acquire(state);
 }
+
+static void
+require_parenthesized_mutex_not_held(
+    struct assertion_requirement_state *state)
+{
+	ASSERT(!(mutex_owned(&state->mutex)));
+}
+
+static void
+call_require_parenthesized_not_held_unlocked(
+    struct assertion_requirement_state *state)
+{
+	require_parenthesized_mutex_not_held(state);
+}
+
+static void
+call_require_parenthesized_not_held_locked(
+    struct assertion_requirement_state *state)
+{
+	mutex_enter(&state->mutex);
+	require_parenthesized_mutex_not_held(state);
+	mutex_exit(&state->mutex);
+}

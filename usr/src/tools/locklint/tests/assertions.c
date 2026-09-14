@@ -136,3 +136,12 @@ note_no_competing_threads(struct assertion_state *state)
 	_NOTE(NO_COMPETING_THREADS)
 	return (state->value);
 }
+
+static void
+assertion_parenthesized_negated(struct assertion_state *state)
+{
+	mutex_enter(&state->lock);
+	ASSERT(!(mutex_owned(&state->lock)));
+	mutex_enter(&state->lock);
+	mutex_exit(&state->lock);
+}
