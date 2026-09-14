@@ -47,5 +47,12 @@ function check_lock_merge_caller tu=calls.c definition=calls.c:166:1 linkage=int
   root no-known-direct-caller
   call calls.c:169:28 unresolved-external mutex_enter
   call calls.c:170:29 resolved check_callee tu=calls.c
+function require_assumed_protection tu=calls.c definition=calls.c:174:1 linkage=internal reachable=yes
+function check_mixed_condition_wrapper tu=calls.c definition=calls.c:180:1 linkage=internal reachable=yes
+  call calls.c:182:35 resolved require_assumed_protection tu=calls.c
+  call calls.c:183:29 resolved check_callee tu=calls.c
+function check_mixed_condition_caller tu=calls.c definition=calls.c:187:1 linkage=internal reachable=yes
+  root no-known-direct-caller
+  call calls.c:189:46 resolved check_mixed_condition_wrapper tu=calls.c
 escapes
 pointer activity

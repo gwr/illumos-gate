@@ -34,7 +34,8 @@ run_session()
 	    check_aggregate_access \
 	    check_aggregate_read \
 	    check_embedded_aggregate_access \
-	    check_nested_policy_access
+	    check_nested_policy_access \
+	    check_union_access
 	do
 		run_command "declare-root-$root" "$LOCK_LINT" declare root \
 		    "annotation-names.c:$root" || exit $?

@@ -169,3 +169,22 @@ check_lock_merge_caller(struct call_state *state, int take_lock)
 		mutex_enter(&state->lock);
 	return (check_callee(state));
 }
+
+static void
+require_assumed_protection(struct call_state *state)
+{
+	_NOTE(ASSUMING_PROTECTED(state->value))
+}
+
+static int
+check_mixed_condition_wrapper(struct call_state *state)
+{
+	require_assumed_protection(state);
+	return (check_callee(state));
+}
+
+static int
+check_mixed_condition_caller(struct call_state *state)
+{
+	return (check_mixed_condition_wrapper(state));
+}

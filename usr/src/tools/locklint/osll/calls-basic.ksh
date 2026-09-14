@@ -30,7 +30,9 @@ run_session()
 	    locked_transitive \
 	    unlocked_transitive \
 	    locked_recursive \
-	    unlocked_recursive
+	    unlocked_recursive \
+	    locked_aggregate \
+	    unlocked_aggregate
 	do
 		run_command "declare-root-$root" "$LOCK_LINT" declare root \
 		    "calls-basic.c:$root" || exit $?

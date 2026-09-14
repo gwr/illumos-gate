@@ -159,6 +159,39 @@ struct protection_alternative {
 	struct protection_alternative *next;
 };
 
+/*
+ * Keep source provenance separate from caller-mapped condition identity.
+ * Conditions own references to shared origins; each origin accumulates the
+ * distinct failing call sites that make its source access unsafe.
+ */
+struct protection_witness {
+	struct function_info *function;
+	struct instruction *insn;
+	struct function_info *callee;
+	struct position pos;
+	enum protection_status status;
+	struct protection_witness *next;
+};
+
+struct protection_origin {
+	struct function_info *function;
+	struct instruction *insn;
+	struct locklint_access data;
+	struct locklint_access lock;
+	struct position pos;
+	unsigned int required_modes;
+	enum protection_status diagnostic_status;
+	struct protection_witness *witnesses;
+	bool diagnostic_pending;
+	bool diagnostic_emitted;
+	struct protection_origin *next;
+};
+
+struct protection_origin_ref {
+	struct protection_origin *origin;
+	struct protection_origin_ref *next;
+};
+
 struct protection_condition {
 	unsigned int argument;
 	/*
@@ -180,9 +213,15 @@ struct protection_condition {
 	struct symbol *data_member;
 	unsigned long data_offset;
 	struct position pos;
+	bool explicit_contract;
 	struct protection_alternative *alternatives;
+	struct protection_origin_ref *origins;
 	struct protection_condition *next;
 };
+
+static struct protection_origin *protection_origins;
+static struct protection_origin **protection_origins_tail =
+    &protection_origins;
 
 struct acquisition_role {
 	struct locklint_access access;
@@ -2073,6 +2112,137 @@ copy_protection_alternatives(
 	return (copy);
 }
 
+static void
+free_protection_origin_refs(struct protection_origin_ref *origins)
+{
+	while (origins != NULL) {
+		struct protection_origin_ref *next = origins->next;
+
+		free(origins);
+		origins = next;
+	}
+}
+
+static bool
+add_protection_origin_ref(struct protection_origin_ref **originsp,
+    struct protection_origin *origin)
+{
+	struct protection_origin_ref *ref;
+
+	for (ref = *originsp; ref != NULL; ref = ref->next) {
+		if (ref->origin == origin)
+			return (false);
+	}
+	ref = calloc(1, sizeof (*ref));
+	if (ref == NULL)
+		die("out of memory recording protection origin");
+	ref->origin = origin;
+	ref->next = *originsp;
+	*originsp = ref;
+	return (true);
+}
+
+static bool
+merge_protection_origins(struct protection_origin_ref **target,
+    const struct protection_origin_ref *source)
+{
+	bool changed = false;
+
+	for (; source != NULL; source = source->next) {
+		if (add_protection_origin_ref(target, source->origin))
+			changed = true;
+	}
+	return (changed);
+}
+
+/*
+ * Record the immutable source identity of one protected access.  Conditions
+ * share this record as they propagate, while retaining separately mapped
+ * data and lock identities for semantic checking.
+ */
+static struct protection_origin *
+add_protection_origin(struct function_info *function, struct instruction *insn,
+    const struct locklint_access *data, const struct locklint_access *lock,
+    unsigned int required_modes)
+{
+	struct protection_origin *origin;
+
+	origin = calloc(1, sizeof (*origin));
+	if (origin == NULL)
+		die("out of memory recording protection origin");
+	origin->function = function;
+	origin->insn = insn;
+	origin->data = *data;
+	origin->data.expr = NULL;
+	origin->data.owners = NULL;
+	origin->lock = *lock;
+	origin->lock.expr = NULL;
+	origin->lock.owners = NULL;
+	origin->pos = insn->access->pos;
+	origin->required_modes = required_modes;
+	*protection_origins_tail = origin;
+	protection_origins_tail = &origin->next;
+	return (origin);
+}
+
+static struct protection_origin *
+find_protection_origin(struct function_info *function, struct instruction *insn,
+    const struct locklint_access *data)
+{
+	struct protection_origin *origin;
+
+	for (origin = protection_origins; origin != NULL;
+	    origin = origin->next) {
+		if (origin->function == function && origin->insn == insn &&
+		    origin->data.path == data->path &&
+		    origin->data.member == data->member &&
+		    origin->data.offset == data->offset)
+			return (origin);
+	}
+	return (NULL);
+}
+
+/*
+ * Preserve every distinct failing call context.  Repeated mappings of the
+ * same origin through a fixed-point round update rather than duplicate the
+ * witness, and the origin retains the strongest observed failure.
+ */
+static void
+record_protection_witness(struct protection_origin *origin,
+    struct function_info *function, struct instruction *insn,
+    struct function_info *callee, struct position pos,
+    enum protection_status status)
+{
+	struct protection_witness **tail = &origin->witnesses;
+	struct protection_witness *witness;
+
+	for (witness = origin->witnesses; witness != NULL;
+	    witness = witness->next) {
+		if (witness->function == function && witness->insn == insn) {
+			if (status < witness->status)
+				witness->status = status;
+			goto update_origin;
+		}
+		tail = &witness->next;
+	}
+	witness = calloc(1, sizeof (*witness));
+	if (witness == NULL)
+		die("out of memory recording protection witness");
+	witness->function = function;
+	witness->insn = insn;
+	witness->callee = callee;
+	witness->pos = pos;
+	witness->status = status;
+	*tail = witness;
+
+update_origin:
+	if (!origin->diagnostic_pending ||
+	    status < origin->diagnostic_status) {
+		origin->diagnostic_pending = true;
+		origin->diagnostic_status = status;
+	}
+}
+
 static bool
 add_protection_condition(struct function_info *function,
     unsigned int argument, struct symbol *data_root,
@@ -2081,14 +2251,16 @@ add_protection_condition(struct function_info *function,
     struct symbol *lock_root, struct object_identity *lock_object,
     struct symbol *lock_member, unsigned long lock_offset,
     struct symbol *data_member, unsigned long data_offset,
-    struct position pos,
-    const struct protection_alternative *alternatives)
+    struct position pos, bool explicit_contract,
+    const struct protection_alternative *alternatives,
+    const struct protection_origin_ref *origins)
 {
 	struct protection_condition *condition;
 
 	for (condition = function->conditions; condition != NULL;
 	    condition = condition->next) {
-		if (condition->argument == argument &&
+		if (condition->explicit_contract == explicit_contract &&
+		    condition->argument == argument &&
 		    same_condition_data(condition, data_root, data_object,
 		    data_member, data_offset) &&
 		    same_condition_lock(condition, has_lock, required_modes,
@@ -2096,7 +2268,8 @@ add_protection_condition(struct function_info *function,
 		    lock_object, lock_member, lock_offset) &&
 		    same_protection_alternatives(condition->alternatives,
 		    alternatives)) {
-			return (false);
+			return (merge_protection_origins(&condition->origins,
+			    origins));
 		}
 	}
 	condition = calloc(1, sizeof (*condition));
@@ -2114,8 +2287,10 @@ add_protection_condition(struct function_info *function,
 	condition->data_member = data_member;
 	condition->data_offset = data_offset;
 	condition->pos = pos;
+	condition->explicit_contract = explicit_contract;
 	condition->alternatives =
 	    copy_protection_alternatives(alternatives);
+	(void) merge_protection_origins(&condition->origins, origins);
 	condition->next = function->conditions;
 	function->conditions = condition;
 	return (true);
@@ -2397,16 +2572,6 @@ lock_name(const struct locklint_access *lock)
 	if (lock->root != NULL && lock->root->ident != NULL)
 		return (show_ident(lock->root->ident));
 	return ("<unknown>");
-}
-
-static const char *
-access_name(const struct locklint_access *access)
-{
-	struct symbol *symbol = access->member != NULL ?
-	    access->member : access->root;
-
-	return (symbol != NULL && symbol->ident != NULL ?
-	    show_ident(symbol->ident) : "<unknown>");
 }
 
 static const char *
@@ -4806,7 +4971,8 @@ collect_assumption_conditions(struct function_info *function)
 		    has_lock && lock.root != access->root ? lock.root : NULL,
 		    has_lock && lock.root != access->root ? lock.object : NULL,
 		    has_lock ? lock.member : NULL, has_lock ? lock.offset : 0,
-		    access->member, access->offset, assumption->pos, NULL);
+		    access->member, access->offset, assumption->pos, true,
+		    NULL, NULL);
 	}
 }
 
@@ -4853,8 +5019,13 @@ collect_local_protection_access(struct function_info *function,
 	    lock) == PROTECTION_ABSENT &&
 	    condition_data_identity(function, access, &argument, &data_root,
 	    &data_object)) {
+		struct protection_origin *origin;
+		struct protection_origin_ref origin_ref = { 0 };
 		struct protection_alternative *alternatives;
 
+		origin = add_protection_origin(function, insn, access, lock,
+		    required_modes);
+		origin_ref.origin = origin;
 		alternatives = collect_state_protection_alternatives(function,
 		    required_modes, state);
 		(void) add_protection_condition(function, argument,
@@ -4862,7 +5033,7 @@ collect_local_protection_access(struct function_info *function,
 		    lock->root != access->root ? lock->root : NULL,
 		    lock->root != access->root ? lock->object : NULL,
 		    lock->member, lock->offset, data_member, access->offset,
-		    insn->access->pos, alternatives);
+		    insn->access->pos, false, alternatives, &origin_ref);
 		free_protection_alternatives(alternatives);
 	}
 }
@@ -4944,7 +5115,8 @@ propagate_call_protection_conditions(struct function_info *function,
 		    condition->has_lock, condition->required_modes,
 		    condition->lock_root, condition->lock_object,
 		    lock.member, lock.offset, object.member, object.offset,
-		    condition->pos, alternatives))
+		    condition->pos, condition->explicit_contract,
+		    alternatives, condition->origins))
 			changed = true;
 		free_protection_alternatives(alternatives);
 	}
@@ -5028,32 +5200,89 @@ check_read_only_access(struct function_info *function,
 	    check_read_only_leaf, &context);
 }
 
+/*
+ * Report one protected access at its original source location, followed by
+ * every distinct caller context that failed to establish its protection.
+ */
+static void
+emit_protection_origin_diagnostic(struct protection_origin *origin)
+{
+	struct protection_witness *witness;
+	char *data_name;
+
+	if (origin == NULL || !origin->diagnostic_pending ||
+	    origin->diagnostic_emitted)
+		return;
+	data_name = locklint_access_name(&origin->data);
+	if (origin->diagnostic_status == PROTECTION_ABSENT) {
+		locklint_warning(LOCKLINT_DIAG_UNPROTECTED_ACCESS,
+		    origin->pos, "protected member '%s' accessed "
+		    "without %s '%s'", data_name,
+		    required_ownership(origin->required_modes),
+		    lock_name(&origin->lock));
+	} else {
+		locklint_warning(LOCKLINT_DIAG_CONDITIONAL_PROTECTION,
+		    origin->pos, "protection for member '%s' is not "
+		    "established on every path reaching this access",
+		    data_name);
+	}
+	free(data_name);
+	for (witness = origin->witnesses; witness != NULL;
+	    witness = witness->next) {
+		if (witness->status == PROTECTION_ABSENT) {
+			info(witness->pos,
+			    "locklint: protection was not established at "
+			    "this call to '%s'",
+			    show_ident(witness->callee->ep->name->ident));
+		} else {
+			info(witness->pos,
+			    "locklint: protection was not established on "
+			    "every path at this call to '%s'",
+			    show_ident(witness->callee->ep->name->ident));
+		}
+	}
+	origin->diagnostic_emitted = true;
+}
+
 static void
 check_protected_access(struct function_info *function,
     struct analysis_state *state, struct instruction *insn,
     const struct locklint_access *access, const struct locklint_access *lock,
     struct symbol *data_member, unsigned int required_modes)
 {
-	const char *data_name;
+	char *data_name;
 	enum protection_status status;
+	struct protection_origin *origin;
 	unsigned int argument;
 
+	(void) data_member;
 	status = get_protection_status(function, state, access, required_modes,
 	    lock);
 	if (status == PROTECTION_DEFINITE)
 		return;
+	origin = find_protection_origin(function, insn, access);
 	if (status == PROTECTION_ABSENT) {
 		if (defer_conditions(function)) {
 			struct symbol *data_root;
 			struct object_identity *data_object;
 
 			if (condition_data_identity(function, access, &argument,
-			    &data_root, &data_object))
+			    &data_root, &data_object)) {
+				emit_protection_origin_diagnostic(origin);
 				return;
+			}
 		}
 	}
-	data_name = data_member != NULL && data_member->ident != NULL ?
-	    show_ident(data_member->ident) : "<unknown>";
+	if (origin != NULL) {
+		if (!origin->diagnostic_pending ||
+		    status < origin->diagnostic_status) {
+			origin->diagnostic_pending = true;
+			origin->diagnostic_status = status;
+		}
+		emit_protection_origin_diagnostic(origin);
+		return;
+	}
+	data_name = locklint_access_name(access);
 	if (status == PROTECTION_PATH_DEPENDENT) {
 		locklint_warning(LOCKLINT_DIAG_CONDITIONAL_PROTECTION,
 		    insn->access->pos,
@@ -5066,6 +5295,7 @@ check_protected_access(struct function_info *function,
 		    "%s '%s'", data_name, required_ownership(required_modes),
 		    lock_name(lock));
 	}
+	free(data_name);
 }
 
 static void
@@ -5802,6 +6032,72 @@ check_call_assertion_requirements(struct function_info *function,
 	}
 }
 
+/*
+ * Map and test one call condition, excluding satisfied conditions and those
+ * that can continue propagating through the caller.
+ */
+static bool
+call_protection_failure(struct function_info *function,
+    struct analysis_state *analysis, struct instruction *insn,
+    const struct protection_condition *condition,
+    struct locklint_access *object, struct locklint_access *lock,
+    enum protection_status *status)
+{
+	unsigned int caller_argument;
+
+	if (!map_call_protection_condition(function, insn, condition,
+	    object, lock))
+		return (false);
+	if (condition_alternative_satisfied(function, insn, condition, lock))
+		return (false);
+	*status = get_protection_status(function, analysis, object,
+	    condition->required_modes, lock);
+	if (*status == PROTECTION_DEFINITE)
+		return (false);
+	if (*status == PROTECTION_ABSENT && defer_conditions(function)) {
+		struct symbol *data_root;
+		struct object_identity *data_object;
+
+		if (condition_data_identity(function, object, &caller_argument,
+		    &data_root, &data_object))
+			return (false);
+	}
+	return (true);
+}
+
+/*
+ * Collect caller contexts separately from emission so one source access can
+ * lead with a single warning and retain every distinct failing call as a note.
+ */
+static void
+collect_call_protection_witnesses(struct function_info *function,
+    struct analysis_state *analysis, struct instruction *insn)
+{
+	struct function_info *callee = callgraph_callee(function, insn);
+	struct protection_condition *condition;
+	struct position pos;
+
+	if (callee == NULL || callee == function)
+		return;
+	pos = insn->call_expr != NULL ? insn->call_expr->pos : insn->pos;
+	for (condition = callee->conditions; condition != NULL;
+	    condition = condition->next) {
+		struct locklint_access object;
+		struct locklint_access lock;
+		struct protection_origin_ref *ref;
+		enum protection_status status;
+
+		if (condition->origins == NULL ||
+		    !call_protection_failure(function, analysis, insn,
+		    condition, &object, &lock, &status))
+			continue;
+		for (ref = condition->origins; ref != NULL; ref = ref->next) {
+			record_protection_witness(ref->origin, function, insn,
+			    callee, pos, status);
+		}
+	}
+}
+
 static void
 check_call(struct function_info *function,
     struct analysis_state *analysis, struct instruction *insn)
@@ -5828,36 +6124,21 @@ check_call(struct function_info *function,
 			struct locklint_access object;
 			struct locklint_access lock;
 			enum protection_status status;
-			const char *data_name;
-			unsigned int caller_argument;
+			char *data_name;
 
-			if (!map_call_protection_condition(function, insn,
-			    condition, &object, &lock))
+			if (!condition->explicit_contract)
 				continue;
-			if (condition_alternative_satisfied(function, insn,
-			    condition, &lock))
+			if (!call_protection_failure(function, analysis, insn,
+			    condition, &object, &lock, &status))
 				continue;
-			status = get_protection_status(function, analysis, &object,
-			    condition->required_modes, &lock);
-			if (status == PROTECTION_DEFINITE)
-				continue;
-			if (status == PROTECTION_ABSENT &&
-			    defer_conditions(function)) {
-				struct symbol *data_root;
-				struct object_identity *data_object;
-
-				if (condition_data_identity(function, &object,
-				    &caller_argument, &data_root, &data_object))
-					continue;
-			}
-			data_name = access_name(&object);
+			data_name = locklint_access_name(&object);
 			if (status == PROTECTION_ABSENT) {
 				if (condition->has_lock) {
 					locklint_warning(
 					    LOCKLINT_DIAG_UNPROTECTED_ACCESS,
-					    pos, "call to '%s' "
-					    "accesses protected member '%s' "
-					    "without %s '%s'",
+					    pos, "call to '%s' does not satisfy "
+					    "assumed protection for '%s': "
+					    "requires %s '%s'",
 					    show_ident(callee->ep->name->ident),
 					    data_name, required_ownership(
 					    condition->required_modes),
@@ -5865,19 +6146,20 @@ check_call(struct function_info *function,
 				} else {
 					locklint_warning(
 					    LOCKLINT_DIAG_UNPROTECTED_ACCESS,
-					    pos, "call to '%s' "
-					    "requires protection for '%s'",
+					    pos, "call to '%s' does not satisfy "
+					    "assumed protection for '%s'",
 					    show_ident(callee->ep->name->ident),
 					    data_name);
 				}
 			} else {
 				locklint_warning(
 				    LOCKLINT_DIAG_CONDITIONAL_PROTECTION,
-				    pos, "protection for member "
-				    "'%s' is not established on every path "
-				    "calling '%s'", data_name,
+				    pos, "assumed protection for '%s' is not "
+				    "established on every path calling '%s'",
+				    data_name,
 				    show_ident(callee->ep->name->ident));
 			}
+			free(data_name);
 		}
 	}
 	{
@@ -6307,6 +6589,33 @@ emit_diagnostics(struct function_info *function)
 	}
 }
 
+/*
+ * Record every failing call context before source-order diagnostic replay.
+ * This lets the original access emit one warning followed by all call-site
+ * witnesses without losing later callers.
+ */
+static void
+collect_protection_diagnostic_witnesses(struct function_info *function)
+{
+	struct block_info *block;
+
+	for (block = function->blocks; block != NULL; block = block->next) {
+		struct analysis_state *state;
+		struct instruction *insn;
+
+		if (!block->reachable)
+			continue;
+		state = copy_analysis_state(block->in);
+		FOR_EACH_PTR(block->bb->insns, insn) {
+			if (insn->bb == NULL)
+				continue;
+			collect_call_protection_witnesses(function, state, insn);
+			transfer_instruction(function, state, insn);
+		} END_FOR_EACH_PTR(insn);
+		free_analysis_state(state);
+	}
+}
+
 static void
 free_blocks(struct block_info *blocks)
 {
@@ -6460,8 +6769,23 @@ run_lock_checks(void)
 	} while (changed);
 	iter = function_iter_open();
 	while ((function = callgraph_iter_next(iter)) != NULL)
+		collect_protection_diagnostic_witnesses(function);
+	callgraph_iter_close(iter);
+	iter = function_iter_open();
+	while ((function = callgraph_iter_next(iter)) != NULL)
 		emit_diagnostics(function);
 	callgraph_iter_close(iter);
+	{
+		struct protection_origin *origin;
+
+		/*
+		 * Keep an unmatched replay identity from silently dropping a
+		 * pending diagnostic.
+		 */
+		for (origin = protection_origins; origin != NULL;
+		    origin = origin->next)
+			emit_protection_origin_diagnostic(origin);
+	}
 	locklint_order_report_observed_cycles();
 }
 
@@ -6491,6 +6815,7 @@ free_checker_attachments(void)
 			    condition->next;
 
 			free_protection_alternatives(condition->alternatives);
+			free_protection_origin_refs(condition->origins);
 			free(condition);
 			condition = condition_next;
 		}
@@ -6551,6 +6876,21 @@ free_checker_attachments(void)
 		function->visibility_transfers = NULL;
 	}
 	callgraph_iter_close(iter);
+	while (protection_origins != NULL) {
+		struct protection_origin *next = protection_origins->next;
+		struct protection_witness *witness =
+		    protection_origins->witnesses;
+
+		while (witness != NULL) {
+			struct protection_witness *witness_next = witness->next;
+
+			free(witness);
+			witness = witness_next;
+		}
+		free(protection_origins);
+		protection_origins = next;
+	}
+	protection_origins_tail = &protection_origins;
 }
 
 /*

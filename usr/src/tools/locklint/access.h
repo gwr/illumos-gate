@@ -62,6 +62,7 @@ bool locklint_access_contains(const struct locklint_access *,
 unsigned int locklint_access_depth(const struct locklint_access *);
 bool locklint_access_base(const struct locklint_access *, struct symbol *,
     unsigned long, unsigned long *);
+char *locklint_access_name(const struct locklint_access *);
 void locklint_access_cleanup(void);
 void locklint_show_access(FILE *, struct expression *);
 

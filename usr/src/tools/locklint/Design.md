@@ -367,6 +367,7 @@ functions
             |    |- input analysis_state
             |    `- output analysis_state
             |- protection_condition list
+            |    `- protection_origin_ref list
             |- assumed_region list
             |- acquisition_candidate list
             |- acquisition_summary list
@@ -407,8 +408,11 @@ The structures have these roles:
 | `struct competition_transfer_block_info` | Temporary per-block state used while computing one competition transfer |
 | `struct state_entry` | One lock and its state in an analysis-state lock map; embeds a `locklint_access` identity |
 | `struct visibility_entry` | One object region and its visible, invisible, or maybe-visible state |
-| `struct protection_condition` | A caller-visible entry protection condition for formal-relative or absolute data, with an optional mutex and exact formal-lock alternatives |
+| `struct protection_condition` | A caller-visible entry protection condition for formal-relative or absolute data, with an optional mutex, exact formal-lock alternatives, and references to represented source accesses |
 | `struct protection_alternative` | One definitely held formal-relative lock whose mapped address may equal and satisfy a condition's required lock |
+| `struct protection_origin` | Shared source identity for one protected access, including its function, instruction, full data and lock paths, required ownership mode, and collected diagnostic witnesses |
+| `struct protection_origin_ref` | One condition-owned reference to a shared protected-access origin |
+| `struct protection_witness` | One distinct caller and call instruction at which an inferred access condition is absent or path-dependent |
 | `struct assumed_region` | One function-wide region selected by `ASSUMING_PROTECTED` |
 | `struct assertion_requirement` | One caller-mappable asserted lock condition, with original source provenance, a local replay checkpoint, ordinary accepted entry masks, and sparse alias alternatives |
 | `struct assertion_alternative` | One set of other formal lock roles and the entry masks accepted when every member aliases an assertion requirement's primary role |
@@ -535,6 +539,8 @@ forms are chosen.
 - The checker owns block maps, protection conditions, assumptions,
   acquisition roles and summaries, lock transfers, and visibility transfers
   attached to each shared `function_info`.
+- The checker owns shared protection origins separately from the condition
+  references that carry them through function summaries.
 - Temporary call-audit arrays are freed after each function is dumped.
 - Checker attachments are freed before callgraph cleanup releases function
   records, pointer observations, and indexes.  Callgraph cleanup rejects open
@@ -1632,7 +1638,8 @@ condition records:
 - a relative or absolute mutex identity when available; and
 - zero or more definitely held formal-relative locks that may be the same
   concrete lock at a call site; and
-- a representative source position.
+- either explicit-contract provenance or every distinct protected-access
+  origin represented by the condition.
 
 `collect_local_protection_conditions()` replays each reachable block from its
 stable input state.  Every unsatisfied protected access with a caller-mappable
@@ -1643,7 +1650,9 @@ When another formal-relative lock is definitely held at the access, that lock
 is recorded as an alternative.  Alternatives from one access are disjunctive,
 but separate access conditions remain conjunctive.  Condition identity
 therefore includes the complete alternative set rather than merging
-alternatives from different accesses.
+alternatives from different accesses.  It also distinguishes explicit
+`ASSUMING_PROTECTED` contracts from inferred access conditions so equivalent
+mapped identities retain both diagnostic obligations.
 Deferral eligibility is applied later, while emitting diagnostics, to decide
 whether a caller-satisfiable condition suppresses the local warning.
 
@@ -1658,9 +1667,24 @@ normalized address exactly equals the mapped required lock address.
 to caller actual or absolute objects and adds unsatisfied conditions to the
 caller.  Formal-relative alternatives are mapped and retained through
 wrappers; alternatives that map to concrete unequal objects are discarded.
+Equivalent conditions merge their access-origin references rather than
+discarding all but one source location.
 The pass iterates to a fixed point, including recursive call cycles.  At a
 call site, an exact alternative match, definite mutex ownership, definite
 invisibility, or definite absence of competition satisfies the condition.
+
+An inferred access origin retains its source instruction, complete interned
+data path, original lock identity, and required ownership mode while the
+condition's semantic identities are mapped through callers.  A preliminary
+diagnostic replay records every distinct failing caller context and the
+strongest observed failure on each origin.  The ordinary source-order replay
+then diagnoses each origin once at the actual access and emits every failing
+call site as an informational note.  A function that is both a root and a
+known callee therefore retains its caller evidence without duplicating the
+primary access warning.
+
+`ASSUMING_PROTECTED` is an explicit contract rather than an inferred access.
+Its failures remain caller-focused and name the mapped contract region.
 
 ## Function lock effects
 
@@ -1851,8 +1875,9 @@ redundant potential-deadlock warning for the same conflict.
 
 ## Diagnostic sequence
 
-After summaries and block states stabilize, `emit_diagnostics()` replays each
-reachable block in instruction order.
+After summaries and block states stabilize, a preliminary replay records
+every failing call context for inferred protected-access conditions.
+`emit_diagnostics()` then replays each reachable block in instruction order.
 
 For each instruction it:
 
@@ -1867,8 +1892,12 @@ For each instruction it:
 
 After the block, a return instruction triggers checks for locks held on all or
 some return paths.  Assertion-only held state is excluded from those
-side-effect diagnostics.  After all functions have been replayed, observed
-lock-order cycles are reported.
+side-effect diagnostics.  Inferred protected-access conditions are diagnosed
+at their source locations with the caller witnesses collected by the
+preliminary replay.  After all functions have been replayed, observed
+lock-order cycles are reported.  A final origin sweep emits any pending
+diagnostic that source replay did not match, preventing an identity defect
+from silently dropping a warning.
 
 Every primary locklint warning ends with a stable kebab-case identifier in
 square brackets:
@@ -1926,6 +1955,7 @@ predecessor or call-chain witnesses remain future work.
 | `locklint_same_access()` | Prefer exact computed-address equality, falling back to source identity |
 | `locklint_access_contains()` | Test whole-object and nested-member containment |
 | `locklint_access_base()` | Map a type-scoped relation into a concrete embedded object |
+| `locklint_access_name()` | Allocate a diagnostic name containing the complete retained member path |
 | `locklint_show_access()` | Display a source-oriented access path |
 
 ### Annotations: `annotations.c`
@@ -2114,13 +2144,19 @@ callee protected access is unsatisfied
     -> formal-relative or absolute data becomes a protection condition
     -> optional relative or absolute mutex is recorded
     -> definitely held formal-relative locks become exact alternatives
+    -> source instruction and full member path become a shared origin
 caller OP_CALL resolved to callee
     -> formal data object mapped to actual argument
     -> relative lock rebased to actual object
        or absolute lock root preserved unchanged
     -> an alternative whose mapped address equals the required lock,
        mutex ownership, invisibility, or no competition satisfies the condition
-    -> otherwise warning is emitted or the condition is deferred again
+    -> otherwise the condition and its origins are deferred again
+root or non-mappable caller boundary
+    -> each distinct failing call-site witness recorded per origin
+preliminary call replay completes
+    -> strongest failure reported once at the original access
+    -> every failing call emitted as an informational note
 ```
 
 ## Kernel and user test configurations

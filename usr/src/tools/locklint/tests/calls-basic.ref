@@ -1,3 +1,10 @@
-../locklint: calls-basic.c:79:28: warning: locklint: call to 'read_direct' accesses protected member 'direct_value' without holding 'lock' [unprotected-access]
-../locklint: calls-basic.c:96:29: warning: locklint: call to 'read_wrapper' accesses protected member 'transitive_value' without holding 'lock' [unprotected-access]
-../locklint: calls-basic.c:113:31: warning: locklint: call to 'read_recursive' accesses protected member 'recursive_value' without holding 'lock' [unprotected-access]
+../locklint: calls-basic.c:49:22: warning: locklint: protected member 'direct_value' accessed without holding 'lock' [unprotected-access]
+../locklint: calls-basic.c:86:28: locklint: protection was not established at this call to 'read_direct'
+../locklint: calls-basic.c:55:22: warning: locklint: protected member 'transitive_value' accessed without holding 'lock' [unprotected-access]
+../locklint: calls-basic.c:103:29: locklint: protection was not established at this call to 'read_wrapper'
+../locklint: calls-basic.c:69:22: warning: locklint: protected member 'recursive_value' accessed without holding 'lock' [unprotected-access]
+../locklint: calls-basic.c:120:31: locklint: protection was not established at this call to 'read_recursive'
+../locklint: calls-basic.c:128:14: warning: locklint: protected member 'pair.first' accessed without holding 'lock' [unprotected-access]
+../locklint: calls-basic.c:142:19: locklint: protection was not established at this call to 'clear_pair'
+../locklint: calls-basic.c:128:14: warning: locklint: protected member 'pair.second' accessed without holding 'lock' [unprotected-access]
+../locklint: calls-basic.c:142:19: locklint: protection was not established at this call to 'clear_pair'

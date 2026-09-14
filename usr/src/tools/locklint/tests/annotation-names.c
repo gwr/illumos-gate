@@ -254,3 +254,21 @@ check_nested_policy_access(nested_policy_wrapper_t *output,
 {
 	*output = *input;
 }
+
+typedef union protected_union {
+	int first;
+	int second;
+} protected_union_t;
+
+typedef struct union_state {
+	mutex_t lock;
+	protected_union_t value;
+} union_state_t;
+
+_NOTE(MUTEX_PROTECTS_DATA(union_state::lock, union_state::value))
+
+static void
+check_union_access(union_state_t *state, protected_union_t value)
+{
+	state->value = value;
+}

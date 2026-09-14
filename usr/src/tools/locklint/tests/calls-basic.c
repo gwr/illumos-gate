@@ -23,15 +23,22 @@ typedef struct mutex {
 	void *_opaque[1];
 } mutex_t;
 
+typedef struct calls_basic_pair {
+	int first;
+	int second;
+} calls_basic_pair_t;
+
 typedef struct calls_basic_state {
 	mutex_t lock;
 	int direct_value;
 	int transitive_value;
 	int recursive_value;
+	calls_basic_pair_t pair;
 } calls_basic_state_t;
 
 _NOTE(MUTEX_PROTECTS_DATA(calls_basic_state::lock,
-    calls_basic_state::{ direct_value transitive_value recursive_value }))
+    calls_basic_state::{
+    direct_value transitive_value recursive_value pair }))
 
 extern void mutex_enter(mutex_t *);
 extern void mutex_exit(mutex_t *);
@@ -111,4 +118,26 @@ static int
 unlocked_recursive(calls_basic_state_t *state)
 {
 	return (read_recursive(state, 2));
+}
+
+static void
+clear_pair(calls_basic_state_t *state)
+{
+	calls_basic_pair_t empty = { 0 };
+
+	state->pair = empty;
+}
+
+static void
+locked_aggregate(calls_basic_state_t *state)
+{
+	mutex_enter(&state->lock);
+	clear_pair(state);
+	mutex_exit(&state->lock);
+}
+
+static void
+unlocked_aggregate(calls_basic_state_t *state)
+{
+	clear_pair(state);
 }
