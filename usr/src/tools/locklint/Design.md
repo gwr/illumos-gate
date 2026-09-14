@@ -669,12 +669,26 @@ Locklint registers these hooks:
 | Macro | Callback behavior |
 | --- | --- |
 | `_NOTE` | Copies the original argument tokens and returns zero.  The normal `_NOTE` macro expansion still occurs. |
-| `ASSERT` | Records recognized mutex predicates and returns nonzero.  Sparse analyzes the assertion condition rather than an empty or implementation-specific macro body. |
-| `VERIFY` | Uses the same behavior as `ASSERT`. |
+| `ASSERT` | Records recognized mutex predicates.  Its strong analyzer definition passes the expanded condition to an opaque value consumer; `NO_COMPETING_THREADS` instead requests direct first-argument preservation. |
+| `VERIFY` | Uses the same analyzer definition and predicate capture as `ASSERT`. |
 
 `_NOTE` token copies use ordinary heap allocation because Sparse releases the
 translation unit's token arena after parsing.  The copies and other global
 analysis records currently live until process exit.
+
+The analyzer definitions deliberately make `ASSERT` and `VERIFY` conditions
+visible regardless of the source definition of those macros or the value of
+`DEBUG`.  This matches Solaris LockLint: it analyzes the original `ASSERT`
+argument even when ordinary preprocessing would replace the invocation with
+`(void)0`.  This is static-analysis policy, not a claim that a non-debug
+runtime evaluates `ASSERT`.  Other `#if DEBUG` source selection remains under
+the user's control.
+
+The opaque `__locklint_assertion_value()` consumer keeps side-effect-free
+loads in Sparse IR without exposing implementation helpers such as
+`assfail()`.  It has no definition, is omitted from event and callgraph audit
+output, and has no checker semantics beyond retaining evaluation of its
+argument.
 
 ### Retained expression identity
 
@@ -1223,6 +1237,14 @@ an `assertion` with:
 - predicate position;
 - predicate argument range; and
 - implied held or not-held state.
+
+The original argument is analyzed even when the configured `ASSERT` macro
+would discard it in a non-debug build.  A synthetic value consumer retains
+ordinary data loads as well as calls, matching Solaris LockLint's
+DEBUG-independent assertion analysis.  The consumer itself is not an
+analysis event.  `ASSERT(NO_COMPETING_THREADS)` remains a special direct
+preservation case because its tagged `__context__` expansion is
+statement-like rather than value-producing.
 
 Recognized predicates include mutex-held and not-held forms and rwlock
 read-held, write-held, and lock-held forms.  Direct predicate spellings are
@@ -1970,7 +1992,8 @@ predecessor or call-chain witnesses remain future work.
 
 | Function | Responsibility |
 | --- | --- |
-| `capture_assertion()` | Record recognized predicates and request first-argument preservation |
+| `capture_assertion()` | Record recognized predicates and directly preserve the statement-like competition assertion |
+| `locklint_is_assertion_consumer()` | Identify the hidden call that retains an ordinary assertion value |
 | `adjust_state()` | Apply direct negation and zero-comparison semantics |
 | `locklint_get_assertion()` | Match a linearized predicate call to captured source metadata |
 
@@ -2047,10 +2070,15 @@ checker visits instruction
 ```text
 preprocessor sees ASSERT or VERIFY
     -> capture_assertion records source ranges and implied state
-    -> hook requests analysis of the first macro argument
-Sparse linearizes recognized predicate call
+    -> strong analyzer macro passes the condition to an opaque consumer
+    -> behavior is independent of DEBUG, matching Solaris LockLint
+Sparse linearizes condition loads and recognized predicate calls
+    -> opaque consumer keeps otherwise side-effect-free loads live
+    -> consumer itself is hidden from event output and checker semantics
+checker visits protected loads
+    -> ordinary protected-access policy and diagnostics apply
+checker visits recognized predicate call
     -> OP_CALL retains source call expression
-checker visits instruction
     -> locklint_get_assertion matches source position/range
     -> predicate argument becomes a locklint_access
     -> block state is refined without recording a lock side effect

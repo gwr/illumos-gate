@@ -26,6 +26,7 @@
 #include "linearize.h"
 #include "access.h"
 #include "annotations.h"
+#include "assertions.h"
 #include "events.h"
 #include "symbol.h"
 
@@ -204,6 +205,8 @@ show_call_event(struct translation_unit *tu, struct instruction *insn)
 
 	if (insn->opcode != OP_CALL)
 		return (false);
+	if (locklint_is_assertion_consumer(insn))
+		return (true);
 
 	(void) snprintf(name, sizeof (name), "%s", call_name(insn));
 	action = locklint_get_lock_action(tu, insn, &access, &mode);
@@ -272,7 +275,8 @@ locklint_show_events(struct translation_unit *tu, struct entrypoint *ep)
 			if (!showed_block &&
 			    (insn->opcode == OP_LOAD ||
 			    insn->opcode == OP_STORE ||
-			    insn->opcode == OP_CALL)) {
+			    (insn->opcode == OP_CALL &&
+			    !locklint_is_assertion_consumer(insn)))) {
 				(void) printf("block .L%u\n", bb->nr);
 				showed_block = true;
 			}

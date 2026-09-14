@@ -15,15 +15,21 @@
 
 /*
  * Verify that recognized ASSERT and VERIFY predicates refine lock state
- * without analyzing the macro implementation.  Equivalent held and not-held
- * spellings distinguish predicate polarity, an active macro body proves that
- * helper calls such as assfail() remain hidden, and competition assertions
- * show the analogous state transition for unprotected access.
+ * without analyzing the macro implementation.  Protected data in an
+ * assertion remains visible even when its configured macro is empty.
+ * Equivalent held and not-held spellings distinguish predicate polarity, an
+ * active macro body proves that helper calls such as assfail() remain hidden,
+ * and competition assertions show the analogous state transition for
+ * unprotected access.
  */
 
+#ifdef __lock_lint
+#include <sys/debug.h>
+#else
 #define	_NOTE(arg)
 #define	ASSERT(expr)
 #define	VERIFY(expr)	((void)(expr))
+#endif
 #define	MUTEX_HELD(lock)	mutex_owned(lock)
 #define	MUTEX_NOT_HELD(lock)	(!mutex_owned(lock))
 
@@ -42,7 +48,11 @@ _NOTE(MUTEX_PROTECTS_DATA(assertion_state::lock,
 extern int mutex_owned(mutex_t *);
 extern void mutex_enter(mutex_t *);
 extern void mutex_exit(mutex_t *);
+#ifndef __lock_lint
+extern int assfail(void);
+#endif
 extern int assertion_unprotected(struct assertion_state *);
+extern void assertion_expression_access(struct assertion_state *);
 extern int assertion_macro_held(struct assertion_state *);
 extern int assertion_direct_held(struct assertion_state *);
 extern int assertion_macro_not_held(struct assertion_state *);
@@ -54,6 +64,12 @@ int
 assertion_unprotected(struct assertion_state *state)
 {
 	return (state->value);
+}
+
+void
+assertion_expression_access(struct assertion_state *state)
+{
+	ASSERT((state->value & 1) == 0);
 }
 
 int
@@ -100,10 +116,10 @@ assertion_zero_comparison(struct assertion_state *state)
 	return (0);
 }
 
+#ifndef __lock_lint
 #undef	ASSERT
 #define	ASSERT(expr)	((void)((expr) || assfail()))
-
-extern int assfail(void);
+#endif
 
 int
 assertion_active_held(struct assertion_state *state)

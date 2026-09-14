@@ -45,6 +45,8 @@ struct assertion {
 static struct assertion *assertions;
 static struct assertion **assertions_tail = &assertions;
 
+#define	ASSERTION_CONSUMER	"__locklint_assertion_value"
+
 static bool
 position_before(struct position left, struct position right)
 {
@@ -182,6 +184,7 @@ capture_assertion(const struct token *macro, const struct token *open,
 {
 	const struct token *end;
 	const struct token *token;
+	bool preserve_argument = false;
 
 	(void) macro;
 	(void) data;
@@ -196,6 +199,8 @@ capture_assertion(const struct token *macro, const struct token *open,
 		unsigned int positive;
 		unsigned int negative;
 
+		if (token_is(token, "NO_COMPETING_THREADS"))
+			preserve_argument = true;
 		if (!predicate_modes(token, &positive, &negative))
 			continue;
 		predicate_open = token->next;
@@ -217,7 +222,11 @@ capture_assertion(const struct token *macro, const struct token *open,
 		*assertions_tail = assertion;
 		assertions_tail = &assertion->next;
 	}
-	return (1);
+	/*
+	 * The competition predicate expands to a statement-like __context__.
+	 * Preserve it directly instead of nesting it in the value consumer.
+	 */
+	return (preserve_argument);
 }
 
 void
@@ -226,12 +235,36 @@ locklint_assertions_enable(void)
 	add_macro_expansion_hook("ASSERT", capture_assertion, NULL);
 	add_macro_expansion_hook("VERIFY", capture_assertion, NULL);
 	/*
+	 * Keep the original argument live without exposing the configured macro
+	 * body.  The opaque consumer prevents Sparse from discarding pure loads;
+	 * locklint otherwise ignores the synthetic call.
+	 */
+	add_pre_buffer("extern void " ASSERTION_CONSUMER "(int);\n"
+	    "#strong_define ASSERT(expr) "
+	    "((void)" ASSERTION_CONSUMER "(!!(expr)))\n"
+	    "#strong_define VERIFY(expr) "
+	    "((void)" ASSERTION_CONSUMER "(!!(expr)))\n");
+	/*
 	 * synch.h defines this predicate as 1.  Keep existing assertions but
 	 * lower their preserved argument to an absolute local refinement.
 	 */
 	add_pre_buffer("#strong_define NO_COMPETING_THREADS "
 	    "__context__(0, 0, %lu);\n",
 	    (unsigned long)LOCKLINT_EXECUTION_ASSERT_NO_COMPETITION);
+}
+
+/*
+ * Identify the opaque retention call so user-facing event and callgraph
+ * audits do not expose analyzer implementation details.
+ */
+bool
+locklint_is_assertion_consumer(const struct instruction *insn)
+{
+	return (insn->opcode == OP_CALL && insn->func != NULL &&
+	    insn->func->type == PSEUDO_SYM && insn->func->sym != NULL &&
+	    insn->func->sym->ident != NULL &&
+	    strcmp(show_ident(insn->func->sym->ident),
+	    ASSERTION_CONSUMER) == 0);
 }
 
 static bool

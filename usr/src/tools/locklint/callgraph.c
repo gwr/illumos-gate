@@ -46,6 +46,7 @@
 #include "expression.h"
 #include "linearize.h"
 #include "access.h"
+#include "assertions.h"
 #include "callgraph.h"
 #include "function_info.h"
 #include "identity.h"
@@ -987,7 +988,8 @@ dump_function_calls(FILE *stream, struct function_info *function)
 		struct instruction *insn;
 
 		FOR_EACH_PTR(bb->insns, insn) {
-			if (insn->bb != NULL && insn->opcode == OP_CALL)
+			if (insn->bb != NULL && insn->opcode == OP_CALL &&
+			    !locklint_is_assertion_consumer(insn))
 				count++;
 		} END_FOR_EACH_PTR(insn);
 	} END_FOR_EACH_PTR(bb);
@@ -1000,7 +1002,8 @@ dump_function_calls(FILE *stream, struct function_info *function)
 		struct instruction *insn;
 
 		FOR_EACH_PTR(bb->insns, insn) {
-			if (insn->bb == NULL || insn->opcode != OP_CALL)
+			if (insn->bb == NULL || insn->opcode != OP_CALL ||
+			    locklint_is_assertion_consumer(insn))
 				continue;
 			calls[index].insn = insn;
 			calls[index].pos = call_position(insn);

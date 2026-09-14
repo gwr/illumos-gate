@@ -23,6 +23,7 @@ struct locklint_access;
 struct translation_unit;
 
 void locklint_assertions_enable(void);
+bool locklint_is_assertion_consumer(const struct instruction *);
 bool locklint_get_assertion(struct translation_unit *, struct instruction *,
     struct locklint_access *, unsigned int *);
 
