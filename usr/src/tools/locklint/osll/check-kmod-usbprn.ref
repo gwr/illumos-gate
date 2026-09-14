@@ -1,6 +1,8 @@
 # Normalized protected-access findings from the corrected standalone OSLL
 # comparison.  The runner separately checks source annotations and complete
-# usbprn function coverage.
+# usbprn function coverage.  Its semantic comparison uses the sorted complete
+# member paths below, preserving duplicates while ignoring source anchors and
+# emission order.
 usbprn.c:344 usbprn_instance
 usbprn.c:345 usbprn_dip
 usbprn.c:348 usbprn_log_handle

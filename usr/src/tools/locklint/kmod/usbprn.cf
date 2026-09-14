@@ -1,0 +1,10 @@
+# Complete semantic translation of the historical standalone usbprn.wlcmd.
+#
+# The eight historical callbacks and entry points are automatic roots because
+# their addresses escape through operation vectors, request callbacks, or
+# hotplug registration.  The seven bus_ops mappings to warlock_dummy cannot
+# affect usbprn, whose dev_ops has no bus_ops vector.
+#
+# OSLL produces identical analysis and function inventories with and without
+# "one usbprn_state".  New locklint already distinguishes concrete object
+# identities and needs no declaration for this focused module.
