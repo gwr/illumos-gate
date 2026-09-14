@@ -2551,14 +2551,12 @@ get_protection_status(const struct function_info *function,
 }
 
 static bool
-protected_access(struct function_info *function, struct instruction *insn,
-    struct locklint_access *access, struct locklint_access *lock,
+protected_access(struct instruction *insn,
+    const struct locklint_access *access, struct locklint_access *lock,
     struct symbol **data_member, unsigned int *required_modes)
 {
 	struct locklint_data_policy policy;
 
-	if (!locklint_get_instruction_access(function->tu, insn, access))
-		return (false);
 	if (!locklint_data_policy(access, &policy, lock) ||
 	    (policy.protection != LOCKLINT_PROTECTION_MUTEX &&
 	    policy.protection != LOCKLINT_PROTECTION_RWLOCK) ||
@@ -2573,6 +2571,49 @@ protected_access(struct function_info *function, struct instruction *insn,
 	*data_member = access->member != NULL ?
 	    access->member : access->root;
 	return (true);
+}
+
+typedef void (*protected_access_f)(struct function_info *,
+    struct analysis_state *, struct instruction *,
+    const struct locklint_access *, const struct locklint_access *,
+    struct symbol *, unsigned int);
+
+struct protected_access_context {
+	struct function_info *function;
+	struct analysis_state *state;
+	struct instruction *insn;
+	protected_access_f callback;
+};
+
+static void
+visit_protected_access(const struct locklint_access *access, void *data)
+{
+	struct protected_access_context *context = data;
+	struct locklint_access lock;
+	struct symbol *data_member;
+	unsigned int required_modes;
+
+	if (protected_access(context->insn, access, &lock, &data_member,
+	    &required_modes)) {
+		context->callback(context->function, context->state,
+		    context->insn, access, &lock, data_member, required_modes);
+	}
+}
+
+static void
+for_each_protected_access(struct function_info *function,
+    struct analysis_state *state, struct instruction *insn,
+    protected_access_f callback)
+{
+	struct protected_access_context context = {
+		.function = function,
+		.state = state,
+		.insn = insn,
+		.callback = callback
+	};
+
+	locklint_for_each_instruction_leaf_access(function->tu, insn,
+	    visit_protected_access, &context);
 }
 
 static bool
@@ -4799,6 +4840,34 @@ diagnose_assumption(struct function_info *function,
 }
 
 static void
+collect_local_protection_access(struct function_info *function,
+    struct analysis_state *state, struct instruction *insn,
+    const struct locklint_access *access, const struct locklint_access *lock,
+    struct symbol *data_member, unsigned int required_modes)
+{
+	unsigned int argument;
+	struct symbol *data_root;
+	struct object_identity *data_object;
+
+	if (get_protection_status(function, state, access, required_modes,
+	    lock) == PROTECTION_ABSENT &&
+	    condition_data_identity(function, access, &argument, &data_root,
+	    &data_object)) {
+		struct protection_alternative *alternatives;
+
+		alternatives = collect_state_protection_alternatives(function,
+		    required_modes, state);
+		(void) add_protection_condition(function, argument,
+		    data_root, data_object, true, required_modes,
+		    lock->root != access->root ? lock->root : NULL,
+		    lock->root != access->root ? lock->object : NULL,
+		    lock->member, lock->offset, data_member, access->offset,
+		    insn->access->pos, alternatives);
+		free_protection_alternatives(alternatives);
+	}
+}
+
+static void
 collect_local_protection_conditions(struct function_info *function)
 {
 	struct block_info *block;
@@ -4812,39 +4881,10 @@ collect_local_protection_conditions(struct function_info *function)
 			continue;
 		state = copy_analysis_state(block->in);
 		FOR_EACH_PTR(block->bb->insns, insn) {
-			struct locklint_access access;
-			struct locklint_access lock;
-			struct symbol *data_member;
-			struct symbol *data_root;
-			struct object_identity *data_object;
-			unsigned int argument;
-			unsigned int required_modes;
-
 			if (insn->bb == NULL)
 				continue;
-			if (protected_access(function, insn, &access, &lock,
-			    &data_member, &required_modes) &&
-			    get_protection_status(function, state, &access,
-			    required_modes, &lock) == PROTECTION_ABSENT &&
-			    condition_data_identity(function, &access, &argument,
-			    &data_root, &data_object)) {
-				struct protection_alternative *alternatives;
-
-				alternatives =
-				    collect_state_protection_alternatives(
-				    function, required_modes, state);
-				(void) add_protection_condition(function,
-				    argument,
-				    data_root, data_object,
-				    true, required_modes,
-				    lock.root != access.root ? lock.root : NULL,
-				    lock.root != access.root ?
-				    lock.object : NULL,
-				    lock.member, lock.offset, data_member,
-				    access.offset, insn->access->pos,
-				    alternatives);
-				free_protection_alternatives(alternatives);
-			}
+			for_each_protected_access(function, state, insn,
+			    collect_local_protection_access);
 			transfer_instruction(function, state, insn);
 		} END_FOR_EACH_PTR(insn);
 		free_analysis_state(state);
@@ -4938,28 +4978,26 @@ propagate_function_protection_conditions(struct function_info *function)
 }
 
 static void
-check_read_only_access(struct function_info *function,
-    struct analysis_state *state, struct instruction *insn)
+check_read_only_leaf(const struct locklint_access *access, void *data)
 {
-	struct locklint_access access;
+	struct protected_access_context *context = data;
+	struct analysis_state *state = context->state;
+	struct instruction *insn = context->insn;
 	struct locklint_access lock;
 	struct locklint_data_policy policy;
-	struct symbol *data;
+	struct symbol *member;
 	const char *name;
 	enum visibility_state visibility;
 
-	if (insn->opcode != OP_STORE ||
-	    !locklint_get_instruction_access(function->tu, insn, &access) ||
-	    !locklint_data_policy(&access, &policy, &lock) ||
-	    !policy.read_only)
+	if (!locklint_data_policy(access, &policy, &lock) || !policy.read_only)
 		return;
-	visibility = get_visibility(state->visibility, &access);
+	visibility = get_visibility(state->visibility, access);
 	if (competition_absent(&state->competition) ||
 	    visibility == VISIBILITY_INVISIBLE)
 		return;
-	data = access.member != NULL ? access.member : access.root;
-	name = data != NULL && data->ident != NULL ?
-	    show_ident(data->ident) : "<unknown>";
+	member = access->member != NULL ? access->member : access->root;
+	name = member != NULL && member->ident != NULL ?
+	    show_ident(member->ident) : "<unknown>";
 	if (competition_present(&state->competition) &&
 	    visibility == VISIBILITY_VISIBLE) {
 		locklint_warning(LOCKLINT_DIAG_READ_ONLY_VISIBLE,
@@ -4975,22 +5013,33 @@ check_read_only_access(struct function_info *function,
 }
 
 static void
-check_access(struct function_info *function, struct analysis_state *state,
-    struct instruction *insn)
+check_read_only_access(struct function_info *function,
+    struct analysis_state *state, struct instruction *insn)
 {
-	struct locklint_access access;
-	struct locklint_access lock;
-	struct symbol *data_member;
+	struct protected_access_context context = {
+		.function = function,
+		.state = state,
+		.insn = insn
+	};
+
+	if (insn->opcode != OP_STORE)
+		return;
+	locklint_for_each_instruction_leaf_access(function->tu, insn,
+	    check_read_only_leaf, &context);
+}
+
+static void
+check_protected_access(struct function_info *function,
+    struct analysis_state *state, struct instruction *insn,
+    const struct locklint_access *access, const struct locklint_access *lock,
+    struct symbol *data_member, unsigned int required_modes)
+{
 	const char *data_name;
 	enum protection_status status;
 	unsigned int argument;
-	unsigned int required_modes;
 
-	if (!protected_access(function, insn, &access, &lock, &data_member,
-	    &required_modes))
-		return;
-	status = get_protection_status(function, state, &access, required_modes,
-	    &lock);
+	status = get_protection_status(function, state, access, required_modes,
+	    lock);
 	if (status == PROTECTION_DEFINITE)
 		return;
 	if (status == PROTECTION_ABSENT) {
@@ -4998,7 +5047,7 @@ check_access(struct function_info *function, struct analysis_state *state,
 			struct symbol *data_root;
 			struct object_identity *data_object;
 
-			if (condition_data_identity(function, &access, &argument,
+			if (condition_data_identity(function, access, &argument,
 			    &data_root, &data_object))
 				return;
 		}
@@ -5015,8 +5064,16 @@ check_access(struct function_info *function, struct analysis_state *state,
 		    insn->access->pos,
 		    "protected member '%s' accessed without "
 		    "%s '%s'", data_name, required_ownership(required_modes),
-		    lock_name(&lock));
+		    lock_name(lock));
 	}
+}
+
+static void
+check_access(struct function_info *function, struct analysis_state *state,
+    struct instruction *insn)
+{
+	for_each_protected_access(function, state, insn,
+	    check_protected_access);
 }
 
 /*

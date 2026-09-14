@@ -44,6 +44,7 @@ struct policy_state {
 	struct policy_nested scheme_group;
 	int mutex_after_scheme;
 	int read_only;
+	struct policy_nested read_only_group;
 };
 
 static struct policy_state policy_object;
@@ -59,6 +60,7 @@ _NOTE(SCHEME_PROTECTS_DATA("initialization convention",
 _NOTE(MUTEX_PROTECTS_DATA(policy_state::lock,
     policy_state::mutex_after_scheme))
 _NOTE(READ_ONLY_DATA(policy_state::read_only))
+_NOTE(READ_ONLY_DATA(policy_state::read_only_group))
 _NOTE(MUTEX_PROTECTS_DATA(policy_object.lock, policy_object.read_only))
 
 extern void mutex_enter(mutex_t *);
@@ -90,6 +92,7 @@ check_data_policy(struct policy_state *state)
 	value += state->read_only;
 	state->read_only = value;
 	mutex_exit(&state->lock);
+	state->read_only_group = state->scheme_group;
 
 	mutex_enter(&state->lock);
 	value += state->protected;

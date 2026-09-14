@@ -37,6 +37,12 @@ struct locklint_member_path {
 	unsigned int depth;
 };
 
+struct locklint_access_owner {
+	struct symbol *type;
+	unsigned long offset;
+	const struct locklint_access_owner *next;
+};
+
 static struct hashtable *member_paths;
 
 static unsigned int
@@ -251,8 +257,10 @@ locklint_get_access(struct translation_unit *tu, struct expression *expr,
 	member = find_member(expr);
 	access->member = member != NULL ? member->member_symbol : NULL;
 	access->offset = member_offset(expr);
+	access->expr_offset = access->offset;
 	access->expr = expr;
 	access->path = member_path(expr);
+	access->owners = NULL;
 	access->address_base = NULL;
 	access->address_offset = 0;
 	return (access->root != NULL);
@@ -341,6 +349,103 @@ locklint_get_instruction_access(struct translation_unit *tu,
 	return (true);
 }
 
+static struct symbol *
+direct_compound_type(struct symbol *type)
+{
+	while (type != NULL && type->type == SYM_NODE)
+		type = type->ctype.base_type;
+	while (type != NULL && type->type == SYM_ARRAY) {
+		type = type->ctype.base_type;
+		while (type != NULL && type->type == SYM_NODE)
+			type = type->ctype.base_type;
+	}
+	if (type == NULL ||
+	    (type->type != SYM_STRUCT && type->type != SYM_UNION))
+		return (NULL);
+	examine_symbol_type(type);
+	return (type);
+}
+
+static struct symbol *
+access_compound_type(const struct locklint_access *access)
+{
+	return (access->expr != NULL ?
+	    direct_compound_type(access->expr->ctype) : NULL);
+}
+
+/*
+ * Mirror recursive annotation expansion on the access side.  Each callback
+ * receives one exact leaf, so the existing policy resolver can retain its
+ * declaration-order and override semantics.
+ */
+static void
+for_each_compound_leaf(const struct locklint_access *access,
+    struct symbol *type, struct locklint_member_path *path,
+    unsigned long relative_offset, const struct locklint_access_owner *owners,
+    locklint_access_f callback, void *data)
+{
+	struct locklint_access_owner owner = {
+		.type = type,
+		.offset = access->offset + relative_offset,
+		.next = owners
+	};
+	struct symbol *member;
+
+	FOR_EACH_PTR(type->symbol_list, member) {
+		struct locklint_access leaf = *access;
+		struct symbol *member_type;
+		struct locklint_member_path *member_path = path;
+		unsigned long offset = relative_offset + member->offset;
+
+		member_type = direct_compound_type(member->ctype.base_type);
+		if (member->ident == NULL) {
+			if (member_type != NULL)
+				for_each_compound_leaf(access, member_type, path,
+				    offset, &owner, callback, data);
+			continue;
+		}
+		member_path = intern_member_path(path, member->ident,
+		    access->offset + offset);
+		if (member_type != NULL) {
+			for_each_compound_leaf(access, member_type, member_path,
+			    offset, &owner, callback, data);
+			continue;
+		}
+		leaf.member = member;
+		leaf.offset = access->offset + offset;
+		leaf.path = member_path;
+		leaf.owners = &owner;
+		if (leaf.address_base != NULL) {
+			if (offset > INT64_MAX ||
+			    !add_address_offset(&leaf.address_offset,
+			    (long long)offset)) {
+				leaf.address_base = NULL;
+				leaf.address_offset = 0;
+			}
+		}
+		callback(&leaf, data);
+	} END_FOR_EACH_PTR(member);
+}
+
+void
+locklint_for_each_instruction_leaf_access(struct translation_unit *tu,
+    const struct instruction *insn, locklint_access_f callback, void *data)
+{
+	struct locklint_access access;
+	struct symbol *type;
+
+	if (!locklint_get_instruction_access(tu, insn, &access))
+		return;
+	type = access_compound_type(&access);
+	if (type == NULL || type->bit_size <= 0 ||
+	    (unsigned int)type->bit_size != insn->size) {
+		callback(&access, data);
+		return;
+	}
+	for_each_compound_leaf(&access, type, access.path, 0, NULL,
+	    callback, data);
+}
+
 bool
 locklint_get_call_argument_access(struct translation_unit *tu,
     const struct instruction *insn, unsigned int index,
@@ -425,7 +530,7 @@ locklint_access_contains(const struct locklint_access *container,
     const struct locklint_access *access)
 {
 	struct expression *member;
-	unsigned long suffix = 0;
+	unsigned long suffix;
 
 	if (!same_access_object(container, access))
 		return (false);
@@ -439,6 +544,9 @@ locklint_access_contains(const struct locklint_access *container,
 	 * Walk from the selected leaf toward its root.  Subtracting each
 	 * member's relative offset recovers the absolute offset of its parent.
 	 */
+	suffix = access->expr != NULL &&
+	    access->offset >= access->expr_offset ?
+	    access->offset - access->expr_offset : 0;
 	for (member = find_member(access->expr); member != NULL;
 	    member = find_member(member->member_base)) {
 		unsigned long offset;
@@ -489,6 +597,8 @@ locklint_rebase_access(const struct locklint_access *base,
 		}
 	}
 	result->expr = NULL;
+	result->expr_offset = 0;
+	result->owners = NULL;
 }
 
 unsigned int
@@ -502,9 +612,18 @@ locklint_access_base(const struct locklint_access *access,
     struct symbol *owner_type, unsigned long relative_offset,
     unsigned long *base_offset)
 {
+	const struct locklint_access_owner *owner;
 	struct expression *member;
-	unsigned long suffix = 0;
+	unsigned long suffix;
 
+	for (owner = access->owners; owner != NULL; owner = owner->next) {
+		if (owner->type == owner_type &&
+		    access->offset >= owner->offset &&
+		    access->offset - owner->offset == relative_offset) {
+			*base_offset = owner->offset;
+			return (true);
+		}
+	}
 	if (access->type == owner_type && access->offset >= relative_offset) {
 		unsigned long displacement = access->offset - relative_offset;
 		int owner_size = bits_to_bytes(owner_type->bit_size);
@@ -515,6 +634,9 @@ locklint_access_base(const struct locklint_access *access,
 			return (true);
 		}
 	}
+	suffix = access->expr != NULL &&
+	    access->offset >= access->expr_offset ?
+	    access->offset - access->expr_offset : 0;
 	for (member = find_member(access->expr); member != NULL;
 	    member = find_member(member->member_base)) {
 		struct symbol *type;

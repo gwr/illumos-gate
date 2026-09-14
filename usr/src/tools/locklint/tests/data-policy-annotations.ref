@@ -1,11 +1,13 @@
-data-policy.c:51:1: DATA_READABLE_WITHOUT_LOCK policy_state::readable
-data-policy.c:52:1: MUTEX_PROTECTS_DATA policy_state::lock -> policy_state::protected
-data-policy.c:52:1: MUTEX_PROTECTS_DATA policy_state::lock -> policy_state::readable
-data-policy.c:52:1: MUTEX_PROTECTS_DATA policy_state::lock -> policy_state::scheme [replaced by data-policy.c:54:1]
-data-policy.c:54:1: SCHEME_PROTECTS_DATA "external convention" -> policy_state::scheme [replaces data-policy.c:52:1]
-data-policy.c:55:1: SCHEME_PROTECTS_DATA "aggregate convention" -> policy_state::scheme_group.first
-data-policy.c:55:1: SCHEME_PROTECTS_DATA "aggregate convention" -> policy_state::scheme_group.second
-data-policy.c:57:1: SCHEME_PROTECTS_DATA "initialization convention" -> policy_state::mutex_after_scheme [replaced by data-policy.c:59:1]
-data-policy.c:59:1: MUTEX_PROTECTS_DATA policy_state::lock -> policy_state::mutex_after_scheme [replaces data-policy.c:57:1]
-data-policy.c:61:1: READ_ONLY_DATA policy_state::read_only
-data-policy.c:62:1: MUTEX_PROTECTS_DATA policy_object.lock -> policy_object.read_only
+data-policy.c:52:1: DATA_READABLE_WITHOUT_LOCK policy_state::readable
+data-policy.c:53:1: MUTEX_PROTECTS_DATA policy_state::lock -> policy_state::protected
+data-policy.c:53:1: MUTEX_PROTECTS_DATA policy_state::lock -> policy_state::readable
+data-policy.c:53:1: MUTEX_PROTECTS_DATA policy_state::lock -> policy_state::scheme [replaced by data-policy.c:55:1]
+data-policy.c:55:1: SCHEME_PROTECTS_DATA "external convention" -> policy_state::scheme [replaces data-policy.c:53:1]
+data-policy.c:56:1: SCHEME_PROTECTS_DATA "aggregate convention" -> policy_state::scheme_group.first
+data-policy.c:56:1: SCHEME_PROTECTS_DATA "aggregate convention" -> policy_state::scheme_group.second
+data-policy.c:58:1: SCHEME_PROTECTS_DATA "initialization convention" -> policy_state::mutex_after_scheme [replaced by data-policy.c:60:1]
+data-policy.c:60:1: MUTEX_PROTECTS_DATA policy_state::lock -> policy_state::mutex_after_scheme [replaces data-policy.c:58:1]
+data-policy.c:62:1: READ_ONLY_DATA policy_state::read_only
+data-policy.c:63:1: READ_ONLY_DATA policy_state::read_only_group.first
+data-policy.c:63:1: READ_ONLY_DATA policy_state::read_only_group.second
+data-policy.c:64:1: MUTEX_PROTECTS_DATA policy_object.lock -> policy_object.read_only

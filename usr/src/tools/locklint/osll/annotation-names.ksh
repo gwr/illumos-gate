@@ -30,7 +30,11 @@ run_session()
 	    check_recursive_names \
 	    check_override \
 	    check_embedded_type \
-	    check_embedded_global_lock
+	    check_embedded_global_lock \
+	    check_aggregate_access \
+	    check_aggregate_read \
+	    check_embedded_aggregate_access \
+	    check_nested_policy_access
 	do
 		run_command "declare-root-$root" "$LOCK_LINT" declare root \
 		    "annotation-names.c:$root" || exit $?

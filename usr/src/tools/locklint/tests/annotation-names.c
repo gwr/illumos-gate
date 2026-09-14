@@ -19,7 +19,8 @@
  * anonymous, and embedded paths.  Applying two protectors to one member shows
  * that the later declaration replaces the earlier one rather than combining
  * them, while an embedded object proves that type-relative paths are rebased
- * at each use.
+ * at each use.  Whole-aggregate copies verify that accesses to a containing
+ * object are checked against every recursively protected leaf.
  */
 
 #ifdef __lock_lint
@@ -158,4 +159,98 @@ check_embedded_global_lock(global_wrapper_t *wrapper)
 	mutex_enter(&global_lock);
 	wrapper->data.value = 2;
 	mutex_exit(&global_lock);
+}
+
+typedef struct aggregate_leaf {
+	int first;
+	int second;
+} aggregate_leaf_t;
+
+typedef struct aggregate_group {
+	int direct;
+	aggregate_leaf_t nested;
+} aggregate_group_t;
+
+typedef struct aggregate_state {
+	mutex_t lock;
+	aggregate_group_t protected;
+} aggregate_state_t;
+
+typedef struct aggregate_wrapper {
+	int padding;
+	aggregate_state_t state;
+} aggregate_wrapper_t;
+
+typedef struct nested_policy {
+	mutex_t lock;
+	int protected;
+	int read_only;
+} nested_policy_t;
+
+typedef struct nested_policy_wrapper {
+	int padding;
+	nested_policy_t nested;
+} nested_policy_wrapper_t;
+
+_NOTE(MUTEX_PROTECTS_DATA(aggregate_state::lock,
+    aggregate_state::protected))
+_NOTE(MUTEX_PROTECTS_DATA(nested_policy::lock,
+    nested_policy::protected))
+_NOTE(READ_ONLY_DATA(nested_policy::read_only))
+
+extern void consume_aggregate(aggregate_group_t);
+
+/*
+ * Exercise whole-object stores while unlocked and while holding the
+ * protecting mutex.  The unlocked store should diagnose all three leaves.
+ */
+static void
+check_aggregate_access(aggregate_state_t *state,
+    const aggregate_group_t *input, aggregate_group_t *output)
+{
+	state->protected = *input;
+	*output = state->protected;
+
+	mutex_enter(&state->lock);
+	state->protected = *input;
+	*output = state->protected;
+	mutex_exit(&state->lock);
+}
+
+/*
+ * Keep each whole-object read live across an external call so Sparse retains
+ * it as a CFG load rather than reusing a preceding aggregate value.
+ */
+static void
+check_aggregate_read(aggregate_state_t *state)
+{
+	consume_aggregate(state->protected);
+
+	mutex_enter(&state->lock);
+	consume_aggregate(state->protected);
+	mutex_exit(&state->lock);
+}
+
+static void
+check_embedded_aggregate_access(aggregate_wrapper_t *wrapper,
+    const aggregate_group_t *input, aggregate_group_t *output)
+{
+	wrapper->state.protected = *input;
+	*output = wrapper->state.protected;
+
+	mutex_enter(&wrapper->state.lock);
+	wrapper->state.protected = *input;
+	*output = wrapper->state.protected;
+	mutex_exit(&wrapper->state.lock);
+}
+
+/*
+ * Copying the wrapper as a whole must retain the nested type as an annotation
+ * owner even though it is not present in the original source expression.
+ */
+static void
+check_nested_policy_access(nested_policy_wrapper_t *output,
+    const nested_policy_wrapper_t *input)
+{
+	*output = *input;
 }

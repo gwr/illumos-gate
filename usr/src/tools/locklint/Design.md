@@ -723,8 +723,10 @@ program-wide analysis.
 | `type` | Compound type reached from the root after stripping pointer and node wrappers |
 | `member` | Final resolved member symbol, or `NULL` for a whole object |
 | `offset` | Cumulative byte offset of the selected path from the root |
+| `expr_offset` | Offset denoted directly by `expr`; synthetic descendant accesses use the difference from `offset` while walking the retained expression |
 | `expr` | Retained source expression, when path traversal is still required |
 | `path` | Interned source member path used for exact nested-member identity |
+| `owners` | Temporary compound-type ancestry for a synthesized leaf, valid only during its iterator callback |
 | `address_base` | Optional Sparse pseudo for the computed instruction address |
 | `address_offset` | Signed byte displacement from `address_base` |
 
@@ -780,6 +782,19 @@ the corresponding Sparse pseudo.  Address normalization strips pointer casts
 and folds exact constant additions and subtractions.  Other computed pseudos
 remain opaque: repeated uses compare equal, while unrelated computations are
 not guessed to be aliases.
+
+A whole-structure load or store is one Sparse instruction even when its data
+policy was recursively expanded into several protected leaves.
+`locklint_for_each_instruction_leaf_access()` mirrors annotation expansion by
+visiting each named leaf of a full-width compound access in declaration order.
+Each synthesized leaf keeps the original source expression, extends its
+interned path and source offset, advances its computed-address displacement,
+and temporarily records every traversed compound owner.  The owner chain lets
+type-scoped policy match a named structure nested below an aggregate source
+expression; it is stack-owned and must not escape the iterator callback.
+Policy lookup, protection-condition construction, and diagnostics can
+therefore reuse exact leaf matching.  Scalar, partial-width, and non-compound
+accesses are visited once unchanged.
 
 `locklint_access_base()` attempts to determine where a type-scoped annotation
 owner occurs within a concrete access.  It walks from the final member toward
@@ -1905,6 +1920,7 @@ predecessor or call-chain witnesses remain future work.
 | `find_member()` | Find retained member metadata in an expression |
 | `locklint_get_access()` | Construct normalized object and canonical member-path identity |
 | `locklint_get_instruction_access()` | Add the normalized address used by a load or store |
+| `locklint_for_each_instruction_leaf_access()` | Visit each exact leaf of a full-width compound load or store |
 | `locklint_get_call_argument_access()` | Add the normalized address passed as a call argument |
 | `locklint_rebase_access()` | Compose a callee-relative member path onto a caller object |
 | `locklint_same_access()` | Prefer exact computed-address equality, falling back to source identity |
@@ -1987,6 +2003,7 @@ function is evaluated and linearized
     -> OP_LOAD/OP_STORE retains source expression
 checker visits instruction
     -> locklint_get_access constructs concrete identity
+    -> a full-width compound access expands to exact leaf accesses
     -> locklint_data_policy combines effective policy dimensions
     -> scheme-protected access is excluded from mechanical checking
     -> unlocked-readable load is accepted

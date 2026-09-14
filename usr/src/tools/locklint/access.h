@@ -23,6 +23,7 @@
 struct expression;
 struct instruction;
 struct locklint_member_path;
+struct locklint_access_owner;
 struct object_identity;
 struct pseudo;
 struct symbol;
@@ -34,16 +35,22 @@ struct locklint_access {
 	struct symbol *type;
 	struct symbol *member;
 	unsigned long offset;
+	unsigned long expr_offset;
 	struct expression *expr;
 	struct locklint_member_path *path;
+	const struct locklint_access_owner *owners;
 	struct pseudo *address_base;
 	int64_t address_offset;
 };
+
+typedef void (*locklint_access_f)(const struct locklint_access *, void *);
 
 bool locklint_get_access(struct translation_unit *, struct expression *,
     struct locklint_access *);
 bool locklint_get_instruction_access(struct translation_unit *,
     const struct instruction *, struct locklint_access *);
+void locklint_for_each_instruction_leaf_access(struct translation_unit *,
+    const struct instruction *, locklint_access_f, void *);
 bool locklint_get_call_argument_access(struct translation_unit *,
     const struct instruction *, unsigned int, struct locklint_access *);
 void locklint_rebase_access(const struct locklint_access *,
