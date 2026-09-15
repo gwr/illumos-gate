@@ -1,0 +1,22 @@
+# Complete semantic translation of the historical standalone usbecm.wlcmd.
+#
+# The historical callbacks and entry points are automatic roots because their
+# addresses escape through operation vectors, USB callbacks, or hotplug
+# registration.  The seven bus_ops mappings cannot affect usbecm because its
+# dev_ops has no bus_ops vector.
+#
+# OSLL produces identical analysis and function inventories with and without
+# "one usbecm_state".  New locklint already distinguishes concrete object
+# identities and needs no declaration for this focused module.
+#
+# The five usbecm_ds_ops target declarations historically pointed at
+# warlock_dummy.  Current usbecm never assigns ecm_ds_ops, so this standalone
+# comparison intentionally leaves those indirect calls unresolved rather than
+# inventing concrete targets.
+#
+# OSLL groups the ecm_ctrl_if_no writes at lines 2466 and 2469 into one
+# diagnostic, while native Sparse retains separate stores.  OSLL also retains
+# a separate read for the compound assignment to ecm_init_flags at line 2338;
+# Sparse reuses the value loaded by the preceding test at line 2334.  The
+# runner checks those two multiplicities explicitly and compares all others
+# exactly.

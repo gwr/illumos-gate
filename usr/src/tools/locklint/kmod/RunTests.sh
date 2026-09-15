@@ -21,3 +21,4 @@ SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
 "$SCRIPT_DIR/check-kmod-ugen.ksh" || exit $?
 "$SCRIPT_DIR/check-kmod-usbskel.ksh" || exit $?
 "$SCRIPT_DIR/check-kmod-usbprn.ksh" || exit $?
+"$SCRIPT_DIR/check-kmod-usbecm.ksh" || exit $?

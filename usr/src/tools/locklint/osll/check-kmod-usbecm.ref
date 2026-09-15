@@ -1,0 +1,44 @@
+# Normalized protected-access findings from the corrected standalone OSLL
+# comparison.  The runner separately checks source annotations and complete
+# usbecm function coverage.
+usbecm.c:2692 ecm_data_if_no
+usbecm.c:2693 ecm_data_if_alt
+usbecm.c:2694 ecm_intr_ep
+usbecm.c:2695 ecm_ctrl_if_no
+usbecm.c:2696 ecm_bulk_in_ep
+usbecm.c:2697 ecm_bulk_out_ep
+usbecm.c:276 ecm_dip
+usbecm.c:279 ecm_lh
+usbecm.c:303 ecm_init_flags
+usbecm.c:303 ecm_init_flags
+usbecm.c:1914 ecm_init_flags
+usbecm.c:1933 ecm_def_ph
+usbecm.c:1938 ecm_lh
+usbecm.c:1946 ecm_init_flags
+usbecm.c:1950 ecm_init_flags
+usbecm.c:1884 ecm_pm
+usbecm.c:1993 ecm_pm
+usbecm.c:2447 ecm_cfg_index
+usbecm.c:2466 ecm_data_if_no
+usbecm.c:2466 ecm_ctrl_if_no
+usbecm.c:2566 ecm_data_if_no
+usbecm.c:2608 ecm_intr_ep
+usbecm.c:2621 ecm_bulk_in_ep
+usbecm.c:2633 ecm_bulk_out_ep
+usbecm.c:2636 ecm_pkt_flt
+usbecm.c:2766 ecm_cfg_index
+usbecm.c:2334 ecm_init_flags
+usbecm.c:2338 ecm_init_flags
+usbecm.c:2338 ecm_init_flags
+usbecm.c:2323 ecm_stat.es_linkstate
+usbecm.c:2324 ecm_tx_cnt
+usbecm.c:2803 ecm_def_ph
+usbecm.c:2804 ecm_dev_state
+usbecm.c:2815 ecm_compatibility
+usbecm.c:2868 ecm_init_flags
+usbecm.c:2868 ecm_init_flags
+usbecm.c:2882 ecm_ser_acc
+usbecm.c:2883 ecm_init_flags
+usbecm.c:2883 ecm_init_flags
+usbecm.c:2827 ecm_compatibility
+usbecm.c:2833 ecm_compatibility
