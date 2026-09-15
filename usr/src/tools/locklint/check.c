@@ -5200,6 +5200,19 @@ check_read_only_access(struct function_info *function,
 	    check_read_only_leaf, &context);
 }
 
+static const char *
+protected_access_action(const struct instruction *insn)
+{
+	switch (insn->opcode) {
+	case OP_LOAD:
+		return ("read");
+	case OP_STORE:
+		return ("modified");
+	default:
+		abort();
+	}
+}
+
 /*
  * Report one protected access at its original source location, followed by
  * every distinct caller context that failed to establish its protection.
@@ -5216,8 +5229,9 @@ emit_protection_origin_diagnostic(struct protection_origin *origin)
 	data_name = locklint_access_name(&origin->data);
 	if (origin->diagnostic_status == PROTECTION_ABSENT) {
 		locklint_warning(LOCKLINT_DIAG_UNPROTECTED_ACCESS,
-		    origin->pos, "protected member '%s' accessed "
+		    origin->pos, "protected member '%s' %s "
 		    "without %s '%s'", data_name,
+		    protected_access_action(origin->insn),
 		    required_ownership(origin->required_modes),
 		    lock_name(&origin->lock));
 	} else {
@@ -5291,8 +5305,9 @@ check_protected_access(struct function_info *function,
 	} else {
 		locklint_warning(LOCKLINT_DIAG_UNPROTECTED_ACCESS,
 		    insn->access->pos,
-		    "protected member '%s' accessed without "
-		    "%s '%s'", data_name, required_ownership(required_modes),
+		    "protected member '%s' %s without %s '%s'", data_name,
+		    protected_access_action(insn),
+		    required_ownership(required_modes),
 		    lock_name(lock));
 	}
 	free(data_name);

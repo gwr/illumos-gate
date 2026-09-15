@@ -1,2 +1,2 @@
-../locklint: assertions.c:66:22: warning: locklint: protected member 'value' accessed without holding 'lock' [unprotected-access]
-../locklint: assertions.c:72:9: warning: locklint: protected member 'value' accessed without holding 'lock' [unprotected-access]
+../locklint: assertions.c:66:22: warning: locklint: protected member 'value' read without holding 'lock' [unprotected-access]
+../locklint: assertions.c:72:9: warning: locklint: protected member 'value' read without holding 'lock' [unprotected-access]

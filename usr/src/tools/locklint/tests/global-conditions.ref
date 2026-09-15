@@ -1,11 +1,11 @@
-../locklint: global-conditions.c:49:21: warning: locklint: protected member 'bare' accessed without holding 'global_lock' [unprotected-access]
+../locklint: global-conditions.c:49:21: warning: locklint: protected member 'bare' read without holding 'global_lock' [unprotected-access]
 ../locklint: global-conditions.c:84:26: locklint: protection was not established at this call to 'read_bare'
 ../locklint: global-conditions.c:101:26: locklint: protection was not established at this call to 'wrap_bare'
-../locklint: global-conditions.c:61:21: warning: locklint: protected member 'member' accessed without holding 'lock' [unprotected-access]
+../locklint: global-conditions.c:61:21: warning: locklint: protected member 'member' read without holding 'lock' [unprotected-access]
 ../locklint: global-conditions.c:118:28: locklint: protection was not established at this call to 'read_member'
 ../locklint: global-conditions.c:135:28: locklint: protection was not established at this call to 'wrap_member'
-../locklint: global-conditions.c:143:28: warning: locklint: protected member 'bare' accessed without holding 'global_lock' [unprotected-access]
+../locklint: global-conditions.c:143:28: warning: locklint: protected member 'bare' read without holding 'global_lock' [unprotected-access]
 ../locklint: global-conditions.c:166:28: locklint: protection was not established at this call to 'read_global'
 ../locklint: global-conditions.c:183:28: locklint: protection was not established at this call to 'wrap_global'
-../locklint: global-conditions.c:213:32: warning: locklint: protected member 'value' accessed without holding 'lock' [unprotected-access]
+../locklint: global-conditions.c:213:32: warning: locklint: protected member 'value' read without holding 'lock' [unprotected-access]
 ../locklint: global-conditions.c:236:37: locklint: protection was not established at this call to 'wrap_global_relative'

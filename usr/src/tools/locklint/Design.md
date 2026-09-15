@@ -1919,10 +1919,12 @@ After the block, a return instruction triggers checks for locks held on all or
 some return paths.  Assertion-only held state is excluded from those
 side-effect diagnostics.  Inferred protected-access conditions are diagnosed
 at their source locations with the caller witnesses collected by the
-preliminary replay.  After all functions have been replayed, observed
-lock-order cycles are reported.  A final origin sweep emits any pending
-diagnostic that source replay did not match, preventing an identity defect
-from silently dropping a warning.
+preliminary replay.  A load reports that the member was read, while a store
+reports that it was modified; a retained read-modify-write pair therefore
+produces distinct, intelligible diagnostics.  After all functions have been
+replayed, observed lock-order cycles are reported.  A final origin sweep emits
+any pending diagnostic that source replay did not match, preventing an
+identity defect from silently dropping a warning.
 
 Every primary locklint warning ends with a stable kebab-case identifier in
 square brackets:

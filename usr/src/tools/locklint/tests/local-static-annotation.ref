@@ -1,4 +1,4 @@
-../locklint: local-static-annotation.c:49: warning: locklint: protected member 'polledio_inited' accessed without holding 'file_lock' [unprotected-access]
+../locklint: local-static-annotation.c:49: warning: locklint: protected member 'polledio_inited' read without holding 'file_lock' [unprotected-access]
 local-static-annotation.c:28:1: MUTEX_PROTECTS_DATA file_lock -> polledio_inited
 local-static-annotation.c:29:1: MUTEX_PROTECTS_DATA file_lock -> inline_state
 local-static-annotation.c:30:1: MUTEX_PROTECTS_DATA file_lock -> loop_index
