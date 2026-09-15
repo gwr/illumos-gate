@@ -4,6 +4,7 @@
 ../locklint: calls.c:151:29: locklint: protection was not established on every path at this call to 'check_callee'
 ../locklint: calls.c:162:29: locklint: protection was not established on every path at this call to 'check_callee'
 ../locklint: calls.c:170:29: locklint: protection was not established on every path at this call to 'check_callee'
+../locklint: calls.c:169:28: locklint: required lock 'lock' acquired here may be mutex-held; holding is required at that call
 ../locklint: calls.c:189:46: locklint: protection was not established at this call to 'check_mixed_condition_wrapper'
 ../locklint: calls.c:108:22: warning: locklint: protected member 'value' read without holding 'lock' [unprotected-access]
 ../locklint: calls.c:170:30: warning: locklint: lock 'lock' held on only some paths returning from 'check_lock_merge_caller' [lock-maybe-held-on-return]

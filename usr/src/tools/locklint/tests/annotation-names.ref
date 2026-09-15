@@ -7,6 +7,7 @@
 ../locklint: annotation-names.c:108: warning: locklint: protected member 'nested.second' modified without holding 'lock' [unprotected-access]
 ../locklint: annotation-names.c:109: warning: locklint: protected member 'anonymous_value' modified without holding 'lock' [unprotected-access]
 ../locklint: annotation-names.c:122: warning: locklint: protected member 'value' modified without holding 'last_lock' [unprotected-access]
+../locklint: annotation-names.c:121: locklint: different lock instance 'first_lock' acquired here is mutex-held at this protected access
 ../locklint: annotation-names.c:138: warning: locklint: protected member 'state.nested.first' modified without holding 'lock' [unprotected-access]
 ../locklint: annotation-names.c:162: warning: locklint: protected member 'data.value' modified without holding 'lock' [unprotected-access]
 ../locklint: annotation-names.c:182: warning: locklint: protected member 'data.value' modified without holding 'global_lock' [unprotected-access]

@@ -1,4 +1,8 @@
 ../locklint: identity-aliases.c:83:22: warning: locklint: protected member 'value' read without holding 'lock' [unprotected-access]
+../locklint: identity-aliases.c:82:20: locklint: different lock instance 'lock' acquired here is mutex-held at this protected access
 ../locklint: identity-aliases.c:115:26: warning: locklint: protected member 'value' read without holding 'lock' [unprotected-access]
+../locklint: identity-aliases.c:114:20: locklint: different lock instance 'lock' acquired here is mutex-held at this protected access
 ../locklint: identity-aliases.c:138:31: warning: locklint: protected member 'value' read without holding 'lock' [unprotected-access]
+../locklint: identity-aliases.c:137:20: locklint: different lock instance 'lock' acquired here is mutex-held at this protected access
 ../locklint: identity-aliases.c:173:22: warning: locklint: protected member 'value' read without holding 'lock' [unprotected-access]
+../locklint: identity-aliases.c:172:20: locklint: different lock instance 'lock' acquired here is mutex-held at this protected access

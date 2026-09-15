@@ -1,0 +1,15 @@
+../locklint: held-lock-reporting.c:52: warning: locklint: protected member 'value' read without holding 'required' [unprotected-access]
+../locklint: held-lock-reporting.c:106: locklint: protection was not established at this call to 'read_value'
+../locklint: held-lock-reporting.c:105: locklint: different lock instance 'caller' acquired here is mutex-held at that call
+../locklint: held-lock-reporting.c:61: warning: locklint: protected member 'value' read without holding 'required' [unprotected-access]
+../locklint: held-lock-reporting.c:60: locklint: different lock instance 'definite' acquired here is mutex-held at this protected access
+../locklint: held-lock-reporting.c:73: warning: locklint: protected member 'value' read without holding 'required' [unprotected-access]
+../locklint: held-lock-reporting.c:71: locklint: different lock instance 'definite' acquired here is mutex-held at this protected access
+../locklint: held-lock-reporting.c:72: locklint: different lock instance 'second' acquired here is mutex-held at this protected access
+../locklint: held-lock-reporting.c:83: warning: locklint: protected member 'write_value' modified without write-holding 'required_writer' [unprotected-access]
+../locklint: held-lock-reporting.c:82: locklint: required lock 'required_writer' acquired here is read-held; write-holding is required at this protected access
+../locklint: held-lock-reporting.c:94: warning: locklint: protected member 'value' read without holding 'required' [unprotected-access]
+../locklint: held-lock-reporting.c:93: locklint: different lock instance 'possible' acquired here may be mutex-held at this protected access
+../locklint: held-lock-reporting.c:96: warning: locklint: lock 'possible' may not be held [lock-maybe-not-held]
+../locklint: held-lock-reporting.c:121: warning: locklint: call to 'assumed_value' does not satisfy assumed protection for 'value': requires holding 'required' [unprotected-access]
+../locklint: held-lock-reporting.c:120: locklint: different lock instance 'caller' acquired here is mutex-held at this call

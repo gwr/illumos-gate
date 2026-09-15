@@ -1,5 +1,7 @@
 ../locklint: identity-formals.c:57:21: warning: locklint: protected member 'value' read without holding 'lock' [unprotected-access]
+../locklint: identity-formals.c:56:20: locklint: different lock instance 'lock' acquired here is mutex-held at this protected access
 ../locklint: identity-formals.c:106:36: locklint: protection was not established at this call to 'formal_alias_callee'
 ../locklint: identity-formals.c:107:38: locklint: protection was not established at this call to 'formal_alias_wrapper'
 ../locklint: identity-formals.c:90:22: warning: locklint: protected member 'value' read without holding 'lock' [unprotected-access]
+../locklint: identity-formals.c:89:20: locklint: different lock instance 'lock' acquired here is mutex-held at this protected access
 ../locklint: identity-formals.c:108:40: locklint: protection was not established at this call to 'formal_alias_two_locks'

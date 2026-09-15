@@ -560,6 +560,11 @@ compare_no_columns "competition contracts" competition-contracts.ref \
 run_capture "check" check.out "$LOCKLINT" --check-locks check.c
 compare "check" check.ref check.out
 
+run_capture "held lock reporting" held-lock-reporting.raw \
+    "$LOCKLINT" --check-locks held-lock-reporting.c
+compare_no_columns "held lock reporting" held-lock-reporting.ref \
+    held-lock-reporting.raw held-lock-reporting.out
+
 #
 # Verify lock conditions and lock effects propagated through direct calls.
 #

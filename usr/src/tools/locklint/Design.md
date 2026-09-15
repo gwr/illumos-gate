@@ -1921,10 +1921,16 @@ side-effect diagnostics.  Inferred protected-access conditions are diagnosed
 at their source locations with the caller witnesses collected by the
 preliminary replay.  A load reports that the member was read, while a store
 reports that it was modified; a retained read-modify-write pair therefore
-produces distinct, intelligible diagnostics.  After all functions have been
-replayed, observed lock-order cycles are reported.  A final origin sweep emits
-any pending diagnostic that source replay did not match, preventing an
-identity defect from silently dropping a warning.
+produces distinct, intelligible diagnostics.  When a different lock instance
+is held in a failing context, an explanatory note gives its mode and certainty
+at its representative acquisition position.  Multiple notes are ordered by
+their acquisition positions rather than by internal lock-state order.
+Source-access evidence remains with the primary warning; caller evidence
+follows that caller's witness note.  Caller witnesses with different mapped
+required locks remain distinct.  Empty held-lock lists are omitted.  After all
+functions have been replayed, observed lock-order cycles are reported.  A
+final origin sweep emits any pending diagnostic that source replay did not
+match, preventing an identity defect from silently dropping a warning.
 
 Every primary locklint warning ends with a stable kebab-case identifier in
 square brackets:

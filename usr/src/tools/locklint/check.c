@@ -170,7 +170,26 @@ struct protection_witness {
 	struct function_info *callee;
 	struct position pos;
 	enum protection_status status;
+	struct locklint_access required_lock;
+	unsigned int required_modes;
+	struct held_lock_evidence *held_locks;
 	struct protection_witness *next;
+};
+
+enum held_lock_evidence_role {
+	HELD_LOCK_DIFFERENT,
+	HELD_LOCK_REQUIRED,
+	HELD_LOCK_COVERING
+};
+
+struct held_lock_evidence {
+	struct locklint_access lock;
+	lock_state_t state;
+	unsigned int required_modes;
+	enum held_lock_evidence_role role;
+	bool has_acquire_pos;
+	struct position acquire_pos;
+	struct held_lock_evidence *next;
 };
 
 struct protection_origin {
@@ -181,6 +200,7 @@ struct protection_origin {
 	struct position pos;
 	unsigned int required_modes;
 	enum protection_status diagnostic_status;
+	struct held_lock_evidence *held_locks;
 	struct protection_witness *witnesses;
 	bool diagnostic_pending;
 	bool diagnostic_emitted;
@@ -2203,6 +2223,70 @@ find_protection_origin(struct function_info *function, struct instruction *insn,
 }
 
 /*
+ * Snapshot every other lock that may be held in one failing context.  Merge
+ * repeated fixed-point observations by exact identity while retaining one
+ * representative acquisition position for the eventual explanatory note.
+ */
+static void
+record_held_lock_evidence(struct held_lock_evidence **evidencep,
+    const struct state_entry *states, const struct locklint_access *required,
+    unsigned int required_modes)
+{
+	const struct state_entry *entry;
+
+	for (entry = states; entry != NULL; entry = entry->next) {
+		struct held_lock_evidence **tail = evidencep;
+		struct held_lock_evidence *evidence;
+		enum held_lock_evidence_role role;
+
+		if ((entry->state & LOCK_ANY_HELD) == 0)
+			continue;
+		if (same_lock(&entry->lock, required)) {
+			if (state_satisfies_modes(entry->state, required_modes))
+				continue;
+			role = HELD_LOCK_REQUIRED;
+		} else if (locklint_lock_covers(&entry->lock, required)) {
+			role = HELD_LOCK_COVERING;
+		} else {
+			role = HELD_LOCK_DIFFERENT;
+		}
+		for (evidence = *evidencep; evidence != NULL;
+		    evidence = evidence->next) {
+			if (same_lock(&evidence->lock, &entry->lock))
+				break;
+			tail = &evidence->next;
+		}
+		if (evidence == NULL) {
+			evidence = calloc(1, sizeof (*evidence));
+			if (evidence == NULL)
+				die("out of memory recording held lock");
+			evidence->lock = entry->lock;
+			evidence->lock.expr = NULL;
+			evidence->lock.owners = NULL;
+			*tail = evidence;
+		}
+		evidence->role = role;
+		evidence->required_modes = required_modes;
+		evidence->state |= entry->state;
+		if (!evidence->has_acquire_pos && entry->has_acquire_pos) {
+			evidence->has_acquire_pos = true;
+			evidence->acquire_pos = entry->acquire_pos;
+		}
+	}
+}
+
+static void
+free_held_lock_evidence(struct held_lock_evidence *evidence)
+{
+	while (evidence != NULL) {
+		struct held_lock_evidence *next = evidence->next;
+
+		free(evidence);
+		evidence = next;
+	}
+}
+
+/*
  * Preserve every distinct failing call context.  Repeated mappings of the
  * same origin through a fixed-point round update rather than duplicate the
  * witness, and the origin retains the strongest observed failure.
@@ -2211,14 +2295,17 @@ static void
 record_protection_witness(struct protection_origin *origin,
     struct function_info *function, struct instruction *insn,
     struct function_info *callee, struct position pos,
-    enum protection_status status)
+    enum protection_status status, const struct state_entry *locks,
+    const struct locklint_access *required, unsigned int required_modes)
 {
 	struct protection_witness **tail = &origin->witnesses;
 	struct protection_witness *witness;
 
 	for (witness = origin->witnesses; witness != NULL;
 	    witness = witness->next) {
-		if (witness->function == function && witness->insn == insn) {
+		if (witness->function == function && witness->insn == insn &&
+		    witness->required_modes == required_modes &&
+		    same_lock(&witness->required_lock, required)) {
 			if (status < witness->status)
 				witness->status = status;
 			goto update_origin;
@@ -2233,9 +2320,15 @@ record_protection_witness(struct protection_origin *origin,
 	witness->callee = callee;
 	witness->pos = pos;
 	witness->status = status;
+	witness->required_lock = *required;
+	witness->required_lock.expr = NULL;
+	witness->required_lock.owners = NULL;
+	witness->required_modes = required_modes;
 	*tail = witness;
 
 update_origin:
+	record_held_lock_evidence(&witness->held_locks, locks, required,
+	    required_modes);
 	if (!origin->diagnostic_pending ||
 	    status < origin->diagnostic_status) {
 		origin->diagnostic_pending = true;
@@ -5025,6 +5118,8 @@ collect_local_protection_access(struct function_info *function,
 
 		origin = add_protection_origin(function, insn, access, lock,
 		    required_modes);
+		record_held_lock_evidence(&origin->held_locks, state->locks,
+		    lock, required_modes);
 		origin_ref.origin = origin;
 		alternatives = collect_state_protection_alternatives(function,
 		    required_modes, state);
@@ -5213,6 +5308,133 @@ protected_access_action(const struct instruction *insn)
 	}
 }
 
+static const char *
+held_lock_mode(lock_state_t state)
+{
+	switch (state & LOCK_ANY_HELD) {
+	case LOCK_HELD:
+		return ("mutex-held");
+	case LOCK_READ_HELD:
+		return ("read-held");
+	case LOCK_WRITE_HELD:
+		return ("write-held");
+	default:
+		return ("held in multiple modes");
+	}
+}
+
+static int
+compare_held_lock_evidence(const void *left_arg, const void *right_arg)
+{
+	const struct held_lock_evidence *left =
+	    *(const struct held_lock_evidence * const *)left_arg;
+	const struct held_lock_evidence *right =
+	    *(const struct held_lock_evidence * const *)right_arg;
+	int result;
+
+	if (left->has_acquire_pos != right->has_acquire_pos)
+		return (left->has_acquire_pos ? -1 : 1);
+	if (left->has_acquire_pos) {
+		result = strcmp(stream_name(left->acquire_pos.stream),
+		    stream_name(right->acquire_pos.stream));
+		if (result != 0)
+			return (result);
+		if (left->acquire_pos.line != right->acquire_pos.line) {
+			return (left->acquire_pos.line <
+			    right->acquire_pos.line ? -1 : 1);
+		}
+		if (left->acquire_pos.pos != right->acquire_pos.pos) {
+			return (left->acquire_pos.pos <
+			    right->acquire_pos.pos ? -1 : 1);
+		}
+	}
+	return (strcmp(lock_name(&left->lock), lock_name(&right->lock)));
+}
+
+/*
+ * Explain a failed protection context with only the other locks that may
+ * plausibly reveal an identity or ordering mistake.  Prefer the acquisition
+ * position; otherwise attach the note to the access or call being explained.
+ * Acquisition order is more useful and stable than internal lock-state order.
+ */
+static void
+emit_held_lock_evidence(const struct held_lock_evidence *evidence,
+    struct position fallback, const char *context)
+{
+	const struct held_lock_evidence *item;
+	const struct held_lock_evidence **items;
+	size_t count = 0;
+	size_t index;
+
+	for (item = evidence; item != NULL; item = item->next)
+		count++;
+	if (count == 0)
+		return;
+	items = calloc(count, sizeof (*items));
+	if (items == NULL)
+		die("out of memory sorting held locks");
+	for (item = evidence, index = 0; item != NULL; item = item->next)
+		items[index++] = item;
+	qsort(items, count, sizeof (*items), compare_held_lock_evidence);
+	for (index = 0; index < count; index++) {
+		evidence = items[index];
+		struct position pos = evidence->has_acquire_pos ?
+		    evidence->acquire_pos : fallback;
+		const char *certainty = state_definitely_held(evidence->state) ?
+		    "is" : "may be";
+
+		if (evidence->role == HELD_LOCK_REQUIRED &&
+		    evidence->has_acquire_pos) {
+			info(pos, "locklint: required lock '%s' acquired here "
+			    "%s %s; %s is required at %s",
+			    lock_name(&evidence->lock), certainty,
+			    held_lock_mode(evidence->state),
+			    required_ownership(evidence->required_modes),
+			    context);
+		} else if (evidence->role == HELD_LOCK_REQUIRED) {
+			info(pos, "locklint: required lock '%s' %s %s; "
+			    "%s is required at %s",
+			    lock_name(&evidence->lock), certainty,
+			    held_lock_mode(evidence->state),
+			    required_ownership(evidence->required_modes),
+			    context);
+		} else if (evidence->role == HELD_LOCK_COVERING &&
+		    evidence->has_acquire_pos) {
+			info(pos, "locklint: covering lock instance '%s' "
+			    "acquired here %s %s at %s",
+			    lock_name(&evidence->lock), certainty,
+			    held_lock_mode(evidence->state), context);
+		} else if (evidence->role == HELD_LOCK_COVERING) {
+			info(pos, "locklint: covering lock instance '%s' "
+			    "%s %s at %s", lock_name(&evidence->lock),
+			    certainty, held_lock_mode(evidence->state), context);
+		} else if (evidence->has_acquire_pos) {
+			info(pos, "locklint: different lock instance '%s' "
+			    "acquired here %s %s at %s",
+			    lock_name(&evidence->lock), certainty,
+			    held_lock_mode(evidence->state), context);
+		} else {
+			info(pos, "locklint: different lock instance '%s' "
+			    "%s %s at %s", lock_name(&evidence->lock),
+			    certainty, held_lock_mode(evidence->state), context);
+		}
+	}
+	free(items);
+}
+
+static void
+emit_state_held_lock_evidence(const struct analysis_state *state,
+    const struct locklint_access *required, unsigned int required_modes,
+    struct position pos, const char *context)
+{
+	struct held_lock_evidence *evidence = NULL;
+
+	record_held_lock_evidence(&evidence, state->locks, required,
+	    required_modes);
+	emit_held_lock_evidence(evidence, pos, context);
+	free_held_lock_evidence(evidence);
+}
+
 /*
  * Report one protected access at its original source location, followed by
  * every distinct caller context that failed to establish its protection.
@@ -5241,6 +5463,8 @@ emit_protection_origin_diagnostic(struct protection_origin *origin)
 		    data_name);
 	}
 	free(data_name);
+	emit_held_lock_evidence(origin->held_locks, origin->pos,
+	    "this protected access");
 	for (witness = origin->witnesses; witness != NULL;
 	    witness = witness->next) {
 		if (witness->status == PROTECTION_ABSENT) {
@@ -5254,6 +5478,8 @@ emit_protection_origin_diagnostic(struct protection_origin *origin)
 			    "every path at this call to '%s'",
 			    show_ident(witness->callee->ep->name->ident));
 		}
+		emit_held_lock_evidence(witness->held_locks, witness->pos,
+		    "that call");
 	}
 	origin->diagnostic_emitted = true;
 }
@@ -5311,6 +5537,8 @@ check_protected_access(struct function_info *function,
 		    lock_name(lock));
 	}
 	free(data_name);
+	emit_state_held_lock_evidence(state, lock, required_modes,
+	    insn->access->pos, "this protected access");
 }
 
 static void
@@ -6108,7 +6336,8 @@ collect_call_protection_witnesses(struct function_info *function,
 			continue;
 		for (ref = condition->origins; ref != NULL; ref = ref->next) {
 			record_protection_witness(ref->origin, function, insn,
-			    callee, pos, status);
+			    callee, pos, status, analysis->locks, &lock,
+			    condition->required_modes);
 		}
 	}
 }
@@ -6175,6 +6404,10 @@ check_call(struct function_info *function,
 				    show_ident(callee->ep->name->ident));
 			}
 			free(data_name);
+			if (condition->has_lock) {
+				emit_state_held_lock_evidence(analysis, &lock,
+				    condition->required_modes, pos, "this call");
+			}
 		}
 	}
 	{
@@ -6899,9 +7132,11 @@ free_checker_attachments(void)
 		while (witness != NULL) {
 			struct protection_witness *witness_next = witness->next;
 
+			free_held_lock_evidence(witness->held_locks);
 			free(witness);
 			witness = witness_next;
 		}
+		free_held_lock_evidence(protection_origins->held_locks);
 		free(protection_origins);
 		protection_origins = next;
 	}

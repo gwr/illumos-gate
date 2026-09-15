@@ -7,6 +7,8 @@
 ../locklint: effects.c:140:21: warning: locklint: call to 'release_lock' may release lock 'lock' that is not held [lock-maybe-not-held]
 ../locklint: effects.c:147:22: warning: locklint: protected member 'value' read without holding 'lock' [unprotected-access]
 ../locklint: effects.c:163:22: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
+../locklint: effects.c:163:22: locklint: required lock 'lock' may be mutex-held; holding is required at this protected access
 ../locklint: effects.c:163:17: warning: locklint: lock 'lock' held on only some paths returning from 'check_conditional_effect' [lock-maybe-held-on-return]
 ../locklint: effects.c:172:22: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
+../locklint: effects.c:172:22: locklint: required lock 'lock' may be mutex-held; holding is required at this protected access
 ../locklint: effects.c:173:19: warning: locklint: lock 'lock' may not be held [lock-maybe-not-held]
