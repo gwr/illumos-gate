@@ -984,11 +984,14 @@ The policy lookup matches each resolved data reference against an access:
 It combines the latest matching mechanism with all matching independent
 properties.  For a mutex mechanism, it also constructs the concrete
 protecting lock identity.  A concrete lock keeps its own root and offset.  A
-type-scoped lock is based at the matched instance of the annotated data owner.
-When the data access has an exact computed address, the required lock address
-is derived by replacing the protected member's relative offset with the
-protector's relative offset.  The lock consequently stays within the same
-alias, array element, or recovered container.
+type-scoped lock is based at the matched data owner when both use the same
+type.  If the lock belongs to a different type, the retained member path must
+prove that an instance of the lock owner contains the matched data object;
+unrelated objects are not associated by type alone.  When the data access has
+an exact computed address, the required lock address is derived by replacing
+the access's offset within that owner with the protector's relative offset.
+The lock consequently stays within the same alias, array element, or recovered
+container.
 
 ### Effect on access checking
 

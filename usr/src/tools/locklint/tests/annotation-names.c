@@ -141,6 +141,30 @@ check_embedded_type(wrapper_state_t *wrapper)
 	mutex_exit(&wrapper->state.lock);
 }
 
+typedef struct contained_data {
+	int value;
+} contained_data_t;
+
+typedef struct containing_state {
+	mutex_t lock;
+	contained_data_t data;
+} containing_state_t;
+
+_NOTE(MUTEX_PROTECTS_DATA(containing_state::lock, contained_data))
+
+/*
+ * A type-scoped protector may belong to a container of the independently
+ * named protected type.  Rebase the lock at that containing object.
+ */
+static void
+check_containing_lock(containing_state_t *state)
+{
+	state->data.value = 1;
+	mutex_enter(&state->lock);
+	state->data.value = 2;
+	mutex_exit(&state->lock);
+}
+
 typedef struct global_data {
 	int value;
 } global_data_t;

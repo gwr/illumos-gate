@@ -1675,7 +1675,7 @@ locklint_data_policy(const struct locklint_access *access,
 	struct annotation *annotation;
 	const struct annotation_ref *protector = NULL;
 	unsigned long protector_base = 0;
-	unsigned long protected_offset = 0;
+	struct symbol *protected_owner = NULL;
 	bool found = false;
 
 	(void) memset(policy, 0, sizeof (*policy));
@@ -1699,13 +1699,13 @@ locklint_data_policy(const struct locklint_access *access,
 				policy->protection = LOCKLINT_PROTECTION_MUTEX;
 				protector = annotation->lock;
 				protector_base = base;
-				protected_offset = ref->offset;
+				protected_owner = ref->owner_type;
 				break;
 			case ANNOTATION_RWLOCK_PROTECTS_DATA:
 				policy->protection = LOCKLINT_PROTECTION_RWLOCK;
 				protector = annotation->lock;
 				protector_base = base;
-				protected_offset = ref->offset;
+				protected_owner = ref->owner_type;
 				break;
 			case ANNOTATION_SCHEME_PROTECTS_DATA:
 				policy->protection = LOCKLINT_PROTECTION_SCHEME;
@@ -1724,6 +1724,15 @@ locklint_data_policy(const struct locklint_access *access,
 	}
 	if (policy->protection == LOCKLINT_PROTECTION_MUTEX ||
 	    policy->protection == LOCKLINT_PROTECTION_RWLOCK) {
+		unsigned long lock_base = protector_base;
+		unsigned long access_from_lock;
+		bool have_lock_base = true;
+
+		if (protector->root == NULL &&
+		    protector->owner_type != protected_owner) {
+			have_lock_base = locklint_access_containing_base(access,
+			    protector->owner_type, protector_base, &lock_base);
+		}
 		lock->root = protector->root != NULL ?
 		    protector->root : access->root;
 		lock->object = protector->root != NULL ?
@@ -1731,20 +1740,24 @@ locklint_data_policy(const struct locklint_access *access,
 		lock->type = protector->owner_type;
 		lock->member = protector->member;
 		lock->offset = (protector->root != NULL ? 0 :
-		    protector_base) + protector->offset;
+		    (have_lock_base ? lock_base : protector_base)) +
+		    protector->offset;
 		lock->expr = NULL;
 		lock->path = NULL;
 		if (protector->root == NULL &&
+		    have_lock_base &&
 		    access->address_base != NULL &&
-		    protected_offset <= INT64_MAX &&
+		    access->offset >= lock_base &&
+		    (access_from_lock = access->offset - lock_base) <=
+		    INT64_MAX &&
 		    protector->offset <= INT64_MAX &&
 		    access->address_offset >=
-		    INT64_MIN + (int64_t)protected_offset &&
-		    access->address_offset - (int64_t)protected_offset <=
+		    INT64_MIN + (int64_t)access_from_lock &&
+		    access->address_offset - (int64_t)access_from_lock <=
 		    INT64_MAX - (int64_t)protector->offset) {
 			lock->address_base = access->address_base;
 			lock->address_offset = access->address_offset -
-			    (int64_t)protected_offset +
+			    (int64_t)access_from_lock +
 			    (int64_t)protector->offset;
 		}
 	}

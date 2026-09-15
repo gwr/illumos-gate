@@ -709,6 +709,75 @@ locklint_access_base(const struct locklint_access *access,
 	return (false);
 }
 
+static bool
+type_contains_offset(struct symbol *type, unsigned long base_offset,
+    unsigned long contained_offset)
+{
+	int size = bits_to_bytes(type->bit_size);
+
+	return (size > 0 && contained_offset >= base_offset &&
+	    contained_offset - base_offset < (unsigned long)size);
+}
+
+/*
+ * Find a requested compound owner that contains an already matched embedded
+ * object.  Prefer retained synthetic-leaf owners, then recover the same
+ * relationship from the source member path.  This proves a container
+ * relationship rather than associating unrelated objects by type alone.
+ */
+bool
+locklint_access_containing_base(const struct locklint_access *access,
+    struct symbol *owner_type, unsigned long contained_offset,
+    unsigned long *base_offset)
+{
+	const struct locklint_access_owner *owner;
+	struct expression *member;
+	unsigned long suffix;
+
+	for (owner = access->owners; owner != NULL; owner = owner->next) {
+		if (owner->type == owner_type &&
+		    type_contains_offset(owner_type, owner->offset,
+		    contained_offset)) {
+			*base_offset = owner->offset;
+			return (true);
+		}
+	}
+	if (access->type == owner_type) {
+		int size = bits_to_bytes(owner_type->bit_size);
+		unsigned long base;
+
+		if (size > 0) {
+			base = contained_offset -
+			    contained_offset % (unsigned long)size;
+			if (type_contains_offset(owner_type, base,
+			    contained_offset)) {
+				*base_offset = base;
+				return (true);
+			}
+		}
+	}
+	suffix = access->expr != NULL &&
+	    access->offset >= access->expr_offset ?
+	    access->offset - access->expr_offset : 0;
+	for (member = find_member(access->expr); member != NULL;
+	    member = find_member(member->member_base)) {
+		struct symbol *type;
+		unsigned long base;
+
+		suffix += member->member_path_offset;
+		if (suffix > access->offset)
+			return (false);
+		base = access->offset - suffix;
+		type = compound_type(member->member_base->ctype);
+		if (type == owner_type &&
+		    type_contains_offset(type, base, contained_offset)) {
+			*base_offset = base;
+			return (true);
+		}
+	}
+	return (false);
+}
+
 void
 locklint_access_cleanup(void)
 {
