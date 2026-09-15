@@ -425,11 +425,6 @@ _NOTE(DATA_READABLE_WITHOUT_LOCK(usba_device::usb_client_ev_cb_list))
 _NOTE(DATA_READABLE_WITHOUT_LOCK(usba_device::usb_dip))
 _NOTE(SCHEME_PROTECTS_DATA("set at device creation",
 					usba_device::usb_shared_taskq))
-
-_NOTE(SCHEME_PROTECTS_DATA("local use only",
-				usb_key_descr::bDescriptorType))
-_NOTE(SCHEME_PROTECTS_DATA("local use only",
-				usb_key_descr::bLength))
 /*
  * serialization in drivers
  */
