@@ -321,9 +321,24 @@ join_path(const char *prefix, const char *name)
 	return (path);
 }
 
+static char *
+join_name(const char *prefix, const char *suffix)
+{
+	char *name;
+	size_t prefix_len = strlen(prefix);
+	size_t suffix_len = strlen(suffix);
+
+	name = malloc(prefix_len + suffix_len + 1);
+	if (name == NULL)
+		die("out of memory parsing locklint annotation name");
+	(void) memcpy(name, prefix, prefix_len);
+	(void) memcpy(name + prefix_len, suffix, suffix_len + 1);
+	return (name);
+}
+
 static struct annotation_ref *
-alloc_annotation_ref(struct annotation_token *base,
-    enum annotation_scope scope, const char *path)
+alloc_annotation_ref_name(struct annotation_token *base,
+    enum annotation_scope scope, const char *base_name, const char *path)
 {
 	struct annotation_ref *ref;
 
@@ -332,10 +347,17 @@ alloc_annotation_ref(struct annotation_token *base,
 		die("out of memory parsing locklint annotation");
 	ref->pos = base->pos;
 	ref->scope = scope;
-	ref->base_name = copy_string(base->text);
+	ref->base_name = copy_string(base_name);
 	if (path != NULL)
 		ref->path = copy_string(path);
 	return (ref);
+}
+
+static struct annotation_ref *
+alloc_annotation_ref(struct annotation_token *base,
+    enum annotation_scope scope, const char *path)
+{
+	return (alloc_annotation_ref_name(base, scope, base->text, path));
 }
 
 static void
@@ -351,6 +373,69 @@ add_annotation_ref(struct annotation_ref **head,
 static bool parse_path(struct annotation *, struct annotation_token **,
     struct annotation_token *, enum annotation_scope, const char *,
     struct annotation_ref **, struct annotation_ref ***);
+
+/*
+ * Expand a suffix generator by concatenating each generated component with
+ * the component immediately before the opening brace.
+ */
+static bool
+parse_path_suffix_group(struct annotation *annotation,
+    struct annotation_token **cursor, struct annotation_token *base,
+    enum annotation_scope scope, const char *prefix,
+    struct annotation_ref **head, struct annotation_ref ***tail)
+{
+	bool any = false;
+
+	if (!token_is(*cursor, "{"))
+		return (annotation_error(annotation, *cursor,
+		    "expected '{' in annotation name suffix generator"));
+	*cursor = (*cursor)->next;
+	while (*cursor != NULL && !token_is(*cursor, "}")) {
+		struct annotation_token *suffix = *cursor;
+		char *path;
+
+		if (token_is(suffix, ",")) {
+			*cursor = suffix->next;
+			continue;
+		}
+		if (suffix->type != TOKEN_IDENT)
+			return (annotation_error(annotation, suffix,
+			    "expected annotation name suffix"));
+		path = join_name(prefix, suffix->text);
+		*cursor = suffix->next;
+		if (token_is(*cursor, ".")) {
+			bool parsed;
+
+			*cursor = (*cursor)->next;
+			parsed = parse_path(annotation, cursor, base, scope,
+			    path, head, tail);
+			free(path);
+			if (!parsed)
+				return (false);
+		} else if (token_is(*cursor, "{")) {
+			bool parsed;
+
+			parsed = parse_path_suffix_group(annotation, cursor,
+			    base, scope, path, head, tail);
+			free(path);
+			if (!parsed)
+				return (false);
+		} else {
+			add_annotation_ref(head, tail,
+			    alloc_annotation_ref(base, scope, path));
+			free(path);
+		}
+		any = true;
+	}
+	if (!token_is(*cursor, "}"))
+		return (annotation_error(annotation, *cursor,
+		    "expected '}' after annotation name suffix generator"));
+	if (!any)
+		return (annotation_error(annotation, *cursor,
+		    "empty annotation name suffix generator"));
+	*cursor = (*cursor)->next;
+	return (true);
+}
 
 static bool
 parse_path_group(struct annotation *annotation,
@@ -398,6 +483,14 @@ parse_path(struct annotation *annotation, struct annotation_token **cursor,
 		    "expected annotation name component"));
 	path = join_path(prefix, component->text);
 	*cursor = component->next;
+	if (token_is(*cursor, "{")) {
+		bool parsed;
+
+		parsed = parse_path_suffix_group(annotation, cursor, base, scope,
+		    path, head, tail);
+		free(path);
+		return (parsed);
+	}
 	if (token_is(*cursor, ".")) {
 		*cursor = (*cursor)->next;
 		if (token_is(*cursor, "{")) {
@@ -419,6 +512,48 @@ parse_path(struct annotation *annotation, struct annotation_token **cursor,
 	add_annotation_ref(head, tail,
 	    alloc_annotation_ref(base, scope, path));
 	free(path);
+	return (true);
+}
+
+/*
+ * Expand a suffix generator applied to an unqualified object name.
+ */
+static bool
+parse_name_suffix_group(struct annotation *annotation,
+    struct annotation_token **cursor, struct annotation_token *base,
+    struct annotation_ref **head, struct annotation_ref ***tail)
+{
+	bool any = false;
+
+	if (!token_is(*cursor, "{"))
+		return (annotation_error(annotation, *cursor,
+		    "expected '{' in annotation name suffix generator"));
+	*cursor = (*cursor)->next;
+	while (*cursor != NULL && !token_is(*cursor, "}")) {
+		struct annotation_token *suffix = *cursor;
+		char *name;
+
+		if (token_is(suffix, ",")) {
+			*cursor = suffix->next;
+			continue;
+		}
+		if (suffix->type != TOKEN_IDENT)
+			return (annotation_error(annotation, suffix,
+			    "expected annotation name suffix"));
+		name = join_name(base->text, suffix->text);
+		add_annotation_ref(head, tail,
+		    alloc_annotation_ref_name(base, ANNOTATION_AUTO, name, NULL));
+		free(name);
+		*cursor = suffix->next;
+		any = true;
+	}
+	if (!token_is(*cursor, "}"))
+		return (annotation_error(annotation, *cursor,
+		    "expected '}' after annotation name suffix generator"));
+	if (!any)
+		return (annotation_error(annotation, *cursor,
+		    "empty annotation name suffix generator"));
+	*cursor = (*cursor)->next;
 	return (true);
 }
 
@@ -459,6 +594,10 @@ parse_name(struct annotation *annotation, struct annotation_token **cursor,
 		scope = ANNOTATION_OBJECT;
 		*cursor = (*cursor)->next;
 		return (parse_path(annotation, cursor, base, scope, NULL,
+		    head, tail));
+	}
+	if (token_is(*cursor, "{")) {
+		return (parse_name_suffix_group(annotation, cursor, base,
 		    head, tail));
 	}
 	add_annotation_ref(head, tail,

@@ -296,3 +296,54 @@ check_union_access(union_state_t *state, protected_union_t value)
 {
 	state->value = value;
 }
+
+static int global_stat_first;
+static int global_stat_second;
+
+_NOTE(MUTEX_PROTECTS_DATA(global_lock, global_stat_{ first second }))
+
+static void
+check_global_prefix_names(void)
+{
+	global_stat_first = 1;
+	global_stat_second = 1;
+	mutex_enter(&global_lock);
+	global_stat_first = 2;
+	global_stat_second = 2;
+	mutex_exit(&global_lock);
+}
+
+typedef struct prefixed_nested {
+	int member_first;
+	int member_second;
+} prefixed_nested_t;
+
+typedef struct prefixed_state {
+	mutex_t lock;
+	int direct_first;
+	int direct_second;
+	prefixed_nested_t nested;
+} prefixed_state_t;
+
+_NOTE(MUTEX_PROTECTS_DATA(prefixed_state::lock,
+    prefixed_state::{ direct_{ first second }
+    nested.member_{ first second } }))
+
+/*
+ * Prefix generators concatenate each generated suffix with the component
+ * immediately before the opening brace, including within a nested path.
+ */
+static void
+check_prefixed_names(prefixed_state_t *state)
+{
+	state->direct_first = 1;
+	state->direct_second = 1;
+	state->nested.member_first = 1;
+	state->nested.member_second = 1;
+	mutex_enter(&state->lock);
+	state->direct_first = 2;
+	state->direct_second = 2;
+	state->nested.member_first = 2;
+	state->nested.member_second = 2;
+	mutex_exit(&state->lock);
+}

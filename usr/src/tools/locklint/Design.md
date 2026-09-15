@@ -895,7 +895,9 @@ The parser accepts:
 - concrete paths such as `object.member`;
 - type paths such as `type::member`;
 - generated member lists such as `type::{ first second }`; and
-- nested generators such as `type::{ nested.{ first second } }`.
+- nested generators such as `type::{ nested.{ first second } }`; and
+- suffix generators such as `object_prefix_{ first second }` and
+  `type::{ nested.member_{ first second } }`.
 
 The data-policy parser recognizes:
 

@@ -26,6 +26,8 @@ run_session()
 
 	for root in \
 	    check_global_names \
+	    check_global_prefix_names \
+	    check_prefixed_names \
 	    check_generated_names \
 	    check_recursive_names \
 	    check_override \
