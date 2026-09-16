@@ -1,0 +1,12 @@
+# Corrected OSLL baseline for the standalone usbvc kernel module.
+#
+# The historical "one usbvc_state" declaration does not affect this output.
+# OSLL anchors three multiline assignments at a continuation or right-hand
+# side line; native locklint anchors them at the assignment start.
+usbvc.c:429 usbvc_dip
+usbvc.c:433 usbvc_log_handle
+usbvc.c:572 usbvc_locks_initialized
+usbvc.c:1749 usbvc_serial_inuse
+usbvc.c:1751 usbvc_locks_initialized
+usbvc.c:2034 usbvc_vc_header
+usbvc.c:2375 usbvc_curr_strm

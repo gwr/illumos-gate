@@ -1,0 +1,18 @@
+# Complete semantic translation of the historical standalone usbvc.wlcmd.
+#
+# Native locklint automatically recognizes all nine historical explicit
+# roots through escaped function pointers.  It also recognizes the four
+# pseudo-kernel DDI/cb_ops entry points and the strategy/minphys callbacks
+# passed to physio().  No explicit root declarations are required.
+#
+# OSLL produces identical protected-access findings with and without
+# "one usbvc_state".  Native locklint distinguishes concrete object
+# identities and needs no equivalent declaration for this focused module.
+#
+# The historical bus_ops mappings cannot affect usbvc because its dev_ops
+# contains no bus_ops vector or call site.
+#
+# OSLL anchors three multiline assignments at continuation or right-hand-side
+# lines while native Sparse anchors them at the assignment starts.  The runner
+# normalizes only those accepted source anchors before comparing exact
+# source/member pairs.
