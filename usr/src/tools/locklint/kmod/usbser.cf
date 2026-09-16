@@ -1,0 +1,25 @@
+# Complete semantic translation of the historical standalone usbser.wlcmd.
+#
+# Native locklint automatically recognizes 19 of the 21 historical explicit
+# roots and all four dev_ops targets through external linkage or escaped
+# function pointers.  The remaining usbser_cpr_suspend and usbser_cpr_resume
+# functions are reached by resolved calls from the rooted detach and attach
+# entry points.  Native also recognizes usbser_restart and the
+# recovery-sequence functions as escaped callbacks.
+#
+# OSLL produces identical protected-access findings with and without
+# "one usbser_state".  Native locklint distinguishes concrete object
+# identities and needs no equivalent declaration for this focused module.
+#
+# The historical 24 ds_ops targets pointed at warlock_dummy.  Native locklint
+# retains those external device-specific calls as indirect rather than
+# inventing implementations.  The mutable rseq_step table likewise retains
+# indirect calls, while its in-module target functions remain automatic roots.
+#
+# The historical bus_ops mappings cannot affect usbser because neither module
+# translation unit calls through bus_ops.
+#
+# OSLL anchors the multiline port_lh assignment at line 848 while native
+# Sparse anchors it at line 846.  OSLL also reports adjacent port_state reads
+# at lines 943 and 944; Sparse reuses the line-943 load.  The runner normalizes
+# only those accepted differences before comparing exact source/member pairs.

@@ -1,0 +1,19 @@
+# Normalized protected-access findings from the corrected standalone OSLL
+# comparison.  The runner separately checks source annotations and complete
+# usbser function coverage.
+usbser.c:775 us_dev_state
+usbser.c:839 port_num
+usbser.c:840 port_usp
+usbser.c:841 port_ds_ops
+usbser.c:842 port_ds_hdl
+usbser.c:848 port_lh
+usbser.c:858 port_wq_thread.thr_port
+usbser.c:859 port_wq_thread.thr_func
+usbser.c:860 port_wq_thread.thr_arg
+usbser.c:863 port_rq_thread.thr_port
+usbser.c:864 port_rq_thread.thr_func
+usbser.c:865 port_rq_thread.thr_arg
+usbser.c:874 port_state
+usbser.c:943 port_state
+usbser.c:944 port_state
+usbser.c:748 us_dev_state
