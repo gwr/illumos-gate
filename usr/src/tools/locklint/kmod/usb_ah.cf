@@ -1,0 +1,12 @@
+# Complete semantic translation of the historical standalone usb_ah.wlcmd.
+#
+# The five historical STREAMS and timeout entry points are automatic roots
+# because their addresses escape through qinit structures or qtimeout().
+# The historical bus_ops mappings to warlock_dummy cannot affect usb_ah,
+# which has no bus_ops vector or call site.
+#
+# The removal-era source placed putnext directly in qinit even though the
+# historical policy named usb_ah_wput.  The current source's usb_ah_wput
+# wrapper was added to remove that incompatible function-pointer cast and now
+# supplies the intended write-side entry point.  No explicit locklint
+# declarations are required.
