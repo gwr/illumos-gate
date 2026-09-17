@@ -1,0 +1,12 @@
+# Complete semantic translation of the historical combined usbsacm.wlcmd.
+#
+# Native locklint recognizes historical and pseudo-kernel entry points through
+# external linkage, escaped function pointers, and resolved calls.  The
+# ds_ops and registered callback calls remain explicit indirect calls, while
+# all in-module targets remain reachable through their escaped addresses.
+#
+# Neither historical "one" declaration affects corrected OSLL output.
+#
+# The runner normalizes documented multiline anchors, OSLL's duplicate
+# adjacent usbser port_state read, and native's additional adjacent
+# acm_ctrl_if_no store before comparing exact source/member pairs.

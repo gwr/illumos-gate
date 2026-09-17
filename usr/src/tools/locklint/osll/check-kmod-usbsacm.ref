@@ -1,0 +1,58 @@
+# Corrected OSLL baseline for the combined usbsacm and usbser modules.
+#
+# Neither historical "one" declaration affects this output, individually or
+# together.  The OSLL runner replaces only the read-only baud table initializer
+# in a generated, line-preserving source copy because ssbd crashes while
+# lowering the 32-element initializer; the replacement cannot affect locking.
+usbsacm.c:1888 acm_def_ph
+usbsacm.c:1893 acm_lh
+usbsacm.c:2766 acm_pm
+usbsacm.c:2824 acm_pm
+usbsacm.c:582 acm_dip
+usbsacm.c:583 acm_usb_events
+usbsacm.c:584 acm_ports
+usbsacm.c:600 acm_def_ph
+usbsacm.c:601 acm_dev_state
+usbsacm.c:606 acm_lh
+usbsacm.c:634 acm_compatibility
+usbsacm.c:641 acm_compatibility
+usbsacm.c:711 acm_cb.cb_tx
+usbsacm.c:711 acm_cb.cb_rx
+usbsacm.c:711 acm_cb.cb_status
+usbsacm.c:711 acm_cb.cb_arg
+usbsacm.c:1672 acm_ports
+usbsacm.c:1698 acm_data_if_no
+usbsacm.c:1698 acm_ctrl_if_no
+usbsacm.c:1782 acm_data_if_no
+usbsacm.c:1738 acm_cap
+usbsacm.c:1752 acm_cap
+usbsacm.c:1752 acm_cap
+usbsacm.c:1732 acm_data_if_no
+usbsacm.c:1612 acm_port_cnt
+usbsacm.c:1635 acm_ports
+usbsacm.c:1622 acm_port_cnt
+usbsacm.c:1533 acm_port_state
+usbsacm.c:1535 acm_line_coding.dwDTERate
+usbsacm.c:1536 acm_line_coding.bCharFormat
+usbsacm.c:1537 acm_line_coding.bParityType
+usbsacm.c:1538 acm_line_coding.bDataBits
+usbsacm.c:1539 acm_device
+usbsacm.c:1587 acm_data_if_no
+usbsacm.c:1588 acm_ctrl_if_no
+usbsacm.c:1589 acm_data_port_no
+usbser.c:775 us_dev_state
+usbser.c:839 port_num
+usbser.c:840 port_usp
+usbser.c:841 port_ds_ops
+usbser.c:842 port_ds_hdl
+usbser.c:848 port_lh
+usbser.c:858 port_wq_thread.thr_port
+usbser.c:859 port_wq_thread.thr_func
+usbser.c:860 port_wq_thread.thr_arg
+usbser.c:863 port_rq_thread.thr_port
+usbser.c:864 port_rq_thread.thr_func
+usbser.c:865 port_rq_thread.thr_arg
+usbser.c:874 port_state
+usbser.c:943 port_state
+usbser.c:944 port_state
+usbser.c:748 us_dev_state
