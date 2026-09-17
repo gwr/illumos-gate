@@ -228,6 +228,8 @@ struct protection_condition {
 	struct object_identity *lock_object;
 	struct symbol *lock_member;
 	unsigned long lock_offset;
+	struct pseudo *lock_address_base;
+	int64_t lock_address_offset;
 	bool has_lock;
 	unsigned int required_modes;
 	struct symbol *data_member;
@@ -1719,8 +1721,10 @@ acquisition_role(struct function_info *function,
 		role->relative = true;
 	} else if (lock->address_base != NULL &&
 	    lock->address_base->type == PSEUDO_ARG) {
+		if (lock->address_base->nr == 0)
+			return (false);
 		role->relative = true;
-		role->argument = lock->address_base->nr;
+		role->argument = lock->address_base->nr - 1;
 		role->access.root = formal_symbol(function->ep, role->argument);
 		role->access.object = NULL;
 	} else if (lock->object == NULL) {
@@ -2343,6 +2347,7 @@ add_protection_condition(struct function_info *function,
     bool has_lock, unsigned int required_modes,
     struct symbol *lock_root, struct object_identity *lock_object,
     struct symbol *lock_member, unsigned long lock_offset,
+    struct pseudo *lock_address_base, int64_t lock_address_offset,
     struct symbol *data_member, unsigned long data_offset,
     struct position pos, bool explicit_contract,
     const struct protection_alternative *alternatives,
@@ -2359,6 +2364,8 @@ add_protection_condition(struct function_info *function,
 		    same_condition_lock(condition, has_lock, required_modes,
 		    lock_root,
 		    lock_object, lock_member, lock_offset) &&
+		    condition->lock_address_base == lock_address_base &&
+		    condition->lock_address_offset == lock_address_offset &&
 		    same_protection_alternatives(condition->alternatives,
 		    alternatives)) {
 			return (merge_protection_origins(&condition->origins,
@@ -2377,6 +2384,8 @@ add_protection_condition(struct function_info *function,
 	condition->lock_object = lock_object;
 	condition->lock_member = lock_member;
 	condition->lock_offset = lock_offset;
+	condition->lock_address_base = lock_address_base;
+	condition->lock_address_offset = lock_address_offset;
 	condition->data_member = data_member;
 	condition->data_offset = data_offset;
 	condition->pos = pos;
@@ -2425,12 +2434,63 @@ defer_lock_diagnostics(struct function_info *function,
 	    function_declares_lock_effect(function, lock)));
 }
 
+/*
+ * Find a formal argument used by an exact retained address expression.
+ * Dynamic derivations can involve more than one formal; one argument anchors
+ * the ordinary condition identity while the complete pseudo expression is
+ * retained separately for contextual matching.
+ */
+static bool
+formal_address_argument(struct pseudo *pseudo, unsigned int depth,
+    unsigned int *argument)
+{
+	struct instruction *def;
+
+	if (pseudo == NULL || depth > 32)
+		return (false);
+	if (pseudo->type == PSEUDO_ARG) {
+		if (pseudo->nr == 0)
+			return (false);
+		*argument = pseudo->nr - 1;
+		return (true);
+	}
+	if (pseudo->type != PSEUDO_REG || pseudo->def == NULL)
+		return (false);
+	def = pseudo->def;
+	switch (def->opcode) {
+	case OP_PTRCAST:
+	case OP_ZEXT:
+	case OP_SEXT:
+		return (formal_address_argument(def->src, depth + 1, argument));
+	case OP_ADD:
+	case OP_SUB:
+	case OP_MUL:
+		return (formal_address_argument(def->src1, depth + 1,
+		    argument) ||
+		    formal_address_argument(def->src2, depth + 1, argument));
+	default:
+		return (false);
+	}
+}
+
+static struct pseudo *
+dynamic_formal_address_base(struct pseudo *pseudo)
+{
+	unsigned int argument;
+
+	if (pseudo == NULL || pseudo->type != PSEUDO_REG ||
+	    !formal_address_argument(pseudo, 0, &argument))
+		return (NULL);
+	return (pseudo);
+}
+
 static bool
 condition_data_identity(struct function_info *function,
     const struct locklint_access *access, unsigned int *argument,
     struct symbol **root, struct object_identity **object)
 {
-	if (formal_argument(function->ep, access->root, argument)) {
+	if (formal_argument(function->ep, access->root, argument) ||
+	    formal_address_argument(access->address_base, 0, argument)) {
 		*root = NULL;
 		*object = NULL;
 		return (true);
@@ -5064,6 +5124,10 @@ collect_assumption_conditions(struct function_info *function)
 		    has_lock && lock.root != access->root ? lock.root : NULL,
 		    has_lock && lock.root != access->root ? lock.object : NULL,
 		    has_lock ? lock.member : NULL, has_lock ? lock.offset : 0,
+		    has_lock ?
+		    dynamic_formal_address_base(lock.address_base) : NULL,
+		    has_lock && dynamic_formal_address_base(
+		    lock.address_base) != NULL ? lock.address_offset : 0,
 		    access->member, access->offset, assumption->pos, true,
 		    NULL, NULL);
 	}
@@ -5127,7 +5191,10 @@ collect_local_protection_access(struct function_info *function,
 		    data_root, data_object, true, required_modes,
 		    lock->root != access->root ? lock->root : NULL,
 		    lock->root != access->root ? lock->object : NULL,
-		    lock->member, lock->offset, data_member, access->offset,
+		    lock->member, lock->offset,
+		    dynamic_formal_address_base(lock->address_base),
+		    dynamic_formal_address_base(lock->address_base) != NULL ?
+		    lock->address_offset : 0, data_member, access->offset,
 		    insn->access->pos, false, alternatives, &origin_ref);
 		free_protection_alternatives(alternatives);
 	}
@@ -5178,6 +5245,8 @@ propagate_call_protection_conditions(struct function_info *function,
 		struct protection_alternative *alternative;
 		struct protection_alternative *alternatives = NULL;
 
+		if (condition->lock_address_base != NULL)
+			continue;
 		if (!map_call_protection_condition(function, insn, condition,
 		    &object, &lock))
 			continue;
@@ -5209,7 +5278,8 @@ propagate_call_protection_conditions(struct function_info *function,
 		    data_root, data_object,
 		    condition->has_lock, condition->required_modes,
 		    condition->lock_root, condition->lock_object,
-		    lock.member, lock.offset, object.member, object.offset,
+		    lock.member, lock.offset, NULL, 0,
+		    object.member, object.offset,
 		    condition->pos, condition->explicit_contract,
 		    alternatives, condition->origins))
 			changed = true;
@@ -6279,6 +6349,171 @@ check_call_assertion_requirements(struct function_info *function,
  * Map and test one call condition, excluding satisfied conditions and those
  * that can continue propagating through the caller.
  */
+static struct pseudo *
+call_argument_pseudo(struct instruction *insn, unsigned int index)
+{
+	struct pseudo *pseudo;
+	unsigned int current = 0;
+
+	FOR_EACH_PTR(insn->arguments, pseudo) {
+		if (current++ == index)
+			return (pseudo);
+	} END_FOR_EACH_PTR(pseudo);
+	return (NULL);
+}
+
+/*
+ * Compare the exact, side-effect-free address expressions retained by Sparse.
+ * This deliberately recognizes only operations whose operands completely
+ * determine the resulting address.
+ */
+static bool
+same_pseudo_expression(struct pseudo *left, struct pseudo *right,
+    unsigned int depth)
+{
+	struct instruction *left_def;
+	struct instruction *right_def;
+
+	if (left == right)
+		return (true);
+	if (left == NULL || right == NULL || left->type != right->type ||
+	    depth > 32)
+		return (false);
+	switch (left->type) {
+	case PSEUDO_ARG:
+		return (left->nr == right->nr);
+	case PSEUDO_SYM:
+		return (left->sym == right->sym);
+	case PSEUDO_VAL:
+		return (left->value == right->value);
+	case PSEUDO_REG:
+		break;
+	default:
+		return (false);
+	}
+	left_def = left->def;
+	right_def = right->def;
+	if (left_def == NULL || right_def == NULL ||
+	    left_def->opcode != right_def->opcode ||
+	    left_def->size != right_def->size)
+		return (false);
+	switch (left_def->opcode) {
+	case OP_PTRCAST:
+	case OP_ZEXT:
+	case OP_SEXT:
+		return (same_pseudo_expression(left_def->src, right_def->src,
+		    depth + 1));
+	case OP_LOAD:
+		return (left_def->offset == right_def->offset &&
+		    same_pseudo_expression(left_def->src, right_def->src,
+		    depth + 1));
+	case OP_ADD:
+	case OP_MUL:
+		return ((same_pseudo_expression(left_def->src1,
+		    right_def->src1, depth + 1) &&
+		    same_pseudo_expression(left_def->src2, right_def->src2,
+		    depth + 1)) ||
+		    (same_pseudo_expression(left_def->src1, right_def->src2,
+		    depth + 1) &&
+		    same_pseudo_expression(left_def->src2, right_def->src1,
+		    depth + 1)));
+	case OP_SUB:
+		return (same_pseudo_expression(left_def->src1, right_def->src1,
+		    depth + 1) &&
+		    same_pseudo_expression(left_def->src2, right_def->src2,
+		    depth + 1));
+	default:
+		return (false);
+	}
+}
+
+static bool
+same_mapped_pseudo_expression(struct instruction *insn,
+    struct pseudo *source, struct pseudo *candidate, unsigned int depth)
+{
+	struct instruction *source_def;
+	struct instruction *candidate_def;
+
+	if (source == NULL || candidate == NULL || depth > 32)
+		return (false);
+	if (source->type == PSEUDO_ARG) {
+		if (source->nr == 0)
+			return (false);
+		return (same_pseudo_expression(
+		    call_argument_pseudo(insn, source->nr - 1), candidate,
+		    depth + 1));
+	}
+	if (source->type != candidate->type)
+		return (false);
+	switch (source->type) {
+	case PSEUDO_SYM:
+		return (source->sym == candidate->sym);
+	case PSEUDO_VAL:
+		return (source->value == candidate->value);
+	case PSEUDO_REG:
+		break;
+	default:
+		return (false);
+	}
+	source_def = source->def;
+	candidate_def = candidate->def;
+	if (source_def == NULL || candidate_def == NULL ||
+	    source_def->opcode != candidate_def->opcode ||
+	    source_def->size != candidate_def->size)
+		return (false);
+	switch (source_def->opcode) {
+	case OP_PTRCAST:
+	case OP_ZEXT:
+	case OP_SEXT:
+		return (same_mapped_pseudo_expression(insn, source_def->src,
+		    candidate_def->src, depth + 1));
+	case OP_LOAD:
+		return (source_def->offset == candidate_def->offset &&
+		    same_mapped_pseudo_expression(insn, source_def->src,
+		    candidate_def->src, depth + 1));
+	case OP_ADD:
+	case OP_MUL:
+		return ((same_mapped_pseudo_expression(insn, source_def->src1,
+		    candidate_def->src1, depth + 1) &&
+		    same_mapped_pseudo_expression(insn, source_def->src2,
+		    candidate_def->src2, depth + 1)) ||
+		    (same_mapped_pseudo_expression(insn, source_def->src1,
+		    candidate_def->src2, depth + 1) &&
+		    same_mapped_pseudo_expression(insn, source_def->src2,
+		    candidate_def->src1, depth + 1)));
+	case OP_SUB:
+		return (same_mapped_pseudo_expression(insn, source_def->src1,
+		    candidate_def->src1, depth + 1) &&
+		    same_mapped_pseudo_expression(insn, source_def->src2,
+		    candidate_def->src2, depth + 1));
+	default:
+		return (false);
+	}
+}
+
+static bool
+dynamic_condition_satisfied(const struct analysis_state *analysis,
+    struct instruction *insn,
+    const struct protection_condition *condition)
+{
+	const struct state_entry *entry;
+
+	if (condition->lock_address_base == NULL)
+		return (false);
+	for (entry = analysis->locks; entry != NULL; entry = entry->next) {
+		if (entry->lock.address_base == NULL ||
+		    entry->lock.address_offset !=
+		    condition->lock_address_offset ||
+		    !state_satisfies_modes(entry->state,
+		    condition->required_modes))
+			continue;
+		if (same_mapped_pseudo_expression(insn,
+		    condition->lock_address_base, entry->lock.address_base, 0))
+			return (true);
+	}
+	return (false);
+}
+
 static bool
 call_protection_failure(struct function_info *function,
     struct analysis_state *analysis, struct instruction *insn,
@@ -6292,6 +6527,8 @@ call_protection_failure(struct function_info *function,
 	    object, lock))
 		return (false);
 	if (condition_alternative_satisfied(function, insn, condition, lock))
+		return (false);
+	if (dynamic_condition_satisfied(analysis, insn, condition))
 		return (false);
 	*status = get_protection_status(function, analysis, object,
 	    condition->required_modes, lock);

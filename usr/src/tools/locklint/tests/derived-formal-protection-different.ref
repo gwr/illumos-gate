@@ -1,0 +1,6 @@
+../locklint: derived-formal-protection.c:49: warning: locklint: protected member 'value' read without holding 'lock' [unprotected-access]
+../locklint: derived-formal-protection.c:62: locklint: protection was not established at this call to 'derived_helper'
+../locklint: derived-formal-protection.c:60: locklint: different lock instance 'lock' acquired here is mutex-held at that call
+../locklint: derived-formal-protection.c:50: warning: locklint: protected member 'value' modified without holding 'lock' [unprotected-access]
+../locklint: derived-formal-protection.c:62: locklint: protection was not established at this call to 'derived_helper'
+../locklint: derived-formal-protection.c:60: locklint: different lock instance 'lock' acquired here is mutex-held at that call

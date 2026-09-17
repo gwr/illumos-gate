@@ -2078,6 +2078,21 @@ checker visits instruction
        no competition, or an assumed-protection contract applies
 ```
 
+### Derived-formal protection at a direct call
+
+```text
+callee protected access uses a local pointer derived from formal arguments
+    -> retained Sparse address expression identifies the formal base,
+       dynamic index, member loads, casts, and constant arithmetic
+    -> protection condition retains that exact required-lock expression
+caller OP_CALL resolved to callee
+    -> callee argument pseudos are substituted with caller actual pseudos
+    -> exact side-effect-free address expressions are compared structurally
+    -> matching caller-held lock satisfies the callee condition
+    -> a different or unsupported derivation remains unsatisfied
+       and is diagnosed with caller lock evidence
+```
+
 ### Assertion to local state refinement
 
 ```text

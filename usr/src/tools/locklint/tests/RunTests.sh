@@ -628,6 +628,18 @@ run_capture "internally aliased lock composition" \
 require_empty "internally aliased lock composition" \
     alias-composition-internal.out
 
+run_capture "derived formal protection" derived-formal-protection.out \
+    "$LOCKLINT" --check-locks derived-formal-protection.c
+require_empty "derived formal protection" derived-formal-protection.out
+
+run_capture "distinct derived formal protection" \
+    derived-formal-protection-different.raw "$LOCKLINT" \
+    -DDERIVED_FORMAL_DIFFERENT --check-locks derived-formal-protection.c
+compare_no_columns "distinct derived formal protection" \
+    derived-formal-protection-different.ref \
+    derived-formal-protection-different.raw \
+    derived-formal-protection-different.out
+
 run_capture "recursive aliased lock composition" \
     alias-composition-recursive.out "$LOCKLINT" \
     -DALIAS_COMPOSITION_VARIANT=6 --check-locks alias-composition.c
