@@ -83,8 +83,6 @@ _NOTE(SCHEME_PROTECTS_DATA("chg at attach only",
 _NOTE(SCHEME_PROTECTS_DATA("chg at attach only",
 					usb_client_dev_data::dev_descr))
 _NOTE(SCHEME_PROTECTS_DATA("chg at attach only",
-					usb_client_dev_data::dev_bos))
-_NOTE(SCHEME_PROTECTS_DATA("chg at attach only",
 					usb_client_dev_data::dev_iblock_cookie))
 _NOTE(SCHEME_PROTECTS_DATA("chg at attach only",
 					usb_client_dev_data::dev_mfg))

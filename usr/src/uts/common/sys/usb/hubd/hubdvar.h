@@ -254,8 +254,6 @@ typedef struct hubd {
 	 */
 	boolean_t		h_ignore_pwr_budget;
 
-	/* for HWA to cleanup child, NULL for normal hubs */
-	int			(*h_cleanup_child)(dev_info_t *);
 } hubd_t;
 
 _NOTE(MUTEX_PROTECTS_DATA(hubd::h_mutex, hubd))
@@ -271,8 +269,6 @@ _NOTE(DATA_READABLE_WITHOUT_LOCK(hubd::h_default_pipe
 		hubd::h_hubpm
 		hubd::h_dip
 		hubd::h_ignore_pwr_budget
-		hubd::h_hub_descr
-		hubd::h_cleanup_child
 ))
 
 _NOTE(SCHEME_PROTECTS_DATA("stable data", usb_ep_descr))

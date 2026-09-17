@@ -423,6 +423,7 @@ _NOTE(DATA_READABLE_WITHOUT_LOCK(usba_device::usb_client_flags))
 _NOTE(DATA_READABLE_WITHOUT_LOCK(usba_device::usb_client_attach_list))
 _NOTE(DATA_READABLE_WITHOUT_LOCK(usba_device::usb_client_ev_cb_list))
 _NOTE(DATA_READABLE_WITHOUT_LOCK(usba_device::usb_dip))
+_NOTE(DATA_READABLE_WITHOUT_LOCK(usba_device::usb_parent_hub))
 _NOTE(SCHEME_PROTECTS_DATA("set at device creation",
 					usba_device::usb_shared_taskq))
 /*
