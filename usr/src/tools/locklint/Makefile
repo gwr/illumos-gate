@@ -82,6 +82,7 @@ SPARSE_OBJS = \
 
 LOCAL_OBJS = \
 	locklint.o \
+	analysis.o \
 	access.o \
 	annotations.o \
 	assertions.o \

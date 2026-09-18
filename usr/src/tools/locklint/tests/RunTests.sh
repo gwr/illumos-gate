@@ -969,6 +969,22 @@ require_match "annotation name dump" \
     'replaces annotation-names.c:70:1' annotation-names-dump.out
 
 #
+# Verify the initial context walk seeds roots, stabilizes CFG loops, and
+# publishes a function exit without emitting locking diagnostics.
+#
+run_capture "context counting" context-counting.out \
+    "$LOCKLINT" --dump-contexts context-counting.c
+require_match "context counting" '^roots 1$' context-counting.out
+require_match "context counting" '^functions 1$' context-counting.out
+require_match "context counting" '^contexts created 1 reused 0$' \
+    context-counting.out
+require_match "context counting" '^exits created 1 reused 0$' \
+    context-counting.out
+require_match "context counting" '^point-states created 29 reused 2$' \
+    context-counting.out
+reject_match "context counting" 'warning:' context-counting.out
+
+#
 # Final report
 #
 if [ "$failures" -ne 0 ]; then

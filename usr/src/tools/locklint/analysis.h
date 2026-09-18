@@ -13,11 +13,15 @@
  * Copyright 2026 Gordon W. Ross
  */
 
-#ifndef CHECK_H
-#define	CHECK_H
+#ifndef ANALYSIS_H
+#define	ANALYSIS_H
 
-#include <stdbool.h>
+#include <stdio.h>
 
-void locklint_check_all(bool, bool, bool);
+/*
+ * Run the context analysis over an already resolved callgraph and write its
+ * development instrumentation to the requested stream.
+ */
+void analysis_run(FILE *);
 
-#endif /* CHECK_H */
+#endif /* ANALYSIS_H */

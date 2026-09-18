@@ -45,6 +45,7 @@ static bool dump_accesses;
 static bool dump_annotations;
 static bool dump_events;
 static bool dump_callgraph;
+static bool dump_contexts;
 static bool check_locks;
 static bool compat_osll;
 
@@ -71,7 +72,7 @@ usage(FILE *stream)
 	    "usage: locklint [--cf command-file] [--compat=osll] "
 	    "[--check-locks] [--dump-parsed] [--dump-linearized] "
 	    "[--dump-accesses] [--dump-annotations] [--dump-events] "
-	    "[--dump-callgraph] "
+	    "[--dump-callgraph] [--dump-contexts] "
 	    "[sparse-options] file.c ...\n");
 }
 
@@ -117,6 +118,8 @@ options(int argc, char **argv)
 			dump_events = true;
 		} else if (strcmp(argv[i], "--dump-callgraph") == 0) {
 			dump_callgraph = true;
+		} else if (strcmp(argv[i], "--dump-contexts") == 0) {
+			dump_contexts = true;
 		} else if (strcmp(argv[i], "--dump-all") == 0) {
 			dump_parsed = true;
 			dump_linearized = true;
@@ -124,6 +127,7 @@ options(int argc, char **argv)
 			dump_annotations = true;
 			dump_events = true;
 			dump_callgraph = true;
+			dump_contexts = true;
 		} else if (strcmp(argv[i], "--compat=osll") == 0) {
 			compat_osll = true;
 		} else if (strncmp(argv[i], "--compat=", 9) == 0) {
@@ -217,19 +221,20 @@ process_symbols(struct translation_unit *tu, struct symbol_list *symbols)
 			show_symbol(sym);
 
 		if (!dump_linearized && !dump_accesses && !dump_annotations &&
-		    !dump_events && !dump_callgraph && !check_locks)
+		    !dump_events && !dump_callgraph && !dump_contexts &&
+		    !check_locks)
 			continue;
 
 		ep = linearize_symbol(sym);
 		if (ep == NULL)
 			continue;
-		if (check_locks || dump_callgraph)
+		if (check_locks || dump_callgraph || dump_contexts)
 			callgraph_add(tu, ep);
 		if (dump_linearized)
 			show_entry(ep);
 		if (dump_accesses)
 			show_accesses(ep);
-		if (dump_annotations || check_locks)
+		if (dump_annotations || check_locks || dump_contexts)
 			locklint_process_function_annotations(
 			    dump_annotations ? stdout : NULL, tu, ep);
 		if (dump_events)
@@ -315,9 +320,9 @@ main(int argc, char **argv)
 	}
 
 	preprocessor_compatibility_enable();
-	if (dump_annotations || dump_events || check_locks)
+	if (dump_annotations || dump_events || check_locks || dump_contexts)
 		locklint_annotations_enable();
-	if (check_locks)
+	if (check_locks || dump_contexts)
 		locklint_assertions_enable();
 	do_output = 0;
 	/*
@@ -345,9 +350,9 @@ main(int argc, char **argv)
 		die("multiple inputs with initialization-time internal "
 		    "declarations are not supported");
 	register_translation_unit_declarations(tu, symbols);
-	if (dump_annotations || dump_events || check_locks)
+	if (dump_annotations || dump_events || check_locks || dump_contexts)
 		locklint_resolve_annotations(symbols);
-	if (check_locks || dump_callgraph)
+	if (check_locks || dump_callgraph || dump_contexts)
 		callgraph_record_pointer_evidence(tu, symbols,
 		    dump_callgraph);
 	process_symbols(tu, symbols);
@@ -362,9 +367,10 @@ main(int argc, char **argv)
 		tu = locklint_translation_unit_begin(file);
 		symbols = locklint_sparse(file);
 		register_translation_unit_declarations(tu, symbols);
-		if (dump_annotations || dump_events || check_locks)
+		if (dump_annotations || dump_events || check_locks ||
+		    dump_contexts)
 			locklint_resolve_annotations(symbols);
-		if (check_locks || dump_callgraph)
+		if (check_locks || dump_callgraph || dump_contexts)
 			callgraph_record_pointer_evidence(tu, symbols,
 			    dump_callgraph);
 		process_symbols(tu, symbols);
@@ -374,8 +380,8 @@ main(int argc, char **argv)
 		locklint_access_cleanup();
 		return (EXIT_FAILURE);
 	}
-	if (check_locks || dump_callgraph)
-		locklint_check_all(check_locks, dump_callgraph);
+	if (check_locks || dump_callgraph || dump_contexts)
+		locklint_check_all(check_locks, dump_callgraph, dump_contexts);
 	if (dump_annotations)
 		locklint_show_annotations(stdout);
 	locklint_access_cleanup();

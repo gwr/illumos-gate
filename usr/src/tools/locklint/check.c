@@ -27,6 +27,7 @@
 #include "expression.h"
 #include "linearize.h"
 #include "access.h"
+#include "analysis.h"
 #include "annotations.h"
 #include "assertions.h"
 #include "callgraph.h"
@@ -7385,11 +7386,13 @@ free_checker_attachments(void)
  * release checker attachments before destroying the callgraph.
  */
 void
-locklint_check_all(bool check_locks, bool show_callgraph)
+locklint_check_all(bool check_locks, bool show_callgraph, bool show_contexts)
 {
 	callgraph_resolve();
 	if (show_callgraph)
 		callgraph_dump(stdout);
+	if (show_contexts)
+		analysis_run(stdout);
 	if (check_locks) {
 		locklint_order_build();
 		locklint_order_report_declared_cycles();
