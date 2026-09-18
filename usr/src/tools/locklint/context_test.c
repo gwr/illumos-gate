@@ -23,9 +23,16 @@
 #include <stdlib.h>
 
 #include "context.h"
+#include "dependency.h"
 #include "function_info.h"
 
 static unsigned int failures;
+
+void
+dependency_fini(struct function_context *context)
+{
+	(void) context;
+}
 
 static void
 check(bool condition, const char *message)

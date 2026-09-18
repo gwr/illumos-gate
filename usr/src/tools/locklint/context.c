@@ -26,6 +26,7 @@
 
 #include "avl.h"
 #include "context.h"
+#include "dependency.h"
 #include "function_info.h"
 
 static int
@@ -110,6 +111,7 @@ context_fini(struct function_info *function)
 	while ((context = avl_destroy_nodes(&collection->contexts,
 	    &cookie)) != NULL) {
 		free_point_states(context);
+		dependency_fini(context);
 		free(context);
 	}
 	avl_destroy(&collection->contexts);

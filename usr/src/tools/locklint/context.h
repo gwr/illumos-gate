@@ -23,6 +23,8 @@
 
 struct binding_environment;
 struct basic_block;
+struct context_exit;
+struct continuation;
 struct function_info;
 struct instruction;
 
@@ -56,6 +58,9 @@ struct function_context {
 	const struct binding_environment *bindings;
 	const struct semantic_state *entry_state;
 	avl_tree_t point_states;
+	struct context_exit *exits;
+	struct continuation *continuations;
+	unsigned int exit_generation;
 	avl_node_t by_key;
 };
 
