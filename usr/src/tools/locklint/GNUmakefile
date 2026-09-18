@@ -92,6 +92,7 @@ LOCAL_OBJS = \
 	identity.o \
 	lock_order.o \
 	context.o \
+	worklist.o \
 	avl.o
 
 OBJS = $(LOCAL_OBJS) $(SPARSE_OBJS) hashtable.o
@@ -127,13 +128,18 @@ CTX_TEST_OBJS = context_test.o context.o avl.o
 context_test: $(CTX_TEST_OBJS)
 	$(LINK.c) -o $@ $(CTX_TEST_OBJS) $(LDLIBS)
 
+WORKLIST_TEST_OBJS = worklist_test.o worklist.o
+worklist_test: $(WORKLIST_TEST_OBJS)
+	$(LINK.c) -o $@ $(WORKLIST_TEST_OBJS) $(LDLIBS)
+
 test: $(PROG) FRC
 	(cd tests && ./RunTests.sh)
 
-UNITTESTS = command_parse_test context_test
+UNITTESTS = command_parse_test context_test worklist_test
 unittest: $(UNITTESTS) FRC
 	./command_parse_test command_parse_test.in
 	./context_test
+	./worklist_test
 
 clean: FRC
 	$(RM) -f $(PROG) version.h *.o

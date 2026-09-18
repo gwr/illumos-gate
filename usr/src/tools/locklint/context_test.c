@@ -130,11 +130,56 @@ test_function_ownership(void)
 	context_fini(&first);
 }
 
+static void
+test_point_state_interning(void)
+{
+	struct function_info function = { 0 };
+	struct semantic_state *state;
+	struct function_context *context;
+	struct point_state *point_state;
+	struct point_state *same;
+	struct point_state *other;
+	char block;
+	char instruction;
+	struct analysis_point point = {
+		.block = (struct basic_block *)&block,
+		.next_instruction = (struct instruction *)&instruction
+	};
+	struct analysis_point block_exit = {
+		.block = (struct basic_block *)&block
+	};
+	bool created;
+	int error;
+
+	context_init(&function);
+	error = state_get_empty(&function, &state, &created);
+	check(error == 0, "create point state value");
+	error = context_get(&function, NULL, state, &context, &created);
+	check(error == 0, "create point state context");
+
+	error = context_point_state_get(context, point, state, &point_state,
+	    &created);
+	check(error == 0 && created, "create point state");
+	error = context_point_state_get(context, point, state, &same, &created);
+	check(error == 0 && !created, "reuse point state");
+	check(same == point_state, "point state is canonical");
+
+	error = context_point_state_get(context, block_exit, state, &other,
+	    &created);
+	check(error == 0 && created, "create state at another point");
+	check(other != point_state, "analysis points remain distinct");
+	check(context_point_state_count(context) == 2,
+	    "context has two point states");
+
+	context_fini(&function);
+}
+
 int
 main(void)
 {
 	test_state_interning();
 	test_context_interning();
 	test_function_ownership();
+	test_point_state_interning();
 	return (failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE);
 }

@@ -22,7 +22,9 @@
 #include "avl.h"
 
 struct binding_environment;
+struct basic_block;
 struct function_info;
+struct instruction;
 
 /*
  * Semantic states are immutable after insertion.  The first implementation
@@ -34,6 +36,17 @@ struct semantic_state {
 };
 
 /*
+ * A point identifies the next Sparse instruction to evaluate.  A NULL
+ * instruction identifies the exit of the specified basic block.
+ */
+struct analysis_point {
+	struct basic_block *block;
+	struct instruction *next_instruction;
+};
+
+struct point_state;
+
+/*
  * A context key consists only of semantic inputs.  Bindings and states must
  * be canonical before insertion.  Provenance and traversal state belong to
  * the context but never participate in this key.
@@ -42,6 +55,21 @@ struct function_context {
 	struct function_info *function;
 	const struct binding_environment *bindings;
 	const struct semantic_state *entry_state;
+	avl_tree_t point_states;
+	avl_node_t by_key;
+};
+
+/*
+ * A point state records one semantic state which has reached one analysis
+ * point in a function context.  Queue linkage is embedded so duplicate
+ * enqueue can be suppressed without searching the worklist.
+ */
+struct point_state {
+	struct function_context *context;
+	struct analysis_point point;
+	const struct semantic_state *state;
+	bool queued;
+	struct point_state *work_next;
 	avl_node_t by_key;
 };
 
@@ -60,8 +88,11 @@ int state_get_empty(struct function_info *, struct semantic_state **, bool *);
 int context_get(struct function_info *,
     const struct binding_environment *, const struct semantic_state *,
     struct function_context **, bool *);
+int context_point_state_get(struct function_context *, struct analysis_point,
+    const struct semantic_state *, struct point_state **, bool *);
 
 size_t context_count(struct function_info *);
 size_t state_count(struct function_info *);
+size_t context_point_state_count(struct function_context *);
 
 #endif /* CONTEXT_H */

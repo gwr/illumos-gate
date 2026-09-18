@@ -53,6 +53,23 @@ compare_function_context(const void *left_arg, const void *right_arg)
 	return (AVL_PCMP(left->entry_state, right->entry_state));
 }
 
+static int
+compare_point_state(const void *left_arg, const void *right_arg)
+{
+	const struct point_state *left = left_arg;
+	const struct point_state *right = right_arg;
+	int result;
+
+	result = AVL_PCMP(left->point.block, right->point.block);
+	if (result != 0)
+		return (result);
+	result = AVL_PCMP(left->point.next_instruction,
+	    right->point.next_instruction);
+	if (result != 0)
+		return (result);
+	return (AVL_PCMP(left->state, right->state));
+}
+
 void
 context_init(struct function_info *function)
 {
@@ -64,6 +81,18 @@ context_init(struct function_info *function)
 	avl_create(&collection->semantic_states, compare_semantic_state,
 	    sizeof (struct semantic_state),
 	    offsetof(struct semantic_state, by_value));
+}
+
+static void
+free_point_states(struct function_context *context)
+{
+	struct point_state *point_state;
+	void *cookie = NULL;
+
+	while ((point_state = avl_destroy_nodes(&context->point_states,
+	    &cookie)) != NULL)
+		free(point_state);
+	avl_destroy(&context->point_states);
 }
 
 /*
@@ -79,8 +108,10 @@ context_fini(struct function_info *function)
 	void *cookie = NULL;
 
 	while ((context = avl_destroy_nodes(&collection->contexts,
-	    &cookie)) != NULL)
+	    &cookie)) != NULL) {
+		free_point_states(context);
 		free(context);
+	}
 	avl_destroy(&collection->contexts);
 
 	cookie = NULL;
@@ -149,8 +180,45 @@ context_get(struct function_info *function,
 	context->function = function;
 	context->bindings = bindings;
 	context->entry_state = entry_state;
+	avl_create(&context->point_states, compare_point_state,
+	    sizeof (struct point_state), offsetof(struct point_state, by_key));
 	avl_insert(&collection->contexts, context, where);
 	*result = context;
+	*created = true;
+	return (0);
+}
+
+/*
+ * Find or create one reached state at an analysis point.  Allocation failure
+ * leaves both output arguments unchanged.
+ */
+int
+context_point_state_get(struct function_context *context,
+    struct analysis_point point, const struct semantic_state *state,
+    struct point_state **result, bool *created)
+{
+	struct point_state key = {
+		.context = context,
+		.point = point,
+		.state = state
+	};
+	struct point_state *point_state;
+	avl_index_t where;
+
+	point_state = avl_find(&context->point_states, &key, &where);
+	if (point_state != NULL) {
+		*result = point_state;
+		*created = false;
+		return (0);
+	}
+	point_state = calloc(1, sizeof (*point_state));
+	if (point_state == NULL)
+		return (ENOMEM);
+	point_state->context = context;
+	point_state->point = point;
+	point_state->state = state;
+	avl_insert(&context->point_states, point_state, where);
+	*result = point_state;
 	*created = true;
 	return (0);
 }
@@ -165,4 +233,10 @@ size_t
 state_count(struct function_info *function)
 {
 	return (avl_numnodes(&function->contexts.semantic_states));
+}
+
+size_t
+context_point_state_count(struct function_context *context)
+{
+	return (avl_numnodes(&context->point_states));
 }
