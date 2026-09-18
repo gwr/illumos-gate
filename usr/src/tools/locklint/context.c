@@ -112,7 +112,7 @@ context_collection_free(struct function_info *function)
 	while ((context = avl_destroy_nodes(&collection->contexts,
 	    &cookie)) != NULL) {
 		free_point_states(context);
-		dependency_fini(context);
+		dependency_records_free(context);
 		provenance_fini(context);
 		free(context);
 	}

@@ -71,7 +71,6 @@ test_dependency(void)
 	struct analysis_point second_resume = {
 		.block = (struct basic_block *)&second_block
 	};
-	bool created;
 	bool existed;
 	int error;
 
@@ -91,36 +90,37 @@ test_dependency(void)
 	check(error == 0 && !existed, "create second context");
 
 	error = dependency_exit_publish(first_context, first_state, &first_exit,
-	    &created);
-	check(error == 0 && created, "publish first exit");
+	    &existed);
+	check(error == 0 && !existed, "publish first exit");
 	check(first_exit->generation == 1, "first exit has generation one");
 	error = dependency_exit_publish(first_context, first_state, &same_exit,
-	    &created);
-	check(error == 0 && !created, "reuse duplicate exit");
+	    &existed);
+	check(error == 0 && existed, "reuse duplicate exit");
 	check(same_exit == first_exit, "duplicate exit is canonical");
 	check(first_context->exit_generation == 1,
 	    "duplicate exit does not advance generation");
 
-	error = dependency_continuation_get(first_context, first_context,
-	    first_resume, first_state, NULL, &direct, &created);
-	check(error == 0 && created, "register direct-recursive continuation");
-	error = dependency_continuation_get(first_context, first_context,
-	    first_resume, first_state, NULL, &same_direct, &created);
-	check(error == 0 && !created, "reuse duplicate continuation");
+	error = dependency_continuation_create(first_context, first_context,
+	    first_resume, first_state, NULL, &direct, &existed);
+	check(error == 0 && !existed,
+	    "register direct-recursive continuation");
+	error = dependency_continuation_create(first_context, first_context,
+	    first_resume, first_state, NULL, &same_direct, &existed);
+	check(error == 0 && existed, "reuse duplicate continuation");
 	check(same_direct == direct, "duplicate continuation is canonical");
 	check(dependency_continuation_next_exit(direct) == first_exit,
 	    "late continuation sees existing exit");
 
-	error = dependency_continuation_get(second_context, first_context,
-	    second_resume, first_state, NULL, &first_to_second, &created);
-	check(error == 0 && created, "register first mutual continuation");
-	error = dependency_continuation_get(first_context, second_context,
-	    first_resume, second_state, NULL, &second_to_first, &created);
-	check(error == 0 && created, "register second mutual continuation");
+	error = dependency_continuation_create(second_context, first_context,
+	    second_resume, first_state, NULL, &first_to_second, &existed);
+	check(error == 0 && !existed, "register first mutual continuation");
+	error = dependency_continuation_create(first_context, second_context,
+	    first_resume, second_state, NULL, &second_to_first, &existed);
+	check(error == 0 && !existed, "register second mutual continuation");
 
 	error = dependency_exit_publish(second_context, second_state, &second_exit,
-	    &created);
-	check(error == 0 && created, "publish second context exit");
+	    &existed);
+	check(error == 0 && !existed, "publish second context exit");
 	check(dependency_continuation_next_exit(first_to_second) == second_exit,
 	    "first mutual continuation sees callee exit");
 	check(dependency_continuation_next_exit(second_to_first) == first_exit,
@@ -131,8 +131,8 @@ test_dependency(void)
 	 * constructible when semantic state gains nonempty fields.
 	 */
 	error = dependency_exit_publish(first_context, &alternate_first_state,
-	    &second_exit, &created);
-	check(error == 0 && created, "publish another distinct exit");
+	    &second_exit, &existed);
+	check(error == 0 && !existed, "publish another distinct exit");
 	check(second_exit->generation == 2, "second exit has generation two");
 	check(dependency_continuation_next_exit(direct) == first_exit,
 	    "continuation selects oldest exit");
@@ -173,7 +173,6 @@ test_reactivation(void)
 	struct analysis_point second_resume = {
 		.block = (struct basic_block *)&second_block
 	};
-	bool created;
 	bool existed;
 	int error;
 
@@ -192,18 +191,20 @@ test_reactivation(void)
 	    &second_context, &existed);
 	check(error == 0 && !existed, "create second reactivation context");
 
-	error = dependency_continuation_get(second_context, first_context,
-	    first_resume, first_state, NULL, &first_to_second, &created);
-	check(error == 0 && created, "register first reactivation continuation");
-	error = dependency_continuation_get(first_context, second_context,
-	    second_resume, second_state, NULL, &second_to_first, &created);
-	check(error == 0 && created, "register second reactivation continuation");
+	error = dependency_continuation_create(second_context, first_context,
+	    first_resume, first_state, NULL, &first_to_second, &existed);
+	check(error == 0 && !existed,
+	    "register first reactivation continuation");
+	error = dependency_continuation_create(first_context, second_context,
+	    second_resume, second_state, NULL, &second_to_first, &existed);
+	check(error == 0 && !existed,
+	    "register second reactivation continuation");
 	error = dependency_exit_publish(second_context, second_state,
-	    &second_exit, &created);
-	check(error == 0 && created, "publish second reactivation exit");
+	    &second_exit, &existed);
+	check(error == 0 && !existed, "publish second reactivation exit");
 	error = dependency_exit_publish(first_context, first_state,
-	    &first_exit, &created);
-	check(error == 0 && created, "publish first reactivation exit");
+	    &first_exit, &existed);
+	check(error == 0 && !existed, "publish first reactivation exit");
 
 	error = dependency_continuation_apply_exit(first_to_second, second_exit,
 	    first_state, &worklist, &first_point, &existed);
@@ -222,9 +223,10 @@ test_reactivation(void)
 	check(dependency_continuation_next_exit(second_to_first) == NULL,
 	    "second mutual continuation is current");
 
-	error = dependency_continuation_get(first_context, first_context,
-	    second_resume, first_state, NULL, &direct, &created);
-	check(error == 0 && created, "register direct reactivation continuation");
+	error = dependency_continuation_create(first_context, first_context,
+	    second_resume, first_state, NULL, &direct, &existed);
+	check(error == 0 && !existed,
+	    "register direct reactivation continuation");
 	error = dependency_continuation_apply_exit(direct, first_exit, first_state,
 	    &worklist, &direct_point, &existed);
 	check(error == 0 && !existed, "apply direct-recursive exit");
@@ -257,8 +259,8 @@ test_reactivation(void)
 	check(!existed, "failure leaves existence result unchanged");
 
 	error = dependency_exit_publish(second_context, &alternate_second_state,
-	    &second_exit, &created);
-	check(error == 0 && created, "publish second mapped exit");
+	    &second_exit, &existed);
+	check(error == 0 && !existed, "publish second mapped exit");
 	error = dependency_continuation_apply_exit(first_to_second, second_exit,
 	    first_state, &worklist, &first_point, &existed);
 	check(error == 0 && existed, "apply previously recorded mapped state");

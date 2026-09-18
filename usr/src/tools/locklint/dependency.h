@@ -47,11 +47,11 @@ struct continuation {
 	struct continuation *next;
 };
 
-void dependency_fini(struct function_context *);
+void dependency_records_free(struct function_context *);
 
 int dependency_exit_publish(struct function_context *,
     const struct semantic_state *, struct context_exit **, bool *);
-int dependency_continuation_get(struct function_context *,
+int dependency_continuation_create(struct function_context *,
     struct function_context *, struct analysis_point,
     const struct semantic_state *, const struct binding_environment *,
     struct continuation **, bool *);

@@ -30,7 +30,7 @@
 #include "worklist.h"
 
 void
-dependency_fini(struct function_context *context)
+dependency_records_free(struct function_context *context)
 {
 	while (context->continuations != NULL) {
 		struct continuation *next = context->continuations->next;
@@ -54,14 +54,14 @@ dependency_fini(struct function_context *context)
 int
 dependency_exit_publish(struct function_context *context,
     const struct semantic_state *state, struct context_exit **result,
-    bool *created)
+    bool *existed)
 {
 	struct context_exit *exit;
 
 	for (exit = context->exits; exit != NULL; exit = exit->next) {
 		if (exit->state == state) {
 			*result = exit;
-			*created = false;
+			*existed = true;
 			return (0);
 		}
 	}
@@ -76,7 +76,7 @@ dependency_exit_publish(struct function_context *context,
 	context->exits = exit;
 	context->exit_generation = exit->generation;
 	*result = exit;
-	*created = true;
+	*existed = false;
 	return (0);
 }
 
@@ -100,11 +100,11 @@ same_continuation(const struct continuation *continuation,
  * dependency was discovered.
  */
 int
-dependency_continuation_get(struct function_context *callee_context,
+dependency_continuation_create(struct function_context *callee_context,
     struct function_context *caller_context, struct analysis_point resume_point,
     const struct semantic_state *caller_state,
     const struct binding_environment *callee_bindings,
-    struct continuation **result, bool *created)
+    struct continuation **result, bool *existed)
 {
 	struct continuation *continuation;
 
@@ -113,7 +113,7 @@ dependency_continuation_get(struct function_context *callee_context,
 		if (same_continuation(continuation, caller_context, resume_point,
 		    caller_state, callee_bindings)) {
 			*result = continuation;
-			*created = false;
+			*existed = true;
 			return (0);
 		}
 	}
@@ -128,7 +128,7 @@ dependency_continuation_get(struct function_context *callee_context,
 	continuation->next = callee_context->continuations;
 	callee_context->continuations = continuation;
 	*result = continuation;
-	*created = true;
+	*existed = false;
 	return (0);
 }
 
