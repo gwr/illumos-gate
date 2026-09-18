@@ -77,7 +77,6 @@ test_provenance_edges(void)
 	struct provenance_edge *recursive_edge;
 	char first_call;
 	char second_call;
-	bool created;
 	bool existed;
 	int error;
 
@@ -85,28 +84,28 @@ test_provenance_edges(void)
 	first = make_context(&first_function);
 	second = make_context(&second_function);
 
-	error = provenance_edge_get(callee, first,
-	    (struct instruction *)&first_call, &first_edge, &created);
-	check(error == 0 && created, "create provenance edge");
-	error = provenance_edge_get(callee, first,
-	    (struct instruction *)&first_call, &same_edge, &created);
-	check(error == 0 && !created, "reuse provenance edge");
+	error = provenance_edge_create(callee, first,
+	    (struct instruction *)&first_call, &first_edge, &existed);
+	check(error == 0 && !existed, "create provenance edge");
+	error = provenance_edge_create(callee, first,
+	    (struct instruction *)&first_call, &same_edge, &existed);
+	check(error == 0 && existed, "reuse provenance edge");
 	check(same_edge == first_edge, "provenance edge is canonical");
 
-	error = provenance_edge_get(callee, first,
-	    (struct instruction *)&second_call, &other_site_edge, &created);
-	check(error == 0 && created, "distinguish call sites");
+	error = provenance_edge_create(callee, first,
+	    (struct instruction *)&second_call, &other_site_edge, &existed);
+	check(error == 0 && !existed, "distinguish call sites");
 	check(other_site_edge != first_edge, "call sites have distinct edges");
 
-	error = provenance_edge_get(callee, second,
-	    (struct instruction *)&first_call, &other_caller_edge, &created);
-	check(error == 0 && created, "distinguish caller contexts");
+	error = provenance_edge_create(callee, second,
+	    (struct instruction *)&first_call, &other_caller_edge, &existed);
+	check(error == 0 && !existed, "distinguish caller contexts");
 	check(other_caller_edge != first_edge,
 	    "caller contexts have distinct edges");
 
-	error = provenance_edge_get(callee, callee,
-	    (struct instruction *)&first_call, &recursive_edge, &created);
-	check(error == 0 && created, "record recursive provenance");
+	error = provenance_edge_create(callee, callee,
+	    (struct instruction *)&first_call, &recursive_edge, &existed);
+	check(error == 0 && !existed, "record recursive provenance");
 	check(provenance_edge_count(callee) == 4,
 	    "callee records four provenance edges");
 

@@ -28,7 +28,7 @@
 #include "provenance.h"
 
 void
-provenance_fini(struct function_context *context)
+provenance_edges_free(struct function_context *context)
 {
 	while (context->provenance_edges != NULL) {
 		struct provenance_edge *next = context->provenance_edges->next;
@@ -43,10 +43,10 @@ provenance_fini(struct function_context *context)
  * arguments and the context unchanged.
  */
 int
-provenance_edge_get(struct function_context *callee_context,
+provenance_edge_create(struct function_context *callee_context,
     struct function_context *caller_context,
     struct instruction *call_instruction, struct provenance_edge **result,
-    bool *created)
+    bool *existed)
 {
 	struct provenance_edge *edge;
 
@@ -55,7 +55,7 @@ provenance_edge_get(struct function_context *callee_context,
 		if (edge->caller_context == caller_context &&
 		    edge->call_instruction == call_instruction) {
 			*result = edge;
-			*created = false;
+			*existed = true;
 			return (0);
 		}
 	}
@@ -67,7 +67,7 @@ provenance_edge_get(struct function_context *callee_context,
 	edge->next = callee_context->provenance_edges;
 	callee_context->provenance_edges = edge;
 	*result = edge;
-	*created = true;
+	*existed = false;
 	return (0);
 }
 

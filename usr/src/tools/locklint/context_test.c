@@ -36,7 +36,7 @@ dependency_records_free(struct function_context *context)
 }
 
 void
-provenance_fini(struct function_context *context)
+provenance_edges_free(struct function_context *context)
 {
 	(void) context;
 }

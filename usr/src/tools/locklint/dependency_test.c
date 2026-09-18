@@ -32,7 +32,7 @@
 static unsigned int failures;
 
 void
-provenance_fini(struct function_context *context)
+provenance_edges_free(struct function_context *context)
 {
 	(void) context;
 }

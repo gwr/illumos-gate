@@ -31,9 +31,9 @@ struct provenance_edge {
 	struct provenance_edge *next;
 };
 
-void provenance_fini(struct function_context *);
+void provenance_edges_free(struct function_context *);
 
-int provenance_edge_get(struct function_context *, struct function_context *,
+int provenance_edge_create(struct function_context *, struct function_context *,
     struct instruction *, struct provenance_edge **, bool *);
 
 size_t provenance_edge_count(const struct function_context *);

@@ -113,7 +113,7 @@ context_collection_free(struct function_info *function)
 	    &cookie)) != NULL) {
 		free_point_states(context);
 		dependency_records_free(context);
-		provenance_fini(context);
+		provenance_edges_free(context);
 		free(context);
 	}
 	avl_destroy(&collection->contexts);
