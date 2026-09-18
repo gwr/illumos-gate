@@ -95,7 +95,7 @@ int state_get_empty(struct function_info *, struct semantic_state **, bool *);
 int context_get(struct function_info *,
     const struct binding_environment *, const struct semantic_state *,
     struct function_context **, bool *);
-int context_point_state_get(struct function_context *, struct analysis_point,
+int context_point_state_record(struct function_context *, struct analysis_point,
     const struct semantic_state *, struct point_state **, bool *);
 
 size_t context_count(struct function_info *);

@@ -27,6 +27,7 @@
 
 #include "context.h"
 #include "dependency.h"
+#include "worklist.h"
 
 void
 dependency_fini(struct function_context *context)
@@ -151,19 +152,34 @@ dependency_continuation_next_exit(const struct continuation *continuation)
 }
 
 /*
- * Mark exactly the next published exit as consumed.  Reject skipped, stale,
- * or unrelated exits.
+ * Apply the next unconsumed callee exit to its continuation.  The caller
+ * state must already be mapped and canonical.  Do not advance the
+ * continuation unless the destination point state has been retained.
  */
-bool
-dependency_continuation_consume(struct continuation *continuation,
-    const struct context_exit *exit)
+int
+dependency_continuation_apply_exit(struct continuation *continuation,
+    const struct context_exit *exit,
+    const struct semantic_state *mapped_caller_state, struct worklist *worklist,
+    struct point_state **result, bool *existed)
 {
-	if (exit == NULL)
-		return (false);
-	if (dependency_continuation_next_exit(continuation) != exit)
-		return (false);
+	struct point_state *point_state;
+	bool point_existed;
+	int error;
+
+	if (exit == NULL ||
+	    dependency_continuation_next_exit(continuation) != exit)
+		return (EINVAL);
+	error = context_point_state_record(continuation->caller_context,
+	    continuation->resume_point, mapped_caller_state, &point_state,
+	    &point_existed);
+	if (error != 0)
+		return (error);
+	if (!point_existed)
+		(void) worklist_enqueue(worklist, point_state);
 	continuation->last_consumed_generation = exit->generation;
-	return (true);
+	*result = point_state;
+	*existed = point_existed;
+	return (0);
 }
 
 size_t

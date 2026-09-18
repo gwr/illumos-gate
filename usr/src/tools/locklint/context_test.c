@@ -163,6 +163,7 @@ test_point_state_interning(void)
 		.block = (struct basic_block *)&block
 	};
 	bool created;
+	bool existed;
 	int error;
 
 	context_init(&function);
@@ -171,16 +172,16 @@ test_point_state_interning(void)
 	error = context_get(&function, NULL, state, &context, &created);
 	check(error == 0, "create point state context");
 
-	error = context_point_state_get(context, point, state, &point_state,
-	    &created);
-	check(error == 0 && created, "create point state");
-	error = context_point_state_get(context, point, state, &same, &created);
-	check(error == 0 && !created, "reuse point state");
+	error = context_point_state_record(context, point, state, &point_state,
+	    &existed);
+	check(error == 0 && !existed, "record new point state");
+	error = context_point_state_record(context, point, state, &same, &existed);
+	check(error == 0 && existed, "reuse recorded point state");
 	check(same == point_state, "point state is canonical");
 
-	error = context_point_state_get(context, block_exit, state, &other,
-	    &created);
-	check(error == 0 && created, "create state at another point");
+	error = context_point_state_record(context, block_exit, state, &other,
+	    &existed);
+	check(error == 0 && !existed, "record state at another point");
 	check(other != point_state, "analysis points remain distinct");
 	check(context_point_state_count(context) == 2,
 	    "context has two point states");

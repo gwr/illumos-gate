@@ -18,6 +18,7 @@
  * performing semantic state transfer or Sparse CFG traversal.
  */
 
+#include <errno.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,6 +27,7 @@
 #include "dependency.h"
 #include "function_info.h"
 #include "provenance.h"
+#include "worklist.h"
 
 static unsigned int failures;
 
@@ -105,12 +107,6 @@ test_dependency(void)
 	check(same_direct == direct, "duplicate continuation is canonical");
 	check(dependency_continuation_next_exit(direct) == first_exit,
 	    "late continuation sees existing exit");
-	check(dependency_continuation_consume(direct, first_exit),
-	    "consume first exit");
-	check(dependency_continuation_next_exit(direct) == NULL,
-	    "consumed continuation is current");
-	check(!dependency_continuation_consume(direct, NULL),
-	    "reject missing exit");
 
 	error = dependency_continuation_get(second_context, first_context,
 	    second_resume, first_state, NULL, &first_to_second, &created);
@@ -126,10 +122,6 @@ test_dependency(void)
 	    "first mutual continuation sees callee exit");
 	check(dependency_continuation_next_exit(second_to_first) == first_exit,
 	    "second mutual continuation sees callee exit");
-	check(!dependency_continuation_consume(first_to_second, first_exit),
-	    "reject unrelated exit");
-	check(dependency_continuation_consume(first_to_second, second_exit),
-	    "consume mutual callee exit");
 
 	/*
 	 * Stand in for a second canonical state value, which will become
@@ -139,10 +131,8 @@ test_dependency(void)
 	    &second_exit, &created);
 	check(error == 0 && created, "publish another distinct exit");
 	check(second_exit->generation == 2, "second exit has generation two");
-	check(dependency_continuation_next_exit(direct) == second_exit,
-	    "existing continuation sees later exit");
-	check(dependency_continuation_consume(direct, second_exit),
-	    "consume later exit");
+	check(dependency_continuation_next_exit(direct) == first_exit,
+	    "continuation selects oldest exit");
 	check(dependency_exit_count(first_context) == 2,
 	    "first context records two exits");
 	check(dependency_continuation_count(first_context) == 2,
@@ -152,9 +142,135 @@ test_dependency(void)
 	context_fini(&first_function);
 }
 
+static void
+test_reactivation(void)
+{
+	struct function_info first_function = { 0 };
+	struct function_info second_function = { 0 };
+	struct semantic_state *first_state;
+	struct semantic_state *second_state;
+	struct semantic_state alternate_second_state = { 0 };
+	struct function_context *first_context;
+	struct function_context *second_context;
+	struct context_exit *first_exit;
+	struct context_exit *second_exit;
+	struct continuation *first_to_second;
+	struct continuation *second_to_first;
+	struct continuation *direct;
+	struct point_state *first_point;
+	struct point_state *second_point;
+	struct point_state *direct_point;
+	struct point_state *unchanged_point;
+	struct worklist worklist;
+	char first_block;
+	char second_block;
+	struct analysis_point first_resume = {
+		.block = (struct basic_block *)&first_block
+	};
+	struct analysis_point second_resume = {
+		.block = (struct basic_block *)&second_block
+	};
+	bool created;
+	bool existed;
+	int error;
+
+	context_init(&first_function);
+	context_init(&second_function);
+	worklist_init(&worklist);
+	error = state_get_empty(&first_function, &first_state, &created);
+	check(error == 0 && created, "create first reactivation state");
+	error = state_get_empty(&second_function, &second_state, &created);
+	check(error == 0 && created, "create second reactivation state");
+	error = context_get(&first_function, NULL, first_state,
+	    &first_context, &created);
+	check(error == 0 && created, "create first reactivation context");
+	error = context_get(&second_function, NULL, second_state,
+	    &second_context, &created);
+	check(error == 0 && created, "create second reactivation context");
+
+	error = dependency_continuation_get(second_context, first_context,
+	    first_resume, first_state, NULL, &first_to_second, &created);
+	check(error == 0 && created, "register first reactivation continuation");
+	error = dependency_continuation_get(first_context, second_context,
+	    second_resume, second_state, NULL, &second_to_first, &created);
+	check(error == 0 && created, "register second reactivation continuation");
+	error = dependency_exit_publish(second_context, second_state,
+	    &second_exit, &created);
+	check(error == 0 && created, "publish second reactivation exit");
+	error = dependency_exit_publish(first_context, first_state,
+	    &first_exit, &created);
+	check(error == 0 && created, "publish first reactivation exit");
+
+	error = dependency_continuation_apply_exit(first_to_second, second_exit,
+	    first_state, &worklist, &first_point, &existed);
+	check(error == 0 && !existed, "apply exit to first caller");
+	check(worklist_dequeue(&worklist) == first_point,
+	    "queue first caller point");
+	error = dependency_continuation_apply_exit(second_to_first, first_exit,
+	    second_state, &worklist, &second_point, &existed);
+	check(error == 0 && !existed, "apply exit to second caller");
+	check(worklist_dequeue(&worklist) == second_point,
+	    "queue second caller point");
+	check(worklist_dequeue(&worklist) == NULL,
+	    "mutual reactivation reaches quiescence");
+	check(dependency_continuation_next_exit(first_to_second) == NULL,
+	    "first mutual continuation is current");
+	check(dependency_continuation_next_exit(second_to_first) == NULL,
+	    "second mutual continuation is current");
+
+	error = dependency_continuation_get(first_context, first_context,
+	    second_resume, first_state, NULL, &direct, &created);
+	check(error == 0 && created, "register direct reactivation continuation");
+	error = dependency_continuation_apply_exit(direct, first_exit, first_state,
+	    &worklist, &direct_point, &existed);
+	check(error == 0 && !existed, "apply direct-recursive exit");
+	check(worklist_dequeue(&worklist) == direct_point,
+	    "queue direct-recursive caller point");
+	check(worklist_dequeue(&worklist) == NULL,
+	    "direct reactivation reaches quiescence");
+	check(dependency_continuation_next_exit(direct) == NULL,
+	    "direct continuation is current");
+
+	unchanged_point = second_point;
+	existed = false;
+	error = dependency_continuation_apply_exit(first_to_second, NULL,
+	    first_state, &worklist, &unchanged_point, &existed);
+	check(error == EINVAL, "reject missing exit");
+	check(unchanged_point == second_point,
+	    "missing exit leaves point-state result unchanged");
+	check(!existed, "missing exit leaves existence result unchanged");
+	error = dependency_continuation_apply_exit(first_to_second, first_exit,
+	    first_state, &worklist, &unchanged_point, &existed);
+	check(error == EINVAL, "reject unrelated exit");
+	check(unchanged_point == second_point,
+	    "unrelated exit leaves point-state result unchanged");
+	check(!existed, "unrelated exit leaves existence result unchanged");
+	error = dependency_continuation_apply_exit(first_to_second, second_exit,
+	    first_state, &worklist, &unchanged_point, &existed);
+	check(error == EINVAL, "reject consumed exit");
+	check(unchanged_point == second_point,
+	    "failure leaves point-state result unchanged");
+	check(!existed, "failure leaves existence result unchanged");
+
+	error = dependency_exit_publish(second_context, &alternate_second_state,
+	    &second_exit, &created);
+	check(error == 0 && created, "publish second mapped exit");
+	error = dependency_continuation_apply_exit(first_to_second, second_exit,
+	    first_state, &worklist, &first_point, &existed);
+	check(error == 0 && existed, "apply previously recorded mapped state");
+	check(worklist_dequeue(&worklist) == NULL,
+	    "duplicate mapped state does not queue work");
+	check(first_to_second->last_consumed_generation == 2,
+	    "duplicate mapped state advances consumption");
+
+	context_fini(&second_function);
+	context_fini(&first_function);
+}
+
 int
 main(void)
 {
 	test_dependency();
+	test_reactivation();
 	return (failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE);
 }

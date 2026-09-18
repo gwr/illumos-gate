@@ -193,13 +193,14 @@ context_get(struct function_info *function,
 }
 
 /*
- * Find or create one reached state at an analysis point.  Allocation failure
- * leaves both output arguments unchanged.
+ * Record one reached state at an analysis point, or return the existing
+ * canonical record.  Allocation failure leaves both output arguments
+ * unchanged.
  */
 int
-context_point_state_get(struct function_context *context,
+context_point_state_record(struct function_context *context,
     struct analysis_point point, const struct semantic_state *state,
-    struct point_state **result, bool *created)
+    struct point_state **result, bool *existed)
 {
 	struct point_state key = {
 		.context = context,
@@ -212,7 +213,7 @@ context_point_state_get(struct function_context *context,
 	point_state = avl_find(&context->point_states, &key, &where);
 	if (point_state != NULL) {
 		*result = point_state;
-		*created = false;
+		*existed = true;
 		return (0);
 	}
 	point_state = calloc(1, sizeof (*point_state));
@@ -223,7 +224,7 @@ context_point_state_get(struct function_context *context,
 	point_state->state = state;
 	avl_insert(&context->point_states, point_state, where);
 	*result = point_state;
-	*created = true;
+	*existed = false;
 	return (0);
 }
 

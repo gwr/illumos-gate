@@ -21,6 +21,8 @@
 
 #include "context.h"
 
+struct worklist;
+
 /*
  * Exit generations impose publication order without making generation
  * counters part of semantic state or context identity.
@@ -56,8 +58,9 @@ int dependency_continuation_get(struct function_context *,
 
 const struct context_exit *dependency_continuation_next_exit(
     const struct continuation *);
-bool dependency_continuation_consume(struct continuation *,
-    const struct context_exit *);
+int dependency_continuation_apply_exit(struct continuation *,
+    const struct context_exit *, const struct semantic_state *,
+    struct worklist *, struct point_state **, bool *);
 
 size_t dependency_exit_count(const struct function_context *);
 size_t dependency_continuation_count(const struct function_context *);

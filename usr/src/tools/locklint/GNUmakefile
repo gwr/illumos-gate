@@ -134,7 +134,7 @@ WORKLIST_TEST_OBJS = worklist_test.o worklist.o
 worklist_test: $(WORKLIST_TEST_OBJS)
 	$(LINK.c) -o $@ $(WORKLIST_TEST_OBJS) $(LDLIBS)
 
-DEP_TEST_OBJS = dependency_test.o dependency.o context.o avl.o
+DEP_TEST_OBJS = dependency_test.o dependency.o context.o worklist.o avl.o
 dependency_test: $(DEP_TEST_OBJS)
 	$(LINK.c) -o $@ $(DEP_TEST_OBJS) $(LDLIBS)
 
