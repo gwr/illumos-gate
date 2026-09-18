@@ -188,6 +188,7 @@ context_create(struct function_info *function,
 	    sizeof (struct point_state), offsetof(struct point_state, by_key));
 	SLIST_INIT(&context->exits);
 	SLIST_INIT(&context->continuations);
+	SLIST_INIT(&context->provenance_edges);
 	avl_insert(&collection->contexts, context, where);
 	*result = context;
 	*existed = false;

@@ -18,6 +18,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <sys/queue.h>
 
 #include "context.h"
 
@@ -28,7 +29,7 @@
 struct provenance_edge {
 	struct function_context *caller_context;
 	struct instruction *call_instruction;
-	struct provenance_edge *next;
+	SLIST_ENTRY(provenance_edge) link;
 };
 
 void provenance_edges_free(struct function_context *);

@@ -30,11 +30,11 @@
 void
 provenance_edges_free(struct function_context *context)
 {
-	while (context->provenance_edges != NULL) {
-		struct provenance_edge *next = context->provenance_edges->next;
+	struct provenance_edge *edge;
 
-		free(context->provenance_edges);
-		context->provenance_edges = next;
+	while ((edge = SLIST_FIRST(&context->provenance_edges)) != NULL) {
+		SLIST_REMOVE_HEAD(&context->provenance_edges, link);
+		free(edge);
 	}
 }
 
@@ -50,8 +50,7 @@ provenance_edge_create(struct function_context *callee_context,
 {
 	struct provenance_edge *edge;
 
-	for (edge = callee_context->provenance_edges; edge != NULL;
-	    edge = edge->next) {
+	SLIST_FOREACH(edge, &callee_context->provenance_edges, link) {
 		if (edge->caller_context == caller_context &&
 		    edge->call_instruction == call_instruction) {
 			*result = edge;
@@ -64,8 +63,7 @@ provenance_edge_create(struct function_context *callee_context,
 		return (ENOMEM);
 	edge->caller_context = caller_context;
 	edge->call_instruction = call_instruction;
-	edge->next = callee_context->provenance_edges;
-	callee_context->provenance_edges = edge;
+	SLIST_INSERT_HEAD(&callee_context->provenance_edges, edge, link);
 	*result = edge;
 	*existed = false;
 	return (0);
@@ -77,7 +75,7 @@ provenance_edge_count(const struct function_context *context)
 	const struct provenance_edge *edge;
 	size_t count = 0;
 
-	for (edge = context->provenance_edges; edge != NULL; edge = edge->next)
+	SLIST_FOREACH(edge, &context->provenance_edges, link)
 		count++;
 	return (count);
 }
