@@ -11,104 +11,129 @@
 # Copyright 2026 Gordon W. Ross
 #
 
-PROG = locklint
-CMD_PARSE_TEST = command_parse_test
-CMD_PARSE_TEST_OBJS = command_parse.o command_parse_test.o
-SPARSE = ../smatch/src
+#
+# This is derived from Makefile with just enough here so one can
+# compile and run tests on MacOS (and maybe Linux)
+#
+# There are just enough macros here to allow most of the body
+# of this file to look like the illumos Makefile.
+#
 
+PROG = locklint
+
+SPARSE_SRCDIR = ../smatch/src
+SPARSE_VERSION = 0.6.1-rc1-il-7-locklint
+
+# stuff in place of illumos includes
 CC ?= cc
 CFLAGS ?= -O0 -g
 CFLAGS += -std=gnu99 -fno-strict-aliasing -Wall -Wno-switch
-CPPFLAGS += -I$(SPARSE) -I.
+CPPFLAGS += -I$(SPARSE_SRCDIR) -I.
 CPPFLAGS += -DGCC_BASE=\"$(shell $(CC) --print-file-name= 2>/dev/null)\"
 CPPFLAGS += -DMULTIARCH_TRIPLET=NULL
 LDLIBS += -lm
+COMPILE.c=	$(CC) $(CFLAGS) $(CPPFLAGS) -c
+LINK.c=		$(CC) $(CFLAGS) $(LDFLAGS) $(LDCHECKS)
 
-SPARSE_SRCS = \
-	allocate.c \
-	builtin.c \
-	char.c \
-	compat-bsd.c \
-	cse.c \
-	dissect.c \
-	dominate.c \
-	evaluate.c \
-	expand.c \
-	expression.c \
-	flow.c \
-	flowgraph.c \
-	inline.c \
-	ir.c \
-	lib.c \
-	linearize.c \
-	liveness.c \
-	macro_table.c \
-	memops.c \
-	opcode.c \
-	optimize.c \
-	parse.c \
-	pre-process.c \
-	ptrlist.c \
-	ptrmap.c \
-	scope.c \
-	show-parse.c \
-	simplify.c \
-	sort.c \
-	ssa.c \
-	sset.c \
-	stats.c \
-	storage.c \
-	symbol.c \
-	target.c \
-	token_store.c \
-	tokenize.c \
-	unssa.c \
-	utils.c
+####  Same as Makefile after here ####
 
-LOCAL_OBJS = locklint.o access.o annotations.o assertions.o callgraph.o \
-	check.o command_parse.o commands.o diagnostics.o events.o identity.o \
-	lock_order.o avl.o
-SPARSE_OBJS = $(SPARSE_SRCS:%.c=%.o) hashtable.o
-OBJS = $(LOCAL_OBJS) $(SPARSE_OBJS)
+SPARSE_OBJS = \
+	allocate.o \
+	builtin.o \
+	char.o \
+	compat-bsd.o \
+	cse.o \
+	dissect.o \
+	dominate.o \
+	evaluate.o \
+	expand.o \
+	expression.o \
+	flow.o \
+	flowgraph.o \
+	inline.o \
+	ir.o \
+	lib.o \
+	linearize.o \
+	liveness.o \
+	macro_table.o \
+	memops.o \
+	opcode.o \
+	optimize.o \
+	parse.o \
+	pre-process.o \
+	ptrlist.o \
+	ptrmap.o \
+	scope.o \
+	show-parse.o \
+	simplify.o \
+	sort.o \
+	ssa.o \
+	sset.o \
+	stats.o \
+	storage.o \
+	symbol.o \
+	target.o \
+	token_store.o \
+	tokenize.o \
+	unssa.o \
+	utils.o
 
-.PHONY: all test clean
+LOCAL_OBJS = \
+	locklint.o \
+	access.o \
+	annotations.o \
+	assertions.o \
+	callgraph.o \
+	check.o \
+	command_parse.o \
+	commands.o \
+	diagnostics.o \
+	events.o \
+	identity.o \
+	lock_order.o \
+	avl.o
+
+OBJS = $(LOCAL_OBJS) $(SPARSE_OBJS) hashtable.o
 
 all: $(PROG)
 
 $(OBJS): version.h
 
 $(PROG): $(OBJS)
-	$(CC) $(LDFLAGS) -o $@ $(OBJS) $(LDLIBS)
+	$(LINK.c) -o $@ $(OBJS) $(LDLIBS)
 
-$(LOCAL_OBJS): %.o: %.c
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
+LIBDEFS = -Dinit_include_path=locklint_init_include_path
+lib.o: $(SPARSE_SRCDIR)/lib.c
+	$(COMPILE.c) $(LIBDEFS) -o $@ $(SPARSE_SRCDIR)/lib.c
 
-command_parse_test.o: command_parse_test.c
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
+%.o: %.c
+	$(COMPILE.c) -o $@ $<
 
-%.o: $(SPARSE)/%.c
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
+%.o: $(SPARSE_SRCDIR)/%.c
+	$(COMPILE.c) -o $@ $<
 
-lib.o: $(SPARSE)/lib.c
-	$(CC) $(CPPFLAGS) $(CFLAGS) \
-	    -Dinit_include_path=locklint_init_include_path -c -o $@ $<
-
-hashtable.o: $(SPARSE)/cwchash/hashtable.c
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
+%.o: $(SPARSE_SRCDIR)/cwchash/%.c
+	$(COMPILE.c) -o $@ $<
 
 version.h:
-	@printf '%s\n' '#define SPARSE_VERSION "locklint prototype"' > $@
+	echo '#define SPARSE_VERSION "$(SPARSE_VERSION)"' > $@
 
-$(CMD_PARSE_TEST): $(CMD_PARSE_TEST_OBJS)
-	$(CC) $(LDFLAGS) -o $@ $(CMD_PARSE_TEST_OBJS) $(LDLIBS)
+CMD_PARSE_TEST_OBJS = command_parse.o command_parse_test.o
+command_parse_test: $(CMD_PARSE_TEST_OBJS)
+	$(LINK.c) -o $@ $(CMD_PARSE_TEST_OBJS) $(LDLIBS)
 
-test: $(PROG)
+test: $(PROG) FRC
 	(cd tests && ./RunTests.sh)
 
-test_cmd: $(CMD_PARSE_TEST)
-	./$(CMD_PARSE_TEST) $(CMD_PARSE_TEST).in
+UNITTESTS = command_parse_test
+unittest: $(UNITTESTS) FRC
+	./command_parse_test command_parse_test.in
 
-clean:
-	rm -f $(OBJS) $(CMD_PARSE_TEST_OBJS) version.h $(PROG) \
-	    $(CMD_PARSE_TEST)
-	rm -f tests/*.out tests/*.raw
+clean: FRC
+	$(RM) -f $(PROG) version.h *.o
+	$(RM) -f $(UNITTESTS)
+	$(RM) -f tests/*.out tests/*.raw
+
+FRC:
+
+.PHONY: all test clean unittest FRC

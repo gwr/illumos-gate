@@ -22,6 +22,7 @@
 #
 
 PROG = locklint
+
 SPARSE_SRCDIR = ../smatch/src
 SPARSE_VERSION = 0.6.1-rc1-il-7-locklint
 
@@ -37,9 +38,6 @@ CERRWARN += -_gcc=-Wno-implicit-fallthrough
 
 # not linted
 SMATCH=off
-
-CMD_PARSE_TEST = command_parse_test
-CMD_PARSE_TEST_OBJS = command_parse.o command_parse_test.o
 
 SPARSE_OBJS = \
 	allocate.o \
@@ -104,10 +102,11 @@ all: $(PROG)
 $(OBJS): version.h
 
 $(PROG): $(OBJS)
-	$(LINK.c) $(OBJS) -o $@ $(LDLIBS)
-	$(POST_PROCESS)
+	$(LINK.c) -o $@ $(OBJS) $(LDLIBS)
 
-lib.o := CPPFLAGS += -Dinit_include_path=locklint_init_include_path
+LIBDEFS = -Dinit_include_path=locklint_init_include_path
+lib.o: $(SPARSE_SRCDIR)/lib.c
+	$(COMPILE.c) $(LIBDEFS) -o $@ $(SPARSE_SRCDIR)/lib.c
 
 %.o: %.c
 	$(COMPILE.c) -o $@ $<
@@ -121,22 +120,20 @@ lib.o := CPPFLAGS += -Dinit_include_path=locklint_init_include_path
 version.h:
 	echo '#define SPARSE_VERSION "$(SPARSE_VERSION)"' > $@
 
-$(CMD_PARSE_TEST): $(CMD_PARSE_TEST_OBJS)
-	$(LINK.c) $(CMD_PARSE_TEST_OBJS) -o $@ $(LDLIBS)
-	$(POST_PROCESS)
+CMD_PARSE_TEST_OBJS = command_parse.o command_parse_test.o
+command_parse_test: $(CMD_PARSE_TEST_OBJS)
+	$(LINK.c) -o $@ $(CMD_PARSE_TEST_OBJS) $(LDLIBS)
 
-command_parse_test.o: command_parse_test.c
-	$(COMPILE.c) -o $@ $<
-
-test: $(PROG)
+test: $(PROG) FRC
 	(cd tests && ./RunTests.sh)
 
-test_cmd: $(CMD_PARSE_TEST)
-	./$(CMD_PARSE_TEST) $(CMD_PARSE_TEST).in
+UNITTESTS = command_parse_test
+unittest: $(UNITTESTS) FRC
+	./command_parse_test command_parse_test.in
 
 clean: FRC
-	$(RM) -f $(OBJS) $(CMD_PARSE_TEST_OBJS) version.h $(PROG) \
-	    $(CMD_PARSE_TEST)
+	$(RM) -f $(PROG) version.h *.o
+	$(RM) -f $(UNITTESTS)
 	$(RM) -f tests/*.out tests/*.raw
 
 FRC:
