@@ -1197,20 +1197,9 @@ free_indirect_targets(void)
 void
 callgraph_cleanup(void)
 {
-	struct function_record *function;
-
 	require_state(CALLGRAPH_READY, "cleanup");
 	if (open_iterators != NULL)
 		die("cleaning callgraph with active iterators");
-	for (function = functions; function != NULL; function = function->next) {
-		if (function->info.blocks != NULL ||
-		    function->info.conditions != NULL ||
-		    function->info.assumptions != NULL ||
-		    function->info.transfers != NULL ||
-		    function->info.visibility_transfers != NULL) {
-			die("cleaning callgraph with checker attachments");
-		}
-	}
 	free_indirect_targets();
 	free_function_pointer_activity();
 	free_function_escapes();

@@ -20,17 +20,8 @@
 
 #include "context.h"
 
-struct assumed_region;
-struct acquisition_candidate;
-struct acquisition_summary;
-struct assertion_requirement;
-struct block_info;
-struct competition_transfer;
 struct entrypoint;
-struct lock_transfer;
-struct protection_condition;
 struct translation_unit;
-struct visibility_transfer;
 
 /*
  * Shared semantic state for one function.  Callgraph indexing and collection
@@ -40,15 +31,6 @@ struct function_info {
 	/* Functions and their retained Sparse objects belong to one parse. */
 	struct translation_unit *tu;
 	struct entrypoint *ep;
-	struct block_info *blocks;
-	struct protection_condition *conditions;
-	struct assumed_region *assumptions;
-	struct assertion_requirement *assertion_requirements;
-	struct competition_transfer *competition_transfer;
-	struct acquisition_candidate *acquisition_roles;
-	struct acquisition_summary *acquisitions;
-	struct lock_transfer *transfers;
-	struct visibility_transfer *visibility_transfers;
 	struct function_context_collection contexts;
 	unsigned int root_reasons;
 	bool reachable_from_root;

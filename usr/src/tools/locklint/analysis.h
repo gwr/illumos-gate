@@ -19,8 +19,8 @@
 #include <stdio.h>
 
 /*
- * Run the context analysis over an already resolved callgraph and write its
- * development instrumentation to the requested stream.
+ * Run the context analysis over an already resolved callgraph.  Write
+ * development instrumentation when stream is non-NULL.
  */
 void analysis_run(FILE *);
 

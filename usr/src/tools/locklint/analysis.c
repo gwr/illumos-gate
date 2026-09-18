@@ -662,6 +662,8 @@ analysis_run(FILE *stream)
 	while ((point_state =
 	    worklist_point_state_dequeue(&analysis.worklist)) != NULL)
 		process_point(&analysis, point_state);
-	measure_collections(&analysis);
-	show_counts(stream, &analysis);
+	if (stream != NULL) {
+		measure_collections(&analysis);
+		show_counts(stream, &analysis);
+	}
 }
