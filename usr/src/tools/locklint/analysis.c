@@ -84,6 +84,7 @@ struct analysis_measurements {
 	struct distribution provenance_edges_per_context;
 	struct distribution locks_per_semantic_state;
 	struct distribution visibility_per_semantic_state;
+	size_t lock_set_bytes;
 	size_t semantic_state_bytes;
 	size_t context_bytes;
 	size_t point_state_bytes;
@@ -497,6 +498,8 @@ measure_collections(struct analysis *analysis)
 		die("cannot iterate ready callgraph: %s", strerror(error));
 	while ((function = callgraph_iter_next(iterator)) != NULL) {
 		struct function_context *context;
+		struct semantic_lock_set *locks;
+		struct semantic_state *state;
 		size_t contexts = context_count(function);
 		size_t states = context_state_count(function);
 
@@ -505,9 +508,21 @@ measure_collections(struct analysis *analysis)
 		distribution_add(&measurements->semantic_states_per_function,
 		    states, function);
 		distribution_add_zeroes(
-		    &measurements->locks_per_semantic_state, states);
-		distribution_add_zeroes(
 		    &measurements->visibility_per_semantic_state, states);
+		for (state = avl_first(&function->contexts.semantic_states);
+		    state != NULL;
+		    state = AVL_NEXT(&function->contexts.semantic_states, state)) {
+			distribution_add(
+			    &measurements->locks_per_semantic_state,
+			    context_state_lock_count(state), function);
+		}
+		for (locks = avl_first(&function->contexts.lock_sets);
+		    locks != NULL;
+		    locks = AVL_NEXT(&function->contexts.lock_sets, locks)) {
+			memory_add(&measurements->lock_set_bytes, 1,
+			    sizeof (*locks) +
+			    locks->count * sizeof (*locks->entries));
+		}
 		memory_add(&measurements->context_bytes, contexts,
 		    sizeof (struct function_context));
 		memory_add(&measurements->semantic_state_bytes, states,
@@ -562,6 +577,7 @@ retained_collection_bytes(const struct analysis_measurements *measurements)
 {
 	size_t total = measurements->semantic_state_bytes;
 	size_t values[] = {
+		measurements->lock_set_bytes,
 		measurements->context_bytes,
 		measurements->point_state_bytes,
 		measurements->exit_bytes,
@@ -637,6 +653,8 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	    &measurements->provenance_edges_per_context);
 	(void) fprintf(stream, "memory semantic-states %zu bytes\n",
 	    measurements->semantic_state_bytes);
+	(void) fprintf(stream, "memory lock-sets %zu bytes\n",
+	    measurements->lock_set_bytes);
 	(void) fprintf(stream, "memory contexts %zu bytes\n",
 	    measurements->context_bytes);
 	(void) fprintf(stream, "memory point-states %zu bytes\n",

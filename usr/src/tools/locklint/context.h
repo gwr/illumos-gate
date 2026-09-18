@@ -28,16 +28,30 @@ struct context_exit;
 struct continuation;
 struct function_info;
 struct instruction;
+struct lock_identity;
 struct provenance_edge;
+
+#define	LOCKLINT_MAX_TRACKED_LOCKS	100
 
 SLIST_HEAD(context_exit_list, context_exit);
 
 /*
- * Semantic states are immutable after insertion.  The first implementation
- * represents only the empty state; semantic fields will be added with the
- * corresponding checker behavior.
+ * Lock sets and semantic states are immutable after insertion.  Lock sets
+ * are separately interned so future semantic dimensions can share them.
  */
+struct semantic_lock_state {
+	const struct lock_identity *lock;
+	unsigned int modes;
+};
+
+struct semantic_lock_set {
+	avl_node_t by_value;
+	size_t count;
+	struct semantic_lock_state entries[];
+};
+
 struct semantic_state {
+	const struct semantic_lock_set *locks;
 	avl_node_t by_value;
 };
 
@@ -88,6 +102,7 @@ struct point_state {
  */
 struct function_context_collection {
 	avl_tree_t contexts;
+	avl_tree_t lock_sets;
 	avl_tree_t semantic_states;
 };
 
@@ -96,6 +111,13 @@ void context_collection_free(struct function_info *);
 
 int context_empty_state_intern(struct function_info *,
     struct semantic_state **, bool *);
+/*
+ * Lock identities must be canonical and stable for the function collection's
+ * lifetime.  Zero modes removes the lock.
+ */
+int context_state_set_lock(struct function_info *,
+    const struct semantic_state *, const struct lock_identity *, unsigned int,
+    struct semantic_state **, bool *);
 int context_create(struct function_info *,
     const struct binding_environment *, const struct semantic_state *,
     struct function_context **, bool *);
@@ -103,7 +125,11 @@ int context_point_state_record(struct function_context *, struct analysis_point,
     const struct semantic_state *, struct point_state **, bool *);
 
 size_t context_count(struct function_info *);
+size_t context_lock_set_count(struct function_info *);
 size_t context_state_count(struct function_info *);
+size_t context_state_lock_count(const struct semantic_state *);
+unsigned int context_state_lock_modes(const struct semantic_state *,
+    const struct lock_identity *);
 size_t context_point_state_count(struct function_context *);
 
 #endif /* CONTEXT_H */

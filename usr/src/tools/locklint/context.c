@@ -14,15 +14,16 @@
  */
 
 /*
- * Maintain the function-owned collections of caller contexts and interned
- * semantic states.  Keys are immutable after insertion, and provenance is
- * deliberately excluded from context comparison.
+ * Maintain the function-owned collections of caller contexts, semantic
+ * states, and shared lock sets.  Keys are immutable after insertion, and
+ * provenance is deliberately excluded from context comparison.
  */
 
 #include <errno.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "avl.h"
 #include "context.h"
@@ -31,15 +32,45 @@
 #include "provenance.h"
 
 static int
+compare_lock_identity(const struct lock_identity *left,
+    const struct lock_identity *right)
+{
+	return (AVL_PCMP(left, right));
+}
+
+static int
+compare_lock_set(const void *left_arg, const void *right_arg)
+{
+	const struct semantic_lock_set *left = left_arg;
+	const struct semantic_lock_set *right = right_arg;
+	size_t count = left->count < right->count ? left->count : right->count;
+	size_t index;
+	int result;
+
+	for (index = 0; index < count; index++) {
+		result = compare_lock_identity(left->entries[index].lock,
+		    right->entries[index].lock);
+		if (result != 0)
+			return (result);
+		if (left->entries[index].modes < right->entries[index].modes)
+			return (-1);
+		if (left->entries[index].modes > right->entries[index].modes)
+			return (1);
+	}
+	if (left->count < right->count)
+		return (-1);
+	if (left->count > right->count)
+		return (1);
+	return (0);
+}
+
+static int
 compare_semantic_state(const void *left_arg, const void *right_arg)
 {
-	(void) left_arg;
-	(void) right_arg;
+	const struct semantic_state *left = left_arg;
+	const struct semantic_state *right = right_arg;
 
-	/*
-	 * The initial implementation has only one semantic value: empty.
-	 */
-	return (0);
+	return (AVL_PCMP(left->locks, right->locks));
 }
 
 static int
@@ -80,6 +111,9 @@ context_collection_create(struct function_info *function)
 	avl_create(&collection->contexts, compare_function_context,
 	    sizeof (struct function_context),
 	    offsetof(struct function_context, by_key));
+	avl_create(&collection->lock_sets, compare_lock_set,
+	    sizeof (struct semantic_lock_set),
+	    offsetof(struct semantic_lock_set, by_value));
 	avl_create(&collection->semantic_states, compare_semantic_state,
 	    sizeof (struct semantic_state),
 	    offsetof(struct semantic_state, by_value));
@@ -107,6 +141,7 @@ context_collection_free(struct function_info *function)
 	struct function_context_collection *collection = &function->contexts;
 	struct function_context *context;
 	struct semantic_state *state;
+	struct semantic_lock_set *locks;
 	void *cookie = NULL;
 
 	while ((context = avl_destroy_nodes(&collection->contexts,
@@ -123,18 +158,57 @@ context_collection_free(struct function_info *function)
 	    &cookie)) != NULL)
 		free(state);
 	avl_destroy(&collection->semantic_states);
+
+	cookie = NULL;
+	while ((locks = avl_destroy_nodes(&collection->lock_sets,
+	    &cookie)) != NULL)
+		free(locks);
+	avl_destroy(&collection->lock_sets);
 }
 
 /*
- * Return the function's canonical empty semantic state, creating it when
- * necessary.  Allocation failure leaves both output arguments unchanged.
+ * Return a canonical immutable copy of the supplied sorted lock array.
  */
-int
-context_empty_state_intern(struct function_info *function,
-    struct semantic_state **result, bool *existed)
+static int
+lock_set_intern(struct function_context_collection *collection,
+    const struct semantic_lock_state *entries, size_t count,
+    struct semantic_lock_set **result)
 {
-	struct function_context_collection *collection = &function->contexts;
-	struct semantic_state key = { 0 };
+	struct semantic_lock_set *candidate;
+	struct semantic_lock_set *locks;
+	avl_index_t where;
+	size_t size;
+
+	if (count > LOCKLINT_MAX_TRACKED_LOCKS)
+		return (E2BIG);
+	size = sizeof (*candidate) +
+	    count * sizeof (*entries);
+	candidate = calloc(1, size);
+	if (candidate == NULL)
+		return (ENOMEM);
+	candidate->count = count;
+	if (count != 0)
+		(void) memcpy(candidate->entries, entries,
+		    count * sizeof (*entries));
+	locks = avl_find(&collection->lock_sets, candidate, &where);
+	if (locks != NULL) {
+		free(candidate);
+		*result = locks;
+		return (0);
+	}
+	avl_insert(&collection->lock_sets, candidate, where);
+	*result = candidate;
+	return (0);
+}
+
+static int
+semantic_state_intern(struct function_context_collection *collection,
+    const struct semantic_lock_set *locks, struct semantic_state **result,
+    bool *existed)
+{
+	struct semantic_state key = {
+		.locks = locks
+	};
 	struct semantic_state *state;
 	avl_index_t where;
 
@@ -147,10 +221,94 @@ context_empty_state_intern(struct function_info *function,
 	state = calloc(1, sizeof (*state));
 	if (state == NULL)
 		return (ENOMEM);
+	state->locks = locks;
 	avl_insert(&collection->semantic_states, state, where);
 	*result = state;
 	*existed = false;
 	return (0);
+}
+
+/*
+ * Return the function's canonical empty semantic state, creating it when
+ * necessary.  Allocation failure leaves both output arguments unchanged.
+ */
+int
+context_empty_state_intern(struct function_info *function,
+    struct semantic_state **result, bool *existed)
+{
+	struct function_context_collection *collection = &function->contexts;
+	struct semantic_lock_set *locks;
+	int error;
+
+	error = lock_set_intern(collection, NULL, 0, &locks);
+	if (error != 0)
+		return (error);
+	return (semantic_state_intern(collection, locks, result, existed));
+}
+
+/*
+ * Return the canonical state produced by replacing one lock's modes.  Zero
+ * modes removes the lock.  The current state remains unchanged.
+ */
+int
+context_state_set_lock(struct function_info *function,
+    const struct semantic_state *current, const struct lock_identity *lock,
+    unsigned int modes, struct semantic_state **result, bool *existed)
+{
+	struct function_context_collection *collection = &function->contexts;
+	struct semantic_lock_state entries[LOCKLINT_MAX_TRACKED_LOCKS];
+	const struct semantic_lock_set *current_locks;
+	struct semantic_lock_set *locks;
+	size_t current_index = 0;
+	size_t result_count;
+	size_t result_index = 0;
+	bool found = false;
+	int error;
+
+	if (current == NULL || lock == NULL)
+		return (EINVAL);
+	current_locks = current->locks;
+	while (current_index < current_locks->count) {
+		int order = compare_lock_identity(
+		    current_locks->entries[current_index].lock, lock);
+
+		if (order >= 0) {
+			found = order == 0;
+			break;
+		}
+		current_index++;
+	}
+	if (found && current_locks->entries[current_index].modes == modes) {
+		return (semantic_state_intern(collection, current_locks, result,
+		    existed));
+	}
+	if (!found && modes == 0) {
+		return (semantic_state_intern(collection, current_locks, result,
+		    existed));
+	}
+	if (!found && current_locks->count == LOCKLINT_MAX_TRACKED_LOCKS)
+		return (E2BIG);
+
+	result_count = current_locks->count +
+	    (!found && modes != 0 ? 1 : 0) - (found && modes == 0 ? 1 : 0);
+	while (result_index < current_index) {
+		entries[result_index] = current_locks->entries[result_index];
+		result_index++;
+	}
+	if (modes != 0) {
+		entries[result_index].lock = lock;
+		entries[result_index].modes = modes;
+		result_index++;
+	}
+	if (found)
+		current_index++;
+	while (current_index < current_locks->count)
+		entries[result_index++] = current_locks->entries[current_index++];
+
+	error = lock_set_intern(collection, entries, result_count, &locks);
+	if (error != 0)
+		return (error);
+	return (semantic_state_intern(collection, locks, result, existed));
 }
 
 /*
@@ -240,6 +398,36 @@ size_t
 context_state_count(struct function_info *function)
 {
 	return (avl_numnodes(&function->contexts.semantic_states));
+}
+
+size_t
+context_lock_set_count(struct function_info *function)
+{
+	return (avl_numnodes(&function->contexts.lock_sets));
+}
+
+size_t
+context_state_lock_count(const struct semantic_state *state)
+{
+	return (state->locks->count);
+}
+
+unsigned int
+context_state_lock_modes(const struct semantic_state *state,
+    const struct lock_identity *lock)
+{
+	size_t index;
+
+	for (index = 0; index < state->locks->count; index++) {
+		int order = compare_lock_identity(state->locks->entries[index].lock,
+		    lock);
+
+		if (order == 0)
+			return (state->locks->entries[index].modes);
+		if (order > 0)
+			break;
+	}
+	return (0);
 }
 
 size_t

@@ -18,6 +18,7 @@
  * independently of Sparse parsing and checker behavior.
  */
 
+#include <errno.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -116,6 +117,112 @@ test_context_interning(void)
 	context_collection_free(&function);
 }
 
+/*
+ * Lock sets are immutable, canonical, and independent of the order in which
+ * their entries were added.
+ */
+static void
+test_lock_state_interning(void)
+{
+	struct function_info function = { 0 };
+	unsigned int identities[2];
+	const struct lock_identity *first =
+	    (const struct lock_identity *)&identities[0];
+	const struct lock_identity *second =
+	    (const struct lock_identity *)&identities[1];
+	struct semantic_state *empty;
+	struct semantic_state *first_held;
+	struct semantic_state *first_second;
+	struct semantic_state *second_held;
+	struct semantic_state *same;
+	struct semantic_state *changed;
+	bool existed;
+	int error;
+
+	context_collection_create(&function);
+	error = context_empty_state_intern(&function, &empty, &existed);
+	check(error == 0, "create empty state for lock sets");
+	check(context_state_lock_count(empty) == 0, "empty state has no locks");
+
+	error = context_state_set_lock(&function, empty, first, 1,
+	    &first_held, &existed);
+	check(error == 0 && !existed, "create one-lock state");
+	check(context_state_lock_count(first_held) == 1,
+	    "one-lock state has one lock");
+	check(context_state_lock_modes(first_held, first) == 1,
+	    "one-lock state records modes");
+	check(context_state_lock_modes(empty, first) == 0,
+	    "lock transition preserves empty state");
+
+	error = context_state_set_lock(&function, first_held, first, 1,
+	    &same, &existed);
+	check(error == 0 && existed && same == first_held,
+	    "unchanged lock state is reused");
+
+	error = context_state_set_lock(&function, first_held, second, 2,
+	    &first_second, &existed);
+	check(error == 0 && !existed, "create two-lock state");
+	error = context_state_set_lock(&function, empty, second, 2,
+	    &second_held, &existed);
+	check(error == 0 && !existed, "create alternate one-lock state");
+	error = context_state_set_lock(&function, second_held, first, 1,
+	    &same, &existed);
+	check(error == 0 && existed && same == first_second,
+	    "lock insertion order reuses canonical state");
+
+	error = context_state_set_lock(&function, first_second, first, 0,
+	    &same, &existed);
+	check(error == 0 && existed && same == second_held,
+	    "lock removal reuses canonical state");
+	error = context_state_set_lock(&function, second_held, second, 4,
+	    &changed, &existed);
+	check(error == 0 && !existed, "create changed-mode state");
+	check(context_state_lock_modes(changed, second) == 4,
+	    "lock mode is replaced");
+	check(context_state_lock_modes(second_held, second) == 2,
+	    "mode transition preserves prior state");
+	check(context_lock_set_count(&function) == 5,
+	    "function owns five canonical lock sets");
+	check(context_state_count(&function) == 5,
+	    "function owns five canonical semantic states");
+
+	context_collection_free(&function);
+}
+
+static void
+test_lock_state_limit(void)
+{
+	struct function_info function = { 0 };
+	unsigned int identities[LOCKLINT_MAX_TRACKED_LOCKS + 1];
+	struct semantic_state *state;
+	struct semantic_state *next;
+	bool existed;
+	size_t index;
+	int error;
+
+	context_collection_create(&function);
+	error = context_empty_state_intern(&function, &state, &existed);
+	check(error == 0, "create empty state for lock limit");
+	for (index = 0; index < LOCKLINT_MAX_TRACKED_LOCKS; index++) {
+		error = context_state_set_lock(&function, state,
+		    (const struct lock_identity *)&identities[index], 1,
+		    &next, &existed);
+		check(error == 0 && !existed, "add lock below state limit");
+		state = next;
+	}
+	check(context_state_lock_count(state) == LOCKLINT_MAX_TRACKED_LOCKS,
+	    "state reaches tracked-lock limit");
+	next = NULL;
+	existed = true;
+	error = context_state_set_lock(&function, state,
+	    (const struct lock_identity *)&identities[
+	    LOCKLINT_MAX_TRACKED_LOCKS], 1, &next, &existed);
+	check(error == E2BIG, "lock beyond state limit is rejected");
+	check(next == NULL && existed, "limit error preserves output arguments");
+
+	context_collection_free(&function);
+}
+
 static void
 test_function_ownership(void)
 {
@@ -206,6 +313,8 @@ main(void)
 {
 	test_state_interning();
 	test_context_interning();
+	test_lock_state_interning();
+	test_lock_state_limit();
 	test_function_ownership();
 	test_point_state_interning();
 	return (failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE);
