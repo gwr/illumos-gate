@@ -18,6 +18,8 @@
 
 #include <stdbool.h>
 
+#include "context.h"
+
 struct assumed_region;
 struct acquisition_candidate;
 struct acquisition_summary;
@@ -47,6 +49,7 @@ struct function_info {
 	struct acquisition_summary *acquisitions;
 	struct lock_transfer *transfers;
 	struct visibility_transfer *visibility_transfers;
+	struct function_context_collection contexts;
 	unsigned int root_reasons;
 	bool reachable_from_root;
 };

@@ -91,6 +91,7 @@ LOCAL_OBJS = \
 	events.o \
 	identity.o \
 	lock_order.o \
+	context.o \
 	avl.o
 
 OBJS = $(LOCAL_OBJS) $(SPARSE_OBJS) hashtable.o
@@ -122,12 +123,17 @@ CMD_PARSE_TEST_OBJS = command_parse.o command_parse_test.o
 command_parse_test: $(CMD_PARSE_TEST_OBJS)
 	$(LINK.c) -o $@ $(CMD_PARSE_TEST_OBJS) $(LDLIBS)
 
+CTX_TEST_OBJS = context_test.o context.o avl.o
+context_test: $(CTX_TEST_OBJS)
+	$(LINK.c) -o $@ $(CTX_TEST_OBJS) $(LDLIBS)
+
 test: $(PROG) FRC
 	(cd tests && ./RunTests.sh)
 
-UNITTESTS = command_parse_test
+UNITTESTS = command_parse_test context_test
 unittest: $(UNITTESTS) FRC
 	./command_parse_test command_parse_test.in
+	./context_test
 
 clean: FRC
 	$(RM) -f $(PROG) version.h *.o
