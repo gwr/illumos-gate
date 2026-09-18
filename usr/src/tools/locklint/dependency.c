@@ -15,8 +15,8 @@
 
 /*
  * Maintain function-context exits and caller continuations.  These
- * owner-local lists record dependency progress without performing semantic
- * exit-to-caller state mapping or global worklist scheduling.
+ * owner-local collections record dependency progress without performing
+ * semantic exit-to-caller state mapping or global worklist scheduling.
  */
 
 #include <errno.h>
@@ -29,16 +29,49 @@
 #include "dependency.h"
 #include "worklist.h"
 
+static int
+compare_continuations(const void *left_arg, const void *right_arg)
+{
+	const struct continuation *left = left_arg;
+	const struct continuation *right = right_arg;
+	int result;
+
+	result = AVL_PCMP(left->caller_context, right->caller_context);
+	if (result != 0)
+		return (result);
+	result = AVL_PCMP(left->resume_point.block, right->resume_point.block);
+	if (result != 0)
+		return (result);
+	result = AVL_PCMP(left->resume_point.next_instruction,
+	    right->resume_point.next_instruction);
+	if (result != 0)
+		return (result);
+	result = AVL_PCMP(left->caller_state, right->caller_state);
+	if (result != 0)
+		return (result);
+	return (AVL_PCMP(left->callee_bindings, right->callee_bindings));
+}
+
+void
+dependency_records_create(struct function_context *context)
+{
+	SLIST_INIT(&context->exits);
+	avl_create(&context->continuations, compare_continuations,
+	    sizeof (struct continuation),
+	    offsetof(struct continuation, by_key));
+}
+
 void
 dependency_records_free(struct function_context *context)
 {
 	struct continuation *continuation;
 	struct context_exit *exit;
+	void *cookie = NULL;
 
-	while ((continuation = SLIST_FIRST(&context->continuations)) != NULL) {
-		SLIST_REMOVE_HEAD(&context->continuations, link);
+	while ((continuation = avl_destroy_nodes(&context->continuations,
+	    &cookie)) != NULL)
 		free(continuation);
-	}
+	avl_destroy(&context->continuations);
 	while ((exit = SLIST_FIRST(&context->exits)) != NULL) {
 		SLIST_REMOVE_HEAD(&context->exits, link);
 		free(exit);
@@ -78,20 +111,6 @@ dependency_exit_publish(struct function_context *context,
 	return (0);
 }
 
-static bool
-same_continuation(const struct continuation *continuation,
-    struct function_context *caller_context, struct analysis_point resume_point,
-    const struct semantic_state *caller_state,
-    const struct binding_environment *callee_bindings)
-{
-	return (continuation->caller_context == caller_context &&
-	    continuation->resume_point.block == resume_point.block &&
-	    continuation->resume_point.next_instruction ==
-	    resume_point.next_instruction &&
-	    continuation->caller_state == caller_state &&
-	    continuation->callee_bindings == callee_bindings);
-}
-
 /*
  * Register one caller dependency on a callee context.  A new continuation
  * starts at generation zero so it can consume exits published before the
@@ -104,15 +123,20 @@ dependency_continuation_create(struct function_context *callee_context,
     const struct binding_environment *callee_bindings,
     struct continuation **result, bool *existed)
 {
+	struct continuation key = {
+		.caller_context = caller_context,
+		.resume_point = resume_point,
+		.caller_state = caller_state,
+		.callee_bindings = callee_bindings
+	};
 	struct continuation *continuation;
+	avl_index_t where;
 
-	SLIST_FOREACH(continuation, &callee_context->continuations, link) {
-		if (same_continuation(continuation, caller_context, resume_point,
-		    caller_state, callee_bindings)) {
-			*result = continuation;
-			*existed = true;
-			return (0);
-		}
+	continuation = avl_find(&callee_context->continuations, &key, &where);
+	if (continuation != NULL) {
+		*result = continuation;
+		*existed = true;
+		return (0);
 	}
 	continuation = calloc(1, sizeof (*continuation));
 	if (continuation == NULL)
@@ -122,10 +146,23 @@ dependency_continuation_create(struct function_context *callee_context,
 	continuation->resume_point = resume_point;
 	continuation->caller_state = caller_state;
 	continuation->callee_bindings = callee_bindings;
-	SLIST_INSERT_HEAD(&callee_context->continuations, continuation, link);
+	avl_insert(&callee_context->continuations, continuation, where);
 	*result = continuation;
 	*existed = false;
 	return (0);
+}
+
+struct continuation *
+dependency_continuation_first(struct function_context *context)
+{
+	return (avl_first(&context->continuations));
+}
+
+struct continuation *
+dependency_continuation_next(struct function_context *context,
+    struct continuation *continuation)
+{
+	return (AVL_NEXT(&context->continuations, continuation));
 }
 
 /*
@@ -189,12 +226,7 @@ dependency_exit_count(const struct function_context *context)
 }
 
 size_t
-dependency_continuation_count(const struct function_context *context)
+dependency_continuation_count(struct function_context *context)
 {
-	const struct continuation *continuation;
-	size_t count = 0;
-
-	SLIST_FOREACH(continuation, &context->continuations, link)
-		count++;
-	return (count);
+	return (avl_numnodes(&context->continuations));
 }

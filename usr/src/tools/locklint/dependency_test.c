@@ -20,6 +20,7 @@
 
 #include <errno.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -50,6 +51,28 @@ check(bool condition, const char *message)
 		return;
 	(void) fprintf(stderr, "FAIL: %s\n", message);
 	failures++;
+}
+
+static int
+compare_continuations(const struct continuation *left,
+    const struct continuation *right)
+{
+	int result;
+
+	result = AVL_PCMP(left->caller_context, right->caller_context);
+	if (result != 0)
+		return (result);
+	result = AVL_PCMP(left->resume_point.block, right->resume_point.block);
+	if (result != 0)
+		return (result);
+	result = AVL_PCMP(left->resume_point.next_instruction,
+	    right->resume_point.next_instruction);
+	if (result != 0)
+		return (result);
+	result = AVL_PCMP(left->caller_state, right->caller_state);
+	if (result != 0)
+		return (result);
+	return (AVL_PCMP(left->callee_bindings, right->callee_bindings));
 }
 
 static void
@@ -146,6 +169,24 @@ test_dependency(void)
 	    "first context records two exits");
 	check(dependency_continuation_count(first_context) == 2,
 	    "first context records two continuations");
+	{
+		struct continuation *continuation;
+		struct continuation *previous = NULL;
+		size_t count = 0;
+
+		for (continuation =
+		    dependency_continuation_first(first_context);
+		    continuation != NULL;
+		    continuation =
+		    dependency_continuation_next(first_context, continuation)) {
+			check(previous == NULL ||
+			    compare_continuations(previous, continuation) < 0,
+			    "enumerate continuations in key order");
+			previous = continuation;
+			count++;
+		}
+		check(count == 2, "enumerate every continuation");
+	}
 
 	context_collection_free(&second_function);
 	context_collection_free(&first_function);

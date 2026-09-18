@@ -90,7 +90,6 @@ struct analysis_measurements {
 	size_t exit_bytes;
 	size_t continuation_bytes;
 	size_t provenance_edge_bytes;
-	size_t continuation_unique_insert_comparisons;
 };
 
 struct analysis {
@@ -209,8 +208,10 @@ publish_exit(struct analysis *analysis, struct point_state *point_state)
 	{
 		struct continuation *continuation;
 
-		SLIST_FOREACH(continuation,
-		    &point_state->context->continuations, link)
+		for (continuation = dependency_continuation_first(
+		    point_state->context); continuation != NULL;
+		    continuation = dependency_continuation_next(
+		    point_state->context, continuation))
 			record_reactivation(analysis, continuation);
 	}
 }
@@ -411,41 +412,6 @@ memory_add(size_t *total, size_t count, size_t size)
 	*total += count * size;
 }
 
-/*
- * A successful insertion into an n-element SLIST compares against every
- * existing element.  Summing 0 through n - 1 gives the exact comparison count
- * for the retained unique records, excluding any unsuccessful duplicate
- * insertion attempts.
- */
-static size_t
-unique_insert_comparisons(size_t count)
-{
-	size_t left;
-	size_t right;
-
-	if (count < 2)
-		return (0);
-	left = count;
-	right = count - 1;
-	if ((left & 1) == 0)
-		left /= 2;
-	else
-		right /= 2;
-	if (left > SIZE_MAX / right)
-		die("linear lookup comparison estimate overflow");
-	return (left * right);
-}
-
-static void
-comparison_add(size_t *total, size_t count)
-{
-	size_t comparisons = unique_insert_comparisons(count);
-
-	if (comparisons > SIZE_MAX - *total)
-		die("linear lookup comparison estimate overflow");
-	*total += comparisons;
-}
-
 static bool
 same_analysis_point(const struct point_state *left,
     const struct point_state *right)
@@ -503,8 +469,6 @@ measure_context(struct analysis_measurements *measurements,
 	count = dependency_continuation_count(context);
 	distribution_add(&measurements->continuations_per_context, count,
 	    context->function);
-	comparison_add(&measurements->continuation_unique_insert_comparisons,
-	    count);
 	memory_add(&measurements->continuation_bytes, count,
 	    sizeof (struct continuation));
 
@@ -671,11 +635,6 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	    &measurements->continuations_per_context);
 	show_maximum_owner(stream, "provenance-edges/context",
 	    &measurements->provenance_edges_per_context);
-	(void) fprintf(stream, "linear-lookup unique-insert-comparisons "
-	    "continuations total %zu maximum-owner %zu\n",
-	    measurements->continuation_unique_insert_comparisons,
-	    unique_insert_comparisons(
-	    measurements->continuations_per_context.maximum));
 	(void) fprintf(stream, "memory semantic-states %zu bytes\n",
 	    measurements->semantic_state_bytes);
 	(void) fprintf(stream, "memory contexts %zu bytes\n",

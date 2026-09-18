@@ -45,9 +45,10 @@ struct continuation {
 	const struct semantic_state *caller_state;
 	const struct binding_environment *callee_bindings;
 	unsigned int last_consumed_generation;
-	SLIST_ENTRY(continuation) link;
+	avl_node_t by_key;
 };
 
+void dependency_records_create(struct function_context *);
 void dependency_records_free(struct function_context *);
 
 int dependency_exit_publish(struct function_context *,
@@ -57,6 +58,9 @@ int dependency_continuation_create(struct function_context *,
     const struct semantic_state *, const struct binding_environment *,
     struct continuation **, bool *);
 
+struct continuation *dependency_continuation_first(struct function_context *);
+struct continuation *dependency_continuation_next(struct function_context *,
+    struct continuation *);
 const struct context_exit *dependency_continuation_next_exit(
     const struct continuation *);
 int dependency_continuation_apply_exit(struct continuation *,
@@ -64,6 +68,6 @@ int dependency_continuation_apply_exit(struct continuation *,
     struct worklist *, struct point_state **, bool *);
 
 size_t dependency_exit_count(const struct function_context *);
-size_t dependency_continuation_count(const struct function_context *);
+size_t dependency_continuation_count(struct function_context *);
 
 #endif /* DEPENDENCY_H */

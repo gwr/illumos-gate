@@ -30,6 +30,12 @@
 static unsigned int failures;
 
 void
+dependency_records_create(struct function_context *context)
+{
+	(void) context;
+}
+
+void
 dependency_records_free(struct function_context *context)
 {
 	(void) context;
