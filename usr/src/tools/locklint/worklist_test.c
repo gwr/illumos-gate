@@ -41,26 +41,25 @@ test_worklist(void)
 {
 	struct point_state first = { 0 };
 	struct point_state second = { 0 };
-	struct worklist worklist;
+	struct worklist worklist = { 0 };
 
-	worklist_init(&worklist);
-	check(worklist_enqueue(&worklist, &first),
+	check(worklist_point_state_enqueue(&worklist, &first),
 	    "enqueue first point state");
-	check(!worklist_enqueue(&worklist, &first),
+	check(!worklist_point_state_enqueue(&worklist, &first),
 	    "suppress duplicate queued point state");
-	check(worklist_enqueue(&worklist, &second),
+	check(worklist_point_state_enqueue(&worklist, &second),
 	    "enqueue second point state");
 	check(worklist.length == 2, "worklist records current length");
 	check(worklist.peak_length == 2, "worklist records peak length");
-	check(worklist_dequeue(&worklist) == &first,
+	check(worklist_point_state_dequeue(&worklist) == &first,
 	    "worklist preserves FIFO order");
-	check(worklist_dequeue(&worklist) == &second,
+	check(worklist_point_state_dequeue(&worklist) == &second,
 	    "worklist returns second point state");
-	check(worklist_dequeue(&worklist) == NULL,
+	check(worklist_point_state_dequeue(&worklist) == NULL,
 	    "empty worklist returns no point state");
-	check(worklist_enqueue(&worklist, &first),
+	check(worklist_point_state_enqueue(&worklist, &first),
 	    "dequeued point state can be requeued");
-	check(worklist_dequeue(&worklist) == &first,
+	check(worklist_point_state_dequeue(&worklist) == &first,
 	    "requeued point state is returned");
 	check(worklist.length == 0, "worklist is empty after removal");
 	check(worklist.peak_length == 2,

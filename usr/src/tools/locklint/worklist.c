@@ -24,17 +24,11 @@
 #include "context.h"
 #include "worklist.h"
 
-void
-worklist_init(struct worklist *worklist)
-{
-	*worklist = (struct worklist){ 0 };
-}
-
 /*
  * Add work in FIFO order unless this point state is already pending.
  */
 bool
-worklist_enqueue(struct worklist *worklist,
+worklist_point_state_enqueue(struct worklist *worklist,
     struct point_state *point_state)
 {
 	if (point_state->queued)
@@ -57,7 +51,7 @@ worklist_enqueue(struct worklist *worklist,
  * queued again if a dependency later publishes new information.
  */
 struct point_state *
-worklist_dequeue(struct worklist *worklist)
+worklist_point_state_dequeue(struct worklist *worklist)
 {
 	struct point_state *point_state = worklist->head;
 

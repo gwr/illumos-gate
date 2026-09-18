@@ -32,8 +32,7 @@ struct worklist {
 	size_t peak_length;
 };
 
-void worklist_init(struct worklist *);
-bool worklist_enqueue(struct worklist *, struct point_state *);
-struct point_state *worklist_dequeue(struct worklist *);
+bool worklist_point_state_enqueue(struct worklist *, struct point_state *);
+struct point_state *worklist_point_state_dequeue(struct worklist *);
 
 #endif /* WORKLIST_H */

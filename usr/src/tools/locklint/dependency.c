@@ -175,7 +175,7 @@ dependency_continuation_apply_exit(struct continuation *continuation,
 	if (error != 0)
 		return (error);
 	if (!point_existed)
-		(void) worklist_enqueue(worklist, point_state);
+		(void) worklist_point_state_enqueue(worklist, point_state);
 	continuation->last_consumed_generation = exit->generation;
 	*result = point_state;
 	*existed = point_existed;

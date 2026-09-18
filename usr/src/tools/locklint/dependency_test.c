@@ -161,7 +161,7 @@ test_reactivation(void)
 	struct point_state *second_point;
 	struct point_state *direct_point;
 	struct point_state *unchanged_point;
-	struct worklist worklist;
+	struct worklist worklist = { 0 };
 	char first_block;
 	char second_block;
 	struct analysis_point first_resume = {
@@ -176,7 +176,6 @@ test_reactivation(void)
 
 	context_init(&first_function);
 	context_init(&second_function);
-	worklist_init(&worklist);
 	error = state_get_empty(&first_function, &first_state, &created);
 	check(error == 0 && created, "create first reactivation state");
 	error = state_get_empty(&second_function, &second_state, &created);
@@ -204,14 +203,14 @@ test_reactivation(void)
 	error = dependency_continuation_apply_exit(first_to_second, second_exit,
 	    first_state, &worklist, &first_point, &existed);
 	check(error == 0 && !existed, "apply exit to first caller");
-	check(worklist_dequeue(&worklist) == first_point,
+	check(worklist_point_state_dequeue(&worklist) == first_point,
 	    "queue first caller point");
 	error = dependency_continuation_apply_exit(second_to_first, first_exit,
 	    second_state, &worklist, &second_point, &existed);
 	check(error == 0 && !existed, "apply exit to second caller");
-	check(worklist_dequeue(&worklist) == second_point,
+	check(worklist_point_state_dequeue(&worklist) == second_point,
 	    "queue second caller point");
-	check(worklist_dequeue(&worklist) == NULL,
+	check(worklist_point_state_dequeue(&worklist) == NULL,
 	    "mutual reactivation reaches quiescence");
 	check(dependency_continuation_next_exit(first_to_second) == NULL,
 	    "first mutual continuation is current");
@@ -224,9 +223,9 @@ test_reactivation(void)
 	error = dependency_continuation_apply_exit(direct, first_exit, first_state,
 	    &worklist, &direct_point, &existed);
 	check(error == 0 && !existed, "apply direct-recursive exit");
-	check(worklist_dequeue(&worklist) == direct_point,
+	check(worklist_point_state_dequeue(&worklist) == direct_point,
 	    "queue direct-recursive caller point");
-	check(worklist_dequeue(&worklist) == NULL,
+	check(worklist_point_state_dequeue(&worklist) == NULL,
 	    "direct reactivation reaches quiescence");
 	check(dependency_continuation_next_exit(direct) == NULL,
 	    "direct continuation is current");
@@ -258,7 +257,7 @@ test_reactivation(void)
 	error = dependency_continuation_apply_exit(first_to_second, second_exit,
 	    first_state, &worklist, &first_point, &existed);
 	check(error == 0 && existed, "apply previously recorded mapped state");
-	check(worklist_dequeue(&worklist) == NULL,
+	check(worklist_point_state_dequeue(&worklist) == NULL,
 	    "duplicate mapped state does not queue work");
 	check(first_to_second->last_consumed_generation == 2,
 	    "duplicate mapped state advances consumption");
