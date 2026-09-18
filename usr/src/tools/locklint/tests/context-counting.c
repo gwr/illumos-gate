@@ -15,8 +15,7 @@
 
 /*
  * Exercise root seeding and intraprocedural context traversal through
- * branches, a loop back-edge, an ordinary call, and a return.  Resolved call
- * traversal is deliberately covered by the next context-analysis increment.
+ * branches, a loop back-edge, a resolved call, and a return.
  */
 
 static int

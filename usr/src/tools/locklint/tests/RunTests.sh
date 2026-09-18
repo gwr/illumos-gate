@@ -975,14 +975,43 @@ require_match "annotation name dump" \
 run_capture "context counting" context-counting.out \
     "$LOCKLINT" --dump-contexts context-counting.c
 require_match "context counting" '^roots 1$' context-counting.out
-require_match "context counting" '^functions 1$' context-counting.out
-require_match "context counting" '^contexts created 1 reused 0$' \
+require_match "context counting" '^functions 2$' context-counting.out
+require_match "context counting" '^contexts created 2 reused 0$' \
     context-counting.out
-require_match "context counting" '^exits created 1 reused 0$' \
+require_match "context counting" '^point-states created 32 reused 2$' \
     context-counting.out
-require_match "context counting" '^point-states created 29 reused 2$' \
+require_match "context counting" '^exits created 2 reused 0$' \
     context-counting.out
+require_match "context counting" '^continuations created 1 reused 0$' \
+    context-counting.out
+require_match "context counting" '^provenance-edges created 1 reused 0$' \
+    context-counting.out
+require_match "context counting" '^reactivations 1$' context-counting.out
 reject_match "context counting" 'warning:' context-counting.out
+
+#
+# Verify resolved calls reuse semantic contexts and terminate through direct
+# and mutual-recursion dependency cycles.
+#
+run_capture "context calls" context-calls.out \
+    "$LOCKLINT" --dump-contexts context-calls.c
+require_match "context calls" '^roots 1$' context-calls.out
+require_match "context calls" '^functions 5$' context-calls.out
+require_match "context calls" '^semantic-states created 5 reused 3$' \
+    context-calls.out
+require_match "context calls" '^contexts created 5 reused 3$' \
+    context-calls.out
+require_match "context calls" '^point-states created 50 reused 3$' \
+    context-calls.out
+require_match "context calls" '^exits created 5 reused 0$' \
+    context-calls.out
+require_match "context calls" '^continuations created 7 reused 0$' \
+    context-calls.out
+require_match "context calls" '^provenance-edges created 7 reused 0$' \
+    context-calls.out
+require_match "context calls" '^reactivations 7$' context-calls.out
+require_match "context calls" '^worklist peak 3$' context-calls.out
+reject_match "context calls" 'warning:' context-calls.out
 
 #
 # Final report

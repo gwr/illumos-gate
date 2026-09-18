@@ -15,9 +15,9 @@
 
 /*
  * Drive the caller-context fixed point over retained Sparse control-flow
- * graphs.  The initial implementation carries only the canonical empty state
- * and treats calls as ordinary instructions; resolved call dependencies are
- * added as the next implementation increment.
+ * graphs.  The initial implementation carries only the canonical empty state.
+ * Resolved calls suspend their caller until a callee exit reactivates the
+ * corresponding continuation; unresolved calls have no semantic effect.
  */
 
 #include <errno.h>
@@ -33,6 +33,7 @@
 #include "function_info.h"
 #include "lib.h"
 #include "linearize.h"
+#include "provenance.h"
 #include "worklist.h"
 
 struct analysis_counts {
@@ -46,6 +47,11 @@ struct analysis_counts {
 	size_t point_states_reused;
 	size_t exits_created;
 	size_t exits_reused;
+	size_t continuations_created;
+	size_t continuations_reused;
+	size_t provenance_edges_created;
+	size_t provenance_edges_reused;
+	size_t reactivations;
 };
 
 struct analysis {
@@ -115,6 +121,35 @@ record_point(struct analysis *analysis, struct function_context *context,
 }
 
 static void
+record_reactivation(struct analysis *analysis,
+    struct continuation *continuation)
+{
+	const struct context_exit *exit;
+
+	while ((exit =
+	    dependency_continuation_next_exit(continuation)) != NULL) {
+		struct point_state *point_state;
+		bool existed;
+		int error;
+
+		error = dependency_continuation_apply_exit(continuation, exit,
+		    continuation->caller_state, &analysis->worklist,
+		    &point_state, &existed);
+		if (error != 0)
+			die("cannot apply context exit: %s", strerror(error));
+		analysis->counts.reactivations++;
+		if (existed)
+			analysis->counts.point_states_reused++;
+		else
+			analysis->counts.point_states_created++;
+	}
+}
+
+/*
+ * Publish a newly observed exit, then make it available to every waiting
+ * caller.  Duplicate publication adds no generation and therefore no work.
+ */
+static void
 publish_exit(struct analysis *analysis, struct point_state *point_state)
 {
 	struct context_exit *exit;
@@ -125,10 +160,92 @@ publish_exit(struct analysis *analysis, struct point_state *point_state)
 	    &exit, &existed);
 	if (error != 0)
 		die("cannot publish context exit: %s", strerror(error));
-	if (existed)
+	if (existed) {
 		analysis->counts.exits_reused++;
+		return;
+	}
+	analysis->counts.exits_created++;
+
+	{
+		struct continuation *continuation;
+
+		SLIST_FOREACH(continuation,
+		    &point_state->context->continuations, link)
+			record_reactivation(analysis, continuation);
+	}
+}
+
+static void
+process_call(struct analysis *analysis, struct point_state *point_state)
+{
+	struct function_context *caller_context = point_state->context;
+	struct function_info *callee_function;
+	struct function_context *callee_context;
+	struct semantic_state *callee_state;
+	struct continuation *continuation;
+	struct provenance_edge *edge;
+	struct analysis_point resume_point;
+	bool context_existed;
+	bool existed;
+	int error;
+
+	callee_function = callgraph_callee(caller_context->function,
+	    point_state->point.next_instruction);
+	if (callee_function == NULL) {
+		record_point(analysis, caller_context, point_state->point.block,
+		    next_live_instruction(point_state->point.block,
+		    point_state->point.next_instruction), point_state->state);
+		return;
+	}
+
+	error = context_empty_state_intern(callee_function, &callee_state,
+	    &existed);
+	if (error != 0)
+		die("cannot intern callee state: %s", strerror(error));
+	if (existed)
+		analysis->counts.semantic_states_reused++;
 	else
-		analysis->counts.exits_created++;
+		analysis->counts.semantic_states_created++;
+
+	error = context_create(callee_function, NULL, callee_state,
+	    &callee_context, &context_existed);
+	if (error != 0)
+		die("cannot create callee context: %s", strerror(error));
+	if (context_existed) {
+		analysis->counts.contexts_reused++;
+	} else {
+		analysis->counts.contexts_created++;
+		analysis->counts.functions++;
+	}
+
+	error = provenance_edge_create(callee_context, caller_context,
+	    point_state->point.next_instruction, &edge, &existed);
+	if (error != 0)
+		die("cannot record context provenance: %s", strerror(error));
+	if (existed)
+		analysis->counts.provenance_edges_reused++;
+	else
+		analysis->counts.provenance_edges_created++;
+
+	resume_point.block = point_state->point.block;
+	resume_point.next_instruction = next_live_instruction(
+	    point_state->point.block, point_state->point.next_instruction);
+	error = dependency_continuation_create(callee_context, caller_context,
+	    resume_point, point_state->state, NULL, &continuation, &existed);
+	if (error != 0)
+		die("cannot create call continuation: %s", strerror(error));
+	if (existed)
+		analysis->counts.continuations_reused++;
+	else
+		analysis->counts.continuations_created++;
+
+	if (!context_existed) {
+		record_point(analysis, callee_context,
+		    callee_function->ep->entry->bb,
+		    first_live_instruction(callee_function->ep->entry->bb),
+		    callee_state);
+	}
+	record_reactivation(analysis, continuation);
 }
 
 /*
@@ -144,6 +261,10 @@ process_point(struct analysis *analysis, struct point_state *point_state)
 	if (point.next_instruction != NULL) {
 		if (point.next_instruction->opcode == OP_RET) {
 			publish_exit(analysis, point_state);
+			return;
+		}
+		if (point.next_instruction->opcode == OP_CALL) {
+			process_call(analysis, point_state);
 			return;
 		}
 		record_point(analysis, point_state->context, point.block,
@@ -224,6 +345,12 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	    counts->point_states_created, counts->point_states_reused);
 	(void) fprintf(stream, "exits created %zu reused %zu\n",
 	    counts->exits_created, counts->exits_reused);
+	(void) fprintf(stream, "continuations created %zu reused %zu\n",
+	    counts->continuations_created, counts->continuations_reused);
+	(void) fprintf(stream, "provenance-edges created %zu reused %zu\n",
+	    counts->provenance_edges_created,
+	    counts->provenance_edges_reused);
+	(void) fprintf(stream, "reactivations %zu\n", counts->reactivations);
 	(void) fprintf(stream, "worklist peak %zu\n",
 	    analysis->worklist.peak_length);
 }
