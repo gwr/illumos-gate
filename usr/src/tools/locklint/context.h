@@ -27,6 +27,7 @@ struct context_exit;
 struct continuation;
 struct function_info;
 struct instruction;
+struct provenance_edge;
 
 /*
  * Semantic states are immutable after insertion.  The first implementation
@@ -60,6 +61,7 @@ struct function_context {
 	avl_tree_t point_states;
 	struct context_exit *exits;
 	struct continuation *continuations;
+	struct provenance_edge *provenance_edges;
 	unsigned int exit_generation;
 	avl_node_t by_key;
 };

@@ -28,6 +28,7 @@
 #include "context.h"
 #include "dependency.h"
 #include "function_info.h"
+#include "provenance.h"
 
 static int
 compare_semantic_state(const void *left_arg, const void *right_arg)
@@ -112,6 +113,7 @@ context_fini(struct function_info *function)
 	    &cookie)) != NULL) {
 		free_point_states(context);
 		dependency_fini(context);
+		provenance_fini(context);
 		free(context);
 	}
 	avl_destroy(&collection->contexts);

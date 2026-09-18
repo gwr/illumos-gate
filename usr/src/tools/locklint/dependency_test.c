@@ -25,8 +25,15 @@
 #include "context.h"
 #include "dependency.h"
 #include "function_info.h"
+#include "provenance.h"
 
 static unsigned int failures;
+
+void
+provenance_fini(struct function_context *context)
+{
+	(void) context;
+}
 
 static void
 check(bool condition, const char *message)

@@ -95,6 +95,7 @@ LOCAL_OBJS = \
 	lock_order.o \
 	context.o \
 	dependency.o \
+	provenance.o \
 	worklist.o \
 	avl.o
 
@@ -139,15 +140,21 @@ DEP_TEST_OBJS = dependency_test.o dependency.o context.o avl.o
 dependency_test: $(DEP_TEST_OBJS)
 	$(LINK.c) -o $@ $(DEP_TEST_OBJS) $(LDLIBS)
 
+PROV_TEST_OBJS = provenance_test.o provenance.o context.o avl.o
+provenance_test: $(PROV_TEST_OBJS)
+	$(LINK.c) -o $@ $(PROV_TEST_OBJS) $(LDLIBS)
+
 test: $(PROG) FRC
 	(cd tests && ./RunTests.sh)
 
-UNITTESTS = command_parse_test context_test worklist_test dependency_test
+UNITTESTS = command_parse_test context_test worklist_test dependency_test \
+	provenance_test
 unittest: $(UNITTESTS) FRC
 	./command_parse_test command_parse_test.in
 	./context_test
 	./worklist_test
 	./dependency_test
+	./provenance_test
 
 clean: FRC
 	$(RM) -f $(PROG) version.h *.o
