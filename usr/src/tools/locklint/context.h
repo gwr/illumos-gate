@@ -18,6 +18,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <sys/queue.h>
 
 #include "avl.h"
 
@@ -28,6 +29,9 @@ struct continuation;
 struct function_info;
 struct instruction;
 struct provenance_edge;
+
+SLIST_HEAD(context_exit_list, context_exit);
+SLIST_HEAD(continuation_list, continuation);
 
 /*
  * Semantic states are immutable after insertion.  The first implementation
@@ -59,8 +63,8 @@ struct function_context {
 	const struct binding_environment *bindings;
 	const struct semantic_state *entry_state;
 	avl_tree_t point_states;
-	struct context_exit *exits;
-	struct continuation *continuations;
+	struct context_exit_list exits;
+	struct continuation_list continuations;
 	struct provenance_edge *provenance_edges;
 	unsigned int exit_generation;
 	avl_node_t by_key;

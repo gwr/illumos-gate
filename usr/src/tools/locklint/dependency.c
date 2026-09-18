@@ -32,17 +32,16 @@
 void
 dependency_records_free(struct function_context *context)
 {
-	while (context->continuations != NULL) {
-		struct continuation *next = context->continuations->next;
+	struct continuation *continuation;
+	struct context_exit *exit;
 
-		free(context->continuations);
-		context->continuations = next;
+	while ((continuation = SLIST_FIRST(&context->continuations)) != NULL) {
+		SLIST_REMOVE_HEAD(&context->continuations, link);
+		free(continuation);
 	}
-	while (context->exits != NULL) {
-		struct context_exit *next = context->exits->next;
-
-		free(context->exits);
-		context->exits = next;
+	while ((exit = SLIST_FIRST(&context->exits)) != NULL) {
+		SLIST_REMOVE_HEAD(&context->exits, link);
+		free(exit);
 	}
 	context->exit_generation = 0;
 }
@@ -58,7 +57,7 @@ dependency_exit_publish(struct function_context *context,
 {
 	struct context_exit *exit;
 
-	for (exit = context->exits; exit != NULL; exit = exit->next) {
+	SLIST_FOREACH(exit, &context->exits, link) {
 		if (exit->state == state) {
 			*result = exit;
 			*existed = true;
@@ -72,8 +71,7 @@ dependency_exit_publish(struct function_context *context,
 		return (ENOMEM);
 	exit->state = state;
 	exit->generation = context->exit_generation + 1;
-	exit->next = context->exits;
-	context->exits = exit;
+	SLIST_INSERT_HEAD(&context->exits, exit, link);
 	context->exit_generation = exit->generation;
 	*result = exit;
 	*existed = false;
@@ -108,8 +106,7 @@ dependency_continuation_create(struct function_context *callee_context,
 {
 	struct continuation *continuation;
 
-	for (continuation = callee_context->continuations;
-	    continuation != NULL; continuation = continuation->next) {
+	SLIST_FOREACH(continuation, &callee_context->continuations, link) {
 		if (same_continuation(continuation, caller_context, resume_point,
 		    caller_state, callee_bindings)) {
 			*result = continuation;
@@ -125,8 +122,7 @@ dependency_continuation_create(struct function_context *callee_context,
 	continuation->resume_point = resume_point;
 	continuation->caller_state = caller_state;
 	continuation->callee_bindings = callee_bindings;
-	continuation->next = callee_context->continuations;
-	callee_context->continuations = continuation;
+	SLIST_INSERT_HEAD(&callee_context->continuations, continuation, link);
 	*result = continuation;
 	*existed = false;
 	return (0);
@@ -141,8 +137,7 @@ dependency_continuation_next_exit(const struct continuation *continuation)
 	const struct context_exit *exit;
 	const struct context_exit *next = NULL;
 
-	for (exit = continuation->callee_context->exits;
-	    exit != NULL; exit = exit->next) {
+	SLIST_FOREACH(exit, &continuation->callee_context->exits, link) {
 		if (exit->generation <= continuation->last_consumed_generation)
 			continue;
 		if (next == NULL || exit->generation < next->generation)
@@ -188,7 +183,7 @@ dependency_exit_count(const struct function_context *context)
 	const struct context_exit *exit;
 	size_t count = 0;
 
-	for (exit = context->exits; exit != NULL; exit = exit->next)
+	SLIST_FOREACH(exit, &context->exits, link)
 		count++;
 	return (count);
 }
@@ -199,8 +194,7 @@ dependency_continuation_count(const struct function_context *context)
 	const struct continuation *continuation;
 	size_t count = 0;
 
-	for (continuation = context->continuations;
-	    continuation != NULL; continuation = continuation->next)
+	SLIST_FOREACH(continuation, &context->continuations, link)
 		count++;
 	return (count);
 }

@@ -186,6 +186,8 @@ context_create(struct function_info *function,
 	context->entry_state = entry_state;
 	avl_create(&context->point_states, compare_point_state,
 	    sizeof (struct point_state), offsetof(struct point_state, by_key));
+	SLIST_INIT(&context->exits);
+	SLIST_INIT(&context->continuations);
 	avl_insert(&collection->contexts, context, where);
 	*result = context;
 	*existed = false;

@@ -18,6 +18,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <sys/queue.h>
 
 #include "context.h"
 
@@ -30,7 +31,7 @@ struct worklist;
 struct context_exit {
 	const struct semantic_state *state;
 	unsigned int generation;
-	struct context_exit *next;
+	SLIST_ENTRY(context_exit) link;
 };
 
 /*
@@ -44,7 +45,7 @@ struct continuation {
 	const struct semantic_state *caller_state;
 	const struct binding_environment *callee_bindings;
 	unsigned int last_consumed_generation;
-	struct continuation *next;
+	SLIST_ENTRY(continuation) link;
 };
 
 void dependency_records_free(struct function_context *);
