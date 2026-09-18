@@ -1011,6 +1011,35 @@ require_match "context calls" '^provenance-edges created 7 reused 0$' \
     context-calls.out
 require_match "context calls" '^reactivations 7$' context-calls.out
 require_match "context calls" '^worklist peak 3$' context-calls.out
+require_match "context calls" \
+    '^distribution contexts/function samples 5 total 5 max 1 bins 0:0 1:5 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
+    context-calls.out
+require_match "context calls" \
+    '^distribution semantic-states/function samples 5 total 5 max 1 bins 0:0 1:5 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
+    context-calls.out
+require_match "context calls" \
+    '^distribution point-states/context samples 5 total 50 max 14 bins 0:0 1:0 2:0 3:1 4:0 5:0 6-8:1 9+:3$' \
+    context-calls.out
+require_match "context calls" \
+    '^distribution states/analysis-point samples 50 total 50 max 1 bins 0:0 1:50 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
+    context-calls.out
+require_match "context calls" \
+    '^distribution exits/context samples 5 total 5 max 1 bins 0:0 1:5 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
+    context-calls.out
+require_match "context calls" \
+    '^distribution continuations/context samples 5 total 7 max 2 bins 0:1 1:1 2:3 3:0 4:0 5:0 6-8:0 9+:0$' \
+    context-calls.out
+require_match "context calls" \
+    '^distribution provenance-edges/context samples 5 total 7 max 2 bins 0:1 1:1 2:3 3:0 4:0 5:0 6-8:0 9+:0$' \
+    context-calls.out
+require_match "context calls" \
+    '^distribution locks/semantic-state samples 5 total 0 max 0 bins 0:5 1:0 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
+    context-calls.out
+require_match "context calls" \
+    '^distribution visibility/semantic-state samples 5 total 0 max 0 bins 0:5 1:0 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
+    context-calls.out
+require_match "context calls" '^memory retained-collections [1-9][0-9]* bytes$' \
+    context-calls.out
 reject_match "context calls" 'warning:' context-calls.out
 
 #

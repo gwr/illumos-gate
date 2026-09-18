@@ -23,6 +23,7 @@
 #include <errno.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -35,6 +36,8 @@
 #include "linearize.h"
 #include "provenance.h"
 #include "worklist.h"
+
+#define	DISTRIBUTION_EXACT_MAX	5
 
 struct analysis_counts {
 	size_t roots;
@@ -54,9 +57,42 @@ struct analysis_counts {
 	size_t reactivations;
 };
 
+/*
+ * Exact small-count buckets expose the boundary used to choose between lists
+ * and indexed collections.  Two fixed overflow buckets retain useful shape
+ * without memory proportional to the largest observed owner.
+ */
+struct distribution {
+	size_t samples;
+	size_t total;
+	size_t maximum;
+	size_t exact[DISTRIBUTION_EXACT_MAX + 1];
+	size_t six_to_eight;
+	size_t nine_or_more;
+};
+
+struct analysis_measurements {
+	struct distribution contexts_per_function;
+	struct distribution semantic_states_per_function;
+	struct distribution point_states_per_context;
+	struct distribution states_per_analysis_point;
+	struct distribution exits_per_context;
+	struct distribution continuations_per_context;
+	struct distribution provenance_edges_per_context;
+	struct distribution locks_per_semantic_state;
+	struct distribution visibility_per_semantic_state;
+	size_t semantic_state_bytes;
+	size_t context_bytes;
+	size_t point_state_bytes;
+	size_t exit_bytes;
+	size_t continuation_bytes;
+	size_t provenance_edge_bytes;
+};
+
 struct analysis {
 	struct worklist worklist;
 	struct analysis_counts counts;
+	struct analysis_measurements measurements;
 };
 
 static struct instruction *
@@ -331,9 +367,187 @@ seed_roots(struct analysis *analysis)
 }
 
 static void
+distribution_add(struct distribution *distribution, size_t count)
+{
+	if (distribution->samples == SIZE_MAX ||
+	    count > SIZE_MAX - distribution->total)
+		die("analysis distribution counter overflow");
+	distribution->samples++;
+	distribution->total += count;
+	if (count > distribution->maximum)
+		distribution->maximum = count;
+	if (count <= DISTRIBUTION_EXACT_MAX)
+		distribution->exact[count]++;
+	else if (count <= 8)
+		distribution->six_to_eight++;
+	else
+		distribution->nine_or_more++;
+}
+
+static void
+distribution_add_zeroes(struct distribution *distribution, size_t count)
+{
+	if (count > SIZE_MAX - distribution->samples ||
+	    count > SIZE_MAX - distribution->exact[0])
+		die("analysis distribution counter overflow");
+	distribution->samples += count;
+	distribution->exact[0] += count;
+}
+
+static void
+memory_add(size_t *total, size_t count, size_t size)
+{
+	if (count > (SIZE_MAX - *total) / size)
+		die("retained collection memory estimate overflow");
+	*total += count * size;
+}
+
+static bool
+same_analysis_point(const struct point_state *left,
+    const struct point_state *right)
+{
+	return (left->point.block == right->point.block &&
+	    left->point.next_instruction == right->point.next_instruction);
+}
+
+static void
+measure_point_states(struct analysis_measurements *measurements,
+    struct function_context *context)
+{
+	struct point_state *point_state;
+	struct point_state *previous = NULL;
+	size_t states_at_point = 0;
+	size_t point_states = context_point_state_count(context);
+
+	distribution_add(&measurements->point_states_per_context, point_states);
+	memory_add(&measurements->point_state_bytes, point_states,
+	    sizeof (struct point_state));
+	for (point_state = avl_first(&context->point_states);
+	    point_state != NULL;
+	    point_state = AVL_NEXT(&context->point_states, point_state)) {
+		if (previous != NULL &&
+		    !same_analysis_point(previous, point_state)) {
+			distribution_add(
+			    &measurements->states_per_analysis_point,
+			    states_at_point);
+			states_at_point = 0;
+		}
+		states_at_point++;
+		previous = point_state;
+	}
+	if (states_at_point != 0) {
+		distribution_add(&measurements->states_per_analysis_point,
+		    states_at_point);
+	}
+}
+
+static void
+measure_context(struct analysis_measurements *measurements,
+    struct function_context *context)
+{
+	size_t count;
+
+	measure_point_states(measurements, context);
+
+	count = dependency_exit_count(context);
+	distribution_add(&measurements->exits_per_context, count);
+	memory_add(&measurements->exit_bytes, count,
+	    sizeof (struct context_exit));
+
+	count = dependency_continuation_count(context);
+	distribution_add(&measurements->continuations_per_context, count);
+	memory_add(&measurements->continuation_bytes, count,
+	    sizeof (struct continuation));
+
+	count = provenance_edge_count(context);
+	distribution_add(&measurements->provenance_edges_per_context, count);
+	memory_add(&measurements->provenance_edge_bytes, count,
+	    sizeof (struct provenance_edge));
+}
+
+/*
+ * Measure retained records in one pass after the fixed point.  AVL order
+ * groups point states by analysis point, so no temporary point index or
+ * per-owner sample array is needed.
+ */
+static void
+measure_collections(struct analysis *analysis)
+{
+	struct analysis_measurements *measurements = &analysis->measurements;
+	struct callgraph_iter *iterator;
+	struct function_info *function;
+	int error;
+
+	error = callgraph_iter_open(&iterator);
+	if (error != 0)
+		die("cannot iterate ready callgraph: %s", strerror(error));
+	while ((function = callgraph_iter_next(iterator)) != NULL) {
+		struct function_context *context;
+		size_t contexts = context_count(function);
+		size_t states = context_state_count(function);
+
+		distribution_add(&measurements->contexts_per_function, contexts);
+		distribution_add(&measurements->semantic_states_per_function,
+		    states);
+		distribution_add_zeroes(
+		    &measurements->locks_per_semantic_state, states);
+		distribution_add_zeroes(
+		    &measurements->visibility_per_semantic_state, states);
+		memory_add(&measurements->context_bytes, contexts,
+		    sizeof (struct function_context));
+		memory_add(&measurements->semantic_state_bytes, states,
+		    sizeof (struct semantic_state));
+
+		for (context = avl_first(&function->contexts.contexts);
+		    context != NULL;
+		    context = AVL_NEXT(&function->contexts.contexts, context))
+			measure_context(measurements, context);
+	}
+	callgraph_iter_close(iterator);
+}
+
+static void
+show_distribution(FILE *stream, const char *name,
+    const struct distribution *distribution)
+{
+	(void) fprintf(stream,
+	    "distribution %s samples %zu total %zu max %zu bins "
+	    "0:%zu 1:%zu 2:%zu 3:%zu 4:%zu 5:%zu 6-8:%zu 9+:%zu\n",
+	    name, distribution->samples, distribution->total,
+	    distribution->maximum, distribution->exact[0],
+	    distribution->exact[1], distribution->exact[2],
+	    distribution->exact[3], distribution->exact[4],
+	    distribution->exact[5], distribution->six_to_eight,
+	    distribution->nine_or_more);
+}
+
+static size_t
+retained_collection_bytes(const struct analysis_measurements *measurements)
+{
+	size_t total = measurements->semantic_state_bytes;
+	size_t values[] = {
+		measurements->context_bytes,
+		measurements->point_state_bytes,
+		measurements->exit_bytes,
+		measurements->continuation_bytes,
+		measurements->provenance_edge_bytes
+	};
+	size_t index;
+
+	for (index = 0; index < sizeof (values) / sizeof (values[0]); index++) {
+		if (values[index] > SIZE_MAX - total)
+			die("retained collection memory estimate overflow");
+		total += values[index];
+	}
+	return (total);
+}
+
+static void
 show_counts(FILE *stream, const struct analysis *analysis)
 {
 	const struct analysis_counts *counts = &analysis->counts;
+	const struct analysis_measurements *measurements =
+	    &analysis->measurements;
 
 	(void) fprintf(stream, "roots %zu\n", counts->roots);
 	(void) fprintf(stream, "functions %zu\n", counts->functions);
@@ -353,6 +567,38 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	(void) fprintf(stream, "reactivations %zu\n", counts->reactivations);
 	(void) fprintf(stream, "worklist peak %zu\n",
 	    analysis->worklist.peak_length);
+	show_distribution(stream, "contexts/function",
+	    &measurements->contexts_per_function);
+	show_distribution(stream, "semantic-states/function",
+	    &measurements->semantic_states_per_function);
+	show_distribution(stream, "point-states/context",
+	    &measurements->point_states_per_context);
+	show_distribution(stream, "states/analysis-point",
+	    &measurements->states_per_analysis_point);
+	show_distribution(stream, "exits/context",
+	    &measurements->exits_per_context);
+	show_distribution(stream, "continuations/context",
+	    &measurements->continuations_per_context);
+	show_distribution(stream, "provenance-edges/context",
+	    &measurements->provenance_edges_per_context);
+	show_distribution(stream, "locks/semantic-state",
+	    &measurements->locks_per_semantic_state);
+	show_distribution(stream, "visibility/semantic-state",
+	    &measurements->visibility_per_semantic_state);
+	(void) fprintf(stream, "memory semantic-states %zu bytes\n",
+	    measurements->semantic_state_bytes);
+	(void) fprintf(stream, "memory contexts %zu bytes\n",
+	    measurements->context_bytes);
+	(void) fprintf(stream, "memory point-states %zu bytes\n",
+	    measurements->point_state_bytes);
+	(void) fprintf(stream, "memory exits %zu bytes\n",
+	    measurements->exit_bytes);
+	(void) fprintf(stream, "memory continuations %zu bytes\n",
+	    measurements->continuation_bytes);
+	(void) fprintf(stream, "memory provenance-edges %zu bytes\n",
+	    measurements->provenance_edge_bytes);
+	(void) fprintf(stream, "memory retained-collections %zu bytes\n",
+	    retained_collection_bytes(measurements));
 }
 
 void
@@ -366,5 +612,6 @@ analysis_run(FILE *stream)
 	while ((point_state =
 	    worklist_point_state_dequeue(&analysis.worklist)) != NULL)
 		process_point(&analysis, point_state);
+	measure_collections(&analysis);
 	show_counts(stream, &analysis);
 }
