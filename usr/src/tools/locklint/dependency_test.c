@@ -32,6 +32,12 @@
 static unsigned int failures;
 
 void
+provenance_edges_create(struct function_context *context)
+{
+	(void) context;
+}
+
+void
 provenance_edges_free(struct function_context *context)
 {
 	(void) context;

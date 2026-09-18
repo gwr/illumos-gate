@@ -36,6 +36,12 @@ dependency_records_free(struct function_context *context)
 }
 
 void
+provenance_edges_create(struct function_context *context)
+{
+	(void) context;
+}
+
+void
 provenance_edges_free(struct function_context *context)
 {
 	(void) context;

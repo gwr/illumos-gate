@@ -32,7 +32,6 @@ struct provenance_edge;
 
 SLIST_HEAD(context_exit_list, context_exit);
 SLIST_HEAD(continuation_list, continuation);
-SLIST_HEAD(provenance_edge_list, provenance_edge);
 
 /*
  * Semantic states are immutable after insertion.  The first implementation
@@ -66,7 +65,7 @@ struct function_context {
 	avl_tree_t point_states;
 	struct context_exit_list exits;
 	struct continuation_list continuations;
-	struct provenance_edge_list provenance_edges;
+	avl_tree_t provenance_edges;
 	unsigned int exit_generation;
 	avl_node_t by_key;
 };

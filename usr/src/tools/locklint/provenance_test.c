@@ -19,6 +19,7 @@
  */
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -42,6 +43,18 @@ check(bool condition, const char *message)
 		return;
 	(void) fprintf(stderr, "FAIL: %s\n", message);
 	failures++;
+}
+
+static int
+compare_edges(const struct provenance_edge *left,
+    const struct provenance_edge *right)
+{
+	int result;
+
+	result = AVL_PCMP(left->caller_context, right->caller_context);
+	if (result != 0)
+		return (result);
+	return (AVL_PCMP(left->call_instruction, right->call_instruction));
 }
 
 static struct function_context *
@@ -108,6 +121,21 @@ test_provenance_edges(void)
 	check(error == 0 && !existed, "record recursive provenance");
 	check(provenance_edge_count(callee) == 4,
 	    "callee records four provenance edges");
+	{
+		struct provenance_edge *edge;
+		struct provenance_edge *previous = NULL;
+		size_t count = 0;
+
+		for (edge = provenance_edge_first(callee); edge != NULL;
+		    edge = provenance_edge_next(callee, edge)) {
+			check(previous == NULL ||
+			    compare_edges(previous, edge) < 0,
+			    "enumerate provenance edges in key order");
+			previous = edge;
+			count++;
+		}
+		check(count == 4, "enumerate every provenance edge");
+	}
 
 	error = context_create(&callee_function, NULL, callee->entry_state,
 	    &same_context, &existed);

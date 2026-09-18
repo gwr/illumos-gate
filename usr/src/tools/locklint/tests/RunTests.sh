@@ -1041,8 +1041,8 @@ require_match "context calls" \
 require_match "context calls" \
     '^linear-lookup unique-insert-comparisons continuations total 3 maximum-owner 1$' \
     context-calls.out
-require_match "context calls" \
-    '^linear-lookup unique-insert-comparisons provenance-edges total 3 maximum-owner 1$' \
+reject_match "context calls" \
+    '^linear-lookup unique-insert-comparisons provenance-edges ' \
     context-calls.out
 require_match "context calls" \
     '^distribution locks/semantic-state samples 5 total 0 max 0 bins 0:5 1:0 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \

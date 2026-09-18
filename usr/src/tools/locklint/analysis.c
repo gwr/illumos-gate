@@ -91,7 +91,6 @@ struct analysis_measurements {
 	size_t continuation_bytes;
 	size_t provenance_edge_bytes;
 	size_t continuation_unique_insert_comparisons;
-	size_t provenance_unique_insert_comparisons;
 };
 
 struct analysis {
@@ -512,8 +511,6 @@ measure_context(struct analysis_measurements *measurements,
 	count = provenance_edge_count(context);
 	distribution_add(&measurements->provenance_edges_per_context, count,
 	    context->function);
-	comparison_add(&measurements->provenance_unique_insert_comparisons,
-	    count);
 	memory_add(&measurements->provenance_edge_bytes, count,
 	    sizeof (struct provenance_edge));
 }
@@ -679,11 +676,6 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	    measurements->continuation_unique_insert_comparisons,
 	    unique_insert_comparisons(
 	    measurements->continuations_per_context.maximum));
-	(void) fprintf(stream, "linear-lookup unique-insert-comparisons "
-	    "provenance-edges total %zu maximum-owner %zu\n",
-	    measurements->provenance_unique_insert_comparisons,
-	    unique_insert_comparisons(
-	    measurements->provenance_edges_per_context.maximum));
 	(void) fprintf(stream, "memory semantic-states %zu bytes\n",
 	    measurements->semantic_state_bytes);
 	(void) fprintf(stream, "memory contexts %zu bytes\n",
