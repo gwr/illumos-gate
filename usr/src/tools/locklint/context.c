@@ -73,7 +73,7 @@ compare_point_state(const void *left_arg, const void *right_arg)
 }
 
 void
-context_init(struct function_info *function)
+context_collection_create(struct function_info *function)
 {
 	struct function_context_collection *collection = &function->contexts;
 
@@ -102,7 +102,7 @@ free_point_states(struct function_context *context)
  * interned states, so contexts must be released before semantic states.
  */
 void
-context_fini(struct function_info *function)
+context_collection_free(struct function_info *function)
 {
 	struct function_context_collection *collection = &function->contexts;
 	struct function_context *context;
@@ -130,8 +130,8 @@ context_fini(struct function_info *function)
  * necessary.  Allocation failure leaves both output arguments unchanged.
  */
 int
-state_get_empty(struct function_info *function,
-    struct semantic_state **result, bool *created)
+context_empty_state_intern(struct function_info *function,
+    struct semantic_state **result, bool *existed)
 {
 	struct function_context_collection *collection = &function->contexts;
 	struct semantic_state key = { 0 };
@@ -141,7 +141,7 @@ state_get_empty(struct function_info *function,
 	state = avl_find(&collection->semantic_states, &key, &where);
 	if (state != NULL) {
 		*result = state;
-		*created = false;
+		*existed = true;
 		return (0);
 	}
 	state = calloc(1, sizeof (*state));
@@ -149,7 +149,7 @@ state_get_empty(struct function_info *function,
 		return (ENOMEM);
 	avl_insert(&collection->semantic_states, state, where);
 	*result = state;
-	*created = true;
+	*existed = false;
 	return (0);
 }
 
@@ -158,10 +158,10 @@ state_get_empty(struct function_info *function,
  * state.  Allocation failure leaves both output arguments unchanged.
  */
 int
-context_get(struct function_info *function,
+context_create(struct function_info *function,
     const struct binding_environment *bindings,
     const struct semantic_state *entry_state,
-    struct function_context **result, bool *created)
+    struct function_context **result, bool *existed)
 {
 	struct function_context_collection *collection = &function->contexts;
 	struct function_context key = {
@@ -175,7 +175,7 @@ context_get(struct function_info *function,
 	context = avl_find(&collection->contexts, &key, &where);
 	if (context != NULL) {
 		*result = context;
-		*created = false;
+		*existed = true;
 		return (0);
 	}
 	context = calloc(1, sizeof (*context));
@@ -188,7 +188,7 @@ context_get(struct function_info *function,
 	    sizeof (struct point_state), offsetof(struct point_state, by_key));
 	avl_insert(&collection->contexts, context, where);
 	*result = context;
-	*created = true;
+	*existed = false;
 	return (0);
 }
 
@@ -235,7 +235,7 @@ context_count(struct function_info *function)
 }
 
 size_t
-state_count(struct function_info *function)
+context_state_count(struct function_info *function)
 {
 	return (avl_numnodes(&function->contexts.semantic_states));
 }

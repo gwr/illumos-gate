@@ -584,7 +584,7 @@ callgraph_add(struct translation_unit *tu, struct entrypoint *ep)
 		die("out of memory registering function analysis");
 	function->info.tu = tu;
 	function->info.ep = ep;
-	context_init(&function->info);
+	context_collection_create(&function->info);
 	function->internal_linkage =
 	    (ep->name->ctype.modifiers & MOD_STATIC) != 0;
 	function->inline_implementation =
@@ -1219,7 +1219,7 @@ callgraph_cleanup(void)
 
 		avl_remove(&functions_by_entrypoint, functions);
 		avl_remove(&functions_by_identity, functions);
-		context_fini(&functions->info);
+		context_collection_free(&functions->info);
 		free(functions);
 		functions = next;
 	}

@@ -49,14 +49,14 @@ make_context(struct function_info *function)
 {
 	struct semantic_state *state = NULL;
 	struct function_context *context = NULL;
-	bool created;
+	bool existed;
 	int error;
 
-	context_init(function);
-	error = state_get_empty(function, &state, &created);
-	check(error == 0 && created, "create semantic state");
-	error = context_get(function, NULL, state, &context, &created);
-	check(error == 0 && created, "create function context");
+	context_collection_create(function);
+	error = context_empty_state_intern(function, &state, &existed);
+	check(error == 0 && !existed, "create semantic state");
+	error = context_create(function, NULL, state, &context, &existed);
+	check(error == 0 && !existed, "create function context");
 	return (context);
 }
 
@@ -78,6 +78,7 @@ test_provenance_edges(void)
 	char first_call;
 	char second_call;
 	bool created;
+	bool existed;
 	int error;
 
 	callee = make_context(&callee_function);
@@ -109,16 +110,16 @@ test_provenance_edges(void)
 	check(provenance_edge_count(callee) == 4,
 	    "callee records four provenance edges");
 
-	error = context_get(&callee_function, NULL, callee->entry_state,
-	    &same_context, &created);
-	check(error == 0 && !created, "reuse context after adding provenance");
+	error = context_create(&callee_function, NULL, callee->entry_state,
+	    &same_context, &existed);
+	check(error == 0 && existed, "reuse context after adding provenance");
 	check(same_context == callee, "provenance does not change context identity");
 	check(context_count(&callee_function) == 1,
 	    "provenance does not add semantic contexts");
 
-	context_fini(&second_function);
-	context_fini(&first_function);
-	context_fini(&callee_function);
+	context_collection_free(&second_function);
+	context_collection_free(&first_function);
+	context_collection_free(&callee_function);
 }
 
 int

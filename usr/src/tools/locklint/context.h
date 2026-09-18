@@ -88,18 +88,19 @@ struct function_context_collection {
 	avl_tree_t semantic_states;
 };
 
-void context_init(struct function_info *);
-void context_fini(struct function_info *);
+void context_collection_create(struct function_info *);
+void context_collection_free(struct function_info *);
 
-int state_get_empty(struct function_info *, struct semantic_state **, bool *);
-int context_get(struct function_info *,
+int context_empty_state_intern(struct function_info *,
+    struct semantic_state **, bool *);
+int context_create(struct function_info *,
     const struct binding_environment *, const struct semantic_state *,
     struct function_context **, bool *);
 int context_point_state_record(struct function_context *, struct analysis_point,
     const struct semantic_state *, struct point_state **, bool *);
 
 size_t context_count(struct function_info *);
-size_t state_count(struct function_info *);
+size_t context_state_count(struct function_info *);
 size_t context_point_state_count(struct function_context *);
 
 #endif /* CONTEXT_H */

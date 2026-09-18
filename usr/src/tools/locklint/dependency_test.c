@@ -72,20 +72,23 @@ test_dependency(void)
 		.block = (struct basic_block *)&second_block
 	};
 	bool created;
+	bool existed;
 	int error;
 
-	context_init(&first_function);
-	context_init(&second_function);
-	error = state_get_empty(&first_function, &first_state, &created);
-	check(error == 0 && created, "create first semantic state");
-	error = state_get_empty(&second_function, &second_state, &created);
-	check(error == 0 && created, "create second semantic state");
-	error = context_get(&first_function, NULL, first_state,
-	    &first_context, &created);
-	check(error == 0 && created, "create first context");
-	error = context_get(&second_function, NULL, second_state,
-	    &second_context, &created);
-	check(error == 0 && created, "create second context");
+	context_collection_create(&first_function);
+	context_collection_create(&second_function);
+	error = context_empty_state_intern(&first_function, &first_state,
+	    &existed);
+	check(error == 0 && !existed, "create first semantic state");
+	error = context_empty_state_intern(&second_function, &second_state,
+	    &existed);
+	check(error == 0 && !existed, "create second semantic state");
+	error = context_create(&first_function, NULL, first_state,
+	    &first_context, &existed);
+	check(error == 0 && !existed, "create first context");
+	error = context_create(&second_function, NULL, second_state,
+	    &second_context, &existed);
+	check(error == 0 && !existed, "create second context");
 
 	error = dependency_exit_publish(first_context, first_state, &first_exit,
 	    &created);
@@ -138,8 +141,8 @@ test_dependency(void)
 	check(dependency_continuation_count(first_context) == 2,
 	    "first context records two continuations");
 
-	context_fini(&second_function);
-	context_fini(&first_function);
+	context_collection_free(&second_function);
+	context_collection_free(&first_function);
 }
 
 static void
@@ -174,18 +177,20 @@ test_reactivation(void)
 	bool existed;
 	int error;
 
-	context_init(&first_function);
-	context_init(&second_function);
-	error = state_get_empty(&first_function, &first_state, &created);
-	check(error == 0 && created, "create first reactivation state");
-	error = state_get_empty(&second_function, &second_state, &created);
-	check(error == 0 && created, "create second reactivation state");
-	error = context_get(&first_function, NULL, first_state,
-	    &first_context, &created);
-	check(error == 0 && created, "create first reactivation context");
-	error = context_get(&second_function, NULL, second_state,
-	    &second_context, &created);
-	check(error == 0 && created, "create second reactivation context");
+	context_collection_create(&first_function);
+	context_collection_create(&second_function);
+	error = context_empty_state_intern(&first_function, &first_state,
+	    &existed);
+	check(error == 0 && !existed, "create first reactivation state");
+	error = context_empty_state_intern(&second_function, &second_state,
+	    &existed);
+	check(error == 0 && !existed, "create second reactivation state");
+	error = context_create(&first_function, NULL, first_state,
+	    &first_context, &existed);
+	check(error == 0 && !existed, "create first reactivation context");
+	error = context_create(&second_function, NULL, second_state,
+	    &second_context, &existed);
+	check(error == 0 && !existed, "create second reactivation context");
 
 	error = dependency_continuation_get(second_context, first_context,
 	    first_resume, first_state, NULL, &first_to_second, &created);
@@ -262,8 +267,8 @@ test_reactivation(void)
 	check(first_to_second->last_consumed_generation == 2,
 	    "duplicate mapped state advances consumption");
 
-	context_fini(&second_function);
-	context_fini(&first_function);
+	context_collection_free(&second_function);
+	context_collection_free(&first_function);
 }
 
 int
