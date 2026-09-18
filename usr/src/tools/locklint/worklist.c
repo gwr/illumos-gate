@@ -24,6 +24,14 @@
 #include "context.h"
 #include "worklist.h"
 
+void
+worklist_create(struct worklist *worklist)
+{
+	STAILQ_INIT(&worklist->point_states);
+	worklist->length = 0;
+	worklist->peak_length = 0;
+}
+
 /*
  * Add work in FIFO order unless this point state is already pending.
  */
@@ -34,12 +42,7 @@ worklist_point_state_enqueue(struct worklist *worklist,
 	if (point_state->queued)
 		return (false);
 	point_state->queued = true;
-	point_state->work_next = NULL;
-	if (worklist->tail != NULL)
-		worklist->tail->work_next = point_state;
-	else
-		worklist->head = point_state;
-	worklist->tail = point_state;
+	STAILQ_INSERT_TAIL(&worklist->point_states, point_state, work_link);
 	worklist->length++;
 	if (worklist->length > worklist->peak_length)
 		worklist->peak_length = worklist->length;
@@ -53,15 +56,13 @@ worklist_point_state_enqueue(struct worklist *worklist,
 struct point_state *
 worklist_point_state_dequeue(struct worklist *worklist)
 {
-	struct point_state *point_state = worklist->head;
+	struct point_state *point_state;
 
+	point_state = STAILQ_FIRST(&worklist->point_states);
 	if (point_state == NULL)
 		return (NULL);
-	worklist->head = point_state->work_next;
-	if (worklist->head == NULL)
-		worklist->tail = NULL;
+	STAILQ_REMOVE_HEAD(&worklist->point_states, work_link);
 	worklist->length--;
 	point_state->queued = false;
-	point_state->work_next = NULL;
 	return (point_state);
 }

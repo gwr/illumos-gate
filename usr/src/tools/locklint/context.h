@@ -81,7 +81,7 @@ struct point_state {
 	struct analysis_point point;
 	const struct semantic_state *state;
 	bool queued;
-	struct point_state *work_next;
+	STAILQ_ENTRY(point_state) work_link;
 	avl_node_t by_key;
 };
 

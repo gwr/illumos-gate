@@ -18,20 +18,23 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <sys/queue.h>
 
 struct point_state;
+
+STAILQ_HEAD(point_state_worklist, point_state);
 
 /*
  * Work is processed in FIFO order.  Point-state records may be requeued after
  * removal when a dependency publishes new information.
  */
 struct worklist {
-	struct point_state *head;
-	struct point_state *tail;
+	struct point_state_worklist point_states;
 	size_t length;
 	size_t peak_length;
 };
 
+void worklist_create(struct worklist *);
 bool worklist_point_state_enqueue(struct worklist *, struct point_state *);
 struct point_state *worklist_point_state_dequeue(struct worklist *);
 

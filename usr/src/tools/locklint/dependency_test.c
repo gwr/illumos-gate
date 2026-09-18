@@ -164,7 +164,7 @@ test_reactivation(void)
 	struct point_state *second_point;
 	struct point_state *direct_point;
 	struct point_state *unchanged_point;
-	struct worklist worklist = { 0 };
+	struct worklist worklist;
 	char first_block;
 	char second_block;
 	struct analysis_point first_resume = {
@@ -178,6 +178,7 @@ test_reactivation(void)
 
 	context_collection_create(&first_function);
 	context_collection_create(&second_function);
+	worklist_create(&worklist);
 	error = context_empty_state_intern(&first_function, &first_state,
 	    &existed);
 	check(error == 0 && !existed, "create first reactivation state");

@@ -41,8 +41,9 @@ test_worklist(void)
 {
 	struct point_state first = { 0 };
 	struct point_state second = { 0 };
-	struct worklist worklist = { 0 };
+	struct worklist worklist;
 
+	worklist_create(&worklist);
 	check(worklist_point_state_enqueue(&worklist, &first),
 	    "enqueue first point state");
 	check(!worklist_point_state_enqueue(&worklist, &first),
