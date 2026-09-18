@@ -1033,6 +1033,18 @@ require_match "context calls" \
     '^distribution provenance-edges/context samples 5 total 7 max 2 bins 0:1 1:1 2:3 3:0 4:0 5:0 6-8:0 9+:0$' \
     context-calls.out
 require_match "context calls" \
+    '^maximum continuations/context 2 function leaf tu=context-calls.c$' \
+    context-calls.out
+require_match "context calls" \
+    '^maximum provenance-edges/context 2 function leaf tu=context-calls.c$' \
+    context-calls.out
+require_match "context calls" \
+    '^linear-lookup unique-insert-comparisons continuations total 3 maximum-owner 1$' \
+    context-calls.out
+require_match "context calls" \
+    '^linear-lookup unique-insert-comparisons provenance-edges total 3 maximum-owner 1$' \
+    context-calls.out
+require_match "context calls" \
     '^distribution locks/semantic-state samples 5 total 0 max 0 bins 0:5 1:0 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
     context-calls.out
 require_match "context calls" \

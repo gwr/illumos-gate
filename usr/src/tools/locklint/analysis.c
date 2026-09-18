@@ -32,9 +32,11 @@
 #include "context.h"
 #include "dependency.h"
 #include "function_info.h"
+#include "identity.h"
 #include "lib.h"
 #include "linearize.h"
 #include "provenance.h"
+#include "symbol.h"
 #include "worklist.h"
 
 #define	DISTRIBUTION_EXACT_MAX	5
@@ -69,6 +71,7 @@ struct distribution {
 	size_t exact[DISTRIBUTION_EXACT_MAX + 1];
 	size_t six_to_eight;
 	size_t nine_or_more;
+	const struct function_info *maximum_owner;
 };
 
 struct analysis_measurements {
@@ -87,6 +90,8 @@ struct analysis_measurements {
 	size_t exit_bytes;
 	size_t continuation_bytes;
 	size_t provenance_edge_bytes;
+	size_t continuation_unique_insert_comparisons;
+	size_t provenance_unique_insert_comparisons;
 };
 
 struct analysis {
@@ -367,15 +372,20 @@ seed_roots(struct analysis *analysis)
 }
 
 static void
-distribution_add(struct distribution *distribution, size_t count)
+distribution_add(struct distribution *distribution, size_t count,
+    const struct function_info *owner)
 {
+	bool first = distribution->samples == 0;
+
 	if (distribution->samples == SIZE_MAX ||
 	    count > SIZE_MAX - distribution->total)
 		die("analysis distribution counter overflow");
 	distribution->samples++;
 	distribution->total += count;
-	if (count > distribution->maximum)
+	if (first || count > distribution->maximum) {
 		distribution->maximum = count;
+		distribution->maximum_owner = owner;
+	}
 	if (count <= DISTRIBUTION_EXACT_MAX)
 		distribution->exact[count]++;
 	else if (count <= 8)
@@ -402,6 +412,41 @@ memory_add(size_t *total, size_t count, size_t size)
 	*total += count * size;
 }
 
+/*
+ * A successful insertion into an n-element SLIST compares against every
+ * existing element.  Summing 0 through n - 1 gives the exact comparison count
+ * for the retained unique records, excluding any unsuccessful duplicate
+ * insertion attempts.
+ */
+static size_t
+unique_insert_comparisons(size_t count)
+{
+	size_t left;
+	size_t right;
+
+	if (count < 2)
+		return (0);
+	left = count;
+	right = count - 1;
+	if ((left & 1) == 0)
+		left /= 2;
+	else
+		right /= 2;
+	if (left > SIZE_MAX / right)
+		die("linear lookup comparison estimate overflow");
+	return (left * right);
+}
+
+static void
+comparison_add(size_t *total, size_t count)
+{
+	size_t comparisons = unique_insert_comparisons(count);
+
+	if (comparisons > SIZE_MAX - *total)
+		die("linear lookup comparison estimate overflow");
+	*total += comparisons;
+}
+
 static bool
 same_analysis_point(const struct point_state *left,
     const struct point_state *right)
@@ -419,7 +464,8 @@ measure_point_states(struct analysis_measurements *measurements,
 	size_t states_at_point = 0;
 	size_t point_states = context_point_state_count(context);
 
-	distribution_add(&measurements->point_states_per_context, point_states);
+	distribution_add(&measurements->point_states_per_context, point_states,
+	    context->function);
 	memory_add(&measurements->point_state_bytes, point_states,
 	    sizeof (struct point_state));
 	for (point_state = avl_first(&context->point_states);
@@ -429,7 +475,7 @@ measure_point_states(struct analysis_measurements *measurements,
 		    !same_analysis_point(previous, point_state)) {
 			distribution_add(
 			    &measurements->states_per_analysis_point,
-			    states_at_point);
+			    states_at_point, context->function);
 			states_at_point = 0;
 		}
 		states_at_point++;
@@ -437,7 +483,7 @@ measure_point_states(struct analysis_measurements *measurements,
 	}
 	if (states_at_point != 0) {
 		distribution_add(&measurements->states_per_analysis_point,
-		    states_at_point);
+		    states_at_point, context->function);
 	}
 }
 
@@ -450,17 +496,24 @@ measure_context(struct analysis_measurements *measurements,
 	measure_point_states(measurements, context);
 
 	count = dependency_exit_count(context);
-	distribution_add(&measurements->exits_per_context, count);
+	distribution_add(&measurements->exits_per_context, count,
+	    context->function);
 	memory_add(&measurements->exit_bytes, count,
 	    sizeof (struct context_exit));
 
 	count = dependency_continuation_count(context);
-	distribution_add(&measurements->continuations_per_context, count);
+	distribution_add(&measurements->continuations_per_context, count,
+	    context->function);
+	comparison_add(&measurements->continuation_unique_insert_comparisons,
+	    count);
 	memory_add(&measurements->continuation_bytes, count,
 	    sizeof (struct continuation));
 
 	count = provenance_edge_count(context);
-	distribution_add(&measurements->provenance_edges_per_context, count);
+	distribution_add(&measurements->provenance_edges_per_context, count,
+	    context->function);
+	comparison_add(&measurements->provenance_unique_insert_comparisons,
+	    count);
 	memory_add(&measurements->provenance_edge_bytes, count,
 	    sizeof (struct provenance_edge));
 }
@@ -486,9 +539,10 @@ measure_collections(struct analysis *analysis)
 		size_t contexts = context_count(function);
 		size_t states = context_state_count(function);
 
-		distribution_add(&measurements->contexts_per_function, contexts);
+		distribution_add(&measurements->contexts_per_function, contexts,
+		    function);
 		distribution_add(&measurements->semantic_states_per_function,
-		    states);
+		    states, function);
 		distribution_add_zeroes(
 		    &measurements->locks_per_semantic_state, states);
 		distribution_add_zeroes(
@@ -519,6 +573,27 @@ show_distribution(FILE *stream, const char *name,
 	    distribution->exact[3], distribution->exact[4],
 	    distribution->exact[5], distribution->six_to_eight,
 	    distribution->nine_or_more);
+}
+
+static const char *
+function_name(const struct function_info *function)
+{
+	struct ident *ident = function->ep->name->ident;
+
+	return (ident != NULL ? show_ident(ident) : "<anonymous>");
+}
+
+static void
+show_maximum_owner(FILE *stream, const char *name,
+    const struct distribution *distribution)
+{
+	const struct function_info *owner = distribution->maximum_owner;
+
+	if (owner == NULL)
+		return;
+	(void) fprintf(stream, "maximum %s %zu function %s tu=%s\n",
+	    name, distribution->maximum, function_name(owner),
+	    locklint_translation_unit_file(owner->tu));
 }
 
 static size_t
@@ -585,6 +660,30 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	    &measurements->locks_per_semantic_state);
 	show_distribution(stream, "visibility/semantic-state",
 	    &measurements->visibility_per_semantic_state);
+	show_maximum_owner(stream, "contexts/function",
+	    &measurements->contexts_per_function);
+	show_maximum_owner(stream, "semantic-states/function",
+	    &measurements->semantic_states_per_function);
+	show_maximum_owner(stream, "point-states/context",
+	    &measurements->point_states_per_context);
+	show_maximum_owner(stream, "states/analysis-point",
+	    &measurements->states_per_analysis_point);
+	show_maximum_owner(stream, "exits/context",
+	    &measurements->exits_per_context);
+	show_maximum_owner(stream, "continuations/context",
+	    &measurements->continuations_per_context);
+	show_maximum_owner(stream, "provenance-edges/context",
+	    &measurements->provenance_edges_per_context);
+	(void) fprintf(stream, "linear-lookup unique-insert-comparisons "
+	    "continuations total %zu maximum-owner %zu\n",
+	    measurements->continuation_unique_insert_comparisons,
+	    unique_insert_comparisons(
+	    measurements->continuations_per_context.maximum));
+	(void) fprintf(stream, "linear-lookup unique-insert-comparisons "
+	    "provenance-edges total %zu maximum-owner %zu\n",
+	    measurements->provenance_unique_insert_comparisons,
+	    unique_insert_comparisons(
+	    measurements->provenance_edges_per_context.maximum));
 	(void) fprintf(stream, "memory semantic-states %zu bytes\n",
 	    measurements->semantic_state_bytes);
 	(void) fprintf(stream, "memory contexts %zu bytes\n",
