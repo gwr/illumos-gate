@@ -993,6 +993,7 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 	struct point_state *point_state;
 	size_t unprotected = 0;
 	size_t protected = 0;
+	size_t conditional = 0;
 	bool composed;
 	bool existed;
 	int error;
@@ -1015,13 +1016,23 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 	for (point_state = data->first; point_state != NULL &&
 	    same_analysis_point(data->first, point_state);
 	    point_state = AVL_NEXT(&data->context->point_states, point_state)) {
+		struct competition_interval competition =
+		    context_state_competition(point_state->state);
+
 		if ((context_state_lock_modes(point_state->state, identity) &
-		    LOCKLINT_MODE_MUTEX) != 0)
+		    LOCKLINT_MODE_MUTEX) != 0 ||
+		    (!competition.maximum_unbounded &&
+		    competition.maximum <= 0)) {
 			protected++;
-		else
+		} else if (competition.entry_condition ||
+		    (!competition.minimum_unbounded &&
+		    competition.minimum > 0)) {
 			unprotected++;
+		} else {
+			conditional++;
+		}
 	}
-	if (unprotected != 0) {
+	if (unprotected != 0 || conditional != 0) {
 		struct protected_access_finding lookup = {
 			.instruction = data->instruction,
 			.path = access->path
@@ -1040,7 +1051,7 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 			finding->protector = protector;
 			avl_insert(data->findings, finding, where);
 		}
-		if (protected == 0)
+		if (unprotected != 0 && protected == 0 && conditional == 0)
 			finding->unprotected = true;
 		else
 			finding->conditional = true;

@@ -83,6 +83,7 @@ different_branch_depth(int value, int first)
 	competition_object.protected = value;
 }
 
+#ifndef COMPETITION_ACCESS_ONLY
 static void
 unmatched_leaves(int value)
 {
@@ -90,6 +91,7 @@ unmatched_leaves(int value)
 	_NOTE(NO_COMPETING_THREADS_NOW)
 	competition_object.protected = value;
 }
+#endif
 
 static void
 growing_loop(int value, int repeat)
@@ -113,6 +115,7 @@ definitely_competing_loop(int value, int repeat)
 	competition_object.protected = value;
 }
 
+#ifndef COMPETITION_ACCESS_ONLY
 static void
 read_only_depth(int value)
 {
@@ -138,6 +141,7 @@ underflow_recovery(int value)
 	_NOTE(COMPETING_THREADS_NOW)
 	competition_object.protected = value;
 }
+#endif
 
 static void
 decreasing_loop(int value, int repeat)
@@ -150,6 +154,7 @@ decreasing_loop(int value, int repeat)
 	competition_object.protected = value;
 }
 
+#ifndef COMPETITION_ACCESS_ONLY
 static void
 absolute_refinement(int value, int repeat)
 {
@@ -166,3 +171,4 @@ absolute_refinement(int value, int repeat)
 	_NOTE(NO_COMPETING_THREADS)
 	competition_object.protected = value;
 }
+#endif

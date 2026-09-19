@@ -456,6 +456,24 @@ require_match "competition semantic states" \
 require_match "competition point states" \
     '^point-states created 172 reused 5$' competition-depth-contexts.out
 
+run_capture "competition protected accesses" competition-accesses.out \
+    "$LOCKLINT" -DCOMPETITION_ACCESS_ONLY --check-locks competition-depth.c
+for location in 50 52 54 70 83 115
+do
+	require_match "definite competing access" \
+	    "competition-depth.c:$location:27: warning: locklint: protected member 'protected' modified without holding 'lock' \\[unprotected-access\\]" \
+	    competition-accesses.out
+done
+for location in 104 154
+do
+	require_match "conditional competing access" \
+	    "competition-depth.c:$location:27: warning: locklint: protection for member 'protected' is not established on every path \\[conditional-protection\\]" \
+	    competition-accesses.out
+done
+if [ "$(grep -c 'warning:' competition-accesses.out)" -ne 8 ]; then
+	fail "competition protected accesses: expected exactly eight warnings"
+fi
+
 # Verify the initial call-graph audit: direct call classification, function
 # identity across translation units, and exact function-pointer escapes.
 #
