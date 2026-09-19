@@ -83,6 +83,15 @@ downgrade_unheld(struct downgrade_state *state)
 	rw_exit(&state->lock);
 }
 
+static void
+downgrade_conditional(struct downgrade_state *state, int take_writer)
+{
+	if (take_writer)
+		rw_enter(&state->lock, RW_WRITER);
+	rw_downgrade(&state->lock);
+	rw_exit(&state->lock);
+}
+
 static int
 downgrade_wrapped(struct downgrade_state *state)
 {

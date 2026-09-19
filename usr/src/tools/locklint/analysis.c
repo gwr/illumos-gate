@@ -523,13 +523,16 @@ apply_lock_event(struct analysis *analysis, struct point_state *point_state)
 	else
 		analysis->counts.lock_identities_created++;
 	if (action != LOCKLINT_LOCK_ACQUIRE &&
-	    action != LOCKLINT_LOCK_RELEASE) {
+	    action != LOCKLINT_LOCK_RELEASE &&
+	    action != LOCKLINT_LOCK_DOWNGRADE) {
 		analysis->counts.lock_transitions_deferred++;
 		return (point_state->state);
 	}
 	error = context_state_set_lock(point_state->context->function,
 	    point_state->state, identity,
-	    action == LOCKLINT_LOCK_ACQUIRE ? mode : 0, &state, &existed);
+	    action == LOCKLINT_LOCK_ACQUIRE ? mode :
+	    action == LOCKLINT_LOCK_DOWNGRADE ? LOCKLINT_MODE_READER : 0,
+	    &state, &existed);
 	if (error != 0)
 		die("cannot apply lock event: %s", strerror(error));
 	record_semantic_state(analysis, existed);
@@ -1214,6 +1217,7 @@ diagnose_lock_transition(struct analysis *analysis,
 	enum locklint_lock_action action;
 	enum locklint_lock_mode mode;
 	size_t invalid = 0;
+	size_t uncertain = 0;
 	size_t valid = 0;
 	bool composed;
 	bool existed;
@@ -1222,7 +1226,8 @@ diagnose_lock_transition(struct analysis *analysis,
 	action = locklint_get_lock_action(context->function->tu, insn, &access,
 	    &mode);
 	if ((action == LOCKLINT_LOCK_ACQUIRE ||
-	    action == LOCKLINT_LOCK_RELEASE) && access.root != NULL) {
+	    action == LOCKLINT_LOCK_RELEASE ||
+	    action == LOCKLINT_LOCK_DOWNGRADE) && access.root != NULL) {
 		error = context_access_identity(analysis, context, &access,
 		    &identity, &existed, &composed);
 		if (error != 0)
@@ -1237,22 +1242,44 @@ diagnose_lock_transition(struct analysis *analysis,
 		unsigned int current_modes;
 
 		if ((action != LOCKLINT_LOCK_ACQUIRE &&
-		    action != LOCKLINT_LOCK_RELEASE) || access.root == NULL)
+		    action != LOCKLINT_LOCK_RELEASE &&
+		    action != LOCKLINT_LOCK_DOWNGRADE) ||
+		    access.root == NULL)
 			continue;
 		current_modes = context_state_lock_modes(point_state->state,
 		    identity);
-		if ((action == LOCKLINT_LOCK_ACQUIRE && current_modes != 0) ||
-		    (action == LOCKLINT_LOCK_RELEASE && current_modes == 0))
-			invalid++;
-		else
+		if (action == LOCKLINT_LOCK_DOWNGRADE &&
+		    current_modes == LOCKLINT_MODE_WRITER) {
 			valid++;
+		} else if (action == LOCKLINT_LOCK_DOWNGRADE &&
+		    (current_modes & LOCKLINT_MODE_WRITER) != 0) {
+			uncertain++;
+		} else if ((action == LOCKLINT_LOCK_ACQUIRE &&
+		    current_modes != 0) ||
+		    (action == LOCKLINT_LOCK_RELEASE && current_modes == 0) ||
+		    action == LOCKLINT_LOCK_DOWNGRADE) {
+			invalid++;
+		} else {
+			valid++;
+		}
 	}
-	if (invalid != 0) {
+	if (invalid != 0 || uncertain != 0) {
 		char *name = locklint_access_name(&access);
 		struct position pos = insn->call_expr != NULL ?
 		    insn->call_expr->pos : insn->pos;
 
-		if (action == LOCKLINT_LOCK_ACQUIRE) {
+		if (action == LOCKLINT_LOCK_DOWNGRADE) {
+			if (valid == 0 && uncertain == 0) {
+				locklint_warning(
+				    LOCKLINT_DIAG_LOCK_NOT_WRITE_HELD, pos,
+				    "lock '%s' is not write-held", name);
+			} else {
+				locklint_warning(
+				    LOCKLINT_DIAG_LOCK_MAYBE_NOT_WRITE_HELD,
+				    pos, "lock '%s' may not be write-held",
+				    name);
+			}
+		} else if (action == LOCKLINT_LOCK_ACQUIRE) {
 			if (valid == 0) {
 				locklint_warning(
 				    LOCKLINT_DIAG_LOCK_ALREADY_HELD, pos,

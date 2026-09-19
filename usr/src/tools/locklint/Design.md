@@ -1213,6 +1213,14 @@ acquire and release validity continues to use the same mode-bearing entry:
 any held mode makes another acquisition invalid, and any held mode permits a
 release.
 
+`rw_downgrade()` requires writer-held input and changes the exact output state
+to reader-held.  Reader-held or unheld input is a definite violation; a mix
+of valid and invalid inputs is conditional.  The post-operation reader state
+is retained even after an invalid input so later access and release checks do
+not cascade from the same precondition failure.  Because resolved calls carry
+exact lock modes, the same transition applies through wrappers without a
+separate summary.
+
 Visibility changes need no factored transfer summary for resolved
 same-translation-unit calls.  The callee receives the caller's complete
 immutable visibility set, updates exact regions in its bound context, and

@@ -567,6 +567,11 @@ run_capture "kernel rwlock call state" rwlock-calls-core-kernel.out \
 compare "kernel rwlock call state" rwlock-calls-core.ref \
     rwlock-calls-core-kernel.out
 
+run_capture "rwlock downgrade state" rwlock-downgrade.out \
+    "$LOCKLINT" --check-locks rwlock-downgrade.c
+compare "rwlock downgrade state" rwlock-downgrade.ref \
+    rwlock-downgrade.out
+
 run_capture "competition protected accesses" competition-accesses.out \
     "$LOCKLINT" -DCOMPETITION_ACCESS_ONLY --check-locks competition-depth.c
 for location in 50 52 54 70 83 115

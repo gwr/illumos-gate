@@ -1,6 +1,7 @@
-../locklint: rwlock-downgrade.c:66: warning: locklint: protected member 'value' modified without write-holding 'lock' [unprotected-access]
-../locklint: rwlock-downgrade.c:63: locklint: required lock 'lock' acquired here is read-held; write-holding is required at this protected access
-../locklint: rwlock-downgrade.c:75: warning: locklint: lock 'lock' is not write-held [lock-not-write-held]
-../locklint: rwlock-downgrade.c:82: warning: locklint: lock 'lock' is not write-held [lock-not-write-held]
-../locklint: rwlock-downgrade.c:94: warning: locklint: protected member 'value' modified without write-holding 'lock' [unprotected-access]
-../locklint: rwlock-downgrade.c:91: locklint: required lock 'lock' acquired here is read-held; write-holding is required at this protected access
+../locklint: rwlock-downgrade.c:75:21: warning: locklint: lock 'lock' is not write-held [lock-not-write-held]
+../locklint: rwlock-downgrade.c:82:21: warning: locklint: lock 'lock' is not write-held [lock-not-write-held]
+../locklint: rwlock-downgrade.c:91:21: warning: locklint: lock 'lock' may not be write-held [lock-maybe-not-write-held]
+../locklint: rwlock-downgrade.c:66:14: warning: locklint: protected member 'value' modified without write-holding 'lock' [unprotected-access]
+../locklint: rwlock-downgrade.c:66:14: locklint: required lock 'lock' is read-held; write-holding is required at this protected access
+../locklint: rwlock-downgrade.c:103:14: warning: locklint: protected member 'value' modified without write-holding 'lock' [unprotected-access]
+../locklint: rwlock-downgrade.c:103:14: locklint: required lock 'lock' is read-held; write-holding is required at this protected access
