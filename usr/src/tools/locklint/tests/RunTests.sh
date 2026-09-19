@@ -465,6 +465,32 @@ require_match "visibility entries per set baseline" \
     '^distribution visibility-entries/set samples 10 total 0 max 0 bins 0:10 1:0 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
     competition-depth-contexts.out
 
+#
+# Verify whole-object and member visibility updates, comma-separated targets,
+# branch-specific states, explicit visible overrides, and invalid operands.
+#
+run_capture "visibility context transitions" visibility-contexts.out \
+    "$LOCKLINT" --dump-contexts visibility.c
+require_match "visibility transition counts" \
+    '^visibility-transitions applied 25 deferred 2 unresolved 1$' \
+    visibility-contexts.out
+require_match "visibility canonical sets" \
+    '^visibility-sets created 52 reused 11 retained 52$' \
+    visibility-contexts.out
+require_match "visibility sets per function" \
+    '^distribution visibility-sets/function samples 26 total 52 max 5 bins 0:0 1:11 2:6 3:8 4:0 5:1 6-8:0 9+:0$' \
+    visibility-contexts.out
+require_match "visibility entries per set" \
+    '^distribution visibility-entries/set samples 52 total 31 max 2 bins 0:26 1:21 2:5 3:0 4:0 5:0 6-8:0 9+:0$' \
+    visibility-contexts.out
+require_match "invalid visibility operand" \
+    "visibility.c:151:9: warning: locklint: visibility annotation has no object \\[visibility-no-object\\]" \
+    visibility-contexts.out
+if [ "$(grep -c '\[visibility-no-object\]' visibility-contexts.out)" \
+    -ne 1 ]; then
+	fail "visibility context transitions: expected exactly one warning"
+fi
+
 run_capture "competition protected accesses" competition-accesses.out \
     "$LOCKLINT" -DCOMPETITION_ACCESS_ONLY --check-locks competition-depth.c
 for location in 50 52 54 70 83 115

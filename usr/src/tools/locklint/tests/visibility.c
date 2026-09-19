@@ -146,9 +146,9 @@ visibility_merge_agreement(struct visibility_state *state, int value,
 }
 
 static void
-visibility_invalid(void)
+visibility_invalid(struct visibility_state *state)
 {
-	_NOTE(NOW_INVISIBLE_TO_OTHER_THREADS(1))
+	_NOTE(NOW_INVISIBLE_TO_OTHER_THREADS(state->protected, 1))
 }
 
 static void
@@ -287,4 +287,13 @@ static void
 assuming_invalid(void)
 {
 	_NOTE(ASSUMING_PROTECTED(1))
+}
+
+static void
+visibility_redundant(struct visibility_state *state)
+{
+	_NOTE(NOW_INVISIBLE_TO_OTHER_THREADS(state->protected))
+	_NOTE(NOW_INVISIBLE_TO_OTHER_THREADS(state->protected))
+	_NOTE(NOW_VISIBLE_TO_OTHER_THREADS(state->protected))
+	_NOTE(NOW_VISIBLE_TO_OTHER_THREADS(state->protected))
 }

@@ -21,6 +21,7 @@
 
 struct locklint_access;
 struct entrypoint;
+struct expression;
 struct instruction;
 struct position;
 struct symbol;
@@ -79,6 +80,8 @@ enum locklint_command_result {
 typedef void (*locklint_order_edge_f)(const struct locklint_access *,
     const char *, const struct locklint_access *, const char *,
     const struct position *, void *);
+typedef void (*locklint_visibility_target_f)(const struct locklint_access *,
+    const struct expression *, void *);
 
 void locklint_annotations_enable(void);
 void locklint_register_command_names(struct symbol_list *);
@@ -93,6 +96,8 @@ bool locklint_data_policy(const struct locklint_access *,
 void locklint_for_each_order_edge(locklint_order_edge_f, void *);
 enum locklint_execution_kind locklint_get_execution_annotation(
     const struct instruction *);
+bool locklint_for_each_visibility_target(struct translation_unit *,
+    const struct instruction *, locklint_visibility_target_f, void *);
 bool locklint_get_declared_lock_effect(struct translation_unit *,
     const struct instruction *, enum locklint_declared_lock_effect *,
     struct locklint_access *);

@@ -75,6 +75,9 @@ struct analysis_counts {
 	size_t lock_identities_unresolved;
 	size_t lock_transitions_applied;
 	size_t lock_transitions_deferred;
+	size_t visibility_transitions_applied;
+	size_t visibility_transitions_deferred;
+	size_t visibility_transitions_unresolved;
 	size_t competition_transitions_applied;
 	size_t competition_backedges_widened;
 	size_t competition_backedges_covered;
@@ -250,6 +253,84 @@ apply_competition_event(struct analysis *analysis,
 	record_semantic_state(analysis, existed);
 	analysis->counts.competition_transitions_applied++;
 	return (state);
+}
+
+struct visibility_transition {
+	struct analysis *analysis;
+	struct point_state *point_state;
+	const struct semantic_state *state;
+	enum semantic_visibility visibility;
+};
+
+/*
+ * Translate one source operand through the active caller bindings and apply
+ * it immediately.  Visibility sets are expected to contain zero to four
+ * entries, so the context layer's sorted flat-array copy is cheaper than
+ * building an auxiliary indexed collection for a marker's operands.
+ */
+static void
+apply_visibility_target(const struct locklint_access *access,
+    const struct expression *expr, void *data_arg)
+{
+	struct visibility_transition *data = data_arg;
+	struct lock_identity *identity;
+	struct semantic_state *state;
+	bool composed;
+	bool existed;
+	int error;
+
+	(void) expr;
+	if (access == NULL) {
+		data->analysis->counts.visibility_transitions_unresolved++;
+		return;
+	}
+	error = context_access_identity(data->analysis,
+	    data->point_state->context, access, &identity, &existed, &composed);
+	if (error != 0)
+		die("cannot identify visibility target: %s", strerror(error));
+	if (composed)
+		data->analysis->counts.binding_identities_composed++;
+	if (existed)
+		data->analysis->counts.lock_identities_reused++;
+	else
+		data->analysis->counts.lock_identities_created++;
+	error = context_state_set_visibility(
+	    data->point_state->context->function, data->state, identity,
+	    data->visibility, &state, &existed);
+	if (error != 0)
+		die("cannot apply visibility transition: %s", strerror(error));
+	record_semantic_state(data->analysis, existed);
+	if (state == data->state)
+		data->analysis->counts.visibility_transitions_deferred++;
+	else
+		data->analysis->counts.visibility_transitions_applied++;
+	data->state = state;
+}
+
+static const struct semantic_state *
+apply_visibility_event(struct analysis *analysis,
+    struct point_state *point_state)
+{
+	enum locklint_execution_kind kind;
+	struct visibility_transition transition = {
+		.analysis = analysis,
+		.point_state = point_state,
+		.state = apply_competition_event(analysis, point_state)
+	};
+
+	kind = locklint_get_execution_annotation(
+	    point_state->point.next_instruction);
+	if (kind == LOCKLINT_EXECUTION_INVISIBLE)
+		transition.visibility = SEMANTIC_VISIBILITY_INVISIBLE;
+	else if (kind == LOCKLINT_EXECUTION_VISIBLE)
+		transition.visibility = SEMANTIC_VISIBILITY_VISIBLE;
+	else
+		return (transition.state);
+	(void) locklint_for_each_visibility_target(
+	    point_state->context->function->tu,
+	    point_state->point.next_instruction, apply_visibility_target,
+	    &transition);
+	return (transition.state);
 }
 
 struct exit_mapping {
@@ -723,7 +804,7 @@ process_point(struct analysis *analysis, struct point_state *point_state)
 		}
 		record_point(analysis, point_state->context, point.block,
 		    next_live_instruction(point.block, point.next_instruction),
-		    apply_competition_event(analysis, point_state), false);
+		    apply_visibility_event(analysis, point_state), false);
 		return;
 	}
 
@@ -1824,6 +1905,11 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	(void) fprintf(stream, "lock-transitions applied %zu deferred %zu\n",
 	    counts->lock_transitions_applied,
 	    counts->lock_transitions_deferred);
+	(void) fprintf(stream,
+	    "visibility-transitions applied %zu deferred %zu unresolved %zu\n",
+	    counts->visibility_transitions_applied,
+	    counts->visibility_transitions_deferred,
+	    counts->visibility_transitions_unresolved);
 	(void) fprintf(stream,
 	    "competition-transitions applied %zu backedges-widened %zu "
 	    "backedges-covered %zu\n",

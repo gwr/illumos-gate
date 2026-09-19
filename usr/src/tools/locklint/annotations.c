@@ -25,9 +25,11 @@
 #include "lib.h"
 #include "access.h"
 #include "annotations.h"
+#include "diagnostics.h"
 #include "expression.h"
 #include "identity.h"
 #include "linearize.h"
+#include "lock_identity.h"
 #include "parse.h"
 #include "scope.h"
 #include "symbol.h"
@@ -1618,6 +1620,47 @@ locklint_get_execution_annotation(const struct instruction *insn)
 	}
 }
 
+/*
+ * Visit the source operands of one visibility marker in left-to-right order.
+ * Sparse represents a variadic annotation argument list as a comma-expression
+ * tree, so flattening that tree avoids both silently dropping later targets
+ * and allocating a normally tiny temporary vector.
+ */
+static void
+for_each_visibility_operand(struct translation_unit *tu,
+    struct expression *expr, locklint_visibility_target_f callback, void *data)
+{
+	struct locklint_access access;
+	struct lock_identity_key key;
+	enum lock_analysis_object_type object_type;
+
+	if (expr != NULL && expr->type == EXPR_COMMA) {
+		for_each_visibility_operand(tu, expr->left, callback, data);
+		for_each_visibility_operand(tu, expr->right, callback, data);
+		return;
+	}
+	if (expr != NULL && locklint_get_access(tu, expr, &access) &&
+	    lock_identity_key_from_access(&access, &key, &object_type) == 0)
+		callback(&access, expr, data);
+	else
+		callback(NULL, expr, data);
+}
+
+bool
+locklint_for_each_visibility_target(struct translation_unit *tu,
+    const struct instruction *insn, locklint_visibility_target_f callback,
+    void *data)
+{
+	enum locklint_execution_kind kind =
+	    locklint_get_execution_annotation(insn);
+
+	if (kind != LOCKLINT_EXECUTION_INVISIBLE &&
+	    kind != LOCKLINT_EXECUTION_VISIBLE)
+		return (false);
+	for_each_visibility_operand(tu, insn->context_expr, callback, data);
+	return (true);
+}
+
 static const char *
 declared_lock_effect_name(enum locklint_declared_lock_effect effect)
 {
@@ -1674,6 +1717,19 @@ locklint_get_declared_lock_effect(struct translation_unit *tu,
 	    locklint_get_access(tu, insn->context_expr, lock));
 }
 
+static void
+diagnose_visibility_target(const struct locklint_access *access,
+    const struct expression *expr, void *data)
+{
+	const struct instruction *insn = data;
+
+	(void) expr;
+	if (access != NULL)
+		return;
+	locklint_warning(LOCKLINT_DIAG_VISIBILITY_NO_OBJECT,
+	    insn->pos, "visibility annotation has no object");
+}
+
 void
 locklint_process_function_annotations(FILE *stream,
     struct translation_unit *tu, struct entrypoint *ep)
@@ -1694,6 +1750,9 @@ locklint_process_function_annotations(FILE *stream,
 			bool resolved;
 
 			if (insn->bb == NULL)
+				continue;
+			if (locklint_for_each_visibility_target(tu, insn,
+			    diagnose_visibility_target, insn))
 				continue;
 			resolved = locklint_get_declared_lock_effect(tu, insn,
 			    &effect, &lock);
