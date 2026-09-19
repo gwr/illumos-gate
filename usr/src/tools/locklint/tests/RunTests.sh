@@ -678,6 +678,27 @@ if [ "$(grep -c 'warning:' calls-basic-diagnostics.out)" -ne 5 ]; then
 fi
 
 #
+# Verify exact computed object identities for common alias forms.
+#
+run_capture "computed object alias diagnostics" identity-aliases-diagnostics.out \
+    "$LOCKLINT" --check-locks identity-aliases.c
+require_match "different copied pointer" \
+    "identity-aliases.c:83:22: warning: locklint: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
+    identity-aliases-diagnostics.out
+require_match "different constant array element" \
+    "identity-aliases.c:115:26: warning: locklint: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
+    identity-aliases-diagnostics.out
+require_match "different symbolic array element" \
+    "identity-aliases.c:138:31: warning: locklint: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
+    identity-aliases-diagnostics.out
+require_match "different recovered container" \
+    "identity-aliases.c:173:22: warning: locklint: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
+    identity-aliases-diagnostics.out
+if [ "$(grep -c 'warning:' identity-aliases-diagnostics.out)" -ne 4 ]; then
+	fail "computed object alias diagnostics: expected exactly four warnings"
+fi
+
+#
 # Verify NOT_REACHED removes terminated paths from lock-state merges.
 #
 run_capture "not reached diagnostics" not-reached-diagnostics.out \
