@@ -699,6 +699,25 @@ if [ "$(grep -c 'warning:' identity-aliases-diagnostics.out)" -ne 4 ]; then
 fi
 
 #
+# Verify formal-to-actual identity for same and different caller objects.
+#
+run_capture "same formal actual identities" identity-formals-same.out \
+    "$LOCKLINT" --check-locks identity-formals.c
+require_empty "same formal actual identities" identity-formals-same.out
+
+run_capture "different formal actual identities" identity-formals-different.out \
+    "$LOCKLINT" -DFORMAL_ALIAS_DIFFERENT --check-locks identity-formals.c
+require_match "different direct and wrapped formal actual" \
+    "identity-formals.c:57:21: warning: locklint: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
+    identity-formals-different.out
+require_match "different independent formal actual" \
+    "identity-formals.c:90:22: warning: locklint: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
+    identity-formals-different.out
+if [ "$(grep -c 'warning:' identity-formals-different.out)" -ne 2 ]; then
+	fail "different formal actual identities: expected exactly two warnings"
+fi
+
+#
 # Verify NOT_REACHED removes terminated paths from lock-state merges.
 #
 run_capture "not reached diagnostics" not-reached-diagnostics.out \
