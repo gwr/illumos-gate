@@ -140,6 +140,16 @@ run_capture "events" events.out "$LOCKLINT" --dump-events events.c
 compare "events" events.ref events.out
 
 #
+# Verify real lock events resolve repeated formal-member accesses to one
+# canonical identity before lock-state transitions are enabled.
+#
+run_capture "event lock identities" event-lock-identities.out \
+    "$LOCKLINT" --dump-contexts events.c
+require_match "event lock identities" \
+    '^lock-identities created 1 reused 1 unresolved 0 retained 1$' \
+    event-lock-identities.out
+
+#
 # Verify preprocessing-time annotation capture and initial name resolution.
 #
 run_capture "annotations" annotations.out \
@@ -519,7 +529,9 @@ require_match "context counting" '^continuations created 1 reused 0$' \
 require_match "context counting" '^provenance-edges created 1 reused 0$' \
     context-counting.out
 require_match "context counting" '^reactivations 1$' context-counting.out
-require_match "context counting" '^lock-identities 0$' context-counting.out
+require_match "context counting" \
+    '^lock-identities created 0 reused 0 unresolved 0 retained 0$' \
+    context-counting.out
 reject_match "context counting" 'warning:' context-counting.out
 
 #
@@ -544,7 +556,9 @@ require_match "context calls" '^provenance-edges created 7 reused 0$' \
     context-calls.out
 require_match "context calls" '^reactivations 7$' context-calls.out
 require_match "context calls" '^worklist peak 3$' context-calls.out
-require_match "context calls" '^lock-identities 0$' context-calls.out
+require_match "context calls" \
+    '^lock-identities created 0 reused 0 unresolved 0 retained 0$' \
+    context-calls.out
 require_match "context calls" \
     '^distribution contexts/function samples 5 total 5 max 1 bins 0:0 1:5 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
     context-calls.out

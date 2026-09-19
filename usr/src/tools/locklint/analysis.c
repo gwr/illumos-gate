@@ -27,10 +27,12 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "access.h"
 #include "analysis.h"
 #include "callgraph.h"
 #include "context.h"
 #include "dependency.h"
+#include "events.h"
 #include "function_info.h"
 #include "identity.h"
 #include "lib.h"
@@ -57,6 +59,9 @@ struct analysis_counts {
 	size_t continuations_reused;
 	size_t provenance_edges_created;
 	size_t provenance_edges_reused;
+	size_t lock_identities_created;
+	size_t lock_identities_reused;
+	size_t lock_identities_unresolved;
 	size_t reactivations;
 };
 
@@ -222,6 +227,34 @@ publish_exit(struct analysis *analysis, struct point_state *point_state)
 }
 
 static void
+observe_lock_event(struct analysis *analysis, struct point_state *point_state)
+{
+	struct locklint_access access;
+	struct lock_identity *identity;
+	enum locklint_lock_action action;
+	enum locklint_lock_mode mode;
+	bool existed;
+	int error;
+
+	action = locklint_get_lock_action(point_state->context->function->tu,
+	    point_state->point.next_instruction, &access, &mode);
+	if (action == LOCKLINT_LOCK_NONE)
+		return;
+	if (access.root == NULL) {
+		analysis->counts.lock_identities_unresolved++;
+		return;
+	}
+	error = lock_identity_intern_access(analysis->lock_identities, &access,
+	    &identity, &existed);
+	if (error != 0)
+		die("cannot identify lock event: %s", strerror(error));
+	if (existed)
+		analysis->counts.lock_identities_reused++;
+	else
+		analysis->counts.lock_identities_created++;
+}
+
+static void
 process_call(struct analysis *analysis, struct point_state *point_state)
 {
 	struct function_context *caller_context = point_state->context;
@@ -310,6 +343,7 @@ process_point(struct analysis *analysis, struct point_state *point_state)
 			return;
 		}
 		if (point.next_instruction->opcode == OP_CALL) {
+			observe_lock_event(analysis, point_state);
 			process_call(analysis, point_state);
 			return;
 		}
@@ -624,7 +658,11 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	(void) fprintf(stream, "reactivations %zu\n", counts->reactivations);
 	(void) fprintf(stream, "worklist peak %zu\n",
 	    analysis->worklist.peak_length);
-	(void) fprintf(stream, "lock-identities %zu\n",
+	(void) fprintf(stream,
+	    "lock-identities created %zu reused %zu unresolved %zu "
+	    "retained %zu\n", counts->lock_identities_created,
+	    counts->lock_identities_reused,
+	    counts->lock_identities_unresolved,
 	    measurements->lock_identities);
 	show_distribution(stream, "contexts/function",
 	    &measurements->contexts_per_function);
