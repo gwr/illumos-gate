@@ -153,22 +153,3 @@ decreasing_loop(int value, int repeat)
 	}
 	competition_object.protected = value;
 }
-
-#ifndef COMPETITION_ACCESS_ONLY
-static void
-absolute_refinement(int value, int repeat)
-{
-	_NOTE(COMPETING_THREADS_NOW)
-	_NOTE(COMPETING_THREADS_NOW)
-	_NOTE(NO_COMPETING_THREADS)
-	competition_object.protected = value;
-
-	_NOTE(COMPETING_THREADS_NOW)
-	while (repeat) {
-		_NOTE(COMPETING_THREADS_NOW)
-		repeat--;
-	}
-	_NOTE(NO_COMPETING_THREADS)
-	competition_object.protected = value;
-}
-#endif

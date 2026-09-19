@@ -449,12 +449,12 @@ compare "not reached markers" not-reached-markers.ref \
 run_capture "competition context convergence" competition-depth-contexts.out \
     "$LOCKLINT" --dump-contexts competition-depth.c
 require_match "competition transitions" \
-    '^competition-transitions applied 39 backedges-widened 4 backedges-covered 4$' \
+    '^competition-transitions applied 34 backedges-widened 3 backedges-covered 3$' \
     competition-depth-contexts.out
 require_match "competition semantic states" \
-    '^semantic-states created 41 reused 8$' competition-depth-contexts.out
+    '^semantic-states created 35 reused 8$' competition-depth-contexts.out
 require_match "competition point states" \
-    '^point-states created 172 reused 5$' competition-depth-contexts.out
+    '^point-states created 141 reused 4$' competition-depth-contexts.out
 
 run_capture "competition protected accesses" competition-accesses.out \
     "$LOCKLINT" -DCOMPETITION_ACCESS_ONLY --check-locks competition-depth.c
@@ -674,6 +674,37 @@ require_match "member structure-valued mutex diagnostic" \
 if [ "$(grep -c 'warning:' struct-lock-diagnostics.out)" -ne 2 ]; then
 	fail "structure-valued mutex diagnostics: expected exactly two warnings"
 fi
+
+#
+# Verify that competition assertions validate but do not alter the state
+# reaching subsequent protected accesses.
+#
+run_capture "competition assertion diagnostics" assertion-diagnostics.out \
+    "$LOCKLINT" --check-locks assertions.c
+require_match "unresolved competition assertion" \
+    "assertions.c:140:9: warning: locklint: competing threads may exist at NO_COMPETING_THREADS assertion \\[conditional-asserted-competition-requirement\\]" \
+    assertion-diagnostics.out
+require_match "definite competition assertion" \
+    "assertions.c:156:9: warning: locklint: competing threads exist at NO_COMPETING_THREADS assertion \\[asserted-competition-requirement\\]" \
+    assertion-diagnostics.out
+require_match "conditional competition assertion" \
+    "assertions.c:166:9: warning: locklint: competing threads may exist at NO_COMPETING_THREADS assertion \\[conditional-asserted-competition-requirement\\]" \
+    assertion-diagnostics.out
+if [ "$(grep -Ec '(conditional-)?asserted-competition-requirement' \
+    assertion-diagnostics.out)" -ne 3 ]; then
+	fail "competition assertion diagnostics: expected exactly three warnings"
+fi
+require_match "state unchanged after unresolved competition assertion" \
+    "assertions.c:141:22: warning: locklint: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
+    assertion-diagnostics.out
+require_match "state unchanged after definite competition assertion" \
+    "assertions.c:157:22: warning: locklint: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
+    assertion-diagnostics.out
+require_match "state unchanged after conditional competition assertion" \
+    "assertions.c:167:22: warning: locklint: protection for member 'value' is not established on every path \\[conditional-protection\\]" \
+    assertion-diagnostics.out
+reject_match "valid competition assertion diagnostics" \
+    "assertions.c:14[89]:" assertion-diagnostics.out
 
 #
 # Verify mutex, readable-without-lock, and scheme data-policy interaction.

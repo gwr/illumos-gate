@@ -22,11 +22,15 @@
 
 static const char *const diagnostic_names[LOCKLINT_DIAG_COUNT] = {
 	[LOCKLINT_DIAG_AMBIGUOUS_DIRECT_CALL] = "ambiguous-direct-call",
+	[LOCKLINT_DIAG_ASSERTED_COMPETITION_REQUIREMENT] =
+	    "asserted-competition-requirement",
 	[LOCKLINT_DIAG_ASSERTED_LOCK_REQUIREMENT] =
 	    "asserted-lock-requirement",
 	[LOCKLINT_DIAG_COMPETITION_MAYBE_UNDERFLOW] =
 	    "competition-maybe-underflow",
 	[LOCKLINT_DIAG_COMPETITION_UNDERFLOW] = "competition-underflow",
+	[LOCKLINT_DIAG_CONDITIONAL_ASSERTED_COMPETITION_REQUIREMENT] =
+	    "conditional-asserted-competition-requirement",
 	[LOCKLINT_DIAG_CONDITIONAL_ASSERTED_LOCK_REQUIREMENT] =
 	    "conditional-asserted-lock-requirement",
 	[LOCKLINT_DIAG_CONDITIONAL_PROTECTION] = "conditional-protection",

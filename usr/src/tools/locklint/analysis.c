@@ -1048,6 +1048,111 @@ diagnose_competition_underflow(void)
 	callgraph_iter_close(iterator);
 }
 
+struct competition_assertion_finding {
+	struct instruction *instruction;
+	bool definite;
+	bool maybe;
+	avl_node_t by_instruction;
+};
+
+static int
+compare_competition_assertion(const void *left_arg, const void *right_arg)
+{
+	const struct competition_assertion_finding *left = left_arg;
+	const struct competition_assertion_finding *right = right_arg;
+
+	return (AVL_PCMP(left->instruction, right->instruction));
+}
+
+/*
+ * Validate each assertion against every reached competition state without
+ * using the assertion to refine state for subsequent instructions.
+ */
+static void
+diagnose_competition_assertions(void)
+{
+	struct callgraph_iter *iterator;
+	struct function_info *function;
+	int error;
+
+	error = callgraph_iter_open(&iterator);
+	if (error != 0)
+		die("cannot iterate ready callgraph: %s", strerror(error));
+	while ((function = callgraph_iter_next(iterator)) != NULL) {
+		struct competition_assertion_finding *finding;
+		struct function_context *context;
+		avl_tree_t findings;
+
+		avl_create(&findings, compare_competition_assertion,
+		    sizeof (struct competition_assertion_finding),
+		    offsetof(struct competition_assertion_finding,
+		    by_instruction));
+		for (context = avl_first(&function->contexts.contexts);
+		    context != NULL;
+		    context = AVL_NEXT(&function->contexts.contexts, context)) {
+			struct point_state *point_state;
+
+			for (point_state = avl_first(&context->point_states);
+			    point_state != NULL;
+			    point_state = AVL_NEXT(&context->point_states,
+			    point_state)) {
+				struct competition_interval competition;
+				struct competition_assertion_finding key;
+				struct instruction *instruction;
+				avl_index_t where;
+
+				instruction =
+				    point_state->point.next_instruction;
+				if (instruction == NULL ||
+				    locklint_get_execution_annotation(instruction) !=
+				    LOCKLINT_EXECUTION_ASSERT_NO_COMPETITION)
+					continue;
+				competition =
+				    context_state_competition(point_state->state);
+				if (!competition.maximum_unbounded &&
+				    competition.maximum <= 0)
+					continue;
+				key = (struct competition_assertion_finding) {
+					.instruction = instruction
+				};
+				finding = avl_find(&findings, &key, &where);
+				if (finding == NULL) {
+					finding = calloc(1, sizeof (*finding));
+					if (finding == NULL)
+						die("cannot allocate competition "
+						    "assertion finding");
+					finding->instruction = instruction;
+					avl_insert(&findings, finding, where);
+				}
+				if (!competition.minimum_unbounded &&
+				    competition.minimum > 0)
+					finding->definite = true;
+				else
+					finding->maybe = true;
+			}
+		}
+		while ((finding = avl_first(&findings)) != NULL) {
+			if (finding->definite) {
+				locklint_warning(
+				    LOCKLINT_DIAG_ASSERTED_COMPETITION_REQUIREMENT,
+				    finding->instruction->pos,
+				    "competing threads exist at "
+				    "NO_COMPETING_THREADS assertion");
+			} else if (finding->maybe) {
+				locklint_warning(
+				    LOCKLINT_DIAG_CONDITIONAL_ASSERTED_COMPETITION_REQUIREMENT,
+				    finding->instruction->pos,
+				    "competing threads may exist at "
+				    "NO_COMPETING_THREADS assertion");
+			}
+			avl_remove(&findings, finding);
+			free(finding);
+		}
+		avl_destroy(&findings);
+	}
+	callgraph_iter_close(iterator);
+}
+
 struct protected_access_diagnostic {
 	struct analysis *analysis;
 	struct function_context *context;
@@ -1746,6 +1851,7 @@ analysis_run(struct lock_identity_collection *lock_identities, FILE *stream)
 		process_point(&analysis, point_state);
 	diagnose_lock_transitions(&analysis);
 	diagnose_competition_underflow();
+	diagnose_competition_assertions();
 	diagnose_protected_accesses(&analysis);
 	diagnose_local_locks_on_return();
 	if (stream != NULL) {

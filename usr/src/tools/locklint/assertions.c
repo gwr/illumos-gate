@@ -15,7 +15,7 @@
 
 /*
  * Capture lock assertions and translate their predicates into lock-state
- * assumptions.
+ * assumptions.  Competition assertions remain validation checkpoints.
  */
 
 #include <stdbool.h>
@@ -245,8 +245,8 @@ locklint_assertions_enable(void)
 	    "#strong_define VERIFY(expr) "
 	    "((void)" ASSERTION_CONSUMER "(!!(expr)))\n");
 	/*
-	 * synch.h defines this predicate as 1.  Keep existing assertions but
-	 * lower their preserved argument to an absolute local refinement.
+	 * synch.h defines this predicate as 1.  Preserve its source position as a
+	 * validation checkpoint without changing competition state.
 	 */
 	add_pre_buffer("#strong_define NO_COMPETING_THREADS "
 	    "__context__(0, 0, %lu);\n",

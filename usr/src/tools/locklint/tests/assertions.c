@@ -19,8 +19,7 @@
  * assertion remains visible even when its configured macro is empty.
  * Equivalent held and not-held spellings distinguish predicate polarity, an
  * active macro body proves that helper calls such as assfail() remain hidden,
- * and competition assertions show the analogous state transition for
- * unprotected access.
+ * and competition assertions validate but do not refine competition state.
  */
 
 #ifdef __lock_lint
@@ -59,6 +58,11 @@ extern int assertion_macro_not_held(struct assertion_state *);
 extern int assertion_negated(struct assertion_state *);
 extern int assertion_zero_comparison(struct assertion_state *);
 extern int assertion_active_held(struct assertion_state *);
+extern int assertion_no_competing_threads(struct assertion_state *);
+extern int assertion_valid_no_competing_threads(struct assertion_state *);
+extern int assertion_definite_competing_threads(struct assertion_state *);
+extern int assertion_conditional_competing_threads(
+    struct assertion_state *, int);
 
 int
 assertion_unprotected(struct assertion_state *state)
@@ -130,26 +134,36 @@ assertion_active_held(struct assertion_state *state)
 
 #define	NO_COMPETING_THREADS	1
 
-static int
+int
 assertion_no_competing_threads(struct assertion_state *state)
 {
 	ASSERT(NO_COMPETING_THREADS);
 	return (state->value);
 }
 
-static int
-assertion_resets_competition(struct assertion_state *state)
+int
+assertion_valid_no_competing_threads(struct assertion_state *state)
+{
+	_NOTE(NO_COMPETING_THREADS_NOW)
+	ASSERT(NO_COMPETING_THREADS);
+	return (state->value);
+}
+
+int
+assertion_definite_competing_threads(struct assertion_state *state)
 {
 	_NOTE(COMPETING_THREADS_NOW)
 	ASSERT(NO_COMPETING_THREADS);
 	return (state->value);
 }
 
-static int
-note_no_competing_threads(struct assertion_state *state)
+int
+assertion_conditional_competing_threads(struct assertion_state *state,
+    int single_threaded)
 {
-	_NOTE(COMPETING_THREADS_NOW)
-	_NOTE(NO_COMPETING_THREADS)
+	if (single_threaded)
+		_NOTE(NO_COMPETING_THREADS_NOW)
+	ASSERT(NO_COMPETING_THREADS);
 	return (state->value);
 }
 
