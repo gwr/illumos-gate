@@ -730,6 +730,18 @@ if [ "$(grep -c 'warning:' cross-diagnostics.out)" -ne 1 ]; then
 fi
 
 #
+# Verify protected access through an exactly resolved indirect call.
+#
+run_capture "exact indirect call diagnostics" indirect-call-diagnostics.out \
+    "$LOCKLINT" --check-locks indirect-calls.c
+require_match "unlocked exact indirect call" \
+    "indirect-calls.c:43:22: warning: locklint: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
+    indirect-call-diagnostics.out
+if [ "$(grep -c 'warning:' indirect-call-diagnostics.out)" -ne 1 ]; then
+	fail "exact indirect call diagnostics: expected exactly one warning"
+fi
+
+#
 # Verify NOT_REACHED removes terminated paths from lock-state merges.
 #
 run_capture "not reached diagnostics" not-reached-diagnostics.out \
