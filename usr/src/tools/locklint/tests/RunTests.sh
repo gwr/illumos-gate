@@ -163,6 +163,16 @@ require_match "global lock identity types" \
 reject_match "global lock identities" 'warning:' \
     lock-identity-globals.out
 
+run_capture "local lock identity" lock-identity-local.out \
+    "$LOCKLINT" --dump-contexts lock-identity-local.c
+require_match "local lock identity" \
+    '^lock-identities created 1 reused 1 unresolved 0 retained 1$' \
+    lock-identity-local.out
+require_match "local lock identity type" \
+    '^lock-identity-types unspecified 0 object 0 symbol 1 pseudo 0$' \
+    lock-identity-local.out
+reject_match "local lock identity" 'warning:' lock-identity-local.out
+
 #
 # Verify preprocessing-time annotation capture and initial name resolution.
 #
