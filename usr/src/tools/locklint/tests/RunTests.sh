@@ -630,6 +630,30 @@ if [ "$(grep -c 'warning:' struct-lock-diagnostics.out)" -ne 2 ]; then
 fi
 
 #
+# Verify mutex, readable-without-lock, and scheme data-policy interaction.
+#
+run_capture "mutex data policy diagnostics" data-policy-diagnostics.out \
+    "$LOCKLINT" --check-locks data-policy.c
+require_match "unprotected policy read" \
+    "data-policy.c:76:22: warning: locklint: protected member 'protected' read without holding 'lock' \\[unprotected-access\\]" \
+    data-policy-diagnostics.out
+require_match "unprotected policy write" \
+    "data-policy.c:77:14: warning: locklint: protected member 'protected' modified without holding 'lock' \\[unprotected-access\\]" \
+    data-policy-diagnostics.out
+require_match "readable policy write" \
+    "data-policy.c:80:14: warning: locklint: protected member 'readable' modified without holding 'lock' \\[unprotected-access\\]" \
+    data-policy-diagnostics.out
+require_match "replacement policy read" \
+    "data-policy.c:88:23: warning: locklint: protected member 'mutex_after_scheme' read without holding 'lock' \\[unprotected-access\\]" \
+    data-policy-diagnostics.out
+require_match "replacement policy write" \
+    "data-policy.c:89:14: warning: locklint: protected member 'mutex_after_scheme' modified without holding 'lock' \\[unprotected-access\\]" \
+    data-policy-diagnostics.out
+if [ "$(grep -c 'warning:' data-policy-diagnostics.out)" -ne 5 ]; then
+	fail "mutex data policy diagnostics: expected exactly five warnings"
+fi
+
+#
 # Verify NOT_REACHED removes terminated paths from lock-state merges.
 #
 run_capture "not reached diagnostics" not-reached-diagnostics.out \
