@@ -1224,11 +1224,15 @@ until caller state or a root boundary is available.
 
 `COMPETING_THREADS_AS_SIDE_EFFECT` declares an exact net increase of one;
 `NO_COMPETING_THREADS_AS_SIDE_EFFECT` declares an exact net decrease of one.
-Locklint validates declarations against the inferred exact-depth output on
-every return.  A matching output satisfies the contract, an interval
-containing the declared output is conditional, and a disjoint output
-conflicts.  Invalid decrements are diagnosed independently.  Following the
-inference-first policy, undeclared inferred competition effects remain valid.
+After reaching the fixed point, locklint derives the required output from
+each context's entry interval using the normal competition transition and
+compares every exact return state with that output.  A context with only
+matching returns satisfies the contract, one with matching and nonmatching
+returns is conditional, and one with no matching return (including no return)
+fails definitely.  A definite failure in any context takes precedence over a
+conditional failure.  Invalid decrements are diagnosed independently.
+Following the inference-first policy, undeclared inferred competition effects
+remain valid.
 
 Unresolved calls do not receive invented visibility or concurrency effects.
 Mapping returned allocations and general aliases remains later object-identity

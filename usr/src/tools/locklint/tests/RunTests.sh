@@ -540,6 +540,15 @@ run_capture "reversed cross translation unit visibility diagnostics" \
 compare "reversed cross translation unit visibility diagnostics" \
     visibility-cross.ref visibility-cross-reversed.out
 
+#
+# Verify declared competition side effects against every exact return state.
+#
+run_capture "declared competition effect diagnostics" \
+    competition-contracts.out "$LOCKLINT" --check-locks \
+    competition-contracts.c
+compare "declared competition effect diagnostics" \
+    competition-contracts.ref competition-contracts.out
+
 run_capture "competition protected accesses" competition-accesses.out \
     "$LOCKLINT" -DCOMPETITION_ACCESS_ONLY --check-locks competition-depth.c
 for location in 50 52 54 70 83 115

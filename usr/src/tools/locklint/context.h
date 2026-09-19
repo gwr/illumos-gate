@@ -180,6 +180,8 @@ int context_state_set_competition(struct function_info *,
     struct semantic_state **, bool *);
 int context_state_adjust_competition(struct function_info *,
     const struct semantic_state *, int, struct semantic_state **, bool *);
+int context_competition_adjust(struct competition_interval, int,
+    struct competition_interval *);
 bool context_state_competition_contains(const struct semantic_state *,
     const struct semantic_state *);
 int context_state_merge_competition(struct function_info *,

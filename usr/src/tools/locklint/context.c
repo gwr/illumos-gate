@@ -750,15 +750,11 @@ context_state_set_competition(struct function_info *function,
  * condition instead resolves to the level selected by its first transition.
  */
 int
-context_state_adjust_competition(struct function_info *function,
-    const struct semantic_state *current, int adjustment,
-    struct semantic_state **result, bool *existed)
+context_competition_adjust(struct competition_interval competition,
+    int adjustment, struct competition_interval *result)
 {
-	struct competition_interval competition;
-
-	if (current == NULL || (adjustment != -1 && adjustment != 1))
+	if (result == NULL || (adjustment != -1 && adjustment != 1))
 		return (EINVAL);
-	competition = current->competition;
 	if (competition.entry_condition) {
 		competition.minimum = adjustment > 0 ? 1 : 0;
 		competition.maximum = competition.minimum;
@@ -776,6 +772,24 @@ context_state_adjust_competition(struct function_info *function,
 		if (!competition.maximum_unbounded)
 			competition.maximum += adjustment;
 	}
+	*result = competition;
+	return (0);
+}
+
+int
+context_state_adjust_competition(struct function_info *function,
+    const struct semantic_state *current, int adjustment,
+    struct semantic_state **result, bool *existed)
+{
+	struct competition_interval competition;
+	int error;
+
+	if (current == NULL)
+		return (EINVAL);
+	error = context_competition_adjust(current->competition, adjustment,
+	    &competition);
+	if (error != 0)
+		return (error);
 	return (context_state_set_competition(function, current, competition,
 	    result, existed));
 }

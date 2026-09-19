@@ -153,6 +153,7 @@ static struct symbol *function_formal_argument(const struct function_info *,
     unsigned int);
 static void collect_assumed_regions(void);
 static void record_semantic_state(struct analysis *, bool);
+static const char *function_name(const struct function_info *);
 
 static struct instruction *
 first_live_instruction(struct basic_block *block)
@@ -1410,6 +1411,108 @@ diagnose_competition_underflow(void)
 	callgraph_iter_close(iterator);
 }
 
+static bool
+same_competition_interval(struct competition_interval left,
+    struct competition_interval right)
+{
+	return (left.minimum == right.minimum &&
+	    left.maximum == right.maximum &&
+	    left.minimum_unbounded == right.minimum_unbounded &&
+	    left.maximum_unbounded == right.maximum_unbounded &&
+	    left.entry_condition == right.entry_condition);
+}
+
+static void
+diagnose_competition_declaration(struct function_info *function,
+    struct instruction *instruction, int adjustment)
+{
+	struct function_context *context;
+	bool definite = false;
+	bool conditional = false;
+
+	for (context = avl_first(&function->contexts.contexts);
+	    context != NULL;
+	    context = AVL_NEXT(&function->contexts.contexts, context)) {
+		struct competition_interval expected;
+		struct context_exit *exit;
+		size_t valid = 0;
+		size_t invalid = 0;
+		int error;
+
+		error = context_competition_adjust(
+		    context_state_competition(context->entry_state), adjustment,
+		    &expected);
+		if (error != 0) {
+			invalid++;
+		} else {
+			SLIST_FOREACH(exit, &context->exits, link) {
+				if (same_competition_interval(
+				    context_state_competition(exit->state),
+				    expected))
+					valid++;
+				else
+					invalid++;
+			}
+			if (SLIST_EMPTY(&context->exits))
+				invalid++;
+		}
+		if (invalid != 0 && valid == 0)
+			definite = true;
+		else if (invalid != 0)
+			conditional = true;
+	}
+	if (definite) {
+		locklint_warning(LOCKLINT_DIAG_DECLARED_COMPETITION_EFFECT,
+		    instruction->pos, "function '%s' does not establish "
+		    "declared competition-depth %s", function_name(function),
+		    adjustment > 0 ? "increase" : "decrease");
+	} else if (conditional) {
+		locklint_warning(LOCKLINT_DIAG_DECLARED_COMPETITION_EFFECT,
+		    instruction->pos, "declared competition-depth %s is not "
+		    "established on every return from '%s'",
+		    adjustment > 0 ? "increase" : "decrease",
+		    function_name(function));
+	}
+}
+
+static void
+diagnose_declared_competition_effects(void)
+{
+	struct callgraph_iter *iterator;
+	struct function_info *function;
+	int error;
+
+	error = callgraph_iter_open(&iterator);
+	if (error != 0)
+		die("cannot iterate ready callgraph: %s", strerror(error));
+	while ((function = callgraph_iter_next(iterator)) != NULL) {
+		struct basic_block *block;
+
+		FOR_EACH_PTR(function->ep->bbs, block) {
+			struct instruction *instruction;
+
+			FOR_EACH_PTR(block->insns, instruction) {
+				enum locklint_execution_kind kind;
+
+				if (instruction->bb == NULL)
+					continue;
+				kind = locklint_get_execution_annotation(
+				    instruction);
+				if (kind ==
+				    LOCKLINT_EXECUTION_COMPETITION_EFFECT) {
+					diagnose_competition_declaration(function,
+					    instruction, 1);
+				} else if (kind ==
+				    LOCKLINT_EXECUTION_NO_COMPETITION_EFFECT) {
+					diagnose_competition_declaration(function,
+					    instruction, -1);
+				}
+			} END_FOR_EACH_PTR(instruction);
+		} END_FOR_EACH_PTR(block);
+	}
+	callgraph_iter_close(iterator);
+}
+
 struct competition_assertion_finding {
 	struct instruction *instruction;
 	bool definite;
@@ -2598,6 +2701,7 @@ analysis_run(struct lock_identity_collection *lock_identities, FILE *stream)
 		process_point(&analysis, point_state);
 	diagnose_lock_transitions(&analysis);
 	diagnose_competition_underflow();
+	diagnose_declared_competition_effects();
 	diagnose_competition_assertions();
 	diagnose_protected_accesses(&analysis);
 	diagnose_assumed_calls(&analysis);
