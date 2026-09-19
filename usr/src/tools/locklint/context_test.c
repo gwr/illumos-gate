@@ -63,6 +63,67 @@ check(bool condition, const char *message)
 	failures++;
 }
 
+static bool
+include_selected_lock(const struct lock_identity *lock, void *data)
+{
+	return (lock == data);
+}
+
+static void
+test_exit_state_mapping(void)
+{
+	struct function_info caller = { 0 };
+	struct function_info callee = { 0 };
+	unsigned int identities[2];
+	const struct lock_identity *first =
+	    (const struct lock_identity *)&identities[0];
+	const struct lock_identity *second =
+	    (const struct lock_identity *)&identities[1];
+	struct semantic_state *caller_empty;
+	struct semantic_state *caller_held;
+	struct semantic_state *callee_entry;
+	struct semantic_state *callee_empty;
+	struct semantic_state *callee_exit;
+	struct semantic_state *mapped;
+	bool existed;
+	int error;
+
+	context_collection_create(&caller);
+	context_collection_create(&callee);
+	error = context_empty_state_intern(&caller, &caller_empty, &existed);
+	check(error == 0, "create exit-map caller empty state");
+	error = context_state_set_lock(&caller, caller_empty, first, 1,
+	    &caller_held, &existed);
+	check(error == 0, "create exit-map caller held state");
+	error = context_state_import(&callee, caller_held, &callee_entry,
+	    &existed);
+	check(error == 0, "import exit-map callee entry");
+	error = context_state_set_lock(&callee, callee_entry, first, 0,
+	    &callee_empty, &existed);
+	check(error == 0, "release inherited lock in callee");
+	error = context_state_set_lock(&callee, callee_empty, second, 2,
+	    &callee_exit, &existed);
+	check(error == 0, "acquire new lock in callee");
+
+	error = context_state_map_exit(&caller, caller_held, callee_entry,
+	    callee_exit, NULL, NULL, &mapped, &existed);
+	check(error == 0 && existed && mapped == caller_empty,
+	    "exit mapping removes released inherited lock");
+	check(context_state_lock_modes(mapped, second) == 0,
+	    "exit mapping filters unapproved new lock");
+	error = context_state_map_exit(&caller, caller_held, callee_entry,
+	    callee_exit, include_selected_lock, (void *)second, &mapped,
+	    &existed);
+	check(error == 0 && !existed,
+	    "exit mapping includes approved new lock");
+	check(context_state_lock_modes(mapped, first) == 0 &&
+	    context_state_lock_modes(mapped, second) == 2,
+	    "exit mapping preserves complete mapped state");
+
+	context_collection_free(&callee);
+	context_collection_free(&caller);
+}
+
 static void
 test_state_interning(void)
 {
@@ -330,6 +391,7 @@ test_point_state_interning(void)
 int
 main(void)
 {
+	test_exit_state_mapping();
 	test_state_interning();
 	test_context_interning();
 	test_lock_state_interning();

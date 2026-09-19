@@ -33,6 +33,26 @@ local_helper(void)
 	return (local_helper_value);
 }
 
+static void
+acquire_helper(mutex_t *lock)
+{
+	mutex_enter(lock);
+}
+
+static void
+release_helper(mutex_t *lock)
+{
+	mutex_exit(lock);
+}
+
+static void
+local_lock_helper(void)
+{
+	mutex_t local_lock;
+
+	mutex_enter(&local_lock);
+}
+
 void lock_identity_local(void);
 
 void
@@ -40,9 +60,11 @@ lock_identity_local(void)
 {
 	mutex_t local_lock;
 
-	mutex_enter(&local_lock);
+	acquire_helper(&local_lock);
 	(void) local_helper();
-	mutex_exit(&local_lock);
+	release_helper(&local_lock);
+	(void) local_helper();
+	local_lock_helper();
 	(void) local_helper();
 	(void) mutex_tryenter(&local_lock);
 }

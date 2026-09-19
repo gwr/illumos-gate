@@ -269,6 +269,58 @@ context_state_import(struct function_info *function,
 }
 
 /*
+ * Map a callee exit back into the function which owns caller_state.  Callee
+ * entry must equal caller state by value.  Changes to inherited locks always
+ * pass through; newly held locks pass only when the callback says their
+ * identities remain meaningful to the caller.
+ */
+int
+context_state_map_exit(struct function_info *function,
+    const struct semantic_state *caller_state,
+    const struct semantic_state *callee_entry,
+    const struct semantic_state *callee_exit,
+    context_lock_filter_f include_new, void *data,
+    struct semantic_state **result, bool *existed)
+{
+	struct function_context_collection *collection = &function->contexts;
+	struct semantic_lock_state entries[LOCKLINT_MAX_TRACKED_LOCKS];
+	const struct semantic_lock_set *entry_locks;
+	const struct semantic_lock_set *exit_locks;
+	struct semantic_lock_set *locks;
+	size_t entry_index = 0;
+	size_t exit_index;
+	size_t result_count = 0;
+	int error;
+
+	if (caller_state == NULL || callee_entry == NULL || callee_exit == NULL)
+		return (EINVAL);
+	if (compare_lock_set(caller_state->locks, callee_entry->locks) != 0)
+		return (EINVAL);
+	entry_locks = callee_entry->locks;
+	exit_locks = callee_exit->locks;
+	for (exit_index = 0; exit_index < exit_locks->count; exit_index++) {
+		const struct semantic_lock_state *exit_lock =
+		    &exit_locks->entries[exit_index];
+		bool inherited;
+
+		while (entry_index < entry_locks->count &&
+		    compare_lock_identity(
+		    entry_locks->entries[entry_index].lock,
+		    exit_lock->lock) < 0)
+			entry_index++;
+		inherited = entry_index < entry_locks->count &&
+		    entry_locks->entries[entry_index].lock == exit_lock->lock;
+		if (inherited ||
+		    (include_new != NULL && include_new(exit_lock->lock, data)))
+			entries[result_count++] = *exit_lock;
+	}
+	error = lock_set_intern(collection, entries, result_count, &locks);
+	if (error != 0)
+		return (error);
+	return (semantic_state_intern(collection, locks, result, existed));
+}
+
+/*
  * Return the canonical state produced by replacing one lock's modes.  Zero
  * modes removes the lock.  The current state remains unchanged.
  */

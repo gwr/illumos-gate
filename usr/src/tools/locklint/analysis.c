@@ -72,6 +72,8 @@ struct analysis_counts {
 	size_t lock_identities_unresolved;
 	size_t lock_transitions_applied;
 	size_t lock_transitions_deferred;
+	size_t return_states_mapped;
+	size_t return_locks_filtered;
 	size_t reactivations;
 };
 
@@ -189,6 +191,38 @@ record_point(struct analysis *analysis, struct function_context *context,
 }
 
 static void
+record_semantic_state(struct analysis *analysis, bool existed)
+{
+	if (existed)
+		analysis->counts.semantic_states_reused++;
+	else
+		analysis->counts.semantic_states_created++;
+}
+
+struct exit_mapping {
+	const struct binding_environment *bindings;
+	size_t filtered;
+};
+
+static bool
+return_lock_visible(const struct lock_identity *lock, void *data)
+{
+	struct exit_mapping *mapping = data;
+	size_t index;
+
+	if (lock->analysis_object_type ==
+	    LOCK_ANALYSIS_OBJECT_OBJECT_IDENTITY)
+		return (true);
+	for (index = 0; index < mapping->bindings->count; index++) {
+		if (mapping->bindings->entries[index].actual_identity->
+		    key.analysis_object == lock->key.analysis_object)
+			return (true);
+	}
+	mapping->filtered++;
+	return (false);
+}
+
+static void
 record_reactivation(struct analysis *analysis,
     struct continuation *continuation)
 {
@@ -196,12 +230,28 @@ record_reactivation(struct analysis *analysis,
 
 	while ((exit =
 	    dependency_continuation_next_exit(continuation)) != NULL) {
+		struct exit_mapping mapping = {
+			.bindings = continuation->callee_bindings
+		};
+		struct semantic_state *mapped_state;
 		struct point_state *point_state;
+		bool state_existed;
 		bool existed;
 		int error;
 
+		error = context_state_map_exit(
+		    continuation->caller_context->function,
+		    continuation->caller_state,
+		    continuation->callee_context->entry_state, exit->state,
+		    return_lock_visible, &mapping, &mapped_state,
+		    &state_existed);
+		if (error != 0)
+			die("cannot map context exit: %s", strerror(error));
+		record_semantic_state(analysis, state_existed);
+		analysis->counts.return_states_mapped++;
+		analysis->counts.return_locks_filtered += mapping.filtered;
 		error = dependency_continuation_apply_exit(continuation, exit,
-		    continuation->caller_state, &analysis->worklist,
+		    mapped_state, &analysis->worklist,
 		    &point_state, &existed);
 		if (error != 0)
 			die("cannot apply context exit: %s", strerror(error));
@@ -285,10 +335,7 @@ apply_lock_event(struct analysis *analysis, struct point_state *point_state)
 	    action == LOCKLINT_LOCK_ACQUIRE ? mode : 0, &state, &existed);
 	if (error != 0)
 		die("cannot apply lock event: %s", strerror(error));
-	if (existed)
-		analysis->counts.semantic_states_reused++;
-	else
-		analysis->counts.semantic_states_created++;
+	record_semantic_state(analysis, existed);
 	analysis->counts.lock_transitions_applied++;
 	return (state);
 }
@@ -544,10 +591,7 @@ process_call(struct analysis *analysis, struct point_state *point_state,
 	    &callee_state, &existed);
 	if (error != 0)
 		die("cannot import callee state: %s", strerror(error));
-	if (existed)
-		analysis->counts.semantic_states_reused++;
-	else
-		analysis->counts.semantic_states_created++;
+	record_semantic_state(analysis, existed);
 
 	error = context_create(callee_function, bindings, callee_state,
 	    &callee_context, &context_existed);
@@ -650,10 +694,7 @@ seed_root(struct analysis *analysis, struct function_info *function)
 	error = context_empty_state_intern(function, &state, &existed);
 	if (error != 0)
 		die("cannot intern root state: %s", strerror(error));
-	if (existed)
-		analysis->counts.semantic_states_reused++;
-	else
-		analysis->counts.semantic_states_created++;
+	record_semantic_state(analysis, existed);
 
 	error = context_create(function, bindings, state, &context, &existed);
 	if (error != 0)
@@ -992,6 +1033,8 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	(void) fprintf(stream, "lock-transitions applied %zu deferred %zu\n",
 	    counts->lock_transitions_applied,
 	    counts->lock_transitions_deferred);
+	(void) fprintf(stream, "return-states mapped %zu locks-filtered %zu\n",
+	    counts->return_states_mapped, counts->return_locks_filtered);
 	(void) fprintf(stream,
 	    "lock-identity-types unspecified %zu object %zu symbol %zu "
 	    "pseudo %zu\n",

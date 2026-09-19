@@ -170,22 +170,24 @@ reject_match "global lock identities" 'warning:' \
 run_capture "local lock identity" lock-identity-local.out \
     "$LOCKLINT" --dump-contexts lock-identity-local.c
 require_match "local lock identity" \
-    '^lock-identities created 1 reused 2 unresolved 0 retained 1$' \
+    '^lock-identities created 2 reused 4 unresolved 0 retained 2$' \
     lock-identity-local.out
 require_match "local lock identity type" \
-    '^lock-identity-types unspecified 0 object 0 symbol 1 pseudo 0$' \
+    '^lock-identity-types unspecified 0 object 0 symbol 2 pseudo 0$' \
     lock-identity-local.out
 require_match "local lock identity objects" \
-    '^lock-identity-analysis-objects 1$' lock-identity-local.out
+    '^lock-identity-analysis-objects 2$' lock-identity-local.out
 require_match "local lock transitions" \
-    '^lock-transitions applied 2 deferred 1$' lock-identity-local.out
+    '^lock-transitions applied 3 deferred 1$' lock-identity-local.out
+require_match "local lock returns" \
+    '^return-states mapped 6 locks-filtered 1$' lock-identity-local.out
 require_match "local lock contexts" \
-    '^contexts created 3 reused 0$' lock-identity-local.out
+    '^contexts created 6 reused 1$' lock-identity-local.out
 require_match "local lock states" \
-    '^distribution semantic-states/function samples 2 total 4 max 2 bins 0:0 1:0 2:2 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution semantic-states/function samples 5 total 10 max 2 bins 0:0 1:0 2:5 3:0 4:0 5:0 6-8:0 9+:0$' \
     lock-identity-local.out
 require_match "local held-lock states" \
-    '^distribution locks/semantic-state samples 4 total 2 max 1 bins 0:2 1:2 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution locks/semantic-state samples 10 total 5 max 1 bins 0:5 1:5 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
     lock-identity-local.out
 require_match "local helper contexts" \
     '^maximum contexts/function 2 function local_helper tu=lock-identity-local.c$' \
@@ -612,7 +614,7 @@ run_capture "context calls" context-calls.out \
     "$LOCKLINT" --dump-contexts context-calls.c
 require_match "context calls" '^roots 1$' context-calls.out
 require_match "context calls" '^functions 7$' context-calls.out
-require_match "context calls" '^semantic-states created 7 reused 8$' \
+require_match "context calls" '^semantic-states created 7 reused 22$' \
     context-calls.out
 require_match "context calls" \
     '^binding-environments created 9 reused 6$' context-calls.out
@@ -629,6 +631,8 @@ require_match "context calls" '^continuations created 14 reused 0$' \
 require_match "context calls" '^provenance-edges created 14 reused 0$' \
     context-calls.out
 require_match "context calls" '^reactivations 14$' context-calls.out
+require_match "context calls" \
+    '^return-states mapped 14 locks-filtered 0$' context-calls.out
 require_match "context calls" '^worklist peak 3$' context-calls.out
 require_match "context calls" \
     '^lock-identities created 4 reused 10 unresolved 0 retained 4$' \

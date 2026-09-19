@@ -55,6 +55,8 @@ struct semantic_state {
 	avl_node_t by_value;
 };
 
+typedef bool (*context_lock_filter_f)(const struct lock_identity *, void *);
+
 /*
  * A point identifies the next Sparse instruction to evaluate.  A NULL
  * instruction identifies the exit of the specified basic block.
@@ -112,6 +114,10 @@ void context_collection_free(struct function_info *);
 int context_empty_state_intern(struct function_info *,
     struct semantic_state **, bool *);
 int context_state_import(struct function_info *, const struct semantic_state *,
+    struct semantic_state **, bool *);
+int context_state_map_exit(struct function_info *,
+    const struct semantic_state *, const struct semantic_state *,
+    const struct semantic_state *, context_lock_filter_f, void *,
     struct semantic_state **, bool *);
 /*
  * Lock identities must be canonical and stable for the function collection's
