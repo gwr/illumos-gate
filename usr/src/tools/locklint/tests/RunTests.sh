@@ -148,6 +148,20 @@ run_capture "event lock identities" event-lock-identities.out \
 require_match "event lock identities" \
     '^lock-identities created 1 reused 1 unresolved 0 retained 1$' \
     event-lock-identities.out
+require_match "event lock identity types" \
+    '^lock-identity-types unspecified 0 object 0 symbol 0 pseudo 1$' \
+    event-lock-identities.out
+
+run_capture "global lock identities" lock-identity-globals.out \
+    "$LOCKLINT" --dump-contexts lock-identity-globals.c
+require_match "global lock identities" \
+    '^lock-identities created 2 reused 2 unresolved 0 retained 2$' \
+    lock-identity-globals.out
+require_match "global lock identity types" \
+    '^lock-identity-types unspecified 0 object 2 symbol 0 pseudo 0$' \
+    lock-identity-globals.out
+reject_match "global lock identities" 'warning:' \
+    lock-identity-globals.out
 
 #
 # Verify preprocessing-time annotation capture and initial name resolution.

@@ -91,6 +91,7 @@ struct analysis_measurements {
 	struct distribution locks_per_semantic_state;
 	struct distribution visibility_per_semantic_state;
 	size_t lock_identities;
+	size_t lock_identity_types[LOCK_ANALYSIS_OBJECT_PSEUDO + 1];
 	size_t lock_identity_bytes;
 	size_t lock_set_bytes;
 	size_t semantic_state_bytes;
@@ -634,6 +635,26 @@ retained_collection_bytes(const struct analysis_measurements *measurements)
 }
 
 static void
+measure_lock_identities(struct analysis *analysis)
+{
+	struct analysis_measurements *measurements = &analysis->measurements;
+	struct lock_identity *identity;
+
+	for (identity = lock_identity_first(analysis->lock_identities);
+	    identity != NULL;
+	    identity = lock_identity_next(analysis->lock_identities, identity)) {
+		if (identity->analysis_object_type <
+		    LOCK_ANALYSIS_OBJECT_UNSPECIFIED ||
+		    identity->analysis_object_type >
+		    LOCK_ANALYSIS_OBJECT_PSEUDO) {
+			die("invalid lock analysis-object type");
+		}
+		measurements->lock_identity_types[
+		    identity->analysis_object_type]++;
+	}
+}
+
+static void
 show_counts(FILE *stream, const struct analysis *analysis)
 {
 	const struct analysis_counts *counts = &analysis->counts;
@@ -664,6 +685,15 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	    counts->lock_identities_reused,
 	    counts->lock_identities_unresolved,
 	    measurements->lock_identities);
+	(void) fprintf(stream,
+	    "lock-identity-types unspecified %zu object %zu symbol %zu "
+	    "pseudo %zu\n",
+	    measurements->lock_identity_types[
+	    LOCK_ANALYSIS_OBJECT_UNSPECIFIED],
+	    measurements->lock_identity_types[
+	    LOCK_ANALYSIS_OBJECT_OBJECT_IDENTITY],
+	    measurements->lock_identity_types[LOCK_ANALYSIS_OBJECT_SYMBOL],
+	    measurements->lock_identity_types[LOCK_ANALYSIS_OBJECT_PSEUDO]);
 	show_distribution(stream, "contexts/function",
 	    &measurements->contexts_per_function);
 	show_distribution(stream, "semantic-states/function",
@@ -732,6 +762,7 @@ analysis_run(struct lock_identity_collection *lock_identities, FILE *stream)
 	if (stream != NULL) {
 		analysis.measurements.lock_identities =
 		    lock_identity_count(analysis.lock_identities);
+		measure_lock_identities(&analysis);
 		memory_add(&analysis.measurements.lock_identity_bytes,
 		    analysis.measurements.lock_identities,
 		    sizeof (struct lock_identity));
