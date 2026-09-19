@@ -585,6 +585,7 @@ callgraph_add(struct translation_unit *tu, struct entrypoint *ep)
 	function->info.tu = tu;
 	function->info.ep = ep;
 	context_collection_create(&function->info);
+	binding_collection_create(&function->info.bindings);
 	function->internal_linkage =
 	    (ep->name->ctype.modifiers & MOD_STATIC) != 0;
 	function->inline_implementation =
@@ -1209,6 +1210,7 @@ callgraph_cleanup(void)
 		avl_remove(&functions_by_entrypoint, functions);
 		avl_remove(&functions_by_identity, functions);
 		context_collection_free(&functions->info);
+		binding_collection_free(&functions->info.bindings);
 		free(functions);
 		functions = next;
 	}

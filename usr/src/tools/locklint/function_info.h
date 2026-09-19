@@ -18,6 +18,7 @@
 
 #include <stdbool.h>
 
+#include "binding.h"
 #include "context.h"
 
 struct entrypoint;
@@ -31,6 +32,7 @@ struct function_info {
 	/* Functions and their retained Sparse objects belong to one parse. */
 	struct translation_unit *tu;
 	struct entrypoint *ep;
+	struct binding_environment_collection bindings;
 	struct function_context_collection contexts;
 	unsigned int root_reasons;
 	bool reachable_from_root;
