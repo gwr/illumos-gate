@@ -577,6 +577,10 @@ run_capture "rwlock tryupgrade state" rwlock-tryupgrade.out \
 compare "rwlock tryupgrade state" rwlock-tryupgrade.ref \
     rwlock-tryupgrade.out
 
+run_capture "rwlock tryenter state" rwlock-tryenter.out \
+    "$LOCKLINT" --check-locks rwlock-tryenter.c
+compare "rwlock tryenter state" rwlock-tryenter.ref rwlock-tryenter.out
+
 run_capture "competition protected accesses" competition-accesses.out \
     "$LOCKLINT" -DCOMPETITION_ACCESS_ONLY --check-locks competition-depth.c
 for location in 50 52 54 70 83 115

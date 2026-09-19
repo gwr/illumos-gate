@@ -1100,18 +1100,19 @@ conditional_result_branch(struct basic_block *block,
 }
 
 /*
- * Preserve both possible rw_tryupgrade() results.  A result consumed by this
- * block's branch remains tagged until that edge is selected; otherwise both
- * states continue without a condition.
+ * Preserve the possible results of a conditional rwlock operation.  A result
+ * consumed by this block's branch remains tagged until that edge is selected;
+ * otherwise both states continue without a condition.
  */
 static bool
-process_tryupgrade(struct analysis *analysis, struct point_state *point_state)
+process_conditional_rwlock(struct analysis *analysis,
+    struct point_state *point_state)
 {
 	struct instruction *instruction = point_state->point.next_instruction;
 	struct locklint_access access;
 	struct lock_identity *identity;
 	struct instruction *branch;
-	struct semantic_state *writer_state;
+	struct semantic_state *success_state;
 	struct analysis_point next = point_state->point;
 	enum locklint_lock_action action;
 	enum locklint_lock_mode mode;
@@ -1122,7 +1123,10 @@ process_tryupgrade(struct analysis *analysis, struct point_state *point_state)
 
 	action = locklint_get_lock_action(point_state->context->function->tu,
 	    instruction, &access, &mode);
-	if (action != LOCKLINT_LOCK_TRY_UPGRADE)
+	if ((action != LOCKLINT_LOCK_TRY_ACQUIRE &&
+	    action != LOCKLINT_LOCK_TRY_UPGRADE) ||
+	    (action == LOCKLINT_LOCK_TRY_ACQUIRE &&
+	    mode != LOCKLINT_MODE_READER && mode != LOCKLINT_MODE_WRITER))
 		return (false);
 	next.next_instruction =
 	    next_live_instruction(point_state->point.block, instruction);
@@ -1135,7 +1139,8 @@ process_tryupgrade(struct analysis *analysis, struct point_state *point_state)
 	error = context_access_identity(analysis, point_state->context, &access,
 	    &identity, &existed, &composed);
 	if (error != 0)
-		die("cannot identify rwlock upgrade: %s", strerror(error));
+		die("cannot identify conditional rwlock operation: %s",
+		    strerror(error));
 	if (composed)
 		analysis->counts.binding_identities_composed++;
 	if (existed)
@@ -1146,19 +1151,23 @@ process_tryupgrade(struct analysis *analysis, struct point_state *point_state)
 	branch = conditional_result_branch(point_state->point.block,
 	    instruction);
 	current_modes = context_state_lock_modes(point_state->state, identity);
-	if ((current_modes & LOCKLINT_MODE_READER) != 0) {
+	if ((action == LOCKLINT_LOCK_TRY_UPGRADE &&
+	    (current_modes & LOCKLINT_MODE_READER) != 0) ||
+	    (action == LOCKLINT_LOCK_TRY_ACQUIRE && current_modes == 0)) {
 		error = context_state_set_lock(point_state->context->function,
-		    point_state->state, identity, LOCKLINT_MODE_WRITER,
-		    &writer_state, &existed);
+		    point_state->state, identity,
+		    action == LOCKLINT_LOCK_TRY_UPGRADE ?
+		    LOCKLINT_MODE_WRITER : mode, &success_state, &existed);
 		if (error != 0)
-			die("cannot apply rwlock upgrade: %s", strerror(error));
+			die("cannot apply conditional rwlock operation: %s",
+			    strerror(error));
 		record_semantic_state(analysis, existed);
 		if (branch != NULL) {
 			next.conditional_instruction = instruction;
 			next.conditional_nonzero = true;
 		}
 		record_analysis_point(analysis, point_state->context, next,
-		    writer_state, false);
+		    success_state, false);
 	}
 	if (branch != NULL) {
 		next.conditional_instruction = instruction;
@@ -1188,7 +1197,7 @@ process_point(struct analysis *analysis, struct point_state *point_state)
 		if (point.next_instruction->opcode == OP_CALL) {
 			const struct semantic_state *state;
 
-			if (process_tryupgrade(analysis, point_state))
+			if (process_conditional_rwlock(analysis, point_state))
 				return;
 			state = apply_lock_event(analysis, point_state);
 

@@ -1232,6 +1232,14 @@ both reader and writer states continue conservatively.  Inputs with no reader
 possibility diagnose a definite failure and do not create an impossible
 success path; mixed inputs diagnose a conditional failure.
 
+`rw_tryenter()` uses the same result-sensitive point state.  From unheld
+input, nonzero success acquires the selected reader or writer mode and zero
+failure remains unheld.  An ignored result retains both possibilities.
+Already-held input retains only the failure path under the current
+non-recursive ownership model; in particular, recursive reader acquisition is
+not invented without a hold count.  Try-acquisition does not create a
+blocking lock-order edge.
+
 Visibility changes need no factored transfer summary for resolved
 same-translation-unit calls.  The callee receives the caller's complete
 immutable visibility set, updates exact regions in its bound context, and
