@@ -153,3 +153,11 @@ decreasing_loop(int value, int repeat)
 	}
 	competition_object.protected = value;
 }
+
+#ifndef COMPETITION_ACCESS_ONLY
+static void
+read_only_possible(int value)
+{
+	competition_object.read_only = value;
+}
+#endif

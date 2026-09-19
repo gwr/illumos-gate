@@ -1168,6 +1168,8 @@ struct protected_access_finding {
 	struct locklint_access protector;
 	bool unprotected;
 	bool conditional;
+	bool read_only_visible;
+	bool read_only_maybe_visible;
 	avl_node_t by_access;
 };
 
@@ -1185,9 +1187,9 @@ compare_protected_access_finding(const void *left_arg, const void *right_arg)
 }
 
 /*
- * Check one protected leaf against every exact state reaching its
- * instruction.  The protector is translated through the active bindings
- * before its held modes are inspected.
+ * Check one policy-bearing leaf against every exact state reaching its
+ * instruction.  Mutex protection and read-only status remain independent:
+ * holding a mutex does not permit modifying read-only data during competition.
  */
 static void
 diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
@@ -1200,45 +1202,71 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 	size_t unprotected = 0;
 	size_t protected = 0;
 	size_t conditional = 0;
+	size_t read_only_visible = 0;
+	size_t read_only_hidden = 0;
+	size_t read_only_maybe_visible = 0;
+	bool check_mutex;
+	bool check_read_only;
 	bool composed;
 	bool existed;
 	int error;
 
-	if (!locklint_data_policy(access, &policy, &protector) ||
-	    policy.protection != LOCKLINT_PROTECTION_MUTEX ||
-	    (data->instruction->opcode == OP_LOAD &&
-	    policy.readable_without_lock))
+	if (!locklint_data_policy(access, &policy, &protector))
 		return;
-	error = context_access_identity(data->analysis, data->context,
-	    &protector, &identity, &existed, &composed);
-	if (error != 0)
-		die("cannot identify data protector: %s", strerror(error));
-	if (composed)
-		data->analysis->counts.binding_identities_composed++;
-	if (existed)
-		data->analysis->counts.lock_identities_reused++;
-	else
-		data->analysis->counts.lock_identities_created++;
+	check_mutex = policy.protection == LOCKLINT_PROTECTION_MUTEX &&
+	    !(data->instruction->opcode == OP_LOAD &&
+	    policy.readable_without_lock);
+	check_read_only = policy.read_only &&
+	    data->instruction->opcode == OP_STORE;
+	if (!check_mutex && !check_read_only)
+		return;
+	if (check_mutex) {
+		error = context_access_identity(data->analysis, data->context,
+		    &protector, &identity, &existed, &composed);
+		if (error != 0)
+			die("cannot identify data protector: %s",
+			    strerror(error));
+		if (composed)
+			data->analysis->counts.binding_identities_composed++;
+		if (existed)
+			data->analysis->counts.lock_identities_reused++;
+		else
+			data->analysis->counts.lock_identities_created++;
+	}
 	for (point_state = data->first; point_state != NULL &&
 	    same_analysis_point(data->first, point_state);
 	    point_state = AVL_NEXT(&data->context->point_states, point_state)) {
 		struct competition_interval competition =
 		    context_state_competition(point_state->state);
 
-		if ((context_state_lock_modes(point_state->state, identity) &
-		    LOCKLINT_MODE_MUTEX) != 0 ||
-		    (!competition.maximum_unbounded &&
-		    competition.maximum <= 0)) {
-			protected++;
-		} else if (competition.entry_condition ||
-		    (!competition.minimum_unbounded &&
-		    competition.minimum > 0)) {
-			unprotected++;
-		} else {
-			conditional++;
+		if (check_mutex) {
+			if ((context_state_lock_modes(point_state->state,
+			    identity) & LOCKLINT_MODE_MUTEX) != 0 ||
+			    (!competition.maximum_unbounded &&
+			    competition.maximum <= 0)) {
+				protected++;
+			} else if (competition.entry_condition ||
+			    (!competition.minimum_unbounded &&
+			    competition.minimum > 0)) {
+				unprotected++;
+			} else {
+				conditional++;
+			}
+		}
+		if (check_read_only) {
+			if (!competition.maximum_unbounded &&
+			    competition.maximum <= 0) {
+				read_only_hidden++;
+			} else if (!competition.minimum_unbounded &&
+			    competition.minimum > 0) {
+				read_only_visible++;
+			} else {
+				read_only_maybe_visible++;
+			}
 		}
 	}
-	if (unprotected != 0 || conditional != 0) {
+	if (unprotected != 0 || conditional != 0 ||
+	    read_only_visible != 0 || read_only_maybe_visible != 0) {
 		struct protected_access_finding lookup = {
 			.instruction = data->instruction,
 			.path = access->path
@@ -1259,8 +1287,14 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 		}
 		if (unprotected != 0 && protected == 0 && conditional == 0)
 			finding->unprotected = true;
-		else
+		else if (unprotected != 0 || conditional != 0)
 			finding->conditional = true;
+		if (read_only_visible != 0 && read_only_hidden == 0 &&
+		    read_only_maybe_visible == 0)
+			finding->read_only_visible = true;
+		else if (read_only_visible != 0 ||
+		    read_only_maybe_visible != 0)
+			finding->read_only_maybe_visible = true;
 	}
 }
 
@@ -1297,23 +1331,34 @@ emit_protected_access_findings(avl_tree_t *findings)
 
 	while ((finding = avl_first(findings)) != NULL) {
 		char *member = locklint_access_name(&finding->access);
-		char *lock = locklint_access_name(&finding->protector);
 		struct position pos = finding->instruction->access != NULL ?
 		    finding->instruction->access->pos :
 		    finding->instruction->pos;
 
+		if (finding->read_only_visible) {
+			locklint_warning(LOCKLINT_DIAG_READ_ONLY_VISIBLE, pos,
+			    "read-only data '%s' modified while visible to "
+			    "competing threads", member);
+		} else if (finding->read_only_maybe_visible) {
+			locklint_warning(LOCKLINT_DIAG_READ_ONLY_MAYBE_VISIBLE,
+			    pos, "read-only data '%s' may be modified while "
+			    "visible to competing threads", member);
+		}
 		if (finding->unprotected) {
+			char *lock =
+			    locklint_access_name(&finding->protector);
+
 			locklint_warning(LOCKLINT_DIAG_UNPROTECTED_ACCESS, pos,
 			    "protected member '%s' %s without holding '%s'",
 			    member, finding->instruction->opcode == OP_LOAD ?
 			    "read" : "modified", lock);
+			free(lock);
 		} else if (finding->conditional) {
 			locklint_warning(LOCKLINT_DIAG_CONDITIONAL_PROTECTION,
 			    pos, "protection for member '%s' is not "
 			    "established on every path", member);
 		}
 		free(member);
-		free(lock);
 		avl_remove(findings, finding);
 		free(finding);
 	}

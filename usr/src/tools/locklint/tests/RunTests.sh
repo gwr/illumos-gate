@@ -452,9 +452,9 @@ require_match "competition transitions" \
     '^competition-transitions applied 34 backedges-widened 3 backedges-covered 3$' \
     competition-depth-contexts.out
 require_match "competition semantic states" \
-    '^semantic-states created 35 reused 8$' competition-depth-contexts.out
+    '^semantic-states created 36 reused 8$' competition-depth-contexts.out
 require_match "competition point states" \
-    '^point-states created 141 reused 4$' competition-depth-contexts.out
+    '^point-states created 144 reused 4$' competition-depth-contexts.out
 
 run_capture "competition protected accesses" competition-accesses.out \
     "$LOCKLINT" -DCOMPETITION_ACCESS_ONLY --check-locks competition-depth.c
@@ -488,6 +488,25 @@ if [ "$(grep -Ec '\[competition-(maybe-)?underflow\]' \
     competition-depth-contexts.out)" -ne 3 ]; then
 	fail "competition underflow diagnostics: expected exactly three warnings"
 fi
+for location in 125 127 129
+do
+	require_match "definite competing read-only write" \
+	    "competition-depth.c:$location:27: warning: locklint: read-only data 'read_only' modified while visible to competing threads \\[read-only-visible\\]" \
+	    competition-depth-contexts.out
+done
+require_match "possible competing read-only write" \
+    "competition-depth.c:161:27: warning: locklint: read-only data 'read_only' may be modified while visible to competing threads \\[read-only-maybe-visible\\]" \
+    competition-depth-contexts.out
+if [ "$(grep -Ec '\[read-only-(maybe-)?visible\]' \
+    competition-depth-contexts.out)" -ne 4 ]; then
+	fail "read-only competition diagnostics: expected exactly four warnings"
+fi
+reject_match "first non-competing read-only write" \
+    "competition-depth.c:123:27:.*\\[read-only-" \
+    competition-depth-contexts.out
+reject_match "restored non-competing read-only write" \
+    "competition-depth.c:131:27:.*\\[read-only-" \
+    competition-depth-contexts.out
 
 # Verify the initial call-graph audit: direct call classification, function
 # identity across translation units, and exact function-pointer escapes.
@@ -726,8 +745,17 @@ require_match "replacement policy read" \
 require_match "replacement policy write" \
     "data-policy.c:91:14: warning: locklint: protected member 'mutex_after_scheme' modified without holding 'lock' \\[unprotected-access\\]" \
     data-policy-diagnostics.out
-if [ "$(grep -c 'warning:' data-policy-diagnostics.out)" -ne 5 ]; then
-	fail "mutex data policy diagnostics: expected exactly five warnings"
+require_match "held read-only scalar write" \
+    "data-policy.c:95:14: warning: locklint: read-only data 'read_only' modified while visible to competing threads \\[read-only-visible\\]" \
+    data-policy-diagnostics.out
+require_match "read-only aggregate first leaf" \
+    "data-policy.c:97:14: warning: locklint: read-only data 'read_only_group.first' modified while visible to competing threads \\[read-only-visible\\]" \
+    data-policy-diagnostics.out
+require_match "read-only aggregate second leaf" \
+    "data-policy.c:97:14: warning: locklint: read-only data 'read_only_group.second' modified while visible to competing threads \\[read-only-visible\\]" \
+    data-policy-diagnostics.out
+if [ "$(grep -c 'warning:' data-policy-diagnostics.out)" -ne 8 ]; then
+	fail "mutex data policy diagnostics: expected exactly eight warnings"
 fi
 
 #
