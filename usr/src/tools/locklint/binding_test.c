@@ -77,6 +77,14 @@ test_interning(void)
 	check(environment->entries[0].argument == 0 &&
 	    environment->entries[1].argument == 2,
 	    "binding environment is sorted by formal argument");
+	check(binding_environment_lookup(environment, 0) == first,
+	    "find first formal binding");
+	check(binding_environment_lookup(environment, 2) == second,
+	    "find second formal binding");
+	check(binding_environment_lookup(environment, 1) == NULL,
+	    "missing formal binding is absent");
+	check(binding_environment_lookup(NULL, 0) == NULL,
+	    "missing environment has no bindings");
 
 	error = binding_environment_intern(&collection, reversed, 2, &same,
 	    &existed);

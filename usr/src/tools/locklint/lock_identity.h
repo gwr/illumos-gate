@@ -61,6 +61,8 @@ void lock_identity_collection_free(struct lock_identity_collection *);
 int lock_identity_intern(struct lock_identity_collection *,
     struct lock_identity_key, enum lock_analysis_object_type,
     struct lock_identity **, bool *);
+int lock_identity_key_from_access(const struct locklint_access *,
+    struct lock_identity_key *, enum lock_analysis_object_type *);
 int lock_identity_intern_access(struct lock_identity_collection *,
     const struct locklint_access *, struct lock_identity **, bool *);
 struct lock_identity *lock_identity_first(struct lock_identity_collection *);

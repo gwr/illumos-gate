@@ -107,14 +107,14 @@ lock_identity_intern(struct lock_identity_collection *collection,
  * pseudos remain exact opaque identities.
  */
 int
-lock_identity_intern_access(struct lock_identity_collection *collection,
-    const struct locklint_access *access, struct lock_identity **result,
-    bool *existed)
+lock_identity_key_from_access(const struct locklint_access *access,
+    struct lock_identity_key *result_key,
+    enum lock_analysis_object_type *result_type)
 {
 	struct lock_identity_key key;
 	enum lock_analysis_object_type object_type;
 
-	if (access == NULL)
+	if (access == NULL || result_key == NULL || result_type == NULL)
 		return (EINVAL);
 	if (access->address_base != NULL) {
 		if (!access->address_base_is_symbol) {
@@ -144,6 +144,23 @@ lock_identity_intern_access(struct lock_identity_collection *collection,
 	}
 	if (key.analysis_object == NULL)
 		return (EINVAL);
+	*result_key = key;
+	*result_type = object_type;
+	return (0);
+}
+
+int
+lock_identity_intern_access(struct lock_identity_collection *collection,
+    const struct locklint_access *access, struct lock_identity **result,
+    bool *existed)
+{
+	struct lock_identity_key key;
+	enum lock_analysis_object_type object_type;
+	int error;
+
+	error = lock_identity_key_from_access(access, &key, &object_type);
+	if (error != 0)
+		return (error);
 	return (lock_identity_intern(collection, key, object_type, result,
 	    existed));
 }

@@ -56,6 +56,7 @@ struct analysis_counts {
 	size_t semantic_states_reused;
 	size_t binding_environments_created;
 	size_t binding_environments_reused;
+	size_t binding_identities_composed;
 	size_t contexts_created;
 	size_t contexts_reused;
 	size_t point_states_created;
@@ -286,6 +287,71 @@ formal_is_pointer(const struct symbol *formal)
 	return (type != NULL && type->type == SYM_PTR);
 }
 
+static bool
+identity_formal_argument(const struct function_info *function,
+    struct lock_identity_key key,
+    enum lock_analysis_object_type object_type, unsigned int *argument)
+{
+	struct symbol *formal;
+	struct symbol *type;
+	unsigned int current = 0;
+
+	if (object_type == LOCK_ANALYSIS_OBJECT_PSEUDO) {
+		const struct pseudo *pseudo = key.analysis_object;
+
+		if (pseudo->type != PSEUDO_ARG || pseudo->nr == 0)
+			return (false);
+		*argument = pseudo->nr - 1;
+		return (true);
+	}
+	if (object_type != LOCK_ANALYSIS_OBJECT_SYMBOL)
+		return (false);
+	type = function_type(function);
+	if (type == NULL)
+		return (false);
+	FOR_EACH_PTR(type->arguments, formal) {
+		if (formal == key.analysis_object) {
+			*argument = current;
+			return (true);
+		}
+		current++;
+	} END_FOR_EACH_PTR(formal);
+	return (false);
+}
+
+/*
+ * Replace a caller-relative formal identity with the corresponding incoming
+ * actual identity.  Relative coordinates compose without changing the
+ * opaque analysis object.
+ */
+static bool
+compose_caller_identity(const struct function_context *caller,
+    struct lock_identity_key *key,
+    enum lock_analysis_object_type *object_type)
+{
+	const struct lock_identity *actual;
+	int64_t relative_offset = key->target_offset;
+	int64_t actual_offset;
+	unsigned int argument;
+
+	if (!identity_formal_argument(caller->function, *key, *object_type,
+	    &argument))
+		return (false);
+	actual = binding_environment_lookup(caller->bindings, argument);
+	if (actual == NULL)
+		return (false);
+	actual_offset = actual->key.target_offset;
+	if ((relative_offset > 0 &&
+	    actual_offset > INT64_MAX - relative_offset) ||
+	    (relative_offset < 0 &&
+	    actual_offset < INT64_MIN - relative_offset))
+		die("composed binding offset is out of range");
+	key->analysis_object = actual->key.analysis_object;
+	key->target_offset = actual_offset + relative_offset;
+	*object_type = actual->analysis_object_type;
+	return (true);
+}
+
 static struct pseudo *
 call_argument_pseudo(const struct instruction *insn, unsigned int index)
 {
@@ -307,6 +373,7 @@ call_argument_identity(struct analysis *analysis,
 {
 	struct locklint_access access;
 	struct lock_identity_key key;
+	enum lock_analysis_object_type object_type;
 	struct lock_identity *identity;
 	struct pseudo *pseudo;
 	bool existed;
@@ -314,19 +381,26 @@ call_argument_identity(struct analysis *analysis,
 
 	if (locklint_get_call_argument_access(caller->function->tu, insn, index,
 	    &access)) {
-		error = lock_identity_intern_access(analysis->lock_identities,
-		    &access, &identity, &existed);
+		error = lock_identity_key_from_access(&access, &key,
+		    &object_type);
 	} else {
 		pseudo = call_argument_pseudo(insn, index);
 		if (pseudo == NULL)
 			die("cannot identify call argument %u", index);
 		key.analysis_object = pseudo;
 		key.target_offset = 0;
-		error = lock_identity_intern(analysis->lock_identities, key,
-		    LOCK_ANALYSIS_OBJECT_PSEUDO, &identity, &existed);
+		object_type = LOCK_ANALYSIS_OBJECT_PSEUDO;
+		error = 0;
 	}
 	if (error != 0)
 		die("cannot identify call argument %u: %s", index,
+		    strerror(error));
+	if (compose_caller_identity(caller, &key, &object_type))
+		analysis->counts.binding_identities_composed++;
+	error = lock_identity_intern(analysis->lock_identities, key,
+	    object_type, &identity, &existed);
+	if (error != 0)
+		die("cannot intern call argument %u: %s", index,
 		    strerror(error));
 	if (existed)
 		analysis->counts.lock_identities_reused++;
@@ -839,6 +913,8 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	(void) fprintf(stream, "binding-environments created %zu reused %zu\n",
 	    counts->binding_environments_created,
 	    counts->binding_environments_reused);
+	(void) fprintf(stream, "binding-identities composed %zu\n",
+	    counts->binding_identities_composed);
 	(void) fprintf(stream, "contexts created %zu reused %zu\n",
 	    counts->contexts_created, counts->contexts_reused);
 	(void) fprintf(stream, "point-states created %zu reused %zu\n",

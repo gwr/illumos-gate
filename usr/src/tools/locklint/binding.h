@@ -49,6 +49,8 @@ void binding_collection_free(struct binding_environment_collection *);
 int binding_environment_intern(struct binding_environment_collection *,
     const struct formal_binding *, size_t, struct binding_environment **,
     bool *);
+const struct lock_identity *binding_environment_lookup(
+    const struct binding_environment *, unsigned int);
 size_t binding_environment_count(struct binding_environment_collection *);
 size_t binding_environment_entry_count(
     struct binding_environment_collection *);

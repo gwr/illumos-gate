@@ -141,6 +141,32 @@ binding_environment_intern(struct binding_environment_collection *collection,
 	return (0);
 }
 
+const struct lock_identity *
+binding_environment_lookup(const struct binding_environment *environment,
+    unsigned int argument)
+{
+	size_t low = 0;
+	size_t high;
+
+	if (environment == NULL)
+		return (NULL);
+	high = environment->count;
+	while (low < high) {
+		size_t middle = low + (high - low) / 2;
+		const struct formal_binding *binding =
+		    &environment->entries[middle];
+
+		if (argument < binding->argument) {
+			high = middle;
+		} else if (argument > binding->argument) {
+			low = middle + 1;
+		} else {
+			return (binding->actual_identity);
+		}
+	}
+	return (NULL);
+}
+
 size_t
 binding_environment_count(
     struct binding_environment_collection *collection)

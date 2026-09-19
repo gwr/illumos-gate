@@ -596,57 +596,59 @@ reject_match "context counting" 'warning:' context-counting.out
 run_capture "context calls" context-calls.out \
     "$LOCKLINT" --dump-contexts context-calls.c
 require_match "context calls" '^roots 1$' context-calls.out
-require_match "context calls" '^functions 6$' context-calls.out
-require_match "context calls" '^semantic-states created 6 reused 5$' \
+require_match "context calls" '^functions 7$' context-calls.out
+require_match "context calls" '^semantic-states created 7 reused 8$' \
     context-calls.out
 require_match "context calls" \
-    '^binding-environments created 7 reused 4$' context-calls.out
-require_match "context calls" '^contexts created 7 reused 4$' \
+    '^binding-environments created 9 reused 6$' context-calls.out
+require_match "context calls" '^binding-identities composed 4$' \
     context-calls.out
-require_match "context calls" '^point-states created 71 reused 3$' \
+require_match "context calls" '^contexts created 9 reused 6$' \
     context-calls.out
-require_match "context calls" '^exits created 7 reused 0$' \
+require_match "context calls" '^point-states created 82 reused 3$' \
     context-calls.out
-require_match "context calls" '^continuations created 10 reused 0$' \
+require_match "context calls" '^exits created 9 reused 0$' \
     context-calls.out
-require_match "context calls" '^provenance-edges created 10 reused 0$' \
+require_match "context calls" '^continuations created 14 reused 0$' \
     context-calls.out
-require_match "context calls" '^reactivations 10$' context-calls.out
+require_match "context calls" '^provenance-edges created 14 reused 0$' \
+    context-calls.out
+require_match "context calls" '^reactivations 14$' context-calls.out
 require_match "context calls" '^worklist peak 3$' context-calls.out
 require_match "context calls" \
-    '^lock-identities created 2 reused 4 unresolved 0 retained 2$' \
+    '^lock-identities created 4 reused 10 unresolved 0 retained 4$' \
     context-calls.out
 require_match "context calls" \
-    '^lock-identity-types unspecified 0 object 0 symbol 2 pseudo 0$' \
+    '^lock-identity-types unspecified 0 object 0 symbol 0 pseudo 4$' \
     context-calls.out
 require_match "context calls" '^lock-identity-analysis-objects 2$' \
     context-calls.out
 require_match "context calls" \
-    '^distribution contexts/function samples 6 total 7 max 2 bins 0:0 1:5 2:1 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution contexts/function samples 7 total 9 max 2 bins 0:0 1:5 2:2 3:0 4:0 5:0 6-8:0 9+:0$' \
     context-calls.out
 require_match "context calls" \
-    '^distribution binding-environments/function samples 6 total 7 max 2 bins 0:0 1:5 2:1 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution binding-environments/function samples 7 total 9 max 2 bins 0:0 1:5 2:2 3:0 4:0 5:0 6-8:0 9+:0$' \
     context-calls.out
 require_match "context calls" \
-    '^distribution bindings/environment samples 7 total 4 max 2 bins 0:5 1:0 2:2 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution bindings/environment samples 9 total 8 max 2 bins 0:5 1:0 2:4 3:0 4:0 5:0 6-8:0 9+:0$' \
     context-calls.out
 require_match "context calls" \
-    '^distribution semantic-states/function samples 6 total 6 max 1 bins 0:0 1:6 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution semantic-states/function samples 7 total 7 max 1 bins 0:0 1:7 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
     context-calls.out
 require_match "context calls" \
-    '^distribution point-states/context samples 7 total 71 max 18 bins 0:0 1:0 2:0 3:1 4:0 5:2 6-8:0 9+:4$' \
+    '^distribution point-states/context samples 9 total 82 max 19 bins 0:0 1:0 2:0 3:1 4:0 5:4 6-8:0 9+:4$' \
     context-calls.out
 require_match "context calls" \
-    '^distribution states/analysis-point samples 71 total 71 max 1 bins 0:0 1:71 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution states/analysis-point samples 82 total 82 max 1 bins 0:0 1:82 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
     context-calls.out
 require_match "context calls" \
-    '^distribution exits/context samples 7 total 7 max 1 bins 0:0 1:7 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution exits/context samples 9 total 9 max 1 bins 0:0 1:9 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
     context-calls.out
 require_match "context calls" \
-    '^distribution continuations/context samples 7 total 10 max 2 bins 0:1 1:2 2:4 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution continuations/context samples 9 total 14 max 3 bins 0:1 1:3 2:4 3:1 4:0 5:0 6-8:0 9+:0$' \
     context-calls.out
 require_match "context calls" \
-    '^distribution provenance-edges/context samples 7 total 10 max 2 bins 0:1 1:2 2:4 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution provenance-edges/context samples 9 total 14 max 3 bins 0:1 1:3 2:4 3:1 4:0 5:0 6-8:0 9+:0$' \
     context-calls.out
 require_match "context calls" \
     '^maximum contexts/function 2 function binding_leaf tu=context-calls.c$' \
@@ -658,17 +660,17 @@ require_match "context calls" \
     '^maximum bindings/environment 2 function binding_leaf tu=context-calls.c$' \
     context-calls.out
 require_match "context calls" \
-    '^maximum continuations/context 2 function leaf tu=context-calls.c$' \
+    '^maximum continuations/context 3 function binding_leaf tu=context-calls.c$' \
     context-calls.out
 require_match "context calls" \
-    '^maximum provenance-edges/context 2 function leaf tu=context-calls.c$' \
+    '^maximum provenance-edges/context 3 function binding_leaf tu=context-calls.c$' \
     context-calls.out
 reject_match "context calls" '^linear-lookup ' context-calls.out
 require_match "context calls" \
-    '^distribution locks/semantic-state samples 6 total 0 max 0 bins 0:6 1:0 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution locks/semantic-state samples 7 total 0 max 0 bins 0:7 1:0 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
     context-calls.out
 require_match "context calls" \
-    '^distribution visibility/semantic-state samples 6 total 0 max 0 bins 0:6 1:0 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution visibility/semantic-state samples 7 total 0 max 0 bins 0:7 1:0 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
     context-calls.out
 require_match "context calls" \
     '^memory binding-environments [1-9][0-9]* bytes$' context-calls.out

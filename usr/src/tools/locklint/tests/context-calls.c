@@ -32,6 +32,12 @@ binding_leaf(int *first, int *second)
 }
 
 static int
+binding_wrapper(int *first, int *second)
+{
+	return (binding_leaf(first + 1, second + 1));
+}
+
+static int
 direct_recursive(int value)
 {
 	if (value == 0)
@@ -57,14 +63,14 @@ mutual_b(int value)
 	return (mutual_a(value - 1));
 }
 
-int context_calls(int);
+int context_calls(int, int *, int *);
 
 int
-context_calls(int value)
+context_calls(int value, int *first, int *second)
 {
-	int other = value + 1;
-
 	return (direct_recursive(value) + mutual_a(value) + leaf(value) +
-	    binding_leaf(&value, &value) + binding_leaf(&value, &value) +
-	    binding_leaf(&value, &other));
+	    binding_leaf(first + 1, first + 1) +
+	    binding_leaf(first + 1, first + 1) +
+	    binding_leaf(first + 1, second + 1) +
+	    binding_wrapper(first, first) + binding_wrapper(first, second));
 }
