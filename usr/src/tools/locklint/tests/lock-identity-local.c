@@ -66,5 +66,9 @@ lock_identity_local(void)
 	(void) local_helper();
 	local_lock_helper();
 	(void) local_helper();
+	mutex_exit(&local_lock);
+	mutex_enter(&local_lock);
+	mutex_enter(&local_lock);
+	mutex_exit(&local_lock);
 	(void) mutex_tryenter(&local_lock);
 }

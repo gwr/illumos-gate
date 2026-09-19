@@ -170,7 +170,7 @@ reject_match "global lock identities" 'warning:' \
 run_capture "local lock identity" lock-identity-local.out \
     "$LOCKLINT" --dump-contexts lock-identity-local.c
 require_match "local lock identity" \
-    '^lock-identities created 2 reused 4 unresolved 0 retained 2$' \
+    '^lock-identities created 2 reused 8 unresolved 0 retained 2$' \
     lock-identity-local.out
 require_match "local lock identity type" \
     '^lock-identity-types unspecified 0 object 0 symbol 2 pseudo 0$' \
@@ -178,7 +178,7 @@ require_match "local lock identity type" \
 require_match "local lock identity objects" \
     '^lock-identity-analysis-objects 2$' lock-identity-local.out
 require_match "local lock transitions" \
-    '^lock-transitions applied 3 deferred 1$' lock-identity-local.out
+    '^lock-transitions applied 7 deferred 1$' lock-identity-local.out
 require_match "local lock returns" \
     '^return-states mapped 6 locks-filtered 1$' lock-identity-local.out
 require_match "local lock contexts" \
@@ -192,7 +192,15 @@ require_match "local held-lock states" \
 require_match "local helper contexts" \
     '^maximum contexts/function 2 function local_helper tu=lock-identity-local.c$' \
     lock-identity-local.out
-reject_match "local lock identity" 'warning:' lock-identity-local.out
+require_match "local unmatched release" \
+    "lock-identity-local.c:69:19: warning: locklint: lock 'local_lock' is not held \\[lock-not-held\\]" \
+    lock-identity-local.out
+require_match "local duplicate acquire" \
+    "lock-identity-local.c:71:20: warning: locklint: lock 'local_lock' is already held \\[lock-already-held\\]" \
+    lock-identity-local.out
+if [ "$(grep -c 'warning:' lock-identity-local.out)" -ne 2 ]; then
+	fail "local lock diagnostics: expected exactly two warnings"
+fi
 
 run_capture "member lock identities" lock-identity-members.out \
     "$LOCKLINT" --dump-contexts lock-identity-members.c

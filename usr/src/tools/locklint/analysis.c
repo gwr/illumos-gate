@@ -37,7 +37,9 @@
 #include "callgraph.h"
 #include "context.h"
 #include "dependency.h"
+#include "diagnostics.h"
 #include "events.h"
+#include "expression.h"
 #include "function_info.h"
 #include "identity.h"
 #include "lib.h"
@@ -776,6 +778,104 @@ same_analysis_point(const struct point_state *left,
 	    left->point.next_instruction == right->point.next_instruction);
 }
 
+/*
+ * Diagnose one instruction after all exact states reaching it are known.
+ * Mixed valid and invalid states are left for later "maybe" diagnostics.
+ */
+static struct point_state *
+diagnose_lock_transition(struct analysis *analysis,
+    struct function_context *context, struct point_state *first)
+{
+	struct instruction *insn = first->point.next_instruction;
+	struct locklint_access access;
+	struct lock_identity *identity;
+	struct point_state *point_state;
+	enum locklint_lock_action action;
+	enum locklint_lock_mode mode;
+	size_t invalid = 0;
+	size_t valid = 0;
+	bool composed;
+	bool existed;
+	int error;
+
+	action = locklint_get_lock_action(context->function->tu, insn, &access,
+	    &mode);
+	if ((action == LOCKLINT_LOCK_ACQUIRE ||
+	    action == LOCKLINT_LOCK_RELEASE) && access.root != NULL) {
+		error = context_access_identity(analysis, context, &access,
+		    &identity, &existed, &composed);
+		if (error != 0)
+			die("cannot identify lock diagnostic: %s",
+			    strerror(error));
+		if (!existed)
+			die("lock diagnostic identity was not observed");
+	}
+	for (point_state = first; point_state != NULL &&
+	    same_analysis_point(first, point_state);
+	    point_state = AVL_NEXT(&context->point_states, point_state)) {
+		unsigned int current_modes;
+
+		if ((action != LOCKLINT_LOCK_ACQUIRE &&
+		    action != LOCKLINT_LOCK_RELEASE) || access.root == NULL)
+			continue;
+		current_modes = context_state_lock_modes(point_state->state,
+		    identity);
+		if ((action == LOCKLINT_LOCK_ACQUIRE && current_modes != 0) ||
+		    (action == LOCKLINT_LOCK_RELEASE && current_modes == 0))
+			invalid++;
+		else
+			valid++;
+	}
+	if (invalid != 0 && valid == 0) {
+		char *name = locklint_access_name(&access);
+		struct position pos = insn->call_expr != NULL ?
+		    insn->call_expr->pos : insn->pos;
+
+		if (action == LOCKLINT_LOCK_ACQUIRE) {
+			locklint_warning(LOCKLINT_DIAG_LOCK_ALREADY_HELD, pos,
+			    "lock '%s' is already held", name);
+		} else {
+			locklint_warning(LOCKLINT_DIAG_LOCK_NOT_HELD, pos,
+			    "lock '%s' is not held", name);
+		}
+		free(name);
+	}
+	return (point_state);
+}
+
+static void
+diagnose_lock_transitions(struct analysis *analysis)
+{
+	struct callgraph_iter *iterator;
+	struct function_info *function;
+	int error;
+
+	error = callgraph_iter_open(&iterator);
+	if (error != 0)
+		die("cannot iterate ready callgraph: %s", strerror(error));
+	while ((function = callgraph_iter_next(iterator)) != NULL) {
+		struct function_context *context;
+
+		for (context = avl_first(&function->contexts.contexts);
+		    context != NULL;
+		    context = AVL_NEXT(&function->contexts.contexts, context)) {
+			struct point_state *point_state =
+			    avl_first(&context->point_states);
+
+			while (point_state != NULL) {
+				if (point_state->point.next_instruction == NULL) {
+					point_state = AVL_NEXT(
+					    &context->point_states, point_state);
+					continue;
+				}
+				point_state = diagnose_lock_transition(analysis,
+				    context, point_state);
+			}
+		}
+	}
+	callgraph_iter_close(iterator);
+}
+
 static void
 measure_point_states(struct analysis_measurements *measurements,
     struct function_context *context)
@@ -1121,6 +1221,7 @@ analysis_run(struct lock_identity_collection *lock_identities, FILE *stream)
 	while ((point_state =
 	    worklist_point_state_dequeue(&analysis.worklist)) != NULL)
 		process_point(&analysis, point_state);
+	diagnose_lock_transitions(&analysis);
 	if (stream != NULL) {
 		analysis.measurements.lock_identities =
 		    lock_identity_count(analysis.lock_identities);
