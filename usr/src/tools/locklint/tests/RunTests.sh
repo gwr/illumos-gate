@@ -519,6 +519,7 @@ require_match "context counting" '^continuations created 1 reused 0$' \
 require_match "context counting" '^provenance-edges created 1 reused 0$' \
     context-counting.out
 require_match "context counting" '^reactivations 1$' context-counting.out
+require_match "context counting" '^lock-identities 0$' context-counting.out
 reject_match "context counting" 'warning:' context-counting.out
 
 #
@@ -543,6 +544,7 @@ require_match "context calls" '^provenance-edges created 7 reused 0$' \
     context-calls.out
 require_match "context calls" '^reactivations 7$' context-calls.out
 require_match "context calls" '^worklist peak 3$' context-calls.out
+require_match "context calls" '^lock-identities 0$' context-calls.out
 require_match "context calls" \
     '^distribution contexts/function samples 5 total 5 max 1 bins 0:0 1:5 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
     context-calls.out

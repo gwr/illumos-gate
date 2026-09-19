@@ -35,6 +35,7 @@
 #include "identity.h"
 #include "lib.h"
 #include "linearize.h"
+#include "lock_identity.h"
 #include "provenance.h"
 #include "symbol.h"
 #include "worklist.h"
@@ -84,6 +85,8 @@ struct analysis_measurements {
 	struct distribution provenance_edges_per_context;
 	struct distribution locks_per_semantic_state;
 	struct distribution visibility_per_semantic_state;
+	size_t lock_identities;
+	size_t lock_identity_bytes;
 	size_t lock_set_bytes;
 	size_t semantic_state_bytes;
 	size_t context_bytes;
@@ -94,6 +97,7 @@ struct analysis_measurements {
 };
 
 struct analysis {
+	struct lock_identity_collection *lock_identities;
 	struct worklist worklist;
 	struct analysis_counts counts;
 	struct analysis_measurements measurements;
@@ -577,6 +581,7 @@ retained_collection_bytes(const struct analysis_measurements *measurements)
 {
 	size_t total = measurements->semantic_state_bytes;
 	size_t values[] = {
+		measurements->lock_identity_bytes,
 		measurements->lock_set_bytes,
 		measurements->context_bytes,
 		measurements->point_state_bytes,
@@ -619,6 +624,8 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	(void) fprintf(stream, "reactivations %zu\n", counts->reactivations);
 	(void) fprintf(stream, "worklist peak %zu\n",
 	    analysis->worklist.peak_length);
+	(void) fprintf(stream, "lock-identities %zu\n",
+	    measurements->lock_identities);
 	show_distribution(stream, "contexts/function",
 	    &measurements->contexts_per_function);
 	show_distribution(stream, "semantic-states/function",
@@ -653,6 +660,8 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	    &measurements->provenance_edges_per_context);
 	(void) fprintf(stream, "memory semantic-states %zu bytes\n",
 	    measurements->semantic_state_bytes);
+	(void) fprintf(stream, "memory lock-identities %zu bytes\n",
+	    measurements->lock_identity_bytes);
 	(void) fprintf(stream, "memory lock-sets %zu bytes\n",
 	    measurements->lock_set_bytes);
 	(void) fprintf(stream, "memory contexts %zu bytes\n",
@@ -670,9 +679,11 @@ show_counts(FILE *stream, const struct analysis *analysis)
 }
 
 void
-analysis_run(FILE *stream)
+analysis_run(struct lock_identity_collection *lock_identities, FILE *stream)
 {
-	struct analysis analysis = { 0 };
+	struct analysis analysis = {
+		.lock_identities = lock_identities
+	};
 	struct point_state *point_state;
 
 	worklist_create(&analysis.worklist);
@@ -681,6 +692,11 @@ analysis_run(FILE *stream)
 	    worklist_point_state_dequeue(&analysis.worklist)) != NULL)
 		process_point(&analysis, point_state);
 	if (stream != NULL) {
+		analysis.measurements.lock_identities =
+		    lock_identity_count(analysis.lock_identities);
+		memory_add(&analysis.measurements.lock_identity_bytes,
+		    analysis.measurements.lock_identities,
+		    sizeof (struct lock_identity));
 		measure_collections(&analysis);
 		show_counts(stream, &analysis);
 	}

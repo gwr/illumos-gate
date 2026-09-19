@@ -91,6 +91,7 @@ LOCAL_OBJS = \
 	diagnostics.o \
 	events.o \
 	identity.o \
+	lock_identity.o \
 	lock_order.o \
 	context.o \
 	dependency.o \
@@ -127,6 +128,10 @@ CMD_PARSE_TEST_OBJS = command_parse.o command_parse_test.o
 command_parse_test: $(CMD_PARSE_TEST_OBJS)
 	$(LINK.c) -o $@ $(CMD_PARSE_TEST_OBJS) $(LDLIBS)
 
+LOCK_ID_TEST_OBJS = lock_identity_test.o lock_identity.o avl.o
+lock_identity_test: $(LOCK_ID_TEST_OBJS)
+	$(LINK.c) -o $@ $(LOCK_ID_TEST_OBJS) $(LDLIBS)
+
 CTX_TEST_OBJS = context_test.o context.o avl.o
 context_test: $(CTX_TEST_OBJS)
 	$(LINK.c) -o $@ $(CTX_TEST_OBJS) $(LDLIBS)
@@ -146,10 +151,11 @@ provenance_test: $(PROV_TEST_OBJS)
 test: $(PROG) FRC
 	(cd tests && ./RunTests.sh)
 
-UNITTESTS = command_parse_test context_test worklist_test dependency_test \
-	provenance_test
+UNITTESTS = command_parse_test lock_identity_test context_test worklist_test \
+	dependency_test provenance_test
 unittest: $(UNITTESTS) FRC
 	./command_parse_test command_parse_test.in
+	./lock_identity_test
 	./context_test
 	./worklist_test
 	./dependency_test
