@@ -84,6 +84,7 @@ test_exit_state_mapping(void)
 	struct semantic_state *callee_entry;
 	struct semantic_state *callee_empty;
 	struct semantic_state *callee_exit;
+	struct semantic_state *callee_deep;
 	struct semantic_state *mapped;
 	bool existed;
 	int error;
@@ -119,6 +120,15 @@ test_exit_state_mapping(void)
 	check(context_state_lock_modes(mapped, first) == 0 &&
 	    context_state_lock_modes(mapped, second) == 2,
 	    "exit mapping preserves complete mapped state");
+	error = context_state_set_competition_depth(&callee, callee_exit, 2,
+	    &callee_deep, &existed);
+	check(error == 0 && !existed, "create deep callee exit state");
+	error = context_state_map_exit(&caller, caller_held, callee_entry,
+	    callee_deep, include_selected_lock, (void *)second, &mapped,
+	    &existed);
+	check(error == 0 && !existed &&
+	    context_state_competition_depth(mapped) == 2,
+	    "exit mapping preserves competition depth");
 
 	context_collection_free(&callee);
 	context_collection_free(&caller);
@@ -176,6 +186,43 @@ test_context_interning(void)
 	check(same == context, "function context is canonical");
 
 	context_collection_free(&function);
+}
+
+static void
+test_competition_depth_interning(void)
+{
+	struct function_info first = { 0 };
+	struct function_info second = { 0 };
+	struct semantic_state *empty;
+	struct semantic_state *competing;
+	struct semantic_state *same;
+	struct semantic_state *imported;
+	bool existed;
+	int error;
+
+	context_collection_create(&first);
+	context_collection_create(&second);
+	error = context_empty_state_intern(&first, &empty, &existed);
+	check(error == 0 &&
+	    context_state_competition_depth(empty) == 0,
+	    "empty state has zero competition depth");
+	error = context_state_set_competition_depth(&first, empty, 1,
+	    &competing, &existed);
+	check(error == 0 && !existed && competing != empty,
+	    "competition depth creates distinct state");
+	check(competing->locks == empty->locks,
+	    "competition states share canonical lock set");
+	error = context_state_set_competition_depth(&first, competing, 1,
+	    &same, &existed);
+	check(error == 0 && existed && same == competing,
+	    "unchanged competition depth reuses state");
+	error = context_state_import(&second, competing, &imported, &existed);
+	check(error == 0 && !existed &&
+	    context_state_competition_depth(imported) == 1,
+	    "state import preserves competition depth");
+
+	context_collection_free(&second);
+	context_collection_free(&first);
 }
 
 /*
@@ -394,6 +441,7 @@ main(void)
 	test_exit_state_mapping();
 	test_state_interning();
 	test_context_interning();
+	test_competition_depth_interning();
 	test_lock_state_interning();
 	test_lock_state_limit();
 	test_function_ownership();

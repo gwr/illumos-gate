@@ -70,6 +70,10 @@ compare_semantic_state(const void *left_arg, const void *right_arg)
 	const struct semantic_state *left = left_arg;
 	const struct semantic_state *right = right_arg;
 
+	if (left->competition_depth < right->competition_depth)
+		return (-1);
+	if (left->competition_depth > right->competition_depth)
+		return (1);
 	return (AVL_PCMP(left->locks, right->locks));
 }
 
@@ -203,11 +207,12 @@ lock_set_intern(struct function_context_collection *collection,
 
 static int
 semantic_state_intern(struct function_context_collection *collection,
-    const struct semantic_lock_set *locks, struct semantic_state **result,
-    bool *existed)
+    const struct semantic_lock_set *locks, unsigned int competition_depth,
+    struct semantic_state **result, bool *existed)
 {
 	struct semantic_state key = {
-		.locks = locks
+		.locks = locks,
+		.competition_depth = competition_depth
 	};
 	struct semantic_state *state;
 	avl_index_t where;
@@ -222,6 +227,7 @@ semantic_state_intern(struct function_context_collection *collection,
 	if (state == NULL)
 		return (ENOMEM);
 	state->locks = locks;
+	state->competition_depth = competition_depth;
 	avl_insert(&collection->semantic_states, state, where);
 	*result = state;
 	*existed = false;
@@ -243,7 +249,7 @@ context_empty_state_intern(struct function_info *function,
 	error = lock_set_intern(collection, NULL, 0, &locks);
 	if (error != 0)
 		return (error);
-	return (semantic_state_intern(collection, locks, result, existed));
+	return (semantic_state_intern(collection, locks, 0, result, existed));
 }
 
 /*
@@ -265,7 +271,8 @@ context_state_import(struct function_info *function,
 	    source->locks->count, &locks);
 	if (error != 0)
 		return (error);
-	return (semantic_state_intern(collection, locks, result, existed));
+	return (semantic_state_intern(collection, locks,
+	    source->competition_depth, result, existed));
 }
 
 /*
@@ -294,7 +301,9 @@ context_state_map_exit(struct function_info *function,
 
 	if (caller_state == NULL || callee_entry == NULL || callee_exit == NULL)
 		return (EINVAL);
-	if (compare_lock_set(caller_state->locks, callee_entry->locks) != 0)
+	if (compare_lock_set(caller_state->locks, callee_entry->locks) != 0 ||
+	    caller_state->competition_depth !=
+	    callee_entry->competition_depth)
 		return (EINVAL);
 	entry_locks = callee_entry->locks;
 	exit_locks = callee_exit->locks;
@@ -317,7 +326,8 @@ context_state_map_exit(struct function_info *function,
 	error = lock_set_intern(collection, entries, result_count, &locks);
 	if (error != 0)
 		return (error);
-	return (semantic_state_intern(collection, locks, result, existed));
+	return (semantic_state_intern(collection, locks,
+	    callee_exit->competition_depth, result, existed));
 }
 
 /*
@@ -353,12 +363,12 @@ context_state_set_lock(struct function_info *function,
 		current_index++;
 	}
 	if (found && current_locks->entries[current_index].modes == modes) {
-		return (semantic_state_intern(collection, current_locks, result,
-		    existed));
+		return (semantic_state_intern(collection, current_locks,
+		    current->competition_depth, result, existed));
 	}
 	if (!found && modes == 0) {
-		return (semantic_state_intern(collection, current_locks, result,
-		    existed));
+		return (semantic_state_intern(collection, current_locks,
+		    current->competition_depth, result, existed));
 	}
 	if (!found && current_locks->count == LOCKLINT_MAX_TRACKED_LOCKS)
 		return (E2BIG);
@@ -382,7 +392,19 @@ context_state_set_lock(struct function_info *function,
 	error = lock_set_intern(collection, entries, result_count, &locks);
 	if (error != 0)
 		return (error);
-	return (semantic_state_intern(collection, locks, result, existed));
+	return (semantic_state_intern(collection, locks,
+	    current->competition_depth, result, existed));
+}
+
+int
+context_state_set_competition_depth(struct function_info *function,
+    const struct semantic_state *current, unsigned int competition_depth,
+    struct semantic_state **result, bool *existed)
+{
+	if (current == NULL)
+		return (EINVAL);
+	return (semantic_state_intern(&function->contexts, current->locks,
+	    competition_depth, result, existed));
 }
 
 /*
@@ -502,6 +524,12 @@ context_state_lock_modes(const struct semantic_state *state,
 			break;
 	}
 	return (0);
+}
+
+unsigned int
+context_state_competition_depth(const struct semantic_state *state)
+{
+	return (state->competition_depth);
 }
 
 size_t
