@@ -191,6 +191,18 @@ require_match "member lock identity objects" \
     '^lock-identity-analysis-objects 1$' lock-identity-members.out
 reject_match "member lock identities" 'warning:' lock-identity-members.out
 
+run_capture "derived lock identities" lock-identity-derived.out \
+    "$LOCKLINT" --dump-contexts lock-identity-derived.c
+require_match "derived lock identities" \
+    '^lock-identities created 2 reused 2 unresolved 0 retained 2$' \
+    lock-identity-derived.out
+require_match "derived lock identity types" \
+    '^lock-identity-types unspecified 0 object 0 symbol 0 pseudo 2$' \
+    lock-identity-derived.out
+require_match "derived lock identity objects" \
+    '^lock-identity-analysis-objects 1$' lock-identity-derived.out
+reject_match "derived lock identities" 'warning:' lock-identity-derived.out
+
 #
 # Verify preprocessing-time annotation capture and initial name resolution.
 #
