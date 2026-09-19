@@ -718,6 +718,18 @@ if [ "$(grep -c 'warning:' identity-formals-different.out)" -ne 2 ]; then
 fi
 
 #
+# Verify state and identity propagation across translation units.
+#
+run_capture "cross translation unit diagnostics" cross-diagnostics.out \
+    "$LOCKLINT" --check-locks cross-caller.c cross-callee.c
+require_match "cross translation unlocked access" \
+    "cross-callee.c:25:22: warning: locklint: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
+    cross-diagnostics.out
+if [ "$(grep -c 'warning:' cross-diagnostics.out)" -ne 1 ]; then
+	fail "cross translation unit diagnostics: expected exactly one warning"
+fi
+
+#
 # Verify NOT_REACHED removes terminated paths from lock-state merges.
 #
 run_capture "not reached diagnostics" not-reached-diagnostics.out \

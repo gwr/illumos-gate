@@ -905,7 +905,31 @@ struct protected_access_diagnostic {
 	struct function_context *context;
 	struct point_state *first;
 	struct instruction *instruction;
+	avl_tree_t *findings;
 };
+
+struct protected_access_finding {
+	struct instruction *instruction;
+	const struct locklint_member_path *path;
+	struct locklint_access access;
+	struct locklint_access protector;
+	bool unprotected;
+	bool conditional;
+	avl_node_t by_access;
+};
+
+static int
+compare_protected_access_finding(const void *left_arg, const void *right_arg)
+{
+	const struct protected_access_finding *left = left_arg;
+	const struct protected_access_finding *right = right_arg;
+	int order;
+
+	order = AVL_PCMP(left->instruction, right->instruction);
+	if (order != 0)
+		return (order);
+	return (AVL_PCMP(left->path, right->path));
+}
 
 /*
  * Check one protected leaf against every exact state reaching its
@@ -951,29 +975,35 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 			unprotected++;
 	}
 	if (unprotected != 0) {
-		char *member = locklint_access_name(access);
-		char *lock = locklint_access_name(&protector);
-		struct position pos = data->instruction->access != NULL ?
-		    data->instruction->access->pos : data->instruction->pos;
+		struct protected_access_finding lookup = {
+			.instruction = data->instruction,
+			.path = access->path
+		};
+		struct protected_access_finding *finding;
+		avl_index_t where;
 
-		if (protected == 0) {
-			locklint_warning(LOCKLINT_DIAG_UNPROTECTED_ACCESS, pos,
-			    "protected member '%s' %s without holding '%s'",
-			    member, data->instruction->opcode == OP_LOAD ?
-			    "read" : "modified", lock);
-		} else {
-			locklint_warning(LOCKLINT_DIAG_CONDITIONAL_PROTECTION,
-			    pos, "protection for member '%s' is not "
-			    "established on every path", member);
+		finding = avl_find(data->findings, &lookup, &where);
+		if (finding == NULL) {
+			finding = calloc(1, sizeof (*finding));
+			if (finding == NULL)
+				die("cannot allocate protected access finding");
+			finding->instruction = data->instruction;
+			finding->path = access->path;
+			finding->access = *access;
+			finding->protector = protector;
+			avl_insert(data->findings, finding, where);
 		}
-		free(member);
-		free(lock);
+		if (protected == 0)
+			finding->unprotected = true;
+		else
+			finding->conditional = true;
 	}
 }
 
 static struct point_state *
 diagnose_protected_access(struct analysis *analysis,
-    struct function_context *context, struct point_state *first)
+    struct function_context *context, struct point_state *first,
+    avl_tree_t *findings)
 {
 	struct instruction *instruction = first->point.next_instruction;
 	struct point_state *next;
@@ -986,13 +1016,43 @@ diagnose_protected_access(struct analysis *analysis,
 			.analysis = analysis,
 			.context = context,
 			.first = first,
-			.instruction = instruction
+			.instruction = instruction,
+			.findings = findings
 		};
 
 		locklint_for_each_instruction_leaf_access(context->function->tu,
 		    instruction, diagnose_protected_leaf, &data);
 	}
 	return (next);
+}
+
+static void
+emit_protected_access_findings(avl_tree_t *findings)
+{
+	struct protected_access_finding *finding;
+
+	while ((finding = avl_first(findings)) != NULL) {
+		char *member = locklint_access_name(&finding->access);
+		char *lock = locklint_access_name(&finding->protector);
+		struct position pos = finding->instruction->access != NULL ?
+		    finding->instruction->access->pos :
+		    finding->instruction->pos;
+
+		if (finding->unprotected) {
+			locklint_warning(LOCKLINT_DIAG_UNPROTECTED_ACCESS, pos,
+			    "protected member '%s' %s without holding '%s'",
+			    member, finding->instruction->opcode == OP_LOAD ?
+			    "read" : "modified", lock);
+		} else if (finding->conditional) {
+			locklint_warning(LOCKLINT_DIAG_CONDITIONAL_PROTECTION,
+			    pos, "protection for member '%s' is not "
+			    "established on every path", member);
+		}
+		free(member);
+		free(lock);
+		avl_remove(findings, finding);
+		free(finding);
+	}
 }
 
 static void
@@ -1007,7 +1067,11 @@ diagnose_protected_accesses(struct analysis *analysis)
 		die("cannot iterate ready callgraph: %s", strerror(error));
 	while ((function = callgraph_iter_next(iterator)) != NULL) {
 		struct function_context *context;
+		avl_tree_t findings;
 
+		avl_create(&findings, compare_protected_access_finding,
+		    sizeof (struct protected_access_finding),
+		    offsetof(struct protected_access_finding, by_access));
 		for (context = avl_first(&function->contexts.contexts);
 		    context != NULL;
 		    context = AVL_NEXT(&function->contexts.contexts, context)) {
@@ -1021,9 +1085,11 @@ diagnose_protected_accesses(struct analysis *analysis)
 					continue;
 				}
 				point_state = diagnose_protected_access(analysis,
-				    context, point_state);
+				    context, point_state, &findings);
 			}
 		}
+		emit_protected_access_findings(&findings);
+		avl_destroy(&findings);
 	}
 	callgraph_iter_close(iterator);
 }
