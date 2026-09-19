@@ -111,6 +111,8 @@ void context_collection_free(struct function_info *);
 
 int context_empty_state_intern(struct function_info *,
     struct semantic_state **, bool *);
+int context_state_import(struct function_info *, const struct semantic_state *,
+    struct semantic_state **, bool *);
 /*
  * Lock identities must be canonical and stable for the function collection's
  * lifetime.  Zero modes removes the lock.

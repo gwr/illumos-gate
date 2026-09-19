@@ -25,6 +25,14 @@ extern void mutex_enter(mutex_t *);
 extern void mutex_exit(mutex_t *);
 extern int mutex_tryenter(mutex_t *);
 
+static volatile int local_helper_value;
+
+static int
+local_helper(void)
+{
+	return (local_helper_value);
+}
+
 void lock_identity_local(void);
 
 void
@@ -33,6 +41,8 @@ lock_identity_local(void)
 	mutex_t local_lock;
 
 	mutex_enter(&local_lock);
+	(void) local_helper();
 	mutex_exit(&local_lock);
+	(void) local_helper();
 	(void) mutex_tryenter(&local_lock);
 }

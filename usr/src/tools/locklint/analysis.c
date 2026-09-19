@@ -540,10 +540,10 @@ process_call(struct analysis *analysis, struct point_state *point_state,
 
 	bindings = call_bindings(analysis, caller_context, callee_function,
 	    point_state->point.next_instruction);
-	error = context_empty_state_intern(callee_function, &callee_state,
-	    &existed);
+	error = context_state_import(callee_function, caller_state,
+	    &callee_state, &existed);
 	if (error != 0)
-		die("cannot intern callee state: %s", strerror(error));
+		die("cannot import callee state: %s", strerror(error));
 	if (existed)
 		analysis->counts.semantic_states_reused++;
 	else

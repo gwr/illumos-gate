@@ -228,8 +228,14 @@ test_function_ownership(void)
 {
 	struct function_info first = { 0 };
 	struct function_info second = { 0 };
+	unsigned int identity;
+	const struct lock_identity *lock =
+	    (const struct lock_identity *)&identity;
 	struct semantic_state *first_state;
+	struct semantic_state *first_held;
 	struct semantic_state *second_state;
+	struct semantic_state *second_held;
+	struct semantic_state *same;
 	struct function_context *first_context;
 	struct function_context *second_context;
 	bool existed;
@@ -239,12 +245,25 @@ test_function_ownership(void)
 	context_collection_create(&second);
 	error = context_empty_state_intern(&first, &first_state, &existed);
 	check(error == 0, "create first function state");
+	error = context_state_set_lock(&first, first_state, lock, 1,
+	    &first_held, &existed);
+	check(error == 0 && !existed, "create first function held state");
 
 	error = context_empty_state_intern(&second, &second_state, &existed);
 	check(error == 0, "create second function state");
 	check(!existed, "second function owns a distinct semantic state");
 	check(second_state != first_state,
 	    "semantic states are interned per function");
+	error = context_state_import(&second, first_held, &second_held,
+	    &existed);
+	check(error == 0 && !existed, "import held state into second function");
+	check(second_held != first_held,
+	    "imported state is owned by destination function");
+	check(context_state_lock_modes(second_held, lock) == 1,
+	    "imported state preserves held lock");
+	error = context_state_import(&second, first_held, &same, &existed);
+	check(error == 0 && existed && same == second_held,
+	    "repeated state import reuses destination state");
 
 	error = context_create(&first, NULL, first_state, &first_context,
 	    &existed);

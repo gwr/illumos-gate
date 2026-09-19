@@ -179,11 +179,16 @@ require_match "local lock identity objects" \
     '^lock-identity-analysis-objects 1$' lock-identity-local.out
 require_match "local lock transitions" \
     '^lock-transitions applied 2 deferred 1$' lock-identity-local.out
+require_match "local lock contexts" \
+    '^contexts created 3 reused 0$' lock-identity-local.out
 require_match "local lock states" \
-    '^distribution semantic-states/function samples 1 total 2 max 2 bins 0:0 1:0 2:1 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution semantic-states/function samples 2 total 4 max 2 bins 0:0 1:0 2:2 3:0 4:0 5:0 6-8:0 9+:0$' \
     lock-identity-local.out
 require_match "local held-lock states" \
-    '^distribution locks/semantic-state samples 2 total 1 max 1 bins 0:1 1:1 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution locks/semantic-state samples 4 total 2 max 1 bins 0:2 1:2 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
+    lock-identity-local.out
+require_match "local helper contexts" \
+    '^maximum contexts/function 2 function local_helper tu=lock-identity-local.c$' \
     lock-identity-local.out
 reject_match "local lock identity" 'warning:' lock-identity-local.out
 

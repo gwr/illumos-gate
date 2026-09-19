@@ -247,6 +247,28 @@ context_empty_state_intern(struct function_info *function,
 }
 
 /*
+ * Return the destination function's canonical copy of an existing semantic
+ * state.  The source state and its function-owned lock set remain unchanged.
+ */
+int
+context_state_import(struct function_info *function,
+    const struct semantic_state *source, struct semantic_state **result,
+    bool *existed)
+{
+	struct function_context_collection *collection = &function->contexts;
+	struct semantic_lock_set *locks;
+	int error;
+
+	if (source == NULL)
+		return (EINVAL);
+	error = lock_set_intern(collection, source->locks->entries,
+	    source->locks->count, &locks);
+	if (error != 0)
+		return (error);
+	return (semantic_state_intern(collection, locks, result, existed));
+}
+
+/*
  * Return the canonical state produced by replacing one lock's modes.  Zero
  * modes removes the lock.  The current state remains unchanged.
  */
