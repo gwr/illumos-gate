@@ -513,6 +513,22 @@ run_capture "call visibility diagnostics" visibility-calls.out \
 compare "call visibility diagnostics" visibility-calls.ref \
     visibility-calls.out
 
+#
+# Verify formal, global, and nested visibility effects retain canonical
+# identities across translation units independent of input order.
+#
+run_capture "cross translation unit visibility diagnostics" \
+    visibility-cross.out "$LOCKLINT" --check-locks \
+    visibility-cross-caller.c visibility-cross-callee.c
+compare "cross translation unit visibility diagnostics" \
+    visibility-cross.ref visibility-cross.out
+
+run_capture "reversed cross translation unit visibility diagnostics" \
+    visibility-cross-reversed.out "$LOCKLINT" --check-locks \
+    visibility-cross-callee.c visibility-cross-caller.c
+compare "reversed cross translation unit visibility diagnostics" \
+    visibility-cross.ref visibility-cross-reversed.out
+
 run_capture "competition protected accesses" competition-accesses.out \
     "$LOCKLINT" -DCOMPETITION_ACCESS_ONLY --check-locks competition-depth.c
 for location in 50 52 54 70 83 115
