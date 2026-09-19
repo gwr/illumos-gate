@@ -1099,6 +1099,13 @@ conditional_result_branch(struct basic_block *block,
 	return (NULL);
 }
 
+static bool
+call_result_used(const struct instruction *instruction)
+{
+	return (has_use_list(instruction->target) &&
+	    has_users(instruction->target));
+}
+
 static void
 record_conditional_outcome(struct analysis *analysis,
     struct point_state *point_state, struct analysis_point next,
@@ -1145,8 +1152,6 @@ process_conditional_lock(struct analysis *analysis,
 		return (false);
 	branch = conditional_result_branch(point_state->point.block,
 	    instruction);
-	if (action == LOCKLINT_LOCK_RESULT_ACQUIRE && branch != NULL)
-		return (false);
 	next.next_instruction =
 	    next_live_instruction(point_state->point.block, instruction);
 	if (access.root == NULL) {
@@ -1176,8 +1181,20 @@ process_conditional_lock(struct analysis *analysis,
 			die("cannot apply mutex lock operation: %s",
 			    strerror(error));
 		record_semantic_state(analysis, existed);
-		record_analysis_point(analysis, point_state->context, next,
-		    success_state, false);
+		if (branch != NULL) {
+			record_conditional_outcome(analysis, point_state, next,
+			    branch, false, success_state);
+			record_conditional_outcome(analysis, point_state, next,
+			    branch, true, point_state->state);
+		} else if (call_result_used(instruction)) {
+			record_analysis_point(analysis, point_state->context,
+			    next, success_state, false);
+			record_analysis_point(analysis, point_state->context,
+			    next, point_state->state, false);
+		} else {
+			record_analysis_point(analysis, point_state->context,
+			    next, success_state, false);
+		}
 		analysis->counts.lock_transitions_applied++;
 		return (true);
 	}
@@ -1398,6 +1415,7 @@ diagnose_lock_transition(struct analysis *analysis,
 	action = locklint_get_lock_action(context->function->tu, insn, &access,
 	    &mode);
 	if ((action == LOCKLINT_LOCK_ACQUIRE ||
+	    action == LOCKLINT_LOCK_RESULT_ACQUIRE ||
 	    action == LOCKLINT_LOCK_RELEASE ||
 	    action == LOCKLINT_LOCK_DOWNGRADE ||
 	    action == LOCKLINT_LOCK_TRY_UPGRADE) && access.root != NULL) {
@@ -1415,6 +1433,7 @@ diagnose_lock_transition(struct analysis *analysis,
 		unsigned int current_modes;
 
 		if ((action != LOCKLINT_LOCK_ACQUIRE &&
+		    action != LOCKLINT_LOCK_RESULT_ACQUIRE &&
 		    action != LOCKLINT_LOCK_RELEASE &&
 		    action != LOCKLINT_LOCK_DOWNGRADE &&
 		    action != LOCKLINT_LOCK_TRY_UPGRADE) ||
@@ -1434,7 +1453,8 @@ diagnose_lock_transition(struct analysis *analysis,
 		} else if (action == LOCKLINT_LOCK_TRY_UPGRADE &&
 		    (current_modes & LOCKLINT_MODE_READER) != 0) {
 			uncertain++;
-		} else if ((action == LOCKLINT_LOCK_ACQUIRE &&
+		} else if (((action == LOCKLINT_LOCK_ACQUIRE ||
+		    action == LOCKLINT_LOCK_RESULT_ACQUIRE) &&
 		    current_modes != 0) ||
 		    (action == LOCKLINT_LOCK_RELEASE && current_modes == 0) ||
 		    action == LOCKLINT_LOCK_DOWNGRADE ||
@@ -1471,7 +1491,8 @@ diagnose_lock_transition(struct analysis *analysis,
 				    pos, "lock '%s' may not be write-held",
 				    name);
 			}
-		} else if (action == LOCKLINT_LOCK_ACQUIRE) {
+		} else if (action == LOCKLINT_LOCK_ACQUIRE ||
+		    action == LOCKLINT_LOCK_RESULT_ACQUIRE) {
 			if (valid == 0) {
 				locklint_warning(
 				    LOCKLINT_DIAG_LOCK_ALREADY_HELD, pos,

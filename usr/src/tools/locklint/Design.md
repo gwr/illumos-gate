@@ -1256,9 +1256,14 @@ equal held states distinct until the branch, allowing a success-path unlock
 to produce the documented held/unheld approximation without a recursive hold
 count.  This nonblocking operation creates no lock-order edge.
 
-An ignored `mutex_lock()` result is treated as a definite blocking
-acquisition.  This preserves the established idiom used by ordinary callers;
-result-sensitive `mutex_lock()` handling remains separate.
+For `mutex_lock()`, a checked zero result establishes ownership and a checked
+nonzero result preserves the input state, normally unheld.  This intentionally
+abstracts away detailed robust-mutex errors that commonly lead to program
+failure and are not useful to protection checking.  An ignored result is a
+definite blocking acquisition, preserving the established ordinary idiom.
+A consumed result that cannot be tied to a local branch retains both acquired
+and input states.  Acquiring an already-held mutex remains an independent
+error.
 
 Visibility changes need no factored transfer summary for resolved
 same-translation-unit calls.  The callee receives the caller's complete
@@ -1513,15 +1518,16 @@ The recognized conditional acquisitions have these return conventions:
 | --- | --- | --- | --- | --- |
 | `mutex_tryenter()` | mutex-held | input state | input or mutex-held | input or mutex-held |
 | `rw_tryenter()` | selected reader/writer mode | input state | input or selected mode | input or selected mode |
-| `mutex_lock()` | input or mutex-held | mutex-held | mutex-held | input or mutex-held |
+| `mutex_lock()` | input state | mutex-held | mutex-held | input or mutex-held |
 | `mutex_trylock()` | input or mutex-held | mutex-held | input or mutex-held | input or mutex-held |
 
-The nonzero user-mutex state remains conservative because robust mutex
-`EOWNERDEAD` transfers ownership while errors such as `ENOTRECOVERABLE` and
-`EBUSY` do not.  Ignored `mutex_lock()` retains definite acquisition to
-preserve the established model for ordinary `(void) mutex_lock()` calls.
-Consumed results that cannot be tied to a local branch, including values
-returned through wrappers, retain the conservative union.
+The nonzero `mutex_trylock()` state remains conservative because robust mutex
+`EOWNERDEAD` transfers ownership while ordinary failures do not.  For
+`mutex_lock()`, checked nonzero results instead preserve the input state under
+the protection-focused abstraction described above.  Ignored `mutex_lock()`
+retains definite acquisition.  Consumed results that cannot be tied to a
+local branch, including values returned through wrappers, retain the
+conservative union.
 
 Try-acquisitions do not seed acquisition summaries or order edges because
 failure never blocks.  `mutex_lock()` remains a blocking acquisition and
