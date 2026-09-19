@@ -1633,6 +1633,7 @@ for_each_visibility_operand(struct translation_unit *tu,
 	struct locklint_access access;
 	struct lock_identity_key key;
 	enum lock_analysis_object_type object_type;
+	uint64_t length;
 
 	if (expr != NULL && expr->type == EXPR_COMMA) {
 		for_each_visibility_operand(tu, expr->left, callback, data);
@@ -1640,7 +1641,8 @@ for_each_visibility_operand(struct translation_unit *tu,
 		return;
 	}
 	if (expr != NULL && locklint_get_access(tu, expr, &access) &&
-	    lock_identity_key_from_access(&access, &key, &object_type) == 0)
+	    lock_identity_key_from_access(&access, &key, &object_type) == 0 &&
+	    locklint_access_size(&access, &length))
 		callback(&access, expr, data);
 	else
 		callback(NULL, expr, data);

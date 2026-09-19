@@ -30,6 +30,12 @@
 
 static unsigned int failures;
 
+#define	REGION(object, offset, length)	((struct visibility_region) { \
+	.analysis_object = (object), \
+	.target_offset = (offset), \
+	.target_length = (length) \
+})
+
 void
 dependency_records_create(struct function_context *context)
 {
@@ -135,23 +141,26 @@ test_exit_state_mapping(void)
 	    context_state_competition(mapped).minimum == 2 &&
 	    context_state_competition(mapped).maximum == 2,
 	    "exit mapping preserves competition depth");
-	error = context_state_set_visibility(&caller, caller_empty, first,
+	error = context_state_set_visibility(&caller, caller_empty,
+	    REGION(first, 0, 4),
 	    SEMANTIC_VISIBILITY_INVISIBLE, &caller_visibility, &existed);
 	check(error == 0, "create exit-map caller visibility");
 	error = context_state_import(&callee, caller_visibility,
 	    &callee_visibility_entry, &existed);
 	check(error == 0, "import exit-map callee visibility entry");
 	error = context_state_set_visibility(&callee, callee_visibility_entry,
-	    second, SEMANTIC_VISIBILITY_VISIBLE, &callee_visibility_exit,
+	    REGION(second, 0, 4), SEMANTIC_VISIBILITY_VISIBLE,
+	    &callee_visibility_exit,
 	    &existed);
 	check(error == 0, "change visibility in callee");
 	error = context_state_map_exit(&caller, caller_visibility,
 	    callee_visibility_entry, callee_visibility_exit, NULL, NULL,
 	    &mapped, &existed);
 	check(error == 0 &&
-	    context_state_visibility(mapped, first, &visibility) &&
+	    context_state_visibility(mapped, REGION(first, 0, 4), &visibility) &&
 	    visibility == SEMANTIC_VISIBILITY_INVISIBLE &&
-	    context_state_visibility(mapped, second, &visibility) &&
+	    context_state_visibility(mapped, REGION(second, 0, 4),
+	    &visibility) &&
 	    visibility == SEMANTIC_VISIBILITY_VISIBLE,
 	    "exit mapping preserves complete visibility state");
 
@@ -394,7 +403,7 @@ test_competition_depth_interning(void)
 	check(error == EINVAL,
 	    "competition merge rejects different lock sets");
 	error = context_state_set_visibility(&first, empty,
-	    (const struct lock_identity *)&identity,
+	    REGION(&identity, 0, 4),
 	    SEMANTIC_VISIBILITY_VISIBLE, &visible, &existed);
 	check(error == 0, "create different-visibility competition state");
 	error = context_state_merge_competition(&first, empty, visible, false,
@@ -528,6 +537,9 @@ test_visibility_state_interning(void)
 	struct semantic_state *changed;
 	struct semantic_state *same;
 	struct semantic_state *locked;
+	struct semantic_state *whole_invisible;
+	struct semantic_state *member_visible;
+	struct semantic_state *whole_visible;
 	enum semantic_visibility visibility;
 	bool existed;
 	int error;
@@ -538,48 +550,75 @@ test_visibility_state_interning(void)
 	check(context_state_visibility_count(empty) == 0,
 	    "empty state has no visibility entries");
 
-	error = context_state_set_visibility(&function, empty, first,
+	error = context_state_set_visibility(&function, empty,
+	    REGION(first, 0, 4),
 	    SEMANTIC_VISIBILITY_INVISIBLE, &first_invisible, &existed);
 	check(error == 0 && !existed, "create one-entry visibility state");
-	check(context_state_visibility(first_invisible, first, &visibility) &&
+	check(context_state_visibility(first_invisible, REGION(first, 0, 4),
+	    &visibility) &&
 	    visibility == SEMANTIC_VISIBILITY_INVISIBLE,
 	    "visibility state records invisible object");
-	check(!context_state_visibility(empty, first, &visibility),
+	check(!context_state_visibility(empty, REGION(first, 0, 4), &visibility),
 	    "visibility transition preserves empty state");
 
-	error = context_state_set_visibility(&function, first_invisible, first,
+	error = context_state_set_visibility(&function, first_invisible,
+	    REGION(first, 0, 4),
 	    SEMANTIC_VISIBILITY_INVISIBLE, &same, &existed);
 	check(error == 0 && existed && same == first_invisible,
 	    "unchanged visibility state is reused");
 
-	error = context_state_set_visibility(&function, first_invisible, second,
+	error = context_state_set_visibility(&function, first_invisible,
+	    REGION(second, 0, 4),
 	    SEMANTIC_VISIBILITY_VISIBLE, &first_second, &existed);
 	check(error == 0 && !existed, "create two-entry visibility state");
-	error = context_state_set_visibility(&function, empty, second,
+	error = context_state_set_visibility(&function, empty,
+	    REGION(second, 0, 4),
 	    SEMANTIC_VISIBILITY_VISIBLE, &second_visible, &existed);
 	check(error == 0 && !existed, "create alternate visibility state");
-	error = context_state_set_visibility(&function, second_visible, first,
+	error = context_state_set_visibility(&function, second_visible,
+	    REGION(first, 0, 4),
 	    SEMANTIC_VISIBILITY_INVISIBLE, &same, &existed);
 	check(error == 0 && existed && same == first_second,
 	    "visibility insertion order reuses canonical state");
 
-	error = context_state_set_visibility(&function, first_second, first,
+	error = context_state_set_visibility(&function, first_second,
+	    REGION(first, 0, 4),
 	    SEMANTIC_VISIBILITY_VISIBLE, &changed, &existed);
 	check(error == 0 && !existed, "create changed visibility state");
-	check(context_state_visibility(changed, first, &visibility) &&
+	check(context_state_visibility(changed, REGION(first, 0, 4),
+	    &visibility) &&
 	    visibility == SEMANTIC_VISIBILITY_VISIBLE,
 	    "explicit visible state replaces invisible state");
-	check(context_state_visibility(first_second, first, &visibility) &&
+	check(context_state_visibility(first_second, REGION(first, 0, 4),
+	    &visibility) &&
 	    visibility == SEMANTIC_VISIBILITY_INVISIBLE,
 	    "visibility replacement preserves prior state");
+	error = context_state_set_visibility(&function, empty,
+	    REGION(first, 0, 16), SEMANTIC_VISIBILITY_INVISIBLE,
+	    &whole_invisible, &existed);
+	check(error == 0 && !existed, "create invisible containing region");
+	error = context_state_set_visibility(&function, whole_invisible,
+	    REGION(first, 0, 4), SEMANTIC_VISIBILITY_VISIBLE,
+	    &member_visible, &existed);
+	check(error == 0 && !existed &&
+	    context_state_visibility_count(member_visible) == 2,
+	    "narrower visible region retains containing rule");
+	error = context_state_set_visibility(&function, member_visible,
+	    REGION(first, 0, 16), SEMANTIC_VISIBILITY_VISIBLE,
+	    &whole_visible, &existed);
+	check(error == 0 && !existed &&
+	    context_state_visibility_count(whole_visible) == 1 &&
+	    !context_state_visibility(whole_visible, REGION(first, 0, 4),
+	    &visibility),
+	    "new containing region removes subsumed override");
 
 	error = context_state_set_lock(&function, first_second, first, 1,
 	    &locked, &existed);
 	check(error == 0 && locked->visibility == first_second->visibility,
 	    "lock transition shares visibility set");
-	check(context_visibility_set_count(&function) == 5,
-	    "function owns five canonical visibility sets");
-	check(context_visibility_sets_created(&function) == 5,
+	check(context_visibility_set_count(&function) == 8,
+	    "function owns eight canonical visibility sets");
+	check(context_visibility_sets_created(&function) == 8,
 	    "visibility set creation count is retained");
 	check(context_visibility_sets_reused(&function) != 0,
 	    "visibility set reuse count is retained");
@@ -603,7 +642,7 @@ test_visibility_state_limit(void)
 	check(error == 0, "create empty state for visibility limit");
 	for (index = 0; index < LOCKLINT_MAX_TRACKED_VISIBILITY; index++) {
 		error = context_state_set_visibility(&function, state,
-		    (const struct lock_identity *)&identities[index],
+		    REGION(&identities[index], 0, 4),
 		    SEMANTIC_VISIBILITY_INVISIBLE, &next, &existed);
 		check(error == 0 && !existed,
 		    "add visibility entry below state limit");
@@ -615,8 +654,7 @@ test_visibility_state_limit(void)
 	next = NULL;
 	existed = true;
 	error = context_state_set_visibility(&function, state,
-	    (const struct lock_identity *)&identities[
-	    LOCKLINT_MAX_TRACKED_VISIBILITY],
+	    REGION(&identities[LOCKLINT_MAX_TRACKED_VISIBILITY], 0, 4),
 	    SEMANTIC_VISIBILITY_INVISIBLE, &next, &existed);
 	check(error == E2BIG, "visibility beyond state limit is rejected");
 	check(next == NULL && existed,
@@ -669,13 +707,15 @@ test_function_ownership(void)
 	error = context_state_import(&second, first_held, &same, &existed);
 	check(error == 0 && existed && same == second_held,
 	    "repeated state import reuses destination state");
-	error = context_state_set_visibility(&first, first_held, lock,
+	error = context_state_set_visibility(&first, first_held,
+	    REGION(lock, 0, 4),
 	    SEMANTIC_VISIBILITY_VISIBLE, &first_visible, &existed);
 	check(error == 0, "create first function visibility state");
 	error = context_state_import(&second, first_visible, &second_visible,
 	    &existed);
 	check(error == 0 && !existed && second_visible != first_visible &&
-	    context_state_visibility(second_visible, lock, &visibility) &&
+	    context_state_visibility(second_visible, REGION(lock, 0, 4),
+	    &visibility) &&
 	    visibility == SEMANTIC_VISIBILITY_VISIBLE,
 	    "state import preserves visibility in destination state");
 
@@ -789,7 +829,7 @@ test_point_state_competition_widening(void)
 	    (const struct lock_identity *)&identity, 1, &held, &existed);
 	check(error == 0, "create widening different-lock state");
 	error = context_state_set_visibility(&function, zero,
-	    (const struct lock_identity *)&identity,
+	    REGION(&identity, 0, 4),
 	    SEMANTIC_VISIBILITY_INVISIBLE, &visible, &existed);
 	check(error == 0, "create widening different-visibility state");
 	error = context_create(&function, NULL, zero, &context, &existed);

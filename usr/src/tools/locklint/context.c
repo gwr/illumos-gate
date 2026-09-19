@@ -65,6 +65,51 @@ compare_lock_set(const void *left_arg, const void *right_arg)
 }
 
 static int
+compare_visibility_region(const struct visibility_region *left,
+    const struct visibility_region *right)
+{
+	int result;
+
+	result = AVL_PCMP(left->analysis_object, right->analysis_object);
+	if (result != 0)
+		return (result);
+	if (left->target_offset < right->target_offset)
+		return (-1);
+	if (left->target_offset > right->target_offset)
+		return (1);
+	if (left->target_length < right->target_length)
+		return (-1);
+	if (left->target_length > right->target_length)
+		return (1);
+	return (0);
+}
+
+static bool
+visibility_region_valid(const struct visibility_region *region)
+{
+	return (region != NULL && region->analysis_object != NULL &&
+	    region->target_length != 0 &&
+	    region->target_length <= INT64_MAX &&
+	    region->target_offset <=
+	    INT64_MAX - (int64_t)(region->target_length - 1));
+}
+
+static bool
+visibility_region_subsumes(const struct visibility_region *outer,
+    const struct visibility_region *inner)
+{
+	int64_t outer_end;
+	int64_t inner_end;
+
+	if (outer->analysis_object != inner->analysis_object ||
+	    outer->target_offset > inner->target_offset)
+		return (false);
+	outer_end = outer->target_offset + (int64_t)(outer->target_length - 1);
+	inner_end = inner->target_offset + (int64_t)(inner->target_length - 1);
+	return (outer_end >= inner_end);
+}
+
+static int
 compare_visibility_set(const void *left_arg, const void *right_arg)
 {
 	const struct semantic_visibility_set *left = left_arg;
@@ -74,8 +119,8 @@ compare_visibility_set(const void *left_arg, const void *right_arg)
 	int result;
 
 	for (index = 0; index < count; index++) {
-		result = compare_lock_identity(left->entries[index].object,
-		    right->entries[index].object);
+		result = compare_visibility_region(&left->entries[index].region,
+		    &right->entries[index].region);
 		if (result != 0)
 			return (result);
 		if (left->entries[index].visibility <
@@ -549,7 +594,7 @@ context_state_set_lock(struct function_info *function,
 
 int
 context_state_set_visibility(struct function_info *function,
-    const struct semantic_state *current, const struct lock_identity *object,
+    const struct semantic_state *current, struct visibility_region region,
     enum semantic_visibility value, struct semantic_state **result,
     bool *existed)
 {
@@ -558,50 +603,49 @@ context_state_set_visibility(struct function_info *function,
 	    entries[LOCKLINT_MAX_TRACKED_VISIBILITY];
 	const struct semantic_visibility_set *current_visibility;
 	struct semantic_visibility_set *visibility;
-	size_t current_index = 0;
+	size_t current_index;
 	size_t result_index = 0;
 	size_t result_count;
-	bool found = false;
+	bool inserted = false;
 	int error;
 
-	if (current == NULL || object == NULL ||
+	if (current == NULL || !visibility_region_valid(&region) ||
 	    (value != SEMANTIC_VISIBILITY_VISIBLE &&
 	    value != SEMANTIC_VISIBILITY_INVISIBLE))
 		return (EINVAL);
 	current_visibility = current->visibility;
-	while (current_index < current_visibility->count) {
-		int order = compare_lock_identity(
-		    current_visibility->entries[current_index].object, object);
-
-		if (order >= 0) {
-			found = order == 0;
-			break;
-		}
-		current_index++;
+	result_count = 1;
+	for (current_index = 0; current_index < current_visibility->count;
+	    current_index++) {
+		if (!visibility_region_subsumes(&region,
+		    &current_visibility->entries[current_index].region))
+			result_count++;
 	}
-	if (found &&
-	    current_visibility->entries[current_index].visibility == value) {
-		return (semantic_state_intern(collection, current->locks,
-		    current_visibility, current->competition, result, existed));
-	}
-	if (!found &&
-	    current_visibility->count == LOCKLINT_MAX_TRACKED_VISIBILITY)
+	if (result_count > LOCKLINT_MAX_TRACKED_VISIBILITY)
 		return (E2BIG);
-	result_count = current_visibility->count + (found ? 0 : 1);
-	while (result_index < current_index) {
-		entries[result_index] =
-		    current_visibility->entries[result_index];
+	for (current_index = 0; current_index < current_visibility->count;
+	    current_index++) {
+		const struct semantic_visibility_state *entry =
+		    &current_visibility->entries[current_index];
+
+		if (visibility_region_subsumes(&region, &entry->region))
+			continue;
+		if (!inserted &&
+		    compare_visibility_region(&region, &entry->region) < 0) {
+			entries[result_index].region = region;
+			entries[result_index].visibility = value;
+			result_index++;
+			inserted = true;
+		}
+		entries[result_index++] = *entry;
+	}
+	if (!inserted) {
+		entries[result_index].region = region;
+		entries[result_index].visibility = value;
 		result_index++;
 	}
-	entries[result_index].object = object;
-	entries[result_index].visibility = value;
-	result_index++;
-	if (found)
-		current_index++;
-	while (current_index < current_visibility->count) {
-		entries[result_index++] =
-		    current_visibility->entries[current_index++];
-	}
+	if (result_index != result_count)
+		abort();
 	error = visibility_set_intern(collection, entries, result_count,
 	    &visibility);
 	if (error != 0)
@@ -945,13 +989,14 @@ context_state_visibility_count(const struct semantic_state *state)
 
 bool
 context_state_visibility(const struct semantic_state *state,
-    const struct lock_identity *object, enum semantic_visibility *visibility)
+    struct visibility_region region,
+    enum semantic_visibility *visibility)
 {
 	size_t index;
 
 	for (index = 0; index < state->visibility->count; index++) {
-		int order = compare_lock_identity(
-		    state->visibility->entries[index].object, object);
+		int order = compare_visibility_region(
+		    &state->visibility->entries[index].region, &region);
 
 		if (order == 0) {
 			if (visibility != NULL)

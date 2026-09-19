@@ -507,6 +507,7 @@ locklint_same_access(const struct locklint_access *left,
 		return (left->address_base == right->address_base &&
 		    left->address_offset == right->address_offset);
 	}
+
 	if (left->offset != right->offset ||
 	    !same_access_object(left, right))
 		return (false);
@@ -517,6 +518,24 @@ locklint_same_access(const struct locklint_access *left,
 	/* Separately parsed declarations have distinct member symbols. */
 	return (same_ident(left->member != NULL ? left->member->ident : NULL,
 	    right->member != NULL ? right->member->ident : NULL));
+}
+
+bool
+locklint_access_size(const struct locklint_access *access, uint64_t *result)
+{
+	struct symbol *target;
+	int size;
+
+	if (access == NULL || result == NULL)
+		return (false);
+	target = access->member != NULL ? access->member : access->type;
+	if (target == NULL)
+		return (false);
+	size = bits_to_bytes(target->bit_size);
+	if (size <= 0)
+		return (false);
+	*result = (uint64_t)size;
+	return (true);
 }
 
 static bool

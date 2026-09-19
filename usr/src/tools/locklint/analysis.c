@@ -142,6 +142,9 @@ struct analysis {
 static int context_access_identity(struct analysis *,
     const struct function_context *, const struct locklint_access *,
     struct lock_identity **, bool *, bool *);
+static int context_access_key(const struct function_context *,
+    const struct locklint_access *, struct lock_identity_key *,
+    enum lock_analysis_object_type *, bool *);
 static void record_semantic_state(struct analysis *, bool);
 
 static struct instruction *
@@ -273,8 +276,11 @@ apply_visibility_target(const struct locklint_access *access,
     const struct expression *expr, void *data_arg)
 {
 	struct visibility_transition *data = data_arg;
-	struct lock_identity *identity;
+	struct lock_identity_key key;
+	struct visibility_region region;
+	enum lock_analysis_object_type object_type;
 	struct semantic_state *state;
+	uint64_t length;
 	bool composed;
 	bool existed;
 	int error;
@@ -284,18 +290,23 @@ apply_visibility_target(const struct locklint_access *access,
 		data->analysis->counts.visibility_transitions_unresolved++;
 		return;
 	}
-	error = context_access_identity(data->analysis,
-	    data->point_state->context, access, &identity, &existed, &composed);
+	if (!locklint_access_size(access, &length)) {
+		data->analysis->counts.visibility_transitions_unresolved++;
+		return;
+	}
+	error = context_access_key(data->point_state->context, access, &key,
+	    &object_type, &composed);
 	if (error != 0)
 		die("cannot identify visibility target: %s", strerror(error));
 	if (composed)
 		data->analysis->counts.binding_identities_composed++;
-	if (existed)
-		data->analysis->counts.lock_identities_reused++;
-	else
-		data->analysis->counts.lock_identities_created++;
+	region = (struct visibility_region) {
+		.analysis_object = key.analysis_object,
+		.target_offset = key.target_offset,
+		.target_length = length
+	};
 	error = context_state_set_visibility(
-	    data->point_state->context->function, data->state, identity,
+	    data->point_state->context->function, data->state, region,
 	    data->visibility, &state, &existed);
 	if (error != 0)
 		die("cannot apply visibility transition: %s", strerror(error));
@@ -582,6 +593,20 @@ context_identity_intern(struct analysis *analysis,
 }
 
 static int
+context_access_key(const struct function_context *context,
+    const struct locklint_access *access, struct lock_identity_key *key,
+    enum lock_analysis_object_type *object_type, bool *composed)
+{
+	int error;
+
+	error = lock_identity_key_from_access(access, key, object_type);
+	if (error != 0)
+		return (error);
+	*composed = compose_caller_identity(context, key, object_type);
+	return (0);
+}
+
+static int
 context_access_identity(struct analysis *analysis,
     const struct function_context *context,
     const struct locklint_access *access, struct lock_identity **identity,
@@ -591,11 +616,12 @@ context_access_identity(struct analysis *analysis,
 	enum lock_analysis_object_type object_type;
 	int error;
 
-	error = lock_identity_key_from_access(access, &key, &object_type);
+	error = context_access_key(context, access, &key, &object_type,
+	    composed);
 	if (error != 0)
 		return (error);
-	return (context_identity_intern(analysis, context, key, object_type,
-	    identity, existed, composed));
+	return (lock_identity_intern(analysis->lock_identities, key,
+	    object_type, identity, existed));
 }
 
 static struct pseudo *

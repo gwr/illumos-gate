@@ -475,13 +475,13 @@ require_match "visibility transition counts" \
     '^visibility-transitions applied 25 deferred 2 unresolved 1$' \
     visibility-contexts.out
 require_match "visibility canonical sets" \
-    '^visibility-sets created 52 reused 11 retained 52$' \
+    '^visibility-sets created 52 reused 13 retained 52$' \
     visibility-contexts.out
 require_match "visibility sets per function" \
     '^distribution visibility-sets/function samples 26 total 52 max 5 bins 0:0 1:11 2:6 3:8 4:0 5:1 6-8:0 9+:0$' \
     visibility-contexts.out
 require_match "visibility entries per set" \
-    '^distribution visibility-entries/set samples 52 total 31 max 2 bins 0:26 1:21 2:5 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution visibility-entries/set samples 52 total 30 max 2 bins 0:26 1:22 2:4 3:0 4:0 5:0 6-8:0 9+:0$' \
     visibility-contexts.out
 require_match "invalid visibility operand" \
     "visibility.c:151:9: warning: locklint: visibility annotation has no object \\[visibility-no-object\\]" \

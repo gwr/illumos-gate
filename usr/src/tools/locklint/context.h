@@ -58,8 +58,14 @@ enum semantic_visibility {
 	SEMANTIC_VISIBILITY_INVISIBLE
 };
 
+struct visibility_region {
+	const void *analysis_object;
+	int64_t target_offset;
+	uint64_t target_length;
+};
+
 struct semantic_visibility_state {
-	const struct lock_identity *object;
+	struct visibility_region region;
 	enum semantic_visibility visibility;
 };
 
@@ -161,7 +167,7 @@ int context_state_set_lock(struct function_info *,
     const struct semantic_state *, const struct lock_identity *, unsigned int,
     struct semantic_state **, bool *);
 int context_state_set_visibility(struct function_info *,
-    const struct semantic_state *, const struct lock_identity *,
+    const struct semantic_state *, struct visibility_region,
     enum semantic_visibility, struct semantic_state **, bool *);
 int context_state_set_competition(struct function_info *,
     const struct semantic_state *, struct competition_interval,
@@ -193,7 +199,7 @@ unsigned int context_state_lock_modes(const struct semantic_state *,
     const struct lock_identity *);
 size_t context_state_visibility_count(const struct semantic_state *);
 bool context_state_visibility(const struct semantic_state *,
-    const struct lock_identity *, enum semantic_visibility *);
+    struct visibility_region, enum semantic_visibility *);
 struct competition_interval context_state_competition(
     const struct semantic_state *);
 size_t context_point_state_count(struct function_context *);
