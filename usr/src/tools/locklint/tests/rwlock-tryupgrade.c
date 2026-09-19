@@ -156,3 +156,24 @@ tryupgrade_writer(struct tryupgrade_state *state)
 		state->value = 1;
 	rw_exit(&state->first);
 }
+
+static int
+read_across_upgrade(struct tryupgrade_state *state)
+{
+	return (state->value);
+}
+
+static int
+tryupgrade_across_call(struct tryupgrade_state *state)
+{
+	int upgraded;
+	int value;
+
+	rw_enter(&state->first, RW_READER);
+	upgraded = rw_tryupgrade(&state->first);
+	value = read_across_upgrade(state);
+	if (!upgraded)
+		state->value = value;
+	rw_exit(&state->first);
+	return (value);
+}

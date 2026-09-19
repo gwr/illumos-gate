@@ -96,11 +96,15 @@ typedef bool (*context_visibility_map_f)(const struct visibility_region *,
 
 /*
  * A point identifies the next Sparse instruction to evaluate.  A NULL
- * instruction identifies the exit of the specified basic block.
+ * instruction identifies the exit of the specified basic block.  An optional
+ * conditional instruction and outcome retain a call result until the
+ * corresponding branch edge consumes it.
  */
 struct analysis_point {
 	struct basic_block *block;
 	struct instruction *next_instruction;
+	const struct instruction *conditional_instruction;
+	bool conditional_nonzero;
 };
 
 struct point_state;

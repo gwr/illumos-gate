@@ -69,6 +69,14 @@ compare_continuations(const struct continuation *left,
 	    right->resume_point.next_instruction);
 	if (result != 0)
 		return (result);
+	result = AVL_PCMP(left->resume_point.conditional_instruction,
+	    right->resume_point.conditional_instruction);
+	if (result != 0)
+		return (result);
+	if (left->resume_point.conditional_nonzero !=
+	    right->resume_point.conditional_nonzero) {
+		return (left->resume_point.conditional_nonzero ? 1 : -1);
+	}
 	result = AVL_PCMP(left->caller_state, right->caller_state);
 	if (result != 0)
 		return (result);
@@ -90,15 +98,22 @@ test_dependency(void)
 	struct context_exit *second_exit;
 	struct continuation *direct;
 	struct continuation *same_direct;
+	struct continuation *conditional_direct;
 	struct continuation *first_to_second;
 	struct continuation *second_to_first;
 	char first_block;
 	char second_block;
+	char condition;
 	struct analysis_point first_resume = {
 		.block = (struct basic_block *)&first_block
 	};
 	struct analysis_point second_resume = {
 		.block = (struct basic_block *)&second_block
+	};
+	struct analysis_point conditional_resume = {
+		.block = (struct basic_block *)&first_block,
+		.conditional_instruction = (struct instruction *)&condition,
+		.conditional_nonzero = true
 	};
 	bool existed;
 	int error;
@@ -139,6 +154,13 @@ test_dependency(void)
 	check(same_direct == direct, "duplicate continuation is canonical");
 	check(dependency_continuation_next_exit(direct) == first_exit,
 	    "late continuation sees existing exit");
+	error = dependency_continuation_create(first_context, first_context,
+	    conditional_resume, first_state, NULL, &conditional_direct,
+	    &existed);
+	check(error == 0 && !existed,
+	    "conditional resume creates a distinct continuation");
+	check(dependency_continuation_next_exit(conditional_direct) ==
+	    first_exit, "conditional continuation sees existing exit");
 
 	error = dependency_continuation_create(second_context, first_context,
 	    second_resume, first_state, NULL, &first_to_second, &existed);
@@ -167,8 +189,8 @@ test_dependency(void)
 	    "continuation selects oldest exit");
 	check(dependency_exit_count(first_context) == 2,
 	    "first context records two exits");
-	check(dependency_continuation_count(first_context) == 2,
-	    "first context records two continuations");
+	check(dependency_continuation_count(first_context) == 3,
+	    "first context records three continuations");
 	{
 		struct continuation *continuation;
 		struct continuation *previous = NULL;
@@ -185,7 +207,7 @@ test_dependency(void)
 			previous = continuation;
 			count++;
 		}
-		check(count == 2, "enumerate every continuation");
+		check(count == 3, "enumerate every continuation");
 	}
 
 	context_collection_free(&second_function);

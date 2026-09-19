@@ -202,6 +202,14 @@ compare_point_state(const void *left_arg, const void *right_arg)
 	    right->point.next_instruction);
 	if (result != 0)
 		return (result);
+	result = AVL_PCMP(left->point.conditional_instruction,
+	    right->point.conditional_instruction);
+	if (result != 0)
+		return (result);
+	if (left->point.conditional_nonzero !=
+	    right->point.conditional_nonzero) {
+		return (left->point.conditional_nonzero ? 1 : -1);
+	}
 	return (AVL_PCMP(left->state, right->state));
 }
 
@@ -963,7 +971,11 @@ context_point_state_record_widened(struct function_context *context,
 	for (point_state = avl_nearest(&context->point_states, where, AVL_AFTER);
 	    point_state != NULL &&
 	    point_state->point.block == point.block &&
-	    point_state->point.next_instruction == point.next_instruction;
+	    point_state->point.next_instruction == point.next_instruction &&
+	    point_state->point.conditional_instruction ==
+	    point.conditional_instruction &&
+	    point_state->point.conditional_nonzero ==
+	    point.conditional_nonzero;
 	    point_state = AVL_NEXT(&context->point_states, point_state)) {
 		if (point_state->state->locks != state->locks ||
 		    point_state->state->visibility != state->visibility)

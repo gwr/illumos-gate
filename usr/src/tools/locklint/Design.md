@@ -1221,6 +1221,17 @@ not cascade from the same precondition failure.  Because resolved calls carry
 exact lock modes, the same transition applies through wrappers without a
 separate summary.
 
+`rw_tryupgrade()` requires reader-held input.  Its nonzero result changes the
+state to writer-held, while its zero result preserves reader ownership.
+Analysis-point identity temporarily includes the conditional operation and
+selected outcome, allowing intervening instructions and resolved calls to
+retain the result until the consuming branch prunes the opposite path.
+Sparse normalizes direct truth tests, negation, comparison with zero, and
+locally saved results to that operation.  If no branch consumes the result,
+both reader and writer states continue conservatively.  Inputs with no reader
+possibility diagnose a definite failure and do not create an impossible
+success path; mixed inputs diagnose a conditional failure.
+
 Visibility changes need no factored transfer summary for resolved
 same-translation-unit calls.  The callee receives the caller's complete
 immutable visibility set, updates exact regions in its bound context, and

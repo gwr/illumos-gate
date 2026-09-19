@@ -817,8 +817,11 @@ test_point_state_interning(void)
 	struct point_state *point_state;
 	struct point_state *same;
 	struct point_state *other;
+	struct point_state *conditional_true;
+	struct point_state *conditional_false;
 	char block;
 	char instruction;
+	char condition;
 	struct analysis_point point = {
 		.block = (struct basic_block *)&block,
 		.next_instruction = (struct instruction *)&instruction
@@ -846,8 +849,20 @@ test_point_state_interning(void)
 	    &existed);
 	check(error == 0 && !existed, "record state at another point");
 	check(other != point_state, "analysis points remain distinct");
-	check(context_point_state_count(context) == 2,
-	    "context has two point states");
+
+	point.conditional_instruction = (struct instruction *)&condition;
+	point.conditional_nonzero = true;
+	error = context_point_state_record(context, point, state,
+	    &conditional_true, &existed);
+	check(error == 0 && !existed, "record nonzero conditional point state");
+	point.conditional_nonzero = false;
+	error = context_point_state_record(context, point, state,
+	    &conditional_false, &existed);
+	check(error == 0 && !existed, "record zero conditional point state");
+	check(conditional_true != conditional_false,
+	    "conditional outcomes remain distinct");
+	check(context_point_state_count(context) == 4,
+	    "context has four point states");
 
 	context_collection_free(&function);
 }

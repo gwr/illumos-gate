@@ -15,10 +15,12 @@
 
 /*
  * Drive the caller-context fixed point over retained Sparse control-flow
- * graphs.  Unconditional acquisition and release update immutable local
- * semantic states, while resolved calls distinguish canonical pointer-formal
- * bindings and transfer state through callees.  Diagnostics consume the
- * complete fixed point so branch-dependent lock state is reported coherently.
+ * graphs.  Lock operations update immutable local semantic states, while
+ * result-sensitive operations retain their selected outcome in the analysis
+ * point until its branch.  Resolved calls distinguish canonical
+ * pointer-formal bindings and transfer state through callees.  Diagnostics
+ * consume the complete fixed point so branch-dependent lock state is reported
+ * coherently.
  */
 
 #include <errno.h>
@@ -191,14 +193,10 @@ next_live_instruction(struct basic_block *block, struct instruction *current)
  * Existing point states terminate CFG cycles without another queue search.
  */
 static void
-record_point(struct analysis *analysis, struct function_context *context,
-    struct basic_block *block, struct instruction *instruction,
+record_analysis_point(struct analysis *analysis,
+    struct function_context *context, struct analysis_point point,
     const struct semantic_state *state, bool back_edge)
 {
-	struct analysis_point point = {
-		.block = block,
-		.next_instruction = instruction
-	};
 	struct point_state *point_state;
 	bool existed;
 	int error;
@@ -228,6 +226,19 @@ record_point(struct analysis *analysis, struct function_context *context,
 	analysis->counts.point_states_created++;
 	if (!worklist_point_state_enqueue(&analysis->worklist, point_state))
 		die("new analysis point was already queued");
+}
+
+static void
+record_point(struct analysis *analysis, struct function_context *context,
+    struct basic_block *block, struct instruction *instruction,
+    const struct semantic_state *state, bool back_edge)
+{
+	struct analysis_point point = {
+		.block = block,
+		.next_instruction = instruction
+	};
+
+	record_analysis_point(analysis, context, point, state, back_edge);
 }
 
 static void
@@ -1014,9 +1025,11 @@ process_call(struct analysis *analysis, struct point_state *point_state,
 	callee_function = callgraph_callee(caller_context->function,
 	    point_state->point.next_instruction);
 	if (callee_function == NULL) {
-		record_point(analysis, caller_context, point_state->point.block,
-		    next_live_instruction(point_state->point.block,
-		    point_state->point.next_instruction), caller_state, false);
+		resume_point = point_state->point;
+		resume_point.next_instruction = next_live_instruction(
+		    resume_point.block, resume_point.next_instruction);
+		record_analysis_point(analysis, caller_context, resume_point,
+		    caller_state, false);
 		return;
 	}
 
@@ -1049,7 +1062,7 @@ process_call(struct analysis *analysis, struct point_state *point_state,
 	else
 		analysis->counts.provenance_edges_created++;
 
-	resume_point.block = point_state->point.block;
+	resume_point = point_state->point;
 	resume_point.next_instruction = next_live_instruction(
 	    point_state->point.block, point_state->point.next_instruction);
 	error = dependency_continuation_create(callee_context, caller_context,
@@ -1070,6 +1083,93 @@ process_call(struct analysis *analysis, struct point_state *point_state,
 	record_reactivation(analysis, continuation);
 }
 
+static struct instruction *
+conditional_result_branch(struct basic_block *block,
+    const struct instruction *operation)
+{
+	struct instruction *instruction;
+
+	FOR_EACH_PTR(block->insns, instruction) {
+		if (instruction->bb != NULL && instruction->opcode == OP_CBR &&
+		    instruction->cond != NULL &&
+		    instruction->cond->type == PSEUDO_REG &&
+		    instruction->cond->def == operation)
+			return (instruction);
+	} END_FOR_EACH_PTR(instruction);
+	return (NULL);
+}
+
+/*
+ * Preserve both possible rw_tryupgrade() results.  A result consumed by this
+ * block's branch remains tagged until that edge is selected; otherwise both
+ * states continue without a condition.
+ */
+static bool
+process_tryupgrade(struct analysis *analysis, struct point_state *point_state)
+{
+	struct instruction *instruction = point_state->point.next_instruction;
+	struct locklint_access access;
+	struct lock_identity *identity;
+	struct instruction *branch;
+	struct semantic_state *writer_state;
+	struct analysis_point next = point_state->point;
+	enum locklint_lock_action action;
+	enum locklint_lock_mode mode;
+	unsigned int current_modes;
+	bool composed;
+	bool existed;
+	int error;
+
+	action = locklint_get_lock_action(point_state->context->function->tu,
+	    instruction, &access, &mode);
+	if (action != LOCKLINT_LOCK_TRY_UPGRADE)
+		return (false);
+	next.next_instruction =
+	    next_live_instruction(point_state->point.block, instruction);
+	if (access.root == NULL) {
+		analysis->counts.lock_identities_unresolved++;
+		record_analysis_point(analysis, point_state->context, next,
+		    point_state->state, false);
+		return (true);
+	}
+	error = context_access_identity(analysis, point_state->context, &access,
+	    &identity, &existed, &composed);
+	if (error != 0)
+		die("cannot identify rwlock upgrade: %s", strerror(error));
+	if (composed)
+		analysis->counts.binding_identities_composed++;
+	if (existed)
+		analysis->counts.lock_identities_reused++;
+	else
+		analysis->counts.lock_identities_created++;
+
+	branch = conditional_result_branch(point_state->point.block,
+	    instruction);
+	current_modes = context_state_lock_modes(point_state->state, identity);
+	if ((current_modes & LOCKLINT_MODE_READER) != 0) {
+		error = context_state_set_lock(point_state->context->function,
+		    point_state->state, identity, LOCKLINT_MODE_WRITER,
+		    &writer_state, &existed);
+		if (error != 0)
+			die("cannot apply rwlock upgrade: %s", strerror(error));
+		record_semantic_state(analysis, existed);
+		if (branch != NULL) {
+			next.conditional_instruction = instruction;
+			next.conditional_nonzero = true;
+		}
+		record_analysis_point(analysis, point_state->context, next,
+		    writer_state, false);
+	}
+	if (branch != NULL) {
+		next.conditional_instruction = instruction;
+		next.conditional_nonzero = false;
+	}
+	record_analysis_point(analysis, point_state->context, next,
+	    point_state->state, false);
+	analysis->counts.lock_transitions_applied++;
+	return (true);
+}
+
 /*
  * Advance one point by one instruction, or fan a block-exit state out to its
  * CFG successors.  Keeping these transitions as separate queued facts makes
@@ -1086,24 +1186,48 @@ process_point(struct analysis *analysis, struct point_state *point_state)
 			return;
 		}
 		if (point.next_instruction->opcode == OP_CALL) {
-			const struct semantic_state *state =
-			    apply_lock_event(analysis, point_state);
+			const struct semantic_state *state;
+
+			if (process_tryupgrade(analysis, point_state))
+				return;
+			state = apply_lock_event(analysis, point_state);
 
 			process_call(analysis, point_state, state);
 			return;
 		}
-		record_point(analysis, point_state->context, point.block,
-		    next_live_instruction(point.block, point.next_instruction),
+		point.next_instruction =
+		    next_live_instruction(point.block, point.next_instruction);
+		record_analysis_point(analysis, point_state->context, point,
 		    apply_visibility_event(analysis, point_state), false);
 		return;
 	}
 
 	{
 		struct basic_block *child;
+		struct instruction *branch = NULL;
+
+		if (point.conditional_instruction != NULL)
+			branch = conditional_result_branch(point.block,
+			    point.conditional_instruction);
 
 		FOR_EACH_PTR(point.block->children, child) {
-			record_point(analysis, point_state->context, child,
-			    first_live_instruction(child), point_state->state,
+			struct analysis_point child_point = {
+				.block = child,
+				.next_instruction = first_live_instruction(child)
+			};
+
+			if (branch != NULL &&
+			    ((child == branch->bb_true) !=
+			    point.conditional_nonzero))
+				continue;
+			if (branch == NULL) {
+				child_point.conditional_instruction =
+				    point.conditional_instruction;
+				child_point.conditional_nonzero =
+				    point.conditional_nonzero;
+			}
+			record_analysis_point(analysis, point_state->context,
+			    child_point, point_state->state,
 			    domtree_dominates(child, point.block));
 		} END_FOR_EACH_PTR(child);
 	}
@@ -1227,7 +1351,8 @@ diagnose_lock_transition(struct analysis *analysis,
 	    &mode);
 	if ((action == LOCKLINT_LOCK_ACQUIRE ||
 	    action == LOCKLINT_LOCK_RELEASE ||
-	    action == LOCKLINT_LOCK_DOWNGRADE) && access.root != NULL) {
+	    action == LOCKLINT_LOCK_DOWNGRADE ||
+	    action == LOCKLINT_LOCK_TRY_UPGRADE) && access.root != NULL) {
 		error = context_access_identity(analysis, context, &access,
 		    &identity, &existed, &composed);
 		if (error != 0)
@@ -1243,7 +1368,8 @@ diagnose_lock_transition(struct analysis *analysis,
 
 		if ((action != LOCKLINT_LOCK_ACQUIRE &&
 		    action != LOCKLINT_LOCK_RELEASE &&
-		    action != LOCKLINT_LOCK_DOWNGRADE) ||
+		    action != LOCKLINT_LOCK_DOWNGRADE &&
+		    action != LOCKLINT_LOCK_TRY_UPGRADE) ||
 		    access.root == NULL)
 			continue;
 		current_modes = context_state_lock_modes(point_state->state,
@@ -1254,10 +1380,17 @@ diagnose_lock_transition(struct analysis *analysis,
 		} else if (action == LOCKLINT_LOCK_DOWNGRADE &&
 		    (current_modes & LOCKLINT_MODE_WRITER) != 0) {
 			uncertain++;
+		} else if (action == LOCKLINT_LOCK_TRY_UPGRADE &&
+		    current_modes == LOCKLINT_MODE_READER) {
+			valid++;
+		} else if (action == LOCKLINT_LOCK_TRY_UPGRADE &&
+		    (current_modes & LOCKLINT_MODE_READER) != 0) {
+			uncertain++;
 		} else if ((action == LOCKLINT_LOCK_ACQUIRE &&
 		    current_modes != 0) ||
 		    (action == LOCKLINT_LOCK_RELEASE && current_modes == 0) ||
-		    action == LOCKLINT_LOCK_DOWNGRADE) {
+		    action == LOCKLINT_LOCK_DOWNGRADE ||
+		    action == LOCKLINT_LOCK_TRY_UPGRADE) {
 			invalid++;
 		} else {
 			valid++;
@@ -1268,7 +1401,18 @@ diagnose_lock_transition(struct analysis *analysis,
 		struct position pos = insn->call_expr != NULL ?
 		    insn->call_expr->pos : insn->pos;
 
-		if (action == LOCKLINT_LOCK_DOWNGRADE) {
+		if (action == LOCKLINT_LOCK_TRY_UPGRADE) {
+			if (valid == 0 && uncertain == 0) {
+				locklint_warning(
+				    LOCKLINT_DIAG_LOCK_NOT_READ_HELD, pos,
+				    "lock '%s' is not read-held", name);
+			} else {
+				locklint_warning(
+				    LOCKLINT_DIAG_LOCK_MAYBE_NOT_READ_HELD,
+				    pos, "lock '%s' may not be read-held",
+				    name);
+			}
+		} else if (action == LOCKLINT_LOCK_DOWNGRADE) {
 			if (valid == 0 && uncertain == 0) {
 				locklint_warning(
 				    LOCKLINT_DIAG_LOCK_NOT_WRITE_HELD, pos,

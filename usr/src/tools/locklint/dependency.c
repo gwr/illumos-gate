@@ -46,6 +46,14 @@ compare_continuations(const void *left_arg, const void *right_arg)
 	    right->resume_point.next_instruction);
 	if (result != 0)
 		return (result);
+	result = AVL_PCMP(left->resume_point.conditional_instruction,
+	    right->resume_point.conditional_instruction);
+	if (result != 0)
+		return (result);
+	if (left->resume_point.conditional_nonzero !=
+	    right->resume_point.conditional_nonzero) {
+		return (left->resume_point.conditional_nonzero ? 1 : -1);
+	}
 	result = AVL_PCMP(left->caller_state, right->caller_state);
 	if (result != 0)
 		return (result);
