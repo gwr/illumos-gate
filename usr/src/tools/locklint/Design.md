@@ -1091,12 +1091,11 @@ it contains no Locklint annotation names or policy.
 
 Declaration annotations continue to disappear after their tokens are
 captured.  During assertion analysis, a strong preprocessing definition
-causes `ASSERT(NO_COMPETING_THREADS)` to retain a tagged absolute local
-refinement instead of becoming the constant expression supplied by system
-headers.  `_NOTE(NO_COMPETING_THREADS)` is accepted as the same compatibility
-spelling.  The marker tag, retained expression, source position, and
-translation-unit provenance provide all information needed by Locklint; it
-does not infer execution order from source positions.
+causes `ASSERT(NO_COMPETING_THREADS)` to retain a tagged validation point
+instead of becoming the constant expression supplied by system headers.
+The marker tag, retained expression, source position, and translation-unit
+provenance provide all information needed by Locklint; it does not infer
+execution order from source positions.
 
 The shared Sparse changes are limited to deferred pre-buffer tokenization,
 the optional context tag in parsing and IR, preservation and display of that
@@ -1182,10 +1181,11 @@ deferred.
 
 ### Assertions, conditions, and calls
 
-`ASSERT(NO_COMPETING_THREADS)` is treated as an advisory absolute local
-refinement.  It suppresses subsequent lock requirements by setting competition
-depth to zero, but is not verified, diagnosed as contradictory, included in a
-function effect summary, or propagated as a caller condition.
+`ASSERT(NO_COMPETING_THREADS)` validates the competition state that reaches
+the assertion.  It does not refine later state, participate in a function
+effect summary, or become a caller condition.  Only the explicit
+`NO_COMPETING_THREADS_NOW` and `COMPETING_THREADS_NOW` annotations change
+competition state.
 
 Protected-access conditions express "this datum must be protected" rather
 than only "this mutex must be held."  At a resolved call, the caller may
@@ -2304,8 +2304,8 @@ The current implementation relies on these invariants:
     independently and never rebases an absolute data or mutex root.
 12. Lock assertions refine local lock state without creating effects.
     Caller-mappable lock assertions also create point-sensitive requirements
-    that propagate to a fixed point; `ASSERT(NO_COMPETING_THREADS)` remains
-    an advisory local competition transition and does not create a caller
+    that propagate to a fixed point; `ASSERT(NO_COMPETING_THREADS)` validates
+    reached competition state without changing it or creating a caller
     condition.
 13. Interprocedural lock, competition, and visibility effects and protection
     conditions reach fixed points before diagnostics are emitted.

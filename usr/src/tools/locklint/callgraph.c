@@ -584,6 +584,8 @@ callgraph_add(struct translation_unit *tu, struct entrypoint *ep)
 		die("out of memory registering function analysis");
 	function->info.tu = tu;
 	function->info.ep = ep;
+	function->info.assumed_regions_tail =
+	    &function->info.assumed_regions;
 	context_collection_create(&function->info);
 	binding_collection_create(&function->info.bindings);
 	function->internal_linkage =
@@ -1206,11 +1208,18 @@ callgraph_cleanup(void)
 	free_function_escapes();
 	while (functions != NULL) {
 		struct function_record *next = functions->next;
+		struct assumed_region *region;
 
 		avl_remove(&functions_by_entrypoint, functions);
 		avl_remove(&functions_by_identity, functions);
 		context_collection_free(&functions->info);
 		binding_collection_free(&functions->info.bindings);
+		while ((region = functions->info.assumed_regions) != NULL) {
+			functions->info.assumed_regions = region->next;
+			free(region->name);
+			free(region->mutex_name);
+			free(region);
+		}
 		free(functions);
 		functions = next;
 	}

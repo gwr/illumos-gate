@@ -505,6 +505,17 @@ compare "local visibility diagnostics" visibility-local.ref \
     visibility-local.out
 
 #
+# Verify function-wide assumed-protection diagnostics exactly while the
+# reference also retains not-yet-adopted state diagnostics for later steps.
+#
+grep -E 'visibility.c:2[0-8][0-9]:.*\[(unprotected-access|conditional-protection|invalid-assuming-protected)\]' \
+    visibility-local-diagnostics.out > visibility-state.out
+grep -E 'visibility.c:2[0-8][0-9]:.*\[(unprotected-access|conditional-protection|invalid-assuming-protected)\]' \
+    visibility-state.ref > visibility-state-expected.out
+compare "assumed protection diagnostics" visibility-state-expected.out \
+    visibility-state.out
+
+#
 # Verify direct and wrapped callees return exact visibility state, including
 # conditional exits, globals, recursion, and nested formal-relative regions.
 #

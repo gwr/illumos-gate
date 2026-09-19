@@ -98,6 +98,8 @@ enum locklint_execution_kind locklint_get_execution_annotation(
     const struct instruction *);
 bool locklint_for_each_visibility_target(struct translation_unit *,
     const struct instruction *, locklint_visibility_target_f, void *);
+bool locklint_for_each_assumed_target(struct translation_unit *,
+    const struct instruction *, locklint_visibility_target_f, void *);
 bool locklint_get_declared_lock_effect(struct translation_unit *,
     const struct instruction *, enum locklint_declared_lock_effect *,
     struct locklint_access *);

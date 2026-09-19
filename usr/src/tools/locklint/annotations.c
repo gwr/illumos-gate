@@ -1663,6 +1663,18 @@ locklint_for_each_visibility_target(struct translation_unit *tu,
 	return (true);
 }
 
+bool
+locklint_for_each_assumed_target(struct translation_unit *tu,
+    const struct instruction *insn, locklint_visibility_target_f callback,
+    void *data)
+{
+	if (locklint_get_execution_annotation(insn) !=
+	    LOCKLINT_EXECUTION_ASSUME_PROTECTED)
+		return (false);
+	for_each_visibility_operand(tu, insn->context_expr, callback, data);
+	return (true);
+}
+
 static const char *
 declared_lock_effect_name(enum locklint_declared_lock_effect effect)
 {

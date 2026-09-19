@@ -151,6 +151,7 @@ static bool identity_formal_argument(const struct function_info *,
     struct lock_identity_key, enum lock_analysis_object_type, unsigned int *);
 static struct symbol *function_formal_argument(const struct function_info *,
     unsigned int);
+static void collect_assumed_regions(void);
 static void record_semantic_state(struct analysis *, bool);
 
 static struct instruction *
@@ -604,6 +605,93 @@ function_formal_argument(const struct function_info *function,
 	return (NULL);
 }
 
+static int
+function_access_coordinates(const struct function_info *function,
+    const struct locklint_access *access, struct lock_identity_key *key,
+    enum lock_analysis_object_type *object_type)
+{
+	struct symbol *formal;
+	unsigned int argument;
+	int error;
+
+	error = lock_identity_key_from_access(access, key, object_type);
+	if (error != 0)
+		return (error);
+	if (identity_formal_argument(function, *key, *object_type, &argument) &&
+	    (formal = function_formal_argument(function, argument)) != NULL) {
+		key->analysis_object = formal;
+		*object_type = LOCK_ANALYSIS_OBJECT_SYMBOL;
+	}
+	return (0);
+}
+
+static bool
+region_contains(struct visibility_region container,
+    struct visibility_region contained)
+{
+	uint64_t relative;
+
+	if (container.analysis_object != contained.analysis_object ||
+	    contained.target_offset < container.target_offset)
+		return (false);
+	relative = (uint64_t)contained.target_offset -
+	    (uint64_t)container.target_offset;
+	return (relative <= container.target_length &&
+	    contained.target_length <= container.target_length - relative);
+}
+
+static bool
+map_assumed_key_to_context(const struct function_context *context,
+    struct lock_identity_key source,
+    enum lock_analysis_object_type source_type,
+    struct lock_identity_key *result,
+    enum lock_analysis_object_type *result_type)
+{
+	const struct lock_identity *actual;
+	unsigned int argument;
+
+	*result = source;
+	*result_type = source_type;
+	if (!identity_formal_argument(context->function, source, source_type,
+	    &argument))
+		return (true);
+	actual = binding_environment_lookup(context->bindings, argument);
+	if (actual == NULL)
+		return (true);
+	if ((source.target_offset > 0 &&
+	    actual->key.target_offset >
+	    INT64_MAX - source.target_offset) ||
+	    (source.target_offset < 0 &&
+	    actual->key.target_offset <
+	    INT64_MIN - source.target_offset))
+		die("assumed-region binding offset is out of range");
+	result->analysis_object = actual->key.analysis_object;
+	result->target_offset =
+	    actual->key.target_offset + source.target_offset;
+	*result_type = actual->analysis_object_type;
+	return (true);
+}
+
+static bool
+map_assumed_region_to_context(const struct function_context *context,
+    const struct assumed_region *assumed, struct visibility_region *region)
+{
+	struct lock_identity_key key = {
+		.analysis_object = assumed->region.analysis_object,
+		.target_offset = assumed->region.target_offset
+	};
+	enum lock_analysis_object_type object_type;
+
+	if (!map_assumed_key_to_context(context, key, assumed->object_type,
+	    &key, &object_type))
+		return (false);
+	(void) object_type;
+	*region = assumed->region;
+	region->analysis_object = key.analysis_object;
+	region->target_offset = key.target_offset;
+	return (true);
+}
+
 /*
  * Replace a caller-relative formal identity with the corresponding incoming
  * actual identity.  Relative coordinates compose without changing the
@@ -771,6 +859,83 @@ call_argument_identity(struct analysis *analysis,
 	else
 		analysis->counts.lock_identities_created++;
 	return (identity);
+}
+
+struct assumed_region_builder {
+	struct function_info *function;
+	const struct instruction *instruction;
+};
+
+static void
+record_assumed_target(const struct locklint_access *access,
+    const struct expression *expr, void *data_arg)
+{
+	struct assumed_region_builder *data = data_arg;
+	struct assumed_region *assumed;
+	struct locklint_data_policy policy;
+	struct locklint_access protector;
+	struct lock_identity_key key;
+	enum lock_analysis_object_type object_type;
+	uint64_t length;
+
+	(void) expr;
+	assumed = calloc(1, sizeof (*assumed));
+	if (assumed == NULL)
+		die("cannot allocate assumed-protection region");
+	assumed->marker = data->instruction;
+	if (access != NULL && locklint_access_size(access, &length) &&
+	    function_access_coordinates(data->function, access, &key,
+	    &object_type) == 0) {
+		assumed->valid = true;
+		assumed->region = (struct visibility_region) {
+			.analysis_object = key.analysis_object,
+			.target_offset = key.target_offset,
+			.target_length = length
+		};
+		assumed->object_type = object_type;
+		assumed->name = locklint_access_name(access);
+		if (locklint_data_policy(access, &policy, &protector) &&
+		    policy.protection == LOCKLINT_PROTECTION_MUTEX &&
+		    function_access_coordinates(data->function, &protector,
+		    &assumed->mutex, &assumed->mutex_object_type) == 0) {
+			assumed->has_mutex = true;
+			assumed->mutex_name =
+			    locklint_access_name(&protector);
+		}
+	}
+	*data->function->assumed_regions_tail = assumed;
+	data->function->assumed_regions_tail = &assumed->next;
+}
+
+static void
+collect_assumed_regions(void)
+{
+	struct callgraph_iter *iterator;
+	struct function_info *function;
+	int error;
+
+	error = callgraph_iter_open(&iterator);
+	if (error != 0)
+		die("cannot iterate ready callgraph: %s", strerror(error));
+	while ((function = callgraph_iter_next(iterator)) != NULL) {
+		struct basic_block *bb;
+
+		FOR_EACH_PTR(function->ep->bbs, bb) {
+			struct instruction *instruction;
+
+			FOR_EACH_PTR(bb->insns, instruction) {
+				struct assumed_region_builder data = {
+					.function = function,
+					.instruction = instruction
+				};
+
+				(void) locklint_for_each_assumed_target(
+				    function->tu, instruction,
+				    record_assumed_target, &data);
+			} END_FOR_EACH_PTR(instruction);
+		} END_FOR_EACH_PTR(bb);
+	}
+	callgraph_iter_close(iterator);
 }
 
 /*
@@ -1426,6 +1591,20 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 		    strerror(error));
 	if (composed)
 		data->analysis->counts.binding_identities_composed++;
+	if (region_available) {
+		struct assumed_region *assumed;
+
+		for (assumed = data->context->function->assumed_regions;
+		    assumed != NULL; assumed = assumed->next) {
+			struct visibility_region mapped;
+
+			if (assumed->valid &&
+			    map_assumed_region_to_context(data->context,
+			    assumed, &mapped) &&
+			    region_contains(mapped, region))
+				return;
+		}
+	}
 	if (check_mutex) {
 		error = context_access_identity(data->analysis, data->context,
 		    &protector, &identity, &existed, &composed);
@@ -1616,6 +1795,267 @@ diagnose_protected_accesses(struct analysis *analysis)
 		}
 		emit_protected_access_findings(&findings);
 		avl_destroy(&findings);
+	}
+	callgraph_iter_close(iterator);
+}
+
+struct assumed_call_finding {
+	const struct instruction *instruction;
+	const struct function_info *callee;
+	const struct assumed_region *assumed;
+	bool satisfied;
+	bool definite_failure;
+	bool conditional_failure;
+	struct assumed_call_finding *next;
+};
+
+static bool
+map_assumed_key_at_call(struct analysis *analysis,
+    const struct function_context *caller, const struct function_info *callee,
+    const struct instruction *instruction, struct lock_identity_key source,
+    enum lock_analysis_object_type source_type, bool normalize_formal,
+    struct lock_identity_key *result,
+    enum lock_analysis_object_type *result_type)
+{
+	const struct lock_identity *actual;
+	struct symbol *formal;
+	unsigned int argument;
+	unsigned int caller_argument;
+
+	*result = source;
+	*result_type = source_type;
+	if (!identity_formal_argument(callee, source, source_type, &argument))
+		return (true);
+	actual = call_argument_identity(analysis, caller, instruction, argument);
+	if ((source.target_offset > 0 &&
+	    actual->key.target_offset >
+	    INT64_MAX - source.target_offset) ||
+	    (source.target_offset < 0 &&
+	    actual->key.target_offset <
+	    INT64_MIN - source.target_offset))
+		die("mapped assumed-region offset is out of range");
+	result->analysis_object = actual->key.analysis_object;
+	result->target_offset =
+	    actual->key.target_offset + source.target_offset;
+	*result_type = actual->analysis_object_type;
+	if (normalize_formal &&
+	    identity_formal_argument(caller->function, actual->key,
+	    actual->analysis_object_type, &caller_argument) &&
+	    binding_environment_lookup(caller->bindings, caller_argument) ==
+	    NULL && (formal = function_formal_argument(caller->function,
+	    caller_argument)) != NULL) {
+		result->analysis_object = formal;
+		*result_type = LOCK_ANALYSIS_OBJECT_SYMBOL;
+	}
+	return (true);
+}
+
+static struct assumed_call_finding *
+assumed_call_finding(struct assumed_call_finding ***tail,
+    struct assumed_call_finding *findings, const struct instruction *instruction,
+    const struct function_info *callee, const struct assumed_region *assumed)
+{
+	struct assumed_call_finding *finding;
+
+	for (finding = findings; finding != NULL; finding = finding->next) {
+		if (finding->instruction == instruction &&
+		    finding->assumed == assumed)
+			return (finding);
+	}
+	finding = calloc(1, sizeof (*finding));
+	if (finding == NULL)
+		die("cannot allocate assumed-protection call finding");
+	finding->instruction = instruction;
+	finding->callee = callee;
+	finding->assumed = assumed;
+	**tail = finding;
+	*tail = &finding->next;
+	return (finding);
+}
+
+static void
+check_assumed_call_state(struct analysis *analysis,
+    const struct function_context *caller, const struct instruction *instruction,
+    const struct semantic_state *state, const struct function_info *callee,
+    const struct assumed_region *assumed,
+    struct assumed_call_finding *finding)
+{
+	struct lock_identity_key key = {
+		.analysis_object = assumed->region.analysis_object,
+		.target_offset = assumed->region.target_offset
+	};
+	struct visibility_region region;
+	struct competition_interval competition;
+	enum lock_analysis_object_type object_type;
+	enum semantic_visibility visibility = SEMANTIC_VISIBILITY_VISIBLE;
+	bool protected = false;
+
+	if (!map_assumed_key_at_call(analysis, caller, callee, instruction,
+	    key, assumed->object_type, true, &key, &object_type))
+		return;
+	(void) object_type;
+	region = assumed->region;
+	region.analysis_object = key.analysis_object;
+	region.target_offset = key.target_offset;
+	(void) context_state_effective_visibility(state, region, &visibility);
+	if (visibility == SEMANTIC_VISIBILITY_INVISIBLE)
+		protected = true;
+	if (!protected && assumed->has_mutex) {
+		struct lock_identity *mutex;
+		struct lock_identity_key mutex_key;
+		enum lock_analysis_object_type mutex_type;
+		bool existed;
+		int error;
+
+		if (!map_assumed_key_at_call(analysis, caller, callee,
+		    instruction, assumed->mutex, assumed->mutex_object_type,
+		    false, &mutex_key, &mutex_type))
+			return;
+		error = lock_identity_intern(analysis->lock_identities,
+		    mutex_key, mutex_type, &mutex, &existed);
+		if (error != 0)
+			die("cannot identify assumed-protection mutex: %s",
+			    strerror(error));
+		if (existed)
+			analysis->counts.lock_identities_reused++;
+		else
+			analysis->counts.lock_identities_created++;
+		if ((context_state_lock_modes(state, mutex) &
+		    LOCKLINT_MODE_MUTEX) != 0)
+			protected = true;
+	}
+	competition = context_state_competition(state);
+	if (!protected && !competition.maximum_unbounded &&
+	    competition.maximum <= 0)
+		protected = true;
+	if (protected) {
+		finding->satisfied = true;
+	} else if (competition.entry_condition ||
+	    (!competition.minimum_unbounded && competition.minimum > 0)) {
+		finding->definite_failure = true;
+	} else {
+		finding->conditional_failure = true;
+	}
+}
+
+/*
+ * Validate every exact state at each resolved call.  Findings are aggregated
+ * only for reporting: one satisfied state makes other failures conditional,
+ * matching the existing protected-access convention.
+ */
+static void
+diagnose_assumed_calls(struct analysis *analysis)
+{
+	struct assumed_call_finding *findings = NULL;
+	struct assumed_call_finding **tail = &findings;
+	struct callgraph_iter *iterator;
+	struct function_info *caller;
+	int error;
+
+	error = callgraph_iter_open(&iterator);
+	if (error != 0)
+		die("cannot iterate ready callgraph: %s", strerror(error));
+	while ((caller = callgraph_iter_next(iterator)) != NULL) {
+		struct function_context *context;
+
+		for (context = avl_first(&caller->contexts.contexts);
+		    context != NULL;
+		    context = AVL_NEXT(&caller->contexts.contexts, context)) {
+			struct point_state *point_state;
+
+			for (point_state = avl_first(&context->point_states);
+			    point_state != NULL;
+			    point_state = AVL_NEXT(&context->point_states,
+			    point_state)) {
+				struct function_info *callee;
+				struct assumed_region *assumed;
+
+				if (point_state->point.next_instruction == NULL ||
+				    point_state->point.next_instruction->opcode !=
+				    OP_CALL)
+					continue;
+				callee = callgraph_callee(caller,
+				    point_state->point.next_instruction);
+				if (callee == NULL)
+					continue;
+				for (assumed = callee->assumed_regions;
+				    assumed != NULL; assumed = assumed->next) {
+					struct assumed_call_finding *finding;
+
+					if (!assumed->valid)
+						continue;
+					finding = assumed_call_finding(&tail,
+					    findings,
+					    point_state->point.next_instruction,
+					    callee, assumed);
+					check_assumed_call_state(analysis,
+					    context,
+					    point_state->point.next_instruction,
+					    point_state->state, callee, assumed,
+					    finding);
+				}
+			}
+		}
+	}
+	callgraph_iter_close(iterator);
+	while (findings != NULL) {
+		struct assumed_call_finding *next = findings->next;
+		const char *callee_name =
+		    findings->callee->ep->name->ident != NULL ?
+		    show_ident(findings->callee->ep->name->ident) :
+		    "<anonymous>";
+
+		if (findings->definite_failure && !findings->satisfied &&
+		    !findings->conditional_failure) {
+			if (findings->assumed->has_mutex) {
+				locklint_warning(LOCKLINT_DIAG_UNPROTECTED_ACCESS,
+				    findings->instruction->pos,
+				    "call to '%s' does not satisfy assumed "
+				    "protection for '%s': requires holding '%s'",
+				    callee_name, findings->assumed->name,
+				    findings->assumed->mutex_name);
+			} else {
+				locklint_warning(LOCKLINT_DIAG_UNPROTECTED_ACCESS,
+				    findings->instruction->pos,
+				    "call to '%s' does not satisfy assumed "
+				    "protection for '%s'", callee_name,
+				    findings->assumed->name);
+			}
+		} else if (findings->definite_failure ||
+		    findings->conditional_failure) {
+			locklint_warning(LOCKLINT_DIAG_CONDITIONAL_PROTECTION,
+			    findings->instruction->pos,
+			    "assumed protection for '%s' at call to '%s' is "
+			    "not established on every path",
+			    findings->assumed->name, callee_name);
+		}
+		free(findings);
+		findings = next;
+	}
+}
+
+static void
+diagnose_invalid_assumed_regions(void)
+{
+	struct callgraph_iter *iterator;
+	struct function_info *function;
+	int error;
+
+	error = callgraph_iter_open(&iterator);
+	if (error != 0)
+		die("cannot iterate ready callgraph: %s", strerror(error));
+	while ((function = callgraph_iter_next(iterator)) != NULL) {
+		struct assumed_region *assumed;
+
+		for (assumed = function->assumed_regions; assumed != NULL;
+		    assumed = assumed->next) {
+			if (!assumed->valid) {
+				locklint_warning(
+				    LOCKLINT_DIAG_INVALID_ASSUMING_PROTECTED,
+				    assumed->marker->pos,
+				    "ASSUMING_PROTECTED has no object");
+			}
+		}
 	}
 	callgraph_iter_close(iterator);
 }
@@ -2151,6 +2591,7 @@ analysis_run(struct lock_identity_collection *lock_identities, FILE *stream)
 	struct point_state *point_state;
 
 	worklist_create(&analysis.worklist);
+	collect_assumed_regions();
 	seed_roots(&analysis);
 	while ((point_state =
 	    worklist_point_state_dequeue(&analysis.worklist)) != NULL)
@@ -2159,6 +2600,8 @@ analysis_run(struct lock_identity_collection *lock_identities, FILE *stream)
 	diagnose_competition_underflow();
 	diagnose_competition_assertions();
 	diagnose_protected_accesses(&analysis);
+	diagnose_assumed_calls(&analysis);
+	diagnose_invalid_assumed_regions();
 	diagnose_local_locks_on_return();
 	if (stream != NULL) {
 		analysis.measurements.lock_identities =

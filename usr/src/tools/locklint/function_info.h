@@ -20,9 +20,28 @@
 
 #include "binding.h"
 #include "context.h"
+#include "lock_identity.h"
 
 struct entrypoint;
 struct translation_unit;
+
+/*
+ * One function-wide ASSUMING_PROTECTED entry contract.  The selected region
+ * and optional mutex use formal-relative or canonical absolute coordinates,
+ * so resolved calls can map them without retaining a flow-state dependency.
+ */
+struct assumed_region {
+	struct visibility_region region;
+	enum lock_analysis_object_type object_type;
+	struct lock_identity_key mutex;
+	enum lock_analysis_object_type mutex_object_type;
+	const struct instruction *marker;
+	char *name;
+	char *mutex_name;
+	bool valid;
+	bool has_mutex;
+	struct assumed_region *next;
+};
 
 /*
  * Shared semantic state for one function.  Callgraph indexing and collection
@@ -34,6 +53,8 @@ struct function_info {
 	struct entrypoint *ep;
 	struct binding_environment_collection bindings;
 	struct function_context_collection contexts;
+	struct assumed_region *assumed_regions;
+	struct assumed_region **assumed_regions_tail;
 	unsigned int root_reasons;
 	bool reachable_from_root;
 };
