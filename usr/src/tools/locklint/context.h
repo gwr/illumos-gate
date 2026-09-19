@@ -143,6 +143,11 @@ int context_state_set_competition(struct function_info *,
     struct semantic_state **, bool *);
 int context_state_adjust_competition(struct function_info *,
     const struct semantic_state *, int, struct semantic_state **, bool *);
+bool context_state_competition_contains(const struct semantic_state *,
+    const struct semantic_state *);
+int context_state_merge_competition(struct function_info *,
+    const struct semantic_state *, const struct semantic_state *, bool,
+    struct semantic_state **, bool *);
 int context_create(struct function_info *,
     const struct binding_environment *, const struct semantic_state *,
     struct function_context **, bool *);

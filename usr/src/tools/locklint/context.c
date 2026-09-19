@@ -504,6 +504,69 @@ context_state_adjust_competition(struct function_info *function,
 	    result, existed));
 }
 
+bool
+context_state_competition_contains(const struct semantic_state *outer,
+    const struct semantic_state *inner)
+{
+	const struct competition_interval *left;
+	const struct competition_interval *right;
+
+	if (outer == NULL || inner == NULL || outer->locks != inner->locks)
+		return (false);
+	left = &outer->competition;
+	right = &inner->competition;
+	if (left->entry_condition || right->entry_condition)
+		return (compare_competition(left, right) == 0);
+	if (!left->minimum_unbounded &&
+	    (right->minimum_unbounded || left->minimum > right->minimum))
+		return (false);
+	if (!left->maximum_unbounded &&
+	    (right->maximum_unbounded || left->maximum < right->maximum))
+		return (false);
+	return (true);
+}
+
+/*
+ * Join equal-lock states by competition interval.  Widening makes an endpoint
+ * unbounded only when the incoming join extends beyond the prior interval.
+ */
+int
+context_state_merge_competition(struct function_info *function,
+    const struct semantic_state *prior, const struct semantic_state *incoming,
+    bool widen, struct semantic_state **result, bool *existed)
+{
+	struct competition_interval joined;
+	const struct competition_interval *left;
+	const struct competition_interval *right;
+
+	if (prior == NULL || incoming == NULL || prior->locks != incoming->locks)
+		return (EINVAL);
+	left = &prior->competition;
+	right = &incoming->competition;
+	joined.minimum_unbounded =
+	    left->minimum_unbounded || right->minimum_unbounded;
+	joined.maximum_unbounded =
+	    left->maximum_unbounded || right->maximum_unbounded;
+	joined.minimum = joined.minimum_unbounded ? 0 :
+	    (left->minimum < right->minimum ? left->minimum : right->minimum);
+	joined.maximum = joined.maximum_unbounded ? 0 :
+	    (left->maximum > right->maximum ? left->maximum : right->maximum);
+	joined.entry_condition =
+	    left->entry_condition && right->entry_condition;
+	if (widen && !left->minimum_unbounded &&
+	    (joined.minimum_unbounded || joined.minimum < left->minimum)) {
+		joined.minimum = 0;
+		joined.minimum_unbounded = true;
+	}
+	if (widen && !left->maximum_unbounded &&
+	    (joined.maximum_unbounded || joined.maximum > left->maximum)) {
+		joined.maximum = 0;
+		joined.maximum_unbounded = true;
+	}
+	return (context_state_set_competition(function, prior, joined, result,
+	    existed));
+}
+
 /*
  * Find or create the context identified by canonical bindings and entry
  * state.  Allocation failure leaves both output arguments unchanged.

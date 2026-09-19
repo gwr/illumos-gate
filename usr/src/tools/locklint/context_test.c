@@ -214,6 +214,10 @@ test_competition_depth_interning(void)
 	struct semantic_state *ordinary_entry_range;
 	struct semantic_state *entry_condition;
 	struct semantic_state *adjusted;
+	struct semantic_state *upper_unbounded;
+	struct semantic_state *widened;
+	struct semantic_state *held;
+	unsigned int identity;
 	struct semantic_state *same;
 	struct semantic_state *imported;
 	struct semantic_state *unchanged = NULL;
@@ -325,6 +329,46 @@ test_competition_depth_interning(void)
 	    &same, &existed);
 	check(error == EINVAL,
 	    "unsupported competition adjustment is rejected");
+	check(context_state_competition_contains(ordinary_entry_range, empty) &&
+	    context_state_competition_contains(ordinary_entry_range,
+	    competing), "ordinary range contains exact endpoints");
+	check(!context_state_competition_contains(entry_condition,
+	    ordinary_entry_range) &&
+	    !context_state_competition_contains(ordinary_entry_range,
+	    entry_condition), "entry condition is not ordinary containment");
+	error = context_state_merge_competition(&first, empty, competing,
+	    false, &adjusted, &existed);
+	check(error == 0 && existed && adjusted == ordinary_entry_range,
+	    "competition join reuses ordinary hull");
+	error = context_state_merge_competition(&first, ranged, competing,
+	    false, &adjusted, &existed);
+	check(error == 0 && existed && adjusted == ranged,
+	    "competition join reuses containing interval");
+	error = context_state_merge_competition(&first, ordinary_entry_range,
+	    ranged, true, &widened, &existed);
+	competition = context_state_competition(widened);
+	check(error == 0 && existed && widened == unbounded &&
+	    competition.minimum_unbounded && competition.maximum_unbounded,
+	    "competition widening opens both growing endpoints");
+	error = context_state_set_competition(&first, empty,
+	    (struct competition_interval){
+	    .minimum = 0, .maximum_unbounded = true },
+	    &upper_unbounded, &existed);
+	check(error == 0 && !existed,
+	    "create upper-unbounded competition interval");
+	error = context_state_merge_competition(&first, upper_unbounded,
+	    ranged, true, &adjusted, &existed);
+	competition = context_state_competition(adjusted);
+	check(error == 0 && existed && adjusted == unbounded &&
+	    competition.minimum_unbounded && competition.maximum_unbounded,
+	    "competition widening preserves independently unbounded endpoint");
+	error = context_state_set_lock(&first, empty,
+	    (const struct lock_identity *)&identity, 1, &held, &existed);
+	check(error == 0, "create different-lock competition state");
+	error = context_state_merge_competition(&first, empty, held, false,
+	    &adjusted, &existed);
+	check(error == EINVAL,
+	    "competition merge rejects different lock sets");
 
 	context_collection_free(&second);
 	context_collection_free(&first);
