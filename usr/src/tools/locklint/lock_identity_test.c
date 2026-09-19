@@ -19,11 +19,13 @@
  */
 
 #include <errno.h>
+#include <limits.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "access.h"
 #include "lock_identity.h"
 
 static unsigned int failures;
@@ -186,11 +188,172 @@ test_invalid_identity(void)
 	lock_identity_collection_free(&collection);
 }
 
+static void
+test_source_accesses(void)
+{
+	struct lock_identity_collection collection;
+	unsigned int object_storage;
+	struct object_identity *object =
+	    (struct object_identity *)&object_storage;
+	unsigned int local_storage;
+	struct symbol *local = (struct symbol *)&local_storage;
+	struct locklint_access global_access = {
+		.object = object,
+		.offset = 24
+	};
+	struct locklint_access local_access = {
+		.root = local,
+		.offset = 16
+	};
+	struct lock_identity *global;
+	struct lock_identity *local_identity;
+	bool existed;
+	int error;
+
+	lock_identity_collection_create(&collection);
+	error = lock_identity_intern_access(&collection, &global_access,
+	    &global, &existed);
+	check(error == 0 && !existed, "intern source global access");
+	check(global->key.analysis_object == object,
+	    "global access uses canonical object identity");
+	check(global->key.target_offset == 24,
+	    "global access uses source target offset");
+	check(global->analysis_object_type ==
+	    LOCK_ANALYSIS_OBJECT_OBJECT_IDENTITY,
+	    "global access records object-identity type");
+
+	error = lock_identity_intern_access(&collection, &local_access,
+	    &local_identity, &existed);
+	check(error == 0 && !existed, "intern source local access");
+	check(local_identity->key.analysis_object == local,
+	    "local access uses retained symbol");
+	check(local_identity->key.target_offset == 16,
+	    "local access uses source target offset");
+	check(local_identity->analysis_object_type ==
+	    LOCK_ANALYSIS_OBJECT_SYMBOL,
+	    "local access records symbol type");
+
+	lock_identity_collection_free(&collection);
+}
+
+static void
+test_lowered_accesses(void)
+{
+	struct lock_identity_collection collection;
+	unsigned int object_storage;
+	struct object_identity *object =
+	    (struct object_identity *)&object_storage;
+	unsigned int symbol_storage;
+	struct symbol *symbol = (struct symbol *)&symbol_storage;
+	unsigned int symbol_pseudo_storage;
+	struct pseudo *symbol_pseudo =
+	    (struct pseudo *)&symbol_pseudo_storage;
+	unsigned int argument_pseudo_storage;
+	struct pseudo *argument_pseudo =
+	    (struct pseudo *)&argument_pseudo_storage;
+	struct locklint_access direct = {
+		.object = object,
+		.offset = 24
+	};
+	struct locklint_access direct_local = {
+		.root = symbol,
+		.offset = 16
+	};
+	struct locklint_access lowered_symbol = {
+		.root = symbol,
+		.object = object,
+		.address_base = symbol_pseudo,
+		.address_offset = 24,
+		.address_base_is_symbol = true
+	};
+	struct locklint_access lowered_local_symbol = {
+		.root = symbol,
+		.address_base = symbol_pseudo,
+		.address_offset = 16,
+		.address_base_is_symbol = true
+	};
+	struct locklint_access lowered_argument = {
+		.root = symbol,
+		.address_base = argument_pseudo,
+		.address_offset = -8
+	};
+	struct lock_identity *direct_identity;
+	struct lock_identity *same;
+	struct lock_identity *local_identity;
+	struct lock_identity *argument_identity;
+	bool existed;
+	int error;
+
+	lock_identity_collection_create(&collection);
+	error = lock_identity_intern_access(&collection, &direct,
+	    &direct_identity, &existed);
+	check(error == 0 && !existed, "intern direct object access");
+	error = lock_identity_intern_access(&collection, &lowered_symbol,
+	    &same, &existed);
+	check(error == 0 && existed && same == direct_identity,
+	    "symbol pseudo reuses canonical source object");
+
+	error = lock_identity_intern_access(&collection, &direct_local,
+	    &local_identity, &existed);
+	check(error == 0 && !existed, "intern direct local access");
+	error = lock_identity_intern_access(&collection,
+	    &lowered_local_symbol, &same, &existed);
+	check(error == 0 && existed && same == local_identity,
+	    "local symbol pseudo reuses retained source symbol");
+
+	error = lock_identity_intern_access(&collection, &lowered_argument,
+	    &argument_identity, &existed);
+	check(error == 0 && !existed, "intern lowered argument access");
+	check(argument_identity->key.analysis_object == argument_pseudo,
+	    "lowered argument uses exact pseudo");
+	check(argument_identity->key.target_offset == -8,
+	    "lowered argument retains signed target offset");
+	check(argument_identity->analysis_object_type ==
+	    LOCK_ANALYSIS_OBJECT_PSEUDO,
+	    "lowered argument records pseudo type");
+
+	lock_identity_collection_free(&collection);
+}
+
+static void
+test_invalid_accesses(void)
+{
+	struct lock_identity_collection collection;
+	struct locklint_access missing = { 0 };
+	struct locklint_access overflow = { 0 };
+	struct lock_identity *identity = NULL;
+	bool existed = true;
+	int error;
+
+	lock_identity_collection_create(&collection);
+	error = lock_identity_intern_access(&collection, NULL, &identity,
+	    &existed);
+	check(error == EINVAL, "null access is rejected");
+	error = lock_identity_intern_access(&collection, &missing, &identity,
+	    &existed);
+	check(error == EINVAL, "access without analysis object is rejected");
+#if ULONG_MAX > INT64_MAX
+	overflow.root = (struct symbol *)&overflow;
+	overflow.offset = ULONG_MAX;
+	error = lock_identity_intern_access(&collection, &overflow, &identity,
+	    &existed);
+	check(error == EOVERFLOW, "source target offset overflow is rejected");
+#endif
+	check(identity == NULL && existed,
+	    "invalid access preserves output arguments");
+	check(lock_identity_count(&collection) == 0,
+	    "invalid accesses do not change collection");
+	lock_identity_collection_free(&collection);
+}
+
 int
 main(void)
 {
 	test_identity_interning();
 	test_identity_order();
 	test_invalid_identity();
+	test_source_accesses();
+	test_lowered_accesses();
+	test_invalid_accesses();
 	return (failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE);
 }

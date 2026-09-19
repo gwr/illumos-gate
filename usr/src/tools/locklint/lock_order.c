@@ -206,6 +206,7 @@ observed_role(const struct locklint_access *access,
 	role->path = NULL;
 	role->address_base = NULL;
 	role->address_offset = 0;
+	role->address_base_is_symbol = false;
 	member = access->member != NULL && access->member->ident != NULL ?
 	    show_ident(access->member->ident) : NULL;
 	if (access->object == NULL && access->member != NULL &&

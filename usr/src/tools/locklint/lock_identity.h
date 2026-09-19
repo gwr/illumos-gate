@@ -22,6 +22,8 @@
 
 #include "avl.h"
 
+struct locklint_access;
+
 /*
  * analysis_object is an opaque identity token.  target_offset is compared as
  * a separate coordinate and must never be applied to or encoded in the
@@ -59,6 +61,8 @@ void lock_identity_collection_free(struct lock_identity_collection *);
 int lock_identity_intern(struct lock_identity_collection *,
     struct lock_identity_key, enum lock_analysis_object_type,
     struct lock_identity **, bool *);
+int lock_identity_intern_access(struct lock_identity_collection *,
+    const struct locklint_access *, struct lock_identity **, bool *);
 struct lock_identity *lock_identity_first(struct lock_identity_collection *);
 struct lock_identity *lock_identity_next(struct lock_identity_collection *,
     struct lock_identity *);

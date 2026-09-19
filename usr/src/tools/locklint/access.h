@@ -41,6 +41,7 @@ struct locklint_access {
 	const struct locklint_access_owner *owners;
 	struct pseudo *address_base;
 	int64_t address_offset;
+	bool address_base_is_symbol;
 };
 
 typedef void (*locklint_access_f)(const struct locklint_access *, void *);

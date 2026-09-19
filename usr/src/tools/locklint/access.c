@@ -263,6 +263,7 @@ locklint_get_access(struct translation_unit *tu, struct expression *expr,
 	access->owners = NULL;
 	access->address_base = NULL;
 	access->address_offset = 0;
+	access->address_base_is_symbol = false;
 	return (access->root != NULL);
 }
 
@@ -335,6 +336,7 @@ set_address(struct locklint_access *access, struct pseudo *pseudo,
 		return;
 	access->address_base = pseudo;
 	access->address_offset = displacement;
+	access->address_base_is_symbol = pseudo->type == PSEUDO_SYM;
 }
 
 bool
@@ -421,6 +423,7 @@ for_each_compound_leaf(const struct locklint_access *access,
 			    (long long)offset)) {
 				leaf.address_base = NULL;
 				leaf.address_offset = 0;
+				leaf.address_base_is_symbol = false;
 			}
 		}
 		callback(&leaf, data);
@@ -594,6 +597,7 @@ locklint_rebase_access(const struct locklint_access *base,
 		} else {
 			result->address_base = NULL;
 			result->address_offset = 0;
+			result->address_base_is_symbol = false;
 		}
 	}
 	result->expr = NULL;

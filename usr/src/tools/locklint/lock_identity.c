@@ -24,6 +24,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 
+#include "access.h"
 #include "avl.h"
 #include "lock_identity.h"
 
@@ -97,6 +98,54 @@ lock_identity_intern(struct lock_identity_collection *collection,
 	*result = identity;
 	*existed = false;
 	return (0);
+}
+
+/*
+ * Select a canonical analysis object and coordinate from one populated
+ * access.  Direct symbol pseudos use their canonical source object so the
+ * same declaration does not acquire a second identity.  Other lowered
+ * pseudos remain exact opaque identities.
+ */
+int
+lock_identity_intern_access(struct lock_identity_collection *collection,
+    const struct locklint_access *access, struct lock_identity **result,
+    bool *existed)
+{
+	struct lock_identity_key key;
+	enum lock_analysis_object_type object_type;
+
+	if (access == NULL)
+		return (EINVAL);
+	if (access->address_base != NULL) {
+		if (!access->address_base_is_symbol) {
+			key.analysis_object = access->address_base;
+			key.target_offset = access->address_offset;
+			object_type = LOCK_ANALYSIS_OBJECT_PSEUDO;
+		} else if (access->object != NULL) {
+			key.analysis_object = access->object;
+			key.target_offset = access->address_offset;
+			object_type = LOCK_ANALYSIS_OBJECT_OBJECT_IDENTITY;
+		} else {
+			key.analysis_object = access->root;
+			key.target_offset = access->address_offset;
+			object_type = LOCK_ANALYSIS_OBJECT_SYMBOL;
+		}
+	} else {
+		if (access->offset > (uint64_t)INT64_MAX)
+			return (EOVERFLOW);
+		key.target_offset = (int64_t)access->offset;
+		if (access->object != NULL) {
+			key.analysis_object = access->object;
+			object_type = LOCK_ANALYSIS_OBJECT_OBJECT_IDENTITY;
+		} else {
+			key.analysis_object = access->root;
+			object_type = LOCK_ANALYSIS_OBJECT_SYMBOL;
+		}
+	}
+	if (key.analysis_object == NULL)
+		return (EINVAL);
+	return (lock_identity_intern(collection, key, object_type, result,
+	    existed));
 }
 
 struct lock_identity *

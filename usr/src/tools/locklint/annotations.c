@@ -1898,6 +1898,8 @@ locklint_data_policy(const struct locklint_access *access,
 			lock->address_offset = access->address_offset -
 			    (int64_t)access_from_lock +
 			    (int64_t)protector->offset;
+			lock->address_base_is_symbol =
+			    access->address_base_is_symbol;
 		}
 	}
 	return (found);
