@@ -549,6 +549,24 @@ run_capture "declared competition effect diagnostics" \
 compare "declared competition effect diagnostics" \
     competition-contracts.ref competition-contracts.out
 
+run_capture "user rwlock core state" rwlock-core-user.out \
+    "$LOCKLINT" --check-locks -DLOCKLINT_RWLOCK_CORE_ONLY rwlock.c
+compare "user rwlock core state" rwlock-core.ref rwlock-core-user.out
+
+run_capture "kernel rwlock core state" rwlock-core-kernel.out \
+    "$LOCKLINT" --check-locks -D_KERNEL -DLOCKLINT_RWLOCK_CORE_ONLY rwlock.c
+compare "kernel rwlock core state" rwlock-core.ref rwlock-core-kernel.out
+
+run_capture "user rwlock call state" rwlock-calls-core-user.out \
+    "$LOCKLINT" --check-locks rwlock-calls.c
+compare "user rwlock call state" rwlock-calls-core.ref \
+    rwlock-calls-core-user.out
+
+run_capture "kernel rwlock call state" rwlock-calls-core-kernel.out \
+    "$LOCKLINT" --check-locks -D_KERNEL rwlock-calls.c
+compare "kernel rwlock call state" rwlock-calls-core.ref \
+    rwlock-calls-core-kernel.out
+
 run_capture "competition protected accesses" competition-accesses.out \
     "$LOCKLINT" -DCOMPETITION_ACCESS_ONLY --check-locks competition-depth.c
 for location in 50 52 54 70 83 115

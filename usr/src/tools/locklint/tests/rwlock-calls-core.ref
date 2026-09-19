@@ -1,0 +1,4 @@
+../locklint: rwlock-calls.c:85:14: warning: locklint: protected member 'value' modified without write-holding 'lock' [unprotected-access]
+../locklint: rwlock-calls.c:85:14: locklint: required lock 'lock' is read-held; write-holding is required at this protected access
+../locklint: rwlock-calls.c:160:14: warning: locklint: protected member 'value' modified without write-holding 'lock' [unprotected-access]
+../locklint: rwlock-calls.c:160:14: locklint: required lock 'lock' is read-held; write-holding is required at this protected access

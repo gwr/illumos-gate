@@ -147,7 +147,6 @@ check_mode_merge(rwlock_state_t *state, int writer)
 	return (value);
 }
 
-#ifndef LOCKLINT_RWLOCK_CORE_ONLY
 static int
 check_unheld_merge(rwlock_state_t *state, int take)
 {
@@ -173,6 +172,7 @@ check_invalid_operations(rwlock_state_t *state)
 	RWLOCK_EXIT(&state->lock);
 }
 
+#ifndef LOCKLINT_RWLOCK_CORE_ONLY
 static int
 check_read_assertion(rwlock_state_t *state)
 {

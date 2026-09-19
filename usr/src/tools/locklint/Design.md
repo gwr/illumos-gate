@@ -1203,6 +1203,16 @@ Callers must establish one of the accepted protection alternatives for each
 mapped actual or absolute object.  A whole-object assumption covers its
 descendants.  Invalid expressions are diagnosed during final replay.
 
+Each immutable semantic lock entry retains its ownership mode.  Reader and
+writer acquisitions therefore remain distinct through branches and resolved
+calls without another state collection.  Either mode satisfies a protected
+read, while only writer ownership satisfies a protected write.  A mismatch
+is reported as definite or conditional from the exact states reaching the
+access, with a note identifying the incompatible observed mode.  Basic
+acquire and release validity continues to use the same mode-bearing entry:
+any held mode makes another acquisition invalid, and any held mode permits a
+release.
+
 Visibility changes need no factored transfer summary for resolved
 same-translation-unit calls.  The callee receives the caller's complete
 immutable visibility set, updates exact regions in its bound context, and

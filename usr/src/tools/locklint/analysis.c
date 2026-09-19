@@ -1631,6 +1631,9 @@ struct protected_access_finding {
 	const struct locklint_member_path *path;
 	struct locklint_access access;
 	struct locklint_access protector;
+	enum locklint_protection protection;
+	unsigned int required_modes;
+	unsigned int observed_modes;
 	bool unprotected;
 	bool conditional;
 	bool read_only_visible;
@@ -1653,8 +1656,9 @@ compare_protected_access_finding(const void *left_arg, const void *right_arg)
 
 /*
  * Check one policy-bearing leaf against every exact state reaching its
- * instruction.  Mutex protection and read-only status remain independent:
- * holding a mutex does not permit modifying read-only data during competition.
+ * instruction.  Rwlock reads accept either held mode, while writes require
+ * writer ownership.  Lock protection and read-only status remain independent:
+ * holding a lock does not permit modifying read-only data during competition.
  */
 static void
 diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
@@ -1671,7 +1675,9 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 	size_t read_only_visible = 0;
 	size_t read_only_hidden = 0;
 	size_t read_only_maybe_visible = 0;
-	bool check_mutex;
+	unsigned int required_modes = 0;
+	unsigned int observed_modes = 0;
+	bool check_lock;
 	bool check_read_only;
 	bool composed;
 	bool existed;
@@ -1680,12 +1686,22 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 
 	if (!locklint_data_policy(access, &policy, &protector))
 		return;
-	check_mutex = policy.protection == LOCKLINT_PROTECTION_MUTEX &&
+	check_lock = (policy.protection == LOCKLINT_PROTECTION_MUTEX ||
+	    policy.protection == LOCKLINT_PROTECTION_RWLOCK) &&
 	    !(data->instruction->opcode == OP_LOAD &&
 	    policy.readable_without_lock);
+	if (check_lock) {
+		if (policy.protection == LOCKLINT_PROTECTION_MUTEX)
+			required_modes = LOCKLINT_MODE_MUTEX;
+		else if (data->instruction->opcode == OP_LOAD)
+			required_modes =
+			    LOCKLINT_MODE_READER | LOCKLINT_MODE_WRITER;
+		else
+			required_modes = LOCKLINT_MODE_WRITER;
+	}
 	check_read_only = policy.read_only &&
 	    data->instruction->opcode == OP_STORE;
-	if (!check_mutex && !check_read_only)
+	if (!check_lock && !check_read_only)
 		return;
 	error = context_access_region(data->context, access, &region,
 	    &region_available, &composed);
@@ -1708,7 +1724,7 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 				return;
 		}
 	}
-	if (check_mutex) {
+	if (check_lock) {
 		error = context_access_identity(data->analysis, data->context,
 		    &protector, &identity, &existed, &composed);
 		if (error != 0)
@@ -1736,10 +1752,13 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 		}
 		invisible = visibility == SEMANTIC_VISIBILITY_INVISIBLE;
 
-		if (check_mutex) {
+		if (check_lock) {
+			unsigned int modes =
+			    context_state_lock_modes(point_state->state,
+			    identity);
+
 			if (invisible ||
-			    (context_state_lock_modes(point_state->state,
-			    identity) & LOCKLINT_MODE_MUTEX) != 0 ||
+			    (modes & required_modes) != 0 ||
 			    (!competition.maximum_unbounded &&
 			    competition.maximum <= 0)) {
 				protected++;
@@ -1747,8 +1766,10 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 			    (!competition.minimum_unbounded &&
 			    competition.minimum > 0)) {
 				unprotected++;
+				observed_modes |= modes;
 			} else {
 				conditional++;
+				observed_modes |= modes;
 			}
 		}
 		if (check_read_only) {
@@ -1782,8 +1803,11 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 			finding->path = access->path;
 			finding->access = *access;
 			finding->protector = protector;
+			finding->protection = policy.protection;
+			finding->required_modes = required_modes;
 			avl_insert(data->findings, finding, where);
 		}
+		finding->observed_modes |= observed_modes;
 		if (unprotected != 0 && protected == 0 && conditional == 0)
 			finding->unprotected = true;
 		else if (unprotected != 0 || conditional != 0)
@@ -1823,6 +1847,40 @@ diagnose_protected_access(struct analysis *analysis,
 	return (next);
 }
 
+/*
+ * Explain which observed rwlock mode failed an access requirement.  Exact
+ * contributors distinguish a definite mismatch from a mode seen on only
+ * some paths.
+ */
+static void
+emit_rwlock_mode_info(const struct protected_access_finding *finding,
+    struct position pos, const char *lock, bool conditional)
+{
+	const char *held;
+	const char *required;
+
+	if (finding->observed_modes == LOCKLINT_MODE_READER)
+		held = "read-held";
+	else if (finding->observed_modes == LOCKLINT_MODE_WRITER)
+		held = "write-held";
+	else if ((finding->observed_modes &
+	    (LOCKLINT_MODE_READER | LOCKLINT_MODE_WRITER)) != 0)
+		held = "held in multiple modes";
+	else
+		held = "held in an incompatible mode";
+	required = finding->required_modes == LOCKLINT_MODE_WRITER ?
+	    "write" : "read";
+	if (conditional) {
+		info(pos, "locklint: required lock '%s' may be %s; "
+		    "%s-holding is required at this protected access",
+		    lock, held, required);
+	} else {
+		info(pos, "locklint: required lock '%s' is %s; "
+		    "%s-holding is required at this protected access",
+		    lock, held, required);
+	}
+}
+
 static void
 emit_protected_access_findings(avl_tree_t *findings)
 {
@@ -1846,16 +1904,33 @@ emit_protected_access_findings(avl_tree_t *findings)
 		if (finding->unprotected) {
 			char *lock =
 			    locklint_access_name(&finding->protector);
+			const char *holding =
+			    finding->protection == LOCKLINT_PROTECTION_RWLOCK ?
+			    (finding->instruction->opcode == OP_LOAD ?
+			    "read-holding" : "write-holding") : "holding";
 
 			locklint_warning(LOCKLINT_DIAG_UNPROTECTED_ACCESS, pos,
-			    "protected member '%s' %s without holding '%s'",
+			    "protected member '%s' %s without %s '%s'",
 			    member, finding->instruction->opcode == OP_LOAD ?
-			    "read" : "modified", lock);
+			    "read" : "modified", holding, lock);
+			if (finding->protection ==
+			    LOCKLINT_PROTECTION_RWLOCK &&
+			    finding->observed_modes != 0)
+				emit_rwlock_mode_info(finding, pos, lock, false);
 			free(lock);
 		} else if (finding->conditional) {
 			locklint_warning(LOCKLINT_DIAG_CONDITIONAL_PROTECTION,
 			    pos, "protection for member '%s' is not "
 			    "established on every path", member);
+			if (finding->protection ==
+			    LOCKLINT_PROTECTION_RWLOCK &&
+			    finding->observed_modes != 0) {
+				char *lock =
+				    locklint_access_name(&finding->protector);
+
+				emit_rwlock_mode_info(finding, pos, lock, true);
+				free(lock);
+			}
 		}
 		free(member);
 		avl_remove(findings, finding);
