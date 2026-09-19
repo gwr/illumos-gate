@@ -615,6 +615,21 @@ if [ "$(grep -c 'warning:' lock-transition-diagnostics.out)" -ne 6 ]; then
 fi
 
 #
+# Verify structure-valued global and member mutex identities.
+#
+run_capture "structure-valued mutex diagnostics" struct-lock-diagnostics.out \
+    "$LOCKLINT" --check-locks struct-lock.c
+require_match "global structure-valued mutex diagnostic" \
+    "struct-lock.c:44:9: warning: locklint: protected member 'global_value' modified without holding 'global_lock' \\[unprotected-access\\]" \
+    struct-lock-diagnostics.out
+require_match "member structure-valued mutex diagnostic" \
+    "struct-lock.c:53:14: warning: locklint: protected member 'value' modified without holding 'lock' \\[unprotected-access\\]" \
+    struct-lock-diagnostics.out
+if [ "$(grep -c 'warning:' struct-lock-diagnostics.out)" -ne 2 ]; then
+	fail "structure-valued mutex diagnostics: expected exactly two warnings"
+fi
+
+#
 # Verify the initial context walk seeds roots, stabilizes CFG loops, and
 # publishes a function exit without emitting locking diagnostics.
 #
