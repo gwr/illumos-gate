@@ -15,8 +15,8 @@
 
 /*
  * Maintain the function-owned collections of caller contexts, semantic
- * states, and shared lock sets.  Keys are immutable after insertion, and
- * provenance is deliberately excluded from context comparison.
+ * states, and shared lock and visibility sets.  Keys are immutable after
+ * insertion, and provenance is deliberately excluded from context comparison.
  */
 
 #include <errno.h>
@@ -65,6 +65,34 @@ compare_lock_set(const void *left_arg, const void *right_arg)
 }
 
 static int
+compare_visibility_set(const void *left_arg, const void *right_arg)
+{
+	const struct semantic_visibility_set *left = left_arg;
+	const struct semantic_visibility_set *right = right_arg;
+	size_t count = left->count < right->count ? left->count : right->count;
+	size_t index;
+	int result;
+
+	for (index = 0; index < count; index++) {
+		result = compare_lock_identity(left->entries[index].object,
+		    right->entries[index].object);
+		if (result != 0)
+			return (result);
+		if (left->entries[index].visibility <
+		    right->entries[index].visibility)
+			return (-1);
+		if (left->entries[index].visibility >
+		    right->entries[index].visibility)
+			return (1);
+	}
+	if (left->count < right->count)
+		return (-1);
+	if (left->count > right->count)
+		return (1);
+	return (0);
+}
+
+static int
 compare_competition(const struct competition_interval *left,
     const struct competition_interval *right)
 {
@@ -95,7 +123,10 @@ compare_semantic_state(const void *left_arg, const void *right_arg)
 	order = compare_competition(&left->competition, &right->competition);
 	if (order != 0)
 		return (order);
-	return (AVL_PCMP(left->locks, right->locks));
+	order = AVL_PCMP(left->locks, right->locks);
+	if (order != 0)
+		return (order);
+	return (AVL_PCMP(left->visibility, right->visibility));
 }
 
 static int
@@ -139,6 +170,9 @@ context_collection_create(struct function_info *function)
 	avl_create(&collection->lock_sets, compare_lock_set,
 	    sizeof (struct semantic_lock_set),
 	    offsetof(struct semantic_lock_set, by_value));
+	avl_create(&collection->visibility_sets, compare_visibility_set,
+	    sizeof (struct semantic_visibility_set),
+	    offsetof(struct semantic_visibility_set, by_value));
 	avl_create(&collection->semantic_states, compare_semantic_state,
 	    sizeof (struct semantic_state),
 	    offsetof(struct semantic_state, by_value));
@@ -167,6 +201,7 @@ context_collection_free(struct function_info *function)
 	struct function_context *context;
 	struct semantic_state *state;
 	struct semantic_lock_set *locks;
+	struct semantic_visibility_set *visibility;
 	void *cookie = NULL;
 
 	while ((context = avl_destroy_nodes(&collection->contexts,
@@ -189,6 +224,12 @@ context_collection_free(struct function_info *function)
 	    &cookie)) != NULL)
 		free(locks);
 	avl_destroy(&collection->lock_sets);
+
+	cookie = NULL;
+	while ((visibility = avl_destroy_nodes(&collection->visibility_sets,
+	    &cookie)) != NULL)
+		free(visibility);
+	avl_destroy(&collection->visibility_sets);
 }
 
 /*
@@ -226,14 +267,52 @@ lock_set_intern(struct function_context_collection *collection,
 	return (0);
 }
 
+/*
+ * Return a canonical immutable copy of the supplied sorted visibility array.
+ */
+static int
+visibility_set_intern(struct function_context_collection *collection,
+    const struct semantic_visibility_state *entries, size_t count,
+    struct semantic_visibility_set **result)
+{
+	struct semantic_visibility_set *candidate;
+	struct semantic_visibility_set *visibility;
+	avl_index_t where;
+	size_t size;
+
+	if (count > LOCKLINT_MAX_TRACKED_VISIBILITY)
+		return (E2BIG);
+	size = sizeof (*candidate) + count * sizeof (*entries);
+	candidate = calloc(1, size);
+	if (candidate == NULL)
+		return (ENOMEM);
+	candidate->count = count;
+	if (count != 0)
+		(void) memcpy(candidate->entries, entries,
+		    count * sizeof (*entries));
+	visibility = avl_find(&collection->visibility_sets, candidate, &where);
+	if (visibility != NULL) {
+		free(candidate);
+		collection->visibility_sets_reused++;
+		*result = visibility;
+		return (0);
+	}
+	avl_insert(&collection->visibility_sets, candidate, where);
+	collection->visibility_sets_created++;
+	*result = candidate;
+	return (0);
+}
+
 static int
 semantic_state_intern(struct function_context_collection *collection,
     const struct semantic_lock_set *locks,
+    const struct semantic_visibility_set *visibility,
     struct competition_interval competition,
     struct semantic_state **result, bool *existed)
 {
 	struct semantic_state key = {
 		.locks = locks,
+		.visibility = visibility,
 		.competition = competition
 	};
 	struct semantic_state *state;
@@ -249,6 +328,7 @@ semantic_state_intern(struct function_context_collection *collection,
 	if (state == NULL)
 		return (ENOMEM);
 	state->locks = locks;
+	state->visibility = visibility;
 	state->competition = competition;
 	avl_insert(&collection->semantic_states, state, where);
 	*result = state;
@@ -266,12 +346,16 @@ context_empty_state_intern(struct function_info *function,
 {
 	struct function_context_collection *collection = &function->contexts;
 	struct semantic_lock_set *locks;
+	struct semantic_visibility_set *visibility;
 	int error;
 
 	error = lock_set_intern(collection, NULL, 0, &locks);
 	if (error != 0)
 		return (error);
-	return (semantic_state_intern(collection, locks,
+	error = visibility_set_intern(collection, NULL, 0, &visibility);
+	if (error != 0)
+		return (error);
+	return (semantic_state_intern(collection, locks, visibility,
 	    (struct competition_interval){ 0 }, result, existed));
 }
 
@@ -291,13 +375,17 @@ context_entry_state_intern(struct function_info *function,
 		.entry_condition = true
 	};
 	struct semantic_lock_set *locks;
+	struct semantic_visibility_set *visibility;
 	int error;
 
 	error = lock_set_intern(collection, NULL, 0, &locks);
 	if (error != 0)
 		return (error);
-	return (semantic_state_intern(collection, locks, competition, result,
-	    existed));
+	error = visibility_set_intern(collection, NULL, 0, &visibility);
+	if (error != 0)
+		return (error);
+	return (semantic_state_intern(collection, locks, visibility, competition,
+	    result, existed));
 }
 
 /*
@@ -311,6 +399,7 @@ context_state_import(struct function_info *function,
 {
 	struct function_context_collection *collection = &function->contexts;
 	struct semantic_lock_set *locks;
+	struct semantic_visibility_set *visibility;
 	int error;
 
 	if (source == NULL)
@@ -319,7 +408,11 @@ context_state_import(struct function_info *function,
 	    source->locks->count, &locks);
 	if (error != 0)
 		return (error);
-	return (semantic_state_intern(collection, locks,
+	error = visibility_set_intern(collection, source->visibility->entries,
+	    source->visibility->count, &visibility);
+	if (error != 0)
+		return (error);
+	return (semantic_state_intern(collection, locks, visibility,
 	    source->competition, result, existed));
 }
 
@@ -342,6 +435,7 @@ context_state_map_exit(struct function_info *function,
 	const struct semantic_lock_set *entry_locks;
 	const struct semantic_lock_set *exit_locks;
 	struct semantic_lock_set *locks;
+	struct semantic_visibility_set *visibility;
 	size_t entry_index = 0;
 	size_t exit_index;
 	size_t result_count = 0;
@@ -350,6 +444,8 @@ context_state_map_exit(struct function_info *function,
 	if (caller_state == NULL || callee_entry == NULL || callee_exit == NULL)
 		return (EINVAL);
 	if (compare_lock_set(caller_state->locks, callee_entry->locks) != 0 ||
+	    compare_visibility_set(caller_state->visibility,
+	    callee_entry->visibility) != 0 ||
 	    compare_competition(&caller_state->competition,
 	    &callee_entry->competition) != 0)
 		return (EINVAL);
@@ -374,7 +470,12 @@ context_state_map_exit(struct function_info *function,
 	error = lock_set_intern(collection, entries, result_count, &locks);
 	if (error != 0)
 		return (error);
-	return (semantic_state_intern(collection, locks,
+	error = visibility_set_intern(collection,
+	    callee_exit->visibility->entries, callee_exit->visibility->count,
+	    &visibility);
+	if (error != 0)
+		return (error);
+	return (semantic_state_intern(collection, locks, visibility,
 	    callee_exit->competition, result, existed));
 }
 
@@ -412,10 +513,12 @@ context_state_set_lock(struct function_info *function,
 	}
 	if (found && current_locks->entries[current_index].modes == modes) {
 		return (semantic_state_intern(collection, current_locks,
+		    current->visibility,
 		    current->competition, result, existed));
 	}
 	if (!found && modes == 0) {
 		return (semantic_state_intern(collection, current_locks,
+		    current->visibility,
 		    current->competition, result, existed));
 	}
 	if (!found && current_locks->count == LOCKLINT_MAX_TRACKED_LOCKS)
@@ -440,7 +543,70 @@ context_state_set_lock(struct function_info *function,
 	error = lock_set_intern(collection, entries, result_count, &locks);
 	if (error != 0)
 		return (error);
-	return (semantic_state_intern(collection, locks,
+	return (semantic_state_intern(collection, locks, current->visibility,
+	    current->competition, result, existed));
+}
+
+int
+context_state_set_visibility(struct function_info *function,
+    const struct semantic_state *current, const struct lock_identity *object,
+    enum semantic_visibility value, struct semantic_state **result,
+    bool *existed)
+{
+	struct function_context_collection *collection = &function->contexts;
+	struct semantic_visibility_state
+	    entries[LOCKLINT_MAX_TRACKED_VISIBILITY];
+	const struct semantic_visibility_set *current_visibility;
+	struct semantic_visibility_set *visibility;
+	size_t current_index = 0;
+	size_t result_index = 0;
+	size_t result_count;
+	bool found = false;
+	int error;
+
+	if (current == NULL || object == NULL ||
+	    (value != SEMANTIC_VISIBILITY_VISIBLE &&
+	    value != SEMANTIC_VISIBILITY_INVISIBLE))
+		return (EINVAL);
+	current_visibility = current->visibility;
+	while (current_index < current_visibility->count) {
+		int order = compare_lock_identity(
+		    current_visibility->entries[current_index].object, object);
+
+		if (order >= 0) {
+			found = order == 0;
+			break;
+		}
+		current_index++;
+	}
+	if (found &&
+	    current_visibility->entries[current_index].visibility == value) {
+		return (semantic_state_intern(collection, current->locks,
+		    current_visibility, current->competition, result, existed));
+	}
+	if (!found &&
+	    current_visibility->count == LOCKLINT_MAX_TRACKED_VISIBILITY)
+		return (E2BIG);
+	result_count = current_visibility->count + (found ? 0 : 1);
+	while (result_index < current_index) {
+		entries[result_index] =
+		    current_visibility->entries[result_index];
+		result_index++;
+	}
+	entries[result_index].object = object;
+	entries[result_index].visibility = value;
+	result_index++;
+	if (found)
+		current_index++;
+	while (current_index < current_visibility->count) {
+		entries[result_index++] =
+		    current_visibility->entries[current_index++];
+	}
+	error = visibility_set_intern(collection, entries, result_count,
+	    &visibility);
+	if (error != 0)
+		return (error);
+	return (semantic_state_intern(collection, current->locks, visibility,
 	    current->competition, result, existed));
 }
 
@@ -466,7 +632,7 @@ context_state_set_competition(struct function_info *function,
 	if (competition.maximum_unbounded)
 		competition.maximum = 0;
 	return (semantic_state_intern(&function->contexts, current->locks,
-	    competition, result, existed));
+	    current->visibility, competition, result, existed));
 }
 
 /*
@@ -511,7 +677,8 @@ context_state_competition_contains(const struct semantic_state *outer,
 	const struct competition_interval *left;
 	const struct competition_interval *right;
 
-	if (outer == NULL || inner == NULL || outer->locks != inner->locks)
+	if (outer == NULL || inner == NULL || outer->locks != inner->locks ||
+	    outer->visibility != inner->visibility)
 		return (false);
 	left = &outer->competition;
 	right = &inner->competition;
@@ -539,7 +706,8 @@ context_state_merge_competition(struct function_info *function,
 	const struct competition_interval *left;
 	const struct competition_interval *right;
 
-	if (prior == NULL || incoming == NULL || prior->locks != incoming->locks)
+	if (prior == NULL || incoming == NULL || prior->locks != incoming->locks ||
+	    prior->visibility != incoming->visibility)
 		return (EINVAL);
 	left = &prior->competition;
 	right = &incoming->competition;
@@ -673,7 +841,8 @@ context_point_state_record_widened(struct function_context *context,
 	    point_state->point.block == point.block &&
 	    point_state->point.next_instruction == point.next_instruction;
 	    point_state = AVL_NEXT(&context->point_states, point_state)) {
-		if (point_state->state->locks != state->locks)
+		if (point_state->state->locks != state->locks ||
+		    point_state->state->visibility != state->visibility)
 			continue;
 		if (context_state_competition_contains(point_state->state,
 		    state)) {
@@ -727,6 +896,24 @@ context_lock_set_count(struct function_info *function)
 }
 
 size_t
+context_visibility_set_count(struct function_info *function)
+{
+	return (avl_numnodes(&function->contexts.visibility_sets));
+}
+
+size_t
+context_visibility_sets_created(struct function_info *function)
+{
+	return (function->contexts.visibility_sets_created);
+}
+
+size_t
+context_visibility_sets_reused(struct function_info *function)
+{
+	return (function->contexts.visibility_sets_reused);
+}
+
+size_t
 context_state_lock_count(const struct semantic_state *state)
 {
 	return (state->locks->count);
@@ -748,6 +935,34 @@ context_state_lock_modes(const struct semantic_state *state,
 			break;
 	}
 	return (0);
+}
+
+size_t
+context_state_visibility_count(const struct semantic_state *state)
+{
+	return (state->visibility->count);
+}
+
+bool
+context_state_visibility(const struct semantic_state *state,
+    const struct lock_identity *object, enum semantic_visibility *visibility)
+{
+	size_t index;
+
+	for (index = 0; index < state->visibility->count; index++) {
+		int order = compare_lock_identity(
+		    state->visibility->entries[index].object, object);
+
+		if (order == 0) {
+			if (visibility != NULL)
+				*visibility =
+				    state->visibility->entries[index].visibility;
+			return (true);
+		}
+		if (order > 0)
+			break;
+	}
+	return (false);
 }
 
 struct competition_interval

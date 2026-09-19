@@ -33,12 +33,14 @@ struct lock_identity;
 struct provenance_edge;
 
 #define	LOCKLINT_MAX_TRACKED_LOCKS	100
+#define	LOCKLINT_MAX_TRACKED_VISIBILITY	100
 
 SLIST_HEAD(context_exit_list, context_exit);
 
 /*
- * Lock sets and semantic states are immutable after insertion.  Lock sets
- * are separately interned so future semantic dimensions can share them.
+ * Lock sets, visibility sets, and semantic states are immutable after
+ * insertion.  The component sets are separately interned so states can share
+ * unchanged dimensions.
  */
 struct semantic_lock_state {
 	const struct lock_identity *lock;
@@ -51,6 +53,22 @@ struct semantic_lock_set {
 	struct semantic_lock_state entries[];
 };
 
+enum semantic_visibility {
+	SEMANTIC_VISIBILITY_VISIBLE,
+	SEMANTIC_VISIBILITY_INVISIBLE
+};
+
+struct semantic_visibility_state {
+	const struct lock_identity *object;
+	enum semantic_visibility visibility;
+};
+
+struct semantic_visibility_set {
+	avl_node_t by_value;
+	size_t count;
+	struct semantic_visibility_state entries[];
+};
+
 struct competition_interval {
 	int64_t minimum;
 	int64_t maximum;
@@ -61,6 +79,7 @@ struct competition_interval {
 
 struct semantic_state {
 	const struct semantic_lock_set *locks;
+	const struct semantic_visibility_set *visibility;
 	struct competition_interval competition;
 	avl_node_t by_value;
 };
@@ -115,7 +134,10 @@ struct point_state {
 struct function_context_collection {
 	avl_tree_t contexts;
 	avl_tree_t lock_sets;
+	avl_tree_t visibility_sets;
 	avl_tree_t semantic_states;
+	size_t visibility_sets_created;
+	size_t visibility_sets_reused;
 };
 
 void context_collection_create(struct function_info *);
@@ -138,6 +160,9 @@ int context_state_map_exit(struct function_info *,
 int context_state_set_lock(struct function_info *,
     const struct semantic_state *, const struct lock_identity *, unsigned int,
     struct semantic_state **, bool *);
+int context_state_set_visibility(struct function_info *,
+    const struct semantic_state *, const struct lock_identity *,
+    enum semantic_visibility, struct semantic_state **, bool *);
 int context_state_set_competition(struct function_info *,
     const struct semantic_state *, struct competition_interval,
     struct semantic_state **, bool *);
@@ -159,10 +184,16 @@ int context_point_state_record_widened(struct function_context *,
 
 size_t context_count(struct function_info *);
 size_t context_lock_set_count(struct function_info *);
+size_t context_visibility_set_count(struct function_info *);
+size_t context_visibility_sets_created(struct function_info *);
+size_t context_visibility_sets_reused(struct function_info *);
 size_t context_state_count(struct function_info *);
 size_t context_state_lock_count(const struct semantic_state *);
 unsigned int context_state_lock_modes(const struct semantic_state *,
     const struct lock_identity *);
+size_t context_state_visibility_count(const struct semantic_state *);
+bool context_state_visibility(const struct semantic_state *,
+    const struct lock_identity *, enum semantic_visibility *);
 struct competition_interval context_state_competition(
     const struct semantic_state *);
 size_t context_point_state_count(struct function_context *);

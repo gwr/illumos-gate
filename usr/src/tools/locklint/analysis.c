@@ -103,6 +103,8 @@ struct analysis_measurements {
 	struct distribution binding_environments_per_function;
 	struct distribution bindings_per_environment;
 	struct distribution semantic_states_per_function;
+	struct distribution visibility_sets_per_function;
+	struct distribution visibility_entries_per_set;
 	struct distribution point_states_per_context;
 	struct distribution states_per_analysis_point;
 	struct distribution exits_per_context;
@@ -115,6 +117,9 @@ struct analysis_measurements {
 	size_t lock_identity_types[LOCK_ANALYSIS_OBJECT_PSEUDO + 1];
 	size_t lock_identity_bytes;
 	size_t lock_set_bytes;
+	size_t visibility_set_bytes;
+	size_t visibility_sets_created;
+	size_t visibility_sets_reused;
 	size_t semantic_state_bytes;
 	size_t binding_environment_bytes;
 	size_t context_bytes;
@@ -808,16 +813,6 @@ distribution_add(struct distribution *distribution, size_t count,
 		distribution->six_to_eight++;
 	else
 		distribution->nine_or_more++;
-}
-
-static void
-distribution_add_zeroes(struct distribution *distribution, size_t count)
-{
-	if (count > SIZE_MAX - distribution->samples ||
-	    count > SIZE_MAX - distribution->exact[0])
-		die("analysis distribution counter overflow");
-	distribution->samples += count;
-	distribution->exact[0] += count;
 }
 
 static void
@@ -1622,11 +1617,14 @@ measure_collections(struct analysis *analysis)
 		struct binding_environment *bindings;
 		struct function_context *context;
 		struct semantic_lock_set *locks;
+		struct semantic_visibility_set *visibility;
 		struct semantic_state *state;
 		size_t contexts = context_count(function);
 		size_t binding_environments =
 		    binding_environment_count(&function->bindings);
 		size_t states = context_state_count(function);
+		size_t visibility_sets =
+		    context_visibility_set_count(function);
 
 		distribution_add(&measurements->contexts_per_function, contexts,
 		    function);
@@ -1647,14 +1645,21 @@ measure_collections(struct analysis *analysis)
 		}
 		distribution_add(&measurements->semantic_states_per_function,
 		    states, function);
-		distribution_add_zeroes(
-		    &measurements->visibility_per_semantic_state, states);
+		distribution_add(&measurements->visibility_sets_per_function,
+		    visibility_sets, function);
+		memory_add(&measurements->visibility_sets_created,
+		    context_visibility_sets_created(function), 1);
+		memory_add(&measurements->visibility_sets_reused,
+		    context_visibility_sets_reused(function), 1);
 		for (state = avl_first(&function->contexts.semantic_states);
 		    state != NULL;
 		    state = AVL_NEXT(&function->contexts.semantic_states, state)) {
 			distribution_add(
 			    &measurements->locks_per_semantic_state,
 			    context_state_lock_count(state), function);
+			distribution_add(
+			    &measurements->visibility_per_semantic_state,
+			    context_state_visibility_count(state), function);
 		}
 		for (locks = avl_first(&function->contexts.lock_sets);
 		    locks != NULL;
@@ -1662,6 +1667,19 @@ measure_collections(struct analysis *analysis)
 			memory_add(&measurements->lock_set_bytes, 1,
 			    sizeof (*locks) +
 			    locks->count * sizeof (*locks->entries));
+		}
+		for (visibility =
+		    avl_first(&function->contexts.visibility_sets);
+		    visibility != NULL;
+		    visibility = AVL_NEXT(&function->contexts.visibility_sets,
+		    visibility)) {
+			distribution_add(
+			    &measurements->visibility_entries_per_set,
+			    visibility->count, function);
+			memory_add(&measurements->visibility_set_bytes, 1,
+			    sizeof (*visibility) +
+			    visibility->count *
+			    sizeof (*visibility->entries));
 		}
 		memory_add(&measurements->context_bytes, contexts,
 		    sizeof (struct function_context));
@@ -1720,6 +1738,7 @@ retained_collection_bytes(const struct analysis_measurements *measurements)
 		measurements->lock_identity_bytes,
 		measurements->binding_environment_bytes,
 		measurements->lock_set_bytes,
+		measurements->visibility_set_bytes,
 		measurements->context_bytes,
 		measurements->point_state_bytes,
 		measurements->exit_bytes,
@@ -1772,6 +1791,11 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	(void) fprintf(stream, "functions %zu\n", counts->functions);
 	(void) fprintf(stream, "semantic-states created %zu reused %zu\n",
 	    counts->semantic_states_created, counts->semantic_states_reused);
+	(void) fprintf(stream,
+	    "visibility-sets created %zu reused %zu retained %zu\n",
+	    measurements->visibility_sets_created,
+	    measurements->visibility_sets_reused,
+	    measurements->visibility_entries_per_set.samples);
 	(void) fprintf(stream, "binding-environments created %zu reused %zu\n",
 	    counts->binding_environments_created,
 	    counts->binding_environments_reused);
@@ -1827,6 +1851,10 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	    &measurements->bindings_per_environment);
 	show_distribution(stream, "semantic-states/function",
 	    &measurements->semantic_states_per_function);
+	show_distribution(stream, "visibility-sets/function",
+	    &measurements->visibility_sets_per_function);
+	show_distribution(stream, "visibility-entries/set",
+	    &measurements->visibility_entries_per_set);
 	show_distribution(stream, "point-states/context",
 	    &measurements->point_states_per_context);
 	show_distribution(stream, "states/analysis-point",
@@ -1849,6 +1877,10 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	    &measurements->bindings_per_environment);
 	show_maximum_owner(stream, "semantic-states/function",
 	    &measurements->semantic_states_per_function);
+	show_maximum_owner(stream, "visibility-sets/function",
+	    &measurements->visibility_sets_per_function);
+	show_maximum_owner(stream, "visibility-entries/set",
+	    &measurements->visibility_entries_per_set);
 	show_maximum_owner(stream, "point-states/context",
 	    &measurements->point_states_per_context);
 	show_maximum_owner(stream, "states/analysis-point",
@@ -1867,6 +1899,8 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	    measurements->binding_environment_bytes);
 	(void) fprintf(stream, "memory lock-sets %zu bytes\n",
 	    measurements->lock_set_bytes);
+	(void) fprintf(stream, "memory visibility-sets %zu bytes\n",
+	    measurements->visibility_set_bytes);
 	(void) fprintf(stream, "memory contexts %zu bytes\n",
 	    measurements->context_bytes);
 	(void) fprintf(stream, "memory point-states %zu bytes\n",

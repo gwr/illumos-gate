@@ -455,6 +455,15 @@ require_match "competition semantic states" \
     '^semantic-states created 36 reused 8$' competition-depth-contexts.out
 require_match "competition point states" \
     '^point-states created 144 reused 4$' competition-depth-contexts.out
+require_match "visibility set baseline" \
+    '^visibility-sets created 10 reused 0 retained 10$' \
+    competition-depth-contexts.out
+require_match "visibility sets per function baseline" \
+    '^distribution visibility-sets/function samples 10 total 10 max 1 bins 0:0 1:10 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
+    competition-depth-contexts.out
+require_match "visibility entries per set baseline" \
+    '^distribution visibility-entries/set samples 10 total 0 max 0 bins 0:10 1:0 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
+    competition-depth-contexts.out
 
 run_capture "competition protected accesses" competition-accesses.out \
     "$LOCKLINT" -DCOMPETITION_ACCESS_ONLY --check-locks competition-depth.c
