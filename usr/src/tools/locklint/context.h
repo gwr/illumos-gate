@@ -56,6 +56,7 @@ struct competition_interval {
 	int64_t maximum;
 	bool minimum_unbounded;
 	bool maximum_unbounded;
+	bool entry_condition;
 };
 
 struct semantic_state {

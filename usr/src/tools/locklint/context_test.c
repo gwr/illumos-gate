@@ -199,6 +199,8 @@ test_competition_depth_interning(void)
 	struct semantic_state *competing;
 	struct semantic_state *ranged;
 	struct semantic_state *unbounded;
+	struct semantic_state *ordinary_entry_range;
+	struct semantic_state *entry_condition;
 	struct semantic_state *same;
 	struct semantic_state *imported;
 	struct semantic_state *unchanged = NULL;
@@ -255,6 +257,27 @@ test_competition_depth_interning(void)
 	    &unchanged, &existed);
 	check(error == EINVAL && unchanged == NULL && existed,
 	    "invalid competition interval preserves outputs");
+	error = context_state_set_competition(&first, empty,
+	    (struct competition_interval){ .minimum = 0, .maximum = 1 },
+	    &ordinary_entry_range, &existed);
+	check(error == 0 && !existed,
+	    "ordinary zero-one range creates distinct state");
+	error = context_state_set_competition(&first, empty,
+	    (struct competition_interval){
+	    .minimum = 0, .maximum = 1, .entry_condition = true },
+	    &entry_condition, &existed);
+	check(error == 0 && !existed &&
+	    entry_condition != ordinary_entry_range,
+	    "entry condition is distinct from ordinary zero-one range");
+	competition = context_state_competition(entry_condition);
+	check(competition.entry_condition,
+	    "entry condition is preserved");
+	error = context_state_set_competition(&first, empty,
+	    (struct competition_interval){
+	    .minimum = 1, .maximum = 1, .entry_condition = true },
+	    &unchanged, &existed);
+	check(error == EINVAL,
+	    "entry condition requires finite zero-one range");
 
 	context_collection_free(&second);
 	context_collection_free(&first);

@@ -68,6 +68,8 @@ static int
 compare_competition(const struct competition_interval *left,
     const struct competition_interval *right)
 {
+	if (left->entry_condition != right->entry_condition)
+		return (left->entry_condition ? 1 : -1);
 	if (left->minimum_unbounded != right->minimum_unbounded)
 		return (left->minimum_unbounded ? -1 : 1);
 	if (!left->minimum_unbounded && left->minimum < right->minimum)
@@ -428,6 +430,11 @@ context_state_set_competition(struct function_info *function,
 	if (!competition.minimum_unbounded &&
 	    !competition.maximum_unbounded &&
 	    competition.minimum > competition.maximum)
+		return (EINVAL);
+	if (competition.entry_condition &&
+	    (competition.minimum_unbounded ||
+	    competition.maximum_unbounded ||
+	    competition.minimum != 0 || competition.maximum != 1))
 		return (EINVAL);
 	if (competition.minimum_unbounded)
 		competition.minimum = 0;
