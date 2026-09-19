@@ -470,8 +470,23 @@ do
 	    "competition-depth.c:$location:27: warning: locklint: protection for member 'protected' is not established on every path \\[conditional-protection\\]" \
 	    competition-accesses.out
 done
-if [ "$(grep -c 'warning:' competition-accesses.out)" -ne 8 ]; then
+if [ "$(grep -Ec '\[(unprotected-access|conditional-protection)\]' \
+    competition-accesses.out)" -ne 8 ]; then
 	fail "competition protected accesses: expected exactly eight warnings"
+fi
+
+require_match "definite unmatched competition decrement" \
+    "competition-depth.c:91:9: warning: locklint: competition depth decremented below zero \\[competition-underflow\\]" \
+    competition-depth-contexts.out
+require_match "definite recovered competition decrement" \
+    "competition-depth.c:138:9: warning: locklint: competition depth decremented below zero \\[competition-underflow\\]" \
+    competition-depth-contexts.out
+require_match "possible loop competition decrement" \
+    "competition-depth.c:151:17: warning: locklint: competition depth may be decremented below zero \\[competition-maybe-underflow\\]" \
+    competition-depth-contexts.out
+if [ "$(grep -Ec '\[competition-(maybe-)?underflow\]' \
+    competition-depth-contexts.out)" -ne 3 ]; then
+	fail "competition underflow diagnostics: expected exactly three warnings"
 fi
 
 # Verify the initial call-graph audit: direct call classification, function
