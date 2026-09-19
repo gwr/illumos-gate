@@ -1354,52 +1354,27 @@ predicate with captured source positions and recovers its lock argument.
 Conflicting predicates whose individual source locations cannot be
 distinguished are rejected instead of guessed.
 
-Assertions refine local state.  They do not acquire or release a lock and are
-not included in function effect summaries.  An asserted held state is marked
-as not being a function side effect so it does not produce a held-on-return
-warning by itself.
+The contextual checker treats an assertion as a requirement at its execution
+point, not as a lock operation.  A concrete caller context already contains
+an exact lock state.  A satisfying state continues unchanged; a failing state
+has no successor.  Consequently an assertion cannot become a caller-visible
+acquire or release, while pruning a failing path naturally prevents
+downstream cascade diagnostics.
 
-For each assertion on a caller-mappable role,
-`collect_assertion_requirements()` samples the state immediately before the
-assertion for every nonempty entry-state mask.  Sampling uses the same prefix
-transfer solver as acquisition summaries, so preceding local and direct-callee
-lock effects are preserved.  Structurally unreachable assertions are omitted.
-The resulting `assertion_requirement` records the role, asserted modes,
-source position, source function and checkpoint, and a bit set of accepted
-entry masks.  It also records alternatives keyed by sets of other formal roles and the
-accepted-input mask when every role in that set aliases the asserted role.
-All nonempty subsets are evaluated when any alias partition changes the
-ordinary mask; requirements without an alias-sensitive partition remain
-sparse.  Requirements merged from different paths rebuild tables over the
-union of both role sets, projecting each combination onto the roles known by
-each path before intersecting their accepted masks.
+Top-level roots need different treatment because no caller supplies their
+entry state.  Each root context is marked synthetic and remains distinct from
+an otherwise identical concrete context.  At an assertion, a synthetic root
+continues once for every accepted exact mode.  This supplies the assumption
+needed to analyze the remainder of an independently rooted function without
+inventing an effect for any real caller.
 
-At each resolved call, the callee role maps to the caller lock and the caller
-prefix is sampled for every entry-state mask.  Requirements with the same
-original assertion, asserted modes, and mapped role are merged by intersecting
-their accepted masks.  The pass iterates to a fixed point through transparent,
-state-changing, nested, and recursive wrappers.  Fully accepted tables are
-omitted only when they have no stricter alias alternative.
-
-For a direct call with exact same-actual roles, locklint replays the callee
-prefix to the retained assertion checkpoint with those roles sharing one
-state.  Through wrappers, alternative role sets map to caller roles.  Roles
-that already map to the primary role are folded into the ordinary table;
-every subset of remaining caller roles retains its own table after composing
-the wrapper prefix.  At a final call, the exact set of roles mapped to the
-asserted lock selects the corresponding table.  To bound exponential subset
-construction, at most eight alternative roles are retained per requirement;
-a larger local, propagated, or merged role set becomes a persistent rejecting
-requirement rather than risking a false negative, oscillating during fixed
-point iteration, or consuming unbounded analysis resources.
-
-During diagnostics, the current caller state selects an accepted-entry bit.
-A wholly incompatible state produces an unsatisfied-requirement warning; a
-merged caller state with both accepted and rejected components produces a
-path-dependent warning.  A non-root wrapper defers an unsatisfied condition
-that it can propagate.  Root boundaries and locks without caller-mappable
-identity are diagnosed at the call, and the original assertion position is
-emitted as supporting information.
+After the caller-context fixed point, diagnostics inspect the concrete point
+states retained immediately before each assertion.  Only failing states
+produce a definite warning; a mixture of satisfying and failing contexts
+produces a conditional warning.  Synthetic-root assumptions are excluded.
+Diagnostics currently identify the assertion source.  Mapping requirements
+through wrappers and diagnosing their originating call sites remains later
+work.
 
 ## Event decoding
 
@@ -2187,7 +2162,7 @@ caller OP_CALL resolved to callee
        and is diagnosed with caller lock evidence
 ```
 
-### Assertion to local state refinement
+### Assertion in caller-context analysis
 
 ```text
 preprocessor sees ASSERT or VERIFY
@@ -2202,33 +2177,38 @@ checker visits protected loads
 checker visits recognized predicate call
     -> OP_CALL retains source call expression
     -> locklint_get_assertion matches source position/range
-    -> predicate argument becomes a locklint_access
-    -> block state is refined without recording a lock side effect
+    -> computed call argument becomes the canonical lock identity
+concrete caller context reaches assertion
+    -> satisfying exact state continues unchanged
+    -> failing exact state stops at the assertion
+synthetic root context reaches assertion
+    -> one exact state is created for every accepted mode
+fixed point completes
+    -> concrete failures are diagnosed at the assertion source
+    -> mixed satisfying and failing contexts are conditional
 ```
 
 ### Assertion requirement at a direct call
 
 ```text
-caller-mappable assertion discovered
-    -> each entry-state mask is simulated to the assertion point
-    -> masks definitely satisfying the asserted modes are retained
 caller OP_CALL resolved to callee
-    -> asserted lock role mapped to caller actual or absolute lock
-    -> current caller state selects the accepted-entry table
-    -> incompatible or path-dependent requirement is diagnosed
+    -> caller's complete exact state creates a concrete callee context
+callee reaches assertion
+    -> mapped actual lock is validated in that exact context
+    -> a failing path publishes no return state
+post-fixed-point diagnostics
+    -> failure is currently reported at the assertion source
 ```
 
 ### Assertion requirement through wrappers
 
 ```text
-callee assertion requirement mapped at caller OP_CALL
-    -> caller prefix sampled for every entry-state mask
-    -> accepted masks intersected by original assertion and mapped role
-    -> call graph iterated until no accepted table shrinks
-non-root wrapper with a caller-mappable unsatisfied condition
-    -> local diagnostic deferred to its caller
-root or non-mappable boundary
-    -> requirement diagnosed with original assertion provenance
+exact state flows through each resolved wrapper call
+    -> nested concrete context validates the assertion
+    -> failure prevents that context from returning
+future diagnostic propagation
+    -> retain assertion provenance through wrapper contexts
+    -> report the incompatible originating call site
 ```
 
 ### Direct conditional lock result
@@ -2377,11 +2357,11 @@ The current implementation relies on these invariants:
     a matching function-wide assumed-protection region.
 11. Protection-condition propagation maps the protected-data identity
     independently and never rebases an absolute data or mutex root.
-12. Lock assertions refine local lock state without creating effects.
-    Caller-mappable lock assertions also create point-sensitive requirements
-    that propagate to a fixed point; `ASSERT(NO_COMPETING_THREADS)` validates
-    reached competition state without changing it or creating a caller
-    condition.
+12. Lock assertions validate exact concrete point states and prune failures
+    without changing satisfying states or creating lock effects.  Synthetic
+    root contexts branch into accepted modes so independently analyzed bodies
+    can rely on their assertions.  `ASSERT(NO_COMPETING_THREADS)` validates
+    reached competition state without changing it.
 13. Interprocedural lock, competition, and visibility effects and protection
     conditions reach fixed points before diagnostics are emitted.
 14. Multiple emitted external function definitions with one identifier are

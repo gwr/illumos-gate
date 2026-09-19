@@ -185,7 +185,12 @@ compare_function_context(const void *left_arg, const void *right_arg)
 	result = AVL_PCMP(left->bindings, right->bindings);
 	if (result != 0)
 		return (result);
-	return (AVL_PCMP(left->entry_state, right->entry_state));
+	result = AVL_PCMP(left->entry_state, right->entry_state);
+	if (result != 0)
+		return (result);
+	if (left->synthetic_root != right->synthetic_root)
+		return (left->synthetic_root ? 1 : -1);
+	return (0);
 }
 
 static int
@@ -871,17 +876,18 @@ context_state_merge_competition(struct function_info *function,
  * Find or create the context identified by canonical bindings and entry
  * state.  Allocation failure leaves both output arguments unchanged.
  */
-int
-context_create(struct function_info *function,
+static int
+context_create_impl(struct function_info *function,
     const struct binding_environment *bindings,
     const struct semantic_state *entry_state,
-    struct function_context **result, bool *existed)
+    bool synthetic_root, struct function_context **result, bool *existed)
 {
 	struct function_context_collection *collection = &function->contexts;
 	struct function_context key = {
 		.function = function,
 		.bindings = bindings,
-		.entry_state = entry_state
+		.entry_state = entry_state,
+		.synthetic_root = synthetic_root
 	};
 	struct function_context *context;
 	avl_index_t where;
@@ -898,6 +904,7 @@ context_create(struct function_info *function,
 	context->function = function;
 	context->bindings = bindings;
 	context->entry_state = entry_state;
+	context->synthetic_root = synthetic_root;
 	avl_create(&context->point_states, compare_point_state,
 	    sizeof (struct point_state), offsetof(struct point_state, by_key));
 	dependency_records_create(context);
@@ -906,6 +913,26 @@ context_create(struct function_info *function,
 	*result = context;
 	*existed = false;
 	return (0);
+}
+
+int
+context_create(struct function_info *function,
+    const struct binding_environment *bindings,
+    const struct semantic_state *entry_state,
+    struct function_context **result, bool *existed)
+{
+	return (context_create_impl(function, bindings, entry_state, false,
+	    result, existed));
+}
+
+int
+context_root_create(struct function_info *function,
+    const struct binding_environment *bindings,
+    const struct semantic_state *entry_state,
+    struct function_context **result, bool *existed)
+{
+	return (context_create_impl(function, bindings, entry_state, true,
+	    result, existed));
 }
 
 /*

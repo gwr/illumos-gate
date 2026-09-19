@@ -118,6 +118,7 @@ struct function_context {
 	struct function_info *function;
 	const struct binding_environment *bindings;
 	const struct semantic_state *entry_state;
+	bool synthetic_root;
 	avl_tree_t point_states;
 	struct context_exit_list exits;
 	avl_tree_t continuations;
@@ -192,6 +193,9 @@ int context_state_merge_competition(struct function_info *,
     const struct semantic_state *, const struct semantic_state *, bool,
     struct semantic_state **, bool *);
 int context_create(struct function_info *,
+    const struct binding_environment *, const struct semantic_state *,
+    struct function_context **, bool *);
+int context_root_create(struct function_info *,
     const struct binding_environment *, const struct semantic_state *,
     struct function_context **, bool *);
 int context_point_state_record(struct function_context *, struct analysis_point,

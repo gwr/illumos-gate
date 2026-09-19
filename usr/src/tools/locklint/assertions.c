@@ -327,7 +327,7 @@ locklint_get_assertion(struct translation_unit *tu, struct instruction *insn,
 		selected = assertion->modes;
 	}
 	if (selected == 0 ||
-	    !locklint_get_access(tu, argument, access))
+	    !locklint_get_call_argument_access(tu, insn, 0, access))
 		return (false);
 	*modes = selected;
 	return (true);

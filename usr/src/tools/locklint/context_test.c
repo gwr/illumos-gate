@@ -750,6 +750,7 @@ test_function_ownership(void)
 	struct semantic_state *second_visible;
 	struct semantic_state *same;
 	struct function_context *first_context;
+	struct function_context *first_root;
 	struct function_context *second_context;
 	enum semantic_visibility visibility;
 	bool existed;
@@ -793,13 +794,18 @@ test_function_ownership(void)
 	error = context_create(&first, NULL, first_state, &first_context,
 	    &existed);
 	check(error == 0, "create first function context");
+	error = context_root_create(&first, NULL, first_state, &first_root,
+	    &existed);
+	check(error == 0 && !existed && first_root != first_context &&
+	    first_root->synthetic_root,
+	    "synthetic root context remains distinct");
 	error = context_create(&second, NULL, second_state, &second_context,
 	    &existed);
 	check(error == 0, "create second function context");
 	check(!existed, "second function owns a distinct context");
 	check(second_context != first_context,
 	    "contexts are collected per function");
-	check(context_count(&first) == 1,
+	check(context_count(&first) == 2,
 	    "second function does not change first context count");
 	check(context_count(&second) == 1,
 	    "second function has one context");

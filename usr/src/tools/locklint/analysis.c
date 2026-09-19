@@ -35,6 +35,7 @@
 #include "access.h"
 #include "analysis.h"
 #include "annotations.h"
+#include "assertions.h"
 #include "binding.h"
 #include "callgraph.h"
 #include "context.h"
@@ -1108,6 +1109,76 @@ call_result_used(const struct instruction *instruction)
 	    has_users(instruction->target));
 }
 
+static bool
+process_lock_assertion(struct analysis *analysis,
+    struct point_state *point_state)
+{
+	struct instruction *instruction = point_state->point.next_instruction;
+	struct locklint_access access;
+	struct lock_identity *identity;
+	struct analysis_point next = point_state->point;
+	unsigned int asserted_modes;
+	unsigned int current_modes;
+	unsigned int mode;
+	bool composed;
+	bool existed;
+	int error;
+
+	if (!locklint_get_assertion(point_state->context->function->tu,
+	    instruction, &access, &asserted_modes))
+		return (false);
+	next.next_instruction =
+	    next_live_instruction(point_state->point.block, instruction);
+	if (access.root == NULL) {
+		record_analysis_point(analysis, point_state->context, next,
+		    point_state->state, false);
+		return (true);
+	}
+	error = context_access_identity(analysis, point_state->context, &access,
+	    &identity, &existed, &composed);
+	if (error != 0)
+		die("cannot identify lock assertion: %s", strerror(error));
+	if (composed)
+		analysis->counts.binding_identities_composed++;
+	if (existed)
+		analysis->counts.lock_identities_reused++;
+	else
+		analysis->counts.lock_identities_created++;
+
+	current_modes = context_state_lock_modes(point_state->state, identity);
+	if (current_modes == 0)
+		current_modes = LOCKLINT_MODE_UNHELD;
+	if (!point_state->context->synthetic_root) {
+		if ((current_modes & asserted_modes) != 0) {
+			record_analysis_point(analysis, point_state->context, next,
+			    point_state->state, false);
+		}
+		return (true);
+	}
+	if (current_modes != LOCKLINT_MODE_UNHELD &&
+	    (current_modes & asserted_modes) != 0) {
+		record_analysis_point(analysis, point_state->context, next,
+		    point_state->state, false);
+		return (true);
+	}
+	for (mode = LOCKLINT_MODE_UNHELD;
+	    mode <= LOCKLINT_MODE_WRITER; mode <<= 1) {
+		struct semantic_state *state;
+
+		if ((asserted_modes & mode) == 0)
+			continue;
+		error = context_state_set_lock(point_state->context->function,
+		    point_state->state, identity,
+		    mode == LOCKLINT_MODE_UNHELD ? 0 : mode, &state, &existed);
+		if (error != 0)
+			die("cannot apply lock assertion: %s", strerror(error));
+		record_semantic_state(analysis, existed);
+		record_analysis_point(analysis, point_state->context, next,
+		    state, false);
+	}
+	return (true);
+}
+
 static void
 record_conditional_outcome(struct analysis *analysis,
     struct point_state *point_state, struct analysis_point next,
@@ -1255,6 +1326,8 @@ process_point(struct analysis *analysis, struct point_state *point_state)
 		if (point.next_instruction->opcode == OP_CALL) {
 			const struct semantic_state *state;
 
+			if (process_lock_assertion(analysis, point_state))
+				return;
 			if (process_conditional_lock(analysis, point_state))
 				return;
 			state = apply_lock_event(analysis, point_state);
@@ -1323,7 +1396,8 @@ seed_root(struct analysis *analysis, struct function_info *function)
 		die("cannot intern root state: %s", strerror(error));
 	record_semantic_state(analysis, existed);
 
-	error = context_create(function, bindings, state, &context, &existed);
+	error = context_root_create(function, bindings, state, &context,
+	    &existed);
 	if (error != 0)
 		die("cannot create root context: %s", strerror(error));
 	if (existed) {
@@ -1559,6 +1633,153 @@ diagnose_lock_transitions(struct analysis *analysis)
 		}
 	}
 	callgraph_iter_close(iterator);
+}
+
+struct lock_assertion_finding {
+	struct instruction *instruction;
+	struct locklint_access access;
+	unsigned int asserted_modes;
+	bool valid;
+	bool invalid;
+	avl_node_t by_instruction;
+};
+
+static int
+compare_lock_assertion(const void *left_arg, const void *right_arg)
+{
+	const struct lock_assertion_finding *left = left_arg;
+	const struct lock_assertion_finding *right = right_arg;
+
+	return (AVL_PCMP(left->instruction, right->instruction));
+}
+
+static const char *
+asserted_mode_name(unsigned int modes)
+{
+	switch (modes) {
+	case LOCKLINT_MODE_MUTEX:
+		return ("mutex-held");
+	case LOCKLINT_MODE_READER:
+		return ("read-held");
+	case LOCKLINT_MODE_WRITER:
+		return ("write-held");
+	case LOCKLINT_MODE_READER | LOCKLINT_MODE_WRITER:
+		return ("lock-held");
+	case LOCKLINT_MODE_UNHELD:
+		return ("not-held");
+	case LOCKLINT_MODE_UNHELD | LOCKLINT_MODE_READER:
+		return ("not-write-held");
+	case LOCKLINT_MODE_UNHELD | LOCKLINT_MODE_WRITER:
+		return ("not-read-held");
+	default:
+		return ("lock-state");
+	}
+}
+
+/*
+ * Report assertion failures from concrete caller contexts.  Synthetic roots
+ * supply contract assumptions and therefore do not represent failing callers.
+ */
+static void
+diagnose_lock_assertions(struct analysis *analysis)
+{
+	struct callgraph_iter *iterator;
+	struct function_info *function;
+	avl_tree_t findings;
+	int error;
+
+	avl_create(&findings, compare_lock_assertion,
+	    sizeof (struct lock_assertion_finding),
+	    offsetof(struct lock_assertion_finding, by_instruction));
+	error = callgraph_iter_open(&iterator);
+	if (error != 0)
+		die("cannot iterate ready callgraph: %s", strerror(error));
+	while ((function = callgraph_iter_next(iterator)) != NULL) {
+		struct function_context *context;
+
+		for (context = avl_first(&function->contexts.contexts);
+		    context != NULL;
+		    context = AVL_NEXT(&function->contexts.contexts, context)) {
+			struct point_state *point_state;
+
+			if (context->synthetic_root)
+				continue;
+			for (point_state = avl_first(&context->point_states);
+			    point_state != NULL; point_state = AVL_NEXT(
+			    &context->point_states, point_state)) {
+				struct lock_assertion_finding key;
+				struct lock_assertion_finding *finding;
+				struct locklint_access access;
+				struct lock_identity *identity;
+				unsigned int asserted_modes;
+				unsigned int current_modes;
+				avl_index_t where;
+				bool composed;
+				bool existed;
+
+				if (point_state->point.next_instruction == NULL)
+					continue;
+				if (!locklint_get_assertion(function->tu,
+				    point_state->point.next_instruction, &access,
+				    &asserted_modes) || access.root == NULL)
+					continue;
+				error = context_access_identity(analysis, context,
+				    &access, &identity, &existed, &composed);
+				if (error != 0)
+					die("cannot identify lock assertion "
+					    "diagnostic: %s", strerror(error));
+				current_modes = context_state_lock_modes(
+				    point_state->state, identity);
+				if (current_modes == 0)
+					current_modes = LOCKLINT_MODE_UNHELD;
+				key = (struct lock_assertion_finding) {
+					.instruction =
+					    point_state->point.next_instruction
+				};
+				finding = avl_find(&findings, &key, &where);
+				if (finding == NULL) {
+					finding = calloc(1, sizeof (*finding));
+					if (finding == NULL)
+						die("cannot allocate lock assertion "
+						    "finding");
+					finding->instruction = key.instruction;
+					finding->access = access;
+					finding->asserted_modes = asserted_modes;
+					avl_insert(&findings, finding, where);
+				}
+				if ((current_modes & asserted_modes) != 0)
+					finding->valid = true;
+				else
+					finding->invalid = true;
+			}
+		}
+	}
+	callgraph_iter_close(iterator);
+	while (!avl_is_empty(&findings)) {
+		struct lock_assertion_finding *finding =
+		    avl_first(&findings);
+		struct position pos = finding->instruction->call_expr != NULL ?
+		    finding->instruction->call_expr->pos :
+		    finding->instruction->pos;
+		char *name = locklint_access_name(&finding->access);
+		const char *mode = asserted_mode_name(
+		    finding->asserted_modes);
+
+		if (finding->invalid && finding->valid) {
+			locklint_warning(
+			    LOCKLINT_DIAG_CONDITIONAL_ASSERTED_LOCK_REQUIREMENT,
+			    pos, "asserted %s requirement for lock '%s' is "
+			    "not established on every path", mode, name);
+		} else if (finding->invalid) {
+			locklint_warning(LOCKLINT_DIAG_ASSERTED_LOCK_REQUIREMENT,
+			    pos, "lock '%s' does not satisfy asserted %s "
+			    "requirement", name, mode);
+		}
+		free(name);
+		avl_remove(&findings, finding);
+		free(finding);
+	}
+	avl_destroy(&findings);
 }
 
 struct competition_underflow_finding {
@@ -3026,6 +3247,7 @@ analysis_run(struct lock_identity_collection *lock_identities, FILE *stream)
 	    worklist_point_state_dequeue(&analysis.worklist)) != NULL)
 		process_point(&analysis, point_state);
 	diagnose_lock_transitions(&analysis);
+	diagnose_lock_assertions(&analysis);
 	diagnose_competition_underflow();
 	diagnose_declared_competition_effects();
 	diagnose_competition_assertions();
