@@ -445,6 +445,41 @@ context_state_set_competition(struct function_info *function,
 }
 
 /*
+ * Shift an ordinary competition interval by one level.  An unresolved entry
+ * condition instead resolves to the level selected by its first transition.
+ */
+int
+context_state_adjust_competition(struct function_info *function,
+    const struct semantic_state *current, int adjustment,
+    struct semantic_state **result, bool *existed)
+{
+	struct competition_interval competition;
+
+	if (current == NULL || (adjustment != -1 && adjustment != 1))
+		return (EINVAL);
+	competition = current->competition;
+	if (competition.entry_condition) {
+		competition.minimum = adjustment > 0 ? 1 : 0;
+		competition.maximum = competition.minimum;
+		competition.entry_condition = false;
+	} else {
+		if ((!competition.minimum_unbounded &&
+		    ((adjustment > 0 && competition.minimum == INT64_MAX) ||
+		    (adjustment < 0 && competition.minimum == INT64_MIN))) ||
+		    (!competition.maximum_unbounded &&
+		    ((adjustment > 0 && competition.maximum == INT64_MAX) ||
+		    (adjustment < 0 && competition.maximum == INT64_MIN))))
+			return (EOVERFLOW);
+		if (!competition.minimum_unbounded)
+			competition.minimum += adjustment;
+		if (!competition.maximum_unbounded)
+			competition.maximum += adjustment;
+	}
+	return (context_state_set_competition(function, current, competition,
+	    result, existed));
+}
+
+/*
  * Find or create the context identified by canonical bindings and entry
  * state.  Allocation failure leaves both output arguments unchanged.
  */

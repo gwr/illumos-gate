@@ -139,6 +139,8 @@ int context_state_set_lock(struct function_info *,
 int context_state_set_competition(struct function_info *,
     const struct semantic_state *, struct competition_interval,
     struct semantic_state **, bool *);
+int context_state_adjust_competition(struct function_info *,
+    const struct semantic_state *, int, struct semantic_state **, bool *);
 int context_create(struct function_info *,
     const struct binding_environment *, const struct semantic_state *,
     struct function_context **, bool *);

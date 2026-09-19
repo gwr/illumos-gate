@@ -201,6 +201,7 @@ test_competition_depth_interning(void)
 	struct semantic_state *unbounded;
 	struct semantic_state *ordinary_entry_range;
 	struct semantic_state *entry_condition;
+	struct semantic_state *adjusted;
 	struct semantic_state *same;
 	struct semantic_state *imported;
 	struct semantic_state *unchanged = NULL;
@@ -278,6 +279,40 @@ test_competition_depth_interning(void)
 	    &unchanged, &existed);
 	check(error == EINVAL,
 	    "entry condition requires finite zero-one range");
+	error = context_state_adjust_competition(&first, entry_condition, 1,
+	    &adjusted, &existed);
+	competition = context_state_competition(adjusted);
+	check(error == 0 && existed && adjusted == competing &&
+	    competition.minimum == 1 && competition.maximum == 1 &&
+	    !competition.entry_condition,
+	    "competition entry transition establishes exact one");
+	error = context_state_adjust_competition(&first, entry_condition, -1,
+	    &adjusted, &existed);
+	check(error == 0 && existed && adjusted == empty,
+	    "no-competition entry transition establishes exact zero");
+	error = context_state_adjust_competition(&first, ranged, -1,
+	    &adjusted, &existed);
+	competition = context_state_competition(adjusted);
+	check(error == 0 && !existed && competition.minimum == -2 &&
+	    competition.maximum == 1,
+	    "ordinary competition interval shifts through zero");
+	error = context_state_adjust_competition(&first, unbounded, 1,
+	    &adjusted, &existed);
+	check(error == 0 && existed && adjusted == unbounded,
+	    "unbounded competition interval is unchanged");
+	error = context_state_set_competition(&first, empty,
+	    (struct competition_interval){
+	    .minimum = INT64_MAX, .maximum = INT64_MAX },
+	    &adjusted, &existed);
+	check(error == 0, "create maximum competition interval");
+	error = context_state_adjust_competition(&first, adjusted, 1,
+	    &same, &existed);
+	check(error == EOVERFLOW,
+	    "competition increment overflow is rejected");
+	error = context_state_adjust_competition(&first, empty, 2,
+	    &same, &existed);
+	check(error == EINVAL,
+	    "unsupported competition adjustment is rejected");
 
 	context_collection_free(&second);
 	context_collection_free(&first);
