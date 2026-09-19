@@ -584,6 +584,85 @@ test_point_state_interning(void)
 	context_collection_free(&function);
 }
 
+static void
+test_point_state_competition_widening(void)
+{
+	struct function_info function = { 0 };
+	struct semantic_state *zero;
+	struct semantic_state *one;
+	struct semantic_state *two;
+	struct semantic_state *minus_one;
+	struct semantic_state *held;
+	struct function_context *context;
+	struct point_state *point_state;
+	struct point_state *same;
+	struct competition_interval competition;
+	unsigned int identity;
+	char blocks[2];
+	char instruction;
+	struct analysis_point upward = {
+		.block = (struct basic_block *)&blocks[0],
+		.next_instruction = (struct instruction *)&instruction
+	};
+	struct analysis_point downward = {
+		.block = (struct basic_block *)&blocks[1],
+		.next_instruction = (struct instruction *)&instruction
+	};
+	bool existed;
+	int error;
+
+	context_collection_create(&function);
+	error = context_empty_state_intern(&function, &zero, &existed);
+	check(error == 0, "create widening zero state");
+	error = context_state_set_competition(&function, zero,
+	    (struct competition_interval){ .minimum = 1, .maximum = 1 },
+	    &one, &existed);
+	check(error == 0, "create widening one state");
+	error = context_state_set_competition(&function, zero,
+	    (struct competition_interval){ .minimum = 2, .maximum = 2 },
+	    &two, &existed);
+	check(error == 0, "create widening two state");
+	error = context_state_set_competition(&function, zero,
+	    (struct competition_interval){ .minimum = -1, .maximum = -1 },
+	    &minus_one, &existed);
+	check(error == 0, "create widening negative state");
+	error = context_state_set_lock(&function, zero,
+	    (const struct lock_identity *)&identity, 1, &held, &existed);
+	check(error == 0, "create widening different-lock state");
+	error = context_create(&function, NULL, zero, &context, &existed);
+	check(error == 0, "create widening context");
+
+	error = context_point_state_record(context, upward, zero, &point_state,
+	    &existed);
+	check(error == 0 && !existed, "record upward loop entry");
+	error = context_point_state_record_widened(context, upward, one,
+	    &point_state, &existed);
+	competition = context_state_competition(point_state->state);
+	check(error == 0 && !existed && competition.minimum == 0 &&
+	    competition.maximum_unbounded,
+	    "upward back edge widens upper endpoint");
+	error = context_point_state_record_widened(context, upward, two,
+	    &same, &existed);
+	check(error == 0 && existed && same == point_state,
+	    "upper-unbounded point covers later arrival");
+	error = context_point_state_record_widened(context, upward, held,
+	    &same, &existed);
+	check(error == 0 && !existed && same->state == held,
+	    "different lock set remains separate at widened point");
+
+	error = context_point_state_record(context, downward, zero,
+	    &point_state, &existed);
+	check(error == 0 && !existed, "record downward loop entry");
+	error = context_point_state_record_widened(context, downward, minus_one,
+	    &point_state, &existed);
+	competition = context_state_competition(point_state->state);
+	check(error == 0 && !existed && competition.minimum_unbounded &&
+	    competition.maximum == 0,
+	    "downward back edge widens lower endpoint");
+
+	context_collection_free(&function);
+}
+
 int
 main(void)
 {
@@ -595,5 +674,6 @@ main(void)
 	test_lock_state_limit();
 	test_function_ownership();
 	test_point_state_interning();
+	test_point_state_competition_widening();
 	return (failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE);
 }

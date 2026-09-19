@@ -644,6 +644,64 @@ context_point_state_record(struct function_context *context,
 	return (0);
 }
 
+/*
+ * Record a state arriving on a CFG back edge.  Existing equal-lock states at
+ * the point form the prior interval; covered arrivals stop, while extensions
+ * widen before ordinary immutable point-state insertion.
+ */
+int
+context_point_state_record_widened(struct function_context *context,
+    struct analysis_point point, const struct semantic_state *state,
+    struct point_state **result, bool *existed)
+{
+	struct point_state key = {
+		.context = context,
+		.point = point
+	};
+	struct point_state *point_state;
+	const struct semantic_state *prior = NULL;
+	struct semantic_state *merged;
+	avl_index_t where;
+	bool state_existed;
+	int error;
+
+	if (context == NULL || state == NULL)
+		return (EINVAL);
+	(void) avl_find(&context->point_states, &key, &where);
+	for (point_state = avl_nearest(&context->point_states, where, AVL_AFTER);
+	    point_state != NULL &&
+	    point_state->point.block == point.block &&
+	    point_state->point.next_instruction == point.next_instruction;
+	    point_state = AVL_NEXT(&context->point_states, point_state)) {
+		if (point_state->state->locks != state->locks)
+			continue;
+		if (context_state_competition_contains(point_state->state,
+		    state)) {
+			*result = point_state;
+			*existed = true;
+			return (0);
+		}
+		if (prior == NULL) {
+			prior = point_state->state;
+			continue;
+		}
+		error = context_state_merge_competition(context->function, prior,
+		    point_state->state, false, &merged, &state_existed);
+		if (error != 0)
+			return (error);
+		prior = merged;
+	}
+	if (prior == NULL)
+		return (context_point_state_record(context, point, state, result,
+		    existed));
+	error = context_state_merge_competition(context->function, prior, state,
+	    true, &merged, &state_existed);
+	if (error != 0)
+		return (error);
+	return (context_point_state_record(context, point, merged, result,
+	    existed));
+}
+
 size_t
 context_count(struct function_info *function)
 {
