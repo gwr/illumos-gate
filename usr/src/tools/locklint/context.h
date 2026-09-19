@@ -18,6 +18,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <sys/queue.h>
 
 #include "avl.h"
@@ -50,9 +51,16 @@ struct semantic_lock_set {
 	struct semantic_lock_state entries[];
 };
 
+struct competition_interval {
+	int64_t minimum;
+	int64_t maximum;
+	bool minimum_unbounded;
+	bool maximum_unbounded;
+};
+
 struct semantic_state {
 	const struct semantic_lock_set *locks;
-	unsigned int competition_depth;
+	struct competition_interval competition;
 	avl_node_t by_value;
 };
 
@@ -127,9 +135,9 @@ int context_state_map_exit(struct function_info *,
 int context_state_set_lock(struct function_info *,
     const struct semantic_state *, const struct lock_identity *, unsigned int,
     struct semantic_state **, bool *);
-int context_state_set_competition_depth(struct function_info *,
-    const struct semantic_state *, unsigned int, struct semantic_state **,
-    bool *);
+int context_state_set_competition(struct function_info *,
+    const struct semantic_state *, struct competition_interval,
+    struct semantic_state **, bool *);
 int context_create(struct function_info *,
     const struct binding_environment *, const struct semantic_state *,
     struct function_context **, bool *);
@@ -142,7 +150,8 @@ size_t context_state_count(struct function_info *);
 size_t context_state_lock_count(const struct semantic_state *);
 unsigned int context_state_lock_modes(const struct semantic_state *,
     const struct lock_identity *);
-unsigned int context_state_competition_depth(const struct semantic_state *);
+struct competition_interval context_state_competition(
+    const struct semantic_state *);
 size_t context_point_state_count(struct function_context *);
 
 #endif /* CONTEXT_H */

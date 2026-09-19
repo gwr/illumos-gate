@@ -120,14 +120,16 @@ test_exit_state_mapping(void)
 	check(context_state_lock_modes(mapped, first) == 0 &&
 	    context_state_lock_modes(mapped, second) == 2,
 	    "exit mapping preserves complete mapped state");
-	error = context_state_set_competition_depth(&callee, callee_exit, 2,
+	error = context_state_set_competition(&callee, callee_exit,
+	    (struct competition_interval){ .minimum = 2, .maximum = 2 },
 	    &callee_deep, &existed);
 	check(error == 0 && !existed, "create deep callee exit state");
 	error = context_state_map_exit(&caller, caller_held, callee_entry,
 	    callee_deep, include_selected_lock, (void *)second, &mapped,
 	    &existed);
 	check(error == 0 && !existed &&
-	    context_state_competition_depth(mapped) == 2,
+	    context_state_competition(mapped).minimum == 2 &&
+	    context_state_competition(mapped).maximum == 2,
 	    "exit mapping preserves competition depth");
 
 	context_collection_free(&callee);
@@ -195,31 +197,64 @@ test_competition_depth_interning(void)
 	struct function_info second = { 0 };
 	struct semantic_state *empty;
 	struct semantic_state *competing;
+	struct semantic_state *ranged;
+	struct semantic_state *unbounded;
 	struct semantic_state *same;
 	struct semantic_state *imported;
+	struct semantic_state *unchanged = NULL;
+	struct competition_interval competition;
 	bool existed;
 	int error;
 
 	context_collection_create(&first);
 	context_collection_create(&second);
 	error = context_empty_state_intern(&first, &empty, &existed);
-	check(error == 0 &&
-	    context_state_competition_depth(empty) == 0,
+	competition = context_state_competition(empty);
+	check(error == 0 && competition.minimum == 0 &&
+	    competition.maximum == 0 && !competition.minimum_unbounded &&
+	    !competition.maximum_unbounded,
 	    "empty state has zero competition depth");
-	error = context_state_set_competition_depth(&first, empty, 1,
+	error = context_state_set_competition(&first, empty,
+	    (struct competition_interval){ .minimum = 1, .maximum = 1 },
 	    &competing, &existed);
 	check(error == 0 && !existed && competing != empty,
 	    "competition depth creates distinct state");
 	check(competing->locks == empty->locks,
 	    "competition states share canonical lock set");
-	error = context_state_set_competition_depth(&first, competing, 1,
+	error = context_state_set_competition(&first, competing,
+	    (struct competition_interval){ .minimum = 1, .maximum = 1 },
 	    &same, &existed);
 	check(error == 0 && existed && same == competing,
 	    "unchanged competition depth reuses state");
 	error = context_state_import(&second, competing, &imported, &existed);
-	check(error == 0 && !existed &&
-	    context_state_competition_depth(imported) == 1,
+	competition = context_state_competition(imported);
+	check(error == 0 && !existed && competition.minimum == 1 &&
+	    competition.maximum == 1,
 	    "state import preserves competition depth");
+	error = context_state_set_competition(&first, empty,
+	    (struct competition_interval){ .minimum = -1, .maximum = 2 },
+	    &ranged, &existed);
+	check(error == 0 && !existed,
+	    "signed competition range creates distinct state");
+	competition = context_state_competition(ranged);
+	check(competition.minimum == -1 && competition.maximum == 2,
+	    "signed competition range is preserved");
+	error = context_state_set_competition(&first, empty,
+	    (struct competition_interval){
+	    .minimum = -7, .maximum = 9,
+	    .minimum_unbounded = true, .maximum_unbounded = true },
+	    &unbounded, &existed);
+	competition = context_state_competition(unbounded);
+	check(error == 0 && !existed && competition.minimum_unbounded &&
+	    competition.maximum_unbounded && competition.minimum == 0 &&
+	    competition.maximum == 0,
+	    "unbounded endpoints have one canonical representation");
+	existed = true;
+	error = context_state_set_competition(&first, empty,
+	    (struct competition_interval){ .minimum = 2, .maximum = 1 },
+	    &unchanged, &existed);
+	check(error == EINVAL && unchanged == NULL && existed,
+	    "invalid competition interval preserves outputs");
 
 	context_collection_free(&second);
 	context_collection_free(&first);
