@@ -146,7 +146,7 @@ compare "events" events.ref events.out
 run_capture "event lock identities" event-lock-identities.out \
     "$LOCKLINT" --dump-contexts events.c
 require_match "event lock identities" \
-    '^lock-identities created 1 reused 1 unresolved 0 retained 1$' \
+    '^lock-identities created 1 reused 4 unresolved 0 retained 1$' \
     event-lock-identities.out
 require_match "event lock identity types" \
     '^lock-identity-types unspecified 0 object 0 symbol 0 pseudo 1$' \
@@ -588,18 +588,30 @@ require_match "annotation name dump" \
 
 
 #
-# Verify definite and mixed-state acquire/release diagnostics.
+# Verify mutex-protected accesses and acquire/release diagnostics.
 #
 run_capture "lock transition diagnostics" lock-transition-diagnostics.out \
     "$LOCKLINT" --check-locks check.c
+require_match "unprotected read diagnostic" \
+    "check.c:49:22: warning: locklint: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
+    lock-transition-diagnostics.out
+require_match "unprotected write diagnostic" \
+    "check.c:103:14: warning: locklint: protected member 'value' modified without holding 'lock' \\[unprotected-access\\]" \
+    lock-transition-diagnostics.out
+require_match "second unprotected read diagnostic" \
+    "check.c:55:30: warning: locklint: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
+    lock-transition-diagnostics.out
+require_match "conditional protection diagnostic" \
+    "check.c:65:22: warning: locklint: protection for member 'value' is not established on every path \\[conditional-protection\\]" \
+    lock-transition-diagnostics.out
 require_match "mixed release diagnostic" \
     "check.c:66:19: warning: locklint: lock 'lock' may not be held \\[lock-maybe-not-held\\]" \
     lock-transition-diagnostics.out
 require_match "mixed acquire diagnostic" \
     "check.c:96:20: warning: locklint: lock 'lock' may already be held \\[lock-maybe-already-held\\]" \
     lock-transition-diagnostics.out
-if [ "$(grep -c 'warning:' lock-transition-diagnostics.out)" -ne 2 ]; then
-	fail "lock transition diagnostics: expected exactly two warnings"
+if [ "$(grep -c 'warning:' lock-transition-diagnostics.out)" -ne 6 ]; then
+	fail "lock transition diagnostics: expected exactly six warnings"
 fi
 
 #

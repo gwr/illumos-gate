@@ -17,9 +17,8 @@
  * Drive the caller-context fixed point over retained Sparse control-flow
  * graphs.  Unconditional acquisition and release update immutable local
  * semantic states, while resolved calls distinguish canonical pointer-formal
- * bindings.  A resolved call suspends its caller until a callee exit
- * reactivates the corresponding continuation; interprocedural state transfer
- * is not yet enabled.
+ * bindings and transfer state through callees.  Diagnostics consume the
+ * complete fixed point so branch-dependent lock state is reported coherently.
  */
 
 #include <errno.h>
@@ -33,6 +32,7 @@
 
 #include "access.h"
 #include "analysis.h"
+#include "annotations.h"
 #include "binding.h"
 #include "callgraph.h"
 #include "context.h"
@@ -900,6 +900,135 @@ diagnose_lock_transitions(struct analysis *analysis)
 	callgraph_iter_close(iterator);
 }
 
+struct protected_access_diagnostic {
+	struct analysis *analysis;
+	struct function_context *context;
+	struct point_state *first;
+	struct instruction *instruction;
+};
+
+/*
+ * Check one protected leaf against every exact state reaching its
+ * instruction.  The protector is translated through the active bindings
+ * before its held modes are inspected.
+ */
+static void
+diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
+{
+	struct protected_access_diagnostic *data = data_arg;
+	struct locklint_data_policy policy;
+	struct locklint_access protector;
+	struct lock_identity *identity;
+	struct point_state *point_state;
+	size_t unprotected = 0;
+	size_t protected = 0;
+	bool composed;
+	bool existed;
+	int error;
+
+	if (!locklint_data_policy(access, &policy, &protector) ||
+	    policy.protection != LOCKLINT_PROTECTION_MUTEX ||
+	    (data->instruction->opcode == OP_LOAD &&
+	    policy.readable_without_lock))
+		return;
+	error = context_access_identity(data->analysis, data->context,
+	    &protector, &identity, &existed, &composed);
+	if (error != 0)
+		die("cannot identify data protector: %s", strerror(error));
+	if (composed)
+		data->analysis->counts.binding_identities_composed++;
+	if (existed)
+		data->analysis->counts.lock_identities_reused++;
+	else
+		data->analysis->counts.lock_identities_created++;
+	for (point_state = data->first; point_state != NULL &&
+	    same_analysis_point(data->first, point_state);
+	    point_state = AVL_NEXT(&data->context->point_states, point_state)) {
+		if ((context_state_lock_modes(point_state->state, identity) &
+		    LOCKLINT_MODE_MUTEX) != 0)
+			protected++;
+		else
+			unprotected++;
+	}
+	if (unprotected != 0) {
+		const char *member = access->member != NULL &&
+		    access->member->ident != NULL ?
+		    show_ident(access->member->ident) : "<unknown>";
+		char *lock = locklint_access_name(&protector);
+		struct position pos = data->instruction->access != NULL ?
+		    data->instruction->access->pos : data->instruction->pos;
+
+		if (protected == 0) {
+			locklint_warning(LOCKLINT_DIAG_UNPROTECTED_ACCESS, pos,
+			    "protected member '%s' %s without holding '%s'",
+			    member, data->instruction->opcode == OP_LOAD ?
+			    "read" : "modified", lock);
+		} else {
+			locklint_warning(LOCKLINT_DIAG_CONDITIONAL_PROTECTION,
+			    pos, "protection for member '%s' is not "
+			    "established on every path", member);
+		}
+		free(lock);
+	}
+}
+
+static struct point_state *
+diagnose_protected_access(struct analysis *analysis,
+    struct function_context *context, struct point_state *first)
+{
+	struct instruction *instruction = first->point.next_instruction;
+	struct point_state *next;
+
+	for (next = first; next != NULL && same_analysis_point(first, next);
+	    next = AVL_NEXT(&context->point_states, next))
+		;
+	if (instruction->opcode == OP_LOAD || instruction->opcode == OP_STORE) {
+		struct protected_access_diagnostic data = {
+			.analysis = analysis,
+			.context = context,
+			.first = first,
+			.instruction = instruction
+		};
+
+		locklint_for_each_instruction_leaf_access(context->function->tu,
+		    instruction, diagnose_protected_leaf, &data);
+	}
+	return (next);
+}
+
+static void
+diagnose_protected_accesses(struct analysis *analysis)
+{
+	struct callgraph_iter *iterator;
+	struct function_info *function;
+	int error;
+
+	error = callgraph_iter_open(&iterator);
+	if (error != 0)
+		die("cannot iterate ready callgraph: %s", strerror(error));
+	while ((function = callgraph_iter_next(iterator)) != NULL) {
+		struct function_context *context;
+
+		for (context = avl_first(&function->contexts.contexts);
+		    context != NULL;
+		    context = AVL_NEXT(&function->contexts.contexts, context)) {
+			struct point_state *point_state =
+			    avl_first(&context->point_states);
+
+			while (point_state != NULL) {
+				if (point_state->point.next_instruction == NULL) {
+					point_state = AVL_NEXT(
+					    &context->point_states, point_state);
+					continue;
+				}
+				point_state = diagnose_protected_access(analysis,
+				    context, point_state);
+			}
+		}
+	}
+	callgraph_iter_close(iterator);
+}
+
 static int
 compare_lock_identity_pointer(const void *left_arg, const void *right_arg)
 {
@@ -1386,6 +1515,7 @@ analysis_run(struct lock_identity_collection *lock_identities, FILE *stream)
 	    worklist_point_state_dequeue(&analysis.worklist)) != NULL)
 		process_point(&analysis, point_state);
 	diagnose_lock_transitions(&analysis);
+	diagnose_protected_accesses(&analysis);
 	diagnose_local_locks_on_return();
 	if (stream != NULL) {
 		analysis.measurements.lock_identities =
