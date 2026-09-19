@@ -15,11 +15,11 @@
 
 /*
  * Drive the caller-context fixed point over retained Sparse control-flow
- * graphs.  The initial implementation carries only the canonical empty
- * semantic state, while resolved calls distinguish canonical pointer-formal
+ * graphs.  Unconditional acquisition and release update immutable local
+ * semantic states, while resolved calls distinguish canonical pointer-formal
  * bindings.  A resolved call suspends its caller until a callee exit
- * reactivates the corresponding continuation; unresolved calls have no
- * semantic effect.
+ * reactivates the corresponding continuation; interprocedural state transfer
+ * is not yet enabled.
  */
 
 #include <errno.h>
@@ -70,6 +70,8 @@ struct analysis_counts {
 	size_t lock_identities_created;
 	size_t lock_identities_reused;
 	size_t lock_identities_unresolved;
+	size_t lock_transitions_applied;
+	size_t lock_transitions_deferred;
 	size_t reactivations;
 };
 
@@ -243,11 +245,12 @@ publish_exit(struct analysis *analysis, struct point_state *point_state)
 	}
 }
 
-static void
-observe_lock_event(struct analysis *analysis, struct point_state *point_state)
+static const struct semantic_state *
+apply_lock_event(struct analysis *analysis, struct point_state *point_state)
 {
 	struct locklint_access access;
 	struct lock_identity *identity;
+	struct semantic_state *state;
 	enum locklint_lock_action action;
 	enum locklint_lock_mode mode;
 	bool composed;
@@ -257,10 +260,10 @@ observe_lock_event(struct analysis *analysis, struct point_state *point_state)
 	action = locklint_get_lock_action(point_state->context->function->tu,
 	    point_state->point.next_instruction, &access, &mode);
 	if (action == LOCKLINT_LOCK_NONE)
-		return;
+		return (point_state->state);
 	if (access.root == NULL) {
 		analysis->counts.lock_identities_unresolved++;
-		return;
+		return (point_state->state);
 	}
 	error = context_access_identity(analysis, point_state->context, &access,
 	    &identity, &existed, &composed);
@@ -272,6 +275,22 @@ observe_lock_event(struct analysis *analysis, struct point_state *point_state)
 		analysis->counts.lock_identities_reused++;
 	else
 		analysis->counts.lock_identities_created++;
+	if (action != LOCKLINT_LOCK_ACQUIRE &&
+	    action != LOCKLINT_LOCK_RELEASE) {
+		analysis->counts.lock_transitions_deferred++;
+		return (point_state->state);
+	}
+	error = context_state_set_lock(point_state->context->function,
+	    point_state->state, identity,
+	    action == LOCKLINT_LOCK_ACQUIRE ? mode : 0, &state, &existed);
+	if (error != 0)
+		die("cannot apply lock event: %s", strerror(error));
+	if (existed)
+		analysis->counts.semantic_states_reused++;
+	else
+		analysis->counts.semantic_states_created++;
+	analysis->counts.lock_transitions_applied++;
+	return (state);
 }
 
 static struct symbol *
@@ -495,7 +514,8 @@ call_bindings(struct analysis *analysis,
 }
 
 static void
-process_call(struct analysis *analysis, struct point_state *point_state)
+process_call(struct analysis *analysis, struct point_state *point_state,
+    const struct semantic_state *caller_state)
 {
 	struct function_context *caller_context = point_state->context;
 	const struct binding_environment *bindings;
@@ -514,7 +534,7 @@ process_call(struct analysis *analysis, struct point_state *point_state)
 	if (callee_function == NULL) {
 		record_point(analysis, caller_context, point_state->point.block,
 		    next_live_instruction(point_state->point.block,
-		    point_state->point.next_instruction), point_state->state);
+		    point_state->point.next_instruction), caller_state);
 		return;
 	}
 
@@ -554,7 +574,7 @@ process_call(struct analysis *analysis, struct point_state *point_state)
 	resume_point.next_instruction = next_live_instruction(
 	    point_state->point.block, point_state->point.next_instruction);
 	error = dependency_continuation_create(callee_context, caller_context,
-	    resume_point, point_state->state, bindings, &continuation, &existed);
+	    resume_point, caller_state, bindings, &continuation, &existed);
 	if (error != 0)
 		die("cannot create call continuation: %s", strerror(error));
 	if (existed)
@@ -587,8 +607,10 @@ process_point(struct analysis *analysis, struct point_state *point_state)
 			return;
 		}
 		if (point.next_instruction->opcode == OP_CALL) {
-			observe_lock_event(analysis, point_state);
-			process_call(analysis, point_state);
+			const struct semantic_state *state =
+			    apply_lock_event(analysis, point_state);
+
+			process_call(analysis, point_state, state);
 			return;
 		}
 		record_point(analysis, point_state->context, point.block,
@@ -967,6 +989,9 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	    counts->lock_identities_reused,
 	    counts->lock_identities_unresolved,
 	    measurements->lock_identities);
+	(void) fprintf(stream, "lock-transitions applied %zu deferred %zu\n",
+	    counts->lock_transitions_applied,
+	    counts->lock_transitions_deferred);
 	(void) fprintf(stream,
 	    "lock-identity-types unspecified %zu object %zu symbol %zu "
 	    "pseudo %zu\n",

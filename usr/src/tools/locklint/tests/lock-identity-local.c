@@ -23,6 +23,7 @@ typedef struct mutex {
 
 extern void mutex_enter(mutex_t *);
 extern void mutex_exit(mutex_t *);
+extern int mutex_tryenter(mutex_t *);
 
 void lock_identity_local(void);
 
@@ -33,4 +34,5 @@ lock_identity_local(void)
 
 	mutex_enter(&local_lock);
 	mutex_exit(&local_lock);
+	(void) mutex_tryenter(&local_lock);
 }
