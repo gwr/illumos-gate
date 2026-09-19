@@ -443,6 +443,19 @@ grep -E 'context     0, tag 15|unreach' not-reached-linearized.out \
 compare "not reached markers" not-reached-markers.ref \
     not-reached-markers.out
 
+#
+# Verify competition transitions and dominator-selected loop widening converge.
+#
+run_capture "competition context convergence" competition-depth-contexts.out \
+    "$LOCKLINT" --dump-contexts competition-depth.c
+require_match "competition transitions" \
+    '^competition-transitions applied 39 backedges-widened 4 backedges-covered 4$' \
+    competition-depth-contexts.out
+require_match "competition semantic states" \
+    '^semantic-states created 41 reused 8$' competition-depth-contexts.out
+require_match "competition point states" \
+    '^point-states created 172 reused 5$' competition-depth-contexts.out
+
 # Verify the initial call-graph audit: direct call classification, function
 # identity across translation units, and exact function-pointer escapes.
 #

@@ -609,6 +609,7 @@ test_point_state_competition_widening(void)
 		.next_instruction = (struct instruction *)&instruction
 	};
 	bool existed;
+	bool widened;
 	int error;
 
 	context_collection_create(&function);
@@ -636,27 +637,28 @@ test_point_state_competition_widening(void)
 	    &existed);
 	check(error == 0 && !existed, "record upward loop entry");
 	error = context_point_state_record_widened(context, upward, one,
-	    &point_state, &existed);
+	    &point_state, &existed, &widened);
 	competition = context_state_competition(point_state->state);
-	check(error == 0 && !existed && competition.minimum == 0 &&
+	check(error == 0 && !existed && widened && competition.minimum == 0 &&
 	    competition.maximum_unbounded,
 	    "upward back edge widens upper endpoint");
 	error = context_point_state_record_widened(context, upward, two,
-	    &same, &existed);
-	check(error == 0 && existed && same == point_state,
+	    &same, &existed, &widened);
+	check(error == 0 && existed && !widened && same == point_state,
 	    "upper-unbounded point covers later arrival");
 	error = context_point_state_record_widened(context, upward, held,
-	    &same, &existed);
-	check(error == 0 && !existed && same->state == held,
+	    &same, &existed, &widened);
+	check(error == 0 && !existed && !widened && same->state == held,
 	    "different lock set remains separate at widened point");
 
 	error = context_point_state_record(context, downward, zero,
 	    &point_state, &existed);
 	check(error == 0 && !existed, "record downward loop entry");
 	error = context_point_state_record_widened(context, downward, minus_one,
-	    &point_state, &existed);
+	    &point_state, &existed, &widened);
 	competition = context_state_competition(point_state->state);
-	check(error == 0 && !existed && competition.minimum_unbounded &&
+	check(error == 0 && !existed && widened &&
+	    competition.minimum_unbounded &&
 	    competition.maximum == 0,
 	    "downward back edge widens lower endpoint");
 

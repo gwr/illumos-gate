@@ -652,7 +652,7 @@ context_point_state_record(struct function_context *context,
 int
 context_point_state_record_widened(struct function_context *context,
     struct analysis_point point, const struct semantic_state *state,
-    struct point_state **result, bool *existed)
+    struct point_state **result, bool *existed, bool *widened)
 {
 	struct point_state key = {
 		.context = context,
@@ -679,6 +679,7 @@ context_point_state_record_widened(struct function_context *context,
 		    state)) {
 			*result = point_state;
 			*existed = true;
+			*widened = false;
 			return (0);
 		}
 		if (prior == NULL) {
@@ -692,14 +693,19 @@ context_point_state_record_widened(struct function_context *context,
 		prior = merged;
 	}
 	if (prior == NULL)
-		return (context_point_state_record(context, point, state, result,
-		    existed));
-	error = context_state_merge_competition(context->function, prior, state,
-	    true, &merged, &state_existed);
+		error = context_point_state_record(context, point, state, result,
+		    existed);
+	else {
+		error = context_state_merge_competition(context->function, prior,
+		    state, true, &merged, &state_existed);
+		if (error == 0)
+			error = context_point_state_record(context, point, merged,
+			    result, existed);
+	}
 	if (error != 0)
 		return (error);
-	return (context_point_state_record(context, point, merged, result,
-	    existed));
+	*widened = prior != NULL;
+	return (0);
 }
 
 size_t

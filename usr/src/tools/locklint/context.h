@@ -155,7 +155,7 @@ int context_point_state_record(struct function_context *, struct analysis_point,
     const struct semantic_state *, struct point_state **, bool *);
 int context_point_state_record_widened(struct function_context *,
     struct analysis_point, const struct semantic_state *, struct point_state **,
-    bool *);
+    bool *, bool *);
 
 size_t context_count(struct function_info *);
 size_t context_lock_set_count(struct function_info *);

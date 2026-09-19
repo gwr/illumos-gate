@@ -40,6 +40,7 @@
 #include "diagnostics.h"
 #include "events.h"
 #include "expression.h"
+#include "flowgraph.h"
 #include "function_info.h"
 #include "identity.h"
 #include "lib.h"
@@ -74,6 +75,9 @@ struct analysis_counts {
 	size_t lock_identities_unresolved;
 	size_t lock_transitions_applied;
 	size_t lock_transitions_deferred;
+	size_t competition_transitions_applied;
+	size_t competition_backedges_widened;
+	size_t competition_backedges_covered;
 	size_t return_states_mapped;
 	size_t return_locks_filtered;
 	size_t reactivations;
@@ -130,6 +134,7 @@ struct analysis {
 static int context_access_identity(struct analysis *,
     const struct function_context *, const struct locklint_access *,
     struct lock_identity **, bool *, bool *);
+static void record_semantic_state(struct analysis *, bool);
 
 static struct instruction *
 first_live_instruction(struct basic_block *block)
@@ -169,7 +174,7 @@ next_live_instruction(struct basic_block *block, struct instruction *current)
 static void
 record_point(struct analysis *analysis, struct function_context *context,
     struct basic_block *block, struct instruction *instruction,
-    const struct semantic_state *state)
+    const struct semantic_state *state, bool back_edge)
 {
 	struct analysis_point point = {
 		.block = block,
@@ -179,14 +184,28 @@ record_point(struct analysis *analysis, struct function_context *context,
 	bool existed;
 	int error;
 
-	error = context_point_state_record(context, point, state, &point_state,
-	    &existed);
+	if (back_edge) {
+		bool widened;
+
+		error = context_point_state_record_widened(context, point, state,
+		    &point_state, &existed, &widened);
+		if (error == 0) {
+			if (widened)
+				analysis->counts.competition_backedges_widened++;
+			else if (existed)
+				analysis->counts.competition_backedges_covered++;
+		}
+	} else {
+		error = context_point_state_record(context, point, state,
+		    &point_state, &existed);
+	}
 	if (error != 0)
 		die("cannot record analysis point: %s", strerror(error));
 	if (existed) {
 		analysis->counts.point_states_reused++;
 		return;
 	}
+
 	analysis->counts.point_states_created++;
 	if (!worklist_point_state_enqueue(&analysis->worklist, point_state))
 		die("new analysis point was already queued");
@@ -199,6 +218,33 @@ record_semantic_state(struct analysis *analysis, bool existed)
 		analysis->counts.semantic_states_reused++;
 	else
 		analysis->counts.semantic_states_created++;
+}
+
+static const struct semantic_state *
+apply_competition_event(struct analysis *analysis,
+    struct point_state *point_state)
+{
+	enum locklint_execution_kind kind;
+	struct semantic_state *state;
+	bool existed;
+	int adjustment;
+	int error;
+
+	kind = locklint_get_execution_annotation(
+	    point_state->point.next_instruction);
+	if (kind == LOCKLINT_EXECUTION_COMPETITION)
+		adjustment = 1;
+	else if (kind == LOCKLINT_EXECUTION_NO_COMPETITION)
+		adjustment = -1;
+	else
+		return (point_state->state);
+	error = context_state_adjust_competition(point_state->context->function,
+	    point_state->state, adjustment, &state, &existed);
+	if (error != 0)
+		die("cannot apply competition transition: %s", strerror(error));
+	record_semantic_state(analysis, existed);
+	analysis->counts.competition_transitions_applied++;
+	return (state);
 }
 
 struct exit_mapping {
@@ -594,7 +640,7 @@ process_call(struct analysis *analysis, struct point_state *point_state,
 	if (callee_function == NULL) {
 		record_point(analysis, caller_context, point_state->point.block,
 		    next_live_instruction(point_state->point.block,
-		    point_state->point.next_instruction), caller_state);
+		    point_state->point.next_instruction), caller_state, false);
 		return;
 	}
 
@@ -643,7 +689,7 @@ process_call(struct analysis *analysis, struct point_state *point_state,
 		record_point(analysis, callee_context,
 		    callee_function->ep->entry->bb,
 		    first_live_instruction(callee_function->ep->entry->bb),
-		    callee_state);
+		    callee_state, false);
 	}
 	record_reactivation(analysis, continuation);
 }
@@ -672,7 +718,7 @@ process_point(struct analysis *analysis, struct point_state *point_state)
 		}
 		record_point(analysis, point_state->context, point.block,
 		    next_live_instruction(point.block, point.next_instruction),
-		    point_state->state);
+		    apply_competition_event(analysis, point_state), false);
 		return;
 	}
 
@@ -681,7 +727,8 @@ process_point(struct analysis *analysis, struct point_state *point_state)
 
 		FOR_EACH_PTR(point.block->children, child) {
 			record_point(analysis, point_state->context, child,
-			    first_live_instruction(child), point_state->state);
+			    first_live_instruction(child), point_state->state,
+			    domtree_dominates(child, point.block));
 		} END_FOR_EACH_PTR(child);
 	}
 }
@@ -720,7 +767,7 @@ seed_root(struct analysis *analysis, struct function_info *function)
 			analysis->counts.functions++;
 	}
 	record_point(analysis, context, function->ep->entry->bb,
-	    first_live_instruction(function->ep->entry->bb), state);
+	    first_live_instruction(function->ep->entry->bb), state, false);
 }
 
 static void
@@ -1491,6 +1538,12 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	(void) fprintf(stream, "lock-transitions applied %zu deferred %zu\n",
 	    counts->lock_transitions_applied,
 	    counts->lock_transitions_deferred);
+	(void) fprintf(stream,
+	    "competition-transitions applied %zu backedges-widened %zu "
+	    "backedges-covered %zu\n",
+	    counts->competition_transitions_applied,
+	    counts->competition_backedges_widened,
+	    counts->competition_backedges_covered);
 	(void) fprintf(stream, "return-states mapped %zu locks-filtered %zu\n",
 	    counts->return_states_mapped, counts->return_locks_filtered);
 	(void) fprintf(stream,
