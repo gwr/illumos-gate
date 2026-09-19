@@ -91,6 +91,7 @@ struct analysis_measurements {
 	struct distribution locks_per_semantic_state;
 	struct distribution visibility_per_semantic_state;
 	size_t lock_identities;
+	size_t lock_identity_analysis_objects;
 	size_t lock_identity_types[LOCK_ANALYSIS_OBJECT_PSEUDO + 1];
 	size_t lock_identity_bytes;
 	size_t lock_set_bytes;
@@ -639,10 +640,15 @@ measure_lock_identities(struct analysis *analysis)
 {
 	struct analysis_measurements *measurements = &analysis->measurements;
 	struct lock_identity *identity;
+	const void *previous_analysis_object = NULL;
 
 	for (identity = lock_identity_first(analysis->lock_identities);
 	    identity != NULL;
 	    identity = lock_identity_next(analysis->lock_identities, identity)) {
+		if (identity->key.analysis_object != previous_analysis_object) {
+			measurements->lock_identity_analysis_objects++;
+			previous_analysis_object = identity->key.analysis_object;
+		}
 		if (identity->analysis_object_type <
 		    LOCK_ANALYSIS_OBJECT_UNSPECIFIED ||
 		    identity->analysis_object_type >
@@ -694,6 +700,8 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	    LOCK_ANALYSIS_OBJECT_OBJECT_IDENTITY],
 	    measurements->lock_identity_types[LOCK_ANALYSIS_OBJECT_SYMBOL],
 	    measurements->lock_identity_types[LOCK_ANALYSIS_OBJECT_PSEUDO]);
+	(void) fprintf(stream, "lock-identity-analysis-objects %zu\n",
+	    measurements->lock_identity_analysis_objects);
 	show_distribution(stream, "contexts/function",
 	    &measurements->contexts_per_function);
 	show_distribution(stream, "semantic-states/function",

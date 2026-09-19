@@ -151,6 +151,8 @@ require_match "event lock identities" \
 require_match "event lock identity types" \
     '^lock-identity-types unspecified 0 object 0 symbol 0 pseudo 1$' \
     event-lock-identities.out
+require_match "event lock identity objects" \
+    '^lock-identity-analysis-objects 1$' event-lock-identities.out
 
 run_capture "global lock identities" lock-identity-globals.out \
     "$LOCKLINT" --dump-contexts lock-identity-globals.c
@@ -160,6 +162,8 @@ require_match "global lock identities" \
 require_match "global lock identity types" \
     '^lock-identity-types unspecified 0 object 2 symbol 0 pseudo 0$' \
     lock-identity-globals.out
+require_match "global lock identity objects" \
+    '^lock-identity-analysis-objects 2$' lock-identity-globals.out
 reject_match "global lock identities" 'warning:' \
     lock-identity-globals.out
 
@@ -171,7 +175,21 @@ require_match "local lock identity" \
 require_match "local lock identity type" \
     '^lock-identity-types unspecified 0 object 0 symbol 1 pseudo 0$' \
     lock-identity-local.out
+require_match "local lock identity objects" \
+    '^lock-identity-analysis-objects 1$' lock-identity-local.out
 reject_match "local lock identity" 'warning:' lock-identity-local.out
+
+run_capture "member lock identities" lock-identity-members.out \
+    "$LOCKLINT" --dump-contexts lock-identity-members.c
+require_match "member lock identities" \
+    '^lock-identities created 2 reused 2 unresolved 0 retained 2$' \
+    lock-identity-members.out
+require_match "member lock identity types" \
+    '^lock-identity-types unspecified 0 object 0 symbol 0 pseudo 2$' \
+    lock-identity-members.out
+require_match "member lock identity objects" \
+    '^lock-identity-analysis-objects 1$' lock-identity-members.out
+reject_match "member lock identities" 'warning:' lock-identity-members.out
 
 #
 # Verify preprocessing-time annotation capture and initial name resolution.
