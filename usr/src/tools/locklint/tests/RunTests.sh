@@ -654,6 +654,30 @@ if [ "$(grep -c 'warning:' data-policy-diagnostics.out)" -ne 5 ]; then
 fi
 
 #
+# Verify caller lock state through direct, wrapped, and recursive calls.
+#
+run_capture "basic call protection diagnostics" calls-basic-diagnostics.out \
+    "$LOCKLINT" --check-locks calls-basic.c
+require_match "unlocked direct call" \
+    "calls-basic.c:49:22: warning: locklint: protected member 'direct_value' read without holding 'lock' \\[unprotected-access\\]" \
+    calls-basic-diagnostics.out
+require_match "unlocked wrapped call" \
+    "calls-basic.c:55:22: warning: locklint: protected member 'transitive_value' read without holding 'lock' \\[unprotected-access\\]" \
+    calls-basic-diagnostics.out
+require_match "unlocked recursive call" \
+    "calls-basic.c:69:22: warning: locklint: protected member 'recursive_value' read without holding 'lock' \\[unprotected-access\\]" \
+    calls-basic-diagnostics.out
+require_match "unlocked first aggregate leaf" \
+    "calls-basic.c:128:14: warning: locklint: protected member 'pair.first' modified without holding 'lock' \\[unprotected-access\\]" \
+    calls-basic-diagnostics.out
+require_match "unlocked second aggregate leaf" \
+    "calls-basic.c:128:14: warning: locklint: protected member 'pair.second' modified without holding 'lock' \\[unprotected-access\\]" \
+    calls-basic-diagnostics.out
+if [ "$(grep -c 'warning:' calls-basic-diagnostics.out)" -ne 5 ]; then
+	fail "basic call protection diagnostics: expected exactly five warnings"
+fi
+
+#
 # Verify NOT_REACHED removes terminated paths from lock-state merges.
 #
 run_capture "not reached diagnostics" not-reached-diagnostics.out \

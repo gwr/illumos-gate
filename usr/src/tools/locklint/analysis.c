@@ -951,10 +951,7 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 			unprotected++;
 	}
 	if (unprotected != 0) {
-		const struct symbol *leaf = access->member != NULL ?
-		    access->member : access->root;
-		const char *member = leaf != NULL && leaf->ident != NULL ?
-		    show_ident(leaf->ident) : "<unknown>";
+		char *member = locklint_access_name(access);
 		char *lock = locklint_access_name(&protector);
 		struct position pos = data->instruction->access != NULL ?
 		    data->instruction->access->pos : data->instruction->pos;
@@ -969,6 +966,7 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 			    pos, "protection for member '%s' is not "
 			    "established on every path", member);
 		}
+		free(member);
 		free(lock);
 	}
 }
