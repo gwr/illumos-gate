@@ -1099,6 +1099,21 @@ conditional_result_branch(struct basic_block *block,
 	return (NULL);
 }
 
+static void
+record_conditional_outcome(struct analysis *analysis,
+    struct point_state *point_state, struct analysis_point next,
+    const struct instruction *branch, bool nonzero,
+    const struct semantic_state *state)
+{
+	if (branch != NULL) {
+		next.conditional_instruction =
+		    point_state->point.next_instruction;
+		next.conditional_nonzero = nonzero;
+	}
+	record_analysis_point(analysis, point_state->context, next, state,
+	    false);
+}
+
 /*
  * Preserve the possible results of a conditional lock operation.  A result
  * consumed by this block's branch remains tagged until that edge is selected;
@@ -1124,7 +1139,13 @@ process_conditional_lock(struct analysis *analysis,
 	action = locklint_get_lock_action(point_state->context->function->tu,
 	    instruction, &access, &mode);
 	if (action != LOCKLINT_LOCK_TRY_ACQUIRE &&
-	    action != LOCKLINT_LOCK_TRY_UPGRADE)
+	    action != LOCKLINT_LOCK_TRY_UPGRADE &&
+	    action != LOCKLINT_LOCK_TRY_ACQUIRE_ZERO &&
+	    action != LOCKLINT_LOCK_RESULT_ACQUIRE)
+		return (false);
+	branch = conditional_result_branch(point_state->point.block,
+	    instruction);
+	if (action == LOCKLINT_LOCK_RESULT_ACQUIRE && branch != NULL)
 		return (false);
 	next.next_instruction =
 	    next_live_instruction(point_state->point.block, instruction);
@@ -1146,9 +1167,37 @@ process_conditional_lock(struct analysis *analysis,
 	else
 		analysis->counts.lock_identities_created++;
 
-	branch = conditional_result_branch(point_state->point.block,
-	    instruction);
 	current_modes = context_state_lock_modes(point_state->state, identity);
+	if (action == LOCKLINT_LOCK_RESULT_ACQUIRE) {
+		error = context_state_set_lock(point_state->context->function,
+		    point_state->state, identity, LOCKLINT_MODE_MUTEX,
+		    &success_state, &existed);
+		if (error != 0)
+			die("cannot apply mutex lock operation: %s",
+			    strerror(error));
+		record_semantic_state(analysis, existed);
+		record_analysis_point(analysis, point_state->context, next,
+		    success_state, false);
+		analysis->counts.lock_transitions_applied++;
+		return (true);
+	}
+	if (action == LOCKLINT_LOCK_TRY_ACQUIRE_ZERO) {
+		error = context_state_set_lock(point_state->context->function,
+		    point_state->state, identity, LOCKLINT_MODE_MUTEX,
+		    &success_state, &existed);
+		if (error != 0)
+			die("cannot apply conditional lock operation: %s",
+			    strerror(error));
+		record_semantic_state(analysis, existed);
+		record_conditional_outcome(analysis, point_state, next, branch,
+		    false, success_state);
+		record_conditional_outcome(analysis, point_state, next, branch,
+		    true, success_state);
+		record_conditional_outcome(analysis, point_state, next, branch,
+		    true, point_state->state);
+		analysis->counts.lock_transitions_applied++;
+		return (true);
+	}
 	if ((action == LOCKLINT_LOCK_TRY_UPGRADE &&
 	    (current_modes & LOCKLINT_MODE_READER) != 0) ||
 	    (action == LOCKLINT_LOCK_TRY_ACQUIRE && current_modes == 0)) {
@@ -1160,19 +1209,11 @@ process_conditional_lock(struct analysis *analysis,
 			die("cannot apply conditional lock operation: %s",
 			    strerror(error));
 		record_semantic_state(analysis, existed);
-		if (branch != NULL) {
-			next.conditional_instruction = instruction;
-			next.conditional_nonzero = true;
-		}
-		record_analysis_point(analysis, point_state->context, next,
-		    success_state, false);
+		record_conditional_outcome(analysis, point_state, next, branch,
+		    true, success_state);
 	}
-	if (branch != NULL) {
-		next.conditional_instruction = instruction;
-		next.conditional_nonzero = false;
-	}
-	record_analysis_point(analysis, point_state->context, next,
-	    point_state->state, false);
+	record_conditional_outcome(analysis, point_state, next, branch, false,
+	    point_state->state);
 	analysis->counts.lock_transitions_applied++;
 	return (true);
 }

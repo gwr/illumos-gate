@@ -588,6 +588,11 @@ run_capture "mutex tryenter state" mutex-tryenter.out \
     "$LOCKLINT" --check-locks mutex-tryenter.c
 compare "mutex tryenter state" mutex-tryenter.ref mutex-tryenter.out
 
+run_capture "mutex trylock core state" mutex-trylock-core.out \
+    "$LOCKLINT" --check-locks mutex-trylock.c
+compare "mutex trylock core state" mutex-trylock-core.ref \
+    mutex-trylock-core.out
+
 run_capture "competition protected accesses" competition-accesses.out \
     "$LOCKLINT" -DCOMPETITION_ACCESS_ONLY --check-locks competition-depth.c
 for location in 50 52 54 70 83 115

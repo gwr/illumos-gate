@@ -1247,6 +1247,19 @@ states.  Definitely held input has no possible success in the non-recursive
 model and preserves ownership on the failure path.  Like rwlock
 try-acquisition, it creates no blocking lock-order edge.
 
+`mutex_trylock()` treats zero as definite acquisition.  A nonzero result
+retains both mutex-held and unchanged states because robust-mutex
+`EOWNERDEAD` transfers ownership while ordinary failures do not.  Ignored
+results retain the same two possibilities.  Already-held input keeps both
+return outcomes reachable for recursive user mutexes; the result tag keeps
+equal held states distinct until the branch, allowing a success-path unlock
+to produce the documented held/unheld approximation without a recursive hold
+count.  This nonblocking operation creates no lock-order edge.
+
+An ignored `mutex_lock()` result is treated as a definite blocking
+acquisition.  This preserves the established idiom used by ordinary callers;
+result-sensitive `mutex_lock()` handling remains separate.
+
 Visibility changes need no factored transfer summary for resolved
 same-translation-unit calls.  The callee receives the caller's complete
 immutable visibility set, updates exact regions in its bound context, and
