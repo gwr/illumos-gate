@@ -182,7 +182,9 @@ reject_match "local lock identity" 'warning:' lock-identity-local.out
 run_capture "member lock identities" lock-identity-members.out \
     "$LOCKLINT" --dump-contexts lock-identity-members.c
 require_match "member lock identities" \
-    '^lock-identities created 2 reused 2 unresolved 0 retained 2$' \
+    '^binding-identities composed 4$' lock-identity-members.out
+require_match "member lock identities" \
+    '^lock-identities created 2 reused 3 unresolved 0 retained 2$' \
     lock-identity-members.out
 require_match "member lock identity types" \
     '^lock-identity-types unspecified 0 object 0 symbol 0 pseudo 2$' \

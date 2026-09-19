@@ -121,6 +121,10 @@ struct analysis {
 	struct analysis_measurements measurements;
 };
 
+static int context_access_identity(struct analysis *,
+    const struct function_context *, const struct locklint_access *,
+    struct lock_identity **, bool *, bool *);
+
 static struct instruction *
 first_live_instruction(struct basic_block *block)
 {
@@ -246,6 +250,7 @@ observe_lock_event(struct analysis *analysis, struct point_state *point_state)
 	struct lock_identity *identity;
 	enum locklint_lock_action action;
 	enum locklint_lock_mode mode;
+	bool composed;
 	bool existed;
 	int error;
 
@@ -257,10 +262,12 @@ observe_lock_event(struct analysis *analysis, struct point_state *point_state)
 		analysis->counts.lock_identities_unresolved++;
 		return;
 	}
-	error = lock_identity_intern_access(analysis->lock_identities, &access,
-	    &identity, &existed);
+	error = context_access_identity(analysis, point_state->context, &access,
+	    &identity, &existed, &composed);
 	if (error != 0)
 		die("cannot identify lock event: %s", strerror(error));
+	if (composed)
+		analysis->counts.binding_identities_composed++;
 	if (existed)
 		analysis->counts.lock_identities_reused++;
 	else
@@ -352,6 +359,34 @@ compose_caller_identity(const struct function_context *caller,
 	return (true);
 }
 
+static int
+context_identity_intern(struct analysis *analysis,
+    const struct function_context *context, struct lock_identity_key key,
+    enum lock_analysis_object_type object_type,
+    struct lock_identity **identity, bool *existed, bool *composed)
+{
+	*composed = compose_caller_identity(context, &key, &object_type);
+	return (lock_identity_intern(analysis->lock_identities, key,
+	    object_type, identity, existed));
+}
+
+static int
+context_access_identity(struct analysis *analysis,
+    const struct function_context *context,
+    const struct locklint_access *access, struct lock_identity **identity,
+    bool *existed, bool *composed)
+{
+	struct lock_identity_key key;
+	enum lock_analysis_object_type object_type;
+	int error;
+
+	error = lock_identity_key_from_access(access, &key, &object_type);
+	if (error != 0)
+		return (error);
+	return (context_identity_intern(analysis, context, key, object_type,
+	    identity, existed, composed));
+}
+
 static struct pseudo *
 call_argument_pseudo(const struct instruction *insn, unsigned int index)
 {
@@ -376,13 +411,14 @@ call_argument_identity(struct analysis *analysis,
 	enum lock_analysis_object_type object_type;
 	struct lock_identity *identity;
 	struct pseudo *pseudo;
+	bool composed;
 	bool existed;
 	int error;
 
 	if (locklint_get_call_argument_access(caller->function->tu, insn, index,
 	    &access)) {
-		error = lock_identity_key_from_access(&access, &key,
-		    &object_type);
+		error = context_access_identity(analysis, caller, &access,
+		    &identity, &existed, &composed);
 	} else {
 		pseudo = call_argument_pseudo(insn, index);
 		if (pseudo == NULL)
@@ -390,18 +426,14 @@ call_argument_identity(struct analysis *analysis,
 		key.analysis_object = pseudo;
 		key.target_offset = 0;
 		object_type = LOCK_ANALYSIS_OBJECT_PSEUDO;
-		error = 0;
+		error = context_identity_intern(analysis, caller, key,
+		    object_type, &identity, &existed, &composed);
 	}
 	if (error != 0)
 		die("cannot identify call argument %u: %s", index,
 		    strerror(error));
-	if (compose_caller_identity(caller, &key, &object_type))
+	if (composed)
 		analysis->counts.binding_identities_composed++;
-	error = lock_identity_intern(analysis->lock_identities, key,
-	    object_type, &identity, &existed);
-	if (error != 0)
-		die("cannot intern call argument %u: %s", index,
-		    strerror(error));
 	if (existed)
 		analysis->counts.lock_identities_reused++;
 	else

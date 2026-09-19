@@ -29,13 +29,19 @@ struct lock_pair {
 extern void mutex_enter(mutex_t *);
 extern void mutex_exit(mutex_t *);
 
-void lock_identity_members(struct lock_pair *);
-
-void
-lock_identity_members(struct lock_pair *pair)
+static void
+member_events(struct lock_pair *pair)
 {
 	mutex_enter(&pair->first);
 	mutex_exit(&pair->first);
 	mutex_enter(&pair->second);
 	mutex_exit(&pair->second);
+}
+
+void lock_identity_members(struct lock_pair *);
+
+void
+lock_identity_members(struct lock_pair *pair)
+{
+	member_events(pair);
 }
