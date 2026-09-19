@@ -589,50 +589,73 @@ require_match "context counting" \
 reject_match "context counting" 'warning:' context-counting.out
 
 #
-# Verify resolved calls reuse semantic contexts and terminate through direct
-# and mutual-recursion dependency cycles.
+# Verify resolved calls reuse semantic contexts, distinguish same-actual from
+# distinct-actual pointer bindings, and terminate through direct and
+# mutual-recursion dependency cycles.
 #
 run_capture "context calls" context-calls.out \
     "$LOCKLINT" --dump-contexts context-calls.c
 require_match "context calls" '^roots 1$' context-calls.out
-require_match "context calls" '^functions 5$' context-calls.out
-require_match "context calls" '^semantic-states created 5 reused 3$' \
+require_match "context calls" '^functions 6$' context-calls.out
+require_match "context calls" '^semantic-states created 6 reused 5$' \
     context-calls.out
-require_match "context calls" '^contexts created 5 reused 3$' \
+require_match "context calls" \
+    '^binding-environments created 7 reused 4$' context-calls.out
+require_match "context calls" '^contexts created 7 reused 4$' \
     context-calls.out
-require_match "context calls" '^point-states created 50 reused 3$' \
+require_match "context calls" '^point-states created 71 reused 3$' \
     context-calls.out
-require_match "context calls" '^exits created 5 reused 0$' \
+require_match "context calls" '^exits created 7 reused 0$' \
     context-calls.out
-require_match "context calls" '^continuations created 7 reused 0$' \
+require_match "context calls" '^continuations created 10 reused 0$' \
     context-calls.out
-require_match "context calls" '^provenance-edges created 7 reused 0$' \
+require_match "context calls" '^provenance-edges created 10 reused 0$' \
     context-calls.out
-require_match "context calls" '^reactivations 7$' context-calls.out
+require_match "context calls" '^reactivations 10$' context-calls.out
 require_match "context calls" '^worklist peak 3$' context-calls.out
 require_match "context calls" \
-    '^lock-identities created 0 reused 0 unresolved 0 retained 0$' \
+    '^lock-identities created 2 reused 4 unresolved 0 retained 2$' \
     context-calls.out
 require_match "context calls" \
-    '^distribution contexts/function samples 5 total 5 max 1 bins 0:0 1:5 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^lock-identity-types unspecified 0 object 0 symbol 2 pseudo 0$' \
+    context-calls.out
+require_match "context calls" '^lock-identity-analysis-objects 2$' \
     context-calls.out
 require_match "context calls" \
-    '^distribution semantic-states/function samples 5 total 5 max 1 bins 0:0 1:5 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution contexts/function samples 6 total 7 max 2 bins 0:0 1:5 2:1 3:0 4:0 5:0 6-8:0 9+:0$' \
     context-calls.out
 require_match "context calls" \
-    '^distribution point-states/context samples 5 total 50 max 14 bins 0:0 1:0 2:0 3:1 4:0 5:0 6-8:1 9+:3$' \
+    '^distribution binding-environments/function samples 6 total 7 max 2 bins 0:0 1:5 2:1 3:0 4:0 5:0 6-8:0 9+:0$' \
     context-calls.out
 require_match "context calls" \
-    '^distribution states/analysis-point samples 50 total 50 max 1 bins 0:0 1:50 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution bindings/environment samples 7 total 4 max 2 bins 0:5 1:0 2:2 3:0 4:0 5:0 6-8:0 9+:0$' \
     context-calls.out
 require_match "context calls" \
-    '^distribution exits/context samples 5 total 5 max 1 bins 0:0 1:5 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution semantic-states/function samples 6 total 6 max 1 bins 0:0 1:6 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
     context-calls.out
 require_match "context calls" \
-    '^distribution continuations/context samples 5 total 7 max 2 bins 0:1 1:1 2:3 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution point-states/context samples 7 total 71 max 18 bins 0:0 1:0 2:0 3:1 4:0 5:2 6-8:0 9+:4$' \
     context-calls.out
 require_match "context calls" \
-    '^distribution provenance-edges/context samples 5 total 7 max 2 bins 0:1 1:1 2:3 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution states/analysis-point samples 71 total 71 max 1 bins 0:0 1:71 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
+    context-calls.out
+require_match "context calls" \
+    '^distribution exits/context samples 7 total 7 max 1 bins 0:0 1:7 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
+    context-calls.out
+require_match "context calls" \
+    '^distribution continuations/context samples 7 total 10 max 2 bins 0:1 1:2 2:4 3:0 4:0 5:0 6-8:0 9+:0$' \
+    context-calls.out
+require_match "context calls" \
+    '^distribution provenance-edges/context samples 7 total 10 max 2 bins 0:1 1:2 2:4 3:0 4:0 5:0 6-8:0 9+:0$' \
+    context-calls.out
+require_match "context calls" \
+    '^maximum contexts/function 2 function binding_leaf tu=context-calls.c$' \
+    context-calls.out
+require_match "context calls" \
+    '^maximum binding-environments/function 2 function binding_leaf tu=context-calls.c$' \
+    context-calls.out
+require_match "context calls" \
+    '^maximum bindings/environment 2 function binding_leaf tu=context-calls.c$' \
     context-calls.out
 require_match "context calls" \
     '^maximum continuations/context 2 function leaf tu=context-calls.c$' \
@@ -642,11 +665,13 @@ require_match "context calls" \
     context-calls.out
 reject_match "context calls" '^linear-lookup ' context-calls.out
 require_match "context calls" \
-    '^distribution locks/semantic-state samples 5 total 0 max 0 bins 0:5 1:0 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution locks/semantic-state samples 6 total 0 max 0 bins 0:6 1:0 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
     context-calls.out
 require_match "context calls" \
-    '^distribution visibility/semantic-state samples 5 total 0 max 0 bins 0:5 1:0 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution visibility/semantic-state samples 6 total 0 max 0 bins 0:6 1:0 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
     context-calls.out
+require_match "context calls" \
+    '^memory binding-environments [1-9][0-9]* bytes$' context-calls.out
 require_match "context calls" '^memory retained-collections [1-9][0-9]* bytes$' \
     context-calls.out
 reject_match "context calls" 'warning:' context-calls.out

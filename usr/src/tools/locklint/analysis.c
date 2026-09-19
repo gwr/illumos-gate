@@ -15,20 +15,25 @@
 
 /*
  * Drive the caller-context fixed point over retained Sparse control-flow
- * graphs.  The initial implementation carries only the canonical empty state.
- * Resolved calls suspend their caller until a callee exit reactivates the
- * corresponding continuation; unresolved calls have no semantic effect.
+ * graphs.  The initial implementation carries only the canonical empty
+ * semantic state, while resolved calls distinguish canonical pointer-formal
+ * bindings.  A resolved call suspends its caller until a callee exit
+ * reactivates the corresponding continuation; unresolved calls have no
+ * semantic effect.
  */
 
 #include <errno.h>
+#include <limits.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "access.h"
 #include "analysis.h"
+#include "binding.h"
 #include "callgraph.h"
 #include "context.h"
 #include "dependency.h"
@@ -49,6 +54,8 @@ struct analysis_counts {
 	size_t functions;
 	size_t semantic_states_created;
 	size_t semantic_states_reused;
+	size_t binding_environments_created;
+	size_t binding_environments_reused;
 	size_t contexts_created;
 	size_t contexts_reused;
 	size_t point_states_created;
@@ -82,6 +89,8 @@ struct distribution {
 
 struct analysis_measurements {
 	struct distribution contexts_per_function;
+	struct distribution binding_environments_per_function;
+	struct distribution bindings_per_environment;
 	struct distribution semantic_states_per_function;
 	struct distribution point_states_per_context;
 	struct distribution states_per_analysis_point;
@@ -96,6 +105,7 @@ struct analysis_measurements {
 	size_t lock_identity_bytes;
 	size_t lock_set_bytes;
 	size_t semantic_state_bytes;
+	size_t binding_environment_bytes;
 	size_t context_bytes;
 	size_t point_state_bytes;
 	size_t exit_bytes;
@@ -256,10 +266,133 @@ observe_lock_event(struct analysis *analysis, struct point_state *point_state)
 		analysis->counts.lock_identities_created++;
 }
 
+static struct symbol *
+function_type(const struct function_info *function)
+{
+	struct symbol *type = function->ep->name->ctype.base_type;
+
+	while (type != NULL && type->type == SYM_NODE)
+		type = type->ctype.base_type;
+	return (type != NULL && type->type == SYM_FN ? type : NULL);
+}
+
+static bool
+formal_is_pointer(const struct symbol *formal)
+{
+	const struct symbol *type = formal->ctype.base_type;
+
+	while (type != NULL && type->type == SYM_NODE)
+		type = type->ctype.base_type;
+	return (type != NULL && type->type == SYM_PTR);
+}
+
+static struct pseudo *
+call_argument_pseudo(const struct instruction *insn, unsigned int index)
+{
+	struct pseudo *pseudo;
+	struct pseudo_list *arguments = insn->arguments;
+	unsigned int current = 0;
+
+	FOR_EACH_PTR(arguments, pseudo) {
+		if (current++ == index)
+			return (pseudo);
+	} END_FOR_EACH_PTR(pseudo);
+	return (NULL);
+}
+
+static const struct lock_identity *
+call_argument_identity(struct analysis *analysis,
+    const struct function_context *caller, const struct instruction *insn,
+    unsigned int index)
+{
+	struct locklint_access access;
+	struct lock_identity_key key;
+	struct lock_identity *identity;
+	struct pseudo *pseudo;
+	bool existed;
+	int error;
+
+	if (locklint_get_call_argument_access(caller->function->tu, insn, index,
+	    &access)) {
+		error = lock_identity_intern_access(analysis->lock_identities,
+		    &access, &identity, &existed);
+	} else {
+		pseudo = call_argument_pseudo(insn, index);
+		if (pseudo == NULL)
+			die("cannot identify call argument %u", index);
+		key.analysis_object = pseudo;
+		key.target_offset = 0;
+		error = lock_identity_intern(analysis->lock_identities, key,
+		    LOCK_ANALYSIS_OBJECT_PSEUDO, &identity, &existed);
+	}
+	if (error != 0)
+		die("cannot identify call argument %u: %s", index,
+		    strerror(error));
+	if (existed)
+		analysis->counts.lock_identities_reused++;
+	else
+		analysis->counts.lock_identities_created++;
+	return (identity);
+}
+
+/*
+ * Construct the callee's canonical mapping for pointer formals.  Scalar
+ * arguments are values copied into the callee and do not identify caller
+ * objects.
+ */
+static const struct binding_environment *
+call_bindings(struct analysis *analysis,
+    const struct function_context *caller, struct function_info *callee,
+    const struct instruction *insn)
+{
+	struct symbol *type = function_type(callee);
+	struct symbol *formal;
+	struct formal_binding *entries;
+	struct binding_environment *bindings;
+	size_t formal_count = 0;
+	size_t binding_count = 0;
+	unsigned int argument = 0;
+	bool existed;
+	int error;
+
+	if (type == NULL)
+		die("callee has no function type");
+	FOR_EACH_PTR(type->arguments, formal) {
+		formal_count++;
+	} END_FOR_EACH_PTR(formal);
+	if (formal_count > UINT_MAX ||
+	    formal_count > SIZE_MAX / sizeof (*entries))
+		die("too many formal arguments");
+	entries = calloc(formal_count, sizeof (*entries));
+	if (entries == NULL && formal_count != 0)
+		die("cannot allocate call bindings");
+	FOR_EACH_PTR(type->arguments, formal) {
+		if (formal_is_pointer(formal)) {
+			entries[binding_count].argument = argument;
+			entries[binding_count].actual_identity =
+			    call_argument_identity(analysis, caller, insn,
+			    argument);
+			binding_count++;
+		}
+		argument++;
+	} END_FOR_EACH_PTR(formal);
+	error = binding_environment_intern(&callee->bindings, entries,
+	    binding_count, &bindings, &existed);
+	free(entries);
+	if (error != 0)
+		die("cannot intern call bindings: %s", strerror(error));
+	if (existed)
+		analysis->counts.binding_environments_reused++;
+	else
+		analysis->counts.binding_environments_created++;
+	return (bindings);
+}
+
 static void
 process_call(struct analysis *analysis, struct point_state *point_state)
 {
 	struct function_context *caller_context = point_state->context;
+	const struct binding_environment *bindings;
 	struct function_info *callee_function;
 	struct function_context *callee_context;
 	struct semantic_state *callee_state;
@@ -279,6 +412,8 @@ process_call(struct analysis *analysis, struct point_state *point_state)
 		return;
 	}
 
+	bindings = call_bindings(analysis, caller_context, callee_function,
+	    point_state->point.next_instruction);
 	error = context_empty_state_intern(callee_function, &callee_state,
 	    &existed);
 	if (error != 0)
@@ -288,7 +423,7 @@ process_call(struct analysis *analysis, struct point_state *point_state)
 	else
 		analysis->counts.semantic_states_created++;
 
-	error = context_create(callee_function, NULL, callee_state,
+	error = context_create(callee_function, bindings, callee_state,
 	    &callee_context, &context_existed);
 	if (error != 0)
 		die("cannot create callee context: %s", strerror(error));
@@ -296,7 +431,8 @@ process_call(struct analysis *analysis, struct point_state *point_state)
 		analysis->counts.contexts_reused++;
 	} else {
 		analysis->counts.contexts_created++;
-		analysis->counts.functions++;
+		if (context_count(callee_function) == 1)
+			analysis->counts.functions++;
 	}
 
 	error = provenance_edge_create(callee_context, caller_context,
@@ -312,7 +448,7 @@ process_call(struct analysis *analysis, struct point_state *point_state)
 	resume_point.next_instruction = next_live_instruction(
 	    point_state->point.block, point_state->point.next_instruction);
 	error = dependency_continuation_create(callee_context, caller_context,
-	    resume_point, point_state->state, NULL, &continuation, &existed);
+	    resume_point, point_state->state, bindings, &continuation, &existed);
 	if (error != 0)
 		die("cannot create call continuation: %s", strerror(error));
 	if (existed)
@@ -368,12 +504,21 @@ process_point(struct analysis *analysis, struct point_state *point_state)
 static void
 seed_root(struct analysis *analysis, struct function_info *function)
 {
+	struct binding_environment *bindings;
 	struct function_context *context;
 	struct semantic_state *state;
 	bool existed;
 	int error;
 
 	analysis->counts.roots++;
+	error = binding_environment_intern(&function->bindings, NULL, 0,
+	    &bindings, &existed);
+	if (error != 0)
+		die("cannot intern root bindings: %s", strerror(error));
+	if (existed)
+		analysis->counts.binding_environments_reused++;
+	else
+		analysis->counts.binding_environments_created++;
 	error = context_empty_state_intern(function, &state, &existed);
 	if (error != 0)
 		die("cannot intern root state: %s", strerror(error));
@@ -382,14 +527,15 @@ seed_root(struct analysis *analysis, struct function_info *function)
 	else
 		analysis->counts.semantic_states_created++;
 
-	error = context_create(function, NULL, state, &context, &existed);
+	error = context_create(function, bindings, state, &context, &existed);
 	if (error != 0)
 		die("cannot create root context: %s", strerror(error));
 	if (existed) {
 		analysis->counts.contexts_reused++;
 	} else {
 		analysis->counts.contexts_created++;
-		analysis->counts.functions++;
+		if (context_count(function) == 1)
+			analysis->counts.functions++;
 	}
 	record_point(analysis, context, function->ep->entry->bb,
 	    first_live_instruction(function->ep->entry->bb), state);
@@ -537,14 +683,32 @@ measure_collections(struct analysis *analysis)
 	if (error != 0)
 		die("cannot iterate ready callgraph: %s", strerror(error));
 	while ((function = callgraph_iter_next(iterator)) != NULL) {
+		struct binding_environment *bindings;
 		struct function_context *context;
 		struct semantic_lock_set *locks;
 		struct semantic_state *state;
 		size_t contexts = context_count(function);
+		size_t binding_environments =
+		    binding_environment_count(&function->bindings);
 		size_t states = context_state_count(function);
 
 		distribution_add(&measurements->contexts_per_function, contexts,
 		    function);
+		distribution_add(
+		    &measurements->binding_environments_per_function,
+		    binding_environments, function);
+		for (bindings = avl_first(&function->bindings.environments);
+		    bindings != NULL;
+		    bindings = AVL_NEXT(&function->bindings.environments,
+		    bindings)) {
+			distribution_add(
+			    &measurements->bindings_per_environment,
+			    bindings->count, function);
+			memory_add(
+			    &measurements->binding_environment_bytes, 1,
+			    sizeof (*bindings) +
+			    bindings->count * sizeof (*bindings->entries));
+		}
 		distribution_add(&measurements->semantic_states_per_function,
 		    states, function);
 		distribution_add_zeroes(
@@ -618,6 +782,7 @@ retained_collection_bytes(const struct analysis_measurements *measurements)
 	size_t total = measurements->semantic_state_bytes;
 	size_t values[] = {
 		measurements->lock_identity_bytes,
+		measurements->binding_environment_bytes,
 		measurements->lock_set_bytes,
 		measurements->context_bytes,
 		measurements->point_state_bytes,
@@ -671,6 +836,9 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	(void) fprintf(stream, "functions %zu\n", counts->functions);
 	(void) fprintf(stream, "semantic-states created %zu reused %zu\n",
 	    counts->semantic_states_created, counts->semantic_states_reused);
+	(void) fprintf(stream, "binding-environments created %zu reused %zu\n",
+	    counts->binding_environments_created,
+	    counts->binding_environments_reused);
 	(void) fprintf(stream, "contexts created %zu reused %zu\n",
 	    counts->contexts_created, counts->contexts_reused);
 	(void) fprintf(stream, "point-states created %zu reused %zu\n",
@@ -704,6 +872,10 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	    measurements->lock_identity_analysis_objects);
 	show_distribution(stream, "contexts/function",
 	    &measurements->contexts_per_function);
+	show_distribution(stream, "binding-environments/function",
+	    &measurements->binding_environments_per_function);
+	show_distribution(stream, "bindings/environment",
+	    &measurements->bindings_per_environment);
 	show_distribution(stream, "semantic-states/function",
 	    &measurements->semantic_states_per_function);
 	show_distribution(stream, "point-states/context",
@@ -722,6 +894,10 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	    &measurements->visibility_per_semantic_state);
 	show_maximum_owner(stream, "contexts/function",
 	    &measurements->contexts_per_function);
+	show_maximum_owner(stream, "binding-environments/function",
+	    &measurements->binding_environments_per_function);
+	show_maximum_owner(stream, "bindings/environment",
+	    &measurements->bindings_per_environment);
 	show_maximum_owner(stream, "semantic-states/function",
 	    &measurements->semantic_states_per_function);
 	show_maximum_owner(stream, "point-states/context",
@@ -738,6 +914,8 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	    measurements->semantic_state_bytes);
 	(void) fprintf(stream, "memory lock-identities %zu bytes\n",
 	    measurements->lock_identity_bytes);
+	(void) fprintf(stream, "memory binding-environments %zu bytes\n",
+	    measurements->binding_environment_bytes);
 	(void) fprintf(stream, "memory lock-sets %zu bytes\n",
 	    measurements->lock_set_bytes);
 	(void) fprintf(stream, "memory contexts %zu bytes\n",
