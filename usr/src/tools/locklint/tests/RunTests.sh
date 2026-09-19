@@ -178,7 +178,7 @@ require_match "local lock identity type" \
 require_match "local lock identity objects" \
     '^lock-identity-analysis-objects 3$' lock-identity-local.out
 require_match "local lock transitions" \
-    '^lock-transitions applied 8 deferred 1$' lock-identity-local.out
+    '^lock-transitions applied 9 deferred 0$' lock-identity-local.out
 require_match "local lock returns" \
     '^return-states mapped 8 locks-filtered 2$' lock-identity-local.out
 require_match "local lock contexts" \
@@ -204,8 +204,11 @@ require_match "local held on return" \
 require_match "local maybe held on return" \
     "lock-identity-local.c:62:30: warning: locklint: lock 'local_lock' held on only some paths returning from 'local_maybe_lock_helper' \\[lock-maybe-held-on-return\\]" \
     lock-identity-local.out
-if [ "$(grep -c 'warning:' lock-identity-local.out)" -ne 4 ]; then
-	fail "local lock diagnostics: expected exactly four warnings"
+require_match "local ignored tryenter maybe held on return" \
+    "lock-identity-local.c:83:32: warning: locklint: lock 'local_lock' held on only some paths returning from 'lock_identity_local' \\[lock-maybe-held-on-return\\]" \
+    lock-identity-local.out
+if [ "$(grep -c 'warning:' lock-identity-local.out)" -ne 5 ]; then
+	fail "local lock diagnostics: expected exactly five warnings"
 fi
 
 run_capture "member lock identities" lock-identity-members.out \
@@ -580,6 +583,10 @@ compare "rwlock tryupgrade state" rwlock-tryupgrade.ref \
 run_capture "rwlock tryenter state" rwlock-tryenter.out \
     "$LOCKLINT" --check-locks rwlock-tryenter.c
 compare "rwlock tryenter state" rwlock-tryenter.ref rwlock-tryenter.out
+
+run_capture "mutex tryenter state" mutex-tryenter.out \
+    "$LOCKLINT" --check-locks mutex-tryenter.c
+compare "mutex tryenter state" mutex-tryenter.ref mutex-tryenter.out
 
 run_capture "competition protected accesses" competition-accesses.out \
     "$LOCKLINT" -DCOMPETITION_ACCESS_ONLY --check-locks competition-depth.c

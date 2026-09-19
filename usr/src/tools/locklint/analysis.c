@@ -1100,12 +1100,12 @@ conditional_result_branch(struct basic_block *block,
 }
 
 /*
- * Preserve the possible results of a conditional rwlock operation.  A result
+ * Preserve the possible results of a conditional lock operation.  A result
  * consumed by this block's branch remains tagged until that edge is selected;
  * otherwise both states continue without a condition.
  */
 static bool
-process_conditional_rwlock(struct analysis *analysis,
+process_conditional_lock(struct analysis *analysis,
     struct point_state *point_state)
 {
 	struct instruction *instruction = point_state->point.next_instruction;
@@ -1123,10 +1123,8 @@ process_conditional_rwlock(struct analysis *analysis,
 
 	action = locklint_get_lock_action(point_state->context->function->tu,
 	    instruction, &access, &mode);
-	if ((action != LOCKLINT_LOCK_TRY_ACQUIRE &&
-	    action != LOCKLINT_LOCK_TRY_UPGRADE) ||
-	    (action == LOCKLINT_LOCK_TRY_ACQUIRE &&
-	    mode != LOCKLINT_MODE_READER && mode != LOCKLINT_MODE_WRITER))
+	if (action != LOCKLINT_LOCK_TRY_ACQUIRE &&
+	    action != LOCKLINT_LOCK_TRY_UPGRADE)
 		return (false);
 	next.next_instruction =
 	    next_live_instruction(point_state->point.block, instruction);
@@ -1139,7 +1137,7 @@ process_conditional_rwlock(struct analysis *analysis,
 	error = context_access_identity(analysis, point_state->context, &access,
 	    &identity, &existed, &composed);
 	if (error != 0)
-		die("cannot identify conditional rwlock operation: %s",
+		die("cannot identify conditional lock operation: %s",
 		    strerror(error));
 	if (composed)
 		analysis->counts.binding_identities_composed++;
@@ -1159,7 +1157,7 @@ process_conditional_rwlock(struct analysis *analysis,
 		    action == LOCKLINT_LOCK_TRY_UPGRADE ?
 		    LOCKLINT_MODE_WRITER : mode, &success_state, &existed);
 		if (error != 0)
-			die("cannot apply conditional rwlock operation: %s",
+			die("cannot apply conditional lock operation: %s",
 			    strerror(error));
 		record_semantic_state(analysis, existed);
 		if (branch != NULL) {
@@ -1197,7 +1195,7 @@ process_point(struct analysis *analysis, struct point_state *point_state)
 		if (point.next_instruction->opcode == OP_CALL) {
 			const struct semantic_state *state;
 
-			if (process_conditional_rwlock(analysis, point_state))
+			if (process_conditional_lock(analysis, point_state))
 				return;
 			state = apply_lock_event(analysis, point_state);
 

@@ -1240,6 +1240,13 @@ non-recursive ownership model; in particular, recursive reader acquisition is
 not invented without a hold count.  Try-acquisition does not create a
 blocking lock-order edge.
 
+`mutex_tryenter()` uses the same conditional-acquisition transition with
+mutex-held success and unheld failure.  Direct and saved results remain
+correlated with their consuming branch, while ignored results retain both
+states.  Definitely held input has no possible success in the non-recursive
+model and preserves ownership on the failure path.  Like rwlock
+try-acquisition, it creates no blocking lock-order edge.
+
 Visibility changes need no factored transfer summary for resolved
 same-translation-unit calls.  The callee receives the caller's complete
 immutable visibility set, updates exact regions in its bound context, and
