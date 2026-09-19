@@ -87,3 +87,12 @@ check_side_effect(struct check_state *state, int take_lock)
 	if (take_lock)
 		mutex_enter(&state->lock);
 }
+
+static void
+check_maybe_acquire(struct check_state *state, int take_lock)
+{
+	if (take_lock)
+		mutex_enter(&state->lock);
+	mutex_enter(&state->lock);
+	mutex_exit(&state->lock);
+}

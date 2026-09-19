@@ -582,12 +582,19 @@ require_match "annotation name dump" \
 
 
 #
-# Verify --check-locks runs the new context engine without retaining old
-# checker diagnostics before locking semantics are implemented.
+# Verify definite and mixed-state acquire/release diagnostics.
 #
-run_capture "initial locklint2 check" locklint2-empty.out \
+run_capture "lock transition diagnostics" lock-transition-diagnostics.out \
     "$LOCKLINT" --check-locks check.c
-require_empty "initial locklint2 check" locklint2-empty.out
+require_match "mixed release diagnostic" \
+    "check.c:66:19: warning: locklint: lock 'lock' may not be held \\[lock-maybe-not-held\\]" \
+    lock-transition-diagnostics.out
+require_match "mixed acquire diagnostic" \
+    "check.c:96:20: warning: locklint: lock 'lock' may already be held \\[lock-maybe-already-held\\]" \
+    lock-transition-diagnostics.out
+if [ "$(grep -c 'warning:' lock-transition-diagnostics.out)" -ne 2 ]; then
+	fail "lock transition diagnostics: expected exactly two warnings"
+fi
 
 #
 # Verify the initial context walk seeds roots, stabilizes CFG loops, and

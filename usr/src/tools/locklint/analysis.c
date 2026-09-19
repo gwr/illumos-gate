@@ -826,17 +826,30 @@ diagnose_lock_transition(struct analysis *analysis,
 		else
 			valid++;
 	}
-	if (invalid != 0 && valid == 0) {
+	if (invalid != 0) {
 		char *name = locklint_access_name(&access);
 		struct position pos = insn->call_expr != NULL ?
 		    insn->call_expr->pos : insn->pos;
 
 		if (action == LOCKLINT_LOCK_ACQUIRE) {
-			locklint_warning(LOCKLINT_DIAG_LOCK_ALREADY_HELD, pos,
-			    "lock '%s' is already held", name);
+			if (valid == 0) {
+				locklint_warning(
+				    LOCKLINT_DIAG_LOCK_ALREADY_HELD, pos,
+				    "lock '%s' is already held", name);
+			} else {
+				locklint_warning(
+				    LOCKLINT_DIAG_LOCK_MAYBE_ALREADY_HELD, pos,
+				    "lock '%s' may already be held", name);
+			}
 		} else {
-			locklint_warning(LOCKLINT_DIAG_LOCK_NOT_HELD, pos,
-			    "lock '%s' is not held", name);
+			if (valid == 0) {
+				locklint_warning(LOCKLINT_DIAG_LOCK_NOT_HELD, pos,
+				    "lock '%s' is not held", name);
+			} else {
+				locklint_warning(
+				    LOCKLINT_DIAG_LOCK_MAYBE_NOT_HELD, pos,
+				    "lock '%s' may not be held", name);
+			}
 		}
 		free(name);
 	}
