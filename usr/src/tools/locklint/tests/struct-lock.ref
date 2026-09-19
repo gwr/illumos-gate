@@ -1,2 +1,2 @@
-../locklint: struct-lock.c:44:9: warning: locklint: protected member 'global_value' modified without holding 'global_lock' [unprotected-access]
-../locklint: struct-lock.c:53:14: warning: locklint: protected member 'value' modified without holding 'lock' [unprotected-access]
+../locklint: struct-lock.c:47:9: warning: locklint: protected member 'global_value' modified without holding 'global_lock' [unprotected-access]
+../locklint: struct-lock.c:56:14: warning: locklint: protected member 'value' modified without holding 'lock' [unprotected-access]

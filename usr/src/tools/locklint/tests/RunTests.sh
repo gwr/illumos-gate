@@ -620,10 +620,10 @@ fi
 run_capture "structure-valued mutex diagnostics" struct-lock-diagnostics.out \
     "$LOCKLINT" --check-locks struct-lock.c
 require_match "global structure-valued mutex diagnostic" \
-    "struct-lock.c:44:9: warning: locklint: protected member 'global_value' modified without holding 'global_lock' \\[unprotected-access\\]" \
+    "struct-lock.c:47:9: warning: locklint: protected member 'global_value' modified without holding 'global_lock' \\[unprotected-access\\]" \
     struct-lock-diagnostics.out
 require_match "member structure-valued mutex diagnostic" \
-    "struct-lock.c:53:14: warning: locklint: protected member 'value' modified without holding 'lock' \\[unprotected-access\\]" \
+    "struct-lock.c:56:14: warning: locklint: protected member 'value' modified without holding 'lock' \\[unprotected-access\\]" \
     struct-lock-diagnostics.out
 if [ "$(grep -c 'warning:' struct-lock-diagnostics.out)" -ne 2 ]; then
 	fail "structure-valued mutex diagnostics: expected exactly two warnings"
@@ -635,19 +635,19 @@ fi
 run_capture "mutex data policy diagnostics" data-policy-diagnostics.out \
     "$LOCKLINT" --check-locks data-policy.c
 require_match "unprotected policy read" \
-    "data-policy.c:76:22: warning: locklint: protected member 'protected' read without holding 'lock' \\[unprotected-access\\]" \
+    "data-policy.c:78:22: warning: locklint: protected member 'protected' read without holding 'lock' \\[unprotected-access\\]" \
     data-policy-diagnostics.out
 require_match "unprotected policy write" \
-    "data-policy.c:77:14: warning: locklint: protected member 'protected' modified without holding 'lock' \\[unprotected-access\\]" \
+    "data-policy.c:79:14: warning: locklint: protected member 'protected' modified without holding 'lock' \\[unprotected-access\\]" \
     data-policy-diagnostics.out
 require_match "readable policy write" \
-    "data-policy.c:80:14: warning: locklint: protected member 'readable' modified without holding 'lock' \\[unprotected-access\\]" \
+    "data-policy.c:82:14: warning: locklint: protected member 'readable' modified without holding 'lock' \\[unprotected-access\\]" \
     data-policy-diagnostics.out
 require_match "replacement policy read" \
-    "data-policy.c:88:23: warning: locklint: protected member 'mutex_after_scheme' read without holding 'lock' \\[unprotected-access\\]" \
+    "data-policy.c:90:23: warning: locklint: protected member 'mutex_after_scheme' read without holding 'lock' \\[unprotected-access\\]" \
     data-policy-diagnostics.out
 require_match "replacement policy write" \
-    "data-policy.c:89:14: warning: locklint: protected member 'mutex_after_scheme' modified without holding 'lock' \\[unprotected-access\\]" \
+    "data-policy.c:91:14: warning: locklint: protected member 'mutex_after_scheme' modified without holding 'lock' \\[unprotected-access\\]" \
     data-policy-diagnostics.out
 if [ "$(grep -c 'warning:' data-policy-diagnostics.out)" -ne 5 ]; then
 	fail "mutex data policy diagnostics: expected exactly five warnings"

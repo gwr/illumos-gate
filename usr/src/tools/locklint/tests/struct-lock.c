@@ -38,7 +38,10 @@ _NOTE(MUTEX_PROTECTS_DATA(struct_lock_state::lock,
 extern void mutex_enter(mutex_t *);
 extern void mutex_exit(mutex_t *);
 
-static void
+void check_global_struct_lock(void);
+void check_member_struct_lock(struct_lock_state_t *);
+
+void
 check_global_struct_lock(void)
 {
 	global_value = 1;
@@ -47,7 +50,7 @@ check_global_struct_lock(void)
 	mutex_exit(&global_lock);
 }
 
-static void
+void
 check_member_struct_lock(struct_lock_state_t *state)
 {
 	state->value = 1;

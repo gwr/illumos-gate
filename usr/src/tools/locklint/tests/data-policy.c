@@ -66,7 +66,9 @@ _NOTE(MUTEX_PROTECTS_DATA(policy_object.lock, policy_object.read_only))
 extern void mutex_enter(mutex_t *);
 extern void mutex_exit(mutex_t *);
 
-static int
+int check_data_policy(struct policy_state *);
+
+int
 check_data_policy(struct policy_state *state)
 {
 	int value;
