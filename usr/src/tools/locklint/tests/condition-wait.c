@@ -284,3 +284,12 @@ wait_sig_swap_reacquire_inversion(struct condition_wait_state *state)
 	mutex_exit(&state->second);
 	mutex_exit(&state->first);
 }
+
+static void
+wait_maybe_held(struct condition_wait_state *state, int take_lock)
+{
+	if (take_lock)
+		mutex_enter(&state->first);
+	cv_wait(&state->cv_first, &state->first);
+	mutex_exit(&state->first);
+}

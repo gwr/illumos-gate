@@ -1265,6 +1265,14 @@ A consumed result that cannot be tied to a local branch retains both acquired
 and input states.  Acquiring an already-held mutex remains an independent
 error.
 
+Every recognized condition wait requires mutex-held input and returns with
+that mutex held regardless of its scalar result.  Definite and path-dependent
+missing ownership are diagnosed at the wait.  The held output is established
+even after invalid input so a following unlock does not duplicate the same
+precondition failure.  Exact state mapping carries this behavior through
+wrappers.  Modeling the temporary release as a reacquisition event remains
+part of the later lock-order analysis.
+
 Visibility changes need no factored transfer summary for resolved
 same-translation-unit calls.  The callee receives the caller's complete
 immutable visibility set, updates exact regions in its bound context, and

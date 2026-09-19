@@ -535,14 +535,16 @@ apply_lock_event(struct analysis *analysis, struct point_state *point_state)
 		analysis->counts.lock_identities_created++;
 	if (action != LOCKLINT_LOCK_ACQUIRE &&
 	    action != LOCKLINT_LOCK_RELEASE &&
-	    action != LOCKLINT_LOCK_DOWNGRADE) {
+	    action != LOCKLINT_LOCK_DOWNGRADE &&
+	    action != LOCKLINT_LOCK_WAIT) {
 		analysis->counts.lock_transitions_deferred++;
 		return (point_state->state);
 	}
 	error = context_state_set_lock(point_state->context->function,
 	    point_state->state, identity,
 	    action == LOCKLINT_LOCK_ACQUIRE ? mode :
-	    action == LOCKLINT_LOCK_DOWNGRADE ? LOCKLINT_MODE_READER : 0,
+	    action == LOCKLINT_LOCK_DOWNGRADE ? LOCKLINT_MODE_READER :
+	    action == LOCKLINT_LOCK_WAIT ? LOCKLINT_MODE_MUTEX : 0,
 	    &state, &existed);
 	if (error != 0)
 		die("cannot apply lock event: %s", strerror(error));
@@ -1417,6 +1419,7 @@ diagnose_lock_transition(struct analysis *analysis,
 	if ((action == LOCKLINT_LOCK_ACQUIRE ||
 	    action == LOCKLINT_LOCK_RESULT_ACQUIRE ||
 	    action == LOCKLINT_LOCK_RELEASE ||
+	    action == LOCKLINT_LOCK_WAIT ||
 	    action == LOCKLINT_LOCK_DOWNGRADE ||
 	    action == LOCKLINT_LOCK_TRY_UPGRADE) && access.root != NULL) {
 		error = context_access_identity(analysis, context, &access,
@@ -1435,6 +1438,7 @@ diagnose_lock_transition(struct analysis *analysis,
 		if ((action != LOCKLINT_LOCK_ACQUIRE &&
 		    action != LOCKLINT_LOCK_RESULT_ACQUIRE &&
 		    action != LOCKLINT_LOCK_RELEASE &&
+		    action != LOCKLINT_LOCK_WAIT &&
 		    action != LOCKLINT_LOCK_DOWNGRADE &&
 		    action != LOCKLINT_LOCK_TRY_UPGRADE) ||
 		    access.root == NULL)
@@ -1453,10 +1457,17 @@ diagnose_lock_transition(struct analysis *analysis,
 		} else if (action == LOCKLINT_LOCK_TRY_UPGRADE &&
 		    (current_modes & LOCKLINT_MODE_READER) != 0) {
 			uncertain++;
+		} else if (action == LOCKLINT_LOCK_WAIT &&
+		    current_modes == LOCKLINT_MODE_MUTEX) {
+			valid++;
+		} else if (action == LOCKLINT_LOCK_WAIT &&
+		    (current_modes & LOCKLINT_MODE_MUTEX) != 0) {
+			uncertain++;
 		} else if (((action == LOCKLINT_LOCK_ACQUIRE ||
 		    action == LOCKLINT_LOCK_RESULT_ACQUIRE) &&
 		    current_modes != 0) ||
 		    (action == LOCKLINT_LOCK_RELEASE && current_modes == 0) ||
+		    action == LOCKLINT_LOCK_WAIT ||
 		    action == LOCKLINT_LOCK_DOWNGRADE ||
 		    action == LOCKLINT_LOCK_TRY_UPGRADE) {
 			invalid++;
