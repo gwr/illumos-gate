@@ -170,36 +170,42 @@ reject_match "global lock identities" 'warning:' \
 run_capture "local lock identity" lock-identity-local.out \
     "$LOCKLINT" --dump-contexts lock-identity-local.c
 require_match "local lock identity" \
-    '^lock-identities created 2 reused 8 unresolved 0 retained 2$' \
+    '^lock-identities created 3 reused 8 unresolved 0 retained 3$' \
     lock-identity-local.out
 require_match "local lock identity type" \
-    '^lock-identity-types unspecified 0 object 0 symbol 2 pseudo 0$' \
+    '^lock-identity-types unspecified 0 object 0 symbol 3 pseudo 0$' \
     lock-identity-local.out
 require_match "local lock identity objects" \
-    '^lock-identity-analysis-objects 2$' lock-identity-local.out
+    '^lock-identity-analysis-objects 3$' lock-identity-local.out
 require_match "local lock transitions" \
-    '^lock-transitions applied 7 deferred 1$' lock-identity-local.out
+    '^lock-transitions applied 8 deferred 1$' lock-identity-local.out
 require_match "local lock returns" \
-    '^return-states mapped 6 locks-filtered 1$' lock-identity-local.out
+    '^return-states mapped 8 locks-filtered 2$' lock-identity-local.out
 require_match "local lock contexts" \
-    '^contexts created 6 reused 1$' lock-identity-local.out
+    '^contexts created 7 reused 1$' lock-identity-local.out
 require_match "local lock states" \
-    '^distribution semantic-states/function samples 5 total 10 max 2 bins 0:0 1:0 2:5 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution semantic-states/function samples 6 total 12 max 2 bins 0:0 1:0 2:6 3:0 4:0 5:0 6-8:0 9+:0$' \
     lock-identity-local.out
 require_match "local held-lock states" \
-    '^distribution locks/semantic-state samples 10 total 5 max 1 bins 0:5 1:5 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution locks/semantic-state samples 12 total 6 max 1 bins 0:6 1:6 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
     lock-identity-local.out
 require_match "local helper contexts" \
     '^maximum contexts/function 2 function local_helper tu=lock-identity-local.c$' \
     lock-identity-local.out
 require_match "local unmatched release" \
-    "lock-identity-local.c:69:19: warning: locklint: lock 'local_lock' is not held \\[lock-not-held\\]" \
+    "lock-identity-local.c:79:19: warning: locklint: lock 'local_lock' is not held \\[lock-not-held\\]" \
     lock-identity-local.out
 require_match "local duplicate acquire" \
-    "lock-identity-local.c:71:20: warning: locklint: lock 'local_lock' is already held \\[lock-already-held\\]" \
+    "lock-identity-local.c:81:20: warning: locklint: lock 'local_lock' is already held \\[lock-already-held\\]" \
     lock-identity-local.out
-if [ "$(grep -c 'warning:' lock-identity-local.out)" -ne 2 ]; then
-	fail "local lock diagnostics: expected exactly two warnings"
+require_match "local held on return" \
+    "lock-identity-local.c:53:22: warning: locklint: lock 'local_lock' held on return from 'local_lock_helper' \\[lock-held-on-return\\]" \
+    lock-identity-local.out
+require_match "local maybe held on return" \
+    "lock-identity-local.c:62:30: warning: locklint: lock 'local_lock' held on only some paths returning from 'local_maybe_lock_helper' \\[lock-maybe-held-on-return\\]" \
+    lock-identity-local.out
+if [ "$(grep -c 'warning:' lock-identity-local.out)" -ne 4 ]; then
+	fail "local lock diagnostics: expected exactly four warnings"
 fi
 
 run_capture "member lock identities" lock-identity-members.out \

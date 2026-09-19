@@ -53,6 +53,15 @@ local_lock_helper(void)
 	mutex_enter(&local_lock);
 }
 
+static void
+local_maybe_lock_helper(int take_lock)
+{
+	mutex_t local_lock;
+
+	if (take_lock)
+		mutex_enter(&local_lock);
+}
+
 void lock_identity_local(void);
 
 void
@@ -65,6 +74,7 @@ lock_identity_local(void)
 	release_helper(&local_lock);
 	(void) local_helper();
 	local_lock_helper();
+	local_maybe_lock_helper(local_helper_value);
 	(void) local_helper();
 	mutex_exit(&local_lock);
 	mutex_enter(&local_lock);

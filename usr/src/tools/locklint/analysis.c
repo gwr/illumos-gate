@@ -207,19 +207,30 @@ struct exit_mapping {
 };
 
 static bool
+binding_contains_analysis_object(const struct binding_environment *bindings,
+    const void *analysis_object)
+{
+	size_t index;
+
+	for (index = 0; index < bindings->count; index++) {
+		if (bindings->entries[index].actual_identity->
+		    key.analysis_object == analysis_object)
+			return (true);
+	}
+	return (false);
+}
+
+static bool
 return_lock_visible(const struct lock_identity *lock, void *data)
 {
 	struct exit_mapping *mapping = data;
-	size_t index;
 
 	if (lock->analysis_object_type ==
 	    LOCK_ANALYSIS_OBJECT_OBJECT_IDENTITY)
 		return (true);
-	for (index = 0; index < mapping->bindings->count; index++) {
-		if (mapping->bindings->entries[index].actual_identity->
-		    key.analysis_object == lock->key.analysis_object)
-			return (true);
-	}
+	if (binding_contains_analysis_object(mapping->bindings,
+	    lock->key.analysis_object))
+		return (true);
 	mapping->filtered++;
 	return (false);
 }
@@ -889,6 +900,146 @@ diagnose_lock_transitions(struct analysis *analysis)
 	callgraph_iter_close(iterator);
 }
 
+static int
+compare_lock_identity_pointer(const void *left_arg, const void *right_arg)
+{
+	const struct lock_identity *const *left = left_arg;
+	const struct lock_identity *const *right = right_arg;
+
+	return (AVL_PCMP(*left, *right));
+}
+
+static bool
+callee_automatic_lock(const struct function_context *context,
+    const struct lock_identity *lock)
+{
+	return (lock->analysis_object_type == LOCK_ANALYSIS_OBJECT_SYMBOL &&
+	    !binding_contains_analysis_object(context->bindings,
+	    lock->key.analysis_object));
+}
+
+/*
+ * Diagnose direct automatic locals which remain newly held at one return.
+ * Caller-visible locks require declared-effect handling before they can be
+ * checked here.
+ */
+static struct point_state *
+diagnose_local_locks_at_return(struct function_context *context,
+    struct point_state *first)
+{
+	const struct lock_identity **candidates;
+	struct point_state *point_state;
+	struct instruction *insn = first->point.next_instruction;
+	size_t candidate_capacity = 0;
+	size_t candidate_count = 0;
+	size_t state_count = 0;
+	size_t index;
+
+	for (point_state = first; point_state != NULL &&
+	    same_analysis_point(first, point_state);
+	    point_state = AVL_NEXT(&context->point_states, point_state)) {
+		size_t lock_count = point_state->state->locks->count;
+
+		if (lock_count > SIZE_MAX - candidate_capacity)
+			die("return lock candidate count overflow");
+		candidate_capacity += lock_count;
+		if (state_count == SIZE_MAX)
+			die("return state count overflow");
+		state_count++;
+	}
+	if (candidate_capacity > SIZE_MAX / sizeof (*candidates))
+		die("return lock candidate allocation overflow");
+	candidates = calloc(candidate_capacity, sizeof (*candidates));
+	if (candidates == NULL && candidate_capacity != 0)
+		die("cannot allocate return lock candidates");
+	for (point_state = first; point_state != NULL &&
+	    same_analysis_point(first, point_state);
+	    point_state = AVL_NEXT(&context->point_states, point_state)) {
+		const struct semantic_lock_set *locks =
+		    point_state->state->locks;
+
+		for (index = 0; index < locks->count; index++) {
+			const struct lock_identity *lock =
+			    locks->entries[index].lock;
+
+			if (context_state_lock_modes(context->entry_state,
+			    lock) == 0 &&
+			    callee_automatic_lock(context, lock))
+				candidates[candidate_count++] = lock;
+		}
+	}
+	if (candidate_count > 1) {
+		qsort(candidates, candidate_count, sizeof (*candidates),
+		    compare_lock_identity_pointer);
+	}
+	for (index = 0; index < candidate_count; index++) {
+		const struct lock_identity *lock = candidates[index];
+		const struct symbol *symbol = lock->key.analysis_object;
+		const char *name = symbol->ident != NULL ?
+		    show_ident(symbol->ident) : "<unknown>";
+		const char *function = context->function->ep->name->ident != NULL ?
+		    show_ident(context->function->ep->name->ident) :
+		    "<anonymous>";
+		size_t held_count = 0;
+
+		if (index != 0 && candidates[index - 1] == lock)
+			continue;
+		for (point_state = first; point_state != NULL &&
+		    same_analysis_point(first, point_state);
+		    point_state = AVL_NEXT(&context->point_states, point_state)) {
+			if (context_state_lock_modes(point_state->state,
+			    lock) != 0)
+				held_count++;
+		}
+		if (held_count == state_count) {
+			locklint_warning(LOCKLINT_DIAG_LOCK_HELD_ON_RETURN,
+			    insn->pos, "lock '%s' held on return from '%s'",
+			    name, function);
+		} else {
+			locklint_warning(LOCKLINT_DIAG_LOCK_MAYBE_HELD_ON_RETURN,
+			    insn->pos, "lock '%s' held on only some paths "
+			    "returning from '%s'", name, function);
+		}
+	}
+	free(candidates);
+	return (point_state);
+}
+
+static void
+diagnose_local_locks_on_return(void)
+{
+	struct callgraph_iter *iterator;
+	struct function_info *function;
+	int error;
+
+	error = callgraph_iter_open(&iterator);
+	if (error != 0)
+		die("cannot iterate ready callgraph: %s", strerror(error));
+	while ((function = callgraph_iter_next(iterator)) != NULL) {
+		struct function_context *context;
+
+		for (context = avl_first(&function->contexts.contexts);
+		    context != NULL;
+		    context = AVL_NEXT(&function->contexts.contexts, context)) {
+			struct point_state *point_state =
+			    avl_first(&context->point_states);
+
+			while (point_state != NULL) {
+				if (point_state->point.next_instruction == NULL ||
+				    point_state->point.next_instruction->opcode !=
+				    OP_RET) {
+					point_state = AVL_NEXT(
+					    &context->point_states, point_state);
+					continue;
+				}
+				point_state = diagnose_local_locks_at_return(
+				    context, point_state);
+			}
+		}
+	}
+	callgraph_iter_close(iterator);
+}
+
 static void
 measure_point_states(struct analysis_measurements *measurements,
     struct function_context *context)
@@ -1235,6 +1386,7 @@ analysis_run(struct lock_identity_collection *lock_identities, FILE *stream)
 	    worklist_point_state_dequeue(&analysis.worklist)) != NULL)
 		process_point(&analysis, point_state);
 	diagnose_lock_transitions(&analysis);
+	diagnose_local_locks_on_return();
 	if (stream != NULL) {
 		analysis.measurements.lock_identities =
 		    lock_identity_count(analysis.lock_identities);
