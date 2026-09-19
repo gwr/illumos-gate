@@ -276,6 +276,31 @@ context_empty_state_intern(struct function_info *function,
 }
 
 /*
+ * Return the canonical root-entry state.  Its distinguished condition is
+ * consumed by the first competition transition rather than shifted as an
+ * ordinary merged interval.
+ */
+int
+context_entry_state_intern(struct function_info *function,
+    struct semantic_state **result, bool *existed)
+{
+	struct function_context_collection *collection = &function->contexts;
+	struct competition_interval competition = {
+		.minimum = 0,
+		.maximum = 1,
+		.entry_condition = true
+	};
+	struct semantic_lock_set *locks;
+	int error;
+
+	error = lock_set_intern(collection, NULL, 0, &locks);
+	if (error != 0)
+		return (error);
+	return (semantic_state_intern(collection, locks, competition, result,
+	    existed));
+}
+
+/*
  * Return the destination function's canonical copy of an existing semantic
  * state.  The source state and its function-owned lock set remain unchanged.
  */

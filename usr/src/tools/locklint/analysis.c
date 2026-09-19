@@ -704,7 +704,7 @@ seed_root(struct analysis *analysis, struct function_info *function)
 		analysis->counts.binding_environments_reused++;
 	else
 		analysis->counts.binding_environments_created++;
-	error = context_empty_state_intern(function, &state, &existed);
+	error = context_entry_state_intern(function, &state, &existed);
 	if (error != 0)
 		die("cannot intern root state: %s", strerror(error));
 	record_semantic_state(analysis, existed);

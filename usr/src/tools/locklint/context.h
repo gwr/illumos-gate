@@ -123,6 +123,8 @@ void context_collection_free(struct function_info *);
 
 int context_empty_state_intern(struct function_info *,
     struct semantic_state **, bool *);
+int context_entry_state_intern(struct function_info *,
+    struct semantic_state **, bool *);
 int context_state_import(struct function_info *, const struct semantic_state *,
     struct semantic_state **, bool *);
 int context_state_map_exit(struct function_info *,

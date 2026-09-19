@@ -141,7 +141,9 @@ test_state_interning(void)
 {
 	struct function_info function = { 0 };
 	struct semantic_state *state;
+	struct semantic_state *entry;
 	struct semantic_state *same;
+	struct competition_interval competition;
 	bool existed;
 	int error;
 
@@ -157,6 +159,16 @@ test_state_interning(void)
 	check(error == 0, "find empty semantic state");
 	check(existed, "existing empty semantic state reported as reused");
 	check(same == state, "empty semantic state is interned");
+	error = context_entry_state_intern(&function, &entry, &existed);
+	competition = context_state_competition(entry);
+	check(error == 0 && !existed && entry != state,
+	    "entry state is distinct from empty state");
+	check(competition.minimum == 0 && competition.maximum == 1 &&
+	    competition.entry_condition,
+	    "entry state has unresolved entry condition");
+	error = context_entry_state_intern(&function, &same, &existed);
+	check(error == 0 && existed && same == entry,
+	    "entry semantic state is interned");
 
 	context_collection_free(&function);
 }
