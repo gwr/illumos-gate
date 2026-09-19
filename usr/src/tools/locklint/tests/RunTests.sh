@@ -491,6 +491,19 @@ if [ "$(grep -c '\[visibility-no-object\]' visibility-contexts.out)" \
 	fail "visibility context transitions: expected exactly one warning"
 fi
 
+#
+# Verify local access decisions use the most-specific visibility region.
+# Restrict this exact reference to the local visibility/read-only exercises;
+# caller and cross-translation-unit visibility remain separate work.
+#
+run_capture "local visibility diagnostics" visibility-local-diagnostics.out \
+    "$LOCKLINT" --check-locks visibility.c
+grep -E \
+    'visibility.c:(8[0-9]|9[0-9]|1[0-8][0-9]|190):.*\[(unprotected-access|conditional-protection|read-only-(maybe-)?visible)\]' \
+    visibility-local-diagnostics.out > visibility-local.out
+compare "local visibility diagnostics" visibility-local.ref \
+    visibility-local.out
+
 run_capture "competition protected accesses" competition-accesses.out \
     "$LOCKLINT" -DCOMPETITION_ACCESS_ONLY --check-locks competition-depth.c
 for location in 50 52 54 70 83 115

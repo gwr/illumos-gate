@@ -145,6 +145,8 @@ static int context_access_identity(struct analysis *,
 static int context_access_key(const struct function_context *,
     const struct locklint_access *, struct lock_identity_key *,
     enum lock_analysis_object_type *, bool *);
+static int context_access_region(const struct function_context *,
+    const struct locklint_access *, struct visibility_region *, bool *, bool *);
 static void record_semantic_state(struct analysis *, bool);
 
 static struct instruction *
@@ -276,11 +278,9 @@ apply_visibility_target(const struct locklint_access *access,
     const struct expression *expr, void *data_arg)
 {
 	struct visibility_transition *data = data_arg;
-	struct lock_identity_key key;
 	struct visibility_region region;
-	enum lock_analysis_object_type object_type;
 	struct semantic_state *state;
-	uint64_t length;
+	bool available;
 	bool composed;
 	bool existed;
 	int error;
@@ -290,21 +290,16 @@ apply_visibility_target(const struct locklint_access *access,
 		data->analysis->counts.visibility_transitions_unresolved++;
 		return;
 	}
-	if (!locklint_access_size(access, &length)) {
+	error = context_access_region(data->point_state->context, access,
+	    &region, &available, &composed);
+	if (error != 0)
+		die("cannot identify visibility target: %s", strerror(error));
+	if (!available) {
 		data->analysis->counts.visibility_transitions_unresolved++;
 		return;
 	}
-	error = context_access_key(data->point_state->context, access, &key,
-	    &object_type, &composed);
-	if (error != 0)
-		die("cannot identify visibility target: %s", strerror(error));
 	if (composed)
 		data->analysis->counts.binding_identities_composed++;
-	region = (struct visibility_region) {
-		.analysis_object = key.analysis_object,
-		.target_offset = key.target_offset,
-		.target_length = length
-	};
 	error = context_state_set_visibility(
 	    data->point_state->context->function, data->state, region,
 	    data->visibility, &state, &existed);
@@ -548,6 +543,23 @@ identity_formal_argument(const struct function_info *function,
 	return (false);
 }
 
+static struct symbol *
+function_formal_argument(const struct function_info *function,
+    unsigned int argument)
+{
+	struct symbol *formal;
+	struct symbol *type = function_type(function);
+	unsigned int current = 0;
+
+	if (type == NULL)
+		return (NULL);
+	FOR_EACH_PTR(type->arguments, formal) {
+		if (current++ == argument)
+			return (formal);
+	} END_FOR_EACH_PTR(formal);
+	return (NULL);
+}
+
 /*
  * Replace a caller-relative formal identity with the corresponding incoming
  * actual identity.  Relative coordinates compose without changing the
@@ -603,6 +615,45 @@ context_access_key(const struct function_context *context,
 	if (error != 0)
 		return (error);
 	*composed = compose_caller_identity(context, key, object_type);
+	return (0);
+}
+
+/*
+ * Translate an access to the canonical object and byte range used by the
+ * active caller context.  Unsized accesses remain conservatively visible.
+ */
+static int
+context_access_region(const struct function_context *context,
+    const struct locklint_access *access, struct visibility_region *region,
+    bool *available, bool *composed)
+{
+	struct lock_identity_key key;
+	enum lock_analysis_object_type object_type;
+	struct symbol *formal;
+	uint64_t length;
+	unsigned int argument;
+	int error;
+
+	*available = false;
+	*composed = false;
+	if (!locklint_access_size(access, &length))
+		return (0);
+	error = context_access_key(context, access, &key, &object_type,
+	    composed);
+	if (error != 0)
+		return (error);
+	if (identity_formal_argument(context->function, key, object_type,
+	    &argument) &&
+	    binding_environment_lookup(context->bindings, argument) == NULL &&
+	    (formal = function_formal_argument(context->function,
+	    argument)) != NULL)
+		key.analysis_object = formal;
+	*region = (struct visibility_region) {
+		.analysis_object = key.analysis_object,
+		.target_offset = key.target_offset,
+		.target_length = length
+	};
+	*available = true;
 	return (0);
 }
 
@@ -1300,6 +1351,7 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 	struct locklint_data_policy policy;
 	struct locklint_access protector;
 	struct lock_identity *identity;
+	struct visibility_region region;
 	struct point_state *point_state;
 	size_t unprotected = 0;
 	size_t protected = 0;
@@ -1311,6 +1363,7 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 	bool check_read_only;
 	bool composed;
 	bool existed;
+	bool region_available;
 	int error;
 
 	if (!locklint_data_policy(access, &policy, &protector))
@@ -1322,6 +1375,13 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 	    data->instruction->opcode == OP_STORE;
 	if (!check_mutex && !check_read_only)
 		return;
+	error = context_access_region(data->context, access, &region,
+	    &region_available, &composed);
+	if (error != 0)
+		die("cannot identify protected access region: %s",
+		    strerror(error));
+	if (composed)
+		data->analysis->counts.binding_identities_composed++;
 	if (check_mutex) {
 		error = context_access_identity(data->analysis, data->context,
 		    &protector, &identity, &existed, &composed);
@@ -1340,9 +1400,19 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 	    point_state = AVL_NEXT(&data->context->point_states, point_state)) {
 		struct competition_interval competition =
 		    context_state_competition(point_state->state);
+		enum semantic_visibility visibility =
+		    SEMANTIC_VISIBILITY_VISIBLE;
+		bool invisible;
+
+		if (region_available) {
+			(void) context_state_effective_visibility(
+			    point_state->state, region, &visibility);
+		}
+		invisible = visibility == SEMANTIC_VISIBILITY_INVISIBLE;
 
 		if (check_mutex) {
-			if ((context_state_lock_modes(point_state->state,
+			if (invisible ||
+			    (context_state_lock_modes(point_state->state,
 			    identity) & LOCKLINT_MODE_MUTEX) != 0 ||
 			    (!competition.maximum_unbounded &&
 			    competition.maximum <= 0)) {
@@ -1356,8 +1426,9 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 			}
 		}
 		if (check_read_only) {
-			if (!competition.maximum_unbounded &&
-			    competition.maximum <= 0) {
+			if (invisible ||
+			    (!competition.maximum_unbounded &&
+			    competition.maximum <= 0)) {
 				read_only_hidden++;
 			} else if (!competition.minimum_unbounded &&
 			    competition.minimum > 0) {

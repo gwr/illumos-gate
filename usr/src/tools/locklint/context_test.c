@@ -603,6 +603,24 @@ test_visibility_state_interning(void)
 	check(error == 0 && !existed &&
 	    context_state_visibility_count(member_visible) == 2,
 	    "narrower visible region retains containing rule");
+	visibility = SEMANTIC_VISIBILITY_INVISIBLE;
+	check(context_state_effective_visibility(member_visible,
+	    REGION(first, 0, 4), &visibility) &&
+	    visibility == SEMANTIC_VISIBILITY_VISIBLE,
+	    "exact member visibility overrides whole object");
+	check(context_state_effective_visibility(member_visible,
+	    REGION(first, 1, 2), &visibility) &&
+	    visibility == SEMANTIC_VISIBILITY_VISIBLE,
+	    "member visibility covers descendants");
+	check(context_state_effective_visibility(member_visible,
+	    REGION(first, 8, 4), &visibility) &&
+	    visibility == SEMANTIC_VISIBILITY_INVISIBLE,
+	    "whole-object visibility covers sibling members");
+	visibility = SEMANTIC_VISIBILITY_INVISIBLE;
+	check(!context_state_effective_visibility(member_visible,
+	    REGION(second, 0, 4), &visibility) &&
+	    visibility == SEMANTIC_VISIBILITY_VISIBLE,
+	    "unmentioned object defaults to visible");
 	error = context_state_set_visibility(&function, member_visible,
 	    REGION(first, 0, 16), SEMANTIC_VISIBILITY_VISIBLE,
 	    &whole_visible, &existed);
@@ -611,6 +629,15 @@ test_visibility_state_interning(void)
 	    !context_state_visibility(whole_visible, REGION(first, 0, 4),
 	    &visibility),
 	    "new containing region removes subsumed override");
+	check(context_state_effective_visibility(whole_visible,
+	    REGION(first, 0, 4), &visibility) &&
+	    visibility == SEMANTIC_VISIBILITY_VISIBLE,
+	    "later broad visibility replaces member override");
+	visibility = SEMANTIC_VISIBILITY_INVISIBLE;
+	check(!context_state_effective_visibility(whole_visible,
+	    REGION(first, INT64_MAX, 2), &visibility) &&
+	    visibility == SEMANTIC_VISIBILITY_VISIBLE,
+	    "overflowing visibility query defaults to visible");
 
 	error = context_state_set_lock(&function, first_second, first, 1,
 	    &locked, &existed);

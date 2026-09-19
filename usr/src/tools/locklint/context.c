@@ -98,15 +98,16 @@ static bool
 visibility_region_subsumes(const struct visibility_region *outer,
     const struct visibility_region *inner)
 {
-	int64_t outer_end;
-	int64_t inner_end;
+	uint64_t displacement;
 
-	if (outer->analysis_object != inner->analysis_object ||
+	if (!visibility_region_valid(outer) || !visibility_region_valid(inner) ||
+	    outer->analysis_object != inner->analysis_object ||
 	    outer->target_offset > inner->target_offset)
 		return (false);
-	outer_end = outer->target_offset + (int64_t)(outer->target_length - 1);
-	inner_end = inner->target_offset + (int64_t)(inner->target_length - 1);
-	return (outer_end >= inner_end);
+	displacement = (uint64_t)inner->target_offset -
+	    (uint64_t)outer->target_offset;
+	return (displacement < outer->target_length &&
+	    inner->target_length <= outer->target_length - displacement);
 }
 
 static int
@@ -1008,6 +1009,40 @@ context_state_visibility(const struct semantic_state *state,
 			break;
 	}
 	return (false);
+}
+
+/*
+ * Find the narrowest stored region containing an access.  The flat set is
+ * intentionally small, and scanning it avoids a second index while preserving
+ * deterministic most-specific override semantics.
+ */
+bool
+context_state_effective_visibility(const struct semantic_state *state,
+    struct visibility_region region,
+    enum semantic_visibility *visibility)
+{
+	const struct semantic_visibility_state *best = NULL;
+	size_t index;
+
+	if (visibility != NULL)
+		*visibility = SEMANTIC_VISIBILITY_VISIBLE;
+	if (state == NULL || !visibility_region_valid(&region))
+		return (false);
+	for (index = 0; index < state->visibility->count; index++) {
+		const struct semantic_visibility_state *entry =
+		    &state->visibility->entries[index];
+
+		if (!visibility_region_subsumes(&entry->region, &region))
+			continue;
+		if (best == NULL ||
+		    entry->region.target_length < best->region.target_length)
+			best = entry;
+	}
+	if (best == NULL)
+		return (false);
+	if (visibility != NULL)
+		*visibility = best->visibility;
+	return (true);
 }
 
 struct competition_interval

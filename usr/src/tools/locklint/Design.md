@@ -1135,6 +1135,14 @@ When overlapping whole-object and member facts exist, the most specific
 covering fact determines the queried state.  Updating a region removes
 obsolete facts wholly covered by that update.
 
+The caller-context implementation stores these facts as small immutable
+sorted sets.  A leaf access is translated through its active bindings to the
+same canonical analysis object used by visibility transitions, paired with
+the access byte size, and queried by overflow-safe range containment.  The
+narrowest containing region wins; absence of a containing region means
+visible.  Unbound formal source expressions and their lowered argument
+pseudos are normalized to the same formal object for local analysis.
+
 At a control-flow merge, Locklint computes the effective state of every
 region distinguished on either incoming path.  Agreement remains definite;
 disagreement becomes maybe visible.
@@ -1160,6 +1168,12 @@ no-competition state permits initialization or private teardown writes.  The
 policy is based on current exposure, not a permanent seal after first
 publication; an explicit withdrawal can therefore permit later private
 modification.
+
+The currently enabled visibility-aware access diagnostics cover local
+flow-sensitive transitions, including whole-object/member overrides,
+descendants, multiple objects, and branch agreement or disagreement.  This
+increment does not add cross-call or cross-translation-unit visibility
+summaries; those remain part of the staged interprocedural design below.
 
 ### Assertions, conditions, and calls
 

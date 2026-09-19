@@ -200,6 +200,8 @@ unsigned int context_state_lock_modes(const struct semantic_state *,
 size_t context_state_visibility_count(const struct semantic_state *);
 bool context_state_visibility(const struct semantic_state *,
     struct visibility_region, enum semantic_visibility *);
+bool context_state_effective_visibility(const struct semantic_state *,
+    struct visibility_region, enum semantic_visibility *);
 struct competition_interval context_state_competition(
     const struct semantic_state *);
 size_t context_point_state_count(struct function_context *);
