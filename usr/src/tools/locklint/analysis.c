@@ -147,6 +147,10 @@ static int context_access_key(const struct function_context *,
     enum lock_analysis_object_type *, bool *);
 static int context_access_region(const struct function_context *,
     const struct locklint_access *, struct visibility_region *, bool *, bool *);
+static bool identity_formal_argument(const struct function_info *,
+    struct lock_identity_key, enum lock_analysis_object_type, unsigned int *);
+static struct symbol *function_formal_argument(const struct function_info *,
+    unsigned int);
 static void record_semantic_state(struct analysis *, bool);
 
 static struct instruction *
@@ -340,6 +344,7 @@ apply_visibility_event(struct analysis *analysis,
 }
 
 struct exit_mapping {
+	const struct function_context *caller_context;
 	const struct binding_environment *bindings;
 	size_t filtered;
 };
@@ -373,6 +378,40 @@ return_lock_visible(const struct lock_identity *lock, void *data)
 	return (false);
 }
 
+/*
+ * Visibility effects are recorded on eagerly composed actual identities.
+ * Normalize an unbound root formal's lowered argument pseudo back to the
+ * source formal used by caller-side access regions.  Other actuals and
+ * globals already use caller-visible coordinates.
+ */
+static bool
+return_visibility_region(const struct visibility_region *source,
+    struct visibility_region *result, void *data)
+{
+	struct exit_mapping *mapping = data;
+	size_t index;
+
+	*result = *source;
+	for (index = 0; index < mapping->bindings->count; index++) {
+		const struct lock_identity *actual =
+		    mapping->bindings->entries[index].actual_identity;
+		struct symbol *formal;
+		unsigned int argument;
+
+		if (actual->key.analysis_object != source->analysis_object)
+			continue;
+		if (identity_formal_argument(mapping->caller_context->function,
+		    actual->key, actual->analysis_object_type, &argument) &&
+		    binding_environment_lookup(
+		    mapping->caller_context->bindings, argument) == NULL &&
+		    (formal = function_formal_argument(
+		    mapping->caller_context->function, argument)) != NULL)
+			result->analysis_object = formal;
+		return (true);
+	}
+	return (true);
+}
+
 static void
 record_reactivation(struct analysis *analysis,
     struct continuation *continuation)
@@ -381,7 +420,11 @@ record_reactivation(struct analysis *analysis,
 
 	while ((exit =
 	    dependency_continuation_next_exit(continuation)) != NULL) {
+		bool same_translation_unit =
+		    continuation->caller_context->function->tu ==
+		    continuation->callee_context->function->tu;
 		struct exit_mapping mapping = {
+			.caller_context = continuation->caller_context,
 			.bindings = continuation->callee_bindings
 		};
 		struct semantic_state *mapped_state;
@@ -394,8 +437,9 @@ record_reactivation(struct analysis *analysis,
 		    continuation->caller_context->function,
 		    continuation->caller_state,
 		    continuation->callee_context->entry_state, exit->state,
-		    return_lock_visible, &mapping, &mapped_state,
-		    &state_existed);
+		    return_lock_visible, &mapping,
+		    same_translation_unit ? return_visibility_region : NULL,
+		    &mapping, &mapped_state, &state_existed);
 		if (error != 0)
 			die("cannot map context exit: %s", strerror(error));
 		record_semantic_state(analysis, state_existed);

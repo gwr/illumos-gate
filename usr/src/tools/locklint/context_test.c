@@ -75,6 +75,32 @@ include_selected_lock(const struct lock_identity *lock, void *data)
 	return (lock == data);
 }
 
+struct test_region_mapping {
+	const void *from;
+	const void *to;
+};
+
+static bool
+map_selected_region(const struct visibility_region *source,
+    struct visibility_region *result, void *data)
+{
+	const struct test_region_mapping *mapping = data;
+
+	*result = *source;
+	if (source->analysis_object == mapping->from)
+		result->analysis_object = mapping->to;
+	return (true);
+}
+
+static bool
+copy_region(const struct visibility_region *source,
+    struct visibility_region *result, void *data)
+{
+	(void) data;
+	*result = *source;
+	return (true);
+}
+
 static void
 test_exit_state_mapping(void)
 {
@@ -95,6 +121,10 @@ test_exit_state_mapping(void)
 	struct semantic_state *callee_visibility_entry;
 	struct semantic_state *callee_visibility_exit;
 	struct semantic_state *mapped;
+	struct test_region_mapping region_mapping = {
+		.from = second,
+		.to = first
+	};
 	enum semantic_visibility visibility;
 	bool existed;
 	int error;
@@ -117,14 +147,14 @@ test_exit_state_mapping(void)
 	check(error == 0, "acquire new lock in callee");
 
 	error = context_state_map_exit(&caller, caller_held, callee_entry,
-	    callee_exit, NULL, NULL, &mapped, &existed);
+	    callee_exit, NULL, NULL, NULL, NULL, &mapped, &existed);
 	check(error == 0 && existed && mapped == caller_empty,
 	    "exit mapping removes released inherited lock");
 	check(context_state_lock_modes(mapped, second) == 0,
 	    "exit mapping filters unapproved new lock");
 	error = context_state_map_exit(&caller, caller_held, callee_entry,
-	    callee_exit, include_selected_lock, (void *)second, &mapped,
-	    &existed);
+	    callee_exit, include_selected_lock, (void *)second, NULL, NULL,
+	    &mapped, &existed);
 	check(error == 0 && !existed,
 	    "exit mapping includes approved new lock");
 	check(context_state_lock_modes(mapped, first) == 0 &&
@@ -135,8 +165,8 @@ test_exit_state_mapping(void)
 	    &callee_deep, &existed);
 	check(error == 0 && !existed, "create deep callee exit state");
 	error = context_state_map_exit(&caller, caller_held, callee_entry,
-	    callee_deep, include_selected_lock, (void *)second, &mapped,
-	    &existed);
+	    callee_deep, include_selected_lock, (void *)second, NULL, NULL,
+	    &mapped, &existed);
 	check(error == 0 && !existed &&
 	    context_state_competition(mapped).minimum == 2 &&
 	    context_state_competition(mapped).maximum == 2,
@@ -155,7 +185,7 @@ test_exit_state_mapping(void)
 	check(error == 0, "change visibility in callee");
 	error = context_state_map_exit(&caller, caller_visibility,
 	    callee_visibility_entry, callee_visibility_exit, NULL, NULL,
-	    &mapped, &existed);
+	    copy_region, NULL, &mapped, &existed);
 	check(error == 0 &&
 	    context_state_visibility(mapped, REGION(first, 0, 4), &visibility) &&
 	    visibility == SEMANTIC_VISIBILITY_INVISIBLE &&
@@ -163,6 +193,20 @@ test_exit_state_mapping(void)
 	    &visibility) &&
 	    visibility == SEMANTIC_VISIBILITY_VISIBLE,
 	    "exit mapping preserves complete visibility state");
+	error = context_state_map_exit(&caller, caller_visibility,
+	    callee_visibility_entry, callee_visibility_exit, NULL, NULL,
+	    NULL, NULL, &mapped, &existed);
+	check(error == 0 && context_state_visibility_count(mapped) == 1 &&
+	    context_state_visibility(mapped, REGION(first, 0, 4),
+	    &visibility) && visibility == SEMANTIC_VISIBILITY_INVISIBLE,
+	    "disabled exit mapping preserves caller visibility");
+	error = context_state_map_exit(&caller, caller_visibility,
+	    callee_visibility_entry, callee_visibility_exit, NULL, NULL,
+	    map_selected_region, &region_mapping, &mapped, &existed);
+	check(error == 0 && context_state_visibility_count(mapped) == 1 &&
+	    context_state_visibility(mapped, REGION(first, 0, 4),
+	    &visibility) && visibility == SEMANTIC_VISIBILITY_VISIBLE,
+	    "changed mapped visibility overrides inherited visibility");
 
 	context_collection_free(&callee);
 	context_collection_free(&caller);

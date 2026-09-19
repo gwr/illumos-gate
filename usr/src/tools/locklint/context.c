@@ -466,18 +466,28 @@ context_state_import(struct function_info *function,
  * Map a callee exit back into the function which owns caller_state.  Callee
  * entry must equal caller state by value.  Changes to inherited locks always
  * pass through; newly held locks pass only when the callback says their
- * identities remain meaningful to the caller.
+ * identities remain meaningful to the caller.  A visibility mapper returns
+ * the callee's exact exit set in caller coordinates.  Without one, visibility
+ * remains at its pre-call value.
  */
 int
 context_state_map_exit(struct function_info *function,
     const struct semantic_state *caller_state,
     const struct semantic_state *callee_entry,
     const struct semantic_state *callee_exit,
-    context_lock_filter_f include_new, void *data,
+    context_lock_filter_f include_new, void *lock_data,
+    context_visibility_map_f map_visibility, void *visibility_data,
     struct semantic_state **result, bool *existed)
 {
+	struct mapped_visibility_entry {
+		struct semantic_visibility_state state;
+		bool changed;
+	};
 	struct function_context_collection *collection = &function->contexts;
 	struct semantic_lock_state entries[LOCKLINT_MAX_TRACKED_LOCKS];
+	struct mapped_visibility_entry mapped[LOCKLINT_MAX_TRACKED_VISIBILITY];
+	struct semantic_visibility_state
+	    visibility_entries[LOCKLINT_MAX_TRACKED_VISIBILITY];
 	const struct semantic_lock_set *entry_locks;
 	const struct semantic_lock_set *exit_locks;
 	struct semantic_lock_set *locks;
@@ -485,6 +495,7 @@ context_state_map_exit(struct function_info *function,
 	size_t entry_index = 0;
 	size_t exit_index;
 	size_t result_count = 0;
+	size_t visibility_count = 0;
 	int error;
 
 	if (caller_state == NULL || callee_entry == NULL || callee_exit == NULL)
@@ -510,15 +521,69 @@ context_state_map_exit(struct function_info *function,
 		inherited = entry_index < entry_locks->count &&
 		    entry_locks->entries[entry_index].lock == exit_lock->lock;
 		if (inherited ||
-		    (include_new != NULL && include_new(exit_lock->lock, data)))
+		    (include_new != NULL &&
+		    include_new(exit_lock->lock, lock_data)))
 			entries[result_count++] = *exit_lock;
 	}
 	error = lock_set_intern(collection, entries, result_count, &locks);
 	if (error != 0)
 		return (error);
-	error = visibility_set_intern(collection,
-	    callee_exit->visibility->entries, callee_exit->visibility->count,
-	    &visibility);
+	if (map_visibility == NULL) {
+		error = visibility_set_intern(collection,
+		    caller_state->visibility->entries,
+		    caller_state->visibility->count, &visibility);
+		if (error != 0)
+			return (error);
+		return (semantic_state_intern(collection, locks, visibility,
+		    callee_exit->competition, result, existed));
+	}
+	for (exit_index = 0; exit_index < callee_exit->visibility->count;
+	    exit_index++) {
+		const struct semantic_visibility_state *source =
+		    &callee_exit->visibility->entries[exit_index];
+		struct visibility_region region = source->region;
+		enum semantic_visibility entry_visibility;
+		bool changed;
+		size_t insert;
+
+		if (!map_visibility(&source->region, &region, visibility_data))
+			continue;
+		if (!visibility_region_valid(&region))
+			return (EINVAL);
+		changed = !context_state_visibility(callee_entry,
+		    source->region, &entry_visibility) ||
+		    entry_visibility != source->visibility;
+		for (insert = 0; insert < visibility_count; insert++) {
+			int order = compare_visibility_region(
+			    &mapped[insert].state.region, &region);
+
+			if (order >= 0)
+				break;
+		}
+		if (insert < visibility_count &&
+		    compare_visibility_region(&mapped[insert].state.region,
+		    &region) == 0) {
+			if (changed && !mapped[insert].changed) {
+				mapped[insert].state.region = region;
+				mapped[insert].state.visibility =
+				    source->visibility;
+				mapped[insert].changed = true;
+			}
+			continue;
+		}
+		if (visibility_count == LOCKLINT_MAX_TRACKED_VISIBILITY)
+			return (E2BIG);
+		(void) memmove(&mapped[insert + 1], &mapped[insert],
+		    (visibility_count - insert) * sizeof (mapped[0]));
+		mapped[insert].state.region = region;
+		mapped[insert].state.visibility = source->visibility;
+		mapped[insert].changed = changed;
+		visibility_count++;
+	}
+	for (exit_index = 0; exit_index < visibility_count; exit_index++)
+		visibility_entries[exit_index] = mapped[exit_index].state;
+	error = visibility_set_intern(collection, visibility_entries,
+	    visibility_count, &visibility);
 	if (error != 0)
 		return (error);
 	return (semantic_state_intern(collection, locks, visibility,

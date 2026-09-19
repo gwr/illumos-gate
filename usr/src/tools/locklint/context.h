@@ -91,6 +91,8 @@ struct semantic_state {
 };
 
 typedef bool (*context_lock_filter_f)(const struct lock_identity *, void *);
+typedef bool (*context_visibility_map_f)(const struct visibility_region *,
+    struct visibility_region *, void *);
 
 /*
  * A point identifies the next Sparse instruction to evaluate.  A NULL
@@ -155,10 +157,14 @@ int context_entry_state_intern(struct function_info *,
     struct semantic_state **, bool *);
 int context_state_import(struct function_info *, const struct semantic_state *,
     struct semantic_state **, bool *);
+/*
+ * A NULL visibility mapper preserves caller visibility unchanged.  A
+ * non-NULL mapper translates the callee's exact exit visibility set.
+ */
 int context_state_map_exit(struct function_info *,
     const struct semantic_state *, const struct semantic_state *,
     const struct semantic_state *, context_lock_filter_f, void *,
-    struct semantic_state **, bool *);
+    context_visibility_map_f, void *, struct semantic_state **, bool *);
 /*
  * Lock identities must be canonical and stable for the function collection's
  * lifetime.  Zero modes removes the lock.

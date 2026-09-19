@@ -1169,11 +1169,16 @@ policy is based on current exposure, not a permanent seal after first
 publication; an explicit withdrawal can therefore permit later private
 modification.
 
-The currently enabled visibility-aware access diagnostics cover local
-flow-sensitive transitions, including whole-object/member overrides,
-descendants, multiple objects, and branch agreement or disagreement.  This
-increment does not add cross-call or cross-translation-unit visibility
-summaries; those remain part of the staged interprocedural design below.
+Visibility-aware access diagnostics consume the exact state returned by
+same-translation-unit direct calls.  Each distinct callee exit resumes the
+caller separately, so conditional effects remain conditional instead of
+being collapsed into a lossy summary.  Unchanged incoming visibility remains
+in the returned state.  Formal-relative effects are composed onto caller
+actual identities, including nested base offsets and extents; absolute global
+regions pass through unchanged.  The existing caller-context fixed point
+therefore handles wrappers and recursion without a separate visibility
+summary domain.  Cross-translation-unit visibility propagation remains
+deferred.
 
 ### Assertions, conditions, and calls
 
@@ -1198,15 +1203,15 @@ Callers must establish one of the accepted protection alternatives for each
 mapped actual or absolute object.  A whole-object assumption covers its
 descendants.  Invalid expressions are diagnosed during final replay.
 
-Visibility changes to formal or absolute objects are inferred as function
-summaries and mapped across resolved calls, like existing lock transfers.  Each
-summary is an input-to-output table for the three visibility states, solved
-across every reachable return and to a fixed point through resolved,
-transitive, and recursive calls.  Canonical member paths preserve nested
-regions, base offsets, and identity across translation units.  Overlapping
-effects are applied from containing regions to leaves so a narrower result is
-not erased by a broader one.  Visibility changes to unreturned local objects
-require no summary.
+Visibility changes need no factored transfer summary for resolved
+same-translation-unit calls.  The callee receives the caller's complete
+immutable visibility set, updates exact regions in its bound context, and
+publishes every exact return state.  Exit mapping normalizes composed
+formal-relative regions into the caller's coordinates and resolves any
+collision in favor of the changed callee fact over an unchanged imported
+fact.  Containing and member entries otherwise remain separate, so the
+narrowest covering region continues to determine an access.  Distinct exits
+remain distinct caller point states.
 
 Competition changes are inferred as function summaries and applied across
 resolved calls.  A summary retains the net output interval from exact depth
@@ -1238,8 +1243,8 @@ The tests cover:
 - nested competition, branch merges, and widening loops;
 - lock, invisibility, and no-competition alternatives at resolved calls;
 - `ASSERT(NO_COMPETING_THREADS)` and `ASSUMING_PROTECTED`;
-- direct, transitive, recursive, nested-object, and cross-translation-unit
-  visibility summaries;
+- direct, transitive, recursive, global, and nested-object visibility effects
+  within one translation unit;
 - direct, wrapped, conditional, and recursive competition summaries;
 - declared, conditional, conflicting, and non-returning competition
   contracts; and
@@ -2177,18 +2182,21 @@ caller OP_CALL resolved to callee
     -> output state replaces caller state
 ```
 
-### Direct callee visibility transfer
+### Direct callee visibility propagation
 
 ```text
-callee visibility candidate discovered
-    -> transfer table solved for INVISIBLE, MAYBE, and VISIBLE inputs
-    -> every reachable return contributes to the output
 caller OP_CALL resolved to callee
-    -> callee-relative member path composed onto caller actual object
-       or absolute object identity preserved unchanged
-    -> current caller visibility selects transfer-table entry
-    -> overlapping results collected from the original caller state
-    -> containing regions installed before narrower leaves
+    -> complete caller state imported into bound callee context
+callee visibility marker reached
+    -> formal-relative region composed onto the caller actual identity
+    -> immutable visibility set updated at the exact CFG point
+each exact callee exit published
+    -> returned regions normalized into caller coordinates
+    -> unchanged imported facts preserved
+    -> changed facts override colliding imported spellings
+    -> caller resumed separately for every exit
+recursive or wrapped call discovers another exact state
+    -> existing caller-context fixed point schedules only new point states
 ```
 
 ### Interprocedural lock acquisition

@@ -504,6 +504,15 @@ grep -E \
 compare "local visibility diagnostics" visibility-local.ref \
     visibility-local.out
 
+#
+# Verify direct and wrapped callees return exact visibility state, including
+# conditional exits, globals, recursion, and nested formal-relative regions.
+#
+run_capture "call visibility diagnostics" visibility-calls.out \
+    "$LOCKLINT" --check-locks visibility-calls.c
+compare "call visibility diagnostics" visibility-calls.ref \
+    visibility-calls.out
+
 run_capture "competition protected accesses" competition-accesses.out \
     "$LOCKLINT" -DCOMPETITION_ACCESS_ONLY --check-locks competition-depth.c
 for location in 50 52 54 70 83 115
