@@ -965,15 +965,8 @@ fi
 #
 run_capture "structure-valued mutex diagnostics" struct-lock-diagnostics.out \
     "$LOCKLINT" --check-locks struct-lock.c
-require_match "global structure-valued mutex diagnostic" \
-    "struct-lock.c:47:9: warning: locklint: protected member 'global_value' modified without holding 'global_lock' \\[unprotected-access\\]" \
+compare "structure-valued mutex diagnostics" struct-lock.ref \
     struct-lock-diagnostics.out
-require_match "member structure-valued mutex diagnostic" \
-    "struct-lock.c:56:14: warning: locklint: protected member 'value' modified without holding 'lock' \\[unprotected-access\\]" \
-    struct-lock-diagnostics.out
-if [ "$(grep -c 'warning:' struct-lock-diagnostics.out)" -ne 2 ]; then
-	fail "structure-valued mutex diagnostics: expected exactly two warnings"
-fi
 
 #
 # Verify that competition assertions validate but do not alter the state
