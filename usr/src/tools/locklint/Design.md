@@ -1839,6 +1839,11 @@ failure rather than a definite failure.  Thus a checked `rw_tryupgrade()`
 whose failure path cannot return can satisfy an upgrade declaration, while an
 ignored result cannot.
 
+Absolute lock declarations use the same canonical object identities as
+ordinary lock operations.  Their contract validation therefore needs no
+separate summary representation, and exact call exit mapping preserves their
+acquired or released state through direct calls and formal wrappers.
+
 Declarations remain validation-only.  They neither manufacture lock effects
 nor suppress inferred effects.
 
@@ -2500,6 +2505,10 @@ areas include:
 - interprocedural propagation of relationships between scalar return values
   and conditional lock effects;
 - recursive mutex and rwlock-reader hold counts;
+- caller-site provenance for invalid lock transitions reached through
+  callees;
+- generic held-on-return diagnostics for undeclared caller-visible formal and
+  absolute locks;
 - a swappable-wait policy that diagnoses unrelated locks held across
   `cv_wait_sig_swap()` and `cv_wait_sig_swap_core()`; and
 - diagnostic suppressions, machine-readable output, and bounded provenance

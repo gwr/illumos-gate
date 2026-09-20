@@ -603,6 +603,17 @@ grep '\[declared-lock-effect\]' rwlock-transition-effects-2.out > \
 compare "declared downgrade effect diagnostics" \
     rwlock-transition-contracts-2.ref rwlock-transition-contracts-2.out
 
+#
+# Verify canonical absolute lock identities retain declared validation and
+# exact acquired/released state through direct calls and formal wrappers.
+#
+run_capture "absolute declared effect diagnostics" \
+    declared-effects-absolute.out "$LOCKLINT" --check-locks \
+    declared-effects-absolute.c
+compare "absolute declared effect diagnostics" \
+    declared-effects-absolute-contextual.ref \
+    declared-effects-absolute.out
+
 run_capture "user rwlock core state" rwlock-core-user.out \
     "$LOCKLINT" --check-locks -DLOCKLINT_RWLOCK_CORE_ONLY rwlock.c
 compare "user rwlock core state" rwlock-core.ref rwlock-core-user.out
