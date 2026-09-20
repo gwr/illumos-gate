@@ -31,6 +31,9 @@ struct provenance_edge {
 	avl_node_t by_key;
 };
 
+typedef void (*provenance_root_call_f)(struct function_context *,
+    struct instruction *, void *);
+
 void provenance_edges_create(struct function_context *);
 void provenance_edges_free(struct function_context *);
 
@@ -41,5 +44,8 @@ struct provenance_edge *provenance_edge_first(struct function_context *);
 struct provenance_edge *provenance_edge_next(struct function_context *,
     struct provenance_edge *);
 size_t provenance_edge_count(struct function_context *);
+
+int provenance_for_each_root_call(struct function_context *,
+    provenance_root_call_f, void *, bool *);
 
 #endif /* PROVENANCE_H */

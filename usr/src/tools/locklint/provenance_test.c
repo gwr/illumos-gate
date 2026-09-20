@@ -64,7 +64,7 @@ compare_edges(const struct provenance_edge *left,
 }
 
 static struct function_context *
-make_context(struct function_info *function)
+make_context_kind(struct function_info *function, bool root)
 {
 	struct semantic_state *state = NULL;
 	struct function_context *context = NULL;
@@ -74,9 +74,33 @@ make_context(struct function_info *function)
 	context_collection_create(function);
 	error = context_empty_state_intern(function, &state, &existed);
 	check(error == 0 && !existed, "create semantic state");
-	error = context_create(function, NULL, state, &context, &existed);
+	if (root) {
+		error = context_root_create(function, NULL, state, &context,
+		    &existed);
+	} else {
+		error = context_create(function, NULL, state, &context, &existed);
+	}
 	check(error == 0 && !existed, "create function context");
 	return (context);
+}
+
+static struct function_context *
+make_context(struct function_info *function)
+{
+	return (make_context_kind(function, false));
+}
+
+static void
+add_edge(struct function_context *callee, struct function_context *caller,
+    void *instruction)
+{
+	struct provenance_edge *edge;
+	bool existed;
+	int error;
+
+	error = provenance_edge_create(callee, caller, instruction, &edge,
+	    &existed);
+	check(error == 0 && !existed, "add traversal provenance edge");
 }
 
 static void
@@ -155,9 +179,106 @@ test_provenance_edges(void)
 	context_collection_free(&callee_function);
 }
 
+struct root_call_results {
+	struct function_context *first_root;
+	struct instruction *first_instruction;
+	struct function_context *second_root;
+	struct instruction *second_instruction;
+	size_t first_count;
+	size_t second_count;
+	size_t unexpected_count;
+};
+
+static void
+record_root_call(struct function_context *context,
+    struct instruction *instruction, void *data_arg)
+{
+	struct root_call_results *results = data_arg;
+
+	if (context == results->first_root &&
+	    instruction == results->first_instruction) {
+		results->first_count++;
+	} else if (context == results->second_root &&
+	    instruction == results->second_instruction) {
+		results->second_count++;
+	} else {
+		results->unexpected_count++;
+	}
+}
+
+static void
+test_root_call_traversal(void)
+{
+	struct function_info target_function = { 0 };
+	struct function_info left_function = { 0 };
+	struct function_info right_function = { 0 };
+	struct function_info first_root_function = { 0 };
+	struct function_info second_root_function = { 0 };
+	struct function_context *target;
+	struct function_context *left;
+	struct function_context *right;
+	struct function_context *first_root;
+	struct function_context *second_root;
+	struct root_call_results results;
+	char target_from_left;
+	char target_from_right;
+	char recursive_left;
+	char recursive_right;
+	char first_root_call;
+	char second_root_call;
+	bool found;
+	int error;
+
+	target = make_context(&target_function);
+	left = make_context(&left_function);
+	right = make_context(&right_function);
+	first_root = make_context_kind(&first_root_function, true);
+	second_root = make_context_kind(&second_root_function, true);
+
+	add_edge(target, left, &target_from_left);
+	add_edge(target, right, &target_from_right);
+	add_edge(left, right, &recursive_left);
+	add_edge(right, left, &recursive_right);
+	add_edge(left, first_root, &first_root_call);
+	add_edge(right, first_root, &first_root_call);
+	add_edge(right, second_root, &second_root_call);
+
+	results = (struct root_call_results) {
+		.first_root = first_root,
+		.first_instruction = (struct instruction *)&first_root_call,
+		.second_root = second_root,
+		.second_instruction = (struct instruction *)&second_root_call
+	};
+	error = provenance_for_each_root_call(target, record_root_call, &results,
+	    &found);
+	check(error == 0, "traverse converging recursive provenance");
+	check(found, "find root calls through provenance");
+	check(results.first_count == 1,
+	    "deduplicate root call reached by converging paths");
+	check(results.second_count == 1, "visit distinct root call");
+	check(results.unexpected_count == 0, "visit only expected root calls");
+
+	found = true;
+	error = provenance_for_each_root_call(first_root, record_root_call,
+	    &results, &found);
+	check(error == 0, "traverse context without incoming provenance");
+	check(!found, "report no root call for isolated root context");
+	check(context_count(&target_function) == 1 &&
+	    context_count(&left_function) == 1 &&
+	    context_count(&right_function) == 1,
+	    "provenance traversal does not add semantic contexts");
+
+	context_collection_free(&second_root_function);
+	context_collection_free(&first_root_function);
+	context_collection_free(&right_function);
+	context_collection_free(&left_function);
+	context_collection_free(&target_function);
+}
+
 int
 main(void)
 {
 	test_provenance_edges();
+	test_root_call_traversal();
 	return (failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE);
 }

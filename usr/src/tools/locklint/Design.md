@@ -1382,14 +1382,15 @@ produce a definite warning; a mixture of satisfying and failing contexts
 produces a conditional warning.  Synthetic-root assumptions are excluded.
 Observations first aggregate by exact function context and assertion
 instruction.  Each aggregate then walks incoming context-provenance edges
-backward until it reaches calls made by synthetic roots.  A per-walk AVL set
-of context pointers bounds recursive and mutually recursive provenance
-cycles.  Findings aggregate again by originating call and assertion, so a
-call with only failing observations is definite while one with satisfying
-and failing observations is conditional.  The primary warning identifies the
-originating call and an `info()` note identifies the assertion.  If a concrete
-context has no recoverable root provenance, the assertion source remains the
-diagnostic fallback.
+backward through the provenance module until it reaches calls made by
+synthetic roots.  A per-walk AVL set of context pointers bounds recursive and
+mutually recursive provenance cycles, while a separate root-call set removes
+duplicates introduced by converging paths.  Findings aggregate again by
+originating call and assertion, so a call with only failing observations is
+definite while one with satisfying and failing observations is conditional.
+The primary warning identifies the originating call and an `info()` note
+identifies the assertion.  If a concrete context has no recoverable root
+provenance, the assertion source remains the diagnostic fallback.
 
 Scalar argument values are not part of function-context identity.  If an
 untracked scalar controls whether a wrapper establishes the asserted state,
@@ -2053,7 +2054,7 @@ competition underflow, conditional protection, declared effects and order,
 invalid assumptions, lock ownership and mode errors, held-on-return state,
 observed deadlocks, read-only visibility, unprotected access, and missing
 visibility objects.  Suppression, machine-readable output, and bounded
-predecessor or call-chain witnesses remain future work.
+intermediate-frame rendering remain optional future work.
 
 ## Important functions by subsystem
 
@@ -2540,11 +2541,10 @@ areas include:
 - interprocedural propagation of relationships between scalar return values
   and conditional lock effects;
 - recursive mutex and rwlock-reader hold counts;
-- caller-site provenance for condition waits reached through callees;
 - a swappable-wait policy that diagnoses unrelated locks held across
   `cv_wait_sig_swap()` and `cv_wait_sig_swap_core()`; and
-- diagnostic suppressions, machine-readable output, and bounded provenance
-  witnesses.
+- diagnostic suppressions, machine-readable output, and optional
+  intermediate-frame rendering.
 
 These limitations should remain visible here as the implementation evolves.
 When a limitation is removed, its replacement design, invariants, and action

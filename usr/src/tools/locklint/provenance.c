@@ -40,6 +40,107 @@ compare_edges(const void *left_arg, const void *right_arg)
 	return (AVL_PCMP(left->call_instruction, right->call_instruction));
 }
 
+struct context_visit {
+	struct function_context *context;
+	struct context_visit *next;
+	avl_node_t by_context;
+};
+
+struct root_call {
+	struct function_context *context;
+	struct instruction *instruction;
+	avl_node_t by_call;
+};
+
+static int
+compare_context_visits(const void *left_arg, const void *right_arg)
+{
+	const struct context_visit *left = left_arg;
+	const struct context_visit *right = right_arg;
+
+	return (AVL_PCMP(left->context, right->context));
+}
+
+static int
+compare_root_calls(const void *left_arg, const void *right_arg)
+{
+	const struct root_call *left = left_arg;
+	const struct root_call *right = right_arg;
+	int result;
+
+	result = AVL_PCMP(left->context, right->context);
+	if (result != 0)
+		return (result);
+	return (AVL_PCMP(left->instruction, right->instruction));
+}
+
+static int
+record_context_visit(avl_tree_t *visited, struct context_visit **work,
+    struct function_context *context)
+{
+	struct context_visit key = {
+		.context = context
+	};
+	struct context_visit *visit;
+	avl_index_t where;
+
+	visit = avl_find(visited, &key, &where);
+	if (visit != NULL)
+		return (0);
+	visit = calloc(1, sizeof (*visit));
+	if (visit == NULL)
+		return (ENOMEM);
+	visit->context = context;
+	visit->next = *work;
+	*work = visit;
+	avl_insert(visited, visit, where);
+	return (0);
+}
+
+static int
+record_root_call(avl_tree_t *calls, struct function_context *context,
+    struct instruction *instruction)
+{
+	struct root_call key = {
+		.context = context,
+		.instruction = instruction
+	};
+	struct root_call *call;
+	avl_index_t where;
+
+	call = avl_find(calls, &key, &where);
+	if (call != NULL)
+		return (0);
+	call = calloc(1, sizeof (*call));
+	if (call == NULL)
+		return (ENOMEM);
+	*call = key;
+	avl_insert(calls, call, where);
+	return (0);
+}
+
+static void
+free_context_visits(avl_tree_t *visited)
+{
+	struct context_visit *visit;
+	void *cookie = NULL;
+
+	while ((visit = avl_destroy_nodes(visited, &cookie)) != NULL)
+		free(visit);
+	avl_destroy(visited);
+}
+
+static void
+free_root_calls(avl_tree_t *calls)
+{
+	struct root_call *call;
+	void *cookie = NULL;
+
+	while ((call = avl_destroy_nodes(calls, &cookie)) != NULL)
+		free(call);
+	avl_destroy(calls);
+}
+
 void
 provenance_edges_create(struct function_context *context)
 {
@@ -111,4 +212,58 @@ size_t
 provenance_edge_count(struct function_context *context)
 {
 	return (avl_numnodes(&context->provenance_edges));
+}
+
+/*
+ * Visit each distinct call made by a synthetic root which can reach a
+ * concrete context.  Context identity bounds recursive cycles, while the
+ * separate call set removes duplicates introduced by converging paths.
+ * Allocation is completed before callbacks begin.
+ */
+int
+provenance_for_each_root_call(struct function_context *context,
+    provenance_root_call_f callback, void *data, bool *found)
+{
+	struct context_visit *work = NULL;
+	struct root_call *call;
+	avl_tree_t visited;
+	avl_tree_t calls;
+	int error;
+
+	avl_create(&visited, compare_context_visits,
+	    sizeof (struct context_visit),
+	    offsetof(struct context_visit, by_context));
+	avl_create(&calls, compare_root_calls, sizeof (struct root_call),
+	    offsetof(struct root_call, by_call));
+	error = record_context_visit(&visited, &work, context);
+	while (error == 0 && work != NULL) {
+		struct context_visit *visit = work;
+		struct provenance_edge *edge;
+
+		work = visit->next;
+		for (edge = provenance_edge_first(visit->context); edge != NULL;
+		    edge = provenance_edge_next(visit->context, edge)) {
+			if (edge->caller_context->kind ==
+			    FUNCTION_CONTEXT_ROOT) {
+				error = record_root_call(&calls,
+				    edge->caller_context, edge->call_instruction);
+			} else {
+				error = record_context_visit(&visited, &work,
+				    edge->caller_context);
+			}
+			if (error != 0)
+				break;
+		}
+	}
+	free_context_visits(&visited);
+	if (error != 0) {
+		free_root_calls(&calls);
+		return (error);
+	}
+	*found = !avl_is_empty(&calls);
+	for (call = avl_first(&calls); call != NULL;
+	    call = AVL_NEXT(&calls, call))
+		callback(call->context, call->instruction, data);
+	free_root_calls(&calls);
+	return (0);
 }

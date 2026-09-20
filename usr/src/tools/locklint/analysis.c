@@ -143,9 +143,6 @@ struct analysis {
 	struct analysis_measurements measurements;
 };
 
-typedef void (*root_call_f)(struct function_context *, struct instruction *,
-    void *);
-
 static int context_access_identity(struct analysis *,
     const struct function_context *, const struct locklint_access *,
     struct lock_identity **, bool *, bool *);
@@ -161,7 +158,8 @@ static struct symbol *function_formal_argument(const struct function_info *,
 static void collect_assumed_regions(void);
 static void record_semantic_state(struct analysis *, bool);
 static const char *function_name(const struct function_info *);
-static bool for_each_root_call(struct function_context *, root_call_f, void *);
+static bool for_each_root_call(struct function_context *,
+    provenance_root_call_f, void *);
 static bool context_has_analysis_root(struct function_context *);
 
 static bool
@@ -2361,85 +2359,20 @@ compare_declared_order_finding(const void *left_arg, const void *right_arg)
 	return (AVL_PCMP(left->violation, right->violation));
 }
 
-struct provenance_context_visit {
-	struct function_context *context;
-	struct provenance_context_visit *next;
-	avl_node_t by_context;
-};
-
-static int
-compare_provenance_context_visit(const void *left_arg, const void *right_arg)
-{
-	const struct provenance_context_visit *left = left_arg;
-	const struct provenance_context_visit *right = right_arg;
-
-	return (AVL_PCMP(left->context, right->context));
-}
-
-static bool
-record_provenance_context_visit(avl_tree_t *visited,
-    struct provenance_context_visit **work, struct function_context *context)
-{
-	struct provenance_context_visit key = {
-		.context = context
-	};
-	struct provenance_context_visit *visit;
-	avl_index_t where;
-
-	visit = avl_find(visited, &key, &where);
-	if (visit != NULL)
-		return (false);
-	visit = calloc(1, sizeof (*visit));
-	if (visit == NULL)
-		die("cannot allocate context provenance visit");
-	visit->context = context;
-	visit->next = *work;
-	*work = visit;
-	avl_insert(visited, visit, where);
-	return (true);
-}
-
 /*
  * Visit every synthetic-root call which can reach one concrete context.
- * Canonical context pointers form the visited key and bound recursive cycles.
+ * The provenance module owns graph traversal and duplicate suppression.
  */
 static bool
-for_each_root_call(struct function_context *context, root_call_f callback,
-    void *data)
+for_each_root_call(struct function_context *context,
+    provenance_root_call_f callback, void *data)
 {
-	struct provenance_context_visit *work = NULL;
-	avl_tree_t visited;
-	bool found = false;
+	bool found;
+	int error;
 
-	avl_create(&visited, compare_provenance_context_visit,
-	    sizeof (struct provenance_context_visit),
-	    offsetof(struct provenance_context_visit, by_context));
-	(void) record_provenance_context_visit(&visited, &work, context);
-	while (work != NULL) {
-		struct provenance_context_visit *visit = work;
-		struct provenance_edge *edge;
-
-		work = visit->next;
-		for (edge = provenance_edge_first(visit->context); edge != NULL;
-		    edge = provenance_edge_next(visit->context, edge)) {
-			if (edge->caller_context->kind ==
-			    FUNCTION_CONTEXT_ROOT) {
-				callback(edge->caller_context,
-				    edge->call_instruction, data);
-				found = true;
-				continue;
-			}
-			(void) record_provenance_context_visit(&visited, &work,
-			    edge->caller_context);
-		}
-	}
-	while (!avl_is_empty(&visited)) {
-		struct provenance_context_visit *visit = avl_first(&visited);
-
-		avl_remove(&visited, visit);
-		free(visit);
-	}
-	avl_destroy(&visited);
+	error = provenance_for_each_root_call(context, callback, data, &found);
+	if (error != 0)
+		die("cannot traverse context provenance: %s", strerror(error));
 	return (found);
 }
 
