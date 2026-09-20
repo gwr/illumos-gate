@@ -73,7 +73,7 @@ usage(FILE *stream)
 	    "[--check-locks] [--dump-parsed] [--dump-linearized] "
 	    "[--dump-accesses] [--dump-annotations] [--dump-events] "
 	    "[--dump-callgraph] [--dump-contexts] "
-	    "[sparse-options] file.c ...\n");
+	    "[compiler-options] file.c ...\n");
 }
 
 /*
@@ -325,6 +325,12 @@ main(int argc, char **argv)
 	if (check_locks || dump_contexts)
 		locklint_assertions_enable();
 	do_output = 0;
+	/*
+	 * Illumos uses signed one-bit fields as booleans in established
+	 * interfaces.  Accept them rather than letting Sparse's portability
+	 * diagnostic prevent lock analysis.
+	 */
+	Wone_bit_signed_bitfield = 0;
 	/*
 	 * Sparse's default warning cap is useful for broad checker runs.
 	 * Locklint diagnostics are a correctness result, so they must be

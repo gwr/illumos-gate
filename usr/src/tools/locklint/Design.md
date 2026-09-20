@@ -182,6 +182,11 @@ The main phases are:
 6. Emit other requested development dumps.  `--dump-all` includes the
    whole-program call-graph audit.
 
+Locklint is not a general Sparse command-line frontend.  Passing the compiler
+and preprocessing options needed to parse illumos translation units is
+required; preserving Sparse checker, warning, output, or diagnostic-option
+behavior is a non-goal.
+
 Locklint deliberately delays diagnostics until summaries stabilize.  A
 warning seen during an early pass could otherwise be invalidated by a later
 callee summary.
@@ -623,6 +628,9 @@ preprocessing input.  The optional `--compat=osll` mode also adds the
 historical `__lock_lint=1` symbol, selecting the same analyzer-specific source
 paths as OSLL while retaining an unambiguous identity for the new analyzer.
 Other `--compat` values are rejected by the locklint command-line layer.
+Locklint disables Sparse's signed one-bit bitfield diagnostic by default
+before initialization because established illumos interfaces use signed
+one-bit fields as booleans.
 The locklint command-line layer also collects repeatable `--cf` options before
 Sparse sees the argument vector.  Their files are not read until all calls to
 the Sparse frontend have completed.
@@ -2053,7 +2061,7 @@ predecessor or call-chain witnesses remain future work.
 
 | Function | Responsibility |
 | --- | --- |
-| `options()` | Consume locklint-specific options while preserving Sparse options |
+| `options()` | Consume locklint-specific options while retaining compiler and preprocessing arguments needed by Sparse |
 | `process_symbols()` | Expand symbols, create entrypoints, add functions to the callgraph, and emit requested dumps |
 | `main()` | Register hooks, drive per-file parsing/resolution, and start program-wide analysis |
 | `locklint_init_include_path()` | Replace Sparse's default include-path initialization |

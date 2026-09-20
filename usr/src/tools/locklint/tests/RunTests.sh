@@ -96,6 +96,11 @@ require_empty()
 run_capture "parsed smoke" parsed.out "$LOCKLINT" --dump-parsed smoke.c
 require_match "parsed smoke" smoke parsed.out
 
+run_capture "signed one-bit field" signed-one-bit-field.out \
+    "$LOCKLINT" --dump-parsed signed-one-bit-field.c
+require_match "signed one-bit field" signed_one_bit_value \
+    signed-one-bit-field.out
+
 run_capture "linearized smoke" linearized.out \
     "$LOCKLINT" --dump-linearized smoke.c
 if ! grep -Eq 'load|store' linearized.out; then
