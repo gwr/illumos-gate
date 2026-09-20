@@ -97,6 +97,7 @@ LOCAL_OBJS = \
 	context.o \
 	dependency.o \
 	provenance.o \
+	timing.o \
 	worklist.o \
 	avl.o
 

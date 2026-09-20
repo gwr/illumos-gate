@@ -38,6 +38,7 @@
 #include "parse.h"
 #include "scope.h"
 #include "symbol.h"
+#include "timing.h"
 
 static bool dump_parsed;
 static bool dump_linearized;
@@ -48,6 +49,7 @@ static bool dump_callgraph;
 static bool dump_contexts;
 static bool check_locks;
 static bool compat_osll;
+static bool show_times;
 
 struct command_file {
 	const char *path;
@@ -73,6 +75,7 @@ usage(FILE *stream)
 	    "[--check-locks] [--dump-parsed] [--dump-linearized] "
 	    "[--dump-accesses] [--dump-annotations] [--dump-events] "
 	    "[--dump-callgraph] [--dump-contexts] "
+	    "[--times] "
 	    "[compiler-options] file.c ...\n");
 }
 
@@ -120,6 +123,8 @@ options(int argc, char **argv)
 			dump_callgraph = true;
 		} else if (strcmp(argv[i], "--dump-contexts") == 0) {
 			dump_contexts = true;
+		} else if (strcmp(argv[i], "--times") == 0) {
+			show_times = true;
 		} else if (strcmp(argv[i], "--dump-all") == 0) {
 			dump_parsed = true;
 			dump_linearized = true;
@@ -280,12 +285,16 @@ static void
 register_translation_unit_declarations(struct translation_unit *tu,
     struct symbol_list *symbols)
 {
+	timing_begin(TIMING_INPUT_IDENTITIES);
 	locklint_translation_unit_register(tu, symbols);
-	locklint_register_command_names(symbols);
 	locklint_translation_unit_register(tu, file_scope->symbols);
-	locklint_register_command_names(file_scope->symbols);
 	locklint_translation_unit_register(tu, global_scope->symbols);
+	timing_end(TIMING_INPUT_IDENTITIES);
+	timing_begin(TIMING_INPUT_COMMAND_NAMES);
+	locklint_register_command_names(symbols);
+	locklint_register_command_names(file_scope->symbols);
 	locklint_register_command_names(global_scope->symbols);
+	timing_end(TIMING_INPUT_COMMAND_NAMES);
 }
 
 /*
@@ -313,11 +322,14 @@ main(int argc, char **argv)
 	struct translation_unit *tu;
 	char *file;
 
+	timing_start();
 	argc = options(argc, argv);
 	if (argc == 1) {
 		usage(stderr);
 		return (EXIT_FAILURE);
 	}
+	if (show_times)
+		timing_enable();
 
 	preprocessor_compatibility_enable();
 	if (dump_annotations || dump_events || check_locks || dump_contexts)
@@ -345,6 +357,7 @@ main(int argc, char **argv)
 	 */
 	tu = locklint_translation_unit_begin("<Sparse initialization>");
 	symbols = sparse_initialize(argc, argv, &filelist);
+	timing_end(TIMING_INITIALIZE);
 	/*
 	 * Sparse parses a forced include once during initialization rather than
 	 * once per explicit input.  Sharing its internal-linkage declarations
@@ -356,12 +369,16 @@ main(int argc, char **argv)
 		die("multiple inputs with initialization-time internal "
 		    "declarations are not supported");
 	register_translation_unit_declarations(tu, symbols);
+	timing_begin(TIMING_INPUT_EVIDENCE);
 	if (dump_annotations || dump_events || check_locks || dump_contexts)
 		locklint_resolve_annotations(symbols);
 	if (check_locks || dump_callgraph || dump_contexts)
 		callgraph_record_pointer_evidence(tu, symbols,
 		    dump_callgraph);
+	timing_end(TIMING_INPUT_EVIDENCE);
+	timing_begin(TIMING_INPUT_SYMBOLS);
 	process_symbols(tu, symbols);
+	timing_end(TIMING_INPUT_SYMBOLS);
 	FOR_EACH_PTR(filelist, file) {
 		/*
 		 * Hooks run while Sparse parses the file, so establish provenance
@@ -370,27 +387,40 @@ main(int argc, char **argv)
 		 * resolution must finish here: parsing the next input removes this
 		 * file scope and may replace the visible declaration chains.
 		 */
+		timing_begin(TIMING_INPUT_PARSE);
 		tu = locklint_translation_unit_begin(file);
 		symbols = locklint_sparse(file);
+		timing_end(TIMING_INPUT_PARSE);
 		register_translation_unit_declarations(tu, symbols);
+		timing_begin(TIMING_INPUT_EVIDENCE);
 		if (dump_annotations || dump_events || check_locks ||
 		    dump_contexts)
 			locklint_resolve_annotations(symbols);
 		if (check_locks || dump_callgraph || dump_contexts)
 			callgraph_record_pointer_evidence(tu, symbols,
 			    dump_callgraph);
+		timing_end(TIMING_INPUT_EVIDENCE);
+		timing_begin(TIMING_INPUT_SYMBOLS);
 		process_symbols(tu, symbols);
+		timing_end(TIMING_INPUT_SYMBOLS);
 	} END_FOR_EACH_PTR(file);
+	timing_begin(TIMING_INPUT_CLEANUP);
 	clear_token_alloc();
+	timing_end(TIMING_INPUT_CLEANUP);
+	timing_begin(TIMING_COMMANDS);
 	if (!parse_command_files()) {
 		locklint_access_cleanup();
 		return (EXIT_FAILURE);
 	}
+	timing_end(TIMING_COMMANDS);
 	if (check_locks || dump_callgraph || dump_contexts)
 		locklint_check_all(check_locks, dump_callgraph, dump_contexts);
+	timing_begin(TIMING_FINAL_OUTPUT);
 	if (dump_annotations)
 		locklint_show_annotations(stdout);
 	locklint_access_cleanup();
+	timing_end(TIMING_FINAL_OUTPUT);
+	timing_report(stderr);
 
 	return (has_error ? EXIT_FAILURE : EXIT_SUCCESS);
 }

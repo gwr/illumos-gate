@@ -182,6 +182,21 @@ The main phases are:
 6. Emit other requested development dumps.  `--dump-all` includes the
    whole-program call-graph audit.
 
+The optional `--times` report uses process-global accumulated timers.  It
+separates initialization; frontend parsing; object-identity, command-name,
+annotation and pointer-evidence, symbol, and token-cleanup input work; command
+files; analysis setup; the context fixed point; each post-fixed-point
+diagnostic pass; collection measurement; analysis cleanup; and final
+output/cleanup.  Alternating work across translation units accumulates in the
+corresponding phase without passing timer objects through parser or analyzer
+interfaces.
+
+`timing.c` uses `clock_gettime(CLOCK_MONOTONIC)` so wall-clock adjustments
+cannot change elapsed durations.  It writes seconds to three decimal places
+on standard error, keeping diagnostics and requested dump streams unchanged.
+The total measures directly from program start through final reporting rather
+than summing rounded phase output.
+
 Locklint is not a general Sparse command-line frontend.  Passing the compiler
 and preprocessing options needed to parse illumos translation units is
 required; preserving Sparse checker, warning, output, or diagnostic-option
@@ -2066,6 +2081,16 @@ intermediate-frame rendering remain optional future work.
 | `process_symbols()` | Expand symbols, create entrypoints, add functions to the callgraph, and emit requested dumps |
 | `main()` | Register hooks, drive per-file parsing/resolution, and start program-wide analysis |
 | `locklint_init_include_path()` | Replace Sparse's default include-path initialization |
+
+### Phase timing: `timing.c`
+
+| Function | Responsibility |
+| --- | --- |
+| `timing_start()` | Capture program-start monotonic time |
+| `timing_enable()` | Enable global timing after `--times` option processing |
+| `timing_begin()` | Start one process-global phase interval |
+| `timing_end()` | Accumulate one process-global phase interval |
+| `timing_report()` | Emit phase and total seconds on standard error |
 
 ### Access identity: `access.c`
 

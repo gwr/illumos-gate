@@ -52,6 +52,7 @@
 #include "lock_order.h"
 #include "provenance.h"
 #include "symbol.h"
+#include "timing.h"
 #include "worklist.h"
 
 #define	DISTRIBUTION_POWER_BUCKETS	12
@@ -5122,23 +5123,46 @@ analysis_run(struct lock_identity_collection *lock_identities, FILE *stream)
 	struct point_state *point_state;
 
 	worklist_create(&analysis.worklist);
+	timing_begin(TIMING_FIXED_POINT);
 	collect_assumed_regions();
 	seed_initial_contexts(&analysis);
 	while ((point_state =
 	    worklist_point_state_dequeue(&analysis.worklist)) != NULL)
 		process_point(&analysis, point_state);
+	timing_end(TIMING_FIXED_POINT);
+	timing_begin(TIMING_DIAG_DECLARED_EFFECTS);
 	diagnose_declared_lock_effects(&analysis);
+	timing_end(TIMING_DIAG_DECLARED_EFFECTS);
+	timing_begin(TIMING_DIAG_LOCK_TRANSITIONS);
 	diagnose_lock_transitions(&analysis);
+	timing_end(TIMING_DIAG_LOCK_TRANSITIONS);
+	timing_begin(TIMING_DIAG_DECLARED_ORDER);
 	diagnose_declared_lock_order(&analysis);
+	timing_end(TIMING_DIAG_DECLARED_ORDER);
+	timing_begin(TIMING_DIAG_LOCK_ASSERTIONS);
 	diagnose_lock_assertions(&analysis);
+	timing_end(TIMING_DIAG_LOCK_ASSERTIONS);
+	timing_begin(TIMING_DIAG_COMPETITION_UNDERFLOW);
 	diagnose_competition_underflow();
+	timing_end(TIMING_DIAG_COMPETITION_UNDERFLOW);
+	timing_begin(TIMING_DIAG_COMPETITION_EFFECTS);
 	diagnose_declared_competition_effects();
+	timing_end(TIMING_DIAG_COMPETITION_EFFECTS);
+	timing_begin(TIMING_DIAG_COMPETITION_ASSERTIONS);
 	diagnose_competition_assertions();
+	timing_end(TIMING_DIAG_COMPETITION_ASSERTIONS);
+	timing_begin(TIMING_DIAG_PROTECTED_ACCESSES);
 	diagnose_protected_accesses(&analysis);
+	timing_end(TIMING_DIAG_PROTECTED_ACCESSES);
+	timing_begin(TIMING_DIAG_ASSUMED_CALLS);
 	diagnose_assumed_calls(&analysis);
 	diagnose_invalid_assumed_regions();
+	timing_end(TIMING_DIAG_ASSUMED_CALLS);
+	timing_begin(TIMING_DIAG_LOCKS_ON_RETURN);
 	diagnose_locks_on_return(&analysis);
+	timing_end(TIMING_DIAG_LOCKS_ON_RETURN);
 	if (stream != NULL) {
+		timing_begin(TIMING_MEASUREMENT);
 		analysis.measurements.lock_identities =
 		    lock_identity_count(analysis.lock_identities);
 		measure_lock_identities(&analysis);
@@ -5147,5 +5171,6 @@ analysis_run(struct lock_identity_collection *lock_identities, FILE *stream)
 		    sizeof (struct lock_identity));
 		measure_collections(&analysis);
 		show_counts(stream, &analysis);
+		timing_end(TIMING_MEASUREMENT);
 	}
 }

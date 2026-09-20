@@ -27,12 +27,14 @@
 #include "check.h"
 #include "lock_identity.h"
 #include "lock_order.h"
+#include "timing.h"
 
 void
 locklint_check_all(bool check_locks, bool show_callgraph, bool show_contexts)
 {
 	struct lock_identity_collection lock_identities;
 
+	timing_begin(TIMING_ANALYSIS_SETUP);
 	callgraph_resolve();
 	lock_identity_collection_create(&lock_identities);
 	if (check_locks) {
@@ -41,12 +43,18 @@ locklint_check_all(bool check_locks, bool show_callgraph, bool show_contexts)
 	}
 	if (show_callgraph)
 		callgraph_dump(stdout);
+	timing_end(TIMING_ANALYSIS_SETUP);
 	if (check_locks || show_contexts)
 		analysis_run(&lock_identities, show_contexts ? stdout : NULL);
-	if (check_locks) {
+	timing_begin(TIMING_DIAG_OBSERVED_ORDER);
+	if (check_locks)
 		locklint_order_report_observed_cycles();
+	timing_end(TIMING_DIAG_OBSERVED_ORDER);
+	timing_begin(TIMING_ANALYSIS_CLEANUP);
+	if (check_locks) {
 		locklint_order_cleanup();
 	}
 	callgraph_cleanup();
 	lock_identity_collection_free(&lock_identities);
+	timing_end(TIMING_ANALYSIS_CLEANUP);
 }

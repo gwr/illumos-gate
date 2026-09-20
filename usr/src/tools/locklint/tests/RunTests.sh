@@ -96,6 +96,23 @@ require_empty()
 run_capture "parsed smoke" parsed.out "$LOCKLINT" --dump-parsed smoke.c
 require_match "parsed smoke" smoke parsed.out
 
+run_capture "phase timing" times.out "$LOCKLINT" --times --dump-parsed smoke.c
+for phase in initialize input-parse input-identities input-command-names \
+    input-evidence \
+    input-symbols input-cleanup commands analysis-setup fixed-point \
+    diag-decl-effects \
+    diag-transitions diag-decl-order diag-assertions diag-comp-underflow \
+    diag-comp-effects diag-comp-assert diag-protected diag-assumed \
+    diag-returns diag-observed-order measurement analysis-cleanup \
+    final-output total
+do
+	require_match "phase timing $phase" \
+	    "^time $phase *[0-9][0-9]*\\.[0-9]\\{3\\}$" times.out
+done
+if [ "$(grep -c '^time ' times.out)" -ne 25 ]; then
+	fail "phase timing: expected exactly twenty-five timing lines"
+fi
+
 run_capture "signed one-bit field" signed-one-bit-field.out \
     "$LOCKLINT" --dump-parsed signed-one-bit-field.c
 require_match "signed one-bit field" signed_one_bit_value \
