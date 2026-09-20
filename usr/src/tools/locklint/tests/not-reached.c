@@ -26,6 +26,7 @@ typedef struct kmutex {
 #endif
 
 struct protected_state {
+	kmutex_t gate;
 	kmutex_t lock;
 	int value;
 };
@@ -35,6 +36,7 @@ _NOTE(MUTEX_PROTECTS_DATA(protected_state::lock, protected_state::value))
 #ifndef __lock_lint
 extern void mutex_enter(kmutex_t *);
 extern void mutex_exit(kmutex_t *);
+extern int mutex_tryenter(kmutex_t *);
 #endif
 
 static void
@@ -42,6 +44,29 @@ access_after_not_reached(struct protected_state *state)
 {
 	_NOTE(NOT_REACHED)
 	state->value = 1;
+}
+
+static void
+acquire_target(struct protected_state *state)
+{
+	mutex_enter(&state->lock);
+}
+
+static void
+acquire_if_gate_available(struct protected_state *state)
+{
+	if (mutex_tryenter(&state->gate)) {
+		acquire_target(state);
+		mutex_exit(&state->gate);
+	}
+}
+
+static void
+call_with_gate_held(struct protected_state *state)
+{
+	mutex_enter(&state->gate);
+	acquire_if_gate_available(state);
+	mutex_exit(&state->gate);
 }
 
 static void

@@ -4491,7 +4491,7 @@ observe_caller_visible_returns(struct analysis *analysis,
 				die("cannot identify caller-visible return lock: %s",
 				    strerror(error));
 			if (!existed)
-				die("caller-visible return lock was not observed");
+				continue;
 			if (context_state_lock_modes(context->entry_state,
 			    identity) != 0)
 				continue;

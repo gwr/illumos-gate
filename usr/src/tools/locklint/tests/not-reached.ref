@@ -1,1 +1,1 @@
-../locklint: not-reached.c:54: warning: locklint: protected member 'value' modified without holding 'lock' [unprotected-access]
+../locklint: not-reached.c:79: warning: locklint: protected member 'value' modified without holding 'lock' [unprotected-access]

@@ -2510,8 +2510,9 @@ The current implementation relies on these invariants:
     downgrades map writer-held entry to reader-held exit on every return.
 47. Direct and transitively propagated acquisitions of undeclared
     caller-visible locks are checked across every root-reachable ordinary
-    context after normalization to one function-relative identity; assertion
-    refinements are not acquisitions.
+    context after normalization to one function-relative identity.  A context
+    that never reaches the candidate acquisition contributes no observation;
+    assertion refinements are not acquisitions.
 
 Changes that invalidate one of these invariants should update this document
 and add a focused regression test.

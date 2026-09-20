@@ -1080,7 +1080,7 @@ fi
 run_capture "not reached diagnostics" not-reached-diagnostics.out \
     "$LOCKLINT" --check-locks not-reached.c
 require_match "live unlocked path diagnostic" \
-    "not-reached.c:54:14: warning: locklint: protected member 'value' modified without holding 'lock' \\[unprotected-access\\]" \
+    "not-reached.c:79:14: warning: locklint: protected member 'value' modified without holding 'lock' \\[unprotected-access\\]" \
     not-reached-diagnostics.out
 if [ "$(grep -c 'warning:' not-reached-diagnostics.out)" -ne 1 ]; then
 	fail "not reached diagnostics: expected exactly one warning"
