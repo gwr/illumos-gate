@@ -1832,10 +1832,15 @@ in each entry, so several release declarations add contexts linearly rather
 than forming a Cartesian product.  Every exact exit must have the target
 unheld.  Duplicate target/mode entries reuse the same canonical context.
 
+Declared upgrades start reader-held and must return writer-held.  Declared
+downgrades start writer-held and must return reader-held.  A mode set
+containing both the required output and another possibility is a conditional
+failure rather than a definite failure.  Thus a checked `rw_tryupgrade()`
+whose failure path cannot return can satisfy an upgrade declaration, while an
+ignored result cannot.
+
 Declarations remain validation-only.  They neither manufacture lock effects
-nor suppress inferred effects.  Upgrade and downgrade validation will use
-contract entries with their required reader-held and writer-held input modes;
-those declarations are not yet validated by the caller-context engine.
+nor suppress inferred effects.
 
 ## Lock-order analysis
 
@@ -2474,6 +2479,8 @@ The current implementation relies on these invariants:
 45. A declared release is valid only when every exact exit from each
     mutex-held, reader-held, and writer-held contract entry leaves the target
     unheld.
+46. Declared upgrades map reader-held entry to writer-held exit, and declared
+    downgrades map writer-held entry to reader-held exit on every return.
 
 Changes that invalidate one of these invariants should update this document
 and add a focused regression test.

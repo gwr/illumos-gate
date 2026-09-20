@@ -186,6 +186,33 @@ declared_acquisition_mode(enum locklint_declared_lock_effect effect,
 	}
 }
 
+static bool
+declared_transition_modes(enum locklint_declared_lock_effect effect,
+    unsigned int *entry_mode, unsigned int *exit_mode,
+    const char **description)
+{
+	switch (effect) {
+	case LOCKLINT_DECLARED_LOCK_UPGRADED:
+		if (entry_mode != NULL)
+			*entry_mode = LOCKLINT_MODE_READER;
+		if (exit_mode != NULL)
+			*exit_mode = LOCKLINT_MODE_WRITER;
+		if (description != NULL)
+			*description = "upgrade";
+		return (true);
+	case LOCKLINT_DECLARED_LOCK_DOWNGRADED:
+		if (entry_mode != NULL)
+			*entry_mode = LOCKLINT_MODE_WRITER;
+		if (exit_mode != NULL)
+			*exit_mode = LOCKLINT_MODE_READER;
+		if (description != NULL)
+			*description = "downgrade";
+		return (true);
+	default:
+		return (false);
+	}
+}
+
 static struct instruction *
 first_live_instruction(struct basic_block *block)
 {
@@ -1508,6 +1535,7 @@ seed_effect_contracts(struct analysis *analysis,
 			const char *description;
 			unsigned int mode;
 			bool acquisition;
+			bool transition;
 
 			if (instruction->bb == NULL ||
 			    !locklint_get_declared_lock_effect(function->tu,
@@ -1515,8 +1543,11 @@ seed_effect_contracts(struct analysis *analysis,
 				continue;
 			acquisition = declared_acquisition_mode(effect, &mode,
 			    &description);
+			transition = declared_transition_modes(effect, &mode,
+			    NULL, NULL);
 			if (!acquisition &&
-			    effect != LOCKLINT_DECLARED_LOCK_RELEASED)
+			    effect != LOCKLINT_DECLARED_LOCK_RELEASED &&
+			    !transition)
 				continue;
 			if (bindings == NULL) {
 				error = binding_environment_intern(
@@ -1561,7 +1592,8 @@ seed_effect_contracts(struct analysis *analysis,
 			if (acquisition) {
 				seed_effect_context(analysis, function, bindings,
 				    state);
-			} else {
+			} else if (effect ==
+			    LOCKLINT_DECLARED_LOCK_RELEASED) {
 				for (mode = LOCKLINT_MODE_MUTEX;
 				    mode <= LOCKLINT_MODE_WRITER; mode <<= 1) {
 					struct semantic_state *held;
@@ -1575,6 +1607,17 @@ seed_effect_contracts(struct analysis *analysis,
 					seed_effect_context(analysis, function,
 					    bindings, held);
 				}
+			} else {
+				struct semantic_state *held;
+
+				error = context_state_set_lock(function, state,
+				    identity, mode, &held, &existed);
+				if (error != 0)
+					die("cannot create transition contract "
+					    "state: %s", strerror(error));
+				record_semantic_state(analysis, existed);
+				seed_effect_context(analysis, function, bindings,
+				    held);
 			}
 		} END_FOR_EACH_PTR(instruction);
 	} END_FOR_EACH_PTR(block);
@@ -1718,6 +1761,71 @@ diagnose_declared_release(struct analysis *analysis,
 }
 
 static void
+diagnose_declared_transition(struct analysis *analysis,
+    struct function_info *function, struct instruction *instruction,
+    enum locklint_declared_lock_effect effect,
+    const struct locklint_access *access)
+{
+	struct function_context *context;
+	struct lock_identity *identity;
+	const char *description;
+	char *name;
+	unsigned int entry_mode;
+	unsigned int exit_mode;
+	size_t valid = 0;
+	size_t invalid = 0;
+	bool composed;
+	bool existed;
+	int error;
+
+	if (!declared_transition_modes(effect, &entry_mode, &exit_mode,
+	    &description))
+		return;
+	for (context = avl_first(&function->contexts.contexts);
+	    context != NULL;
+	    context = AVL_NEXT(&function->contexts.contexts, context)) {
+		struct context_exit *exit;
+
+		if (context->kind != FUNCTION_CONTEXT_EFFECT_CONTRACT)
+			continue;
+		error = context_access_identity(analysis, context, access,
+		    &identity, &existed, &composed);
+		if (error != 0)
+			die("cannot identify declared transition diagnostic: %s",
+			    strerror(error));
+		if (!existed)
+			die("declared transition identity was not seeded");
+		if (context_state_lock_modes(context->entry_state, identity) !=
+		    entry_mode)
+			continue;
+		SLIST_FOREACH(exit, &context->exits, link) {
+			unsigned int modes =
+			    context_state_lock_modes(exit->state, identity);
+
+			if ((modes & exit_mode) != 0)
+				valid++;
+			if (modes != exit_mode)
+				invalid++;
+		}
+		if (SLIST_EMPTY(&context->exits))
+			invalid++;
+	}
+	name = locklint_access_name(access);
+	if (invalid != 0 && valid == 0) {
+		locklint_warning(LOCKLINT_DIAG_DECLARED_LOCK_EFFECT,
+		    instruction->pos, "function '%s' does not establish "
+		    "declared %s of lock '%s'", function_name(function),
+		    description, name);
+	} else if (invalid != 0) {
+		locklint_warning(LOCKLINT_DIAG_DECLARED_LOCK_EFFECT,
+		    instruction->pos, "declared %s of lock '%s' is not "
+		    "established on every return from '%s'", description,
+		    name, function_name(function));
+	}
+	free(name);
+}
+
+static void
 diagnose_declared_lock_effects(struct analysis *analysis)
 {
 	struct callgraph_iter *iterator;
@@ -1745,6 +1853,13 @@ diagnose_declared_lock_effects(struct analysis *analysis)
 				    LOCKLINT_DECLARED_LOCK_RELEASED) {
 					diagnose_declared_release(analysis,
 					    function, instruction, &access);
+				} else if (effect ==
+				    LOCKLINT_DECLARED_LOCK_UPGRADED ||
+				    effect ==
+				    LOCKLINT_DECLARED_LOCK_DOWNGRADED) {
+					diagnose_declared_transition(analysis,
+					    function, instruction, effect,
+					    &access);
 				} else {
 					diagnose_declared_acquisition(analysis,
 					    function, instruction, effect,

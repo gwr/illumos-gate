@@ -587,6 +587,22 @@ run_capture "declared release effect diagnostics" \
 compare "declared release effect diagnostics" \
     declared-releases.ref declared-releases.out
 
+run_capture "declared upgrade effect diagnostics" \
+    rwlock-transition-effects-1.out "$LOCKLINT" --check-locks \
+    -DRWLOCK_TRANSITION_EFFECT_VARIANT=1 rwlock-transition-effects.c
+grep '\[declared-lock-effect\]' rwlock-transition-effects-1.out > \
+    rwlock-transition-contracts-1.out
+compare "declared upgrade effect diagnostics" \
+    rwlock-transition-contracts-1.ref rwlock-transition-contracts-1.out
+
+run_capture "declared downgrade effect diagnostics" \
+    rwlock-transition-effects-2.out "$LOCKLINT" --check-locks \
+    -DRWLOCK_TRANSITION_EFFECT_VARIANT=2 rwlock-transition-effects.c
+grep '\[declared-lock-effect\]' rwlock-transition-effects-2.out > \
+    rwlock-transition-contracts-2.out
+compare "declared downgrade effect diagnostics" \
+    rwlock-transition-contracts-2.ref rwlock-transition-contracts-2.out
+
 run_capture "user rwlock core state" rwlock-core-user.out \
     "$LOCKLINT" --check-locks -DLOCKLINT_RWLOCK_CORE_ONLY rwlock.c
 compare "user rwlock core state" rwlock-core.ref rwlock-core-user.out
