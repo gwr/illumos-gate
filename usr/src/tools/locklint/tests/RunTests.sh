@@ -723,10 +723,10 @@ run_capture "mutex trylock state" mutex-trylock.out \
     "$LOCKLINT" --check-locks mutex-trylock.c
 compare "mutex trylock state" mutex-trylock.ref mutex-trylock.out
 
-run_capture "mutex lock result core state" mutex-lock-result-core.out \
+run_capture "mutex lock result state" mutex-lock-result.out \
     "$LOCKLINT" --check-locks mutex-lock-result.c
-compare "mutex lock result core state" mutex-lock-result-core.ref \
-    mutex-lock-result-core.out
+compare "mutex lock result state" mutex-lock-result.ref \
+    mutex-lock-result.out
 
 run_capture "condition wait state and order" condition-wait.out \
     "$LOCKLINT" --check-locks condition-wait.c

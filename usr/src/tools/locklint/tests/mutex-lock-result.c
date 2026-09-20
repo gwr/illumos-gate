@@ -46,6 +46,7 @@ lock_equal_zero(struct mutex_lock_state *state, int keep_lock)
 	} else {
 		value = state->value;
 	}
+	value += state->value;
 	return (value);
 }
 
@@ -61,6 +62,7 @@ lock_not_equal_zero(struct mutex_lock_state *state, int keep_lock)
 		if (!keep_lock)
 			(void) mutex_unlock(&state->first);
 	}
+	value += state->value;
 	return (value);
 }
 
@@ -76,6 +78,7 @@ lock_truth(struct mutex_lock_state *state, int keep_lock)
 		if (!keep_lock)
 			(void) mutex_unlock(&state->first);
 	}
+	value += state->value;
 	return (value);
 }
 
@@ -91,6 +94,7 @@ lock_negated(struct mutex_lock_state *state, int keep_lock)
 	} else {
 		value = state->value;
 	}
+	value += state->value;
 	return (value);
 }
 
