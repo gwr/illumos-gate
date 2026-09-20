@@ -2040,7 +2040,9 @@ trace_lock_transition(avl_tree_t *findings,
 	if (observation->context->kind == FUNCTION_CONTEXT_ROOT ||
 	    (observation->action != LOCKLINT_LOCK_ACQUIRE &&
 	    observation->action != LOCKLINT_LOCK_RESULT_ACQUIRE &&
-	    observation->action != LOCKLINT_LOCK_RELEASE)) {
+	    observation->action != LOCKLINT_LOCK_RELEASE &&
+	    observation->action != LOCKLINT_LOCK_TRY_UPGRADE &&
+	    observation->action != LOCKLINT_LOCK_DOWNGRADE)) {
 		record_lock_transition_finding(findings, observation, NULL, NULL);
 		return;
 	}

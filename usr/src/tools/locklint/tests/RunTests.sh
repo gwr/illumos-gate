@@ -590,18 +590,14 @@ compare "declared release effect diagnostics" \
 run_capture "declared upgrade effect diagnostics" \
     rwlock-transition-effects-1.out "$LOCKLINT" --check-locks \
     -DRWLOCK_TRANSITION_EFFECT_VARIANT=1 rwlock-transition-effects.c
-grep '\[declared-lock-effect\]' rwlock-transition-effects-1.out > \
-    rwlock-transition-contracts-1.out
 compare "declared upgrade effect diagnostics" \
-    rwlock-transition-contracts-1.ref rwlock-transition-contracts-1.out
+    rwlock-transition-contextual-1.ref rwlock-transition-effects-1.out
 
 run_capture "declared downgrade effect diagnostics" \
     rwlock-transition-effects-2.out "$LOCKLINT" --check-locks \
     -DRWLOCK_TRANSITION_EFFECT_VARIANT=2 rwlock-transition-effects.c
-grep '\[declared-lock-effect\]' rwlock-transition-effects-2.out > \
-    rwlock-transition-contracts-2.out
 compare "declared downgrade effect diagnostics" \
-    rwlock-transition-contracts-2.ref rwlock-transition-contracts-2.out
+    rwlock-transition-contextual-2.ref rwlock-transition-effects-2.out
 
 #
 # Verify canonical absolute lock identities retain declared validation and

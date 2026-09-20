@@ -1847,13 +1847,14 @@ acquired or released state through direct calls and formal wrappers.
 Declarations remain validation-only.  They neither manufacture lock effects
 nor suppress inferred effects.
 
-Invalid blocking acquisitions and releases are first aggregated by exact
-function context and transition instruction.  Concrete observations then
-follow cycle-safe incoming provenance to each originating synthetic-root
-call.  The primary diagnostic is emitted at that call with definite or
-conditional severity derived from all contributing exact states, followed by
-an informational note at the underlying transition.  Operations executed
-directly by a synthetic root remain diagnosed at their own instruction.
+Invalid blocking acquisitions, releases, upgrades, and downgrades are first
+aggregated by exact function context and transition instruction.  Concrete
+observations then follow cycle-safe incoming provenance to each originating
+synthetic-root call.  The primary diagnostic is emitted at that call with
+definite or conditional severity derived from all contributing exact states,
+followed by an informational note at the underlying transition.  Operations
+executed directly by a synthetic root remain diagnosed at their own
+instruction.
 
 ## Lock-order analysis
 
@@ -2513,8 +2514,7 @@ areas include:
 - interprocedural propagation of relationships between scalar return values
   and conditional lock effects;
 - recursive mutex and rwlock-reader hold counts;
-- caller-site provenance for condition waits and rwlock transitions reached
-  through callees;
+- caller-site provenance for condition waits reached through callees;
 - generic held-on-return diagnostics for undeclared caller-visible formal and
   absolute locks;
 - a swappable-wait policy that diagnoses unrelated locks held across

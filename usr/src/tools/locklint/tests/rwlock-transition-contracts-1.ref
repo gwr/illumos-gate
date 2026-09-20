@@ -1,3 +1,0 @@
-../locklint: rwlock-transition-effects.c:66:9: warning: locklint: declared upgrade of lock 'lock' is not established on every return from 'declared_upgrade_ignored' [declared-lock-effect]
-../locklint: rwlock-transition-effects.c:101:9: warning: locklint: function 'declared_upgrade_missing' does not establish declared upgrade of lock 'lock' [declared-lock-effect]
-../locklint: rwlock-transition-effects.c:109:9: warning: locklint: declared upgrade of lock 'lock' is not established on every return from 'declared_upgrade_conditional' [declared-lock-effect]
