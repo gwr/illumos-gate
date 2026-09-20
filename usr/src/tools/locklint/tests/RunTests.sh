@@ -624,10 +624,9 @@ run_capture "user rwlock assertions" rwlock-user.out \
     "$LOCKLINT" --check-locks rwlock.c
 compare "user rwlock assertions" rwlock-user.ref rwlock-user.out
 
-run_capture "kernel contextual rwlock assertions" rwlock-contextual-kernel.out \
+run_capture "kernel rwlock assertions" rwlock-kernel.out \
     "$LOCKLINT" --check-locks -D_KERNEL rwlock.c
-compare "kernel contextual rwlock assertions" rwlock-contextual-kernel.ref \
-    rwlock-contextual-kernel.out
+compare "kernel rwlock assertions" rwlock-kernel.ref rwlock-kernel.out
 
 run_capture "direct assertion call sites" assertion-requirements.out \
     "$LOCKLINT" --check-locks assertion-requirements.c
