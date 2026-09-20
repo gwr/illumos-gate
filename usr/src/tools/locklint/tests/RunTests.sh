@@ -189,10 +189,10 @@ require_match "local lock returns" \
 require_match "local lock contexts" \
     '^contexts created 7 reused 1$' lock-identity-local.out
 require_match "local lock states" \
-    '^distribution semantic-states/function samples 6 total 12 max 2 bins 0:0 1:0 2:6 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution semantic-states/function samples 6 total 12 max 2$' \
     lock-identity-local.out
 require_match "local held-lock states" \
-    '^distribution locks/semantic-state samples 12 total 6 max 1 bins 0:6 1:6 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution locks/semantic-state samples 12 total 6 max 1$' \
     lock-identity-local.out
 require_match "local helper contexts" \
     '^maximum contexts/function 2 function local_helper tu=lock-identity-local.c$' \
@@ -490,10 +490,10 @@ require_match "visibility set baseline" \
     '^visibility-sets created 10 reused 0 retained 10$' \
     competition-depth-contexts.out
 require_match "visibility sets per function baseline" \
-    '^distribution visibility-sets/function samples 10 total 10 max 1 bins 0:0 1:10 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution visibility-sets/function samples 10 total 10 max 1$' \
     competition-depth-contexts.out
 require_match "visibility entries per set baseline" \
-    '^distribution visibility-entries/set samples 10 total 0 max 0 bins 0:10 1:0 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution visibility-entries/set samples 10 total 0 max 0$' \
     competition-depth-contexts.out
 
 #
@@ -509,10 +509,10 @@ require_match "visibility canonical sets" \
     '^visibility-sets created 52 reused 13 retained 52$' \
     visibility-contexts.out
 require_match "visibility sets per function" \
-    '^distribution visibility-sets/function samples 26 total 52 max 5 bins 0:0 1:11 2:6 3:8 4:0 5:1 6-8:0 9+:0$' \
+    '^distribution visibility-sets/function samples 26 total 52 max 5$' \
     visibility-contexts.out
 require_match "visibility entries per set" \
-    '^distribution visibility-entries/set samples 52 total 30 max 2 bins 0:26 1:22 2:4 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution visibility-entries/set samples 52 total 30 max 2$' \
     visibility-contexts.out
 require_match "invalid visibility operand" \
     "visibility.c:151:9: warning: locklint: visibility annotation has no object \\[visibility-no-object\\]" \
@@ -1153,31 +1153,36 @@ require_match "context calls" \
 require_match "context calls" '^lock-identity-analysis-objects 2$' \
     context-calls.out
 require_match "context calls" \
-    '^distribution contexts/function samples 7 total 9 max 2 bins 0:0 1:5 2:2 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution contexts/function samples 7 total 9 max 2$' \
     context-calls.out
 require_match "context calls" \
-    '^distribution binding-environments/function samples 7 total 9 max 2 bins 0:0 1:5 2:2 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution binding-environments/function samples 7 total 9 max 2$' \
     context-calls.out
 require_match "context calls" \
-    '^distribution bindings/environment samples 9 total 8 max 2 bins 0:5 1:0 2:4 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution bindings/environment samples 9 total 8 max 2$' \
     context-calls.out
 require_match "context calls" \
-    '^distribution semantic-states/function samples 7 total 7 max 1 bins 0:0 1:7 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution semantic-states/function samples 7 total 7 max 1$' \
     context-calls.out
 require_match "context calls" \
-    '^distribution point-states/context samples 9 total 82 max 19 bins 0:0 1:0 2:0 3:1 4:0 5:4 6-8:0 9+:4$' \
+    '^distribution point-states/context samples 9 total 82 max 19$' \
+    context-calls.out
+require_match "context calls histogram maximum bar" \
+    '^           4-7 |\*\{40\}| 4$' context-calls.out
+require_match "context calls histogram scaled bar" \
+    '^         16-31 |\*\{10\}                              | 1$' \
     context-calls.out
 require_match "context calls" \
-    '^distribution states/analysis-point samples 82 total 82 max 1 bins 0:0 1:82 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution states/analysis-point samples 82 total 82 max 1$' \
     context-calls.out
 require_match "context calls" \
-    '^distribution exits/context samples 9 total 9 max 1 bins 0:0 1:9 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution exits/context samples 9 total 9 max 1$' \
     context-calls.out
 require_match "context calls" \
-    '^distribution continuations/context samples 9 total 14 max 3 bins 0:1 1:3 2:4 3:1 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution continuations/context samples 9 total 14 max 3$' \
     context-calls.out
 require_match "context calls" \
-    '^distribution provenance-edges/context samples 9 total 14 max 3 bins 0:1 1:3 2:4 3:1 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution provenance-edges/context samples 9 total 14 max 3$' \
     context-calls.out
 require_match "context calls" \
     '^maximum contexts/function 2 function binding_leaf tu=context-calls.c$' \
@@ -1196,10 +1201,10 @@ require_match "context calls" \
     context-calls.out
 reject_match "context calls" '^linear-lookup ' context-calls.out
 require_match "context calls" \
-    '^distribution locks/semantic-state samples 7 total 0 max 0 bins 0:7 1:0 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution locks/semantic-state samples 7 total 0 max 0$' \
     context-calls.out
 require_match "context calls" \
-    '^distribution visibility/semantic-state samples 7 total 0 max 0 bins 0:7 1:0 2:0 3:0 4:0 5:0 6-8:0 9+:0$' \
+    '^distribution visibility/semantic-state samples 7 total 0 max 0$' \
     context-calls.out
 require_match "context calls" \
     '^memory binding-environments [1-9][0-9]* bytes$' context-calls.out

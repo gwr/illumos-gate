@@ -54,7 +54,8 @@
 #include "symbol.h"
 #include "worklist.h"
 
-#define	DISTRIBUTION_EXACT_MAX	5
+#define	DISTRIBUTION_POWER_BUCKETS	12
+#define	DISTRIBUTION_BAR_WIDTH		40
 
 struct analysis_counts {
 	size_t roots;
@@ -99,9 +100,8 @@ struct distribution {
 	size_t samples;
 	size_t total;
 	size_t maximum;
-	size_t exact[DISTRIBUTION_EXACT_MAX + 1];
-	size_t six_to_eight;
-	size_t nine_or_more;
+	size_t buckets[DISTRIBUTION_POWER_BUCKETS + 1];
+	size_t overflow;
 	const struct function_info *maximum_owner;
 };
 
@@ -1874,6 +1874,8 @@ distribution_add(struct distribution *distribution, size_t count,
     const struct function_info *owner)
 {
 	bool first = distribution->samples == 0;
+	size_t upper = 1;
+	size_t index;
 
 	if (distribution->samples == SIZE_MAX ||
 	    count > SIZE_MAX - distribution->total)
@@ -1884,12 +1886,18 @@ distribution_add(struct distribution *distribution, size_t count,
 		distribution->maximum = count;
 		distribution->maximum_owner = owner;
 	}
-	if (count <= DISTRIBUTION_EXACT_MAX)
-		distribution->exact[count]++;
-	else if (count <= 8)
-		distribution->six_to_eight++;
-	else
-		distribution->nine_or_more++;
+	if (count == 0) {
+		distribution->buckets[0]++;
+		return;
+	}
+	for (index = 1; index <= DISTRIBUTION_POWER_BUCKETS; index++) {
+		if (count <= upper) {
+			distribution->buckets[index]++;
+			return;
+		}
+		upper = upper * 2 + 1;
+	}
+	distribution->overflow++;
 }
 
 static void
@@ -4836,15 +4844,62 @@ static void
 show_distribution(FILE *stream, const char *name,
     const struct distribution *distribution)
 {
+	size_t counts[DISTRIBUTION_POWER_BUCKETS + 2];
+	size_t first = 0;
+	size_t last = 0;
+	size_t largest = 0;
+	size_t index;
+
 	(void) fprintf(stream,
-	    "distribution %s samples %zu total %zu max %zu bins "
-	    "0:%zu 1:%zu 2:%zu 3:%zu 4:%zu 5:%zu 6-8:%zu 9+:%zu\n",
+	    "distribution %s samples %zu total %zu max %zu\n",
 	    name, distribution->samples, distribution->total,
-	    distribution->maximum, distribution->exact[0],
-	    distribution->exact[1], distribution->exact[2],
-	    distribution->exact[3], distribution->exact[4],
-	    distribution->exact[5], distribution->six_to_eight,
-	    distribution->nine_or_more);
+	    distribution->maximum);
+	for (index = 0; index <= DISTRIBUTION_POWER_BUCKETS; index++)
+		counts[index] = distribution->buckets[index];
+	counts[DISTRIBUTION_POWER_BUCKETS + 1] = distribution->overflow;
+	for (index = 0; index < sizeof (counts) / sizeof (counts[0]); index++) {
+		if (counts[index] == 0)
+			continue;
+		if (largest == 0)
+			first = index;
+		last = index;
+		if (counts[index] > largest)
+			largest = counts[index];
+	}
+	(void) fprintf(stream,
+	    "         range |----------------------------------------| "
+	    "count\n");
+	for (index = first; largest != 0 && index <= last; index++) {
+		char label[32];
+		size_t stars;
+		size_t column;
+
+		if (index == 0) {
+			(void) snprintf(label, sizeof (label), "0");
+		} else if (index <= DISTRIBUTION_POWER_BUCKETS) {
+			size_t lower = (size_t)1 << (index - 1);
+			size_t upper = ((size_t)1 << index) - 1;
+
+			if (lower == upper) {
+				(void) snprintf(label, sizeof (label), "%zu", lower);
+			} else {
+				(void) snprintf(label, sizeof (label), "%zu-%zu",
+				    lower, upper);
+			}
+		} else {
+			(void) snprintf(label, sizeof (label), "%u+",
+			    1U << DISTRIBUTION_POWER_BUCKETS);
+		}
+		stars = (size_t)((long double)counts[index] *
+		    DISTRIBUTION_BAR_WIDTH / largest);
+		if (counts[index] != 0 && stars == 0)
+			stars = 1;
+		(void) fprintf(stream, "%14s |", label);
+		for (column = 0; column < DISTRIBUTION_BAR_WIDTH; column++)
+			(void) fputc(column < stars ? '*' : ' ', stream);
+		(void) fprintf(stream, "| %zu\n", counts[index]);
+	}
+	(void) fputc('\n', stream);
 }
 
 static const char *
