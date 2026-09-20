@@ -582,6 +582,60 @@ compare "wrapped assertion call sites" \
     assertion-requirement-wrappers.ref \
     assertion-requirement-wrappers.out
 
+run_capture "same-actual assertion aliases" assertion-alias-same.out \
+    "$LOCKLINT" --check-locks -DASSERTION_ALIAS_VARIANT=1 assertion-alias.c
+reject_match "same-actual assertion aliases" "warning:" \
+    assertion-alias-same.out
+
+run_capture "distinct assertion aliases" assertion-alias-distinct.out \
+    "$LOCKLINT" --check-locks -DASSERTION_ALIAS_VARIANT=2 assertion-alias.c
+compare "distinct assertion aliases" assertion-alias-distinct.ref \
+    assertion-alias-distinct.out
+
+run_capture "opposite assertion aliases" assertion-alias-opposite.out \
+    "$LOCKLINT" --check-locks -DASSERTION_ALIAS_VARIANT=3 assertion-alias.c
+compare "opposite assertion aliases" assertion-alias-opposite.ref \
+    assertion-alias-opposite.out
+
+run_capture "same-actual wrapped assertion aliases" \
+    assertion-alias-wrapper-same.out \
+    "$LOCKLINT" --check-locks -DASSERTION_ALIAS_VARIANT=4 assertion-alias.c
+reject_match "same-actual wrapped assertion aliases" "warning:" \
+    assertion-alias-wrapper-same.out
+
+run_capture "distinct wrapped assertion aliases" \
+    assertion-alias-wrapper-distinct.out \
+    "$LOCKLINT" --check-locks -DASSERTION_ALIAS_VARIANT=5 assertion-alias.c
+compare "distinct wrapped assertion aliases" \
+    assertion-alias-wrapper-distinct.ref \
+    assertion-alias-wrapper-distinct.out
+
+run_capture "internally aliased assertion" assertion-alias-internal.out \
+    "$LOCKLINT" --check-locks -DASSERTION_ALIAS_VARIANT=6 assertion-alias.c
+reject_match "internally aliased assertion" "warning:" \
+    assertion-alias-internal.out
+
+run_capture "invalidated assertion alias" assertion-alias-invalidated.out \
+    "$LOCKLINT" --check-locks -DASSERTION_ALIAS_VARIANT=7 assertion-alias.c
+compare "invalidated assertion alias" assertion-alias-invalidated.ref \
+    assertion-alias-invalidated.out
+
+run_capture "multiple assertion aliases" assertion-alias-multiple.out \
+    "$LOCKLINT" --check-locks -DASSERTION_ALIAS_VARIANT=8 assertion-alias.c
+compare "multiple assertion aliases" assertion-alias-multiple.ref \
+    assertion-alias-multiple.out
+
+run_capture "merged assertion aliases" assertion-alias-merged.out \
+    "$LOCKLINT" --check-locks -DASSERTION_ALIAS_VARIANT=9 assertion-alias.c
+reject_match "merged assertion aliases" "warning:" \
+    assertion-alias-merged.out
+
+run_capture "assertion alias overflow replacement" \
+    assertion-alias-overflow.out \
+    "$LOCKLINT" --check-locks -DASSERTION_ALIAS_VARIANT=10 assertion-alias.c
+compare "assertion alias overflow replacement" \
+    assertion-alias-overflow.ref assertion-alias-overflow.out
+
 run_capture "user rwlock call state" rwlock-calls-core-user.out \
     "$LOCKLINT" --check-locks rwlock-calls.c
 compare "user rwlock call state" rwlock-calls-core.ref \

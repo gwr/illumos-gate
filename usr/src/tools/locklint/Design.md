@@ -1388,6 +1388,15 @@ untracked scalar controls whether a wrapper establishes the asserted state,
 both exact lock-state paths remain possible and the originating-call
 diagnostic is conditional.
 
+Alias handling needs no assertion-specific collection.  Call bindings map
+formal-relative lock addresses to canonical caller identities before lock
+operations or assertions use them.  Two formals passed the same actual
+therefore update and test one semantic lock entry, including aliases
+introduced inside wrappers.  Distinct actuals remain distinct.  This also
+removes the former bounded subset construction and its special overflow
+behavior: additional formal roles add ordinary bindings rather than
+combinatorial assertion alternatives.
+
 ## Event decoding
 
 `events.c` provides a shared interpretation of relevant Sparse instructions.
