@@ -620,10 +620,9 @@ run_capture "kernel rwlock core state" rwlock-core-kernel.out \
     "$LOCKLINT" --check-locks -D_KERNEL -DLOCKLINT_RWLOCK_CORE_ONLY rwlock.c
 compare "kernel rwlock core state" rwlock-core.ref rwlock-core-kernel.out
 
-run_capture "user contextual rwlock assertions" rwlock-contextual-user.out \
+run_capture "user rwlock assertions" rwlock-user.out \
     "$LOCKLINT" --check-locks rwlock.c
-compare "user contextual rwlock assertions" rwlock-contextual-user.ref \
-    rwlock-contextual-user.out
+compare "user rwlock assertions" rwlock-user.ref rwlock-user.out
 
 run_capture "kernel contextual rwlock assertions" rwlock-contextual-kernel.out \
     "$LOCKLINT" --check-locks -D_KERNEL rwlock.c

@@ -1,16 +1,15 @@
+../locklint: rwlock.c:164:9: warning: locklint: lock 'lock' is not held [lock-not-held]
+../locklint: rwlock.c:167:9: warning: locklint: lock 'lock' is already held [lock-already-held]
+../locklint: rwlock.c:171:9: warning: locklint: lock 'lock' is already held [lock-already-held]
 ../locklint: rwlock.c:107:22: warning: locklint: protected member 'value' read without read-holding 'lock' [unprotected-access]
 ../locklint: rwlock.c:108:14: warning: locklint: protected member 'value' modified without write-holding 'lock' [unprotected-access]
 ../locklint: rwlock.c:110:14: warning: locklint: protected member 'readable' modified without write-holding 'lock' [unprotected-access]
 ../locklint: rwlock.c:115:14: warning: locklint: protected member 'value' modified without write-holding 'lock' [unprotected-access]
-../locklint: rwlock.c:113:9: locklint: required lock 'lock' acquired here is read-held; write-holding is required at this protected access
+../locklint: rwlock.c:115:14: locklint: required lock 'lock' is read-held; write-holding is required at this protected access
 ../locklint: rwlock.c:145:14: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
-../locklint: rwlock.c:141:17: locklint: required lock 'lock' acquired here is held in multiple modes; write-holding is required at this protected access
-../locklint: rwlock.c:158:22: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
-../locklint: rwlock.c:157:17: locklint: required lock 'lock' acquired here may be read-held; read-holding is required at this protected access
-../locklint: rwlock.c:159:17: warning: locklint: lock 'lock' held on only some paths returning from 'check_unheld_merge' [lock-maybe-held-on-return]
-../locklint: rwlock.c:165:9: warning: locklint: lock 'lock' is not held [lock-not-held]
-../locklint: rwlock.c:168:9: warning: locklint: lock 'lock' is already held [lock-already-held]
-../locklint: rwlock.c:172:9: warning: locklint: lock 'lock' is already held [lock-already-held]
+../locklint: rwlock.c:145:14: locklint: required lock 'lock' may be held in multiple modes; write-holding is required at this protected access
+../locklint: rwlock.c:157:22: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
+../locklint: rwlock.c:157:22: locklint: required lock 'lock' may be read-held; read-holding is required at this protected access
 ../locklint: rwlock.c:183:14: warning: locklint: protected member 'value' modified without write-holding 'lock' [unprotected-access]
 ../locklint: rwlock.c:183:14: locklint: required lock 'lock' is read-held; write-holding is required at this protected access
 ../locklint: rwlock.c:223:22: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
@@ -20,4 +19,5 @@
 ../locklint: rwlock.c:234:22: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
 ../locklint: rwlock.c:234:22: locklint: required lock 'lock' may be read-held; read-holding is required at this protected access
 ../locklint: rwlock.c:235:14: warning: locklint: protected member 'value' modified without write-holding 'lock' [unprotected-access]
-../locklint: rwlock.c:235:14: locklint: required lock 'lock' may be read-held; write-holding is required at this protected access
+../locklint: rwlock.c:235:14: locklint: required lock 'lock' is read-held; write-holding is required at this protected access
+../locklint: rwlock.c:158:17: warning: locklint: lock 'lock' held on only some paths returning from 'check_unheld_merge' [lock-maybe-held-on-return]
