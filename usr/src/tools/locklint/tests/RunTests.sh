@@ -606,8 +606,7 @@ run_capture "absolute declared effect diagnostics" \
     declared-effects-absolute.out "$LOCKLINT" --check-locks \
     declared-effects-absolute.c
 compare "absolute declared effect diagnostics" \
-    declared-effects-absolute-contextual.ref \
-    declared-effects-absolute.out
+    declared-effects-absolute.ref declared-effects-absolute.out
 
 run_capture "contextual lock effect diagnostics" effects-contextual.out \
     "$LOCKLINT" --check-locks effects.c
