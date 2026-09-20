@@ -173,3 +173,28 @@ check_recursive_effect(struct effect_state *state)
 	mutex_exit(&state->lock);
 	return (value);
 }
+
+/*
+ * Preserve recursive effect coverage where acquisition is genuinely
+ * conditional, without weakening the definite recursive case above.
+ */
+static void
+conditional_recursive_acquire(struct effect_state *state, int depth,
+    int take_lock)
+{
+	if (depth != 0)
+		conditional_recursive_acquire(state, depth - 1, take_lock);
+	else if (take_lock)
+		mutex_enter(&state->lock);
+}
+
+static int
+check_conditional_recursive_effect(struct effect_state *state, int take_lock)
+{
+	int value;
+
+	conditional_recursive_acquire(state, 2, take_lock);
+	value = state->value;
+	mutex_exit(&state->lock);
+	return (value);
+}
