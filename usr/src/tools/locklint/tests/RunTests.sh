@@ -689,10 +689,10 @@ run_capture "mutex lock result core state" mutex-lock-result-core.out \
 compare "mutex lock result core state" mutex-lock-result-core.ref \
     mutex-lock-result-core.out
 
-run_capture "condition wait core state" condition-wait-core.out \
+run_capture "condition wait state and order" condition-wait.out \
     "$LOCKLINT" --check-locks condition-wait.c
-compare "condition wait core state" condition-wait-core.ref \
-    condition-wait-core.out
+compare "condition wait state and order" condition-wait.ref \
+    condition-wait.out
 
 run_capture "competition protected accesses" competition-accesses.out \
     "$LOCKLINT" -DCOMPETITION_ACCESS_ONLY --check-locks competition-depth.c

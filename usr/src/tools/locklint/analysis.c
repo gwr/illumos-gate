@@ -1964,6 +1964,7 @@ diagnose_declared_lock_order(struct analysis *analysis)
 					    function->tu, acquisition, &access,
 					    &mode);
 					if (action != LOCKLINT_LOCK_ACQUIRE &&
+					    action != LOCKLINT_LOCK_WAIT &&
 					    (action !=
 					    LOCKLINT_LOCK_RESULT_ACQUIRE ||
 					    call_result_used(acquisition)))
@@ -1971,6 +1972,19 @@ diagnose_declared_lock_order(struct analysis *analysis)
 				}
 				if (access.root == NULL)
 					continue;
+				error = context_access_identity(analysis, context,
+				    &access, &acquired, &existed, &composed);
+				if (error != 0)
+					die("cannot identify ordered acquisition: "
+					    "%s", strerror(error));
+				locklint_order_classify_identity(acquired, &access);
+				if (action == LOCKLINT_LOCK_WAIT) {
+					if ((context_state_lock_modes(
+					    point_state->state, acquired) &
+					    LOCKLINT_MODE_MUTEX) == 0)
+						continue;
+					acquired_in_state = true;
+				}
 				key = (struct declared_order_observation) {
 					.context = context,
 					.acquisition_instruction = acquisition
@@ -1990,12 +2004,6 @@ diagnose_declared_lock_order(struct analysis *analysis)
 					    where);
 				}
 				observation->states++;
-				error = context_access_identity(analysis, context,
-				    &access, &acquired, &existed, &composed);
-				if (error != 0)
-					die("cannot identify ordered acquisition: "
-					    "%s", strerror(error));
-				locklint_order_classify_identity(acquired, &access);
 				for (index = 0;
 				    index < point_state->state->locks->count;
 				    index++) {

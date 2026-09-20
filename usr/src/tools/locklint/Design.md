@@ -2172,9 +2172,18 @@ For a checked `mutex_lock()` result, the tagged zero-result point represents
 the successful blocking acquisition.  Its state already contains the newly
 acquired mutex, which is excluded while every other held identity is checked.
 The nonzero result contributes no acquisition.  Ignored `mutex_lock()` results
-remain unconditional acquisitions.  Try-acquisitions, upgrades, downgrades,
-condition-wait reacquisition, consumed results without local branch
-correlation, and observed-order edges remain separate later increments.
+remain unconditional acquisitions.
+
+A condition wait similarly reacquires its mutex while every other entry-held
+lock remains held.  Only states with valid mutex-held input contribute order
+observations, and the waited mutex itself is excluded from the held set.
+Direct and wrapped waits use the same provenance mapping as ordinary
+acquisitions.  Invalid wait inputs retain their ownership diagnostics without
+creating a misleading order cascade.
+
+Try-acquisitions, upgrades, and downgrades do not create blocking acquisition
+edges.  Consumed `mutex_lock()` results without local branch correlation and
+observed-order edges remain separate later increments.
 
 ## Main action sequences
 
