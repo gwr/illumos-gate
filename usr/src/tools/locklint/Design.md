@@ -2145,6 +2145,13 @@ predecessor or call-chain witnesses remain future work.
 | `locklint_order_record_observed()` | Add one non-redundant held-to-acquired edge with provenance |
 | `locklint_order_report_observed_cycles()` | Diagnose cyclic components of the observed graph |
 
+The contextual checker now builds the declared graph before state analysis,
+reports each cyclic component, and releases the graph after analysis.
+Declaration cycles depend only on resolved `LOCK_ORDER` annotations, so this
+first lock-order increment does not inspect semantic lock state.
+Acquisition-time declared-order checks and observed-order edges remain
+separate later increments.
+
 ## Main action sequences
 
 ### `_NOTE` to protected-access diagnostic

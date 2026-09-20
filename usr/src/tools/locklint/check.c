@@ -26,6 +26,7 @@
 #include "callgraph.h"
 #include "check.h"
 #include "lock_identity.h"
+#include "lock_order.h"
 
 void
 locklint_check_all(bool check_locks, bool show_callgraph, bool show_contexts)
@@ -34,10 +35,16 @@ locklint_check_all(bool check_locks, bool show_callgraph, bool show_contexts)
 
 	callgraph_resolve();
 	lock_identity_collection_create(&lock_identities);
+	if (check_locks) {
+		locklint_order_build();
+		locklint_order_report_declared_cycles();
+	}
 	if (show_callgraph)
 		callgraph_dump(stdout);
 	if (check_locks || show_contexts)
 		analysis_run(&lock_identities, show_contexts ? stdout : NULL);
+	if (check_locks)
+		locklint_order_cleanup();
 	callgraph_cleanup();
 	lock_identity_collection_free(&lock_identities);
 }

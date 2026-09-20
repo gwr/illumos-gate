@@ -292,6 +292,11 @@ require_match "lock order trailing comma" \
     "lock-order-errors.c:35:.*trailing comma in LOCK_ORDER" \
     lock-order-errors.out
 
+run_capture "declared lock order cycle" lock-order-cycle.out \
+    "$LOCKLINT" --check-locks lock-order-cycle.c
+compare "declared lock order cycle" lock-order-cycle.ref \
+    lock-order-cycle.out
+
 run_capture "condition wait events" condition-wait-events.out \
     "$LOCKLINT" --dump-events condition-wait.c
 require_match "condition wait first mutex event" "WAIT state.first" \
