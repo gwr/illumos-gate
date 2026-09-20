@@ -3450,7 +3450,14 @@ struct protected_access_diagnostic {
 	avl_tree_t *findings;
 };
 
+struct protected_access_call_witness {
+	struct function_info *caller_function;
+	struct instruction *call_instruction;
+	avl_node_t by_call;
+};
+
 struct protected_access_finding {
+	struct function_info *function;
 	struct instruction *instruction;
 	const struct locklint_member_path *path;
 	struct locklint_access access;
@@ -3462,8 +3469,23 @@ struct protected_access_finding {
 	bool conditional;
 	bool read_only_visible;
 	bool read_only_maybe_visible;
+	avl_tree_t call_witnesses;
 	avl_node_t by_access;
 };
+
+static int
+compare_protected_access_call_witness(const void *left_arg,
+    const void *right_arg)
+{
+	const struct protected_access_call_witness *left = left_arg;
+	const struct protected_access_call_witness *right = right_arg;
+	int result;
+
+	result = AVL_PCMP(left->caller_function, right->caller_function);
+	if (result != 0)
+		return (result);
+	return (AVL_PCMP(left->call_instruction, right->call_instruction));
+}
 
 static int
 compare_protected_access_finding(const void *left_arg, const void *right_arg)
@@ -3476,6 +3498,28 @@ compare_protected_access_finding(const void *left_arg, const void *right_arg)
 	if (order != 0)
 		return (order);
 	return (AVL_PCMP(left->path, right->path));
+}
+
+static void
+record_protected_access_call_witness(struct function_context *caller_context,
+    struct instruction *call_instruction, void *data_arg)
+{
+	struct protected_access_finding *finding = data_arg;
+	struct protected_access_call_witness key = {
+		.caller_function = caller_context->function,
+		.call_instruction = call_instruction
+	};
+	struct protected_access_call_witness *witness;
+	avl_index_t where;
+
+	witness = avl_find(&finding->call_witnesses, &key, &where);
+	if (witness != NULL)
+		return;
+	witness = calloc(1, sizeof (*witness));
+	if (witness == NULL)
+		die("cannot allocate protected access call witness");
+	*witness = key;
+	avl_insert(&finding->call_witnesses, witness, where);
 }
 
 /*
@@ -3622,19 +3666,30 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 			finding = calloc(1, sizeof (*finding));
 			if (finding == NULL)
 				die("cannot allocate protected access finding");
+			finding->function = data->context->function;
 			finding->instruction = data->instruction;
 			finding->path = access->path;
 			finding->access = *access;
 			finding->protector = protector;
 			finding->protection = policy.protection;
 			finding->required_modes = required_modes;
+			avl_create(&finding->call_witnesses,
+			    compare_protected_access_call_witness,
+			    sizeof (struct protected_access_call_witness),
+			    offsetof(struct protected_access_call_witness,
+			    by_call));
 			avl_insert(data->findings, finding, where);
 		}
 		finding->observed_modes |= observed_modes;
-		if (unprotected != 0 && protected == 0 && conditional == 0)
+		if (unprotected != 0 && protected == 0 && conditional == 0) {
 			finding->unprotected = true;
-		else if (unprotected != 0 || conditional != 0)
+			(void) for_each_root_call(data->context,
+			    record_protected_access_call_witness, finding);
+		} else if (unprotected != 0 || conditional != 0) {
 			finding->conditional = true;
+			(void) for_each_root_call(data->context,
+			    record_protected_access_call_witness, finding);
+		}
 		if (read_only_visible != 0 && read_only_hidden == 0 &&
 		    read_only_maybe_visible == 0)
 			finding->read_only_visible = true;
@@ -3668,6 +3723,66 @@ diagnose_protected_access(struct analysis *analysis,
 		    instruction, diagnose_protected_leaf, &data);
 	}
 	return (next);
+}
+
+static int
+compare_protected_access_call_position(const void *left_arg,
+    const void *right_arg)
+{
+	const struct protected_access_call_witness *const *left = left_arg;
+	const struct protected_access_call_witness *const *right = right_arg;
+	struct position left_position =
+	    (*left)->call_instruction->call_expr != NULL ?
+	    (*left)->call_instruction->call_expr->pos :
+	    (*left)->call_instruction->pos;
+	struct position right_position =
+	    (*right)->call_instruction->call_expr != NULL ?
+	    (*right)->call_instruction->call_expr->pos :
+	    (*right)->call_instruction->pos;
+	int result;
+
+	result = compare_transition_position(left_position, right_position);
+	if (result != 0)
+		return (result);
+	return (strcmp(function_name((*left)->caller_function),
+	    function_name((*right)->caller_function)));
+}
+
+/*
+ * Emit each concrete root call that contributed a failing state.  The AVL
+ * removes duplicate provenance paths; sorting by source position keeps output
+ * independent of canonical context and pointer order.
+ */
+static void
+emit_protected_access_call_witnesses(struct protected_access_finding *finding)
+{
+	struct protected_access_call_witness **ordered;
+	struct protected_access_call_witness *witness;
+	size_t count = avl_numnodes(&finding->call_witnesses);
+	size_t index = 0;
+
+	if (count > SIZE_MAX / sizeof (*ordered))
+		die("protected access call witness allocation overflow");
+	ordered = calloc(count, sizeof (*ordered));
+	if (ordered == NULL && count != 0)
+		die("cannot allocate ordered protected access call witnesses");
+	for (witness = avl_first(&finding->call_witnesses); witness != NULL;
+	    witness = AVL_NEXT(&finding->call_witnesses, witness))
+		ordered[index++] = witness;
+	if (count > 1) {
+		qsort(ordered, count, sizeof (*ordered),
+		    compare_protected_access_call_position);
+	}
+	for (index = 0; index < count; index++) {
+		struct position pos =
+		    ordered[index]->call_instruction->call_expr != NULL ?
+		    ordered[index]->call_instruction->call_expr->pos :
+		    ordered[index]->call_instruction->pos;
+
+		info(pos, "locklint: protection was not established at this "
+		    "call to '%s'", function_name(finding->function));
+	}
+	free(ordered);
 }
 
 /*
@@ -3720,6 +3835,7 @@ emit_protected_access_findings(avl_tree_t *findings)
 	struct protected_access_finding *finding;
 
 	while ((finding = avl_first(findings)) != NULL) {
+		struct protected_access_call_witness *witness;
 		char *member = locklint_access_name(&finding->access);
 		struct position pos = finding->instruction->access != NULL ?
 		    finding->instruction->access->pos :
@@ -3746,6 +3862,7 @@ emit_protected_access_findings(avl_tree_t *findings)
 			    "protected member '%s' %s without %s '%s'",
 			    member, finding->instruction->opcode == OP_LOAD ?
 			    "read" : "modified", holding, lock);
+			emit_protected_access_call_witnesses(finding);
 			if (finding->protection ==
 			    LOCKLINT_PROTECTION_RWLOCK &&
 			    finding->observed_modes != 0)
@@ -3755,6 +3872,7 @@ emit_protected_access_findings(avl_tree_t *findings)
 			locklint_warning(LOCKLINT_DIAG_CONDITIONAL_PROTECTION,
 			    pos, "protection for member '%s' is not "
 			    "established on every path", member);
+			emit_protected_access_call_witnesses(finding);
 			if (finding->observed_modes != 0) {
 				char *lock =
 				    locklint_access_name(&finding->protector);
@@ -3764,6 +3882,11 @@ emit_protected_access_findings(avl_tree_t *findings)
 			}
 		}
 		free(member);
+		while ((witness = avl_first(&finding->call_witnesses)) != NULL) {
+			avl_remove(&finding->call_witnesses, witness);
+			free(witness);
+		}
+		avl_destroy(&finding->call_witnesses);
 		avl_remove(findings, finding);
 		free(finding);
 	}

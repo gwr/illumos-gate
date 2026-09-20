@@ -2009,8 +2009,11 @@ required locks remain distinct.  Empty held-lock lists are omitted.  After all
 functions have been replayed, observed lock-order cycles are reported.  A
 conditional protected access also reports every mode in which its required
 lock was observed, including modes from the successful exact states; mutex
-protection receives the same held-state explanation as rwlock protection.  A
-final origin sweep emits any pending diagnostic that source replay did not
+protection receives the same held-state explanation as rwlock protection.
+When a failing exact state reaches the access through a call, incoming
+context provenance identifies each distinct root call that contributed that
+failure.  Those call witnesses are deduplicated and emitted in source order.
+A final origin sweep emits any pending diagnostic that source replay did not
 match, preventing an identity defect from silently dropping a warning.
 
 Every primary locklint warning ends with a stable kebab-case identifier in
