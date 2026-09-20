@@ -1,6 +1,8 @@
 ../locklint: declared-effects-absolute.c:46:9: warning: locklint: function 'declared_absolute_missing' does not establish declared mutex acquisition of lock 'absolute_mutex' [declared-lock-effect]
 ../locklint: declared-effects-absolute.c:52:9: warning: locklint: declared mutex acquisition of lock 'absolute_mutex' is not established on every return from 'declared_absolute_conditional' [declared-lock-effect]
 ../locklint: declared-effects-absolute.c:60:9: warning: locklint: function 'declared_absolute_wrong_mode' does not establish declared mutex acquisition of lock 'absolute_rwlock' [declared-lock-effect]
-../locklint: declared-effects-absolute.c:40:20: warning: locklint: lock 'absolute_mutex' is already held [lock-already-held]
-../locklint: declared-effects-absolute.c:90:19: warning: locklint: lock 'absolute_mutex' is not held [lock-not-held]
+../locklint: declared-effects-absolute.c:82:34: warning: locklint: call to 'declared_absolute_acquire' acquires already-held lock 'absolute_mutex' [lock-already-held]
+../locklint: declared-effects-absolute.c:40:20: locklint: invalid lock transition is here
+../locklint: declared-effects-absolute.c:104:34: warning: locklint: call to 'declared_absolute_release' releases lock 'absolute_mutex' that is not held [lock-not-held]
+../locklint: declared-effects-absolute.c:90:19: locklint: invalid lock transition is here
 ../locklint: declared-effects-absolute.c:98:9: warning: locklint: protected member 'absolute_value' modified without holding 'absolute_mutex' [unprotected-access]

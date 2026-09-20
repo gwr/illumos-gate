@@ -1910,29 +1910,169 @@ same_analysis_point(const struct point_state *left,
 	    left->point.next_instruction == right->point.next_instruction);
 }
 
+struct lock_transition_observation {
+	struct function_context *context;
+	struct instruction *instruction;
+	struct locklint_access access;
+	enum locklint_lock_action action;
+	size_t valid;
+	size_t uncertain;
+	size_t invalid;
+};
+
+struct lock_transition_finding {
+	struct function_info *caller_function;
+	struct instruction *call_instruction;
+	struct instruction *transition_instruction;
+	struct locklint_access access;
+	enum locklint_lock_action action;
+	size_t valid;
+	size_t uncertain;
+	size_t invalid;
+	avl_node_t by_origin;
+};
+
+static int
+compare_transition_position(struct position left, struct position right)
+{
+	int result;
+
+	result = strcmp(stream_name(left.stream), stream_name(right.stream));
+	if (result != 0)
+		return (result);
+	if (left.line != right.line)
+		return (left.line < right.line ? -1 : 1);
+	if (left.pos != right.pos)
+		return (left.pos < right.pos ? -1 : 1);
+	return (0);
+}
+
+static int
+compare_lock_transition_finding(const void *left_arg, const void *right_arg)
+{
+	const struct lock_transition_finding *left = left_arg;
+	const struct lock_transition_finding *right = right_arg;
+	const struct instruction *left_origin = left->call_instruction != NULL ?
+	    left->call_instruction : left->transition_instruction;
+	const struct instruction *right_origin =
+	    right->call_instruction != NULL ?
+	    right->call_instruction : right->transition_instruction;
+	struct position left_pos = left_origin->call_expr != NULL ?
+	    left_origin->call_expr->pos : left_origin->pos;
+	struct position right_pos = right_origin->call_expr != NULL ?
+	    right_origin->call_expr->pos : right_origin->pos;
+	int result;
+
+	result = compare_transition_position(left_pos, right_pos);
+	if (result != 0)
+		return (result);
+	left_pos = left->transition_instruction->call_expr != NULL ?
+	    left->transition_instruction->call_expr->pos :
+	    left->transition_instruction->pos;
+	right_pos = right->transition_instruction->call_expr != NULL ?
+	    right->transition_instruction->call_expr->pos :
+	    right->transition_instruction->pos;
+	result = compare_transition_position(left_pos, right_pos);
+	if (result != 0)
+		return (result);
+	if (left->action < right->action)
+		return (-1);
+	if (left->action > right->action)
+		return (1);
+	return (AVL_PCMP(left->transition_instruction,
+	    right->transition_instruction));
+}
+
+static void
+record_lock_transition_finding(avl_tree_t *findings,
+    const struct lock_transition_observation *observation,
+    struct function_context *caller_context,
+    struct instruction *call_instruction)
+{
+	struct lock_transition_finding key = {
+		.caller_function = caller_context != NULL ?
+		    caller_context->function : NULL,
+		.call_instruction = call_instruction,
+		.transition_instruction = observation->instruction,
+		.action = observation->action
+	};
+	struct lock_transition_finding *finding;
+	avl_index_t where;
+
+	finding = avl_find(findings, &key, &where);
+	if (finding == NULL) {
+		finding = calloc(1, sizeof (*finding));
+		if (finding == NULL)
+			die("cannot allocate lock transition finding");
+		*finding = key;
+		finding->access = observation->access;
+		avl_insert(findings, finding, where);
+	}
+	finding->valid += observation->valid;
+	finding->uncertain += observation->uncertain;
+	finding->invalid += observation->invalid;
+}
+
+struct lock_transition_trace {
+	avl_tree_t *findings;
+	const struct lock_transition_observation *observation;
+};
+
+static void
+record_lock_transition_root(struct function_context *caller_context,
+    struct instruction *call_instruction, void *data_arg)
+{
+	struct lock_transition_trace *data = data_arg;
+
+	record_lock_transition_finding(data->findings, data->observation,
+	    caller_context, call_instruction);
+}
+
+static void
+trace_lock_transition(avl_tree_t *findings,
+    const struct lock_transition_observation *observation)
+{
+	struct lock_transition_trace data = {
+		.findings = findings,
+		.observation = observation
+	};
+
+	if (observation->context->kind == FUNCTION_CONTEXT_ROOT ||
+	    (observation->action != LOCKLINT_LOCK_ACQUIRE &&
+	    observation->action != LOCKLINT_LOCK_RESULT_ACQUIRE &&
+	    observation->action != LOCKLINT_LOCK_RELEASE)) {
+		record_lock_transition_finding(findings, observation, NULL, NULL);
+		return;
+	}
+	(void) for_each_root_call(observation->context,
+	    record_lock_transition_root, &data);
+}
+
 /*
- * Diagnose one instruction after all exact states reaching it are known.
- * Mixed valid and invalid states are left for later "maybe" diagnostics.
+ * Classify one instruction after all exact states reaching it are known.
  */
 static struct point_state *
-diagnose_lock_transition(struct analysis *analysis,
+observe_lock_transition(struct analysis *analysis, avl_tree_t *findings,
     struct function_context *context, struct point_state *first)
 {
 	struct instruction *insn = first->point.next_instruction;
+	struct lock_transition_observation observation = {
+		.context = context,
+		.instruction = insn
+	};
 	struct locklint_access access;
 	struct lock_identity *identity;
 	struct point_state *point_state;
 	enum locklint_lock_action action;
 	enum locklint_lock_mode mode;
-	size_t invalid = 0;
-	size_t uncertain = 0;
-	size_t valid = 0;
 	bool composed;
 	bool existed;
 	int error;
 
 	action = locklint_get_lock_action(context->function->tu, insn, &access,
 	    &mode);
+	observation.action = action;
+	observation.access = access;
 	if ((action == LOCKLINT_LOCK_ACQUIRE ||
 	    action == LOCKLINT_LOCK_RESULT_ACQUIRE ||
 	    action == LOCKLINT_LOCK_RELEASE ||
@@ -1964,22 +2104,22 @@ diagnose_lock_transition(struct analysis *analysis,
 		    identity);
 		if (action == LOCKLINT_LOCK_DOWNGRADE &&
 		    current_modes == LOCKLINT_MODE_WRITER) {
-			valid++;
+			observation.valid++;
 		} else if (action == LOCKLINT_LOCK_DOWNGRADE &&
 		    (current_modes & LOCKLINT_MODE_WRITER) != 0) {
-			uncertain++;
+			observation.uncertain++;
 		} else if (action == LOCKLINT_LOCK_TRY_UPGRADE &&
 		    current_modes == LOCKLINT_MODE_READER) {
-			valid++;
+			observation.valid++;
 		} else if (action == LOCKLINT_LOCK_TRY_UPGRADE &&
 		    (current_modes & LOCKLINT_MODE_READER) != 0) {
-			uncertain++;
+			observation.uncertain++;
 		} else if (action == LOCKLINT_LOCK_WAIT &&
 		    current_modes == LOCKLINT_MODE_MUTEX) {
-			valid++;
+			observation.valid++;
 		} else if (action == LOCKLINT_LOCK_WAIT &&
 		    (current_modes & LOCKLINT_MODE_MUTEX) != 0) {
-			uncertain++;
+			observation.uncertain++;
 		} else if (((action == LOCKLINT_LOCK_ACQUIRE ||
 		    action == LOCKLINT_LOCK_RESULT_ACQUIRE) &&
 		    current_modes != 0) ||
@@ -1987,62 +2127,103 @@ diagnose_lock_transition(struct analysis *analysis,
 		    action == LOCKLINT_LOCK_WAIT ||
 		    action == LOCKLINT_LOCK_DOWNGRADE ||
 		    action == LOCKLINT_LOCK_TRY_UPGRADE) {
-			invalid++;
+			observation.invalid++;
 		} else {
-			valid++;
+			observation.valid++;
 		}
 	}
-	if (invalid != 0 || uncertain != 0) {
-		char *name = locklint_access_name(&access);
-		struct position pos = insn->call_expr != NULL ?
-		    insn->call_expr->pos : insn->pos;
+	if (observation.invalid != 0 || observation.uncertain != 0)
+		trace_lock_transition(findings, &observation);
+	return (point_state);
+}
 
-		if (action == LOCKLINT_LOCK_TRY_UPGRADE) {
-			if (valid == 0 && uncertain == 0) {
-				locklint_warning(
-				    LOCKLINT_DIAG_LOCK_NOT_READ_HELD, pos,
-				    "lock '%s' is not read-held", name);
-			} else {
-				locklint_warning(
-				    LOCKLINT_DIAG_LOCK_MAYBE_NOT_READ_HELD,
-				    pos, "lock '%s' may not be read-held",
-				    name);
-			}
-		} else if (action == LOCKLINT_LOCK_DOWNGRADE) {
-			if (valid == 0 && uncertain == 0) {
-				locklint_warning(
-				    LOCKLINT_DIAG_LOCK_NOT_WRITE_HELD, pos,
-				    "lock '%s' is not write-held", name);
-			} else {
-				locklint_warning(
-				    LOCKLINT_DIAG_LOCK_MAYBE_NOT_WRITE_HELD,
-				    pos, "lock '%s' may not be write-held",
-				    name);
-			}
-		} else if (action == LOCKLINT_LOCK_ACQUIRE ||
-		    action == LOCKLINT_LOCK_RESULT_ACQUIRE) {
-			if (valid == 0) {
-				locklint_warning(
-				    LOCKLINT_DIAG_LOCK_ALREADY_HELD, pos,
-				    "lock '%s' is already held", name);
-			} else {
-				locklint_warning(
-				    LOCKLINT_DIAG_LOCK_MAYBE_ALREADY_HELD, pos,
-				    "lock '%s' may already be held", name);
-			}
+static void
+report_lock_transition(struct lock_transition_finding *finding)
+{
+	bool definite = finding->valid == 0 && finding->uncertain == 0;
+	struct instruction *instruction = finding->call_instruction != NULL ?
+	    finding->call_instruction : finding->transition_instruction;
+	struct position pos = instruction->call_expr != NULL ?
+	    instruction->call_expr->pos : instruction->pos;
+	struct function_info *callee = finding->call_instruction != NULL ?
+	    callgraph_callee(finding->caller_function,
+	    finding->call_instruction) : NULL;
+	const char *callee_name = callee != NULL ?
+	    function_name(callee) : "<unknown>";
+	char *name = locklint_access_name(&finding->access);
+
+	if (finding->call_instruction == NULL) {
+		if (finding->action == LOCKLINT_LOCK_TRY_UPGRADE) {
+			locklint_warning(definite ?
+			    LOCKLINT_DIAG_LOCK_NOT_READ_HELD :
+			    LOCKLINT_DIAG_LOCK_MAYBE_NOT_READ_HELD, pos,
+			    definite ? "lock '%s' is not read-held" :
+			    "lock '%s' may not be read-held", name);
+		} else if (finding->action == LOCKLINT_LOCK_DOWNGRADE) {
+			locklint_warning(definite ?
+			    LOCKLINT_DIAG_LOCK_NOT_WRITE_HELD :
+			    LOCKLINT_DIAG_LOCK_MAYBE_NOT_WRITE_HELD, pos,
+			    definite ? "lock '%s' is not write-held" :
+			    "lock '%s' may not be write-held", name);
+		} else if (finding->action == LOCKLINT_LOCK_ACQUIRE ||
+		    finding->action == LOCKLINT_LOCK_RESULT_ACQUIRE) {
+			locklint_warning(definite ?
+			    LOCKLINT_DIAG_LOCK_ALREADY_HELD :
+			    LOCKLINT_DIAG_LOCK_MAYBE_ALREADY_HELD, pos,
+			    definite ? "lock '%s' is already held" :
+			    "lock '%s' may already be held", name);
 		} else {
-			if (valid == 0) {
-				locklint_warning(LOCKLINT_DIAG_LOCK_NOT_HELD, pos,
-				    "lock '%s' is not held", name);
-			} else {
-				locklint_warning(
-				    LOCKLINT_DIAG_LOCK_MAYBE_NOT_HELD, pos,
-				    "lock '%s' may not be held", name);
-			}
+			locklint_warning(definite ? LOCKLINT_DIAG_LOCK_NOT_HELD :
+			    LOCKLINT_DIAG_LOCK_MAYBE_NOT_HELD, pos,
+			    definite ? "lock '%s' is not held" :
+			    "lock '%s' may not be held", name);
 		}
 		free(name);
+		return;
 	}
-	return (point_state);
+	if (finding->action == LOCKLINT_LOCK_TRY_UPGRADE) {
+		locklint_warning(definite ? LOCKLINT_DIAG_LOCK_NOT_READ_HELD :
+		    LOCKLINT_DIAG_LOCK_MAYBE_NOT_READ_HELD, pos,
+		    (definite ? "call to '%s' upgrades lock '%s' that is "
+		    "not read-held" : "call to '%s' may upgrade lock '%s' "
+		    "that is not read-held"),
+		    callee_name, name);
+	} else if (finding->action == LOCKLINT_LOCK_DOWNGRADE) {
+		locklint_warning(definite ? LOCKLINT_DIAG_LOCK_NOT_WRITE_HELD :
+		    LOCKLINT_DIAG_LOCK_MAYBE_NOT_WRITE_HELD, pos,
+		    (definite ? "call to '%s' downgrades lock '%s' that is "
+		    "not write-held" : "call to '%s' may downgrade lock '%s' "
+		    "that is not write-held"),
+		    callee_name, name);
+	} else if (finding->action == LOCKLINT_LOCK_ACQUIRE ||
+	    finding->action == LOCKLINT_LOCK_RESULT_ACQUIRE) {
+		locklint_warning(definite ? LOCKLINT_DIAG_LOCK_ALREADY_HELD :
+		    LOCKLINT_DIAG_LOCK_MAYBE_ALREADY_HELD, pos,
+		    (definite ? "call to '%s' acquires already-held lock '%s'" :
+		    "call to '%s' may acquire already-held lock '%s'"),
+		    callee_name, name);
+	} else if (finding->action == LOCKLINT_LOCK_WAIT) {
+		locklint_warning(definite ? LOCKLINT_DIAG_LOCK_NOT_HELD :
+		    LOCKLINT_DIAG_LOCK_MAYBE_NOT_HELD, pos,
+		    definite ? "call to '%s' waits on lock '%s' that is "
+		    "not held" : "call to '%s' may wait on lock '%s' that "
+		    "is not held", callee_name, name);
+	} else {
+		locklint_warning(definite ? LOCKLINT_DIAG_LOCK_NOT_HELD :
+		    LOCKLINT_DIAG_LOCK_MAYBE_NOT_HELD, pos,
+		    definite ? "call to '%s' releases lock '%s' that is "
+		    "not held" : "call to '%s' may release lock '%s' that "
+		    "is not held", callee_name, name);
+	}
+	{
+		struct position source =
+		    finding->transition_instruction->call_expr != NULL ?
+		    finding->transition_instruction->call_expr->pos :
+		    finding->transition_instruction->pos;
+
+		info(source, "locklint: invalid lock transition is here");
+	}
+	free(name);
 }
 
 static void
@@ -2050,8 +2231,12 @@ diagnose_lock_transitions(struct analysis *analysis)
 {
 	struct callgraph_iter *iterator;
 	struct function_info *function;
+	avl_tree_t findings;
 	int error;
 
+	avl_create(&findings, compare_lock_transition_finding,
+	    sizeof (struct lock_transition_finding),
+	    offsetof(struct lock_transition_finding, by_origin));
 	error = callgraph_iter_open(&iterator);
 	if (error != 0)
 		die("cannot iterate ready callgraph: %s", strerror(error));
@@ -2072,12 +2257,20 @@ diagnose_lock_transitions(struct analysis *analysis)
 					    &context->point_states, point_state);
 					continue;
 				}
-				point_state = diagnose_lock_transition(analysis,
-				    context, point_state);
+				point_state = observe_lock_transition(analysis,
+				    &findings, context, point_state);
 			}
 		}
 	}
 	callgraph_iter_close(iterator);
+	while (!avl_is_empty(&findings)) {
+		struct lock_transition_finding *finding = avl_first(&findings);
+
+		report_lock_transition(finding);
+		avl_remove(&findings, finding);
+		free(finding);
+	}
+	avl_destroy(&findings);
 }
 
 struct declared_order_observation_violation {
