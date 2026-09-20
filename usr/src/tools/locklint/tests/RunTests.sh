@@ -1004,33 +1004,8 @@ reject_match "valid competition assertion diagnostics" \
 #
 run_capture "mutex data policy diagnostics" data-policy-diagnostics.out \
     "$LOCKLINT" --check-locks data-policy.c
-require_match "unprotected policy read" \
-    "data-policy.c:78:22: warning: locklint: protected member 'protected' read without holding 'lock' \\[unprotected-access\\]" \
+compare "mutex data policy diagnostics" data-policy.ref \
     data-policy-diagnostics.out
-require_match "unprotected policy write" \
-    "data-policy.c:79:14: warning: locklint: protected member 'protected' modified without holding 'lock' \\[unprotected-access\\]" \
-    data-policy-diagnostics.out
-require_match "readable policy write" \
-    "data-policy.c:82:14: warning: locklint: protected member 'readable' modified without holding 'lock' \\[unprotected-access\\]" \
-    data-policy-diagnostics.out
-require_match "replacement policy read" \
-    "data-policy.c:90:23: warning: locklint: protected member 'mutex_after_scheme' read without holding 'lock' \\[unprotected-access\\]" \
-    data-policy-diagnostics.out
-require_match "replacement policy write" \
-    "data-policy.c:91:14: warning: locklint: protected member 'mutex_after_scheme' modified without holding 'lock' \\[unprotected-access\\]" \
-    data-policy-diagnostics.out
-require_match "held read-only scalar write" \
-    "data-policy.c:95:14: warning: locklint: read-only data 'read_only' modified while visible to competing threads \\[read-only-visible\\]" \
-    data-policy-diagnostics.out
-require_match "read-only aggregate first leaf" \
-    "data-policy.c:97:14: warning: locklint: read-only data 'read_only_group.first' modified while visible to competing threads \\[read-only-visible\\]" \
-    data-policy-diagnostics.out
-require_match "read-only aggregate second leaf" \
-    "data-policy.c:97:14: warning: locklint: read-only data 'read_only_group.second' modified while visible to competing threads \\[read-only-visible\\]" \
-    data-policy-diagnostics.out
-if [ "$(grep -c 'warning:' data-policy-diagnostics.out)" -ne 8 ]; then
-	fail "mutex data policy diagnostics: expected exactly eight warnings"
-fi
 
 #
 # Verify caller lock state through direct, wrapped, and recursive calls.
