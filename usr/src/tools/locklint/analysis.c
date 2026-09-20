@@ -4086,11 +4086,29 @@ struct caller_visible_return_lock {
 	struct lock_identity_key source;
 	enum lock_analysis_object_type source_type;
 	struct locklint_access access;
+	struct position origin_position;
 	struct instruction *return_instruction;
 	size_t held;
 	size_t unheld;
 	avl_node_t by_source;
 };
+
+struct caller_visible_return_function {
+	struct function_info *function;
+	avl_tree_t candidates;
+	struct caller_visible_return_function *next;
+	avl_node_t by_function;
+};
+
+static int
+compare_caller_visible_return_function(const void *left_arg,
+    const void *right_arg)
+{
+	const struct caller_visible_return_function *left = left_arg;
+	const struct caller_visible_return_function *right = right_arg;
+
+	return (AVL_PCMP(left->function, right->function));
+}
 
 static int
 compare_caller_visible_return_lock(const void *left_arg,
@@ -4151,6 +4169,43 @@ function_declares_acquisition(struct function_info *function,
 	return (false);
 }
 
+static bool
+source_lock_caller_visible(struct function_info *function,
+    struct lock_identity_key source,
+    enum lock_analysis_object_type source_type)
+{
+	unsigned int argument;
+
+	return (source_type == LOCK_ANALYSIS_OBJECT_OBJECT_IDENTITY ||
+	    identity_formal_argument(function, source, source_type, &argument));
+}
+
+static bool
+record_caller_visible_return_lock(avl_tree_t *candidates,
+    const struct locklint_access *access,
+    struct lock_identity_key source,
+    enum lock_analysis_object_type source_type, struct position origin_position)
+{
+	struct caller_visible_return_lock key = {
+		.source = source,
+		.source_type = source_type,
+		.access = *access,
+		.origin_position = origin_position
+	};
+	struct caller_visible_return_lock *candidate;
+	avl_index_t where;
+
+	candidate = avl_find(candidates, &key, &where);
+	if (candidate != NULL)
+		return (false);
+	candidate = calloc(1, sizeof (*candidate));
+	if (candidate == NULL)
+		die("cannot allocate caller-visible return lock");
+	*candidate = key;
+	avl_insert(candidates, candidate, where);
+	return (true);
+}
+
 static void
 collect_caller_visible_return_locks(struct function_info *function,
     avl_tree_t *candidates)
@@ -4162,11 +4217,8 @@ collect_caller_visible_return_locks(struct function_info *function,
 
 		FOR_EACH_PTR(block->insns, instruction) {
 			struct caller_visible_return_lock key = { 0 };
-			struct caller_visible_return_lock *candidate;
 			enum locklint_lock_action action;
 			enum locklint_lock_mode mode;
-			unsigned int argument;
-			avl_index_t where;
 
 			action = locklint_get_lock_action(function->tu,
 			    instruction, &key.access, &mode);
@@ -4178,22 +4230,108 @@ collect_caller_visible_return_locks(struct function_info *function,
 			    function_access_coordinates(function, &key.access,
 			    &key.source, &key.source_type) != 0)
 				continue;
-			if (key.source_type != LOCK_ANALYSIS_OBJECT_OBJECT_IDENTITY &&
-			    !identity_formal_argument(function, key.source,
-			    key.source_type, &argument))
+			if (!source_lock_caller_visible(function, key.source,
+			    key.source_type))
 				continue;
-			if (function_declares_acquisition(function, key.source))
-				continue;
-			candidate = avl_find(candidates, &key, &where);
-			if (candidate != NULL)
-				continue;
-			candidate = calloc(1, sizeof (*candidate));
-			if (candidate == NULL)
-				die("cannot allocate caller-visible return lock");
-			*candidate = key;
-			avl_insert(candidates, candidate, where);
+			(void) record_caller_visible_return_lock(candidates,
+			    &key.access, key.source, key.source_type,
+			    instruction->call_expr != NULL ?
+			    instruction->call_expr->pos : instruction->pos);
 		} END_FOR_EACH_PTR(instruction);
 	} END_FOR_EACH_PTR(block);
+}
+
+static struct caller_visible_return_function *
+caller_visible_return_function(avl_tree_t *functions,
+    struct function_info *function)
+{
+	struct caller_visible_return_function key = {
+		.function = function
+	};
+
+	return (avl_find(functions, &key, NULL));
+}
+
+static bool
+propagate_caller_visible_return_lock(struct function_info *caller,
+    struct instruction *call, struct function_info *callee,
+    const struct caller_visible_return_lock *source, avl_tree_t *candidates)
+{
+	struct locklint_access access;
+	struct lock_identity_key key;
+	enum lock_analysis_object_type object_type;
+	unsigned int argument;
+
+	if (identity_formal_argument(callee, source->source,
+	    source->source_type, &argument)) {
+		struct locklint_access base;
+
+		if (!locklint_get_call_argument_access(caller->tu, call,
+		    argument, &base))
+			return (false);
+		locklint_rebase_access(&base, &source->access, &access);
+	} else {
+		access = source->access;
+	}
+	if (function_access_coordinates(caller, &access, &key,
+	    &object_type) != 0)
+		return (false);
+	if (!source_lock_caller_visible(caller, key, object_type))
+		return (false);
+	return (record_caller_visible_return_lock(candidates, &access, key,
+	    object_type, call->call_expr != NULL ?
+	    call->call_expr->pos : call->pos));
+}
+
+static void
+propagate_caller_visible_return_locks(avl_tree_t *functions,
+    struct caller_visible_return_function *list)
+{
+	bool changed;
+
+	do {
+		struct caller_visible_return_function *caller;
+
+		changed = false;
+		for (caller = list; caller != NULL; caller = caller->next) {
+			struct basic_block *block;
+
+			FOR_EACH_PTR(caller->function->ep->bbs, block) {
+				struct instruction *instruction;
+
+				FOR_EACH_PTR(block->insns, instruction) {
+					struct caller_visible_return_function *source;
+					struct caller_visible_return_lock *candidate;
+					struct function_info *callee;
+
+					if (instruction->bb == NULL ||
+					    instruction->opcode != OP_CALL)
+						continue;
+					callee = callgraph_callee(caller->function,
+					    instruction);
+					if (callee == NULL ||
+					    (source =
+					    caller_visible_return_function(functions,
+					    callee)) == NULL)
+						continue;
+					for (candidate =
+					    avl_first(&source->candidates);
+					    candidate != NULL; ) {
+						struct caller_visible_return_lock *next =
+						    AVL_NEXT(&source->candidates,
+						    candidate);
+
+						if (propagate_caller_visible_return_lock(
+						    caller->function, instruction,
+						    callee, candidate,
+						    &caller->candidates))
+							changed = true;
+						candidate = next;
+					}
+				} END_FOR_EACH_PTR(instruction);
+			} END_FOR_EACH_PTR(block);
+		}
+	} while (changed);
 }
 
 static void
@@ -4263,8 +4401,8 @@ compare_caller_visible_return_position(const void *left_arg,
 	const struct caller_visible_return_lock *const *right = right_arg;
 	int result;
 
-	result = compare_transition_position((*left)->access.expr->pos,
-	    (*right)->access.expr->pos);
+	result = compare_transition_position((*left)->origin_position,
+	    (*right)->origin_position);
 	if (result != 0)
 		return (result);
 	return (compare_caller_visible_return_lock(*left, *right));
@@ -4293,7 +4431,9 @@ report_caller_visible_returns(struct function_info *function,
 		char *name;
 
 		candidate = ordered[index];
-		if (candidate->held != 0) {
+		if (candidate->held != 0 &&
+		    !function_declares_acquisition(function,
+		    candidate->source)) {
 			name = locklint_access_name(&candidate->access);
 			if (candidate->unheld == 0) {
 				locklint_warning(
@@ -4407,21 +4547,42 @@ diagnose_local_locks_at_return(struct function_context *context,
 static void
 diagnose_locks_on_return(struct analysis *analysis)
 {
+	struct caller_visible_return_function *functions = NULL;
+	struct caller_visible_return_function **tail = &functions;
+	struct caller_visible_return_function *entry;
 	struct callgraph_iter *iterator;
 	struct function_info *function;
+	avl_tree_t by_function;
 	int error;
 
+	avl_create(&by_function, compare_caller_visible_return_function,
+	    sizeof (struct caller_visible_return_function),
+	    offsetof(struct caller_visible_return_function, by_function));
 	error = callgraph_iter_open(&iterator);
 	if (error != 0)
 		die("cannot iterate ready callgraph: %s", strerror(error));
 	while ((function = callgraph_iter_next(iterator)) != NULL) {
-		avl_tree_t caller_visible;
-		struct function_context *context;
-
-		avl_create(&caller_visible, compare_caller_visible_return_lock,
+		entry = calloc(1, sizeof (*entry));
+		if (entry == NULL)
+			die("cannot allocate return lock function");
+		entry->function = function;
+		avl_create(&entry->candidates,
+		    compare_caller_visible_return_lock,
 		    sizeof (struct caller_visible_return_lock),
 		    offsetof(struct caller_visible_return_lock, by_source));
-		collect_caller_visible_return_locks(function, &caller_visible);
+		collect_caller_visible_return_locks(function,
+		    &entry->candidates);
+		avl_add(&by_function, entry);
+		*tail = entry;
+		tail = &entry->next;
+	}
+	callgraph_iter_close(iterator);
+	propagate_caller_visible_return_locks(&by_function, functions);
+	while ((entry = functions) != NULL) {
+		struct function_context *context;
+
+		functions = entry->next;
+		function = entry->function;
 		for (context = avl_first(&function->contexts.contexts);
 		    context != NULL;
 		    context = AVL_NEXT(&function->contexts.contexts, context)) {
@@ -4443,11 +4604,13 @@ diagnose_locks_on_return(struct analysis *analysis)
 			}
 		}
 		observe_caller_visible_returns(analysis, function,
-		    &caller_visible);
-		report_caller_visible_returns(function, &caller_visible);
-		avl_destroy(&caller_visible);
+		    &entry->candidates);
+		report_caller_visible_returns(function, &entry->candidates);
+		avl_destroy(&entry->candidates);
+		avl_remove(&by_function, entry);
+		free(entry);
 	}
-	callgraph_iter_close(iterator);
+	avl_destroy(&by_function);
 }
 
 static void

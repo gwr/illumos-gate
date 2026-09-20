@@ -609,6 +609,11 @@ compare "absolute declared effect diagnostics" \
     declared-effects-absolute-contextual.ref \
     declared-effects-absolute.out
 
+run_capture "contextual lock effect diagnostics" effects-contextual.out \
+    "$LOCKLINT" --check-locks effects.c
+compare "contextual lock effect diagnostics" effects-contextual.ref \
+    effects-contextual.out
+
 run_capture "user rwlock core state" rwlock-core-user.out \
     "$LOCKLINT" --check-locks -DLOCKLINT_RWLOCK_CORE_ONLY rwlock.c
 compare "user rwlock core state" rwlock-core.ref rwlock-core-user.out

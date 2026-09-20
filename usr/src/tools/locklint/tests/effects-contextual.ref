@@ -1,0 +1,12 @@
+../locklint: effects.c:125:21: warning: locklint: call to 'acquire_lock' acquires already-held lock 'lock' [lock-already-held]
+../locklint: effects.c:44:20: locklint: invalid lock transition is here
+../locklint: effects.c:140:21: warning: locklint: call to 'release_lock' releases lock 'lock' that is not held [lock-not-held]
+../locklint: effects.c:56:19: locklint: invalid lock transition is here
+../locklint: effects.c:134:22: warning: locklint: protected member 'value' read without holding 'lock' [unprotected-access]
+../locklint: effects.c:147:22: warning: locklint: protected member 'value' read without holding 'lock' [unprotected-access]
+../locklint: effects.c:163:22: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
+../locklint: effects.c:44:22: warning: locklint: lock 'lock' held on return from 'acquire_lock' [lock-held-on-return]
+../locklint: effects.c:50:22: warning: locklint: lock 'lock' held on return from 'acquire_wrapper' [lock-held-on-return]
+../locklint: effects.c:87:30: warning: locklint: lock 'lock' held on only some paths returning from 'conditional_acquire' [lock-maybe-held-on-return]
+../locklint: effects.c:96:30: warning: locklint: lock 'lock' held on return from 'recursive_acquire' [lock-held-on-return]
+../locklint: effects.c:163:17: warning: locklint: lock 'lock' held on only some paths returning from 'check_conditional_effect' [lock-maybe-held-on-return]

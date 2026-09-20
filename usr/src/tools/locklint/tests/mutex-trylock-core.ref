@@ -12,4 +12,5 @@
 ../locklint: mutex-trylock.c:75:17: warning: locklint: lock 'first' held on only some paths returning from 'trylock_truth' [lock-maybe-held-on-return]
 ../locklint: mutex-trylock.c:89:17: warning: locklint: lock 'first' held on only some paths returning from 'trylock_negated' [lock-maybe-held-on-return]
 ../locklint: mutex-trylock.c:103:17: warning: locklint: lock 'first' held on only some paths returning from 'trylock_saved_result' [lock-maybe-held-on-return]
+../locklint: mutex-trylock.c:118:9: warning: locklint: lock 'first' held on only some paths returning from 'call_balanced_trylock' [lock-maybe-held-on-return]
 ../locklint: mutex-trylock.c:127:30: warning: locklint: lock 'first' held on only some paths returning from 'trylock_order_on_success' [lock-maybe-held-on-return]
