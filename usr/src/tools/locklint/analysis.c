@@ -49,6 +49,7 @@
 #include "lib.h"
 #include "linearize.h"
 #include "lock_identity.h"
+#include "lock_order.h"
 #include "provenance.h"
 #include "symbol.h"
 #include "worklist.h"
@@ -534,6 +535,7 @@ apply_lock_event(struct analysis *analysis, struct point_state *point_state)
 		analysis->counts.lock_identities_reused++;
 	else
 		analysis->counts.lock_identities_created++;
+	locklint_order_classify_identity(identity, &access);
 	if (action != LOCKLINT_LOCK_ACQUIRE &&
 	    action != LOCKLINT_LOCK_RELEASE &&
 	    action != LOCKLINT_LOCK_DOWNGRADE &&
@@ -1144,6 +1146,7 @@ process_lock_assertion(struct analysis *analysis,
 		analysis->counts.lock_identities_reused++;
 	else
 		analysis->counts.lock_identities_created++;
+	locklint_order_classify_identity(identity, &access);
 
 	current_modes = context_state_lock_modes(point_state->state, identity);
 	if (current_modes == 0)
@@ -1244,6 +1247,7 @@ process_conditional_lock(struct analysis *analysis,
 		analysis->counts.lock_identities_reused++;
 	else
 		analysis->counts.lock_identities_created++;
+	locklint_order_classify_identity(identity, &access);
 
 	current_modes = context_state_lock_modes(point_state->state, identity);
 	if (action == LOCKLINT_LOCK_RESULT_ACQUIRE) {
@@ -1633,6 +1637,195 @@ diagnose_lock_transitions(struct analysis *analysis)
 		}
 	}
 	callgraph_iter_close(iterator);
+}
+
+struct declared_order_point {
+	struct instruction *instruction;
+	size_t states;
+	avl_node_t by_instruction;
+};
+
+static int
+compare_declared_order_point(const void *left_arg, const void *right_arg)
+{
+	const struct declared_order_point *left = left_arg;
+	const struct declared_order_point *right = right_arg;
+
+	return (AVL_PCMP(left->instruction, right->instruction));
+}
+
+struct declared_order_finding {
+	struct instruction *instruction;
+	const struct locklint_order_violation *violation;
+	const struct point_state *last_point_state;
+	size_t states;
+	avl_node_t by_key;
+};
+
+static int
+compare_declared_order_finding(const void *left_arg, const void *right_arg)
+{
+	const struct declared_order_finding *left = left_arg;
+	const struct declared_order_finding *right = right_arg;
+	int result;
+
+	result = AVL_PCMP(left->instruction, right->instruction);
+	if (result != 0)
+		return (result);
+	return (AVL_PCMP(left->violation, right->violation));
+}
+
+/*
+ * Compare each unconditional acquisition with the exact locks held before it.
+ * Counts are grouped by source instruction so a relation reached in only some
+ * point states is reported as a possible inversion.
+ */
+static void
+diagnose_declared_lock_order(struct analysis *analysis)
+{
+	struct callgraph_iter *iterator;
+	struct function_info *function;
+	avl_tree_t points;
+	avl_tree_t findings;
+	int error;
+
+	avl_create(&points, compare_declared_order_point,
+	    sizeof (struct declared_order_point),
+	    offsetof(struct declared_order_point, by_instruction));
+	avl_create(&findings, compare_declared_order_finding,
+	    sizeof (struct declared_order_finding),
+	    offsetof(struct declared_order_finding, by_key));
+	error = callgraph_iter_open(&iterator);
+	if (error != 0)
+		die("cannot iterate ready callgraph: %s", strerror(error));
+	while ((function = callgraph_iter_next(iterator)) != NULL) {
+		struct function_context *context;
+
+		for (context = avl_first(&function->contexts.contexts);
+		    context != NULL;
+		    context = AVL_NEXT(&function->contexts.contexts, context)) {
+			struct point_state *point_state;
+
+			if (!context->synthetic_root)
+				continue;
+			for (point_state = avl_first(&context->point_states);
+			    point_state != NULL; point_state = AVL_NEXT(
+			    &context->point_states, point_state)) {
+				struct instruction *instruction =
+				    point_state->point.next_instruction;
+				struct declared_order_point point_key;
+				struct declared_order_point *point;
+				struct locklint_access access;
+				struct lock_identity *acquired;
+				enum locklint_lock_action action;
+				enum locklint_lock_mode mode;
+				avl_index_t where;
+				bool composed;
+				bool existed;
+				size_t index;
+
+				if (instruction == NULL)
+					continue;
+				action = locklint_get_lock_action(function->tu,
+				    instruction, &access, &mode);
+				if (action != LOCKLINT_LOCK_ACQUIRE &&
+				    (action != LOCKLINT_LOCK_RESULT_ACQUIRE ||
+				    call_result_used(instruction)))
+					continue;
+				if (access.root == NULL)
+					continue;
+				point_key = (struct declared_order_point) {
+					.instruction = instruction
+				};
+				point = avl_find(&points, &point_key, &where);
+				if (point == NULL) {
+					point = calloc(1, sizeof (*point));
+					if (point == NULL)
+						die("cannot allocate declared order "
+						    "point");
+					point->instruction = instruction;
+					avl_insert(&points, point, where);
+				}
+				point->states++;
+				error = context_access_identity(analysis, context,
+				    &access, &acquired, &existed, &composed);
+				if (error != 0)
+					die("cannot identify ordered acquisition: "
+					    "%s", strerror(error));
+				locklint_order_classify_identity(acquired, &access);
+				for (index = 0;
+				    index < point_state->state->locks->count;
+				    index++) {
+					const struct lock_identity *held =
+					    point_state->state->locks->
+					    entries[index].lock;
+					const struct locklint_order_violation
+					    *violation;
+					struct declared_order_finding key;
+					struct declared_order_finding *finding;
+
+					violation =
+					    locklint_order_declared_violation(
+					    acquired, held);
+					if (violation == NULL)
+						continue;
+					key = (struct declared_order_finding) {
+						.instruction = instruction,
+						.violation = violation
+					};
+					finding = avl_find(&findings, &key,
+					    &where);
+					if (finding == NULL) {
+						finding = calloc(1,
+						    sizeof (*finding));
+						if (finding == NULL)
+							die("cannot allocate declared "
+							    "order finding");
+						finding->instruction =
+						    instruction;
+						finding->violation = violation;
+						avl_insert(&findings, finding,
+						    where);
+					}
+					if (finding->last_point_state !=
+					    point_state) {
+						finding->states++;
+						finding->last_point_state =
+						    point_state;
+					}
+				}
+			}
+		}
+	}
+	callgraph_iter_close(iterator);
+	while (!avl_is_empty(&findings)) {
+		struct declared_order_finding *finding =
+		    avl_first(&findings);
+		struct declared_order_point point_key = {
+			.instruction = finding->instruction
+		};
+		struct declared_order_point *point =
+		    avl_find(&points, &point_key, NULL);
+		struct position pos =
+		    finding->instruction->call_expr != NULL ?
+		    finding->instruction->call_expr->pos :
+		    finding->instruction->pos;
+
+		if (point == NULL)
+			die("declared order finding has no analysis point");
+		locklint_order_report_declared_violation(finding->violation,
+		    &pos, finding->states < point->states);
+		avl_remove(&findings, finding);
+		free(finding);
+	}
+	avl_destroy(&findings);
+	while (!avl_is_empty(&points)) {
+		struct declared_order_point *point = avl_first(&points);
+
+		avl_remove(&points, point);
+		free(point);
+	}
+	avl_destroy(&points);
 }
 
 struct lock_assertion_observation {
@@ -3443,6 +3636,7 @@ analysis_run(struct lock_identity_collection *lock_identities, FILE *stream)
 	    worklist_point_state_dequeue(&analysis.worklist)) != NULL)
 		process_point(&analysis, point_state);
 	diagnose_lock_transitions(&analysis);
+	diagnose_declared_lock_order(&analysis);
 	diagnose_lock_assertions(&analysis);
 	diagnose_competition_underflow();
 	diagnose_declared_competition_effects();

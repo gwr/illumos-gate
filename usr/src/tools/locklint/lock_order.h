@@ -23,10 +23,19 @@
 #include <stdbool.h>
 
 struct locklint_access;
+struct lock_identity;
+struct locklint_order_violation;
 struct position;
 
 void locklint_order_build(void);
 void locklint_order_report_declared_cycles(void);
+void locklint_order_classify_identity(const struct lock_identity *,
+    const struct locklint_access *);
+const struct locklint_order_violation *
+locklint_order_declared_violation(const struct lock_identity *,
+    const struct lock_identity *);
+void locklint_order_report_declared_violation(
+    const struct locklint_order_violation *, const struct position *, bool);
 bool locklint_order_check_declared(const struct locklint_access *,
     const struct locklint_access *, const struct position *, bool);
 void locklint_order_record_observed(const struct locklint_access *,

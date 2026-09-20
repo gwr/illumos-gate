@@ -297,6 +297,17 @@ run_capture "declared lock order cycle" lock-order-cycle.out \
 compare "declared lock order cycle" lock-order-cycle.ref \
     lock-order-cycle.out
 
+run_capture "local declared lock order" lock-order-local.out \
+    "$LOCKLINT" --check-locks lock-order.c
+compare "local declared lock order" lock-order-local.ref \
+    lock-order-local.out
+
+run_capture "conditional local declared lock order" \
+    lock-order-local-conditional.out \
+    "$LOCKLINT" --check-locks lock-order-local-conditional.c
+compare "conditional local declared lock order" \
+    lock-order-local-conditional.ref lock-order-local-conditional.out
+
 run_capture "condition wait events" condition-wait-events.out \
     "$LOCKLINT" --dump-events condition-wait.c
 require_match "condition wait first mutex event" "WAIT state.first" \

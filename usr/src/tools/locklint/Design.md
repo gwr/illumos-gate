@@ -2149,8 +2149,21 @@ The contextual checker now builds the declared graph before state analysis,
 reports each cyclic component, and releases the graph after analysis.
 Declaration cycles depend only on resolved `LOCK_ORDER` annotations, so this
 first lock-order increment does not inspect semantic lock state.
-Acquisition-time declared-order checks and observed-order edges remain
-separate later increments.
+
+Each declared vertex also owns a deduplicated list of canonical lock
+identities which source accesses have matched to that role.  This
+classification is graph metadata, not semantic state: immutable lock entries
+remain keyed only by identity and ownership mode.  After the caller-context
+fixed point, local-order diagnostics inspect unconditional acquisitions in
+synthetic-root contexts and compare the acquired identity with every identity
+held in each exact incoming state.  Findings aggregate by acquisition
+instruction and declared role pair.  An inversion present in every incoming
+state is definite; one present in only some states is possible.
+
+Acquisitions reached through concrete callee contexts remain deferred until
+their diagnostics can be mapped through call provenance.  Result-sensitive
+acquisitions, upgrades, downgrades, condition-wait reacquisition, and
+observed-order edges are also separate later increments.
 
 ## Main action sequences
 

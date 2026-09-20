@@ -27,10 +27,22 @@
 #include "access.h"
 #include "annotations.h"
 #include "diagnostics.h"
+#include "lock_identity.h"
 #include "lock_order.h"
 #include "symbol.h"
 
 struct order_vertex;
+
+struct order_identity {
+	const struct lock_identity *identity;
+	struct order_identity *next;
+};
+
+struct locklint_order_violation {
+	struct order_vertex *before;
+	struct order_vertex *after;
+	struct locklint_order_violation *next;
+};
 
 struct observed_edge {
 	struct order_vertex *before;
@@ -60,14 +72,21 @@ struct order_vertex {
 	struct order_edge *path_edge;
 	struct order_edge *edges;
 	struct observed_edge *observed_edges;
+	struct order_identity *identities;
 	struct order_vertex *next;
 };
 
 static struct order_vertex *vertices;
 static struct order_edge *edges;
 static struct observed_edge *observed_edges;
+static struct locklint_order_violation *violations;
 static unsigned int visit_generation;
 static unsigned int component_generation;
+
+static bool declared_path(struct order_vertex *, struct order_vertex *);
+static bool path_uses_declared_cycle(struct order_vertex *,
+    struct order_vertex *);
+static void report_declared_path(struct order_vertex *, struct order_vertex *);
 
 static char *
 copy_string(const char *text)
@@ -320,6 +339,104 @@ role_matches_access(const struct order_vertex *vertex,
 		return (false);
 	return (locklint_access_base(access, vertex->role.type,
 	    vertex->role.offset, &base));
+}
+
+void
+locklint_order_classify_identity(const struct lock_identity *identity,
+    const struct locklint_access *access)
+{
+	struct order_vertex *vertex;
+
+	for (vertex = vertices; vertex != NULL; vertex = vertex->next) {
+		struct order_identity *entry;
+
+		if (!role_matches_access(vertex, access))
+			continue;
+		for (entry = vertex->identities; entry != NULL;
+		    entry = entry->next) {
+			if (entry->identity == identity)
+				break;
+		}
+		if (entry != NULL)
+			continue;
+		entry = calloc(1, sizeof (*entry));
+		if (entry == NULL)
+			die("out of memory classifying lock-order identity");
+		entry->identity = identity;
+		entry->next = vertex->identities;
+		vertex->identities = entry;
+	}
+}
+
+static bool
+vertex_has_identity(const struct order_vertex *vertex,
+    const struct lock_identity *identity)
+{
+	const struct order_identity *entry;
+
+	for (entry = vertex->identities; entry != NULL; entry = entry->next) {
+		if (entry->identity == identity)
+			return (true);
+	}
+	return (false);
+}
+
+const struct locklint_order_violation *
+locklint_order_declared_violation(const struct lock_identity *acquired,
+    const struct lock_identity *held)
+{
+	struct order_vertex *before;
+
+	for (before = vertices; before != NULL; before = before->next) {
+		struct order_vertex *after;
+
+		if (!vertex_has_identity(before, acquired))
+			continue;
+		for (after = vertices; after != NULL; after = after->next) {
+			struct locklint_order_violation *violation;
+
+			if (!vertex_has_identity(after, held) ||
+			    !declared_path(before, after) ||
+			    path_uses_declared_cycle(before, after))
+				continue;
+			for (violation = violations; violation != NULL;
+			    violation = violation->next) {
+				if (violation->before == before &&
+				    violation->after == after)
+					return (violation);
+			}
+			violation = calloc(1, sizeof (*violation));
+			if (violation == NULL)
+				die("out of memory recording declared order "
+				    "violation");
+			violation->before = before;
+			violation->after = after;
+			violation->next = violations;
+			violations = violation;
+			return (violation);
+		}
+	}
+	return (NULL);
+}
+
+void
+locklint_order_report_declared_violation(
+    const struct locklint_order_violation *violation,
+    const struct position *pos, bool possible)
+{
+	if (possible) {
+		locklint_warning(LOCKLINT_DIAG_DECLARED_ORDER_POSSIBLE, *pos,
+		    "lock '%s' may be acquired out of declared order while "
+		    "holding '%s'", violation->before->name,
+		    violation->after->name);
+	} else {
+		locklint_warning(LOCKLINT_DIAG_DECLARED_ORDER, *pos,
+		    "lock '%s' acquired out of declared order while holding "
+		    "'%s'", violation->before->name, violation->after->name);
+	}
+	if (!declared_path(violation->before, violation->after))
+		die("declared lock-order path disappeared");
+	report_declared_path(violation->before, violation->after);
 }
 
 static bool
@@ -653,6 +770,12 @@ locklint_order_report_observed_cycles(void)
 void
 locklint_order_cleanup(void)
 {
+	while (violations != NULL) {
+		struct locklint_order_violation *next = violations->next;
+
+		free(violations);
+		violations = next;
+	}
 	while (observed_edges != NULL) {
 		struct observed_edge *next = observed_edges->next;
 
@@ -667,7 +790,12 @@ locklint_order_cleanup(void)
 	}
 	while (vertices != NULL) {
 		struct order_vertex *next = vertices->next;
+		struct order_identity *identity;
 
+		while ((identity = vertices->identities) != NULL) {
+			vertices->identities = identity->next;
+			free(identity);
+		}
 		free(vertices->name);
 		free(vertices);
 		vertices = next;
