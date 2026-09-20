@@ -694,15 +694,13 @@ run_capture "assertion alias overflow replacement" \
 compare "assertion alias overflow replacement" \
     assertion-alias-overflow.ref assertion-alias-overflow.out
 
-run_capture "user rwlock call state" rwlock-calls-core-user.out \
+run_capture "user rwlock call state" rwlock-calls-user.out \
     "$LOCKLINT" --check-locks rwlock-calls.c
-compare "user rwlock call state" rwlock-calls-core.ref \
-    rwlock-calls-core-user.out
+compare "user rwlock call state" rwlock-calls.ref rwlock-calls-user.out
 
-run_capture "kernel rwlock call state" rwlock-calls-core-kernel.out \
+run_capture "kernel rwlock call state" rwlock-calls-kernel.out \
     "$LOCKLINT" --check-locks -D_KERNEL rwlock-calls.c
-compare "kernel rwlock call state" rwlock-calls-core.ref \
-    rwlock-calls-core-kernel.out
+compare "kernel rwlock call state" rwlock-calls.ref rwlock-calls-kernel.out
 
 run_capture "rwlock downgrade state" rwlock-downgrade.out \
     "$LOCKLINT" --check-locks rwlock-downgrade.c

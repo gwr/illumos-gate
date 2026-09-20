@@ -1,7 +1,7 @@
 ../locklint: rwlock-calls.c:85:14: warning: locklint: protected member 'value' modified without write-holding 'lock' [unprotected-access]
 ../locklint: rwlock-calls.c:103:20: locklint: protection was not established at this call to 'write_value'
-../locklint: rwlock-calls.c:102:9: locklint: required lock 'lock' acquired here is read-held; write-holding is required at that call
-../locklint: rwlock-calls.c:132:9: warning: locklint: lock 'lock' held on return from 'acquire_reader' [lock-held-on-return]
-../locklint: rwlock-calls.c:141:9: warning: locklint: lock 'lock' held on return from 'acquire_writer' [lock-held-on-return]
+../locklint: rwlock-calls.c:85:14: locklint: required lock 'lock' is read-held; write-holding is required at this protected access
 ../locklint: rwlock-calls.c:160:14: warning: locklint: protected member 'value' modified without write-holding 'lock' [unprotected-access]
 ../locklint: rwlock-calls.c:160:14: locklint: required lock 'lock' is read-held; write-holding is required at this protected access
+../locklint: rwlock-calls.c:132:9: warning: locklint: lock 'lock' held on return from 'acquire_reader' [lock-held-on-return]
+../locklint: rwlock-calls.c:141:9: warning: locklint: lock 'lock' held on return from 'acquire_writer' [lock-held-on-return]
