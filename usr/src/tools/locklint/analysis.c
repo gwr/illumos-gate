@@ -1639,25 +1639,67 @@ diagnose_lock_transitions(struct analysis *analysis)
 	callgraph_iter_close(iterator);
 }
 
-struct declared_order_point {
-	struct instruction *instruction;
+struct declared_order_observation_violation {
+	const struct locklint_order_violation *violation;
+	const struct point_state *last_point_state;
 	size_t states;
-	avl_node_t by_instruction;
+	struct declared_order_observation_violation *next;
+};
+
+struct declared_order_observation {
+	struct function_context *context;
+	struct instruction *acquisition_instruction;
+	size_t states;
+	struct declared_order_observation_violation *violations;
+	avl_node_t by_context;
 };
 
 static int
-compare_declared_order_point(const void *left_arg, const void *right_arg)
+compare_declared_order_observation(const void *left_arg,
+    const void *right_arg)
 {
-	const struct declared_order_point *left = left_arg;
-	const struct declared_order_point *right = right_arg;
+	const struct declared_order_observation *left = left_arg;
+	const struct declared_order_observation *right = right_arg;
+	int result;
 
-	return (AVL_PCMP(left->instruction, right->instruction));
+	result = AVL_PCMP(left->context, right->context);
+	if (result != 0)
+		return (result);
+	return (AVL_PCMP(left->acquisition_instruction,
+	    right->acquisition_instruction));
+}
+
+struct declared_order_origin {
+	struct function_info *caller_function;
+	struct instruction *call_instruction;
+	struct instruction *acquisition_instruction;
+	size_t states;
+	avl_node_t by_source;
+};
+
+static int
+compare_declared_order_origin(const void *left_arg, const void *right_arg)
+{
+	const struct declared_order_origin *left = left_arg;
+	const struct declared_order_origin *right = right_arg;
+	const struct instruction *left_source =
+	    left->call_instruction != NULL ? left->call_instruction :
+	    left->acquisition_instruction;
+	const struct instruction *right_source =
+	    right->call_instruction != NULL ? right->call_instruction :
+	    right->acquisition_instruction;
+	int result;
+
+	result = AVL_PCMP(left_source, right_source);
+	if (result != 0)
+		return (result);
+	return (AVL_PCMP(left->acquisition_instruction,
+	    right->acquisition_instruction));
 }
 
 struct declared_order_finding {
-	struct instruction *instruction;
+	struct declared_order_origin *origin;
 	const struct locklint_order_violation *violation;
-	const struct point_state *last_point_state;
 	size_t states;
 	avl_node_t by_key;
 };
@@ -1669,29 +1711,205 @@ compare_declared_order_finding(const void *left_arg, const void *right_arg)
 	const struct declared_order_finding *right = right_arg;
 	int result;
 
-	result = AVL_PCMP(left->instruction, right->instruction);
+	result = compare_declared_order_origin(left->origin, right->origin);
 	if (result != 0)
 		return (result);
 	return (AVL_PCMP(left->violation, right->violation));
 }
 
+struct provenance_context_visit {
+	struct function_context *context;
+	struct provenance_context_visit *next;
+	avl_node_t by_context;
+};
+
+static int
+compare_provenance_context_visit(const void *left_arg, const void *right_arg)
+{
+	const struct provenance_context_visit *left = left_arg;
+	const struct provenance_context_visit *right = right_arg;
+
+	return (AVL_PCMP(left->context, right->context));
+}
+
+static bool
+record_provenance_context_visit(avl_tree_t *visited,
+    struct provenance_context_visit **work, struct function_context *context)
+{
+	struct provenance_context_visit key = {
+		.context = context
+	};
+	struct provenance_context_visit *visit;
+	avl_index_t where;
+
+	visit = avl_find(visited, &key, &where);
+	if (visit != NULL)
+		return (false);
+	visit = calloc(1, sizeof (*visit));
+	if (visit == NULL)
+		die("cannot allocate context provenance visit");
+	visit->context = context;
+	visit->next = *work;
+	*work = visit;
+	avl_insert(visited, visit, where);
+	return (true);
+}
+
+typedef void (*root_call_f)(struct function_context *, struct instruction *,
+    void *);
+
+/*
+ * Visit every synthetic-root call which can reach one concrete context.
+ * Canonical context pointers form the visited key and bound recursive cycles.
+ */
+static bool
+for_each_root_call(struct function_context *context, root_call_f callback,
+    void *data)
+{
+	struct provenance_context_visit *work = NULL;
+	avl_tree_t visited;
+	bool found = false;
+
+	avl_create(&visited, compare_provenance_context_visit,
+	    sizeof (struct provenance_context_visit),
+	    offsetof(struct provenance_context_visit, by_context));
+	(void) record_provenance_context_visit(&visited, &work, context);
+	while (work != NULL) {
+		struct provenance_context_visit *visit = work;
+		struct provenance_edge *edge;
+
+		work = visit->next;
+		for (edge = provenance_edge_first(visit->context); edge != NULL;
+		    edge = provenance_edge_next(visit->context, edge)) {
+			if (edge->caller_context->synthetic_root) {
+				callback(edge->caller_context,
+				    edge->call_instruction, data);
+				found = true;
+				continue;
+			}
+			(void) record_provenance_context_visit(&visited, &work,
+			    edge->caller_context);
+		}
+	}
+	while (!avl_is_empty(&visited)) {
+		struct provenance_context_visit *visit = avl_first(&visited);
+
+		avl_remove(&visited, visit);
+		free(visit);
+	}
+	avl_destroy(&visited);
+	return (found);
+}
+
+static void
+record_declared_order_origin(avl_tree_t *origins, avl_tree_t *findings,
+    const struct declared_order_observation *observation,
+    struct function_context *caller_context,
+    struct instruction *call_instruction)
+{
+	struct declared_order_origin key = {
+		.caller_function = caller_context != NULL ?
+		    caller_context->function : NULL,
+		.call_instruction = call_instruction,
+		.acquisition_instruction = observation->acquisition_instruction
+	};
+	struct declared_order_origin *origin;
+	struct declared_order_observation_violation *observed;
+	avl_index_t where;
+
+	origin = avl_find(origins, &key, &where);
+	if (origin == NULL) {
+		origin = calloc(1, sizeof (*origin));
+		if (origin == NULL)
+			die("cannot allocate declared order origin");
+		*origin = key;
+		avl_insert(origins, origin, where);
+	}
+	origin->states += observation->states;
+	for (observed = observation->violations; observed != NULL;
+	    observed = observed->next) {
+		struct declared_order_finding finding_key = {
+			.origin = origin,
+			.violation = observed->violation
+		};
+		struct declared_order_finding *finding;
+
+		finding = avl_find(findings, &finding_key, &where);
+		if (finding == NULL) {
+			finding = calloc(1, sizeof (*finding));
+			if (finding == NULL)
+				die("cannot allocate declared order finding");
+			finding->origin = origin;
+			finding->violation = observed->violation;
+			avl_insert(findings, finding, where);
+		}
+		finding->states += observed->states;
+	}
+}
+
+struct declared_order_trace {
+	avl_tree_t *origins;
+	avl_tree_t *findings;
+	const struct declared_order_observation *observation;
+};
+
+static void
+record_declared_order_root(struct function_context *caller_context,
+    struct instruction *call_instruction, void *data_arg)
+{
+	struct declared_order_trace *data = data_arg;
+
+	record_declared_order_origin(data->origins, data->findings,
+	    data->observation, caller_context, call_instruction);
+}
+
+/*
+ * Attribute one context-local acquisition observation to every root call
+ * which can reach that exact context.  The visited set bounds recursion.
+ */
+static void
+trace_declared_order_observation(avl_tree_t *origins, avl_tree_t *findings,
+    const struct declared_order_observation *observation)
+{
+	struct declared_order_trace data = {
+		.origins = origins,
+		.findings = findings,
+		.observation = observation
+	};
+
+	if (observation->context->synthetic_root) {
+		record_declared_order_origin(origins, findings, observation,
+		    NULL, NULL);
+		return;
+	}
+	if (!for_each_root_call(observation->context,
+	    record_declared_order_root, &data)) {
+		record_declared_order_origin(origins, findings, observation,
+		    NULL, NULL);
+	}
+}
+
 /*
  * Compare each unconditional acquisition with the exact locks held before it.
- * Counts are grouped by source instruction so a relation reached in only some
- * point states is reported as a possible inversion.
+ * Context-local observations retain safe states as well as inversions before
+ * provenance maps them to local acquisition sites or originating root calls.
  */
 static void
 diagnose_declared_lock_order(struct analysis *analysis)
 {
 	struct callgraph_iter *iterator;
 	struct function_info *function;
-	avl_tree_t points;
+	avl_tree_t observations;
+	avl_tree_t origins;
 	avl_tree_t findings;
 	int error;
 
-	avl_create(&points, compare_declared_order_point,
-	    sizeof (struct declared_order_point),
-	    offsetof(struct declared_order_point, by_instruction));
+	avl_create(&observations, compare_declared_order_observation,
+	    sizeof (struct declared_order_observation),
+	    offsetof(struct declared_order_observation, by_context));
+	avl_create(&origins, compare_declared_order_origin,
+	    sizeof (struct declared_order_origin),
+	    offsetof(struct declared_order_origin, by_source));
 	avl_create(&findings, compare_declared_order_finding,
 	    sizeof (struct declared_order_finding),
 	    offsetof(struct declared_order_finding, by_key));
@@ -1706,15 +1924,13 @@ diagnose_declared_lock_order(struct analysis *analysis)
 		    context = AVL_NEXT(&function->contexts.contexts, context)) {
 			struct point_state *point_state;
 
-			if (!context->synthetic_root)
-				continue;
 			for (point_state = avl_first(&context->point_states);
 			    point_state != NULL; point_state = AVL_NEXT(
 			    &context->point_states, point_state)) {
 				struct instruction *instruction =
 				    point_state->point.next_instruction;
-				struct declared_order_point point_key;
-				struct declared_order_point *point;
+				struct declared_order_observation key;
+				struct declared_order_observation *observation;
 				struct locklint_access access;
 				struct lock_identity *acquired;
 				enum locklint_lock_action action;
@@ -1734,19 +1950,25 @@ diagnose_declared_lock_order(struct analysis *analysis)
 					continue;
 				if (access.root == NULL)
 					continue;
-				point_key = (struct declared_order_point) {
-					.instruction = instruction
+				key = (struct declared_order_observation) {
+					.context = context,
+					.acquisition_instruction = instruction
 				};
-				point = avl_find(&points, &point_key, &where);
-				if (point == NULL) {
-					point = calloc(1, sizeof (*point));
-					if (point == NULL)
+				observation = avl_find(&observations, &key,
+				    &where);
+				if (observation == NULL) {
+					observation = calloc(1,
+					    sizeof (*observation));
+					if (observation == NULL)
 						die("cannot allocate declared order "
-						    "point");
-					point->instruction = instruction;
-					avl_insert(&points, point, where);
+						    "observation");
+					observation->context = context;
+					observation->acquisition_instruction =
+					    instruction;
+					avl_insert(&observations, observation,
+					    where);
 				}
-				point->states++;
+				observation->states++;
 				error = context_access_identity(analysis, context,
 				    &access, &acquired, &existed, &composed);
 				if (error != 0)
@@ -1761,36 +1983,40 @@ diagnose_declared_lock_order(struct analysis *analysis)
 					    entries[index].lock;
 					const struct locklint_order_violation
 					    *violation;
-					struct declared_order_finding key;
-					struct declared_order_finding *finding;
+					struct
+					    declared_order_observation_violation
+					    *observed;
 
 					violation =
 					    locklint_order_declared_violation(
 					    acquired, held);
 					if (violation == NULL)
 						continue;
-					key = (struct declared_order_finding) {
-						.instruction = instruction,
-						.violation = violation
-					};
-					finding = avl_find(&findings, &key,
-					    &where);
-					if (finding == NULL) {
-						finding = calloc(1,
-						    sizeof (*finding));
-						if (finding == NULL)
-							die("cannot allocate declared "
-							    "order finding");
-						finding->instruction =
-						    instruction;
-						finding->violation = violation;
-						avl_insert(&findings, finding,
-						    where);
+					for (observed =
+					    observation->violations;
+					    observed != NULL;
+					    observed = observed->next) {
+						if (observed->violation ==
+						    violation)
+							break;
 					}
-					if (finding->last_point_state !=
+					if (observed == NULL) {
+						observed = calloc(1,
+						    sizeof (*observed));
+						if (observed == NULL)
+							die("cannot allocate "
+							    "declared order "
+							    "observation");
+						observed->violation = violation;
+						observed->next =
+						    observation->violations;
+						observation->violations =
+						    observed;
+					}
+					if (observed->last_point_state !=
 					    point_state) {
-						finding->states++;
-						finding->last_point_state =
+						observed->states++;
+						observed->last_point_state =
 						    point_state;
 					}
 				}
@@ -1798,34 +2024,58 @@ diagnose_declared_lock_order(struct analysis *analysis)
 		}
 	}
 	callgraph_iter_close(iterator);
+	while (!avl_is_empty(&observations)) {
+		struct declared_order_observation *observation =
+		    avl_first(&observations);
+		struct declared_order_observation_violation *observed;
+
+		trace_declared_order_observation(&origins, &findings,
+		    observation);
+		while ((observed = observation->violations) != NULL) {
+			observation->violations = observed->next;
+			free(observed);
+		}
+		avl_remove(&observations, observation);
+		free(observation);
+	}
+	avl_destroy(&observations);
 	while (!avl_is_empty(&findings)) {
 		struct declared_order_finding *finding =
 		    avl_first(&findings);
-		struct declared_order_point point_key = {
-			.instruction = finding->instruction
-		};
-		struct declared_order_point *point =
-		    avl_find(&points, &point_key, NULL);
-		struct position pos =
-		    finding->instruction->call_expr != NULL ?
-		    finding->instruction->call_expr->pos :
-		    finding->instruction->pos;
+		struct declared_order_origin *origin = finding->origin;
+		struct instruction *source = origin->call_instruction != NULL ?
+		    origin->call_instruction : origin->acquisition_instruction;
+		struct position pos = source->call_expr != NULL ?
+		    source->call_expr->pos : source->pos;
 
-		if (point == NULL)
-			die("declared order finding has no analysis point");
 		locklint_order_report_declared_violation(finding->violation,
-		    &pos, finding->states < point->states);
+		    &pos, finding->states < origin->states);
+		if (origin->call_instruction != NULL) {
+			struct function_info *callee = callgraph_callee(
+			    origin->caller_function,
+			    origin->call_instruction);
+			struct instruction *acquisition =
+			    origin->acquisition_instruction;
+			struct position acquisition_pos =
+			    acquisition->call_expr != NULL ?
+			    acquisition->call_expr->pos : acquisition->pos;
+
+			info(acquisition_pos, "locklint: lock acquisition "
+			    "reached through callee '%s'",
+			    callee != NULL ? function_name(callee) :
+			    "<unknown>");
+		}
 		avl_remove(&findings, finding);
 		free(finding);
 	}
 	avl_destroy(&findings);
-	while (!avl_is_empty(&points)) {
-		struct declared_order_point *point = avl_first(&points);
+	while (!avl_is_empty(&origins)) {
+		struct declared_order_origin *origin = avl_first(&origins);
 
-		avl_remove(&points, point);
-		free(point);
+		avl_remove(&origins, origin);
+		free(origin);
 	}
-	avl_destroy(&points);
+	avl_destroy(&origins);
 }
 
 struct lock_assertion_observation {
@@ -1875,21 +2125,6 @@ compare_lock_assertion_finding(const void *left_arg, const void *right_arg)
 		return (result);
 	return (AVL_PCMP(left->assertion_instruction,
 	    right->assertion_instruction));
-}
-
-struct assertion_context_visit {
-	struct function_context *context;
-	struct assertion_context_visit *next;
-	avl_node_t by_context;
-};
-
-static int
-compare_assertion_context_visit(const void *left_arg, const void *right_arg)
-{
-	const struct assertion_context_visit *left = left_arg;
-	const struct assertion_context_visit *right = right_arg;
-
-	return (AVL_PCMP(left->context, right->context));
 }
 
 static const char *
@@ -1944,27 +2179,19 @@ record_lock_assertion_finding(avl_tree_t *findings,
 	finding->invalid |= observation->invalid;
 }
 
-static bool
-record_assertion_context_visit(avl_tree_t *visited,
-    struct assertion_context_visit **work, struct function_context *context)
-{
-	struct assertion_context_visit key = {
-		.context = context
-	};
-	struct assertion_context_visit *visit;
-	avl_index_t where;
+struct lock_assertion_trace {
+	avl_tree_t *findings;
+	const struct lock_assertion_observation *observation;
+};
 
-	visit = avl_find(visited, &key, &where);
-	if (visit != NULL)
-		return (false);
-	visit = calloc(1, sizeof (*visit));
-	if (visit == NULL)
-		die("cannot allocate assertion provenance visit");
-	visit->context = context;
-	visit->next = *work;
-	*work = visit;
-	avl_insert(visited, visit, where);
-	return (true);
+static void
+record_lock_assertion_root(struct function_context *caller_context,
+    struct instruction *call_instruction, void *data_arg)
+{
+	struct lock_assertion_trace *data = data_arg;
+
+	record_lock_assertion_finding(data->findings, data->observation,
+	    caller_context->function, call_instruction);
 }
 
 /*
@@ -1976,43 +2203,15 @@ static void
 trace_lock_assertion_observation(avl_tree_t *findings,
     const struct lock_assertion_observation *observation)
 {
-	struct assertion_context_visit *work = NULL;
-	avl_tree_t visited;
-	bool found_root = false;
+	struct lock_assertion_trace data = {
+		.findings = findings,
+		.observation = observation
+	};
 
-	avl_create(&visited, compare_assertion_context_visit,
-	    sizeof (struct assertion_context_visit),
-	    offsetof(struct assertion_context_visit, by_context));
-	(void) record_assertion_context_visit(&visited, &work,
-	    observation->context);
-	while (work != NULL) {
-		struct assertion_context_visit *visit = work;
-		struct provenance_edge *edge;
-
-		work = visit->next;
-		for (edge = provenance_edge_first(visit->context); edge != NULL;
-		    edge = provenance_edge_next(visit->context, edge)) {
-			if (edge->caller_context->synthetic_root) {
-				record_lock_assertion_finding(findings, observation,
-				    edge->caller_context->function,
-				    edge->call_instruction);
-				found_root = true;
-				continue;
-			}
-			(void) record_assertion_context_visit(&visited, &work,
-			    edge->caller_context);
-		}
-	}
-	if (!found_root)
+	if (!for_each_root_call(observation->context,
+	    record_lock_assertion_root, &data)) {
 		record_lock_assertion_finding(findings, observation, NULL, NULL);
-	while (!avl_is_empty(&visited)) {
-		struct assertion_context_visit *visit =
-		    avl_first(&visited);
-
-		avl_remove(&visited, visit);
-		free(visit);
 	}
-	avl_destroy(&visited);
 }
 
 /*

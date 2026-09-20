@@ -1,9 +1,0 @@
-../locklint: lock-order.c:89:26: warning: locklint: lock 'order_state::first' acquired out of declared order while holding 'order_state::second' [declared-order]
-../locklint: lock-order.c:58:1: locklint: declared order requires 'order_state::first' before 'order_state::second'
-../locklint: lock-order.c:98:26: warning: locklint: lock 'order_state::first' acquired out of declared order while holding 'order_state::third' [declared-order]
-../locklint: lock-order.c:58:1: locklint: declared order requires 'order_state::first' before 'order_state::second'
-../locklint: lock-order.c:58:1: locklint: declared order requires 'order_state::second' before 'order_state::third'
-../locklint: lock-order.c:112:26: warning: locklint: lock 'order_state::first' acquired out of declared order while holding 'order_state::second' [declared-order]
-../locklint: lock-order.c:58:1: locklint: declared order requires 'order_state::first' before 'order_state::second'
-../locklint: lock-order.c:227:26: warning: locklint: lock 'mixed_order_state::mutex' acquired out of declared order while holding 'mixed_order_state::rwlock' [declared-order]
-../locklint: lock-order.c:67:1: locklint: declared order requires 'mixed_order_state::mutex' before 'mixed_order_state::rwlock'

@@ -297,10 +297,9 @@ run_capture "declared lock order cycle" lock-order-cycle.out \
 compare "declared lock order cycle" lock-order-cycle.ref \
     lock-order-cycle.out
 
-run_capture "local declared lock order" lock-order-local.out \
+run_capture "declared lock order" lock-order.out \
     "$LOCKLINT" --check-locks lock-order.c
-compare "local declared lock order" lock-order-local.ref \
-    lock-order-local.out
+compare "declared lock order" lock-order.ref lock-order.out
 
 run_capture "conditional local declared lock order" \
     lock-order-local-conditional.out \
