@@ -722,10 +722,9 @@ run_capture "mutex tryenter state" mutex-tryenter.out \
     "$LOCKLINT" --check-locks mutex-tryenter.c
 compare "mutex tryenter state" mutex-tryenter.ref mutex-tryenter.out
 
-run_capture "mutex trylock core state" mutex-trylock-core.out \
+run_capture "mutex trylock state" mutex-trylock.out \
     "$LOCKLINT" --check-locks mutex-trylock.c
-compare "mutex trylock core state" mutex-trylock-core.ref \
-    mutex-trylock-core.out
+compare "mutex trylock state" mutex-trylock.ref mutex-trylock.out
 
 run_capture "mutex lock result core state" mutex-lock-result-core.out \
     "$LOCKLINT" --check-locks mutex-lock-result.c
