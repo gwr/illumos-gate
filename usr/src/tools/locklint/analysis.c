@@ -4082,6 +4082,241 @@ callee_automatic_lock(const struct function_context *context,
 	    lock->key.analysis_object));
 }
 
+struct caller_visible_return_lock {
+	struct lock_identity_key source;
+	enum lock_analysis_object_type source_type;
+	struct locklint_access access;
+	struct instruction *return_instruction;
+	size_t held;
+	size_t unheld;
+	avl_node_t by_source;
+};
+
+static int
+compare_caller_visible_return_lock(const void *left_arg,
+    const void *right_arg)
+{
+	const struct caller_visible_return_lock *left = left_arg;
+	const struct caller_visible_return_lock *right = right_arg;
+	int result;
+
+	result = AVL_PCMP(left->source.analysis_object,
+	    right->source.analysis_object);
+	if (result != 0)
+		return (result);
+	if (left->source.target_offset < right->source.target_offset)
+		return (-1);
+	if (left->source.target_offset > right->source.target_offset)
+		return (1);
+	return (0);
+}
+
+static bool
+same_lock_identity_key(struct lock_identity_key left,
+    struct lock_identity_key right)
+{
+	return (left.analysis_object == right.analysis_object &&
+	    left.target_offset == right.target_offset);
+}
+
+static bool
+function_declares_acquisition(struct function_info *function,
+    struct lock_identity_key candidate)
+{
+	struct basic_block *block;
+
+	FOR_EACH_PTR(function->ep->bbs, block) {
+		struct instruction *instruction;
+
+		FOR_EACH_PTR(block->insns, instruction) {
+			struct locklint_access access;
+			struct lock_identity_key declared;
+			enum lock_analysis_object_type object_type;
+			enum locklint_declared_lock_effect effect;
+			const char *description;
+			unsigned int mode;
+
+			if (instruction->bb == NULL ||
+			    !locklint_get_declared_lock_effect(function->tu,
+			    instruction, &effect, &access) ||
+			    !declared_acquisition_mode(effect, &mode,
+			    &description) ||
+			    function_access_coordinates(function, &access,
+			    &declared, &object_type) != 0)
+				continue;
+			if (same_lock_identity_key(candidate, declared))
+				return (true);
+		} END_FOR_EACH_PTR(instruction);
+	} END_FOR_EACH_PTR(block);
+	return (false);
+}
+
+static void
+collect_caller_visible_return_locks(struct function_info *function,
+    avl_tree_t *candidates)
+{
+	struct basic_block *block;
+
+	FOR_EACH_PTR(function->ep->bbs, block) {
+		struct instruction *instruction;
+
+		FOR_EACH_PTR(block->insns, instruction) {
+			struct caller_visible_return_lock key = { 0 };
+			struct caller_visible_return_lock *candidate;
+			enum locklint_lock_action action;
+			enum locklint_lock_mode mode;
+			unsigned int argument;
+			avl_index_t where;
+
+			action = locklint_get_lock_action(function->tu,
+			    instruction, &key.access, &mode);
+			if ((action != LOCKLINT_LOCK_ACQUIRE &&
+			    action != LOCKLINT_LOCK_RESULT_ACQUIRE &&
+			    action != LOCKLINT_LOCK_TRY_ACQUIRE &&
+			    action != LOCKLINT_LOCK_TRY_ACQUIRE_ZERO) ||
+			    key.access.root == NULL ||
+			    function_access_coordinates(function, &key.access,
+			    &key.source, &key.source_type) != 0)
+				continue;
+			if (key.source_type != LOCK_ANALYSIS_OBJECT_OBJECT_IDENTITY &&
+			    !identity_formal_argument(function, key.source,
+			    key.source_type, &argument))
+				continue;
+			if (function_declares_acquisition(function, key.source))
+				continue;
+			candidate = avl_find(candidates, &key, &where);
+			if (candidate != NULL)
+				continue;
+			candidate = calloc(1, sizeof (*candidate));
+			if (candidate == NULL)
+				die("cannot allocate caller-visible return lock");
+			*candidate = key;
+			avl_insert(candidates, candidate, where);
+		} END_FOR_EACH_PTR(instruction);
+	} END_FOR_EACH_PTR(block);
+}
+
+static void
+observe_caller_visible_returns(struct analysis *analysis,
+    struct function_info *function, avl_tree_t *candidates)
+{
+	struct function_context *context;
+
+	for (context = avl_first(&function->contexts.contexts);
+	    context != NULL;
+	    context = AVL_NEXT(&function->contexts.contexts, context)) {
+		struct caller_visible_return_lock *candidate;
+
+		if (!context_has_analysis_root(context))
+			continue;
+		for (candidate = avl_first(candidates); candidate != NULL;
+		    candidate = AVL_NEXT(candidates, candidate)) {
+			struct lock_identity *identity;
+			struct point_state *point_state;
+			bool composed;
+			bool existed;
+			int error;
+
+			error = context_access_identity(analysis, context,
+			    &candidate->access, &identity, &existed, &composed);
+			if (error != 0)
+				die("cannot identify caller-visible return lock: %s",
+				    strerror(error));
+			if (!existed)
+				die("caller-visible return lock was not observed");
+			if (context_state_lock_modes(context->entry_state,
+			    identity) != 0)
+				continue;
+			for (point_state = avl_first(&context->point_states);
+			    point_state != NULL; point_state = AVL_NEXT(
+			    &context->point_states, point_state)) {
+				if (point_state->point.next_instruction == NULL ||
+				    point_state->point.next_instruction->opcode !=
+				    OP_RET)
+					continue;
+				if (candidate->return_instruction == NULL ||
+				    compare_transition_position(
+				    point_state->point.next_instruction->pos,
+				    candidate->return_instruction->pos) < 0)
+					candidate->return_instruction =
+					    point_state->point.next_instruction;
+				if (context_state_lock_modes(point_state->state,
+				    identity) != 0) {
+					if (candidate->held == SIZE_MAX)
+						die("held return state count overflow");
+					candidate->held++;
+				} else {
+					if (candidate->unheld == SIZE_MAX)
+						die("unheld return state count overflow");
+					candidate->unheld++;
+				}
+			}
+		}
+	}
+}
+
+static int
+compare_caller_visible_return_position(const void *left_arg,
+    const void *right_arg)
+{
+	const struct caller_visible_return_lock *const *left = left_arg;
+	const struct caller_visible_return_lock *const *right = right_arg;
+	int result;
+
+	result = compare_transition_position((*left)->access.expr->pos,
+	    (*right)->access.expr->pos);
+	if (result != 0)
+		return (result);
+	return (compare_caller_visible_return_lock(*left, *right));
+}
+
+static void
+report_caller_visible_returns(struct function_info *function,
+    avl_tree_t *candidates)
+{
+	struct caller_visible_return_lock **ordered;
+	struct caller_visible_return_lock *candidate;
+	size_t count = avl_numnodes(candidates);
+	size_t index = 0;
+
+	if (count > SIZE_MAX / sizeof (*ordered))
+		die("return lock ordering allocation overflow");
+	ordered = calloc(count, sizeof (*ordered));
+	if (ordered == NULL && count != 0)
+		die("cannot allocate return lock ordering");
+	for (candidate = avl_first(candidates); candidate != NULL;
+	    candidate = AVL_NEXT(candidates, candidate))
+		ordered[index++] = candidate;
+	qsort(ordered, count, sizeof (*ordered),
+	    compare_caller_visible_return_position);
+	for (index = 0; index < count; index++) {
+		char *name;
+
+		candidate = ordered[index];
+		if (candidate->held != 0) {
+			name = locklint_access_name(&candidate->access);
+			if (candidate->unheld == 0) {
+				locklint_warning(
+				    LOCKLINT_DIAG_LOCK_HELD_ON_RETURN,
+				    candidate->return_instruction->pos,
+				    "lock '%s' held on return from '%s'", name,
+				    function_name(function));
+			} else {
+				locklint_warning(
+				    LOCKLINT_DIAG_LOCK_MAYBE_HELD_ON_RETURN,
+				    candidate->return_instruction->pos,
+				    "lock '%s' held on only some paths "
+				    "returning from '%s'", name,
+				    function_name(function));
+			}
+			free(name);
+		}
+		avl_remove(candidates, candidate);
+		free(candidate);
+	}
+	free(ordered);
+}
+
 /*
  * Diagnose direct automatic locals which remain newly held at one return.
  * Caller-visible locks require declared-effect handling before they can be
@@ -4170,7 +4405,7 @@ diagnose_local_locks_at_return(struct function_context *context,
 }
 
 static void
-diagnose_local_locks_on_return(void)
+diagnose_locks_on_return(struct analysis *analysis)
 {
 	struct callgraph_iter *iterator;
 	struct function_info *function;
@@ -4180,8 +4415,13 @@ diagnose_local_locks_on_return(void)
 	if (error != 0)
 		die("cannot iterate ready callgraph: %s", strerror(error));
 	while ((function = callgraph_iter_next(iterator)) != NULL) {
+		avl_tree_t caller_visible;
 		struct function_context *context;
 
+		avl_create(&caller_visible, compare_caller_visible_return_lock,
+		    sizeof (struct caller_visible_return_lock),
+		    offsetof(struct caller_visible_return_lock, by_source));
+		collect_caller_visible_return_locks(function, &caller_visible);
 		for (context = avl_first(&function->contexts.contexts);
 		    context != NULL;
 		    context = AVL_NEXT(&function->contexts.contexts, context)) {
@@ -4202,6 +4442,10 @@ diagnose_local_locks_on_return(void)
 				    context, point_state);
 			}
 		}
+		observe_caller_visible_returns(analysis, function,
+		    &caller_visible);
+		report_caller_visible_returns(function, &caller_visible);
+		avl_destroy(&caller_visible);
 	}
 	callgraph_iter_close(iterator);
 }
@@ -4612,7 +4856,7 @@ analysis_run(struct lock_identity_collection *lock_identities, FILE *stream)
 	diagnose_protected_accesses(&analysis);
 	diagnose_assumed_calls(&analysis);
 	diagnose_invalid_assumed_regions();
-	diagnose_local_locks_on_return();
+	diagnose_locks_on_return(&analysis);
 	if (stream != NULL) {
 		analysis.measurements.lock_identities =
 		    lock_identity_count(analysis.lock_identities);

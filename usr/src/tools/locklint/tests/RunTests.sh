@@ -198,6 +198,9 @@ require_match "local unmatched release" \
 require_match "local duplicate acquire" \
     "lock-identity-local.c:81:20: warning: locklint: lock 'local_lock' is already held \\[lock-already-held\\]" \
     lock-identity-local.out
+require_match "formal held on return" \
+    "lock-identity-local.c:39:21: warning: locklint: lock 'lock' held on return from 'acquire_helper' \\[lock-held-on-return\\]" \
+    lock-identity-local.out
 require_match "local held on return" \
     "lock-identity-local.c:53:22: warning: locklint: lock 'local_lock' held on return from 'local_lock_helper' \\[lock-held-on-return\\]" \
     lock-identity-local.out
@@ -207,8 +210,8 @@ require_match "local maybe held on return" \
 require_match "local ignored tryenter maybe held on return" \
     "lock-identity-local.c:83:32: warning: locklint: lock 'local_lock' held on only some paths returning from 'lock_identity_local' \\[lock-maybe-held-on-return\\]" \
     lock-identity-local.out
-if [ "$(grep -c 'warning:' lock-identity-local.out)" -ne 5 ]; then
-	fail "local lock diagnostics: expected exactly five warnings"
+if [ "$(grep -c 'warning:' lock-identity-local.out)" -ne 6 ]; then
+	fail "local lock diagnostics: expected exactly six warnings"
 fi
 
 run_capture "member lock identities" lock-identity-members.out \
@@ -952,8 +955,11 @@ require_match "mixed release diagnostic" \
 require_match "mixed acquire diagnostic" \
     "check.c:96:20: warning: locklint: lock 'lock' may already be held \\[lock-maybe-already-held\\]" \
     lock-transition-diagnostics.out
-if [ "$(grep -c 'warning:' lock-transition-diagnostics.out)" -ne 6 ]; then
-	fail "lock transition diagnostics: expected exactly six warnings"
+require_match "conditional held on return" \
+    "check.c:88:30: warning: locklint: lock 'lock' held on only some paths returning from 'check_side_effect' \\[lock-maybe-held-on-return\\]" \
+    lock-transition-diagnostics.out
+if [ "$(grep -c 'warning:' lock-transition-diagnostics.out)" -ne 7 ]; then
+	fail "lock transition diagnostics: expected exactly seven warnings"
 fi
 
 #
@@ -1052,8 +1058,11 @@ run_capture "cross translation unit diagnostics" cross-diagnostics.out \
 require_match "cross translation unlocked access" \
     "cross-callee.c:25:22: warning: locklint: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
     cross-diagnostics.out
-if [ "$(grep -c 'warning:' cross-diagnostics.out)" -ne 1 ]; then
-	fail "cross translation unit diagnostics: expected exactly one warning"
+require_match "cross translation held on return" \
+    "cross-callee.c:31:22: warning: locklint: lock 'lock' held on return from 'cross_acquire' \\[lock-held-on-return\\]" \
+    cross-diagnostics.out
+if [ "$(grep -c 'warning:' cross-diagnostics.out)" -ne 2 ]; then
+	fail "cross translation unit diagnostics: expected exactly two warnings"
 fi
 
 #

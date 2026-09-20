@@ -1987,8 +1987,13 @@ For each instruction it:
 5. applies assertion, competition, and visibility transitions.
 
 After the block, a return instruction triggers checks for locks held on all or
-some return paths.  Assertion-only held state is excluded from those
-side-effect diagnostics.  Inferred protected-access conditions are diagnosed
+some return paths.  Automatic locals are checked directly.  Caller-visible
+formal-relative and absolute locks are candidates only when the function
+contains an actual acquisition of that source-relative lock; this excludes
+assertion-only state.  Outcomes from all root-reachable ordinary contexts are
+combined by source-relative identity, and a matching declared acquisition
+suppresses the generic report because its contract is validated separately.
+Inferred protected-access conditions are diagnosed
 at their source locations with the caller witnesses collected by the
 preliminary replay.  A load reports that the member was read, while a store
 reports that it was modified; a retained read-modify-write pair therefore
@@ -2495,6 +2500,9 @@ The current implementation relies on these invariants:
     unheld.
 46. Declared upgrades map reader-held entry to writer-held exit, and declared
     downgrades map writer-held entry to reader-held exit on every return.
+47. Direct acquisitions of undeclared caller-visible locks are checked across
+    every root-reachable ordinary context after normalization to one
+    function-relative identity; assertion refinements are not acquisitions.
 
 Changes that invalidate one of these invariants should update this document
 and add a focused regression test.
@@ -2515,8 +2523,8 @@ areas include:
   and conditional lock effects;
 - recursive mutex and rwlock-reader hold counts;
 - caller-site provenance for condition waits reached through callees;
-- generic held-on-return diagnostics for undeclared caller-visible formal and
-  absolute locks;
+- held-on-return diagnostics for caller-visible locks acquired only through
+  callees rather than by a direct acquisition in the returning function;
 - a swappable-wait policy that diagnoses unrelated locks held across
   `cv_wait_sig_swap()` and `cv_wait_sig_swap_core()`; and
 - diagnostic suppressions, machine-readable output, and bounded provenance

@@ -19,3 +19,4 @@
 ../locklint: rwlock.c:234:22: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
 ../locklint: rwlock.c:235:14: warning: locklint: protected member 'value' modified without write-holding 'lock' [unprotected-access]
 ../locklint: rwlock.c:235:14: locklint: required lock 'lock' is read-held; write-holding is required at this protected access
+../locklint: rwlock.c:158:17: warning: locklint: lock 'lock' held on only some paths returning from 'check_unheld_merge' [lock-maybe-held-on-return]

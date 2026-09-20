@@ -1,2 +1,4 @@
 ../locklint: lock-order-local-conditional.c:43:20: warning: locklint: lock 'conditional_order_state::first' may be acquired out of declared order while holding 'conditional_order_state::second' [declared-order-possible]
 ../locklint: lock-order-local-conditional.c:33:1: locklint: declared order requires 'conditional_order_state::first' before 'conditional_order_state::second'
+../locklint: lock-order-local-conditional.c:43:22: warning: locklint: lock 'second' held on only some paths returning from 'conditional_order_inversion' [lock-maybe-held-on-return]
+../locklint: lock-order-local-conditional.c:43:22: warning: locklint: lock 'first' held on return from 'conditional_order_inversion' [lock-held-on-return]

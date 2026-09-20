@@ -6,3 +6,5 @@
 ../locklint: declared-effects-absolute.c:104:34: warning: locklint: call to 'declared_absolute_release' releases lock 'absolute_mutex' that is not held [lock-not-held]
 ../locklint: declared-effects-absolute.c:90:19: locklint: invalid lock transition is here
 ../locklint: declared-effects-absolute.c:98:9: warning: locklint: protected member 'absolute_value' modified without holding 'absolute_mutex' [unprotected-access]
+../locklint: declared-effects-absolute.c:67:22: warning: locklint: lock 'absolute_mutex' held on return from 'undeclared_absolute_acquire' [lock-held-on-return]
+../locklint: declared-effects-absolute.c:110:21: warning: locklint: lock 'lock' held on return from 'acquire_formal' [lock-held-on-return]
