@@ -27,6 +27,7 @@
 
 #include "context.h"
 #include "dependency.h"
+#include "statistics.h"
 #include "worklist.h"
 
 static int
@@ -76,6 +77,7 @@ dependency_records_free(struct function_context *context)
 	struct context_exit *exit;
 	void *cookie = NULL;
 
+	statistics.cleanup_continuations_enum++;
 	while ((continuation = avl_destroy_nodes(&context->continuations,
 	    &cookie)) != NULL)
 		free(continuation);
@@ -209,6 +211,7 @@ dependency_continuation_apply_exit(struct continuation *continuation,
 	if (exit == NULL ||
 	    dependency_continuation_next_exit(continuation) != exit)
 		return (EINVAL);
+	statistics.call_exit_point_states_find++;
 	error = context_point_state_record(continuation->caller_context,
 	    continuation->resume_point, mapped_caller_state, &point_state,
 	    &point_existed);

@@ -26,6 +26,7 @@
 
 #include "context.h"
 #include "provenance.h"
+#include "statistics.h"
 
 static int
 compare_edges(const void *left_arg, const void *right_arg)
@@ -155,6 +156,7 @@ provenance_edges_free(struct function_context *context)
 	struct provenance_edge *edge;
 	void *cookie = NULL;
 
+	statistics.cleanup_provenance_edges_enum++;
 	while ((edge = avl_destroy_nodes(&context->provenance_edges,
 	    &cookie)) != NULL)
 		free(edge);
@@ -241,6 +243,7 @@ provenance_for_each_root_call(struct function_context *context,
 		struct provenance_edge *edge;
 
 		work = visit->next;
+		statistics.caller_recovery_provenance_edges_enum++;
 		for (edge = provenance_edge_first(visit->context); edge != NULL;
 		    edge = provenance_edge_next(visit->context, edge)) {
 			if (edge->caller_context->kind ==

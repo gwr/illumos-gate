@@ -197,6 +197,18 @@ on standard error, keeping diagnostics and requested dump streams unchanged.
 The total measures directly from program start through final reporting rather
 than summing rounded phase output.
 
+`statistics.c` owns process-global `size_t` counters for logical operations on
+the large retained collections.  Counter names identify the locklint activity,
+the collection, and a `find` or `enum` operation.  A find counts one keyed
+lookup request.  An enum counts one logical enumeration start, not each AVL
+step.  Increments are placed at the highest callgraph point which both
+identifies the reason and corresponds reliably to the collection operation.
+The counters are collected unconditionally.  `--dump-statistics` controls only
+whether they are reported at final output.  It does not request context
+analysis, so development runs normally combine it with `--dump-contexts` or
+`--check-locks`.  Reporting occurs after analysis cleanup, so cleanup
+enumerations are included.
+
 Locklint is not a general Sparse command-line frontend.  Passing the compiler
 and preprocessing options needed to parse illumos translation units is
 required; preserving Sparse checker, warning, output, or diagnostic-option
@@ -2091,6 +2103,13 @@ intermediate-frame rendering remain optional future work.
 | `timing_begin()` | Start one process-global phase interval |
 | `timing_end()` | Accumulate one process-global phase interval |
 | `timing_report()` | Emit phase and total seconds on standard error |
+
+### Operation statistics: `statistics.c`
+
+| Function or object | Responsibility |
+| --- | --- |
+| `statistics` | Process-global caller-attributed collection-operation counters |
+| `statistics_show()` | Emit all find and enumeration counters for `--dump-statistics` |
 
 ### Access identity: `access.c`
 

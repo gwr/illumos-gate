@@ -97,6 +97,7 @@ LOCAL_OBJS = \
 	context.o \
 	dependency.o \
 	provenance.o \
+	statistics.o \
 	timing.o \
 	worklist.o \
 	avl.o
@@ -134,11 +135,11 @@ LOCK_ID_TEST_OBJS = lock_identity_test.o lock_identity.o avl.o
 lock_identity_test: $(LOCK_ID_TEST_OBJS)
 	$(LINK.c) -o $@ $(LOCK_ID_TEST_OBJS) $(LDLIBS)
 
-BINDING_TEST_OBJS = binding_test.o binding.o avl.o
+BINDING_TEST_OBJS = binding_test.o binding.o statistics.o avl.o
 binding_test: $(BINDING_TEST_OBJS)
 	$(LINK.c) -o $@ $(BINDING_TEST_OBJS) $(LDLIBS)
 
-CTX_TEST_OBJS = context_test.o context.o avl.o
+CTX_TEST_OBJS = context_test.o context.o statistics.o avl.o
 context_test: $(CTX_TEST_OBJS)
 	$(LINK.c) -o $@ $(CTX_TEST_OBJS) $(LDLIBS)
 
@@ -146,11 +147,12 @@ WORKLIST_TEST_OBJS = worklist_test.o worklist.o
 worklist_test: $(WORKLIST_TEST_OBJS)
 	$(LINK.c) -o $@ $(WORKLIST_TEST_OBJS) $(LDLIBS)
 
-DEP_TEST_OBJS = dependency_test.o dependency.o context.o worklist.o avl.o
+DEP_TEST_OBJS = dependency_test.o dependency.o context.o statistics.o \
+	worklist.o avl.o
 dependency_test: $(DEP_TEST_OBJS)
 	$(LINK.c) -o $@ $(DEP_TEST_OBJS) $(LDLIBS)
 
-PROV_TEST_OBJS = provenance_test.o provenance.o context.o avl.o
+PROV_TEST_OBJS = provenance_test.o provenance.o context.o statistics.o avl.o
 provenance_test: $(PROV_TEST_OBJS)
 	$(LINK.c) -o $@ $(PROV_TEST_OBJS) $(LDLIBS)
 

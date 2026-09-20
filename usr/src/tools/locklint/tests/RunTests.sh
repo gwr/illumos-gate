@@ -1130,6 +1130,91 @@ require_match "context counting" '^reactivations 1$' context-counting.out
 require_match "context counting" \
     '^lock-identities created 0 reused 0 unresolved 0 retained 0$' \
     context-counting.out
+reject_match "context counting" '^statistics ' context-counting.out
+
+run_capture "context statistics" context-statistics.out \
+    "$LOCKLINT" --dump-contexts --dump-statistics context-counting.c
+require_match "context counting call bindings find" \
+    '^statistics call_binding_environments_find 1$' context-statistics.out
+require_match "context counting call contexts find" \
+    '^statistics call_contexts_find 1$' context-statistics.out
+require_match "context counting CFG point states find" \
+    '^statistics cfg_point_states_find 32$' context-statistics.out
+require_match "context counting backedge point states find" \
+    '^statistics backedge_point_states_find 1$' context-statistics.out
+require_match "context counting call exit point states find" \
+    '^statistics call_exit_point_states_find 1$' context-statistics.out
+require_match "context counting continuation enumeration" \
+    '^statistics exit_publication_continuations_enum 2$' \
+    context-statistics.out
+require_match "context counting protected context enumeration" \
+    '^statistics protected_contexts_enum 2$' context-statistics.out
+require_match "context counting protected point enumeration" \
+    '^statistics protected_scan_point_states_enum 2$' context-statistics.out
+for statistic in \
+    call_binding_environments_find \
+    root_binding_environments_find \
+    effect_binding_environments_find \
+    call_contexts_find \
+    root_contexts_find \
+    effect_contexts_find \
+    cfg_point_states_find \
+    backedge_point_states_find \
+    backedge_record_point_states_find \
+    call_exit_point_states_find \
+    call_import_semantic_states_find \
+    call_exit_semantic_states_find \
+    lock_transition_semantic_states_find \
+    conditional_lock_semantic_states_find \
+    lock_assertion_semantic_states_find \
+    visibility_transition_semantic_states_find \
+    competition_transition_semantic_states_find \
+    backedge_widening_semantic_states_find \
+    root_semantic_states_find \
+    effect_semantic_states_find \
+    call_continuations_find \
+    call_provenance_edges_find \
+    declared_effect_contexts_enum \
+    lock_transition_contexts_enum \
+    declared_order_contexts_enum \
+    lock_assertion_contexts_enum \
+    competition_underflow_contexts_enum \
+    competition_effect_contexts_enum \
+    competition_assertion_contexts_enum \
+    protected_contexts_enum \
+    assumed_call_contexts_enum \
+    local_return_contexts_enum \
+    caller_return_contexts_enum \
+    measurement_contexts_enum \
+    cleanup_contexts_enum \
+    backedge_point_states_enum \
+    lock_transition_point_states_enum \
+    declared_order_point_states_enum \
+    lock_assertion_point_states_enum \
+    competition_underflow_point_states_enum \
+    competition_assertion_point_states_enum \
+    protected_scan_point_states_enum \
+    protected_policy_states_enum \
+    assumed_call_point_states_enum \
+    local_return_point_states_enum \
+    caller_return_point_states_enum \
+    measurement_point_states_enum \
+    cleanup_point_states_enum \
+    measurement_binding_environments_enum \
+    cleanup_binding_environments_enum \
+    measurement_semantic_states_enum \
+    cleanup_semantic_states_enum \
+    exit_publication_continuations_enum \
+    cleanup_continuations_enum \
+    caller_recovery_provenance_edges_enum \
+    cleanup_provenance_edges_enum
+do
+	require_match "context statistic $statistic" \
+	    "^statistics $statistic [0-9][0-9]*$" context-statistics.out
+done
+if [ "$(grep -c '^statistics ' context-statistics.out)" -ne 56 ]; then
+	fail "context statistics: expected exactly fifty-six statistics lines"
+fi
 reject_match "context counting" 'warning:' context-counting.out
 
 #

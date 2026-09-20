@@ -37,6 +37,7 @@
 #include "identity.h"
 #include "parse.h"
 #include "scope.h"
+#include "statistics.h"
 #include "symbol.h"
 #include "timing.h"
 
@@ -47,6 +48,7 @@ static bool dump_annotations;
 static bool dump_events;
 static bool dump_callgraph;
 static bool dump_contexts;
+static bool dump_statistics;
 static bool check_locks;
 static bool compat_osll;
 static bool show_times;
@@ -74,7 +76,7 @@ usage(FILE *stream)
 	    "usage: locklint [--cf command-file] [--compat=osll] "
 	    "[--check-locks] [--dump-parsed] [--dump-linearized] "
 	    "[--dump-accesses] [--dump-annotations] [--dump-events] "
-	    "[--dump-callgraph] [--dump-contexts] "
+	    "[--dump-callgraph] [--dump-contexts] [--dump-statistics] "
 	    "[--times] "
 	    "[compiler-options] file.c ...\n");
 }
@@ -123,6 +125,8 @@ options(int argc, char **argv)
 			dump_callgraph = true;
 		} else if (strcmp(argv[i], "--dump-contexts") == 0) {
 			dump_contexts = true;
+		} else if (strcmp(argv[i], "--dump-statistics") == 0) {
+			dump_statistics = true;
 		} else if (strcmp(argv[i], "--times") == 0) {
 			show_times = true;
 		} else if (strcmp(argv[i], "--dump-all") == 0) {
@@ -133,6 +137,7 @@ options(int argc, char **argv)
 			dump_events = true;
 			dump_callgraph = true;
 			dump_contexts = true;
+			dump_statistics = true;
 		} else if (strcmp(argv[i], "--compat=osll") == 0) {
 			compat_osll = true;
 		} else if (strncmp(argv[i], "--compat=", 9) == 0) {
@@ -416,6 +421,8 @@ main(int argc, char **argv)
 	if (check_locks || dump_callgraph || dump_contexts)
 		locklint_check_all(check_locks, dump_callgraph, dump_contexts);
 	timing_begin(TIMING_FINAL_OUTPUT);
+	if (dump_statistics)
+		statistics_show(stdout);
 	if (dump_annotations)
 		locklint_show_annotations(stdout);
 	locklint_access_cleanup();

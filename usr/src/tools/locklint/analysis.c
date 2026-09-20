@@ -51,6 +51,7 @@
 #include "lock_identity.h"
 #include "lock_order.h"
 #include "provenance.h"
+#include "statistics.h"
 #include "symbol.h"
 #include "timing.h"
 #include "worklist.h"
@@ -269,6 +270,7 @@ record_analysis_point(struct analysis *analysis,
 				analysis->counts.competition_backedges_covered++;
 		}
 	} else {
+		statistics.cfg_point_states_find++;
 		error = context_point_state_record(context, point, state,
 		    &point_state, &existed);
 	}
@@ -324,6 +326,7 @@ apply_competition_event(struct analysis *analysis,
 		adjustment = -1;
 	else
 		return (point_state->state);
+	statistics.competition_transition_semantic_states_find++;
 	error = context_state_adjust_competition(point_state->context->function,
 	    point_state->state, adjustment, &state, &existed);
 	if (error != 0)
@@ -373,6 +376,7 @@ apply_visibility_target(const struct locklint_access *access,
 	}
 	if (composed)
 		data->analysis->counts.binding_identities_composed++;
+	statistics.visibility_transition_semantic_states_find++;
 	error = context_state_set_visibility(
 	    data->point_state->context->function, data->state, region,
 	    data->visibility, &state, &existed);
@@ -502,6 +506,7 @@ record_reactivation(struct analysis *analysis,
 		bool existed;
 		int error;
 
+		statistics.call_exit_semantic_states_find++;
 		error = context_state_map_exit(
 		    continuation->caller_context->function,
 		    continuation->caller_state,
@@ -551,6 +556,7 @@ publish_exit(struct analysis *analysis, struct point_state *point_state)
 	{
 		struct continuation *continuation;
 
+		statistics.exit_publication_continuations_enum++;
 		for (continuation = dependency_continuation_first(
 		    point_state->context); continuation != NULL;
 		    continuation = dependency_continuation_next(
@@ -597,6 +603,7 @@ apply_lock_event(struct analysis *analysis, struct point_state *point_state)
 		analysis->counts.lock_transitions_deferred++;
 		return (point_state->state);
 	}
+	statistics.lock_transition_semantic_states_find++;
 	error = context_state_set_lock(point_state->context->function,
 	    point_state->state, identity,
 	    action == LOCKLINT_LOCK_ACQUIRE ? mode :
@@ -1058,6 +1065,7 @@ call_bindings(struct analysis *analysis,
 		}
 		argument++;
 	} END_FOR_EACH_PTR(formal);
+	statistics.call_binding_environments_find++;
 	error = binding_environment_intern(&callee->bindings, entries,
 	    binding_count, &bindings, &existed);
 	free(entries);
@@ -1099,12 +1107,14 @@ process_call(struct analysis *analysis, struct point_state *point_state,
 
 	bindings = call_bindings(analysis, caller_context, callee_function,
 	    point_state->point.next_instruction);
+	statistics.call_import_semantic_states_find++;
 	error = context_state_import(callee_function, caller_state,
 	    &callee_state, &existed);
 	if (error != 0)
 		die("cannot import callee state: %s", strerror(error));
 	record_semantic_state(analysis, existed);
 
+	statistics.call_contexts_find++;
 	if (caller_context->kind == FUNCTION_CONTEXT_EFFECT_CALLER ||
 	    caller_context->kind == FUNCTION_CONTEXT_EFFECT_CONTRACT) {
 		error = context_effect_create(callee_function, bindings,
@@ -1123,6 +1133,7 @@ process_call(struct analysis *analysis, struct point_state *point_state,
 			analysis->counts.functions++;
 	}
 
+	statistics.call_provenance_edges_find++;
 	error = provenance_edge_create(callee_context, caller_context,
 	    point_state->point.next_instruction, &edge, &existed);
 	if (error != 0)
@@ -1135,6 +1146,7 @@ process_call(struct analysis *analysis, struct point_state *point_state,
 	resume_point = point_state->point;
 	resume_point.next_instruction = next_live_instruction(
 	    point_state->point.block, point_state->point.next_instruction);
+	statistics.call_continuations_find++;
 	error = dependency_continuation_create(callee_context, caller_context,
 	    resume_point, caller_state, bindings, &continuation, &existed);
 	if (error != 0)
@@ -1235,6 +1247,7 @@ process_lock_assertion(struct analysis *analysis,
 
 		if ((asserted_modes & mode) == 0)
 			continue;
+		statistics.lock_assertion_semantic_states_find++;
 		error = context_state_set_lock(point_state->context->function,
 		    point_state->state, identity,
 		    mode == LOCKLINT_MODE_UNHELD ? 0 : mode, &state, &existed);
@@ -1316,6 +1329,7 @@ process_conditional_lock(struct analysis *analysis,
 
 	current_modes = context_state_lock_modes(point_state->state, identity);
 	if (action == LOCKLINT_LOCK_RESULT_ACQUIRE) {
+		statistics.conditional_lock_semantic_states_find++;
 		error = context_state_set_lock(point_state->context->function,
 		    point_state->state, identity, LOCKLINT_MODE_MUTEX,
 		    &success_state, &existed);
@@ -1341,6 +1355,7 @@ process_conditional_lock(struct analysis *analysis,
 		return (true);
 	}
 	if (action == LOCKLINT_LOCK_TRY_ACQUIRE_ZERO) {
+		statistics.conditional_lock_semantic_states_find++;
 		error = context_state_set_lock(point_state->context->function,
 		    point_state->state, identity, LOCKLINT_MODE_MUTEX,
 		    &success_state, &existed);
@@ -1360,6 +1375,7 @@ process_conditional_lock(struct analysis *analysis,
 	if ((action == LOCKLINT_LOCK_TRY_UPGRADE &&
 	    (current_modes & LOCKLINT_MODE_READER) != 0) ||
 	    (action == LOCKLINT_LOCK_TRY_ACQUIRE && current_modes == 0)) {
+		statistics.conditional_lock_semantic_states_find++;
 		error = context_state_set_lock(point_state->context->function,
 		    point_state->state, identity,
 		    action == LOCKLINT_LOCK_TRY_UPGRADE ?
@@ -1452,6 +1468,7 @@ seed_root(struct analysis *analysis, struct function_info *function)
 	int error;
 
 	analysis->counts.roots++;
+	statistics.root_binding_environments_find++;
 	error = binding_environment_intern(&function->bindings, NULL, 0,
 	    &bindings, &existed);
 	if (error != 0)
@@ -1460,11 +1477,13 @@ seed_root(struct analysis *analysis, struct function_info *function)
 		analysis->counts.binding_environments_reused++;
 	else
 		analysis->counts.binding_environments_created++;
+	statistics.root_semantic_states_find++;
 	error = context_entry_state_intern(function, &state, &existed);
 	if (error != 0)
 		die("cannot intern root state: %s", strerror(error));
 	record_semantic_state(analysis, existed);
 
+	statistics.root_contexts_find++;
 	error = context_root_create(function, bindings, state, &context,
 	    &existed);
 	if (error != 0)
@@ -1492,6 +1511,7 @@ seed_effect_context(struct analysis *analysis, struct function_info *function,
 	bool existed;
 	int error;
 
+	statistics.effect_contexts_find++;
 	error = context_effect_contract_create(function, bindings, state,
 	    &context, &existed);
 	if (error != 0)
@@ -1549,6 +1569,7 @@ seed_effect_contracts(struct analysis *analysis,
 			    !transition)
 				continue;
 			if (bindings == NULL) {
+				statistics.effect_binding_environments_find++;
 				error = binding_environment_intern(
 				    &function->bindings, NULL, 0, &bindings,
 				    &existed);
@@ -1561,6 +1582,7 @@ seed_effect_contracts(struct analysis *analysis,
 				else
 					analysis->counts.
 					    binding_environments_created++;
+				statistics.effect_semantic_states_find++;
 				error = context_entry_state_intern(function, &state,
 				    &existed);
 				if (error != 0)
@@ -1597,6 +1619,7 @@ seed_effect_contracts(struct analysis *analysis,
 				    mode <= LOCKLINT_MODE_WRITER; mode <<= 1) {
 					struct semantic_state *held;
 
+					statistics.effect_semantic_states_find++;
 					error = context_state_set_lock(function,
 					    state, identity, mode, &held, &existed);
 					if (error != 0)
@@ -1609,6 +1632,7 @@ seed_effect_contracts(struct analysis *analysis,
 			} else {
 				struct semantic_state *held;
 
+				statistics.effect_semantic_states_find++;
 				error = context_state_set_lock(function, state,
 				    identity, mode, &held, &existed);
 				if (error != 0)
@@ -1659,6 +1683,7 @@ diagnose_declared_acquisition(struct analysis *analysis,
 
 	if (!declared_acquisition_mode(effect, &expected_mode, &description))
 		return;
+	statistics.declared_effect_contexts_enum++;
 	for (context = avl_first(&function->contexts.contexts);
 	    context != NULL;
 	    context = AVL_NEXT(&function->contexts.contexts, context)) {
@@ -1714,6 +1739,7 @@ diagnose_declared_release(struct analysis *analysis,
 	bool existed;
 	int error;
 
+	statistics.declared_effect_contexts_enum++;
 	for (context = avl_first(&function->contexts.contexts);
 	    context != NULL;
 	    context = AVL_NEXT(&function->contexts.contexts, context)) {
@@ -1780,6 +1806,7 @@ diagnose_declared_transition(struct analysis *analysis,
 	if (!declared_transition_modes(effect, &entry_mode, &exit_mode,
 	    &description))
 		return;
+	statistics.declared_effect_contexts_enum++;
 	for (context = avl_first(&function->contexts.contexts);
 	    context != NULL;
 	    context = AVL_NEXT(&function->contexts.contexts, context)) {
@@ -2252,12 +2279,14 @@ diagnose_lock_transitions(struct analysis *analysis)
 	while ((function = callgraph_iter_next(iterator)) != NULL) {
 		struct function_context *context;
 
+		statistics.lock_transition_contexts_enum++;
 		for (context = avl_first(&function->contexts.contexts);
 		    context != NULL;
 		    context = AVL_NEXT(&function->contexts.contexts, context)) {
-			struct point_state *point_state =
-			    avl_first(&context->point_states);
+			struct point_state *point_state;
 
+			statistics.lock_transition_point_states_enum++;
+			point_state = avl_first(&context->point_states);
 			if (!context_has_analysis_root(context))
 				continue;
 			while (point_state != NULL) {
@@ -2523,6 +2552,7 @@ diagnose_declared_lock_order(struct analysis *analysis)
 	while ((function = callgraph_iter_next(iterator)) != NULL) {
 		struct function_context *context;
 
+		statistics.declared_order_contexts_enum++;
 		for (context = avl_first(&function->contexts.contexts);
 		    context != NULL;
 		    context = AVL_NEXT(&function->contexts.contexts, context)) {
@@ -2530,6 +2560,7 @@ diagnose_declared_lock_order(struct analysis *analysis)
 
 			if (!context_has_analysis_root(context))
 				continue;
+			statistics.declared_order_point_states_enum++;
 			for (point_state = avl_first(&context->point_states);
 			    point_state != NULL; point_state = AVL_NEXT(
 			    &context->point_states, point_state)) {
@@ -2944,6 +2975,7 @@ diagnose_lock_assertions(struct analysis *analysis)
 	while ((function = callgraph_iter_next(iterator)) != NULL) {
 		struct function_context *context;
 
+		statistics.lock_assertion_contexts_enum++;
 		for (context = avl_first(&function->contexts.contexts);
 		    context != NULL;
 		    context = AVL_NEXT(&function->contexts.contexts, context)) {
@@ -2952,6 +2984,7 @@ diagnose_lock_assertions(struct analysis *analysis)
 			if (context->kind != FUNCTION_CONTEXT_CALLER ||
 			    !context_has_analysis_root(context))
 				continue;
+			statistics.lock_assertion_point_states_enum++;
 			for (point_state = avl_first(&context->point_states);
 			    point_state != NULL; point_state = AVL_NEXT(
 			    &context->point_states, point_state)) {
@@ -3111,11 +3144,13 @@ diagnose_competition_underflow(void)
 		    sizeof (struct competition_underflow_finding),
 		    offsetof(struct competition_underflow_finding,
 		    by_instruction));
+		statistics.competition_underflow_contexts_enum++;
 		for (context = avl_first(&function->contexts.contexts);
 		    context != NULL;
 		    context = AVL_NEXT(&function->contexts.contexts, context)) {
 			struct point_state *point_state;
 
+			statistics.competition_underflow_point_states_enum++;
 			for (point_state = avl_first(&context->point_states);
 			    point_state != NULL;
 			    point_state = AVL_NEXT(&context->point_states,
@@ -3196,6 +3231,7 @@ diagnose_competition_declaration(struct function_info *function,
 	bool definite = false;
 	bool conditional = false;
 
+	statistics.competition_effect_contexts_enum++;
 	for (context = avl_first(&function->contexts.contexts);
 	    context != NULL;
 	    context = AVL_NEXT(&function->contexts.contexts, context)) {
@@ -3318,11 +3354,13 @@ diagnose_competition_assertions(void)
 		    sizeof (struct competition_assertion_finding),
 		    offsetof(struct competition_assertion_finding,
 		    by_instruction));
+		statistics.competition_assertion_contexts_enum++;
 		for (context = avl_first(&function->contexts.contexts);
 		    context != NULL;
 		    context = AVL_NEXT(&function->contexts.contexts, context)) {
 			struct point_state *point_state;
 
+			statistics.competition_assertion_point_states_enum++;
 			for (point_state = avl_first(&context->point_states);
 			    point_state != NULL;
 			    point_state = AVL_NEXT(&context->point_states,
@@ -3547,6 +3585,7 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 		else
 			data->analysis->counts.lock_identities_created++;
 	}
+	statistics.protected_policy_states_enum++;
 	for (point_state = data->first; point_state != NULL &&
 	    same_analysis_point(data->first, point_state);
 	    point_state = AVL_NEXT(&data->context->point_states, point_state)) {
@@ -3851,12 +3890,14 @@ diagnose_protected_accesses(struct analysis *analysis)
 		avl_create(&findings, compare_protected_access_finding,
 		    sizeof (struct protected_access_finding),
 		    offsetof(struct protected_access_finding, by_access));
+		statistics.protected_contexts_enum++;
 		for (context = avl_first(&function->contexts.contexts);
 		    context != NULL;
 		    context = AVL_NEXT(&function->contexts.contexts, context)) {
-			struct point_state *point_state =
-			    avl_first(&context->point_states);
+			struct point_state *point_state;
 
+			statistics.protected_scan_point_states_enum++;
+			point_state = avl_first(&context->point_states);
 			if (!context_has_analysis_root(context))
 				continue;
 			while (point_state != NULL) {
@@ -4034,11 +4075,13 @@ diagnose_assumed_calls(struct analysis *analysis)
 	while ((caller = callgraph_iter_next(iterator)) != NULL) {
 		struct function_context *context;
 
+		statistics.assumed_call_contexts_enum++;
 		for (context = avl_first(&caller->contexts.contexts);
 		    context != NULL;
 		    context = AVL_NEXT(&caller->contexts.contexts, context)) {
 			struct point_state *point_state;
 
+			statistics.assumed_call_point_states_enum++;
 			for (point_state = avl_first(&context->point_states);
 			    point_state != NULL;
 			    point_state = AVL_NEXT(&context->point_states,
@@ -4412,6 +4455,7 @@ observe_caller_visible_returns(struct analysis *analysis,
 {
 	struct function_context *context;
 
+	statistics.caller_return_contexts_enum++;
 	for (context = avl_first(&function->contexts.contexts);
 	    context != NULL;
 	    context = AVL_NEXT(&function->contexts.contexts, context)) {
@@ -4437,6 +4481,7 @@ observe_caller_visible_returns(struct analysis *analysis,
 			if (context_state_lock_modes(context->entry_state,
 			    identity) != 0)
 				continue;
+			statistics.caller_return_point_states_enum++;
 			for (point_state = avl_first(&context->point_states);
 			    point_state != NULL; point_state = AVL_NEXT(
 			    &context->point_states, point_state)) {
@@ -4655,12 +4700,14 @@ diagnose_locks_on_return(struct analysis *analysis)
 
 		functions = entry->next;
 		function = entry->function;
+		statistics.local_return_contexts_enum++;
 		for (context = avl_first(&function->contexts.contexts);
 		    context != NULL;
 		    context = AVL_NEXT(&function->contexts.contexts, context)) {
-			struct point_state *point_state =
-			    avl_first(&context->point_states);
+			struct point_state *point_state;
 
+			statistics.local_return_point_states_enum++;
+			point_state = avl_first(&context->point_states);
 			if (!context_has_analysis_root(context))
 				continue;
 			while (point_state != NULL) {
@@ -4698,6 +4745,7 @@ measure_point_states(struct analysis_measurements *measurements,
 	    context->function);
 	memory_add(&measurements->point_state_bytes, point_states,
 	    sizeof (struct point_state));
+	statistics.measurement_point_states_enum++;
 	for (point_state = avl_first(&context->point_states);
 	    point_state != NULL;
 	    point_state = AVL_NEXT(&context->point_states, point_state)) {
@@ -4778,6 +4826,7 @@ measure_collections(struct analysis *analysis)
 		distribution_add(
 		    &measurements->binding_environments_per_function,
 		    binding_environments, function);
+		statistics.measurement_binding_environments_enum++;
 		for (bindings = avl_first(&function->bindings.environments);
 		    bindings != NULL;
 		    bindings = AVL_NEXT(&function->bindings.environments,
@@ -4798,6 +4847,7 @@ measure_collections(struct analysis *analysis)
 		    context_visibility_sets_created(function), 1);
 		memory_add(&measurements->visibility_sets_reused,
 		    context_visibility_sets_reused(function), 1);
+		statistics.measurement_semantic_states_enum++;
 		for (state = avl_first(&function->contexts.semantic_states);
 		    state != NULL;
 		    state = AVL_NEXT(&function->contexts.semantic_states, state)) {
@@ -4833,6 +4883,7 @@ measure_collections(struct analysis *analysis)
 		memory_add(&measurements->semantic_state_bytes, states,
 		    sizeof (struct semantic_state));
 
+		statistics.measurement_contexts_enum++;
 		for (context = avl_first(&function->contexts.contexts);
 		    context != NULL;
 		    context = AVL_NEXT(&function->contexts.contexts, context))

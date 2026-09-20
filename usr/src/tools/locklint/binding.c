@@ -26,6 +26,7 @@
 
 #include "avl.h"
 #include "binding.h"
+#include "statistics.h"
 
 static int
 compare_binding(const struct formal_binding *left,
@@ -83,6 +84,7 @@ binding_collection_free(struct binding_environment_collection *collection)
 	struct binding_environment *environment;
 	void *cookie = NULL;
 
+	statistics.cleanup_binding_environments_enum++;
 	while ((environment = avl_destroy_nodes(&collection->environments,
 	    &cookie)) != NULL)
 		free(environment);

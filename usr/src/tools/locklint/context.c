@@ -30,6 +30,7 @@
 #include "dependency.h"
 #include "function_info.h"
 #include "provenance.h"
+#include "statistics.h"
 
 static int
 compare_lock_identity(const struct lock_identity *left,
@@ -245,6 +246,7 @@ free_point_states(struct function_context *context)
 	struct point_state *point_state;
 	void *cookie = NULL;
 
+	statistics.cleanup_point_states_enum++;
 	while ((point_state = avl_destroy_nodes(&context->point_states,
 	    &cookie)) != NULL)
 		free(point_state);
@@ -265,6 +267,7 @@ context_collection_free(struct function_info *function)
 	struct semantic_visibility_set *visibility;
 	void *cookie = NULL;
 
+	statistics.cleanup_contexts_enum++;
 	while ((context = avl_destroy_nodes(&collection->contexts,
 	    &cookie)) != NULL) {
 		free_point_states(context);
@@ -275,6 +278,7 @@ context_collection_free(struct function_info *function)
 	avl_destroy(&collection->contexts);
 
 	cookie = NULL;
+	statistics.cleanup_semantic_states_enum++;
 	while ((state = avl_destroy_nodes(&collection->semantic_states,
 	    &cookie)) != NULL)
 		free(state);
@@ -1017,7 +1021,9 @@ context_point_state_record_widened(struct function_context *context,
 
 	if (context == NULL || state == NULL)
 		return (EINVAL);
+	statistics.backedge_point_states_find++;
 	(void) avl_find(&context->point_states, &key, &where);
+	statistics.backedge_point_states_enum++;
 	for (point_state = avl_nearest(&context->point_states, where, AVL_AFTER);
 	    point_state != NULL &&
 	    point_state->point.block == point.block &&
@@ -1041,21 +1047,26 @@ context_point_state_record_widened(struct function_context *context,
 			prior = point_state->state;
 			continue;
 		}
+		statistics.backedge_widening_semantic_states_find++;
 		error = context_state_merge_competition(context->function, prior,
 		    point_state->state, false, &merged, &state_existed);
 		if (error != 0)
 			return (error);
 		prior = merged;
 	}
-	if (prior == NULL)
+	if (prior == NULL) {
+		statistics.backedge_record_point_states_find++;
 		error = context_point_state_record(context, point, state, result,
 		    existed);
-	else {
+	} else {
+		statistics.backedge_widening_semantic_states_find++;
 		error = context_state_merge_competition(context->function, prior,
 		    state, true, &merged, &state_existed);
-		if (error == 0)
+		if (error == 0) {
+			statistics.backedge_record_point_states_find++;
 			error = context_point_state_record(context, point, merged,
 			    result, existed);
+		}
 	}
 	if (error != 0)
 		return (error);
