@@ -1,6 +1,0 @@
-../locklint: assertion-requirements.c:48:9: warning: locklint: asserted mutex-held requirement for lock 'mutex' is not established on every path [conditional-asserted-lock-requirement]
-../locklint: assertion-requirements.c:54:9: warning: locklint: asserted not-held requirement for lock 'mutex' is not established on every path [conditional-asserted-lock-requirement]
-../locklint: assertion-requirements.c:60:9: warning: locklint: asserted read-held requirement for lock 'rwlock' is not established on every path [conditional-asserted-lock-requirement]
-../locklint: assertion-requirements.c:66:9: warning: locklint: asserted write-held requirement for lock 'rwlock' is not established on every path [conditional-asserted-lock-requirement]
-../locklint: assertion-requirements.c:88:17: warning: locklint: lock 'mutex' does not satisfy asserted mutex-held requirement [asserted-lock-requirement]
-../locklint: assertion-requirements.c:216:9: warning: locklint: asserted not-held requirement for lock 'mutex' is not established on every path [conditional-asserted-lock-requirement]

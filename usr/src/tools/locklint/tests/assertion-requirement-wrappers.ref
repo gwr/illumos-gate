@@ -1,10 +1,10 @@
-../locklint: assertion-requirement-wrappers.c:95: warning: locklint: call to 'require_held_wrapper' does not satisfy asserted mutex-held requirement for lock 'lock' [asserted-lock-requirement]
-../locklint: assertion-requirement-wrappers.c:36: locklint: asserted requirement is here
-../locklint: assertion-requirement-wrappers.c:109: warning: locklint: call to 'require_held_nested_wrapper' does not satisfy asserted mutex-held requirement for lock 'lock' [asserted-lock-requirement]
-../locklint: assertion-requirement-wrappers.c:36: locklint: asserted requirement is here
-../locklint: assertion-requirement-wrappers.c:121: warning: locklint: call to 'conditional_held_wrapper' does not satisfy asserted mutex-held requirement for lock 'lock' [asserted-lock-requirement]
-../locklint: assertion-requirement-wrappers.c:36: locklint: asserted requirement is here
-../locklint: assertion-requirement-wrappers.c:127: warning: locklint: call to 'recursive_held_wrapper' does not satisfy asserted mutex-held requirement for lock 'lock' [asserted-lock-requirement]
-../locklint: assertion-requirement-wrappers.c:36: locklint: asserted requirement is here
-../locklint: assertion-requirement-wrappers.c:141: warning: locklint: call to 'require_absolute_wrapper' does not satisfy asserted mutex-held requirement for lock 'absolute_lock' [asserted-lock-requirement]
-../locklint: assertion-requirement-wrappers.c:83: locklint: asserted requirement is here
+../locklint: assertion-requirement-wrappers.c:95:29: warning: locklint: call to 'require_held_wrapper' does not satisfy asserted mutex-held requirement for lock 'lock' [asserted-lock-requirement]
+../locklint: assertion-requirement-wrappers.c:36:9: locklint: asserted requirement is here
+../locklint: assertion-requirement-wrappers.c:109:36: warning: locklint: call to 'require_held_nested_wrapper' does not satisfy asserted mutex-held requirement for lock 'lock' [asserted-lock-requirement]
+../locklint: assertion-requirement-wrappers.c:36:9: locklint: asserted requirement is here
+../locklint: assertion-requirement-wrappers.c:121:33: warning: locklint: asserted mutex-held requirement for lock 'lock' is not established on every path calling 'conditional_held_wrapper' [conditional-asserted-lock-requirement]
+../locklint: assertion-requirement-wrappers.c:36:9: locklint: asserted requirement is here
+../locklint: assertion-requirement-wrappers.c:127:31: warning: locklint: call to 'recursive_held_wrapper' does not satisfy asserted mutex-held requirement for lock 'lock' [asserted-lock-requirement]
+../locklint: assertion-requirement-wrappers.c:36:9: locklint: asserted requirement is here
+../locklint: assertion-requirement-wrappers.c:141:33: warning: locklint: call to 'require_absolute_wrapper' does not satisfy asserted mutex-held requirement for lock 'absolute_lock' [asserted-lock-requirement]
+../locklint: assertion-requirement-wrappers.c:83:9: locklint: asserted requirement is here

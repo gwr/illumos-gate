@@ -1372,9 +1372,21 @@ After the caller-context fixed point, diagnostics inspect the concrete point
 states retained immediately before each assertion.  Only failing states
 produce a definite warning; a mixture of satisfying and failing contexts
 produces a conditional warning.  Synthetic-root assumptions are excluded.
-Diagnostics currently identify the assertion source.  Mapping requirements
-through wrappers and diagnosing their originating call sites remains later
-work.
+Observations first aggregate by exact function context and assertion
+instruction.  Each aggregate then walks incoming context-provenance edges
+backward until it reaches calls made by synthetic roots.  A per-walk AVL set
+of context pointers bounds recursive and mutually recursive provenance
+cycles.  Findings aggregate again by originating call and assertion, so a
+call with only failing observations is definite while one with satisfying
+and failing observations is conditional.  The primary warning identifies the
+originating call and an `info()` note identifies the assertion.  If a concrete
+context has no recoverable root provenance, the assertion source remains the
+diagnostic fallback.
+
+Scalar argument values are not part of function-context identity.  If an
+untracked scalar controls whether a wrapper establishes the asserted state,
+both exact lock-state paths remain possible and the originating-call
+diagnostic is conditional.
 
 ## Event decoding
 
@@ -2206,9 +2218,11 @@ post-fixed-point diagnostics
 exact state flows through each resolved wrapper call
     -> nested concrete context validates the assertion
     -> failure prevents that context from returning
-future diagnostic propagation
-    -> retain assertion provenance through wrapper contexts
-    -> report the incompatible originating call site
+post-fixed-point provenance traversal
+    -> follow incoming context edges through transparent and recursive wrappers
+    -> stop at each call made by a synthetic root
+    -> aggregate satisfying and failing observations per call and assertion
+    -> report the call with an informational note at the assertion
 ```
 
 ### Direct conditional lock result

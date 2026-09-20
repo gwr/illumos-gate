@@ -1635,22 +1635,68 @@ diagnose_lock_transitions(struct analysis *analysis)
 	callgraph_iter_close(iterator);
 }
 
-struct lock_assertion_finding {
-	struct instruction *instruction;
+struct lock_assertion_observation {
+	struct function_context *context;
+	struct instruction *assertion_instruction;
 	struct locklint_access access;
 	unsigned int asserted_modes;
 	bool valid;
 	bool invalid;
-	avl_node_t by_instruction;
+	avl_node_t by_context;
 };
 
 static int
-compare_lock_assertion(const void *left_arg, const void *right_arg)
+compare_lock_assertion_observation(const void *left_arg, const void *right_arg)
+{
+	const struct lock_assertion_observation *left = left_arg;
+	const struct lock_assertion_observation *right = right_arg;
+	int result;
+
+	result = AVL_PCMP(left->context, right->context);
+	if (result != 0)
+		return (result);
+	return (AVL_PCMP(left->assertion_instruction,
+	    right->assertion_instruction));
+}
+
+struct lock_assertion_finding {
+	struct function_info *caller_function;
+	struct instruction *call_instruction;
+	struct instruction *assertion_instruction;
+	struct locklint_access access;
+	unsigned int asserted_modes;
+	bool valid;
+	bool invalid;
+	avl_node_t by_call;
+};
+
+static int
+compare_lock_assertion_finding(const void *left_arg, const void *right_arg)
 {
 	const struct lock_assertion_finding *left = left_arg;
 	const struct lock_assertion_finding *right = right_arg;
+	int result;
 
-	return (AVL_PCMP(left->instruction, right->instruction));
+	result = AVL_PCMP(left->call_instruction, right->call_instruction);
+	if (result != 0)
+		return (result);
+	return (AVL_PCMP(left->assertion_instruction,
+	    right->assertion_instruction));
+}
+
+struct assertion_context_visit {
+	struct function_context *context;
+	struct assertion_context_visit *next;
+	avl_node_t by_context;
+};
+
+static int
+compare_assertion_context_visit(const void *left_arg, const void *right_arg)
+{
+	const struct assertion_context_visit *left = left_arg;
+	const struct assertion_context_visit *right = right_arg;
+
+	return (AVL_PCMP(left->context, right->context));
 }
 
 static const char *
@@ -1676,6 +1722,106 @@ asserted_mode_name(unsigned int modes)
 	}
 }
 
+static void
+record_lock_assertion_finding(avl_tree_t *findings,
+    const struct lock_assertion_observation *observation,
+    struct function_info *caller_function, struct instruction *call_instruction)
+{
+	struct lock_assertion_finding key = {
+		.call_instruction = call_instruction,
+		.assertion_instruction = observation->assertion_instruction
+	};
+	struct lock_assertion_finding *finding;
+	avl_index_t where;
+
+	finding = avl_find(findings, &key, &where);
+	if (finding == NULL) {
+		finding = calloc(1, sizeof (*finding));
+		if (finding == NULL)
+			die("cannot allocate lock assertion finding");
+		finding->caller_function = caller_function;
+		finding->call_instruction = call_instruction;
+		finding->assertion_instruction =
+		    observation->assertion_instruction;
+		finding->access = observation->access;
+		finding->asserted_modes = observation->asserted_modes;
+		avl_insert(findings, finding, where);
+	}
+	finding->valid |= observation->valid;
+	finding->invalid |= observation->invalid;
+}
+
+static bool
+record_assertion_context_visit(avl_tree_t *visited,
+    struct assertion_context_visit **work, struct function_context *context)
+{
+	struct assertion_context_visit key = {
+		.context = context
+	};
+	struct assertion_context_visit *visit;
+	avl_index_t where;
+
+	visit = avl_find(visited, &key, &where);
+	if (visit != NULL)
+		return (false);
+	visit = calloc(1, sizeof (*visit));
+	if (visit == NULL)
+		die("cannot allocate assertion provenance visit");
+	visit->context = context;
+	visit->next = *work;
+	*work = visit;
+	avl_insert(visited, visit, where);
+	return (true);
+}
+
+/*
+ * Walk incoming context provenance to the calls made by synthetic roots.
+ * Contexts are canonical graph nodes, so a visited set bounds recursive and
+ * mutually recursive paths without losing distinct root call sites.
+ */
+static void
+trace_lock_assertion_observation(avl_tree_t *findings,
+    const struct lock_assertion_observation *observation)
+{
+	struct assertion_context_visit *work = NULL;
+	avl_tree_t visited;
+	bool found_root = false;
+
+	avl_create(&visited, compare_assertion_context_visit,
+	    sizeof (struct assertion_context_visit),
+	    offsetof(struct assertion_context_visit, by_context));
+	(void) record_assertion_context_visit(&visited, &work,
+	    observation->context);
+	while (work != NULL) {
+		struct assertion_context_visit *visit = work;
+		struct provenance_edge *edge;
+
+		work = visit->next;
+		for (edge = provenance_edge_first(visit->context); edge != NULL;
+		    edge = provenance_edge_next(visit->context, edge)) {
+			if (edge->caller_context->synthetic_root) {
+				record_lock_assertion_finding(findings, observation,
+				    edge->caller_context->function,
+				    edge->call_instruction);
+				found_root = true;
+				continue;
+			}
+			(void) record_assertion_context_visit(&visited, &work,
+			    edge->caller_context);
+		}
+	}
+	if (!found_root)
+		record_lock_assertion_finding(findings, observation, NULL, NULL);
+	while (!avl_is_empty(&visited)) {
+		struct assertion_context_visit *visit =
+		    avl_first(&visited);
+
+		avl_remove(&visited, visit);
+		free(visit);
+	}
+	avl_destroy(&visited);
+}
+
 /*
  * Report assertion failures from concrete caller contexts.  Synthetic roots
  * supply contract assumptions and therefore do not represent failing callers.
@@ -1685,12 +1831,16 @@ diagnose_lock_assertions(struct analysis *analysis)
 {
 	struct callgraph_iter *iterator;
 	struct function_info *function;
+	avl_tree_t observations;
 	avl_tree_t findings;
 	int error;
 
-	avl_create(&findings, compare_lock_assertion,
+	avl_create(&observations, compare_lock_assertion_observation,
+	    sizeof (struct lock_assertion_observation),
+	    offsetof(struct lock_assertion_observation, by_context));
+	avl_create(&findings, compare_lock_assertion_finding,
 	    sizeof (struct lock_assertion_finding),
-	    offsetof(struct lock_assertion_finding, by_instruction));
+	    offsetof(struct lock_assertion_finding, by_call));
 	error = callgraph_iter_open(&iterator);
 	if (error != 0)
 		die("cannot iterate ready callgraph: %s", strerror(error));
@@ -1707,8 +1857,8 @@ diagnose_lock_assertions(struct analysis *analysis)
 			for (point_state = avl_first(&context->point_states);
 			    point_state != NULL; point_state = AVL_NEXT(
 			    &context->point_states, point_state)) {
-				struct lock_assertion_finding key;
-				struct lock_assertion_finding *finding;
+				struct lock_assertion_observation key;
+				struct lock_assertion_observation *observation;
 				struct locklint_access access;
 				struct lock_identity *identity;
 				unsigned int asserted_modes;
@@ -1732,48 +1882,94 @@ diagnose_lock_assertions(struct analysis *analysis)
 				    point_state->state, identity);
 				if (current_modes == 0)
 					current_modes = LOCKLINT_MODE_UNHELD;
-				key = (struct lock_assertion_finding) {
-					.instruction =
+				key = (struct lock_assertion_observation) {
+					.context = context,
+					.assertion_instruction =
 					    point_state->point.next_instruction
 				};
-				finding = avl_find(&findings, &key, &where);
-				if (finding == NULL) {
-					finding = calloc(1, sizeof (*finding));
-					if (finding == NULL)
+				observation = avl_find(&observations, &key,
+				    &where);
+				if (observation == NULL) {
+					observation = calloc(1,
+					    sizeof (*observation));
+					if (observation == NULL)
 						die("cannot allocate lock assertion "
-						    "finding");
-					finding->instruction = key.instruction;
-					finding->access = access;
-					finding->asserted_modes = asserted_modes;
-					avl_insert(&findings, finding, where);
+						    "observation");
+					observation->context = context;
+					observation->assertion_instruction =
+					    key.assertion_instruction;
+					observation->access = access;
+					observation->asserted_modes =
+					    asserted_modes;
+					avl_insert(&observations, observation,
+					    where);
 				}
 				if ((current_modes & asserted_modes) != 0)
-					finding->valid = true;
+					observation->valid = true;
 				else
-					finding->invalid = true;
+					observation->invalid = true;
 			}
 		}
 	}
 	callgraph_iter_close(iterator);
+	while (!avl_is_empty(&observations)) {
+		struct lock_assertion_observation *observation =
+		    avl_first(&observations);
+
+		trace_lock_assertion_observation(&findings, observation);
+		avl_remove(&observations, observation);
+		free(observation);
+	}
+	avl_destroy(&observations);
 	while (!avl_is_empty(&findings)) {
 		struct lock_assertion_finding *finding =
 		    avl_first(&findings);
-		struct position pos = finding->instruction->call_expr != NULL ?
-		    finding->instruction->call_expr->pos :
-		    finding->instruction->pos;
+		struct instruction *assertion =
+		    finding->assertion_instruction;
+		struct position assertion_pos = assertion->call_expr != NULL ?
+		    assertion->call_expr->pos : assertion->pos;
 		char *name = locklint_access_name(&finding->access);
 		const char *mode = asserted_mode_name(
 		    finding->asserted_modes);
 
-		if (finding->invalid && finding->valid) {
-			locklint_warning(
-			    LOCKLINT_DIAG_CONDITIONAL_ASSERTED_LOCK_REQUIREMENT,
-			    pos, "asserted %s requirement for lock '%s' is "
-			    "not established on every path", mode, name);
-		} else if (finding->invalid) {
-			locklint_warning(LOCKLINT_DIAG_ASSERTED_LOCK_REQUIREMENT,
-			    pos, "lock '%s' does not satisfy asserted %s "
-			    "requirement", name, mode);
+		if (finding->call_instruction != NULL && finding->invalid) {
+			struct instruction *call = finding->call_instruction;
+			struct function_info *callee = callgraph_callee(
+			    finding->caller_function, call);
+			struct position call_pos = call->call_expr != NULL ?
+			    call->call_expr->pos : call->pos;
+			const char *callee_name = callee != NULL ?
+			    function_name(callee) : "<unknown>";
+
+			if (finding->valid) {
+				locklint_warning(
+				    LOCKLINT_DIAG_CONDITIONAL_ASSERTED_LOCK_REQUIREMENT,
+				    call_pos, "asserted %s requirement for lock "
+				    "'%s' is not established on every path "
+				    "calling '%s'", mode, name, callee_name);
+			} else {
+				locklint_warning(
+				    LOCKLINT_DIAG_ASSERTED_LOCK_REQUIREMENT,
+				    call_pos, "call to '%s' does not satisfy "
+				    "asserted %s requirement for lock '%s'",
+				    callee_name, mode, name);
+			}
+			info(assertion_pos,
+			    "locklint: asserted requirement is here");
+		} else if (finding->call_instruction == NULL &&
+		    finding->invalid) {
+			if (finding->valid) {
+				locklint_warning(
+				    LOCKLINT_DIAG_CONDITIONAL_ASSERTED_LOCK_REQUIREMENT,
+				    assertion_pos, "asserted %s requirement for "
+				    "lock '%s' is not established on every path",
+				    mode, name);
+			} else {
+				locklint_warning(
+				    LOCKLINT_DIAG_ASSERTED_LOCK_REQUIREMENT,
+				    assertion_pos, "lock '%s' does not satisfy "
+				    "asserted %s requirement", name, mode);
+			}
 		}
 		free(name);
 		avl_remove(&findings, finding);

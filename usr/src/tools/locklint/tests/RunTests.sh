@@ -570,12 +570,17 @@ run_capture "kernel contextual rwlock assertions" rwlock-contextual-kernel.out \
 compare "kernel contextual rwlock assertions" rwlock-contextual-kernel.ref \
     rwlock-contextual-kernel.out
 
-run_capture "contextual assertion requirements" \
-    assertion-requirements-contextual.out \
+run_capture "direct assertion call sites" assertion-requirements.out \
     "$LOCKLINT" --check-locks assertion-requirements.c
-compare "contextual assertion requirements" \
-    assertion-requirements-contextual.ref \
-    assertion-requirements-contextual.out
+compare "direct assertion call sites" assertion-requirements.ref \
+    assertion-requirements.out
+
+run_capture "wrapped assertion call sites" \
+    assertion-requirement-wrappers.out \
+    "$LOCKLINT" --check-locks assertion-requirement-wrappers.c
+compare "wrapped assertion call sites" \
+    assertion-requirement-wrappers.ref \
+    assertion-requirement-wrappers.out
 
 run_capture "user rwlock call state" rwlock-calls-core-user.out \
     "$LOCKLINT" --check-locks rwlock-calls.c
