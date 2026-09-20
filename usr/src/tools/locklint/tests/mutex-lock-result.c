@@ -11,7 +11,9 @@
 
 /*
  * Characterize result-sensitive user mutex_lock() acquisition, whose normal
- * success return is zero, while preserving common ignored-result behavior.
+ * success return is zero.  Checked forms cover both releasing and deliberately
+ * retaining a successful acquisition, while ignored-result behavior remains
+ * unconditional.
  */
 
 #define	_NOTE(arg)
@@ -33,13 +35,14 @@ extern int mutex_lock(mutex_t *);
 extern int mutex_unlock(mutex_t *);
 
 static int
-lock_equal_zero(struct mutex_lock_state *state)
+lock_equal_zero(struct mutex_lock_state *state, int keep_lock)
 {
 	int value = 0;
 
 	if (mutex_lock(&state->first) == 0) {
 		value = state->value;
-		(void) mutex_unlock(&state->first);
+		if (!keep_lock)
+			(void) mutex_unlock(&state->first);
 	} else {
 		value = state->value;
 	}
@@ -47,7 +50,7 @@ lock_equal_zero(struct mutex_lock_state *state)
 }
 
 static int
-lock_not_equal_zero(struct mutex_lock_state *state)
+lock_not_equal_zero(struct mutex_lock_state *state, int keep_lock)
 {
 	int value = 0;
 
@@ -55,13 +58,14 @@ lock_not_equal_zero(struct mutex_lock_state *state)
 		value = state->value;
 	} else {
 		value = state->value;
-		(void) mutex_unlock(&state->first);
+		if (!keep_lock)
+			(void) mutex_unlock(&state->first);
 	}
 	return (value);
 }
 
 static int
-lock_truth(struct mutex_lock_state *state)
+lock_truth(struct mutex_lock_state *state, int keep_lock)
 {
 	int value = 0;
 
@@ -69,19 +73,21 @@ lock_truth(struct mutex_lock_state *state)
 		value = state->value;
 	} else {
 		value = state->value;
-		(void) mutex_unlock(&state->first);
+		if (!keep_lock)
+			(void) mutex_unlock(&state->first);
 	}
 	return (value);
 }
 
 static int
-lock_negated(struct mutex_lock_state *state)
+lock_negated(struct mutex_lock_state *state, int keep_lock)
 {
 	int value = 0;
 
 	if (!mutex_lock(&state->first)) {
 		value = state->value;
-		(void) mutex_unlock(&state->first);
+		if (!keep_lock)
+			(void) mutex_unlock(&state->first);
 	} else {
 		value = state->value;
 	}
@@ -89,7 +95,7 @@ lock_negated(struct mutex_lock_state *state)
 }
 
 static int
-lock_saved_result(struct mutex_lock_state *state)
+lock_saved_result(struct mutex_lock_state *state, int keep_lock)
 {
 	int error;
 	int value = 0;
@@ -97,7 +103,8 @@ lock_saved_result(struct mutex_lock_state *state)
 	error = mutex_lock(&state->first);
 	if (error == 0) {
 		value = state->value;
-		(void) mutex_unlock(&state->first);
+		if (!keep_lock)
+			(void) mutex_unlock(&state->first);
 	}
 	return (value);
 }
@@ -114,25 +121,29 @@ lock_ignored_result(struct mutex_lock_state *state)
 }
 
 static void
-balanced_mutex_lock(struct mutex_lock_state *state)
+balanced_mutex_lock(struct mutex_lock_state *state, int keep_lock)
 {
-	if (mutex_lock(&state->first) == 0)
-		(void) mutex_unlock(&state->first);
+	if (mutex_lock(&state->first) == 0) {
+		if (!keep_lock)
+			(void) mutex_unlock(&state->first);
+	}
 }
 
 static void
-call_balanced_mutex_lock(struct mutex_lock_state *state)
+call_balanced_mutex_lock(struct mutex_lock_state *state, int keep_lock)
 {
-	balanced_mutex_lock(state);
+	balanced_mutex_lock(state, keep_lock);
 	state->value = 1;
 }
 
 static void
-lock_order_on_success(struct mutex_lock_state *state)
+lock_order_on_success(struct mutex_lock_state *state, int keep_lock)
 {
 	(void) mutex_lock(&state->second);
-	if (mutex_lock(&state->first) == 0)
-		(void) mutex_unlock(&state->first);
+	if (mutex_lock(&state->first) == 0) {
+		if (!keep_lock)
+			(void) mutex_unlock(&state->first);
+	}
 	(void) mutex_unlock(&state->second);
 }
 
