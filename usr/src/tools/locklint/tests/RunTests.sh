@@ -572,14 +572,13 @@ compare "declared competition effect diagnostics" \
     competition-contracts.ref competition-contracts.out
 
 #
-# Verify declared mutex, reader, and writer acquisitions against every exact
-# exit from a distinct synthetic contract context.
+# Verify declared mutex, reader, and writer acquisitions and generic releases
+# against every exact exit from distinct synthetic contract contexts.
 #
-run_capture "declared acquisition effect diagnostics" \
-    declared-effects-acquisition.out "$LOCKLINT" --check-locks \
-    -DLOCKLINT_ACQUISITION_EFFECTS_ONLY declared-effects.c
-compare "declared acquisition effect diagnostics" \
-    declared-effects-acquisition.ref declared-effects-acquisition.out
+run_capture "declared lock effect diagnostics" declared-effects.out \
+    "$LOCKLINT" --check-locks declared-effects.c
+compare "declared lock effect diagnostics" declared-effects.ref \
+    declared-effects.out
 
 run_capture "declared release effect diagnostics" \
     declared-releases.out "$LOCKLINT" --check-locks declared-releases.c
