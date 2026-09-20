@@ -293,6 +293,38 @@ test_root_call_traversal(void)
 	    edges_examined == 14, "count examined caller recovery edges");
 	check(statistics.caller_recovery_root_calls - root_calls == 4,
 	    "count caller recovery result calls");
+	check(statistics.caller_recovery_first_max_depth.samples == 2 &&
+	    statistics.caller_recovery_first_max_depth.total == 2 &&
+	    statistics.caller_recovery_first_max_depth.maximum == 2,
+	    "measure first-query maximum depth");
+	check(statistics.caller_recovery_repeat_max_depth.samples == 1 &&
+	    statistics.caller_recovery_repeat_max_depth.total == 2 &&
+	    statistics.caller_recovery_repeat_max_depth.maximum == 2,
+	    "measure repeated-query maximum depth");
+	check(statistics.caller_recovery_first_contexts_visited.samples == 2 &&
+	    statistics.caller_recovery_first_contexts_visited.total == 4 &&
+	    statistics.caller_recovery_first_contexts_visited.maximum == 3,
+	    "measure first-query context visits");
+	check(statistics.caller_recovery_repeat_contexts_visited.samples == 1 &&
+	    statistics.caller_recovery_repeat_contexts_visited.total == 3 &&
+	    statistics.caller_recovery_repeat_contexts_visited.maximum == 3,
+	    "measure repeated-query context visits");
+	check(statistics.caller_recovery_first_edges_examined.samples == 2 &&
+	    statistics.caller_recovery_first_edges_examined.total == 7 &&
+	    statistics.caller_recovery_first_edges_examined.maximum == 7,
+	    "measure first-query examined edges");
+	check(statistics.caller_recovery_repeat_edges_examined.samples == 1 &&
+	    statistics.caller_recovery_repeat_edges_examined.total == 7 &&
+	    statistics.caller_recovery_repeat_edges_examined.maximum == 7,
+	    "measure repeated-query examined edges");
+	check(statistics.caller_recovery_first_root_calls.samples == 2 &&
+	    statistics.caller_recovery_first_root_calls.total == 2 &&
+	    statistics.caller_recovery_first_root_calls.maximum == 2,
+	    "measure first-query root calls");
+	check(statistics.caller_recovery_repeat_root_calls.samples == 1 &&
+	    statistics.caller_recovery_repeat_root_calls.total == 2 &&
+	    statistics.caller_recovery_repeat_root_calls.maximum == 2,
+	    "measure repeated-query root calls");
 
 	context_collection_free(&second_root_function);
 	context_collection_free(&first_root_function);

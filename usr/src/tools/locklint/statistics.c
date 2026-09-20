@@ -23,10 +23,98 @@
 
 #include "statistics.h"
 
+#define	STATISTICS_BAR_WIDTH	40
+
 struct statistics_counts statistics;
 
 #define	SHOW(field) \
 	(void) fprintf(stream, "statistics %s %zu\n", #field, statistics.field)
+
+void
+statistics_histogram_add(struct statistics_histogram *histogram, size_t value)
+{
+	size_t bucket;
+	size_t upper;
+
+	histogram->samples++;
+	histogram->total += value;
+	if (value > histogram->maximum)
+		histogram->maximum = value;
+	if (value == 0) {
+		histogram->buckets[0]++;
+		return;
+	}
+	for (bucket = 1, upper = 1;
+	    bucket <= STATISTICS_HISTOGRAM_POWER_BUCKETS;
+	    bucket++, upper = upper * 2 + 1) {
+		if (value <= upper) {
+			histogram->buckets[bucket]++;
+			return;
+		}
+	}
+	histogram->overflow++;
+}
+
+static void
+statistics_histogram_show(FILE *stream, const char *name,
+    const struct statistics_histogram *histogram)
+{
+	size_t counts[STATISTICS_HISTOGRAM_POWER_BUCKETS + 2];
+	size_t first = 0;
+	size_t last = 0;
+	size_t largest = 0;
+	size_t index;
+
+	(void) fprintf(stream,
+	    "statistics distribution %s samples %zu total %zu max %zu\n",
+	    name, histogram->samples, histogram->total, histogram->maximum);
+	for (index = 0; index <= STATISTICS_HISTOGRAM_POWER_BUCKETS; index++)
+		counts[index] = histogram->buckets[index];
+	counts[STATISTICS_HISTOGRAM_POWER_BUCKETS + 1] = histogram->overflow;
+	for (index = 0; index < sizeof (counts) / sizeof (counts[0]); index++) {
+		if (counts[index] == 0)
+			continue;
+		if (largest == 0)
+			first = index;
+		last = index;
+		if (counts[index] > largest)
+			largest = counts[index];
+	}
+	(void) fprintf(stream,
+	    "         range |----------------------------------------| "
+	    "count\n");
+	for (index = first; largest != 0 && index <= last; index++) {
+		char label[32];
+		size_t stars;
+		size_t column;
+
+		if (index == 0) {
+			(void) snprintf(label, sizeof (label), "0");
+		} else if (index <= STATISTICS_HISTOGRAM_POWER_BUCKETS) {
+			size_t lower = (size_t)1 << (index - 1);
+			size_t upper = ((size_t)1 << index) - 1;
+
+			if (lower == upper) {
+				(void) snprintf(label, sizeof (label), "%zu", lower);
+			} else {
+				(void) snprintf(label, sizeof (label), "%zu-%zu",
+				    lower, upper);
+			}
+		} else {
+			(void) snprintf(label, sizeof (label), "%u+",
+			    1U << STATISTICS_HISTOGRAM_POWER_BUCKETS);
+		}
+		stars = (size_t)((long double)counts[index] *
+		    STATISTICS_BAR_WIDTH / largest);
+		if (counts[index] != 0 && stars == 0)
+			stars = 1;
+		(void) fprintf(stream, "%14s |", label);
+		for (column = 0; column < STATISTICS_BAR_WIDTH; column++)
+			(void) fputc(column < stars ? '*' : ' ', stream);
+		(void) fprintf(stream, "| %zu\n", counts[index]);
+	}
+	(void) fputc('\n', stream);
+}
 
 void
 statistics_show(FILE *stream)
@@ -97,6 +185,18 @@ statistics_show(FILE *stream)
 	SHOW(caller_recovery_unique_contexts_visited);
 	SHOW(caller_recovery_edges_examined);
 	SHOW(caller_recovery_root_calls);
+
+#define	SHOW_HISTOGRAM(field) \
+	statistics_histogram_show(stream, #field, &statistics.field)
+	SHOW_HISTOGRAM(caller_recovery_first_max_depth);
+	SHOW_HISTOGRAM(caller_recovery_repeat_max_depth);
+	SHOW_HISTOGRAM(caller_recovery_first_contexts_visited);
+	SHOW_HISTOGRAM(caller_recovery_repeat_contexts_visited);
+	SHOW_HISTOGRAM(caller_recovery_first_edges_examined);
+	SHOW_HISTOGRAM(caller_recovery_repeat_edges_examined);
+	SHOW_HISTOGRAM(caller_recovery_first_root_calls);
+	SHOW_HISTOGRAM(caller_recovery_repeat_root_calls);
+#undef SHOW_HISTOGRAM
 }
 
 #undef SHOW

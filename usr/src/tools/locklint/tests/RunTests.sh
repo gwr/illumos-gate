@@ -1218,9 +1218,25 @@ do
 	require_match "context statistic $statistic" \
 	    "^statistics $statistic [0-9][0-9]*$" context-statistics.out
 done
-if [ "$(grep -c '^statistics ' context-statistics.out)" -ne 62 ]; then
+if [ "$(grep -c '^statistics [a-z_]* [0-9][0-9]*$' \
+    context-statistics.out)" -ne 62 ]; then
 	fail "context statistics: expected exactly sixty-two statistics lines"
 fi
+for histogram in \
+    caller_recovery_first_max_depth \
+    caller_recovery_repeat_max_depth \
+    caller_recovery_first_contexts_visited \
+    caller_recovery_repeat_contexts_visited \
+    caller_recovery_first_edges_examined \
+    caller_recovery_repeat_edges_examined \
+    caller_recovery_first_root_calls \
+    caller_recovery_repeat_root_calls
+do
+	statistics_histogram_pattern="^statistics distribution $histogram "\
+"samples [0-9][0-9]* total [0-9][0-9]* max [0-9][0-9]*$"
+	require_match "context statistics histogram $histogram" \
+	    "$statistics_histogram_pattern" context-statistics.out
+done
 reject_match "context counting" 'warning:' context-counting.out
 
 #

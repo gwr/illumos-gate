@@ -207,7 +207,13 @@ Caller-recovery statistics additionally count requests, unique starting
 contexts, total and unique contexts visited, edges examined, and deduplicated
 root calls.  Two per-context measurement markers identify unique starts and
 visits without a separate lookup collection and do not participate in
-semantic context identity.
+semantic context identity.  Eight power-of-two histograms split first and
+repeated starting-context queries and record each request's maximum backward
+depth, contexts visited, edges examined, and deduplicated root-call result
+size.  Depth zero is the queried context; each incoming caller edge adds one,
+including an edge into a synthetic root.  The iterative traversal retains
+depth only for the path which first schedules a context, so this is selected
+traversal depth rather than shortest graph distance.
 The counters are collected unconditionally.  `--dump-statistics` controls only
 whether they are reported at final output.  It does not request context
 analysis, so development runs normally combine it with `--dump-contexts` or

@@ -19,6 +19,16 @@
 #include <stddef.h>
 #include <stdio.h>
 
+#define	STATISTICS_HISTOGRAM_POWER_BUCKETS	12
+
+struct statistics_histogram {
+	size_t samples;
+	size_t total;
+	size_t maximum;
+	size_t buckets[STATISTICS_HISTOGRAM_POWER_BUCKETS + 1];
+	size_t overflow;
+};
+
 /*
  * Count logical requests to search or enumerate collections whose scale has
  * already been measured.  Names describe why locklint requested the
@@ -91,10 +101,19 @@ struct statistics_counts {
 	size_t caller_recovery_unique_contexts_visited;
 	size_t caller_recovery_edges_examined;
 	size_t caller_recovery_root_calls;
+	struct statistics_histogram caller_recovery_first_max_depth;
+	struct statistics_histogram caller_recovery_repeat_max_depth;
+	struct statistics_histogram caller_recovery_first_contexts_visited;
+	struct statistics_histogram caller_recovery_repeat_contexts_visited;
+	struct statistics_histogram caller_recovery_first_edges_examined;
+	struct statistics_histogram caller_recovery_repeat_edges_examined;
+	struct statistics_histogram caller_recovery_first_root_calls;
+	struct statistics_histogram caller_recovery_repeat_root_calls;
 };
 
 extern struct statistics_counts statistics;
 
+void statistics_histogram_add(struct statistics_histogram *, size_t);
 void statistics_show(FILE *);
 
 #endif /* STATISTICS_H */

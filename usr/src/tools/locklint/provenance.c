@@ -43,6 +43,7 @@ compare_edges(const void *left_arg, const void *right_arg)
 
 struct context_visit {
 	struct function_context *context;
+	size_t depth;
 	struct context_visit *next;
 	avl_node_t by_context;
 };
@@ -77,7 +78,7 @@ compare_root_calls(const void *left_arg, const void *right_arg)
 
 static int
 record_context_visit(avl_tree_t *visited, struct context_visit **work,
-    struct function_context *context)
+    struct function_context *context, size_t depth)
 {
 	struct context_visit key = {
 		.context = context
@@ -92,6 +93,7 @@ record_context_visit(avl_tree_t *visited, struct context_visit **work,
 	if (visit == NULL)
 		return (ENOMEM);
 	visit->context = context;
+	visit->depth = depth;
 	visit->next = *work;
 	*work = visit;
 	avl_insert(visited, visit, where);
@@ -230,10 +232,16 @@ provenance_for_each_root_call(struct function_context *context,
 	struct root_call *call;
 	avl_tree_t visited;
 	avl_tree_t calls;
+	bool first_query;
 	int error;
+	size_t contexts_visited = 0;
+	size_t edges_examined = 0;
+	size_t maximum_depth = 0;
+	size_t root_calls;
 
 	statistics.caller_recovery_requests++;
-	if (!context->statistics_caller_recovery_start) {
+	first_query = !context->statistics_caller_recovery_start;
+	if (first_query) {
 		context->statistics_caller_recovery_start = true;
 		statistics.caller_recovery_unique_starts++;
 	}
@@ -242,12 +250,15 @@ provenance_for_each_root_call(struct function_context *context,
 	    offsetof(struct context_visit, by_context));
 	avl_create(&calls, compare_root_calls, sizeof (struct root_call),
 	    offsetof(struct root_call, by_call));
-	error = record_context_visit(&visited, &work, context);
+	error = record_context_visit(&visited, &work, context, 0);
 	while (error == 0 && work != NULL) {
 		struct context_visit *visit = work;
 		struct provenance_edge *edge;
 
 		work = visit->next;
+		contexts_visited++;
+		if (visit->depth > maximum_depth)
+			maximum_depth = visit->depth;
 		statistics.caller_recovery_contexts_visited++;
 		if (!visit->context->statistics_caller_recovery_visit) {
 			visit->context->statistics_caller_recovery_visit = true;
@@ -256,23 +267,54 @@ provenance_for_each_root_call(struct function_context *context,
 		statistics.caller_recovery_provenance_edges_enum++;
 		for (edge = provenance_edge_first(visit->context); edge != NULL;
 		    edge = provenance_edge_next(visit->context, edge)) {
+			size_t caller_depth = visit->depth + 1;
+
+			edges_examined++;
 			statistics.caller_recovery_edges_examined++;
 			if (edge->caller_context->kind ==
 			    FUNCTION_CONTEXT_ROOT) {
+				if (caller_depth > maximum_depth)
+					maximum_depth = caller_depth;
 				error = record_root_call(&calls,
 				    edge->caller_context, edge->call_instruction);
 			} else {
 				error = record_context_visit(&visited, &work,
-				    edge->caller_context);
+				    edge->caller_context, caller_depth);
 			}
 			if (error != 0)
 				break;
 		}
 	}
 	free_context_visits(&visited);
+	root_calls = avl_numnodes(&calls);
 	if (error != 0) {
 		free_root_calls(&calls);
 		return (error);
+	}
+	if (first_query) {
+		statistics_histogram_add(
+		    &statistics.caller_recovery_first_max_depth,
+		    maximum_depth);
+		statistics_histogram_add(
+		    &statistics.caller_recovery_first_contexts_visited,
+		    contexts_visited);
+		statistics_histogram_add(
+		    &statistics.caller_recovery_first_edges_examined,
+		    edges_examined);
+		statistics_histogram_add(
+		    &statistics.caller_recovery_first_root_calls, root_calls);
+	} else {
+		statistics_histogram_add(
+		    &statistics.caller_recovery_repeat_max_depth,
+		    maximum_depth);
+		statistics_histogram_add(
+		    &statistics.caller_recovery_repeat_contexts_visited,
+		    contexts_visited);
+		statistics_histogram_add(
+		    &statistics.caller_recovery_repeat_edges_examined,
+		    edges_examined);
+		statistics_histogram_add(
+		    &statistics.caller_recovery_repeat_root_calls, root_calls);
 	}
 	*found = !avl_is_empty(&calls);
 	for (call = avl_first(&calls); call != NULL;
