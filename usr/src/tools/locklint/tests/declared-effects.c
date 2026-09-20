@@ -85,6 +85,7 @@ declared_read_wrong_mode(struct declared_effect_state *state)
 	rw_wrlock(&state->rwlock);
 }
 
+#ifndef LOCKLINT_ACQUISITION_EFFECTS_ONLY
 static void
 declared_release_valid(struct declared_effect_state *state)
 {
@@ -106,9 +107,18 @@ declared_release_conditional(struct declared_effect_state *state, int release)
 	if (release)
 		rw_exit(&state->rwlock);
 }
+#endif
 
 static void
 undeclared_mutex_acquire(struct declared_effect_state *state)
 {
 	mutex_enter(&state->mutex);
+}
+
+static void
+declared_mutex_nonreturning(struct declared_effect_state *state)
+{
+	_NOTE(MUTEX_ACQUIRED_AS_SIDE_EFFECT(state->mutex))
+	for (;;)
+		;
 }

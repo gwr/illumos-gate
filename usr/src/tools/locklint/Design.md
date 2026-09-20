@@ -1805,77 +1805,31 @@ Its failures remain caller-focused and name the mapped contract region.
 
 ## Function lock effects
 
-A `lock_transfer` describes the behavior of one formal-relative or canonical
-absolute lock role.  It records:
+Function contexts distinguish concrete caller contexts, synthetic analysis
+roots, synthetic declared-effect contract roots, and callees reached while
+evaluating an effect contract.  The kind is part of the context key.  This
+prevents contract evaluation from being merged with ordinary analysis even
+when bindings and initial semantic states happen to be equal.
 
-- the shared caller-mappable lock role;
-- an output state for each possible input-state mask; and
-- invalid-acquire, invalid-release, invalid-downgrade, and invalid-upgrade
-  flags for each input state.
+A function containing a declared mutex, reader, or writer acquisition gets
+one effect-contract root.  Its declared locks are initially unheld.  Within
+that context, source-formal annotation identities and lowered argument
+pseudos are normalized to the same formal-relative identity.  Calls made by
+the contract context use distinct effect-caller contexts so callee assertions
+remain contract assumptions and contract-only paths do not emit ordinary
+caller diagnostics.
 
-The table covers every nonempty mask of the unheld, mutex-held, read-held, and
-write-held mode bits rather than storing one effect label.  This permits the
-same representation to describe acquisition, release, balanced operations,
-conditional effects, and path-dependent input state.
+After the fixed point, each declared acquisition is compared with every exact
+exit of the contract context.  Every returning state must hold the declared
+lock in exactly the declared mode.  No return, or no matching return, is a
+definite contract failure; a mixture of matching and nonmatching returns is a
+conditional failure.  Contract contexts provide assertion assumptions but do
+not independently contribute ordinary caller diagnostics.
 
-Effect construction has three stages:
-
-1. `collect_local_transfers()` finds caller-mappable locks used by direct lock
-   operations or named by declared effects.
-2. `propagate_transfer_candidates()` adds caller-mappable locks affected
-   through callees.
-3. `solve_function_transfers()` simulates each candidate for every input
-   state.
-
-`simulate_transfer()` performs a CFG fixed point for one candidate/input
-combination.  It combines output states and possible invalid operations from
-all return paths.  Direct result-sensitive lock branches replay the
-predecessor with the selected return outcome, matching local block analysis.
-
-The candidate and table passes repeat together until no summary changes.
-This supports transitive effects and recursive cycles without requiring
-callees to be processed in a particular order.
-
-At a call site, a formal-relative role is resolved through the actual
-argument's type.  This remaps member symbols when caller and callee came from
-different translation units.  An absolute role retains canonical object
-identity.  Passing an absolute lock to a formal callee maps the resulting
-effect back to that absolute role in callers and wrappers.
-
-When several callee transfer roles map to one caller lock, independently
-applying their tables would lose operation order.  Locklint instead replays
-the callee CFG with those roles sharing one target state.  Nested calls use
-the same rule, including wrappers that introduce an alias while being solved
-for a single role.  Zero- and one-match nested calls retain the ordinary
-allocation-free table path.
-
-Recursive shared-state contexts are keyed by function, aliased role set, and
-input-state mask.  A new context iterates from the empty output and no invalid
-operations, feeding its current approximation to an identical recursive
-context.  Output modes and invalid-operation flags only accumulate, so the
-finite lock-state domain reaches its least fixed point.  The empty state is
-bottom: later instructions cannot manufacture a return from it, and a return
-block with empty output does not contribute invalid-operation flags.
-Different recursive contexts may nest independently, which also permits
-mutual recursion to close when it reaches an active matching context.
-Prefix-only replay frames do not carry a complete return approximation and
-retain the conservative recursion fallback.
-
-Declared mutex, read, write, release, upgrade, and downgrade effects are
-validated against the stabilized table.  Acquisitions are checked from the
-unheld input; release is checked from each definite held mode.  Upgrade
-requires reader-held input to produce writer-held output on every return, and
-downgrade requires writer-held input to produce reader-held output on every
-return.  An ignored `rw_tryupgrade()` result remains reader-or-writer and
-therefore does not satisfy a declared upgrade; a failure path that cannot
-return permits the successful writer-held path to satisfy it.
-
-Matching declarations replace the generic held-on-return warning, while
-missing, conditional, and conflicting outputs receive contract-specific
-diagnostics.  Invalid acquire, release, downgrade, or upgrade flags remain
-independent and are checked at the operation or in caller context.  Functions
-without declarations retain their inferred summaries and ordinary
-diagnostics.
+Declarations remain validation-only.  They neither manufacture lock effects
+nor suppress inferred effects.  Release, upgrade, and downgrade validation
+will use additional contract entry states with the required definite input
+mode; those declarations are not yet validated by the caller-context engine.
 
 ## Lock-order analysis
 
@@ -2506,6 +2460,11 @@ The current implementation relies on these invariants:
     covered lock.
 42. `NOT_REACHED` terminates the Sparse basic block, so state from that path is
     never merged into a successor or return summary.
+43. Function-context kind distinguishes ordinary analysis from synthetic
+    effect-contract roots and their callees even when bindings and entry state
+    are otherwise identical.
+44. A declared acquisition is valid only when every exact effect-contract
+    exit holds the declared lock in exactly the declared mode.
 
 Changes that invalidate one of these invariants should update this document
 and add a focused regression test.

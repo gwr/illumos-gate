@@ -109,6 +109,13 @@ struct analysis_point {
 
 struct point_state;
 
+enum function_context_kind {
+	FUNCTION_CONTEXT_CALLER,
+	FUNCTION_CONTEXT_ROOT,
+	FUNCTION_CONTEXT_EFFECT_CALLER,
+	FUNCTION_CONTEXT_EFFECT_CONTRACT
+};
+
 /*
  * A context key consists only of semantic inputs.  Bindings and states must
  * be canonical before insertion.  Provenance and traversal state belong to
@@ -118,7 +125,7 @@ struct function_context {
 	struct function_info *function;
 	const struct binding_environment *bindings;
 	const struct semantic_state *entry_state;
-	bool synthetic_root;
+	enum function_context_kind kind;
 	avl_tree_t point_states;
 	struct context_exit_list exits;
 	avl_tree_t continuations;
@@ -196,6 +203,12 @@ int context_create(struct function_info *,
     const struct binding_environment *, const struct semantic_state *,
     struct function_context **, bool *);
 int context_root_create(struct function_info *,
+    const struct binding_environment *, const struct semantic_state *,
+    struct function_context **, bool *);
+int context_effect_create(struct function_info *,
+    const struct binding_environment *, const struct semantic_state *,
+    struct function_context **, bool *);
+int context_effect_contract_create(struct function_info *,
     const struct binding_environment *, const struct semantic_state *,
     struct function_context **, bool *);
 int context_point_state_record(struct function_context *, struct analysis_point,

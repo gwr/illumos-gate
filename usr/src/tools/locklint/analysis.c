@@ -143,6 +143,9 @@ struct analysis {
 	struct analysis_measurements measurements;
 };
 
+typedef void (*root_call_f)(struct function_context *, struct instruction *,
+    void *);
+
 static int context_access_identity(struct analysis *,
     const struct function_context *, const struct locklint_access *,
     struct lock_identity **, bool *, bool *);
@@ -158,6 +161,30 @@ static struct symbol *function_formal_argument(const struct function_info *,
 static void collect_assumed_regions(void);
 static void record_semantic_state(struct analysis *, bool);
 static const char *function_name(const struct function_info *);
+static bool for_each_root_call(struct function_context *, root_call_f, void *);
+static bool context_has_analysis_root(struct function_context *);
+
+static bool
+declared_acquisition_mode(enum locklint_declared_lock_effect effect,
+    unsigned int *mode, const char **description)
+{
+	switch (effect) {
+	case LOCKLINT_DECLARED_MUTEX_ACQUIRED:
+		*mode = LOCKLINT_MODE_MUTEX;
+		*description = "mutex acquisition";
+		return (true);
+	case LOCKLINT_DECLARED_READ_ACQUIRED:
+		*mode = LOCKLINT_MODE_READER;
+		*description = "read-lock acquisition";
+		return (true);
+	case LOCKLINT_DECLARED_WRITE_ACQUIRED:
+		*mode = LOCKLINT_MODE_WRITER;
+		*description = "write-lock acquisition";
+		return (true);
+	default:
+		return (false);
+	}
+}
 
 static struct instruction *
 first_live_instruction(struct basic_block *block)
@@ -764,7 +791,12 @@ context_access_key(const struct function_context *context,
 {
 	int error;
 
-	error = lock_identity_key_from_access(access, key, object_type);
+	if (context->kind == FUNCTION_CONTEXT_EFFECT_CONTRACT) {
+		error = function_access_coordinates(context->function, access,
+		    key, object_type);
+	} else {
+		error = lock_identity_key_from_access(access, key, object_type);
+	}
 	if (error != 0)
 		return (error);
 	*composed = compose_caller_identity(context, key, object_type);
@@ -1047,8 +1079,14 @@ process_call(struct analysis *analysis, struct point_state *point_state,
 		die("cannot import callee state: %s", strerror(error));
 	record_semantic_state(analysis, existed);
 
-	error = context_create(callee_function, bindings, callee_state,
-	    &callee_context, &context_existed);
+	if (caller_context->kind == FUNCTION_CONTEXT_EFFECT_CALLER ||
+	    caller_context->kind == FUNCTION_CONTEXT_EFFECT_CONTRACT) {
+		error = context_effect_create(callee_function, bindings,
+		    callee_state, &callee_context, &context_existed);
+	} else {
+		error = context_create(callee_function, bindings, callee_state,
+		    &callee_context, &context_existed);
+	}
 	if (error != 0)
 		die("cannot create callee context: %s", strerror(error));
 	if (context_existed) {
@@ -1152,7 +1190,7 @@ process_lock_assertion(struct analysis *analysis,
 	current_modes = context_state_lock_modes(point_state->state, identity);
 	if (current_modes == 0)
 		current_modes = LOCKLINT_MODE_UNHELD;
-	if (!point_state->context->synthetic_root) {
+	if (point_state->context->kind == FUNCTION_CONTEXT_CALLER) {
 		if ((current_modes & asserted_modes) != 0) {
 			record_analysis_point(analysis, point_state->context, next,
 			    point_state->state, false);
@@ -1416,8 +1454,92 @@ seed_root(struct analysis *analysis, struct function_info *function)
 	    first_live_instruction(function->ep->entry->bb), state, false);
 }
 
+/*
+ * A declared acquisition is validated in a context distinct from ordinary
+ * callers and assertion-assumption roots.  Its initially unheld lock state
+ * happens to match an ordinary root today, but the distinct kind reserves the
+ * contract-specific entry meaning needed by release and transition effects.
+ */
 static void
-seed_roots(struct analysis *analysis)
+seed_effect_contract(struct analysis *analysis, struct function_info *function)
+{
+	struct binding_environment *bindings = NULL;
+	struct function_context *context = NULL;
+	struct semantic_state *state = NULL;
+	struct basic_block *block;
+	bool existed;
+	int error;
+
+	FOR_EACH_PTR(function->ep->bbs, block) {
+		struct instruction *instruction;
+
+		FOR_EACH_PTR(block->insns, instruction) {
+			struct locklint_access access;
+			struct lock_identity *identity;
+			enum locklint_declared_lock_effect effect;
+			const char *description;
+			unsigned int mode;
+			bool composed;
+
+			if (instruction->bb == NULL ||
+			    !locklint_get_declared_lock_effect(function->tu,
+			    instruction, &effect, &access) ||
+			    !declared_acquisition_mode(effect, &mode,
+			    &description))
+				continue;
+			if (context == NULL) {
+				error = binding_environment_intern(
+				    &function->bindings, NULL, 0, &bindings,
+				    &existed);
+				if (error != 0)
+					die("cannot intern effect contract "
+					    "bindings: %s", strerror(error));
+				if (existed)
+					analysis->counts.
+					    binding_environments_reused++;
+				else
+					analysis->counts.
+					    binding_environments_created++;
+				error = context_entry_state_intern(function, &state,
+				    &existed);
+				if (error != 0)
+					die("cannot intern effect contract state: "
+					    "%s", strerror(error));
+				record_semantic_state(analysis, existed);
+				error = context_effect_contract_create(function,
+				    bindings, state, &context, &existed);
+				if (error != 0)
+					die("cannot create effect contract context: "
+					    "%s", strerror(error));
+				if (existed)
+					die("duplicate effect contract context");
+				analysis->counts.contexts_created++;
+				if (context_count(function) == 1)
+					analysis->counts.functions++;
+			}
+			error = context_access_identity(analysis, context, &access,
+			    &identity, &existed, &composed);
+			if (error != 0)
+				die("cannot identify declared acquisition: %s",
+				    strerror(error));
+			if (composed)
+				analysis->counts.binding_identities_composed++;
+			if (existed)
+				analysis->counts.lock_identities_reused++;
+			else
+				analysis->counts.lock_identities_created++;
+			locklint_order_classify_identity(identity, &access);
+		} END_FOR_EACH_PTR(instruction);
+	} END_FOR_EACH_PTR(block);
+	if (context != NULL) {
+		record_point(analysis, context, function->ep->entry->bb,
+		    first_live_instruction(function->ep->entry->bb), state,
+		    false);
+	}
+}
+
+static void
+seed_initial_contexts(struct analysis *analysis)
 {
 	struct callgraph_iter *iterator;
 	struct function_info *function;
@@ -1427,8 +1549,99 @@ seed_roots(struct analysis *analysis)
 	if (error != 0)
 		die("cannot iterate ready callgraph: %s", strerror(error));
 	while ((function = callgraph_iter_next(iterator)) != NULL) {
+		seed_effect_contract(analysis, function);
 		if (function->root_reasons != 0)
 			seed_root(analysis, function);
+	}
+	callgraph_iter_close(iterator);
+}
+
+static void
+diagnose_declared_acquisition(struct analysis *analysis,
+    struct function_info *function, struct instruction *instruction,
+    enum locklint_declared_lock_effect effect,
+    const struct locklint_access *access)
+{
+	struct function_context *context;
+	struct lock_identity *identity;
+	const char *description;
+	char *name;
+	unsigned int expected_mode;
+	size_t valid = 0;
+	size_t invalid = 0;
+	bool composed;
+	bool existed;
+	int error;
+
+	if (!declared_acquisition_mode(effect, &expected_mode, &description))
+		return;
+	for (context = avl_first(&function->contexts.contexts);
+	    context != NULL;
+	    context = AVL_NEXT(&function->contexts.contexts, context)) {
+		struct context_exit *exit;
+
+		if (context->kind != FUNCTION_CONTEXT_EFFECT_CONTRACT)
+			continue;
+		error = context_access_identity(analysis, context, access,
+		    &identity, &existed, &composed);
+		if (error != 0)
+			die("cannot identify declared acquisition diagnostic: %s",
+			    strerror(error));
+		if (!existed)
+			die("declared acquisition identity was not seeded");
+		SLIST_FOREACH(exit, &context->exits, link) {
+			if (context_state_lock_modes(exit->state, identity) ==
+			    expected_mode)
+				valid++;
+			else
+				invalid++;
+		}
+		if (SLIST_EMPTY(&context->exits))
+			invalid++;
+	}
+	name = locklint_access_name(access);
+	if (invalid != 0 && valid == 0) {
+		locklint_warning(LOCKLINT_DIAG_DECLARED_LOCK_EFFECT,
+		    instruction->pos, "function '%s' does not establish "
+		    "declared %s of lock '%s'", function_name(function),
+		    description, name);
+	} else if (invalid != 0) {
+		locklint_warning(LOCKLINT_DIAG_DECLARED_LOCK_EFFECT,
+		    instruction->pos, "declared %s of lock '%s' is not "
+		    "established on every return from '%s'", description,
+		    name, function_name(function));
+	}
+	free(name);
+}
+
+static void
+diagnose_declared_acquisitions(struct analysis *analysis)
+{
+	struct callgraph_iter *iterator;
+	struct function_info *function;
+	int error;
+
+	error = callgraph_iter_open(&iterator);
+	if (error != 0)
+		die("cannot iterate ready callgraph: %s", strerror(error));
+	while ((function = callgraph_iter_next(iterator)) != NULL) {
+		struct basic_block *block;
+
+		FOR_EACH_PTR(function->ep->bbs, block) {
+			struct instruction *instruction;
+
+			FOR_EACH_PTR(block->insns, instruction) {
+				struct locklint_access access;
+				enum locklint_declared_lock_effect effect;
+
+				if (instruction->bb == NULL ||
+				    !locklint_get_declared_lock_effect(
+				    function->tu, instruction, &effect, &access))
+					continue;
+				diagnose_declared_acquisition(analysis, function,
+				    instruction, effect, &access);
+			} END_FOR_EACH_PTR(instruction);
+		} END_FOR_EACH_PTR(block);
 	}
 	callgraph_iter_close(iterator);
 }
@@ -1626,6 +1839,8 @@ diagnose_lock_transitions(struct analysis *analysis)
 			struct point_state *point_state =
 			    avl_first(&context->point_states);
 
+			if (!context_has_analysis_root(context))
+				continue;
 			while (point_state != NULL) {
 				if (point_state->point.next_instruction == NULL) {
 					point_state = AVL_NEXT(
@@ -1764,9 +1979,6 @@ record_provenance_context_visit(avl_tree_t *visited,
 	return (true);
 }
 
-typedef void (*root_call_f)(struct function_context *, struct instruction *,
-    void *);
-
 /*
  * Visit every synthetic-root call which can reach one concrete context.
  * Canonical context pointers form the visited key and bound recursive cycles.
@@ -1790,7 +2002,8 @@ for_each_root_call(struct function_context *context, root_call_f callback,
 		work = visit->next;
 		for (edge = provenance_edge_first(visit->context); edge != NULL;
 		    edge = provenance_edge_next(visit->context, edge)) {
-			if (edge->caller_context->synthetic_root) {
+			if (edge->caller_context->kind ==
+			    FUNCTION_CONTEXT_ROOT) {
 				callback(edge->caller_context,
 				    edge->call_instruction, data);
 				found = true;
@@ -1808,6 +2021,26 @@ for_each_root_call(struct function_context *context, root_call_f callback,
 	}
 	avl_destroy(&visited);
 	return (found);
+}
+
+static void
+ignore_root_call(struct function_context *context,
+    struct instruction *instruction, void *data)
+{
+	(void) context;
+	(void) instruction;
+	(void) data;
+}
+
+static bool
+context_has_analysis_root(struct function_context *context)
+{
+	if (context->kind == FUNCTION_CONTEXT_ROOT)
+		return (true);
+	if (context->kind == FUNCTION_CONTEXT_EFFECT_CALLER ||
+	    context->kind == FUNCTION_CONTEXT_EFFECT_CONTRACT)
+		return (false);
+	return (for_each_root_call(context, ignore_root_call, NULL));
 }
 
 static void
@@ -1886,7 +2119,7 @@ trace_declared_order_observation(avl_tree_t *origins, avl_tree_t *findings,
 		.observation = observation
 	};
 
-	if (observation->context->synthetic_root) {
+	if (observation->context->kind == FUNCTION_CONTEXT_ROOT) {
 		record_declared_order_origin(origins, findings, observation,
 		    NULL, NULL);
 		return;
@@ -1933,6 +2166,8 @@ diagnose_declared_lock_order(struct analysis *analysis)
 		    context = AVL_NEXT(&function->contexts.contexts, context)) {
 			struct point_state *point_state;
 
+			if (!context_has_analysis_root(context))
+				continue;
 			for (point_state = avl_first(&context->point_states);
 			    point_state != NULL; point_state = AVL_NEXT(
 			    &context->point_states, point_state)) {
@@ -2352,7 +2587,8 @@ diagnose_lock_assertions(struct analysis *analysis)
 		    context = AVL_NEXT(&function->contexts.contexts, context)) {
 			struct point_state *point_state;
 
-			if (context->synthetic_root)
+			if (context->kind != FUNCTION_CONTEXT_CALLER ||
+			    !context_has_analysis_root(context))
 				continue;
 			for (point_state = avl_first(&context->point_states);
 			    point_state != NULL; point_state = AVL_NEXT(
@@ -3129,6 +3365,8 @@ diagnose_protected_accesses(struct analysis *analysis)
 			struct point_state *point_state =
 			    avl_first(&context->point_states);
 
+			if (!context_has_analysis_root(context))
+				continue;
 			while (point_state != NULL) {
 				if (point_state->point.next_instruction == NULL) {
 					point_state = AVL_NEXT(
@@ -3530,6 +3768,8 @@ diagnose_local_locks_on_return(void)
 			struct point_state *point_state =
 			    avl_first(&context->point_states);
 
+			if (!context_has_analysis_root(context))
+				continue;
 			while (point_state != NULL) {
 				if (point_state->point.next_instruction == NULL ||
 				    point_state->point.next_instruction->opcode !=
@@ -3938,10 +4178,11 @@ analysis_run(struct lock_identity_collection *lock_identities, FILE *stream)
 
 	worklist_create(&analysis.worklist);
 	collect_assumed_regions();
-	seed_roots(&analysis);
+	seed_initial_contexts(&analysis);
 	while ((point_state =
 	    worklist_point_state_dequeue(&analysis.worklist)) != NULL)
 		process_point(&analysis, point_state);
+	diagnose_declared_acquisitions(&analysis);
 	diagnose_lock_transitions(&analysis);
 	diagnose_declared_lock_order(&analysis);
 	diagnose_lock_assertions(&analysis);

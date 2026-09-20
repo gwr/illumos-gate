@@ -572,6 +572,16 @@ run_capture "declared competition effect diagnostics" \
 compare "declared competition effect diagnostics" \
     competition-contracts.ref competition-contracts.out
 
+#
+# Verify declared mutex, reader, and writer acquisitions against every exact
+# exit from a distinct synthetic contract context.
+#
+run_capture "declared acquisition effect diagnostics" \
+    declared-effects-acquisition.out "$LOCKLINT" --check-locks \
+    -DLOCKLINT_ACQUISITION_EFFECTS_ONLY declared-effects.c
+compare "declared acquisition effect diagnostics" \
+    declared-effects-acquisition.ref declared-effects-acquisition.out
+
 run_capture "user rwlock core state" rwlock-core-user.out \
     "$LOCKLINT" --check-locks -DLOCKLINT_RWLOCK_CORE_ONLY rwlock.c
 compare "user rwlock core state" rwlock-core.ref rwlock-core-user.out
