@@ -203,6 +203,11 @@ the collection, and a `find` or `enum` operation.  A find counts one keyed
 lookup request.  An enum counts one logical enumeration start, not each AVL
 step.  Increments are placed at the highest callgraph point which both
 identifies the reason and corresponds reliably to the collection operation.
+Caller-recovery statistics additionally count requests, unique starting
+contexts, total and unique contexts visited, edges examined, and deduplicated
+root calls.  Two per-context measurement markers identify unique starts and
+visits without a separate lookup collection and do not participate in
+semantic context identity.
 The counters are collected unconditionally.  `--dump-statistics` controls only
 whether they are reported at final output.  It does not request context
 analysis, so development runs normally combine it with `--dump-contexts` or

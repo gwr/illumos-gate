@@ -84,6 +84,13 @@ struct statistics_counts {
 	size_t cleanup_continuations_enum;
 	size_t caller_recovery_provenance_edges_enum;
 	size_t cleanup_provenance_edges_enum;
+
+	size_t caller_recovery_requests;
+	size_t caller_recovery_unique_starts;
+	size_t caller_recovery_contexts_visited;
+	size_t caller_recovery_unique_contexts_visited;
+	size_t caller_recovery_edges_examined;
+	size_t caller_recovery_root_calls;
 };
 
 extern struct statistics_counts statistics;

@@ -232,6 +232,11 @@ provenance_for_each_root_call(struct function_context *context,
 	avl_tree_t calls;
 	int error;
 
+	statistics.caller_recovery_requests++;
+	if (!context->statistics_caller_recovery_start) {
+		context->statistics_caller_recovery_start = true;
+		statistics.caller_recovery_unique_starts++;
+	}
 	avl_create(&visited, compare_context_visits,
 	    sizeof (struct context_visit),
 	    offsetof(struct context_visit, by_context));
@@ -243,9 +248,15 @@ provenance_for_each_root_call(struct function_context *context,
 		struct provenance_edge *edge;
 
 		work = visit->next;
+		statistics.caller_recovery_contexts_visited++;
+		if (!visit->context->statistics_caller_recovery_visit) {
+			visit->context->statistics_caller_recovery_visit = true;
+			statistics.caller_recovery_unique_contexts_visited++;
+		}
 		statistics.caller_recovery_provenance_edges_enum++;
 		for (edge = provenance_edge_first(visit->context); edge != NULL;
 		    edge = provenance_edge_next(visit->context, edge)) {
+			statistics.caller_recovery_edges_examined++;
 			if (edge->caller_context->kind ==
 			    FUNCTION_CONTEXT_ROOT) {
 				error = record_root_call(&calls,
@@ -265,8 +276,10 @@ provenance_for_each_root_call(struct function_context *context,
 	}
 	*found = !avl_is_empty(&calls);
 	for (call = avl_first(&calls); call != NULL;
-	    call = AVL_NEXT(&calls, call))
+	    call = AVL_NEXT(&calls, call)) {
+		statistics.caller_recovery_root_calls++;
 		callback(call->context, call->instruction, data);
+	}
 	free_root_calls(&calls);
 	return (0);
 }

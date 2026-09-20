@@ -1207,13 +1207,19 @@ for statistic in \
     exit_publication_continuations_enum \
     cleanup_continuations_enum \
     caller_recovery_provenance_edges_enum \
-    cleanup_provenance_edges_enum
+    cleanup_provenance_edges_enum \
+    caller_recovery_requests \
+    caller_recovery_unique_starts \
+    caller_recovery_contexts_visited \
+    caller_recovery_unique_contexts_visited \
+    caller_recovery_edges_examined \
+    caller_recovery_root_calls
 do
 	require_match "context statistic $statistic" \
 	    "^statistics $statistic [0-9][0-9]*$" context-statistics.out
 done
-if [ "$(grep -c '^statistics ' context-statistics.out)" -ne 56 ]; then
-	fail "context statistics: expected exactly fifty-six statistics lines"
+if [ "$(grep -c '^statistics ' context-statistics.out)" -ne 62 ]; then
+	fail "context statistics: expected exactly sixty-two statistics lines"
 fi
 reject_match "context counting" 'warning:' context-counting.out
 

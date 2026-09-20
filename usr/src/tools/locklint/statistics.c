@@ -90,6 +90,13 @@ statistics_show(FILE *stream)
 	SHOW(cleanup_continuations_enum);
 	SHOW(caller_recovery_provenance_edges_enum);
 	SHOW(cleanup_provenance_edges_enum);
+
+	SHOW(caller_recovery_requests);
+	SHOW(caller_recovery_unique_starts);
+	SHOW(caller_recovery_contexts_visited);
+	SHOW(caller_recovery_unique_contexts_visited);
+	SHOW(caller_recovery_edges_examined);
+	SHOW(caller_recovery_root_calls);
 }
 
 #undef SHOW

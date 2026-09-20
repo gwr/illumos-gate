@@ -27,6 +27,7 @@
 #include "dependency.h"
 #include "function_info.h"
 #include "provenance.h"
+#include "statistics.h"
 
 static unsigned int failures;
 
@@ -226,6 +227,13 @@ test_root_call_traversal(void)
 	char recursive_right;
 	char first_root_call;
 	char second_root_call;
+	size_t requests = statistics.caller_recovery_requests;
+	size_t unique_starts = statistics.caller_recovery_unique_starts;
+	size_t contexts_visited = statistics.caller_recovery_contexts_visited;
+	size_t unique_contexts =
+	    statistics.caller_recovery_unique_contexts_visited;
+	size_t edges_examined = statistics.caller_recovery_edges_examined;
+	size_t root_calls = statistics.caller_recovery_root_calls;
 	bool found;
 	int error;
 
@@ -258,6 +266,12 @@ test_root_call_traversal(void)
 	check(results.second_count == 1, "visit distinct root call");
 	check(results.unexpected_count == 0, "visit only expected root calls");
 
+	error = provenance_for_each_root_call(target, record_root_call, &results,
+	    &found);
+	check(error == 0 && found, "repeat root call traversal");
+	check(results.first_count == 2 && results.second_count == 2,
+	    "repeat cached-candidate traversal result");
+
 	found = true;
 	error = provenance_for_each_root_call(first_root, record_root_call,
 	    &results, &found);
@@ -267,6 +281,18 @@ test_root_call_traversal(void)
 	    context_count(&left_function) == 1 &&
 	    context_count(&right_function) == 1,
 	    "provenance traversal does not add semantic contexts");
+	check(statistics.caller_recovery_requests - requests == 3,
+	    "count caller recovery requests");
+	check(statistics.caller_recovery_unique_starts - unique_starts == 2,
+	    "count unique caller recovery starts");
+	check(statistics.caller_recovery_contexts_visited -
+	    contexts_visited == 7, "count caller recovery context visits");
+	check(statistics.caller_recovery_unique_contexts_visited -
+	    unique_contexts == 4, "count unique caller recovery contexts");
+	check(statistics.caller_recovery_edges_examined -
+	    edges_examined == 14, "count examined caller recovery edges");
+	check(statistics.caller_recovery_root_calls - root_calls == 4,
+	    "count caller recovery result calls");
 
 	context_collection_free(&second_root_function);
 	context_collection_free(&first_root_function);
