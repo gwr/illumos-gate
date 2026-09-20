@@ -8,7 +8,7 @@
 ../locklint: rwlock-tryupgrade.c:82:22: warning: locklint: protected member 'value' modified without write-holding 'first' [unprotected-access]
 ../locklint: rwlock-tryupgrade.c:82:22: locklint: required lock 'first' is read-held; write-holding is required at this protected access
 ../locklint: rwlock-tryupgrade.c:111:14: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
-../locklint: rwlock-tryupgrade.c:111:14: locklint: required lock 'first' may be read-held; write-holding is required at this protected access
+../locklint: rwlock-tryupgrade.c:111:14: locklint: required lock 'first' may be held in multiple modes; write-holding is required at this protected access
 ../locklint: rwlock-tryupgrade.c:129:14: warning: locklint: protected member 'value' modified without write-holding 'first' [unprotected-access]
 ../locklint: rwlock-tryupgrade.c:176:22: warning: locklint: protected member 'value' modified without write-holding 'first' [unprotected-access]
 ../locklint: rwlock-tryupgrade.c:176:22: locklint: required lock 'first' is read-held; write-holding is required at this protected access

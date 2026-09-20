@@ -9,6 +9,8 @@
 ../locklint: mutex-lock-result.c:86:30: warning: locklint: protected member 'value' read without holding 'first' [unprotected-access]
 ../locklint: mutex-lock-result.c:127:14: warning: locklint: protected member 'value' modified without holding 'first' [unprotected-access]
 ../locklint: mutex-lock-result.c:147:22: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
+../locklint: mutex-lock-result.c:147:22: locklint: required lock 'first' may be mutex-held; holding is required at this protected access
 ../locklint: mutex-lock-result.c:164:14: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
+../locklint: mutex-lock-result.c:164:14: locklint: required lock 'first' may be mutex-held; holding is required at this protected access
 ../locklint: mutex-lock-result.c:155:28: warning: locklint: lock 'lock' held on only some paths returning from 'return_mutex_lock' [lock-maybe-held-on-return]
 ../locklint: mutex-lock-result.c:166:38: warning: locklint: lock 'first' held on only some paths returning from 'call_returned_mutex_lock' [lock-maybe-held-on-return]

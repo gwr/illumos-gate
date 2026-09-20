@@ -3,3 +3,4 @@
 ../locklint: mutex-tryenter.c:69:30: warning: locklint: protected member 'value' read without holding 'first' [unprotected-access]
 ../locklint: mutex-tryenter.c:81:30: warning: locklint: protected member 'value' read without holding 'first' [unprotected-access]
 ../locklint: mutex-tryenter.c:117:14: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
+../locklint: mutex-tryenter.c:117:14: locklint: required lock 'first' may be mutex-held; holding is required at this protected access

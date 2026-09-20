@@ -2007,6 +2007,9 @@ Source-access evidence remains with the primary warning; caller evidence
 follows that caller's witness note.  Caller witnesses with different mapped
 required locks remain distinct.  Empty held-lock lists are omitted.  After all
 functions have been replayed, observed lock-order cycles are reported.  A
+conditional protected access also reports every mode in which its required
+lock was observed, including modes from the successful exact states; mutex
+protection receives the same held-state explanation as rwlock protection.  A
 final origin sweep emits any pending diagnostic that source replay did not
 match, preventing an identity defect from silently dropping a warning.
 

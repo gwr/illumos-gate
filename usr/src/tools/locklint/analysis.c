@@ -3581,6 +3581,7 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 			    context_state_lock_modes(point_state->state,
 			    identity);
 
+			observed_modes |= modes;
 			if (invisible ||
 			    (modes & required_modes) != 0 ||
 			    (!competition.maximum_unbounded &&
@@ -3590,10 +3591,8 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 			    (!competition.minimum_unbounded &&
 			    competition.minimum > 0)) {
 				unprotected++;
-				observed_modes |= modes;
 			} else {
 				conditional++;
-				observed_modes |= modes;
 			}
 		}
 		if (check_read_only) {
@@ -3677,30 +3676,40 @@ diagnose_protected_access(struct analysis *analysis,
  * some paths.
  */
 static void
-emit_rwlock_mode_info(const struct protected_access_finding *finding,
+emit_lock_mode_info(const struct protected_access_finding *finding,
     struct position pos, const char *lock, bool conditional)
 {
 	const char *held;
 	const char *required;
 
-	if (finding->observed_modes == LOCKLINT_MODE_READER)
+	if (finding->protection == LOCKLINT_PROTECTION_MUTEX) {
+		held = "mutex-held";
+		required = "";
+	} else if (finding->observed_modes == LOCKLINT_MODE_READER) {
 		held = "read-held";
-	else if (finding->observed_modes == LOCKLINT_MODE_WRITER)
+		required = finding->required_modes == LOCKLINT_MODE_WRITER ?
+		    "write-" : "read-";
+	} else if (finding->observed_modes == LOCKLINT_MODE_WRITER) {
 		held = "write-held";
-	else if ((finding->observed_modes &
-	    (LOCKLINT_MODE_READER | LOCKLINT_MODE_WRITER)) != 0)
+		required = finding->required_modes == LOCKLINT_MODE_WRITER ?
+		    "write-" : "read-";
+	} else if ((finding->observed_modes &
+	    (LOCKLINT_MODE_READER | LOCKLINT_MODE_WRITER)) != 0) {
 		held = "held in multiple modes";
-	else
+		required = finding->required_modes == LOCKLINT_MODE_WRITER ?
+		    "write-" : "read-";
+	} else {
 		held = "held in an incompatible mode";
-	required = finding->required_modes == LOCKLINT_MODE_WRITER ?
-	    "write" : "read";
+		required = finding->required_modes == LOCKLINT_MODE_WRITER ?
+		    "write-" : "read-";
+	}
 	if (conditional) {
 		info(pos, "locklint: required lock '%s' may be %s; "
-		    "%s-holding is required at this protected access",
+		    "%sholding is required at this protected access",
 		    lock, held, required);
 	} else {
 		info(pos, "locklint: required lock '%s' is %s; "
-		    "%s-holding is required at this protected access",
+		    "%sholding is required at this protected access",
 		    lock, held, required);
 	}
 }
@@ -3740,19 +3749,17 @@ emit_protected_access_findings(avl_tree_t *findings)
 			if (finding->protection ==
 			    LOCKLINT_PROTECTION_RWLOCK &&
 			    finding->observed_modes != 0)
-				emit_rwlock_mode_info(finding, pos, lock, false);
+				emit_lock_mode_info(finding, pos, lock, false);
 			free(lock);
 		} else if (finding->conditional) {
 			locklint_warning(LOCKLINT_DIAG_CONDITIONAL_PROTECTION,
 			    pos, "protection for member '%s' is not "
 			    "established on every path", member);
-			if (finding->protection ==
-			    LOCKLINT_PROTECTION_RWLOCK &&
-			    finding->observed_modes != 0) {
+			if (finding->observed_modes != 0) {
 				char *lock =
 				    locklint_access_name(&finding->protector);
 
-				emit_rwlock_mode_info(finding, pos, lock, true);
+				emit_lock_mode_info(finding, pos, lock, true);
 				free(lock);
 			}
 		}
