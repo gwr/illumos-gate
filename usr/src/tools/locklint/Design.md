@@ -1826,10 +1826,16 @@ definite contract failure; a mixture of matching and nonmatching returns is a
 conditional failure.  Contract contexts provide assertion assumptions but do
 not independently contribute ordinary caller diagnostics.
 
+Each declared release target gets three contract entries, one for each
+definite mutex, reader, and writer ownership mode.  Only that target is held
+in each entry, so several release declarations add contexts linearly rather
+than forming a Cartesian product.  Every exact exit must have the target
+unheld.  Duplicate target/mode entries reuse the same canonical context.
+
 Declarations remain validation-only.  They neither manufacture lock effects
-nor suppress inferred effects.  Release, upgrade, and downgrade validation
-will use additional contract entry states with the required definite input
-mode; those declarations are not yet validated by the caller-context engine.
+nor suppress inferred effects.  Upgrade and downgrade validation will use
+contract entries with their required reader-held and writer-held input modes;
+those declarations are not yet validated by the caller-context engine.
 
 ## Lock-order analysis
 
@@ -2465,6 +2471,9 @@ The current implementation relies on these invariants:
     are otherwise identical.
 44. A declared acquisition is valid only when every exact effect-contract
     exit holds the declared lock in exactly the declared mode.
+45. A declared release is valid only when every exact exit from each
+    mutex-held, reader-held, and writer-held contract entry leaves the target
+    unheld.
 
 Changes that invalidate one of these invariants should update this document
 and add a focused regression test.

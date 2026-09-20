@@ -582,6 +582,11 @@ run_capture "declared acquisition effect diagnostics" \
 compare "declared acquisition effect diagnostics" \
     declared-effects-acquisition.ref declared-effects-acquisition.out
 
+run_capture "declared release effect diagnostics" \
+    declared-releases.out "$LOCKLINT" --check-locks declared-releases.c
+compare "declared release effect diagnostics" \
+    declared-releases.ref declared-releases.out
+
 run_capture "user rwlock core state" rwlock-core-user.out \
     "$LOCKLINT" --check-locks -DLOCKLINT_RWLOCK_CORE_ONLY rwlock.c
 compare "user rwlock core state" rwlock-core.ref rwlock-core-user.out

@@ -1455,16 +1455,44 @@ seed_root(struct analysis *analysis, struct function_info *function)
 }
 
 /*
- * A declared acquisition is validated in a context distinct from ordinary
- * callers and assertion-assumption roots.  Its initially unheld lock state
- * happens to match an ordinary root today, but the distinct kind reserves the
- * contract-specific entry meaning needed by release and transition effects.
+ * Record one distinct contract entry and schedule its body once.
  */
 static void
-seed_effect_contract(struct analysis *analysis, struct function_info *function)
+seed_effect_context(struct analysis *analysis, struct function_info *function,
+    const struct binding_environment *bindings,
+    const struct semantic_state *state)
+{
+	struct function_context *context;
+	bool existed;
+	int error;
+
+	error = context_effect_contract_create(function, bindings, state,
+	    &context, &existed);
+	if (error != 0)
+		die("cannot create effect contract context: %s",
+		    strerror(error));
+	if (existed) {
+		analysis->counts.contexts_reused++;
+		return;
+	}
+	analysis->counts.contexts_created++;
+	if (context_count(function) == 1)
+		analysis->counts.functions++;
+	record_point(analysis, context, function->ep->entry->bb,
+	    first_live_instruction(function->ep->entry->bb), state, false);
+}
+
+/*
+ * Acquisition contracts start with their target unheld.  A generic release
+ * contract must hold for each definite ownership mode, so each declared
+ * release target gets separate mutex, reader, and writer entry contexts.
+ * Other release targets remain unheld, avoiding a Cartesian product.
+ */
+static void
+seed_effect_contracts(struct analysis *analysis,
+    struct function_info *function)
 {
 	struct binding_environment *bindings = NULL;
-	struct function_context *context = NULL;
 	struct semantic_state *state = NULL;
 	struct basic_block *block;
 	bool existed;
@@ -1479,15 +1507,18 @@ seed_effect_contract(struct analysis *analysis, struct function_info *function)
 			enum locklint_declared_lock_effect effect;
 			const char *description;
 			unsigned int mode;
-			bool composed;
+			bool acquisition;
 
 			if (instruction->bb == NULL ||
 			    !locklint_get_declared_lock_effect(function->tu,
-			    instruction, &effect, &access) ||
-			    !declared_acquisition_mode(effect, &mode,
-			    &description))
+			    instruction, &effect, &access))
 				continue;
-			if (context == NULL) {
+			acquisition = declared_acquisition_mode(effect, &mode,
+			    &description);
+			if (!acquisition &&
+			    effect != LOCKLINT_DECLARED_LOCK_RELEASED)
+				continue;
+			if (bindings == NULL) {
 				error = binding_environment_intern(
 				    &function->bindings, NULL, 0, &bindings,
 				    &existed);
@@ -1506,36 +1537,47 @@ seed_effect_contract(struct analysis *analysis, struct function_info *function)
 					die("cannot intern effect contract state: "
 					    "%s", strerror(error));
 				record_semantic_state(analysis, existed);
-				error = context_effect_contract_create(function,
-				    bindings, state, &context, &existed);
-				if (error != 0)
-					die("cannot create effect contract context: "
-					    "%s", strerror(error));
-				if (existed)
-					die("duplicate effect contract context");
-				analysis->counts.contexts_created++;
-				if (context_count(function) == 1)
-					analysis->counts.functions++;
 			}
-			error = context_access_identity(analysis, context, &access,
-			    &identity, &existed, &composed);
+			{
+				struct lock_identity_key key;
+				enum lock_analysis_object_type object_type;
+
+				error = function_access_coordinates(function,
+				    &access, &key, &object_type);
+				if (error == 0) {
+					error = lock_identity_intern(
+					    analysis->lock_identities, key,
+					    object_type, &identity, &existed);
+				}
+			}
 			if (error != 0)
-				die("cannot identify declared acquisition: %s",
+				die("cannot identify declared lock effect: %s",
 				    strerror(error));
-			if (composed)
-				analysis->counts.binding_identities_composed++;
 			if (existed)
 				analysis->counts.lock_identities_reused++;
 			else
 				analysis->counts.lock_identities_created++;
 			locklint_order_classify_identity(identity, &access);
+			if (acquisition) {
+				seed_effect_context(analysis, function, bindings,
+				    state);
+			} else {
+				for (mode = LOCKLINT_MODE_MUTEX;
+				    mode <= LOCKLINT_MODE_WRITER; mode <<= 1) {
+					struct semantic_state *held;
+
+					error = context_state_set_lock(function,
+					    state, identity, mode, &held, &existed);
+					if (error != 0)
+						die("cannot create release contract "
+						    "state: %s", strerror(error));
+					record_semantic_state(analysis, existed);
+					seed_effect_context(analysis, function,
+					    bindings, held);
+				}
+			}
 		} END_FOR_EACH_PTR(instruction);
 	} END_FOR_EACH_PTR(block);
-	if (context != NULL) {
-		record_point(analysis, context, function->ep->entry->bb,
-		    first_live_instruction(function->ep->entry->bb), state,
-		    false);
-	}
 }
 
 static void
@@ -1549,7 +1591,7 @@ seed_initial_contexts(struct analysis *analysis)
 	if (error != 0)
 		die("cannot iterate ready callgraph: %s", strerror(error));
 	while ((function = callgraph_iter_next(iterator)) != NULL) {
-		seed_effect_contract(analysis, function);
+		seed_effect_contracts(analysis, function);
 		if (function->root_reasons != 0)
 			seed_root(analysis, function);
 	}
@@ -1589,6 +1631,8 @@ diagnose_declared_acquisition(struct analysis *analysis,
 			    strerror(error));
 		if (!existed)
 			die("declared acquisition identity was not seeded");
+		if (context_state_lock_count(context->entry_state) != 0)
+			continue;
 		SLIST_FOREACH(exit, &context->exits, link) {
 			if (context_state_lock_modes(exit->state, identity) ==
 			    expected_mode)
@@ -1615,7 +1659,66 @@ diagnose_declared_acquisition(struct analysis *analysis,
 }
 
 static void
-diagnose_declared_acquisitions(struct analysis *analysis)
+diagnose_declared_release(struct analysis *analysis,
+    struct function_info *function, struct instruction *instruction,
+    const struct locklint_access *access)
+{
+	struct function_context *context;
+	struct lock_identity *identity;
+	char *name;
+	size_t valid = 0;
+	size_t invalid = 0;
+	bool composed;
+	bool existed;
+	int error;
+
+	for (context = avl_first(&function->contexts.contexts);
+	    context != NULL;
+	    context = AVL_NEXT(&function->contexts.contexts, context)) {
+		struct context_exit *exit;
+		unsigned int entry_modes;
+
+		if (context->kind != FUNCTION_CONTEXT_EFFECT_CONTRACT)
+			continue;
+		error = context_access_identity(analysis, context, access,
+		    &identity, &existed, &composed);
+		if (error != 0)
+			die("cannot identify declared release diagnostic: %s",
+			    strerror(error));
+		if (!existed)
+			die("declared release identity was not seeded");
+		entry_modes = context_state_lock_modes(context->entry_state,
+		    identity);
+		if (entry_modes != LOCKLINT_MODE_MUTEX &&
+		    entry_modes != LOCKLINT_MODE_READER &&
+		    entry_modes != LOCKLINT_MODE_WRITER)
+			continue;
+		SLIST_FOREACH(exit, &context->exits, link) {
+			if (context_state_lock_modes(exit->state, identity) == 0)
+				valid++;
+			else
+				invalid++;
+		}
+		if (SLIST_EMPTY(&context->exits))
+			invalid++;
+	}
+	name = locklint_access_name(access);
+	if (invalid != 0 && valid == 0) {
+		locklint_warning(LOCKLINT_DIAG_DECLARED_LOCK_EFFECT,
+		    instruction->pos, "function '%s' does not establish "
+		    "declared release of lock '%s'", function_name(function),
+		    name);
+	} else if (invalid != 0) {
+		locklint_warning(LOCKLINT_DIAG_DECLARED_LOCK_EFFECT,
+		    instruction->pos, "declared release of lock '%s' is not "
+		    "established on every return from '%s'", name,
+		    function_name(function));
+	}
+	free(name);
+}
+
+static void
+diagnose_declared_lock_effects(struct analysis *analysis)
 {
 	struct callgraph_iter *iterator;
 	struct function_info *function;
@@ -1638,8 +1741,15 @@ diagnose_declared_acquisitions(struct analysis *analysis)
 				    !locklint_get_declared_lock_effect(
 				    function->tu, instruction, &effect, &access))
 					continue;
-				diagnose_declared_acquisition(analysis, function,
-				    instruction, effect, &access);
+				if (effect ==
+				    LOCKLINT_DECLARED_LOCK_RELEASED) {
+					diagnose_declared_release(analysis,
+					    function, instruction, &access);
+				} else {
+					diagnose_declared_acquisition(analysis,
+					    function, instruction, effect,
+					    &access);
+				}
 			} END_FOR_EACH_PTR(instruction);
 		} END_FOR_EACH_PTR(block);
 	}
@@ -4182,7 +4292,7 @@ analysis_run(struct lock_identity_collection *lock_identities, FILE *stream)
 	while ((point_state =
 	    worklist_point_state_dequeue(&analysis.worklist)) != NULL)
 		process_point(&analysis, point_state);
-	diagnose_declared_acquisitions(&analysis);
+	diagnose_declared_lock_effects(&analysis);
 	diagnose_lock_transitions(&analysis);
 	diagnose_declared_lock_order(&analysis);
 	diagnose_lock_assertions(&analysis);

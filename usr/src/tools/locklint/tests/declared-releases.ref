@@ -1,0 +1,5 @@
+../locklint: declared-releases.c:45:9: warning: locklint: function 'declared_release_missing' does not establish declared release of lock 'mutex' [declared-lock-effect]
+../locklint: declared-releases.c:52:9: warning: locklint: declared release of lock 'rwlock' is not established on every return from 'declared_release_conditional' [declared-lock-effect]
+../locklint: declared-releases.c:60:9: warning: locklint: function 'declared_release_nonreturning' does not establish declared release of lock 'mutex' [declared-lock-effect]
+../locklint: declared-releases.c:39:19: warning: locklint: lock 'mutex' is not held [lock-not-held]
+../locklint: declared-releases.c:54:24: warning: locklint: lock 'rwlock' is not held [lock-not-held]
