@@ -172,7 +172,8 @@ first_live_instruction(struct basic_block *block)
 }
 
 static struct instruction *
-next_live_instruction(struct basic_block *block, struct instruction *current)
+next_live_instruction(struct basic_block *block,
+    const struct instruction *current)
 {
 	struct instruction *instruction;
 	bool found = false;
@@ -1648,7 +1649,7 @@ struct declared_order_observation_violation {
 
 struct declared_order_observation {
 	struct function_context *context;
-	struct instruction *acquisition_instruction;
+	const struct instruction *acquisition_instruction;
 	size_t states;
 	struct declared_order_observation_violation *violations;
 	avl_node_t by_context;
@@ -1672,7 +1673,7 @@ compare_declared_order_observation(const void *left_arg,
 struct declared_order_origin {
 	struct function_info *caller_function;
 	struct instruction *call_instruction;
-	struct instruction *acquisition_instruction;
+	const struct instruction *acquisition_instruction;
 	size_t states;
 	avl_node_t by_source;
 };
@@ -1929,6 +1930,7 @@ diagnose_declared_lock_order(struct analysis *analysis)
 			    &context->point_states, point_state)) {
 				struct instruction *instruction =
 				    point_state->point.next_instruction;
+				const struct instruction *acquisition = instruction;
 				struct declared_order_observation key;
 				struct declared_order_observation *observation;
 				struct locklint_access access;
@@ -1936,23 +1938,42 @@ diagnose_declared_lock_order(struct analysis *analysis)
 				enum locklint_lock_action action;
 				enum locklint_lock_mode mode;
 				avl_index_t where;
+				bool acquired_in_state = false;
 				bool composed;
 				bool existed;
 				size_t index;
 
-				if (instruction == NULL)
-					continue;
-				action = locklint_get_lock_action(function->tu,
-				    instruction, &access, &mode);
-				if (action != LOCKLINT_LOCK_ACQUIRE &&
-				    (action != LOCKLINT_LOCK_RESULT_ACQUIRE ||
-				    call_result_used(instruction)))
-					continue;
+				if (point_state->point.conditional_instruction !=
+				    NULL &&
+				    !point_state->point.conditional_nonzero) {
+					acquisition = point_state->point.
+					    conditional_instruction;
+					action = locklint_get_lock_action(
+					    function->tu, acquisition, &access,
+					    &mode);
+					if (action !=
+					    LOCKLINT_LOCK_RESULT_ACQUIRE ||
+					    instruction != next_live_instruction(
+					    acquisition->bb, acquisition))
+						continue;
+					acquired_in_state = true;
+				} else {
+					if (instruction == NULL)
+						continue;
+					action = locklint_get_lock_action(
+					    function->tu, acquisition, &access,
+					    &mode);
+					if (action != LOCKLINT_LOCK_ACQUIRE &&
+					    (action !=
+					    LOCKLINT_LOCK_RESULT_ACQUIRE ||
+					    call_result_used(acquisition)))
+						continue;
+				}
 				if (access.root == NULL)
 					continue;
 				key = (struct declared_order_observation) {
 					.context = context,
-					.acquisition_instruction = instruction
+					.acquisition_instruction = acquisition
 				};
 				observation = avl_find(&observations, &key,
 				    &where);
@@ -1964,7 +1985,7 @@ diagnose_declared_lock_order(struct analysis *analysis)
 						    "observation");
 					observation->context = context;
 					observation->acquisition_instruction =
-					    instruction;
+					    acquisition;
 					avl_insert(&observations, observation,
 					    where);
 				}
@@ -1987,6 +2008,9 @@ diagnose_declared_lock_order(struct analysis *analysis)
 					    declared_order_observation_violation
 					    *observed;
 
+					if (acquired_in_state &&
+					    held == acquired)
+						continue;
 					violation =
 					    locklint_order_declared_violation(
 					    acquired, held);
@@ -2043,7 +2067,8 @@ diagnose_declared_lock_order(struct analysis *analysis)
 		struct declared_order_finding *finding =
 		    avl_first(&findings);
 		struct declared_order_origin *origin = finding->origin;
-		struct instruction *source = origin->call_instruction != NULL ?
+		const struct instruction *source =
+		    origin->call_instruction != NULL ?
 		    origin->call_instruction : origin->acquisition_instruction;
 		struct position pos = source->call_expr != NULL ?
 		    source->call_expr->pos : source->pos;
@@ -2054,7 +2079,7 @@ diagnose_declared_lock_order(struct analysis *analysis)
 			struct function_info *callee = callgraph_callee(
 			    origin->caller_function,
 			    origin->call_instruction);
-			struct instruction *acquisition =
+			const struct instruction *acquisition =
 			    origin->acquisition_instruction;
 			struct position acquisition_pos =
 			    acquisition->call_expr != NULL ?

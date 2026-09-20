@@ -2168,8 +2168,13 @@ declared-order proof and an informational note at the original acquisition.
 Cycle-safe provenance traversal handles nested and recursive wrappers without
 acquisition-prefix summaries.
 
-Result-sensitive acquisitions, upgrades, downgrades, condition-wait
-reacquisition, and observed-order edges remain separate later increments.
+For a checked `mutex_lock()` result, the tagged zero-result point represents
+the successful blocking acquisition.  Its state already contains the newly
+acquired mutex, which is excluded while every other held identity is checked.
+The nonzero result contributes no acquisition.  Ignored `mutex_lock()` results
+remain unconditional acquisitions.  Try-acquisitions, upgrades, downgrades,
+condition-wait reacquisition, consumed results without local branch
+correlation, and observed-order edges remain separate later increments.
 
 ## Main action sequences
 

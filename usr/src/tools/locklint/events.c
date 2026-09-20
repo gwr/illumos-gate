@@ -38,7 +38,7 @@ show_event_position(struct position pos, const char *event)
 }
 
 static const char *
-call_name(struct instruction *insn)
+call_name(const struct instruction *insn)
 {
 	if (insn->func != NULL && insn->func->type == PSEUDO_SYM &&
 	    insn->func->sym != NULL && insn->func->sym->ident != NULL)
@@ -48,7 +48,7 @@ call_name(struct instruction *insn)
 }
 
 static struct expression *
-call_argument(struct instruction *insn, unsigned int index)
+call_argument(const struct instruction *insn, unsigned int index)
 {
 	struct expression *argument;
 	unsigned int current = 0;
@@ -67,7 +67,7 @@ call_argument(struct instruction *insn, unsigned int index)
  * Both reader variants provide the same ownership mode to locklint.
  */
 static bool
-call_rw_mode(struct instruction *insn, enum locklint_lock_mode *mode)
+call_rw_mode(const struct instruction *insn, enum locklint_lock_mode *mode)
 {
 	struct expression *argument = call_argument(insn, 1);
 	unsigned long long value;
@@ -85,8 +85,9 @@ call_rw_mode(struct instruction *insn, enum locklint_lock_mode *mode)
 }
 
 enum locklint_lock_action
-locklint_get_lock_action(struct translation_unit *tu, struct instruction *insn,
-    struct locklint_access *access, enum locklint_lock_mode *mode)
+locklint_get_lock_action(struct translation_unit *tu,
+    const struct instruction *insn, struct locklint_access *access,
+    enum locklint_lock_mode *mode)
 {
 	enum locklint_lock_action action;
 	const char *name;

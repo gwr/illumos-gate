@@ -1,6 +1,8 @@
 ../locklint: mutex-lock-result.c:145:23: warning: locklint: lock 'first' is already held [lock-already-held]
 ../locklint: mutex-lock-result.c:148:28: warning: locklint: lock 'first' may not be held [lock-maybe-not-held]
 ../locklint: mutex-lock-result.c:166:36: warning: locklint: lock 'first' may not be held [lock-maybe-not-held]
+../locklint: mutex-lock-result.c:134:23: warning: locklint: lock 'mutex_lock_state::first' acquired out of declared order while holding 'mutex_lock_state::second' [declared-order]
+../locklint: mutex-lock-result.c:29:1: locklint: declared order requires 'mutex_lock_state::first' before 'mutex_lock_state::second'
 ../locklint: mutex-lock-result.c:44:30: warning: locklint: protected member 'value' read without holding 'first' [unprotected-access]
 ../locklint: mutex-lock-result.c:55:30: warning: locklint: protected member 'value' read without holding 'first' [unprotected-access]
 ../locklint: mutex-lock-result.c:69:30: warning: locklint: protected member 'value' read without holding 'first' [unprotected-access]

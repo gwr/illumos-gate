@@ -41,7 +41,8 @@ enum locklint_lock_mode {
 };
 
 enum locklint_lock_action locklint_get_lock_action(struct translation_unit *,
-    struct instruction *, struct locklint_access *, enum locklint_lock_mode *);
+    const struct instruction *, struct locklint_access *,
+    enum locklint_lock_mode *);
 void locklint_show_events(struct translation_unit *, struct entrypoint *);
 
 #endif /* EVENTS_H */
