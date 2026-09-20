@@ -31,6 +31,10 @@ void locklint_order_build(void);
 void locklint_order_report_declared_cycles(void);
 void locklint_order_classify_identity(const struct lock_identity *,
     const struct locklint_access *);
+void locklint_order_record_identity_acquisition(const struct lock_identity *,
+    const struct locklint_access *, const struct position *);
+void locklint_order_record_observed_identities(const struct lock_identity *,
+    const struct lock_identity *, const struct position *, bool);
 const struct locklint_order_violation *
 locklint_order_declared_violation(const struct lock_identity *,
     const struct lock_identity *);

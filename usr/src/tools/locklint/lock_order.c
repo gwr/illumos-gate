@@ -35,6 +35,8 @@ struct order_vertex;
 
 struct order_identity {
 	const struct lock_identity *identity;
+	struct position acquisition_pos;
+	bool has_acquisition_pos;
 	struct order_identity *next;
 };
 
@@ -345,40 +347,67 @@ void
 locklint_order_classify_identity(const struct lock_identity *identity,
     const struct locklint_access *access)
 {
+	struct locklint_access role;
 	struct order_vertex *vertex;
+	struct order_identity *entry;
+	char *name;
 
 	for (vertex = vertices; vertex != NULL; vertex = vertex->next) {
-		struct order_identity *entry;
-
-		if (!role_matches_access(vertex, access))
-			continue;
 		for (entry = vertex->identities; entry != NULL;
 		    entry = entry->next) {
 			if (entry->identity == identity)
-				break;
+				return;
 		}
-		if (entry != NULL)
-			continue;
-		entry = calloc(1, sizeof (*entry));
-		if (entry == NULL)
-			die("out of memory classifying lock-order identity");
-		entry->identity = identity;
-		entry->next = vertex->identities;
-		vertex->identities = entry;
 	}
+	name = observed_role(access, &role);
+	vertex = find_vertex(&role);
+	if (vertex == NULL && access->member == NULL) {
+		free(name);
+		return;
+	}
+	if (vertex == NULL)
+		vertex = add_vertex(&role, name);
+	free(name);
+	entry = calloc(1, sizeof (*entry));
+	if (entry == NULL)
+		die("out of memory classifying lock-order identity");
+	entry->identity = identity;
+	entry->next = vertex->identities;
+	vertex->identities = entry;
 }
 
-static bool
-vertex_has_identity(const struct order_vertex *vertex,
+static struct order_identity *
+vertex_identity(const struct order_vertex *vertex,
     const struct lock_identity *identity)
 {
-	const struct order_identity *entry;
+	struct order_identity *entry;
 
 	for (entry = vertex->identities; entry != NULL; entry = entry->next) {
 		if (entry->identity == identity)
-			return (true);
+			return (entry);
 	}
-	return (false);
+	return (NULL);
+}
+
+void
+locklint_order_record_identity_acquisition(
+    const struct lock_identity *identity, const struct locklint_access *access,
+    const struct position *pos)
+{
+	struct order_vertex *vertex;
+
+	locklint_order_classify_identity(identity, access);
+	for (vertex = vertices; vertex != NULL; vertex = vertex->next) {
+		struct order_identity *entry = vertex_identity(vertex, identity);
+
+		if (entry == NULL)
+			continue;
+		if (!entry->has_acquisition_pos ||
+		    compare_position(*pos, entry->acquisition_pos) < 0) {
+			entry->acquisition_pos = *pos;
+			entry->has_acquisition_pos = true;
+		}
+	}
 }
 
 const struct locklint_order_violation *
@@ -390,12 +419,12 @@ locklint_order_declared_violation(const struct lock_identity *acquired,
 	for (before = vertices; before != NULL; before = before->next) {
 		struct order_vertex *after;
 
-		if (!vertex_has_identity(before, acquired))
+		if (vertex_identity(before, acquired) == NULL)
 			continue;
 		for (after = vertices; after != NULL; after = after->next) {
 			struct locklint_order_violation *violation;
 
-			if (!vertex_has_identity(after, held) ||
+			if (vertex_identity(after, held) == NULL ||
 			    !declared_path(before, after) ||
 			    path_uses_declared_cycle(before, after))
 				continue;
@@ -581,6 +610,36 @@ locklint_order_record_observed(const struct locklint_access *held,
 	before->observed_edges = edge;
 	edge->next = observed_edges;
 	observed_edges = edge;
+}
+
+void
+locklint_order_record_observed_identities(const struct lock_identity *held,
+    const struct lock_identity *acquired, const struct position *acquire_pos,
+    bool possible)
+{
+	struct order_vertex *before;
+
+	for (before = vertices; before != NULL; before = before->next) {
+		struct order_identity *held_entry =
+		    vertex_identity(before, held);
+		struct order_vertex *after;
+
+		if (held_entry == NULL)
+			continue;
+		for (after = vertices; after != NULL; after = after->next) {
+			bool explained;
+
+			if (vertex_identity(after, acquired) == NULL ||
+			    before == after)
+				continue;
+			explained = declared_path(before, after) &&
+			    !path_uses_declared_cycle(before, after);
+			locklint_order_record_observed(&before->role,
+			    &after->role, held_entry->has_acquisition_pos ?
+			    &held_entry->acquisition_pos : NULL, acquire_pos,
+			    possible, explained);
+		}
+	}
 }
 
 static int

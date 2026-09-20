@@ -509,7 +509,7 @@ publish_exit(struct analysis *analysis, struct point_state *point_state)
 static const struct semantic_state *
 apply_lock_event(struct analysis *analysis, struct point_state *point_state)
 {
-	struct locklint_access access;
+	struct locklint_access access = { 0 };
 	struct lock_identity *identity;
 	struct semantic_state *state;
 	enum locklint_lock_action action;
@@ -847,7 +847,7 @@ call_argument_identity(struct analysis *analysis,
     const struct function_context *caller, const struct instruction *insn,
     unsigned int index)
 {
-	struct locklint_access access;
+	struct locklint_access access = { 0 };
 	struct lock_identity_key key;
 	enum lock_analysis_object_type object_type;
 	struct lock_identity *identity;
@@ -1647,11 +1647,19 @@ struct declared_order_observation_violation {
 	struct declared_order_observation_violation *next;
 };
 
+struct observed_held_identity {
+	const struct lock_identity *identity;
+	const struct point_state *last_point_state;
+	size_t states;
+	struct observed_held_identity *next;
+};
+
 struct declared_order_observation {
 	struct function_context *context;
 	const struct instruction *acquisition_instruction;
 	size_t states;
 	struct declared_order_observation_violation *violations;
+	struct observed_held_identity *held_identities;
 	avl_node_t by_context;
 };
 
@@ -1938,7 +1946,6 @@ diagnose_declared_lock_order(struct analysis *analysis)
 				enum locklint_lock_action action;
 				enum locklint_lock_mode mode;
 				avl_index_t where;
-				bool acquired_in_state = false;
 				bool composed;
 				bool existed;
 				size_t index;
@@ -1956,7 +1963,6 @@ diagnose_declared_lock_order(struct analysis *analysis)
 					    instruction != next_live_instruction(
 					    acquisition->bb, acquisition))
 						continue;
-					acquired_in_state = true;
 				} else {
 					if (instruction == NULL)
 						continue;
@@ -1983,7 +1989,15 @@ diagnose_declared_lock_order(struct analysis *analysis)
 					    point_state->state, acquired) &
 					    LOCKLINT_MODE_MUTEX) == 0)
 						continue;
-					acquired_in_state = true;
+				}
+				{
+					struct position pos =
+					    acquisition->call_expr != NULL ?
+					    acquisition->call_expr->pos :
+					    acquisition->pos;
+
+					locklint_order_record_identity_acquisition(
+					    acquired, &access, &pos);
 				}
 				key = (struct declared_order_observation) {
 					.context = context,
@@ -2015,10 +2029,36 @@ diagnose_declared_lock_order(struct analysis *analysis)
 					struct
 					    declared_order_observation_violation
 					    *observed;
+					struct observed_held_identity
+					    *observed_held;
 
-					if (acquired_in_state &&
-					    held == acquired)
+					if (held == acquired)
 						continue;
+					for (observed_held =
+					    observation->held_identities;
+					    observed_held != NULL;
+					    observed_held = observed_held->next) {
+						if (observed_held->identity == held)
+							break;
+					}
+					if (observed_held == NULL) {
+						observed_held = calloc(1,
+						    sizeof (*observed_held));
+						if (observed_held == NULL)
+							die("cannot allocate observed "
+							    "held identity");
+						observed_held->identity = held;
+						observed_held->next =
+						    observation->held_identities;
+						observation->held_identities =
+						    observed_held;
+					}
+					if (observed_held->last_point_state !=
+					    point_state) {
+						observed_held->states++;
+						observed_held->last_point_state =
+						    point_state;
+					}
 					violation =
 					    locklint_order_declared_violation(
 					    acquired, held);
@@ -2060,9 +2100,44 @@ diagnose_declared_lock_order(struct analysis *analysis)
 		struct declared_order_observation *observation =
 		    avl_first(&observations);
 		struct declared_order_observation_violation *observed;
+		struct observed_held_identity *observed_held;
+		struct position acquisition_pos =
+		    observation->acquisition_instruction->call_expr != NULL ?
+		    observation->acquisition_instruction->call_expr->pos :
+		    observation->acquisition_instruction->pos;
+
+		for (observed_held = observation->held_identities;
+		    observed_held != NULL; observed_held = observed_held->next) {
+			struct locklint_access access;
+			struct lock_identity *acquired;
+			enum locklint_lock_action action;
+			enum locklint_lock_mode mode;
+			bool composed;
+			bool existed;
+
+			action = locklint_get_lock_action(
+			    observation->context->function->tu,
+			    observation->acquisition_instruction, &access,
+			    &mode);
+			if (action == LOCKLINT_LOCK_NONE)
+				die("observed acquisition is not a lock event");
+			error = context_access_identity(analysis,
+			    observation->context, &access, &acquired, &existed,
+			    &composed);
+			if (error != 0)
+				die("cannot identify observed acquisition: %s",
+				    strerror(error));
+			locklint_order_record_observed_identities(
+			    observed_held->identity, acquired, &acquisition_pos,
+			    observed_held->states < observation->states);
+		}
 
 		trace_declared_order_observation(&origins, &findings,
 		    observation);
+		while ((observed_held = observation->held_identities) != NULL) {
+			observation->held_identities = observed_held->next;
+			free(observed_held);
+		}
 		while ((observed = observation->violations) != NULL) {
 			observation->violations = observed->next;
 			free(observed);

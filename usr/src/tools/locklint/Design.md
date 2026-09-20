@@ -2185,6 +2185,20 @@ Try-acquisitions, upgrades, and downgrades do not create blocking acquisition
 edges.  Consumed `mutex_lock()` results without local branch correlation and
 observed-order edges remain separate later increments.
 
+The same exact acquisition observations also build the observed-order graph.
+For each held identity, an edge points to the newly acquired identity unless
+the declared graph already proves that order.  Identity-to-role mappings keep
+the earliest known acquisition source as diagnostic metadata outside semantic
+state.  After all observations have been recorded, locklint reports strongly
+connected observed components with the representative held and acquired
+positions.  Conditional held relationships mark an edge possible; any
+definite observation of the same edge makes the merged edge definite.
+Undeclared observed vertices currently require a stable structure-member
+role.  A bare pointer formal participates only when it matches an existing
+declared vertex; using callee parameter names as module-wide roles would
+conflate unrelated callers.  Explicit caller-role provenance for undeclared
+bare pointer locks remains later work.
+
 ## Main action sequences
 
 ### `_NOTE` to protected-access diagnostic
