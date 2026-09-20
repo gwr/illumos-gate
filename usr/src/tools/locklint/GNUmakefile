@@ -99,6 +99,7 @@ LOCAL_OBJS = \
 	provenance.o \
 	statistics.o \
 	timing.o \
+	type.o \
 	worklist.o \
 	avl.o
 

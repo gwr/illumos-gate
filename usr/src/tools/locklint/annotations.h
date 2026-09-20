@@ -84,7 +84,6 @@ typedef void (*locklint_visibility_target_f)(const struct locklint_access *,
     const struct expression *, void *);
 
 void locklint_annotations_enable(void);
-void locklint_register_command_names(struct symbol_list *);
 enum locklint_command_result locklint_declare_readable(const char *,
     const char *, unsigned long);
 bool locklint_get_covering_lock(const struct locklint_access *,

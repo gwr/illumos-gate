@@ -34,6 +34,7 @@
 #include "scope.h"
 #include "symbol.h"
 #include "token.h"
+#include "type.h"
 
 struct annotation_token {
 	struct position pos;
@@ -96,16 +97,7 @@ struct annotation {
 static struct annotation *annotations;
 static struct annotation **annotations_tail = &annotations;
 
-struct command_type {
-	struct ident *name;
-	struct symbol *type;
-	struct command_type *next;
-};
-
-static struct command_type *command_types;
-
 static enum locklint_execution_kind execution_kind(const struct token *);
-static struct symbol *direct_compound_type(struct symbol *);
 static void expand_data_refs(struct annotation *);
 
 static char *
@@ -786,8 +778,6 @@ resolve_type(const char *name)
 	return (type);
 }
 
-static struct symbol *strip_node_type(struct symbol *);
-
 static bool
 position_before(struct position left, struct position right)
 {
@@ -880,7 +870,7 @@ resolve_local_in_functions(struct symbol_list *symbols, struct ident *ident,
 	FOR_EACH_PTR(symbols, function) {
 		struct symbol *argument;
 		struct symbol *local = NULL;
-		struct symbol *type = strip_node_type(function->ctype.base_type);
+		struct symbol *type = type_node_strip(function->ctype.base_type);
 		struct statement *body;
 
 		if (type == NULL || type->type != SYM_FN)
@@ -914,103 +904,6 @@ resolve_local(struct symbol_list *symbols, struct ident *ident,
 		local = resolve_local_in_functions(global_scope->symbols, ident,
 		    pos);
 	return (local);
-}
-
-static struct symbol *
-strip_node_type(struct symbol *type)
-{
-	while (type != NULL && type->type == SYM_NODE)
-		type = type->ctype.base_type;
-	return (type);
-}
-
-static struct symbol *
-direct_compound_type(struct symbol *type)
-{
-	type = strip_node_type(type);
-	while (type != NULL && type->type == SYM_ARRAY)
-		type = strip_node_type(type->ctype.base_type);
-	if (type == NULL ||
-	    (type->type != SYM_STRUCT && type->type != SYM_UNION))
-		return (NULL);
-	examine_symbol_type(type);
-	return (type);
-}
-
-static void
-record_command_type(struct ident *name, struct symbol *type)
-{
-	struct command_type *candidate;
-	struct command_type *record;
-
-	if (name == NULL)
-		return;
-	type = direct_compound_type(type);
-	if (type == NULL)
-		return;
-	for (candidate = command_types; candidate != NULL;
-	    candidate = candidate->next) {
-		if (candidate->name == name && candidate->type == type)
-			return;
-	}
-	record = calloc(1, sizeof (*record));
-	if (record == NULL)
-		die("out of memory recording command-file type");
-	record->name = name;
-	record->type = type;
-	record->next = command_types;
-	command_types = record;
-}
-
-static void
-register_command_type_tree(struct symbol *type)
-{
-	struct symbol *argument;
-
-	type = strip_node_type(type);
-	if (type == NULL)
-		return;
-	switch (type->type) {
-	case SYM_PTR:
-	case SYM_ARRAY:
-		register_command_type_tree(type->ctype.base_type);
-		break;
-	case SYM_FN:
-		register_command_type_tree(type->ctype.base_type);
-		FOR_EACH_PTR(type->arguments, argument) {
-			register_command_type_tree(argument->ctype.base_type);
-		} END_FOR_EACH_PTR(argument);
-		break;
-	case SYM_STRUCT:
-	case SYM_UNION:
-		record_command_type(type->ident, type);
-		break;
-	default:
-		break;
-	}
-}
-
-/*
- * Retain the named aggregate types reachable from file-scope declarations
- * and function signatures.  Command files are parsed after Sparse has left
- * each translation-unit namespace, so later lookup cannot use lookup_symbol().
- */
-void
-locklint_register_command_names(struct symbol_list *symbols)
-{
-	struct symbol *symbol;
-	struct symbol *type;
-
-	FOR_EACH_PTR(symbols, symbol) {
-		if (symbol->namespace == NS_TYPEDEF) {
-			record_command_type(symbol->ident,
-			    symbol->ctype.base_type);
-		} else if (symbol->namespace == NS_STRUCT) {
-			record_command_type(symbol->ident, symbol);
-		}
-		type = symbol->ctype.base_type;
-		register_command_type_tree(type);
-	} END_FOR_EACH_PTR(symbol);
 }
 
 static bool
@@ -1089,7 +982,7 @@ resolve_command_path(struct annotation_ref *ref, struct symbol *type)
 		size_t length;
 		int offset = 0;
 
-		type = direct_compound_type(type);
+		type = type_compound_resolve(type);
 		if (type == NULL)
 			return (false);
 		end = strchr(component, '.');
@@ -1114,51 +1007,69 @@ resolve_command_path(struct annotation_ref *ref, struct symbol *type)
 	return (true);
 }
 
+struct annotation_type_resolution {
+	const char *name;
+	const char *path;
+	struct annotation_ref **tail;
+	struct position origin;
+	size_t base_length;
+	enum locklint_command_result result;
+	bool found;
+};
+
+static bool
+annotations_type_resolve(struct symbol *type, void *data_arg)
+{
+	struct annotation_type_resolution *data = data_arg;
+	struct annotation_ref *ref;
+
+	if (data->found && !same_source_position(data->origin, type->pos)) {
+		data->result = LOCKLINT_COMMAND_AMBIGUOUS_NAME;
+		return (false);
+	}
+	data->origin = type->pos;
+	data->found = true;
+	ref = new_command_ref(data->name, data->base_length, data->path,
+	    ANNOTATION_TYPE);
+	ref->owner_type = type;
+	if (!resolve_command_path(ref, type)) {
+		data->result = LOCKLINT_COMMAND_UNRESOLVED_NAME;
+		return (false);
+	}
+	*data->tail = ref;
+	data->tail = &ref->next;
+	data->result = LOCKLINT_COMMAND_OK;
+	return (true);
+}
+
 static enum locklint_command_result
 resolve_command_type(struct annotation *annotation, const char *name,
     const char *separator)
 {
-	struct command_type *candidate;
-	struct position origin = { 0 };
-	struct annotation_ref **tail = &annotation->data;
+	struct annotation_type_resolution data = {
+		.name = name,
+		.path = separator + 2,
+		.tail = &annotation->data,
+		.base_length = (size_t)(separator - name),
+		.result = LOCKLINT_COMMAND_UNRESOLVED_NAME
+	};
 	struct ident *ident;
-	size_t base_length = (size_t)(separator - name);
-	bool found = false;
 
-	if (!valid_identifier(name, base_length) ||
+	if (!valid_identifier(name, data.base_length) ||
 	    !valid_member_path(separator + 2))
 		return (LOCKLINT_COMMAND_INVALID_NAME);
 	{
-		char *base = malloc(base_length + 1);
+		char *base = malloc(data.base_length + 1);
 
 		if (base == NULL)
 			die("out of memory resolving command-file declaration");
-		(void) memcpy(base, name, base_length);
-		base[base_length] = '\0';
+		(void) memcpy(base, name, data.base_length);
+		base[data.base_length] = '\0';
 		ident = built_in_ident(base);
 		free(base);
 	}
-	for (candidate = command_types; candidate != NULL;
-	    candidate = candidate->next) {
-		struct annotation_ref *ref;
-
-		if (candidate->name != ident)
-			continue;
-		if (found && !same_source_position(origin,
-		    candidate->type->pos))
-			return (LOCKLINT_COMMAND_AMBIGUOUS_NAME);
-		origin = candidate->type->pos;
-		found = true;
-		ref = new_command_ref(name, base_length, separator + 2,
-		    ANNOTATION_TYPE);
-		ref->owner_type = candidate->type;
-		if (!resolve_command_path(ref, candidate->type))
-			return (LOCKLINT_COMMAND_UNRESOLVED_NAME);
-		*tail = ref;
-		tail = &ref->next;
-	}
-	return (found ? LOCKLINT_COMMAND_OK :
-	    LOCKLINT_COMMAND_UNRESOLVED_NAME);
+	type_name_visit(ident, annotations_type_resolve, &data);
+	return (data.result);
 }
 
 static enum locklint_command_result
@@ -1190,7 +1101,7 @@ resolve_command_object(struct annotation *annotation, const char *name)
 	ref->root = root;
 	ref->object = object;
 	ref->type = root->ctype.base_type;
-	ref->owner_type = direct_compound_type(ref->type);
+	ref->owner_type = type_compound_resolve(ref->type);
 	if (ref->path != NULL && !resolve_command_path(ref, ref->type))
 		return (LOCKLINT_COMMAND_UNRESOLVED_NAME);
 	annotation->data = ref;
@@ -1275,7 +1186,7 @@ resolve_path(struct annotation_ref *ref, struct symbol *type)
 		size_t length;
 		int offset = 0;
 
-		type = direct_compound_type(type);
+		type = type_compound_resolve(type);
 		if (type == NULL)
 			break;
 		end = strchr(component, '.');
@@ -1350,11 +1261,11 @@ resolve_annotation_ref(struct annotation_ref *ref, bool lock,
 		/* C tag names have no linker identity; keep Sparse type identity. */
 		ref->type = base;
 	}
-	ref->owner_type = direct_compound_type(ref->type);
+	ref->owner_type = type_compound_resolve(ref->type);
 	if (ref->path != NULL && !resolve_path(ref, ref->type))
 		return (false);
 	if (lock && ref->scope == ANNOTATION_TYPE && ref->member == NULL &&
-	    direct_compound_type(ref->type) != NULL) {
+	    type_compound_resolve(ref->type) != NULL) {
 		char *name = annotation_ref_name(ref);
 
 		sparse_error(ref->pos,
@@ -1399,7 +1310,7 @@ expand_compound_ref(struct annotation_ref *source, struct symbol *type,
 {
 	struct symbol *member;
 
-	type = direct_compound_type(type);
+	type = type_compound_resolve(type);
 	if (type == NULL) {
 		add_annotation_ref(head, tail, source);
 		return;
@@ -1411,7 +1322,7 @@ expand_compound_ref(struct annotation_ref *source, struct symbol *type,
 		char *path;
 
 		if (member->ident == NULL) {
-			member_type = direct_compound_type(
+			member_type = type_compound_resolve(
 			    member->ctype.base_type);
 			if (member_type != NULL) {
 				expanded = clone_expanded_ref(source, member,
@@ -1441,7 +1352,7 @@ expand_compound_ref(struct annotation_ref *source, struct symbol *type,
 		path = join_path(source->path, show_ident(member->ident));
 		expanded = clone_expanded_ref(source, member, path);
 		free(path);
-		member_type = direct_compound_type(member->ctype.base_type);
+		member_type = type_compound_resolve(member->ctype.base_type);
 		if (member_type != NULL) {
 			expand_compound_ref(expanded, member_type, lock, head,
 			    tail);
@@ -1460,7 +1371,7 @@ expand_data_refs(struct annotation *annotation)
 
 	for (ref = annotation->data; ref != NULL; ) {
 		struct annotation_ref *next = ref->next;
-		struct symbol *type = direct_compound_type(ref->type);
+		struct symbol *type = type_compound_resolve(ref->type);
 
 		ref->next = NULL;
 		if (type != NULL)

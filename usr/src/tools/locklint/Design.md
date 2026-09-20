@@ -153,7 +153,8 @@ The main phases are:
 4. For each input file:
    1. create and make current a locklint translation-unit record;
    2. parse and evaluate the translation unit;
-   3. register its file-scope internal-linkage declarations;
+   3. register its file-scope internal-linkage declarations and named
+      aggregate types needed after Sparse removes the namespace bindings;
    4. resolve annotations while that translation unit's symbol namespaces are
       current;
    5. expand and linearize function definitions;
@@ -179,11 +180,15 @@ The main phases are:
    11. collect and propagate protection conditions;
    12. emit diagnostics while collecting observed acquisition edges; and
    13. report cycles in the observed lock-order graph.
-6. Emit other requested development dumps.  `--dump-all` includes the
-   whole-program call-graph audit.
+6. Emit other requested development dumps.  `--dump-types` lists every named
+   aggregate type retained in the process-wide type registry, including
+   distinct Sparse instances of a declaration included by multiple
+   translation units.
+   `--dump-all` includes this type registry and the whole-program call-graph
+   audit.
 
 The optional `--times` report uses process-global accumulated timers.  It
-separates initialization; frontend parsing; object-identity, command-name,
+separates initialization; frontend parsing; object-identity, type-registration,
 annotation and pointer-evidence, symbol, and token-cleanup input work; command
 files; analysis setup; the context fixed point; each post-fixed-point
 diagnostic pass; collection measurement; analysis cleanup; and final
@@ -2121,6 +2126,14 @@ intermediate-frame rendering remain optional future work.
 | --- | --- |
 | `statistics` | Process-global caller-attributed collection-operation counters |
 | `statistics_show()` | Emit all find and enumeration counters for `--dump-statistics` |
+
+### Type registry: `type.c`
+
+| Function | Responsibility |
+| --- | --- |
+| `type_symbols_register()` | Retain named aggregate types found in one Sparse symbol list |
+| `type_name_visit()` | Visit retained Sparse type instances for one interned name |
+| `type_registry_show()` | Emit the complete retained registry for `--dump-types` |
 
 ### Access identity: `access.c`
 

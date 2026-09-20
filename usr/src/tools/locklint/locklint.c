@@ -40,6 +40,7 @@
 #include "statistics.h"
 #include "symbol.h"
 #include "timing.h"
+#include "type.h"
 
 static bool dump_parsed;
 static bool dump_linearized;
@@ -49,6 +50,7 @@ static bool dump_events;
 static bool dump_callgraph;
 static bool dump_contexts;
 static bool dump_statistics;
+static bool dump_types;
 static bool check_locks;
 static bool compat_osll;
 static bool show_times;
@@ -77,6 +79,7 @@ usage(FILE *stream)
 	    "[--check-locks] [--dump-parsed] [--dump-linearized] "
 	    "[--dump-accesses] [--dump-annotations] [--dump-events] "
 	    "[--dump-callgraph] [--dump-contexts] [--dump-statistics] "
+	    "[--dump-types] "
 	    "[--times] "
 	    "[compiler-options] file.c ...\n");
 }
@@ -127,6 +130,8 @@ options(int argc, char **argv)
 			dump_contexts = true;
 		} else if (strcmp(argv[i], "--dump-statistics") == 0) {
 			dump_statistics = true;
+		} else if (strcmp(argv[i], "--dump-types") == 0) {
+			dump_types = true;
 		} else if (strcmp(argv[i], "--times") == 0) {
 			show_times = true;
 		} else if (strcmp(argv[i], "--dump-all") == 0) {
@@ -138,6 +143,7 @@ options(int argc, char **argv)
 			dump_callgraph = true;
 			dump_contexts = true;
 			dump_statistics = true;
+			dump_types = true;
 		} else if (strcmp(argv[i], "--compat=osll") == 0) {
 			compat_osll = true;
 		} else if (strncmp(argv[i], "--compat=", 9) == 0) {
@@ -295,11 +301,11 @@ register_translation_unit_declarations(struct translation_unit *tu,
 	locklint_translation_unit_register(tu, file_scope->symbols);
 	locklint_translation_unit_register(tu, global_scope->symbols);
 	timing_end(TIMING_INPUT_IDENTITIES);
-	timing_begin(TIMING_INPUT_COMMAND_NAMES);
-	locklint_register_command_names(symbols);
-	locklint_register_command_names(file_scope->symbols);
-	locklint_register_command_names(global_scope->symbols);
-	timing_end(TIMING_INPUT_COMMAND_NAMES);
+	timing_begin(TIMING_INPUT_TYPES);
+	type_symbols_register(symbols);
+	type_symbols_register(file_scope->symbols);
+	type_symbols_register(global_scope->symbols);
+	timing_end(TIMING_INPUT_TYPES);
 }
 
 /*
@@ -336,6 +342,7 @@ main(int argc, char **argv)
 	if (show_times)
 		timing_enable();
 
+	type_registry_create();
 	preprocessor_compatibility_enable();
 	if (dump_annotations || dump_events || check_locks || dump_contexts)
 		locklint_annotations_enable();
@@ -415,17 +422,22 @@ main(int argc, char **argv)
 	timing_begin(TIMING_COMMANDS);
 	if (!parse_command_files()) {
 		locklint_access_cleanup();
+		type_registry_destroy();
 		return (EXIT_FAILURE);
 	}
 	timing_end(TIMING_COMMANDS);
 	if (check_locks || dump_callgraph || dump_contexts)
 		locklint_check_all(check_locks, dump_callgraph, dump_contexts);
 	timing_begin(TIMING_FINAL_OUTPUT);
+	if (dump_types)
+		type_registry_show(stdout);
 	if (dump_statistics)
 		statistics_show(stdout);
 	if (dump_annotations)
 		locklint_show_annotations(stdout);
 	locklint_access_cleanup();
+	type_registry_destroy();
+	(void) fflush(stdout);
 	timing_end(TIMING_FINAL_OUTPUT);
 	timing_report(stderr);
 

@@ -119,6 +119,13 @@ statistics_histogram_show(FILE *stream, const char *name,
 void
 statistics_show(FILE *stream)
 {
+	SHOW(type_registration_symbols_visited);
+	SHOW(type_registration_nodes_visited);
+	SHOW(type_registry_find);
+	SHOW(type_registry_duplicates);
+	SHOW(type_registry_insertions);
+	SHOW(type_registry_comparisons);
+
 	SHOW(call_binding_environments_find);
 	SHOW(root_binding_environments_find);
 	SHOW(effect_binding_environments_find);

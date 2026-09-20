@@ -97,7 +97,7 @@ run_capture "parsed smoke" parsed.out "$LOCKLINT" --dump-parsed smoke.c
 require_match "parsed smoke" smoke parsed.out
 
 run_capture "phase timing" times.out "$LOCKLINT" --times --dump-parsed smoke.c
-for phase in initialize input-parse input-identities input-command-names \
+for phase in initialize input-parse input-identities input-types \
     input-evidence \
     input-symbols input-cleanup commands analysis-setup fixed-point \
     diag-decl-effects \
@@ -391,6 +391,37 @@ require_match "command readable type provenance" \
 require_match "command readable object provenance" \
     "commands/readable.cf:4: DATA_READABLE_WITHOUT_LOCK command_global" \
     command-readable-annotations.out
+
+run_capture "command type dump" command-types.out \
+    "$LOCKLINT" --dump-types --dump-statistics \
+    commands/readable.c commands/readable-other.c
+if [ "$(grep -c '^type command_state kind=struct ' command-types.out)" \
+    -ne 2 ]; then
+	fail "command type dump: expected two command_state instances"
+fi
+if [ "$(grep -c '^type command_state_t kind=struct ' command-types.out)" \
+    -ne 2 ]; then
+	fail "command type dump: expected two command_state_t instances"
+fi
+if [ "$(grep -c '^type duplicate_command_type kind=struct ' \
+    command-types.out)" -ne 2 ]; then
+	fail "command type dump: expected two ambiguous type instances"
+fi
+require_match "command type dump summary" '^types [1-9][0-9]*$' \
+    command-types.out
+require_match "command type registry size" \
+    '^statistics type_registry_insertions 12$' command-types.out
+for statistic in type_registration_symbols_visited \
+    type_registration_nodes_visited type_registry_find \
+    type_registry_duplicates type_registry_comparisons
+do
+	require_match "command type statistic $statistic" \
+	    "^statistics $statistic [1-9][0-9]*$" command-types.out
+done
+reject_match "command type dump enum" 'COMMAND_READABLE_ENUM' \
+    command-types.out
+reject_match "command type dump object" '^type command_object ' \
+    command-types.out
 
 run_failure "command readable arity" command-readable-arity.out \
     "$LOCKLINT" --cf commands/readable-arity.cf \
@@ -1213,14 +1244,20 @@ for statistic in \
     caller_recovery_contexts_visited \
     caller_recovery_unique_contexts_visited \
     caller_recovery_edges_examined \
-    caller_recovery_root_calls
+    caller_recovery_root_calls \
+    type_registration_symbols_visited \
+    type_registration_nodes_visited \
+    type_registry_find \
+    type_registry_duplicates \
+    type_registry_insertions \
+    type_registry_comparisons
 do
 	require_match "context statistic $statistic" \
 	    "^statistics $statistic [0-9][0-9]*$" context-statistics.out
 done
 if [ "$(grep -c '^statistics [a-z_]* [0-9][0-9]*$' \
-    context-statistics.out)" -ne 62 ]; then
-	fail "context statistics: expected exactly sixty-two statistics lines"
+    context-statistics.out)" -ne 68 ]; then
+	fail "context statistics: expected exactly sixty-eight statistics lines"
 fi
 for histogram in \
     caller_recovery_first_max_depth \

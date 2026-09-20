@@ -35,6 +35,13 @@ struct statistics_histogram {
  * operation; the find and enum suffixes describe the operation itself.
  */
 struct statistics_counts {
+	size_t type_registration_symbols_visited;
+	size_t type_registration_nodes_visited;
+	size_t type_registry_find;
+	size_t type_registry_duplicates;
+	size_t type_registry_insertions;
+	size_t type_registry_comparisons;
+
 	size_t call_binding_environments_find;
 	size_t root_binding_environments_find;
 	size_t effect_binding_environments_find;
