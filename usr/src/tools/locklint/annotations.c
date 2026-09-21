@@ -1286,8 +1286,14 @@ resolve_path(struct annotation_ref *ref, struct symbol *type,
 		if (member == NULL)
 			break;
 		ref->member = type_member_lookup_exact(member);
-		if (ref->member == NULL)
-			die("missing canonical annotation member");
+		if (ref->member == NULL) {
+			if (!type_registry_consistent())
+				return (false);
+			die("missing canonical annotation member '%s' at %s:%u:%u",
+			    show_ident(member->ident),
+			    stream_name(member->pos.stream), member->pos.line,
+			    member->pos.pos);
+		}
 		ref->offset += offset;
 		type = member->ctype.base_type;
 		component = end != NULL ? end + 1 : NULL;
@@ -1379,7 +1385,7 @@ clone_expanded_ref(const struct annotation_ref *source,
 	ref->object = source->object;
 	ref->owner_type = source->owner_type;
 	ref->member = type_member_lookup_exact(member);
-	if (ref->member == NULL)
+	if (ref->member == NULL && type_registry_consistent())
 		die("missing canonical expanded member");
 	ref->offset = source->offset + member->offset;
 	return (ref);

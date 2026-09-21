@@ -425,7 +425,7 @@ fi
 require_match "command type dump summary" '^types [1-9][0-9]*$' \
     command-types.out
 require_match "command type registry size" \
-    '^statistics type_registry_insertions 8$' command-types.out
+    '^statistics type_registry_insertions 7$' command-types.out
 for statistic in type_registration_symbols_visited \
     type_registration_nodes_visited type_registry_find \
     type_registry_duplicates type_registry_comparisons
@@ -1027,6 +1027,8 @@ require_match "annotation errors" \
 require_match "annotation errors" \
     "unresolved annotation name 'error_state::missing_readable'" \
     annotation-errors.out
+
+
 require_match "annotation errors" \
     "unresolved annotation name 'error_state::missing_read_only'" \
     annotation-errors.out

@@ -518,7 +518,7 @@ type_validation_add_member(struct type_validation *validation,
 }
 
 static bool type_validate_exact(struct type_validation *, struct symbol *,
-    struct ll_type *);
+    struct ll_type *, bool);
 
 static bool
 type_validate_member(struct type_validation *validation,
@@ -534,7 +534,7 @@ type_validate_member(struct type_validation *validation,
 		return (type_validation_mismatch(validation, exact,
 		    "member layout differs"));
 	if (!type_validate_exact(validation, exact->ctype.base_type,
-	    member->type))
+	    member->type, false))
 		return (false);
 	type_validation_add_member(validation, exact, member);
 	return (true);
@@ -682,13 +682,40 @@ type_node_address_space(struct symbol *exact)
 }
 
 /*
+ * An incomplete aggregate has no layout to compare.  It may stand in for the
+ * corresponding named aggregate only as a pointer target; callers control
+ * that context with allow_incomplete.
+ */
+static bool
+type_aggregate_is_incomplete(struct symbol *type)
+{
+	return ((type->type == SYM_STRUCT || type->type == SYM_UNION) &&
+	    type->endpos.line == 0 && type->symbol_list == NULL &&
+	    type->bit_size == 0);
+}
+
+static bool
+type_incomplete_pointer_target_matches(struct symbol *exact,
+    struct ll_type *type)
+{
+	struct symbol *representative = type->representative;
+
+	if ((exact->type != SYM_STRUCT && exact->type != SYM_UNION) ||
+	    exact->type != type_kind(type) || exact->ident == NULL ||
+	    exact->ident != representative->ident)
+		return (false);
+	return (type_aggregate_is_incomplete(exact) ||
+	    type_aggregate_is_incomplete(representative));
+}
+
+/*
  * Compare one exact Sparse type with an existing locklint type.  Tentative
  * mappings are added before recursive edges are followed, so recursive
  * aggregates terminate without publishing an unvalidated mapping.
  */
 static bool
 type_validate_exact(struct type_validation *validation, struct symbol *exact,
-    struct ll_type *type)
+    struct ll_type *type, bool allow_incomplete)
 {
 	struct ll_type *mapped;
 	struct symbol *argument;
@@ -699,6 +726,9 @@ type_validate_exact(struct type_validation *validation, struct symbol *exact,
 		return (exact == NULL && type == NULL ? true :
 		    type_validation_mismatch(validation, exact,
 		    "referenced type is incomplete"));
+	if (allow_incomplete &&
+	    type_incomplete_pointer_target_matches(exact, type))
+		return (true);
 	mapped = type_exact_find(exact, NULL);
 	if (mapped != NULL)
 		return (mapped == type);
@@ -709,7 +739,7 @@ type_validate_exact(struct type_validation *validation, struct symbol *exact,
 		if (entered <= 0)
 			return (entered == 0);
 		return (type_validate_exact(validation,
-		    exact->ctype.base_type, type));
+		    exact->ctype.base_type, type, allow_incomplete));
 	}
 	if ((exact->type == SYM_NODE || exact->type == SYM_TYPEDEF) &&
 	    type_node_is_transparent(exact)) {
@@ -717,7 +747,7 @@ type_validate_exact(struct type_validation *validation, struct symbol *exact,
 		if (entered <= 0)
 			return (entered == 0);
 		return (type_validate_exact(validation,
-		    exact->ctype.base_type, type));
+		    exact->ctype.base_type, type, allow_incomplete));
 	}
 	if (exact->type != type_kind(type))
 		return (type_validation_mismatch(validation, exact,
@@ -751,21 +781,23 @@ type_validate_exact(struct type_validation *validation, struct symbol *exact,
 		if (mapped == NULL)
 			mapped = type->base;
 		return (type_validate_exact(validation,
-		    exact->ctype.base_type, mapped));
+		    exact->ctype.base_type, mapped, allow_incomplete));
 	case SYM_PTR:
+		return (type_validate_exact(validation,
+		    exact->ctype.base_type, type->base, true));
 	case SYM_ARRAY:
 		return (type_validate_exact(validation,
-		    exact->ctype.base_type, type->base));
+		    exact->ctype.base_type, type->base, false));
 	case SYM_FN:
 		if (exact->variadic != type->representative->variadic ||
 		    ptr_list_size((struct ptr_list *)exact->arguments) !=
 		    type->argument_count ||
 		    !type_validate_exact(validation, exact->ctype.base_type,
-		    type->base))
+		    type->base, false))
 			return (false);
 		FOR_EACH_PTR(exact->arguments, argument) {
 			if (!type_validate_exact(validation, argument,
-			    type->arguments[index++]))
+			    type->arguments[index++], false))
 				return (false);
 		} END_FOR_EACH_PTR(argument);
 		return (true);
@@ -806,7 +838,7 @@ type_repeated_definition_record(struct symbol *exact, struct ll_type *type)
 	bool matches;
 
 	type_validation_create(&validation);
-	matches = type_validate_exact(&validation, exact, type);
+	matches = type_validate_exact(&validation, exact, type, false);
 	if (matches) {
 		type_validation_publish(&validation);
 	} else {
@@ -1224,7 +1256,7 @@ type_registry_record(struct ident *name, struct symbol *type)
 	if (type == NULL)
 		return;
 	ll_type = type_intern(type);
-	if (ll_type != NULL)
+	if (ll_type != NULL && !type_aggregate_is_incomplete(type))
 		type_name_record(name, ll_type);
 }
 

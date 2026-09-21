@@ -99,6 +99,7 @@ test_type_indexes(void)
 		.type = SYM_STRUCT,
 		.namespace = NS_STRUCT,
 		.pos = { .stream = 0, .line = 10, .pos = 4 },
+		.endpos = { .stream = 0, .line = 10, .pos = 12 },
 		.ident = tag,
 		.examined = 1
 	};
@@ -112,6 +113,7 @@ test_type_indexes(void)
 		.type = SYM_STRUCT,
 		.namespace = NS_STRUCT,
 		.pos = { .stream = 1, .line = 10, .pos = 4 },
+		.endpos = { .stream = 1, .line = 10, .pos = 12 },
 		.ident = tag,
 		.examined = 1
 	};
@@ -119,6 +121,7 @@ test_type_indexes(void)
 		.type = SYM_STRUCT,
 		.namespace = NS_STRUCT,
 		.pos = { .stream = 2, .line = 10, .pos = 4 },
+		.endpos = { .stream = 2, .line = 10, .pos = 12 },
 		.ident = tag,
 		.examined = 1
 	};
@@ -769,6 +772,155 @@ test_inconsistent_aggregate(void)
 	free_ptr_list(&second.symbol_list);
 }
 
+static void
+test_incomplete_pointer_targets(void)
+{
+	struct stream streams[] = {
+		{ .name = "forward.h" },
+		{ .name = "forward.h" }
+	};
+	struct ident *container = built_in_ident("forward_container");
+	struct ident *target = built_in_ident("forward_target");
+	struct ident *other = built_in_ident("other_target");
+	struct ident *pointer_name = built_in_ident("pointer");
+	struct ident *value_name = built_in_ident("value");
+	struct symbol integer = {
+		.type = SYM_BASETYPE,
+		.bit_size = 32,
+		.examined = 1,
+		.ctype = {
+			.modifiers = MOD_SIGNED,
+			.alignment = 4,
+			.base_type = &int_type
+		}
+	};
+	struct symbol complete_target = {
+		.type = SYM_STRUCT,
+		.pos = { .stream = 0, .line = 20, .pos = 1 },
+		.endpos = { .stream = 0, .line = 22, .pos = 1 },
+		.ident = target,
+		.bit_size = 32,
+		.examined = 1,
+		.ctype = { .alignment = 4 }
+	};
+	struct symbol incomplete_target = {
+		.type = SYM_STRUCT,
+		.pos = { .stream = 1, .line = 10, .pos = 1 },
+		.ident = target,
+		.bit_size = 0,
+		.examined = 1,
+		.ctype = { .alignment = 1 }
+	};
+	struct symbol complete_pointer = {
+		.type = SYM_PTR,
+		.bit_size = 64,
+		.examined = 1,
+		.ctype = { .alignment = 8, .base_type = &complete_target }
+	};
+	struct symbol incomplete_pointer = {
+		.type = SYM_PTR,
+		.bit_size = 64,
+		.examined = 1,
+		.ctype = { .alignment = 8, .base_type = &incomplete_target }
+	};
+	struct symbol first = {
+		.type = SYM_STRUCT,
+		.namespace = NS_STRUCT,
+		.pos = { .stream = 0, .line = 30, .pos = 1 },
+		.ident = container,
+		.bit_size = 64,
+		.examined = 1,
+		.ctype = { .alignment = 8 }
+	};
+	struct symbol second = {
+		.type = SYM_STRUCT,
+		.namespace = NS_STRUCT,
+		.pos = { .stream = 1, .line = 30, .pos = 1 },
+		.ident = container,
+		.bit_size = 64,
+		.examined = 1,
+		.ctype = { .alignment = 8 }
+	};
+	struct symbol complete_member = {
+		.type = SYM_NODE,
+		.ident = pointer_name,
+		.bit_size = 64,
+		.examined = 1,
+		.ctype = { .base_type = &complete_pointer }
+	};
+	struct symbol incomplete_member = {
+		.type = SYM_NODE,
+		.ident = pointer_name,
+		.bit_size = 64,
+		.examined = 1,
+		.ctype = { .base_type = &incomplete_pointer }
+	};
+	struct symbol target_member = {
+		.type = SYM_NODE,
+		.ident = value_name,
+		.bit_size = 32,
+		.examined = 1,
+		.ctype = { .base_type = &integer }
+	};
+
+	input_streams = streams;
+	input_stream_nr = 1;
+	add_symbol(&complete_target.symbol_list, &target_member);
+	add_symbol(&first.symbol_list, &complete_member);
+	add_symbol(&second.symbol_list, &incomplete_member);
+
+	type_registry_create();
+	register_symbol(&first);
+	register_symbol(&second);
+	check(type_registry_consistent(),
+	    "complete and incomplete pointer targets are compatible");
+	check(type_lookup_exact(&first) == type_lookup_exact(&second),
+	    "containing types unify with an incomplete pointer target");
+	check(type_lookup_exact(&complete_pointer) ==
+	    type_lookup_exact(&incomplete_pointer),
+	    "pointer types unify without unifying their incomplete target");
+	type_registry_destroy();
+
+	type_registry_create();
+	register_symbol(&second);
+	register_symbol(&first);
+	check(type_registry_consistent(),
+	    "incomplete pointer target compatibility is input-order independent");
+	check(type_lookup_exact(&first) == type_lookup_exact(&second),
+	    "reverse-order containing types unify");
+	type_registry_destroy();
+
+	incomplete_target.ident = other;
+	type_registry_create();
+	register_symbol(&first);
+	register_symbol(&second);
+	check(!type_registry_consistent(),
+	    "different incomplete pointer target tags are inconsistent");
+	type_registry_destroy();
+
+	incomplete_target.ident = target;
+	incomplete_target.namespace = NS_STRUCT;
+	complete_target.namespace = NS_STRUCT;
+	{
+		struct type_results results = { 0 };
+
+		type_registry_create();
+		register_symbol(&incomplete_target);
+		type_name_visit_types(target, collect_type, &results);
+		check(results.count == 0,
+		    "incomplete aggregate is absent from the name index");
+		register_symbol(&complete_target);
+		type_name_visit_types(target, collect_type, &results);
+		check(results.count == 1,
+		    "completed aggregate enters the name index");
+		type_registry_destroy();
+	}
+
+	free_ptr_list(&complete_target.symbol_list);
+	free_ptr_list(&first.symbol_list);
+	free_ptr_list(&second.symbol_list);
+}
+
 int
 main(void)
 {
@@ -777,6 +929,7 @@ main(void)
 	test_aggregate_members();
 	test_repeated_aggregate();
 	test_inconsistent_aggregate();
+	test_incomplete_pointer_targets();
 	if (failures != 0) {
 		(void) fprintf(stderr, "%u test failure%s\n", failures,
 		    failures == 1 ? "" : "s");
