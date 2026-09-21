@@ -1665,6 +1665,13 @@ ambiguous external definitions, exact indirect targets, roots, and
 reachability are determined with complete program knowledge.
 
 `callgraph_resolve()` closes construction and makes the graph ready.
+During resolution, callgraph attaches one owned descriptor through Sparse's
+backend-private `basic_block.priv` field for each block containing live calls.
+tree.  Each entry retains direct or indirect classification, the cached
+callee and resolution state, and direct-call ambiguity independently.  A null
+`basic_block.priv` authoritatively means that the block has no live calls and
+never triggers deferred resolution.  These descriptors have process lifetime
+and are neither traversed nor released during cleanup.
 Whole-function checker passes use opaque allocated iterators, and callee
 queries and audit output are accepted only in the ready state.  Each opened
 iterator must be closed.  After checker-owned attachments have been released,
@@ -2233,10 +2240,10 @@ intermediate-frame rendering remain optional future work.
 | --- | --- |
 | `callgraph_record_pointer_evidence()` | Use Sparse's source-use walker to record function-valued uses and optional function-pointer loads and stores, then record supported exact aggregate targets while a translation unit is current |
 | `callgraph_add()` | Retain a function and add its Sparse and C-identity indexes during construction |
-| `callgraph_resolve()` | Resolve identities and exact targets, classify roots, propagate reachability, and make the complete graph ready |
+| `callgraph_resolve()` | Resolve identities and exact targets, attach block-owned call-target caches, classify roots, propagate reachability, and make the complete graph ready |
 | `callgraph_iter_open()`, `callgraph_iter_next()`, `callgraph_iter_close()` | Allocate, advance, and dispose an opaque cursor over the ready function set |
-| `callgraph_callee()` | Resolve one direct call or supported exact indirect call through the common semantic edge interface |
-| `callgraph_ambiguous_callee()` | Report whether a direct call has multiple matching external definitions |
+| `callgraph_callee()` | Return the pre-resolved target of one direct call or supported exact indirect call through the common semantic edge interface |
+| `callgraph_ambiguous_callee()` | Return the cached indication that a direct call has multiple matching external definitions |
 | `callgraph_dump()` | Emit the deterministic callgraph audit to a caller-supplied stream |
 | `callgraph_cleanup()` | Verify iterator and attachment lifetimes, then release all callgraph-owned records and indexes |
 
@@ -2586,7 +2593,10 @@ The current implementation relies on these invariants:
 22. Callgraph mutation is confined to construction; iteration, callee queries,
     and audit output require the ready state.
 23. Every callgraph iterator is explicitly closed, and checker attachments are
-    released before callgraph-owned function records.
+    released before callgraph-owned function records.  After Sparse
+    linearization, callgraph owns `basic_block.priv` for process lifetime;
+    null means that the block has no live calls, while non-null points to an
+    AVL containing every live call and its pre-resolved target state.
 24. Exact address identity strips only pointer casts and constant pointer
     displacements; unrelated computed pseudos are never assumed equal.
 25. A type-scoped protector is rebased from the observed data address so it

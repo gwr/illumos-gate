@@ -36,6 +36,7 @@
 #include <errno.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -125,6 +126,31 @@ struct call_audit {
 	unsigned int sequence;
 };
 
+enum call_target_kind {
+	CALL_TARGET_DIRECT,
+	CALL_TARGET_INDIRECT
+};
+
+enum call_target_state {
+	CALL_TARGET_RESOLVED,
+	CALL_TARGET_UNRESOLVED,
+	CALL_TARGET_AMBIGUOUS
+};
+
+struct call_target_entry {
+	struct instruction *instruction;
+	struct function_info *callee;
+	enum call_target_kind kind;
+	enum call_target_state state;
+	bool direct_ambiguous;
+	avl_node_t node;
+};
+
+struct callgraph_block_info {
+	avl_tree_t entries;
+	struct call_target_entry entry[];
+};
+
 struct callgraph_iter {
 	struct function_record *next;
 	struct callgraph_iter *open_next;
@@ -154,6 +180,15 @@ static avl_tree_t function_pointer_activity_by_source;
 static bool function_pointer_activity_index_initialized;
 static bool record_function_pointer_activity;
 static unsigned int next_function_pointer_activity_sequence;
+
+static int
+compare_call_target_entry(const void *left_arg, const void *right_arg)
+{
+	const struct call_target_entry *left = left_arg;
+	const struct call_target_entry *right = right_arg;
+
+	return (AVL_CMP(left->instruction, right->instruction));
+}
 
 static struct function_record *
 function_record(struct function_info *function)
@@ -757,62 +792,145 @@ resolve_indirect_targets(void)
 	}
 }
 
-static struct function_info *
-direct_callee(const struct function_info *caller,
-    const struct instruction *insn)
-{
-	bool ambiguous;
-
-	if (insn->opcode != OP_CALL || insn->func == NULL ||
-	    insn->func->type != PSEUDO_SYM || insn->func->sym == NULL)
-		return (NULL);
-	return (resolve_function_symbol(caller->tu, insn->func->sym,
-	    true, &ambiguous));
-}
-
-static struct function_info *
-indirect_callee(const struct function_info *caller,
-    const struct instruction *insn)
+static void
+resolve_indirect_callee(const struct function_info *caller,
+    const struct instruction *insn, struct function_info **calleep,
+    bool *ambiguousp)
 {
 	struct locklint_access access;
 	struct indirect_target *entry;
 
+	*calleep = NULL;
+	*ambiguousp = false;
 	if (insn->opcode != OP_CALL || insn->call_expr == NULL ||
 	    !locklint_get_access(caller->tu, insn->call_expr->fn, &access))
-		return (NULL);
+		return;
 	for (entry = indirect_targets; entry != NULL; entry = entry->next) {
-		if (!entry->ambiguous && entry->target != NULL &&
-		    entry->tu == caller->tu && entry->object == access.root &&
+		if (entry->tu == caller->tu && entry->object == access.root &&
 		    entry->member == access.member &&
-		    entry->offset == access.offset)
-			return (entry->target);
+		    entry->offset == access.offset) {
+			*calleep = entry->target;
+			*ambiguousp = entry->ambiguous;
+			return;
+		}
 	}
-	return (NULL);
+}
+
+/*
+ * Resolve every live call once after whole-program target evidence is final.
+ * A null basic_block.priv then authoritatively means that the block contains
+ * no live calls; a populated tree contains every live call in the block.
+ */
+static void
+build_call_target_cache(void)
+{
+	struct function_record *function;
+
+	for (function = functions; function != NULL; function = function->next) {
+		struct basic_block *bb;
+
+		FOR_EACH_PTR(function->info.ep->bbs, bb) {
+			struct callgraph_block_info *info;
+			struct instruction *insn;
+			size_t count = 0;
+			size_t index = 0;
+
+			FOR_EACH_PTR(bb->insns, insn) {
+				if (insn->bb != NULL && insn->opcode == OP_CALL)
+					count++;
+			} END_FOR_EACH_PTR(insn);
+			bb->priv = NULL;
+			if (count == 0)
+				continue;
+			if (count > (SIZE_MAX - sizeof (*info)) /
+			    sizeof (*info->entry))
+				die("too many call instructions in one block");
+			info = calloc(1, sizeof (*info) +
+			    count * sizeof (*info->entry));
+			if (info == NULL)
+				die("out of memory caching call targets");
+			avl_create(&info->entries, compare_call_target_entry,
+			    sizeof (*info->entry),
+			    offsetof(struct call_target_entry, node));
+			FOR_EACH_PTR(bb->insns, insn) {
+				struct call_target_entry *entry;
+				bool direct;
+				bool direct_ambiguous = false;
+				bool indirect_ambiguous = false;
+
+				if (insn->bb == NULL || insn->opcode != OP_CALL)
+					continue;
+				entry = &info->entry[index++];
+				entry->instruction = insn;
+				direct = insn->func != NULL &&
+				    insn->func->type == PSEUDO_SYM &&
+				    insn->func->sym != NULL;
+				if (direct) {
+					entry->kind = CALL_TARGET_DIRECT;
+					entry->callee = resolve_function_symbol(
+					    function->info.tu, insn->func->sym,
+					    true, &direct_ambiguous);
+				}
+				if (entry->callee == NULL) {
+					struct function_info *indirect_callee;
+
+					resolve_indirect_callee(&function->info,
+					    insn, &indirect_callee,
+					    &indirect_ambiguous);
+					if (indirect_callee != NULL) {
+						entry->kind = CALL_TARGET_INDIRECT;
+						entry->callee = indirect_callee;
+					}
+				}
+				if (!direct)
+					entry->kind = CALL_TARGET_INDIRECT;
+				entry->direct_ambiguous = direct_ambiguous;
+				if (entry->callee != NULL)
+					entry->state = CALL_TARGET_RESOLVED;
+				else if (direct_ambiguous || indirect_ambiguous)
+					entry->state = CALL_TARGET_AMBIGUOUS;
+				else
+					entry->state = CALL_TARGET_UNRESOLVED;
+				avl_add(&info->entries, entry);
+			} END_FOR_EACH_PTR(insn);
+			bb->priv = info;
+		} END_FOR_EACH_PTR(bb);
+	}
+}
+
+static struct call_target_entry *
+find_call_target(const struct instruction *insn)
+{
+	struct callgraph_block_info *info;
+	struct call_target_entry key = { 0 };
+	struct call_target_entry *entry;
+
+	if (insn == NULL || insn->bb == NULL || insn->opcode != OP_CALL)
+		return (NULL);
+	info = insn->bb->priv;
+	if (info == NULL)
+		die("call instruction has no block target cache");
+	key.instruction = (struct instruction *)insn;
+	entry = avl_find(&info->entries, &key, NULL);
+	if (entry == NULL)
+		die("call instruction is absent from its block target cache");
+	return (entry);
 }
 
 static struct function_info *
-call_callee_impl(const struct function_info *caller,
-    const struct instruction *insn)
+call_callee_impl(const struct instruction *insn)
 {
-	struct function_info *callee;
+	struct call_target_entry *entry = find_call_target(insn);
 
-	callee = direct_callee(caller, insn);
-	return (callee != NULL ? callee : indirect_callee(caller, insn));
+	return (entry != NULL ? entry->callee : NULL);
 }
 
 static bool
-ambiguous_callee_impl(const struct function_info *caller,
-    const struct instruction *insn)
+ambiguous_callee_impl(const struct instruction *insn)
 {
-	struct function_info *function;
-	bool ambiguous;
+	struct call_target_entry *entry = find_call_target(insn);
 
-	if (insn->opcode != OP_CALL || insn->func == NULL ||
-	    insn->func->type != PSEUDO_SYM || insn->func->sym == NULL)
-		return (false);
-	function = resolve_function_symbol(caller->tu, insn->func->sym,
-	    true, &ambiguous);
-	return (function == NULL && ambiguous);
+	return (entry != NULL && entry->direct_ambiguous);
 }
 
 struct function_info *
@@ -820,7 +938,8 @@ callgraph_callee(const struct function_info *caller,
     const struct instruction *insn)
 {
 	require_state(CALLGRAPH_READY, "callee query");
-	return (call_callee_impl(caller, insn));
+	(void) caller;
+	return (call_callee_impl(insn));
 }
 
 bool
@@ -828,7 +947,8 @@ callgraph_ambiguous_callee(const struct function_info *caller,
     const struct instruction *insn)
 {
 	require_state(CALLGRAPH_READY, "ambiguous callee query");
-	return (ambiguous_callee_impl(caller, insn));
+	(void) caller;
+	return (ambiguous_callee_impl(insn));
 }
 
 static void
@@ -847,7 +967,7 @@ mark_reachable(struct function_info *function)
 
 			if (insn->bb == NULL)
 				continue;
-			callee = call_callee_impl(function, insn);
+			callee = call_callee_impl(insn);
 			if (callee != NULL)
 				mark_reachable(callee);
 		} END_FOR_EACH_PTR(insn);
@@ -874,7 +994,7 @@ classify_roots(void)
 
 				if (insn->bb == NULL)
 					continue;
-				callee = call_callee_impl(&function->info, insn);
+				callee = call_callee_impl(insn);
 				if (callee != NULL && callee != &function->info)
 					function_record(callee)->
 					    has_nonself_caller = true;
@@ -916,6 +1036,7 @@ callgraph_resolve(void)
 	callgraph_state = CALLGRAPH_RESOLVING;
 	resolve_indirect_targets();
 	resolve_function_escapes();
+	build_call_target_cache();
 	classify_roots();
 	callgraph_state = CALLGRAPH_READY;
 }
@@ -1019,26 +1140,22 @@ dump_function_calls(FILE *stream, struct function_info *function)
 	qsort(calls, count, sizeof (*calls), compare_call_audit);
 	for (index = 0; index < count; index++) {
 		struct instruction *insn = calls[index].insn;
-		struct function_info *callee = direct_callee(function, insn);
+		struct call_target_entry *entry = find_call_target(insn);
+		struct function_info *callee = entry->callee;
 		struct symbol *symbol = NULL;
 
 		(void) fprintf(stream, "  call %s:%u:%u ",
 		    stream_name(calls[index].pos.stream),
 		    calls[index].pos.line, calls[index].pos.pos);
 		if (callee != NULL) {
-			(void) fprintf(stream, "resolved %s tu=%s\n",
+			(void) fprintf(stream, "%s %s tu=%s\n",
+			    entry->kind == CALL_TARGET_DIRECT ?
+			    "resolved" : "resolved-indirect",
 			    function_name(callee),
 			    locklint_translation_unit_file(callee->tu));
 			continue;
 		}
-		callee = indirect_callee(function, insn);
-		if (callee != NULL) {
-			(void) fprintf(stream, "resolved-indirect %s tu=%s\n",
-			    function_name(callee),
-			    locklint_translation_unit_file(callee->tu));
-			continue;
-		}
-		if (ambiguous_callee_impl(function, insn)) {
+		if (entry->direct_ambiguous) {
 			(void) fprintf(stream, "ambiguous-external\n");
 			continue;
 		}
