@@ -70,7 +70,6 @@ struct annotation_ref {
 	struct symbol *root;
 	struct object_identity *object;
 	const struct ll_type *owner_type;
-	struct symbol *type;
 	const struct type_member *member;
 	unsigned long offset;
 	struct annotation_ref *replaces;
@@ -1065,7 +1064,6 @@ resolve_command_path(struct annotation_ref *ref, struct symbol *type)
 		type = member->ctype.base_type;
 		component = end != NULL ? end + 1 : NULL;
 	}
-	ref->type = type;
 	return (true);
 }
 
@@ -1154,6 +1152,7 @@ resolve_command_object(struct annotation *annotation, const char *name)
 	struct object_identity *object;
 	struct annotation_ref *ref;
 	struct symbol *root;
+	struct symbol *type;
 	const char *dot = strchr(name, '.');
 	size_t base_length = dot != NULL ? (size_t)(dot - name) : strlen(name);
 
@@ -1176,9 +1175,9 @@ resolve_command_object(struct annotation *annotation, const char *name)
 	    ANNOTATION_OBJECT);
 	ref->root = root;
 	ref->object = object;
-	ref->type = root->ctype.base_type;
-	ref->owner_type = type_lookup_exact(type_compound_resolve(ref->type));
-	if (ref->path != NULL && !resolve_command_path(ref, ref->type))
+	type = root->ctype.base_type;
+	ref->owner_type = type_lookup_exact(type_compound_resolve(type));
+	if (ref->path != NULL && !resolve_command_path(ref, type))
 		return (LOCKLINT_COMMAND_UNRESOLVED_NAME);
 	annotation->data = ref;
 	return (LOCKLINT_COMMAND_OK);
@@ -1250,7 +1249,8 @@ annotation_ref_name(const struct annotation_ref *ref)
 }
 
 static bool
-resolve_path(struct annotation_ref *ref, struct symbol *type)
+resolve_path(struct annotation_ref *ref, struct symbol *type,
+    struct symbol **resolved_type)
 {
 	const char *component = ref->path;
 	const char *end;
@@ -1293,7 +1293,7 @@ resolve_path(struct annotation_ref *ref, struct symbol *type)
 		free(name);
 		return (false);
 	}
-	ref->type = type;
+	*resolved_type = type;
 	return (true);
 }
 
@@ -1307,6 +1307,7 @@ resolve_annotation_ref(struct annotation_ref *ref, bool lock,
 {
 	struct ident *ident = built_in_ident(ref->base_name);
 	struct symbol *base;
+	struct symbol *type;
 
 	if (ref->scope == ANNOTATION_TYPE) {
 		base = resolve_type(ref->base_name);
@@ -1334,16 +1335,15 @@ resolve_annotation_ref(struct annotation_ref *ref, bool lock,
 		ref->root = base;
 		/* Object annotations may denote one object across translations. */
 		ref->object = locklint_object_identity(tu, base);
-		ref->type = base->ctype.base_type;
+		type = base->ctype.base_type;
 	} else {
-		/* C tag names have no linker identity; keep Sparse type identity. */
-		ref->type = base;
+		type = base;
 	}
-	ref->owner_type = type_lookup_exact(type_compound_resolve(ref->type));
-	if (ref->path != NULL && !resolve_path(ref, ref->type))
+	ref->owner_type = type_lookup_exact(type_compound_resolve(type));
+	if (ref->path != NULL && !resolve_path(ref, type, &type))
 		return (false);
 	if (lock && ref->scope == ANNOTATION_TYPE && ref->member == NULL &&
-	    type_compound_resolve(ref->type) != NULL) {
+	    type_compound_resolve(type) != NULL) {
 		char *name = annotation_ref_name(ref);
 
 		sparse_error(ref->pos,
@@ -1371,7 +1371,6 @@ clone_expanded_ref(const struct annotation_ref *source,
 	ref->root = source->root;
 	ref->object = source->object;
 	ref->owner_type = source->owner_type;
-	ref->type = member->ctype.base_type;
 	ref->member = type_member_lookup_exact(member);
 	if (ref->member == NULL)
 		die("missing canonical expanded member");
@@ -1452,7 +1451,17 @@ expand_data_refs(struct annotation *annotation)
 
 	for (ref = annotation->data; ref != NULL; ) {
 		struct annotation_ref *next = ref->next;
-		struct symbol *type = type_compound_resolve(ref->type);
+		struct symbol *type;
+
+		if (ref->member != NULL) {
+			type = ref->member->representative->ctype.base_type;
+		} else if (ref->owner_type != NULL) {
+			type = type_representative(ref->owner_type);
+		} else {
+			type = ref->root != NULL ?
+			    ref->root->ctype.base_type : NULL;
+		}
+		type = type_compound_resolve(type);
 
 		ref->next = NULL;
 		if (type != NULL)
