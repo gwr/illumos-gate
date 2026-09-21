@@ -20,16 +20,21 @@
 #include <stdio.h>
 
 struct ident;
+struct ll_type;
 struct symbol;
 struct symbol_list;
 
 typedef bool (*type_name_visit_f)(struct symbol *, void *);
+typedef bool (*type_visit_f)(const struct ll_type *, void *);
 
 void type_registry_create(void);
 void type_registry_destroy(void);
 struct symbol *type_node_strip(struct symbol *);
 struct symbol *type_compound_resolve(struct symbol *);
 void type_symbols_register(struct symbol_list *);
+const struct ll_type *type_lookup_exact(struct symbol *);
+size_t type_instance_count(const struct ll_type *);
+void type_name_visit_types(struct ident *, type_visit_f, void *);
 void type_name_visit(struct ident *, type_name_visit_f, void *);
 void type_registry_show(FILE *);
 

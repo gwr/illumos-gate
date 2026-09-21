@@ -157,11 +157,16 @@ PROV_TEST_OBJS = provenance_test.o provenance.o context.o statistics.o avl.o
 provenance_test: $(PROV_TEST_OBJS)
 	$(LINK.c) -o $@ $(PROV_TEST_OBJS) $(LDLIBS)
 
+TYPE_TEST_OBJS = type_test.o type.o statistics.o avl.o $(SPARSE_OBJS) \
+	hashtable.o
+type_test: $(TYPE_TEST_OBJS)
+	$(LINK.c) -o $@ $(TYPE_TEST_OBJS) $(LDLIBS)
+
 test: $(PROG) FRC
 	(cd tests && ./RunTests.sh)
 
 UNITTESTS = command_parse_test lock_identity_test binding_test context_test \
-	worklist_test dependency_test provenance_test
+	worklist_test dependency_test provenance_test type_test
 unittest: $(UNITTESTS) FRC
 	./command_parse_test command_parse_test.in
 	./lock_identity_test
@@ -170,6 +175,7 @@ unittest: $(UNITTESTS) FRC
 	./worklist_test
 	./dependency_test
 	./provenance_test
+	./type_test
 
 clean: FRC
 	$(RM) -f $(PROG) version.h *.o
