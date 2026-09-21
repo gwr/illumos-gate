@@ -138,6 +138,7 @@ statistics_show(FILE *stream)
 	SHOW(root_contexts_find);
 	SHOW(effect_contexts_find);
 	SHOW(cfg_point_states_find);
+	SHOW(fast_forwarded_instructions);
 	SHOW(backedge_point_states_find);
 	SHOW(backedge_record_point_states_find);
 	SHOW(call_exit_point_states_find);

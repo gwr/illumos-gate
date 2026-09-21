@@ -558,7 +558,7 @@ require_match "competition transitions" \
 require_match "competition semantic states" \
     '^semantic-states created 36 reused 8$' competition-depth-contexts.out
 require_match "competition point states" \
-    '^point-states created 144 reused 4$' competition-depth-contexts.out
+    '^point-states created 108 reused 4$' competition-depth-contexts.out
 require_match "visibility set baseline" \
     '^visibility-sets created 10 reused 0 retained 10$' \
     competition-depth-contexts.out
@@ -1250,7 +1250,7 @@ require_match "context counting" '^roots 1$' context-counting.out
 require_match "context counting" '^functions 2$' context-counting.out
 require_match "context counting" '^contexts created 2 reused 0$' \
     context-counting.out
-require_match "context counting" '^point-states created 32 reused 2$' \
+require_match "context counting" '^point-states created 16 reused 2$' \
     context-counting.out
 require_match "context counting" '^exits created 2 reused 0$' \
     context-counting.out
@@ -1271,7 +1271,10 @@ require_match "context counting call bindings find" \
 require_match "context counting call contexts find" \
     '^statistics call_contexts_find 1$' context-statistics.out
 require_match "context counting CFG point states find" \
-    '^statistics cfg_point_states_find 32$' context-statistics.out
+    '^statistics cfg_point_states_find 16$' context-statistics.out
+require_match "context counting fast-forwarded instructions" \
+    '^statistics fast_forwarded_instructions 23$' \
+    context-statistics.out
 require_match "context counting backedge point states find" \
     '^statistics backedge_point_states_find 1$' context-statistics.out
 require_match "context counting call exit point states find" \
@@ -1291,6 +1294,7 @@ for statistic in \
     root_contexts_find \
     effect_contexts_find \
     cfg_point_states_find \
+    fast_forwarded_instructions \
     backedge_point_states_find \
     backedge_record_point_states_find \
     call_exit_point_states_find \
@@ -1359,8 +1363,8 @@ do
 	    "^statistics $statistic [0-9][0-9]*$" context-statistics.out
 done
 if [ "$(grep -c '^statistics [a-z_]* [0-9][0-9]*$' \
-    context-statistics.out)" -ne 73 ]; then
-	fail "context statistics: expected exactly seventy-three statistics lines"
+    context-statistics.out)" -ne 74 ]; then
+	fail "context statistics: expected exactly seventy-four statistics lines"
 fi
 for histogram in \
     caller_recovery_first_max_depth \
@@ -1396,7 +1400,7 @@ require_match "context calls" '^binding-identities composed 4$' \
     context-calls.out
 require_match "context calls" '^contexts created 9 reused 6$' \
     context-calls.out
-require_match "context calls" '^point-states created 82 reused 3$' \
+require_match "context calls" '^point-states created 64 reused 3$' \
     context-calls.out
 require_match "context calls" '^exits created 9 reused 0$' \
     context-calls.out
@@ -1429,15 +1433,15 @@ require_match "context calls" \
     '^distribution semantic-states/function samples 7 total 7 max 1$' \
     context-calls.out
 require_match "context calls" \
-    '^distribution point-states/context samples 9 total 82 max 19$' \
+    '^distribution point-states/context samples 9 total 64 max 17$' \
     context-calls.out
 require_match "context calls histogram maximum bar" \
-    '^           4-7 |\*\{40\}| 4$' context-calls.out
+    '^           4-7 |\*\{26\}              | 2$' context-calls.out
 require_match "context calls histogram scaled bar" \
-    '^         16-31 |\*\{10\}                              | 1$' \
+    '^         16-31 |\*\{13\}                           | 1$' \
     context-calls.out
 require_match "context calls" \
-    '^distribution states/analysis-point samples 82 total 82 max 1$' \
+    '^distribution states/analysis-point samples 64 total 64 max 1$' \
     context-calls.out
 require_match "context calls" \
     '^distribution exits/context samples 9 total 9 max 1$' \

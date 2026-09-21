@@ -1394,9 +1394,30 @@ process_conditional_lock(struct analysis *analysis,
 }
 
 /*
- * Advance one point by one instruction, or fan a block-exit state out to its
- * CFG successors.  Keeping these transitions as separate queued facts makes
- * state reuse at joins and loop headers directly measurable.
+ * Calls, returns, memory accesses, and execution annotations either change
+ * state or are observed after the fixed point.  Other instructions can be
+ * crossed without retaining an intermediate point state.
+ */
+static bool
+instruction_requires_point_state(struct instruction *instruction)
+{
+	switch (instruction->opcode) {
+	case OP_CALL:
+	case OP_RET:
+	case OP_LOAD:
+	case OP_STORE:
+		return (true);
+	default:
+		return (locklint_get_execution_annotation(instruction) !=
+		    LOCKLINT_EXECUTION_NONE);
+	}
+}
+
+/*
+ * Advance one point to the next retained instruction, or fan a block-exit
+ * state out to its CFG successors.  Joins and loop headers remain canonical
+ * queued facts, while irrelevant straight-line instructions are crossed
+ * locally without changing the semantic state or conditional metadata.
  */
 static void
 process_point(struct analysis *analysis, struct point_state *point_state)
@@ -1420,8 +1441,12 @@ process_point(struct analysis *analysis, struct point_state *point_state)
 			process_call(analysis, point_state, state);
 			return;
 		}
-		point.next_instruction =
-		    next_live_instruction(point.block, point.next_instruction);
+		do {
+			statistics.fast_forwarded_instructions++;
+			point.next_instruction = next_live_instruction(point.block,
+			    point.next_instruction);
+		} while (point.next_instruction != NULL &&
+		    !instruction_requires_point_state(point.next_instruction));
 		record_analysis_point(analysis, point_state->context, point,
 		    apply_visibility_event(analysis, point_state), false);
 		return;

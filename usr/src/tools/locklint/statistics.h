@@ -54,6 +54,7 @@ struct statistics_counts {
 	size_t root_contexts_find;
 	size_t effect_contexts_find;
 	size_t cfg_point_states_find;
+	size_t fast_forwarded_instructions;
 	size_t backedge_point_states_find;
 	size_t backedge_record_point_states_find;
 	size_t call_exit_point_states_find;

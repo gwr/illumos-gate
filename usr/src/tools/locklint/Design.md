@@ -1373,6 +1373,15 @@ fact.  Containing and member entries otherwise remain separate, so the
 narrowest covering region continues to determine an access.  Distinct exits
 remain distinct caller point states.
 
+Caller-context analysis retains point states at calls, returns, loads, stores,
+execution annotations, and basic-block exits.  These points either change
+semantic state, participate in interprocedural propagation, or provide the
+reaching state for post-fixed-point diagnostics.  Other straight-line Sparse
+instructions are crossed locally without creating or queueing intermediate
+point states.  Block exits and successor entries remain canonical points, so
+joins, loop back-edge widening, and conditional-path metadata keep their
+existing behavior.
+
 Competition changes are inferred as function summaries and applied across
 resolved calls.  A summary retains the net output interval from exact depth
 zero, the separate output from ambient entry, and the minimum prefix for both
