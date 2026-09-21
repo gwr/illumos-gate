@@ -181,9 +181,8 @@ The main phases are:
    12. emit diagnostics while collecting observed acquisition edges; and
    13. report cycles in the observed lock-order graph.
 6. Emit other requested development dumps.  `--dump-types` lists every named
-   aggregate type retained in the process-wide type registry, including
-   distinct Sparse instances of a declaration included by multiple
-   translation units.
+   locklint type retained in the process-wide type registry and reports how
+   many exact Sparse instances each one represents.
    `--dump-all` includes this type registry and the whole-program call-graph
    audit.
 
@@ -219,6 +218,10 @@ size.  Depth zero is the queried context; each incoming caller edge adds one,
 including an edge into a synthetic root.  The iterative traversal retains
 depth only for the path which first schedules a context, so this is selected
 traversal depth rather than shortest graph distance.
+Type-policy statistics report expanded source type references before
+canonical deduplication, retained references, and discarded duplicates.  The
+three counters make the cross-translation-unit representation reduction
+directly measurable.
 The counters are collected unconditionally.  `--dump-statistics` controls only
 whether they are reported at final output.  It does not request context
 analysis, so development runs normally combine it with `--dump-contexts` or
@@ -624,23 +627,25 @@ valid.
 equivalent to `DATA_READABLE_WITHOUT_LOCK(data-name)`: matching reads do not
 require the otherwise declared protection, while writes remain protected.
 It accepts one externally linked object name or a type-member path such as
-`type::member.nested-member`.  Missing, malformed, and ambiguous names are
-errors.
+`type::member.nested-member`.  Missing and malformed names are errors.
 
 External objects use the same module-wide C object identity as source
-annotations and accesses.  Named aggregate types reachable from file-scope
-declarations and function signatures are retained while each translation
-unit is current.  Repeated instances of a type declaration from the same
-header source position are one command-file selection, and the declaration
-is applied to every such Sparse type instance.  Same-named types from
-different source declarations are ambiguous.  This permits one command to
-describe a header-defined structure used in several translation units without
-conflating unrelated translation-unit-local structure tags.
+annotations and accesses.  Named aggregate types reachable from file-scope declarations and function
+signatures are retained as canonical locklint types while each translation
+unit is current.  Repeated instances of a declaration at the same header
+source position share one locklint type.  Same-named locklint types from
+different origins are all selected when their layouts match; differing
+layouts make the command name inconsistently defined.  This permits one
+command to describe a header-defined structure used in several translation
+units without conflating unrelated translation-unit-local structure tags.
 
 Command-file readable declarations and source annotations use the same
-internal data-policy list.  Readable policy is additive, so exact duplicates
-are semantically harmless.  Each command declaration retains its command-file
-pathname and line number as provenance.
+internal data-policy list.  Resolved type-scoped references store canonical
+locklint owner and member pointers.  Repeated source references from one
+header declaration are retained once when their data and protector identities
+match; distinct source declarations and TU-local protectors remain separate.
+Each command declaration retains its command-file pathname and line number as
+provenance.
 
 The remaining `declare`, `assert`, and `ignore` forms continue to fail
 explicitly until their semantics are designed.
@@ -2131,9 +2136,11 @@ intermediate-frame rendering remain optional future work.
 
 | Function | Responsibility |
 | --- | --- |
-| `type_symbols_register()` | Retain named aggregate types found in one Sparse symbol list |
-| `type_name_visit()` | Visit retained Sparse type instances for one interned name |
-| `type_registry_show()` | Emit the complete retained registry for `--dump-types` |
+| `type_symbols_register()` | Build and validate canonical types reachable from one Sparse symbol list |
+| `type_name_visit_types()` | Visit canonical locklint types associated with one interned name |
+| `type_lookup_exact()` | Map one exact Sparse type to its canonical locklint type |
+| `type_member_lookup_exact()` | Map one exact Sparse member to its canonical member |
+| `type_registry_show()` | Emit canonical named types and their exact-instance counts for `--dump-types` |
 
 ### Access identity: `access.c`
 
