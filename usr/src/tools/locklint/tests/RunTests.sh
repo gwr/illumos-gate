@@ -383,7 +383,8 @@ compare "data policy annotations" data-policy-annotations.ref \
 # parsed, including a type declared separately in each translation unit.
 #
 run_capture "command readable provenance" command-readable-annotations.out \
-    "$LOCKLINT" --dump-annotations --cf commands/readable.cf \
+    "$LOCKLINT" --dump-annotations --dump-statistics \
+    --cf commands/readable.cf \
     commands/readable.c commands/readable-other.c
 require_match "command readable type provenance" \
     "commands/readable.cf:2: DATA_READABLE_WITHOUT_LOCK command_state::readable" \
@@ -396,6 +397,15 @@ if [ "$(grep -c \
     command-readable-annotations.out)" -ne 3 ]; then
 	fail "command readable provenance: expected three canonical policy references"
 fi
+require_match "command source type policy references resolved" \
+    '^statistics source_type_policy_refs_resolved 7$' \
+    command-readable-annotations.out
+require_match "command source type policy references retained" \
+    '^statistics source_type_policy_refs_retained 4$' \
+    command-readable-annotations.out
+require_match "command source type policy references deduplicated" \
+    '^statistics source_type_policy_refs_deduplicated 3$' \
+    command-readable-annotations.out
 
 run_capture "command type dump" command-types.out \
     "$LOCKLINT" --dump-types --dump-statistics \
@@ -1320,8 +1330,8 @@ do
 	    "^statistics $statistic [0-9][0-9]*$" context-statistics.out
 done
 if [ "$(grep -c '^statistics [a-z_]* [0-9][0-9]*$' \
-    context-statistics.out)" -ne 68 ]; then
-	fail "context statistics: expected exactly sixty-eight statistics lines"
+    context-statistics.out)" -ne 71 ]; then
+	fail "context statistics: expected exactly seventy-one statistics lines"
 fi
 for histogram in \
     caller_recovery_first_max_depth \

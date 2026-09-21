@@ -125,6 +125,9 @@ statistics_show(FILE *stream)
 	SHOW(type_registry_duplicates);
 	SHOW(type_registry_insertions);
 	SHOW(type_registry_comparisons);
+	SHOW(source_type_policy_refs_resolved);
+	SHOW(source_type_policy_refs_retained);
+	SHOW(source_type_policy_refs_deduplicated);
 
 	SHOW(call_binding_environments_find);
 	SHOW(root_binding_environments_find);

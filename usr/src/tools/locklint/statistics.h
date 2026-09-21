@@ -41,6 +41,9 @@ struct statistics_counts {
 	size_t type_registry_duplicates;
 	size_t type_registry_insertions;
 	size_t type_registry_comparisons;
+	size_t source_type_policy_refs_resolved;
+	size_t source_type_policy_refs_retained;
+	size_t source_type_policy_refs_deduplicated;
 
 	size_t call_binding_environments_find;
 	size_t root_binding_environments_find;

@@ -34,6 +34,7 @@
 #include "lock_identity.h"
 #include "parse.h"
 #include "scope.h"
+#include "statistics.h"
 #include "symbol.h"
 #include "token.h"
 #include "type.h"
@@ -1483,11 +1484,12 @@ static void
 deduplicate_type_policy_refs(struct annotation *annotation)
 {
 	struct annotation_ref **link = &annotation->data;
+	bool can_deduplicate;
 
-	if (annotation->command_file != NULL ||
-	    (annotation->lock != NULL &&
-	    annotation->lock->scope != ANNOTATION_TYPE))
+	if (annotation->command_file != NULL)
 		return;
+	can_deduplicate = annotation->lock == NULL ||
+	    annotation->lock->scope == ANNOTATION_TYPE;
 	while (*link != NULL) {
 		struct annotation_ref *ref = *link;
 		struct policy_ref_index_entry key = {
@@ -1516,6 +1518,12 @@ deduplicate_type_policy_refs(struct annotation *annotation)
 			link = &ref->next;
 			continue;
 		}
+		statistics.source_type_policy_refs_resolved++;
+		if (!can_deduplicate) {
+			statistics.source_type_policy_refs_retained++;
+			link = &ref->next;
+			continue;
+		}
 		entry = avl_find(&policy_ref_index, &key, &where);
 		if (entry == NULL) {
 			entry = malloc(sizeof (*entry));
@@ -1523,9 +1531,11 @@ deduplicate_type_policy_refs(struct annotation *annotation)
 				die("out of memory indexing canonical policy");
 			*entry = key;
 			avl_insert(&policy_ref_index, entry, where);
+			statistics.source_type_policy_refs_retained++;
 			link = &ref->next;
 			continue;
 		}
+		statistics.source_type_policy_refs_deduplicated++;
 		*link = ref->next;
 		free(ref->base_name);
 		free(ref->path);
