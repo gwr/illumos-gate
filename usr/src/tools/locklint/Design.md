@@ -645,6 +645,49 @@ comments, and passes the remaining whitespace-separated words to one
 `cmd_*()` handler per command.  Empty and comment-only command files are
 valid.
 
+### Command-language direction
+
+The intended general declaration grammar is:
+
+```text
+declare option... name...
+```
+
+This records the direction for future commands; only the forms listed under
+**Implemented forms** are currently accepted.  Options precede one or more
+names so that one property set can be applied to several entities.  A name may
+denote a function, object, type member path, lock, or another analysis entity;
+it need not be a C symbol.  Each option determines the kinds of names it
+accepts, and unresolved, ambiguous, or incompatible names are errors.
+
+Boolean options use explicit values, such as `--root=true` and
+`--competing-threads=false`.  An unspecified option remains distinct from
+either explicit value.  Separate declarations may accumulate nonconflicting
+properties, but contradictory explicit values are errors rather than
+order-dependent overrides.
+
+Options should describe independent facts.  For example, root selection,
+initial competition state, and the treatment of external linkage are
+separate properties:
+
+```text
+declare --root=true --competing-threads=false _init _fini
+declare --external-entry=false usbvc_alloc_map_bufs
+declare --external-entry=false usbvc_open_isoc_pipe
+declare --external-entry=false usbvc_start_isoc_polling
+declare --readable-without-lock=true state_type::status global_status
+```
+
+Here `--external-entry=false` suppresses only the external-linkage reason
+for automatic root discovery.  Other evidence, including the absence of a
+known caller or an unaccounted function-pointer escape, would still make the
+function a root.  That option is implemented; the other option names and
+examples in this subsection are provisional.  Existing positional command
+forms remain unchanged until a compatible migration is designed and
+implemented.  Backslash line continuation is not yet supported.
+
+### Implemented forms
+
 `declare readable data-name` applies data policy from outside the source.  It is
 equivalent to `DATA_READABLE_WITHOUT_LOCK(data-name)`: matching reads do not
 require the otherwise declared protection, while writes remain protected.
@@ -678,13 +721,24 @@ entry state is propagated through ordinary resolved calls, so a module loader
 entry can establish the state used to validate assertions in cross-translation
 unit helpers.
 
+`declare --external-entry=boolean function-name...` declares whether unique
+external function definitions are entries from outside the analyzed inputs.
+Options must precede the names.  Explicit `false` suppresses only the
+external-linkage automatic-root reason; no-known-direct-caller and
+function-pointer-escape reasons remain effective.  Explicit `true` retains
+the external-linkage root reason even when explicit entry declarations have
+otherwise selected closed external-entry scope.  Repeated equal declarations
+are accepted, contradictory values are errors, and the declaration source is
+retained as callgraph-audit provenance.
+
 The presence of any explicit entry declaration selects explicit
 external-entry scope for that analysis.  External linkage alone then stops
-being a root reason.  Declared entries remain roots, as do functions with no
-known direct caller and functions with unaccounted pointer escapes.  This
-distinguishes a module's externally invoked entries from external linkage
-used only to connect its translation units without discarding conservative
-roots discovered from other evidence.
+being a root reason for functions without an explicit `--external-entry`
+property.  Declared entries and functions with `--external-entry=true` remain
+roots, as do functions with no known direct caller and functions with
+unaccounted pointer escapes.  This distinguishes a module's externally
+invoked entries from external linkage used only to connect its translation
+units without discarding conservative roots discovered from other evidence.
 
 The remaining `declare`, `assert`, and `ignore` forms continue to fail
 explicitly until their semantics are designed.
@@ -1751,8 +1805,9 @@ visible as unresolved indirect calls.
 
 ### Root discovery and explicit entries
 
-Without explicit entry declarations, root classification is conservative and
-automatic.  A function accumulates every applicable root reason:
+Without explicit entry declarations or per-function external-entry
+properties, root classification is conservative and automatic.  A function
+accumulates every applicable root reason:
 
 - **external linkage** - code outside the analyzed inputs may call it;
 - **no known direct caller** - no resolved non-self edge accounts for entry;
@@ -1769,6 +1824,11 @@ no-known-direct-caller and function-pointer-escape discovery remain active.
 An external helper reached through a resolved cross-translation-unit call
 therefore receives only its caller-derived contexts unless other evidence
 makes it independently reachable.
+
+`declare --external-entry=false function-name...` provides the same narrow
+external-linkage suppression per function without changing the default scope
+for other external definitions.  An explicit true value makes external
+linkage a root reason for that function even in explicit external-entry scope.
 
 Function-pointer escape includes implicit function-to-pointer conversion, not
 only an explicit unary `&`.  Locklint therefore does not rely solely on

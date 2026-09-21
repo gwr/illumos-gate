@@ -1,0 +1,2 @@
+declare entry no-competing-threads _init
+declare --external-entry=true command_entry_helper

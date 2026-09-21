@@ -28,7 +28,8 @@ struct translation_unit;
 enum callgraph_declare_result {
 	CALLGRAPH_DECLARE_OK,
 	CALLGRAPH_DECLARE_UNRESOLVED,
-	CALLGRAPH_DECLARE_AMBIGUOUS
+	CALLGRAPH_DECLARE_AMBIGUOUS,
+	CALLGRAPH_DECLARE_CONFLICT
 };
 
 /*
@@ -63,6 +64,14 @@ void callgraph_record_pointer_evidence(struct translation_unit *,
 enum callgraph_declare_result
 callgraph_declare_entry_no_competing_threads(const char *, const char *,
     unsigned long);
+
+/*
+ * Declare whether an externally defined function is an entry from outside
+ * the analyzed inputs.  False suppresses only the external-linkage automatic
+ * root reason; other root evidence remains effective.
+ */
+enum callgraph_declare_result callgraph_declare_external_entry(const char *,
+    bool, const char *, unsigned long);
 
 /*
  * Close construction, resolve function identities and indirect targets,

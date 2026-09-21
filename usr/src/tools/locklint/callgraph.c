@@ -68,6 +68,12 @@ enum function_root_reason {
 	FUNCTION_ROOT_DECLARED_ENTRY = 1 << 3
 };
 
+enum function_external_entry {
+	FUNCTION_EXTERNAL_ENTRY_UNSPECIFIED,
+	FUNCTION_EXTERNAL_ENTRY_TRUE,
+	FUNCTION_EXTERNAL_ENTRY_FALSE
+};
+
 struct function_record {
 	struct function_info info;
 	bool has_nonself_caller;
@@ -78,6 +84,9 @@ struct function_record {
 	unsigned int identity_sequence;
 	const char *entry_declaration_file;
 	unsigned long entry_declaration_line;
+	enum function_external_entry external_entry;
+	const char *external_entry_file;
+	unsigned long external_entry_line;
 	avl_node_t by_entrypoint;
 	avl_node_t by_identity;
 	struct function_record *next;
@@ -749,6 +758,40 @@ callgraph_declare_entry_no_competing_threads(const char *name,
 	return (CALLGRAPH_DECLARE_OK);
 }
 
+/*
+ * Record an explicit external-entry property on the unique external
+ * definition.  Repeated equal declarations are harmless, while contradictory
+ * declarations are rejected independently of command-file order.
+ */
+enum callgraph_declare_result
+callgraph_declare_external_entry(const char *name, bool value,
+    const char *file, unsigned long line)
+{
+	struct symbol symbol = {
+		.ident = built_in_ident(name)
+	};
+	struct function_record *function;
+	enum function_external_entry setting = value ?
+	    FUNCTION_EXTERNAL_ENTRY_TRUE : FUNCTION_EXTERNAL_ENTRY_FALSE;
+	bool ambiguous;
+
+	require_state(CALLGRAPH_CONSTRUCTING, "external-entry declaration");
+	function = find_external_function(&symbol, &ambiguous);
+	if (ambiguous)
+		return (CALLGRAPH_DECLARE_AMBIGUOUS);
+	if (function == NULL)
+		return (CALLGRAPH_DECLARE_UNRESOLVED);
+	if (function->external_entry != FUNCTION_EXTERNAL_ENTRY_UNSPECIFIED &&
+	    function->external_entry != setting)
+		return (CALLGRAPH_DECLARE_CONFLICT);
+	if (function->external_entry == FUNCTION_EXTERNAL_ENTRY_UNSPECIFIED) {
+		function->external_entry = setting;
+		function->external_entry_file = file;
+		function->external_entry_line = line;
+	}
+	return (CALLGRAPH_DECLARE_OK);
+}
+
 static struct function_info *
 resolve_function_symbol(struct translation_unit *tu, struct symbol *symbol,
     bool use_inline_implementation, bool *ambiguous)
@@ -1039,8 +1082,14 @@ classify_roots(void)
 	for (function = functions; function != NULL; function = function->next) {
 		unsigned long modifiers =
 		    function->info.ep->name->ctype.modifiers;
+		bool external_entry;
 
-		if (!has_declared_entries && !function->internal_linkage &&
+		external_entry =
+		    function->external_entry == FUNCTION_EXTERNAL_ENTRY_TRUE ||
+		    (function->external_entry ==
+		    FUNCTION_EXTERNAL_ENTRY_UNSPECIFIED &&
+		    !has_declared_entries);
+		if (external_entry && !function->internal_linkage &&
 		    !function->inline_implementation)
 			function->info.root_reasons |= FUNCTION_ROOT_EXTERNAL;
 		if (!function->has_nonself_caller &&
@@ -1247,6 +1296,15 @@ callgraph_dump(FILE *stream)
 			    "  root declared-entry no-competing-threads %s:%lu\n",
 			    function->entry_declaration_file,
 			    function->entry_declaration_line);
+		}
+		if (function->external_entry !=
+		    FUNCTION_EXTERNAL_ENTRY_UNSPECIFIED) {
+			(void) fprintf(stream,
+			    "  property external-entry=%s %s:%lu\n",
+			    function->external_entry ==
+			    FUNCTION_EXTERNAL_ENTRY_TRUE ? "true" : "false",
+			    function->external_entry_file,
+			    function->external_entry_line);
 		}
 		dump_function_calls(stream, &function->info);
 	}

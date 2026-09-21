@@ -1,0 +1,2 @@
+declare --external-entry=false external_entry_called
+declare --external-entry=true external_entry_called

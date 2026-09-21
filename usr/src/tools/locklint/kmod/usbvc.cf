@@ -9,6 +9,13 @@
 # "one usbvc_state".  Native locklint distinguishes concrete object
 # identities and needs no equivalent declaration for this focused module.
 #
+# These externally linked functions are module-private helpers, not entries
+# from outside the analyzed module.  Other independently discovered root
+# reasons remain effective.
+declare --external-entry=false usbvc_alloc_map_bufs
+declare --external-entry=false usbvc_open_isoc_pipe
+declare --external-entry=false usbvc_start_isoc_polling
+#
 # The historical bus_ops mappings cannot affect usbvc because its dev_ops
 # contains no bus_ops vector or call site.
 #

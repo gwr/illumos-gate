@@ -1,0 +1,1 @@
+declare --external-entry=false external_entry_called external_entry_called_too external_entry_caller_free external_entry_escaped

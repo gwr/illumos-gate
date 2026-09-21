@@ -533,6 +533,116 @@ require_match "command entry ambiguous" \
     "ambiguous function name 'ambiguous_target'" \
     command-entry-ambiguous.out
 
+#
+# Verify the options-first declaration grammar and the narrow suppression of
+# external-linkage automatic roots.  Other independent root reasons remain.
+#
+run_capture "command external entry" command-external-entry.out \
+    "$LOCKLINT" --dump-callgraph \
+    --cf commands/external-entry.cf \
+    commands/external-entry.c commands/external-entry-helper.c
+require_match "command external entry no-caller root" \
+    "^function external_entry_caller_free .* reachable=yes$" \
+    command-external-entry.out
+require_match "command external entry escape root" \
+    "^function external_entry_escaped .* reachable=yes$" \
+    command-external-entry.out
+require_match "command external entry declaration provenance" \
+    "property external-entry=false commands/external-entry.cf:1" \
+    command-external-entry.out
+if awk '
+    /^function external_entry_called / { helper = 1; next }
+    /^function / { helper = 0 }
+    helper && /^  root / { found = 1 }
+    END { exit found ? 0 : 1 }
+' command-external-entry.out; then
+	fail "command external entry known-caller helper remained a root"
+fi
+if awk '
+    /^function external_entry_called_too / { helper = 1; next }
+    /^function / { helper = 0 }
+    helper && /^  root / { found = 1 }
+    END { exit found ? 0 : 1 }
+' command-external-entry.out; then
+	fail "command external entry second known-caller helper remained a root"
+fi
+if ! awk '
+    /^function external_entry_caller_free / { helper = 1; next }
+    /^function / { helper = 0 }
+    helper && /^  root no-known-direct-caller$/ { found = 1 }
+    END { exit found ? 0 : 1 }
+' command-external-entry.out; then
+	fail "command external entry lost no-caller root"
+fi
+if ! awk '
+    /^function external_entry_escaped / { helper = 1; next }
+    /^function / { helper = 0 }
+    helper && /^  root function-pointer-escape/ { found = 1 }
+    END { exit found ? 0 : 1 }
+' command-external-entry.out; then
+	fail "command external entry lost pointer-escape root"
+fi
+run_failure "command external entry no name" \
+    command-external-entry-no-name.out \
+    "$LOCKLINT" --cf commands/external-entry-no-name.cf \
+    commands/external-entry.c commands/external-entry-helper.c
+require_match "command external entry no name" \
+    "declare requires at least one name" \
+    command-external-entry-no-name.out
+run_failure "command external entry invalid value" \
+    command-external-entry-invalid-value.out \
+    "$LOCKLINT" --cf commands/external-entry-invalid-value.cf \
+    commands/external-entry.c commands/external-entry-helper.c
+require_match "command external entry invalid value" \
+    "invalid Boolean value 'unknown' for option '--external-entry'" \
+    command-external-entry-invalid-value.out
+run_failure "command external entry option after name" \
+    command-external-entry-option-after-name.out \
+    "$LOCKLINT" --cf commands/external-entry-option-after-name.cf \
+    commands/external-entry.c commands/external-entry-helper.c
+require_match "command external entry option after name" \
+    "declaration options must precede names" \
+    command-external-entry-option-after-name.out
+run_failure "command external entry unresolved" \
+    command-external-entry-unresolved.out \
+    "$LOCKLINT" --cf commands/external-entry-unresolved.cf \
+    commands/external-entry.c commands/external-entry-helper.c
+require_match "command external entry unresolved" \
+    "unresolved function name 'missing_external_entry'" \
+    command-external-entry-unresolved.out
+run_failure "command external entry ambiguous" \
+    command-external-entry-ambiguous.out \
+    "$LOCKLINT" --dump-callgraph \
+    --cf commands/external-entry-ambiguous.cf \
+    ambiguous-call-first.c ambiguous-call-second.c
+require_match "command external entry ambiguous" \
+    "ambiguous function name 'ambiguous_target'" \
+    command-external-entry-ambiguous.out
+run_failure "command external entry conflict" \
+    command-external-entry-conflict.out \
+    "$LOCKLINT" --dump-callgraph \
+    --cf commands/external-entry-conflict.cf \
+    commands/external-entry.c commands/external-entry-helper.c
+require_match "command external entry conflict" \
+    "conflicting value for option '--external-entry' on function 'external_entry_called'" \
+    command-external-entry-conflict.out
+run_capture "command external entry true" \
+    command-external-entry-true.out \
+    "$LOCKLINT" --dump-callgraph \
+    --cf commands/external-entry-true.cf \
+    commands/entry-competition.c commands/entry-competition-helper.c
+if ! awk '
+    /^function command_entry_helper / { helper = 1; next }
+    /^function / { helper = 0 }
+    helper && /^  root external-linkage$/ { found = 1 }
+    END { exit found ? 0 : 1 }
+' command-external-entry-true.out; then
+	fail "command external entry true did not retain external root"
+fi
+require_match "command external entry true provenance" \
+    "property external-entry=true commands/external-entry-true.cf:2" \
+    command-external-entry-true.out
+
 run_capture "rwlock annotations" rwlock-annotations.out \
     "$LOCKLINT" --dump-annotations rwlock.c
 compare "rwlock annotations" rwlock-annotations.ref \

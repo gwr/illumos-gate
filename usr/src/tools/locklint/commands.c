@@ -27,6 +27,107 @@ not_implemented(const char *command)
 	return (command_parse_error("%s command is not implemented", command));
 }
 
+struct declare_options {
+	bool external_entry_set;
+	bool external_entry;
+};
+
+static int
+parse_boolean_option(const char *option, const char *name, bool *value)
+{
+	const char *text;
+	size_t length = strlen(name);
+
+	if (strncmp(option, name, length) != 0 || option[length] != '=')
+		return (0);
+	text = option + length + 1;
+	if (strcmp(text, "true") == 0) {
+		*value = true;
+		return (1);
+	}
+	if (strcmp(text, "false") == 0) {
+		*value = false;
+		return (1);
+	}
+	return (command_parse_error(
+	    "invalid Boolean value '%s' for option '%s'", text, name));
+}
+
+static int
+declare_external_entry(const struct declare_options *options,
+    const char *name)
+{
+	enum callgraph_declare_result result;
+
+	result = callgraph_declare_external_entry(name, options->external_entry,
+	    command_parse_path(), command_parse_line());
+	switch (result) {
+	case CALLGRAPH_DECLARE_OK:
+		return (0);
+	case CALLGRAPH_DECLARE_UNRESOLVED:
+		return (command_parse_error("unresolved function name '%s'",
+		    name));
+	case CALLGRAPH_DECLARE_AMBIGUOUS:
+		return (command_parse_error("ambiguous function name '%s'",
+		    name));
+	case CALLGRAPH_DECLARE_CONFLICT:
+		return (command_parse_error("conflicting value for option "
+		    "'--external-entry' on function '%s'", name));
+	default:
+		return (command_parse_error(
+		    "internal error resolving function name '%s'", name));
+	}
+}
+
+/*
+ * Parse the options-first declaration form.  All options are validated before
+ * applying the property set to any name.
+ */
+static int
+declare_options(int argc, char **argv)
+{
+	struct declare_options options = { 0 };
+	int first_name;
+	int i;
+
+	for (first_name = 0; first_name < argc; first_name++) {
+		bool value;
+		int result;
+
+		if (strncmp(argv[first_name], "--", 2) != 0)
+			break;
+		result = parse_boolean_option(argv[first_name],
+		    "--external-entry", &value);
+		if (result < 0)
+			return (-1);
+		if (result == 0) {
+			return (command_parse_error(
+			    "unknown declaration option '%s'",
+			    argv[first_name]));
+		}
+		if (options.external_entry_set &&
+		    options.external_entry != value) {
+			return (command_parse_error(
+			    "conflicting values for option '--external-entry'"));
+		}
+		options.external_entry_set = true;
+		options.external_entry = value;
+	}
+	if (first_name == argc)
+		return (command_parse_error("declare requires at least one name"));
+	for (i = first_name; i < argc; i++) {
+		if (strncmp(argv[i], "--", 2) == 0) {
+			return (command_parse_error(
+			    "declaration options must precede names"));
+		}
+	}
+	for (i = first_name; i < argc; i++) {
+		if (declare_external_entry(&options, argv[i]) != 0)
+			return (-1);
+	}
+	return (0);
+}
+
 static int
 declare_entry(int argc, char **argv)
 {
@@ -69,6 +170,8 @@ cmd_declare(int argc, char **argv)
 
 	if (argc == 0)
 		return (command_parse_error("declare requires a declaration kind"));
+	if (strncmp(argv[0], "--", 2) == 0)
+		return (declare_options(argc, argv));
 	if (strcmp(argv[0], "entry") == 0)
 		return (declare_entry(argc, argv));
 	if (strcmp(argv[0], "readable") != 0)
