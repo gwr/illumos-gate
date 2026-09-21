@@ -73,6 +73,17 @@ register_symbol(struct symbol *symbol)
 }
 
 static void
+register_type(struct symbol *type)
+{
+	struct symbol declaration = {
+		.type = SYM_NODE,
+		.ctype = { .base_type = type }
+	};
+
+	register_symbol(&declaration);
+}
+
+static void
 test_type_indexes(void)
 {
 	char first_header[] = "common.h";
@@ -152,10 +163,269 @@ test_type_indexes(void)
 	type_registry_destroy();
 }
 
+static void
+test_type_shapes(void)
+{
+	struct stream streams[] = {
+		{ .name = "shared.h" },
+		{ .name = "shared.h" },
+		{ .name = "other.h" }
+	};
+	struct symbol signed_int_first = {
+		.type = SYM_BASETYPE,
+		.bit_size = 32,
+		.examined = 1,
+		.ctype = {
+			.modifiers = MOD_SIGNED,
+			.alignment = 4,
+			.base_type = &int_type
+		}
+	};
+	struct symbol signed_int_second = {
+		.type = SYM_BASETYPE,
+		.bit_size = 32,
+		.examined = 1,
+		.ctype = {
+			.modifiers = MOD_SIGNED | MOD_EXPLICITLY_SIGNED,
+			.alignment = 4,
+			.base_type = &int_type
+		}
+	};
+	struct symbol unsigned_int = {
+		.type = SYM_BASETYPE,
+		.bit_size = 32,
+		.examined = 1,
+		.ctype = {
+			.modifiers = MOD_UNSIGNED,
+			.alignment = 4,
+			.base_type = &int_type
+		}
+	};
+	struct symbol pointer_first = {
+		.type = SYM_PTR,
+		.bit_size = 64,
+		.examined = 1,
+		.ctype = {
+			.alignment = 8,
+			.base_type = &signed_int_first
+		}
+	};
+	struct symbol pointer_second = {
+		.type = SYM_PTR,
+		.bit_size = 64,
+		.examined = 1,
+		.ctype = {
+			.alignment = 8,
+			.base_type = &signed_int_second
+		}
+	};
+	struct symbol pointer_unsigned = {
+		.type = SYM_PTR,
+		.bit_size = 64,
+		.examined = 1,
+		.ctype = {
+			.alignment = 8,
+			.base_type = &unsigned_int
+		}
+	};
+	struct symbol const_first = {
+		.type = SYM_NODE,
+		.bit_size = 32,
+		.examined = 1,
+		.ctype = {
+			.modifiers = MOD_CONST,
+			.alignment = 4,
+			.base_type = &signed_int_first
+		}
+	};
+	struct symbol const_second = {
+		.type = SYM_NODE,
+		.bit_size = 32,
+		.examined = 1,
+		.ctype = {
+			.modifiers = MOD_CONST,
+			.alignment = 4,
+			.base_type = &signed_int_second
+		}
+	};
+	struct symbol plain_wrapper = {
+		.type = SYM_NODE,
+		.bit_size = 32,
+		.examined = 1,
+		.ctype = {
+			.alignment = 4,
+			.base_type = &signed_int_first
+		}
+	};
+	struct symbol array_four_first = {
+		.type = SYM_ARRAY,
+		.bit_size = 128,
+		.examined = 1,
+		.ctype = {
+			.alignment = 4,
+			.base_type = &signed_int_first
+		}
+	};
+	struct symbol array_four_second = {
+		.type = SYM_ARRAY,
+		.bit_size = 128,
+		.examined = 1,
+		.ctype = {
+			.alignment = 4,
+			.base_type = &signed_int_second
+		}
+	};
+	struct symbol array_eight = {
+		.type = SYM_ARRAY,
+		.bit_size = 256,
+		.examined = 1,
+		.ctype = {
+			.alignment = 4,
+			.base_type = &signed_int_first
+		}
+	};
+	struct symbol aggregate_first = {
+		.type = SYM_STRUCT,
+		.pos = { .stream = 0, .line = 20, .pos = 2 },
+		.examined = 1
+	};
+	struct symbol aggregate_second = {
+		.type = SYM_STRUCT,
+		.pos = { .stream = 1, .line = 20, .pos = 2 },
+		.examined = 1
+	};
+	struct symbol aggregate_other = {
+		.type = SYM_STRUCT,
+		.pos = { .stream = 2, .line = 20, .pos = 2 },
+		.examined = 1
+	};
+	struct symbol aggregate_pointer_first = {
+		.type = SYM_PTR,
+		.bit_size = 64,
+		.examined = 1,
+		.ctype = {
+			.alignment = 8,
+			.base_type = &aggregate_first
+		}
+	};
+	struct symbol aggregate_pointer_second = {
+		.type = SYM_PTR,
+		.bit_size = 64,
+		.examined = 1,
+		.ctype = {
+			.alignment = 8,
+			.base_type = &aggregate_second
+		}
+	};
+	struct symbol aggregate_pointer_other = {
+		.type = SYM_PTR,
+		.bit_size = 64,
+		.examined = 1,
+		.ctype = {
+			.alignment = 8,
+			.base_type = &aggregate_other
+		}
+	};
+	struct symbol argument_first = {
+		.type = SYM_NODE,
+		.examined = 1,
+		.ctype = { .base_type = &pointer_first }
+	};
+	struct symbol argument_second = {
+		.type = SYM_NODE,
+		.examined = 1,
+		.ctype = { .base_type = &pointer_second }
+	};
+	struct symbol function_first = {
+		.type = SYM_FN,
+		.examined = 1,
+		.ctype = { .base_type = &signed_int_first }
+	};
+	struct symbol function_second = {
+		.type = SYM_FN,
+		.examined = 1,
+		.ctype = { .base_type = &signed_int_second }
+	};
+	struct symbol function_variadic = {
+		.type = SYM_FN,
+		.variadic = 1,
+		.examined = 1,
+		.ctype = { .base_type = &signed_int_first }
+	};
+
+	input_streams = streams;
+	input_stream_nr = sizeof (streams) / sizeof (streams[0]) - 1;
+	add_symbol(&function_first.arguments, &argument_first);
+	add_symbol(&function_second.arguments, &argument_second);
+	add_symbol(&function_variadic.arguments, &argument_first);
+	type_registry_create();
+	register_type(&pointer_first);
+	register_type(&pointer_second);
+	register_type(&pointer_unsigned);
+	register_type(&const_first);
+	register_type(&const_second);
+	register_type(&plain_wrapper);
+	register_type(&array_four_first);
+	register_type(&array_four_second);
+	register_type(&array_eight);
+	register_type(&aggregate_pointer_first);
+	register_type(&aggregate_pointer_second);
+	register_type(&aggregate_pointer_other);
+	register_type(&function_first);
+	register_type(&function_second);
+	register_type(&function_variadic);
+
+	check(type_lookup_exact(&signed_int_first) ==
+	    type_lookup_exact(&signed_int_second),
+	    "equivalent basic types are interned");
+	check(type_lookup_exact(&signed_int_first) !=
+	    type_lookup_exact(&unsigned_int),
+	    "different basic signedness remains distinct");
+	check(type_lookup_exact(&pointer_first) ==
+	    type_lookup_exact(&pointer_second),
+	    "equivalent pointer types are interned");
+	check(type_lookup_exact(&pointer_first) !=
+	    type_lookup_exact(&pointer_unsigned),
+	    "pointer referent is part of its shape");
+	check(type_lookup_exact(&const_first) ==
+	    type_lookup_exact(&const_second),
+	    "equivalent qualified types are interned");
+	check(type_lookup_exact(&const_first) !=
+	    type_lookup_exact(&signed_int_first),
+	    "qualifiers are part of type shape");
+	check(type_lookup_exact(&plain_wrapper) ==
+	    type_lookup_exact(&signed_int_first),
+	    "plain Sparse node wrapper is normalized away");
+	check(type_lookup_exact(&array_four_first) ==
+	    type_lookup_exact(&array_four_second),
+	    "equivalent array types are interned");
+	check(type_lookup_exact(&array_four_first) !=
+	    type_lookup_exact(&array_eight),
+	    "array extent is part of type shape");
+	check(type_lookup_exact(&aggregate_pointer_first) ==
+	    type_lookup_exact(&aggregate_pointer_second),
+	    "pointer shape uses the locklint aggregate type");
+	check(type_lookup_exact(&aggregate_pointer_first) !=
+	    type_lookup_exact(&aggregate_pointer_other),
+	    "different aggregate origins produce different pointer types");
+	check(type_lookup_exact(&function_first) ==
+	    type_lookup_exact(&function_second),
+	    "equivalent function types are interned");
+	check(type_lookup_exact(&function_first) !=
+	    type_lookup_exact(&function_variadic),
+	    "function variadic flag is part of its shape");
+
+	type_registry_destroy();
+	free_ptr_list(&function_first.arguments);
+	free_ptr_list(&function_second.arguments);
+	free_ptr_list(&function_variadic.arguments);
+}
+
 int
 main(void)
 {
 	test_type_indexes();
+	test_type_shapes();
 	if (failures != 0) {
 		(void) fprintf(stderr, "%u test failure%s\n", failures,
 		    failures == 1 ? "" : "s");
