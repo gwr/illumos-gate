@@ -90,6 +90,8 @@ struct pending_member_mapping {
 struct type_validation {
 	avl_tree_t types_by_exact;
 	struct pending_member_mapping *members;
+	struct symbol *mismatch;
+	const char *reason;
 };
 
 static avl_tree_t type_name_to_sparse_type_index;
@@ -99,6 +101,9 @@ static avl_tree_t sparse_type_to_ll_type_index;
 static avl_tree_t sparse_member_to_type_member_index;
 static avl_tree_t type_name_to_ll_type_index;
 static bool type_registry_is_consistent;
+static struct symbol *type_registry_mismatch;
+static const char *type_registry_mismatch_reason;
+static struct position type_registry_mismatch_position;
 
 static enum type
 type_kind(const struct ll_type *type)
@@ -271,6 +276,9 @@ type_registry_create(void)
 	    sizeof (struct type_name_to_ll_type),
 	    offsetof(struct type_name_to_ll_type, by_name));
 	type_registry_is_consistent = true;
+	type_registry_mismatch = NULL;
+	type_registry_mismatch_reason = NULL;
+	type_registry_mismatch_position = (struct position){ 0 };
 }
 
 void
@@ -446,6 +454,8 @@ type_validation_create(struct type_validation *validation)
 	    sizeof (struct pending_type_mapping),
 	    offsetof(struct pending_type_mapping, by_exact));
 	validation->members = NULL;
+	validation->mismatch = NULL;
+	validation->reason = NULL;
 }
 
 static void
@@ -463,6 +473,17 @@ type_validation_destroy(struct type_validation *validation)
 		validation->members = member->next;
 		free(member);
 	}
+}
+
+static bool
+type_validation_mismatch(struct type_validation *validation,
+    struct symbol *exact, const char *reason)
+{
+	if (validation->reason == NULL) {
+		validation->mismatch = exact;
+		validation->reason = reason;
+	}
+	return (false);
 }
 
 /*
@@ -519,8 +540,10 @@ type_validate_member(struct type_validation *validation,
 	    exact->offset != representative->offset ||
 	    exact->bit_size != representative->bit_size ||
 	    exact->bit_offset != representative->bit_offset ||
-	    is_bitfield_type(exact) != is_bitfield_type(representative) ||
-	    !type_validate_exact(validation, exact->ctype.base_type,
+	    is_bitfield_type(exact) != is_bitfield_type(representative))
+		return (type_validation_mismatch(validation, exact,
+		    "member layout differs"));
+	if (!type_validate_exact(validation, exact->ctype.base_type,
 	    member->type))
 		return (false);
 	type_validation_add_member(validation, exact, member);
@@ -536,7 +559,8 @@ type_validate_struct(struct type_validation *validation, struct symbol *exact,
 
 	if (ptr_list_size((struct ptr_list *)exact->symbol_list) !=
 	    type->member_count)
-		return (false);
+		return (type_validation_mismatch(validation, exact,
+		    "member count differs"));
 	FOR_EACH_PTR(exact->symbol_list, member) {
 		if (!type_validate_member(validation, member,
 		    &type->members[index++]))
@@ -555,7 +579,8 @@ type_validate_union(struct type_validation *validation, struct symbol *exact,
 
 	if (ptr_list_size((struct ptr_list *)exact->symbol_list) !=
 	    type->member_count)
-		return (false);
+		return (type_validation_mismatch(validation, exact,
+		    "member count differs"));
 	matched = calloc(type->member_count, sizeof (*matched));
 	if (matched == NULL && type->member_count != 0)
 		die("out of memory validating union");
@@ -570,6 +595,9 @@ type_validate_union(struct type_validation *validation, struct symbol *exact,
 		if (index == type->member_count ||
 		    !type_validate_member(validation, member,
 		    &type->members[index])) {
+			if (index == type->member_count)
+				(void) type_validation_mismatch(validation, member,
+				    "union member differs");
 			free(matched);
 			return (false);
 		}
@@ -678,7 +706,9 @@ type_validate_exact(struct type_validation *validation, struct symbol *exact,
 	int entered;
 
 	if (exact == NULL || type == NULL)
-		return (exact == NULL && type == NULL);
+		return (exact == NULL && type == NULL ? true :
+		    type_validation_mismatch(validation, exact,
+		    "referenced type is incomplete"));
 	mapped = type_exact_find(exact, NULL);
 	if (mapped != NULL)
 		return (mapped == type);
@@ -700,7 +730,8 @@ type_validate_exact(struct type_validation *validation, struct symbol *exact,
 		    exact->ctype.base_type, type));
 	}
 	if (exact->type != type_kind(type))
-		return (false);
+		return (type_validation_mismatch(validation, exact,
+		    "type kind differs"));
 	entered = type_validation_enter(validation, exact, type);
 	if (entered <= 0)
 		return (entered == 0);
@@ -713,7 +744,8 @@ type_validate_exact(struct type_validation *validation, struct symbol *exact,
 	    (exact->type == SYM_NODE || exact->type == SYM_TYPEDEF ?
 	    type_node_address_space(exact) : exact->ctype.as) !=
 	    type->address_space)
-		return (false);
+		return (type_validation_mismatch(validation, exact,
+		    "type size, alignment, or qualifiers differ"));
 
 	switch (exact->type) {
 	case SYM_BASETYPE:
@@ -758,7 +790,8 @@ type_validate_exact(struct type_validation *validation, struct symbol *exact,
 			return (type_validate_union(validation, exact, type));
 		return (type_validate_enum(exact, type->representative));
 	default:
-		return (false);
+		return (type_validation_mismatch(validation, exact,
+		    "unsupported type differs"));
 	}
 }
 
@@ -784,8 +817,16 @@ type_repeated_definition_record(struct symbol *exact, struct ll_type *type)
 
 	type_validation_create(&validation);
 	matches = type_validate_exact(&validation, exact, type);
-	if (matches)
+	if (matches) {
 		type_validation_publish(&validation);
+	} else {
+		type_registry_mismatch = exact;
+		type_registry_mismatch_reason = validation.reason != NULL ?
+		    validation.reason : "definition differs";
+		type_registry_mismatch_position =
+		    validation.mismatch != NULL ?
+		    validation.mismatch->pos : exact->pos;
+	}
 	type_validation_destroy(&validation);
 	return (matches);
 }
@@ -934,6 +975,8 @@ type_intern(struct symbol *exact)
 	bool created;
 
 	if (exact == NULL)
+		return (NULL);
+	if (!type_registry_is_consistent)
 		return (NULL);
 	type = type_exact_find(exact, NULL);
 	if (type != NULL)
@@ -1151,6 +1194,21 @@ bool
 type_registry_consistent(void)
 {
 	return (type_registry_is_consistent);
+}
+
+void
+type_registry_report_errors(void)
+{
+	struct symbol *type = type_registry_mismatch;
+	const char *kind;
+
+	if (type == NULL)
+		return;
+	kind = type->type == SYM_STRUCT ? "struct" :
+	    type->type == SYM_UNION ? "union" : "enum";
+	sparse_error(type_registry_mismatch_position,
+	    "locklint: %s '%s' is inconsistently defined: %s",
+	    kind, show_ident(type->ident), type_registry_mismatch_reason);
 }
 
 void

@@ -941,6 +941,27 @@ require_match "forced include multiple inputs" \
     forced-include-multiple.out
 
 #
+# Verify that repeated definitions from a shared header are accepted only
+# when their layouts agree across translation units.
+#
+run_capture "shared header type consistency" type-consistency.out \
+    "$LOCKLINT" --dump-types type-consistency-first.c \
+    type-consistency-second.c
+reject_match "shared header type consistency" "inconsistently defined" \
+    type-consistency.out
+if [ "$(grep -c '^type shared_type kind=struct source=type-consistency.h:' \
+    type-consistency.out)" -ne 2 ]; then
+	fail "shared header type consistency: expected two exact types"
+fi
+
+run_failure "shared header type inconsistency" \
+    type-consistency-mismatch.out "$LOCKLINT" --dump-types \
+    type-consistency-first.c type-consistency-mismatch.c
+require_match "shared header type inconsistency" \
+    "struct 'shared_type' is inconsistently defined" \
+    type-consistency-mismatch.out
+
+#
 # Verify unresolved mutex annotation names produce diagnostics.
 #
 echo "test: annotation errors"

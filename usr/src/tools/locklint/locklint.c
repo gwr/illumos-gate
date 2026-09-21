@@ -419,6 +419,12 @@ main(int argc, char **argv)
 	timing_begin(TIMING_INPUT_CLEANUP);
 	clear_token_alloc();
 	timing_end(TIMING_INPUT_CLEANUP);
+	if (!type_registry_consistent()) {
+		type_registry_report_errors();
+		locklint_access_cleanup();
+		type_registry_destroy();
+		return (EXIT_FAILURE);
+	}
 	timing_begin(TIMING_COMMANDS);
 	if (!parse_command_files()) {
 		locklint_access_cleanup();
