@@ -1352,6 +1352,12 @@ type_lookup_exact(struct symbol *symbol)
 	return (exact == NULL ? NULL : exact->type);
 }
 
+struct symbol *
+type_representative(const struct ll_type *type)
+{
+	return (type == NULL ? NULL : type->representative);
+}
+
 size_t
 type_instance_count(const struct ll_type *type)
 {

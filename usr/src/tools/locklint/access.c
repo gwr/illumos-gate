@@ -514,8 +514,17 @@ locklint_same_access(const struct locklint_access *left,
 		return (false);
 	if (left->path != NULL && right->path != NULL)
 		return (left->path == right->path);
-	if (left->object == NULL)
-		return (left->member == right->member);
+	if (left->object == NULL) {
+		const struct type_member *member;
+
+		if (left->member == right->member)
+			return (true);
+		if (left->member == NULL || right->member == NULL)
+			return (false);
+		member = type_member_lookup_exact(left->member);
+		return (member != NULL &&
+		    member == type_member_lookup_exact(right->member));
+	}
 	/* Separately parsed declarations have distinct member symbols. */
 	return (same_ident(left->member != NULL ? left->member->ident : NULL,
 	    right->member != NULL ? right->member->ident : NULL));

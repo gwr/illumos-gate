@@ -67,9 +67,9 @@ struct annotation_ref {
 	char *path;
 	struct symbol *root;
 	struct object_identity *object;
-	struct symbol *owner_type;
+	const struct ll_type *owner_type;
 	struct symbol *type;
-	struct symbol *member;
+	const struct type_member *member;
 	unsigned long offset;
 	struct annotation_ref *replaces;
 	struct annotation_ref *replaced_by;
@@ -991,7 +991,9 @@ resolve_command_path(struct annotation_ref *ref, struct symbol *type)
 		member = find_identifier(ident, type->symbol_list, &offset);
 		if (member == NULL)
 			return (false);
-		ref->member = member;
+		ref->member = type_member_lookup_exact(member);
+		if (ref->member == NULL)
+			die("missing canonical command-file member");
 		ref->offset += offset;
 		type = member->ctype.base_type;
 		component = end != NULL ? end + 1 : NULL;
@@ -1032,7 +1034,9 @@ annotations_type_resolve(struct symbol *type, void *data_arg)
 
 	ref = new_command_ref(data->name, data->base_length, data->path,
 	    ANNOTATION_TYPE);
-	ref->owner_type = type;
+	ref->owner_type = type_lookup_exact(type);
+	if (ref->owner_type == NULL)
+		die("missing canonical command-file type");
 	if (!resolve_command_path(ref, type)) {
 		data->result = LOCKLINT_COMMAND_UNRESOLVED_NAME;
 		return (false);
@@ -1107,7 +1111,7 @@ resolve_command_object(struct annotation *annotation, const char *name)
 	ref->root = root;
 	ref->object = object;
 	ref->type = root->ctype.base_type;
-	ref->owner_type = type_compound_resolve(ref->type);
+	ref->owner_type = type_lookup_exact(type_compound_resolve(ref->type));
 	if (ref->path != NULL && !resolve_command_path(ref, ref->type))
 		return (LOCKLINT_COMMAND_UNRESOLVED_NAME);
 	annotation->data = ref;
@@ -1208,7 +1212,9 @@ resolve_path(struct annotation_ref *ref, struct symbol *type)
 		member = find_identifier(ident, type->symbol_list, &offset);
 		if (member == NULL)
 			break;
-		ref->member = member;
+		ref->member = type_member_lookup_exact(member);
+		if (ref->member == NULL)
+			die("missing canonical annotation member");
 		ref->offset += offset;
 		type = member->ctype.base_type;
 		component = end != NULL ? end + 1 : NULL;
@@ -1267,7 +1273,7 @@ resolve_annotation_ref(struct annotation_ref *ref, bool lock,
 		/* C tag names have no linker identity; keep Sparse type identity. */
 		ref->type = base;
 	}
-	ref->owner_type = type_compound_resolve(ref->type);
+	ref->owner_type = type_lookup_exact(type_compound_resolve(ref->type));
 	if (ref->path != NULL && !resolve_path(ref, ref->type))
 		return (false);
 	if (lock && ref->scope == ANNOTATION_TYPE && ref->member == NULL &&
@@ -1300,7 +1306,9 @@ clone_expanded_ref(const struct annotation_ref *source,
 	ref->object = source->object;
 	ref->owner_type = source->owner_type;
 	ref->type = member->ctype.base_type;
-	ref->member = member;
+	ref->member = type_member_lookup_exact(member);
+	if (ref->member == NULL)
+		die("missing canonical expanded member");
 	ref->offset = source->offset + member->offset;
 	return (ref);
 }
@@ -1338,7 +1346,8 @@ expand_compound_ref(struct annotation_ref *source, struct symbol *type,
 			}
 			continue;
 		}
-		if (lock != NULL && member == lock->member) {
+		if (lock != NULL &&
+		    type_member_lookup_exact(member) == lock->member) {
 			struct locklint_access lock_access = { 0 };
 			struct locklint_access source_access = { 0 };
 
@@ -1391,25 +1400,6 @@ expand_data_refs(struct annotation *annotation)
 }
 
 static bool
-same_type_identity(struct symbol *left, struct symbol *right)
-{
-	const struct ll_type *type = type_lookup_exact(left);
-
-	return (type != NULL && type == type_lookup_exact(right));
-}
-
-static bool
-same_member_identity(struct symbol *left, struct symbol *right)
-{
-	const struct type_member *member;
-
-	if (left == NULL || right == NULL)
-		return (left == right);
-	member = type_member_lookup_exact(left);
-	return (member != NULL && member == type_member_lookup_exact(right));
-}
-
-static bool
 same_data_ref(const struct annotation_ref *left,
     const struct annotation_ref *right)
 {
@@ -1426,16 +1416,18 @@ same_data_ref(const struct annotation_ref *left,
 			return (false);
 		left_access.root = left->root;
 		left_access.object = left->object;
-		left_access.member = left->member;
+		left_access.member = left->member != NULL ?
+		    left->member->representative : NULL;
 		left_access.offset = left->offset;
 		right_access.root = right->root;
 		right_access.object = right->object;
-		right_access.member = right->member;
+		right_access.member = right->member != NULL ?
+		    right->member->representative : NULL;
 		right_access.offset = right->offset;
 		return (locklint_same_access(&left_access, &right_access));
 	}
-	return (same_type_identity(left->owner_type, right->owner_type) &&
-	    same_member_identity(left->member, right->member) &&
+	return (left->owner_type == right->owner_type &&
+	    left->member == right->member &&
 	    left->offset == right->offset);
 }
 
@@ -1739,16 +1731,17 @@ matching_data_ref(const struct annotation_ref *ref,
 
 		target.root = ref->root;
 		target.object = ref->object;
-		target.member = ref->member;
+		target.member = ref->member != NULL ?
+		    ref->member->representative : NULL;
 		target.offset = ref->offset;
 		if (!locklint_same_access(&target, access))
 			return (false);
 		*base = 0;
 		return (true);
 	}
-	if (!same_member_identity(ref->member, access->member) ||
+	if (ref->member != type_member_lookup_exact(access->member) ||
 	    !locklint_access_base_canonical(access,
-	    type_lookup_exact(ref->owner_type), ref->offset, base))
+	    ref->owner_type, ref->offset, base))
 		return (false);
 	return (true);
 }
@@ -1760,8 +1753,9 @@ annotation_ref_access(const struct annotation_ref *ref,
 	*access = (struct locklint_access){ 0 };
 	access->root = ref->root;
 	access->object = ref->object;
-	access->type = ref->owner_type;
-	access->member = ref->member;
+	access->type = type_representative(ref->owner_type);
+	access->member = ref->member != NULL ?
+	    ref->member->representative : NULL;
 	access->offset = ref->offset;
 }
 
@@ -1848,15 +1842,13 @@ locklint_data_policy(const struct locklint_access *access,
 				policy->protection = LOCKLINT_PROTECTION_MUTEX;
 				protector = annotation->lock;
 				protector_base = base;
-				protected_owner =
-				    type_lookup_exact(ref->owner_type);
+				protected_owner = ref->owner_type;
 				break;
 			case ANNOTATION_RWLOCK_PROTECTS_DATA:
 				policy->protection = LOCKLINT_PROTECTION_RWLOCK;
 				protector = annotation->lock;
 				protector_base = base;
-				protected_owner =
-				    type_lookup_exact(ref->owner_type);
+				protected_owner = ref->owner_type;
 				break;
 			case ANNOTATION_SCHEME_PROTECTS_DATA:
 				policy->protection = LOCKLINT_PROTECTION_SCHEME;
@@ -1880,19 +1872,18 @@ locklint_data_policy(const struct locklint_access *access,
 		bool have_lock_base = true;
 
 		if (protector->root == NULL &&
-		    type_lookup_exact(protector->owner_type) !=
-		    protected_owner) {
+		    protector->owner_type != protected_owner) {
 			have_lock_base =
 			    locklint_access_containing_base_canonical(access,
-			    type_lookup_exact(protector->owner_type),
-			    protector_base, &lock_base);
+			    protector->owner_type, protector_base, &lock_base);
 		}
 		lock->root = protector->root != NULL ?
 		    protector->root : access->root;
 		lock->object = protector->root != NULL ?
 		    protector->object : access->object;
-		lock->type = protector->owner_type;
-		lock->member = protector->member;
+		lock->type = type_representative(protector->owner_type);
+		lock->member = protector->member != NULL ?
+		    protector->member->representative : NULL;
 		lock->offset = (protector->root != NULL ? 0 :
 		    (have_lock_base ? lock_base : protector_base)) +
 		    protector->offset;
@@ -1947,13 +1938,16 @@ locklint_for_each_order_edge(locklint_order_edge_f callback, void *data)
 
 			left_access.root = left->root;
 			left_access.object = left->object;
-			left_access.type = left->owner_type;
-			left_access.member = left->member;
+			left_access.type = type_representative(left->owner_type);
+			left_access.member = left->member != NULL ?
+			    left->member->representative : NULL;
 			left_access.offset = left->offset;
 			right_access.root = right->root;
 			right_access.object = right->object;
-			right_access.type = right->owner_type;
-			right_access.member = right->member;
+			right_access.type =
+			    type_representative(right->owner_type);
+			right_access.member = right->member != NULL ?
+			    right->member->representative : NULL;
 			right_access.offset = right->offset;
 			left_name = annotation_ref_name(left);
 			right_name = annotation_ref_name(right);

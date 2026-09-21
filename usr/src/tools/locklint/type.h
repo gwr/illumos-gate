@@ -38,6 +38,7 @@ struct symbol *type_node_strip(struct symbol *);
 struct symbol *type_compound_resolve(struct symbol *);
 void type_symbols_register(struct symbol_list *);
 const struct ll_type *type_lookup_exact(struct symbol *);
+struct symbol *type_representative(const struct ll_type *);
 size_t type_instance_count(const struct ll_type *);
 const struct type_member *type_members(const struct ll_type *);
 size_t type_member_count(const struct ll_type *);
