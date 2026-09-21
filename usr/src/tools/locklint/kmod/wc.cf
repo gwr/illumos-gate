@@ -2,6 +2,9 @@
 #
 # The devfs side of the virtual-console implementation only reads these
 # globals; writes remain subject to their ordinary protection requirements.
+declare entry no-competing-threads _init
+declare entry no-competing-threads _fini
+
 declare readable wc_dip
 declare readable vc_active_console
 declare readable vc_cons_user

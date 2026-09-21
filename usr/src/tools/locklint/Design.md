@@ -645,7 +645,7 @@ comments, and passes the remaining whitespace-separated words to one
 `cmd_*()` handler per command.  Empty and comment-only command files are
 valid.
 
-`declare readable data-name` is the first implemented semantic form.  It is
+`declare readable data-name` applies data policy from outside the source.  It is
 equivalent to `DATA_READABLE_WITHOUT_LOCK(data-name)`: matching reads do not
 require the otherwise declared protection, while writes remain protected.
 It accepts one externally linked object name or a type-member path such as
@@ -670,6 +670,21 @@ Retained data references enter the same ordered policy index as source
 annotations.
 Each command declaration retains its command-file pathname and line number as
 provenance.
+
+`declare entry no-competing-threads function-name` declares a unique
+external function definition as an analysis entry whose competition depth is
+exactly zero.  Missing and ambiguous function names are errors.  Declared
+entry state is propagated through ordinary resolved calls, so a module loader
+entry can establish the state used to validate assertions in cross-translation
+unit helpers.
+
+The presence of any explicit entry declaration selects explicit
+external-entry scope for that analysis.  External linkage alone then stops
+being a root reason.  Declared entries remain roots, as do functions with no
+known direct caller and functions with unaccounted pointer escapes.  This
+distinguishes a module's externally invoked entries from external linkage
+used only to connect its translation units without discarding conservative
+roots discovered from other evidence.
 
 The remaining `declare`, `assert`, and `ignore` forms continue to fail
 explicitly until their semantics are designed.
@@ -1201,7 +1216,9 @@ means definite competition, and an interval spanning zero means possible
 competition.  Differing incoming depths retain path-dependent provenance.
 Loop bounds that do not stabilize widen to an unbounded endpoint.
 
-Function entry starts with an ambient interval from zero through one.
+An automatically discovered root starts with an ambient interval from zero
+through one.  A command-file `no-competing-threads` entry instead starts at
+exact depth zero.
 The first `NO_COMPETING_THREADS_NOW` consumes the possible implicit competing
 level and establishes depth zero; the first `COMPETING_THREADS_NOW`
 establishes depth one.  Subsequent annotations decrement or increment exact
@@ -1732,10 +1749,10 @@ Callback registration, pointer copies, mutable pointer variables, and indexed
 target sets likewise remain outside this exact case.  Their calls stay
 visible as unresolved indirect calls.
 
-### Automatic root discovery
+### Root discovery and explicit entries
 
-Root classification is conservative and automatic.  A function accumulates
-every applicable root reason:
+Without explicit entry declarations, root classification is conservative and
+automatic.  A function accumulates every applicable root reason:
 
 - **external linkage** - code outside the analyzed inputs may call it;
 - **no known direct caller** - no resolved non-self edge accounts for entry;
@@ -1743,6 +1760,15 @@ every applicable root reason:
   indirect edges; and
 - **function pointer escape** - the function is used as a value outside a
   resolved call.
+
+One or more `declare entry no-competing-threads function-name` commands switch
+the analysis to explicit external-entry scope.  Each selected function gains
+a **declared entry** root reason and an exact zero competition entry
+condition.  External linkage by itself no longer supplies a root reason;
+no-known-direct-caller and function-pointer-escape discovery remain active.
+An external helper reached through a resolved cross-translation-unit call
+therefore receives only its caller-derived contexts unless other evidence
+makes it independently reachable.
 
 Function-pointer escape includes implicit function-to-pointer conversion, not
 only an explicit unary `&`.  Locklint therefore does not rely solely on
@@ -1831,23 +1857,6 @@ load or store appears once, so one pointer copy normally produces two entries.
 An indirect call appears only as a call and not as a duplicate
 function-pointer load.  These rules keep golden output stable and limit
 redundant pointer evidence.
-
-### Future explicit roots
-
-Automatic discovery is additive and does not preclude user-supplied roots.
-Two possible future interfaces are:
-
-- command-line options for roots specific to one analysis invocation; and
-- source annotations for entry points that are properties of the source
-  module.
-
-Both would add distinct root reasons to the same function record.  A source
-annotation would resolve a file-static name in its defining translation unit.
-A command-line selector for a file-static function would require
-translation-unit qualification.  Missing or ambiguous explicit selections
-must be errors.  The syntax and implementation of both interfaces remain
-TBD.  Initially they would only add roots; suppressing an automatically
-inferred root is a separate, more dangerous operation.
 
 ## Function entry protection conditions
 

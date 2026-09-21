@@ -1,0 +1,3 @@
+# Kernel module loader entry points run without competing threads.
+declare entry no-competing-threads _init
+declare entry no-competing-threads _fini

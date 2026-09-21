@@ -25,6 +25,12 @@ struct instruction;
 struct symbol_list;
 struct translation_unit;
 
+enum callgraph_declare_result {
+	CALLGRAPH_DECLARE_OK,
+	CALLGRAPH_DECLARE_UNRESOLVED,
+	CALLGRAPH_DECLARE_AMBIGUOUS
+};
+
 /*
  * The callgraph progresses through four states:
  *
@@ -48,6 +54,15 @@ void callgraph_add(struct translation_unit *, struct entrypoint *);
  */
 void callgraph_record_pointer_evidence(struct translation_unit *,
     struct symbol_list *, bool record_activity);
+
+/*
+ * Declare an externally named analysis entry with an exact no-competition
+ * entry condition.  The declaration is accepted while the graph is under
+ * construction, after all translation units have registered their functions.
+ */
+enum callgraph_declare_result
+callgraph_declare_entry_no_competing_threads(const char *, const char *,
+    unsigned long);
 
 /*
  * Close construction, resolve function identities and indirect targets,

@@ -57,6 +57,7 @@ struct function_info {
 	struct assumed_region **assumed_regions_tail;
 	unsigned int root_reasons;
 	bool reachable_from_root;
+	bool entry_no_competing_threads;
 };
 
 #endif /* FUNCTION_INFO_H */

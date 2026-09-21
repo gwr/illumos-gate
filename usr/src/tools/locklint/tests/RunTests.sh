@@ -484,6 +484,55 @@ require_match "command readable inconsistent type" \
     "inconsistently defined type in data name 'repeated_name::value'" \
     command-readable-inconsistent.out
 
+#
+# Verify that explicit entry declarations replace external-linkage-only root
+# inference and propagate their competition condition through resolved calls.
+# Caller-free functions must remain roots for independent analysis.
+#
+run_capture "command entry competition" command-entry-competition.out \
+    "$LOCKLINT" --check-locks --dump-callgraph \
+    --cf commands/entry-competition.cf \
+    commands/entry-competition.c commands/entry-competition-helper.c
+require_match "command entry retained caller-free root" \
+    "commands/entry-competition.c:47:9: warning: locklint: competing threads exist at NO_COMPETING_THREADS assertion" \
+    command-entry-competition.out
+reject_match "command entry helper assertion" \
+    "commands/entry-competition-helper.c:29:9: warning: locklint:" \
+    command-entry-competition.out
+require_match "command entry helper reachable" \
+    "^function command_entry_helper .* reachable=yes$" \
+    command-entry-competition.out
+require_match "command entry declaration provenance" \
+    "root declared-entry no-competing-threads commands/entry-competition.cf:2" \
+    command-entry-competition.out
+if awk '
+    /^function command_entry_helper / { helper = 1; next }
+    /^function / { helper = 0 }
+    helper && /^  root / { found = 1 }
+    END { exit found ? 0 : 1 }
+' command-entry-competition.out; then
+	fail "command entry helper unexpectedly remained an analysis root"
+fi
+run_failure "command entry arity" command-entry-arity.out \
+    "$LOCKLINT" --cf commands/entry-competition-arity.cf \
+    commands/entry-competition.c commands/entry-competition-helper.c
+require_match "command entry arity" \
+    "declare entry requires 'no-competing-threads' and one function name" \
+    command-entry-arity.out
+run_failure "command entry unresolved" command-entry-unresolved.out \
+    "$LOCKLINT" --cf commands/entry-competition-unresolved.cf \
+    commands/entry-competition.c commands/entry-competition-helper.c
+require_match "command entry unresolved" \
+    "unresolved function name 'missing_entry'" \
+    command-entry-unresolved.out
+run_failure "command entry ambiguous" command-entry-ambiguous.out \
+    "$LOCKLINT" --dump-callgraph \
+    --cf commands/entry-competition-ambiguous.cf \
+    ambiguous-call-first.c ambiguous-call-second.c
+require_match "command entry ambiguous" \
+    "ambiguous function name 'ambiguous_target'" \
+    command-entry-ambiguous.out
+
 run_capture "rwlock annotations" rwlock-annotations.out \
     "$LOCKLINT" --dump-annotations rwlock.c
 compare "rwlock annotations" rwlock-annotations.ref \

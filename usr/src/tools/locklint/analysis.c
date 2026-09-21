@@ -1503,7 +1503,11 @@ seed_root(struct analysis *analysis, struct function_info *function)
 	else
 		analysis->counts.binding_environments_created++;
 	statistics.root_semantic_states_find++;
-	error = context_entry_state_intern(function, &state, &existed);
+	if (function->entry_no_competing_threads) {
+		error = context_empty_state_intern(function, &state, &existed);
+	} else {
+		error = context_entry_state_intern(function, &state, &existed);
+	}
 	if (error != 0)
 		die("cannot intern root state: %s", strerror(error));
 	record_semantic_state(analysis, existed);

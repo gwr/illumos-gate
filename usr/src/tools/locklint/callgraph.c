@@ -64,7 +64,8 @@ enum callgraph_state {
 enum function_root_reason {
 	FUNCTION_ROOT_EXTERNAL = 1 << 0,
 	FUNCTION_ROOT_NO_DIRECT_CALLER = 1 << 1,
-	FUNCTION_ROOT_POINTER_ESCAPE = 1 << 2
+	FUNCTION_ROOT_POINTER_ESCAPE = 1 << 2,
+	FUNCTION_ROOT_DECLARED_ENTRY = 1 << 3
 };
 
 struct function_record {
@@ -75,6 +76,8 @@ struct function_record {
 	bool inline_implementation;
 	bool identity_lower_bound;
 	unsigned int identity_sequence;
+	const char *entry_declaration_file;
+	unsigned long entry_declaration_line;
 	avl_node_t by_entrypoint;
 	avl_node_t by_identity;
 	struct function_record *next;
@@ -180,6 +183,7 @@ static avl_tree_t function_pointer_activity_by_source;
 static bool function_pointer_activity_index_initialized;
 static bool record_function_pointer_activity;
 static unsigned int next_function_pointer_activity_sequence;
+static bool has_declared_entries;
 
 static int
 compare_call_target_entry(const void *left_arg, const void *right_arg)
@@ -714,6 +718,37 @@ find_external_function(struct symbol *symbol, bool *ambiguous)
 	return (match);
 }
 
+/*
+ * Attach a command-file entry contract to the unique external definition.
+ * The first successful declaration also selects explicit external-entry
+ * scope for root classification.
+ */
+enum callgraph_declare_result
+callgraph_declare_entry_no_competing_threads(const char *name,
+    const char *file, unsigned long line)
+{
+	struct symbol symbol = {
+		.ident = built_in_ident(name)
+	};
+	struct function_record *function;
+	bool ambiguous;
+
+	require_state(CALLGRAPH_CONSTRUCTING, "entry declaration");
+	function = find_external_function(&symbol, &ambiguous);
+	if (ambiguous)
+		return (CALLGRAPH_DECLARE_AMBIGUOUS);
+	if (function == NULL)
+		return (CALLGRAPH_DECLARE_UNRESOLVED);
+	function->info.entry_no_competing_threads = true;
+	function->info.root_reasons |= FUNCTION_ROOT_DECLARED_ENTRY;
+	if (function->entry_declaration_file == NULL) {
+		function->entry_declaration_file = file;
+		function->entry_declaration_line = line;
+	}
+	has_declared_entries = true;
+	return (CALLGRAPH_DECLARE_OK);
+}
+
 static struct function_info *
 resolve_function_symbol(struct translation_unit *tu, struct symbol *symbol,
     bool use_inline_implementation, bool *ambiguous)
@@ -1005,7 +1040,7 @@ classify_roots(void)
 		unsigned long modifiers =
 		    function->info.ep->name->ctype.modifiers;
 
-		if (!function->internal_linkage &&
+		if (!has_declared_entries && !function->internal_linkage &&
 		    !function->inline_implementation)
 			function->info.root_reasons |= FUNCTION_ROOT_EXTERNAL;
 		if (!function->has_nonself_caller &&
@@ -1206,6 +1241,13 @@ callgraph_dump(FILE *stream)
 			}
 			(void) fprintf(stream, "\n");
 		}
+		if ((function->info.root_reasons &
+		    FUNCTION_ROOT_DECLARED_ENTRY) != 0) {
+			(void) fprintf(stream,
+			    "  root declared-entry no-competing-threads %s:%lu\n",
+			    function->entry_declaration_file,
+			    function->entry_declaration_line);
+		}
 		dump_function_calls(stream, &function->info);
 	}
 	(void) fprintf(stream, "escapes\n");
@@ -1347,5 +1389,6 @@ callgraph_cleanup(void)
 	}
 	next_function_identity_sequence = 0;
 	functions_tail = &functions;
+	has_declared_entries = false;
 	callgraph_state = CALLGRAPH_CLEANED;
 }
