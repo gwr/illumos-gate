@@ -510,15 +510,22 @@ usbser_conditional=$(grep -c \
 usbser_asserted=$(grep -c \
     'usbser.c:.*warning: locklint:.*\[asserted-lock-requirement\]$' \
     "$ANALYZE_RAW")
-if (( usbsacm_unprotected != 37 || usbsacm_conditional != 3 ||
-    usbser_unprotected != 15 || usbser_conditional != 30 ||
-    usbser_asserted != 7 )); then
+#
+# These native diagnostic counts are stability guards, not the coverage
+# baseline.  Exact caller contexts eliminate extra conditionals seen in
+# locklint1.  The ten assertion findings retain conservative cases requiring
+# an untracked stored thr_port relationship.  Correctness is checked below
+# against the normalized Old Solaris Lock Lint problem set.
+#
+if (( usbsacm_unprotected != 37 || usbsacm_conditional != 0 ||
+    usbser_unprotected != 15 || usbser_conditional != 0 ||
+    usbser_asserted != 10 )); then
 	print -u2 "Unexpected combined usbsacm diagnostic counts:"
 	print -u2 "  usbsacm unprotected=$usbsacm_unprotected (expected 37)"
-	print -u2 "  usbsacm conditional=$usbsacm_conditional (expected 3)"
+	print -u2 "  usbsacm conditional=$usbsacm_conditional (expected 0)"
 	print -u2 "  usbser unprotected=$usbser_unprotected (expected 15)"
-	print -u2 "  usbser conditional=$usbser_conditional (expected 30)"
-	print -u2 "  usbser asserted=$usbser_asserted (expected 7)"
+	print -u2 "  usbser conditional=$usbser_conditional (expected 0)"
+	print -u2 "  usbser asserted=$usbser_asserted (expected 10)"
 	exit 1
 fi
 

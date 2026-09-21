@@ -401,12 +401,19 @@ conditional_count=$(grep -c \
 asserted_count=$(grep -c \
     'usbser.c:.*warning: locklint:.*\[asserted-lock-requirement\]$' \
     "$ANALYZE_RAW")
-if (( unprotected_count != 15 || conditional_count != 30 ||
-    asserted_count != 7 )); then
+#
+# These native diagnostic counts are stability guards, not the coverage
+# baseline.  Exact caller contexts eliminate extra conditionals seen in
+# locklint1.  The ten assertion findings retain conservative cases requiring
+# an untracked stored thr_port relationship.  Correctness is checked below
+# against the normalized Old Solaris Lock Lint problem set.
+#
+if (( unprotected_count != 15 || conditional_count != 0 ||
+    asserted_count != 10 )); then
 	print -u2 "Unexpected new locklint usbser diagnostic counts:"
 	print -u2 "  unprotected=$unprotected_count (expected 15)"
-	print -u2 "  conditional=$conditional_count (expected 30)"
-	print -u2 "  asserted=$asserted_count (expected 7)"
+	print -u2 "  conditional=$conditional_count (expected 0)"
+	print -u2 "  asserted=$asserted_count (expected 10)"
 	print -u2 "see $ANALYZE_RAW"
 	exit 1
 fi
