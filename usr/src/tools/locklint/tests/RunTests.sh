@@ -961,6 +961,18 @@ require_match "shared header type inconsistency" \
     "struct 'shared_type' is inconsistently defined" \
     type-consistency-mismatch.out
 
+run_capture "same-name identical types" type-name-same.out \
+    "$LOCKLINT" --dump-types type-name-first.c type-name-second-same.c
+reject_match "same-name identical types" "same name but a different layout" \
+    type-name-same.out
+
+run_capture "same-name different types" type-name-different.out \
+    "$LOCKLINT" --dump-types type-name-first.c \
+    type-name-second-different.c
+require_match "same-name different types" \
+    "struct 'repeated_name' has the same name but a different layout" \
+    type-name-different.out
+
 #
 # Verify unresolved mutex annotation names produce diagnostics.
 #

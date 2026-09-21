@@ -159,8 +159,8 @@ PROV_TEST_OBJS = provenance_test.o provenance.o context.o statistics.o avl.o
 provenance_test: $(PROV_TEST_OBJS)
 	$(LINK.c) -o $@ $(PROV_TEST_OBJS) $(LDLIBS)
 
-TYPE_TEST_OBJS = type_test.o type.o statistics.o avl.o $(SPARSE_OBJS) \
-	hashtable.o
+TYPE_TEST_OBJS = type_test.o type.o diagnostics.o statistics.o avl.o \
+	$(SPARSE_OBJS) hashtable.o
 type_test: $(TYPE_TEST_OBJS)
 	$(LINK.c) -o $@ $(TYPE_TEST_OBJS) $(LDLIBS)
 

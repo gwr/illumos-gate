@@ -26,6 +26,7 @@
 #include <string.h>
 
 #include "avl.h"
+#include "diagnostics.h"
 #include "expression.h"
 #include "lib.h"
 #include "statistics.h"
@@ -92,6 +93,12 @@ struct type_validation {
 	struct pending_member_mapping *members;
 	struct symbol *mismatch;
 	const char *reason;
+};
+
+struct compared_types {
+	struct ll_type *left;
+	struct ll_type *right;
+	avl_node_t by_pair;
 };
 
 static avl_tree_t type_name_to_sparse_type_index;
@@ -251,6 +258,19 @@ pending_type_compare(const void *left_arg, const void *right_arg)
 	const struct pending_type_mapping *right = right_arg;
 
 	return (AVL_PCMP(left->exact, right->exact));
+}
+
+static int
+compared_types_compare(const void *left_arg, const void *right_arg)
+{
+	const struct compared_types *left = left_arg;
+	const struct compared_types *right = right_arg;
+	int result;
+
+	result = AVL_PCMP(left->left, right->left);
+	if (result != 0)
+		return (result);
+	return (AVL_PCMP(left->right, right->right));
 }
 
 void
@@ -1026,6 +1046,157 @@ type_intern(struct symbol *exact)
 	return (type);
 }
 
+static bool type_layout_equal_recurse(avl_tree_t *, struct ll_type *,
+    struct ll_type *);
+
+static bool
+type_member_equal(avl_tree_t *compared, struct type_member *left,
+    struct type_member *right)
+{
+	struct symbol *left_exact = left->representative;
+	struct symbol *right_exact = right->representative;
+
+	return (left_exact->ident == right_exact->ident &&
+	    left_exact->offset == right_exact->offset &&
+	    left_exact->bit_size == right_exact->bit_size &&
+	    left_exact->bit_offset == right_exact->bit_offset &&
+	    is_bitfield_type(left_exact) == is_bitfield_type(right_exact) &&
+	    type_layout_equal_recurse(compared, left->type, right->type));
+}
+
+static bool
+type_union_equal(avl_tree_t *compared, struct ll_type *left,
+    struct ll_type *right)
+{
+	bool *matched;
+	size_t left_index;
+
+	matched = calloc(right->member_count, sizeof (*matched));
+	if (matched == NULL && right->member_count != 0)
+		die("out of memory comparing union types");
+	for (left_index = 0; left_index < left->member_count; left_index++) {
+		size_t right_index;
+
+		for (right_index = 0; right_index < right->member_count;
+		    right_index++) {
+			if (!matched[right_index] &&
+			    left->members[left_index].representative->ident ==
+			    right->members[right_index].representative->ident)
+				break;
+		}
+		if (right_index == right->member_count ||
+		    !type_member_equal(compared, &left->members[left_index],
+		    &right->members[right_index])) {
+			free(matched);
+			return (false);
+		}
+		matched[right_index] = true;
+	}
+	free(matched);
+	return (true);
+}
+
+/*
+ * Compare canonical type graphs without considering aggregate origins.
+ * Remember pairs before descending so recursive pointer graphs terminate.
+ */
+static bool
+type_layout_equal_recurse(avl_tree_t *compared, struct ll_type *left,
+    struct ll_type *right)
+{
+	struct compared_types key = {
+		.left = left,
+		.right = right
+	};
+	struct compared_types *pair;
+	size_t index;
+	avl_index_t where;
+
+	if (left == right)
+		return (true);
+	if (left == NULL || right == NULL ||
+	    type_kind(left) != type_kind(right) ||
+	    left->modifiers != right->modifiers ||
+	    left->address_space != right->address_space ||
+	    left->representative->ctype.alignment !=
+	    right->representative->ctype.alignment ||
+	    left->representative->bit_size != right->representative->bit_size)
+		return (false);
+	pair = avl_find(compared, &key, &where);
+	if (pair != NULL)
+		return (true);
+	pair = calloc(1, sizeof (*pair));
+	if (pair == NULL)
+		die("out of memory comparing type layouts");
+	pair->left = left;
+	pair->right = right;
+	avl_insert(compared, pair, where);
+
+	switch (type_kind(left)) {
+	case SYM_BASETYPE:
+		return ((left->representative->ctype.base_type != NULL ?
+		    left->representative->ctype.base_type :
+		    left->representative) ==
+		    (right->representative->ctype.base_type != NULL ?
+		    right->representative->ctype.base_type :
+		    right->representative));
+	case SYM_NODE:
+	case SYM_PTR:
+	case SYM_ARRAY:
+		return (type_layout_equal_recurse(compared, left->base,
+		    right->base));
+	case SYM_FN:
+		if (left->representative->variadic !=
+		    right->representative->variadic ||
+		    left->argument_count != right->argument_count ||
+		    !type_layout_equal_recurse(compared, left->base,
+		    right->base))
+			return (false);
+		for (index = 0; index < left->argument_count; index++) {
+			if (!type_layout_equal_recurse(compared,
+			    left->arguments[index], right->arguments[index]))
+				return (false);
+		}
+		return (true);
+	case SYM_STRUCT:
+		if (left->member_count != right->member_count)
+			return (false);
+		for (index = 0; index < left->member_count; index++) {
+			if (!type_member_equal(compared, &left->members[index],
+			    &right->members[index]))
+				return (false);
+		}
+		return (true);
+	case SYM_UNION:
+		if (left->member_count != right->member_count)
+			return (false);
+		return (type_union_equal(compared, left, right));
+	case SYM_ENUM:
+		return (type_validate_enum(left->representative,
+		    right->representative));
+	default:
+		return (false);
+	}
+}
+
+static bool
+type_layout_equal(struct ll_type *left, struct ll_type *right)
+{
+	avl_tree_t compared;
+	struct compared_types *pair;
+	void *cookie = NULL;
+	bool equal;
+
+	avl_create(&compared, compared_types_compare,
+	    sizeof (struct compared_types),
+	    offsetof(struct compared_types, by_pair));
+	equal = type_layout_equal_recurse(&compared, left, right);
+	while ((pair = avl_destroy_nodes(&compared, &cookie)) != NULL)
+		free(pair);
+	avl_destroy(&compared);
+	return (equal);
+}
+
 static void
 type_name_record(struct ident *name, struct ll_type *type)
 {
@@ -1034,11 +1205,32 @@ type_name_record(struct ident *name, struct ll_type *type)
 		.type = type
 	};
 	struct type_name_to_ll_type *entry;
+	struct type_name_to_ll_type *same_name;
+	struct type_name_to_ll_type lower = {
+		.name = name
+	};
+	avl_index_t name_where;
 	avl_index_t where;
 
 	entry = avl_find(&type_name_to_ll_type_index, &key, &where);
 	if (entry != NULL)
 		return;
+	(void) avl_find(&type_name_to_ll_type_index, &lower, &name_where);
+	for (same_name = avl_nearest(&type_name_to_ll_type_index, name_where,
+	    AVL_AFTER);
+	    same_name != NULL && same_name->name == name;
+	    same_name = AVL_NEXT(&type_name_to_ll_type_index, same_name)) {
+		const char *kind;
+
+		if (type_layout_equal(same_name->type, type))
+			continue;
+		kind = type_kind(type) == SYM_STRUCT ? "struct" : "union";
+		locklint_warning(LOCKLINT_DIAG_TYPE_NAME_LAYOUT,
+		    type->representative->pos,
+		    "%s '%s' has the same name but a different layout",
+		    kind, show_ident(name));
+		break;
+	}
 	entry = calloc(1, sizeof (*entry));
 	if (entry == NULL)
 		die("out of memory recording type name");
