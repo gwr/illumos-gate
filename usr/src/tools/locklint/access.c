@@ -29,6 +29,7 @@
 #include "identity.h"
 #include "symbol.h"
 #include "target.h"
+#include "type.h"
 
 struct locklint_member_path {
 	struct locklint_member_path *parent;
@@ -686,9 +687,20 @@ locklint_access_name(const struct locklint_access *access)
 	return (result);
 }
 
-bool
-locklint_access_base(const struct locklint_access *access,
-    struct symbol *owner_type, unsigned long relative_offset,
+static bool
+access_type_matches(struct symbol *exact, struct symbol *requested_exact,
+    const struct ll_type *requested_canonical)
+{
+	if (requested_exact != NULL)
+		return (exact == requested_exact);
+	return (requested_canonical != NULL &&
+	    type_lookup_exact(exact) == requested_canonical);
+}
+
+static bool
+access_base(const struct locklint_access *access,
+    struct symbol *owner_type, const struct ll_type *canonical_owner,
+    unsigned long relative_offset,
     unsigned long *base_offset)
 {
 	const struct locklint_access_owner *owner;
@@ -696,16 +708,18 @@ locklint_access_base(const struct locklint_access *access,
 	unsigned long suffix;
 
 	for (owner = access->owners; owner != NULL; owner = owner->next) {
-		if (owner->type == owner_type &&
+		if (access_type_matches(owner->type, owner_type,
+		    canonical_owner) &&
 		    access->offset >= owner->offset &&
 		    access->offset - owner->offset == relative_offset) {
 			*base_offset = owner->offset;
 			return (true);
 		}
 	}
-	if (access->type == owner_type && access->offset >= relative_offset) {
+	if (access_type_matches(access->type, owner_type, canonical_owner) &&
+	    access->offset >= relative_offset) {
 		unsigned long displacement = access->offset - relative_offset;
-		int owner_size = bits_to_bytes(owner_type->bit_size);
+		int owner_size = bits_to_bytes(access->type->bit_size);
 
 		if (displacement == 0 ||
 		    (owner_size > 0 && displacement % owner_size == 0)) {
@@ -724,12 +738,31 @@ locklint_access_base(const struct locklint_access *access,
 		if (suffix > access->offset)
 			return (false);
 		type = compound_type(member->member_base->ctype);
-		if (type == owner_type && suffix == relative_offset) {
+		if (access_type_matches(type, owner_type, canonical_owner) &&
+		    suffix == relative_offset) {
 			*base_offset = access->offset - suffix;
 			return (true);
 		}
 	}
 	return (false);
+}
+
+bool
+locklint_access_base(const struct locklint_access *access,
+    struct symbol *owner_type, unsigned long relative_offset,
+    unsigned long *base_offset)
+{
+	return (access_base(access, owner_type, NULL, relative_offset,
+	    base_offset));
+}
+
+bool
+locklint_access_base_canonical(const struct locklint_access *access,
+    const struct ll_type *owner_type, unsigned long relative_offset,
+    unsigned long *base_offset)
+{
+	return (access_base(access, NULL, owner_type, relative_offset,
+	    base_offset));
 }
 
 static bool
@@ -748,9 +781,10 @@ type_contains_offset(struct symbol *type, unsigned long base_offset,
  * relationship from the source member path.  This proves a container
  * relationship rather than associating unrelated objects by type alone.
  */
-bool
-locklint_access_containing_base(const struct locklint_access *access,
-    struct symbol *owner_type, unsigned long contained_offset,
+static bool
+access_containing_base(const struct locklint_access *access,
+    struct symbol *owner_type, const struct ll_type *canonical_owner,
+    unsigned long contained_offset,
     unsigned long *base_offset)
 {
 	const struct locklint_access_owner *owner;
@@ -758,21 +792,22 @@ locklint_access_containing_base(const struct locklint_access *access,
 	unsigned long suffix;
 
 	for (owner = access->owners; owner != NULL; owner = owner->next) {
-		if (owner->type == owner_type &&
-		    type_contains_offset(owner_type, owner->offset,
+		if (access_type_matches(owner->type, owner_type,
+		    canonical_owner) &&
+		    type_contains_offset(owner->type, owner->offset,
 		    contained_offset)) {
 			*base_offset = owner->offset;
 			return (true);
 		}
 	}
-	if (access->type == owner_type) {
-		int size = bits_to_bytes(owner_type->bit_size);
+	if (access_type_matches(access->type, owner_type, canonical_owner)) {
+		int size = bits_to_bytes(access->type->bit_size);
 		unsigned long base;
 
 		if (size > 0) {
 			base = contained_offset -
 			    contained_offset % (unsigned long)size;
-			if (type_contains_offset(owner_type, base,
+			if (type_contains_offset(access->type, base,
 			    contained_offset)) {
 				*base_offset = base;
 				return (true);
@@ -792,13 +827,31 @@ locklint_access_containing_base(const struct locklint_access *access,
 			return (false);
 		base = access->offset - suffix;
 		type = compound_type(member->member_base->ctype);
-		if (type == owner_type &&
+		if (access_type_matches(type, owner_type, canonical_owner) &&
 		    type_contains_offset(type, base, contained_offset)) {
 			*base_offset = base;
 			return (true);
 		}
 	}
 	return (false);
+}
+
+bool
+locklint_access_containing_base(const struct locklint_access *access,
+    struct symbol *owner_type, unsigned long contained_offset,
+    unsigned long *base_offset)
+{
+	return (access_containing_base(access, owner_type, NULL,
+	    contained_offset, base_offset));
+}
+
+bool
+locklint_access_containing_base_canonical(
+    const struct locklint_access *access, const struct ll_type *owner_type,
+    unsigned long contained_offset, unsigned long *base_offset)
+{
+	return (access_containing_base(access, NULL, owner_type,
+	    contained_offset, base_offset));
 }
 
 void

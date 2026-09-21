@@ -1080,6 +1080,20 @@ compare "mutex data policy diagnostics" data-policy.ref \
     data-policy-diagnostics.out
 
 #
+# Verify that type-scoped policy declared for one exact header type applies to
+# the corresponding exact type in another translation unit.
+#
+run_capture "canonical cross-TU policy" canonical-policy.out \
+    "$LOCKLINT" --check-locks canonical-policy-declaration.c \
+    canonical-policy-use.c
+require_match "canonical cross-TU write protection" \
+    "canonical-policy-use.c:.*protected member 'value' modified without holding 'lock'" \
+    canonical-policy.out
+if [ "$(grep -c '\[unprotected-access\]' canonical-policy.out)" -ne 1 ]; then
+	fail "canonical cross-TU policy: expected one unprotected access"
+fi
+
+#
 # Verify caller lock state through direct, wrapped, and recursive calls.
 #
 run_capture "basic call protection diagnostics" calls-basic-diagnostics.out \

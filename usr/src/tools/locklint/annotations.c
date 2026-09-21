@@ -1391,12 +1391,32 @@ expand_data_refs(struct annotation *annotation)
 }
 
 static bool
+same_type_identity(struct symbol *left, struct symbol *right)
+{
+	const struct ll_type *type = type_lookup_exact(left);
+
+	return (type != NULL && type == type_lookup_exact(right));
+}
+
+static bool
+same_member_identity(struct symbol *left, struct symbol *right)
+{
+	const struct type_member *member;
+
+	if (left == NULL || right == NULL)
+		return (left == right);
+	member = type_member_lookup_exact(left);
+	return (member != NULL && member == type_member_lookup_exact(right));
+}
+
+static bool
 same_data_ref(const struct annotation_ref *left,
     const struct annotation_ref *right)
 {
 	/*
 	 * Object annotations compare canonical roots across translation units.
-	 * Type annotations remain local to their separately parsed Sparse type.
+	 * Type annotations compare through locklint's exact-type and exact-member
+	 * indexes.
 	 */
 	if (left->root != NULL || right->root != NULL) {
 		struct locklint_access left_access = { 0 };
@@ -1414,8 +1434,9 @@ same_data_ref(const struct annotation_ref *left,
 		right_access.offset = right->offset;
 		return (locklint_same_access(&left_access, &right_access));
 	}
-	return (left->owner_type == right->owner_type &&
-	    left->member == right->member && left->offset == right->offset);
+	return (same_type_identity(left->owner_type, right->owner_type) &&
+	    same_member_identity(left->member, right->member) &&
+	    left->offset == right->offset);
 }
 
 /*
@@ -1725,8 +1746,9 @@ matching_data_ref(const struct annotation_ref *ref,
 		*base = 0;
 		return (true);
 	}
-	if (ref->member != access->member ||
-	    !locklint_access_base(access, ref->owner_type, ref->offset, base))
+	if (!same_member_identity(ref->member, access->member) ||
+	    !locklint_access_base_canonical(access,
+	    type_lookup_exact(ref->owner_type), ref->offset, base))
 		return (false);
 	return (true);
 }
@@ -1802,7 +1824,7 @@ locklint_data_policy(const struct locklint_access *access,
 	struct annotation *annotation;
 	const struct annotation_ref *protector = NULL;
 	unsigned long protector_base = 0;
-	struct symbol *protected_owner = NULL;
+	const struct ll_type *protected_owner = NULL;
 	bool found = false;
 
 	(void) memset(policy, 0, sizeof (*policy));
@@ -1826,13 +1848,15 @@ locklint_data_policy(const struct locklint_access *access,
 				policy->protection = LOCKLINT_PROTECTION_MUTEX;
 				protector = annotation->lock;
 				protector_base = base;
-				protected_owner = ref->owner_type;
+				protected_owner =
+				    type_lookup_exact(ref->owner_type);
 				break;
 			case ANNOTATION_RWLOCK_PROTECTS_DATA:
 				policy->protection = LOCKLINT_PROTECTION_RWLOCK;
 				protector = annotation->lock;
 				protector_base = base;
-				protected_owner = ref->owner_type;
+				protected_owner =
+				    type_lookup_exact(ref->owner_type);
 				break;
 			case ANNOTATION_SCHEME_PROTECTS_DATA:
 				policy->protection = LOCKLINT_PROTECTION_SCHEME;
@@ -1856,9 +1880,12 @@ locklint_data_policy(const struct locklint_access *access,
 		bool have_lock_base = true;
 
 		if (protector->root == NULL &&
-		    protector->owner_type != protected_owner) {
-			have_lock_base = locklint_access_containing_base(access,
-			    protector->owner_type, protector_base, &lock_base);
+		    type_lookup_exact(protector->owner_type) !=
+		    protected_owner) {
+			have_lock_base =
+			    locklint_access_containing_base_canonical(access,
+			    type_lookup_exact(protector->owner_type),
+			    protector_base, &lock_base);
 		}
 		lock->root = protector->root != NULL ?
 		    protector->root : access->root;

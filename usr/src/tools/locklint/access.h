@@ -22,6 +22,7 @@
 
 struct expression;
 struct instruction;
+struct ll_type;
 struct locklint_member_path;
 struct locklint_access_owner;
 struct object_identity;
@@ -64,8 +65,12 @@ bool locklint_access_size(const struct locklint_access *, uint64_t *);
 unsigned int locklint_access_depth(const struct locklint_access *);
 bool locklint_access_base(const struct locklint_access *, struct symbol *,
     unsigned long, unsigned long *);
+bool locklint_access_base_canonical(const struct locklint_access *,
+    const struct ll_type *, unsigned long, unsigned long *);
 bool locklint_access_containing_base(const struct locklint_access *,
     struct symbol *, unsigned long, unsigned long *);
+bool locklint_access_containing_base_canonical(const struct locklint_access *,
+    const struct ll_type *, unsigned long, unsigned long *);
 char *locklint_access_name(const struct locklint_access *);
 void locklint_access_cleanup(void);
 void locklint_show_access(FILE *, struct expression *);
