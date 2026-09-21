@@ -422,13 +422,11 @@ main(int argc, char **argv)
 	if (!type_registry_consistent()) {
 		type_registry_report_errors();
 		locklint_access_cleanup();
-		type_registry_destroy();
 		return (EXIT_FAILURE);
 	}
 	timing_begin(TIMING_COMMANDS);
 	if (!parse_command_files()) {
 		locklint_access_cleanup();
-		type_registry_destroy();
 		return (EXIT_FAILURE);
 	}
 	timing_end(TIMING_COMMANDS);
@@ -442,7 +440,6 @@ main(int argc, char **argv)
 	if (dump_annotations)
 		locklint_show_annotations(stdout);
 	locklint_access_cleanup();
-	type_registry_destroy();
 	(void) fflush(stdout);
 	timing_end(TIMING_FINAL_OUTPUT);
 	timing_report(stderr);

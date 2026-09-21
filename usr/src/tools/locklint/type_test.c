@@ -84,6 +84,15 @@ register_type(struct symbol *type)
 }
 
 static void
+clear_type_aux(struct symbol **types, size_t count)
+{
+	size_t index;
+
+	for (index = 0; index < count; index++)
+		types[index]->aux = NULL;
+}
+
+static void
 test_type_indexes(void)
 {
 	char first_header[] = "common.h";
@@ -141,6 +150,10 @@ test_type_indexes(void)
 	first_type = type_lookup_exact(&first);
 	second_type = type_lookup_exact(&second);
 	check(first_type != NULL, "first exact type is indexed");
+	check(first.aux == first_type,
+	    "exact type caches its locklint type in Sparse aux");
+	check(type_lookup_exact(&first) == first_type,
+	    "repeated exact lookup returns the cached type");
 	check(first_type == second_type,
 	    "same source origin uses one locklint type");
 	check(type_instance_count(first_type) == 2,
@@ -862,6 +875,15 @@ test_incomplete_pointer_targets(void)
 		.examined = 1,
 		.ctype = { .base_type = &integer }
 	};
+	struct symbol *fixture_types[] = {
+		&integer,
+		&complete_target,
+		&incomplete_target,
+		&complete_pointer,
+		&incomplete_pointer,
+		&first,
+		&second
+	};
 
 	input_streams = streams;
 	input_stream_nr = 1;
@@ -879,6 +901,8 @@ test_incomplete_pointer_targets(void)
 	check(type_lookup_exact(&complete_pointer) ==
 	    type_lookup_exact(&incomplete_pointer),
 	    "pointer types unify without unifying their incomplete target");
+	clear_type_aux(fixture_types,
+	    sizeof (fixture_types) / sizeof (fixture_types[0]));
 	type_registry_destroy();
 
 	type_registry_create();
@@ -888,6 +912,8 @@ test_incomplete_pointer_targets(void)
 	    "incomplete pointer target compatibility is input-order independent");
 	check(type_lookup_exact(&first) == type_lookup_exact(&second),
 	    "reverse-order containing types unify");
+	clear_type_aux(fixture_types,
+	    sizeof (fixture_types) / sizeof (fixture_types[0]));
 	type_registry_destroy();
 
 	incomplete_target.ident = other;
@@ -896,6 +922,8 @@ test_incomplete_pointer_targets(void)
 	register_symbol(&second);
 	check(!type_registry_consistent(),
 	    "different incomplete pointer target tags are inconsistent");
+	clear_type_aux(fixture_types,
+	    sizeof (fixture_types) / sizeof (fixture_types[0]));
 	type_registry_destroy();
 
 	incomplete_target.ident = target;
@@ -913,6 +941,8 @@ test_incomplete_pointer_targets(void)
 		type_name_visit_types(target, collect_type, &results);
 		check(results.count == 1,
 		    "completed aggregate enters the name index");
+		clear_type_aux(fixture_types,
+		    sizeof (fixture_types) / sizeof (fixture_types[0]));
 		type_registry_destroy();
 	}
 

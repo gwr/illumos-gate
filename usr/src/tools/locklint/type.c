@@ -16,7 +16,8 @@
 /*
  * Retain named aggregate types after Sparse removes their translation-unit
  * namespace bindings.  Locklint types coalesce exact Sparse types with the
- * same source origin, while indexes preserve exact-instance and name lookup.
+ * same source origin, while Sparse's backend-owned aux field caches exact
+ * type mappings and indexes preserve exact-member and name lookup.
  */
 
 #include <stdbool.h>
@@ -50,12 +51,6 @@ struct ll_type {
 	size_t member_count;
 	avl_node_t by_origin;
 	avl_node_t by_shape;
-};
-
-struct sparse_type_to_ll_type {
-	struct symbol *exact;
-	struct ll_type *type;
-	avl_node_t by_exact;
 };
 
 struct sparse_member_to_type_member {
@@ -97,7 +92,6 @@ struct compared_types {
 
 static avl_tree_t types_by_origin;
 static avl_tree_t types_by_shape;
-static avl_tree_t sparse_type_to_ll_type_index;
 static avl_tree_t sparse_member_to_type_member_index;
 static avl_tree_t type_name_to_ll_type_index;
 static bool type_registry_is_consistent;
@@ -199,15 +193,6 @@ type_shape_compare(const void *left_arg, const void *right_arg)
 }
 
 static int
-sparse_type_to_ll_type_compare(const void *left_arg, const void *right_arg)
-{
-	const struct sparse_type_to_ll_type *left = left_arg;
-	const struct sparse_type_to_ll_type *right = right_arg;
-
-	return (AVL_PCMP(left->exact, right->exact));
-}
-
-static int
 sparse_member_to_type_member_compare(const void *left_arg,
     const void *right_arg)
 {
@@ -260,10 +245,6 @@ type_registry_create(void)
 	    sizeof (struct ll_type), offsetof(struct ll_type, by_origin));
 	avl_create(&types_by_shape, type_shape_compare,
 	    sizeof (struct ll_type), offsetof(struct ll_type, by_shape));
-	avl_create(&sparse_type_to_ll_type_index,
-	    sparse_type_to_ll_type_compare,
-	    sizeof (struct sparse_type_to_ll_type),
-	    offsetof(struct sparse_type_to_ll_type, by_exact));
 	avl_create(&sparse_member_to_type_member_index,
 	    sparse_member_to_type_member_compare,
 	    sizeof (struct sparse_member_to_type_member),
@@ -281,7 +262,6 @@ void
 type_registry_destroy(void)
 {
 	struct type_name_to_ll_type *name;
-	struct sparse_type_to_ll_type *exact;
 	struct sparse_member_to_type_member *member;
 	struct ll_type *type;
 	void *cookie = NULL;
@@ -290,11 +270,6 @@ type_registry_destroy(void)
 	    &cookie)) != NULL)
 		free(name);
 	avl_destroy(&type_name_to_ll_type_index);
-	cookie = NULL;
-	while ((exact = avl_destroy_nodes(&sparse_type_to_ll_type_index,
-	    &cookie)) != NULL)
-		free(exact);
-	avl_destroy(&sparse_type_to_ll_type_index);
 	cookie = NULL;
 	while ((member = avl_destroy_nodes(
 	    &sparse_member_to_type_member_index, &cookie)) != NULL)
@@ -367,35 +342,17 @@ type_origin_intern(struct symbol *exact, bool *created)
 }
 
 static struct ll_type *
-type_exact_find(struct symbol *symbol, avl_index_t *where)
+type_exact_find(struct symbol *symbol)
 {
-	struct sparse_type_to_ll_type key = {
-		.exact = symbol
-	};
-	struct sparse_type_to_ll_type *exact;
-
-	exact = avl_find(&sparse_type_to_ll_type_index, &key, where);
-	return (exact == NULL ? NULL : exact->type);
+	return (symbol == NULL ? NULL : symbol->aux);
 }
 
 static void
 type_exact_record(struct symbol *symbol, struct ll_type *type)
 {
-	struct sparse_type_to_ll_type key = {
-		.exact = symbol
-	};
-	struct sparse_type_to_ll_type *exact;
-	avl_index_t where;
-
-	exact = avl_find(&sparse_type_to_ll_type_index, &key, &where);
-	if (exact != NULL)
+	if (symbol->aux != NULL)
 		return;
-	exact = calloc(1, sizeof (*exact));
-	if (exact == NULL)
-		die("out of memory recording exact type");
-	exact->exact = symbol;
-	exact->type = type;
-	avl_insert(&sparse_type_to_ll_type_index, exact, where);
+	symbol->aux = type;
 	type->instance_count++;
 }
 
@@ -729,7 +686,7 @@ type_validate_exact(struct type_validation *validation, struct symbol *exact,
 	if (allow_incomplete &&
 	    type_incomplete_pointer_target_matches(exact, type))
 		return (true);
-	mapped = type_exact_find(exact, NULL);
+	mapped = type_exact_find(exact);
 	if (mapped != NULL)
 		return (mapped == type);
 	examine_symbol_type(exact);
@@ -776,8 +733,7 @@ type_validate_exact(struct type_validation *validation, struct symbol *exact,
 		    type->representative));
 	case SYM_NODE:
 	case SYM_TYPEDEF:
-		mapped = type_exact_find(
-		    type->representative->ctype.base_type, NULL);
+		mapped = type_exact_find(type->representative->ctype.base_type);
 		if (mapped == NULL)
 			mapped = type->base;
 		return (type_validate_exact(validation,
@@ -1000,7 +956,7 @@ type_intern(struct symbol *exact)
 		return (NULL);
 	if (!type_registry_is_consistent)
 		return (NULL);
-	type = type_exact_find(exact, NULL);
+	type = type_exact_find(exact);
 	if (type != NULL)
 		return (type);
 	examine_symbol_type(exact);
@@ -1331,13 +1287,7 @@ type_name_visit_types(struct ident *name, type_visit_f callback, void *data)
 const struct ll_type *
 type_lookup_exact(struct symbol *symbol)
 {
-	struct sparse_type_to_ll_type key = {
-		.exact = symbol
-	};
-	struct sparse_type_to_ll_type *exact;
-
-	exact = avl_find(&sparse_type_to_ll_type_index, &key, NULL);
-	return (exact == NULL ? NULL : exact->type);
+	return (type_exact_find(symbol));
 }
 
 struct symbol *

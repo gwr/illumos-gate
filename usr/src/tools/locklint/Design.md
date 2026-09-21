@@ -384,7 +384,9 @@ translation units:
 Aggregate types are canonicalized by kind and physical source origin.
 Repeated exact types join one `ll_type` only after recursive structural
 validation of their layouts and members.  Each exact Sparse type and member
-maps to its canonical locklint identity; Sparse AST links are never rewritten.
+maps to its canonical locklint identity; exact types cache their `ll_type` in
+Sparse's backend-owned `symbol->aux` field, while exact members use a locklint
+index.  Sparse AST type links are never rewritten.
 Same-named types from different origins remain distinct, although commands may
 apply to all of them when their layouts match.  Differing repeated definitions
 are fatal, while differing same-name definitions from separate origins produce
