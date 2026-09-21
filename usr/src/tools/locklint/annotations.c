@@ -118,12 +118,35 @@ struct policy_ref_index_entry {
 	avl_node_t by_identity;
 };
 
+enum data_policy_key_kind {
+	DATA_POLICY_KEY_TYPE,
+	DATA_POLICY_KEY_OBJECT,
+	DATA_POLICY_KEY_ROOT
+};
+
+/*
+ * Index each retained data reference by the identity available on an access.
+ * Sequence preserves annotation order when type and object candidate ranges
+ * are merged.
+ */
+struct data_policy_index_entry {
+	const void *identity;
+	const struct annotation *annotation;
+	const struct annotation_ref *ref;
+	unsigned long sequence;
+	enum data_policy_key_kind kind;
+	avl_node_t by_identity;
+};
+
 static struct annotation *annotations;
 static struct annotation **annotations_tail = &annotations;
 static avl_tree_t policy_ref_index;
+static avl_tree_t data_policy_index;
+static unsigned long data_policy_sequence;
 
 static enum locklint_execution_kind execution_kind(const struct token *);
 static void expand_data_refs(struct annotation *);
+static void index_data_policy_refs(const struct annotation *);
 
 static int
 policy_ref_identity_compare(const void *left_arg, const void *right_arg)
@@ -168,6 +191,58 @@ policy_ref_identity_compare(const void *left_arg, const void *right_arg)
 	if (a->data_member != b->data_member)
 		return (AVL_PCMP(a->data_member, b->data_member));
 	return (AVL_CMP(a->data_offset, b->data_offset));
+}
+
+static int
+data_policy_index_compare(const void *left_arg, const void *right_arg)
+{
+	const struct data_policy_index_entry *left = left_arg;
+	const struct data_policy_index_entry *right = right_arg;
+
+	if (left->kind != right->kind)
+		return (AVL_CMP(left->kind, right->kind));
+	if (left->identity != right->identity)
+		return (AVL_PCMP(left->identity, right->identity));
+	return (AVL_CMP(left->sequence, right->sequence));
+}
+
+/*
+ * Add resolved references after expansion and deduplication so lookup owns no
+ * duplicate semantic records and can refer directly to process-lifetime
+ * annotations.
+ */
+static void
+index_data_policy_refs(const struct annotation *annotation)
+{
+	const struct annotation_ref *ref;
+
+	if (annotation->kind == ANNOTATION_RWLOCK_COVERS_LOCKS ||
+	    annotation->kind == ANNOTATION_LOCK_ORDER)
+		return;
+	for (ref = annotation->data; ref != NULL; ref = ref->next) {
+		struct data_policy_index_entry *entry;
+		avl_index_t where;
+
+		entry = calloc(1, sizeof (*entry));
+		if (entry == NULL)
+			die("out of memory indexing data policy");
+		entry->annotation = annotation;
+		entry->ref = ref;
+		entry->sequence = ++data_policy_sequence;
+		if (ref->root == NULL) {
+			entry->kind = DATA_POLICY_KEY_TYPE;
+			entry->identity = ref->member;
+		} else if (ref->object != NULL) {
+			entry->kind = DATA_POLICY_KEY_OBJECT;
+			entry->identity = ref->object;
+		} else {
+			entry->kind = DATA_POLICY_KEY_ROOT;
+			entry->identity = ref->root;
+		}
+		if (avl_find(&data_policy_index, entry, &where) != NULL)
+			abort();
+		avl_insert(&data_policy_index, entry, where);
+	}
 }
 
 static char *
@@ -297,6 +372,9 @@ locklint_annotations_enable(void)
 	avl_create(&policy_ref_index, policy_ref_identity_compare,
 	    sizeof (struct policy_ref_index_entry),
 	    offsetof(struct policy_ref_index_entry, by_identity));
+	avl_create(&data_policy_index, data_policy_index_compare,
+	    sizeof (struct data_policy_index_entry),
+	    offsetof(struct data_policy_index_entry, by_identity));
 	add_macro_expansion_hook("_NOTE", capture_annotation, NULL);
 	add_pre_buffer("#define NO_COMPETING_THREADS_NOW "
 	    "__context__(0, 0, %lu);\n",
@@ -1229,6 +1307,7 @@ locklint_declare_readable(const char *name, const char *file,
 	annotation->resolved = true;
 	*annotations_tail = annotation;
 	annotations_tail = &annotation->next;
+	index_data_policy_refs(annotation);
 	return (LOCKLINT_COMMAND_OK);
 }
 
@@ -1558,8 +1637,7 @@ same_data_ref(const struct annotation_ref *left,
 {
 	/*
 	 * Object annotations compare canonical roots across translation units.
-	 * Type annotations compare through locklint's exact-type and exact-member
-	 * indexes.
+	 * Type annotations already contain canonical owner and member identities.
 	 */
 	if (left->root != NULL || right->root != NULL) {
 		struct locklint_access left_access = { 0 };
@@ -1672,6 +1750,7 @@ locklint_resolve_annotations(struct symbol_list *symbols)
 			    ANNOTATION_SCHEME_PROTECTS_DATA)
 				record_replacements(annotation);
 			annotation->resolved = true;
+			index_data_policy_refs(annotation);
 		}
 	}
 }
@@ -1877,8 +1956,9 @@ locklint_process_function_annotations(FILE *stream,
 }
 
 static bool
-matching_data_ref(const struct annotation_ref *ref,
-    const struct locklint_access *access, unsigned long *base)
+matching_data_ref_canonical(const struct annotation_ref *ref,
+    const struct locklint_access *access,
+    const struct type_member *access_member, unsigned long *base)
 {
 	if (ref->root != NULL) {
 		struct locklint_access target = { 0 };
@@ -1893,11 +1973,65 @@ matching_data_ref(const struct annotation_ref *ref,
 		*base = 0;
 		return (true);
 	}
-	if (ref->member != type_member_lookup_exact(access->member) ||
+	if (ref->member != access_member ||
 	    !locklint_access_base_canonical(access,
 	    ref->owner_type, ref->offset, base))
 		return (false);
 	return (true);
+}
+
+static bool
+matching_data_ref(const struct annotation_ref *ref,
+    const struct locklint_access *access, unsigned long *base)
+{
+	return (matching_data_ref_canonical(ref, access,
+	    type_member_lookup_exact(access->member), base));
+}
+
+struct data_policy_cursor {
+	struct data_policy_index_entry *entry;
+	enum data_policy_key_kind kind;
+	const void *identity;
+};
+
+/*
+ * Position a cursor at the first entry for one lookup identity.  Sequence
+ * zero sorts before every indexed reference.
+ */
+static void
+data_policy_cursor_init(struct data_policy_cursor *cursor,
+    enum data_policy_key_kind kind, const void *identity)
+{
+	struct data_policy_index_entry key = {
+		.identity = identity,
+		.kind = kind
+	};
+	avl_index_t where;
+
+	cursor->kind = kind;
+	cursor->identity = identity;
+	cursor->entry = avl_find(&data_policy_index, &key, &where);
+	if (cursor->entry == NULL)
+		cursor->entry = avl_nearest(&data_policy_index, where, AVL_AFTER);
+	if (cursor->entry != NULL &&
+	    (cursor->entry->kind != kind ||
+	    cursor->entry->identity != identity))
+		cursor->entry = NULL;
+}
+
+static struct data_policy_index_entry *
+data_policy_cursor_take(struct data_policy_cursor *cursor)
+{
+	struct data_policy_index_entry *entry = cursor->entry;
+
+	if (entry == NULL)
+		return (NULL);
+	cursor->entry = AVL_NEXT(&data_policy_index, entry);
+	if (cursor->entry != NULL &&
+	    (cursor->entry->kind != cursor->kind ||
+	    cursor->entry->identity != cursor->identity))
+		cursor->entry = NULL;
+	return (entry);
 }
 
 static void
@@ -1962,61 +2096,89 @@ locklint_lock_covers(const struct locklint_access *cover,
 }
 
 /*
- * Combine all matching policy dimensions.  The last mechanical or scheme
- * declaration wins; unlocked-read and read-only properties are additive.
+ * Merge canonical type and object candidate ranges in original annotation
+ * order.  The last mechanical or scheme declaration wins; unlocked-read and
+ * read-only properties are additive.
  */
 bool
 locklint_data_policy(const struct locklint_access *access,
     struct locklint_data_policy *policy, struct locklint_access *lock)
 {
-	struct annotation *annotation;
+	struct data_policy_cursor type_cursor = { 0 };
+	struct data_policy_cursor object_cursor = { 0 };
+	struct data_policy_index_entry *type_entry = NULL;
+	struct data_policy_index_entry *object_entry = NULL;
 	const struct annotation_ref *protector = NULL;
+	const struct type_member *access_member;
 	unsigned long protector_base = 0;
 	const struct ll_type *protected_owner = NULL;
 	bool found = false;
 
 	(void) memset(policy, 0, sizeof (*policy));
 	(void) memset(lock, 0, sizeof (*lock));
-	for (annotation = annotations; annotation != NULL;
-	    annotation = annotation->next) {
-		struct annotation_ref *ref;
+	statistics.data_policy_queries++;
+	access_member = type_member_lookup_exact(access->member);
+	if (access_member != NULL) {
+		data_policy_cursor_init(&type_cursor, DATA_POLICY_KEY_TYPE,
+		    access_member);
+		type_entry = data_policy_cursor_take(&type_cursor);
+	}
+	if (access->object != NULL) {
+		data_policy_cursor_init(&object_cursor, DATA_POLICY_KEY_OBJECT,
+		    access->object);
+		object_entry = data_policy_cursor_take(&object_cursor);
+	} else if (access->root != NULL) {
+		data_policy_cursor_init(&object_cursor, DATA_POLICY_KEY_ROOT,
+		    access->root);
+		object_entry = data_policy_cursor_take(&object_cursor);
+	}
+	while (type_entry != NULL || object_entry != NULL) {
+		struct data_policy_index_entry *entry;
+		const struct annotation *annotation;
+		const struct annotation_ref *ref;
+		unsigned long base;
 
-		if (!annotation->resolved)
+		if (object_entry == NULL ||
+		    (type_entry != NULL &&
+		    type_entry->sequence < object_entry->sequence)) {
+			entry = type_entry;
+			type_entry = data_policy_cursor_take(&type_cursor);
+		} else {
+			entry = object_entry;
+			object_entry = data_policy_cursor_take(&object_cursor);
+		}
+		statistics.data_policy_candidates++;
+		annotation = entry->annotation;
+		ref = entry->ref;
+		if (!matching_data_ref_canonical(ref, access, access_member,
+		    &base))
 			continue;
-		if (annotation->kind == ANNOTATION_RWLOCK_COVERS_LOCKS)
-			continue;
-		for (ref = annotation->data; ref != NULL; ref = ref->next) {
-			unsigned long base;
-
-			if (!matching_data_ref(ref, access, &base))
-				continue;
-			found = true;
-			switch (annotation->kind) {
-			case ANNOTATION_MUTEX_PROTECTS_DATA:
-				policy->protection = LOCKLINT_PROTECTION_MUTEX;
-				protector = annotation->lock;
-				protector_base = base;
-				protected_owner = ref->owner_type;
-				break;
-			case ANNOTATION_RWLOCK_PROTECTS_DATA:
-				policy->protection = LOCKLINT_PROTECTION_RWLOCK;
-				protector = annotation->lock;
-				protector_base = base;
-				protected_owner = ref->owner_type;
-				break;
-			case ANNOTATION_SCHEME_PROTECTS_DATA:
-				policy->protection = LOCKLINT_PROTECTION_SCHEME;
-				protector = NULL;
-				break;
-			case ANNOTATION_DATA_READABLE_WITHOUT_LOCK:
-				policy->readable_without_lock = true;
-				break;
-			case ANNOTATION_READ_ONLY_DATA:
-				policy->read_only = true;
-				break;
-			default:
-				abort();
-			}
+		found = true;
+		switch (annotation->kind) {
+		case ANNOTATION_MUTEX_PROTECTS_DATA:
+			policy->protection = LOCKLINT_PROTECTION_MUTEX;
+			protector = annotation->lock;
+			protector_base = base;
+			protected_owner = ref->owner_type;
+			break;
+		case ANNOTATION_RWLOCK_PROTECTS_DATA:
+			policy->protection = LOCKLINT_PROTECTION_RWLOCK;
+			protector = annotation->lock;
+			protector_base = base;
+			protected_owner = ref->owner_type;
+			break;
+		case ANNOTATION_SCHEME_PROTECTS_DATA:
+			policy->protection = LOCKLINT_PROTECTION_SCHEME;
+			protector = NULL;
+			break;
+		case ANNOTATION_DATA_READABLE_WITHOUT_LOCK:
+			policy->readable_without_lock = true;
+			break;
+		case ANNOTATION_READ_ONLY_DATA:
+			policy->read_only = true;
+			break;
+		default:
+			abort();
 		}
 	}
 	if (policy->protection == LOCKLINT_PROTECTION_MUTEX ||

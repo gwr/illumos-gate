@@ -1103,13 +1103,25 @@ compare "mutex data policy diagnostics" data-policy.ref \
 # the corresponding exact type in another translation unit.
 #
 run_capture "canonical cross-TU policy" canonical-policy.out \
-    "$LOCKLINT" --check-locks canonical-policy-declaration.c \
+    "$LOCKLINT" --check-locks --dump-statistics \
+    canonical-policy-declaration.c \
     canonical-policy-use.c
 require_match "canonical cross-TU write protection" \
     "canonical-policy-use.c:.*protected member 'value' modified without holding 'lock'" \
     canonical-policy.out
 if [ "$(grep -c '\[unprotected-access\]' canonical-policy.out)" -ne 1 ]; then
 	fail "canonical cross-TU policy: expected one unprotected access"
+fi
+policy_queries=$(sed -n 's/^statistics data_policy_queries //p' \
+    canonical-policy.out)
+policy_candidates=$(sed -n 's/^statistics data_policy_candidates //p' \
+    canonical-policy.out)
+if [ -z "$policy_queries" ] || [ "$policy_queries" -eq 0 ]; then
+	fail "canonical policy index: expected policy queries"
+elif [ -z "$policy_candidates" ] || [ "$policy_candidates" -eq 0 ]; then
+	fail "canonical policy index: expected indexed candidates"
+elif [ "$policy_candidates" -ge $((policy_queries * 4)) ]; then
+	fail "canonical policy index: expected fewer candidates than full scans"
 fi
 run_capture "canonical external-lock policy references" \
     canonical-policy-annotations.out "$LOCKLINT" --dump-annotations \
@@ -1339,14 +1351,16 @@ for statistic in \
     type_registry_find \
     type_registry_duplicates \
     type_registry_insertions \
-    type_registry_comparisons
+    type_registry_comparisons \
+    data_policy_queries \
+    data_policy_candidates
 do
 	require_match "context statistic $statistic" \
 	    "^statistics $statistic [0-9][0-9]*$" context-statistics.out
 done
 if [ "$(grep -c '^statistics [a-z_]* [0-9][0-9]*$' \
-    context-statistics.out)" -ne 71 ]; then
-	fail "context statistics: expected exactly seventy-one statistics lines"
+    context-statistics.out)" -ne 73 ]; then
+	fail "context statistics: expected exactly seventy-three statistics lines"
 fi
 for histogram in \
     caller_recovery_first_max_depth \

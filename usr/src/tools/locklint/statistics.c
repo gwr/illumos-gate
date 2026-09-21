@@ -128,6 +128,8 @@ statistics_show(FILE *stream)
 	SHOW(source_type_policy_refs_resolved);
 	SHOW(source_type_policy_refs_retained);
 	SHOW(source_type_policy_refs_deduplicated);
+	SHOW(data_policy_queries);
+	SHOW(data_policy_candidates);
 
 	SHOW(call_binding_environments_find);
 	SHOW(root_binding_environments_find);

@@ -221,7 +221,8 @@ traversal depth rather than shortest graph distance.
 Type-policy statistics report expanded source type references before
 canonical deduplication, retained references, and discarded duplicates.  The
 three counters make the cross-translation-unit representation reduction
-directly measurable.
+directly measurable.  Data-policy statistics count lookup requests and the
+indexed references examined after canonical selection.
 The counters are collected unconditionally.  `--dump-statistics` controls only
 whether they are reported at final output.  It does not request context
 analysis, so development runs normally combine it with `--dump-contexts` or
@@ -561,18 +562,19 @@ AVLs instead support incremental insertion, deterministic traversal, and
 prefix ranges such as all external definitions of one identifier.  These
 different access patterns justify retaining both collection mechanisms.
 
-Likely future indexes should follow the same rules:
+Additional indexes follow the same rules:
 
-- effective data-policy lookup may need both declaration/replacement order and
-  an AVL index by data identity;
+- effective data-policy lookup uses an AVL keyed by canonical type-member or
+  object identity and sequence number; the sequence preserves declaration
+  order when type and object candidate ranges are merged;
 - caller-witness diagnostics may justify introducing retained call-site
   records and a reverse index by callee; and
 - an AVL replacement for declaration-symbol object bindings would put the
   linkage in separate binding records, not in `object_identity`.
 
-Those indexes are not part of the module-scope increment.  Their cardinality,
-memory cost, and lookup frequency must be reviewed before their collection
-forms are chosen.
+The remaining prospective indexes are not part of the module-scope increment.
+Their cardinality, memory cost, and lookup frequency must be reviewed before
+their collection forms are chosen.
 
 ### Ownership and lifetime
 
@@ -644,6 +646,8 @@ internal data-policy list.  Resolved type-scoped references store canonical
 locklint owner and member pointers.  Repeated source references from one
 header declaration are retained once when their data and protector identities
 match; distinct source declarations and TU-local protectors remain separate.
+Retained data references enter the same ordered policy index as source
+annotations.
 Each command declaration retains its command-file pathname and line number as
 provenance.
 
@@ -930,9 +934,9 @@ fields are:
 | `base_name` | First identifier in the annotation name |
 | `path` | Remaining dot-separated path, if any |
 | `root` | Concrete object symbol for object-scoped names |
-| `owner_type` | Compound type in which a type-scoped path is interpreted |
-| `type` | Type reached after resolving the path |
-| `member` | Final member symbol |
+| `object` | Canonical identity of an externally linked object, when available |
+| `owner_type` | Canonical locklint type in which a type-scoped path is interpreted |
+| `member` | Canonical final member |
 | `offset` | Offset of the path within its root or owner type |
 | `replaces`, `replaced_by` | Links recording declaration precedence |
 
@@ -1032,7 +1036,14 @@ no annotations that revoke either property.
 
 ### Matching an access
 
-The policy lookup matches each resolved data reference against an access:
+Each retained data-policy reference is indexed by its canonical member for a
+type-scoped policy, canonical object identity for an external object, or exact
+root for an internal or local object.  A monotonically increasing sequence
+records annotation processing order.  Lookup converts the access's exact
+member to its canonical member once, obtains the applicable type and object
+ranges, and merges those ranges by sequence.
+
+The selected candidates are then matched against the access:
 
 - concrete object annotations by canonical object identity, final member, and
   root-relative offset; or
@@ -2165,7 +2176,7 @@ intermediate-frame rendering remain optional future work.
 | --- | --- |
 | `capture_annotation()` | Copy `_NOTE` argument tokens before expansion/token release |
 | `locklint_resolve_annotations()` | Process newly captured annotations in the current translation unit |
-| `locklint_data_policy()` | Combine the effective policy dimensions and construct a concrete mechanical lock when required |
+| `locklint_data_policy()` | Merge indexed canonical policy candidates in declaration order, combine policy dimensions, and construct a concrete mechanical lock when required |
 
 ### Assertions: `assertions.c`
 
@@ -2597,6 +2608,8 @@ The current implementation relies on these invariants:
     context after normalization to one function-relative identity.  A context
     that never reaches the candidate acquisition contributes no observation;
     assertion refinements are not acquisitions.
+48. Data-policy indexing preserves source and command declaration order while
+    selecting candidates by canonical type-member or object identity.
 
 Changes that invalidate one of these invariants should update this document
 and add a focused regression test.
