@@ -391,6 +391,11 @@ require_match "command readable type provenance" \
 require_match "command readable object provenance" \
     "commands/readable.cf:4: DATA_READABLE_WITHOUT_LOCK command_global" \
     command-readable-annotations.out
+if [ "$(grep -c \
+    'MUTEX_PROTECTS_DATA command_state::lock -> command_state::readable' \
+    command-readable-annotations.out)" -ne 3 ]; then
+	fail "command readable provenance: expected three canonical policy references"
+fi
 
 run_capture "command type dump" command-types.out \
     "$LOCKLINT" --dump-types --dump-statistics \

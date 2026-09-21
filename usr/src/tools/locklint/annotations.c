@@ -18,10 +18,12 @@
  */
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "avl.h"
 #include "lib.h"
 #include "access.h"
 #include "annotations.h"
@@ -94,11 +96,73 @@ struct annotation {
 	struct annotation *next;
 };
 
+struct policy_ref_identity {
+	const char *source;
+	const char *scheme;
+	const struct ll_type *lock_owner;
+	const struct type_member *lock_member;
+	const struct ll_type *data_owner;
+	const struct type_member *data_member;
+	unsigned long line;
+	unsigned long column;
+	unsigned long lock_offset;
+	unsigned long data_offset;
+	enum annotation_kind kind;
+	bool has_lock;
+};
+
+struct policy_ref_index_entry {
+	struct policy_ref_identity identity;
+	avl_node_t by_identity;
+};
+
 static struct annotation *annotations;
 static struct annotation **annotations_tail = &annotations;
+static avl_tree_t policy_ref_index;
 
 static enum locklint_execution_kind execution_kind(const struct token *);
 static void expand_data_refs(struct annotation *);
+
+static int
+policy_ref_identity_compare(const void *left_arg, const void *right_arg)
+{
+	const struct policy_ref_index_entry *left = left_arg;
+	const struct policy_ref_index_entry *right = right_arg;
+	const struct policy_ref_identity *a = &left->identity;
+	const struct policy_ref_identity *b = &right->identity;
+	int result;
+
+	result = strcmp(a->source, b->source);
+	if (result != 0)
+		return (AVL_ISIGN(result));
+	if (a->line != b->line)
+		return (AVL_CMP(a->line, b->line));
+	if (a->column != b->column)
+		return (AVL_CMP(a->column, b->column));
+	if (a->kind != b->kind)
+		return (AVL_CMP(a->kind, b->kind));
+	if (a->scheme == NULL || b->scheme == NULL) {
+		if (a->scheme != b->scheme)
+			return (AVL_PCMP(a->scheme, b->scheme));
+	} else {
+		result = strcmp(a->scheme, b->scheme);
+		if (result != 0)
+			return (AVL_ISIGN(result));
+	}
+	if (a->has_lock != b->has_lock)
+		return (AVL_CMP(a->has_lock, b->has_lock));
+	if (a->lock_owner != b->lock_owner)
+		return (AVL_PCMP(a->lock_owner, b->lock_owner));
+	if (a->lock_member != b->lock_member)
+		return (AVL_PCMP(a->lock_member, b->lock_member));
+	if (a->lock_offset != b->lock_offset)
+		return (AVL_CMP(a->lock_offset, b->lock_offset));
+	if (a->data_owner != b->data_owner)
+		return (AVL_PCMP(a->data_owner, b->data_owner));
+	if (a->data_member != b->data_member)
+		return (AVL_PCMP(a->data_member, b->data_member));
+	return (AVL_CMP(a->data_offset, b->data_offset));
+}
 
 static char *
 copy_string(const char *text)
@@ -224,6 +288,9 @@ execution_kind(const struct token *open)
 void
 locklint_annotations_enable(void)
 {
+	avl_create(&policy_ref_index, policy_ref_identity_compare,
+	    sizeof (struct policy_ref_index_entry),
+	    offsetof(struct policy_ref_index_entry, by_identity));
 	add_macro_expansion_hook("_NOTE", capture_annotation, NULL);
 	add_pre_buffer("#define NO_COMPETING_THREADS_NOW "
 	    "__context__(0, 0, %lu);\n",
@@ -1399,6 +1466,65 @@ expand_data_refs(struct annotation *annotation)
 	annotation->data = expanded;
 }
 
+/*
+ * Retain one expanded type-scoped reference for each source declaration and
+ * canonical policy identity.  Repeated header instances have the same source
+ * position and canonical references; separately written declarations do not.
+ */
+static void
+deduplicate_type_policy_refs(struct annotation *annotation)
+{
+	struct annotation_ref **link = &annotation->data;
+
+	if (annotation->command_file != NULL ||
+	    (annotation->lock != NULL &&
+	    annotation->lock->scope != ANNOTATION_TYPE))
+		return;
+	while (*link != NULL) {
+		struct annotation_ref *ref = *link;
+		struct policy_ref_index_entry key = {
+			.identity = {
+				.source = stream_name(annotation->pos.stream),
+				.scheme = annotation->scheme,
+				.lock_owner = annotation->lock != NULL ?
+				    annotation->lock->owner_type : NULL,
+				.lock_member = annotation->lock != NULL ?
+				    annotation->lock->member : NULL,
+				.data_owner = ref->owner_type,
+				.data_member = ref->member,
+				.line = annotation->pos.line,
+				.column = annotation->pos.pos,
+				.lock_offset = annotation->lock != NULL ?
+				    annotation->lock->offset : 0,
+				.data_offset = ref->offset,
+				.kind = annotation->kind,
+				.has_lock = annotation->lock != NULL
+			}
+		};
+		struct policy_ref_index_entry *entry;
+		avl_index_t where;
+
+		if (ref->scope != ANNOTATION_TYPE) {
+			link = &ref->next;
+			continue;
+		}
+		entry = avl_find(&policy_ref_index, &key, &where);
+		if (entry == NULL) {
+			entry = malloc(sizeof (*entry));
+			if (entry == NULL)
+				die("out of memory indexing canonical policy");
+			*entry = key;
+			avl_insert(&policy_ref_index, entry, where);
+			link = &ref->next;
+			continue;
+		}
+		*link = ref->next;
+		free(ref->base_name);
+		free(ref->path);
+		free(ref);
+	}
+}
+
 static bool
 same_data_ref(const struct annotation_ref *left,
     const struct annotation_ref *right)
@@ -1510,6 +1636,7 @@ locklint_resolve_annotations(struct symbol_list *symbols)
 			if (annotation->kind !=
 			    ANNOTATION_RWLOCK_COVERS_LOCKS)
 				expand_data_refs(annotation);
+			deduplicate_type_policy_refs(annotation);
 			if (annotation->kind ==
 			    ANNOTATION_MUTEX_PROTECTS_DATA ||
 			    annotation->kind ==
