@@ -25,10 +25,19 @@ typedef struct canonical_policy_mutex {
 struct canonical_policy_state {
 	canonical_policy_mutex_t lock;
 	int value;
+	int global_value;
+	int local_value;
 };
 
+extern canonical_policy_mutex_t canonical_policy_global_lock;
+static canonical_policy_mutex_t canonical_policy_local_lock;
 extern void mutex_enter(canonical_policy_mutex_t *);
 extern void mutex_exit(canonical_policy_mutex_t *);
 extern int canonical_policy_use(struct canonical_policy_state *);
+
+_NOTE(MUTEX_PROTECTS_DATA(canonical_policy_global_lock,
+    canonical_policy_state::global_value))
+_NOTE(MUTEX_PROTECTS_DATA(canonical_policy_local_lock,
+    canonical_policy_state::local_value))
 
 #endif /* TEST_CANONICAL_POLICY_H */

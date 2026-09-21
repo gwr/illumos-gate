@@ -99,6 +99,8 @@ struct annotation {
 struct policy_ref_identity {
 	const char *source;
 	const char *scheme;
+	struct symbol *lock_root;
+	struct object_identity *lock_object;
 	const struct ll_type *lock_owner;
 	const struct type_member *lock_member;
 	const struct ll_type *data_owner;
@@ -151,6 +153,10 @@ policy_ref_identity_compare(const void *left_arg, const void *right_arg)
 	}
 	if (a->has_lock != b->has_lock)
 		return (AVL_CMP(a->has_lock, b->has_lock));
+	if (a->lock_root != b->lock_root)
+		return (AVL_PCMP(a->lock_root, b->lock_root));
+	if (a->lock_object != b->lock_object)
+		return (AVL_PCMP(a->lock_object, b->lock_object));
 	if (a->lock_owner != b->lock_owner)
 		return (AVL_PCMP(a->lock_owner, b->lock_owner));
 	if (a->lock_member != b->lock_member)
@@ -1484,18 +1490,20 @@ static void
 deduplicate_type_policy_refs(struct annotation *annotation)
 {
 	struct annotation_ref **link = &annotation->data;
-	bool can_deduplicate;
 
 	if (annotation->command_file != NULL)
 		return;
-	can_deduplicate = annotation->lock == NULL ||
-	    annotation->lock->scope == ANNOTATION_TYPE;
 	while (*link != NULL) {
 		struct annotation_ref *ref = *link;
 		struct policy_ref_index_entry key = {
 			.identity = {
 				.source = stream_name(annotation->pos.stream),
 				.scheme = annotation->scheme,
+				.lock_root = annotation->lock != NULL &&
+				    annotation->lock->object == NULL ?
+				    annotation->lock->root : NULL,
+				.lock_object = annotation->lock != NULL ?
+				    annotation->lock->object : NULL,
 				.lock_owner = annotation->lock != NULL ?
 				    annotation->lock->owner_type : NULL,
 				.lock_member = annotation->lock != NULL ?
@@ -1519,11 +1527,6 @@ deduplicate_type_policy_refs(struct annotation *annotation)
 			continue;
 		}
 		statistics.source_type_policy_refs_resolved++;
-		if (!can_deduplicate) {
-			statistics.source_type_policy_refs_retained++;
-			link = &ref->next;
-			continue;
-		}
 		entry = avl_find(&policy_ref_index, &key, &where);
 		if (entry == NULL) {
 			entry = malloc(sizeof (*entry));

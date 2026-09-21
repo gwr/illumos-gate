@@ -1109,6 +1109,19 @@ require_match "canonical cross-TU write protection" \
 if [ "$(grep -c '\[unprotected-access\]' canonical-policy.out)" -ne 1 ]; then
 	fail "canonical cross-TU policy: expected one unprotected access"
 fi
+run_capture "canonical external-lock policy references" \
+    canonical-policy-annotations.out "$LOCKLINT" --dump-annotations \
+    canonical-policy-declaration.c canonical-policy-use.c
+if [ "$(grep -c \
+    'MUTEX_PROTECTS_DATA canonical_policy_global_lock -> canonical_policy_state::global_value' \
+    canonical-policy-annotations.out)" -ne 1 ]; then
+	fail "canonical external-lock policy references: expected one reference"
+fi
+if [ "$(grep -c \
+    'MUTEX_PROTECTS_DATA canonical_policy_local_lock -> canonical_policy_state::local_value' \
+    canonical-policy-annotations.out)" -ne 2 ]; then
+	fail "canonical local-lock policy references: expected two references"
+fi
 
 #
 # Verify caller lock state through direct, wrapped, and recursive calls.
