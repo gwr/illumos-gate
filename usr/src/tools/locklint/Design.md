@@ -119,6 +119,12 @@ not when future features should be added.
   initialization, including command-line-included source.
 - **Object identity** - Locklint's canonical key for determining when two
   declarations or accesses name the same C object.
+- **Exact type** - One Sparse-owned type object created while parsing one
+  translation unit.
+- **Locklint type** (`struct ll_type`) - Locklint's canonical identity for
+  structurally matching exact aggregate types from the same source origin.
+- **Canonical member** (`struct type_member`) - One member identity shared by
+  corresponding exact members of a locklint type.
 - **Source origin** - The translation unit and physical source position from
   which a locklint record was derived.
 
@@ -375,13 +381,25 @@ translation units:
   when several translation units contain declarations for that function;
   GNU extern-inline implementations retain distinct translation-unit bodies.
 
-Type-scoped annotations and compound types initially remain
-translation-unit-local.  C structure and union tags do not have linker
-identity, and equal tag spelling or header origin does not prove that two
-separately parsed types are compatible.  Cross-translation-unit operations
-map members through canonical object or function boundaries using resolved
-member identifiers and offsets; they do not globally intern a type by tag
-name.
+Aggregate types are canonicalized by kind and physical source origin.
+Repeated exact types join one `ll_type` only after recursive structural
+validation of their layouts and members.  Each exact Sparse type and member
+maps to its canonical locklint identity; Sparse AST links are never rewritten.
+Same-named types from different origins remain distinct, although commands may
+apply to all of them when their layouts match.  Differing repeated definitions
+are fatal, while differing same-name definitions from separate origins produce
+a layout warning.
+
+An incomplete aggregate has no member or policy identity and does not enter
+the name index used by commands, `--dump-types`, or layout-conflict
+diagnostics.  It may match a complete aggregate only as an opaque pointer
+target, and only when aggregate kind and tag name agree.  Direct aggregate
+comparison and comparison of two complete definitions remain strict.
+
+After expansion, repeated source policy references are deduplicated only when
+their source position, policy kind, canonical data identity, and canonical
+protector identity all match.  Separately written declarations and
+translation-unit-local protectors remain distinct.
 
 Raw annotation tokens are per-translation-unit observations.  They must
 remain available until name resolution is complete because Sparse releases
@@ -994,8 +1012,11 @@ Resolution performs these steps:
 4. Recursively expand structure-valued data into leaf members.
 5. Skip the protecting lock member when recursively expanding the same
    object/type.
-6. Record applicable overlaps with earlier resolved data references.
-7. Mark the annotation resolved only if every required name succeeded.
+6. Deduplicate repeated source references by canonical policy identity.
+7. Record applicable overlaps with earlier resolved data references.
+8. Mark the annotation resolved only if every required name succeeded.
+9. Index retained data-policy references by canonical member or object
+   identity and declaration sequence.
 
 Object names inside a function first use the lexical scope at the annotation
 position.  Sparse removes block declarations from active identifier lookup
@@ -2296,12 +2317,16 @@ preprocessor sees _NOTE
 translation unit parsing completes
     -> locklint_resolve_annotations parses and resolves names
     -> structure-valued data expands to leaf relations
+    -> repeated source relations are deduplicated canonically
+    -> retained relations enter the ordered canonical policy index
 function is evaluated and linearized
     -> OP_LOAD/OP_STORE retains source expression
 checker visits instruction
     -> locklint_get_access constructs concrete identity
     -> a full-width compound access expands to exact leaf accesses
-    -> locklint_data_policy combines effective policy dimensions
+    -> exact member maps once to its canonical member
+    -> locklint_data_policy merges indexed type and object candidates
+       in declaration order and combines effective policy dimensions
     -> scheme-protected access is excluded from mechanical checking
     -> unlocked-readable load is accepted
     -> otherwise current protection alternatives are queried
