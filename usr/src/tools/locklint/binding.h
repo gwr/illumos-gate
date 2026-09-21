@@ -20,8 +20,7 @@
 #include <stddef.h>
 
 #include "avl.h"
-
-struct lock_identity;
+#include "lock_identity.h"
 
 /*
  * A binding maps one zero-based formal argument number to the canonical
@@ -33,9 +32,20 @@ struct formal_binding {
 	const struct lock_identity *actual_identity;
 };
 
+/*
+ * A derived binding maps one exact callee-side expression and byte offset to
+ * an existing canonical identity in the caller.
+ */
+struct derived_binding {
+	struct lock_identity_key source;
+	const struct lock_identity *actual_identity;
+};
+
 struct binding_environment {
 	avl_node_t by_value;
 	size_t count;
+	size_t derived_count;
+	struct derived_binding *derived_entries;
 	struct formal_binding entries[];
 };
 
@@ -47,10 +57,12 @@ void binding_collection_create(struct binding_environment_collection *);
 void binding_collection_free(struct binding_environment_collection *);
 
 int binding_environment_intern(struct binding_environment_collection *,
-    const struct formal_binding *, size_t, struct binding_environment **,
-    bool *);
+    const struct formal_binding *, size_t, const struct derived_binding *,
+    size_t, struct binding_environment **, bool *);
 const struct lock_identity *binding_environment_lookup(
     const struct binding_environment *, unsigned int);
+const struct lock_identity *binding_environment_lookup_derived(
+    const struct binding_environment *, struct lock_identity_key);
 size_t binding_environment_count(struct binding_environment_collection *);
 size_t binding_environment_entry_count(
     struct binding_environment_collection *);

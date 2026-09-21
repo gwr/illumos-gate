@@ -158,6 +158,7 @@ static bool identity_formal_argument(const struct function_info *,
 static struct symbol *function_formal_argument(const struct function_info *,
     unsigned int);
 static void collect_assumed_regions(void);
+static void collect_derived_protectors(void);
 static void record_semantic_state(struct analysis *, bool);
 static const char *function_name(const struct function_info *);
 static bool for_each_root_call(struct function_context *,
@@ -430,6 +431,11 @@ binding_contains_analysis_object(const struct binding_environment *bindings,
 
 	for (index = 0; index < bindings->count; index++) {
 		if (bindings->entries[index].actual_identity->
+		    key.analysis_object == analysis_object)
+			return (true);
+	}
+	for (index = 0; index < bindings->derived_count; index++) {
+		if (bindings->derived_entries[index].actual_identity->
 		    key.analysis_object == analysis_object)
 			return (true);
 	}
@@ -822,6 +828,7 @@ context_access_key(const struct function_context *context,
     const struct locklint_access *access, struct lock_identity_key *key,
     enum lock_analysis_object_type *object_type, bool *composed)
 {
+	const struct lock_identity *derived;
 	int error;
 
 	if (context->kind == FUNCTION_CONTEXT_EFFECT_CONTRACT) {
@@ -832,6 +839,13 @@ context_access_key(const struct function_context *context,
 	}
 	if (error != 0)
 		return (error);
+	derived = binding_environment_lookup_derived(context->bindings, *key);
+	if (derived != NULL) {
+		*key = derived->key;
+		*object_type = derived->analysis_object_type;
+		*composed = true;
+		return (0);
+	}
 	*composed = compose_caller_identity(context, key, object_type);
 	return (0);
 }
@@ -905,6 +919,235 @@ call_argument_pseudo(const struct instruction *insn, unsigned int index)
 			return (pseudo);
 	} END_FOR_EACH_PTR(pseudo);
 	return (NULL);
+}
+
+/*
+ * Return whether one exact retained expression depends on a formal argument.
+ * Only operations also accepted by the call-side structural matcher qualify.
+ */
+static bool
+pseudo_uses_formal(struct pseudo *pseudo, unsigned int depth)
+{
+	struct instruction *def;
+
+	if (pseudo == NULL || depth > 32)
+		return (false);
+	if (pseudo->type == PSEUDO_ARG)
+		return (pseudo->nr != 0);
+	if (pseudo->type != PSEUDO_REG || pseudo->def == NULL)
+		return (false);
+	def = pseudo->def;
+	switch (def->opcode) {
+	case OP_PTRCAST:
+	case OP_ZEXT:
+	case OP_SEXT:
+	case OP_LOAD:
+		return (pseudo_uses_formal(def->src, depth + 1));
+	case OP_ADD:
+	case OP_SUB:
+	case OP_MUL:
+		return (pseudo_uses_formal(def->src1, depth + 1) ||
+		    pseudo_uses_formal(def->src2, depth + 1));
+	default:
+		return (false);
+	}
+}
+
+static void
+add_derived_protector(struct function_info *function,
+    struct lock_identity_key key)
+{
+	struct lock_identity_key *entries;
+	size_t index;
+	size_t capacity;
+
+	for (index = 0; index < function->derived_protector_count; index++) {
+		if (function->derived_protectors[index].analysis_object ==
+		    key.analysis_object &&
+		    function->derived_protectors[index].target_offset ==
+		    key.target_offset)
+			return;
+	}
+	if (function->derived_protector_count ==
+	    function->derived_protector_capacity) {
+		capacity = function->derived_protector_capacity == 0 ?
+		    4 : function->derived_protector_capacity * 2;
+		if (capacity < function->derived_protector_capacity ||
+		    capacity > SIZE_MAX / sizeof (*entries))
+			die("too many derived protector identities");
+		entries = realloc(function->derived_protectors,
+		    capacity * sizeof (*entries));
+		if (entries == NULL)
+			die("cannot allocate derived protector identities");
+		function->derived_protectors = entries;
+		function->derived_protector_capacity = capacity;
+	}
+	function->derived_protectors[
+	    function->derived_protector_count++] = key;
+}
+
+static void
+collect_derived_protector_leaf(const struct locklint_access *access,
+    void *data_arg)
+{
+	struct function_info *function = data_arg;
+	enum lock_analysis_object_type object_type;
+	struct locklint_data_policy policy;
+	struct locklint_access protector;
+	struct lock_identity_key key;
+
+	if (!locklint_data_policy(access, &policy, &protector) ||
+	    (policy.protection != LOCKLINT_PROTECTION_MUTEX &&
+	    policy.protection != LOCKLINT_PROTECTION_RWLOCK) ||
+	    lock_identity_key_from_access(&protector, &key, &object_type) != 0 ||
+	    object_type != LOCK_ANALYSIS_OBJECT_PSEUDO ||
+	    !pseudo_uses_formal((struct pseudo *)key.analysis_object, 0))
+		return;
+	add_derived_protector(function, key);
+}
+
+/*
+ * Retain the small set of policy protector expressions which can require
+ * exact call-argument substitution.  This avoids rescanning callee bodies at
+ * every call.
+ */
+static void
+collect_derived_protectors(void)
+{
+	struct callgraph_iter *iterator;
+	struct function_info *function;
+	int error;
+
+	error = callgraph_iter_open(&iterator);
+	if (error != 0)
+		die("cannot iterate ready callgraph: %s", strerror(error));
+	while ((function = callgraph_iter_next(iterator)) != NULL) {
+		struct basic_block *block;
+
+		FOR_EACH_PTR(function->ep->bbs, block) {
+			struct instruction *instruction;
+
+			FOR_EACH_PTR(block->insns, instruction) {
+				if (instruction->bb == NULL ||
+				    (instruction->opcode != OP_LOAD &&
+				    instruction->opcode != OP_STORE))
+					continue;
+				locklint_for_each_instruction_leaf_access(
+				    function->tu, instruction,
+				    collect_derived_protector_leaf, function);
+			} END_FOR_EACH_PTR(instruction);
+		} END_FOR_EACH_PTR(block);
+	}
+	callgraph_iter_close(iterator);
+}
+
+/*
+ * Compare one caller expression with a callee expression after substituting
+ * the call's actual pseudos for formal arguments.  After substitution, clear
+ * the call so a caller formal is compared rather than substituted again.
+ */
+static bool
+same_pseudo_expression(const struct instruction *insn,
+    struct pseudo *source, struct pseudo *candidate, unsigned int depth)
+{
+	struct instruction *source_def;
+	struct instruction *candidate_def;
+
+	if (source == NULL || candidate == NULL || depth > 32)
+		return (false);
+	if (source == candidate)
+		return (true);
+	if (source->type == PSEUDO_ARG && insn != NULL) {
+		if (source->nr == 0)
+			return (false);
+		return (same_pseudo_expression(
+		    NULL, call_argument_pseudo(insn, source->nr - 1), candidate,
+		    depth + 1));
+	}
+	if (source->type != candidate->type)
+		return (false);
+	switch (source->type) {
+	case PSEUDO_ARG:
+		return (source->nr == candidate->nr);
+	case PSEUDO_SYM:
+		return (source->sym == candidate->sym);
+	case PSEUDO_VAL:
+		return (source->value == candidate->value);
+	case PSEUDO_REG:
+		break;
+	default:
+		return (false);
+	}
+	source_def = source->def;
+	candidate_def = candidate->def;
+	if (source_def == NULL || candidate_def == NULL ||
+	    source_def->opcode != candidate_def->opcode ||
+	    source_def->size != candidate_def->size)
+		return (false);
+	switch (source_def->opcode) {
+	case OP_PTRCAST:
+	case OP_ZEXT:
+	case OP_SEXT:
+		return (same_pseudo_expression(insn, source_def->src,
+		    candidate_def->src, depth + 1));
+	case OP_LOAD:
+		return (source_def->offset == candidate_def->offset &&
+		    same_pseudo_expression(insn, source_def->src,
+		    candidate_def->src, depth + 1));
+	case OP_ADD:
+	case OP_MUL:
+		return ((same_pseudo_expression(insn, source_def->src1,
+		    candidate_def->src1, depth + 1) &&
+		    same_pseudo_expression(insn, source_def->src2,
+		    candidate_def->src2, depth + 1)) ||
+		    (same_pseudo_expression(insn, source_def->src1,
+		    candidate_def->src2, depth + 1) &&
+		    same_pseudo_expression(insn, source_def->src2,
+		    candidate_def->src1, depth + 1)));
+	case OP_SUB:
+		return (same_pseudo_expression(insn, source_def->src1,
+		    candidate_def->src1, depth + 1) &&
+		    same_pseudo_expression(insn, source_def->src2,
+		    candidate_def->src2, depth + 1));
+	default:
+		return (false);
+	}
+}
+
+static size_t
+call_derived_bindings(const struct function_info *callee,
+    const struct semantic_state *caller_state, const struct instruction *insn,
+    struct derived_binding *bindings)
+{
+	size_t binding_count = 0;
+	size_t source_index;
+
+	for (source_index = 0;
+	    source_index < callee->derived_protector_count; source_index++) {
+		struct lock_identity_key source =
+		    callee->derived_protectors[source_index];
+		size_t lock_index;
+
+		for (lock_index = 0;
+		    lock_index < caller_state->locks->count; lock_index++) {
+			const struct lock_identity *lock =
+			    caller_state->locks->entries[lock_index].lock;
+
+			if (lock->analysis_object_type !=
+			    LOCK_ANALYSIS_OBJECT_PSEUDO ||
+			    source.target_offset != lock->key.target_offset ||
+			    !same_pseudo_expression(insn,
+			    (struct pseudo *)source.analysis_object,
+			    (struct pseudo *)lock->key.analysis_object, 0))
+				continue;
+			bindings[binding_count++] = (struct derived_binding) {
+				.source = source,
+				.actual_identity = lock
+			};
+			break;
+		}
+	}
+	return (binding_count);
 }
 
 static const struct lock_identity *
@@ -1032,14 +1275,16 @@ collect_assumed_regions(void)
 static const struct binding_environment *
 call_bindings(struct analysis *analysis,
     const struct function_context *caller, struct function_info *callee,
-    const struct instruction *insn)
+    const struct semantic_state *caller_state, const struct instruction *insn)
 {
 	struct symbol *type = function_type(callee);
 	struct symbol *formal;
+	struct derived_binding *derived_entries;
 	struct formal_binding *entries;
 	struct binding_environment *bindings;
 	size_t formal_count = 0;
 	size_t binding_count = 0;
+	size_t derived_count;
 	unsigned int argument = 0;
 	bool existed;
 	int error;
@@ -1055,6 +1300,10 @@ call_bindings(struct analysis *analysis,
 	entries = calloc(formal_count, sizeof (*entries));
 	if (entries == NULL && formal_count != 0)
 		die("cannot allocate call bindings");
+	derived_entries = calloc(callee->derived_protector_count,
+	    sizeof (*derived_entries));
+	if (derived_entries == NULL && callee->derived_protector_count != 0)
+		die("cannot allocate derived call bindings");
 	FOR_EACH_PTR(type->arguments, formal) {
 		if (formal_is_pointer(formal)) {
 			entries[binding_count].argument = argument;
@@ -1065,10 +1314,13 @@ call_bindings(struct analysis *analysis,
 		}
 		argument++;
 	} END_FOR_EACH_PTR(formal);
+	derived_count = call_derived_bindings(callee, caller_state, insn,
+	    derived_entries);
 	statistics.call_binding_environments_find++;
 	error = binding_environment_intern(&callee->bindings, entries,
-	    binding_count, &bindings, &existed);
+	    binding_count, derived_entries, derived_count, &bindings, &existed);
 	free(entries);
+	free(derived_entries);
 	if (error != 0)
 		die("cannot intern call bindings: %s", strerror(error));
 	if (existed)
@@ -1106,7 +1358,7 @@ process_call(struct analysis *analysis, struct point_state *point_state,
 	}
 
 	bindings = call_bindings(analysis, caller_context, callee_function,
-	    point_state->point.next_instruction);
+	    caller_state, point_state->point.next_instruction);
 	statistics.call_import_semantic_states_find++;
 	error = context_state_import(callee_function, caller_state,
 	    &callee_state, &existed);
@@ -1495,7 +1747,7 @@ seed_root(struct analysis *analysis, struct function_info *function)
 	analysis->counts.roots++;
 	statistics.root_binding_environments_find++;
 	error = binding_environment_intern(&function->bindings, NULL, 0,
-	    &bindings, &existed);
+	    NULL, 0, &bindings, &existed);
 	if (error != 0)
 		die("cannot intern root bindings: %s", strerror(error));
 	if (existed)
@@ -1600,8 +1852,8 @@ seed_effect_contracts(struct analysis *analysis,
 			if (bindings == NULL) {
 				statistics.effect_binding_environments_find++;
 				error = binding_environment_intern(
-				    &function->bindings, NULL, 0, &bindings,
-				    &existed);
+				    &function->bindings, NULL, 0, NULL, 0,
+				    &bindings, &existed);
 				if (error != 0)
 					die("cannot intern effect contract "
 					    "bindings: %s", strerror(error));
@@ -4862,11 +5114,13 @@ measure_collections(struct analysis *analysis)
 		    bindings)) {
 			distribution_add(
 			    &measurements->bindings_per_environment,
-			    bindings->count, function);
+			    bindings->count + bindings->derived_count, function);
 			memory_add(
 			    &measurements->binding_environment_bytes, 1,
 			    sizeof (*bindings) +
-			    bindings->count * sizeof (*bindings->entries));
+			    bindings->count * sizeof (*bindings->entries) +
+			    bindings->derived_count *
+			    sizeof (*bindings->derived_entries));
 		}
 		distribution_add(&measurements->semantic_states_per_function,
 		    states, function);
@@ -5205,6 +5459,7 @@ analysis_run(struct lock_identity_collection *lock_identities, FILE *stream)
 	worklist_create(&analysis.worklist);
 	timing_begin(TIMING_FIXED_POINT);
 	collect_assumed_regions();
+	collect_derived_protectors();
 	seed_initial_contexts(&analysis);
 	while ((point_state =
 	    worklist_point_state_dequeue(&analysis.worklist)) != NULL)

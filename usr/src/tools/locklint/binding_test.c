@@ -57,6 +57,15 @@ test_interning(void)
 		{ .argument = 0, .actual_identity = first },
 		{ .argument = 2, .actual_identity = first }
 	};
+	struct derived_binding derived[] = {
+		{
+			.source = {
+				.analysis_object = &identities[1],
+				.target_offset = 16
+			},
+			.actual_identity = second
+		}
+	};
 	struct binding_environment *environment;
 	struct binding_environment *same;
 	struct binding_environment *alias_environment;
@@ -65,12 +74,12 @@ test_interning(void)
 	int error;
 
 	binding_collection_create(&collection);
-	error = binding_environment_intern(&collection, NULL, 0, &empty,
-	    &existed);
+	error = binding_environment_intern(&collection, NULL, 0, NULL, 0,
+	    &empty, &existed);
 	check(error == 0 && !existed, "create empty binding environment");
 	check(empty->count == 0, "empty binding environment has no entries");
 
-	error = binding_environment_intern(&collection, ordered, 2,
+	error = binding_environment_intern(&collection, ordered, 2, derived, 1,
 	    &environment, &existed);
 	check(error == 0 && !existed, "create binding environment");
 	check(environment->count == 2, "binding environment has two entries");
@@ -85,13 +94,20 @@ test_interning(void)
 	    "missing formal binding is absent");
 	check(binding_environment_lookup(NULL, 0) == NULL,
 	    "missing environment has no bindings");
+	check(binding_environment_lookup_derived(environment,
+	    derived[0].source) == second, "find derived binding");
+	check(binding_environment_lookup_derived(environment,
+	    (struct lock_identity_key) {
+		.analysis_object = &identities[1],
+		.target_offset = 8
+	    }) == NULL, "different derived offset is absent");
 
-	error = binding_environment_intern(&collection, reversed, 2, &same,
-	    &existed);
+	error = binding_environment_intern(&collection, reversed, 2, derived, 1,
+	    &same, &existed);
 	check(error == 0 && existed && same == environment,
 	    "binding insertion order reuses canonical environment");
 
-	error = binding_environment_intern(&collection, aliases, 2,
+	error = binding_environment_intern(&collection, aliases, 2, NULL, 0,
 	    &alias_environment, &existed);
 	check(error == 0 && !existed,
 	    "distinct formal alias relationship creates environment");
@@ -100,8 +116,8 @@ test_interning(void)
 	    "binding environment preserves exact aliases");
 	check(binding_environment_count(&collection) == 3,
 	    "collection owns three canonical binding environments");
-	check(binding_environment_entry_count(&collection) == 4,
-	    "binding environments retain four entries");
+	check(binding_environment_entry_count(&collection) == 5,
+	    "binding environments retain five entries");
 
 	binding_collection_free(&collection);
 }
@@ -110,12 +126,35 @@ static void
 test_errors(void)
 {
 	struct binding_environment_collection collection;
-	unsigned int identity;
+	unsigned int identities[2];
 	struct formal_binding duplicate[] = {
 		{ .argument = 1,
-		    .actual_identity = (const struct lock_identity *)&identity },
+		    .actual_identity =
+		    (const struct lock_identity *)&identities[0] },
 		{ .argument = 1,
-		    .actual_identity = (const struct lock_identity *)&identity }
+		    .actual_identity =
+		    (const struct lock_identity *)&identities[0] }
+	};
+	struct derived_binding duplicate_derived[] = {
+		{
+			.source = {
+				.analysis_object = &identities[0],
+				.target_offset = 8
+			},
+			.actual_identity =
+			    (const struct lock_identity *)&identities[0]
+		},
+		{
+			.source = {
+				.analysis_object = &identities[0],
+				.target_offset = 8
+			},
+			.actual_identity =
+			    (const struct lock_identity *)&identities[1]
+		}
+	};
+	struct derived_binding missing_derived = {
+		.source.analysis_object = &identities[0]
 	};
 	struct formal_binding missing = { .argument = 0 };
 	struct binding_environment *environment = NULL;
@@ -123,14 +162,21 @@ test_errors(void)
 	int error;
 
 	binding_collection_create(&collection);
-	error = binding_environment_intern(&collection, duplicate, 2,
+	error = binding_environment_intern(&collection, duplicate, 2, NULL, 0,
 	    &environment, &existed);
 	check(error == EINVAL, "duplicate formal binding is rejected");
 	check(environment == NULL && existed,
 	    "duplicate error preserves output arguments");
-	error = binding_environment_intern(&collection, &missing, 1,
+	error = binding_environment_intern(&collection, &missing, 1, NULL, 0,
 	    &environment, &existed);
 	check(error == EINVAL, "missing actual identity is rejected");
+	error = binding_environment_intern(&collection, NULL, 0,
+	    duplicate_derived, 2, &environment, &existed);
+	check(error == EINVAL, "duplicate derived binding is rejected");
+	error = binding_environment_intern(&collection, NULL, 0,
+	    &missing_derived, 1, &environment, &existed);
+	check(error == EINVAL,
+	    "derived binding without actual identity is rejected");
 	check(binding_environment_count(&collection) == 0,
 	    "invalid bindings are not retained");
 
@@ -154,10 +200,10 @@ test_collection_ownership(void)
 
 	binding_collection_create(&first);
 	binding_collection_create(&second);
-	error = binding_environment_intern(&first, &binding, 1,
+	error = binding_environment_intern(&first, &binding, 1, NULL, 0,
 	    &first_environment, &existed);
 	check(error == 0, "create first collection environment");
-	error = binding_environment_intern(&second, &binding, 1,
+	error = binding_environment_intern(&second, &binding, 1, NULL, 0,
 	    &second_environment, &existed);
 	check(error == 0 && !existed,
 	    "second collection owns distinct environment");

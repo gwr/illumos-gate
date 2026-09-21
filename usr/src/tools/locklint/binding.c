@@ -49,6 +49,29 @@ compare_binding_qsort(const void *left, const void *right)
 }
 
 static int
+compare_derived_binding(const struct derived_binding *left,
+    const struct derived_binding *right)
+{
+	int result;
+
+	result = AVL_PCMP(left->source.analysis_object,
+	    right->source.analysis_object);
+	if (result != 0)
+		return (result);
+	result = AVL_CMP(left->source.target_offset,
+	    right->source.target_offset);
+	if (result != 0)
+		return (result);
+	return (AVL_PCMP(left->actual_identity, right->actual_identity));
+}
+
+static int
+compare_derived_binding_qsort(const void *left, const void *right)
+{
+	return (compare_derived_binding(left, right));
+}
+
+static int
 compare_environment(const void *left_arg, const void *right_arg)
 {
 	const struct binding_environment *left = left_arg;
@@ -66,6 +89,18 @@ compare_environment(const void *left_arg, const void *right_arg)
 	if (left->count < right->count)
 		return (-1);
 	if (left->count > right->count)
+		return (1);
+	count = left->derived_count < right->derived_count ?
+	    left->derived_count : right->derived_count;
+	for (index = 0; index < count; index++) {
+		result = compare_derived_binding(&left->derived_entries[index],
+		    &right->derived_entries[index]);
+		if (result != 0)
+			return (result);
+	}
+	if (left->derived_count < right->derived_count)
+		return (-1);
+	if (left->derived_count > right->derived_count)
 		return (1);
 	return (0);
 }
@@ -98,34 +133,68 @@ binding_collection_free(struct binding_environment_collection *collection)
 int
 binding_environment_intern(struct binding_environment_collection *collection,
     const struct formal_binding *entries, size_t count,
+    const struct derived_binding *derived_entries, size_t derived_count,
     struct binding_environment **result, bool *existed)
 {
 	struct binding_environment *candidate;
 	struct binding_environment *environment;
 	avl_index_t where;
+	size_t derived_size;
+	size_t formal_size;
 	size_t index;
 	size_t size;
 
-	if (count != 0 && entries == NULL)
+	if ((count != 0 && entries == NULL) ||
+	    (derived_count != 0 && derived_entries == NULL))
 		return (EINVAL);
-	if (count > (SIZE_MAX - sizeof (*candidate)) / sizeof (*entries))
+	if (count > SIZE_MAX / sizeof (*entries) ||
+	    derived_count > SIZE_MAX / sizeof (*derived_entries))
 		return (EOVERFLOW);
-	size = sizeof (*candidate) + count * sizeof (*entries);
+	formal_size = count * sizeof (*entries);
+	derived_size = derived_count * sizeof (*derived_entries);
+	if (formal_size > SIZE_MAX - sizeof (*candidate) ||
+	    derived_size > SIZE_MAX - sizeof (*candidate) - formal_size)
+		return (EOVERFLOW);
+	size = sizeof (*candidate) + formal_size + derived_size;
 	candidate = calloc(1, size);
 	if (candidate == NULL)
 		return (ENOMEM);
 	candidate->count = count;
+	candidate->derived_count = derived_count;
+	candidate->derived_entries =
+	    (struct derived_binding *)((char *)candidate->entries +
+	    formal_size);
 	if (count != 0) {
 		(void) memcpy(candidate->entries, entries,
-		    count * sizeof (*entries));
+		    formal_size);
 		qsort(candidate->entries, count, sizeof (*entries),
 		    compare_binding_qsort);
+	}
+	if (derived_count != 0) {
+		(void) memcpy(candidate->derived_entries, derived_entries,
+		    derived_size);
+		qsort(candidate->derived_entries, derived_count,
+		    sizeof (*derived_entries), compare_derived_binding_qsort);
 	}
 	for (index = 0; index < count; index++) {
 		if (candidate->entries[index].actual_identity == NULL ||
 		    (index != 0 &&
 		    candidate->entries[index - 1].argument ==
 		    candidate->entries[index].argument)) {
+			free(candidate);
+			return (EINVAL);
+		}
+	}
+	for (index = 0; index < derived_count; index++) {
+		struct derived_binding *binding =
+		    &candidate->derived_entries[index];
+
+		if (binding->source.analysis_object == NULL ||
+		    binding->actual_identity == NULL || (index != 0 &&
+		    candidate->derived_entries[index - 1].
+		    source.analysis_object == binding->source.analysis_object &&
+		    candidate->derived_entries[index - 1].
+		    source.target_offset == binding->source.target_offset)) {
 			free(candidate);
 			return (EINVAL);
 		}
@@ -169,6 +238,39 @@ binding_environment_lookup(const struct binding_environment *environment,
 	return (NULL);
 }
 
+const struct lock_identity *
+binding_environment_lookup_derived(
+    const struct binding_environment *environment,
+    struct lock_identity_key source)
+{
+	size_t low = 0;
+	size_t high;
+
+	if (environment == NULL)
+		return (NULL);
+	high = environment->derived_count;
+	while (low < high) {
+		size_t middle = low + (high - low) / 2;
+		const struct derived_binding *binding =
+		    &environment->derived_entries[middle];
+		int result;
+
+		result = AVL_PCMP(source.analysis_object,
+		    binding->source.analysis_object);
+		if (result == 0) {
+			result = AVL_CMP(source.target_offset,
+			    binding->source.target_offset);
+		}
+		if (result < 0)
+			high = middle;
+		else if (result > 0)
+			low = middle + 1;
+		else
+			return (binding->actual_identity);
+	}
+	return (NULL);
+}
+
 size_t
 binding_environment_count(
     struct binding_environment_collection *collection)
@@ -186,6 +288,6 @@ binding_environment_entry_count(
 	for (environment = avl_first(&collection->environments);
 	    environment != NULL;
 	    environment = AVL_NEXT(&collection->environments, environment))
-		count += environment->count;
+		count += environment->count + environment->derived_count;
 	return (count);
 }

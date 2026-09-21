@@ -1373,6 +1373,7 @@ callgraph_cleanup(void)
 		avl_remove(&functions_by_identity, functions);
 		context_collection_free(&functions->info);
 		binding_collection_free(&functions->info.bindings);
+		free(functions->info.derived_protectors);
 		while ((region = functions->info.assumed_regions) != NULL) {
 			functions->info.assumed_regions = region->next;
 			free(region->name);

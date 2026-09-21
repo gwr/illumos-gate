@@ -17,6 +17,7 @@
 #define	FUNCTION_INFO_H
 
 #include <stdbool.h>
+#include <stddef.h>
 
 #include "binding.h"
 #include "context.h"
@@ -55,6 +56,9 @@ struct function_info {
 	struct function_context_collection contexts;
 	struct assumed_region *assumed_regions;
 	struct assumed_region **assumed_regions_tail;
+	struct lock_identity_key *derived_protectors;
+	size_t derived_protector_count;
+	size_t derived_protector_capacity;
 	unsigned int root_reasons;
 	bool reachable_from_root;
 	bool entry_no_competing_threads;

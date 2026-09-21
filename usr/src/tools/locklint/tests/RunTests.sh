@@ -1187,6 +1187,25 @@ if [ "$(grep -c \
 fi
 
 #
+# Verify that an exact address derived from formal arguments maps to the
+# caller-held lock, while a different dynamic index remains unprotected.
+#
+run_capture "derived formal protection" derived-formal-protection.out \
+    "$LOCKLINT" --check-locks derived-formal-protection.c
+require_empty "derived formal protection" derived-formal-protection.out
+
+run_capture "distinct derived formal protection" \
+    derived-formal-protection-different.out "$LOCKLINT" \
+    -DDERIVED_FORMAL_DIFFERENT --check-locks derived-formal-protection.c
+if [ "$(grep -c 'warning: locklint:.*\[unprotected-access\]$' \
+    derived-formal-protection-different.out)" -ne 2 ]; then
+	fail "distinct derived formal protection: expected two warnings"
+fi
+require_match "distinct derived formal caller" \
+    "derived-formal-protection.c:62:31: locklint: protection was not established at this call to 'derived_helper'" \
+    derived-formal-protection-different.out
+
+#
 # Verify caller lock state through direct, wrapped, and recursive calls.
 #
 run_capture "basic call protection diagnostics" calls-basic-diagnostics.out \

@@ -1505,14 +1505,14 @@ untracked scalar controls whether a wrapper establishes the asserted state,
 both exact lock-state paths remain possible and the originating-call
 diagnostic is conditional.
 
-Alias handling needs no assertion-specific collection.  Call bindings map
-formal-relative lock addresses to canonical caller identities before lock
-operations or assertions use them.  Two formals passed the same actual
-therefore update and test one semantic lock entry, including aliases
-introduced inside wrappers.  Distinct actuals remain distinct.  This also
-removes the former bounded subset construction and its special overflow
-behavior: additional formal roles add ordinary bindings rather than
-combinatorial assertion alternatives.
+Alias handling needs no assertion-specific collection.  Call binding
+environments map formal-relative lock addresses and exact derived-formal lock
+expressions to canonical caller identities before lock operations or
+assertions use them.  Two formals passed the same actual therefore update and
+test one semantic lock entry, including aliases introduced inside wrappers.
+Distinct actuals remain distinct.  This also removes the former bounded
+subset construction and its special overflow behavior: additional formal
+roles add ordinary bindings rather than combinatorial assertion alternatives.
 
 ## Event decoding
 
@@ -2367,14 +2367,26 @@ checker visits instruction
 callee protected access uses a local pointer derived from formal arguments
     -> retained Sparse address expression identifies the formal base,
        dynamic index, member loads, casts, and constant arithmetic
-    -> protection condition retains that exact required-lock expression
+    -> function metadata retains that exact required-lock expression
 caller OP_CALL resolved to callee
-    -> callee argument pseudos are substituted with caller actual pseudos
+    -> callee formal pseudos are substituted once with caller actual pseudos
     -> exact side-effect-free address expressions are compared structurally
-    -> matching caller-held lock satisfies the callee condition
-    -> a different or unsupported derivation remains unsatisfied
-       and is diagnosed with caller lock evidence
+       against the locks held in that caller state
+    -> each exact match adds a derived entry to the interned call-binding
+       environment, keyed by the callee expression and member offset
+callee protected access is evaluated
+    -> the derived entry maps the required lock to the existing caller lock
+       identity before querying ownership
+    -> a different or unsupported derivation has no entry, remains
+       unsatisfied, and is diagnosed with caller lock evidence
 ```
+
+The matcher supports pointer casts, zero and sign extension, loads with equal
+offsets, addition, subtraction, and multiplication.  Addition and
+multiplication permit commuted operands; subtraction preserves operand order.
+Unsupported operations fail conservatively rather than creating an inexact
+mapping.  Only lock-relevant expressions observed as callee protectors are
+considered, so unrelated scalar arguments do not enlarge context identity.
 
 ### Assertion in caller-context analysis
 
