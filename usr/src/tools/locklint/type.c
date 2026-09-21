@@ -96,8 +96,8 @@ struct type_validation {
 };
 
 struct compared_types {
-	struct ll_type *left;
-	struct ll_type *right;
+	const struct ll_type *left;
+	const struct ll_type *right;
 	avl_node_t by_pair;
 };
 
@@ -1046,12 +1046,12 @@ type_intern(struct symbol *exact)
 	return (type);
 }
 
-static bool type_layout_equal_recurse(avl_tree_t *, struct ll_type *,
-    struct ll_type *);
+static bool type_layout_equal_recurse(avl_tree_t *, const struct ll_type *,
+    const struct ll_type *);
 
 static bool
-type_member_equal(avl_tree_t *compared, struct type_member *left,
-    struct type_member *right)
+type_member_equal(avl_tree_t *compared, const struct type_member *left,
+    const struct type_member *right)
 {
 	struct symbol *left_exact = left->representative;
 	struct symbol *right_exact = right->representative;
@@ -1065,8 +1065,8 @@ type_member_equal(avl_tree_t *compared, struct type_member *left,
 }
 
 static bool
-type_union_equal(avl_tree_t *compared, struct ll_type *left,
-    struct ll_type *right)
+type_union_equal(avl_tree_t *compared, const struct ll_type *left,
+    const struct ll_type *right)
 {
 	bool *matched;
 	size_t left_index;
@@ -1101,8 +1101,8 @@ type_union_equal(avl_tree_t *compared, struct ll_type *left,
  * Remember pairs before descending so recursive pointer graphs terminate.
  */
 static bool
-type_layout_equal_recurse(avl_tree_t *compared, struct ll_type *left,
-    struct ll_type *right)
+type_layout_equal_recurse(avl_tree_t *compared, const struct ll_type *left,
+    const struct ll_type *right)
 {
 	struct compared_types key = {
 		.left = left,
@@ -1179,8 +1179,8 @@ type_layout_equal_recurse(avl_tree_t *compared, struct ll_type *left,
 	}
 }
 
-static bool
-type_layout_equal(struct ll_type *left, struct ll_type *right)
+bool
+type_layout_equal(const struct ll_type *left, const struct ll_type *right)
 {
 	avl_tree_t compared;
 	struct compared_types *pair;

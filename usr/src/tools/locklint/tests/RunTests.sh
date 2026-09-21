@@ -451,13 +451,23 @@ require_match "command enum is not an object" \
     "unresolved data name 'COMMAND_READABLE_ENUM'" \
     command-readable-enum.out
 
-run_failure "command readable ambiguous type" \
+run_capture "command readable identical types" \
     command-readable-ambiguous.out "$LOCKLINT" \
-    --cf commands/readable-ambiguous.cf \
+    --dump-annotations --cf commands/readable-ambiguous.cf \
     commands/readable.c commands/readable-other.c
-require_match "command readable ambiguous type" \
-    "ambiguous data name 'duplicate_command_type::value'" \
-    command-readable-ambiguous.out
+if [ "$(grep -c \
+    'DATA_READABLE_WITHOUT_LOCK duplicate_command_type::value' \
+    command-readable-ambiguous.out)" -ne 2 ]; then
+	fail "command readable identical types: expected two annotations"
+fi
+
+run_failure "command readable inconsistent type" \
+    command-readable-inconsistent.out "$LOCKLINT" \
+    --cf commands/readable-inconsistent.cf \
+    type-name-first.c type-name-second-different.c
+require_match "command readable inconsistent type" \
+    "inconsistently defined type in data name 'repeated_name::value'" \
+    command-readable-inconsistent.out
 
 run_capture "rwlock annotations" rwlock-annotations.out \
     "$LOCKLINT" --dump-annotations rwlock.c

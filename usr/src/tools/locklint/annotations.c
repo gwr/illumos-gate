@@ -907,13 +907,6 @@ resolve_local(struct symbol_list *symbols, struct ident *ident,
 }
 
 static bool
-same_source_position(struct position left, struct position right)
-{
-	return (strcmp(stream_name(left.stream), stream_name(right.stream)) == 0 &&
-	    left.line == right.line && left.pos == right.pos);
-}
-
-static bool
 valid_identifier(const char *start, size_t length)
 {
 	size_t i;
@@ -1011,11 +1004,25 @@ struct annotation_type_resolution {
 	const char *name;
 	const char *path;
 	struct annotation_ref **tail;
-	struct position origin;
+	const struct ll_type *first_type;
 	size_t base_length;
 	enum locklint_command_result result;
-	bool found;
 };
+
+static bool
+annotations_type_check(const struct ll_type *type, void *data_arg)
+{
+	struct annotation_type_resolution *data = data_arg;
+
+	if (data->first_type == NULL) {
+		data->first_type = type;
+		return (true);
+	}
+	if (type_layout_equal(data->first_type, type))
+		return (true);
+	data->result = LOCKLINT_COMMAND_INCONSISTENT_TYPE;
+	return (false);
+}
 
 static bool
 annotations_type_resolve(struct symbol *type, void *data_arg)
@@ -1023,12 +1030,6 @@ annotations_type_resolve(struct symbol *type, void *data_arg)
 	struct annotation_type_resolution *data = data_arg;
 	struct annotation_ref *ref;
 
-	if (data->found && !same_source_position(data->origin, type->pos)) {
-		data->result = LOCKLINT_COMMAND_AMBIGUOUS_NAME;
-		return (false);
-	}
-	data->origin = type->pos;
-	data->found = true;
 	ref = new_command_ref(data->name, data->base_length, data->path,
 	    ANNOTATION_TYPE);
 	ref->owner_type = type;
@@ -1068,6 +1069,11 @@ resolve_command_type(struct annotation *annotation, const char *name,
 		ident = built_in_ident(base);
 		free(base);
 	}
+	type_name_visit_types(ident, annotations_type_check, &data);
+	if (data.result == LOCKLINT_COMMAND_INCONSISTENT_TYPE)
+		return (data.result);
+	if (data.first_type == NULL)
+		return (LOCKLINT_COMMAND_UNRESOLVED_NAME);
 	type_name_visit(ident, annotations_type_resolve, &data);
 	return (data.result);
 }

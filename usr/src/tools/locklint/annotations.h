@@ -74,7 +74,7 @@ enum locklint_command_result {
 	LOCKLINT_COMMAND_OK,
 	LOCKLINT_COMMAND_INVALID_NAME,
 	LOCKLINT_COMMAND_UNRESOLVED_NAME,
-	LOCKLINT_COMMAND_AMBIGUOUS_NAME
+	LOCKLINT_COMMAND_INCONSISTENT_TYPE
 };
 
 typedef void (*locklint_order_edge_f)(const struct locklint_access *,

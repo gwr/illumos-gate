@@ -57,9 +57,9 @@ cmd_declare(int argc, char **argv)
 	case LOCKLINT_COMMAND_UNRESOLVED_NAME:
 		return (command_parse_error("unresolved data name '%s'",
 		    argv[1]));
-	case LOCKLINT_COMMAND_AMBIGUOUS_NAME:
-		return (command_parse_error("ambiguous data name '%s'",
-		    argv[1]));
+	case LOCKLINT_COMMAND_INCONSISTENT_TYPE:
+		return (command_parse_error(
+		    "inconsistently defined type in data name '%s'", argv[1]));
 	default:
 		return (command_parse_error(
 		    "internal error resolving data name '%s'", argv[1]));
