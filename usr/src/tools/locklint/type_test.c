@@ -421,11 +421,131 @@ test_type_shapes(void)
 	free_ptr_list(&function_variadic.arguments);
 }
 
+static void
+test_aggregate_members(void)
+{
+	struct stream streams[] = {
+		{ .name = "members.h" }
+	};
+	struct ident *tag = built_in_ident("container");
+	struct symbol integer = {
+		.type = SYM_BASETYPE,
+		.bit_size = 32,
+		.examined = 1,
+		.ctype = {
+			.modifiers = MOD_SIGNED,
+			.alignment = 4,
+			.base_type = &int_type
+		}
+	};
+	struct symbol unsigned_integer = {
+		.type = SYM_BASETYPE,
+		.bit_size = 32,
+		.examined = 1,
+		.ctype = {
+			.modifiers = MOD_UNSIGNED,
+			.alignment = 4,
+			.base_type = &int_type
+		}
+	};
+	struct symbol aggregate = {
+		.type = SYM_STRUCT,
+		.namespace = NS_STRUCT,
+		.pos = { .stream = 0, .line = 12, .pos = 1 },
+		.ident = tag,
+		.bit_size = 192,
+		.examined = 1,
+		.ctype = { .alignment = 8 }
+	};
+	struct symbol self_pointer = {
+		.type = SYM_PTR,
+		.bit_size = 64,
+		.examined = 1,
+		.ctype = {
+			.alignment = 8,
+			.base_type = &aggregate
+		}
+	};
+	struct symbol bitfield_type = {
+		.type = SYM_BITFIELD,
+		.bit_size = 3,
+		.examined = 1,
+		.ctype = {
+			.alignment = 4,
+			.base_type = &unsigned_integer
+		}
+	};
+	struct symbol value_member = {
+		.type = SYM_NODE,
+		.ident = built_in_ident("value"),
+		.offset = 0,
+		.bit_size = 32,
+		.examined = 1,
+		.ctype = { .base_type = &integer }
+	};
+	struct symbol next_member = {
+		.type = SYM_NODE,
+		.ident = built_in_ident("next"),
+		.offset = 8,
+		.bit_size = 64,
+		.examined = 1,
+		.ctype = { .base_type = &self_pointer }
+	};
+	struct symbol flag_member = {
+		.type = SYM_NODE,
+		.ident = built_in_ident("flag"),
+		.offset = 16,
+		.bit_size = 3,
+		.bit_offset = 5,
+		.examined = 1,
+		.ctype = { .base_type = &bitfield_type }
+	};
+	const struct ll_type *type;
+	const struct type_member *members;
+
+	input_streams = streams;
+	input_stream_nr = 0;
+	add_symbol(&aggregate.symbol_list, &value_member);
+	add_symbol(&aggregate.symbol_list, &next_member);
+	add_symbol(&aggregate.symbol_list, &flag_member);
+	type_registry_create();
+	register_symbol(&aggregate);
+
+	type = type_lookup_exact(&aggregate);
+	members = type_members(type);
+	check(type != NULL, "aggregate has a locklint type");
+	check(type_member_count(type) == 3,
+	    "aggregate retains every member");
+	check(members != NULL &&
+	    members[0].representative == &value_member &&
+	    members[1].representative == &next_member &&
+	    members[2].representative == &flag_member,
+	    "canonical members retain declaration order and names");
+	check(members[0].representative->offset == 0 &&
+	    members[1].representative->offset == 8 &&
+	    members[2].representative->offset == 16,
+	    "canonical members retain byte offsets");
+	check(is_bitfield_type(members[2].representative) &&
+	    members[2].representative->bit_offset == 5 &&
+	    members[2].representative->bit_size == 3,
+	    "canonical member retains bit-field layout");
+	check(members[1].type == type_lookup_exact(&self_pointer),
+	    "recursive pointer member uses its canonical type");
+	check(type_member_lookup_exact(&value_member) == &members[0] &&
+	    type_member_lookup_exact(&next_member) == &members[1] &&
+	    type_member_lookup_exact(&flag_member) == &members[2],
+	    "exact Sparse members map to canonical members");
+
+	type_registry_destroy();
+	free_ptr_list(&aggregate.symbol_list);
+}
+
 int
 main(void)
 {
 	test_type_indexes();
 	test_type_shapes();
+	test_aggregate_members();
 	if (failures != 0) {
 		(void) fprintf(stderr, "%u test failure%s\n", failures,
 		    failures == 1 ? "" : "s");

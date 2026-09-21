@@ -24,6 +24,11 @@ struct ll_type;
 struct symbol;
 struct symbol_list;
 
+struct type_member {
+	struct symbol *representative;
+	struct ll_type *type;
+};
+
 typedef bool (*type_name_visit_f)(struct symbol *, void *);
 typedef bool (*type_visit_f)(const struct ll_type *, void *);
 
@@ -34,6 +39,9 @@ struct symbol *type_compound_resolve(struct symbol *);
 void type_symbols_register(struct symbol_list *);
 const struct ll_type *type_lookup_exact(struct symbol *);
 size_t type_instance_count(const struct ll_type *);
+const struct type_member *type_members(const struct ll_type *);
+size_t type_member_count(const struct ll_type *);
+const struct type_member *type_member_lookup_exact(struct symbol *);
 void type_name_visit_types(struct ident *, type_visit_f, void *);
 void type_name_visit(struct ident *, type_name_visit_f, void *);
 void type_registry_show(FILE *);
