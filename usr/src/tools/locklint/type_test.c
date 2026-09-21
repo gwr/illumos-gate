@@ -540,12 +540,243 @@ test_aggregate_members(void)
 	free_ptr_list(&aggregate.symbol_list);
 }
 
+static void
+test_repeated_aggregate(void)
+{
+	struct stream streams[] = {
+		{ .name = "repeated.h" },
+		{ .name = "repeated.h" }
+	};
+	struct ident *tag = built_in_ident("repeated");
+	struct ident *value = built_in_ident("value");
+	struct ident *next = built_in_ident("next");
+	struct symbol integer = {
+		.type = SYM_BASETYPE,
+		.bit_size = 32,
+		.examined = 1,
+		.ctype = {
+			.modifiers = MOD_SIGNED,
+			.alignment = 4,
+			.base_type = &int_type
+		}
+	};
+	struct symbol first = {
+		.type = SYM_STRUCT,
+		.namespace = NS_STRUCT,
+		.pos = { .stream = 0, .line = 8, .pos = 1 },
+		.ident = tag,
+		.bit_size = 128,
+		.examined = 1,
+		.ctype = { .alignment = 8 }
+	};
+	struct symbol second = {
+		.type = SYM_STRUCT,
+		.namespace = NS_STRUCT,
+		.pos = { .stream = 1, .line = 8, .pos = 1 },
+		.ident = tag,
+		.bit_size = 128,
+		.examined = 1,
+		.ctype = { .alignment = 8 }
+	};
+	struct symbol first_pointer = {
+		.type = SYM_PTR,
+		.bit_size = 64,
+		.examined = 1,
+		.ctype = { .alignment = 8, .base_type = &first }
+	};
+	struct symbol second_pointer = {
+		.type = SYM_PTR,
+		.bit_size = 64,
+		.examined = 1,
+		.ctype = { .alignment = 8, .base_type = &second 		}
+	};
+	struct symbol first_const = {
+		.type = SYM_NODE,
+		.bit_size = 32,
+		.examined = 1,
+		.ctype = {
+			.modifiers = MOD_CONST,
+			.alignment = 4,
+			.base_type = &integer
+		}
+	};
+	struct symbol first_qualified = {
+		.type = SYM_NODE,
+		.bit_size = 32,
+		.examined = 1,
+		.ctype = {
+			.modifiers = MOD_VOLATILE,
+			.alignment = 4,
+			.base_type = &first_const
+		}
+	};
+	struct symbol second_const = {
+		.type = SYM_NODE,
+		.bit_size = 32,
+		.examined = 1,
+		.ctype = {
+			.modifiers = MOD_CONST,
+			.alignment = 4,
+			.base_type = &integer
+		}
+	};
+	struct symbol second_qualified = {
+		.type = SYM_NODE,
+		.bit_size = 32,
+		.examined = 1,
+		.ctype = {
+			.modifiers = MOD_VOLATILE,
+			.alignment = 4,
+			.base_type = &second_const
+		}
+	};
+	struct symbol first_value = {
+		.type = SYM_NODE,
+		.ident = value,
+		.bit_size = 32,
+		.examined = 1,
+		.ctype = { .base_type = &first_qualified }
+	};
+	struct symbol second_value = {
+		.type = SYM_NODE,
+		.ident = value,
+		.bit_size = 32,
+		.examined = 1,
+		.ctype = { .base_type = &second_qualified }
+	};
+	struct symbol first_next = {
+		.type = SYM_NODE,
+		.ident = next,
+		.offset = 8,
+		.bit_size = 64,
+		.examined = 1,
+		.ctype = { .base_type = &first_pointer }
+	};
+	struct symbol second_next = {
+		.type = SYM_NODE,
+		.ident = next,
+		.offset = 8,
+		.bit_size = 64,
+		.examined = 1,
+		.ctype = { .base_type = &second_pointer }
+	};
+	const struct ll_type *type;
+	const struct type_member *members;
+
+	input_streams = streams;
+	input_stream_nr = 1;
+	add_symbol(&first.symbol_list, &first_value);
+	add_symbol(&first.symbol_list, &first_next);
+	add_symbol(&second.symbol_list, &second_value);
+	add_symbol(&second.symbol_list, &second_next);
+	type_registry_create();
+	register_symbol(&first);
+	register_symbol(&second);
+
+	type = type_lookup_exact(&first);
+	members = type_members(type);
+	check(type_registry_consistent(),
+	    "matching repeated aggregate is consistent");
+	check(type_lookup_exact(&second) == type &&
+	    type_instance_count(type) == 2,
+	    "matching repeated aggregate maps to representative type");
+	check(type_member_lookup_exact(&second_value) == &members[0] &&
+	    type_member_lookup_exact(&second_next) == &members[1],
+	    "matching repeated members map to canonical members");
+	check(type_lookup_exact(&second_pointer) ==
+	    type_lookup_exact(&first_pointer),
+	    "recursive candidate pointer maps after validation");
+
+	type_registry_destroy();
+	free_ptr_list(&first.symbol_list);
+	free_ptr_list(&second.symbol_list);
+}
+
+static void
+test_inconsistent_aggregate(void)
+{
+	struct stream streams[] = {
+		{ .name = "inconsistent.h" },
+		{ .name = "inconsistent.h" }
+	};
+	struct ident *tag = built_in_ident("inconsistent");
+	struct ident *member_name = built_in_ident("value");
+	struct symbol integer = {
+		.type = SYM_BASETYPE,
+		.bit_size = 32,
+		.examined = 1,
+		.ctype = {
+			.modifiers = MOD_SIGNED,
+			.alignment = 4,
+			.base_type = &int_type
+		}
+	};
+	struct symbol first = {
+		.type = SYM_STRUCT,
+		.namespace = NS_STRUCT,
+		.pos = { .stream = 0, .line = 9, .pos = 1 },
+		.ident = tag,
+		.bit_size = 64,
+		.examined = 1,
+		.ctype = { .alignment = 4 }
+	};
+	struct symbol second = {
+		.type = SYM_STRUCT,
+		.namespace = NS_STRUCT,
+		.pos = { .stream = 1, .line = 9, .pos = 1 },
+		.ident = tag,
+		.bit_size = 64,
+		.examined = 1,
+		.ctype = { .alignment = 4 }
+	};
+	struct symbol first_member = {
+		.type = SYM_NODE,
+		.ident = member_name,
+		.bit_size = 32,
+		.examined = 1,
+		.ctype = { .base_type = &integer }
+	};
+	struct symbol second_member = {
+		.type = SYM_NODE,
+		.ident = member_name,
+		.offset = 4,
+		.bit_size = 32,
+		.examined = 1,
+		.ctype = { .base_type = &integer }
+	};
+	const struct ll_type *type;
+
+	input_streams = streams;
+	input_stream_nr = 1;
+	add_symbol(&first.symbol_list, &first_member);
+	add_symbol(&second.symbol_list, &second_member);
+	type_registry_create();
+	register_symbol(&first);
+	type = type_lookup_exact(&first);
+	register_symbol(&second);
+
+	check(!type_registry_consistent(),
+	    "different repeated aggregate is inconsistent");
+	check(type_lookup_exact(&second) == NULL,
+	    "inconsistent aggregate mapping is not published");
+	check(type_member_lookup_exact(&second_member) == NULL,
+	    "inconsistent member mapping is not published");
+	check(type_instance_count(type) == 1,
+	    "inconsistent aggregate does not change instance count");
+
+	type_registry_destroy();
+	free_ptr_list(&first.symbol_list);
+	free_ptr_list(&second.symbol_list);
+}
+
 int
 main(void)
 {
 	test_type_indexes();
 	test_type_shapes();
 	test_aggregate_members();
+	test_repeated_aggregate();
+	test_inconsistent_aggregate();
 	if (failures != 0) {
 		(void) fprintf(stderr, "%u test failure%s\n", failures,
 		    failures == 1 ? "" : "s");

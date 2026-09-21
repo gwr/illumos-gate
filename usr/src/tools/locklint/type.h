@@ -42,6 +42,7 @@ size_t type_instance_count(const struct ll_type *);
 const struct type_member *type_members(const struct ll_type *);
 size_t type_member_count(const struct ll_type *);
 const struct type_member *type_member_lookup_exact(struct symbol *);
+bool type_registry_consistent(void);
 void type_name_visit_types(struct ident *, type_visit_f, void *);
 void type_name_visit(struct ident *, type_name_visit_f, void *);
 void type_registry_show(FILE *);

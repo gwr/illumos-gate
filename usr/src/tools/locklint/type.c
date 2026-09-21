@@ -26,6 +26,7 @@
 #include <string.h>
 
 #include "avl.h"
+#include "expression.h"
 #include "lib.h"
 #include "statistics.h"
 #include "symbol.h"
@@ -74,12 +75,30 @@ struct type_name_to_ll_type {
 	avl_node_t by_name;
 };
 
+struct pending_type_mapping {
+	struct symbol *exact;
+	struct ll_type *type;
+	avl_node_t by_exact;
+};
+
+struct pending_member_mapping {
+	struct symbol *exact;
+	struct type_member *member;
+	struct pending_member_mapping *next;
+};
+
+struct type_validation {
+	avl_tree_t types_by_exact;
+	struct pending_member_mapping *members;
+};
+
 static avl_tree_t type_name_to_sparse_type_index;
 static avl_tree_t types_by_origin;
 static avl_tree_t types_by_shape;
 static avl_tree_t sparse_type_to_ll_type_index;
 static avl_tree_t sparse_member_to_type_member_index;
 static avl_tree_t type_name_to_ll_type_index;
+static bool type_registry_is_consistent;
 
 static enum type
 type_kind(const struct ll_type *type)
@@ -220,6 +239,15 @@ type_name_to_ll_type_compare(const void *left_arg, const void *right_arg)
 	return (AVL_PCMP(left->type, right->type));
 }
 
+static int
+pending_type_compare(const void *left_arg, const void *right_arg)
+{
+	const struct pending_type_mapping *left = left_arg;
+	const struct pending_type_mapping *right = right_arg;
+
+	return (AVL_PCMP(left->exact, right->exact));
+}
+
 void
 type_registry_create(void)
 {
@@ -242,6 +270,7 @@ type_registry_create(void)
 	avl_create(&type_name_to_ll_type_index, type_name_to_ll_type_compare,
 	    sizeof (struct type_name_to_ll_type),
 	    offsetof(struct type_name_to_ll_type, by_name));
+	type_registry_is_consistent = true;
 }
 
 void
@@ -392,10 +421,373 @@ type_member_record(struct symbol *symbol, struct type_member *member)
 	avl_insert(&sparse_member_to_type_member_index, exact, where);
 }
 
+static struct type_member *
+type_member_find(struct symbol *symbol)
+{
+	struct sparse_member_to_type_member key = {
+		.exact = symbol
+	};
+	struct sparse_member_to_type_member *exact;
+
+	exact = avl_find(&sparse_member_to_type_member_index, &key, NULL);
+	return (exact == NULL ? NULL : exact->member);
+}
+
 static unsigned long
 type_semantic_modifiers(const struct symbol *exact)
 {
 	return (exact->ctype.modifiers & ~MOD_IGNORE);
+}
+
+static void
+type_validation_create(struct type_validation *validation)
+{
+	avl_create(&validation->types_by_exact, pending_type_compare,
+	    sizeof (struct pending_type_mapping),
+	    offsetof(struct pending_type_mapping, by_exact));
+	validation->members = NULL;
+}
+
+static void
+type_validation_destroy(struct type_validation *validation)
+{
+	struct pending_type_mapping *type;
+	struct pending_member_mapping *member;
+	void *cookie = NULL;
+
+	while ((type = avl_destroy_nodes(&validation->types_by_exact,
+	    &cookie)) != NULL)
+		free(type);
+	avl_destroy(&validation->types_by_exact);
+	while ((member = validation->members) != NULL) {
+		validation->members = member->next;
+		free(member);
+	}
+}
+
+/*
+ * Add a tentative exact-to-locklint mapping before descending through the
+ * candidate.  Existing mappings terminate recursive type graphs.
+ */
+static int
+type_validation_enter(struct type_validation *validation,
+    struct symbol *exact, struct ll_type *type)
+{
+	struct pending_type_mapping key = {
+		.exact = exact
+	};
+	struct pending_type_mapping *mapping;
+	avl_index_t where;
+
+	mapping = avl_find(&validation->types_by_exact, &key, &where);
+	if (mapping != NULL)
+		return (mapping->type == type ? 0 : -1);
+	mapping = calloc(1, sizeof (*mapping));
+	if (mapping == NULL)
+		die("out of memory validating type");
+	mapping->exact = exact;
+	mapping->type = type;
+	avl_insert(&validation->types_by_exact, mapping, where);
+	return (1);
+}
+
+static void
+type_validation_add_member(struct type_validation *validation,
+    struct symbol *exact, struct type_member *member)
+{
+	struct pending_member_mapping *mapping;
+
+	mapping = calloc(1, sizeof (*mapping));
+	if (mapping == NULL)
+		die("out of memory validating type member");
+	mapping->exact = exact;
+	mapping->member = member;
+	mapping->next = validation->members;
+	validation->members = mapping;
+}
+
+static bool type_validate_exact(struct type_validation *, struct symbol *,
+    struct ll_type *);
+
+static bool
+type_validate_member(struct type_validation *validation,
+    struct symbol *exact, struct type_member *member)
+{
+	struct symbol *representative = member->representative;
+
+	if (exact->ident != representative->ident ||
+	    exact->offset != representative->offset ||
+	    exact->bit_size != representative->bit_size ||
+	    exact->bit_offset != representative->bit_offset ||
+	    is_bitfield_type(exact) != is_bitfield_type(representative) ||
+	    !type_validate_exact(validation, exact->ctype.base_type,
+	    member->type))
+		return (false);
+	type_validation_add_member(validation, exact, member);
+	return (true);
+}
+
+static bool
+type_validate_struct(struct type_validation *validation, struct symbol *exact,
+    struct ll_type *type)
+{
+	struct symbol *member;
+	size_t index = 0;
+
+	if (ptr_list_size((struct ptr_list *)exact->symbol_list) !=
+	    type->member_count)
+		return (false);
+	FOR_EACH_PTR(exact->symbol_list, member) {
+		if (!type_validate_member(validation, member,
+		    &type->members[index++]))
+			return (false);
+	} END_FOR_EACH_PTR(member);
+	return (true);
+}
+
+static bool
+type_validate_union(struct type_validation *validation, struct symbol *exact,
+    struct ll_type *type)
+{
+	struct symbol *member;
+	bool *matched;
+	size_t count = 0;
+
+	if (ptr_list_size((struct ptr_list *)exact->symbol_list) !=
+	    type->member_count)
+		return (false);
+	matched = calloc(type->member_count, sizeof (*matched));
+	if (matched == NULL && type->member_count != 0)
+		die("out of memory validating union");
+	FOR_EACH_PTR(exact->symbol_list, member) {
+		size_t index;
+
+		for (index = 0; index < type->member_count; index++) {
+			if (!matched[index] && member->ident ==
+			    type->members[index].representative->ident)
+				break;
+		}
+		if (index == type->member_count ||
+		    !type_validate_member(validation, member,
+		    &type->members[index])) {
+			free(matched);
+			return (false);
+		}
+		matched[index] = true;
+		count++;
+	} END_FOR_EACH_PTR(member);
+	free(matched);
+	return (count == type->member_count);
+}
+
+static bool
+type_validate_enum(struct symbol *exact, struct symbol *representative)
+{
+	size_t count;
+	size_t index;
+
+	if (exact->ctype.base_type != representative->ctype.base_type)
+		return (false);
+	count = ptr_list_size((struct ptr_list *)exact->symbol_list);
+	if (count != ptr_list_size(
+	    (struct ptr_list *)representative->symbol_list))
+		return (false);
+	for (index = 0; index < count; index++) {
+		struct symbol *left = ptr_list_nth_entry(
+		    (struct ptr_list *)exact->symbol_list, index);
+		struct symbol *right = ptr_list_nth_entry(
+		    (struct ptr_list *)representative->symbol_list, index);
+
+		if (left->ident != right->ident ||
+		    left->initializer == NULL || right->initializer == NULL ||
+		    left->initializer->value != right->initializer->value)
+			return (false);
+	}
+	return (true);
+}
+
+static bool
+type_validate_origin(struct symbol *exact, struct ll_type *type)
+{
+	struct position left = exact->pos;
+	struct position right = type->representative->pos;
+
+	return (exact->type == type_kind(type) &&
+	    strcmp(stream_name(left.stream), stream_name(right.stream)) == 0 &&
+	    left.line == right.line && left.pos == right.pos);
+}
+
+static bool
+type_node_is_transparent(struct symbol *exact)
+{
+	struct symbol *base = exact->ctype.base_type;
+	unsigned long modifiers;
+
+	if (base == NULL)
+		return (false);
+	modifiers = type_semantic_modifiers(exact) &
+	    (MOD_QUALIFIER | MOD_SAFE | MOD_BITWISE | MOD_NOCAST |
+	    MOD_NODEREF | MOD_NORETURN);
+	return (modifiers == 0 && exact->ctype.as == NULL &&
+	    (exact->ctype.alignment == 0 ||
+	    exact->ctype.alignment == base->ctype.alignment) &&
+	    (exact->bit_size == 0 || exact->bit_size == base->bit_size));
+}
+
+static unsigned long
+type_node_modifiers(struct symbol *exact)
+{
+	unsigned long modifiers = 0;
+
+	while (exact != NULL &&
+	    (exact->type == SYM_NODE || exact->type == SYM_TYPEDEF)) {
+		modifiers |= type_semantic_modifiers(exact) &
+		    (MOD_QUALIFIER | MOD_SAFE | MOD_BITWISE | MOD_NOCAST |
+		    MOD_NODEREF | MOD_NORETURN);
+		exact = exact->ctype.base_type;
+	}
+	return (modifiers);
+}
+
+static struct ident *
+type_node_address_space(struct symbol *exact)
+{
+	struct ident *address_space = NULL;
+
+	while (exact != NULL &&
+	    (exact->type == SYM_NODE || exact->type == SYM_TYPEDEF)) {
+		if (address_space == NULL && exact->ctype.as != NULL)
+			address_space = exact->ctype.as;
+		exact = exact->ctype.base_type;
+	}
+	return (address_space);
+}
+
+/*
+ * Compare one exact Sparse type with an existing locklint type.  Tentative
+ * mappings are added before recursive edges are followed, so recursive
+ * aggregates terminate without publishing an unvalidated mapping.
+ */
+static bool
+type_validate_exact(struct type_validation *validation, struct symbol *exact,
+    struct ll_type *type)
+{
+	struct ll_type *mapped;
+	struct symbol *argument;
+	size_t index = 0;
+	int entered;
+
+	if (exact == NULL || type == NULL)
+		return (exact == NULL && type == NULL);
+	mapped = type_exact_find(exact, NULL);
+	if (mapped != NULL)
+		return (mapped == type);
+	examine_symbol_type(exact);
+
+	if (exact->type == SYM_BITFIELD) {
+		entered = type_validation_enter(validation, exact, type);
+		if (entered <= 0)
+			return (entered == 0);
+		return (type_validate_exact(validation,
+		    exact->ctype.base_type, type));
+	}
+	if ((exact->type == SYM_NODE || exact->type == SYM_TYPEDEF) &&
+	    type_node_is_transparent(exact)) {
+		entered = type_validation_enter(validation, exact, type);
+		if (entered <= 0)
+			return (entered == 0);
+		return (type_validate_exact(validation,
+		    exact->ctype.base_type, type));
+	}
+	if (exact->type != type_kind(type))
+		return (false);
+	entered = type_validation_enter(validation, exact, type);
+	if (entered <= 0)
+		return (entered == 0);
+	if ((exact->type == SYM_NODE || exact->type == SYM_TYPEDEF ?
+	    type_node_modifiers(exact) : type_semantic_modifiers(exact)) !=
+	    type->modifiers ||
+	    exact->ctype.alignment !=
+	    type->representative->ctype.alignment ||
+	    exact->bit_size != type->representative->bit_size ||
+	    (exact->type == SYM_NODE || exact->type == SYM_TYPEDEF ?
+	    type_node_address_space(exact) : exact->ctype.as) !=
+	    type->address_space)
+		return (false);
+
+	switch (exact->type) {
+	case SYM_BASETYPE:
+		return ((exact->ctype.base_type != NULL ?
+		    exact->ctype.base_type : exact) ==
+		    (type->representative->ctype.base_type != NULL ?
+		    type->representative->ctype.base_type :
+		    type->representative));
+	case SYM_NODE:
+	case SYM_TYPEDEF:
+		mapped = type_exact_find(
+		    type->representative->ctype.base_type, NULL);
+		if (mapped == NULL)
+			mapped = type->base;
+		return (type_validate_exact(validation,
+		    exact->ctype.base_type, mapped));
+	case SYM_PTR:
+	case SYM_ARRAY:
+		return (type_validate_exact(validation,
+		    exact->ctype.base_type, type->base));
+	case SYM_FN:
+		if (exact->variadic != type->representative->variadic ||
+		    ptr_list_size((struct ptr_list *)exact->arguments) !=
+		    type->argument_count ||
+		    !type_validate_exact(validation, exact->ctype.base_type,
+		    type->base))
+			return (false);
+		FOR_EACH_PTR(exact->arguments, argument) {
+			if (!type_validate_exact(validation, argument,
+			    type->arguments[index++]))
+				return (false);
+		} END_FOR_EACH_PTR(argument);
+		return (true);
+	case SYM_STRUCT:
+	case SYM_UNION:
+	case SYM_ENUM:
+		if (!type_validate_origin(exact, type))
+			return (false);
+		if (exact->type == SYM_STRUCT)
+			return (type_validate_struct(validation, exact, type));
+		if (exact->type == SYM_UNION)
+			return (type_validate_union(validation, exact, type));
+		return (type_validate_enum(exact, type->representative));
+	default:
+		return (false);
+	}
+}
+
+static void
+type_validation_publish(struct type_validation *validation)
+{
+	struct pending_type_mapping *type;
+	struct pending_member_mapping *member;
+
+	for (type = avl_first(&validation->types_by_exact); type != NULL;
+	    type = AVL_NEXT(&validation->types_by_exact, type))
+		type_exact_record(type->exact, type->type);
+	for (member = validation->members; member != NULL;
+	    member = member->next)
+		type_member_record(member->exact, member->member);
+}
+
+static bool
+type_repeated_definition_record(struct symbol *exact, struct ll_type *type)
+{
+	struct type_validation validation;
+	bool matches;
+
+	type_validation_create(&validation);
+	matches = type_validate_exact(&validation, exact, type);
+	if (matches)
+		type_validation_publish(&validation);
+	type_validation_destroy(&validation);
+	return (matches);
 }
 
 /*
@@ -550,9 +942,13 @@ type_intern(struct symbol *exact)
 
 	if (type_has_origin(exact->type)) {
 		type = type_origin_intern(exact, &created);
-		type_exact_record(exact, type);
-		if (created)
+		if (created) {
+			type_exact_record(exact, type);
 			type_members_build(type, exact);
+		} else if (!type_repeated_definition_record(exact, type)) {
+			type_registry_is_consistent = false;
+			return (NULL);
+		}
 		return (type);
 	} else {
 		key.modifiers = type_semantic_modifiers(exact);
@@ -622,7 +1018,8 @@ type_registry_record(struct ident *name, struct symbol *type)
 	if (type == NULL)
 		return;
 	ll_type = type_intern(type);
-	type_name_record(name, ll_type);
+	if (ll_type != NULL)
+		type_name_record(name, ll_type);
 	key.name = name;
 	key.type = type;
 	statistics.type_registry_find++;
@@ -747,13 +1144,13 @@ type_member_count(const struct ll_type *type)
 const struct type_member *
 type_member_lookup_exact(struct symbol *symbol)
 {
-	struct sparse_member_to_type_member key = {
-		.exact = symbol
-	};
-	struct sparse_member_to_type_member *exact;
+	return (type_member_find(symbol));
+}
 
-	exact = avl_find(&sparse_member_to_type_member_index, &key, NULL);
-	return (exact == NULL ? NULL : exact->member);
+bool
+type_registry_consistent(void)
+{
+	return (type_registry_is_consistent);
 }
 
 void
