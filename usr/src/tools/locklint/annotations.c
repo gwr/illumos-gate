@@ -1094,17 +1094,16 @@ annotations_type_check(const struct ll_type *type, void *data_arg)
 }
 
 static bool
-annotations_type_resolve(struct symbol *type, void *data_arg)
+annotations_type_resolve(const struct ll_type *type, void *data_arg)
 {
 	struct annotation_type_resolution *data = data_arg;
 	struct annotation_ref *ref;
+	struct symbol *exact = type_representative(type);
 
 	ref = new_command_ref(data->name, data->base_length, data->path,
 	    ANNOTATION_TYPE);
-	ref->owner_type = type_lookup_exact(type);
-	if (ref->owner_type == NULL)
-		die("missing canonical command-file type");
-	if (!resolve_command_path(ref, type)) {
+	ref->owner_type = type;
+	if (!resolve_command_path(ref, exact)) {
 		data->result = LOCKLINT_COMMAND_UNRESOLVED_NAME;
 		return (false);
 	}
@@ -1145,7 +1144,7 @@ resolve_command_type(struct annotation *annotation, const char *name,
 		return (data.result);
 	if (data.first_type == NULL)
 		return (LOCKLINT_COMMAND_UNRESOLVED_NAME);
-	type_name_visit(ident, annotations_type_resolve, &data);
+	type_name_visit_types(ident, annotations_type_resolve, &data);
 	return (data.result);
 }
 

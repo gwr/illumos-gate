@@ -33,12 +33,6 @@
 #include "symbol.h"
 #include "type.h"
 
-struct type_name_to_sparse_type {
-	struct ident *name;
-	struct symbol *type;
-	avl_node_t by_name;
-};
-
 /*
  * Use ll_type rather than the overly generic "type" because this module
  * also works extensively with exact Sparse types.  Related names retain
@@ -101,7 +95,6 @@ struct compared_types {
 	avl_node_t by_pair;
 };
 
-static avl_tree_t type_name_to_sparse_type_index;
 static avl_tree_t types_by_origin;
 static avl_tree_t types_by_shape;
 static avl_tree_t sparse_type_to_ll_type_index;
@@ -118,20 +111,6 @@ type_kind(const struct ll_type *type)
 	enum type kind = type->representative->type;
 
 	return (kind == SYM_TYPEDEF ? SYM_NODE : kind);
-}
-
-static int
-type_name_to_sparse_type_compare(const void *left_arg, const void *right_arg)
-{
-	const struct type_name_to_sparse_type *left = left_arg;
-	const struct type_name_to_sparse_type *right = right_arg;
-	int result;
-
-	statistics.type_registry_comparisons++;
-	result = AVL_PCMP(left->name, right->name);
-	if (result != 0)
-		return (result);
-	return (AVL_PCMP(left->type, right->type));
 }
 
 static int
@@ -245,6 +224,7 @@ type_name_to_ll_type_compare(const void *left_arg, const void *right_arg)
 	const struct type_name_to_ll_type *right = right_arg;
 	int result;
 
+	statistics.type_registry_comparisons++;
 	result = AVL_PCMP(left->name, right->name);
 	if (result != 0)
 		return (result);
@@ -276,10 +256,6 @@ compared_types_compare(const void *left_arg, const void *right_arg)
 void
 type_registry_create(void)
 {
-	avl_create(&type_name_to_sparse_type_index,
-	    type_name_to_sparse_type_compare,
-	    sizeof (struct type_name_to_sparse_type),
-	    offsetof(struct type_name_to_sparse_type, by_name));
 	avl_create(&types_by_origin, type_origin_compare,
 	    sizeof (struct ll_type), offsetof(struct ll_type, by_origin));
 	avl_create(&types_by_shape, type_shape_compare,
@@ -304,18 +280,12 @@ type_registry_create(void)
 void
 type_registry_destroy(void)
 {
-	struct type_name_to_sparse_type *entry;
 	struct type_name_to_ll_type *name;
 	struct sparse_type_to_ll_type *exact;
 	struct sparse_member_to_type_member *member;
 	struct ll_type *type;
 	void *cookie = NULL;
 
-	while ((entry = avl_destroy_nodes(&type_name_to_sparse_type_index,
-	    &cookie)) != NULL)
-		free(entry);
-	avl_destroy(&type_name_to_sparse_type_index);
-	cookie = NULL;
 	while ((name = avl_destroy_nodes(&type_name_to_ll_type_index,
 	    &cookie)) != NULL)
 		free(name);
@@ -1212,9 +1182,12 @@ type_name_record(struct ident *name, struct ll_type *type)
 	avl_index_t name_where;
 	avl_index_t where;
 
+	statistics.type_registry_find++;
 	entry = avl_find(&type_name_to_ll_type_index, &key, &where);
-	if (entry != NULL)
+	if (entry != NULL) {
+		statistics.type_registry_duplicates++;
 		return;
+	}
 	(void) avl_find(&type_name_to_ll_type_index, &lower, &name_where);
 	for (same_name = avl_nearest(&type_name_to_ll_type_index, name_where,
 	    AVL_AFTER);
@@ -1237,15 +1210,13 @@ type_name_record(struct ident *name, struct ll_type *type)
 	entry->name = name;
 	entry->type = type;
 	avl_insert(&type_name_to_ll_type_index, entry, where);
+	statistics.type_registry_insertions++;
 }
 
 static void
 type_registry_record(struct ident *name, struct symbol *type)
 {
-	struct type_name_to_sparse_type key;
-	struct type_name_to_sparse_type *entry;
 	struct ll_type *ll_type;
-	avl_index_t where;
 
 	if (name == NULL)
 		return;
@@ -1255,21 +1226,6 @@ type_registry_record(struct ident *name, struct symbol *type)
 	ll_type = type_intern(type);
 	if (ll_type != NULL)
 		type_name_record(name, ll_type);
-	key.name = name;
-	key.type = type;
-	statistics.type_registry_find++;
-	entry = avl_find(&type_name_to_sparse_type_index, &key, &where);
-	if (entry != NULL) {
-		statistics.type_registry_duplicates++;
-		return;
-	}
-	entry = calloc(1, sizeof (*entry));
-	if (entry == NULL)
-		die("out of memory recording named type");
-	entry->name = name;
-	entry->type = type;
-	avl_insert(&type_name_to_sparse_type_index, entry, where);
-	statistics.type_registry_insertions++;
 }
 
 static void
@@ -1410,39 +1366,22 @@ type_registry_report_errors(void)
 }
 
 void
-type_name_visit(struct ident *name, type_name_visit_f callback, void *data)
-{
-	struct type_name_to_sparse_type key = {
-		.name = name
-	};
-	struct type_name_to_sparse_type *entry;
-	avl_index_t where;
-
-	(void) avl_find(&type_name_to_sparse_type_index, &key, &where);
-	for (entry = avl_nearest(&type_name_to_sparse_type_index, where, AVL_AFTER);
-	    entry != NULL && entry->name == name;
-	    entry = AVL_NEXT(&type_name_to_sparse_type_index, entry)) {
-		if (!callback(entry->type, data))
-			break;
-	}
-}
-
-void
 type_registry_show(FILE *stream)
 {
-	struct type_name_to_sparse_type *entry;
+	struct type_name_to_ll_type *entry;
 
-	for (entry = avl_first(&type_name_to_sparse_type_index); entry != NULL;
-	    entry = AVL_NEXT(&type_name_to_sparse_type_index, entry)) {
-		struct position pos = entry->type->pos;
-		const char *kind = entry->type->type == SYM_STRUCT ?
-		    "struct" : "union";
+	for (entry = avl_first(&type_name_to_ll_type_index); entry != NULL;
+	    entry = AVL_NEXT(&type_name_to_ll_type_index, entry)) {
+		struct position pos = entry->type->representative->pos;
+		const char *kind = type_kind(entry->type) == SYM_STRUCT ?
+		    "struct" : type_kind(entry->type) == SYM_UNION ?
+		    "union" : "enum";
 
 		(void) fprintf(stream,
-		    "type %s kind=%s source=%s:%u:%u translation-unit=%u\n",
+		    "type %s kind=%s source=%s:%u:%u instances=%zu\n",
 		    show_ident(entry->name), kind, stream_name(pos.stream),
-		    pos.line, pos.pos, entry->type->translation_unit);
+		    pos.line, pos.pos, entry->type->instance_count);
 	}
 	(void) fprintf(stream, "types %zu\n",
-	    avl_numnodes(&type_name_to_sparse_type_index));
+	    avl_numnodes(&type_name_to_ll_type_index));
 }

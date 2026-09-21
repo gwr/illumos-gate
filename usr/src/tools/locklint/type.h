@@ -29,7 +29,6 @@ struct type_member {
 	struct ll_type *type;
 };
 
-typedef bool (*type_name_visit_f)(struct symbol *, void *);
 typedef bool (*type_visit_f)(const struct ll_type *, void *);
 
 void type_registry_create(void);
@@ -47,7 +46,6 @@ bool type_registry_consistent(void);
 void type_registry_report_errors(void);
 bool type_layout_equal(const struct ll_type *, const struct ll_type *);
 void type_name_visit_types(struct ident *, type_visit_f, void *);
-void type_name_visit(struct ident *, type_name_visit_f, void *);
 void type_registry_show(FILE *);
 
 #endif /* TYPE_H */

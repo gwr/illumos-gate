@@ -401,21 +401,21 @@ run_capture "command type dump" command-types.out \
     "$LOCKLINT" --dump-types --dump-statistics \
     commands/readable.c commands/readable-other.c
 if [ "$(grep -c '^type command_state kind=struct ' command-types.out)" \
-    -ne 2 ]; then
-	fail "command type dump: expected two command_state instances"
+    -ne 1 ]; then
+	fail "command type dump: expected one command_state locklint type"
 fi
 if [ "$(grep -c '^type command_state_t kind=struct ' command-types.out)" \
-    -ne 2 ]; then
-	fail "command type dump: expected two command_state_t instances"
+    -ne 1 ]; then
+	fail "command type dump: expected one command_state_t locklint type"
 fi
 if [ "$(grep -c '^type duplicate_command_type kind=struct ' \
     command-types.out)" -ne 2 ]; then
-	fail "command type dump: expected two ambiguous type instances"
+	fail "command type dump: expected two distinct locklint types"
 fi
 require_match "command type dump summary" '^types [1-9][0-9]*$' \
     command-types.out
 require_match "command type registry size" \
-    '^statistics type_registry_insertions 12$' command-types.out
+    '^statistics type_registry_insertions 8$' command-types.out
 for statistic in type_registration_symbols_visited \
     type_registration_nodes_visited type_registry_find \
     type_registry_duplicates type_registry_comparisons
@@ -965,9 +965,11 @@ run_capture "shared header type consistency" type-consistency.out \
 reject_match "shared header type consistency" "inconsistently defined" \
     type-consistency.out
 if [ "$(grep -c '^type shared_type kind=struct source=type-consistency.h:' \
-    type-consistency.out)" -ne 2 ]; then
-	fail "shared header type consistency: expected two exact types"
+    type-consistency.out)" -ne 1 ]; then
+	fail "shared header type consistency: expected one locklint type"
 fi
+require_match "shared header type instance count" \
+    '^type shared_type .* instances=2$' type-consistency.out
 
 run_failure "shared header type inconsistency" \
     type-consistency-mismatch.out "$LOCKLINT" --dump-types \
