@@ -1168,6 +1168,27 @@ if [ "$(grep -c 'warning:' stored-callback-helper.out)" -ne 2 ]; then
 	fail "stored callback helper projection: expected exactly two warnings"
 fi
 
+run_capture "forwarded stored callback projection" \
+    stored-callback-forward.out "$LOCKLINT" --check-locks --dump-contexts \
+    stored-callback-forward.c
+require_match "forwarded stored callback demand count" \
+    "^stored-target-demands 2$" stored-callback-forward.out
+require_match "first forwarded stored callback target" \
+    "stored-callback-forward.c:55:16: warning: locklint: condition wait may occur while holding lock 'stored_callback_forward_state::outer_first' \\[lock-maybe-held-during-wait\\]" \
+    stored-callback-forward.out
+require_match "second forwarded stored callback target" \
+    "stored-callback-forward.c:63:16: warning: locklint: condition wait may occur while holding lock 'stored_callback_forward_state::outer_second' \\[lock-maybe-held-during-wait\\]" \
+    stored-callback-forward.out
+reject_match "unpassed second forwarded target" \
+    "stored-callback-forward.c:63:16:.*stored_callback_forward_state::outer_first" \
+    stored-callback-forward.out
+reject_match "unpassed first forwarded target" \
+    "stored-callback-forward.c:55:16:.*stored_callback_forward_state::outer_second" \
+    stored-callback-forward.out
+if [ "$(grep -c 'warning:' stored-callback-forward.out)" -ne 2 ]; then
+	fail "forwarded stored callback projection: expected exactly two warnings"
+fi
+
 run_capture "competition protected accesses" competition-accesses.out \
     "$LOCKLINT" -DCOMPETITION_ACCESS_ONLY --check-locks competition-depth.c
 for location in 50 52 54 70 83 115

@@ -1653,8 +1653,17 @@ actual-object bindings.  Other entries are discarded before entering the
 callee, and the caller resumes with an empty target map.  Callees therefore
 cannot distinguish contexts using storage they do not observe, and arbitrary
 callees cannot leave stale callback knowledge after mutating reachable
-storage.  Projection through globals and forwarding a callback-bearing
-pointer through another helper remain later extensions.
+storage.
+
+Demand collection computes a transitive closure through direct calls which
+pass a bare caller pointer formal to a callee pointer formal.  A forwarding
+helper therefore receives the demands eventually observed by a nested helper
+and can project only those target entries into its own context.  Forwarding
+relations are retained in a temporary flat array and discarded after the
+closure, leaving only the small per-function demand arrays.  Pointer
+arithmetic and derived-pointer forwarding are excluded so recursive call
+cycles cannot generate an unbounded sequence of relative offsets.  Projection
+through globals remains a later extension.
 
 The collection is a sorted, bounded array interned per function, matching the
 other semantic-state components.  This keeps state comparison constant-time
@@ -2692,6 +2701,8 @@ any call
 resolved callee
     -> exact pointer-formal load demands mapped to caller objects
     -> matching target entries projected into the callee
+direct bare-formal forwarding
+    -> nested callee demands propagated back to the forwarding helper
 call completion or unresolved call
     -> caller continues with an empty stored-target map
 ```

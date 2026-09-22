@@ -153,6 +153,23 @@ struct analysis {
 	uint64_t provenance_visit_generation;
 };
 
+/*
+ * One exact bare pointer-formal forwarding relation retained only while
+ * computing the transitive stored-target demands.
+ */
+struct stored_target_forwarding {
+	struct function_info *caller;
+	struct function_info *callee;
+	unsigned int caller_argument;
+	unsigned int callee_argument;
+};
+
+struct stored_target_forwarding_collection {
+	struct stored_target_forwarding *entries;
+	size_t count;
+	size_t capacity;
+};
+
 static int context_access_identity(struct analysis *,
     const struct function_context *, const struct locklint_access *,
     struct lock_identity **, bool *, bool *);
@@ -169,9 +186,15 @@ static void collect_assumed_regions(void);
 static void collect_function_demands(void);
 static void collect_stored_target_demand(struct function_info *,
     struct instruction *);
+static void collect_stored_target_forwarding(
+    struct stored_target_forwarding_collection *, struct function_info *,
+    struct instruction *);
+static void propagate_stored_target_demands(
+    const struct stored_target_forwarding_collection *);
 static int compare_stored_target_demand_qsort(const void *, const void *);
 static void record_semantic_state(struct analysis *, bool);
 static const char *function_name(const struct function_info *);
+static struct pseudo *strip_function_pointer_casts(struct pseudo *);
 static bool same_pseudo_expression(const struct instruction *,
     struct pseudo *, struct pseudo *, unsigned int);
 static bool for_each_root_call(struct function_context *,
@@ -1182,12 +1205,15 @@ collect_derived_protector_leaf(const struct locklint_access *access,
 }
 
 /*
- * Retain the small sets of derived lock expressions and stored-target load
- * demands used by each function in one instruction traversal.
+ * Retain the small sets of derived lock expressions, stored-target load
+ * demands, and exact bare formal forwarding relations in one instruction
+ * traversal.  Forwarding relations are temporary: only their transitive
+ * demands remain after collection.
  */
 static void
 collect_function_demands(void)
 {
+	struct stored_target_forwarding_collection forwardings = { 0 };
 	struct callgraph_iter *iterator;
 	struct function_info *function;
 	int error;
@@ -1208,6 +1234,8 @@ collect_function_demands(void)
 				if (instruction->bb == NULL)
 					continue;
 				collect_stored_target_demand(function, instruction);
+				collect_stored_target_forwarding(&forwardings,
+				    function, instruction);
 				if (instruction->opcode == OP_LOAD ||
 				    instruction->opcode == OP_STORE) {
 					(void)
@@ -1223,6 +1251,16 @@ collect_function_demands(void)
 					    &access, false);
 			} END_FOR_EACH_PTR(instruction);
 		} END_FOR_EACH_PTR(block);
+	}
+	callgraph_iter_close(iterator);
+
+	propagate_stored_target_demands(&forwardings);
+	free(forwardings.entries);
+
+	error = callgraph_iter_open(&iterator);
+	if (error != 0)
+		die("cannot iterate ready callgraph: %s", strerror(error));
+	while ((function = callgraph_iter_next(iterator)) != NULL) {
 		if (function->stored_target_demand_count > 1) {
 			qsort(function->stored_target_demands,
 			    function->stored_target_demand_count,
@@ -1250,10 +1288,10 @@ compare_stored_target_demand_qsort(const void *left_arg,
 }
 
 /*
- * Retain one exact formal-relative callback load, suppressing duplicates from
- * repeated or equivalent lowered accesses within the function.
+ * Retain one exact formal-relative callback demand, suppressing duplicates
+ * from direct loads and transitive forwarding.
  */
-static void
+static bool
 add_stored_target_demand(struct function_info *function,
     struct stored_target_demand demand)
 {
@@ -1264,7 +1302,7 @@ add_stored_target_demand(struct function_info *function,
 	for (index = 0; index < function->stored_target_demand_count; index++) {
 		if (compare_stored_target_demand_qsort(
 		    &function->stored_target_demands[index], &demand) == 0)
-			return;
+			return (false);
 	}
 	if (function->stored_target_demand_count ==
 	    function->stored_target_demand_capacity) {
@@ -1282,6 +1320,7 @@ add_stored_target_demand(struct function_info *function,
 	}
 	function->stored_target_demands[
 	    function->stored_target_demand_count++] = demand;
+	return (true);
 }
 
 /*
@@ -1311,7 +1350,115 @@ collect_stored_target_demand(struct function_info *function,
 		return;
 	demand.target_offset = key.target_offset;
 	demand.target_length = length;
-	add_stored_target_demand(function, demand);
+	(void) add_stored_target_demand(function, demand);
+}
+
+/*
+ * Retain only direct calls which pass a bare caller pointer formal to a
+ * callee pointer formal.  Excluding offsets keeps recursive forwarding finite
+ * and leaves derived pointer expressions for a separate design.
+ */
+static void
+collect_stored_target_forwarding(
+    struct stored_target_forwarding_collection *collection,
+    struct function_info *caller, struct instruction *instruction)
+{
+	struct function_info *callee;
+	struct pseudo *function;
+	unsigned int callee_argument = 0;
+
+	if (instruction->opcode != OP_CALL ||
+	    (function = strip_function_pointer_casts(instruction->func)) ==
+	    NULL || function->type != PSEUDO_SYM ||
+	    (callee = callgraph_callee(caller, instruction)) == NULL)
+		return;
+	for (;;) {
+		struct stored_target_forwarding *entries;
+		struct locklint_access access;
+		struct lock_identity_key key;
+		enum lock_analysis_object_type object_type;
+		struct symbol *formal =
+		    function_formal_argument(callee, callee_argument);
+		unsigned int caller_argument;
+		size_t capacity;
+
+		if (formal == NULL)
+			break;
+		if (!formal_is_pointer(formal) ||
+		    !locklint_get_call_argument_access(caller->tu, instruction,
+		    callee_argument, &access) ||
+		    function_access_coordinates(caller, &access, &key,
+		    &object_type) != 0 ||
+		    key.target_offset != 0 ||
+		    !identity_formal_argument(caller, key, object_type,
+		    &caller_argument)) {
+			callee_argument++;
+			continue;
+		}
+		if (collection->count == collection->capacity) {
+			capacity = collection->capacity == 0 ?
+			    16 : collection->capacity * 2;
+			if (capacity < collection->capacity ||
+			    capacity > SIZE_MAX / sizeof (*entries))
+				die("too many stored target forwardings");
+			entries = realloc(collection->entries,
+			    capacity * sizeof (*entries));
+			if (entries == NULL)
+				die("cannot allocate stored target forwardings");
+			collection->entries = entries;
+			collection->capacity = capacity;
+		}
+		collection->entries[collection->count++] =
+		    (struct stored_target_forwarding) {
+			.caller = caller,
+			.callee = callee,
+			.caller_argument = caller_argument,
+			.callee_argument = callee_argument
+		};
+		callee_argument++;
+	}
+}
+
+/*
+ * Compute the finite closure of exact bare-formal forwarding.  Demand arrays
+ * are small and deduplicated on insertion; the temporary flat relation keeps
+ * collection linear and avoids repeated whole-program instruction scans.
+ */
+static void
+propagate_stored_target_demands(
+    const struct stored_target_forwarding_collection *collection)
+{
+	bool changed;
+
+	do {
+		size_t forwarding_index;
+
+		changed = false;
+		for (forwarding_index = 0;
+		    forwarding_index < collection->count;
+		    forwarding_index++) {
+			const struct stored_target_forwarding *forwarding =
+			    &collection->entries[forwarding_index];
+			size_t demand_index;
+
+			for (demand_index = 0;
+			    demand_index <
+			    forwarding->callee->stored_target_demand_count;
+			    demand_index++) {
+				struct stored_target_demand demand =
+				    forwarding->callee->
+				    stored_target_demands[demand_index];
+
+				if (demand.argument !=
+				    forwarding->callee_argument)
+					continue;
+				demand.argument = forwarding->caller_argument;
+				if (add_stored_target_demand(
+				    forwarding->caller, demand))
+					changed = true;
+			}
+		}
+	} while (changed);
 }
 
 /*
