@@ -219,6 +219,31 @@ provenance_edge_count(struct function_context *context)
 }
 
 /*
+ * Determine whether ancestor is on any incoming path to context.  A
+ * caller-supplied generation marks visited contexts without allocating a
+ * temporary set for each recursive-call query.
+ */
+bool
+provenance_has_ancestor(struct function_context *context,
+    struct function_context *ancestor, uint64_t generation)
+{
+	struct provenance_edge *edge;
+
+	if (context == ancestor)
+		return (true);
+	if (context->provenance_visit_generation == generation)
+		return (false);
+	context->provenance_visit_generation = generation;
+	for (edge = provenance_edge_first(context); edge != NULL;
+	    edge = provenance_edge_next(context, edge)) {
+		if (provenance_has_ancestor(edge->caller_context, ancestor,
+		    generation))
+			return (true);
+	}
+	return (false);
+}
+
+/*
  * Visit each distinct call made by a synthetic root which can reach a
  * concrete context.  Context identity bounds recursive cycles, while the
  * separate call set removes duplicates introduced by converging paths.

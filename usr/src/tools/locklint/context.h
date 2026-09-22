@@ -131,6 +131,7 @@ struct function_context {
 	avl_tree_t continuations;
 	avl_tree_t provenance_edges;
 	unsigned int exit_generation;
+	uint64_t provenance_visit_generation;
 	bool statistics_caller_recovery_start;
 	bool statistics_caller_recovery_visit;
 	avl_node_t by_key;

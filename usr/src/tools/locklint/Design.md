@@ -1459,6 +1459,17 @@ point states.  Block exits and successor entries remain canonical points, so
 joins, loop back-edge widening, and conditional-path metadata keep their
 existing behavior.
 
+Resolved calls normally resume only from concrete callee exits.  If ordinary
+fixed-point work becomes empty while continuations are waiting on an
+exitless recursive context cycle, locklint seeds those recursive
+continuations with their unchanged caller states.  This zero-iteration seed
+allows self-recursive and mutually recursive cycles without a syntactic base
+path to converge and permits analysis after the calls.  The seed is local to
+the recursive continuation rather than a published callee exit; any concrete
+effects subsequently discovered propagate through the normal continuation
+mechanism.  Deferring this recovery until the worklist is empty preserves
+definite effects from recursive functions that do have a reachable base path.
+
 Competition changes are inferred as function summaries and applied across
 resolved calls.  A summary retains the net output interval from exact depth
 zero, the separate output from ambient entry, and the minimum prefix for both

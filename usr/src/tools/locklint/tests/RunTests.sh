@@ -1359,6 +1359,23 @@ if [ "$(grep -c 'warning:' calls-basic-diagnostics.out)" -ne 5 ]; then
 fi
 
 #
+# Verify that recursive call cycles without a syntactic base path are seeded
+# as potentially returning, so analysis after the calls reaches a fixed point.
+#
+run_capture "unconditional recursion diagnostics" \
+    unconditional-recursion.out \
+    "$LOCKLINT" --check-locks unconditional-recursion.c
+require_match "access after unconditional self recursion" \
+    "unconditional-recursion.c:63:.*warning: locklint: protected member 'after_self' modified without holding 'lock' \\[unprotected-access\\]" \
+    unconditional-recursion.out
+require_match "access after unconditional mutual recursion" \
+    "unconditional-recursion.c:70:.*warning: locklint: protected member 'after_mutual' modified without holding 'lock' \\[unprotected-access\\]" \
+    unconditional-recursion.out
+if [ "$(grep -c 'warning:' unconditional-recursion.out)" -ne 2 ]; then
+	fail "unconditional recursion diagnostics: expected exactly two warnings"
+fi
+
+#
 # Verify exact computed object identities for common alias forms.
 #
 run_capture "computed object alias diagnostics" identity-aliases-diagnostics.out \

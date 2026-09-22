@@ -143,6 +143,7 @@ struct analysis {
 	struct worklist worklist;
 	struct analysis_counts counts;
 	struct analysis_measurements measurements;
+	uint64_t provenance_visit_generation;
 };
 
 static int context_access_identity(struct analysis *,
@@ -250,7 +251,7 @@ next_live_instruction(struct basic_block *block,
  * Record one reachable point and schedule it only when newly discovered.
  * Existing point states terminate CFG cycles without another queue search.
  */
-static void
+static bool
 record_analysis_point(struct analysis *analysis,
     struct function_context *context, struct analysis_point point,
     const struct semantic_state *state, bool back_edge)
@@ -279,12 +280,13 @@ record_analysis_point(struct analysis *analysis,
 		die("cannot record analysis point: %s", strerror(error));
 	if (existed) {
 		analysis->counts.point_states_reused++;
-		return;
+		return (false);
 	}
 
 	analysis->counts.point_states_created++;
 	if (!worklist_point_state_enqueue(&analysis->worklist, point_state))
 		die("new analysis point was already queued");
+	return (true);
 }
 
 static void
@@ -5448,6 +5450,61 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	    retained_collection_bytes(measurements));
 }
 
+/*
+ * Recover only after ordinary fixed-point work is exhausted.  An exitless
+ * recursive dependency cycle otherwise has no first return with which to
+ * resume its callers.  Seeding the recursive continuations locally with
+ * their unchanged caller states supplies the zero-iteration summary; it does
+ * not publish a callee exit or weaken recursion that has a real base path.
+ */
+static bool
+seed_stalled_recursive_calls(struct analysis *analysis)
+{
+	struct callgraph_iter *iterator;
+	struct function_info *function;
+	bool seeded = false;
+	int error;
+
+	error = callgraph_iter_open(&iterator);
+	if (error != 0)
+		die("cannot iterate ready callgraph: %s", strerror(error));
+	while ((function = callgraph_iter_next(iterator)) != NULL) {
+		struct function_context *callee_context;
+
+		for (callee_context = avl_first(&function->contexts.contexts);
+		    callee_context != NULL;
+		    callee_context = AVL_NEXT(&function->contexts.contexts,
+		    callee_context)) {
+			struct continuation *continuation;
+
+			if (dependency_exit_count(callee_context) != 0)
+				continue;
+			for (continuation = dependency_continuation_first(
+			    callee_context); continuation != NULL;
+			    continuation = dependency_continuation_next(
+			    callee_context, continuation)) {
+				bool recorded;
+
+				analysis->provenance_visit_generation++;
+				if (analysis->provenance_visit_generation == 0)
+					die("provenance visit generation exhausted");
+				if (!provenance_has_ancestor(
+				    continuation->caller_context, callee_context,
+				    analysis->provenance_visit_generation))
+					continue;
+				recorded = record_analysis_point(analysis,
+				    continuation->caller_context,
+				    continuation->resume_point,
+				    continuation->caller_state, false);
+				if (recorded)
+					seeded = true;
+			}
+		}
+	}
+	callgraph_iter_close(iterator);
+	return (seeded);
+}
+
 void
 analysis_run(struct lock_identity_collection *lock_identities, FILE *stream)
 {
@@ -5461,9 +5518,11 @@ analysis_run(struct lock_identity_collection *lock_identities, FILE *stream)
 	collect_assumed_regions();
 	collect_derived_protectors();
 	seed_initial_contexts(&analysis);
-	while ((point_state =
-	    worklist_point_state_dequeue(&analysis.worklist)) != NULL)
-		process_point(&analysis, point_state);
+	do {
+		while ((point_state =
+		    worklist_point_state_dequeue(&analysis.worklist)) != NULL)
+			process_point(&analysis, point_state);
+	} while (seed_stalled_recursive_calls(&analysis));
 	timing_end(TIMING_FIXED_POINT);
 	timing_begin(TIMING_DIAG_DECLARED_EFFECTS);
 	diagnose_declared_lock_effects(&analysis);

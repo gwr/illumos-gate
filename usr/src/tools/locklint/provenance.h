@@ -44,6 +44,8 @@ struct provenance_edge *provenance_edge_first(struct function_context *);
 struct provenance_edge *provenance_edge_next(struct function_context *,
     struct provenance_edge *);
 size_t provenance_edge_count(struct function_context *);
+bool provenance_has_ancestor(struct function_context *,
+    struct function_context *, uint64_t);
 
 int provenance_for_each_root_call(struct function_context *,
     provenance_root_call_f, void *, bool *);
