@@ -1362,6 +1362,49 @@ if [ "$(grep -c 'warning:' lock-transition-diagnostics.out)" -ne 7 ]; then
 fi
 
 #
+# Record which source-level read-modify-write accesses survive lowering.
+# Isolated expressions retain their read and modification.  Reuse across the
+# conditional compound assignment and folding across the sequence do not.
+#
+run_capture "read-modify-write access diagnostics" rmw-access.out \
+    "$LOCKLINT" --check-locks rmw-access.c
+for location in 49 55 61
+do
+	require_match "isolated read-modify-write read" \
+	    "rmw-access.c:$location:.*protected member 'value' read without holding 'lock'" \
+	    rmw-access.out
+	require_match "isolated read-modify-write modification" \
+	    "rmw-access.c:$location:.*protected member 'value' modified without holding 'lock'" \
+	    rmw-access.out
+done
+require_match "reused condition read" \
+    "rmw-access.c:67:.*protected member 'value' read without holding 'lock'" \
+    rmw-access.out
+require_match "reused compound modification" \
+    "rmw-access.c:68:.*protected member 'value' modified without holding 'lock'" \
+    rmw-access.out
+reject_match "reused compound read" \
+    "rmw-access.c:68:.*protected member 'value' read without holding 'lock'" \
+    rmw-access.out
+require_match "plain store modification" \
+    "rmw-access.c:74:.*protected member 'value' modified without holding 'lock'" \
+    rmw-access.out
+reject_match "plain store read" \
+    "rmw-access.c:74:.*protected member 'value' read without holding 'lock'" \
+    rmw-access.out
+require_match "folded sequence read" \
+    "rmw-access.c:80:.*protected member 'value' read without holding 'lock'" \
+    rmw-access.out
+reject_match "folded middle expression access" "rmw-access.c:81:" \
+    rmw-access.out
+require_match "folded sequence modification" \
+    "rmw-access.c:82:.*protected member 'value' modified without holding 'lock'" \
+    rmw-access.out
+if [ "$(grep -c '\[unprotected-access\]' rmw-access.out)" -ne 11 ]; then
+	fail "read-modify-write access diagnostics: expected exactly eleven warnings"
+fi
+
+#
 # Verify that a cleanup merge which adds NULL to the normal pointer
 # alternatives retains the identity of a possibly held lock.
 #
