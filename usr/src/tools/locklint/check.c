@@ -41,6 +41,7 @@ locklint_check_all(bool check_locks, bool show_callgraph, bool show_contexts,
 	if (check_locks) {
 		locklint_order_build();
 		locklint_order_report_declared_cycles();
+		callgraph_report_unanalyzed_callbacks();
 	}
 	if (show_callgraph)
 		callgraph_dump(stdout);

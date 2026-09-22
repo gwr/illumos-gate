@@ -1039,6 +1039,26 @@ run_capture "function pointers callgraph" function-pointers-callgraph.out \
 compare "function pointers callgraph" function-pointers-callgraph.ref \
     function-pointers-callgraph.out
 
+run_capture "unanalyzed callbacks" unanalyzed-callback.out \
+    "$LOCKLINT" --check-locks unanalyzed-callback.c
+for function in unanalyzed_ops_only unanalyzed_pointer_only \
+    unanalyzed_ops_and_call
+do
+	require_match "unanalyzed callback $function" \
+	    "function '$function' escapes as a callback, but no unique definition is available \\[unanalyzed-callback\\]" \
+	    unanalyzed-callback.out
+done
+reject_match "unanalyzed direct call" \
+    "function 'unanalyzed_call_only'.*\\[unanalyzed-callback\\]" \
+    unanalyzed-callback.out
+reject_match "analyzed callback" \
+    "function 'unanalyzed_resolved_callback'.*\\[unanalyzed-callback\\]" \
+    unanalyzed-callback.out
+if [ "$(grep -c '\[unanalyzed-callback\]' unanalyzed-callback.out)" -ne 3 ];
+then
+	fail "unanalyzed callbacks: expected exactly three warnings"
+fi
+
 run_capture "indirect calls callgraph" indirect-calls-callgraph.out \
     "$LOCKLINT" --dump-callgraph indirect-calls.c
 compare "indirect calls callgraph" indirect-calls-callgraph.ref \

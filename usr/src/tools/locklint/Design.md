@@ -1947,8 +1947,17 @@ function.  It shows:
 The audit labels supported inferred edges as `resolved-indirect`.  It reports
 other indirect calls as unresolved without inventing targets.  Unresolved
 indirect calls do not yet produce ordinary `--check-locks` diagnostics; the
-explicit audit remains their reporting interface.  Policy for user-facing
-incomplete-analysis diagnostics remains later work.
+explicit audit remains their reporting interface.
+
+An escaped function whose definition cannot be resolved is different: code
+outside the analyzed inputs may invoke it as a callback, but locklint cannot
+analyze its lock effects.  `--check-locks` reports
+`[unanalyzed-callback]` once per unavailable function identity at its first
+function-address escape.  Repeated operation-table entries do not duplicate
+the warning.  A direct call does not suppress it, because an unresolved
+direct call does not make the callback's implementation available.  An
+escaped function with a retained definition does not receive this warning;
+automatic root discovery analyzes that definition.
 
 The existing `--check-locks` diagnostic for an ambiguous external direct call
 remains unchanged.  Audit records supplement rather than suppress ordinary

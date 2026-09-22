@@ -50,6 +50,7 @@
 #include "assertions.h"
 #include "callgraph.h"
 #include "context.h"
+#include "diagnostics.h"
 #include "function_info.h"
 #include "identity.h"
 #include "symbol.h"
@@ -102,6 +103,15 @@ struct function_escape {
 	avl_node_t by_source;
 	avl_node_t by_target;
 	struct function_escape *next;
+};
+
+struct unanalyzed_callback {
+	struct translation_unit *tu;
+	struct symbol *symbol;
+	struct position pos;
+	bool internal_linkage;
+	avl_node_t by_identity;
+	struct unanalyzed_callback *next;
 };
 
 struct indirect_target {
@@ -183,6 +193,11 @@ static avl_tree_t function_escapes_by_target;
 static bool function_escape_indexes_initialized;
 static unsigned int next_function_escape_sequence;
 static struct translation_unit *function_escape_tu;
+static struct unanalyzed_callback *unanalyzed_callbacks;
+static struct unanalyzed_callback **unanalyzed_callbacks_tail =
+    &unanalyzed_callbacks;
+static avl_tree_t unanalyzed_callbacks_by_identity;
+static bool unanalyzed_callback_index_initialized;
 static struct indirect_target *indirect_targets;
 static struct indirect_target **indirect_targets_tail = &indirect_targets;
 static struct function_pointer_activity *function_pointer_activities;
@@ -322,6 +337,24 @@ compare_function_escape_target(const void *left_arg, const void *right_arg)
 	if (result != 0)
 		return (result);
 	return (AVL_CMP(left->sequence, right->sequence));
+}
+
+static int
+compare_unanalyzed_callback(const void *left_arg, const void *right_arg)
+{
+	const struct unanalyzed_callback *left = left_arg;
+	const struct unanalyzed_callback *right = right_arg;
+	int result;
+
+	result = AVL_CMP(left->internal_linkage, right->internal_linkage);
+	if (result != 0)
+		return (result);
+	result = compare_ident(left->symbol->ident, right->symbol->ident);
+	if (result != 0)
+		return (result);
+	if (left->internal_linkage)
+		return (AVL_PCMP(left->tu, right->tu));
+	return (0);
 }
 
 static int
@@ -847,6 +880,50 @@ resolve_function_escapes(void)
 	}
 }
 
+/*
+ * Build one record per missing callback target by walking escapes in source
+ * order.  The first insertion therefore supplies stable diagnostic evidence,
+ * while the identity AVL makes repeated operation-table entries inexpensive.
+ */
+static void
+collect_unanalyzed_callbacks(void)
+{
+	struct function_escape *escape;
+
+	if (!function_escape_indexes_initialized)
+		return;
+	avl_create(&unanalyzed_callbacks_by_identity,
+	    compare_unanalyzed_callback, sizeof (struct unanalyzed_callback),
+	    offsetof(struct unanalyzed_callback, by_identity));
+	unanalyzed_callback_index_initialized = true;
+	for (escape = avl_first(&function_escapes_by_source);
+	    escape != NULL;
+	    escape = AVL_NEXT(&function_escapes_by_source, escape)) {
+		struct unanalyzed_callback key = { 0 };
+		struct unanalyzed_callback *callback;
+
+		if (escape->target != NULL || escape->symbol->ident == NULL)
+			continue;
+		key.tu = escape->tu;
+		key.symbol = escape->symbol;
+		key.internal_linkage =
+		    (escape->symbol->ctype.modifiers & MOD_STATIC) != 0;
+		if (avl_find(&unanalyzed_callbacks_by_identity, &key,
+		    NULL) != NULL)
+			continue;
+		callback = calloc(1, sizeof (*callback));
+		if (callback == NULL)
+			die("out of memory recording unanalyzed callback");
+		callback->tu = key.tu;
+		callback->symbol = key.symbol;
+		callback->pos = escape->pos;
+		callback->internal_linkage = key.internal_linkage;
+		avl_add(&unanalyzed_callbacks_by_identity, callback);
+		*unanalyzed_callbacks_tail = callback;
+		unanalyzed_callbacks_tail = &callback->next;
+	}
+}
+
 static void
 resolve_indirect_targets(void)
 {
@@ -1120,6 +1197,7 @@ callgraph_resolve(void)
 	callgraph_state = CALLGRAPH_RESOLVING;
 	resolve_indirect_targets();
 	resolve_function_escapes();
+	collect_unanalyzed_callbacks();
 	build_call_target_cache();
 	classify_roots();
 	callgraph_state = CALLGRAPH_READY;
@@ -1361,6 +1439,22 @@ callgraph_dump(FILE *stream)
 	}
 }
 
+void
+callgraph_report_unanalyzed_callbacks(void)
+{
+	struct unanalyzed_callback *callback;
+
+	require_state(CALLGRAPH_READY, "unanalyzed callback reporting");
+	for (callback = unanalyzed_callbacks; callback != NULL;
+	    callback = callback->next) {
+		locklint_warning(LOCKLINT_DIAG_UNANALYZED_CALLBACK,
+		    callback->pos,
+		    "function '%s' escapes as a callback, but no unique "
+		    "definition is available",
+		    show_ident(callback->symbol->ident));
+	}
+}
+
 static void
 free_function_escapes(void)
 {
@@ -1414,6 +1508,25 @@ free_indirect_targets(void)
 	indirect_targets_tail = &indirect_targets;
 }
 
+static void
+free_unanalyzed_callbacks(void)
+{
+	while (unanalyzed_callbacks != NULL) {
+		struct unanalyzed_callback *next =
+		    unanalyzed_callbacks->next;
+
+		avl_remove(&unanalyzed_callbacks_by_identity,
+		    unanalyzed_callbacks);
+		free(unanalyzed_callbacks);
+		unanalyzed_callbacks = next;
+	}
+	if (unanalyzed_callback_index_initialized) {
+		avl_destroy(&unanalyzed_callbacks_by_identity);
+		unanalyzed_callback_index_initialized = false;
+	}
+	unanalyzed_callbacks_tail = &unanalyzed_callbacks;
+}
+
 void
 callgraph_cleanup(void)
 {
@@ -1421,6 +1534,7 @@ callgraph_cleanup(void)
 	if (open_iterators != NULL)
 		die("cleaning callgraph with active iterators");
 	free_indirect_targets();
+	free_unanalyzed_callbacks();
 	free_function_pointer_activity();
 	free_function_escapes();
 	while (functions != NULL) {

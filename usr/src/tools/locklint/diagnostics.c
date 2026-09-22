@@ -69,6 +69,7 @@ static const char *const diagnostic_names[LOCKLINT_DIAG_COUNT] = {
 	    "read-only-maybe-visible",
 	[LOCKLINT_DIAG_READ_ONLY_VISIBLE] = "read-only-visible",
 	[LOCKLINT_DIAG_TYPE_NAME_LAYOUT] = "type-name-layout",
+	[LOCKLINT_DIAG_UNANALYZED_CALLBACK] = "unanalyzed-callback",
 	[LOCKLINT_DIAG_UNPROTECTED_ACCESS] = "unprotected-access",
 	[LOCKLINT_DIAG_VISIBILITY_NO_OBJECT] = "visibility-no-object"
 };

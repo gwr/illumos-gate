@@ -85,6 +85,12 @@ void callgraph_resolve(void);
 void callgraph_dump(FILE *);
 
 /*
+ * Report function-pointer escapes that cannot be resolved to one retained
+ * definition.  Each function identity is reported once at its first escape.
+ */
+void callgraph_report_unanalyzed_callbacks(void);
+
+/*
  * An iterator is an opaque cursor over the complete function set.  Opening an
  * iterator returns zero on success or an errno value if the graph is not ready
  * or the iterator cannot be allocated; the output pointer is unchanged on
