@@ -574,6 +574,11 @@ publish_exit(struct analysis *analysis, struct point_state *point_state)
 	}
 }
 
+/*
+ * Apply one unconditional lock event.  A definite reacquisition of an
+ * already-held mutex has no executable successor, but its input point remains
+ * available to the diagnostic pass.
+ */
 static const struct semantic_state *
 apply_lock_event(struct analysis *analysis, struct point_state *point_state)
 {
@@ -611,6 +616,13 @@ apply_lock_event(struct analysis *analysis, struct point_state *point_state)
 	    action != LOCKLINT_LOCK_WAIT) {
 		analysis->counts.lock_transitions_deferred++;
 		return (point_state->state);
+	}
+	if (action == LOCKLINT_LOCK_ACQUIRE &&
+	    mode == LOCKLINT_MODE_MUTEX &&
+	    context_state_lock_modes(point_state->state, identity) ==
+	    LOCKLINT_MODE_MUTEX) {
+		analysis->counts.lock_transitions_applied++;
+		return (NULL);
 	}
 	statistics.lock_transition_semantic_states_find++;
 	error = context_state_set_lock(point_state->context->function,
@@ -1052,19 +1064,14 @@ add_derived_protector(struct function_info *function,
 }
 
 static void
-collect_derived_protector_leaf(const struct locklint_access *access,
-    void *data_arg)
+collect_derived_lock_access(struct function_info *function,
+    const struct locklint_access *access)
 {
-	struct function_info *function = data_arg;
 	enum lock_analysis_object_type object_type;
-	struct locklint_data_policy policy;
-	struct locklint_access protector;
 	struct lock_identity_key key;
 
-	if (!locklint_data_policy(access, &policy, &protector) ||
-	    (policy.protection != LOCKLINT_PROTECTION_MUTEX &&
-	    policy.protection != LOCKLINT_PROTECTION_RWLOCK) ||
-	    lock_identity_key_from_access(&protector, &key, &object_type) != 0 ||
+	if (access->root == NULL ||
+	    lock_identity_key_from_access(access, &key, &object_type) != 0 ||
 	    object_type != LOCK_ANALYSIS_OBJECT_PSEUDO ||
 	    !pseudo_uses_formal((struct pseudo *)key.analysis_object, 0))
 		return;
@@ -1072,10 +1079,25 @@ collect_derived_protector_leaf(const struct locklint_access *access,
 }
 
 /*
- * Retain the small set of policy protector expressions which can require
- * exact call-argument substitution.  This avoids rescanning callee bodies at
- * every call.
+ * Retain the small set of lock expressions which can require exact
+ * call-argument substitution.  This includes both policy protectors and
+ * explicit lock events, avoiding a rescan of callee bodies at every call.
  */
+static void
+collect_derived_protector_leaf(const struct locklint_access *access,
+    void *data_arg)
+{
+	struct function_info *function = data_arg;
+	struct locklint_data_policy policy;
+	struct locklint_access protector;
+
+	if (!locklint_data_policy(access, &policy, &protector) ||
+	    (policy.protection != LOCKLINT_PROTECTION_MUTEX &&
+	    policy.protection != LOCKLINT_PROTECTION_RWLOCK))
+		return;
+	collect_derived_lock_access(function, &protector);
+}
+
 static void
 collect_derived_protectors(void)
 {
@@ -1093,13 +1115,24 @@ collect_derived_protectors(void)
 			struct instruction *instruction;
 
 			FOR_EACH_PTR(block->insns, instruction) {
-				if (instruction->bb == NULL ||
-				    (instruction->opcode != OP_LOAD &&
-				    instruction->opcode != OP_STORE))
+				struct locklint_access access = { 0 };
+				enum locklint_lock_mode mode;
+
+				if (instruction->bb == NULL)
 					continue;
-				locklint_for_each_instruction_leaf_access(
-				    function->tu, instruction,
-				    collect_derived_protector_leaf, function);
+				if (instruction->opcode == OP_LOAD ||
+				    instruction->opcode == OP_STORE) {
+					(void)
+					    locklint_for_each_instruction_leaf_access(
+					    function->tu, instruction,
+					    collect_derived_protector_leaf,
+					    function);
+				}
+				if (locklint_get_lock_action(function->tu,
+				    instruction, &access, &mode) !=
+				    LOCKLINT_LOCK_NONE)
+					collect_derived_lock_access(function,
+					    &access);
 			} END_FOR_EACH_PTR(instruction);
 		} END_FOR_EACH_PTR(block);
 	}
@@ -1770,6 +1803,8 @@ process_point(struct analysis *analysis, struct point_state *point_state)
 			if (process_conditional_lock(analysis, point_state))
 				return;
 			state = apply_lock_event(analysis, point_state);
+			if (state == NULL)
+				return;
 
 			process_call(analysis, point_state, state);
 			return;

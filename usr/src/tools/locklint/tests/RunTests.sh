@@ -192,7 +192,7 @@ reject_match "global lock identities" 'warning:' \
 run_capture "local lock identity" lock-identity-local.out \
     "$LOCKLINT" --dump-contexts lock-identity-local.c
 require_match "local lock identity" \
-    '^lock-identities created 3 reused 8 unresolved 0 retained 3$' \
+    '^lock-identities created 3 reused 6 unresolved 0 retained 3$' \
     lock-identity-local.out
 require_match "local lock identity type" \
     '^lock-identity-types unspecified 0 object 0 symbol 3 pseudo 0$' \
@@ -200,7 +200,7 @@ require_match "local lock identity type" \
 require_match "local lock identity objects" \
     '^lock-identity-analysis-objects 3$' lock-identity-local.out
 require_match "local lock transitions" \
-    '^lock-transitions applied 9 deferred 0$' lock-identity-local.out
+    '^lock-transitions applied 7 deferred 0$' lock-identity-local.out
 require_match "local lock returns" \
     '^return-states mapped 8 locks-filtered 2$' lock-identity-local.out
 require_match "local lock contexts" \
@@ -229,11 +229,11 @@ require_match "local held on return" \
 require_match "local maybe held on return" \
     "lock-identity-local.c:62:30: warning: locklint: lock 'local_lock' held on only some paths returning from 'local_maybe_lock_helper' \\[lock-maybe-held-on-return\\]" \
     lock-identity-local.out
-require_match "local ignored tryenter maybe held on return" \
-    "lock-identity-local.c:83:32: warning: locklint: lock 'local_lock' held on only some paths returning from 'lock_identity_local' \\[lock-maybe-held-on-return\\]" \
+reject_match "local terminated nested acquisition path" \
+    "lock-identity-local.c:83:32:" \
     lock-identity-local.out
-if [ "$(grep -c 'warning:' lock-identity-local.out)" -ne 6 ]; then
-	fail "local lock diagnostics: expected exactly six warnings"
+if [ "$(grep -c 'warning:' lock-identity-local.out)" -ne 5 ]; then
+	fail "local lock diagnostics: expected exactly five warnings"
 fi
 
 run_capture "member lock identities" lock-identity-members.out \
@@ -989,6 +989,32 @@ if [ "$(grep -Ec \
     '\[lock-(maybe-)?held-during-wait\]' \
     condition-wait-other-lock.out)" -ne 5 ]; then
 	fail "condition wait other locks: expected exactly five warnings"
+fi
+
+#
+# A definite nested mutex acquisition terminates only that semantic path.
+# Direct and formal-callback calls behave the same, including through an
+# equivalent local pointer alias.
+#
+run_capture "held lock through callee" held-lock-callee.out \
+    "$LOCKLINT" --check-locks held-lock-callee.c
+require_match "direct callee nested acquisition" \
+    "held-lock-callee.c:64:24: warning: locklint: call to 'balanced_callee' acquires already-held lock 'lock' \\[lock-already-held\\]" \
+    held-lock-callee.out
+require_match "formal callback nested acquisition" \
+    "held-lock-callee.c:74:24: warning: locklint: call to 'invoke_callback' acquires already-held lock 'lock' \\[lock-already-held\\]" \
+    held-lock-callee.out
+require_match "direct alias nested acquisition" \
+    "held-lock-callee.c:105:30: warning: locklint: call to 'balanced_alias_callee' acquires already-held lock 'lock' \\[lock-already-held\\]" \
+    held-lock-callee.out
+require_match "formal callback alias nested acquisition" \
+    "held-lock-callee.c:115:30: warning: locklint: call to 'invoke_alias_callback' acquires already-held lock 'lock' \\[lock-already-held\\]" \
+    held-lock-callee.out
+reject_match "held lock through callee path termination" \
+    "\\[lock-not-held\\]" \
+    held-lock-callee.out
+if [ "$(grep -c 'warning:' held-lock-callee.out)" -ne 4 ]; then
+	fail "held lock through callee: expected exactly four warnings"
 fi
 
 #
