@@ -761,6 +761,38 @@ find_external_function(struct symbol *symbol, bool *ambiguous)
 }
 
 /*
+ * Sparse may omit inherited static linkage from a definition that follows a
+ * static prototype.  Recover that same-translation-unit definition without
+ * allowing a genuinely external declaration to bind to it.
+ */
+static struct function_record *
+find_inherited_internal_definition(struct translation_unit *tu,
+    struct symbol *symbol, bool use_inline_implementation, bool *ambiguous)
+{
+	struct function_record *function;
+	struct function_record *match = NULL;
+
+	*ambiguous = false;
+	if (!locklint_symbol_can_use_internal(symbol))
+		return (NULL);
+	function = find_identity_function(NULL, symbol, false);
+	for (; function != NULL && !function->internal_linkage &&
+	    same_ident(symbol->ident, function->info.ep->name->ident);
+	    function = AVL_NEXT(&functions_by_identity, function)) {
+		if (function->info.tu != tu ||
+		    (!use_inline_implementation &&
+		    function->inline_implementation))
+			continue;
+		if (match != NULL) {
+			*ambiguous = true;
+			return (NULL);
+		}
+		match = function;
+	}
+	return (match);
+}
+
+/*
  * Attach a command-file entry contract to the unique external definition.
  * The first successful declaration also selects explicit external-entry
  * scope for root classification.
@@ -840,6 +872,12 @@ resolve_function_symbol(struct translation_unit *tu, struct symbol *symbol,
 	 */
 	if (function != NULL && locklint_symbol_can_use_internal(symbol))
 		return (&function->info);
+	if (function == NULL) {
+		function = find_inherited_internal_definition(tu, symbol,
+		    use_inline_implementation, ambiguous);
+		if (function != NULL || *ambiguous)
+			return (function != NULL ? &function->info : NULL);
+	}
 	if (symbol->ep == NULL && symbol->definition != NULL &&
 	    (use_inline_implementation ||
 	    !symbol->definition->gnu_inline))

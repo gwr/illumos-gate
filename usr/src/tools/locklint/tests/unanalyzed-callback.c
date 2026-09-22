@@ -23,6 +23,7 @@ extern int unanalyzed_ops_only(void);
 extern int unanalyzed_pointer_only(void);
 extern int unanalyzed_ops_and_call(void);
 extern int unanalyzed_call_only(void);
+static int unanalyzed_resolved_callback(void);
 extern struct unanalyzed_callback_ops unanalyzed_ops;
 extern struct unanalyzed_callback_ops unanalyzed_called_ops;
 extern struct unanalyzed_callback_ops unanalyzed_resolved_ops;
@@ -42,7 +43,7 @@ struct unanalyzed_callback_ops unanalyzed_called_ops = {
 	unanalyzed_ops_and_call
 };
 
-static int
+int
 unanalyzed_resolved_callback(void)
 {
 	return (0);
