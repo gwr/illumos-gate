@@ -148,6 +148,12 @@ struct call_audit {
 	unsigned int sequence;
 };
 
+struct call_target_set {
+	size_t count;
+	avl_node_t by_value;
+	struct function_info *targets[];
+};
+
 enum call_target_kind {
 	CALL_TARGET_DIRECT,
 	CALL_TARGET_INDIRECT
@@ -161,7 +167,7 @@ enum call_target_state {
 
 struct call_target_entry {
 	struct instruction *instruction;
-	struct function_info *callee;
+	const struct call_target_set *targets;
 	enum call_target_kind kind;
 	enum call_target_state state;
 	bool direct_ambiguous;
@@ -207,6 +213,8 @@ static avl_tree_t function_pointer_activity_by_source;
 static bool function_pointer_activity_index_initialized;
 static bool record_function_pointer_activity;
 static unsigned int next_function_pointer_activity_sequence;
+static avl_tree_t call_target_sets;
+static bool call_target_sets_initialized;
 static bool has_declared_entries;
 
 static int
@@ -223,6 +231,89 @@ function_record(struct function_info *function)
 {
 	return ((struct function_record *)((char *)function -
 	    offsetof(struct function_record, info)));
+}
+
+static int
+compare_call_target_set(const void *left_arg, const void *right_arg)
+{
+	const struct call_target_set *left = left_arg;
+	const struct call_target_set *right = right_arg;
+	size_t count = left->count < right->count ? left->count : right->count;
+	size_t index;
+	int result;
+
+	for (index = 0; index < count; index++) {
+		result = AVL_CMP(function_record(left->targets[index])->
+		    identity_sequence, function_record(right->targets[index])->
+		    identity_sequence);
+		if (result != 0)
+			return (result);
+	}
+	return (AVL_CMP(left->count, right->count));
+}
+
+static int
+compare_call_target_qsort(const void *left_arg, const void *right_arg)
+{
+	struct function_info *const *left = left_arg;
+	struct function_info *const *right = right_arg;
+
+	return (AVL_CMP(function_record(*left)->identity_sequence,
+	    function_record(*right)->identity_sequence));
+}
+
+/*
+ * Intern immutable target arrays so repeated calls to the same function or
+ * target combination share storage.  Target order follows stable function
+ * registration order and duplicates are removed before lookup.
+ */
+static const struct call_target_set *
+call_target_set_intern(struct function_info *const *targets, size_t count)
+{
+	struct call_target_set *candidate;
+	struct call_target_set *set;
+	avl_index_t where;
+	size_t index;
+	size_t unique;
+	size_t size;
+
+	if (count == 0 || targets == NULL ||
+	    count > (SIZE_MAX - sizeof (*candidate)) /
+	    sizeof (*candidate->targets))
+		die("invalid call target set size");
+	size = sizeof (*candidate) + count * sizeof (*candidate->targets);
+	candidate = calloc(1, size);
+	if (candidate == NULL)
+		die("out of memory interning call target set");
+	candidate->count = count;
+	(void) memcpy(candidate->targets, targets,
+	    count * sizeof (*candidate->targets));
+	qsort(candidate->targets, count, sizeof (*candidate->targets),
+	    compare_call_target_qsort);
+	for (index = 0, unique = 0; index < count; index++) {
+		if (candidate->targets[index] == NULL) {
+			free(candidate);
+			die("null function in call target set");
+		}
+		if (unique != 0 &&
+		    candidate->targets[unique - 1] == candidate->targets[index])
+			continue;
+		candidate->targets[unique++] = candidate->targets[index];
+	}
+	candidate->count = unique;
+	if (!call_target_sets_initialized) {
+		avl_create(&call_target_sets, compare_call_target_set,
+		    sizeof (*candidate), offsetof(struct call_target_set,
+		    by_value));
+		call_target_sets_initialized = true;
+	}
+	set = avl_find(&call_target_sets, candidate, &where);
+	if (set != NULL) {
+		free(candidate);
+		return (set);
+	}
+	avl_insert(&call_target_sets, candidate, where);
+	return (candidate);
 }
 
 static void
@@ -1047,6 +1138,7 @@ build_call_target_cache(void)
 			    offsetof(struct call_target_entry, node));
 			FOR_EACH_PTR(bb->insns, insn) {
 				struct call_target_entry *entry;
+				struct function_info *indirect_callee = NULL;
 				bool direct;
 				bool direct_ambiguous = false;
 				bool indirect_ambiguous = false;
@@ -1060,30 +1152,32 @@ build_call_target_cache(void)
 				    insn->func->sym != NULL;
 				if (direct) {
 					entry->kind = CALL_TARGET_DIRECT;
-					entry->callee = resolve_function_symbol(
+					indirect_callee =
+					    resolve_function_symbol(
 					    function->info.tu, insn->func->sym,
 					    true, &direct_ambiguous);
 				}
-				if (entry->callee == NULL) {
-					struct function_info *indirect_callee;
-
+				if (indirect_callee == NULL) {
 					resolve_indirect_callee(&function->info,
 					    insn, &indirect_callee,
 					    &indirect_ambiguous);
 					if (indirect_callee != NULL) {
 						entry->kind = CALL_TARGET_INDIRECT;
-						entry->callee = indirect_callee;
 					}
 				}
 				if (!direct)
 					entry->kind = CALL_TARGET_INDIRECT;
 				entry->direct_ambiguous = direct_ambiguous;
-				if (entry->callee != NULL)
+				if (indirect_callee != NULL) {
+					entry->targets = call_target_set_intern(
+					    &indirect_callee, 1);
 					entry->state = CALL_TARGET_RESOLVED;
-				else if (direct_ambiguous || indirect_ambiguous)
+				} else if (direct_ambiguous ||
+				    indirect_ambiguous) {
 					entry->state = CALL_TARGET_AMBIGUOUS;
-				else
+				} else {
 					entry->state = CALL_TARGET_UNRESOLVED;
+				}
 				avl_add(&info->entries, entry);
 			} END_FOR_EACH_PTR(insn);
 			bb->priv = info;
@@ -1115,7 +1209,30 @@ call_callee_impl(const struct instruction *insn)
 {
 	struct call_target_entry *entry = find_call_target(insn);
 
-	return (entry != NULL ? entry->callee : NULL);
+	if (entry == NULL || entry->targets == NULL ||
+	    entry->targets->count != 1)
+		return (NULL);
+	return (entry->targets->targets[0]);
+}
+
+static size_t
+call_target_count_impl(const struct instruction *insn)
+{
+	struct call_target_entry *entry = find_call_target(insn);
+
+	return (entry != NULL && entry->targets != NULL ?
+	    entry->targets->count : 0);
+}
+
+static struct function_info *
+call_target_impl(const struct instruction *insn, size_t index)
+{
+	struct call_target_entry *entry = find_call_target(insn);
+
+	if (entry == NULL || entry->targets == NULL ||
+	    index >= entry->targets->count)
+		return (NULL);
+	return (entry->targets->targets[index]);
 }
 
 static bool
@@ -1133,6 +1250,24 @@ callgraph_callee(const struct function_info *caller,
 	require_state(CALLGRAPH_READY, "callee query");
 	(void) caller;
 	return (call_callee_impl(insn));
+}
+
+size_t
+callgraph_target_count(const struct function_info *caller,
+    const struct instruction *insn)
+{
+	require_state(CALLGRAPH_READY, "target count query");
+	(void) caller;
+	return (call_target_count_impl(insn));
+}
+
+struct function_info *
+callgraph_target(const struct function_info *caller,
+    const struct instruction *insn, size_t index)
+{
+	require_state(CALLGRAPH_READY, "target query");
+	(void) caller;
+	return (call_target_impl(insn, index));
 }
 
 bool
@@ -1156,13 +1291,15 @@ mark_reachable(struct function_info *function)
 		struct instruction *insn;
 
 		FOR_EACH_PTR(bb->insns, insn) {
-			struct function_info *callee;
+			size_t count;
+			size_t index;
 
 			if (insn->bb == NULL)
 				continue;
-			callee = call_callee_impl(insn);
-			if (callee != NULL)
-				mark_reachable(callee);
+			count = call_target_count_impl(insn);
+			for (index = 0; index < count; index++)
+				mark_reachable(call_target_impl(insn,
+				    index));
 		} END_FOR_EACH_PTR(insn);
 	} END_FOR_EACH_PTR(bb);
 }
@@ -1183,14 +1320,20 @@ classify_roots(void)
 			struct instruction *insn;
 
 			FOR_EACH_PTR(bb->insns, insn) {
-				struct function_info *callee;
+				size_t count;
+				size_t index;
 
 				if (insn->bb == NULL)
 					continue;
-				callee = call_callee_impl(insn);
-				if (callee != NULL && callee != &function->info)
-					function_record(callee)->
-					    has_nonself_caller = true;
+				count = call_target_count_impl(insn);
+				for (index = 0; index < count; index++) {
+					struct function_info *callee =
+					    call_target_impl(insn, index);
+
+					if (callee != &function->info)
+						function_record(callee)->
+						    has_nonself_caller = true;
+				}
 			} END_FOR_EACH_PTR(insn);
 		} END_FOR_EACH_PTR(bb);
 	}
@@ -1341,7 +1484,7 @@ dump_function_calls(FILE *stream, struct function_info *function)
 	for (index = 0; index < count; index++) {
 		struct instruction *insn = calls[index].insn;
 		struct call_target_entry *entry = find_call_target(insn);
-		struct function_info *callee = entry->callee;
+		struct function_info *callee = call_callee_impl(insn);
 		struct symbol *symbol = NULL;
 
 		(void) fprintf(stream, "  call %s:%u:%u ",
@@ -1547,6 +1690,20 @@ free_indirect_targets(void)
 }
 
 static void
+free_call_target_sets(void)
+{
+	struct call_target_set *set;
+	void *cookie = NULL;
+
+	if (!call_target_sets_initialized)
+		return;
+	while ((set = avl_destroy_nodes(&call_target_sets, &cookie)) != NULL)
+		free(set);
+	avl_destroy(&call_target_sets);
+	call_target_sets_initialized = false;
+}
+
+static void
 free_unanalyzed_callbacks(void)
 {
 	while (unanalyzed_callbacks != NULL) {
@@ -1571,6 +1728,7 @@ callgraph_cleanup(void)
 	require_state(CALLGRAPH_READY, "cleanup");
 	if (open_iterators != NULL)
 		die("cleaning callgraph with active iterators");
+	free_call_target_sets();
 	free_indirect_targets();
 	free_unanalyzed_callbacks();
 	free_function_pointer_activity();

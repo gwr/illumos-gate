@@ -17,6 +17,7 @@
 #define	CALLGRAPH_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdio.h>
 
 struct entrypoint;
@@ -109,6 +110,15 @@ void callgraph_iter_close(struct callgraph_iter *);
  */
 struct function_info *callgraph_callee(const struct function_info *,
     const struct instruction *);
+
+/*
+ * Iterate every statically resolved target of one call.  Target order is
+ * stable within one resolved callgraph.
+ */
+size_t callgraph_target_count(const struct function_info *,
+    const struct instruction *);
+struct function_info *callgraph_target(const struct function_info *,
+    const struct instruction *, size_t);
 
 /*
  * Return true when a direct call cannot be resolved because multiple external

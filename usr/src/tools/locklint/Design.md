@@ -477,6 +477,7 @@ The structures have these roles:
 | `struct call_audit` | One temporary source-order entry for a live call instruction while dumping a function's calls |
 | `struct function_escape` | One source observation that an exact function was used as a value; supplies root provenance through its source position and resolved target |
 | `struct indirect_target` | One exact target candidate for a member of a supported file-static constant aggregate; records translation unit, object, member, offset, source function, resolved target, and ambiguity |
+| `struct call_target_set` | One immutable, interned set of resolved functions for a call; entries are unique and ordered by stable function-registration sequence |
 | `struct function_pointer_activity` | One initializer or function-body load or store involving a function pointer; a pointer copy is represented by its source load and destination store |
 | `struct block_info` | Associates one Sparse basic block with reachability and its input and output unified analysis states |
 | `struct analysis_state` | The lock map, competition-depth interval, and per-region visibility facts at one CFG point |
@@ -529,6 +530,7 @@ The module-scope records use these collections:
 | `call_audit` | Temporary array allocated only while dumping one function | Sorted by source position and collection sequence with `qsort()`; no persistent index |
 | `function_escape` | Individually allocated records in an owning linked list | Embeds `by_source` for deterministic source traversal and `by_target` for finding every escape reason associated with a resolved function |
 | `indirect_target` | Individually allocated records in an owning linked list | Matched by translation unit, aggregate object, member, and offset; the supported exact case needs no separate index |
+| `call_target_set` | One variable-sized allocation per distinct resolved target combination | Interned in one value-keyed AVL; sorted target arrays make equality linear in the normally small set size and let repeated call sites share storage |
 | `function_pointer_activity` | Individually allocated records in an owning linked list, created only when a call-graph audit is requested | Embeds `by_source` for one source-ordered AVL; it has no target index because no exact target is known |
 | root-reason kinds | A bit mask embedded in `function_info` | No separate collection; source-backed escape reasons refer to `function_escape` records |
 | `translation_unit` | Existing process-lifetime sequence | No additional index in this increment |
@@ -1853,6 +1855,13 @@ equally to root classification, reachability, lock and visibility effects,
 protection-condition propagation, and diagnostics.  Unresolved and ambiguous
 calls remain explicit in audit output rather than silently disappearing.
 
+Each resolved call cache entry refers to an immutable interned target set.
+Direct calls and exact static operations-vector calls currently produce
+singleton sets.  The compatibility `callgraph_callee()` query returns that
+single member and returns no callee for an empty or multi-target set;
+target-count and indexed-target queries support analyses which intentionally
+handle every member.
+
 ### Exact static operations-vector targets
 
 Locklint recognizes the deliberately narrow case of a file-static `const`
@@ -2394,7 +2403,8 @@ intermediate-frame rendering remain optional future work.
 | `callgraph_add()` | Retain a function and add its Sparse and C-identity indexes during construction |
 | `callgraph_resolve()` | Resolve identities and exact targets, attach block-owned call-target caches, classify roots, propagate reachability, and make the complete graph ready |
 | `callgraph_iter_open()`, `callgraph_iter_next()`, `callgraph_iter_close()` | Allocate, advance, and dispose an opaque cursor over the ready function set |
-| `callgraph_callee()` | Return the pre-resolved target of one direct call or supported exact indirect call through the common semantic edge interface |
+| `callgraph_callee()` | Return the sole pre-resolved target of one call, or `NULL` for an empty or multi-target set |
+| `callgraph_target_count()`, `callgraph_target()` | Enumerate the immutable pre-resolved target set of one call |
 | `callgraph_ambiguous_callee()` | Return the cached indication that a direct call has multiple matching external definitions |
 | `callgraph_dump()` | Emit the deterministic callgraph audit to a caller-supplied stream |
 | `callgraph_cleanup()` | Verify iterator and attachment lifetimes, then release all callgraph-owned records and indexes |
