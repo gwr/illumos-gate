@@ -67,6 +67,8 @@ bool locklint_access_base(const struct locklint_access *, struct symbol *,
     unsigned long, unsigned long *);
 bool locklint_access_base_canonical(const struct locklint_access *,
     const struct ll_type *, unsigned long, unsigned long *);
+bool locklint_access_root_base_canonical(const struct locklint_access *,
+    const struct ll_type *, unsigned long, unsigned long *);
 bool locklint_access_containing_base(const struct locklint_access *,
     struct symbol *, unsigned long, unsigned long *);
 bool locklint_access_containing_base_canonical(const struct locklint_access *,

@@ -1980,6 +1980,23 @@ matching_data_ref_canonical(const struct annotation_ref *ref,
 	return (true);
 }
 
+/*
+ * Object policies and policies rooted in the access's containing type are
+ * more specific than policies which match only through an embedded aggregate.
+ */
+static unsigned int
+data_policy_protection_rank(const struct annotation_ref *ref,
+    const struct locklint_access *access)
+{
+	unsigned long base;
+
+	if (ref->root != NULL ||
+	    locklint_access_root_base_canonical(access, ref->owner_type,
+	    ref->offset, &base))
+		return (1);
+	return (0);
+}
+
 static bool
 matching_data_ref(const struct annotation_ref *ref,
     const struct locklint_access *access, unsigned long *base)
@@ -2112,7 +2129,9 @@ locklint_data_policy(const struct locklint_access *access,
 	const struct type_member *access_member;
 	unsigned long protector_base = 0;
 	const struct ll_type *protected_owner = NULL;
+	unsigned int protection_rank = 0;
 	bool found = false;
+	bool have_protection = false;
 
 	(void) memset(policy, 0, sizeof (*policy));
 	(void) memset(lock, 0, sizeof (*lock));
@@ -2136,6 +2155,7 @@ locklint_data_policy(const struct locklint_access *access,
 		struct data_policy_index_entry *entry;
 		const struct annotation *annotation;
 		const struct annotation_ref *ref;
+		unsigned int candidate_rank;
 		unsigned long base;
 
 		if (object_entry == NULL ||
@@ -2156,20 +2176,41 @@ locklint_data_policy(const struct locklint_access *access,
 		found = true;
 		switch (annotation->kind) {
 		case ANNOTATION_MUTEX_PROTECTS_DATA:
+			candidate_rank =
+			    data_policy_protection_rank(ref, access);
+			if (have_protection &&
+			    candidate_rank < protection_rank)
+				break;
 			policy->protection = LOCKLINT_PROTECTION_MUTEX;
 			protector = annotation->lock;
 			protector_base = base;
 			protected_owner = ref->owner_type;
+			protection_rank = candidate_rank;
+			have_protection = true;
 			break;
 		case ANNOTATION_RWLOCK_PROTECTS_DATA:
+			candidate_rank =
+			    data_policy_protection_rank(ref, access);
+			if (have_protection &&
+			    candidate_rank < protection_rank)
+				break;
 			policy->protection = LOCKLINT_PROTECTION_RWLOCK;
 			protector = annotation->lock;
 			protector_base = base;
 			protected_owner = ref->owner_type;
+			protection_rank = candidate_rank;
+			have_protection = true;
 			break;
 		case ANNOTATION_SCHEME_PROTECTS_DATA:
+			candidate_rank =
+			    data_policy_protection_rank(ref, access);
+			if (have_protection &&
+			    candidate_rank < protection_rank)
+				break;
 			policy->protection = LOCKLINT_PROTECTION_SCHEME;
 			protector = NULL;
+			protection_rank = candidate_rank;
+			have_protection = true;
 			break;
 		case ANNOTATION_DATA_READABLE_WITHOUT_LOCK:
 			policy->readable_without_lock = true;

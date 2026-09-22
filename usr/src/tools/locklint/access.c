@@ -763,6 +763,26 @@ access_type_matches(struct symbol *exact, struct symbol *requested_exact,
 }
 
 static bool
+access_root_base(const struct locklint_access *access,
+    struct symbol *owner_type, const struct ll_type *canonical_owner,
+    unsigned long relative_offset, unsigned long *base_offset)
+{
+	unsigned long displacement;
+	int owner_size;
+
+	if (!access_type_matches(access->type, owner_type, canonical_owner) ||
+	    access->offset < relative_offset)
+		return (false);
+	displacement = access->offset - relative_offset;
+	owner_size = bits_to_bytes(access->type->bit_size);
+	if (displacement != 0 &&
+	    (owner_size <= 0 || displacement % owner_size != 0))
+		return (false);
+	*base_offset = displacement;
+	return (true);
+}
+
+static bool
 access_base(const struct locklint_access *access,
     struct symbol *owner_type, const struct ll_type *canonical_owner,
     unsigned long relative_offset,
@@ -781,17 +801,9 @@ access_base(const struct locklint_access *access,
 			return (true);
 		}
 	}
-	if (access_type_matches(access->type, owner_type, canonical_owner) &&
-	    access->offset >= relative_offset) {
-		unsigned long displacement = access->offset - relative_offset;
-		int owner_size = bits_to_bytes(access->type->bit_size);
-
-		if (displacement == 0 ||
-		    (owner_size > 0 && displacement % owner_size == 0)) {
-			*base_offset = displacement;
-			return (true);
-		}
-	}
+	if (access_root_base(access, owner_type, canonical_owner,
+	    relative_offset, base_offset))
+		return (true);
 	suffix = access->expr != NULL &&
 	    access->offset >= access->expr_offset ?
 	    access->offset - access->expr_offset : 0;
@@ -827,6 +839,20 @@ locklint_access_base_canonical(const struct locklint_access *access,
     unsigned long *base_offset)
 {
 	return (access_base(access, NULL, owner_type, relative_offset,
+	    base_offset));
+}
+
+/*
+ * Match only the type of the access root.  Type-scoped data policy uses this
+ * boundary so a policy for an embedded aggregate does not govern that
+ * aggregate when reached as part of an unrelated containing object.
+ */
+bool
+locklint_access_root_base_canonical(const struct locklint_access *access,
+    const struct ll_type *owner_type, unsigned long relative_offset,
+    unsigned long *base_offset)
+{
+	return (access_root_base(access, NULL, owner_type, relative_offset,
 	    base_offset));
 }
 

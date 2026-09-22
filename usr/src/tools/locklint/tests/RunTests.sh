@@ -1267,6 +1267,45 @@ require_match "lock-held protection state" \
     protection-states.out
 
 #
+# A policy rooted in a containing type takes precedence over a policy which
+# matches through an embedded aggregate.  Equal-specificity declarations
+# retain source-order replacement semantics.
+#
+run_capture "nested scheme after containing mutex" \
+    scheme-mutex-precedence-separate-1.out "$LOCKLINT" --check-locks \
+    scheme-mutex-precedence-access.c scheme-mutex-precedence-scheme.c
+require_match "nested scheme after containing mutex" \
+    "scheme-mutex-precedence-access.c:26:.*protected member 'inner.value' modified without holding 'lock'" \
+    scheme-mutex-precedence-separate-1.out
+
+run_capture "containing mutex after nested scheme" \
+    scheme-mutex-precedence-separate-2.out "$LOCKLINT" --check-locks \
+    scheme-mutex-precedence-scheme.c scheme-mutex-precedence-access.c
+require_match "containing mutex after nested scheme" \
+    "scheme-mutex-precedence-access.c:26:.*protected member 'inner.value' modified without holding 'lock'" \
+    scheme-mutex-precedence-separate-2.out
+
+run_capture "same-TU nested scheme and containing mutex" \
+    scheme-mutex-precedence-local.out "$LOCKLINT" --check-locks \
+    scheme-mutex-precedence-local.c
+require_match "same-TU nested scheme and containing mutex" \
+    "scheme-mutex-precedence-local.c:27:.*protected member 'inner.value' modified without holding 'lock'" \
+    scheme-mutex-precedence-local.out
+
+run_capture "exact scheme replaces mutex" \
+    scheme-mutex-precedence-exact-1.out "$LOCKLINT" --check-locks \
+    scheme-mutex-precedence-exact-mutex-first.c
+reject_match "exact scheme replaces mutex" \
+    "warning: locklint:" scheme-mutex-precedence-exact-1.out
+
+run_capture "exact mutex replaces scheme" \
+    scheme-mutex-precedence-exact-2.out "$LOCKLINT" --check-locks \
+    scheme-mutex-precedence-exact-scheme-first.c
+require_match "exact mutex replaces scheme" \
+    "scheme-mutex-precedence-exact-scheme-first.c:27:.*protected member 'inner.value' modified without holding 'lock'" \
+    scheme-mutex-precedence-exact-2.out
+
+#
 # Verify that structure policy stops at pointer-member boundaries.
 #
 run_capture "pointer member data policy" pointer-member-policy.out \

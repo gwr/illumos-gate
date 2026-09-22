@@ -1126,11 +1126,33 @@ The effective data policy has three independent dimensions:
 | unlocked-read permission | required protection or readable without lock |
 | write-after-visibility policy | unrestricted or read-only |
 
-For a selected datum, the last resolved protection-mechanism declaration in
-source processing order wins.  A later scheme therefore replaces an earlier
-mutex relation, and a later mutex replaces an earlier scheme.
-`record_replacements()` links those earlier and later data references for
-annotation dumps.
+Protection-mechanism declarations are selected first by precedence and then
+by source processing order:
+
+| Precedence | Match |
+| --- | --- |
+| higher | object-scoped policy, or type policy whose owner is the canonical type of the access root |
+| lower | type policy whose owner matches only an aggregate embedded below the access root |
+
+The last resolved declaration wins among mechanisms at the same precedence.
+A later scheme can therefore replace an earlier mutex relation on the same
+object or root type, and a later mutex can replace an earlier scheme.
+`record_replacements()` links those equal-precedence declarations for
+annotation dumps.  A lower-precedence declaration cannot replace an already
+selected higher-precedence mechanism; a later higher-precedence declaration
+does replace an earlier embedded mechanism.
+
+For example, given `outer.inner.value`, a mutex policy expanded from `outer`
+takes precedence over a general scheme policy on the type of `inner`,
+regardless of declaration order.  The inner-type policy still applies when an
+inner object is accessed directly, or when the embedded object has no
+applicable policy rooted in its containing object.  Two declarations naming
+`outer::inner.value` have equal specificity and retain the usual
+last-declaration-wins behavior.
+
+This precedence affects only the protection-mechanism dimension.  It does
+not change canonical cross-translation-unit identity, aggregate leaf
+expansion, or protector-address reconstruction.
 
 `DATA_READABLE_WITHOUT_LOCK` and `READ_ONLY_DATA` do not replace a protection
 mechanism or each other.  They set independent policy dimensions and remain
