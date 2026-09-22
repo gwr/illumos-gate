@@ -1257,6 +1257,15 @@ run_capture "mutex data policy diagnostics" data-policy-diagnostics.out \
 compare "mutex data policy diagnostics" data-policy.ref \
     data-policy-diagnostics.out
 
+run_capture "protection state dump" protection-states.out \
+    "$LOCKLINT" --check-locks --dump-protection-states data-policy.c
+require_match "unprotected protection state" \
+    "data-policy.c:78:.*protection-state load member='protected' function=check_data_policy states=1 lock=0 invisible=0 no-competition=0 conditional=0 unprotected=1" \
+    protection-states.out
+require_match "lock-held protection state" \
+    "data-policy.c:101:.*protection-state store member='protected' function=check_data_policy states=1 lock=1 invisible=0 no-competition=0 conditional=0 unprotected=0" \
+    protection-states.out
+
 #
 # Verify that structure policy stops at pointer-member boundaries.
 #

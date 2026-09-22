@@ -49,6 +49,7 @@ static bool dump_annotations;
 static bool dump_events;
 static bool dump_callgraph;
 static bool dump_contexts;
+static bool dump_protection_states;
 static bool dump_statistics;
 static bool dump_types;
 static bool check_locks;
@@ -78,8 +79,8 @@ usage(FILE *stream)
 	    "usage: locklint [--cf command-file] [--compat=osll] "
 	    "[--check-locks] [--dump-parsed] [--dump-linearized] "
 	    "[--dump-accesses] [--dump-annotations] [--dump-events] "
-	    "[--dump-callgraph] [--dump-contexts] [--dump-statistics] "
-	    "[--dump-types] "
+	    "[--dump-callgraph] [--dump-contexts] "
+	    "[--dump-protection-states] [--dump-statistics] [--dump-types] "
 	    "[--times] "
 	    "[compiler-options] file.c ...\n");
 }
@@ -128,6 +129,9 @@ options(int argc, char **argv)
 			dump_callgraph = true;
 		} else if (strcmp(argv[i], "--dump-contexts") == 0) {
 			dump_contexts = true;
+		} else if (strcmp(argv[i],
+		    "--dump-protection-states") == 0) {
+			dump_protection_states = true;
 		} else if (strcmp(argv[i], "--dump-statistics") == 0) {
 			dump_statistics = true;
 		} else if (strcmp(argv[i], "--dump-types") == 0) {
@@ -142,6 +146,7 @@ options(int argc, char **argv)
 			dump_events = true;
 			dump_callgraph = true;
 			dump_contexts = true;
+			dump_protection_states = true;
 			dump_statistics = true;
 			dump_types = true;
 		} else if (strcmp(argv[i], "--compat=osll") == 0) {
@@ -238,19 +243,21 @@ process_symbols(struct translation_unit *tu, struct symbol_list *symbols)
 
 		if (!dump_linearized && !dump_accesses && !dump_annotations &&
 		    !dump_events && !dump_callgraph && !dump_contexts &&
-		    !check_locks)
+		    !dump_protection_states && !check_locks)
 			continue;
 
 		ep = linearize_symbol(sym);
 		if (ep == NULL)
 			continue;
-		if (check_locks || dump_callgraph || dump_contexts)
+		if (check_locks || dump_callgraph || dump_contexts ||
+		    dump_protection_states)
 			callgraph_add(tu, ep);
 		if (dump_linearized)
 			show_entry(ep);
 		if (dump_accesses)
 			show_accesses(ep);
-		if (dump_annotations || check_locks || dump_contexts)
+		if (dump_annotations || check_locks || dump_contexts ||
+		    dump_protection_states)
 			locklint_process_function_annotations(
 			    dump_annotations ? stdout : NULL, tu, ep);
 		if (dump_events)
@@ -406,9 +413,10 @@ main(int argc, char **argv)
 		register_translation_unit_declarations(tu, symbols);
 		timing_begin(TIMING_INPUT_EVIDENCE);
 		if (dump_annotations || dump_events || check_locks ||
-		    dump_contexts)
+		    dump_contexts || dump_protection_states)
 			locklint_resolve_annotations(symbols);
-		if (check_locks || dump_callgraph || dump_contexts)
+		if (check_locks || dump_callgraph || dump_contexts ||
+		    dump_protection_states)
 			callgraph_record_pointer_evidence(tu, symbols,
 			    dump_callgraph);
 		timing_end(TIMING_INPUT_EVIDENCE);
@@ -430,8 +438,11 @@ main(int argc, char **argv)
 		return (EXIT_FAILURE);
 	}
 	timing_end(TIMING_COMMANDS);
-	if (check_locks || dump_callgraph || dump_contexts)
-		locklint_check_all(check_locks, dump_callgraph, dump_contexts);
+	if (check_locks || dump_callgraph || dump_contexts ||
+	    dump_protection_states) {
+		locklint_check_all(check_locks || dump_protection_states,
+		    dump_callgraph, dump_contexts, dump_protection_states);
+	}
 	timing_begin(TIMING_FINAL_OUTPUT);
 	if (dump_types)
 		type_registry_show(stdout);

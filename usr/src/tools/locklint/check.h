@@ -18,6 +18,6 @@
 
 #include <stdbool.h>
 
-void locklint_check_all(bool, bool, bool);
+void locklint_check_all(bool, bool, bool, bool);
 
 #endif /* CHECK_H */

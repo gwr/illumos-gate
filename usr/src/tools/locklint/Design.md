@@ -189,8 +189,13 @@ The main phases are:
 6. Emit other requested development dumps.  `--dump-types` lists every named
    locklint type retained in the process-wide type registry and reports how
    many exact Sparse instances each one represents.
-   `--dump-all` includes this type registry and the whole-program call-graph
-   audit.
+   `--dump-protection-states` runs lock checking and emits one source-oriented
+   record for every static lock-protected access.  Each record aggregates all
+   reachable caller contexts and classifies each reaching state exactly once,
+   in required-lock, invisible-data, no-competing-threads, conditional, then
+   unprotected order.  The reason counts therefore sum to the reported state
+   count.  `--dump-all` includes this report, the type registry, and the
+   whole-program call-graph audit.
 
 The optional `--times` report uses process-global accumulated timers.  It
 separates initialization; frontend parsing; object-identity, type-registration,

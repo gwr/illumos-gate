@@ -24,6 +24,6 @@ struct lock_identity_collection;
  * Run the context analysis over an already resolved callgraph.  Write
  * development instrumentation when stream is non-NULL.
  */
-void analysis_run(struct lock_identity_collection *, FILE *);
+void analysis_run(struct lock_identity_collection *, FILE *, FILE *);
 
 #endif /* ANALYSIS_H */

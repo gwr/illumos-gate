@@ -30,7 +30,8 @@
 #include "timing.h"
 
 void
-locklint_check_all(bool check_locks, bool show_callgraph, bool show_contexts)
+locklint_check_all(bool check_locks, bool show_callgraph, bool show_contexts,
+    bool show_protection_states)
 {
 	struct lock_identity_collection lock_identities;
 
@@ -45,7 +46,8 @@ locklint_check_all(bool check_locks, bool show_callgraph, bool show_contexts)
 		callgraph_dump(stdout);
 	timing_end(TIMING_ANALYSIS_SETUP);
 	if (check_locks || show_contexts)
-		analysis_run(&lock_identities, show_contexts ? stdout : NULL);
+		analysis_run(&lock_identities, show_contexts ? stdout : NULL,
+		    show_protection_states ? stdout : NULL);
 	timing_begin(TIMING_DIAG_OBSERVED_ORDER);
 	if (check_locks)
 		locklint_order_report_observed_cycles();

@@ -143,6 +143,7 @@ struct analysis {
 	struct worklist worklist;
 	struct analysis_counts counts;
 	struct analysis_measurements measurements;
+	FILE *protection_state_stream;
 	uint64_t provenance_visit_generation;
 };
 
@@ -3732,6 +3733,12 @@ struct protected_access_finding {
 	bool conditional;
 	bool read_only_visible;
 	bool read_only_maybe_visible;
+	size_t states;
+	size_t lock_protected;
+	size_t invisible;
+	size_t no_competition;
+	size_t state_conditional;
+	size_t state_unprotected;
 	avl_tree_t call_witnesses;
 	avl_node_t by_access;
 };
@@ -3803,6 +3810,9 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 	size_t unprotected = 0;
 	size_t protected = 0;
 	size_t conditional = 0;
+	size_t lock_protected = 0;
+	size_t invisible_protected = 0;
+	size_t no_competition_protected = 0;
 	size_t read_only_visible = 0;
 	size_t read_only_hidden = 0;
 	size_t read_only_maybe_visible = 0;
@@ -3890,10 +3900,20 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 			    identity);
 
 			observed_modes |= modes;
-			if (invisible ||
-			    (modes & required_modes) != 0 ||
-			    (!competition.maximum_unbounded &&
-			    competition.maximum <= 0)) {
+			/*
+			 * Dump categories are exclusive.  Prefer the required
+			 * lock over the two state-based alternatives so their
+			 * counts sum to the number of reaching states.
+			 */
+			if ((modes & required_modes) != 0) {
+				lock_protected++;
+				protected++;
+			} else if (invisible) {
+				invisible_protected++;
+				protected++;
+			} else if (!competition.maximum_unbounded &&
+			    competition.maximum <= 0) {
+				no_competition_protected++;
 				protected++;
 			} else if (competition.entry_condition ||
 			    (!competition.minimum_unbounded &&
@@ -3917,7 +3937,8 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 		}
 	}
 	if (unprotected != 0 || conditional != 0 ||
-	    read_only_visible != 0 || read_only_maybe_visible != 0) {
+	    read_only_visible != 0 || read_only_maybe_visible != 0 ||
+	    (data->analysis->protection_state_stream != NULL && check_lock)) {
 		struct protected_access_finding lookup = {
 			.instruction = data->instruction,
 			.path = access->path
@@ -3945,6 +3966,12 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 			avl_insert(data->findings, finding, where);
 		}
 		finding->observed_modes |= observed_modes;
+		finding->states += protected + conditional + unprotected;
+		finding->lock_protected += lock_protected;
+		finding->invisible += invisible_protected;
+		finding->no_competition += no_competition_protected;
+		finding->state_conditional += conditional;
+		finding->state_unprotected += unprotected;
 		if (unprotected != 0 && protected == 0 && conditional == 0) {
 			finding->unprotected = true;
 			(void) for_each_root_call(data->context,
@@ -4093,8 +4120,38 @@ emit_lock_mode_info(const struct protected_access_finding *finding,
 	}
 }
 
+/*
+ * Report why the fixed point accepted or rejected one static protected
+ * access.  Counts aggregate all reachable contexts for the instruction and
+ * member path.
+ */
 static void
-emit_protected_access_findings(avl_tree_t *findings)
+emit_protection_state(FILE *stream,
+    const struct protected_access_finding *finding)
+{
+	char *member;
+	struct position pos;
+
+	if (stream == NULL || finding->required_modes == 0)
+		return;
+	member = locklint_access_name(&finding->access);
+	pos = finding->instruction->access != NULL ?
+	    finding->instruction->access->pos : finding->instruction->pos;
+	(void) fprintf(stream, "%s:%u:%u: protection-state %s "
+	    "member='%s' function=%s states=%zu lock=%zu invisible=%zu "
+	    "no-competition=%zu conditional=%zu unprotected=%zu\n",
+	    stream_name(pos.stream), pos.line, pos.pos,
+	    finding->instruction->opcode == OP_LOAD ? "load" : "store",
+	    member, function_name(finding->function), finding->states,
+	    finding->lock_protected, finding->invisible,
+	    finding->no_competition, finding->state_conditional,
+	    finding->state_unprotected);
+	free(member);
+}
+
+static void
+emit_protected_access_findings(struct analysis *analysis,
+    avl_tree_t *findings)
 {
 	struct protected_access_finding *finding;
 
@@ -4105,6 +4162,7 @@ emit_protected_access_findings(avl_tree_t *findings)
 		    finding->instruction->access->pos :
 		    finding->instruction->pos;
 
+		emit_protection_state(analysis->protection_state_stream, finding);
 		if (finding->read_only_visible) {
 			locklint_warning(LOCKLINT_DIAG_READ_ONLY_VISIBLE, pos,
 			    "read-only data '%s' modified while visible to "
@@ -4193,7 +4251,7 @@ diagnose_protected_accesses(struct analysis *analysis)
 				    context, point_state, &findings);
 			}
 		}
-		emit_protected_access_findings(&findings);
+		emit_protected_access_findings(analysis, &findings);
 		avl_destroy(&findings);
 	}
 	callgraph_iter_close(iterator);
@@ -5506,10 +5564,12 @@ seed_stalled_recursive_calls(struct analysis *analysis)
 }
 
 void
-analysis_run(struct lock_identity_collection *lock_identities, FILE *stream)
+analysis_run(struct lock_identity_collection *lock_identities, FILE *stream,
+    FILE *protection_state_stream)
 {
 	struct analysis analysis = {
-		.lock_identities = lock_identities
+		.lock_identities = lock_identities,
+		.protection_state_stream = protection_state_stream
 	};
 	struct point_state *point_state;
 
