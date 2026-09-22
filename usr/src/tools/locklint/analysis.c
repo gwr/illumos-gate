@@ -647,6 +647,21 @@ formal_is_pointer(const struct symbol *formal)
 }
 
 static bool
+formal_is_function_pointer(const struct symbol *formal)
+{
+	const struct symbol *type = formal->ctype.base_type;
+
+	while (type != NULL && type->type == SYM_NODE)
+		type = type->ctype.base_type;
+	if (type == NULL || type->type != SYM_PTR)
+		return (false);
+	type = type->ctype.base_type;
+	while (type != NULL && type->type == SYM_NODE)
+		type = type->ctype.base_type;
+	return (type != NULL && type->type == SYM_FN);
+}
+
+static bool
 identity_formal_argument(const struct function_info *function,
     struct lock_identity_key key,
     enum lock_analysis_object_type object_type, unsigned int *argument)
@@ -922,6 +937,53 @@ call_argument_pseudo(const struct instruction *insn, unsigned int index)
 			return (pseudo);
 	} END_FOR_EACH_PTR(pseudo);
 	return (NULL);
+}
+
+static struct pseudo *
+strip_function_pointer_casts(struct pseudo *pseudo)
+{
+	while (pseudo != NULL && pseudo->type == PSEUDO_REG &&
+	    pseudo->def != NULL && pseudo->def->opcode == OP_PTRCAST)
+		pseudo = pseudo->def->src;
+	return (pseudo);
+}
+
+static const struct call_target_set *
+call_argument_targets(const struct function_context *caller,
+    const struct instruction *insn, unsigned int index)
+{
+	struct pseudo *pseudo =
+	    strip_function_pointer_casts(call_argument_pseudo(insn, index));
+
+	if (pseudo == NULL)
+		return (NULL);
+	if (pseudo->type == PSEUDO_SYM && pseudo->sym != NULL)
+		return (callgraph_symbol_targets(caller->function, pseudo->sym));
+	if (pseudo->type == PSEUDO_ARG && pseudo->nr != 0)
+		return (binding_environment_lookup_targets(caller->bindings,
+		    pseudo->nr - 1));
+	return (NULL);
+}
+
+static struct function_info *
+context_callee(const struct function_context *context,
+    const struct instruction *insn)
+{
+	const struct call_target_set *targets;
+	struct function_info *callee;
+	struct pseudo *pseudo;
+
+	callee = callgraph_callee(context->function, insn);
+	if (callee != NULL || insn == NULL || insn->opcode != OP_CALL ||
+	    insn->func == NULL)
+		return (callee);
+	pseudo = strip_function_pointer_casts(insn->func);
+	if (pseudo == NULL || pseudo->type != PSEUDO_ARG || pseudo->nr == 0)
+		return (NULL);
+	targets = binding_environment_lookup_targets(context->bindings,
+	    pseudo->nr - 1);
+	return (callgraph_target_set_count(targets) == 1 ?
+	    callgraph_target_set_target(targets, 0) : NULL);
 }
 
 /*
@@ -1284,10 +1346,12 @@ call_bindings(struct analysis *analysis,
 	struct symbol *formal;
 	struct derived_binding *derived_entries;
 	struct formal_binding *entries;
+	struct formal_target_binding *target_entries;
 	struct binding_environment *bindings;
 	size_t formal_count = 0;
 	size_t binding_count = 0;
 	size_t derived_count;
+	size_t target_count = 0;
 	unsigned int argument = 0;
 	bool existed;
 	int error;
@@ -1307,7 +1371,12 @@ call_bindings(struct analysis *analysis,
 	    sizeof (*derived_entries));
 	if (derived_entries == NULL && callee->derived_protector_count != 0)
 		die("cannot allocate derived call bindings");
+	target_entries = calloc(formal_count, sizeof (*target_entries));
+	if (target_entries == NULL && formal_count != 0)
+		die("cannot allocate call target bindings");
 	FOR_EACH_PTR(type->arguments, formal) {
+		const struct call_target_set *targets;
+
 		if (formal_is_pointer(formal)) {
 			entries[binding_count].argument = argument;
 			entries[binding_count].actual_identity =
@@ -1315,15 +1384,24 @@ call_bindings(struct analysis *analysis,
 			    argument);
 			binding_count++;
 		}
+		targets = formal_is_function_pointer(formal) ?
+		    call_argument_targets(caller, insn, argument) : NULL;
+		if (targets != NULL) {
+			target_entries[target_count].argument = argument;
+			target_entries[target_count].actual_targets = targets;
+			target_count++;
+		}
 		argument++;
 	} END_FOR_EACH_PTR(formal);
 	derived_count = call_derived_bindings(callee, caller_state, insn,
 	    derived_entries);
 	statistics.call_binding_environments_find++;
-	error = binding_environment_intern(&callee->bindings, entries,
-	    binding_count, derived_entries, derived_count, &bindings, &existed);
+	error = binding_environment_intern_targets(&callee->bindings, entries,
+	    binding_count, derived_entries, derived_count, target_entries,
+	    target_count, &bindings, &existed);
 	free(entries);
 	free(derived_entries);
+	free(target_entries);
 	if (error != 0)
 		die("cannot intern call bindings: %s", strerror(error));
 	if (existed)
@@ -1349,7 +1427,7 @@ process_call(struct analysis *analysis, struct point_state *point_state,
 	bool existed;
 	int error;
 
-	callee_function = callgraph_callee(caller_context->function,
+	callee_function = context_callee(caller_context,
 	    point_state->point.next_instruction);
 	if (callee_function == NULL) {
 		resume_point = point_state->point;
@@ -5377,13 +5455,16 @@ measure_collections(struct analysis *analysis)
 		    bindings)) {
 			distribution_add(
 			    &measurements->bindings_per_environment,
-			    bindings->count + bindings->derived_count, function);
+			    bindings->count + bindings->derived_count +
+			    bindings->target_count, function);
 			memory_add(
 			    &measurements->binding_environment_bytes, 1,
 			    sizeof (*bindings) +
 			    bindings->count * sizeof (*bindings->entries) +
 			    bindings->derived_count *
-			    sizeof (*bindings->derived_entries));
+			    sizeof (*bindings->derived_entries) +
+			    bindings->target_count *
+			    sizeof (*bindings->target_entries));
 		}
 		distribution_add(&measurements->semantic_states_per_function,
 		    states, function);

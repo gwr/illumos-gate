@@ -75,8 +75,11 @@ enum function_external_entry {
 	FUNCTION_EXTERNAL_ENTRY_FALSE
 };
 
+struct call_target_set;
+
 struct function_record {
 	struct function_info info;
+	const struct call_target_set *singleton_targets;
 	bool has_nonself_caller;
 	bool has_exact_escape;
 	bool internal_linkage;
@@ -314,6 +317,19 @@ call_target_set_intern(struct function_info *const *targets, size_t count)
 	}
 	avl_insert(&call_target_sets, candidate, where);
 	return (candidate);
+}
+
+static void
+build_singleton_target_sets(void)
+{
+	struct function_record *function;
+
+	for (function = functions; function != NULL; function = function->next) {
+		struct function_info *target = &function->info;
+
+		function->singleton_targets =
+		    call_target_set_intern(&target, 1);
+	}
 }
 
 static void
@@ -1169,8 +1185,8 @@ build_call_target_cache(void)
 					entry->kind = CALL_TARGET_INDIRECT;
 				entry->direct_ambiguous = direct_ambiguous;
 				if (indirect_callee != NULL) {
-					entry->targets = call_target_set_intern(
-					    &indirect_callee, 1);
+					entry->targets = function_record(
+					    indirect_callee)->singleton_targets;
 					entry->state = CALL_TARGET_RESOLVED;
 				} else if (direct_ambiguous ||
 				    indirect_ambiguous) {
@@ -1268,6 +1284,40 @@ callgraph_target(const struct function_info *caller,
 	require_state(CALLGRAPH_READY, "target query");
 	(void) caller;
 	return (call_target_impl(insn, index));
+}
+
+const struct call_target_set *
+callgraph_symbol_targets(const struct function_info *caller,
+    const struct symbol *symbol)
+{
+	struct function_info *target;
+	bool ambiguous;
+
+	require_state(CALLGRAPH_READY, "symbol target query");
+	if (caller == NULL || symbol == NULL || !function_symbol(symbol))
+		return (NULL);
+	target = resolve_function_symbol(caller->tu, (struct symbol *)symbol,
+	    true, &ambiguous);
+	if (target == NULL || ambiguous)
+		return (NULL);
+	return (function_record(target)->singleton_targets);
+}
+
+size_t
+callgraph_target_set_count(const struct call_target_set *targets)
+{
+	require_state(CALLGRAPH_READY, "target set count query");
+	return (targets != NULL ? targets->count : 0);
+}
+
+struct function_info *
+callgraph_target_set_target(const struct call_target_set *targets,
+    size_t index)
+{
+	require_state(CALLGRAPH_READY, "target set query");
+	if (targets == NULL || index >= targets->count)
+		return (NULL);
+	return (targets->targets[index]);
 }
 
 bool
@@ -1376,6 +1426,7 @@ callgraph_resolve(void)
 {
 	require_state(CALLGRAPH_CONSTRUCTING, "resolution");
 	callgraph_state = CALLGRAPH_RESOLVING;
+	build_singleton_target_sets();
 	resolve_indirect_targets();
 	resolve_function_escapes();
 	collect_unanalyzed_callbacks();

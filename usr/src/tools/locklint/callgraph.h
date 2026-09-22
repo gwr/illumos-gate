@@ -23,6 +23,8 @@
 struct entrypoint;
 struct function_info;
 struct instruction;
+struct call_target_set;
+struct symbol;
 struct symbol_list;
 struct translation_unit;
 
@@ -119,6 +121,11 @@ size_t callgraph_target_count(const struct function_info *,
     const struct instruction *);
 struct function_info *callgraph_target(const struct function_info *,
     const struct instruction *, size_t);
+const struct call_target_set *callgraph_symbol_targets(
+    const struct function_info *, const struct symbol *);
+size_t callgraph_target_set_count(const struct call_target_set *);
+struct function_info *callgraph_target_set_target(
+    const struct call_target_set *, size_t);
 
 /*
  * Return true when a direct call cannot be resolved because multiple external

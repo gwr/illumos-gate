@@ -1629,6 +1629,14 @@ Distinct actuals remain distinct.  This also removes the former bounded
 subset construction and its special overflow behavior: additional formal
 roles add ordinary bindings rather than combinatorial assertion alternatives.
 
+The same interned environment stores exact target sets for function-pointer
+formals.  A direct function actual supplies its singleton target set; passing
+one function-pointer formal to another propagates the caller's existing set.
+Because target bindings participate in environment identity, callers with
+different callbacks create distinct callee contexts instead of contributing
+to one global cross-product.  Unsupported actual expressions leave the formal
+call unresolved.
+
 ## Event decoding
 
 `events.c` provides a shared interpretation of relevant Sparse instructions.

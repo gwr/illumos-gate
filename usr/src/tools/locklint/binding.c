@@ -72,6 +72,23 @@ compare_derived_binding_qsort(const void *left, const void *right)
 }
 
 static int
+compare_target_binding(const struct formal_target_binding *left,
+    const struct formal_target_binding *right)
+{
+	if (left->argument < right->argument)
+		return (-1);
+	if (left->argument > right->argument)
+		return (1);
+	return (AVL_PCMP(left->actual_targets, right->actual_targets));
+}
+
+static int
+compare_target_binding_qsort(const void *left, const void *right)
+{
+	return (compare_target_binding(left, right));
+}
+
+static int
 compare_environment(const void *left_arg, const void *right_arg)
 {
 	const struct binding_environment *left = left_arg;
@@ -102,6 +119,18 @@ compare_environment(const void *left_arg, const void *right_arg)
 		return (-1);
 	if (left->derived_count > right->derived_count)
 		return (1);
+	count = left->target_count < right->target_count ?
+	    left->target_count : right->target_count;
+	for (index = 0; index < count; index++) {
+		result = compare_target_binding(&left->target_entries[index],
+		    &right->target_entries[index]);
+		if (result != 0)
+			return (result);
+	}
+	if (left->target_count < right->target_count)
+		return (-1);
+	if (left->target_count > right->target_count)
+		return (1);
 	return (0);
 }
 
@@ -131,9 +160,11 @@ binding_collection_free(struct binding_environment_collection *collection)
  * validation failure leaves both output arguments unchanged.
  */
 int
-binding_environment_intern(struct binding_environment_collection *collection,
+binding_environment_intern_targets(
+    struct binding_environment_collection *collection,
     const struct formal_binding *entries, size_t count,
     const struct derived_binding *derived_entries, size_t derived_count,
+    const struct formal_target_binding *target_entries, size_t target_count,
     struct binding_environment **result, bool *existed)
 {
 	struct binding_environment *candidate;
@@ -141,29 +172,39 @@ binding_environment_intern(struct binding_environment_collection *collection,
 	avl_index_t where;
 	size_t derived_size;
 	size_t formal_size;
+	size_t target_size;
 	size_t index;
 	size_t size;
 
 	if ((count != 0 && entries == NULL) ||
-	    (derived_count != 0 && derived_entries == NULL))
+	    (derived_count != 0 && derived_entries == NULL) ||
+	    (target_count != 0 && target_entries == NULL))
 		return (EINVAL);
 	if (count > SIZE_MAX / sizeof (*entries) ||
-	    derived_count > SIZE_MAX / sizeof (*derived_entries))
+	    derived_count > SIZE_MAX / sizeof (*derived_entries) ||
+	    target_count > SIZE_MAX / sizeof (*target_entries))
 		return (EOVERFLOW);
 	formal_size = count * sizeof (*entries);
 	derived_size = derived_count * sizeof (*derived_entries);
+	target_size = target_count * sizeof (*target_entries);
 	if (formal_size > SIZE_MAX - sizeof (*candidate) ||
-	    derived_size > SIZE_MAX - sizeof (*candidate) - formal_size)
+	    derived_size > SIZE_MAX - sizeof (*candidate) - formal_size ||
+	    target_size > SIZE_MAX - sizeof (*candidate) - formal_size -
+	    derived_size)
 		return (EOVERFLOW);
-	size = sizeof (*candidate) + formal_size + derived_size;
+	size = sizeof (*candidate) + formal_size + derived_size + target_size;
 	candidate = calloc(1, size);
 	if (candidate == NULL)
 		return (ENOMEM);
 	candidate->count = count;
 	candidate->derived_count = derived_count;
+	candidate->target_count = target_count;
 	candidate->derived_entries =
 	    (struct derived_binding *)((char *)candidate->entries +
 	    formal_size);
+	candidate->target_entries =
+	    (struct formal_target_binding *)((char *)candidate->
+	    derived_entries + derived_size);
 	if (count != 0) {
 		(void) memcpy(candidate->entries, entries,
 		    formal_size);
@@ -175,6 +216,12 @@ binding_environment_intern(struct binding_environment_collection *collection,
 		    derived_size);
 		qsort(candidate->derived_entries, derived_count,
 		    sizeof (*derived_entries), compare_derived_binding_qsort);
+	}
+	if (target_count != 0) {
+		(void) memcpy(candidate->target_entries, target_entries,
+		    target_size);
+		qsort(candidate->target_entries, target_count,
+		    sizeof (*target_entries), compare_target_binding_qsort);
 	}
 	for (index = 0; index < count; index++) {
 		if (candidate->entries[index].actual_identity == NULL ||
@@ -199,6 +246,17 @@ binding_environment_intern(struct binding_environment_collection *collection,
 			return (EINVAL);
 		}
 	}
+	for (index = 0; index < target_count; index++) {
+		struct formal_target_binding *binding =
+		    &candidate->target_entries[index];
+
+		if (binding->actual_targets == NULL || (index != 0 &&
+		    candidate->target_entries[index - 1].argument ==
+		    binding->argument)) {
+			free(candidate);
+			return (EINVAL);
+		}
+	}
 	environment = avl_find(&collection->environments, candidate, &where);
 	if (environment != NULL) {
 		free(candidate);
@@ -210,6 +268,16 @@ binding_environment_intern(struct binding_environment_collection *collection,
 	*result = candidate;
 	*existed = false;
 	return (0);
+}
+
+int
+binding_environment_intern(struct binding_environment_collection *collection,
+    const struct formal_binding *entries, size_t count,
+    const struct derived_binding *derived_entries, size_t derived_count,
+    struct binding_environment **result, bool *existed)
+{
+	return (binding_environment_intern_targets(collection, entries, count,
+	    derived_entries, derived_count, NULL, 0, result, existed));
 }
 
 const struct lock_identity *
@@ -271,6 +339,32 @@ binding_environment_lookup_derived(
 	return (NULL);
 }
 
+const struct call_target_set *
+binding_environment_lookup_targets(
+    const struct binding_environment *environment, unsigned int argument)
+{
+	size_t low = 0;
+	size_t high;
+
+	if (environment == NULL)
+		return (NULL);
+	high = environment->target_count;
+	while (low < high) {
+		size_t middle = low + (high - low) / 2;
+		const struct formal_target_binding *binding =
+		    &environment->target_entries[middle];
+
+		if (argument < binding->argument) {
+			high = middle;
+		} else if (argument > binding->argument) {
+			low = middle + 1;
+		} else {
+			return (binding->actual_targets);
+		}
+	}
+	return (NULL);
+}
+
 size_t
 binding_environment_count(
     struct binding_environment_collection *collection)
@@ -288,6 +382,7 @@ binding_environment_entry_count(
 	for (environment = avl_first(&collection->environments);
 	    environment != NULL;
 	    environment = AVL_NEXT(&collection->environments, environment))
-		count += environment->count + environment->derived_count;
+		count += environment->count + environment->derived_count +
+		    environment->target_count;
 	return (count);
 }

@@ -991,6 +991,22 @@ if [ "$(grep -Ec \
 	fail "condition wait other locks: expected exactly five warnings"
 fi
 
+#
+# Verify exact callback targets follow function-pointer formals without
+# combining the targets or held-lock states of distinct callers.
+#
+run_capture "formal callback propagation" formal-callback.out \
+    "$LOCKLINT" --check-locks formal-callback.c
+require_match "first formal callback target" \
+    "formal-callback.c:46:16: warning: locklint: condition wait may occur while holding lock 'formal_callback_state::outer_first' \\[lock-maybe-held-during-wait\\]" \
+    formal-callback.out
+require_match "second formal callback target" \
+    "formal-callback.c:54:16: warning: locklint: condition wait may occur while holding lock 'formal_callback_state::outer_second' \\[lock-maybe-held-during-wait\\]" \
+    formal-callback.out
+if [ "$(grep -c 'warning:' formal-callback.out)" -ne 2 ]; then
+	fail "formal callback propagation: expected exactly two warnings"
+fi
+
 run_capture "competition protected accesses" competition-accesses.out \
     "$LOCKLINT" -DCOMPETITION_ACCESS_ONLY --check-locks competition-depth.c
 for location in 50 52 54 70 83 115
