@@ -1,0 +1,2 @@
+* Lock not protecting variable as asserted during read!
+    variable = sample_state::flags

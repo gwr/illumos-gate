@@ -1,0 +1,29 @@
+* Lock not protecting variable as asserted during read!
+    variable = sample_state::flags
+   protector = sample_state::lock(mutex)
+  locks held =
+       where = :sample [sample.c,10]
+
+* Lock not protecting variable as asserted during read!
+    variable = sample_state::flags
+   protector = sample_state::lock(mutex)
+  locks held =
+       where = :sample [sample.c,11]
+
+* Lock not protecting variable as asserted during write!
+    variable = sample_state::flags
+   protector = sample_state::lock(mutex)
+  locks held =
+       where = :sample [sample.c,11]
+
+* Lock not protecting variable as asserted during write!
+    variable = sample_state::plain
+   protector = sample_state::lock(mutex)
+  locks held =
+       where = :sample [sample.c,12]
+
+* Lock not protecting variable as asserted during read!
+    variable = sample_state::flags
+   protector = sample_state::lock(mutex)
+  locks held =
+       where = sample.c:other [sample.c,30]

@@ -13,6 +13,7 @@
 #
 
 LOCKLINT=../locklint
+COMPARE_LOCK_REPORTS=./compare-lock-reports.py
 failures=0
 
 fail()
@@ -89,6 +90,56 @@ require_empty()
 		fail "$name: unexpected output"
 	fi
 }
+
+#
+# Verify cross-analyzer protected-access comparison.  Duplicate counts are
+# informational, while every operation/data/lock group must occur on both
+# sides.
+#
+run_capture "equivalent lock reports" compare-lock-reports.out \
+    "$COMPARE_LOCK_REPORTS" \
+    --from-osll=compare-lock-reports-osll.in \
+    --from-newll=compare-lock-reports-newll.in
+require_match "equivalent lock report count difference" \
+    "count differs: read of 'flags' requiring 'lock' in sample.c (OSLL 3, new locklint 2)" \
+    compare-lock-reports.out
+require_match "equivalent lock report result" \
+    "equivalent: 3 protected-access groups occur on both sides" \
+    compare-lock-reports.out
+
+run_failure "missing new locklint report" compare-lock-reports-missing.out \
+    "$COMPARE_LOCK_REPORTS" \
+    --from-osll=compare-lock-reports-osll.in \
+    --from-newll=compare-lock-reports-missing.in
+require_match "missing new locklint report" \
+    "missing from new locklint: read of 'flags' requiring 'lock'" \
+    compare-lock-reports-missing.out
+
+run_failure "unexpected new locklint report" \
+    compare-lock-reports-unexpected.out \
+    "$COMPARE_LOCK_REPORTS" \
+    --from-osll=compare-lock-reports-osll.in \
+    --from-newll=compare-lock-reports-unexpected.in
+require_match "unexpected new locklint report" \
+    "unexpected in new locklint: read of 'extra' requiring 'lock'" \
+    compare-lock-reports-unexpected.out
+
+run_failure "insufficient new locklint locations" \
+    compare-lock-reports-insufficient.out \
+    "$COMPARE_LOCK_REPORTS" \
+    --from-osll=compare-lock-reports-osll.in \
+    --from-newll=compare-lock-reports-insufficient.in
+require_match "insufficient new locklint locations" \
+    "insufficient new locklint locations: read of 'flags' requiring 'lock' in sample.c (OSLL functions 2, new locklint locations 1)" \
+    compare-lock-reports-insufficient.out
+
+run_failure "malformed OSLL lock report" compare-lock-reports-malformed.out \
+    "$COMPARE_LOCK_REPORTS" \
+    --from-osll=compare-lock-reports-malformed.in \
+    --from-newll=compare-lock-reports-newll.in
+require_match "malformed OSLL lock report" \
+    "incomplete OSLL protected-access report: missing protector" \
+    compare-lock-reports-malformed.out
 
 #
 # Verify initial Sparse parsing, lowering, and source access identity.
