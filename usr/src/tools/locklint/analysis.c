@@ -163,6 +163,8 @@ static void collect_assumed_regions(void);
 static void collect_derived_protectors(void);
 static void record_semantic_state(struct analysis *, bool);
 static const char *function_name(const struct function_info *);
+static bool same_pseudo_expression(const struct instruction *,
+    struct pseudo *, struct pseudo *, unsigned int);
 static bool for_each_root_call(struct function_context *,
     provenance_root_call_f, void *);
 static bool context_has_analysis_root(struct function_context *);
@@ -853,6 +855,33 @@ context_identity_intern(struct analysis *analysis,
 	    object_type, identity, existed));
 }
 
+/*
+ * Use one function-local identity for structurally equivalent derived lock
+ * expressions.  Explicitly replaced pointer values remain distinct pseudos.
+ */
+static void
+canonicalize_derived_key(const struct function_info *function,
+    struct lock_identity_key *key,
+    enum lock_analysis_object_type object_type)
+{
+	size_t index;
+
+	if (object_type != LOCK_ANALYSIS_OBJECT_PSEUDO)
+		return;
+	for (index = 0; index < function->derived_protector_count; index++) {
+		const struct lock_identity_key *candidate =
+		    &function->derived_protectors[index];
+
+		if (candidate->target_offset == key->target_offset &&
+		    same_pseudo_expression(NULL,
+		    (struct pseudo *)candidate->analysis_object,
+		    (struct pseudo *)key->analysis_object, 0)) {
+			*key = *candidate;
+			return;
+		}
+	}
+}
+
 static int
 context_access_key(const struct function_context *context,
     const struct locklint_access *access, struct lock_identity_key *key,
@@ -869,6 +898,7 @@ context_access_key(const struct function_context *context,
 	}
 	if (error != 0)
 		return (error);
+	canonicalize_derived_key(context->function, key, *object_type);
 	derived = binding_environment_lookup_derived(context->bindings, *key);
 	if (derived != NULL) {
 		*key = derived->key;

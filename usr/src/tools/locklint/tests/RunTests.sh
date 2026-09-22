@@ -263,6 +263,26 @@ require_match "derived lock identity objects" \
 reject_match "derived lock identities" 'warning:' lock-identity-derived.out
 
 #
+# Pointer-valued members retain one lock identity while their value is
+# unchanged.  Explicit reassignment must keep the old and new locks distinct.
+#
+run_capture "pointer member lock identities" \
+    lock-identity-pointer-member.out \
+    "$LOCKLINT" --check-locks lock-identity-pointer-member.c
+reject_match "repeated pointer member lock identity" \
+    "lock-identity-pointer-member.c:50:19:.*\\[lock-not-held\\]" \
+    lock-identity-pointer-member.out
+reject_match "nested pointer alias lock identity" \
+    "lock-identity-pointer-member.c:59:19:.*\\[lock-not-held\\]" \
+    lock-identity-pointer-member.out
+require_match "reassigned pointer member lock identity" \
+    "lock-identity-pointer-member.c:68:19: warning: locklint: lock 'lock' is not held \\[lock-not-held\\]" \
+    lock-identity-pointer-member.out
+if [ "$(grep -c 'warning:' lock-identity-pointer-member.out)" -ne 1 ]; then
+	fail "pointer member lock identities: expected exactly one warning"
+fi
+
+#
 # Verify preprocessing-time annotation capture and initial name resolution.
 #
 run_capture "annotations" annotations.out \
