@@ -860,6 +860,12 @@ them when evaluation rewrites address-of expressions or degenerates arrays.
 The retained chain is source metadata; Sparse continues using its normal
 evaluated expression for semantic analysis and lowering.
 
+Locklint retains only member components whose storage contains the final
+access.  Dereferencing a pointer-valued member crosses into a separate object,
+so that member and its containing structure do not supply data policy for the
+pointee.  Array subscripting does not itself cross such a boundary because an
+array's elements remain inline storage.
+
 ### Retained instruction expressions
 
 Sparse linearization retains source expressions on the instructions consumed
@@ -2266,7 +2272,8 @@ intermediate-frame rendering remain optional future work.
 | Function | Responsibility |
 | --- | --- |
 | `find_root()` | Recover the root symbol from supported expression forms |
-| `find_member()` | Find retained member metadata in an expression |
+| `find_member()` | Find retained source member metadata in an expression |
+| `find_access_member()` | Find the innermost member whose storage contains the access, stopping across pointer-valued member dereferences |
 | `locklint_get_access()` | Construct normalized object and canonical member-path identity |
 | `locklint_get_instruction_access()` | Add the normalized address used by a load or store |
 | `locklint_for_each_instruction_leaf_access()` | Visit each exact leaf of a full-width compound load or store |

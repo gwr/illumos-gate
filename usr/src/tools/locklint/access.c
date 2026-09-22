@@ -169,6 +169,62 @@ find_member(struct expression *expr)
 	}
 }
 
+static bool
+member_is_pointer(const struct expression *member)
+{
+	struct symbol *type;
+
+	if (member == NULL || member->member_symbol == NULL)
+		return (false);
+	type = member->member_symbol->ctype.base_type;
+	while (type != NULL && type->type == SYM_NODE)
+		type = type->ctype.base_type;
+	return (type != NULL && type->type == SYM_PTR);
+}
+
+/*
+ * Select only a member whose storage contains the final access.  A
+ * dereference through a pointer-valued member reaches a separate object;
+ * array subscripting remains within the member's inline storage.
+ */
+static struct expression *
+find_access_member(struct expression *expr)
+{
+	struct expression *member;
+
+	if (expr == NULL)
+		return (NULL);
+	if (expr->member_symbol != NULL)
+		return (expr);
+
+	switch (expr->type) {
+	case EXPR_PREOP:
+		if (expr->op == '*' &&
+		    member_is_pointer(find_member(expr->unop)))
+			return (NULL);
+		return (find_access_member(expr->unop));
+	case EXPR_POSTOP:
+		return (find_access_member(expr->unop));
+	case EXPR_BINOP:
+	case EXPR_COMMA:
+	case EXPR_COMPARE:
+	case EXPR_LOGICAL:
+	case EXPR_ASSIGNMENT:
+		member = find_access_member(expr->left);
+		if (member != NULL)
+			return (member);
+		return (find_access_member(expr->right));
+	case EXPR_CAST:
+	case EXPR_FORCE_CAST:
+	case EXPR_IMPLIED_CAST:
+		return (find_access_member(expr->cast_expression));
+	case EXPR_SLICE:
+		return (find_access_member(expr->base));
+	default:
+		return (NULL);
+	}
+}
+
 static void
 show_member(FILE *stream, struct expression *expr)
 {
@@ -194,10 +250,10 @@ member_offset(struct expression *expr)
 	struct expression *member;
 	unsigned long offset = 0;
 
-	member = find_member(expr);
+	member = find_access_member(expr);
 	while (member != NULL) {
 		offset += member->member_path_offset;
-		member = find_member(member->member_base);
+		member = find_access_member(member->member_base);
 	}
 	return (offset);
 }
@@ -205,7 +261,7 @@ member_offset(struct expression *expr)
 static struct locklint_member_path *
 member_path(struct expression *expr)
 {
-	struct expression *member = find_member(expr);
+	struct expression *member = find_access_member(expr);
 	struct locklint_member_path *parent;
 	unsigned long offset;
 
@@ -255,7 +311,7 @@ locklint_get_access(struct translation_unit *tu, struct expression *expr,
 	access->root = find_root(expr);
 	access->object = locklint_object_identity(tu, access->root);
 	access->type = root_type(access->root);
-	member = find_member(expr);
+	member = find_access_member(expr);
 	access->member = member != NULL ? member->member_symbol : NULL;
 	access->offset = member_offset(expr);
 	access->expr_offset = access->offset;

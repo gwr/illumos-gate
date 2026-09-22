@@ -1258,6 +1258,25 @@ compare "mutex data policy diagnostics" data-policy.ref \
     data-policy-diagnostics.out
 
 #
+# Verify that structure policy stops at pointer-member boundaries.
+#
+run_capture "pointer member data policy" pointer-member-policy.out \
+    "$LOCKLINT" --check-locks pointer-member-policy.c
+if [ "$(grep -c 'warning: locklint:.*\[unprotected-access\]$' \
+    pointer-member-policy.out)" -ne 1 ]; then
+	fail "pointer member data policy: expected one unprotected access"
+fi
+reject_match "pointer pointee policy" \
+    "pointer-member-policy.c:45:.*warning: locklint:" \
+    pointer-member-policy.out
+require_match "pointer member write policy" \
+    "pointer-member-policy.c:46:.*protected member 'buffer'" \
+    pointer-member-policy.out
+reject_match "locked pointer pointee policy" \
+    "pointer-member-policy.c:49:.*warning: locklint:" \
+    pointer-member-policy.out
+
+#
 # Verify that type-scoped policy declared for one exact header type applies to
 # the corresponding exact type in another translation unit.
 #
