@@ -192,6 +192,7 @@ int context_state_import(struct function_info *, const struct semantic_state *,
 /*
  * A NULL visibility mapper preserves caller visibility unchanged.  A
  * non-NULL mapper translates the callee's exact exit visibility set.
+ * Function-local target maps are not compared or returned.
  */
 int context_state_map_exit(struct function_info *,
     const struct semantic_state *, const struct semantic_state *,

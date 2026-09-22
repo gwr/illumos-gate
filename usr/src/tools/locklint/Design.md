@@ -1645,14 +1645,16 @@ load replace overlapping entries; other stores invalidate overlapping
 knowledge.  Calls and function-pointer arguments loaded from an exactly
 matching region in the same function reuse the stored target set.
 
-Stored target knowledge is currently function-local.  A call may consume that
-knowledge to resolve its own target and function-pointer arguments, after
-which the caller discards the complete target map before entering or
-continuing past the call.  Callees therefore cannot distinguish contexts
-using storage they cannot observe, and arbitrary callees cannot leave stale
-callback knowledge after mutating reachable storage.  Projecting only entries
-visible through callee formals or globals remains a later extension for exact
-stored callback propagation through helper functions.
+Stored target knowledge is function-local.  A call may consume that knowledge
+to resolve its own target and function-pointer arguments.  For a resolved
+callee, locklint also projects exact entries demanded by function-pointer
+loads rooted in pointer formals, after mapping those demands through exact
+actual-object bindings.  Other entries are discarded before entering the
+callee, and the caller resumes with an empty target map.  Callees therefore
+cannot distinguish contexts using storage they do not observe, and arbitrary
+callees cannot leave stale callback knowledge after mutating reachable
+storage.  Projection through globals and forwarding a callback-bearing
+pointer through another helper remain later extensions.
 
 The collection is a sorted, bounded array interned per function, matching the
 other semantic-state components.  This keeps state comparison constant-time
@@ -2687,7 +2689,11 @@ unsupported store
     -> overlapping target knowledge removed
 any call
     -> current target and function-pointer arguments resolved first
-    -> complete stored-target map discarded before entering or resuming
+resolved callee
+    -> exact pointer-formal load demands mapped to caller objects
+    -> matching target entries projected into the callee
+call completion or unresolved call
+    -> caller continues with an empty stored-target map
 ```
 
 ### Interprocedural lock acquisition

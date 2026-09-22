@@ -45,6 +45,17 @@ struct assumed_region {
 };
 
 /*
+ * One exact function-pointer load rooted in a pointer formal.  These demands
+ * are collected once per function so calls can later project only stored
+ * targets which the callee actually observes.
+ */
+struct stored_target_demand {
+	int64_t target_offset;
+	uint64_t target_length;
+	unsigned int argument;
+};
+
+/*
  * Shared semantic state for one function.  Callgraph indexing and collection
  * linkage are intentionally private to callgraph.c.
  */
@@ -59,6 +70,9 @@ struct function_info {
 	struct lock_identity_key *derived_protectors;
 	size_t derived_protector_count;
 	size_t derived_protector_capacity;
+	struct stored_target_demand *stored_target_demands;
+	size_t stored_target_demand_count;
+	size_t stored_target_demand_capacity;
 	unsigned int root_reasons;
 	bool reachable_from_root;
 	bool entry_no_competing_threads;

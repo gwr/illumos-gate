@@ -537,7 +537,7 @@ context_entry_state_intern(struct function_info *function,
 /*
  * Return the destination function's canonical copy of the interprocedural
  * parts of an existing semantic state.  Stored callback targets remain local
- * to their function until call projection is implemented.
+ * to their function; demanded entries are projected separately after import.
  */
 int
 context_state_import(struct function_info *function,
@@ -569,11 +569,13 @@ context_state_import(struct function_info *function,
 
 /*
  * Map a callee exit back into the function which owns caller_state.  Callee
- * entry must equal caller state by value.  Changes to inherited locks always
- * pass through; newly held locks pass only when the callback says their
- * identities remain meaningful to the caller.  A visibility mapper returns
- * the callee's exact exit set in caller coordinates.  Without one, visibility
- * remains at its pre-call value.
+ * entry must equal caller state in the interprocedural dimensions.  Target
+ * maps are function-local and may contain projected callee demands, so they
+ * are neither compared nor returned.  Changes to inherited locks always pass
+ * through; newly held locks pass only when the callback says their identities
+ * remain meaningful to the caller.  A visibility mapper returns the callee's
+ * exact exit set in caller coordinates.  Without one, visibility remains at
+ * its pre-call value.
  */
 int
 context_state_map_exit(struct function_info *function,
@@ -608,8 +610,6 @@ context_state_map_exit(struct function_info *function,
 	if (compare_lock_set(caller_state->locks, callee_entry->locks) != 0 ||
 	    compare_visibility_set(caller_state->visibility,
 	    callee_entry->visibility) != 0 ||
-	    compare_target_set(caller_state->targets,
-	    callee_entry->targets) != 0 ||
 	    compare_competition(&caller_state->competition,
 	    &callee_entry->competition) != 0)
 		return (EINVAL);

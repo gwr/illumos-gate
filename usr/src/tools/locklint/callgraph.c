@@ -1805,6 +1805,7 @@ callgraph_cleanup(void)
 		context_collection_free(&functions->info);
 		binding_collection_free(&functions->info.bindings);
 		free(functions->info.derived_protectors);
+		free(functions->info.stored_target_demands);
 		while ((region = functions->info.assumed_regions) != NULL) {
 			functions->info.assumed_regions = region->next;
 			free(region->name);

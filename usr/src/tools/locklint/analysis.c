@@ -131,6 +131,8 @@ struct analysis_measurements {
 	size_t lock_set_bytes;
 	size_t visibility_set_bytes;
 	size_t target_set_bytes;
+	size_t stored_target_demand_bytes;
+	size_t stored_target_demands;
 	size_t visibility_sets_created;
 	size_t visibility_sets_reused;
 	size_t semantic_state_bytes;
@@ -164,7 +166,10 @@ static bool identity_formal_argument(const struct function_info *,
 static struct symbol *function_formal_argument(const struct function_info *,
     unsigned int);
 static void collect_assumed_regions(void);
-static void collect_derived_protectors(void);
+static void collect_function_demands(void);
+static void collect_stored_target_demand(struct function_info *,
+    struct instruction *);
+static int compare_stored_target_demand_qsort(const void *, const void *);
 static void record_semantic_state(struct analysis *, bool);
 static const char *function_name(const struct function_info *);
 static bool same_pseudo_expression(const struct instruction *,
@@ -665,10 +670,8 @@ formal_is_pointer(const struct symbol *formal)
 }
 
 static bool
-formal_is_function_pointer(const struct symbol *formal)
+function_pointer_type(const struct symbol *type)
 {
-	const struct symbol *type = formal->ctype.base_type;
-
 	while (type != NULL && type->type == SYM_NODE)
 		type = type->ctype.base_type;
 	if (type == NULL || type->type != SYM_PTR)
@@ -677,6 +680,12 @@ formal_is_function_pointer(const struct symbol *formal)
 	while (type != NULL && type->type == SYM_NODE)
 		type = type->ctype.base_type;
 	return (type != NULL && type->type == SYM_FN);
+}
+
+static bool
+formal_is_function_pointer(const struct symbol *formal)
+{
+	return (function_pointer_type(formal->ctype.base_type));
 }
 
 static bool
@@ -1157,11 +1166,6 @@ collect_derived_lock_access(struct function_info *function,
 	add_derived_protector(function, key);
 }
 
-/*
- * Retain the small set of derived lock expressions used by each function.
- * Every explicit lock event participates in local identity canonicalization;
- * policy protectors participate when they can require call substitution.
- */
 static void
 collect_derived_protector_leaf(const struct locklint_access *access,
     void *data_arg)
@@ -1177,8 +1181,12 @@ collect_derived_protector_leaf(const struct locklint_access *access,
 	collect_derived_lock_access(function, &protector, true);
 }
 
+/*
+ * Retain the small sets of derived lock expressions and stored-target load
+ * demands used by each function in one instruction traversal.
+ */
 static void
-collect_derived_protectors(void)
+collect_function_demands(void)
 {
 	struct callgraph_iter *iterator;
 	struct function_info *function;
@@ -1199,6 +1207,7 @@ collect_derived_protectors(void)
 
 				if (instruction->bb == NULL)
 					continue;
+				collect_stored_target_demand(function, instruction);
 				if (instruction->opcode == OP_LOAD ||
 				    instruction->opcode == OP_STORE) {
 					(void)
@@ -1214,8 +1223,95 @@ collect_derived_protectors(void)
 					    &access, false);
 			} END_FOR_EACH_PTR(instruction);
 		} END_FOR_EACH_PTR(block);
+		if (function->stored_target_demand_count > 1) {
+			qsort(function->stored_target_demands,
+			    function->stored_target_demand_count,
+			    sizeof (*function->stored_target_demands),
+			    compare_stored_target_demand_qsort);
+		}
 	}
 	callgraph_iter_close(iterator);
+}
+
+static int
+compare_stored_target_demand_qsort(const void *left_arg,
+    const void *right_arg)
+{
+	const struct stored_target_demand *left = left_arg;
+	const struct stored_target_demand *right = right_arg;
+
+	if (left->argument != right->argument)
+		return (left->argument < right->argument ? -1 : 1);
+	if (left->target_offset != right->target_offset)
+		return (left->target_offset < right->target_offset ? -1 : 1);
+	if (left->target_length != right->target_length)
+		return (left->target_length < right->target_length ? -1 : 1);
+	return (0);
+}
+
+/*
+ * Retain one exact formal-relative callback load, suppressing duplicates from
+ * repeated or equivalent lowered accesses within the function.
+ */
+static void
+add_stored_target_demand(struct function_info *function,
+    struct stored_target_demand demand)
+{
+	struct stored_target_demand *entries;
+	size_t capacity;
+	size_t index;
+
+	for (index = 0; index < function->stored_target_demand_count; index++) {
+		if (compare_stored_target_demand_qsort(
+		    &function->stored_target_demands[index], &demand) == 0)
+			return;
+	}
+	if (function->stored_target_demand_count ==
+	    function->stored_target_demand_capacity) {
+		capacity = function->stored_target_demand_capacity == 0 ?
+		    4 : function->stored_target_demand_capacity * 2;
+		if (capacity < function->stored_target_demand_capacity ||
+		    capacity > SIZE_MAX / sizeof (*entries))
+			die("too many stored target demands");
+		entries = realloc(function->stored_target_demands,
+		    capacity * sizeof (*entries));
+		if (entries == NULL)
+			die("cannot allocate stored target demands");
+		function->stored_target_demands = entries;
+		function->stored_target_demand_capacity = capacity;
+	}
+	function->stored_target_demands[
+	    function->stored_target_demand_count++] = demand;
+}
+
+/*
+ * Collect exact function-pointer loads rooted in pointer formals.  Projection
+ * can then answer only the callee's observed regions instead of importing an
+ * entire caller target map or guessing at pointee bounds.
+ */
+static void
+collect_stored_target_demand(struct function_info *function,
+    struct instruction *instruction)
+{
+	struct stored_target_demand demand;
+	struct locklint_access access;
+	struct lock_identity_key key;
+	enum lock_analysis_object_type object_type;
+	uint64_t length;
+
+	if (instruction->opcode != OP_LOAD ||
+	    !function_pointer_type(instruction->type) ||
+	    !locklint_get_instruction_access(function->tu, instruction,
+	    &access) ||
+	    !locklint_access_size(&access, &length) ||
+	    function_access_coordinates(function, &access, &key,
+	    &object_type) != 0 ||
+	    !identity_formal_argument(function, key, object_type,
+	    &demand.argument))
+		return;
+	demand.target_offset = key.target_offset;
+	demand.target_length = length;
+	add_stored_target_demand(function, demand);
 }
 
 /*
@@ -1527,6 +1623,62 @@ call_bindings(struct analysis *analysis,
 	return (bindings);
 }
 
+/*
+ * Import only exact caller targets which satisfy callback-load demands in the
+ * callee.  Binding identities already express the actual object in canonical
+ * caller coordinates, which are also used when the callee resolves accesses.
+ */
+static struct semantic_state *
+project_stored_targets(struct analysis *analysis,
+    struct function_info *callee, const struct binding_environment *bindings,
+    const struct semantic_state *caller_state,
+    struct semantic_state *callee_state)
+{
+	struct semantic_state *current = callee_state;
+	size_t index;
+
+	if (context_state_target_count(caller_state) == 0)
+		return (current);
+	for (index = 0; index < callee->stored_target_demand_count; index++) {
+		const struct stored_target_demand *demand =
+		    &callee->stored_target_demands[index];
+		const struct lock_identity *actual =
+		    binding_environment_lookup(bindings, demand->argument);
+		const struct call_target_set *targets;
+		struct visibility_region region;
+		struct semantic_state *next;
+		bool existed;
+		int error;
+
+		if (actual == NULL)
+			continue;
+		if ((demand->target_offset > 0 &&
+		    actual->key.target_offset >
+		    INT64_MAX - demand->target_offset) ||
+		    (demand->target_offset < 0 &&
+		    actual->key.target_offset <
+		    INT64_MIN - demand->target_offset))
+			die("stored target demand offset is out of range");
+		region = (struct visibility_region) {
+			.analysis_object = actual->key.analysis_object,
+			.target_offset = actual->key.target_offset +
+			    demand->target_offset,
+			.target_length = demand->target_length
+		};
+		targets = context_state_targets(caller_state, region);
+		if (targets == NULL)
+			continue;
+		error = context_state_set_targets(callee, current, region,
+		    targets, &next, &existed);
+		if (error != 0)
+			die("cannot project stored callback target: %s",
+			    strerror(error));
+		record_semantic_state(analysis, existed);
+		current = next;
+	}
+	return (current);
+}
+
 static void
 process_call(struct analysis *analysis, struct point_state *point_state,
     const struct semantic_state *caller_state)
@@ -1576,6 +1728,8 @@ process_call(struct analysis *analysis, struct point_state *point_state,
 	if (error != 0)
 		die("cannot import callee state: %s", strerror(error));
 	record_semantic_state(analysis, existed);
+	callee_state = project_stored_targets(analysis,
+	    callee_function, bindings, caller_state, callee_state);
 
 	statistics.call_contexts_find++;
 	if (caller_context->kind == FUNCTION_CONTEXT_EFFECT_CALLER ||
@@ -5627,6 +5781,11 @@ measure_collections(struct analysis *analysis)
 		    context_visibility_set_count(function);
 		size_t target_sets = context_target_set_count(function);
 
+		measurements->stored_target_demands +=
+		    function->stored_target_demand_count;
+		memory_add(&measurements->stored_target_demand_bytes,
+		    function->stored_target_demand_capacity,
+		    sizeof (*function->stored_target_demands));
 		distribution_add(&measurements->contexts_per_function, contexts,
 		    function);
 		distribution_add(
@@ -5812,6 +5971,7 @@ retained_collection_bytes(const struct analysis_measurements *measurements)
 		measurements->lock_set_bytes,
 		measurements->visibility_set_bytes,
 		measurements->target_set_bytes,
+		measurements->stored_target_demand_bytes,
 		measurements->context_bytes,
 		measurements->point_state_bytes,
 		measurements->exit_bytes,
@@ -5888,6 +6048,8 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	(void) fprintf(stream, "reactivations %zu\n", counts->reactivations);
 	(void) fprintf(stream, "worklist peak %zu\n",
 	    analysis->worklist.peak_length);
+	(void) fprintf(stream, "stored-target-demands %zu\n",
+	    measurements->stored_target_demands);
 	(void) fprintf(stream,
 	    "lock-identities created %zu reused %zu unresolved %zu "
 	    "retained %zu\n", counts->lock_identities_created,
@@ -5991,6 +6153,8 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	    measurements->visibility_set_bytes);
 	(void) fprintf(stream, "memory target-sets %zu bytes\n",
 	    measurements->target_set_bytes);
+	(void) fprintf(stream, "memory stored-target-demands %zu bytes\n",
+	    measurements->stored_target_demand_bytes);
 	(void) fprintf(stream, "memory contexts %zu bytes\n",
 	    measurements->context_bytes);
 	(void) fprintf(stream, "memory point-states %zu bytes\n",
@@ -6073,7 +6237,7 @@ analysis_run(struct lock_identity_collection *lock_identities, FILE *stream,
 	worklist_create(&analysis.worklist);
 	timing_begin(TIMING_FIXED_POINT);
 	collect_assumed_regions();
-	collect_derived_protectors();
+	collect_function_demands();
 	seed_initial_contexts(&analysis);
 	do {
 		while ((point_state =
