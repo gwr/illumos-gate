@@ -140,6 +140,32 @@ compare_visibility_set(const void *left_arg, const void *right_arg)
 }
 
 static int
+compare_target_set(const void *left_arg, const void *right_arg)
+{
+	const struct semantic_target_set *left = left_arg;
+	const struct semantic_target_set *right = right_arg;
+	size_t count = left->count < right->count ? left->count : right->count;
+	size_t index;
+	int result;
+
+	for (index = 0; index < count; index++) {
+		result = compare_visibility_region(&left->entries[index].region,
+		    &right->entries[index].region);
+		if (result != 0)
+			return (result);
+		result = AVL_PCMP(left->entries[index].targets,
+		    right->entries[index].targets);
+		if (result != 0)
+			return (result);
+	}
+	if (left->count < right->count)
+		return (-1);
+	if (left->count > right->count)
+		return (1);
+	return (0);
+}
+
+static int
 compare_competition(const struct competition_interval *left,
     const struct competition_interval *right)
 {
@@ -173,7 +199,10 @@ compare_semantic_state(const void *left_arg, const void *right_arg)
 	order = AVL_PCMP(left->locks, right->locks);
 	if (order != 0)
 		return (order);
-	return (AVL_PCMP(left->visibility, right->visibility));
+	order = AVL_PCMP(left->visibility, right->visibility);
+	if (order != 0)
+		return (order);
+	return (AVL_PCMP(left->targets, right->targets));
 }
 
 static int
@@ -235,6 +264,9 @@ context_collection_create(struct function_info *function)
 	avl_create(&collection->visibility_sets, compare_visibility_set,
 	    sizeof (struct semantic_visibility_set),
 	    offsetof(struct semantic_visibility_set, by_value));
+	avl_create(&collection->target_sets, compare_target_set,
+	    sizeof (struct semantic_target_set),
+	    offsetof(struct semantic_target_set, by_value));
 	avl_create(&collection->semantic_states, compare_semantic_state,
 	    sizeof (struct semantic_state),
 	    offsetof(struct semantic_state, by_value));
@@ -265,6 +297,7 @@ context_collection_free(struct function_info *function)
 	struct semantic_state *state;
 	struct semantic_lock_set *locks;
 	struct semantic_visibility_set *visibility;
+	struct semantic_target_set *targets;
 	void *cookie = NULL;
 
 	statistics.cleanup_contexts_enum++;
@@ -295,6 +328,12 @@ context_collection_free(struct function_info *function)
 	    &cookie)) != NULL)
 		free(visibility);
 	avl_destroy(&collection->visibility_sets);
+
+	cookie = NULL;
+	while ((targets = avl_destroy_nodes(&collection->target_sets,
+	    &cookie)) != NULL)
+		free(targets);
+	avl_destroy(&collection->target_sets);
 }
 
 /*
@@ -369,15 +408,48 @@ visibility_set_intern(struct function_context_collection *collection,
 }
 
 static int
+target_set_intern(struct function_context_collection *collection,
+    const struct semantic_target_state *entries, size_t count,
+    struct semantic_target_set **result)
+{
+	struct semantic_target_set *candidate;
+	struct semantic_target_set *targets;
+	avl_index_t where;
+	size_t size;
+
+	if (count > LOCKLINT_MAX_TRACKED_TARGETS)
+		return (E2BIG);
+	size = sizeof (*candidate) + count * sizeof (*entries);
+	candidate = calloc(1, size);
+	if (candidate == NULL)
+		return (ENOMEM);
+	candidate->count = count;
+	if (count != 0)
+		(void) memcpy(candidate->entries, entries,
+		    count * sizeof (*entries));
+	targets = avl_find(&collection->target_sets, candidate, &where);
+	if (targets != NULL) {
+		free(candidate);
+		*result = targets;
+		return (0);
+	}
+	avl_insert(&collection->target_sets, candidate, where);
+	*result = candidate;
+	return (0);
+}
+
+static int
 semantic_state_intern(struct function_context_collection *collection,
     const struct semantic_lock_set *locks,
     const struct semantic_visibility_set *visibility,
+    const struct semantic_target_set *targets,
     struct competition_interval competition,
     struct semantic_state **result, bool *existed)
 {
 	struct semantic_state key = {
 		.locks = locks,
 		.visibility = visibility,
+		.targets = targets,
 		.competition = competition
 	};
 	struct semantic_state *state;
@@ -394,6 +466,7 @@ semantic_state_intern(struct function_context_collection *collection,
 		return (ENOMEM);
 	state->locks = locks;
 	state->visibility = visibility;
+	state->targets = targets;
 	state->competition = competition;
 	avl_insert(&collection->semantic_states, state, where);
 	*result = state;
@@ -412,6 +485,7 @@ context_empty_state_intern(struct function_info *function,
 	struct function_context_collection *collection = &function->contexts;
 	struct semantic_lock_set *locks;
 	struct semantic_visibility_set *visibility;
+	struct semantic_target_set *targets;
 	int error;
 
 	error = lock_set_intern(collection, NULL, 0, &locks);
@@ -420,7 +494,10 @@ context_empty_state_intern(struct function_info *function,
 	error = visibility_set_intern(collection, NULL, 0, &visibility);
 	if (error != 0)
 		return (error);
-	return (semantic_state_intern(collection, locks, visibility,
+	error = target_set_intern(collection, NULL, 0, &targets);
+	if (error != 0)
+		return (error);
+	return (semantic_state_intern(collection, locks, visibility, targets,
 	    (struct competition_interval){ 0 }, result, existed));
 }
 
@@ -441,6 +518,7 @@ context_entry_state_intern(struct function_info *function,
 	};
 	struct semantic_lock_set *locks;
 	struct semantic_visibility_set *visibility;
+	struct semantic_target_set *targets;
 	int error;
 
 	error = lock_set_intern(collection, NULL, 0, &locks);
@@ -449,13 +527,17 @@ context_entry_state_intern(struct function_info *function,
 	error = visibility_set_intern(collection, NULL, 0, &visibility);
 	if (error != 0)
 		return (error);
-	return (semantic_state_intern(collection, locks, visibility, competition,
-	    result, existed));
+	error = target_set_intern(collection, NULL, 0, &targets);
+	if (error != 0)
+		return (error);
+	return (semantic_state_intern(collection, locks, visibility, targets,
+	    competition, result, existed));
 }
 
 /*
- * Return the destination function's canonical copy of an existing semantic
- * state.  The source state and its function-owned lock set remain unchanged.
+ * Return the destination function's canonical copy of the interprocedural
+ * parts of an existing semantic state.  Stored callback targets remain local
+ * to their function until call projection is implemented.
  */
 int
 context_state_import(struct function_info *function,
@@ -465,6 +547,7 @@ context_state_import(struct function_info *function,
 	struct function_context_collection *collection = &function->contexts;
 	struct semantic_lock_set *locks;
 	struct semantic_visibility_set *visibility;
+	struct semantic_target_set *targets;
 	int error;
 
 	if (source == NULL)
@@ -477,7 +560,10 @@ context_state_import(struct function_info *function,
 	    source->visibility->count, &visibility);
 	if (error != 0)
 		return (error);
-	return (semantic_state_intern(collection, locks, visibility,
+	error = target_set_intern(collection, NULL, 0, &targets);
+	if (error != 0)
+		return (error);
+	return (semantic_state_intern(collection, locks, visibility, targets,
 	    source->competition, result, existed));
 }
 
@@ -522,6 +608,8 @@ context_state_map_exit(struct function_info *function,
 	if (compare_lock_set(caller_state->locks, callee_entry->locks) != 0 ||
 	    compare_visibility_set(caller_state->visibility,
 	    callee_entry->visibility) != 0 ||
+	    compare_target_set(caller_state->targets,
+	    callee_entry->targets) != 0 ||
 	    compare_competition(&caller_state->competition,
 	    &callee_entry->competition) != 0)
 		return (EINVAL);
@@ -554,7 +642,8 @@ context_state_map_exit(struct function_info *function,
 		if (error != 0)
 			return (error);
 		return (semantic_state_intern(collection, locks, visibility,
-		    callee_exit->competition, result, existed));
+		    caller_state->targets, callee_exit->competition, result,
+		    existed));
 	}
 	for (exit_index = 0; exit_index < callee_exit->visibility->count;
 	    exit_index++) {
@@ -606,7 +695,7 @@ context_state_map_exit(struct function_info *function,
 	if (error != 0)
 		return (error);
 	return (semantic_state_intern(collection, locks, visibility,
-	    callee_exit->competition, result, existed));
+	    caller_state->targets, callee_exit->competition, result, existed));
 }
 
 /*
@@ -643,12 +732,12 @@ context_state_set_lock(struct function_info *function,
 	}
 	if (found && current_locks->entries[current_index].modes == modes) {
 		return (semantic_state_intern(collection, current_locks,
-		    current->visibility,
+		    current->visibility, current->targets,
 		    current->competition, result, existed));
 	}
 	if (!found && modes == 0) {
 		return (semantic_state_intern(collection, current_locks,
-		    current->visibility,
+		    current->visibility, current->targets,
 		    current->competition, result, existed));
 	}
 	if (!found && current_locks->count == LOCKLINT_MAX_TRACKED_LOCKS)
@@ -674,6 +763,7 @@ context_state_set_lock(struct function_info *function,
 	if (error != 0)
 		return (error);
 	return (semantic_state_intern(collection, locks, current->visibility,
+	    current->targets,
 	    current->competition, result, existed));
 }
 
@@ -736,7 +826,140 @@ context_state_set_visibility(struct function_info *function,
 	if (error != 0)
 		return (error);
 	return (semantic_state_intern(collection, current->locks, visibility,
+	    current->targets,
 	    current->competition, result, existed));
+}
+
+int
+context_state_set_targets(struct function_info *function,
+    const struct semantic_state *current, struct visibility_region region,
+    const struct call_target_set *value, struct semantic_state **result,
+    bool *existed)
+{
+	struct function_context_collection *collection = &function->contexts;
+	struct semantic_target_state entries[LOCKLINT_MAX_TRACKED_TARGETS];
+	const struct semantic_target_set *current_targets;
+	struct semantic_target_set *targets;
+	size_t current_index;
+	size_t result_index = 0;
+	bool inserted = false;
+	int error;
+
+	if (current == NULL || !visibility_region_valid(&region))
+		return (EINVAL);
+	current_targets = current->targets;
+	for (current_index = 0; current_index < current_targets->count;
+	    current_index++) {
+		const struct semantic_target_state *entry =
+		    &current_targets->entries[current_index];
+		bool overlap;
+
+		overlap = region.analysis_object ==
+		    entry->region.analysis_object &&
+		    region.target_offset <= entry->region.target_offset +
+		    (int64_t)entry->region.target_length - 1 &&
+		    entry->region.target_offset <= region.target_offset +
+		    (int64_t)region.target_length - 1;
+		if (overlap)
+			continue;
+		if (!inserted && value != NULL &&
+		    compare_visibility_region(&region, &entry->region) < 0) {
+			entries[result_index++] = (struct semantic_target_state) {
+				.region = region,
+				.targets = value
+			};
+			inserted = true;
+		}
+		if (result_index == LOCKLINT_MAX_TRACKED_TARGETS)
+			return (E2BIG);
+		entries[result_index++] = *entry;
+	}
+	if (!inserted && value != NULL) {
+		if (result_index == LOCKLINT_MAX_TRACKED_TARGETS)
+			return (E2BIG);
+		entries[result_index++] = (struct semantic_target_state) {
+			.region = region,
+			.targets = value
+		};
+	}
+	error = target_set_intern(collection, entries, result_index, &targets);
+	if (error != 0)
+		return (error);
+	return (semantic_state_intern(collection, current->locks,
+	    current->visibility, targets, current->competition, result,
+	    existed));
+}
+
+/*
+ * Discard function-local stored callback knowledge before crossing a call.
+ * The current call may use that knowledge for target and argument resolution,
+ * but an arbitrary callee may mutate storage which it can reach.
+ */
+int
+context_state_clear_targets(struct function_info *function,
+    const struct semantic_state *current, struct semantic_state **result,
+    bool *existed)
+{
+	struct function_context_collection *collection = &function->contexts;
+	struct semantic_target_set *targets;
+	int error;
+
+	if (current == NULL)
+		return (EINVAL);
+	error = target_set_intern(collection, NULL, 0, &targets);
+	if (error != 0)
+		return (error);
+	return (semantic_state_intern(collection, current->locks,
+	    current->visibility, targets, current->competition, result,
+	    existed));
+}
+
+const struct call_target_set *
+context_state_targets(const struct semantic_state *state,
+    struct visibility_region region)
+{
+	size_t low = 0;
+	size_t high;
+
+	if (state == NULL || !visibility_region_valid(&region))
+		return (NULL);
+	high = state->targets->count;
+	while (low < high) {
+		size_t middle = low + (high - low) / 2;
+		const struct semantic_target_state *entry =
+		    &state->targets->entries[middle];
+		int order = compare_visibility_region(&entry->region, &region);
+
+		if (order < 0)
+			low = middle + 1;
+		else if (order > 0)
+			high = middle;
+		else
+			return (entry->targets);
+	}
+	return (NULL);
+}
+
+bool
+context_state_targets_overlap(const struct semantic_state *state,
+    struct visibility_region region)
+{
+	size_t index;
+
+	if (state == NULL || !visibility_region_valid(&region))
+		return (false);
+	for (index = 0; index < state->targets->count; index++) {
+		const struct visibility_region *entry =
+		    &state->targets->entries[index].region;
+
+		if (region.analysis_object == entry->analysis_object &&
+		    region.target_offset <= entry->target_offset +
+		    (int64_t)entry->target_length - 1 &&
+		    entry->target_offset <= region.target_offset +
+		    (int64_t)region.target_length - 1)
+			return (true);
+	}
+	return (false);
 }
 
 int
@@ -761,7 +984,8 @@ context_state_set_competition(struct function_info *function,
 	if (competition.maximum_unbounded)
 		competition.maximum = 0;
 	return (semantic_state_intern(&function->contexts, current->locks,
-	    current->visibility, competition, result, existed));
+	    current->visibility, current->targets, competition, result,
+	    existed));
 }
 
 /*
@@ -821,7 +1045,8 @@ context_state_competition_contains(const struct semantic_state *outer,
 	const struct competition_interval *right;
 
 	if (outer == NULL || inner == NULL || outer->locks != inner->locks ||
-	    outer->visibility != inner->visibility)
+	    outer->visibility != inner->visibility ||
+	    outer->targets != inner->targets)
 		return (false);
 	left = &outer->competition;
 	right = &inner->competition;
@@ -850,7 +1075,8 @@ context_state_merge_competition(struct function_info *function,
 	const struct competition_interval *right;
 
 	if (prior == NULL || incoming == NULL || prior->locks != incoming->locks ||
-	    prior->visibility != incoming->visibility)
+	    prior->visibility != incoming->visibility ||
+	    prior->targets != incoming->targets)
 		return (EINVAL);
 	left = &prior->competition;
 	right = &incoming->competition;
@@ -1034,7 +1260,8 @@ context_point_state_record_widened(struct function_context *context,
 	    point.conditional_nonzero;
 	    point_state = AVL_NEXT(&context->point_states, point_state)) {
 		if (point_state->state->locks != state->locks ||
-		    point_state->state->visibility != state->visibility)
+		    point_state->state->visibility != state->visibility ||
+		    point_state->state->targets != state->targets)
 			continue;
 		if (context_state_competition_contains(point_state->state,
 		    state)) {
@@ -1099,6 +1326,12 @@ context_visibility_set_count(struct function_info *function)
 }
 
 size_t
+context_target_set_count(struct function_info *function)
+{
+	return (avl_numnodes(&function->contexts.target_sets));
+}
+
+size_t
 context_visibility_sets_created(struct function_info *function)
 {
 	return (function->contexts.visibility_sets_created);
@@ -1138,6 +1371,12 @@ size_t
 context_state_visibility_count(const struct semantic_state *state)
 {
 	return (state->visibility->count);
+}
+
+size_t
+context_state_target_count(const struct semantic_state *state)
+{
+	return (state->targets->count);
 }
 
 bool

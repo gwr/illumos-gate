@@ -1129,6 +1129,25 @@ if [ "$(grep -c 'warning:' formal-callback.out)" -ne 2 ]; then
 	fail "formal callback propagation: expected exactly two warnings"
 fi
 
+#
+# Verify exact callback targets survive stores and loads of a function-pointer
+# member without combining the targets or held-lock states of distinct callers.
+#
+run_capture "stored callback propagation" stored-callback.out \
+    "$LOCKLINT" --check-locks stored-callback.c
+require_match "first stored callback target" \
+    "stored-callback.c:55:16: warning: locklint: condition wait may occur while holding lock 'stored_callback_state::outer_first' \\[lock-maybe-held-during-wait\\]" \
+    stored-callback.out
+require_match "second stored callback target" \
+    "stored-callback.c:63:16: warning: locklint: condition wait may occur while holding lock 'stored_callback_state::outer_second' \\[lock-maybe-held-during-wait\\]" \
+    stored-callback.out
+reject_match "stored callback target retained across call" \
+    "stored-callback.c:55:16:.*stored_callback_state::outer_second" \
+    stored-callback.out
+if [ "$(grep -c 'warning:' stored-callback.out)" -ne 2 ]; then
+	fail "stored callback propagation: expected exactly two warnings"
+fi
+
 run_capture "competition protected accesses" competition-accesses.out \
     "$LOCKLINT" -DCOMPETITION_ACCESS_ONLY --check-locks competition-depth.c
 for location in 50 52 54 70 83 115

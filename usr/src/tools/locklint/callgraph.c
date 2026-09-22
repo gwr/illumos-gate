@@ -1287,6 +1287,18 @@ callgraph_target(const struct function_info *caller,
 }
 
 const struct call_target_set *
+callgraph_targets(const struct function_info *caller,
+    const struct instruction *insn)
+{
+	struct call_target_entry *entry;
+
+	require_state(CALLGRAPH_READY, "target-set query");
+	(void) caller;
+	entry = find_call_target(insn);
+	return (entry != NULL ? entry->targets : NULL);
+}
+
+const struct call_target_set *
 callgraph_symbol_targets(const struct function_info *caller,
     const struct symbol *symbol)
 {

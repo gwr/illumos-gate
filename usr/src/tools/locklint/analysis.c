@@ -114,6 +114,8 @@ struct analysis_measurements {
 	struct distribution semantic_states_per_function;
 	struct distribution visibility_sets_per_function;
 	struct distribution visibility_entries_per_set;
+	struct distribution target_sets_per_function;
+	struct distribution target_entries_per_set;
 	struct distribution point_states_per_context;
 	struct distribution states_per_analysis_point;
 	struct distribution exits_per_context;
@@ -121,12 +123,14 @@ struct analysis_measurements {
 	struct distribution provenance_edges_per_context;
 	struct distribution locks_per_semantic_state;
 	struct distribution visibility_per_semantic_state;
+	struct distribution targets_per_semantic_state;
 	size_t lock_identities;
 	size_t lock_identity_analysis_objects;
 	size_t lock_identity_types[LOCK_ANALYSIS_OBJECT_PSEUDO + 1];
 	size_t lock_identity_bytes;
 	size_t lock_set_bytes;
 	size_t visibility_set_bytes;
+	size_t target_set_bytes;
 	size_t visibility_sets_created;
 	size_t visibility_sets_reused;
 	size_t semantic_state_bytes;
@@ -991,41 +995,82 @@ strip_function_pointer_casts(struct pseudo *pseudo)
 }
 
 static const struct call_target_set *
-call_argument_targets(const struct function_context *caller,
-    const struct instruction *insn, unsigned int index)
+state_value_targets(const struct function_context *context,
+    const struct semantic_state *state, struct pseudo *pseudo)
 {
-	struct pseudo *pseudo =
-	    strip_function_pointer_casts(call_argument_pseudo(insn, index));
+	struct locklint_access access;
+	struct visibility_region region;
+	bool available;
+	bool composed;
+	int error;
 
+	pseudo = strip_function_pointer_casts(pseudo);
 	if (pseudo == NULL)
 		return (NULL);
 	if (pseudo->type == PSEUDO_SYM && pseudo->sym != NULL)
-		return (callgraph_symbol_targets(caller->function, pseudo->sym));
+		return (callgraph_symbol_targets(context->function, pseudo->sym));
 	if (pseudo->type == PSEUDO_ARG && pseudo->nr != 0)
-		return (binding_environment_lookup_targets(caller->bindings,
+		return (binding_environment_lookup_targets(context->bindings,
 		    pseudo->nr - 1));
-	return (NULL);
+	if (pseudo->type != PSEUDO_REG || pseudo->def == NULL ||
+	    pseudo->def->opcode != OP_LOAD ||
+	    !locklint_get_instruction_access(context->function->tu,
+	    pseudo->def, &access))
+		return (NULL);
+	error = context_access_region(context, &access, &region, &available,
+	    &composed);
+	if (error != 0)
+		die("cannot identify function-pointer load: %s",
+		    strerror(error));
+	if (!available)
+		return (NULL);
+	return (context_state_targets(state, region));
+}
+
+static const struct call_target_set *
+call_argument_targets(const struct function_context *caller,
+    const struct semantic_state *state, const struct instruction *insn,
+    unsigned int index)
+{
+	return (state_value_targets(caller, state,
+	    call_argument_pseudo(insn, index)));
+}
+
+static const struct call_target_set *
+context_call_targets(const struct function_context *context,
+    const struct semantic_state *state, const struct instruction *insn)
+{
+	const struct call_target_set *targets;
+	struct pseudo *pseudo;
+
+	targets = callgraph_targets(context->function, insn);
+	if (targets != NULL)
+		return (targets);
+	if (insn == NULL || insn->opcode != OP_CALL)
+		return (NULL);
+	pseudo = strip_function_pointer_casts(insn->func);
+	/*
+	 * The callgraph has already resolved direct symbols and cached both
+	 * successful and unsuccessful results for this instruction.  Retrying a
+	 * direct symbol here would repeat global identity lookup for every caller
+	 * context.  Only formal and loaded function pointers can contribute
+	 * context-dependent targets.
+	 */
+	if (pseudo == NULL || pseudo->type == PSEUDO_SYM)
+		return (NULL);
+	return (state_value_targets(context, state, pseudo));
 }
 
 static struct function_info *
 context_callee(const struct function_context *context,
-    const struct instruction *insn)
+    const struct semantic_state *state, const struct instruction *insn)
 {
-	const struct call_target_set *targets;
-	struct function_info *callee;
-	struct pseudo *pseudo;
+	const struct call_target_set *targets =
+	    context_call_targets(context, state, insn);
 
-	callee = callgraph_callee(context->function, insn);
-	if (callee != NULL || insn == NULL || insn->opcode != OP_CALL ||
-	    insn->func == NULL)
-		return (callee);
-	pseudo = strip_function_pointer_casts(insn->func);
-	if (pseudo == NULL || pseudo->type != PSEUDO_ARG || pseudo->nr == 0)
-		return (NULL);
-	targets = binding_environment_lookup_targets(context->bindings,
-	    pseudo->nr - 1);
-	return (callgraph_target_set_count(targets) == 1 ?
-	    callgraph_target_set_target(targets, 0) : NULL);
+	if (callgraph_target_set_count(targets) == 1)
+		return (callgraph_target_set_target(targets, 0));
+	return (NULL);
 }
 
 /*
@@ -1455,7 +1500,8 @@ call_bindings(struct analysis *analysis,
 			binding_count++;
 		}
 		targets = formal_is_function_pointer(formal) ?
-		    call_argument_targets(caller, insn, argument) : NULL;
+		    call_argument_targets(caller, caller_state, insn,
+		    argument) : NULL;
 		if (targets != NULL) {
 			target_entries[target_count].argument = argument;
 			target_entries[target_count].actual_targets = targets;
@@ -1487,8 +1533,10 @@ process_call(struct analysis *analysis, struct point_state *point_state,
 {
 	struct function_context *caller_context = point_state->context;
 	const struct binding_environment *bindings;
+	const struct semantic_state *call_state;
 	struct function_info *callee_function;
 	struct function_context *callee_context;
+	struct semantic_state *cleared_state;
 	struct semantic_state *callee_state;
 	struct continuation *continuation;
 	struct provenance_edge *edge;
@@ -1497,21 +1545,33 @@ process_call(struct analysis *analysis, struct point_state *point_state,
 	bool existed;
 	int error;
 
-	callee_function = context_callee(caller_context,
+	callee_function = context_callee(caller_context, caller_state,
 	    point_state->point.next_instruction);
+	bindings = callee_function != NULL ?
+	    call_bindings(analysis, caller_context, callee_function,
+	    caller_state, point_state->point.next_instruction) : NULL;
+	if (context_state_target_count(caller_state) == 0) {
+		call_state = caller_state;
+	} else {
+		error = context_state_clear_targets(caller_context->function,
+		    caller_state, &cleared_state, &existed);
+		if (error != 0)
+			die("cannot clear stored callback targets: %s",
+			    strerror(error));
+		record_semantic_state(analysis, existed);
+		call_state = cleared_state;
+	}
 	if (callee_function == NULL) {
 		resume_point = point_state->point;
 		resume_point.next_instruction = next_live_instruction(
 		    resume_point.block, resume_point.next_instruction);
 		record_analysis_point(analysis, caller_context, resume_point,
-		    caller_state, false);
+		    call_state, false);
 		return;
 	}
 
-	bindings = call_bindings(analysis, caller_context, callee_function,
-	    caller_state, point_state->point.next_instruction);
 	statistics.call_import_semantic_states_find++;
-	error = context_state_import(callee_function, caller_state,
+	error = context_state_import(callee_function, call_state,
 	    &callee_state, &existed);
 	if (error != 0)
 		die("cannot import callee state: %s", strerror(error));
@@ -1551,7 +1611,7 @@ process_call(struct analysis *analysis, struct point_state *point_state,
 	    point_state->point.block, point_state->point.next_instruction);
 	statistics.call_continuations_find++;
 	error = dependency_continuation_create(callee_context, caller_context,
-	    resume_point, caller_state, bindings, &continuation, &existed);
+	    resume_point, call_state, bindings, &continuation, &existed);
 	if (error != 0)
 		die("cannot create call continuation: %s", strerror(error));
 	if (existed)
@@ -1797,6 +1857,49 @@ process_conditional_lock(struct analysis *analysis,
 }
 
 /*
+ * Track exact function values stored in canonical memory regions.  Every
+ * unsupported value invalidates overlapping prior knowledge rather than
+ * preserving a stale callback target.
+ */
+static const struct semantic_state *
+apply_stored_targets(struct analysis *analysis, struct point_state *point_state,
+    const struct semantic_state *current)
+{
+	struct instruction *instruction = point_state->point.next_instruction;
+	struct locklint_access access;
+	struct visibility_region region;
+	const struct call_target_set *targets;
+	struct semantic_state *state;
+	bool available;
+	bool composed;
+	bool existed;
+	int error;
+
+	if (instruction->opcode != OP_STORE ||
+	    !locklint_get_instruction_access(
+	    point_state->context->function->tu, instruction, &access))
+		return (current);
+	error = context_access_region(point_state->context, &access, &region,
+	    &available, &composed);
+	if (error != 0)
+		die("cannot identify function-pointer store: %s",
+		    strerror(error));
+	if (!available)
+		return (current);
+	targets = state_value_targets(point_state->context, current,
+	    instruction->target);
+	if (targets == NULL &&
+	    !context_state_targets_overlap(current, region))
+		return (current);
+	error = context_state_set_targets(point_state->context->function,
+	    current, region, targets, &state, &existed);
+	if (error != 0)
+		die("cannot apply function-pointer store: %s", strerror(error));
+	record_semantic_state(analysis, existed);
+	return (state);
+}
+
+/*
  * Calls, returns, memory accesses, and execution annotations either change
  * state or are observed after the fixed point.  Other instructions can be
  * crossed without retaining an intermediate point state.
@@ -1852,7 +1955,14 @@ process_point(struct analysis *analysis, struct point_state *point_state)
 			    point.next_instruction);
 		} while (point.next_instruction != NULL &&
 		    !instruction_requires_point_state(point.next_instruction));
+		/*
+		 * Apply the effects of the retained instruction just crossed.
+		 * point.next_instruction is its successor and may be NULL.
+		 */
 		record_analysis_point(analysis, point_state->context, point,
+		    point_state->point.next_instruction->opcode == OP_STORE ?
+		    apply_stored_targets(analysis, point_state,
+		    apply_visibility_event(analysis, point_state)) :
 		    apply_visibility_event(analysis, point_state), false);
 		return;
 	}
@@ -5507,6 +5617,7 @@ measure_collections(struct analysis *analysis)
 		struct function_context *context;
 		struct semantic_lock_set *locks;
 		struct semantic_visibility_set *visibility;
+		struct semantic_target_set *targets;
 		struct semantic_state *state;
 		size_t contexts = context_count(function);
 		size_t binding_environments =
@@ -5514,6 +5625,7 @@ measure_collections(struct analysis *analysis)
 		size_t states = context_state_count(function);
 		size_t visibility_sets =
 		    context_visibility_set_count(function);
+		size_t target_sets = context_target_set_count(function);
 
 		distribution_add(&measurements->contexts_per_function, contexts,
 		    function);
@@ -5542,6 +5654,8 @@ measure_collections(struct analysis *analysis)
 		    states, function);
 		distribution_add(&measurements->visibility_sets_per_function,
 		    visibility_sets, function);
+		distribution_add(&measurements->target_sets_per_function,
+		    target_sets, function);
 		memory_add(&measurements->visibility_sets_created,
 		    context_visibility_sets_created(function), 1);
 		memory_add(&measurements->visibility_sets_reused,
@@ -5556,6 +5670,9 @@ measure_collections(struct analysis *analysis)
 			distribution_add(
 			    &measurements->visibility_per_semantic_state,
 			    context_state_visibility_count(state), function);
+			distribution_add(
+			    &measurements->targets_per_semantic_state,
+			    context_state_target_count(state), function);
 		}
 		for (locks = avl_first(&function->contexts.lock_sets);
 		    locks != NULL;
@@ -5576,6 +5693,17 @@ measure_collections(struct analysis *analysis)
 			    sizeof (*visibility) +
 			    visibility->count *
 			    sizeof (*visibility->entries));
+		}
+		for (targets = avl_first(&function->contexts.target_sets);
+		    targets != NULL;
+		    targets = AVL_NEXT(&function->contexts.target_sets,
+		    targets)) {
+			distribution_add(
+			    &measurements->target_entries_per_set,
+			    targets->count, function);
+			memory_add(&measurements->target_set_bytes, 1,
+			    sizeof (*targets) +
+			    targets->count * sizeof (*targets->entries));
 		}
 		memory_add(&measurements->context_bytes, contexts,
 		    sizeof (struct function_context));
@@ -5683,6 +5811,7 @@ retained_collection_bytes(const struct analysis_measurements *measurements)
 		measurements->binding_environment_bytes,
 		measurements->lock_set_bytes,
 		measurements->visibility_set_bytes,
+		measurements->target_set_bytes,
 		measurements->context_bytes,
 		measurements->point_state_bytes,
 		measurements->exit_bytes,
@@ -5804,6 +5933,10 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	    &measurements->visibility_sets_per_function);
 	show_distribution(stream, "visibility-entries/set",
 	    &measurements->visibility_entries_per_set);
+	show_distribution(stream, "target-sets/function",
+	    &measurements->target_sets_per_function);
+	show_distribution(stream, "target-entries/set",
+	    &measurements->target_entries_per_set);
 	show_distribution(stream, "point-states/context",
 	    &measurements->point_states_per_context);
 	show_distribution(stream, "states/analysis-point",
@@ -5818,6 +5951,8 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	    &measurements->locks_per_semantic_state);
 	show_distribution(stream, "visibility/semantic-state",
 	    &measurements->visibility_per_semantic_state);
+	show_distribution(stream, "targets/semantic-state",
+	    &measurements->targets_per_semantic_state);
 	show_maximum_owner(stream, "contexts/function",
 	    &measurements->contexts_per_function);
 	show_maximum_owner(stream, "binding-environments/function",
@@ -5830,6 +5965,10 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	    &measurements->visibility_sets_per_function);
 	show_maximum_owner(stream, "visibility-entries/set",
 	    &measurements->visibility_entries_per_set);
+	show_maximum_owner(stream, "target-sets/function",
+	    &measurements->target_sets_per_function);
+	show_maximum_owner(stream, "target-entries/set",
+	    &measurements->target_entries_per_set);
 	show_maximum_owner(stream, "point-states/context",
 	    &measurements->point_states_per_context);
 	show_maximum_owner(stream, "states/analysis-point",
@@ -5850,6 +5989,8 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	    measurements->lock_set_bytes);
 	(void) fprintf(stream, "memory visibility-sets %zu bytes\n",
 	    measurements->visibility_set_bytes);
+	(void) fprintf(stream, "memory target-sets %zu bytes\n",
+	    measurements->target_set_bytes);
 	(void) fprintf(stream, "memory contexts %zu bytes\n",
 	    measurements->context_bytes);
 	(void) fprintf(stream, "memory point-states %zu bytes\n",

@@ -25,6 +25,7 @@
 
 struct binding_environment;
 struct basic_block;
+struct call_target_set;
 struct context_exit;
 struct continuation;
 struct function_info;
@@ -34,6 +35,7 @@ struct provenance_edge;
 
 #define	LOCKLINT_MAX_TRACKED_LOCKS	100
 #define	LOCKLINT_MAX_TRACKED_VISIBILITY	100
+#define	LOCKLINT_MAX_TRACKED_TARGETS	100
 
 SLIST_HEAD(context_exit_list, context_exit);
 
@@ -46,6 +48,8 @@ struct semantic_lock_state {
 	const struct lock_identity *lock;
 	unsigned int modes;
 };
+
+
 
 struct semantic_lock_set {
 	avl_node_t by_value;
@@ -62,6 +66,17 @@ struct visibility_region {
 	const void *analysis_object;
 	int64_t target_offset;
 	uint64_t target_length;
+};
+
+struct semantic_target_state {
+	struct visibility_region region;
+	const struct call_target_set *targets;
+};
+
+struct semantic_target_set {
+	avl_node_t by_value;
+	size_t count;
+	struct semantic_target_state entries[];
 };
 
 struct semantic_visibility_state {
@@ -86,6 +101,7 @@ struct competition_interval {
 struct semantic_state {
 	const struct semantic_lock_set *locks;
 	const struct semantic_visibility_set *visibility;
+	const struct semantic_target_set *targets;
 	struct competition_interval competition;
 	avl_node_t by_value;
 };
@@ -158,6 +174,7 @@ struct function_context_collection {
 	avl_tree_t contexts;
 	avl_tree_t lock_sets;
 	avl_tree_t visibility_sets;
+	avl_tree_t target_sets;
 	avl_tree_t semantic_states;
 	size_t visibility_sets_created;
 	size_t visibility_sets_reused;
@@ -190,6 +207,15 @@ int context_state_set_lock(struct function_info *,
 int context_state_set_visibility(struct function_info *,
     const struct semantic_state *, struct visibility_region,
     enum semantic_visibility, struct semantic_state **, bool *);
+int context_state_set_targets(struct function_info *,
+    const struct semantic_state *, struct visibility_region,
+    const struct call_target_set *, struct semantic_state **, bool *);
+int context_state_clear_targets(struct function_info *,
+    const struct semantic_state *, struct semantic_state **, bool *);
+const struct call_target_set *context_state_targets(
+    const struct semantic_state *, struct visibility_region);
+bool context_state_targets_overlap(const struct semantic_state *,
+    struct visibility_region);
 int context_state_set_competition(struct function_info *,
     const struct semantic_state *, struct competition_interval,
     struct semantic_state **, bool *);
@@ -223,6 +249,7 @@ int context_point_state_record_widened(struct function_context *,
 size_t context_count(struct function_info *);
 size_t context_lock_set_count(struct function_info *);
 size_t context_visibility_set_count(struct function_info *);
+size_t context_target_set_count(struct function_info *);
 size_t context_visibility_sets_created(struct function_info *);
 size_t context_visibility_sets_reused(struct function_info *);
 size_t context_state_count(struct function_info *);
@@ -230,6 +257,7 @@ size_t context_state_lock_count(const struct semantic_state *);
 unsigned int context_state_lock_modes(const struct semantic_state *,
     const struct lock_identity *);
 size_t context_state_visibility_count(const struct semantic_state *);
+size_t context_state_target_count(const struct semantic_state *);
 bool context_state_visibility(const struct semantic_state *,
     struct visibility_region, enum semantic_visibility *);
 bool context_state_effective_visibility(const struct semantic_state *,

@@ -121,6 +121,8 @@ size_t callgraph_target_count(const struct function_info *,
     const struct instruction *);
 struct function_info *callgraph_target(const struct function_info *,
     const struct instruction *, size_t);
+const struct call_target_set *callgraph_targets(
+    const struct function_info *, const struct instruction *);
 const struct call_target_set *callgraph_symbol_targets(
     const struct function_info *, const struct symbol *);
 size_t callgraph_target_set_count(const struct call_target_set *);

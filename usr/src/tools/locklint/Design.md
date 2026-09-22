@@ -1637,6 +1637,37 @@ different callbacks create distinct callee contexts instead of contributing
 to one global cross-product.  Unsupported actual expressions leave the formal
 call unresolved.
 
+Exact function targets stored in memory are a fourth immutable semantic-state
+component.  Each entry maps the canonical object and byte range already used
+for visibility tracking to an interned call-target set.  Stores of a known
+function symbol, a bound function-pointer formal, or a previously tracked
+load replace overlapping entries; other stores invalidate overlapping
+knowledge.  Calls and function-pointer arguments loaded from an exactly
+matching region in the same function reuse the stored target set.
+
+Stored target knowledge is currently function-local.  A call may consume that
+knowledge to resolve its own target and function-pointer arguments, after
+which the caller discards the complete target map before entering or
+continuing past the call.  Callees therefore cannot distinguish contexts
+using storage they cannot observe, and arbitrary callees cannot leave stale
+callback knowledge after mutating reachable storage.  Projecting only entries
+visible through callee formals or globals remains a later extension for exact
+stored callback propagation through helper functions.
+
+The collection is a sorted, bounded array interned per function, matching the
+other semantic-state components.  This keeps state comparison constant-time
+after interning and binary-search lookup logarithmic, without allocating a
+mutable map for every path.  Updates are linear in at most 100 entries; that
+is preferable while callback-bearing storage is expected to be sparse.  If
+large operation tables or frequent updates make this bound or copy cost
+material, a persistent tree or a separately interned object-to-member map
+would be the principal alternatives.
+
+This propagation deliberately requires an exact stored region and an exact
+target set.  It does not infer targets from arbitrary pointer arithmetic,
+unresolved values, partial overlapping loads, or callee mutations.
+Unsupported stores discard stale overlapping knowledge rather than guessing.
+
 ## Event decoding
 
 `events.c` provides a shared interpretation of relevant Sparse instructions.
@@ -2641,6 +2672,22 @@ each exact callee exit published
     -> caller resumed separately for every exit
 recursive or wrapped call discovers another exact state
     -> existing caller-context fixed point schedules only new point states
+```
+
+### Stored callback propagation
+
+```text
+exact callback value stored through OP_STORE
+    -> destination mapped to canonical object and byte range
+    -> immutable target map replaces overlapping prior knowledge
+stored member loaded through OP_LOAD
+    -> exact region lookup recovers its interned target set
+    -> indirect call or function-pointer argument uses that target set
+unsupported store
+    -> overlapping target knowledge removed
+any call
+    -> current target and function-pointer arguments resolved first
+    -> complete stored-target map discarded before entering or resuming
 ```
 
 ### Interprocedural lock acquisition
