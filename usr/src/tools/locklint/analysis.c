@@ -1069,10 +1069,13 @@ add_derived_protector(struct function_info *function,
 	size_t capacity;
 
 	for (index = 0; index < function->derived_protector_count; index++) {
-		if (function->derived_protectors[index].analysis_object ==
-		    key.analysis_object &&
-		    function->derived_protectors[index].target_offset ==
-		    key.target_offset)
+		struct lock_identity_key *candidate =
+		    &function->derived_protectors[index];
+
+		if (candidate->target_offset == key.target_offset &&
+		    same_pseudo_expression(NULL,
+		    (struct pseudo *)candidate->analysis_object,
+		    (struct pseudo *)key.analysis_object, 0))
 			return;
 	}
 	if (function->derived_protector_count ==
@@ -1095,7 +1098,7 @@ add_derived_protector(struct function_info *function,
 
 static void
 collect_derived_lock_access(struct function_info *function,
-    const struct locklint_access *access)
+    const struct locklint_access *access, bool require_formal)
 {
 	enum lock_analysis_object_type object_type;
 	struct lock_identity_key key;
@@ -1103,15 +1106,16 @@ collect_derived_lock_access(struct function_info *function,
 	if (access->root == NULL ||
 	    lock_identity_key_from_access(access, &key, &object_type) != 0 ||
 	    object_type != LOCK_ANALYSIS_OBJECT_PSEUDO ||
-	    !pseudo_uses_formal((struct pseudo *)key.analysis_object, 0))
+	    (require_formal &&
+	    !pseudo_uses_formal((struct pseudo *)key.analysis_object, 0)))
 		return;
 	add_derived_protector(function, key);
 }
 
 /*
- * Retain the small set of lock expressions which can require exact
- * call-argument substitution.  This includes both policy protectors and
- * explicit lock events, avoiding a rescan of callee bodies at every call.
+ * Retain the small set of derived lock expressions used by each function.
+ * Every explicit lock event participates in local identity canonicalization;
+ * policy protectors participate when they can require call substitution.
  */
 static void
 collect_derived_protector_leaf(const struct locklint_access *access,
@@ -1125,7 +1129,7 @@ collect_derived_protector_leaf(const struct locklint_access *access,
 	    (policy.protection != LOCKLINT_PROTECTION_MUTEX &&
 	    policy.protection != LOCKLINT_PROTECTION_RWLOCK))
 		return;
-	collect_derived_lock_access(function, &protector);
+	collect_derived_lock_access(function, &protector, true);
 }
 
 static void
@@ -1162,7 +1166,7 @@ collect_derived_protectors(void)
 				    instruction, &access, &mode) !=
 				    LOCKLINT_LOCK_NONE)
 					collect_derived_lock_access(function,
-					    &access);
+					    &access, false);
 			} END_FOR_EACH_PTR(instruction);
 		} END_FOR_EACH_PTR(block);
 	}
@@ -1256,6 +1260,9 @@ call_derived_bindings(const struct function_info *callee,
 		    callee->derived_protectors[source_index];
 		size_t lock_index;
 
+		if (!pseudo_uses_formal(
+		    (struct pseudo *)source.analysis_object, 0))
+			continue;
 		for (lock_index = 0;
 		    lock_index < caller_state->locks->count; lock_index++) {
 			const struct lock_identity *lock =

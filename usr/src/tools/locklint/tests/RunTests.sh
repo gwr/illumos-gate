@@ -283,6 +283,31 @@ if [ "$(grep -c 'warning:' lock-identity-pointer-member.out)" -ne 1 ]; then
 fi
 
 #
+# Pointer-member locks derived from a call result remain stable through a
+# balanced drop/reacquire loop.  A missing reacquisition remains visible.
+#
+run_capture "call-result lock identities" lock-identity-call-result.out \
+    "$LOCKLINT" --check-locks lock-identity-call-result.c
+reject_match "balanced call-result loop release" \
+    "lock-identity-call-result.c:57:35:.*\\[lock-not-held\\]" \
+    lock-identity-call-result.out
+reject_match "balanced call-result loop reacquisition" \
+    "lock-identity-call-result.c:59:36:.*\\[lock-maybe-already-held\\]" \
+    lock-identity-call-result.out
+reject_match "balanced call-result loop final release" \
+    "lock-identity-call-result.c:64:19:.*\\[lock-not-held\\]" \
+    lock-identity-call-result.out
+require_match "missing loop reacquisition body" \
+    "lock-identity-call-result.c:76:35: warning: locklint: lock 'lock' may not be held \\[lock-maybe-not-held\\]" \
+    lock-identity-call-result.out
+require_match "missing loop reacquisition final release" \
+    "lock-identity-call-result.c:82:19: warning: locklint: lock 'lock' may not be held \\[lock-maybe-not-held\\]" \
+    lock-identity-call-result.out
+if [ "$(grep -c 'warning:' lock-identity-call-result.out)" -ne 2 ]; then
+	fail "call-result lock identities: expected exactly two warnings"
+fi
+
+#
 # Verify preprocessing-time annotation capture and initial name resolution.
 #
 run_capture "annotations" annotations.out \
