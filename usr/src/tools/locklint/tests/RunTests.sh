@@ -1275,6 +1275,20 @@ if [ "$(grep -c 'warning:' lock-transition-diagnostics.out)" -ne 7 ]; then
 fi
 
 #
+# Verify that a cleanup merge which adds NULL to the normal pointer
+# alternatives retains the identity of a possibly held lock.
+#
+run_capture "nullable phi lock identity" nullable-phi-lock.out \
+    "$LOCKLINT" --check-locks -O2 -fno-inline-functions \
+    nullable-phi-lock.c
+require_match "nullable phi lock identity" \
+    "nullable-phi-lock.c:66:28: warning: locklint: lock 'lock' may already be held \\[lock-maybe-already-held\\]" \
+    nullable-phi-lock.out
+if [ "$(grep -c 'warning:' nullable-phi-lock.out)" -ne 1 ]; then
+	fail "nullable phi lock identity: expected exactly one warning"
+fi
+
+#
 # Verify structure-valued global and member mutex identities.
 #
 run_capture "structure-valued mutex diagnostics" struct-lock-diagnostics.out \

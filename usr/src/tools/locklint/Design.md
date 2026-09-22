@@ -921,6 +921,15 @@ When both accesses have computed addresses, the equality relation is:
 same address-base pseudo + same signed displacement
 ```
 
+A Sparse phi is a lowered value which selects among the values arriving from
+different control-flow paths.  As a narrow exception to exact pseudo identity,
+a phi which adds only `NULL` or direct alternatives already represented by
+one of its nested phis uses that nested phi as its address base.  This preserves
+identity across shared cleanup reached both before and after pointer
+initialization.  It intentionally does not recursively canonicalize arbitrary
+equivalent phi input sets or track branch-derived pointer facts; either broader
+model can be added if a concrete case requires it.
+
 Otherwise equality falls back to the source relation:
 
 ```text
@@ -1458,6 +1467,12 @@ definite blocking acquisition, preserving the established ordinary idiom.
 A consumed result that cannot be tied to a local branch retains both acquired
 and input states.  Acquiring an already-held mutex remains an independent
 error.
+
+When a duplicate acquisition is reachable in a function's own root context,
+the primary diagnostic is emitted at that acquisition.  Caller-attributed
+copies for the same transition are suppressed because they add no state
+information.  A duplicate acquisition which depends on a caller's incoming
+lock state remains reported at that caller.
 
 Every recognized condition wait requires mutex-held input and returns with
 that mutex held regardless of its scalar result.  Definite and path-dependent
@@ -2746,8 +2761,10 @@ The current implementation relies on these invariants:
     linearization, callgraph owns `basic_block.priv` for process lifetime;
     null means that the block has no live calls, while non-null points to an
     AVL containing every live call and its pre-resolved target state.
-24. Exact address identity strips only pointer casts and constant pointer
-    displacements; unrelated computed pseudos are never assumed equal.
+24. Exact address identity strips pointer casts and constant pointer
+    displacements.  It also reuses a directly nested phi when an outer phi
+    adds only `NULL` or alternatives already represented by the nested phi;
+    other computed pseudos are never assumed equal.
 25. A type-scoped protector is rebased from the observed data address so it
     remains within the same alias, array element, or recovered container.
 26. Formal-lock alternatives from one protected access are OR choices;

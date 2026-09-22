@@ -2551,6 +2551,7 @@ diagnose_lock_transitions(struct analysis *analysis)
 {
 	struct callgraph_iter *iterator;
 	struct function_info *function;
+	struct lock_transition_finding *finding;
 	avl_tree_t findings;
 	int error;
 
@@ -2585,10 +2586,30 @@ diagnose_lock_transitions(struct analysis *analysis)
 		}
 	}
 	callgraph_iter_close(iterator);
-	while (!avl_is_empty(&findings)) {
-		struct lock_transition_finding *finding = avl_first(&findings);
+	for (finding = avl_first(&findings); finding != NULL;
+	    finding = AVL_NEXT(&findings, finding)) {
+		struct lock_transition_finding direct = {
+			.call_instruction = NULL,
+			.transition_instruction = finding->transition_instruction,
+			.action = finding->action
+		};
 
+		/*
+		 * A direct root finding already identifies an internally
+		 * reachable duplicate acquisition.  Caller-attributed copies
+		 * add no state information; retain them only when the invalid
+		 * acquisition depends on a caller's incoming state.
+		 */
+		if ((finding->action == LOCKLINT_LOCK_ACQUIRE ||
+		    finding->action == LOCKLINT_LOCK_RESULT_ACQUIRE) &&
+		    finding->call_instruction != NULL &&
+		    avl_find(&findings, &direct, NULL) != NULL)
+			continue;
 		report_lock_transition(finding);
+	}
+	while (!avl_is_empty(&findings)) {
+		finding = avl_first(&findings);
+
 		avl_remove(&findings, finding);
 		free(finding);
 	}

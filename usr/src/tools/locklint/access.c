@@ -334,6 +334,79 @@ add_address_offset(int64_t *offset, long long value)
 	return (true);
 }
 
+static struct pseudo *
+phi_source(struct pseudo *pseudo)
+{
+	if (pseudo == NULL || pseudo->def == NULL ||
+	    pseudo->def->opcode != OP_PHISOURCE)
+		return (NULL);
+	return (pseudo->def->phi_src);
+}
+
+static bool
+phi_has_source(struct pseudo *phi, struct pseudo *source)
+{
+	struct pseudo *operand;
+
+	if (phi == NULL || phi->type != PSEUDO_REG || phi->def == NULL ||
+	    phi->def->opcode != OP_PHI)
+		return (false);
+	FOR_EACH_PTR(phi->def->phi_list, operand) {
+		if (phi_source(operand) == source)
+			return (true);
+	} END_FOR_EACH_PTR(operand);
+	return (false);
+}
+
+/*
+ * A shared cleanup block can add NULL and redundant alternatives to an
+ * existing pointer phi.  Dereferencing that cleanup value necessarily uses
+ * one of the existing non-NULL alternatives, so retain the nested phi as the
+ * address identity when it directly subsumes every such alternative.
+ *
+ * This intentionally handles only one-level subsumption.  General recursive
+ * phi-set equivalence would require canonical set storage and comparison;
+ * branch-sensitive pointer refinement would require carrying pointer facts
+ * in analysis states.  Either can be added if a case not covered here
+ * demonstrates the need.
+ */
+static struct pseudo *
+canonical_subsuming_phi(struct pseudo *pseudo)
+{
+	struct pseudo *candidate_operand;
+
+	if (pseudo == NULL || pseudo->type != PSEUDO_REG ||
+	    pseudo->def == NULL || pseudo->def->opcode != OP_PHI)
+		return (pseudo);
+	FOR_EACH_PTR(pseudo->def->phi_list, candidate_operand) {
+		struct pseudo *candidate = phi_source(candidate_operand);
+		struct pseudo *operand;
+		bool subsumes = true;
+
+		if (candidate == NULL || candidate->type != PSEUDO_REG ||
+		    candidate->def == NULL ||
+		    candidate->def->opcode != OP_PHI)
+			continue;
+		FOR_EACH_PTR(pseudo->def->phi_list, operand) {
+			struct pseudo *source = phi_source(operand);
+
+			if (source == NULL) {
+				subsumes = false;
+				break;
+			}
+			if ((source->type == PSEUDO_VAL && source->value == 0) ||
+			    source == candidate ||
+			    phi_has_source(candidate, source))
+				continue;
+			subsumes = false;
+			break;
+		} END_FOR_EACH_PTR(operand);
+		if (subsumes)
+			return (candidate);
+	} END_FOR_EACH_PTR(candidate_operand);
+	return (pseudo);
+}
+
 /*
  * Retain only exact address-preserving transformations.  Other computed
  * pseudos remain useful opaque bases: repeated uses compare equal, while
@@ -389,6 +462,7 @@ set_address(struct locklint_access *access, struct pseudo *pseudo,
 		}
 		pseudo = next;
 	}
+	pseudo = canonical_subsuming_phi(pseudo);
 	if (!add_address_offset(&displacement, (long long)offset))
 		return;
 	access->address_base = pseudo;
