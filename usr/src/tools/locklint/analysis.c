@@ -2613,6 +2613,7 @@ struct declared_order_observation {
 	struct function_context *context;
 	const struct instruction *acquisition_instruction;
 	size_t states;
+	bool condition_wait;
 	struct declared_order_observation_violation *violations;
 	struct observed_held_identity *held_identities;
 	avl_node_t by_context;
@@ -2668,6 +2669,21 @@ struct declared_order_finding {
 	avl_node_t by_key;
 };
 
+struct wait_site {
+	const struct instruction *instruction;
+	size_t states;
+	avl_node_t by_instruction;
+};
+
+struct wait_lock_finding {
+	struct wait_site *site;
+	const struct lock_identity *held;
+	size_t states;
+	struct function_info *caller_function;
+	struct instruction *call_instruction;
+	avl_node_t by_key;
+};
+
 static int
 compare_declared_order_finding(const void *left_arg, const void *right_arg)
 {
@@ -2679,6 +2695,40 @@ compare_declared_order_finding(const void *left_arg, const void *right_arg)
 	if (result != 0)
 		return (result);
 	return (AVL_PCMP(left->violation, right->violation));
+}
+
+static int
+compare_wait_lock_finding(const void *left_arg, const void *right_arg)
+{
+	const struct wait_lock_finding *left = left_arg;
+	const struct wait_lock_finding *right = right_arg;
+	struct position left_pos =
+	    left->site->instruction->call_expr != NULL ?
+	    left->site->instruction->call_expr->pos :
+	    left->site->instruction->pos;
+	struct position right_pos =
+	    right->site->instruction->call_expr != NULL ?
+	    right->site->instruction->call_expr->pos :
+	    right->site->instruction->pos;
+	int result;
+
+	result = compare_transition_position(left_pos, right_pos);
+	if (result != 0)
+		return (result);
+	result = strcmp(locklint_order_identity_name(left->held),
+	    locklint_order_identity_name(right->held));
+	if (result != 0)
+		return (AVL_ISIGN(result));
+	return (AVL_PCMP(left->held, right->held));
+}
+
+static int
+compare_wait_site(const void *left_arg, const void *right_arg)
+{
+	const struct wait_site *left = left_arg;
+	const struct wait_site *right = right_arg;
+
+	return (AVL_PCMP(left->instruction, right->instruction));
 }
 
 /*
@@ -2806,19 +2856,102 @@ trace_declared_order_observation(avl_tree_t *origins, avl_tree_t *findings,
 	}
 }
 
+struct wait_root_trace {
+	struct wait_lock_finding *finding;
+};
+
+static void
+record_wait_root(struct function_context *caller_context,
+    struct instruction *call_instruction, void *data_arg)
+{
+	struct wait_root_trace *data = data_arg;
+	struct wait_lock_finding *finding = data->finding;
+	struct position candidate = call_instruction->call_expr != NULL ?
+	    call_instruction->call_expr->pos : call_instruction->pos;
+
+	if (finding->call_instruction != NULL) {
+		struct position current =
+		    finding->call_instruction->call_expr != NULL ?
+		    finding->call_instruction->call_expr->pos :
+		    finding->call_instruction->pos;
+
+		if (compare_transition_position(candidate, current) >= 0)
+			return;
+	}
+	finding->caller_function = caller_context->function;
+	finding->call_instruction = call_instruction;
+}
+
+/*
+ * Aggregate wait findings by the underlying wait instruction, not by every
+ * root call that reaches it.  Retain one root call only as explanatory
+ * provenance for a wrapped wait.
+ */
+static void
+record_wait_observation(avl_tree_t *sites, avl_tree_t *findings,
+    const struct declared_order_observation *observation)
+{
+	struct wait_site site_key = {
+		.instruction = observation->acquisition_instruction
+	};
+	struct wait_site *site;
+	struct observed_held_identity *held;
+	avl_index_t where;
+
+	if (!observation->condition_wait)
+		return;
+	site = avl_find(sites, &site_key, &where);
+	if (site == NULL) {
+		site = calloc(1, sizeof (*site));
+		if (site == NULL)
+			die("cannot allocate condition wait site");
+		*site = site_key;
+		avl_insert(sites, site, where);
+	}
+	site->states += observation->states;
+	for (held = observation->held_identities; held != NULL;
+	    held = held->next) {
+		struct wait_lock_finding finding_key = {
+			.site = site,
+			.held = held->identity
+		};
+		struct wait_lock_finding *finding;
+
+		finding = avl_find(findings, &finding_key, &where);
+		if (finding == NULL) {
+			finding = calloc(1, sizeof (*finding));
+			if (finding == NULL)
+				die("cannot allocate condition wait finding");
+			*finding = finding_key;
+			avl_insert(findings, finding, where);
+		}
+		finding->states += held->states;
+		if (observation->context->kind != FUNCTION_CONTEXT_ROOT) {
+			struct wait_root_trace data = {
+				.finding = finding
+			};
+
+			(void) for_each_root_call(observation->context,
+			    record_wait_root, &data);
+		}
+	}
+}
+
 /*
  * Compare each unconditional acquisition with the exact locks held before it.
  * Context-local observations retain safe states as well as inversions before
  * provenance maps them to local acquisition sites or originating root calls.
  */
 static void
-diagnose_declared_lock_order(struct analysis *analysis)
+diagnose_acquisition_order_and_waits(struct analysis *analysis)
 {
 	struct callgraph_iter *iterator;
 	struct function_info *function;
 	avl_tree_t observations;
 	avl_tree_t origins;
 	avl_tree_t findings;
+	avl_tree_t wait_sites;
+	avl_tree_t wait_findings;
 	int error;
 
 	avl_create(&observations, compare_declared_order_observation,
@@ -2830,6 +2963,11 @@ diagnose_declared_lock_order(struct analysis *analysis)
 	avl_create(&findings, compare_declared_order_finding,
 	    sizeof (struct declared_order_finding),
 	    offsetof(struct declared_order_finding, by_key));
+	avl_create(&wait_findings, compare_wait_lock_finding,
+	    sizeof (struct wait_lock_finding),
+	    offsetof(struct wait_lock_finding, by_key));
+	avl_create(&wait_sites, compare_wait_site, sizeof (struct wait_site),
+	    offsetof(struct wait_site, by_instruction));
 	error = callgraph_iter_open(&iterator);
 	if (error != 0)
 		die("cannot iterate ready callgraph: %s", strerror(error));
@@ -2926,6 +3064,8 @@ diagnose_declared_lock_order(struct analysis *analysis)
 					observation->context = context;
 					observation->acquisition_instruction =
 					    acquisition;
+					observation->condition_wait =
+					    action == LOCKLINT_LOCK_WAIT;
 					avl_insert(&observations, observation,
 					    where);
 				}
@@ -3044,6 +3184,8 @@ diagnose_declared_lock_order(struct analysis *analysis)
 			    observed_held->states < observation->states);
 		}
 
+		record_wait_observation(&wait_sites, &wait_findings,
+		    observation);
 		trace_declared_order_observation(&origins, &findings,
 		    observation);
 		while ((observed_held = observation->held_identities) != NULL) {
@@ -3089,6 +3231,46 @@ diagnose_declared_lock_order(struct analysis *analysis)
 		free(finding);
 	}
 	avl_destroy(&findings);
+	while (!avl_is_empty(&wait_findings)) {
+		struct wait_lock_finding *finding =
+		    avl_first(&wait_findings);
+		const struct instruction *wait = finding->site->instruction;
+		struct position pos = wait->call_expr != NULL ?
+		    wait->call_expr->pos : wait->pos;
+		bool possible = finding->states < finding->site->states;
+
+		locklint_warning(possible ?
+		    LOCKLINT_DIAG_LOCK_MAYBE_HELD_DURING_WAIT :
+		    LOCKLINT_DIAG_LOCK_HELD_DURING_WAIT, pos,
+		    possible ? "condition wait may occur while holding "
+		    "lock '%s'" : "condition wait occurs while holding "
+		    "lock '%s'",
+		    locklint_order_identity_name(finding->held));
+		if (finding->call_instruction != NULL) {
+			struct function_info *callee = callgraph_callee(
+			    finding->caller_function,
+			    finding->call_instruction);
+			struct position call_pos =
+			    finding->call_instruction->call_expr != NULL ?
+			    finding->call_instruction->call_expr->pos :
+			    finding->call_instruction->pos;
+
+			info(call_pos, "locklint: lock is held on a path "
+			    "through call to '%s'",
+			    callee != NULL ? function_name(callee) :
+			    "<unknown>");
+		}
+		avl_remove(&wait_findings, finding);
+		free(finding);
+	}
+	avl_destroy(&wait_findings);
+	while (!avl_is_empty(&wait_sites)) {
+		struct wait_site *site = avl_first(&wait_sites);
+
+		avl_remove(&wait_sites, site);
+		free(site);
+	}
+	avl_destroy(&wait_sites);
 	while (!avl_is_empty(&origins)) {
 		struct declared_order_origin *origin = avl_first(&origins);
 
@@ -5591,7 +5773,7 @@ analysis_run(struct lock_identity_collection *lock_identities, FILE *stream,
 	diagnose_lock_transitions(&analysis);
 	timing_end(TIMING_DIAG_LOCK_TRANSITIONS);
 	timing_begin(TIMING_DIAG_DECLARED_ORDER);
-	diagnose_declared_lock_order(&analysis);
+	diagnose_acquisition_order_and_waits(&analysis);
 	timing_end(TIMING_DIAG_DECLARED_ORDER);
 	timing_begin(TIMING_DIAG_LOCK_ASSERTIONS);
 	diagnose_lock_assertions(&analysis);

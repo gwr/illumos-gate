@@ -970,6 +970,27 @@ run_capture "condition wait state and order" condition-wait.out \
 compare "condition wait state and order" condition-wait.ref \
     condition-wait.out
 
+run_capture "other locks held during condition wait" \
+    condition-wait-other-lock.out "$LOCKLINT" --check-locks \
+    condition-wait-other-lock.c
+require_match "condition wait definite other lock" \
+    "condition wait occurs while holding lock 'wait_other_state::other_first' \\[lock-held-during-wait\\]" \
+    condition-wait-other-lock.out
+require_match "condition wait conditional other lock" \
+    "condition wait may occur while holding lock 'wait_other_state::other_first' \\[lock-maybe-held-during-wait\\]" \
+    condition-wait-other-lock.out
+require_match "condition wait second other lock" \
+    "condition wait occurs while holding lock 'wait_other_state::other_second' \\[lock-held-during-wait\\]" \
+    condition-wait-other-lock.out
+require_match "wrapped condition wait provenance" \
+    "lock is held on a path through call to 'wait_other_helper'" \
+    condition-wait-other-lock.out
+if [ "$(grep -Ec \
+    '\[lock-(maybe-)?held-during-wait\]' \
+    condition-wait-other-lock.out)" -ne 5 ]; then
+	fail "condition wait other locks: expected exactly five warnings"
+fi
+
 run_capture "competition protected accesses" competition-accesses.out \
     "$LOCKLINT" -DCOMPETITION_ACCESS_ONLY --check-locks competition-depth.c
 for location in 50 52 54 70 83 115

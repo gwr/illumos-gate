@@ -20,3 +20,9 @@
 ../locklint: condition-wait.c:53:1: locklint: declared order requires 'condition_wait_state::first' before 'condition_wait_state::second'
 ../locklint: condition-wait.c:283:32: warning: locklint: lock 'condition_wait_state::first' acquired out of declared order while holding 'condition_wait_state::second' [declared-order]
 ../locklint: condition-wait.c:53:1: locklint: declared order requires 'condition_wait_state::first' before 'condition_wait_state::second'
+../locklint: condition-wait.c:79:16: warning: locklint: condition wait may occur while holding lock 'condition_wait_state::second' [lock-maybe-held-during-wait]
+../locklint: condition-wait.c:243:21: locklint: lock is held on a path through call to 'wait_wrapper'
+../locklint: condition-wait.c:253:16: warning: locklint: condition wait occurs while holding lock 'condition_wait_state::first' [lock-held-during-wait]
+../locklint: condition-wait.c:263:16: warning: locklint: condition wait occurs while holding lock 'condition_wait_state::second' [lock-held-during-wait]
+../locklint: condition-wait.c:273:32: warning: locklint: condition wait occurs while holding lock 'condition_wait_state::second' [lock-held-during-wait]
+../locklint: condition-wait.c:283:32: warning: locklint: condition wait occurs while holding lock 'condition_wait_state::second' [lock-held-during-wait]

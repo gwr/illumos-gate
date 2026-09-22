@@ -51,9 +51,12 @@ static const char *const diagnostic_names[LOCKLINT_DIAG_COUNT] = {
 	[LOCKLINT_DIAG_INVALID_ASSUMING_PROTECTED] =
 	    "invalid-assuming-protected",
 	[LOCKLINT_DIAG_LOCK_ALREADY_HELD] = "lock-already-held",
+	[LOCKLINT_DIAG_LOCK_HELD_DURING_WAIT] = "lock-held-during-wait",
 	[LOCKLINT_DIAG_LOCK_HELD_ON_RETURN] = "lock-held-on-return",
 	[LOCKLINT_DIAG_LOCK_MAYBE_ALREADY_HELD] =
 	    "lock-maybe-already-held",
+	[LOCKLINT_DIAG_LOCK_MAYBE_HELD_DURING_WAIT] =
+	    "lock-maybe-held-during-wait",
 	[LOCKLINT_DIAG_LOCK_MAYBE_HELD_ON_RETURN] =
 	    "lock-maybe-held-on-return",
 	[LOCKLINT_DIAG_LOCK_MAYBE_NOT_HELD] = "lock-maybe-not-held",

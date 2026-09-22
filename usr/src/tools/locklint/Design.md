@@ -1718,6 +1718,20 @@ seeds an acquisition summary.  The waited mutex itself is excluded from that
 order check.  Return values from timed, signal, and swappable variants do not
 change ownership because every return path has reacquired the mutex.
 
+Holding another lock while sleeping in a condition wait is diagnosed
+independently of declared lock order.  Each other lock receives its own
+`[lock-held-during-wait]` warning when it is present in every valid state
+reaching the wait, or `[lock-maybe-held-during-wait]` when it is present in
+only some states.  States in which the waited-on mutex is not held contribute
+only the invalid-transition diagnostic and do not create secondary wait
+warnings.
+
+Findings are aggregated by the underlying wait instruction and held-lock
+identity across all caller contexts.  The primary warning therefore remains
+at the wait instead of repeating once for every root call that reaches it.
+For a wait reached through a wrapper, one root-visible call is retained as
+explanatory provenance.
+
 ### Rwlock mode transitions
 
 `rw_downgrade()` requires writer-held input and atomically changes it to

@@ -389,6 +389,24 @@ vertex_identity(const struct order_vertex *vertex,
 	return (NULL);
 }
 
+const char *
+locklint_order_identity_name(const struct lock_identity *identity)
+{
+	struct order_vertex *vertex;
+
+	for (vertex = vertices; vertex != NULL; vertex = vertex->next) {
+		if (vertex_identity(vertex, identity) != NULL)
+			return (vertex->name);
+	}
+	if (identity->analysis_object_type == LOCK_ANALYSIS_OBJECT_SYMBOL) {
+		const struct symbol *symbol = identity->key.analysis_object;
+
+		if (symbol->ident != NULL)
+			return (show_ident(symbol->ident));
+	}
+	return ("<unknown>");
+}
+
 void
 locklint_order_record_identity_acquisition(
     const struct lock_identity *identity, const struct locklint_access *access,
