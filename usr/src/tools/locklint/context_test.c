@@ -250,6 +250,78 @@ test_state_interning(void)
 }
 
 static void
+test_operation_profile_state(void)
+{
+	struct function_info caller = { 0 };
+	struct function_info callee = { 0 };
+	struct operation_family_profile profiles[2] = { 0 };
+	struct semantic_state *caller_empty;
+	struct semantic_state *caller_selected;
+	struct semantic_state *callee_empty;
+	struct semantic_state *callee_entry;
+	struct semantic_state *callee_selected;
+	struct semantic_state *mapped;
+	struct semantic_state *unchanged = NULL;
+	bool existed;
+	int error;
+
+	context_collection_create(&caller);
+	context_collection_create(&callee);
+	error = context_empty_state_intern(&caller, &caller_empty, &existed);
+	check(error == 0, "create profile-state caller empty state");
+	error = context_state_select_operation_profile(&caller, caller_empty,
+	    &profiles[0], &caller_selected, &existed);
+	check(error == 0 && !existed && caller_selected != caller_empty,
+	    "profile selection creates distinct semantic state");
+	check(context_state_operation_profile(caller_selected) == &profiles[0],
+	    "selected profile is retained");
+	error = context_state_select_operation_profile(&caller,
+	    caller_selected, &profiles[0], &mapped, &existed);
+	check(error == 0 && existed && mapped == caller_selected,
+	    "repeated profile selection reuses semantic state");
+	existed = true;
+	error = context_state_select_operation_profile(&caller,
+	    caller_selected, &profiles[1], &unchanged, &existed);
+	check(error == EEXIST && unchanged == NULL && existed,
+	    "different profile cannot replace selected profile");
+
+	error = context_state_import(&callee, caller_selected, &callee_entry,
+	    &existed);
+	check(error == 0 &&
+	    context_state_operation_profile(callee_entry) == &profiles[0],
+	    "callee import preserves selected profile");
+	error = context_state_map_exit(&caller, caller_selected, callee_entry,
+	    callee_entry, NULL, NULL, NULL, NULL, &mapped, &existed);
+	check(error == 0 && existed && mapped == caller_selected,
+	    "callee exit preserves existing profile selection");
+
+	error = context_state_import(&callee, caller_empty, &callee_empty,
+	    &existed);
+	check(error == 0 &&
+	    context_state_operation_profile(callee_empty) == NULL,
+	    "empty profile state imports without selection");
+	error = context_state_select_operation_profile(&callee, callee_empty,
+	    &profiles[0], &callee_selected, &existed);
+	check(error == 0 && existed && callee_selected == callee_entry,
+	    "callee first selection reuses canonical selected state");
+	error = context_state_map_exit(&caller, caller_empty, callee_empty,
+	    callee_selected, NULL, NULL, NULL, NULL, &mapped, &existed);
+	check(error == 0 && existed && mapped == caller_selected,
+	    "callee profile selection propagates to caller");
+	error = context_state_map_exit(&caller, caller_empty, callee_entry,
+	    callee_entry, NULL, NULL, NULL, NULL, &mapped, &existed);
+	check(error == EINVAL,
+	    "exit mapping rejects mismatched entry profile");
+	error = context_state_merge_competition(&caller, caller_empty,
+	    caller_selected, false, &mapped, &existed);
+	check(error == EINVAL,
+	    "competition merge rejects different profile selections");
+
+	context_collection_free(&callee);
+	context_collection_free(&caller);
+}
+
+static void
 test_context_interning(void)
 {
 	struct function_info function = { 0 };
@@ -982,6 +1054,7 @@ main(void)
 {
 	test_exit_state_mapping();
 	test_state_interning();
+	test_operation_profile_state();
 	test_context_interning();
 	test_competition_depth_interning();
 	test_lock_state_interning();

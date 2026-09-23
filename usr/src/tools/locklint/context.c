@@ -202,7 +202,10 @@ compare_semantic_state(const void *left_arg, const void *right_arg)
 	order = AVL_PCMP(left->visibility, right->visibility);
 	if (order != 0)
 		return (order);
-	return (AVL_PCMP(left->targets, right->targets));
+	order = AVL_PCMP(left->targets, right->targets);
+	if (order != 0)
+		return (order);
+	return (AVL_PCMP(left->operation_profile, right->operation_profile));
 }
 
 static int
@@ -443,6 +446,7 @@ semantic_state_intern(struct function_context_collection *collection,
     const struct semantic_lock_set *locks,
     const struct semantic_visibility_set *visibility,
     const struct semantic_target_set *targets,
+    const struct operation_family_profile *operation_profile,
     struct competition_interval competition,
     struct semantic_state **result, bool *existed)
 {
@@ -450,6 +454,7 @@ semantic_state_intern(struct function_context_collection *collection,
 		.locks = locks,
 		.visibility = visibility,
 		.targets = targets,
+		.operation_profile = operation_profile,
 		.competition = competition
 	};
 	struct semantic_state *state;
@@ -467,6 +472,7 @@ semantic_state_intern(struct function_context_collection *collection,
 	state->locks = locks;
 	state->visibility = visibility;
 	state->targets = targets;
+	state->operation_profile = operation_profile;
 	state->competition = competition;
 	avl_insert(&collection->semantic_states, state, where);
 	*result = state;
@@ -498,7 +504,7 @@ context_empty_state_intern(struct function_info *function,
 	if (error != 0)
 		return (error);
 	return (semantic_state_intern(collection, locks, visibility, targets,
-	    (struct competition_interval){ 0 }, result, existed));
+	    NULL, (struct competition_interval){ 0 }, result, existed));
 }
 
 /*
@@ -531,7 +537,7 @@ context_entry_state_intern(struct function_info *function,
 	if (error != 0)
 		return (error);
 	return (semantic_state_intern(collection, locks, visibility, targets,
-	    competition, result, existed));
+	    NULL, competition, result, existed));
 }
 
 /*
@@ -564,18 +570,19 @@ context_state_import(struct function_info *function,
 	if (error != 0)
 		return (error);
 	return (semantic_state_intern(collection, locks, visibility, targets,
-	    source->competition, result, existed));
+	    source->operation_profile, source->competition, result, existed));
 }
 
 /*
  * Map a callee exit back into the function which owns caller_state.  Callee
  * entry must equal caller state in the interprocedural dimensions.  Target
  * maps are function-local and may contain projected callee demands, so they
- * are neither compared nor returned.  Changes to inherited locks always pass
- * through; newly held locks pass only when the callback says their identities
- * remain meaningful to the caller.  A visibility mapper returns the callee's
- * exact exit set in caller coordinates.  Without one, visibility remains at
- * its pre-call value.
+ * are neither compared nor returned.  Operation-family selection must match
+ * at entry and the callee's exit selection is returned.  Changes to inherited
+ * locks always pass through; newly held locks pass only when the callback says
+ * their identities remain meaningful to the caller.  A visibility mapper
+ * returns the callee's exact exit set in caller coordinates.  Without one,
+ * visibility remains at its pre-call value.
  */
 int
 context_state_map_exit(struct function_info *function,
@@ -610,6 +617,8 @@ context_state_map_exit(struct function_info *function,
 	if (compare_lock_set(caller_state->locks, callee_entry->locks) != 0 ||
 	    compare_visibility_set(caller_state->visibility,
 	    callee_entry->visibility) != 0 ||
+	    caller_state->operation_profile !=
+	    callee_entry->operation_profile ||
 	    compare_competition(&caller_state->competition,
 	    &callee_entry->competition) != 0)
 		return (EINVAL);
@@ -642,8 +651,8 @@ context_state_map_exit(struct function_info *function,
 		if (error != 0)
 			return (error);
 		return (semantic_state_intern(collection, locks, visibility,
-		    caller_state->targets, callee_exit->competition, result,
-		    existed));
+		    caller_state->targets, callee_exit->operation_profile,
+		    callee_exit->competition, result, existed));
 	}
 	for (exit_index = 0; exit_index < callee_exit->visibility->count;
 	    exit_index++) {
@@ -695,7 +704,8 @@ context_state_map_exit(struct function_info *function,
 	if (error != 0)
 		return (error);
 	return (semantic_state_intern(collection, locks, visibility,
-	    caller_state->targets, callee_exit->competition, result, existed));
+	    caller_state->targets, callee_exit->operation_profile,
+	    callee_exit->competition, result, existed));
 }
 
 /*
@@ -733,12 +743,14 @@ context_state_set_lock(struct function_info *function,
 	if (found && current_locks->entries[current_index].modes == modes) {
 		return (semantic_state_intern(collection, current_locks,
 		    current->visibility, current->targets,
-		    current->competition, result, existed));
+		    current->operation_profile, current->competition, result,
+		    existed));
 	}
 	if (!found && modes == 0) {
 		return (semantic_state_intern(collection, current_locks,
 		    current->visibility, current->targets,
-		    current->competition, result, existed));
+		    current->operation_profile, current->competition, result,
+		    existed));
 	}
 	if (!found && current_locks->count == LOCKLINT_MAX_TRACKED_LOCKS)
 		return (E2BIG);
@@ -763,7 +775,7 @@ context_state_set_lock(struct function_info *function,
 	if (error != 0)
 		return (error);
 	return (semantic_state_intern(collection, locks, current->visibility,
-	    current->targets,
+	    current->targets, current->operation_profile,
 	    current->competition, result, existed));
 }
 
@@ -826,7 +838,7 @@ context_state_set_visibility(struct function_info *function,
 	if (error != 0)
 		return (error);
 	return (semantic_state_intern(collection, current->locks, visibility,
-	    current->targets,
+	    current->targets, current->operation_profile,
 	    current->competition, result, existed));
 }
 
@@ -886,8 +898,8 @@ context_state_set_targets(struct function_info *function,
 	if (error != 0)
 		return (error);
 	return (semantic_state_intern(collection, current->locks,
-	    current->visibility, targets, current->competition, result,
-	    existed));
+	    current->visibility, targets, current->operation_profile,
+	    current->competition, result, existed));
 }
 
 /*
@@ -910,8 +922,34 @@ context_state_clear_targets(struct function_info *function,
 	if (error != 0)
 		return (error);
 	return (semantic_state_intern(collection, current->locks,
-	    current->visibility, targets, current->competition, result,
-	    existed));
+	    current->visibility, targets, current->operation_profile,
+	    current->competition, result, existed));
+}
+
+/*
+ * Select one operation family for the remainder of this semantic path.
+ * Repeating the same selection reuses the state; replacing it is invalid.
+ */
+int
+context_state_select_operation_profile(struct function_info *function,
+    const struct semantic_state *current,
+    const struct operation_family_profile *profile,
+    struct semantic_state **result, bool *existed)
+{
+	if (current == NULL || profile == NULL)
+		return (EINVAL);
+	if (current->operation_profile != NULL &&
+	    current->operation_profile != profile)
+		return (EEXIST);
+	return (semantic_state_intern(&function->contexts, current->locks,
+	    current->visibility, current->targets, profile,
+	    current->competition, result, existed));
+}
+
+const struct operation_family_profile *
+context_state_operation_profile(const struct semantic_state *state)
+{
+	return (state != NULL ? state->operation_profile : NULL);
 }
 
 const struct call_target_set *
@@ -984,8 +1022,8 @@ context_state_set_competition(struct function_info *function,
 	if (competition.maximum_unbounded)
 		competition.maximum = 0;
 	return (semantic_state_intern(&function->contexts, current->locks,
-	    current->visibility, current->targets, competition, result,
-	    existed));
+	    current->visibility, current->targets, current->operation_profile,
+	    competition, result, existed));
 }
 
 /*
@@ -1076,7 +1114,8 @@ context_state_merge_competition(struct function_info *function,
 
 	if (prior == NULL || incoming == NULL || prior->locks != incoming->locks ||
 	    prior->visibility != incoming->visibility ||
-	    prior->targets != incoming->targets)
+	    prior->targets != incoming->targets ||
+	    prior->operation_profile != incoming->operation_profile)
 		return (EINVAL);
 	left = &prior->competition;
 	right = &incoming->competition;

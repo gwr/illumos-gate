@@ -31,6 +31,7 @@ struct continuation;
 struct function_info;
 struct instruction;
 struct lock_identity;
+struct operation_family_profile;
 struct provenance_edge;
 
 #define	LOCKLINT_MAX_TRACKED_LOCKS	100
@@ -102,6 +103,7 @@ struct semantic_state {
 	const struct semantic_lock_set *locks;
 	const struct semantic_visibility_set *visibility;
 	const struct semantic_target_set *targets;
+	const struct operation_family_profile *operation_profile;
 	struct competition_interval competition;
 	avl_node_t by_value;
 };
@@ -192,7 +194,8 @@ int context_state_import(struct function_info *, const struct semantic_state *,
 /*
  * A NULL visibility mapper preserves caller visibility unchanged.  A
  * non-NULL mapper translates the callee's exact exit visibility set.
- * Function-local target maps are not compared or returned.
+ * Function-local target maps are not compared or returned.  Operation-family
+ * selection is compared at entry and propagated from the callee exit.
  */
 int context_state_map_exit(struct function_info *,
     const struct semantic_state *, const struct semantic_state *,
@@ -213,6 +216,11 @@ int context_state_set_targets(struct function_info *,
     const struct call_target_set *, struct semantic_state **, bool *);
 int context_state_clear_targets(struct function_info *,
     const struct semantic_state *, struct semantic_state **, bool *);
+int context_state_select_operation_profile(struct function_info *,
+    const struct semantic_state *, const struct operation_family_profile *,
+    struct semantic_state **, bool *);
+const struct operation_family_profile *
+context_state_operation_profile(const struct semantic_state *);
 const struct call_target_set *context_state_targets(
     const struct semantic_state *, struct visibility_region);
 bool context_state_targets_overlap(const struct semantic_state *,

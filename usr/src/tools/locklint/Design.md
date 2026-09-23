@@ -1708,9 +1708,17 @@ repeated type and range keys once while providing deduplicated candidate
 insertion without an unbounded reallocating array.  Profiles, entries, and the
 index are measured as retained analysis memory.
 
-Profiles do not yet participate in semantic state, call-result propagation,
-or indirect dispatch.  Selecting a profile at the first matching indirect
-dispatch remains the next increment.
+Each semantic state carries a nullable selected profile.  Selection is
+monotonic: the first selection establishes the profile, selecting it again
+reuses the state, and selecting a different profile is rejected.  Ordinary
+state transformations and callee imports preserve the selection.  A callee
+entry must agree with its caller, while a first selection made in the callee
+is returned from its exit.  States with different selections cannot merge by
+widening their competition intervals.
+
+Profiles do not yet participate in call-result propagation or indirect
+dispatch.  Selecting a profile at the first matching indirect dispatch
+remains the next behavior increment.
 
 ## Event decoding
 
