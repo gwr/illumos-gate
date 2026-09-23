@@ -1192,9 +1192,13 @@ fi
 run_capture "operation family profile collection" operation-profiles.out \
     "$LOCKLINT" --check-locks --dump-contexts operation-profiles.c
 require_match "operation family profile count" \
-    "^operation-family-profiles 2$" operation-profiles.out
+    "^operation-family-profiles 3$" operation-profiles.out
 require_match "operation family profile entry count" \
-    "^operation-family-profile-entries 4$" operation-profiles.out
+    "^operation-family-profile-entries 6$" operation-profiles.out
+require_match "operation family index key count" \
+    "^operation-family-index-keys 4$" operation-profiles.out
+require_match "operation family index candidate count" \
+    "^operation-family-index-candidates 6$" operation-profiles.out
 
 run_capture "competition protected accesses" competition-accesses.out \
     "$LOCKLINT" -DCOMPETITION_ACCESS_ONLY --check-locks competition-depth.c

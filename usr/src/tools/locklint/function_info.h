@@ -25,6 +25,7 @@
 #include "lock_identity.h"
 
 struct entrypoint;
+struct ll_type;
 struct translation_unit;
 
 /*
@@ -74,6 +75,7 @@ struct operation_family_entry {
  */
 struct operation_family_profile {
 	avl_node_t by_content;
+	const struct ll_type *type;
 	avl_tree_t entries;
 	size_t count;
 };

@@ -1699,10 +1699,18 @@ content-keyed AVL owned by the setup function.  Content comparison traverses
 the entry AVLs in order, allowing `avl_find()` to deduplicate profiles while
 leaving stable profile addresses for later analysis state.  Stores awaiting a
 return are retained in an insertion-order linked queue because their ordering,
-rather than lookup by key, determines the final profile.  Profiles and entries
-are measured as retained analysis memory.  They do not yet participate in
-semantic state, call-result propagation, or indirect dispatch.  Selecting a
-profile when its returned object enters the caller remains the next increment.
+rather than lookup by key, determines the final profile.
+
+A lookup index uses the canonical returned aggregate type, relative member
+offset, and member length as an AVL key.  Each key owns an AVL of candidate
+profile and target-set pairs keyed by stable profile address.  This stores
+repeated type and range keys once while providing deduplicated candidate
+insertion without an unbounded reallocating array.  Profiles, entries, and the
+index are measured as retained analysis memory.
+
+Profiles do not yet participate in semantic state, call-result propagation,
+or indirect dispatch.  Selecting a profile at the first matching indirect
+dispatch remains the next increment.
 
 ## Event decoding
 

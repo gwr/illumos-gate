@@ -26,7 +26,13 @@ struct operation_vector {
 	operation_t finish;
 };
 
+struct unrelated_vector {
+	operation_t start;
+	operation_t finish;
+};
+
 extern struct operation_vector *allocate_operations(void);
+extern struct unrelated_vector *allocate_unrelated(void);
 extern void publish_operations(struct operation_vector *);
 
 static void
@@ -70,6 +76,16 @@ make_second_operations(void)
 
 	operations->start = second_start;
 	operations->finish = second_finish;
+	return (operations);
+}
+
+static struct unrelated_vector *
+make_unrelated_operations(void)
+{
+	struct unrelated_vector *operations = allocate_unrelated();
+
+	operations->start = first_start;
+	operations->finish = first_finish;
 	return (operations);
 }
 

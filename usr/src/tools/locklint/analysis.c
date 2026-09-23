@@ -54,6 +54,7 @@
 #include "statistics.h"
 #include "symbol.h"
 #include "timing.h"
+#include "type.h"
 #include "worklist.h"
 
 #define	DISTRIBUTION_POWER_BUCKETS	12
@@ -136,6 +137,9 @@ struct analysis_measurements {
 	size_t operation_family_profile_bytes;
 	size_t operation_family_profiles;
 	size_t operation_family_profile_entries;
+	size_t operation_family_index_bytes;
+	size_t operation_family_index_keys;
+	size_t operation_family_index_candidates;
 	size_t visibility_sets_created;
 	size_t visibility_sets_reused;
 	size_t semantic_state_bytes;
@@ -147,11 +151,33 @@ struct analysis_measurements {
 	size_t provenance_edge_bytes;
 };
 
+struct operation_family_index_candidate {
+	avl_node_t by_profile;
+	const struct operation_family_profile *profile;
+	const struct call_target_set *targets;
+};
+
+struct operation_family_index_entry {
+	const struct ll_type *type;
+	int64_t target_offset;
+	uint64_t target_length;
+	avl_tree_t candidates;
+	size_t candidate_count;
+	avl_node_t by_key;
+};
+
+struct operation_family_index {
+	avl_tree_t entries;
+	size_t candidate_count;
+	bool initialized;
+};
+
 struct analysis {
 	struct lock_identity_collection *lock_identities;
 	struct worklist worklist;
 	struct analysis_counts counts;
 	struct analysis_measurements measurements;
+	struct operation_family_index operation_families;
 	FILE *protection_state_stream;
 	uint64_t provenance_visit_generation;
 };
@@ -209,11 +235,16 @@ static void collect_stored_target_forwarding(
     struct instruction *);
 static void collect_operation_profile_instruction(struct function_info *,
     struct operation_profile_builder *, struct instruction *);
+static void operation_family_index_build(struct operation_family_index *);
+static void operation_family_index_free(struct operation_family_index *);
 static void propagate_stored_target_demands(
     const struct stored_target_forwarding_collection *);
 static int compare_stored_target_demand_qsort(const void *, const void *);
 static int compare_operation_family_entry(const void *, const void *);
 static int compare_operation_family_profile(const void *, const void *);
+static int compare_operation_family_index_entry(const void *, const void *);
+static int compare_operation_family_index_candidate(const void *,
+    const void *);
 static void record_semantic_state(struct analysis *, bool);
 static const char *function_name(const struct function_info *);
 static struct pseudo *strip_function_pointer_casts(struct pseudo *);
@@ -1348,6 +1379,9 @@ compare_operation_family_profile(const void *left_arg, const void *right_arg)
 	struct operation_family_entry *right_entry;
 	int result;
 
+	result = AVL_PCMP(left->type, right->type);
+	if (result != 0)
+		return (result);
 	if (left->count != right->count)
 		return (left->count < right->count ? -1 : 1);
 	/*
@@ -1367,6 +1401,34 @@ compare_operation_family_profile(const void *left_arg, const void *right_arg)
 		right_entry = AVL_NEXT(right_entries, right_entry);
 	}
 	return (0);
+}
+
+static int
+compare_operation_family_index_entry(const void *left_arg,
+    const void *right_arg)
+{
+	const struct operation_family_index_entry *left = left_arg;
+	const struct operation_family_index_entry *right = right_arg;
+	int result;
+
+	result = AVL_PCMP(left->type, right->type);
+	if (result != 0)
+		return (result);
+	if (left->target_offset != right->target_offset)
+		return (left->target_offset < right->target_offset ? -1 : 1);
+	if (left->target_length != right->target_length)
+		return (left->target_length < right->target_length ? -1 : 1);
+	return (0);
+}
+
+static int
+compare_operation_family_index_candidate(const void *left_arg,
+    const void *right_arg)
+{
+	const struct operation_family_index_candidate *left = left_arg;
+	const struct operation_family_index_candidate *right = right_arg;
+
+	return (AVL_PCMP(left->profile, right->profile));
 }
 
 /*
@@ -1556,13 +1618,25 @@ operation_family_profile_finish(struct function_info *function,
 	struct operation_family_profile *existing;
 	const struct operation_profile_store *store;
 	avl_index_t where;
+	struct symbol *return_type;
 
 	returned = strip_function_pointer_casts(returned);
 	if (returned == NULL || returned->type != PSEUDO_REG)
 		return;
+	return_type = function_type(function);
+	if (return_type == NULL ||
+	    (return_type = type_node_strip(return_type->ctype.base_type)) ==
+	    NULL || return_type->type != SYM_PTR ||
+	    (return_type =
+	    type_compound_resolve(return_type->ctype.base_type)) == NULL)
+		return;
 	profile = calloc(1, sizeof (*profile));
 	if (profile == NULL)
 		die("cannot allocate operation family profile");
+	if ((profile->type = type_lookup_exact(return_type)) == NULL) {
+		free(profile);
+		return;
+	}
 	avl_create(&profile->entries, compare_operation_family_entry,
 	    sizeof (struct operation_family_entry),
 	    offsetof(struct operation_family_entry, by_region));
@@ -1589,6 +1663,150 @@ operation_family_profile_finish(struct function_info *function,
 	}
 	avl_insert(&function->operation_family_profiles, profile, where);
 	function->operation_family_profile_count++;
+}
+
+/*
+ * Return the index entry for one exact canonical type and member range.
+ * Callers traverse the entry's candidate AVL in stable profile order.
+ */
+static struct operation_family_index_entry *
+operation_family_index_lookup(struct operation_family_index *index,
+    const struct ll_type *type, int64_t target_offset, uint64_t target_length)
+{
+	struct operation_family_index_entry lookup = {
+		.type = type,
+		.target_offset = target_offset,
+		.target_length = target_length
+	};
+
+	return (avl_find(&index->entries, &lookup, NULL));
+}
+
+static void
+operation_family_index_add(struct operation_family_index *index,
+    const struct operation_family_profile *profile,
+    const struct operation_family_entry *member)
+{
+	struct operation_family_index_entry lookup = {
+		.type = profile->type,
+		.target_offset = member->target_offset,
+		.target_length = member->target_length
+	};
+	struct operation_family_index_entry *entry;
+	struct operation_family_index_candidate lookup_candidate = {
+		.profile = profile
+	};
+	struct operation_family_index_candidate *candidate;
+	avl_index_t where;
+	avl_index_t candidate_where;
+
+	entry = avl_find(&index->entries, &lookup, &where);
+	if (entry == NULL) {
+		entry = calloc(1, sizeof (*entry));
+		if (entry == NULL)
+			die("cannot allocate operation family index entry");
+		entry->type = profile->type;
+		entry->target_offset = member->target_offset;
+		entry->target_length = member->target_length;
+		avl_create(&entry->candidates,
+		    compare_operation_family_index_candidate,
+		    sizeof (struct operation_family_index_candidate),
+		    offsetof(struct operation_family_index_candidate,
+		    by_profile));
+		avl_insert(&index->entries, entry, where);
+	}
+	candidate = avl_find(&entry->candidates, &lookup_candidate,
+	    &candidate_where);
+	if (candidate != NULL) {
+		if (candidate->targets != member->targets)
+			abort();
+		return;
+	}
+	candidate = malloc(sizeof (*candidate));
+	if (candidate == NULL)
+		die("cannot allocate operation family index candidate");
+	*candidate = (struct operation_family_index_candidate) {
+		.profile = profile,
+		.targets = member->targets
+	};
+	avl_insert(&entry->candidates, candidate, candidate_where);
+	entry->candidate_count++;
+	index->candidate_count++;
+}
+
+/*
+ * Build one AVL key per canonical type and exact member range after profile
+ * collection.  Each key owns an AVL of stable profile candidates, avoiding
+ * repeated type/range storage and unbounded reallocating arrays.
+ */
+static void
+operation_family_index_build(struct operation_family_index *index)
+{
+	struct callgraph_iter *iterator;
+	struct function_info *function;
+	int error;
+
+	avl_create(&index->entries, compare_operation_family_index_entry,
+	    sizeof (struct operation_family_index_entry),
+	    offsetof(struct operation_family_index_entry, by_key));
+	index->initialized = true;
+	error = callgraph_iter_open(&iterator);
+	if (error != 0)
+		die("cannot iterate ready callgraph: %s", strerror(error));
+	while ((function = callgraph_iter_next(iterator)) != NULL) {
+		struct operation_family_profile *profile;
+
+		if (function->operation_family_profile_count == 0)
+			continue;
+		for (profile = avl_first(&function->operation_family_profiles);
+		    profile != NULL;
+		    profile = AVL_NEXT(&function->operation_family_profiles,
+		    profile)) {
+			struct operation_family_entry *member;
+
+			for (member = avl_first(&profile->entries);
+			    member != NULL;
+			    member = AVL_NEXT(&profile->entries, member))
+				operation_family_index_add(index, profile, member);
+		}
+	}
+	callgraph_iter_close(iterator);
+	{
+		struct operation_family_index_entry *entry;
+
+		for (entry = avl_first(&index->entries); entry != NULL;
+		    entry = AVL_NEXT(&index->entries, entry)) {
+			if (operation_family_index_lookup(index, entry->type,
+			    entry->target_offset, entry->target_length) != entry ||
+			    avl_numnodes(&entry->candidates) !=
+			    entry->candidate_count)
+				abort();
+		}
+		if (operation_family_index_lookup(index, NULL, 0, 0) != NULL)
+			abort();
+	}
+}
+
+static void
+operation_family_index_free(struct operation_family_index *index)
+{
+	struct operation_family_index_entry *entry;
+	void *cookie = NULL;
+
+	if (!index->initialized)
+		return;
+	while ((entry = avl_destroy_nodes(&index->entries, &cookie)) != NULL) {
+		struct operation_family_index_candidate *candidate;
+		void *candidate_cookie = NULL;
+
+		while ((candidate = avl_destroy_nodes(&entry->candidates,
+		    &candidate_cookie)) != NULL)
+			free(candidate);
+		avl_destroy(&entry->candidates);
+		free(entry);
+	}
+	avl_destroy(&index->entries);
+	*index = (struct operation_family_index){ 0 };
 }
 
 static void
@@ -6327,6 +6545,24 @@ measure_collections(struct analysis *analysis)
 			measure_context(measurements, context);
 	}
 	callgraph_iter_close(iterator);
+	measurements->operation_family_index_keys =
+	    avl_numnodes(&analysis->operation_families.entries);
+	measurements->operation_family_index_candidates =
+	    analysis->operation_families.candidate_count;
+	{
+		struct operation_family_index_entry *entry;
+
+		for (entry = avl_first(&analysis->operation_families.entries);
+		    entry != NULL;
+		    entry = AVL_NEXT(&analysis->operation_families.entries,
+		    entry)) {
+			memory_add(&measurements->operation_family_index_bytes, 1,
+			    sizeof (*entry));
+			memory_add(&measurements->operation_family_index_bytes,
+			    entry->candidate_count,
+			    sizeof (struct operation_family_index_candidate));
+		}
+	}
 }
 
 static void
@@ -6424,6 +6660,7 @@ retained_collection_bytes(const struct analysis_measurements *measurements)
 		measurements->target_set_bytes,
 		measurements->stored_target_demand_bytes,
 		measurements->operation_family_profile_bytes,
+		measurements->operation_family_index_bytes,
 		measurements->context_bytes,
 		measurements->point_state_bytes,
 		measurements->exit_bytes,
@@ -6506,6 +6743,10 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	    measurements->operation_family_profiles);
 	(void) fprintf(stream, "operation-family-profile-entries %zu\n",
 	    measurements->operation_family_profile_entries);
+	(void) fprintf(stream, "operation-family-index-keys %zu\n",
+	    measurements->operation_family_index_keys);
+	(void) fprintf(stream, "operation-family-index-candidates %zu\n",
+	    measurements->operation_family_index_candidates);
 	(void) fprintf(stream,
 	    "lock-identities created %zu reused %zu unresolved %zu "
 	    "retained %zu\n", counts->lock_identities_created,
@@ -6613,6 +6854,8 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	    measurements->stored_target_demand_bytes);
 	(void) fprintf(stream, "memory operation-family-profiles %zu bytes\n",
 	    measurements->operation_family_profile_bytes);
+	(void) fprintf(stream, "memory operation-family-index %zu bytes\n",
+	    measurements->operation_family_index_bytes);
 	(void) fprintf(stream, "memory contexts %zu bytes\n",
 	    measurements->context_bytes);
 	(void) fprintf(stream, "memory point-states %zu bytes\n",
@@ -6696,6 +6939,7 @@ analysis_run(struct lock_identity_collection *lock_identities, FILE *stream,
 	timing_begin(TIMING_FIXED_POINT);
 	collect_assumed_regions();
 	collect_function_demands();
+	operation_family_index_build(&analysis.operation_families);
 	seed_initial_contexts(&analysis);
 	do {
 		while ((point_state =
@@ -6746,4 +6990,5 @@ analysis_run(struct lock_identity_collection *lock_identities, FILE *stream,
 		show_counts(stream, &analysis);
 		timing_end(TIMING_MEASUREMENT);
 	}
+	operation_family_index_free(&analysis.operation_families);
 }
