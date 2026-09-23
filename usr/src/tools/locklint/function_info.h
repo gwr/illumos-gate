@@ -19,6 +19,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#include "avl.h"
 #include "binding.h"
 #include "context.h"
 #include "lock_identity.h"
@@ -56,6 +57,28 @@ struct stored_target_demand {
 };
 
 /*
+ * One exact callback assignment in a coherently initialized operation family.
+ * Offsets are relative to the object returned by the setup function.
+ */
+struct operation_family_entry {
+	avl_node_t by_region;
+	int64_t target_offset;
+	uint64_t target_length;
+	const struct call_target_set *targets;
+};
+
+/*
+ * One setup function's coherent operation-family assignment set.
+ * Profiles and their entries are immutable once inserted into their owning
+ * collections, so both AVL keys remain stable.
+ */
+struct operation_family_profile {
+	avl_node_t by_content;
+	avl_tree_t entries;
+	size_t count;
+};
+
+/*
  * Shared semantic state for one function.  Callgraph indexing and collection
  * linkage are intentionally private to callgraph.c.
  */
@@ -73,6 +96,8 @@ struct function_info {
 	struct stored_target_demand *stored_target_demands;
 	size_t stored_target_demand_count;
 	size_t stored_target_demand_capacity;
+	avl_tree_t operation_family_profiles;
+	size_t operation_family_profile_count;
 	unsigned int root_reasons;
 	bool reachable_from_root;
 	bool entry_no_competing_threads;

@@ -133,6 +133,9 @@ struct analysis_measurements {
 	size_t target_set_bytes;
 	size_t stored_target_demand_bytes;
 	size_t stored_target_demands;
+	size_t operation_family_profile_bytes;
+	size_t operation_family_profiles;
+	size_t operation_family_profile_entries;
 	size_t visibility_sets_created;
 	size_t visibility_sets_reused;
 	size_t semantic_state_bytes;
@@ -170,6 +173,21 @@ struct stored_target_forwarding_collection {
 	size_t capacity;
 };
 
+struct operation_profile_store {
+	struct operation_profile_store *next;
+	const void *analysis_object;
+	int64_t target_offset;
+	uint64_t target_length;
+	const struct call_target_set *targets;
+	size_t call_generation;
+};
+
+struct operation_profile_builder {
+	struct operation_profile_store *stores_head;
+	struct operation_profile_store *stores_tail;
+	size_t call_generation;
+};
+
 static int context_access_identity(struct analysis *,
     const struct function_context *, const struct locklint_access *,
     struct lock_identity **, bool *, bool *);
@@ -189,9 +207,13 @@ static void collect_stored_target_demand(struct function_info *,
 static void collect_stored_target_forwarding(
     struct stored_target_forwarding_collection *, struct function_info *,
     struct instruction *);
+static void collect_operation_profile_instruction(struct function_info *,
+    struct operation_profile_builder *, struct instruction *);
 static void propagate_stored_target_demands(
     const struct stored_target_forwarding_collection *);
 static int compare_stored_target_demand_qsort(const void *, const void *);
+static int compare_operation_family_entry(const void *, const void *);
+static int compare_operation_family_profile(const void *, const void *);
 static void record_semantic_state(struct analysis *, bool);
 static const char *function_name(const struct function_info *);
 static struct pseudo *strip_function_pointer_casts(struct pseudo *);
@@ -1225,6 +1247,7 @@ collect_function_demands(void)
 		struct basic_block *block;
 
 		FOR_EACH_PTR(function->ep->bbs, block) {
+			struct operation_profile_builder profile_builder = { 0 };
 			struct instruction *instruction;
 
 			FOR_EACH_PTR(block->insns, instruction) {
@@ -1236,6 +1259,8 @@ collect_function_demands(void)
 				collect_stored_target_demand(function, instruction);
 				collect_stored_target_forwarding(&forwardings,
 				    function, instruction);
+				collect_operation_profile_instruction(function,
+				    &profile_builder, instruction);
 				if (instruction->opcode == OP_LOAD ||
 				    instruction->opcode == OP_STORE) {
 					(void)
@@ -1250,6 +1275,13 @@ collect_function_demands(void)
 					collect_derived_lock_access(function,
 					    &access, false);
 			} END_FOR_EACH_PTR(instruction);
+			while (profile_builder.stores_head != NULL) {
+				struct operation_profile_store *store =
+				    profile_builder.stores_head;
+
+				profile_builder.stores_head = store->next;
+				free(store);
+			}
 		} END_FOR_EACH_PTR(block);
 	}
 	callgraph_iter_close(iterator);
@@ -1284,6 +1316,56 @@ compare_stored_target_demand_qsort(const void *left_arg,
 		return (left->target_offset < right->target_offset ? -1 : 1);
 	if (left->target_length != right->target_length)
 		return (left->target_length < right->target_length ? -1 : 1);
+	return (0);
+}
+
+static int
+compare_operation_family_entry(const void *left_arg,
+    const void *right_arg)
+{
+	const struct operation_family_entry *left = left_arg;
+	const struct operation_family_entry *right = right_arg;
+
+	if (left->target_offset != right->target_offset)
+		return (left->target_offset < right->target_offset ? -1 : 1);
+	if (left->target_length != right->target_length)
+		return (left->target_length < right->target_length ? -1 : 1);
+	return (0);
+}
+
+/*
+ * Order immutable profiles by complete entry content so the function-owned
+ * AVL can both retain stable profile objects and suppress duplicates.
+ */
+static int
+compare_operation_family_profile(const void *left_arg, const void *right_arg)
+{
+	const struct operation_family_profile *left = left_arg;
+	const struct operation_family_profile *right = right_arg;
+	avl_tree_t *left_entries = (avl_tree_t *)&left->entries;
+	avl_tree_t *right_entries = (avl_tree_t *)&right->entries;
+	struct operation_family_entry *left_entry;
+	struct operation_family_entry *right_entry;
+	int result;
+
+	if (left->count != right->count)
+		return (left->count < right->count ? -1 : 1);
+	/*
+	 * The AVL traversal interface is not const-qualified, but does not
+	 * modify the immutable profile or its entries.
+	 */
+	left_entry = avl_first(left_entries);
+	right_entry = avl_first(right_entries);
+	while (left_entry != NULL) {
+		result = compare_operation_family_entry(left_entry, right_entry);
+		if (result != 0)
+			return (result);
+		result = AVL_PCMP(left_entry->targets, right_entry->targets);
+		if (result != 0)
+			return (result);
+		left_entry = AVL_NEXT(left_entries, left_entry);
+		right_entry = AVL_NEXT(right_entries, right_entry);
+	}
 	return (0);
 }
 
@@ -1351,6 +1433,206 @@ collect_stored_target_demand(struct function_info *function,
 	demand.target_offset = key.target_offset;
 	demand.target_length = length;
 	(void) add_stored_target_demand(function, demand);
+}
+
+static bool
+operation_family_region_valid(int64_t offset, uint64_t length)
+{
+	return (length != 0 && length <= INT64_MAX &&
+	    offset <= INT64_MAX - (int64_t)length + 1);
+}
+
+static bool
+operation_family_regions_overlap(int64_t left_offset, uint64_t left_length,
+    int64_t right_offset, uint64_t right_length)
+{
+	int64_t left_end;
+	int64_t right_end;
+
+	if (!operation_family_region_valid(left_offset, left_length) ||
+	    !operation_family_region_valid(right_offset, right_length))
+		return (false);
+	left_end = left_offset + (int64_t)left_length - 1;
+	right_end = right_offset + (int64_t)right_length - 1;
+	return (left_offset <= right_end && right_offset <= left_end);
+}
+
+static void
+operation_profile_store_add(struct operation_profile_builder *builder,
+    struct operation_profile_store store)
+{
+	struct operation_profile_store *entry;
+
+	entry = malloc(sizeof (*entry));
+	if (entry == NULL)
+		die("cannot allocate operation profile store");
+	*entry = store;
+	entry->next = NULL;
+	if (builder->stores_tail != NULL)
+		builder->stores_tail->next = entry;
+	else
+		builder->stores_head = entry;
+	builder->stores_tail = entry;
+}
+
+/*
+ * Apply one source-ordered store to an entry AVL whose ranges do not overlap.
+ * A zero-length lookup key sorts immediately before any entry at the store's
+ * offset, so only the preceding range and following affected range need
+ * inspection.
+ */
+static void
+operation_family_entry_apply(struct operation_family_profile *profile,
+    const struct operation_profile_store *store)
+{
+	struct operation_family_entry lookup = {
+		.target_offset = store->target_offset
+	};
+	struct operation_family_entry *entry;
+	avl_index_t where;
+	int64_t store_end;
+
+	entry = avl_find(&profile->entries, &lookup, &where);
+	if (entry != NULL)
+		abort();
+	entry = avl_nearest(&profile->entries, where, AVL_BEFORE);
+	if (entry == NULL ||
+	    !operation_family_regions_overlap(entry->target_offset,
+	    entry->target_length, store->target_offset, store->target_length))
+		entry = avl_nearest(&profile->entries, where, AVL_AFTER);
+	store_end = store->target_offset + (int64_t)store->target_length - 1;
+	while (entry != NULL && entry->target_offset <= store_end) {
+		struct operation_family_entry *next =
+		    AVL_NEXT(&profile->entries, entry);
+
+		if (operation_family_regions_overlap(entry->target_offset,
+		    entry->target_length, store->target_offset,
+		    store->target_length)) {
+			avl_remove(&profile->entries, entry);
+			free(entry);
+			profile->count--;
+		}
+		entry = next;
+	}
+	if (store->targets == NULL)
+		return;
+	entry = malloc(sizeof (*entry));
+	if (entry == NULL)
+		die("cannot allocate operation family entry");
+	*entry = (struct operation_family_entry) {
+		.target_offset = store->target_offset,
+		.target_length = store->target_length,
+		.targets = store->targets
+	};
+	if (avl_find(&profile->entries, entry, &where) != NULL)
+		abort();
+	avl_insert(&profile->entries, entry, where);
+	profile->count++;
+}
+
+static void
+operation_family_profile_free(struct operation_family_profile *profile)
+{
+	struct operation_family_entry *entry;
+
+	while ((entry = avl_first(&profile->entries)) != NULL) {
+		avl_remove(&profile->entries, entry);
+		free(entry);
+	}
+	avl_destroy(&profile->entries);
+	free(profile);
+}
+
+/*
+ * Retain one straight-line returned operation family.  Only stores after the
+ * final call in the return block participate, so an unanalyzed call cannot
+ * silently mutate an object after assignments have been summarized.
+ */
+static void
+operation_family_profile_finish(struct function_info *function,
+    const struct operation_profile_builder *builder, struct pseudo *returned)
+{
+	struct operation_family_profile *profile;
+	struct operation_family_profile *existing;
+	const struct operation_profile_store *store;
+	avl_index_t where;
+
+	returned = strip_function_pointer_casts(returned);
+	if (returned == NULL || returned->type != PSEUDO_REG)
+		return;
+	profile = calloc(1, sizeof (*profile));
+	if (profile == NULL)
+		die("cannot allocate operation family profile");
+	avl_create(&profile->entries, compare_operation_family_entry,
+	    sizeof (struct operation_family_entry),
+	    offsetof(struct operation_family_entry, by_region));
+	for (store = builder->stores_head; store != NULL; store = store->next) {
+		if (store->analysis_object == returned &&
+		    store->call_generation == builder->call_generation)
+			operation_family_entry_apply(profile, store);
+	}
+	if (profile->count < 2) {
+		operation_family_profile_free(profile);
+		return;
+	}
+	if (function->operation_family_profile_count == 0) {
+		avl_create(&function->operation_family_profiles,
+		    compare_operation_family_profile,
+		    sizeof (struct operation_family_profile),
+		    offsetof(struct operation_family_profile, by_content));
+	}
+	existing = avl_find(&function->operation_family_profiles, profile,
+	    &where);
+	if (existing != NULL) {
+		operation_family_profile_free(profile);
+		return;
+	}
+	avl_insert(&function->operation_family_profiles, profile, where);
+	function->operation_family_profile_count++;
+}
+
+static void
+collect_operation_profile_instruction(struct function_info *function,
+    struct operation_profile_builder *builder,
+    struct instruction *instruction)
+{
+	if (instruction->opcode == OP_CALL) {
+		builder->call_generation++;
+		return;
+	}
+	if (instruction->opcode == OP_RET) {
+		operation_family_profile_finish(function, builder,
+		    instruction->src);
+		return;
+	}
+	if (instruction->opcode == OP_STORE) {
+		struct locklint_access access;
+		struct lock_identity_key key;
+		enum lock_analysis_object_type object_type;
+		const struct call_target_set *targets = NULL;
+		struct pseudo *value =
+		    strip_function_pointer_casts(instruction->target);
+		uint64_t length;
+
+		if (!locklint_get_instruction_access(function->tu, instruction,
+		    &access) ||
+		    !locklint_access_size(&access, &length) ||
+		    function_access_coordinates(function, &access, &key,
+		    &object_type) != 0 ||
+		    object_type != LOCK_ANALYSIS_OBJECT_PSEUDO ||
+		    !operation_family_region_valid(key.target_offset, length))
+			return;
+		if (value != NULL && value->type == PSEUDO_SYM)
+			targets = callgraph_symbol_targets(function, value->sym);
+		operation_profile_store_add(builder,
+		    (struct operation_profile_store) {
+			.analysis_object = key.analysis_object,
+			.target_offset = key.target_offset,
+			.target_length = length,
+			.targets = targets,
+			.call_generation = builder->call_generation
+		    });
+	}
 }
 
 /*
@@ -5933,6 +6215,28 @@ measure_collections(struct analysis *analysis)
 		memory_add(&measurements->stored_target_demand_bytes,
 		    function->stored_target_demand_capacity,
 		    sizeof (*function->stored_target_demands));
+		measurements->operation_family_profiles +=
+		    function->operation_family_profile_count;
+		memory_add(&measurements->operation_family_profile_bytes,
+		    function->operation_family_profile_count,
+		    sizeof (struct operation_family_profile));
+		if (function->operation_family_profile_count != 0) {
+			struct operation_family_profile *profile;
+
+			for (profile =
+			    avl_first(&function->operation_family_profiles);
+			    profile != NULL;
+			    profile = AVL_NEXT(
+			    &function->operation_family_profiles, profile)) {
+				measurements->
+				    operation_family_profile_entries +=
+				    profile->count;
+				memory_add(&measurements->
+				    operation_family_profile_bytes,
+				    profile->count,
+				    sizeof (struct operation_family_entry));
+			}
+		}
 		distribution_add(&measurements->contexts_per_function, contexts,
 		    function);
 		distribution_add(
@@ -6119,6 +6423,7 @@ retained_collection_bytes(const struct analysis_measurements *measurements)
 		measurements->visibility_set_bytes,
 		measurements->target_set_bytes,
 		measurements->stored_target_demand_bytes,
+		measurements->operation_family_profile_bytes,
 		measurements->context_bytes,
 		measurements->point_state_bytes,
 		measurements->exit_bytes,
@@ -6197,6 +6502,10 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	    analysis->worklist.peak_length);
 	(void) fprintf(stream, "stored-target-demands %zu\n",
 	    measurements->stored_target_demands);
+	(void) fprintf(stream, "operation-family-profiles %zu\n",
+	    measurements->operation_family_profiles);
+	(void) fprintf(stream, "operation-family-profile-entries %zu\n",
+	    measurements->operation_family_profile_entries);
 	(void) fprintf(stream,
 	    "lock-identities created %zu reused %zu unresolved %zu "
 	    "retained %zu\n", counts->lock_identities_created,
@@ -6302,6 +6611,8 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	    measurements->target_set_bytes);
 	(void) fprintf(stream, "memory stored-target-demands %zu bytes\n",
 	    measurements->stored_target_demand_bytes);
+	(void) fprintf(stream, "memory operation-family-profiles %zu bytes\n",
+	    measurements->operation_family_profile_bytes);
 	(void) fprintf(stream, "memory contexts %zu bytes\n",
 	    measurements->context_bytes);
 	(void) fprintf(stream, "memory point-states %zu bytes\n",

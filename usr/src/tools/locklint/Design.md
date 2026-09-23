@@ -1679,6 +1679,31 @@ target set.  It does not infer targets from arbitrary pointer arithmetic,
 unresolved values, partial overlapping loads, or callee mutations.
 Unsupported stores discard stale overlapping knowledge rather than guessing.
 
+### Returned operation-family profiles
+
+Operation-family profiles retain coherent callback assignments made to an
+allocated object and returned by its setup function.  Collection currently
+accepts only one straight-line return block.  Stores must use the exact
+returned pseudo as their destination base, and only stores after the block's
+final call participate.  This prevents an unanalyzed call after assignment
+from silently mutating the summarized object.
+
+Each profile owns an AVL of relative byte ranges and exact call-target sets,
+keyed by offset and length.  Later overlapping stores replace earlier entries,
+while an unsupported overlapping value invalidates prior knowledge.  At least
+two surviving callback members are required so an isolated returned callback
+does not become an operation family.
+
+Complete profiles are immutable, individually allocated objects in a
+content-keyed AVL owned by the setup function.  Content comparison traverses
+the entry AVLs in order, allowing `avl_find()` to deduplicate profiles while
+leaving stable profile addresses for later analysis state.  Stores awaiting a
+return are retained in an insertion-order linked queue because their ordering,
+rather than lookup by key, determines the final profile.  Profiles and entries
+are measured as retained analysis memory.  They do not yet participate in
+semantic state, call-result propagation, or indirect dispatch.  Selecting a
+profile when its returned object enters the caller remains the next increment.
+
 ## Event decoding
 
 `events.c` provides a shared interpretation of relevant Sparse instructions.

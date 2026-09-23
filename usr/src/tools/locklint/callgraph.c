@@ -1806,6 +1806,27 @@ callgraph_cleanup(void)
 		binding_collection_free(&functions->info.bindings);
 		free(functions->info.derived_protectors);
 		free(functions->info.stored_target_demands);
+		if (functions->info.operation_family_profile_count != 0) {
+			struct operation_family_profile *profile;
+
+			while ((profile = avl_first(
+			    &functions->info.operation_family_profiles)) !=
+			    NULL) {
+				struct operation_family_entry *entry;
+
+				avl_remove(
+				    &functions->info.operation_family_profiles,
+				    profile);
+				while ((entry =
+				    avl_first(&profile->entries)) != NULL) {
+					avl_remove(&profile->entries, entry);
+					free(entry);
+				}
+				avl_destroy(&profile->entries);
+				free(profile);
+			}
+			avl_destroy(&functions->info.operation_family_profiles);
+		}
 		while ((region = functions->info.assumed_regions) != NULL) {
 			functions->info.assumed_regions = region->next;
 			free(region->name);

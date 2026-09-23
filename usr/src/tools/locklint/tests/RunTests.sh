@@ -1189,6 +1189,13 @@ if [ "$(grep -c 'warning:' stored-callback-forward.out)" -ne 2 ]; then
 	fail "forwarded stored callback projection: expected exactly two warnings"
 fi
 
+run_capture "operation family profile collection" operation-profiles.out \
+    "$LOCKLINT" --check-locks --dump-contexts operation-profiles.c
+require_match "operation family profile count" \
+    "^operation-family-profiles 2$" operation-profiles.out
+require_match "operation family profile entry count" \
+    "^operation-family-profile-entries 4$" operation-profiles.out
+
 run_capture "competition protected accesses" competition-accesses.out \
     "$LOCKLINT" -DCOMPETITION_ACCESS_ONLY --check-locks competition-depth.c
 for location in 50 52 54 70 83 115
