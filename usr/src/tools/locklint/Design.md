@@ -1716,9 +1716,18 @@ entry must agree with its caller, while a first selection made in the callee
 is returned from its exit.  States with different selections cannot merge by
 widening their competition intervals.
 
-Profiles do not yet participate in call-result propagation or indirect
-dispatch.  Selecting a profile at the first matching indirect dispatch
-remains the next behavior increment.
+An exact direct call result inherits the callee's operation profile when that
+setup function has exactly one profile.  Address-preserving pointer casts may
+intervene.  An indirect call through a member loaded directly from that value
+looks up the profile's entry AVL by exact offset and length and uses the
+entry's target set.  Missing or ambiguous provenance and unmatched member
+ranges retain ordinary unresolved-call behavior.
+
+This initial value provenance does not follow memory stores and loads, merge
+different values, pass through arguments, or model registration.  It does not
+need semantic-state selection because one exact receiver value already
+identifies one profile.  Selected profile state remains available for later
+ambiguous provenance which must preserve correlation across dispatches.
 
 ## Event decoding
 

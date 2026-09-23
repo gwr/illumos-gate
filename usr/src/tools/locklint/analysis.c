@@ -1121,6 +1121,55 @@ call_argument_targets(const struct function_context *caller,
 	    call_argument_pseudo(insn, index)));
 }
 
+/*
+ * Return the unique operation profile produced by one exact direct call
+ * result.  Pointer casts preserve the value; memory and merged values require
+ * separate provenance support.
+ */
+static const struct operation_family_profile *
+operation_profile_from_value(const struct function_context *context,
+    struct pseudo *pseudo)
+{
+	struct function_info *callee;
+
+	pseudo = strip_function_pointer_casts(pseudo);
+	if (pseudo == NULL || pseudo->type != PSEUDO_REG ||
+	    pseudo->def == NULL || pseudo->def->opcode != OP_CALL ||
+	    (callee = callgraph_callee(context->function, pseudo->def)) == NULL ||
+	    callee->operation_family_profile_count != 1)
+		return (NULL);
+	return (avl_first(&callee->operation_family_profiles));
+}
+
+static const struct call_target_set *
+operation_profile_member_targets(const struct function_context *context,
+    const struct instruction *insn)
+{
+	const struct operation_family_profile *profile;
+	struct operation_family_entry lookup;
+	struct operation_family_entry *entry;
+	struct locklint_access access;
+	struct pseudo *function;
+	uint64_t length;
+
+	if (insn == NULL || insn->opcode != OP_CALL ||
+	    (function = strip_function_pointer_casts(insn->func)) == NULL ||
+	    function->type != PSEUDO_REG || function->def == NULL ||
+	    function->def->opcode != OP_LOAD ||
+	    !locklint_get_instruction_access(context->function->tu,
+	    function->def, &access) ||
+	    (profile = operation_profile_from_value(context,
+	    access.address_base)) == NULL ||
+	    !locklint_access_size(&access, &length))
+		return (NULL);
+	lookup = (struct operation_family_entry) {
+		.target_offset = access.address_offset,
+		.target_length = length
+	};
+	entry = avl_find((avl_tree_t *)&profile->entries, &lookup, NULL);
+	return (entry != NULL ? entry->targets : NULL);
+}
+
 static const struct call_target_set *
 context_call_targets(const struct function_context *context,
     const struct semantic_state *state, const struct instruction *insn)
@@ -1143,7 +1192,9 @@ context_call_targets(const struct function_context *context,
 	 */
 	if (pseudo == NULL || pseudo->type == PSEUDO_SYM)
 		return (NULL);
-	return (state_value_targets(context, state, pseudo));
+	targets = state_value_targets(context, state, pseudo);
+	return (targets != NULL ? targets :
+	    operation_profile_member_targets(context, insn));
 }
 
 static struct function_info *

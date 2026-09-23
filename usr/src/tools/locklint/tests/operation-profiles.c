@@ -15,8 +15,30 @@
  * distinct targets so later dispatch must preserve the assignment grouping.
  */
 
+#ifdef __lock_lint
+#include <sys/note.h>
+#include <sys/condvar.h>
+#include <sys/mutex.h>
+typedef kmutex_t mutex_t;
+typedef kcondvar_t condvar_t;
+#else
+#define	_NOTE(arg)
+typedef struct mutex {
+	int opaque;
+} mutex_t;
+
+typedef struct condvar {
+	int opaque;
+} condvar_t;
+#endif
+
 struct operation_state {
-	int value;
+	mutex_t first;
+	mutex_t second;
+	mutex_t first_done;
+	mutex_t second_done;
+	mutex_t wait;
+	condvar_t cv;
 };
 
 typedef void (*operation_t)(struct operation_state *);
@@ -34,29 +56,40 @@ struct unrelated_vector {
 extern struct operation_vector *allocate_operations(void);
 extern struct unrelated_vector *allocate_unrelated(void);
 extern void publish_operations(struct operation_vector *);
+extern void mutex_enter(mutex_t *);
+extern void mutex_exit(mutex_t *);
+extern void cv_wait(condvar_t *, mutex_t *);
+extern void operation_stop(void) __attribute__((noreturn));
+void invoke_first_profile(struct operation_state *);
+void invoke_second_profile(struct operation_state *);
+void invoke_incomplete_profile(struct operation_state *);
 
 static void
 first_start(struct operation_state *state)
 {
-	state->value = 1;
+	_NOTE(MUTEX_ACQUIRED_AS_SIDE_EFFECT(state->first))
+	mutex_enter(&state->first);
 }
 
 static void
 first_finish(struct operation_state *state)
 {
-	state->value = 2;
+	_NOTE(MUTEX_ACQUIRED_AS_SIDE_EFFECT(state->first_done))
+	mutex_enter(&state->first_done);
 }
 
 static void
 second_start(struct operation_state *state)
 {
-	state->value = 3;
+	_NOTE(MUTEX_ACQUIRED_AS_SIDE_EFFECT(state->second))
+	mutex_enter(&state->second);
 }
 
 static void
 second_finish(struct operation_state *state)
 {
-	state->value = 4;
+	_NOTE(MUTEX_ACQUIRED_AS_SIDE_EFFECT(state->second_done))
+	mutex_enter(&state->second_done);
 }
 
 static struct operation_vector *
@@ -118,4 +151,48 @@ make_published_operations(void)
 	operations->finish = first_finish;
 	publish_operations(operations);
 	return (operations);
+}
+
+void
+invoke_first_profile(struct operation_state *state)
+{
+	struct operation_vector *operations = make_first_operations();
+
+	operations->start(state);
+	mutex_enter(&state->wait);
+	cv_wait(&state->cv, &state->wait);
+	mutex_exit(&state->wait);
+	operations->finish(state);
+	mutex_enter(&state->wait);
+	cv_wait(&state->cv, &state->wait);
+	mutex_exit(&state->wait);
+	operation_stop();
+}
+
+void
+invoke_second_profile(struct operation_state *state)
+{
+	struct operation_vector *operations = make_second_operations();
+
+	operations->start(state);
+	mutex_enter(&state->wait);
+	cv_wait(&state->cv, &state->wait);
+	mutex_exit(&state->wait);
+	operations->finish(state);
+	mutex_enter(&state->wait);
+	cv_wait(&state->cv, &state->wait);
+	mutex_exit(&state->wait);
+	operation_stop();
+}
+
+void
+invoke_incomplete_profile(struct operation_state *state)
+{
+	struct operation_vector *operations = make_incomplete_operations();
+
+	operations->start(state);
+	mutex_enter(&state->wait);
+	cv_wait(&state->cv, &state->wait);
+	mutex_exit(&state->wait);
+	operation_stop();
 }

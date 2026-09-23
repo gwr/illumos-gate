@@ -1199,6 +1199,33 @@ require_match "operation family index key count" \
     "^operation-family-index-keys 4$" operation-profiles.out
 require_match "operation family index candidate count" \
     "^operation-family-index-candidates 6$" operation-profiles.out
+require_match "first profile start target" \
+    "operation-profiles.c:163:16: warning: locklint: condition wait occurs while holding lock 'operation_state::first' \\[lock-held-during-wait\\]" \
+    operation-profiles.out
+require_match "first profile start effect at second wait" \
+    "operation-profiles.c:167:16: warning: locklint: condition wait occurs while holding lock 'operation_state::first' \\[lock-held-during-wait\\]" \
+    operation-profiles.out
+require_match "first profile finish target" \
+    "operation-profiles.c:167:16: warning: locklint: condition wait occurs while holding lock 'operation_state::first_done' \\[lock-held-during-wait\\]" \
+    operation-profiles.out
+require_match "second profile start target" \
+    "operation-profiles.c:179:16: warning: locklint: condition wait occurs while holding lock 'operation_state::second' \\[lock-held-during-wait\\]" \
+    operation-profiles.out
+require_match "second profile start effect at second wait" \
+    "operation-profiles.c:183:16: warning: locklint: condition wait occurs while holding lock 'operation_state::second' \\[lock-held-during-wait\\]" \
+    operation-profiles.out
+require_match "second profile finish target" \
+    "operation-profiles.c:183:16: warning: locklint: condition wait occurs while holding lock 'operation_state::second_done' \\[lock-held-during-wait\\]" \
+    operation-profiles.out
+reject_match "first consumer excludes second profile" \
+    "operation-profiles.c:16[37]:16:.*operation_state::second" \
+    operation-profiles.out
+reject_match "second consumer excludes first profile" \
+    "operation-profiles.c:1\\(79\\|83\\):16:.*operation_state::first" \
+    operation-profiles.out
+if [ "$(grep -c 'warning:' operation-profiles.out)" -ne 6 ]; then
+	fail "operation profile provenance: expected exactly six warnings"
+fi
 
 run_capture "competition protected accesses" competition-accesses.out \
     "$LOCKLINT" -DCOMPETITION_ACCESS_ONLY --check-locks competition-depth.c
