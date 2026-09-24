@@ -24,6 +24,7 @@
  * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  * Copyright (c) 2018, Joyent, Inc.
  * Copyright 2017 Jason King.
+ * Copyright 2026 RackTop Systems, Inc.
  */
 
 #include <pthread.h>
@@ -193,6 +194,7 @@ cbc_common:
 	case CKM_AES_ECB:
 	case CKM_AES_CBC:
 	case CKM_AES_CBC_PAD:
+	case CKM_AES_CFB8:
 	case CKM_AES_CMAC:
 	case CKM_AES_CTR:
 	case CKM_AES_CCM:
@@ -319,6 +321,7 @@ soft_encrypt_common(soft_session_t *session_p, CK_BYTE_PTR pData,
 	case CKM_AES_ECB:
 	case CKM_AES_CBC:
 	case CKM_AES_CBC_PAD:
+	case CKM_AES_CFB8:
 	case CKM_AES_CTR:
 	case CKM_AES_CCM:
 	case CKM_AES_CMAC:
@@ -427,6 +430,7 @@ soft_encrypt_update(soft_session_t *session_p, CK_BYTE_PTR pPart,
 	case CKM_AES_ECB:
 	case CKM_AES_CBC:
 	case CKM_AES_CBC_PAD:
+	case CKM_AES_CFB8:
 	case CKM_AES_CMAC:
 	case CKM_AES_CTR:
 	case CKM_AES_CCM:
@@ -578,6 +582,7 @@ soft_encrypt_final(soft_session_t *session_p, CK_BYTE_PTR pLastEncryptedPart,
 	}
 	case CKM_AES_CBC:
 	case CKM_AES_CBC_PAD:
+	case CKM_AES_CFB8:
 	case CKM_AES_CMAC:
 	case CKM_AES_ECB:
 	case CKM_AES_CTR:
@@ -688,6 +693,7 @@ soft_crypt_cleanup(soft_session_t *session_p, boolean_t encrypt,
 
 	case CKM_AES_CBC:
 	case CKM_AES_CBC_PAD:
+	case CKM_AES_CFB8:
 	case CKM_AES_CMAC:
 	case CKM_AES_ECB:
 	case CKM_AES_CTR:

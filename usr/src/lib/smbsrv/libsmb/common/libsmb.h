@@ -36,6 +36,7 @@ extern "C" {
 #include <sys/inttypes.h>
 #include <sys/list.h>
 #include <sys/avl.h>
+#include <sys/uio.h>
 #include <arpa/inet.h>
 #include <net/if.h>	/* LIFNAMSIZ */
 #include <netdb.h>
@@ -515,6 +516,8 @@ extern void smb_pwd_iterclose(smb_pwditer_t *);
 extern int smb_auth_qnd_unicode(smb_wchar_t *, const char *, int);
 extern int smb_auth_hmac_md5(unsigned char *, int, unsigned char *, int,
     unsigned char *);
+extern int smb_auth_hmac_sha256(const iovec_t *, size_t, const unsigned char *,
+    size_t, unsigned char *);
 
 /*
  * A variation on HMAC-MD5 known as HMACT64 is used by Windows systems.
@@ -529,6 +532,8 @@ extern int smb_auth_DES(unsigned char *, int, unsigned char *, int,
     unsigned char *, int);
 extern int smb_auth_RC4(unsigned char *, int, unsigned char *, int,
     unsigned char *, int);
+extern int smb_auth_AES_CFB8(const iovec_t *, const iovec_t *, size_t,
+    uchar_t *, size_t, uchar_t *, boolean_t);
 
 extern int smb_auth_md4(unsigned char *, unsigned char *, int);
 extern int smb_auth_lm_hash(const char *, unsigned char *);

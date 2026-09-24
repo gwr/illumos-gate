@@ -12,11 +12,12 @@
 #
 # Copyright (c) 2012 by Delphix. All rights reserved.
 # Copyright 2020 Tintri by DDN, Inc. All rights reserved.
+# Copyright 2026 RackTop Systems Inc.
 #
 
 include $(SRC)/Makefile.master
 
-SRCS = default.run
+SRCS = default.run sign.run
 
 OPTPKG = opt/libmlrpc-tests
 ROOTOPTPKG = $(ROOT)/$(OPTPKG)

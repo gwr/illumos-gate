@@ -20,7 +20,7 @@
 #
 # Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
 # Copyright 2020 Tintri by DDN, Inc. All rights reserved.
-# Copyright 2022-2023 RackTop Systems, Inc.
+# Copyright 2022-2026 RackTop Systems Inc.
 #
 
 #
@@ -74,9 +74,11 @@ SYMBOL_VERSION SUNWprivate {
 	smb_acl_len;
 	smb_acl_sort;
 	smb_acl_to_zfs;
+	smb_auth_AES_CFB8;
 	smb_auth_DES;
 	smb_auth_RC4;
 	smb_auth_hmac_md5;
+	smb_auth_hmac_sha256;
 	smb_auth_ntlm_hash;
 	smb_auth_ntlm2_kxkey;
 	smb_auth_ntlm2_mkchallenge;

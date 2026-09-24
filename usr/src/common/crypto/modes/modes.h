@@ -24,7 +24,7 @@
  *
  * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  * Copyright 2019 Joyent, Inc.
- * Copyright 2023 RackTop Systems, Inc.
+ * Copyright 2023-2026 RackTop Systems, Inc.
  */
 
 #ifndef	_COMMON_CRYPTO_MODES_H
@@ -51,6 +51,7 @@ extern "C" {
 #define	GCM_MODE			0x00000020
 #define	GMAC_MODE			0x00000040
 #define	CMAC_MODE			0x00000080
+#define	CFB_MODE			0x00000100
 
 /* Private flag for pkcs11_softtoken */
 #define	P11_DECRYPTED			0x80000000
@@ -125,6 +126,19 @@ typedef struct cbc_ctx {
 #define	cbc_lastp		cbc_common.cc_lastp
 #define	cbc_copy_to		cbc_common.cc_copy_to
 #define	cbc_flags		cbc_common.cc_flags
+
+typedef struct cfb_ctx {
+	struct common_ctx cfb_common;
+} cfb_ctx_t;
+
+#define	cfb_keysched		cfb_common.cc_keysched
+#define	cfb_keysched_len	cfb_common.cc_keysched_len
+#define	cfb_iv			cfb_common.cc_iv
+#define	cfb_remainder		cfb_common.cc_remainder
+#define	cfb_remainder_len	cfb_common.cc_remainder_len
+#define	cfb_lastp		cfb_common.cc_lastp
+#define	cfb_copy_to		cfb_common.cc_copy_to
+#define	cfb_flags		cfb_common.cc_flags
 
 /*
  * ctr_lower_mask		Bit-mask for lower 8 bytes of counter block.
@@ -246,6 +260,7 @@ typedef struct aes_ctx {
 	union {
 		ecb_ctx_t acu_ecb;
 		cbc_ctx_t acu_cbc;
+		cfb_ctx_t acu_cfb;
 		ctr_ctx_t acu_ctr;
 		ccm_ctx_t acu_ccm;
 		gcm_ctx_t acu_gcm;
@@ -313,6 +328,15 @@ extern int cbc_decrypt_contiguous_blocks(cbc_ctx_t *, char *, size_t,
 extern int ctr_mode_contiguous_blocks(ctr_ctx_t *, char *, size_t,
     crypto_data_t *, size_t,
     int (*cipher)(const void *, const uint8_t *, uint8_t *));
+
+extern int cfb_mode_contiguous_blocks(cfb_ctx_t *, char *, size_t,
+    crypto_data_t *, size_t, boolean_t,
+    int (*cipher)(const void *, const uint8_t *, uint8_t *));
+
+extern int cfb_init_ctx(cfb_ctx_t *, char *, size_t, size_t,
+    void (*copy_block)(uint8_t *, uint64_t *));
+
+extern void *cfb_alloc_ctx(int);
 
 extern int ccm_mode_encrypt_contiguous_blocks(ccm_ctx_t *, char *, size_t,
     crypto_data_t *, size_t,

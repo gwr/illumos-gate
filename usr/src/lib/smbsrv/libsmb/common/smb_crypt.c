@@ -23,9 +23,11 @@
  * Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  * Copyright 2012 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2026 RackTop Systems, Inc.
  */
 
 #include <sys/md4.h>
+#include <sys/sha2.h>
 #include <sys/types.h>
 #include <string.h>
 #include <security/cryptoki.h>
@@ -74,12 +76,17 @@ smb_auth_md4(unsigned char *result, unsigned char *input, int length)
 	return (SMBAUTH_SUCCESS);
 }
 
+/*
+ * smb_auth_hmac_md5
+ *
+ * Compute HMAC_MD5 over a single buffer.
+ */
 int
 smb_auth_hmac_md5(unsigned char *data,
-	int data_len,
-	unsigned char *key,
-	int key_len,
-	unsigned char *digest)
+    int data_len,
+    unsigned char *key,
+    int key_len,
+    unsigned char *digest)
 {
 	CK_RV rv;
 	CK_MECHANISM mechanism;
@@ -126,6 +133,56 @@ smb_auth_hmac_md5(unsigned char *data,
 	if (diglen != MD_DIGEST_LEN) {
 		return (SMBAUTH_FAILURE);
 	}
+	return (SMBAUTH_SUCCESS);
+}
+
+/*
+ * smb_auth_hmac_sha256
+ *
+ * Compute HMAC_SHA256 over one or more buffers defined by iov.
+ */
+int
+smb_auth_hmac_sha256(const iovec_t *iov, size_t niov,
+    const unsigned char *key, size_t key_len, unsigned char *digest)
+{
+	CK_MECHANISM mechanism = { CKM_SHA256_HMAC, NULL, 0 };
+	CK_SESSION_HANDLE hsession;
+	CK_OBJECT_HANDLE hkey = 0;
+	CK_ULONG diglen = SHA256_DIGEST_LENGTH;
+	CK_RV rv;
+	size_t i;
+
+	if (key == NULL || key_len == 0 || digest == NULL ||
+	    (niov != 0 && iov == NULL))
+		return (SMBAUTH_FAILURE);
+
+	rv = SUNW_C_GetMechSession(mechanism.mechanism, &hsession);
+	if (rv != CKR_OK)
+		return (SMBAUTH_FAILURE);
+
+	rv = SUNW_C_KeyToObject(hsession, mechanism.mechanism,
+	    key, key_len, &hkey);
+	if (rv == CKR_OK)
+		rv = C_SignInit(hsession, &mechanism, hkey);
+	for (i = 0; i < niov && rv == CKR_OK; i++) {
+		if (iov[i].iov_len == 0)
+			continue;
+		if (iov[i].iov_base == NULL) {
+			rv = CKR_ARGUMENTS_BAD;
+			break;
+		}
+		rv = C_SignUpdate(hsession, (CK_BYTE_PTR)iov[i].iov_base,
+		    iov[i].iov_len);
+	}
+	if (rv == CKR_OK)
+		rv = C_SignFinal(hsession, digest, &diglen);
+
+	if (hkey != 0)
+		(void) C_DestroyObject(hsession, hkey);
+	(void) C_CloseSession(hsession);
+
+	if (rv != CKR_OK || diglen != SHA256_DIGEST_LENGTH)
+		return (SMBAUTH_FAILURE);
 	return (SMBAUTH_SUCCESS);
 }
 
@@ -243,8 +300,8 @@ smb_initlmkey(unsigned char *keyin, unsigned char *keyout)
  */
 int
 smb_auth_RC4(uchar_t *Result, int ResultLen,
-	uchar_t *Key, int KeyLen,
-	uchar_t *Data, int DataLen)
+    uchar_t *Key, int KeyLen,
+    uchar_t *Data, int DataLen)
 {
 	CK_RV rv;
 	CK_MECHANISM mechanism;
@@ -288,5 +345,91 @@ exit_encrypt:
 exit_session:
 	(void) C_CloseSession(hSession);
 
+	return (error);
+}
+
+/*
+ * Encrypt or decrypt one or more buffers with one AES-CFB8 operation.
+ */
+int
+smb_auth_AES_CFB8(const iovec_t *input, const iovec_t *output, size_t count,
+    uchar_t *key, size_t key_len, uchar_t *iv, boolean_t decrypt)
+{
+	CK_RV rv;
+	CK_MECHANISM mechanism;
+	CK_OBJECT_HANDLE hkey;
+	CK_SESSION_HANDLE hsession;
+	CK_ULONG output_len;
+	uchar_t final[16];
+	size_t i;
+	boolean_t has_data = B_FALSE;
+	int error = SMBAUTH_FAILURE;
+
+	if (input == NULL || output == NULL || count == 0 ||
+	    key == NULL || key_len != 16 || iv == NULL)
+		return (SMBAUTH_FAILURE);
+
+	for (i = 0; i < count; i++) {
+		if (input[i].iov_len != output[i].iov_len)
+			return (SMBAUTH_FAILURE);
+		if (input[i].iov_len == 0)
+			continue;
+		if (input[i].iov_base == NULL || output[i].iov_base == NULL)
+			return (SMBAUTH_FAILURE);
+		has_data = B_TRUE;
+	}
+	if (!has_data)
+		return (SMBAUTH_FAILURE);
+
+	mechanism.mechanism = CKM_AES_CFB8;
+	mechanism.pParameter = iv;
+	mechanism.ulParameterLen = 16;
+	rv = SUNW_C_GetMechSession(mechanism.mechanism, &hsession);
+	if (rv != CKR_OK)
+		return (SMBAUTH_FAILURE);
+
+	rv = SUNW_C_KeyToObject(hsession, mechanism.mechanism, key, key_len,
+	    &hkey);
+	if (rv != CKR_OK)
+		goto exit_session;
+
+	if (decrypt)
+		rv = C_DecryptInit(hsession, &mechanism, hkey);
+	else
+		rv = C_EncryptInit(hsession, &mechanism, hkey);
+	if (rv != CKR_OK)
+		goto exit_key;
+
+	for (i = 0; i < count; i++) {
+		if (input[i].iov_len == 0)
+			continue;
+
+		output_len = output[i].iov_len;
+		if (decrypt) {
+			rv = C_DecryptUpdate(hsession,
+			    (CK_BYTE_PTR)input[i].iov_base, input[i].iov_len,
+			    (CK_BYTE_PTR)output[i].iov_base, &output_len);
+		} else {
+			rv = C_EncryptUpdate(hsession,
+			    (CK_BYTE_PTR)input[i].iov_base, input[i].iov_len,
+			    (CK_BYTE_PTR)output[i].iov_base, &output_len);
+		}
+		if (rv != CKR_OK || output_len != output[i].iov_len)
+			goto exit_key;
+	}
+
+	output_len = sizeof (final);
+	if (decrypt)
+		rv = C_DecryptFinal(hsession, final, &output_len);
+	else
+		rv = C_EncryptFinal(hsession, final, &output_len);
+	if (rv == CKR_OK && output_len == 0)
+		error = SMBAUTH_SUCCESS;
+
+exit_key:
+	explicit_bzero(final, sizeof (final));
+	(void) C_DestroyObject(hsession, hkey);
+exit_session:
+	(void) C_CloseSession(hsession);
 	return (error);
 }

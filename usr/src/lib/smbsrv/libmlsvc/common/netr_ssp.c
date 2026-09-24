@@ -11,13 +11,15 @@
 
 /*
  * Copyright 2020 Tintri by DDN, Inc. All Rights Reserved.
- * Copyright 2023 RackTop Systems, Inc.
+ * Copyright 2023-2026 RackTop Systems Inc.
  */
 
 #include <sys/md5.h>
+#include <sys/sha2.h>
 #include <sys/debug.h>
 #include <strings.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <smbsrv/netrauth.h>
 #include <smbsrv/string.h>
 #include <smbsrv/libsmb.h>
@@ -81,9 +83,11 @@ enum nl_token_type {
 	NL_HOST_DNS_COMPRESSED_FLAG|		\
 	NL_COMPUTER_NB_COMPRESSED_FLAG)
 
-#define	MD_DIGEST_LEN 16
-
-/* These structures are OPAQUE at the RPC level - not marshalled. */
+/*
+ * These structures are OPAQUE at the RPC level - not marshalled.
+ * Multi-byte integer members are little-endian on the wire, so access
+ * them using the LE_IN* and LE_OUT* macros.
+ */
 typedef struct nl_auth_message {
 	uint32_t nam_type;
 	uint32_t nam_flags;
@@ -97,6 +101,7 @@ typedef struct nl_auth_message {
  * based on whether the confounder is present.
  */
 #define	NL_AUTH_CONFOUNDER_SIZE	8
+#define	NL_AUTH_SHA2_RESERVED_SIZE	24
 typedef struct nl_auth_sig {
 	uint16_t nas_sig_alg;
 	uint16_t nas_seal_alg;
@@ -104,16 +109,31 @@ typedef struct nl_auth_sig {
 	uint16_t nas_flags;
 	uchar_t nas_seqnum[8];
 	uchar_t nas_sig[8];
-	uchar_t nas_confounder[NL_AUTH_CONFOUNDER_SIZE]; /* Sealing only */
+	uchar_t nas_tail[NL_AUTH_CONFOUNDER_SIZE + NL_AUTH_SHA2_RESERVED_SIZE];
 } nl_auth_sig_t;
 
 #define	NL_AUTH_SIG_SIGN_SIZE	24
 #define	NL_AUTH_SIG_SEAL_SIZE	32
+#define	NL_AUTH_SHA2_SIG_SIGN_SIZE	48
+#define	NL_AUTH_SHA2_SIG_SEAL_SIZE	56
+
+static uchar_t *
+netr_ssp_confounder(nl_auth_sig_t *nas)
+{
+	return (nas->nas_tail);
+}
+
+static uchar_t *
+netr_ssp_reserved(nl_auth_sig_t *nas, boolean_t has_confounder)
+{
+	return (nas->nas_tail + (has_confounder ? NL_AUTH_CONFOUNDER_SIZE : 0));
+}
 
 void
 netr_show_msg(nl_auth_message_t *nam, ndr_stream_t *nds)
 {
-	ndo_printf(nds, NULL, "nl_auth_message: type=0x%x flags=0x%x");
+	ndo_printf(nds, NULL, "nl_auth_message: type=0x%x flags=0x%x",
+	    LE_IN32(&nam->nam_type), LE_IN32(&nam->nam_flags));
 }
 
 void
@@ -122,9 +142,11 @@ netr_show_sig(nl_auth_sig_t *nas, ndr_stream_t *nds)
 	ndo_printf(nds, NULL, "nl_auth_sig: SignatureAlg=0x%x SealAlg=0x%x "
 	    "pad=0x%x flags=0x%x SequenceNumber=%llu Signature=0x%x "
 	    "Confounder=0x%x",
-	    nas->nas_sig_alg, nas->nas_seal_alg, nas->nas_pad,
-	    nas->nas_flags, *(uint64_t *)nas->nas_seqnum,
-	    *(uint64_t *)nas->nas_sig, *(uint64_t *)nas->nas_confounder);
+	    LE_IN16(&nas->nas_sig_alg), LE_IN16(&nas->nas_seal_alg),
+	    LE_IN16(&nas->nas_pad), LE_IN16(&nas->nas_flags),
+	    *(uint64_t *)nas->nas_seqnum,
+	    *(uint64_t *)nas->nas_sig,
+	    *(uint64_t *)netr_ssp_confounder(nas));
 }
 
 /*
@@ -147,6 +169,7 @@ netr_ssp_init(void *arg, ndr_xa_t *mxa)
 	ndr_common_header_t *hdr = &mxa->send_hdr.common_hdr;
 	nl_auth_message_t *nam;
 	size_t domain_len, comp_len, len;
+	uint32_t flags = 0;
 	int slen;
 	uchar_t *dnptrs[3], **dnlastptr;
 
@@ -167,15 +190,12 @@ netr_ssp_init(void *arg, ndr_xa_t *mxa)
 	if (nam == NULL)
 		return (NDR_DRC_FAULT_SEC_OUT_OF_MEMORY);
 
-	nam->nam_type = NL_AUTH_REQUEST;
-	nam->nam_flags = 0;
-
 	if (domain_len != -1) {
 		slen = smb_mbstooem(nam->nam_str, auth->nb_domain, domain_len);
 		if (slen >= 0) {
 			hdr->auth_length += slen + 1;
 			nam->nam_str[hdr->auth_length - 1] = '\0';
-			nam->nam_flags |= NL_DOMAIN_NB_OEM_FLAG;
+			flags |= NL_DOMAIN_NB_OEM_FLAG;
 		}
 	}
 
@@ -185,7 +205,7 @@ netr_ssp_init(void *arg, ndr_xa_t *mxa)
 		if (slen >= 0) {
 			hdr->auth_length += slen + 1;
 			nam->nam_str[hdr->auth_length - 1] = '\0';
-			nam->nam_flags |= NL_COMPUTER_NB_OEM_FLAG;
+			flags |= NL_COMPUTER_NB_OEM_FLAG;
 		}
 	}
 
@@ -198,7 +218,7 @@ netr_ssp_init(void *arg, ndr_xa_t *mxa)
 	if (slen >= 0) {
 		hdr->auth_length += slen;
 		nam->nam_str[hdr->auth_length] = '\0';
-		nam->nam_flags |= NL_DOMAIN_DNS_COMPRESSED_FLAG;
+		flags |= NL_DOMAIN_DNS_COMPRESSED_FLAG;
 	}
 
 	slen = dn_comp(auth->hostname, nam->nam_str + hdr->auth_length,
@@ -206,13 +226,16 @@ netr_ssp_init(void *arg, ndr_xa_t *mxa)
 	if (slen >= 0) {
 		hdr->auth_length += slen;
 		nam->nam_str[hdr->auth_length] = '\0';
-		nam->nam_flags |= NL_COMPUTER_NB_COMPRESSED_FLAG;
+		flags |= NL_COMPUTER_NB_COMPRESSED_FLAG;
 	}
 
 	/* We must provide at least one Domain Name and Computer Name */
-	if ((nam->nam_flags & NL_DOMAIN_FLAGS) == 0 ||
-	    (nam->nam_flags & NL_COMPUTER_FLAGS) == 0)
+	if ((flags & NL_DOMAIN_FLAGS) == 0 ||
+	    (flags & NL_COMPUTER_FLAGS) == 0)
 		return (NDR_DRC_FAULT_SEC_ENCODE_FAILED);
+
+	LE_OUT32(&nam->nam_type, NL_AUTH_REQUEST);
+	LE_OUT32(&nam->nam_flags, flags);
 
 	mxa->send_auth.auth_value = (void *)nam;
 	hdr->auth_length += sizeof (nam->nam_flags) + sizeof (nam->nam_type);
@@ -231,26 +254,25 @@ netr_ssp_recv(void *arg, ndr_xa_t *mxa)
 	ndr_common_header_t *ahdr = &mxa->recv_hdr.common_hdr;
 	ndr_sec_t *ack_secp = &mxa->recv_auth;
 	nl_auth_message_t *nam;
-	int rc;
 
 	nam = (nl_auth_message_t *)ack_secp->auth_value;
 
-	/* We only need to verify the length ("at least 12") and the type */
+	/*
+	 * We only need to verify the length ("at least 12") and the type.
+	 * Don't show a message that is too short to hold its header.
+	 */
 	if (ahdr->auth_length < 12) {
-		rc = NDR_DRC_FAULT_SEC_AUTH_LENGTH_INVALID;
-		goto errout;
+		ndo_printf(&mxa->recv_nds, NULL,
+		    "nl_auth_message: short length: %u", ahdr->auth_length);
+		return (NDR_DRC_FAULT_SEC_AUTH_LENGTH_INVALID);
 	}
-	if (nam->nam_type != NL_AUTH_RESPONSE) {
-		rc = NDR_DRC_FAULT_SEC_META_INVALID;
-		goto errout;
+	if (LE_IN32(&nam->nam_type) != NL_AUTH_RESPONSE) {
+		netr_show_msg(nam, &mxa->recv_nds);
+		return (NDR_DRC_FAULT_SEC_META_INVALID);
 	}
 	auth->clh_seqnum = 0;
 
 	return (NDR_DRC_OK);
-
-errout:
-	netr_show_msg(nam, &mxa->recv_nds);
-	return (rc);
 }
 
 /* returns byte N of seqnum */
@@ -281,6 +303,166 @@ netr_ssp_derive_key(uchar_t *input_key, uint_t key_len,
 
 	return (rc);
 }
+
+/*
+ * The HMAC-MD5 signature is computed as follows:
+ * First 8 bytes of
+ * HMAC_MD5(
+ *	MD5(0x00000000 | sig_alg | seal_alg | pad | flags |
+ *		<confounder if present> | PDU body),
+ *	session_key)
+ * (caller handles truncation)
+ */
+static int
+netr_ssp_md5_sig(netr_info_t *auth, nl_auth_sig_t *nas,
+    uchar_t *confounder, uchar_t *pdu_body, size_t pdu_body_size,
+    uchar_t *sig)
+{
+	uint32_t zeroes = 0;
+	MD5_CTX md5h;
+
+	MD5Init(&md5h);
+	MD5Update(&md5h, (uchar_t *)&zeroes, 4);
+	MD5Update(&md5h, (uchar_t *)nas, 8);
+	if (confounder != NULL)
+		MD5Update(&md5h, confounder, NL_AUTH_CONFOUNDER_SIZE);
+	MD5Update(&md5h, pdu_body, pdu_body_size);
+	MD5Final(sig, &md5h);
+
+	return (smb_auth_hmac_md5(sig, MD_DIGEST_LEN,
+	    auth->session_key.key, auth->session_key.len, sig));
+}
+
+/*
+ * The SHA256 signature is computed as follows:
+ * First 8 bytes of
+ * HMAC_SHA256(sig_alg | seal_alg | pad | flags |
+ *	<confounder if present> | PDU body, session_key)
+ * (caller handles truncation)
+ */
+static int
+netr_ssp_sha256_sig(netr_info_t *auth, nl_auth_sig_t *nas,
+    uchar_t *confounder, uchar_t *pdu_body, size_t pdu_body_size,
+    uchar_t *sig)
+{
+	iovec_t data[3];
+	size_t count = 0;
+
+	data[count].iov_base = (caddr_t)nas;
+	data[count++].iov_len = 8;
+	if (confounder != NULL) {
+		data[count].iov_base = (caddr_t)confounder;
+		data[count++].iov_len = NL_AUTH_CONFOUNDER_SIZE;
+	}
+	data[count].iov_base = (caddr_t)pdu_body;
+	data[count++].iov_len = pdu_body_size;
+
+	return (smb_auth_hmac_sha256(data, count, auth->session_key.key,
+	    auth->session_key.len, sig));
+}
+
+/*
+ * The confounder and body use independent RC4 streams with the same key.
+ * The EncryptionKey is computed as follows:
+ * XorKey = (XOR each byte of session_key with 0xf0)
+ * HMAC_MD5(local_seqnum, HMAC_MD5(0x00000000, xor_key))
+ */
+static int
+netr_ssp_rc4_seal(netr_info_t *auth, uchar_t *seqnum,
+    uchar_t *confounder_in, uchar_t *confounder_out,
+    uchar_t *pdu_body, size_t pdu_body_size)
+{
+	BYTE key[MD_DIGEST_LEN];
+	int rc;
+
+	rc = netr_ssp_derive_key(auth->rpc_seal_key.key,
+	    auth->rpc_seal_key.len, seqnum, 8, key);
+	if (rc == 0)
+		rc = smb_auth_RC4(confounder_out, NL_AUTH_CONFOUNDER_SIZE,
+		    key, sizeof (key), confounder_in, NL_AUTH_CONFOUNDER_SIZE);
+	if (rc == 0)
+		rc = smb_auth_RC4(pdu_body, pdu_body_size,
+		    key, sizeof (key), pdu_body, pdu_body_size);
+
+	explicit_bzero(key, sizeof (key));
+	return (rc);
+}
+
+/*
+ * The confounder and body share one AES-CFB8 operation.
+ * The EncryptionKey is computed as: XOR each byte of session_key with 0xf0
+ * (That's exactly auth->rpc_seal_key).
+ */
+static int
+netr_ssp_aes_seal(netr_info_t *auth, uchar_t *seqnum,
+    uchar_t *confounder_in, uchar_t *confounder_out,
+    uchar_t *pdu_body, size_t pdu_body_size, boolean_t decrypt)
+{
+	uchar_t iv[16];
+	iovec_t input[2];
+	iovec_t output[2];
+	int rc;
+
+	bcopy(seqnum, iv, 8);
+	bcopy(seqnum, iv + 8, 8);
+	input[0].iov_base = (caddr_t)confounder_in;
+	input[0].iov_len = NL_AUTH_CONFOUNDER_SIZE;
+	output[0].iov_base = (caddr_t)confounder_out;
+	output[0].iov_len = NL_AUTH_CONFOUNDER_SIZE;
+	input[1].iov_base = (caddr_t)pdu_body;
+	input[1].iov_len = pdu_body_size;
+	output[1].iov_base = (caddr_t)pdu_body;
+	output[1].iov_len = pdu_body_size;
+	rc = smb_auth_AES_CFB8(input, output, 2, auth->rpc_seal_key.key,
+	    auth->rpc_seal_key.len, iv, decrypt);
+
+	explicit_bzero(iv, sizeof (iv));
+	return (rc);
+}
+
+/*
+ * For RC4 Encryption, the EncryptionKey is computed as follows:
+ * HMAC_MD5(signature, HMAC_MD5(0x00000000, session_key))
+ */
+static int
+netr_ssp_rc4_seqnum(netr_info_t *auth, nl_auth_sig_t *nas)
+{
+	BYTE key[MD_DIGEST_LEN];
+	int rc;
+
+	rc = netr_ssp_derive_key(auth->session_key.key,
+	    auth->session_key.len, nas->nas_sig, sizeof (nas->nas_sig), key);
+	if (rc == 0)
+		rc = smb_auth_RC4(nas->nas_seqnum, sizeof (nas->nas_seqnum),
+		    key, sizeof (key), nas->nas_seqnum,
+		    sizeof (nas->nas_seqnum));
+
+	explicit_bzero(key, sizeof (key));
+	return (rc);
+}
+
+/*
+ * For AES Encryption, the EncryptionKey is exactly the SessionKey.
+ */
+static int
+netr_ssp_aes_seqnum(netr_info_t *auth, nl_auth_sig_t *nas, boolean_t decrypt)
+{
+	int rc;
+	uint8_t iv[16];
+	iovec_t data;
+
+	bcopy(nas->nas_sig, iv, sizeof (nas->nas_sig));
+	bcopy(nas->nas_sig, iv + sizeof (nas->nas_sig),
+	    sizeof (nas->nas_sig));
+	data.iov_base = (caddr_t)nas->nas_seqnum;
+	data.iov_len = sizeof (nas->nas_seqnum);
+	rc = smb_auth_AES_CFB8(&data, &data, 1, auth->session_key.key,
+	    auth->session_key.len, iv, decrypt);
+
+	explicit_bzero(&iv, sizeof (iv));
+	return (rc);
+}
+
 /*
  * [MS-NRPC] 3.3.4.2.1 "Generating a Client Netlogon Signature Token"
  *
@@ -294,11 +476,11 @@ int
 netr_ssp_make_token(netr_info_t *auth, ndr_stream_t *nds, nl_auth_sig_t *nas,
     uchar_t *confounder)
 {
-	uint32_t zeroes = 0;
-	MD5_CTX md5h;
-	BYTE local_sig[MD_DIGEST_LEN];
-	BYTE enc_key[MD_DIGEST_LEN];
+	BYTE local_sig[SHA256_DIGEST_LENGTH];
 	uchar_t *pdu_body = nds->pdu_base_addr + nds->pdu_body_offset;
+	uint16_t sig_alg, seal_alg;
+
+	CTASSERT(SHA256_DIGEST_LENGTH >= MD_DIGEST_LEN);
 
 	/*
 	 * SignatureAlgorithm is first byte 0x77, second byte 00 for HMAC-MD5
@@ -313,13 +495,17 @@ netr_ssp_make_token(netr_info_t *auth, ndr_stream_t *nds, nl_auth_sig_t *nas,
 	 *
 	 * Each of these is always encoded in little-endian order.
 	 */
-	nas->nas_sig_alg = 0x0077;
+	sig_alg = auth->use_aes ? 0x0013 : 0x0077;
 	if (confounder != NULL)
-		nas->nas_seal_alg = 0x007A;
+		seal_alg = auth->use_aes ? 0x001A : 0x007A;
 	else
-		nas->nas_seal_alg = 0xffff;
-	nas->nas_pad = 0xffff;
-	nas->nas_flags = 0;
+		seal_alg = 0xffff;
+	LE_OUT16(&nas->nas_sig_alg, sig_alg);
+	LE_OUT16(&nas->nas_seal_alg, seal_alg);
+	LE_OUT16(&nas->nas_pad, 0xffff);
+	LE_OUT16(&nas->nas_flags, 0);
+	bzero(netr_ssp_reserved(nas, confounder != NULL),
+	    NL_AUTH_SHA2_RESERVED_SIZE);
 
 	/*
 	 * Calculate the SequenceNumber.
@@ -338,24 +524,15 @@ netr_ssp_make_token(netr_info_t *auth, ndr_stream_t *nds, nl_auth_sig_t *nas,
 	auth->clh_seqnum++;
 
 	/*
-	 * The HMAC-MD5 signature is computed as follows:
-	 * First 8 bytes of
-	 * HMAC_MD5(
-	 *	MD5(0x00000000 | sig_alg | seal_alg | pad | flags |
-	 *		<confounder if present> | PDU body),
-	 *	session_key)
+	 * Compute the Signature.
+	 * Note that this is based on the unencrypted data.
 	 */
-	MD5Init(&md5h);
-	MD5Update(&md5h, (uchar_t *)&zeroes, 4);
-	MD5Update(&md5h, (uchar_t *)nas, 8);
-	if (confounder != NULL)
-		MD5Update(&md5h, confounder, NL_AUTH_CONFOUNDER_SIZE);
-	MD5Update(&md5h, pdu_body, nds->pdu_body_size);
-
-	MD5Final(local_sig, &md5h);
-	if (smb_auth_hmac_md5(local_sig, sizeof (local_sig),
-	    auth->session_key.key, auth->session_key.len,
-	    local_sig) != 0)
+	if (auth->use_aes) {
+		if (netr_ssp_sha256_sig(auth, nas, confounder, pdu_body,
+		    nds->pdu_body_size, local_sig) != SMBAUTH_SUCCESS)
+			return (NDR_DRC_FAULT_SEC_SSP_FAILED);
+	} else if (netr_ssp_md5_sig(auth, nas, confounder, pdu_body,
+	    nds->pdu_body_size, local_sig) != 0)
 		return (NDR_DRC_FAULT_SEC_SSP_FAILED);
 
 	bcopy(local_sig, nas->nas_sig, 8);
@@ -363,58 +540,31 @@ netr_ssp_make_token(netr_info_t *auth, ndr_stream_t *nds, nl_auth_sig_t *nas,
 	/*
 	 * [MS-NRPC] 3.3.4.2.1 "Generating a Client Netlogon Signature Token"
 	 * Encrypt the Confounder and PDU Body.
-	 * For RC4 Encryption, the EncryptionKey is computed as follows:
-	 * XorKey = (XOR each byte of session_key with 0xf0)
-	 * HMAC_MD5(local_seqnum, HMAC_MD5(0x00000000, xor_key))
-	 *
-	 * Step 8 says "the Confounder field and the data MUST be encrypted,
-	 * in that order, using the same encryption algorithm". It also says
-	 * "The server MUST initialize RC4 only once, before encrypting the
-	 * Confounder field".
-	 * However, that's a lie! They're encrypted independently for RC4.
 	 */
 	if (confounder != NULL) {
-		int rc;
-
-		rc = netr_ssp_derive_key(
-		    auth->rpc_seal_key.key, auth->rpc_seal_key.len,
-		    (uchar_t *)nas->nas_seqnum, sizeof (nas->nas_seqnum),
-		    enc_key);
-
-		if (rc != 0)
-			goto errout;
-
-		if (smb_auth_RC4(nas->nas_confounder,
-		    sizeof (nas->nas_confounder),
-		    enc_key, sizeof (enc_key),
-		    confounder, NL_AUTH_CONFOUNDER_SIZE) != 0)
-			goto errout;
-
-		if (smb_auth_RC4(pdu_body, nds->pdu_body_size,
-		    enc_key, sizeof (enc_key),
-		    pdu_body, nds->pdu_body_size) != 0)
+		if (auth->use_aes) {
+			if (netr_ssp_aes_seal(auth, nas->nas_seqnum,
+			    confounder, netr_ssp_confounder(nas), pdu_body,
+			    nds->pdu_body_size, B_FALSE) != SMBAUTH_SUCCESS)
+				goto errout;
+		} else if (netr_ssp_rc4_seal(auth, nas->nas_seqnum,
+		    confounder, netr_ssp_confounder(nas), pdu_body,
+		    nds->pdu_body_size) != 0)
 			goto errout;
 	}
 
 	/*
 	 * Encrypt the SequenceNumber.
-	 * For RC4 Encryption, the EncryptionKey is computed as follows:
-	 * HMAC_MD5(signature, HMAC_MD5(0x00000000, session_key))
 	 */
-	if (netr_ssp_derive_key(auth->session_key.key, auth->session_key.len,
-	    (uchar_t *)nas->nas_sig, sizeof (nas->nas_sig), enc_key) != 0)
+	if (auth->use_aes) {
+		if (netr_ssp_aes_seqnum(auth, nas, B_FALSE) != 0)
+			goto errout;
+	} else if (netr_ssp_rc4_seqnum(auth, nas) != 0)
 		goto errout;
 
-	if (smb_auth_RC4(nas->nas_seqnum, sizeof (nas->nas_seqnum),
-	    enc_key, sizeof (enc_key),
-	    nas->nas_seqnum, sizeof (nas->nas_seqnum)) != 0)
-		goto errout;
-
-	explicit_bzero(enc_key, sizeof (enc_key));
 	return (NDR_DRC_OK);
 
 errout:
-	explicit_bzero(enc_key, sizeof (enc_key));
 	return (NDR_DRC_FAULT_SEC_SSP_FAILED);
 }
 
@@ -431,10 +581,7 @@ int
 netr_ssp_check_token(netr_info_t *auth, ndr_stream_t *nds, nl_auth_sig_t *nas,
     boolean_t verify_resp, boolean_t has_confounder)
 {
-	uint32_t zeroes = 0;
-	MD5_CTX md5h;
-	BYTE local_sig[MD_DIGEST_LEN];
-	BYTE dec_key[MD_DIGEST_LEN];
+	BYTE local_sig[SHA256_DIGEST_LENGTH];
 	BYTE local_seqnum[8];
 	uchar_t confounder[NL_AUTH_CONFOUNDER_SIZE];
 	uchar_t *pdu_body = nds->pdu_base_addr + nds->pdu_body_offset;
@@ -445,22 +592,21 @@ netr_ssp_check_token(netr_info_t *auth, ndr_stream_t *nds, nl_auth_sig_t *nas,
 	 * Verify SignatureAlgorithm, SealAlgorithm, and Pad are as expected.
 	 * These follow the same values as in the Client Signature.
 	 */
-	if (nas->nas_sig_alg != 0x0077 ||
-	    nas->nas_seal_alg != (has_confounder ? 0x007A : 0xffff) ||
-	    nas->nas_pad != 0xffff) {
+	if (LE_IN16(&nas->nas_sig_alg) != (auth->use_aes ? 0x0013 : 0x0077) ||
+	    LE_IN16(&nas->nas_seal_alg) != (has_confounder ?
+	    (auth->use_aes ? 0x001A : 0x007A) : 0xffff) ||
+	    LE_IN16(&nas->nas_pad) != 0xffff) {
 		rc = NDR_DRC_FAULT_SEC_META_INVALID;
 		goto errout;
 	}
 
 	/* Decrypt the SequenceNumber. This is done the same as the Client. */
-	if (netr_ssp_derive_key(auth->session_key.key, auth->session_key.len,
-	    (uchar_t *)nas->nas_sig, sizeof (nas->nas_sig), dec_key) != 0) {
-		rc = NDR_DRC_FAULT_SEC_SSP_FAILED;
-		goto errout;
-	}
-	if (smb_auth_RC4(nas->nas_seqnum, sizeof (nas->nas_seqnum),
-	    dec_key, sizeof (dec_key),
-	    nas->nas_seqnum, sizeof (nas->nas_seqnum)) != 0) {
+	if (auth->use_aes) {
+		if (netr_ssp_aes_seqnum(auth, nas, B_TRUE) != 0) {
+			rc = NDR_DRC_FAULT_SEC_SSP_FAILED;
+			goto errout;
+		}
+	} else if (netr_ssp_rc4_seqnum(auth, nas) != 0) {
 		rc = NDR_DRC_FAULT_SEC_SSP_FAILED;
 		goto errout;
 	}
@@ -492,28 +638,18 @@ netr_ssp_check_token(netr_info_t *auth, ndr_stream_t *nds, nl_auth_sig_t *nas,
 
 	/*
 	 * Decrypt the Confounder and PDU Body.
-	 * For RC4 Encryption, the EncryptionKey is computed as follows:
-	 * XorKey = (XOR each byte of session_key with 0xf0)
-	 * HMAC_MD5(local_seqnum, HMAC_MD5(0x00000000, xor_key))
 	 */
 	if (has_confounder) {
-		if (netr_ssp_derive_key(
-		    auth->rpc_seal_key.key, auth->rpc_seal_key.len,
-		    (uchar_t *)local_seqnum, sizeof (local_seqnum),
-		    dec_key) != 0) {
-			rc = NDR_DRC_FAULT_SEC_SSP_FAILED;
-			goto errout;
-		}
-
-		if (smb_auth_RC4(confounder, NL_AUTH_CONFOUNDER_SIZE,
-		    dec_key, sizeof (dec_key),
-		    nas->nas_confounder, sizeof (nas->nas_confounder)) != 0) {
-			rc = NDR_DRC_FAULT_SEC_SSP_FAILED;
-			goto errout;
-		}
-		if (smb_auth_RC4(pdu_body, nds->pdu_body_size,
-		    dec_key, sizeof (dec_key),
-		    pdu_body, nds->pdu_body_size) != 0) {
+		if (auth->use_aes) {
+			if (netr_ssp_aes_seal(auth, local_seqnum,
+			    netr_ssp_confounder(nas), confounder, pdu_body,
+			    nds->pdu_body_size, B_TRUE) != SMBAUTH_SUCCESS) {
+				rc = NDR_DRC_FAULT_SEC_SSP_FAILED;
+				goto errout;
+			}
+		} else if (netr_ssp_rc4_seal(auth, local_seqnum,
+		    netr_ssp_confounder(nas), confounder, pdu_body,
+		    nds->pdu_body_size) != 0) {
 			rc = NDR_DRC_FAULT_SEC_SSP_FAILED;
 			goto errout;
 		}
@@ -522,17 +658,18 @@ netr_ssp_check_token(netr_info_t *auth, ndr_stream_t *nds, nl_auth_sig_t *nas,
 	/*
 	 * Calculate the signature.
 	 * This is done the same as the Client.
+	 * The signature is based on the unencrypted data.
 	 */
-	MD5Init(&md5h);
-	MD5Update(&md5h, (uchar_t *)&zeroes, 4);
-	MD5Update(&md5h, (uchar_t *)nas, 8);
-	if (has_confounder)
-		MD5Update(&md5h, confounder, NL_AUTH_CONFOUNDER_SIZE);
-	MD5Update(&md5h, pdu_body, nds->pdu_body_size);
-	MD5Final(local_sig, &md5h);
-	if (smb_auth_hmac_md5(local_sig, sizeof (local_sig),
-	    auth->session_key.key, auth->session_key.len,
-	    local_sig) != 0) {
+	if (auth->use_aes) {
+		if (netr_ssp_sha256_sig(auth, nas,
+		    has_confounder ? confounder : NULL, pdu_body,
+		    nds->pdu_body_size, local_sig) != SMBAUTH_SUCCESS) {
+			rc = NDR_DRC_FAULT_SEC_SSP_FAILED;
+			goto errout;
+		}
+	} else if (netr_ssp_md5_sig(auth, nas,
+	    has_confounder ? confounder : NULL, pdu_body,
+	    nds->pdu_body_size, local_sig) != 0) {
 		rc = NDR_DRC_FAULT_SEC_SSP_FAILED;
 		goto errout;
 	}
@@ -546,13 +683,11 @@ netr_ssp_check_token(netr_info_t *auth, ndr_stream_t *nds, nl_auth_sig_t *nas,
 		goto errout;
 	}
 
-	explicit_bzero(dec_key, sizeof (dec_key));
 	return (NDR_DRC_OK);
 
 errout:
 	netr_show_sig(nas, nds);
 
-	explicit_bzero(dec_key, sizeof (dec_key));
 	if (!verify_resp) {
 		if (!seqnum_bumped)
 			auth->clh_seqnum++;
@@ -569,12 +704,17 @@ errout:
 int
 netr_ssp_sign(void *arg, ndr_xa_t *mxa)
 {
+	netr_info_t *auth = arg;
 	ndr_common_header_t *hdr = &mxa->send_hdr.common_hdr;
 	nl_auth_sig_t *nas;
 
-	hdr->auth_length = NL_AUTH_SIG_SIGN_SIZE;
+	hdr->auth_length = auth->use_aes ? NL_AUTH_SHA2_SIG_SIGN_SIZE :
+	    NL_AUTH_SIG_SIGN_SIZE;
 	CTASSERT(NL_AUTH_SIG_SIGN_SIZE ==
 	    (offsetof(nl_auth_sig_t, nas_sig) + sizeof (nas->nas_sig)));
+	CTASSERT(NL_AUTH_SHA2_SIG_SIGN_SIZE ==
+	    offsetof(nl_auth_sig_t, nas_tail) + NL_AUTH_SHA2_RESERVED_SIZE);
+
 	nas = NDR_MALLOC(mxa, sizeof (*nas));
 	if (nas == NULL)
 		return (NDR_DRC_FAULT_SEC_OUT_OF_MEMORY);
@@ -590,11 +730,13 @@ netr_ssp_sign(void *arg, ndr_xa_t *mxa)
 int
 netr_ssp_verify(void *arg, ndr_xa_t *mxa, boolean_t verify_resp)
 {
+	netr_info_t *auth = arg;
 	ndr_common_header_t *hdr = &mxa->recv_hdr.common_hdr;
 	ndr_sec_t *secp = &mxa->recv_auth;
 	nl_auth_sig_t *nas = (nl_auth_sig_t *)secp->auth_value;
 
-	if (hdr->auth_length < NL_AUTH_SIG_SIGN_SIZE)
+	if (hdr->auth_length < (auth->use_aes ? NL_AUTH_SHA2_SIG_SIGN_SIZE :
+	    NL_AUTH_SIG_SIGN_SIZE))
 		return (NDR_DRC_FAULT_SEC_AUTH_LENGTH_INVALID);
 
 	return (netr_ssp_check_token(arg, &mxa->recv_nds, nas, verify_resp,
@@ -609,12 +751,17 @@ netr_ssp_verify(void *arg, ndr_xa_t *mxa, boolean_t verify_resp)
 int
 netr_ssp_encrypt(void *arg, ndr_xa_t *mxa)
 {
+	netr_info_t *auth = arg;
 	uchar_t confounder[NL_AUTH_CONFOUNDER_SIZE];
 	ndr_common_header_t *hdr = &mxa->send_hdr.common_hdr;
 	nl_auth_sig_t *nas;
 
-	hdr->auth_length = NL_AUTH_SIG_SEAL_SIZE;
-	CTASSERT(NL_AUTH_SIG_SEAL_SIZE == sizeof (*nas));
+	hdr->auth_length = auth->use_aes ? NL_AUTH_SHA2_SIG_SEAL_SIZE :
+	    NL_AUTH_SIG_SEAL_SIZE;
+	CTASSERT(NL_AUTH_SIG_SEAL_SIZE ==
+	    offsetof(nl_auth_sig_t, nas_tail) + NL_AUTH_CONFOUNDER_SIZE);
+	CTASSERT(NL_AUTH_SHA2_SIG_SEAL_SIZE == sizeof (nl_auth_sig_t));
+
 	nas = NDR_MALLOC(mxa, sizeof (*nas));
 	if (nas == NULL)
 		return (NDR_DRC_FAULT_SEC_OUT_OF_MEMORY);
@@ -632,11 +779,13 @@ netr_ssp_encrypt(void *arg, ndr_xa_t *mxa)
 int
 netr_ssp_decrypt(void *arg, ndr_xa_t *mxa, boolean_t verify_resp)
 {
+	netr_info_t *auth = arg;
 	ndr_common_header_t *hdr = &mxa->recv_hdr.common_hdr;
 	ndr_sec_t *secp = &mxa->recv_auth;
 	nl_auth_sig_t *nas = (nl_auth_sig_t *)secp->auth_value;
 
-	if (hdr->auth_length < NL_AUTH_SIG_SEAL_SIZE)
+	if (hdr->auth_length < (auth->use_aes ? NL_AUTH_SHA2_SIG_SEAL_SIZE :
+	    NL_AUTH_SIG_SEAL_SIZE))
 		return (NDR_DRC_FAULT_SEC_AUTH_LENGTH_INVALID);
 
 	return (netr_ssp_check_token(arg, &mxa->recv_nds, nas, verify_resp,

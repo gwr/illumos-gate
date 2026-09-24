@@ -24,7 +24,7 @@
  * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
  * Copyright 2019 Joyent, Inc.
  * Copyright 2017 Jason King.
- * Copyright 2025 RackTop Systems, Inc.
+ * Copyright 2025-2026 RackTop Systems, Inc.
  */
 
 #include <pthread.h>
@@ -78,6 +78,10 @@ soft_aes_check_mech_param(CK_MECHANISM_PTR mech, aes_ctx_t **ctxp)
 		/* See comment above this function. */
 		param_len = AES_GMAC_IV_LEN;
 		allocf = gmac_alloc_ctx;
+		break;
+	case CKM_AES_CFB8:
+		param_len = AES_BLOCK_LEN;
+		allocf = cfb_alloc_ctx;
 		break;
 	case CKM_AES_CBC:
 	case CKM_AES_CBC_PAD:
@@ -248,6 +252,10 @@ soft_aes_init_ctx(aes_ctx_t *aes_ctx, CK_MECHANISM_PTR mech_p,
 		rc = cbc_init_ctx((cbc_ctx_t *)aes_ctx, mech_p->pParameter,
 		    mech_p->ulParameterLen, AES_BLOCK_LEN, aes_copy_block64);
 		break;
+	case CKM_AES_CFB8:
+		rc = cfb_init_ctx((cfb_ctx_t *)aes_ctx, mech_p->pParameter,
+		    mech_p->ulParameterLen, AES_BLOCK_LEN, aes_copy_block64);
+		break;
 	case CKM_AES_CTR:
 	{
 		/*
@@ -350,7 +358,6 @@ done:
 	return (rv);
 }
 
-
 CK_RV
 soft_aes_encrypt(soft_session_t *session_p, CK_BYTE_PTR pData,
     CK_ULONG ulDataLen, CK_BYTE_PTR pEncryptedData,
@@ -383,7 +390,7 @@ soft_aes_encrypt(soft_session_t *session_p, CK_BYTE_PTR pData,
 	remainder = ulDataLen % AES_BLOCK_LEN;
 
 	/*
-	 * CTR, CCM, CMAC, and GCM modes do not require the plaintext
+	 * CTR, CCM, CMAC, CFB, and GCM modes do not require the plaintext
 	 * to be a multiple of the AES block size. CKM_AES_CBC_PAD as the
 	 * name suggests pads it's output, so it can also accept any
 	 * size plaintext.
@@ -392,6 +399,7 @@ soft_aes_encrypt(soft_session_t *session_p, CK_BYTE_PTR pData,
 	case CKM_AES_CBC_PAD:
 	case CKM_AES_CMAC:
 	case CKM_AES_CMAC_GENERAL:
+	case CKM_AES_CFB8:
 	case CKM_AES_CTR:
 	case CKM_AES_CCM:
 	case CKM_AES_GCM:
@@ -512,10 +520,10 @@ soft_aes_encrypt(soft_session_t *session_p, CK_BYTE_PTR pData,
 		rv = crypto2pkcs11_error_number(rc);
 		break;
 	case CKM_AES_CTR:
+	case CKM_AES_CFB8:
 		/*
-		 * As CKM_AES_CTR is a stream cipher, ctr_mode_final is always
-		 * invoked in the xx_update() functions, so we do not need to
-		 * call it again here.
+		 * As CKM_AES_CTR and CKM_AES_CFB8 are stream ciphers, all
+		 * input is consumed in the xx_update() functions.
 		 */
 		break;
 	case CKM_AES_ECB:
@@ -710,6 +718,7 @@ soft_aes_decrypt(soft_session_t *session_p, CK_BYTE_PTR pEncryptedData,
 	switch (mech) {
 	case CKM_AES_CMAC:
 	case CKM_AES_CMAC_GENERAL:
+	case CKM_AES_CFB8:
 	case CKM_AES_CTR:
 	case CKM_AES_CCM:
 	case CKM_AES_GCM:
@@ -876,9 +885,10 @@ soft_aes_encrypt_update(soft_session_t *session_p, CK_BYTE_PTR pData,
 		out_len = 0;
 		break;
 	case CKM_AES_CTR:
+	case CKM_AES_CFB8:
 		/*
-		 * CTR mode is a stream cipher, so we always output exactly as
-		 * much ciphertext as input plaintext
+		 * CTR and CFB8 modes are stream ciphers, so we always output
+		 * exactly as much ciphertext as input plaintext.
 		 */
 		out_len = ulDataLen;
 		break;
@@ -1111,9 +1121,10 @@ soft_aes_decrypt_update(soft_session_t *session_p, CK_BYTE_PTR pEncryptedData,
 		}
 		break;
 	case CKM_AES_CTR:
+	case CKM_AES_CFB8:
 		/*
-		 * CKM_AES_CTR is a stream cipher, so we always output
-		 * exactly as much output plaintext as input ciphertext
+		 * CKM_AES_CTR and CKM_AES_CFB8 are stream ciphers, so we
+		 * always output exactly as much plaintext as input ciphertext.
 		 */
 		out_len = in_len;
 		break;
@@ -1219,9 +1230,11 @@ soft_aes_encrypt_final(soft_session_t *session_p,
 		out_len = AES_BLOCK_LEN;
 		break;
 	case CKM_AES_CTR:
+	case CKM_AES_CFB8:
 		/*
-		 * Since CKM_AES_CTR is a stream cipher, we never buffer any
-		 * input, so we always have 0 remaining bytes of output.
+		 * Since CKM_AES_CTR and CKM_AES_CFB8 are stream ciphers, we
+		 * never buffer any input, so we always have 0 remaining bytes
+		 * of output.
 		 */
 		out_len = 0;
 		break;
@@ -1275,10 +1288,11 @@ soft_aes_encrypt_final(soft_session_t *session_p,
 		break;
 	}
 	case CKM_AES_CTR:
+	case CKM_AES_CFB8:
 		/*
-		 * Since CKM_AES_CTR is a stream cipher, we never
-		 * buffer any data, and thus have no remaining data
-		 * to output at the end
+		 * Since CKM_AES_CTR and CKM_AES_CFB8 are stream ciphers, we
+		 * never buffer any data, and thus have no remaining data to
+		 * output at the end.
 		 */
 		break;
 	case CKM_AES_CCM:
@@ -1420,9 +1434,10 @@ soft_aes_decrypt_final(soft_session_t *session_p, CK_BYTE_PTR pLastPart,
 		out_len = aes_ctx->ac_remainder_len;
 		break;
 	case CKM_AES_CTR:
+	case CKM_AES_CFB8:
 		/*
-		 * Since CKM_AES_CTR is a stream cipher, we never have
-		 * any remaining bytes to output.
+		 * Since CKM_AES_CTR and CKM_AES_CFB8 are stream ciphers, we
+		 * never have any remaining bytes to output.
 		 */
 		out_len = 0;
 		break;
@@ -1697,6 +1712,8 @@ soft_aes_free_ctx(aes_ctx_t *ctx)
 		len = sizeof (cbc_ctx_t);
 	} else if (ctx->ac_flags & CTR_MODE) {
 		len = sizeof (ctr_ctx_t);
+	} else if (ctx->ac_flags & CFB_MODE) {
+		len = sizeof (cfb_ctx_t);
 	} else if (ctx->ac_flags & CCM_MODE) {
 		ccm_ctx_t *ccm_ctx = &ctx->acu.acu_ccm;
 		if (ccm_ctx->ccm_pt_buf != NULL) {

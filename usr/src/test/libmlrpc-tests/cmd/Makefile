@@ -11,22 +11,40 @@
 
 #
 # Copyright 2020 Tintri by DDN, Inc. All rights reserved.
+# Copyright 2026 RackTop Systems Inc.
 #
 
 include $(SRC)/Makefile.master
+include $(SRC)/cmd/Makefile.cmd
 include $(SRC)/test/Makefile.com
 
 ROOTOPTPKG = $(ROOT)/opt/libmlrpc-tests
 ROOTBIN = $(ROOTOPTPKG)/bin
 
-PROGS = libmlrpctest
+CPROGS = gen_samlogon_config
+PROGS = libmlrpctest $(CPROGS)
 
 CMDS = $(PROGS:%=$(ROOTBIN)/%)
 $(CMDS) := FILEMODE = 0555
 
-all lint clean clobber:
+CSTD = $(CSTD_GNU99)
+LDFLAGS += -R/usr/lib/smbsrv
+LDLIBS += -L$(ROOT)/usr/lib/smbsrv -lsmb
 
-install: $(CMDS)
+all: $(CPROGS)
+
+%: %.c
+	$(LINK.c) -o $@ $< $(LDLIBS)
+	$(POST_PROCESS)
+
+lint:
+
+clean:
+
+clobber: clean
+	-$(RM) $(CPROGS)
+
+install: all $(CMDS)
 
 $(CMDS): $(ROOTBIN)
 

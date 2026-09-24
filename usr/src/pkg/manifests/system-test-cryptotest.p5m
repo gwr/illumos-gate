@@ -121,6 +121,12 @@ file opt/crypto-tests/tests/aes/pkcs/aes_ccm_32 \
 file opt/crypto-tests/tests/aes/pkcs/aes_ccm_64 \
     path=opt/crypto-tests/tests/aes/pkcs/aes_ccm_64 owner=root group=root \
     mode=0555
+file opt/crypto-tests/tests/aes/pkcs/aes_cfb8_32 \
+    path=opt/crypto-tests/tests/aes/pkcs/aes_cfb8_32 owner=root group=root \
+    mode=0555
+file opt/crypto-tests/tests/aes/pkcs/aes_cfb8_64 \
+    path=opt/crypto-tests/tests/aes/pkcs/aes_cfb8_64 owner=root group=root \
+    mode=0555
 file opt/crypto-tests/tests/aes/pkcs/aes_cmac_32 \
     path=opt/crypto-tests/tests/aes/pkcs/aes_cmac_32 owner=root group=root \
     mode=0555

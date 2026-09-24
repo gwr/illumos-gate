@@ -21,6 +21,7 @@
 /*
  * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2020 Tintri by DDN, Inc. All rights reserved.
+ * Copyright 2026 RackTop Systems, Inc.
  */
 
 #ifndef _SMBSRV_MLSVC_H
@@ -34,6 +35,40 @@ extern "C" {
 #endif
 
 struct netr_info;
+
+/*
+ * These flags control various parts of NetLogon RPC messages.
+ * The default is 0 - setting a bit disables some feature.
+ * They are set in smbd/netlogon_flags in svc:/network/smb/server.
+ * These are set when smbd starts. Changing them requires
+ * restarting smbd.
+ *
+ * These shouldn't be confused with either SamLogonEx's ExtraFlags,
+ * or NetrServerAuthenticate's negotiate_flags.
+ *
+ * DISABLE_SECURE_RPC causes Netlogon to use unauthenticated RPC.
+ * Note that the underlying transport is still authenticated and signed.
+ *
+ * DISABLE_RESP_VERIF instructs RPC authentication to ignore failures
+ * when verifying responses.
+ *
+ * DISABLE_SAMLOGONEX causes Netlogon to always use SamLogon, which
+ * makes use of Netlogon Authenticators.
+ *
+ * DISABLE_SEALING causes Netlogon to use Signing (integrity) instead of
+ * Sealing (privacy).
+ *
+ * DISABLE_AES_AUTH causes Netlogon to use legacy RC4/MD5 instead of
+ * AES/SHA256.
+ *
+ * These flags are intentionally private to libmlsvc and its tests;
+ * they are not part of any public interface.
+ */
+#define	NETR_CFG_DISABLE_SECURE_RPC	0x00000001
+#define	NETR_CFG_DISABLE_RESP_VERIF	0x00000002
+#define	NETR_CFG_DISABLE_SAMLOGONEX	0x00000004
+#define	NETR_CFG_DISABLE_SEALING	0x00000008
+#define	NETR_CFG_DISABLE_AES_AUTH	0x00000010
 
 int smb_dclocator_init(void);
 void smbrdr_initialize(void);

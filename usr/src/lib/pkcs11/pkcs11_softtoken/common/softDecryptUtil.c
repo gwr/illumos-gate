@@ -23,6 +23,7 @@
  * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2018, Joyent, Inc.
  * Copyright 2017 Jason King.
+ * Copyright 2026 RackTop Systems, Inc.
  */
 
 #include <pthread.h>
@@ -169,6 +170,7 @@ cbc_common:
 	case CKM_AES_ECB:
 	case CKM_AES_CBC:
 	case CKM_AES_CBC_PAD:
+	case CKM_AES_CFB8:
 	case CKM_AES_CTR:
 	case CKM_AES_CCM:
 	case CKM_AES_GCM:
@@ -296,6 +298,7 @@ soft_decrypt_common(soft_session_t *session_p, CK_BYTE_PTR pEncrypted,
 	case CKM_AES_ECB:
 	case CKM_AES_CBC:
 	case CKM_AES_CBC_PAD:
+	case CKM_AES_CFB8:
 	case CKM_AES_CTR:
 	case CKM_AES_CCM:
 	case CKM_AES_GCM:
@@ -404,6 +407,7 @@ soft_decrypt_update(soft_session_t *session_p, CK_BYTE_PTR pEncryptedPart,
 	case CKM_AES_ECB:
 	case CKM_AES_CBC:
 	case CKM_AES_CBC_PAD:
+	case CKM_AES_CFB8:
 	case CKM_AES_CTR:
 	case CKM_AES_CCM:
 	case CKM_AES_GCM:
@@ -567,6 +571,7 @@ soft_decrypt_final(soft_session_t *session_p, CK_BYTE_PTR pLastPart,
 
 	case CKM_AES_CBC_PAD:
 	case CKM_AES_CBC:
+	case CKM_AES_CFB8:
 	case CKM_AES_ECB:
 	case CKM_AES_CTR:
 	case CKM_AES_CCM:

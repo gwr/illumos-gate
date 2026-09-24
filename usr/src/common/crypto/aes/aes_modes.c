@@ -22,6 +22,7 @@
  * Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  * Copyright 2019 Joyent, Inc.
+ * Copyright 2026 RackTop Systems, Inc.
  */
 
 #include <sys/types.h>
@@ -88,7 +89,6 @@ aes_xor_block(uint8_t *data, uint8_t *dst)
 	}
 }
 
-
 /*
  * Encrypt multiple blocks of data according to mode.
  */
@@ -99,7 +99,10 @@ aes_encrypt_contiguous_blocks(void *ctx, char *data, size_t length,
 	aes_ctx_t *aes_ctx = ctx;
 	int rv;
 
-	if (aes_ctx->ac_flags & CTR_MODE) {
+	if (aes_ctx->ac_flags & CFB_MODE) {
+		rv = cfb_mode_contiguous_blocks(ctx, data, length, out,
+		    AES_BLOCK_LEN, B_TRUE, aes_encrypt_block);
+	} else if (aes_ctx->ac_flags & CTR_MODE) {
 		rv = ctr_mode_contiguous_blocks(ctx, data, length, out,
 		    AES_BLOCK_LEN, aes_encrypt_block);
 	} else if (aes_ctx->ac_flags & CCM_MODE) {
@@ -132,7 +135,10 @@ aes_decrypt_contiguous_blocks(void *ctx, char *data, size_t length,
 	aes_ctx_t *aes_ctx = ctx;
 	int rv;
 
-	if (aes_ctx->ac_flags & CTR_MODE) {
+	if (aes_ctx->ac_flags & CFB_MODE) {
+		rv = cfb_mode_contiguous_blocks(ctx, data, length, out,
+		    AES_BLOCK_LEN, B_FALSE, aes_encrypt_block);
+	} else if (aes_ctx->ac_flags & CTR_MODE) {
 		rv = ctr_mode_contiguous_blocks(ctx, data, length, out,
 		    AES_BLOCK_LEN, aes_encrypt_block);
 		if (rv == CRYPTO_DATA_LEN_RANGE)

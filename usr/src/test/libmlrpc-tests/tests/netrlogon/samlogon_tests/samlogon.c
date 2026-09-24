@@ -11,6 +11,7 @@
 
 /*
  * Copyright 2020 Tintri by DDN, Inc. All rights reserved.
+ * Copyright 2026 RackTop Systems Inc.
  */
 
 /*
@@ -19,6 +20,7 @@
 
 #include <smbsrv/libmlsvc.h>
 #include <smbsrv/netrauth.h>
+#include <mlsvc.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -173,7 +175,8 @@ enum SAMLOGON_RC {
 	SL_TOKEN_COMP,
 	SL_NETLOGON_LOOP,
 	SL_NETLOGON_SAMLOGON,
-	SL_NETLOGON_NOVERIFY
+	SL_NETLOGON_NOVERIFY,
+	SL_MODE
 };
 
 int
@@ -190,15 +193,34 @@ main(int argc, char *argv[])
 	char *nb_domain, *dc_name, *user_name, *workstation, *chall_file;
 	char *nt_file, *lm_file;
 	uint32_t status;
+	uint32_t flags = 0;
 	int i;
 
-	if (argc < 8) {
+	if (argc != 8 && argc != 9) {
 		fprintf(stderr, "usage: %s <NETBIOS domain> <DC FQDN> "
 		    "<user name> "
 		    "<client computer name> <Binary Challenge File> "
-		    "<Binary NT response file> <Binary LM response file>\n",
+		    "<Binary NT response file> <Binary LM response file> "
+		    "[aes-seal|aes-sign|rc4-seal|rc4-sign]\n",
 		    argv[0]);
 		return (-SL_ARGC);
+	}
+
+	if (argc == 9) {
+		if (strcmp(argv[8], "aes-seal") == 0)
+			flags = 0;
+		else if (strcmp(argv[8], "aes-sign") == 0)
+			flags = NETR_CFG_DISABLE_SEALING;
+		else if (strcmp(argv[8], "rc4-seal") == 0)
+			flags = NETR_CFG_DISABLE_AES_AUTH;
+		else if (strcmp(argv[8], "rc4-sign") == 0)
+			flags = NETR_CFG_DISABLE_SEALING |
+			    NETR_CFG_DISABLE_AES_AUTH;
+		else {
+			fprintf(stderr, "invalid netlogon mode: %s\n",
+			    argv[8]);
+			return (-SL_MODE);
+		}
 	}
 
 	nb_domain = argv[1];
@@ -251,6 +273,7 @@ main(int argc, char *argv[])
 	(void) smb_lgrp_start();
 	smb_ipc_init();
 	netr_initialize();
+	netlogon_init_global(flags);
 
 	token = calloc(1, sizeof (*token));
 	if (token == NULL) {
@@ -301,7 +324,7 @@ main(int argc, char *argv[])
 	}
 
 	/* Turn off SamLogonEx */
-	netlogon_init_global(0x00000004);
+	netlogon_init_global(flags | NETR_CFG_DISABLE_SAMLOGONEX);
 	status = netlogon_logon(&user_info, token, &di);
 	if (status != NT_STATUS_SUCCESS) {
 		fprintf(stderr, "NoSamLogonEx: netlogon_logon failed: 0x%x\n",
@@ -322,7 +345,7 @@ main(int argc, char *argv[])
 	}
 
 	/* Don't verify responses */
-	netlogon_init_global(0x00000002);
+	netlogon_init_global(flags | NETR_CFG_DISABLE_RESP_VERIF);
 	status = netlogon_logon(&user_info, token, &di);
 
 	if (status != NT_STATUS_SUCCESS) {

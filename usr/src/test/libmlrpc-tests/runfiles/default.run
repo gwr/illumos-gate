@@ -11,6 +11,7 @@
 
 #
 # Copyright 2020 Tintri by DDN, Inc. All rights reserved.
+# Copyright 2026 RackTop Systems Inc.
 #
 
 [DEFAULT]
@@ -26,4 +27,5 @@ tests = ['run_krb5_pac_tests']
 
 [/opt/libmlrpc-tests/tests/netrlogon/samlogon_tests]
 user = root
-tests = ['run_samlogon_tests']
+# Modern AD requires sealing; signing cases are in sign.run.
+tests = ['run_samlogon_aes_seal', 'run_samlogon_rc4_seal']

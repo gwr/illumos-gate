@@ -23,6 +23,7 @@
  * Use is subject to license terms.
  *
  * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2026 RackTop Systems, Inc.
  */
 
 #ifndef _KERNEL
@@ -85,7 +86,9 @@ crypto_init_ptrs(crypto_data_t *out, void **iov_or_mp, offset_t *current_offset)
 /*
  * Get pointers for where in the output to copy a block of encrypted or
  * decrypted data.  The iov_or_mp argument stores a pointer to the current
- * iovec or mp, and offset stores an offset into the current iovec or mp.
+ * iovec or mp, and current_offset stores the current offset within that.
+ *
+ * If out_data_2 is NULL, return only the first span.
  */
 void
 crypto_get_ptrs(crypto_data_t *out, void **iov_or_mp, offset_t *current_offset,
@@ -104,7 +107,8 @@ crypto_get_ptrs(crypto_data_t *out, void **iov_or_mp, offset_t *current_offset,
 			/* one block fits */
 			*out_data_1 = (uint8_t *)iov->iov_base + offset;
 			*out_data_1_len = amt;
-			*out_data_2 = NULL;
+			if (out_data_2 != NULL)
+				*out_data_2 = NULL;
 			*current_offset = offset + amt;
 		}
 		break;
@@ -126,17 +130,22 @@ crypto_get_ptrs(crypto_data_t *out, void **iov_or_mp, offset_t *current_offset,
 		if (offset + amt <= iov->iov_len) {
 			/* can fit one block into this iov */
 			*out_data_1_len = amt;
-			*out_data_2 = NULL;
+			if (out_data_2 != NULL)
+				*out_data_2 = NULL;
 			*current_offset = offset + amt;
 		} else {
-			/* one block spans two iovecs */
+			/* the request extends beyond this iovec */
 			*out_data_1_len = iov->iov_len - offset;
-			if (vec_idx == uio->uio_iovcnt)
+			if (vec_idx + 1 == uio->uio_iovcnt)
 				return;
 			vec_idx++;
-			iov = &uio->uio_iov[vec_idx];
-			*out_data_2 = (uint8_t *)iov->iov_base;
-			*current_offset = amt - *out_data_1_len;
+			if (out_data_2 != NULL) {
+				iov = &uio->uio_iov[vec_idx];
+				*out_data_2 = (uint8_t *)iov->iov_base;
+				*current_offset = amt - *out_data_1_len;
+			} else {
+				*current_offset = 0;
+			}
 		}
 		*iov_or_mp = (void *)vec_idx;
 		break;
@@ -153,15 +162,20 @@ crypto_get_ptrs(crypto_data_t *out, void **iov_or_mp, offset_t *current_offset,
 		if ((p + amt) <= mp->b_wptr) {
 			/* can fit one block into this mblk */
 			*out_data_1_len = amt;
-			*out_data_2 = NULL;
+			if (out_data_2 != NULL)
+				*out_data_2 = NULL;
 			*current_offset = offset + amt;
 		} else {
-			/* one block spans two mblks */
+			/* the request extends beyond this mblk */
 			*out_data_1_len = _PTRDIFF(mp->b_wptr, p);
 			if ((mp = mp->b_cont) == NULL)
 				return;
-			*out_data_2 = mp->b_rptr;
-			*current_offset = (amt - *out_data_1_len);
+			if (out_data_2 != NULL) {
+				*out_data_2 = mp->b_rptr;
+				*current_offset = amt - *out_data_1_len;
+			} else {
+				*current_offset = 0;
+			}
 		}
 		*iov_or_mp = mp;
 		break;
@@ -175,10 +189,18 @@ crypto_free_mode_ctx(void *ctx)
 	common_ctx_t *common_ctx = (common_ctx_t *)ctx;
 
 	switch (common_ctx->cc_flags & (ECB_MODE|CBC_MODE|CMAC_MODE|CTR_MODE|
-	    CCM_MODE|GCM_MODE|GMAC_MODE)) {
+	    CFB_MODE|CCM_MODE|GCM_MODE|GMAC_MODE)) {
 	case ECB_MODE:
 #ifdef _KERNEL
 		kmem_free(common_ctx, sizeof (ecb_ctx_t));
+#else
+		free(common_ctx);
+#endif
+		break;
+
+	case CFB_MODE:
+#ifdef _KERNEL
+		kmem_free(common_ctx, sizeof (cfb_ctx_t));
 #else
 		free(common_ctx);
 #endif

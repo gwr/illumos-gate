@@ -11,6 +11,7 @@
 
 #
 # Copyright 2020 Tintri by DDN, Inc. All rights reserved.
+# Copyright 2026 RackTop Systems Inc.
 #
 
 include $(SRC)/Makefile.master
@@ -18,7 +19,12 @@ include $(SRC)/Makefile.master
 TESTSUBDIR = netrlogon/samlogon_tests
 TESTCOMMONDIR = ../../common
 PROG = samlogon
-KSHPROG = run_samlogon_tests
+KSHPROG = \
+	run_samlogon_tests \
+	run_samlogon_aes_seal \
+	run_samlogon_aes_sign \
+	run_samlogon_rc4_seal \
+	run_samlogon_rc4_sign
 
 include ../../Makefile.com
 
@@ -26,3 +32,4 @@ LDFLAGS += -R/usr/lib/smbsrv
 LDLIBS += -L$(ROOT)/usr/lib/smbsrv
 LDLIBS += -lmlsvc -lsmb
 CPPFLAGS += -Dsyslog=smb_syslog
+CPPFLAGS += -I$(SRC)/lib/smbsrv/libmlsvc/common

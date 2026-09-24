@@ -23,7 +23,7 @@
  * Use is subject to license terms.
  *
  * Copyright 2020 Tintri by DDN, Inc. All rights reserved.
- * Copyright 2023 RackTop Systems, Inc.
+ * Copyright 2023-2026 RackTop Systems Inc.
  */
 
 #ifndef _SMBSRV_NETRAUTH_H
@@ -164,7 +164,7 @@ typedef struct netr_session_key {
 	short len;
 } netr_session_key_t;
 
-#define	NETR_FLG_NULL		0x00000001
+#define	NETR_FLG_NULL		0x00000000
 #define	NETR_FLG_VALID		0x00000001
 #define	NETR_FLG_INIT		0x00000002
 
@@ -191,6 +191,7 @@ typedef struct netr_info {
 	DWORD nego_flags; /* Negotiated flags returned from ServerAuthenciate */
 	boolean_t use_secure_rpc; /* Use "SecureRPC" (RPC-level auth) */
 	boolean_t use_logon_ex; /* Use SamLogonEx (instead of SamLogon) */
+	boolean_t use_aes; /* Use AES/SHA256 instead of RC4/MD5 */
 } netr_info_t;
 
 /*
@@ -198,8 +199,9 @@ typedef struct netr_info {
  */
 int netr_gen_skey64(netr_info_t *);
 int netr_gen_skey128(netr_info_t *);
+int netr_gen_skey_aes(netr_info_t *);
 
-int netr_gen_credentials(BYTE *, netr_cred_t *, DWORD, netr_cred_t *,
+int netr_gen_credentials(netr_info_t *, netr_cred_t *, DWORD, netr_cred_t *,
     boolean_t);
 
 void netlogon_init_global(uint32_t);

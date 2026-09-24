@@ -23,6 +23,7 @@
 # Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
 # Copyright 2017 Jason King.
 # Copyright 2019 Joyent, Inc.
+# Copyright 2025-2026 RackTop Systems, Inc.
 #
 
 #
@@ -114,6 +115,8 @@ $endif
 	ccm_decrypt_final;
 	ccm_encrypt_final;
 	ccm_init_ctx;
+	cfb_alloc_ctx;
+	cfb_init_ctx;
 	cmac_alloc_ctx;
 	cmac_init_ctx;
 	cmac_mode_final;

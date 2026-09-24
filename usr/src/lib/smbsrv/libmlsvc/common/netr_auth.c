@@ -22,7 +22,7 @@
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2021 Tintri by DDN, Inc. All rights reserved.
- * Copyright 2023 RackTop Systems, Inc.
+ * Copyright 2023-2026 RackTop Systems Inc.
  */
 
 /*
@@ -38,6 +38,7 @@
 #include <strings.h>
 #include <unistd.h>
 #include <ctype.h>
+#include <sys/sha2.h>
 #include <security/cryptoki.h>
 #include <security/pkcs11.h>
 
@@ -66,36 +67,10 @@ static int netr_gen_password(BYTE *, BYTE *, BYTE *);
  */
 netr_info_t netr_global_info = {
 	.use_secure_rpc = B_TRUE,
-	.use_logon_ex = B_TRUE
+	.use_logon_ex = B_TRUE,
+	.use_aes = B_TRUE
 };
 extern ndr_auth_ctx_t netr_ssp_ctx;
-
-/*
- * These flags control various parts of NetLogon RPC messages.
- * The default is 0 - setting a bit disables some feature.
- * They are set in smbd/netlogon_flags in svc:/network/smb/server.
- * These are set when smbd starts. Changing them requires
- * restarting smbd.
- *
- * These shouldn't be confused with either SamLogonEx's ExtraFlags,
- * or NetrServerAuthenticate's negotiate_flags.
- *
- * DISABLE_SECURE_RPC causes Netlogon to use unauthenticated RPC.
- * Note that the underlying transport is still authenticated and signed.
- *
- * DISABLE_RESP_VERIF instructs RPC authentication to ignore failures
- * when verifying responses.
- *
- * DISABLE_SAMLOGONEX causes Netlogon to always use SamLogon, which
- * makes use of Netlogon Authenticators.
- *
- * DISABLE_SEALING causes Netlogon to use Signing (integrity) instead of
- * Sealing (privacy).
- */
-#define	NETR_CFG_DISABLE_SECURE_RPC	0x00000001
-#define	NETR_CFG_DISABLE_RESP_VERIF	0x00000002
-#define	NETR_CFG_DISABLE_SAMLOGONEX	0x00000004
-#define	NETR_CFG_DISABLE_SEALING	0x00000008
 
 void
 netlogon_init_global(uint32_t flags)
@@ -106,8 +81,11 @@ netlogon_init_global(uint32_t flags)
 	    ((flags & NETR_CFG_DISABLE_RESP_VERIF) == 0);
 	netr_global_info.use_logon_ex =
 	    ((flags & NETR_CFG_DISABLE_SAMLOGONEX) == 0);
-	if ((flags & NETR_CFG_DISABLE_SEALING) != 0)
-		netr_ssp_ctx.auth_level = NDR_C_AUTHN_LEVEL_PKT_INTEGRITY;
+	netr_global_info.use_aes =
+	    ((flags & NETR_CFG_DISABLE_AES_AUTH) == 0);
+	netr_ssp_ctx.auth_level = ((flags & NETR_CFG_DISABLE_SEALING) != 0) ?
+	    NDR_C_AUTHN_LEVEL_PKT_INTEGRITY :
+	    NDR_C_AUTHN_LEVEL_PKT_PRIVACY;
 }
 
 /*
@@ -346,6 +324,7 @@ netr_server_req_challenge(mlsvc_handle_t *netr_handle, netr_info_t *netr_info)
 uint32_t netr_server_auth2_flags =
     NETR_NEGO_BASE_FLAGS |
     NETR_NEGO_STRONGKEY_FLAG |
+    NETR_NEGO_AES_SHA2_FLAG |
     NETR_NEGO_SECURE_RPC_FLAG;
 
 /*
@@ -375,6 +354,8 @@ netr_server_authenticate2(mlsvc_handle_t *netr_handle, netr_info_t *netr_info)
 	arg.account_type = NETR_WKSTA_TRUST_ACCOUNT_TYPE;
 	arg.hostname = (unsigned char *)netr_info->hostname;
 	arg.negotiate_flags = netr_server_auth2_flags;
+	if (!netr_info->use_aes)
+		arg.negotiate_flags &= ~NETR_NEGO_AES_SHA2_FLAG;
 
 	/*
 	 * If we've disabled SecureRPC, remove it from our negotiate_flags
@@ -384,7 +365,10 @@ netr_server_authenticate2(mlsvc_handle_t *netr_handle, netr_info_t *netr_info)
 	if (!netr_global_info.use_secure_rpc)
 		arg.negotiate_flags &= ~NETR_NEGO_SECURE_RPC_FLAG;
 
-	if (arg.negotiate_flags & NETR_NEGO_STRONGKEY_FLAG) {
+	if (netr_info->use_aes) {
+		if (netr_gen_skey_aes(netr_info) != SMBAUTH_SUCCESS)
+			return (-1);
+	} else if (arg.negotiate_flags & NETR_NEGO_STRONGKEY_FLAG) {
 		if (netr_gen_skey128(netr_info) != SMBAUTH_SUCCESS)
 			return (-1);
 	} else {
@@ -408,13 +392,13 @@ netr_server_authenticate2(mlsvc_handle_t *netr_handle, netr_info_t *netr_info)
 	 * If we're using SamLogonEx, we won't use authenticators unless
 	 * some other NetLogon command is implemented and used.
 	 */
-	if (netr_gen_credentials(netr_info->session_key.key,
+	if (netr_gen_credentials(netr_info,
 	    &netr_info->client_challenge, 0,
 	    &netr_info->client_credential, B_FALSE) != SMBAUTH_SUCCESS) {
 		return (-1);
 	}
 
-	if (netr_gen_credentials(netr_info->session_key.key,
+	if (netr_gen_credentials(netr_info,
 	    &netr_info->server_challenge, 0,
 	    &netr_info->server_credential, B_FALSE) != SMBAUTH_SUCCESS) {
 		return (-1);
@@ -434,6 +418,13 @@ netr_server_authenticate2(mlsvc_handle_t *netr_handle, netr_info_t *netr_info)
 
 	/* The server returns the intersection of our flags and their flags. */
 	netr_info->nego_flags = arg.negotiate_flags;
+	if (netr_info->use_aes &&
+	    (netr_info->nego_flags & NETR_NEGO_AES_SHA2_FLAG) == 0) {
+		syslog(LOG_INFO, "%s: %s does not support AES",
+		    __func__, netr_info->server);
+		ndr_rpc_release(netr_handle);
+		return (-1);
+	}
 
 	rc = memcmp(&netr_info->server_credential, &arg.server_credential,
 	    sizeof (struct netr_credential));
@@ -442,23 +433,10 @@ netr_server_authenticate2(mlsvc_handle_t *netr_handle, netr_info_t *netr_info)
 	return (rc);
 }
 
-/*
- * netr_gen_skey128
- *
- * Generate a 128-bit session key from the client and server challenges.
- * See "Session-Key Computation" section of MS-NRPC document.
- */
-int
-netr_gen_skey128(netr_info_t *netr_info)
+static int
+netr_init_ntlm_hash(netr_info_t *netr_info, uint8_t *ntlmhash)
 {
-	unsigned char ntlmhash[SMBAUTH_HASH_SZ];
-	int rc = SMBAUTH_FAILURE;
-	CK_RV rv;
-	CK_MECHANISM mechanism;
-	CK_SESSION_HANDLE hSession;
-	CK_ULONG diglen = MD_DIGEST_LEN;
-	unsigned char md5digest[MD_DIGEST_LEN];
-	unsigned char zerobuf[NETR_SESSKEY_ZEROBUF_SZ];
+	int rc;
 
 	bzero(ntlmhash, SMBAUTH_HASH_SZ);
 	/*
@@ -481,17 +459,41 @@ netr_gen_skey128(netr_info_t *netr_info)
 		return (SMBAUTH_FAILURE);
 	}
 
+	return (SMBAUTH_SUCCESS);
+}
+
+/*
+ * netr_gen_skey128, netr_gen_skey_aes
+ *
+ * Generate a 128-bit session key from the client and server challenges.
+ * See "Session-Key Computation" section of MS-NRPC document.
+ */
+int
+netr_gen_skey128(netr_info_t *netr_info)
+{
+	unsigned char ntlmhash[SMBAUTH_HASH_SZ];
+	int rc;
+	CK_RV rv;
+	CK_MECHANISM mechanism;
+	CK_SESSION_HANDLE hSession;
+	CK_ULONG diglen = MD_DIGEST_LEN;
+	unsigned char md5digest[MD_DIGEST_LEN];
+	unsigned char zerobuf[NETR_SESSKEY_ZEROBUF_SZ];
+
+	rc = netr_init_ntlm_hash(netr_info, ntlmhash);
+	if (rc != 0)
+		return (rc);
+
 	bzero(zerobuf, NETR_SESSKEY_ZEROBUF_SZ);
 
 	mechanism.mechanism = CKM_MD5;
 	mechanism.pParameter = 0;
 	mechanism.ulParameterLen = 0;
 
+	rc = SMBAUTH_FAILURE;
 	rv = SUNW_C_GetMechSession(mechanism.mechanism, &hSession);
-	if (rv != CKR_OK) {
-		rc = SMBAUTH_FAILURE;
+	if (rv != CKR_OK)
 		goto errout;
-	}
 
 	rv = C_DigestInit(hSession, &mechanism);
 	if (rv != CKR_OK)
@@ -530,6 +532,40 @@ errout:
 	return (rc);
 
 }
+
+int
+netr_gen_skey_aes(netr_info_t *netr_info)
+{
+	unsigned char ntlmhash[SMBAUTH_HASH_SZ];
+	unsigned char digest[SHA256_DIGEST_LENGTH];
+	iovec_t data[2];
+	int rc;
+
+	rc = netr_init_ntlm_hash(netr_info, ntlmhash);
+	if (rc != 0)
+		return (rc);
+
+	data[0].iov_base = (caddr_t)netr_info->client_challenge.data;
+	data[0].iov_len = NETR_CRED_DATA_SZ;
+	data[1].iov_base = (caddr_t)netr_info->server_challenge.data;
+	data[1].iov_len = NETR_CRED_DATA_SZ;
+	rc = smb_auth_hmac_sha256(data, 2, ntlmhash, sizeof (ntlmhash), digest);
+	if (rc != SMBAUTH_SUCCESS) {
+		explicit_bzero(&netr_info->session_key.key,
+		    sizeof (netr_info->session_key.key));
+		goto out;
+	}
+
+	bcopy(digest, netr_info->session_key.key, NETR_SESSKEY128_SZ);
+	netr_info->session_key.len = NETR_SESSKEY128_SZ;
+
+out:
+	explicit_bzero(&netr_info->password, sizeof (netr_info->password));
+	explicit_bzero(ntlmhash, sizeof (ntlmhash));
+	explicit_bzero(digest, sizeof (digest));
+	return (rc);
+}
+
 /*
  * netr_gen_skey64
  *
@@ -576,25 +612,9 @@ netr_gen_skey64(netr_info_t *netr_info)
 	server_challenge = (DWORD *)(uintptr_t)&netr_info->server_challenge;
 	bzero(md4hash, 32);
 
-	/*
-	 * We should check (netr_info->flags & NETR_FLG_INIT) and use
-	 * the appropriate password but it isn't working yet.  So we
-	 * always use the default one for now.
-	 */
-	bzero(netr_info->password, sizeof (netr_info->password));
-	rc = smb_config_getstr(SMB_CI_MACHINE_PASSWD,
-	    (char *)netr_info->password, sizeof (netr_info->password));
-
-	if ((rc != SMBD_SMF_OK) || *netr_info->password == '\0') {
-		return (SMBAUTH_FAILURE);
-	}
-
-	rc = smb_auth_ntlm_hash((char *)netr_info->password, md4hash);
-
-	if (rc != SMBAUTH_SUCCESS) {
-		rc = SMBAUTH_FAILURE;
-		goto out;
-	}
+	rc = netr_init_ntlm_hash(netr_info, md4hash);
+	if (rc != 0)
+		return (rc);
 
 	data[0] = LE_IN32(&client_challenge[0]) + LE_IN32(&server_challenge[0]);
 	data[1] = LE_IN32(&client_challenge[1]) + LE_IN32(&server_challenge[1]);
@@ -622,7 +642,11 @@ out:
  * netr_gen_credentials
  *
  * Generate a set of credentials from a challenge and a session key.
- * The algorithm is a two stage hash. For the first hash, the
+ *
+ * The AES algorithm encrypts the challenge with the session key and
+ * an all-zeroes IV.
+ *
+ * The RC4 algorithm is a two stage hash. For the first hash, the
  * timestamp is added to the challenge and the result is stored in a
  * temporary buffer:
  *
@@ -646,10 +670,9 @@ out:
  * returned.
  */
 int
-netr_gen_credentials(BYTE *session_key, netr_cred_t *challenge,
+netr_gen_credentials(netr_info_t *netr_info, netr_cred_t *challenge,
     DWORD timestamp, netr_cred_t *out_cred, boolean_t retry)
 {
-	unsigned char buffer[8];
 	DWORD data[2];
 	DWORD le_data[2];
 	DWORD *p;
@@ -662,12 +685,30 @@ netr_gen_credentials(BYTE *session_key, netr_cred_t *challenge,
 	LE_OUT32(&le_data[0], data[0]);
 	LE_OUT32(&le_data[1], data[1]);
 
-	if (smb_auth_DES(buffer, 8, session_key, NETR_DESKEY_LEN,
-	    (unsigned char *)le_data, 8) != SMBAUTH_SUCCESS)
-		return (SMBAUTH_FAILURE);
+	if (netr_info->use_aes) {
+		uchar_t zero_iv[16] = { 0 };
+		iovec_t input, output;
 
-	rc = smb_auth_DES(out_cred->data, 8, &session_key[NETR_DESKEY_LEN],
-	    NETR_DESKEY_LEN, buffer, 8);
+		input.iov_base = (caddr_t)le_data;
+		input.iov_len = sizeof (le_data);
+		output.iov_base = (caddr_t)out_cred->data;
+		output.iov_len = NETR_CRED_DATA_SZ;
+		rc = smb_auth_AES_CFB8(&input, &output, 1,
+		    netr_info->session_key.key, netr_info->session_key.len,
+		    zero_iv, B_FALSE);
+	} else {
+		unsigned char buffer[8];
+		rc = smb_auth_DES(buffer, 8, netr_info->session_key.key,
+		    NETR_DESKEY_LEN, (unsigned char *)le_data, 8);
+
+		if (rc == SMBAUTH_SUCCESS) {
+			rc = smb_auth_DES(out_cred->data, 8,
+			    &netr_info->session_key.key[NETR_DESKEY_LEN],
+			    NETR_DESKEY_LEN, buffer, 8);
+		}
+
+		explicit_bzero(buffer, sizeof (buffer));
+	}
 
 	/*
 	 * [MS-NRPC] 3.1.4.6 "Calling Methods Requiring Session-Key
@@ -678,7 +719,8 @@ netr_gen_credentials(BYTE *session_key, netr_cred_t *challenge,
 	 * Keep retrying until we've generated one that satisfies this,
 	 * but only if the caller can handle retries.
 	 */
-	if (retry && !passes_dc_mitigation(out_cred->data))
+	if (rc == SMBAUTH_SUCCESS &&
+	    retry && !passes_dc_mitigation(out_cred->data))
 		return (SMBAUTH_RETRY);
 
 	return (rc);

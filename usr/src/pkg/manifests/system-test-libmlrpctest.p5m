@@ -11,6 +11,7 @@
 
 #
 # Copyright 2020 Tintri by DDN, Inc. All rights reserved.
+# Copyright 2026 RackTop Systems Inc.
 #
 
 set name=pkg.fmri value=pkg:/system/test/libmlrpctest@$(PKGVERS)
@@ -22,12 +23,14 @@ set name=variant.arch value=$(ARCH)
 dir  path=opt/libmlrpc-tests
 file path=opt/libmlrpc-tests/README mode=0444
 dir  path=opt/libmlrpc-tests/bin
+file path=opt/libmlrpc-tests/bin/gen_samlogon_config mode=0555
 file path=opt/libmlrpc-tests/bin/libmlrpctest mode=0555
 dir  path=opt/libmlrpc-tests/cfg
 file path=opt/libmlrpc-tests/cfg/krb5_pac.config mode=0644
 file path=opt/libmlrpc-tests/cfg/samlogon.config mode=0644
 dir  path=opt/libmlrpc-tests/runfiles
 file path=opt/libmlrpc-tests/runfiles/default.run mode=0444
+file path=opt/libmlrpc-tests/runfiles/sign.run mode=0444
 dir  path=opt/libmlrpc-tests/tests
 dir  path=opt/libmlrpc-tests/tests/netrlogon
 dir  path=opt/libmlrpc-tests/tests/netrlogon/krb5_pac_tests
@@ -38,6 +41,18 @@ file path=opt/libmlrpc-tests/tests/netrlogon/krb5_pac_tests/krb5_pac_decode \
 file path=opt/libmlrpc-tests/tests/netrlogon/krb5_pac_tests/run_krb5_pac_tests \
     mode=0555
 dir  path=opt/libmlrpc-tests/tests/netrlogon/samlogon_tests
+file \
+    path=opt/libmlrpc-tests/tests/netrlogon/samlogon_tests/run_samlogon_aes_seal \
+    mode=0555
+file \
+    path=opt/libmlrpc-tests/tests/netrlogon/samlogon_tests/run_samlogon_aes_sign \
+    mode=0555
+file \
+    path=opt/libmlrpc-tests/tests/netrlogon/samlogon_tests/run_samlogon_rc4_seal \
+    mode=0555
+file \
+    path=opt/libmlrpc-tests/tests/netrlogon/samlogon_tests/run_samlogon_rc4_sign \
+    mode=0555
 file path=opt/libmlrpc-tests/tests/netrlogon/samlogon_tests/run_samlogon_tests \
     mode=0555
 file path=opt/libmlrpc-tests/tests/netrlogon/samlogon_tests/samlogon mode=0555

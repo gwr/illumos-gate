@@ -22,7 +22,7 @@
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2021 Tintri by DDN, Inc. All rights reserved.
- * Copyright 2023 RackTop Systems, Inc.
+ * Copyright 2023-2026 RackTop Systems Inc.
  */
 
 /*
@@ -45,13 +45,14 @@
 #include <smbsrv/netrauth.h>
 #include <smbsrv/smbinfo.h>
 #include <smbsrv/smb_token.h>
+#include <sys/debug.h>
 #include <mlsvc.h>
 
 uint32_t netlogon_logon(smb_logon_t *, smb_token_t *, smb_domainex_t *);
 static uint32_t netr_server_samlogon(mlsvc_handle_t *, netr_info_t *, char *,
     smb_logon_t *, smb_token_t *);
 static void netr_invalidate_chain(netr_info_t *);
-static void netr_interactive_samlogon(netr_info_t *, smb_logon_t *,
+static uint32_t netr_interactive_samlogon(netr_info_t *, smb_logon_t *,
     struct netr_logon_info1 *);
 static void netr_network_samlogon(ndr_heap_t *, netr_info_t *,
     smb_logon_t *, struct netr_logon_info2 *);
@@ -395,6 +396,7 @@ netr_setup_token(struct netr_validation_info3 *info3, smb_logon_t *user_info,
 	smb_sid_t *domsid;
 	uint32_t status;
 	char nbdomain[NETBIOS_NAME_SZ];
+	uchar_t zero_iv[16] = { 0 };
 
 	domsid = (smb_sid_t *)info3->LogonDomainId;
 
@@ -437,21 +439,31 @@ netr_setup_token(struct netr_validation_info3 *info3, smb_logon_t *user_info,
 
 	/*
 	 * The UserSessionKey in NetrSamLogon RPC is obfuscated using the
-	 * session key obtained in the NETLOGON credential chain.
-	 * An 8 byte session key is zero extended to 16 bytes. This 16 byte
-	 * key is the key to the RC4 algorithm. The RC4 byte stream is
-	 * exclusively ored with the 16 byte UserSessionKey to recover
-	 * the the clear form.
+	 * session key obtained in the NETLOGON credential chain. Legacy
+	 * channels use RC4 with an eight-byte key zero extended to 16 bytes.
+	 * AES channels use AES-CFB8 with an all-zero IV.
 	 */
 	if ((token->tkn_ssnkey.val = malloc(SMBAUTH_SESSION_KEY_SZ)) == NULL)
 		return (NT_STATUS_NO_MEMORY);
 	token->tkn_ssnkey.len = SMBAUTH_SESSION_KEY_SZ;
-	bzero(rc4key, SMBAUTH_SESSION_KEY_SZ);
-	bcopy(netr_info->session_key.key, rc4key, netr_info->session_key.len);
 	bcopy(info3->UserSessionKey.data, token->tkn_ssnkey.val,
 	    SMBAUTH_SESSION_KEY_SZ);
-	rand_hash((unsigned char *)token->tkn_ssnkey.val,
-	    SMBAUTH_SESSION_KEY_SZ, rc4key, SMBAUTH_SESSION_KEY_SZ);
+	if (netr_info->use_aes) {
+		iovec_t data;
+
+		data.iov_base = (caddr_t)token->tkn_ssnkey.val;
+		data.iov_len = SMBAUTH_SESSION_KEY_SZ;
+		if (smb_auth_AES_CFB8(&data, &data, 1,
+		    netr_info->session_key.key, netr_info->session_key.len,
+		    zero_iv, B_TRUE) != SMBAUTH_SUCCESS)
+			return (NT_STATUS_INTERNAL_ERROR);
+	} else {
+		bzero(rc4key, SMBAUTH_SESSION_KEY_SZ);
+		bcopy(netr_info->session_key.key, rc4key,
+		    netr_info->session_key.len);
+		rand_hash((unsigned char *)token->tkn_ssnkey.val,
+		    SMBAUTH_SESSION_KEY_SZ, rc4key, SMBAUTH_SESSION_KEY_SZ);
+	}
 
 	return (NT_STATUS_SUCCESS);
 }
@@ -565,7 +577,12 @@ netr_server_samlogon(mlsvc_handle_t *netr_handle, netr_info_t *netr_info,
 	switch (user_info->lg_level) {
 	case NETR_INTERACTIVE_LOGON:
 		netr_setup_identity(heap, user_info, &info1.identity);
-		netr_interactive_samlogon(netr_info, user_info, &info1);
+		status = netr_interactive_samlogon(netr_info, user_info,
+		    &info1);
+		if (status != NT_STATUS_SUCCESS) {
+			ndr_rpc_release(netr_handle);
+			return (status);
+		}
 		logon_info->info1 = &info1;
 		break;
 
@@ -626,30 +643,68 @@ netr_server_samlogon(mlsvc_handle_t *netr_handle, netr_info_t *netr_info,
  * netr_interactive_samlogon
  *
  * Set things up for an interactive SamLogon. Copy the NT and LM
- * passwords to the logon structure and hash them with the session
+ * passwords to the logon structure and encrypt them with the session
  * key.
  */
-static void
+static uint32_t
 netr_interactive_samlogon(netr_info_t *netr_info, smb_logon_t *user_info,
     struct netr_logon_info1 *info1)
 {
-	BYTE key[NETR_OWF_PASSWORD_SZ];
 
-	(void) memcpy(&info1->lm_owf_password,
-	    user_info->lg_lm_password.val, sizeof (netr_owf_password_t));
+	if (user_info->lg_lm_password.len < sizeof (info1->lm_owf_password) ||
+	    user_info->lg_nt_password.len < sizeof (info1->nt_owf_password))
+		return (NT_STATUS_INVALID_PARAMETER);
 
-	(void) memcpy(&info1->nt_owf_password,
-	    user_info->lg_nt_password.val, sizeof (netr_owf_password_t));
+	if (netr_info->use_aes) {
+		uchar_t zero_iv[16] = { 0 };
+		iovec_t input, output;
+		int rc;
 
-	(void) memset(key, 0, NETR_OWF_PASSWORD_SZ);
-	(void) memcpy(key, netr_info->session_key.key,
-	    netr_info->session_key.len);
+		input.iov_base = (caddr_t)user_info->lg_lm_password.val;
+		input.iov_len = sizeof (info1->lm_owf_password);
+		output.iov_base = (caddr_t)&info1->lm_owf_password;
+		output.iov_len = sizeof (info1->lm_owf_password);
+		rc = smb_auth_AES_CFB8(&input, &output, 1,
+		    netr_info->session_key.key, netr_info->session_key.len,
+		    zero_iv, B_FALSE);
+		if (rc != SMBAUTH_SUCCESS)
+			return (NT_STATUS_INTERNAL_ERROR);
+		input.iov_base = (caddr_t)user_info->lg_nt_password.val;
+		input.iov_len = sizeof (info1->nt_owf_password);
+		output.iov_base = (caddr_t)&info1->nt_owf_password;
+		output.iov_len = sizeof (info1->nt_owf_password);
+		rc = smb_auth_AES_CFB8(&input, &output, 1,
+		    netr_info->session_key.key, netr_info->session_key.len,
+		    zero_iv, B_FALSE);
+		if (rc != SMBAUTH_SUCCESS)
+			return (NT_STATUS_INTERNAL_ERROR);
+	} else {
+		BYTE key[NETR_OWF_PASSWORD_SZ];
 
-	rand_hash((unsigned char *)&info1->lm_owf_password,
-	    NETR_OWF_PASSWORD_SZ, key, NETR_OWF_PASSWORD_SZ);
+		(void) memcpy(&info1->lm_owf_password,
+		    user_info->lg_lm_password.val,
+		    sizeof (info1->lm_owf_password));
 
-	rand_hash((unsigned char *)&info1->nt_owf_password,
-	    NETR_OWF_PASSWORD_SZ, key, NETR_OWF_PASSWORD_SZ);
+		(void) memcpy(&info1->nt_owf_password,
+		    user_info->lg_nt_password.val,
+		    sizeof (info1->nt_owf_password));
+
+		(void) memset(key, 0, NETR_OWF_PASSWORD_SZ);
+		(void) memcpy(key, netr_info->session_key.key,
+		    netr_info->session_key.len);
+
+		CTASSERT(sizeof (info1->lm_owf_password) ==
+		    NETR_OWF_PASSWORD_SZ);
+		rand_hash((unsigned char *)&info1->lm_owf_password,
+		    NETR_OWF_PASSWORD_SZ, key, NETR_OWF_PASSWORD_SZ);
+
+		CTASSERT(sizeof (info1->nt_owf_password) ==
+		    NETR_OWF_PASSWORD_SZ);
+		rand_hash((unsigned char *)&info1->nt_owf_password,
+		    NETR_OWF_PASSWORD_SZ, key, NETR_OWF_PASSWORD_SZ);
+	}
+
+	return (NT_STATUS_SUCCESS);
 }
 
 /*
@@ -721,7 +776,7 @@ netr_setup_authenticator(netr_info_t *netr_info,
 	netr_info->timestamp = time(0) - 1;
 	do {
 		auth->timestamp = ++netr_info->timestamp;
-		rc = netr_gen_credentials(netr_info->session_key.key,
+		rc = netr_gen_credentials(netr_info,
 		    &netr_info->client_credential,
 		    netr_info->timestamp,
 		    (netr_cred_t *)&auth->credential, B_TRUE);
@@ -761,11 +816,10 @@ netr_validate_chain(netr_info_t *netr_info, struct netr_authenticator *auth)
 {
 	netr_cred_t cred;
 	uint32_t result = NT_STATUS_SUCCESS;
-	uint32_t *dwp;
 
 	++netr_info->timestamp;
 
-	if (netr_gen_credentials(netr_info->session_key.key,
+	if (netr_gen_credentials(netr_info,
 	    &netr_info->client_credential,
 	    netr_info->timestamp, &cred, B_FALSE) != SMBAUTH_SUCCESS)
 		return (NT_STATUS_INTERNAL_ERROR);
@@ -788,12 +842,16 @@ netr_validate_chain(netr_info_t *netr_info, struct netr_authenticator *auth)
 		netr_invalidate_chain(netr_info);
 		result = NT_STATUS_UNSUCCESSFUL;
 	} else {
+		BYTE *client_cred = netr_info->client_credential.data;
+		uint32_t cred_lo;
+
 		/*
 		 * Otherwise generate the next step in the chain.
+		 * As in netr_gen_credentials, the first four bytes of the
+		 * credential are a little-endian uint32_t.
 		 */
-		/*LINTED E_BAD_PTR_CAST_ALIGN*/
-		dwp = (uint32_t *)&netr_info->client_credential;
-		dwp[0] += netr_info->timestamp;
+		cred_lo = LE_IN32(client_cred) + netr_info->timestamp;
+		LE_OUT32(client_cred, cred_lo);
 
 		netr_info->flags |= NETR_FLG_VALID;
 	}

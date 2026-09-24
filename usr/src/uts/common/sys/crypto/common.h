@@ -23,7 +23,7 @@
  */
 /*
  * Copyright 2013 Saso Kiselkov.  All rights reserved.
- * Copyright 2023 RackTop Systems, Inc.
+ * Copyright 2023-2026 RackTop Systems, Inc.
  */
 
 #ifndef _SYS_CRYPTO_COMMON_H
@@ -219,6 +219,7 @@ typedef uint32_t crypto_keysize_unit_t;
 #define	SUN_CKM_AES_CCM			"CKM_AES_CCM"
 #define	SUN_CKM_AES_GCM			"CKM_AES_GCM"
 #define	SUN_CKM_AES_GMAC		"CKM_AES_GMAC"
+#define	SUN_CKM_AES_CFB8		"CKM_AES_CFB8"
 #define	SUN_CKM_AES_CFB128		"CKM_AES_CFB128"
 #define	SUN_CKM_RC4			"CKM_RC4"
 #define	SUN_CKM_RSA_PKCS		"CKM_RSA_PKCS"

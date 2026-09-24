@@ -13,6 +13,7 @@
 # Copyright (c) 2012 by Delphix. All rights reserved.
 # Copyright 2014 Garrett D'Amore <garrett@damore.org>
 # Copyright 2020 Tintri by DDN, Inc. All rights reserved.
+# Copyright 2026 RackTop Systems Inc.
 #
 
 include $(SRC)/Makefile.master
@@ -37,16 +38,11 @@ $(CMDS) := FILEMODE = 0555
 BINS = $(BINFILES:%=$(TESTDIR)/%)
 $(BINS) := FILEMODE = 0444
 
-all: $(PROG) $(KSHPROG) $(SUBDIRS)
+all: $(PROG) $(SUBDIRS)
 
 $(PROG): $(OBJS)
 	$(LINK.c) $(OBJS) -o $@ $(LDLIBS)
 	$(POST_PROCESS)
-
-$(KSHPROG): $(KSHPROG).ksh
-	$(RM) $@
-	$(CP) $(KSHPROG).ksh $(@)
-	$(CHMOD) +x $@
 
 %.o: %.c
 	$(COMPILE.c) -o $@ $(CFLAGS_$(MACH)) $<
@@ -59,17 +55,20 @@ install: $(SUBDIRS) $(CMDS) $(BINS)
 lint: lint_SRCS
 
 clobber: clean
-	-$(RM) $(PROG) $(KSHPROG)
+	-$(RM) $(PROG)
 
 clean:
 	-$(RM) $(OBJS)
 
-$(CMDS): $(TESTDIR) $(PROG) $(KSHPROG)
+$(CMDS): $(TESTDIR)
 
 $(BINS): $(TESTDIR)
 
 $(TESTDIR):
 	$(INS.dir)
+
+$(TESTDIR)/%: %.ksh
+	$(INS.rename)
 
 $(TESTDIR)/%: %
 	$(INS.file)

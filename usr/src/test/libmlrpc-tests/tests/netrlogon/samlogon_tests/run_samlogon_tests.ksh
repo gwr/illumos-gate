@@ -13,6 +13,7 @@
 
 #
 # Copyright 2020 Tintri by DDN, Inc. All rights reserved.
+# Copyright 2026 RackTop Systems Inc.
 #
 
 if [[ -z $MLRPC_TESTS ]]; then
@@ -20,9 +21,13 @@ if [[ -z $MLRPC_TESTS ]]; then
 	exit 1
 fi
 
+if (( $# != 1 )); then
+	echo "usage: $0 <aes-seal|aes-sign|rc4-seal|rc4-sign>" >&2
+	exit 2
+fi
+
 . $MLRPC_TESTS/cfg/samlogon.config
 
-$MLRPC_TESTS/tests/netrlogon/samlogon_tests/samlogon $NETBIOS_DOMAIN $DC_FQDN \
-    $USERNAME $CLIENT_COMPUTER $CHALLENGE_FILE $NT_RESPONSE_FILE \
-    $LM_RESPONSE_FILE
-exit $?
+exec "$MLRPC_TESTS/tests/netrlogon/samlogon_tests/samlogon" \
+    "$NETBIOS_DOMAIN" "$DC_FQDN" "$USERNAME" "$CLIENT_COMPUTER" \
+    "$CHALLENGE_FILE" "$NT_RESPONSE_FILE" "$LM_RESPONSE_FILE" "$1"

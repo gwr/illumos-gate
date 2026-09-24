@@ -12,6 +12,7 @@
 #
 # Copyright (c) 2012 by Delphix. All rights reserved.
 # Copyright 2020 Tintri by DDN, Inc. All rights reserved.
+# Copyright 2026 RackTop Systems Inc.
 #
 
 libmlrpc Unit Test Suite README
@@ -51,19 +52,29 @@ The pre-requisites for running the this Unit Test Suite are:
 	    authorization, such as root.)
 	- The libmlrpc library must be installed.
 	- The system must be joined to the domain.
-	- Certain information must be collected from a packet capture performing
-	    NTLM authentication against the system using a domain user, all from
-	    the NetrSamLogon(Ex) request:
+	- Enter configuration data in /opt/libmlrpc-tests/cfg/samlogon.config.
+
+There are two ways to acquire configuration data for samlogon.config.
+	- For the packet-capture method, collect information from NTLM
+	    authentication against the system using a domain user, all from
+	    the NetrSamLogon(Ex) request. Note that this likely requires setting
+	    NTLMSSP preferences with the machine password and fully capturing
+	    the credential chain establishment (e.g. by restarting smb/server).
 		- IDENTITY_INFO/Domain
 		- IDENTITY_INFO/Acct Name
 		- IDENTITY_INFO/Wkst Name
 		- three binary files, exported from Wireshark:
 		  1. NETWORK_INFO/Challenge (8 bytes)
-		  2. First NETWORK_INFO/'LM Chal resp'/Bytes array/'LM Chal resp'
-		      (variable - the first is NT)
+		  2. First NETWORK_INFO/'NT Chal resp'/Bytes array/'NT Chal resp'
+		      (variable length)
 		  3. Second NETWORK_INFO/'LM Chal resp'/Bytes array/'LM Chal resp'
-		      (variable - the second is LM)
-	- Enter configuration data in /opt/libmlrpc-tests/cfg/samlogon.config.
+		      (variable length)
+
+	- Alternatively, use gen_samlogon_config.
+	    Run as root on the domain-joined test machine as follows:
+
+		test_machine# /opt/libmlrpc-tests/bin/gen_samlogon_config \
+		    <username - no domain component>
 
 Once the pre-requisites are satisfied, simply run the script:
 

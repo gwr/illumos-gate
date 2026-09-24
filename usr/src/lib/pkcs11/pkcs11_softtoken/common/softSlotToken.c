@@ -22,6 +22,7 @@
 /*
  * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2020 Joyent, Inc.
+ * Copyright 2026 RackTop Systems, Inc.
  */
 
 #include <strings.h>
@@ -55,6 +56,7 @@ static CK_MECHANISM_TYPE soft_mechanisms[] = {
 	CKM_DES3_KEY_GEN,
 	CKM_AES_CBC,
 	CKM_AES_CBC_PAD,
+	CKM_AES_CFB8,
 	CKM_AES_CTR,
 	CKM_AES_CMAC_GENERAL,
 	CKM_AES_CMAC,
@@ -166,6 +168,8 @@ static CK_MECHANISM_INFO soft_mechanism_info[] = {
 	{AES_MINBYTES, AES_MAXBYTES,
 		CKF_ENCRYPT|CKF_DECRYPT|
 		CKF_WRAP|CKF_UNWRAP},		/* CKM_AES_CBC_PAD */
+	{AES_MINBYTES, AES_MAXBYTES,
+		CKF_ENCRYPT|CKF_DECRYPT},	/* CKM_AES_CFB8 */
 	{AES_MINBYTES, AES_MAXBYTES,
 		CKF_ENCRYPT|CKF_DECRYPT|
 		CKF_WRAP|CKF_UNWRAP},		/* CKM_AES_CTR */
