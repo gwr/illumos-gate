@@ -26,6 +26,7 @@ struct symbol_list;
 
 struct type_member {
 	struct symbol *representative;
+	struct ll_type *owner;
 	struct ll_type *type;
 };
 
@@ -42,6 +43,7 @@ size_t type_instance_count(const struct ll_type *);
 const struct type_member *type_members(const struct ll_type *);
 size_t type_member_count(const struct ll_type *);
 const struct type_member *type_member_lookup_exact(struct symbol *);
+const struct ll_type *type_member_owner(const struct type_member *);
 bool type_registry_consistent(void);
 void type_registry_report_errors(void);
 bool type_layout_equal(const struct ll_type *, const struct ll_type *);

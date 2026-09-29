@@ -7066,16 +7066,24 @@ seed_stalled_recursive_calls(struct analysis *analysis)
 static char *
 indirect_call_selector(const struct locklint_access *access)
 {
+	const struct type_member *member;
+	const struct ll_type *owner;
+	struct symbol *owner_type;
+	struct symbol *member_symbol;
 	const char *type_name;
 	const char *member_name;
 	char *selector;
 	size_t length;
 
-	if (access->type == NULL || access->type->ident == NULL ||
-	    access->member == NULL || access->member->ident == NULL)
+	member = type_member_lookup_exact(access->member);
+	owner = type_member_owner(member);
+	owner_type = type_representative(owner);
+	member_symbol = member != NULL ? member->representative : NULL;
+	if (owner_type == NULL || owner_type->ident == NULL ||
+	    member_symbol == NULL || member_symbol->ident == NULL)
 		return (NULL);
-	type_name = show_ident(access->type->ident);
-	member_name = show_ident(access->member->ident);
+	type_name = show_ident(owner_type->ident);
+	member_name = show_ident(member_symbol->ident);
 	length = strlen(type_name) + 2 + strlen(member_name) + 1;
 	selector = malloc(length);
 	if (selector == NULL)

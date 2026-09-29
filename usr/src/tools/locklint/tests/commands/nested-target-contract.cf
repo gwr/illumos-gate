@@ -1,0 +1,1 @@
+declare contract nested_target_ops::finish no-lock-effects

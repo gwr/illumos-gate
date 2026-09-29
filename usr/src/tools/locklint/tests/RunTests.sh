@@ -766,6 +766,29 @@ run_capture "no-check unmodeled indirect call" \
 reject_match "no-check unmodeled indirect call" \
     "unmodeled-indirect-call" command-targets-unmodeled-no-check.out
 
+run_capture "nested unmodeled indirect call" nested-target-unmodeled.out \
+    "$LOCKLINT" commands/nested-target.c
+require_match "nested unmodeled indirect owner" \
+    "indirect call through 'nested_target_ops::finish' has no target or calling contract \\[unmodeled-indirect-call\\]" \
+    nested-target-unmodeled.out
+reject_match "nested unmodeled outer owner" \
+    "nested_target_outer::finish" nested-target-unmodeled.out
+require_match "nested unmodeled target advice" \
+    "declare targets nested_target_ops::finish FUNCTION..." \
+    nested-target-unmodeled.out
+require_match "nested unmodeled contract advice" \
+    "declare contract nested_target_ops::finish no-lock-effects" \
+    nested-target-unmodeled.out
+require_match "nested unmodeled source advice" \
+    "DECLARE_CONTRACT(nested_target_ops::finish, NO_LOCK_EFFECTS)" \
+    nested-target-unmodeled.out
+
+run_capture "nested no-lock contract" nested-target-contract.out \
+    "$LOCKLINT" --cf commands/nested-target-contract.cf \
+    commands/nested-target.c
+reject_match "nested no-lock contract warning" \
+    "unmodeled-indirect-call" nested-target-contract.out
+
 run_capture "command singleton target" command-targets-first.out \
     "$LOCKLINT" --check-locks --dump-callgraph \
     --cf commands/targets-first.cf \

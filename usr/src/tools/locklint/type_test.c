@@ -537,6 +537,10 @@ test_aggregate_members(void)
 	    members[1].representative == &next_member &&
 	    members[2].representative == &flag_member,
 	    "canonical members retain declaration order and names");
+	check(type_member_owner(&members[0]) == type &&
+	    type_member_owner(&members[1]) == type &&
+	    type_member_owner(&members[2]) == type,
+	    "canonical members retain their aggregate owner");
 	check(members[0].representative->offset == 0 &&
 	    members[1].representative->offset == 8 &&
 	    members[2].representative->offset == 16,

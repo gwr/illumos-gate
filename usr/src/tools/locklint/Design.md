@@ -124,7 +124,9 @@ not when future features should be added.
 - **Locklint type** (`struct ll_type`) - Locklint's canonical identity for
   structurally matching exact aggregate types from the same source origin.
 - **Canonical member** (`struct type_member`) - One member identity shared by
-  corresponding exact members of a locklint type.
+  corresponding exact members of a locklint type.  It retains its canonical
+  owning aggregate so nested accesses can recover the direct
+  `type::member` identity without a registry scan.
 - **Source origin** - The translation unit and physical source position from
   which a locklint record was derived.
 
@@ -2547,6 +2549,7 @@ intermediate-frame rendering remain optional future work.
 | `type_name_visit_types()` | Visit canonical locklint types associated with one interned name |
 | `type_lookup_exact()` | Map one exact Sparse type to its canonical locklint type |
 | `type_member_lookup_exact()` | Map one exact Sparse member to its canonical member |
+| `type_member_owner()` | Return the canonical aggregate which directly owns a member |
 | `type_registry_show()` | Emit canonical named types and their exact-instance counts for `--dump-types` |
 
 ### Access identity: `access.c`

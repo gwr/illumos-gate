@@ -860,6 +860,7 @@ type_members_build(struct ll_type *type, struct symbol *exact)
 		struct type_member *member = &type->members[index++];
 
 		member->representative = symbol;
+		member->owner = type;
 		member->type = type_intern(symbol->ctype.base_type);
 		if (member->type == NULL)
 			die("unsupported Sparse member type");
@@ -1324,6 +1325,12 @@ const struct type_member *
 type_member_lookup_exact(struct symbol *symbol)
 {
 	return (type_member_find(symbol));
+}
+
+const struct ll_type *
+type_member_owner(const struct type_member *member)
+{
+	return (member == NULL ? NULL : member->owner);
 }
 
 bool
