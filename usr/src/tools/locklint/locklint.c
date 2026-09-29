@@ -52,7 +52,7 @@ static bool dump_contexts;
 static bool dump_protection_states;
 static bool dump_statistics;
 static bool dump_types;
-static bool check_locks;
+static bool check_locks = true;
 static bool compat_osll;
 static bool show_times;
 
@@ -77,7 +77,8 @@ usage(FILE *stream)
 {
 	(void) fprintf(stream,
 	    "usage: locklint [--cf command-file] [--compat=osll] "
-	    "[--check-locks] [--dump-parsed] [--dump-linearized] "
+	    "[--check-locks] [--no-check] "
+	    "[--dump-parsed] [--dump-linearized] "
 	    "[--dump-accesses] [--dump-annotations] [--dump-events] "
 	    "[--dump-callgraph] [--dump-contexts] "
 	    "[--dump-protection-states] [--dump-statistics] [--dump-types] "
@@ -114,7 +115,12 @@ options(int argc, char **argv)
 				die("--cf requires a command file");
 			add_command_file(argv[i]);
 		} else if (strcmp(argv[i], "--check-locks") == 0) {
-			check_locks = true;
+			/*
+			 * Retain the former opt-in spelling for compatibility.
+			 * Lock checking is enabled by default.
+			 */
+		} else if (strcmp(argv[i], "--no-check") == 0) {
+			check_locks = false;
 		} else if (strcmp(argv[i], "--dump-parsed") == 0) {
 			dump_parsed = true;
 		} else if (strcmp(argv[i], "--dump-linearized") == 0) {
@@ -351,9 +357,10 @@ main(int argc, char **argv)
 
 	type_registry_create();
 	preprocessor_compatibility_enable();
-	if (dump_annotations || dump_events || check_locks || dump_contexts)
+	if (dump_annotations || dump_events || check_locks || dump_contexts ||
+	    dump_protection_states)
 		locklint_annotations_enable();
-	if (check_locks || dump_contexts)
+	if (check_locks || dump_contexts || dump_protection_states)
 		locklint_assertions_enable();
 	do_output = 0;
 	/*
@@ -389,9 +396,11 @@ main(int argc, char **argv)
 		    "declarations are not supported");
 	register_translation_unit_declarations(tu, symbols);
 	timing_begin(TIMING_INPUT_EVIDENCE);
-	if (dump_annotations || dump_events || check_locks || dump_contexts)
+	if (dump_annotations || dump_events || check_locks || dump_contexts ||
+	    dump_protection_states)
 		locklint_resolve_annotations(symbols);
-	if (check_locks || dump_callgraph || dump_contexts)
+	if (check_locks || dump_callgraph || dump_contexts ||
+	    dump_protection_states)
 		callgraph_record_pointer_evidence(tu, symbols,
 		    dump_callgraph);
 	timing_end(TIMING_INPUT_EVIDENCE);
@@ -440,7 +449,7 @@ main(int argc, char **argv)
 	timing_end(TIMING_COMMANDS);
 	if (check_locks || dump_callgraph || dump_contexts ||
 	    dump_protection_states) {
-		locklint_check_all(check_locks || dump_protection_states,
+		locklint_check_all(check_locks,
 		    dump_callgraph, dump_contexts, dump_protection_states);
 	}
 	timing_begin(TIMING_FINAL_OUTPUT);

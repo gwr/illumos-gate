@@ -174,6 +174,7 @@ struct operation_family_index {
 
 struct analysis {
 	struct lock_identity_collection *lock_identities;
+	bool check_locks;
 	struct worklist worklist;
 	struct analysis_counts counts;
 	struct analysis_measurements measurements;
@@ -5498,16 +5499,17 @@ emit_protected_access_findings(struct analysis *analysis,
 		    finding->instruction->pos;
 
 		emit_protection_state(analysis->protection_state_stream, finding);
-		if (finding->read_only_visible) {
+		if (analysis->check_locks && finding->read_only_visible) {
 			locklint_warning(LOCKLINT_DIAG_READ_ONLY_VISIBLE, pos,
 			    "read-only data '%s' modified while visible to "
 			    "competing threads", member);
-		} else if (finding->read_only_maybe_visible) {
+		} else if (analysis->check_locks &&
+		    finding->read_only_maybe_visible) {
 			locklint_warning(LOCKLINT_DIAG_READ_ONLY_MAYBE_VISIBLE,
 			    pos, "read-only data '%s' may be modified while "
 			    "visible to competing threads", member);
 		}
-		if (finding->unprotected) {
+		if (analysis->check_locks && finding->unprotected) {
 			char *lock =
 			    locklint_access_name(&finding->protector);
 			const char *holding =
@@ -5525,7 +5527,7 @@ emit_protected_access_findings(struct analysis *analysis,
 			    finding->observed_modes != 0)
 				emit_lock_mode_info(finding, pos, lock, false);
 			free(lock);
-		} else if (finding->conditional) {
+		} else if (analysis->check_locks && finding->conditional) {
 			locklint_warning(LOCKLINT_DIAG_CONDITIONAL_PROTECTION,
 			    pos, "protection for member '%s' is not "
 			    "established on every path", member);
@@ -6997,11 +6999,12 @@ seed_stalled_recursive_calls(struct analysis *analysis)
 }
 
 void
-analysis_run(struct lock_identity_collection *lock_identities, FILE *stream,
-    FILE *protection_state_stream)
+analysis_run(struct lock_identity_collection *lock_identities, bool check_locks,
+    FILE *stream, FILE *protection_state_stream)
 {
 	struct analysis analysis = {
 		.lock_identities = lock_identities,
+		.check_locks = check_locks,
 		.protection_state_stream = protection_state_stream
 	};
 	struct point_state *point_state;
@@ -7018,37 +7021,43 @@ analysis_run(struct lock_identity_collection *lock_identities, FILE *stream,
 			process_point(&analysis, point_state);
 	} while (seed_stalled_recursive_calls(&analysis));
 	timing_end(TIMING_FIXED_POINT);
-	timing_begin(TIMING_DIAG_DECLARED_EFFECTS);
-	diagnose_declared_lock_effects(&analysis);
-	timing_end(TIMING_DIAG_DECLARED_EFFECTS);
-	timing_begin(TIMING_DIAG_LOCK_TRANSITIONS);
-	diagnose_lock_transitions(&analysis);
-	timing_end(TIMING_DIAG_LOCK_TRANSITIONS);
-	timing_begin(TIMING_DIAG_DECLARED_ORDER);
-	diagnose_acquisition_order_and_waits(&analysis);
-	timing_end(TIMING_DIAG_DECLARED_ORDER);
-	timing_begin(TIMING_DIAG_LOCK_ASSERTIONS);
-	diagnose_lock_assertions(&analysis);
-	timing_end(TIMING_DIAG_LOCK_ASSERTIONS);
-	timing_begin(TIMING_DIAG_COMPETITION_UNDERFLOW);
-	diagnose_competition_underflow();
-	timing_end(TIMING_DIAG_COMPETITION_UNDERFLOW);
-	timing_begin(TIMING_DIAG_COMPETITION_EFFECTS);
-	diagnose_declared_competition_effects();
-	timing_end(TIMING_DIAG_COMPETITION_EFFECTS);
-	timing_begin(TIMING_DIAG_COMPETITION_ASSERTIONS);
-	diagnose_competition_assertions();
-	timing_end(TIMING_DIAG_COMPETITION_ASSERTIONS);
-	timing_begin(TIMING_DIAG_PROTECTED_ACCESSES);
-	diagnose_protected_accesses(&analysis);
-	timing_end(TIMING_DIAG_PROTECTED_ACCESSES);
-	timing_begin(TIMING_DIAG_ASSUMED_CALLS);
-	diagnose_assumed_calls(&analysis);
-	diagnose_invalid_assumed_regions();
-	timing_end(TIMING_DIAG_ASSUMED_CALLS);
-	timing_begin(TIMING_DIAG_LOCKS_ON_RETURN);
-	diagnose_locks_on_return(&analysis);
-	timing_end(TIMING_DIAG_LOCKS_ON_RETURN);
+	if (check_locks) {
+		timing_begin(TIMING_DIAG_DECLARED_EFFECTS);
+		diagnose_declared_lock_effects(&analysis);
+		timing_end(TIMING_DIAG_DECLARED_EFFECTS);
+		timing_begin(TIMING_DIAG_LOCK_TRANSITIONS);
+		diagnose_lock_transitions(&analysis);
+		timing_end(TIMING_DIAG_LOCK_TRANSITIONS);
+		timing_begin(TIMING_DIAG_DECLARED_ORDER);
+		diagnose_acquisition_order_and_waits(&analysis);
+		timing_end(TIMING_DIAG_DECLARED_ORDER);
+		timing_begin(TIMING_DIAG_LOCK_ASSERTIONS);
+		diagnose_lock_assertions(&analysis);
+		timing_end(TIMING_DIAG_LOCK_ASSERTIONS);
+		timing_begin(TIMING_DIAG_COMPETITION_UNDERFLOW);
+		diagnose_competition_underflow();
+		timing_end(TIMING_DIAG_COMPETITION_UNDERFLOW);
+		timing_begin(TIMING_DIAG_COMPETITION_EFFECTS);
+		diagnose_declared_competition_effects();
+		timing_end(TIMING_DIAG_COMPETITION_EFFECTS);
+		timing_begin(TIMING_DIAG_COMPETITION_ASSERTIONS);
+		diagnose_competition_assertions();
+		timing_end(TIMING_DIAG_COMPETITION_ASSERTIONS);
+	}
+	if (check_locks || protection_state_stream != NULL) {
+		timing_begin(TIMING_DIAG_PROTECTED_ACCESSES);
+		diagnose_protected_accesses(&analysis);
+		timing_end(TIMING_DIAG_PROTECTED_ACCESSES);
+	}
+	if (check_locks) {
+		timing_begin(TIMING_DIAG_ASSUMED_CALLS);
+		diagnose_assumed_calls(&analysis);
+		diagnose_invalid_assumed_regions();
+		timing_end(TIMING_DIAG_ASSUMED_CALLS);
+		timing_begin(TIMING_DIAG_LOCKS_ON_RETURN);
+		diagnose_locks_on_return(&analysis);
+		timing_end(TIMING_DIAG_LOCKS_ON_RETURN);
+	}
 	if (stream != NULL) {
 		timing_begin(TIMING_MEASUREMENT);
 		analysis.measurements.lock_identities =

@@ -183,25 +183,36 @@ test_provenance_edges(void)
 struct root_call_results {
 	struct function_context *first_root;
 	struct instruction *first_instruction;
+	struct function_context *first_callee;
+	struct function_context *second_callee;
 	struct function_context *second_root;
 	struct instruction *second_instruction;
-	size_t first_count;
-	size_t second_count;
+	struct function_context *second_root_callee;
+	size_t first_callee_count;
+	size_t second_callee_count;
+	size_t second_root_count;
 	size_t unexpected_count;
 };
 
 static void
-record_root_call(struct function_context *context,
+record_root_call(struct function_context *caller_context,
+    struct function_context *callee_context,
     struct instruction *instruction, void *data_arg)
 {
 	struct root_call_results *results = data_arg;
 
-	if (context == results->first_root &&
+	if (caller_context == results->first_root &&
+	    callee_context == results->first_callee &&
 	    instruction == results->first_instruction) {
-		results->first_count++;
-	} else if (context == results->second_root &&
+		results->first_callee_count++;
+	} else if (caller_context == results->first_root &&
+	    callee_context == results->second_callee &&
+	    instruction == results->first_instruction) {
+		results->second_callee_count++;
+	} else if (caller_context == results->second_root &&
+	    callee_context == results->second_root_callee &&
 	    instruction == results->second_instruction) {
-		results->second_count++;
+		results->second_root_count++;
 	} else {
 		results->unexpected_count++;
 	}
@@ -254,22 +265,29 @@ test_root_call_traversal(void)
 	results = (struct root_call_results) {
 		.first_root = first_root,
 		.first_instruction = (struct instruction *)&first_root_call,
+		.first_callee = left,
+		.second_callee = right,
 		.second_root = second_root,
-		.second_instruction = (struct instruction *)&second_root_call
+		.second_instruction = (struct instruction *)&second_root_call,
+		.second_root_callee = right
 	};
 	error = provenance_for_each_root_call(target, record_root_call, &results,
 	    &found);
 	check(error == 0, "traverse converging recursive provenance");
 	check(found, "find root calls through provenance");
-	check(results.first_count == 1,
-	    "deduplicate root call reached by converging paths");
-	check(results.second_count == 1, "visit distinct root call");
+	check(results.first_callee_count == 1,
+	    "deduplicate first root edge reached by converging paths");
+	check(results.second_callee_count == 1,
+	    "distinguish callees at one root call instruction");
+	check(results.second_root_count == 1, "visit distinct root call");
 	check(results.unexpected_count == 0, "visit only expected root calls");
 
 	error = provenance_for_each_root_call(target, record_root_call, &results,
 	    &found);
 	check(error == 0 && found, "repeat root call traversal");
-	check(results.first_count == 2 && results.second_count == 2,
+	check(results.first_callee_count == 2 &&
+	    results.second_callee_count == 2 &&
+	    results.second_root_count == 2,
 	    "repeat cached-candidate traversal result");
 
 	found = true;
@@ -291,7 +309,7 @@ test_root_call_traversal(void)
 	    unique_contexts == 4, "count unique caller recovery contexts");
 	check(statistics.caller_recovery_edges_examined -
 	    edges_examined == 14, "count examined caller recovery edges");
-	check(statistics.caller_recovery_root_calls - root_calls == 4,
+	check(statistics.caller_recovery_root_calls - root_calls == 6,
 	    "count caller recovery result calls");
 	check(statistics.caller_recovery_first_max_depth.samples == 2 &&
 	    statistics.caller_recovery_first_max_depth.total == 2 &&
@@ -318,12 +336,12 @@ test_root_call_traversal(void)
 	    statistics.caller_recovery_repeat_edges_examined.maximum == 7,
 	    "measure repeated-query examined edges");
 	check(statistics.caller_recovery_first_root_calls.samples == 2 &&
-	    statistics.caller_recovery_first_root_calls.total == 2 &&
-	    statistics.caller_recovery_first_root_calls.maximum == 2,
+	    statistics.caller_recovery_first_root_calls.total == 3 &&
+	    statistics.caller_recovery_first_root_calls.maximum == 3,
 	    "measure first-query root calls");
 	check(statistics.caller_recovery_repeat_root_calls.samples == 1 &&
-	    statistics.caller_recovery_repeat_root_calls.total == 2 &&
-	    statistics.caller_recovery_repeat_root_calls.maximum == 2,
+	    statistics.caller_recovery_repeat_root_calls.total == 3 &&
+	    statistics.caller_recovery_repeat_root_calls.maximum == 3,
 	    "measure repeated-query root calls");
 
 	context_collection_free(&second_root_function);

@@ -189,13 +189,24 @@ The main phases are:
 6. Emit other requested development dumps.  `--dump-types` lists every named
    locklint type retained in the process-wide type registry and reports how
    many exact Sparse instances each one represents.
-   `--dump-protection-states` runs lock checking and emits one source-oriented
-   record for every static lock-protected access.  Each record aggregates all
-   reachable caller contexts and classifies each reaching state exactly once,
-   in required-lock, invisible-data, no-competing-threads, conditional, then
-   unprotected order.  The reason counts therefore sum to the reported state
-   count.  `--dump-all` includes this report, the type registry, and the
-   whole-program call-graph audit.
+   `--dump-protection-states` runs the required context analysis and emits one
+   source-oriented record for every static lock-protected access.  Each record
+   aggregates all reachable caller contexts and classifies each reaching
+   state exactly once, in required-lock, invisible-data,
+   no-competing-threads, conditional, then unprotected order.  The reason
+   counts therefore sum to the reported state count.  `--dump-all` includes
+   this report, the type registry, and the whole-program call-graph audit.
+
+Lock checking and ordinary locklint diagnostics are enabled by default.
+`--no-check` suppresses those diagnostics.  Development output options remain
+independent: each `--dump-*` option requests its named output regardless of
+`--no-check`, and locklint still performs any callgraph resolution or context
+fixed point required to produce that output.  In particular,
+`--no-check --dump-contexts` computes and displays contexts without running
+the post-fixed-point diagnostic passes, while
+`--no-check --dump-protection-states` emits protection-state records without
+ordinary protected-access warnings.  The former `--check-locks` opt-in
+spelling remains accepted as a compatibility no-op.
 
 The optional `--times` report uses process-global accumulated timers.  It
 separates initialization; frontend parsing; object-identity, type-registration,
@@ -235,10 +246,10 @@ three counters make the cross-translation-unit representation reduction
 directly measurable.  Data-policy statistics count lookup requests and the
 indexed references examined after canonical selection.
 The counters are collected unconditionally.  `--dump-statistics` controls only
-whether they are reported at final output.  It does not request context
-analysis, so development runs normally combine it with `--dump-contexts` or
-`--check-locks`.  Reporting occurs after analysis cleanup, so cleanup
-enumerations are included.
+whether they are reported at final output.  It does not independently request
+context analysis; default checking does, while `--no-check` permits statistics
+for only the work requested by other options.  Reporting occurs after analysis
+cleanup, so cleanup enumerations are included.
 
 Locklint is not a general Sparse command-line frontend.  Passing the compiler
 and preprocessing options needed to parse illumos translation units is
@@ -2125,12 +2136,12 @@ The audit labels a singleton inferred or declared edge as
 `resolved-indirect-targets` and identifies each function together with its
 translation unit.  It reports other indirect calls as unresolved without
 inventing targets.  Unresolved indirect calls do not yet produce ordinary
-`--check-locks` diagnostics; the explicit audit remains their reporting
+lock-checking diagnostics; the explicit audit remains their reporting
 interface.
 
 An escaped function whose definition cannot be resolved is different: code
 outside the analyzed inputs may invoke it as a callback, but locklint cannot
-analyze its lock effects.  `--check-locks` reports
+analyze its lock effects.  Ordinary lock checking reports
 `[unanalyzed-callback]` once per unavailable function identity at its first
 function-address escape.  Repeated operation-table entries do not duplicate
 the warning.  A direct call does not suppress it, because an unresolved
@@ -2138,7 +2149,7 @@ direct call does not make the callback's implementation available.  An
 escaped function with a retained definition does not receive this warning;
 automatic root discovery analyzes that definition.
 
-The existing `--check-locks` diagnostic for an ambiguous external direct call
+The existing diagnostic for an ambiguous external direct call
 remains unchanged.  Audit records supplement rather than suppress ordinary
 diagnostics.
 

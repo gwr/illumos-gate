@@ -209,7 +209,8 @@ require_match "access smoke" 'store static_value ' accesses.out
 #
 # Verify ordered memory, call, acquisition, and release events.
 #
-run_capture "events" events.out "$LOCKLINT" --dump-events events.c
+run_capture "events" events.out \
+    "$LOCKLINT" --no-check --dump-events events.c
 compare "events" events.ref events.out
 
 #
@@ -366,7 +367,7 @@ run_capture "annotations" annotations.out \
 compare "annotations" annotations.ref annotations.out
 
 run_capture "declared effect annotations" declared-effect-annotations.out \
-    "$LOCKLINT" --dump-annotations declared-effect-annotations.c
+    "$LOCKLINT" --no-check --dump-annotations declared-effect-annotations.c
 compare "declared effect annotations" declared-effect-annotations.ref \
     declared-effect-annotations.out
 
@@ -394,7 +395,7 @@ compare "lock order annotations" lock-order-annotations.ref \
     lock-order-annotations.out
 
 run_capture "rwlock coverage annotations" rwlock-covers-locks-annotations.out \
-    "$LOCKLINT" --dump-annotations rwlock-covers-locks.c
+    "$LOCKLINT" --no-check --dump-annotations rwlock-covers-locks.c
 compare "rwlock coverage annotations" rwlock-covers-locks-annotations.ref \
     rwlock-covers-locks-annotations.out
 
@@ -470,7 +471,7 @@ reject_match "mutex trylock generic call" "CALL mutex_trylock" \
 # policy dimensions.
 #
 run_capture "data policy annotations" data-policy-annotations.out \
-    "$LOCKLINT" --dump-annotations data-policy.c
+    "$LOCKLINT" --no-check --dump-annotations data-policy.c
 compare "data policy annotations" data-policy-annotations.ref \
     data-policy-annotations.out
 
@@ -863,7 +864,7 @@ require_match "command targets incompatible function" \
     command-targets-incompatible-function.out
 
 run_capture "rwlock annotations" rwlock-annotations.out \
-    "$LOCKLINT" --dump-annotations rwlock.c
+    "$LOCKLINT" --no-check --dump-annotations rwlock.c
 compare "rwlock annotations" rwlock-annotations.ref \
     rwlock-annotations.out
 
@@ -1406,11 +1407,11 @@ reject_match "restored non-competing read-only write" \
 # identity across translation units, and exact function-pointer escapes.
 #
 run_capture "calls callgraph" calls-callgraph.out \
-    "$LOCKLINT" --dump-callgraph calls.c
+    "$LOCKLINT" --no-check --dump-callgraph calls.c
 compare "calls callgraph" calls-callgraph.ref calls-callgraph.out
 
 run_capture "cross translation unit callgraph" cross-callgraph.out \
-    "$LOCKLINT" --dump-callgraph cross-caller.c cross-callee.c
+    "$LOCKLINT" --no-check --dump-callgraph cross-caller.c cross-callee.c
 compare "cross translation unit callgraph" cross-callgraph.ref \
     cross-callgraph.out
 
@@ -1440,7 +1441,7 @@ then
 fi
 
 run_capture "indirect calls callgraph" indirect-calls-callgraph.out \
-    "$LOCKLINT" --dump-callgraph indirect-calls.c
+    "$LOCKLINT" --no-check --dump-callgraph indirect-calls.c
 compare "indirect calls callgraph" indirect-calls-callgraph.ref \
     indirect-calls-callgraph.out
 
@@ -1508,7 +1509,8 @@ require_match "forced GNU extern inline implementation" \
 
 run_capture "GNU extern inline without external definition" \
     gnu-extern-inline-no-external.out \
-    "$LOCKLINT" --dump-callgraph gnu-extern-inline-no-external.c
+    "$LOCKLINT" --no-check --dump-callgraph \
+    gnu-extern-inline-no-external.c
 compare "GNU extern inline without external definition" \
     gnu-extern-inline-no-external.ref \
     gnu-extern-inline-no-external.out
@@ -1606,8 +1608,8 @@ require_match "annotation name dump" \
 #
 # Verify mutex-protected accesses and acquire/release diagnostics.
 #
-run_capture "lock transition diagnostics" lock-transition-diagnostics.out \
-    "$LOCKLINT" --check-locks check.c
+run_capture "default lock transition diagnostics" \
+    lock-transition-diagnostics.out "$LOCKLINT" check.c
 require_match "unprotected read diagnostic" \
     "check.c:49:22: warning: locklint: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
     lock-transition-diagnostics.out
@@ -1623,6 +1625,7 @@ require_match "conditional protection diagnostic" \
 require_match "mixed release diagnostic" \
     "check.c:66:19: warning: locklint: lock 'lock' may not be held \\[lock-maybe-not-held\\]" \
     lock-transition-diagnostics.out
+
 require_match "mixed acquire diagnostic" \
     "check.c:96:20: warning: locklint: lock 'lock' may already be held \\[lock-maybe-already-held\\]" \
     lock-transition-diagnostics.out
@@ -1632,6 +1635,21 @@ require_match "conditional held on return" \
 if [ "$(grep -c 'warning:' lock-transition-diagnostics.out)" -ne 7 ]; then
 	fail "lock transition diagnostics: expected exactly seven warnings"
 fi
+
+run_capture "no-check context dump" no-check-contexts.out \
+    "$LOCKLINT" --no-check --dump-contexts check.c
+require_match "no-check context dump" '^roots ' \
+    no-check-contexts.out
+reject_match "no-check lock diagnostics" 'warning: locklint:' \
+    no-check-contexts.out
+
+run_capture "no-check protection-state dump" \
+    no-check-protection-states.out \
+    "$LOCKLINT" --no-check --dump-protection-states data-policy.c
+require_match "no-check protection-state dump" \
+    '^data-policy.c:.*protection-state ' no-check-protection-states.out
+reject_match "no-check protection-state diagnostics" 'warning: locklint:' \
+    no-check-protection-states.out
 
 #
 # Record which source-level read-modify-write accesses survive lowering.
