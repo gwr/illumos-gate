@@ -11,14 +11,15 @@
 
 /*
  * Verify command-file targets for a function-pointer member of an operation
- * vector supplied outside the analysis.  The two compatible targets wait
- * while holding different locks so singleton and multiple-target analysis
- * are visible without requiring equal target side effects.
+ * vector supplied outside the analysis.  The ordinary targets wait while
+ * holding different locks.  A separate variant returns with different locks
+ * held to verify that each declared target contributes its caller state.
  */
 
 #ifdef __lock_lint
 #include <sys/condvar.h>
 #include <sys/mutex.h>
+#include <sys/note.h>
 typedef kmutex_t mutex_t;
 typedef kcondvar_t condvar_t;
 #else
@@ -59,22 +60,32 @@ void command_target_incompatible(int);
 static void
 command_target_first(struct command_target_state *state)
 {
+#if COMMAND_TARGETS_DIFFERENT_EFFECTS
+	mutex_enter(&state->first);
+	_NOTE(MUTEX_ACQUIRED_AS_SIDE_EFFECT(state->first))
+#else
 	mutex_enter(&state->first);
 	mutex_enter(&state->wait);
 	cv_wait(&state->cv, &state->wait);
 	mutex_exit(&state->wait);
 	mutex_exit(&state->first);
+#endif
 }
 
-#if COMMAND_TARGETS_BOTH
+#if COMMAND_TARGETS_BOTH || COMMAND_TARGETS_DIFFERENT_EFFECTS
 static void
 command_target_second(struct command_target_state *state)
 {
+#if COMMAND_TARGETS_DIFFERENT_EFFECTS
+	mutex_enter(&state->second);
+	_NOTE(MUTEX_ACQUIRED_AS_SIDE_EFFECT(state->second))
+#else
 	mutex_enter(&state->second);
 	mutex_enter(&state->wait);
 	cv_wait(&state->cv, &state->wait);
 	mutex_exit(&state->wait);
 	mutex_exit(&state->second);
+#endif
 }
 #endif
 
@@ -85,12 +96,26 @@ command_target_incompatible(int value)
 }
 
 static void
+#if COMMAND_TARGETS_DIFFERENT_EFFECTS
+command_targets_effects(struct command_target_ops *ops,
+    struct command_target_state *state)
+{
+	ops->start(state);
+	mutex_enter(&state->wait);
+	cv_wait(&state->cv, &state->wait);
+	mutex_exit(&state->wait);
+	mutex_exit(&state->first);
+	mutex_exit(&state->second);
+	command_target_stop();
+}
+#else
 command_targets_start(struct command_target_ops *ops,
     struct command_target_state *state)
 {
 	ops->start(state);
 	command_target_stop();
 }
+#endif
 
 static void
 command_targets_finish(struct command_target_ops *ops,

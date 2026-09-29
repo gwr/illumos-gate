@@ -808,6 +808,25 @@ if [ "$(grep -c 'warning:' command-targets-both.out)" -ne 2 ]; then
 	fail "command multiple targets: expected exactly two warnings"
 fi
 
+run_capture "command target return effects" command-targets-effects.out \
+    "$LOCKLINT" -DCOMMAND_TARGETS_DIFFERENT_EFFECTS=1 \
+    --cf commands/targets-effects.cf commands/targets.c
+require_match "first target conditional return effect" \
+    "warning: locklint: lock 'first' may not be held \\[lock-maybe-not-held\\]" \
+    command-targets-effects.out
+require_match "second target conditional return effect" \
+    "warning: locklint: lock 'second' may not be held \\[lock-maybe-not-held\\]" \
+    command-targets-effects.out
+require_match "first target returned effect" \
+    "warning: locklint: condition wait may occur while holding lock 'command_target_state::first' \\[lock-maybe-held-during-wait\\]" \
+    command-targets-effects.out
+require_match "second target returned effect" \
+    "warning: locklint: condition wait may occur while holding lock 'command_target_state::second' \\[lock-maybe-held-during-wait\\]" \
+    command-targets-effects.out
+if [ "$(grep -c 'warning:' command-targets-effects.out)" -ne 4 ]; then
+	fail "command target return effects: expected exactly four warnings"
+fi
+
 run_capture "source no-lock contract" command-targets-source-contract.out \
     "$LOCKLINT" -DCOMMAND_TARGETS_SOURCE_CONTRACT=1 \
     --dump-annotations --cf commands/targets-unmodeled.cf commands/targets.c

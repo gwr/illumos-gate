@@ -39,7 +39,7 @@ run_session()
 
 	run_command load "$LOCK_LINT" load "$OSLL_LL_FILE" || exit $?
 	run_command declare-root "$LOCK_LINT" declare root \
-	    command_targets_start || exit $?
+	    "$OSLL_ROOT" || exit $?
 	run_command declare-targets "$LOCK_LINT" declare \
 	    command_target_ops::start targets $OSLL_TARGETS || exit $?
 	run_command analyze "$LOCK_LINT" analyze
@@ -89,7 +89,9 @@ run_case()
 {
 	name=$1
 	variant=$2
-	shift 2
+	effects=$3
+	OSLL_ROOT=$4
+	shift 4
 	OSLL_RESULT_DIR="$run_root/$name"
 	build_dir="$OSLL_RESULT_DIR/ll"
 	context_tmp="$OSLL_RESULT_DIR/tmp"
@@ -99,7 +101,8 @@ run_case()
 	print "Compiling target case $name"
 	(
 		cd "$build_dir" || exit 1
-		"$CC" -Zll -DCOMMAND_TARGETS_BOTH="$variant" "$SOURCE"
+		"$CC" -Zll -DCOMMAND_TARGETS_BOTH="$variant" \
+		    -DCOMMAND_TARGETS_DIFFERENT_EFFECTS="$effects" "$SOURCE"
 	) >"$OSLL_RESULT_DIR/compile.out" 2>&1
 	compile_status=$?
 	print -- "$compile_status" >"$OSLL_RESULT_DIR/compile.status"
@@ -118,7 +121,8 @@ run_case()
 
 	OSLL_SESSION_MODE=1
 	TMPDIR="$context_tmp"
-	export OSLL_LL_FILE OSLL_RESULT_DIR OSLL_SESSION_MODE OSLL_TARGETS TMPDIR
+	export OSLL_LL_FILE OSLL_RESULT_DIR OSLL_ROOT OSLL_SESSION_MODE
+	export OSLL_TARGETS TMPDIR
 
 	print "Running target case $name"
 	"$LOCK_LINT" start "$SCRIPT" >"$OSLL_RESULT_DIR/session.out" 2>&1
@@ -131,7 +135,10 @@ run_case()
 	fi
 }
 
-run_case first 0 command_target_first || exit $?
-run_case both 1 command_target_first command_target_second || exit $?
+run_case first 0 0 command_targets_start command_target_first || exit $?
+run_case both 1 0 command_targets_start \
+    command_target_first command_target_second || exit $?
+run_case different-effects 1 1 command_targets_effects \
+    command_target_first command_target_second || exit $?
 
 print "Results: $run_root"

@@ -2048,6 +2048,15 @@ aggregate.  The declared set supplies concrete bodies, argument binding,
 effects, and diagnostics; it is not a callable contract for an unavailable
 implementation.
 
+Different targets may return different lock states.  Each target's exit
+reactivates the caller independently, so later caller operations observe the
+alternatives rather than a fabricated common effect.  The declared-target
+test covers two targets returning with different locks held and requires
+conditional wait and release diagnostics for both locks.  Returned lock
+states do not yet retain the callee identity as per-lock provenance, so those
+caller-side diagnostics cannot name which target supplied a particular
+state.
+
 ### Declared type-member contracts
 
 When neither an exact target nor a declared target set applies, a direct
