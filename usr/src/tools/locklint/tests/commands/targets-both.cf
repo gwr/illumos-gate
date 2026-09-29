@@ -1,3 +1,4 @@
 # Repeated declarations add targets and ignore duplicates.
 declare targets command_target_ops::start command_target_second
 declare targets command_target_ops::start command_target_first command_target_second
+declare contract command_target_ops::finish no-lock-effects

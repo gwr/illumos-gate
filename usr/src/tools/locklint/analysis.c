@@ -172,16 +172,49 @@ struct operation_family_index {
 	bool initialized;
 };
 
+struct indirect_call_observation {
+	struct function_info *function;
+	struct instruction *instruction;
+	bool modeled;
+	bool unmodeled;
+	avl_node_t by_instruction;
+};
+
 struct analysis {
 	struct lock_identity_collection *lock_identities;
 	bool check_locks;
 	struct worklist worklist;
+	avl_tree_t indirect_calls;
 	struct analysis_counts counts;
 	struct analysis_measurements measurements;
 	struct operation_family_index operation_families;
 	FILE *protection_state_stream;
 	uint64_t provenance_visit_generation;
 };
+
+static int
+compare_indirect_call_observation(const void *left_arg, const void *right_arg)
+{
+	const struct indirect_call_observation *left = left_arg;
+	const struct indirect_call_observation *right = right_arg;
+	struct position left_pos = left->instruction->call_expr != NULL ?
+	    left->instruction->call_expr->pos : left->instruction->pos;
+	struct position right_pos = right->instruction->call_expr != NULL ?
+	    right->instruction->call_expr->pos : right->instruction->pos;
+	int result;
+
+	result = strcmp(stream_name(left_pos.stream),
+	    stream_name(right_pos.stream));
+	if (result != 0)
+		return (AVL_ISIGN(result));
+	result = AVL_CMP(left_pos.line, right_pos.line);
+	if (result != 0)
+		return (result);
+	result = AVL_CMP(left_pos.pos, right_pos.pos);
+	if (result != 0)
+		return (result);
+	return (AVL_PCMP(left->instruction, right->instruction));
+}
 
 /*
  * One exact bare pointer-formal forwarding relation retained only while
@@ -2451,6 +2484,34 @@ process_call_target(struct analysis *analysis,
 }
 
 static void
+observe_indirect_call(struct analysis *analysis,
+    struct function_context *context, struct instruction *instruction,
+    bool modeled)
+{
+	struct indirect_call_observation key = {
+		.instruction = instruction
+	};
+	struct indirect_call_observation *observation;
+	avl_index_t where;
+
+	if (!callgraph_indirect_call(context->function, instruction))
+		return;
+	observation = avl_find(&analysis->indirect_calls, &key, &where);
+	if (observation == NULL) {
+		observation = calloc(1, sizeof (*observation));
+		if (observation == NULL)
+			die("cannot allocate indirect call observation");
+		observation->function = context->function;
+		observation->instruction = instruction;
+		avl_insert(&analysis->indirect_calls, observation, where);
+	}
+	if (modeled)
+		observation->modeled = true;
+	else
+		observation->unmodeled = true;
+}
+
+static void
 process_call(struct analysis *analysis, struct point_state *point_state,
     const struct semantic_state *caller_state)
 {
@@ -2467,6 +2528,10 @@ process_call(struct analysis *analysis, struct point_state *point_state,
 	targets = context_call_targets(caller_context, caller_state,
 	    point_state->point.next_instruction);
 	target_count = callgraph_target_set_count(targets);
+	observe_indirect_call(analysis, caller_context,
+	    point_state->point.next_instruction, target_count != 0 ||
+	    callgraph_no_lock_effects(caller_context->function,
+	    point_state->point.next_instruction));
 	if (context_state_target_count(caller_state) == 0) {
 		call_state = caller_state;
 	} else {
@@ -6998,6 +7063,80 @@ seed_stalled_recursive_calls(struct analysis *analysis)
 	return (seeded);
 }
 
+static char *
+indirect_call_selector(const struct locklint_access *access)
+{
+	const char *type_name;
+	const char *member_name;
+	char *selector;
+	size_t length;
+
+	if (access->type == NULL || access->type->ident == NULL ||
+	    access->member == NULL || access->member->ident == NULL)
+		return (NULL);
+	type_name = show_ident(access->type->ident);
+	member_name = show_ident(access->member->ident);
+	length = strlen(type_name) + 2 + strlen(member_name) + 1;
+	selector = malloc(length);
+	if (selector == NULL)
+		die("cannot allocate indirect call selector");
+	(void) snprintf(selector, length, "%s::%s", type_name, member_name);
+	return (selector);
+}
+
+static void
+report_unmodeled_indirect_calls(struct analysis *analysis)
+{
+	struct indirect_call_observation *observation;
+
+	for (observation = avl_first(&analysis->indirect_calls);
+	    observation != NULL;
+	    observation = AVL_NEXT(&analysis->indirect_calls, observation)) {
+		struct expression *call = observation->instruction->call_expr;
+		struct locklint_access access;
+		char *selector;
+
+		if (!observation->unmodeled || call == NULL ||
+		    !locklint_get_access(observation->function->tu, call->fn,
+		    &access))
+			continue;
+		selector = indirect_call_selector(&access);
+		if (selector == NULL)
+			continue;
+		if (observation->modeled) {
+			locklint_warning(LOCKLINT_DIAG_UNMODELED_INDIRECT_CALL,
+			    call->pos, "indirect call through '%s' may have "
+			    "no target or calling contract", selector);
+		} else {
+			locklint_warning(LOCKLINT_DIAG_UNMODELED_INDIRECT_CALL,
+			    call->pos, "indirect call through '%s' has no "
+			    "target or calling contract", selector);
+		}
+		info(call->pos, "locklint: use 'declare targets %s "
+		    "FUNCTION...' when the target function is known",
+		    selector);
+		info(call->pos, "locklint: use 'declare contract %s "
+		    "no-lock-effects' for analysis-specific policy",
+		    selector);
+		info(call->pos, "locklint: add '_NOTE(DECLARE_CONTRACT(%s, "
+		    "NO_LOCK_EFFECTS))' for stable interface policy",
+		    selector);
+		free(selector);
+	}
+}
+
+static void
+free_indirect_call_observations(struct analysis *analysis)
+{
+	struct indirect_call_observation *observation;
+	void *cookie = NULL;
+
+	while ((observation = avl_destroy_nodes(&analysis->indirect_calls,
+	    &cookie)) != NULL)
+		free(observation);
+	avl_destroy(&analysis->indirect_calls);
+}
+
 void
 analysis_run(struct lock_identity_collection *lock_identities, bool check_locks,
     FILE *stream, FILE *protection_state_stream)
@@ -7010,6 +7149,9 @@ analysis_run(struct lock_identity_collection *lock_identities, bool check_locks,
 	struct point_state *point_state;
 
 	worklist_create(&analysis.worklist);
+	avl_create(&analysis.indirect_calls, compare_indirect_call_observation,
+	    sizeof (struct indirect_call_observation),
+	    offsetof(struct indirect_call_observation, by_instruction));
 	timing_begin(TIMING_FIXED_POINT);
 	collect_assumed_regions();
 	collect_function_demands();
@@ -7022,6 +7164,7 @@ analysis_run(struct lock_identity_collection *lock_identities, bool check_locks,
 	} while (seed_stalled_recursive_calls(&analysis));
 	timing_end(TIMING_FIXED_POINT);
 	if (check_locks) {
+		report_unmodeled_indirect_calls(&analysis);
 		timing_begin(TIMING_DIAG_DECLARED_EFFECTS);
 		diagnose_declared_lock_effects(&analysis);
 		timing_end(TIMING_DIAG_DECLARED_EFFECTS);
@@ -7071,4 +7214,5 @@ analysis_run(struct lock_identity_collection *lock_identities, bool check_locks,
 		timing_end(TIMING_MEASUREMENT);
 	}
 	operation_family_index_free(&analysis.operation_families);
+	free_indirect_call_observations(&analysis);
 }

@@ -1,2 +1,4 @@
 # One externally configured implementation.
 declare targets command_target_ops::start command_target_first
+declare contract command_target_ops::finish no-lock-effects
+declare contract command_target_ops::finish no-lock-effects

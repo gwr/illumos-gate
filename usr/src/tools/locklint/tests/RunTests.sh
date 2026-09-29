@@ -745,6 +745,27 @@ require_match "command external entry true provenance" \
 # analysis.  A singleton declaration analyzes one target body; a target set
 # analyzes both bodies.  A declaration for start must not affect finish.
 #
+run_capture "command unmodeled indirect call" command-targets-unmodeled.out \
+    "$LOCKLINT" --cf commands/targets-unmodeled.cf commands/targets.c
+require_match "command unmodeled indirect call" \
+    "indirect call through 'command_target_ops::finish' has no target or calling contract \\[unmodeled-indirect-call\\]" \
+    command-targets-unmodeled.out
+require_match "command unmodeled target advice" \
+    "use 'declare targets command_target_ops::finish FUNCTION...' when the target function is known" \
+    command-targets-unmodeled.out
+require_match "command unmodeled contract advice" \
+    "use 'declare contract command_target_ops::finish no-lock-effects' for analysis-specific policy" \
+    command-targets-unmodeled.out
+require_match "source unmodeled contract advice" \
+    "add '_NOTE(DECLARE_CONTRACT(command_target_ops::finish, NO_LOCK_EFFECTS))' for stable interface policy" \
+    command-targets-unmodeled.out
+run_capture "no-check unmodeled indirect call" \
+    command-targets-unmodeled-no-check.out \
+    "$LOCKLINT" --no-check --dump-contexts \
+    --cf commands/targets-unmodeled.cf commands/targets.c
+reject_match "no-check unmodeled indirect call" \
+    "unmodeled-indirect-call" command-targets-unmodeled-no-check.out
+
 run_capture "command singleton target" command-targets-first.out \
     "$LOCKLINT" --check-locks --dump-callgraph \
     --cf commands/targets-first.cf \
@@ -786,6 +807,51 @@ require_match "command additive target set" \
 if [ "$(grep -c 'warning:' command-targets-both.out)" -ne 2 ]; then
 	fail "command multiple targets: expected exactly two warnings"
 fi
+
+run_capture "source no-lock contract" command-targets-source-contract.out \
+    "$LOCKLINT" -DCOMMAND_TARGETS_SOURCE_CONTRACT=1 \
+    --dump-annotations --cf commands/targets-unmodeled.cf commands/targets.c
+reject_match "source no-lock contract warning" \
+    "unmodeled-indirect-call" command-targets-source-contract.out
+require_match "source no-lock contract annotation" \
+    "DECLARE_CONTRACT command_target_ops::finish NO_LOCK_EFFECTS" \
+    command-targets-source-contract.out
+
+run_failure "command contract arity" command-contract-arity.out \
+    "$LOCKLINT" --cf commands/targets-contract-arity.cf commands/targets.c
+require_match "command contract arity" \
+    "declare contract requires one member and one contract" \
+    command-contract-arity.out
+run_failure "command contract kind" command-contract-kind.out \
+    "$LOCKLINT" --cf commands/targets-contract-kind.cf commands/targets.c
+require_match "command contract kind" \
+    "unknown calling contract 'lock-free'" command-contract-kind.out
+run_failure "command contract unresolved" command-contract-unresolved.out \
+    "$LOCKLINT" --cf commands/targets-contract-unresolved.cf \
+    commands/targets.c
+require_match "command contract unresolved" \
+    "unresolved function-pointer member 'missing_target_ops::finish'" \
+    command-contract-unresolved.out
+run_failure "command contract non-function" \
+    command-contract-non-function.out \
+    "$LOCKLINT" --cf commands/targets-contract-non-function.cf \
+    commands/targets.c
+require_match "command contract non-function" \
+    "member 'command_target_state::first' is not a function pointer" \
+    command-contract-non-function.out
+run_failure "command contract conflict" command-contract-conflict.out \
+    "$LOCKLINT" --cf commands/targets-contract-conflict.cf \
+    commands/targets.c
+require_match "command contract conflict" \
+    "member 'command_target_ops::start' has both declared targets and a no-lock-effects contract" \
+    command-contract-conflict.out
+run_failure "command contract reverse conflict" \
+    command-contract-reverse-conflict.out \
+    "$LOCKLINT" --cf commands/targets-contract-reverse-conflict.cf \
+    commands/targets.c
+require_match "command contract reverse conflict" \
+    "member 'command_target_ops::start' has both declared targets and a no-lock-effects contract" \
+    command-contract-reverse-conflict.out
 
 run_capture "command equivalent type targets" \
     command-targets-equivalent.out \
@@ -1268,8 +1334,14 @@ require_match "second stored callback target" \
 reject_match "stored callback target retained across call" \
     "stored-callback.c:55:16:.*stored_callback_state::outer_second" \
     stored-callback.out
-if [ "$(grep -c 'warning:' stored-callback.out)" -ne 2 ]; then
-	fail "stored callback propagation: expected exactly two warnings"
+require_match "invalidated stored callback is unmodeled" \
+    "stored-callback.c:99:25: warning: locklint: indirect call through 'stored_request::callback' has no target or calling contract \\[unmodeled-indirect-call\\]" \
+    stored-callback.out
+require_match "cleared stored callback is unmodeled" \
+    "stored-callback.c:110:25: warning: locklint: indirect call through 'stored_request::callback' has no target or calling contract \\[unmodeled-indirect-call\\]" \
+    stored-callback.out
+if [ "$(grep -c 'warning:' stored-callback.out)" -ne 4 ]; then
+	fail "stored callback propagation: expected exactly four warnings"
 fi
 
 run_capture "stored callback helper projection" stored-callback-helper.out \
@@ -1347,8 +1419,11 @@ reject_match "first consumer excludes second profile" \
 reject_match "second consumer excludes first profile" \
     "operation-profiles.c:1\\(79\\|83\\):16:.*operation_state::first" \
     operation-profiles.out
-if [ "$(grep -c 'warning:' operation-profiles.out)" -ne 6 ]; then
-	fail "operation profile provenance: expected exactly six warnings"
+require_match "incomplete operation profile is unmodeled" \
+    "operation-profiles.c:193:26: warning: locklint: indirect call through 'operation_vector::start' has no target or calling contract \\[unmodeled-indirect-call\\]" \
+    operation-profiles.out
+if [ "$(grep -c 'warning:' operation-profiles.out)" -ne 7 ]; then
+	fail "operation profile provenance: expected exactly seven warnings"
 fi
 
 run_capture "competition protected accesses" competition-accesses.out \
@@ -1416,7 +1491,7 @@ compare "cross translation unit callgraph" cross-callgraph.ref \
     cross-callgraph.out
 
 run_capture "function pointers callgraph" function-pointers-callgraph.out \
-    "$LOCKLINT" --dump-callgraph function-pointers.c
+    "$LOCKLINT" --no-check --dump-callgraph function-pointers.c
 compare "function pointers callgraph" function-pointers-callgraph.ref \
     function-pointers-callgraph.out
 

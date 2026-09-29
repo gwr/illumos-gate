@@ -137,6 +137,7 @@ struct declared_member_targets {
 	size_t function_count;
 	size_t function_capacity;
 	const struct call_target_set *targets;
+	bool no_lock_effects;
 	avl_node_t by_member;
 };
 
@@ -185,6 +186,7 @@ struct call_target_entry {
 	enum call_target_kind kind;
 	enum call_target_state state;
 	bool direct_ambiguous;
+	bool no_lock_effects;
 	avl_node_t node;
 };
 
@@ -1262,12 +1264,69 @@ callgraph_declare_targets(const char *member_name, size_t target_count,
 	}
 	for (member_index = 0; member_index < member_count; member_index++) {
 		declaration = declared_targets_for_member(members[member_index],
+		    false);
+		if (declaration != NULL && declaration->no_lock_effects) {
+			free(members);
+			free(targets);
+			return (CALLGRAPH_DECLARE_CONFLICT);
+		}
+	}
+	for (member_index = 0; member_index < member_count; member_index++) {
+		declaration = declared_targets_for_member(members[member_index],
 		    true);
 		for (index = 0; index < target_count; index++)
 			declared_target_add(declaration, targets[index]);
 	}
 	free(members);
 	free(targets);
+	return (CALLGRAPH_DECLARE_OK);
+}
+
+enum callgraph_declare_result
+callgraph_declare_no_lock_contract_member(const struct type_member *member)
+{
+	struct declared_member_targets *declaration;
+
+	require_state(CALLGRAPH_CONSTRUCTING, "no-lock contract declaration");
+	if (declared_member_function_type(member) == NULL)
+		return (CALLGRAPH_DECLARE_NOT_FUNCTION_POINTER);
+	declaration = declared_targets_for_member(member, false);
+	if (declaration != NULL && declaration->function_count != 0)
+		return (CALLGRAPH_DECLARE_CONFLICT);
+	declaration = declared_targets_for_member(member, true);
+	declaration->no_lock_effects = true;
+	return (CALLGRAPH_DECLARE_OK);
+}
+
+enum callgraph_declare_result
+callgraph_declare_no_lock_contract(const char *member_name)
+{
+	const struct type_member **members;
+	struct declared_member_targets *declaration;
+	enum callgraph_declare_result result;
+	size_t member_count;
+	size_t index;
+
+	require_state(CALLGRAPH_CONSTRUCTING, "no-lock contract declaration");
+	result = lookup_declared_members(member_name, &members, &member_count);
+	if (result != CALLGRAPH_DECLARE_OK)
+		return (result);
+	if (declared_member_function_type(members[0]) == NULL) {
+		free(members);
+		return (CALLGRAPH_DECLARE_NOT_FUNCTION_POINTER);
+	}
+	for (index = 0; index < member_count; index++) {
+		declaration = declared_targets_for_member(members[index], false);
+		if (declaration != NULL && declaration->function_count != 0) {
+			free(members);
+			return (CALLGRAPH_DECLARE_CONFLICT);
+		}
+	}
+	for (index = 0; index < member_count; index++) {
+		declaration = declared_targets_for_member(members[index], true);
+		declaration->no_lock_effects = true;
+	}
+	free(members);
 	return (CALLGRAPH_DECLARE_OK);
 }
 
@@ -1408,15 +1467,18 @@ build_declared_target_sets(void)
 	    avl_first(&declared_member_targets) : NULL;
 	    declaration != NULL;
 	    declaration = AVL_NEXT(&declared_member_targets, declaration)) {
-		declaration->targets = call_target_set_intern(
-		    declaration->functions, declaration->function_count);
+		if (declaration->function_count != 0) {
+			declaration->targets = call_target_set_intern(
+			    declaration->functions,
+			    declaration->function_count);
+		}
 	}
 }
 
 static void
 resolve_indirect_callee(const struct function_info *caller,
     const struct instruction *insn, const struct call_target_set **targetsp,
-    bool *ambiguousp)
+    bool *ambiguousp, bool *no_lock_effectsp)
 {
 	struct locklint_access access;
 	struct indirect_target *entry;
@@ -1425,6 +1487,7 @@ resolve_indirect_callee(const struct function_info *caller,
 
 	*targetsp = NULL;
 	*ambiguousp = false;
+	*no_lock_effectsp = false;
 	if (insn->opcode != OP_CALL || insn->call_expr == NULL ||
 	    !locklint_get_access(caller->tu, insn->call_expr->fn, &access))
 		return;
@@ -1444,8 +1507,10 @@ resolve_indirect_callee(const struct function_info *caller,
 		return;
 	member = type_member_lookup_exact(access.member);
 	declaration = declared_targets_for_member(member, false);
-	if (declaration != NULL)
+	if (declaration != NULL) {
 		*targetsp = declaration->targets;
+		*no_lock_effectsp = declaration->no_lock_effects;
+	}
 }
 
 /*
@@ -1490,6 +1555,7 @@ build_call_target_cache(void)
 				bool direct;
 				bool direct_ambiguous = false;
 				bool indirect_ambiguous = false;
+				bool no_lock_effects = false;
 
 				if (insn->bb == NULL || insn->opcode != OP_CALL)
 					continue;
@@ -1513,7 +1579,8 @@ build_call_target_cache(void)
 				if (targets == NULL) {
 					resolve_indirect_callee(&function->info,
 					    insn, &targets,
-					    &indirect_ambiguous);
+					    &indirect_ambiguous,
+					    &no_lock_effects);
 					if (targets != NULL) {
 						entry->kind = CALL_TARGET_INDIRECT;
 					}
@@ -1521,6 +1588,7 @@ build_call_target_cache(void)
 				if (!direct)
 					entry->kind = CALL_TARGET_INDIRECT;
 				entry->direct_ambiguous = direct_ambiguous;
+				entry->no_lock_effects = no_lock_effects;
 				if (targets != NULL) {
 					entry->targets = targets;
 					entry->state = CALL_TARGET_RESOLVED;
@@ -1675,6 +1743,30 @@ callgraph_ambiguous_callee(const struct function_info *caller,
 	require_state(CALLGRAPH_READY, "ambiguous callee query");
 	(void) caller;
 	return (ambiguous_callee_impl(insn));
+}
+
+bool
+callgraph_indirect_call(const struct function_info *caller,
+    const struct instruction *insn)
+{
+	struct call_target_entry *entry;
+
+	require_state(CALLGRAPH_READY, "indirect call query");
+	(void) caller;
+	entry = find_call_target(insn);
+	return (entry != NULL && entry->kind == CALL_TARGET_INDIRECT);
+}
+
+bool
+callgraph_no_lock_effects(const struct function_info *caller,
+    const struct instruction *insn)
+{
+	struct call_target_entry *entry;
+
+	require_state(CALLGRAPH_READY, "no-lock contract query");
+	(void) caller;
+	entry = find_call_target(insn);
+	return (entry != NULL && entry->no_lock_effects);
 }
 
 static void

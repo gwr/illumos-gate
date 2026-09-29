@@ -1,0 +1,2 @@
+declare contract command_target_ops::start no-lock-effects
+declare targets command_target_ops::start command_target_first

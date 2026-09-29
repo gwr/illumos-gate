@@ -27,6 +27,7 @@
 #include "lib.h"
 #include "access.h"
 #include "annotations.h"
+#include "callgraph.h"
 #include "diagnostics.h"
 #include "expression.h"
 #include "identity.h"
@@ -60,7 +61,8 @@ enum annotation_kind {
 	ANNOTATION_DATA_READABLE_WITHOUT_LOCK,
 	ANNOTATION_READ_ONLY_DATA,
 	ANNOTATION_RWLOCK_COVERS_LOCKS,
-	ANNOTATION_LOCK_ORDER
+	ANNOTATION_LOCK_ORDER,
+	ANNOTATION_DECLARE_CONTRACT
 };
 
 struct annotation_ref {
@@ -850,6 +852,8 @@ parse_annotation(struct annotation *annotation)
 		annotation->kind = ANNOTATION_RWLOCK_COVERS_LOCKS;
 	} else if (token_is(cursor, "LOCK_ORDER")) {
 		annotation->kind = ANNOTATION_LOCK_ORDER;
+	} else if (token_is(cursor, "DECLARE_CONTRACT")) {
+		annotation->kind = ANNOTATION_DECLARE_CONTRACT;
 	} else {
 		return (false);
 	}
@@ -904,6 +908,33 @@ parse_annotation(struct annotation *annotation)
 		break;
 	case ANNOTATION_LOCK_ORDER:
 		return (finish_order_annotation(annotation, cursor, name));
+	case ANNOTATION_DECLARE_CONTRACT:
+		if (!parse_name(annotation, &cursor, &annotation->data, &tail))
+			return (false);
+		if (annotation->data->next != NULL ||
+		    annotation->data->scope != ANNOTATION_TYPE ||
+		    annotation->data->path == NULL ||
+		    strchr(annotation->data->path, '.') != NULL) {
+			return (annotation_error(annotation, cursor,
+			    "DECLARE_CONTRACT requires one direct "
+			    "type::member name"));
+		}
+		if (!token_is(cursor, ","))
+			return (annotation_error(annotation, cursor,
+			    "expected ',' after DECLARE_CONTRACT member"));
+		cursor = cursor->next;
+		if (!token_is(cursor, "NO_LOCK_EFFECTS"))
+			return (annotation_error(annotation, cursor,
+			    "expected NO_LOCK_EFFECTS calling contract"));
+		cursor = cursor->next;
+		if (!token_is(cursor, ")"))
+			return (annotation_named_error(annotation, cursor,
+			    "expected ')' after", name));
+		if (cursor->next != NULL)
+			return (annotation_named_error(annotation, cursor->next,
+			    "unexpected tokens after", name));
+		annotation->parsed = true;
+		return (true);
 	default:
 		abort();
 	}
@@ -1727,6 +1758,25 @@ locklint_resolve_annotations(struct symbol_list *symbols)
 				annotation->resolved = true;
 			continue;
 		}
+		if (annotation->kind == ANNOTATION_DECLARE_CONTRACT) {
+			enum callgraph_declare_result result;
+
+			ref = annotation->data;
+			if (!resolve_annotation_ref(ref, false, annotation->tu,
+			    symbols) || ref->member == NULL)
+				continue;
+			result = callgraph_declare_no_lock_contract_member(
+			    ref->member);
+			if (result != CALLGRAPH_DECLARE_OK) {
+				sparse_error(annotation->pos,
+				    "locklint: DECLARE_CONTRACT member is not "
+				    "a function pointer or conflicts with "
+				    "declared targets");
+				continue;
+			}
+			annotation->resolved = true;
+			continue;
+		}
 		if (annotation->lock != NULL &&
 		    !resolve_annotation_ref(annotation->lock, true,
 		    annotation->tu, symbols))
@@ -2383,6 +2433,8 @@ annotation_kind_name(enum annotation_kind kind)
 		return ("RWLOCK_COVERS_LOCKS");
 	case ANNOTATION_LOCK_ORDER:
 		return ("LOCK_ORDER");
+	case ANNOTATION_DECLARE_CONTRACT:
+		return ("DECLARE_CONTRACT");
 	default:
 		abort();
 	}
@@ -2434,6 +2486,8 @@ locklint_show_annotations(FILE *stream)
 				    annotation->scheme);
 			}
 			show_annotation_ref(stream, ref);
+			if (annotation->kind == ANNOTATION_DECLARE_CONTRACT)
+				(void) fputs(" NO_LOCK_EFFECTS", stream);
 			if (ref->replaced_by != NULL)
 				show_replacement(stream, "replaced by",
 				    ref->replaced_by);

@@ -199,9 +199,54 @@ declare_targets(int argc, char **argv)
 	case CALLGRAPH_DECLARE_INCONSISTENT_TYPE:
 		return (command_parse_error("inconsistently defined type in "
 		    "function-pointer member '%s'", argv[1]));
+	case CALLGRAPH_DECLARE_CONFLICT:
+		return (command_parse_error("member '%s' has both declared "
+		    "targets and a no-lock-effects contract", argv[1]));
 	default:
 		return (command_parse_error(
 		    "internal error resolving declared targets for '%s'",
+		    argv[1]));
+	}
+}
+
+static int
+declare_contract(int argc, char **argv)
+{
+	enum callgraph_declare_result result;
+
+	if (argc != 3) {
+		return (command_parse_error("declare contract requires one "
+		    "member and one contract"));
+	}
+	if (strcmp(argv[2], "no-lock-effects") != 0) {
+		return (command_parse_error("unknown calling contract '%s'",
+		    argv[2]));
+	}
+	result = callgraph_declare_no_lock_contract(argv[1]);
+	switch (result) {
+	case CALLGRAPH_DECLARE_OK:
+		return (0);
+	case CALLGRAPH_DECLARE_INVALID_NAME:
+		return (command_parse_error(
+		    "invalid function-pointer member name '%s'", argv[1]));
+	case CALLGRAPH_DECLARE_UNRESOLVED:
+		return (command_parse_error(
+		    "unresolved function-pointer member '%s'", argv[1]));
+	case CALLGRAPH_DECLARE_AMBIGUOUS:
+		return (command_parse_error(
+		    "ambiguous function-pointer member '%s'", argv[1]));
+	case CALLGRAPH_DECLARE_NOT_FUNCTION_POINTER:
+		return (command_parse_error(
+		    "member '%s' is not a function pointer", argv[1]));
+	case CALLGRAPH_DECLARE_INCONSISTENT_TYPE:
+		return (command_parse_error("inconsistently defined type in "
+		    "function-pointer member '%s'", argv[1]));
+	case CALLGRAPH_DECLARE_CONFLICT:
+		return (command_parse_error("member '%s' has both declared "
+		    "targets and a no-lock-effects contract", argv[1]));
+	default:
+		return (command_parse_error(
+		    "internal error resolving declared contract for '%s'",
 		    argv[1]));
 	}
 }
@@ -227,6 +272,8 @@ cmd_declare(int argc, char **argv)
 		return (declare_entry(argc, argv));
 	if (strcmp(argv[0], "targets") == 0)
 		return (declare_targets(argc, argv));
+	if (strcmp(argv[0], "contract") == 0)
+		return (declare_contract(argc, argv));
 	if (strcmp(argv[0], "readable") != 0)
 		return (not_implemented("declare"));
 	if (argc != 2) {

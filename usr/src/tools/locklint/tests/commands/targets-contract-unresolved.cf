@@ -1,0 +1,1 @@
+declare contract missing_target_ops::finish no-lock-effects

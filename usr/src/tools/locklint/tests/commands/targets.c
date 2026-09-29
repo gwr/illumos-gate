@@ -22,6 +22,7 @@
 typedef kmutex_t mutex_t;
 typedef kcondvar_t condvar_t;
 #else
+#define	_NOTE(arg)
 typedef struct mutex {
 	int opaque;
 } mutex_t;
@@ -44,6 +45,10 @@ struct command_target_ops {
 	command_target_t start;
 	command_target_t finish;
 };
+
+#if COMMAND_TARGETS_SOURCE_CONTRACT
+_NOTE(DECLARE_CONTRACT(command_target_ops::finish, NO_LOCK_EFFECTS))
+#endif
 
 extern void mutex_enter(mutex_t *);
 extern void mutex_exit(mutex_t *);

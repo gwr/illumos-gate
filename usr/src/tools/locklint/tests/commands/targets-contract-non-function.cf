@@ -1,0 +1,1 @@
+declare contract command_target_state::first no-lock-effects

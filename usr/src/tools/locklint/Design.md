@@ -773,6 +773,20 @@ declaration order does not affect the interned target set.  The initial form
 is deliberately global to a named type member; object-, receiver-, call-site-,
 and nested-member selectors remain deferred.
 
+`declare contract type::member no-lock-effects` declares the minimal calling
+contract for an implementation that is not available to the analysis.  It
+means that the call has no caller-visible lock requirement and does not
+acquire, release, upgrade, or downgrade a caller-visible lock.  The incoming
+lock state therefore continues unchanged.  It does not claim that the call
+has no other side effects.
+
+The source equivalent is
+`_NOTE(DECLARE_CONTRACT(type::member, NO_LOCK_EFFECTS))`.  The command and
+source forms set the same canonical member property.  Repeated identical
+contracts are harmless.  A member may have declared targets or a no-lock
+contract, but not both; concrete exact targets derived from source at an
+individual call site still take precedence over the member contract.
+
 The remaining `declare`, `assert`, and `ignore` forms continue to fail
 explicitly until their semantics are designed.
 
@@ -2034,6 +2048,26 @@ aggregate.  The declared set supplies concrete bodies, argument binding,
 effects, and diagnostics; it is not a callable contract for an unavailable
 implementation.
 
+### Declared type-member contracts
+
+When neither an exact target nor a declared target set applies, a direct
+member call may use the member's `no-lock-effects` contract.  Command-file
+declarations are resolved over every layout-equal same-named type origin;
+source annotations resolve the exact canonical member in their translation
+unit.  Both forms store the same bit beside the canonical member's declared
+targets, and call-cache construction copies it into the indirect-call entry.
+The fixed-point analysis then preserves the incoming state explicitly rather
+than treating the unresolved call as silently harmless.
+
+After fixed-point analysis, lock checking reports each reachable indirect
+member call that was observed in a context with neither a target nor a
+contract.  The warning identifies the `type::member` selector and advises the
+user to declare known targets, add an analysis-specific no-lock contract, or
+record a stable interface contract with `_NOTE()`.  Observations are
+aggregated by call instruction rather than emitted once per context or point
+state.  `--no-check` suppresses this diagnostic along with other ordinary
+lock-checking diagnostics.
+
 ### Root discovery and explicit entries
 
 Without explicit entry declarations or per-function external-entry
@@ -2135,9 +2169,11 @@ The audit labels a singleton inferred or declared edge as
 `resolved-indirect`.  It labels a multi-target edge
 `resolved-indirect-targets` and identifies each function together with its
 translation unit.  It reports other indirect calls as unresolved without
-inventing targets.  Unresolved indirect calls do not yet produce ordinary
-lock-checking diagnostics; the explicit audit remains their reporting
-interface.
+inventing targets.  During ordinary lock checking, a reachable unresolved
+member call without a calling contract also produces
+`[unmodeled-indirect-call]`; the callgraph audit remains the complete
+structural view, including unresolved forms for which no type-member selector
+can be expressed.
 
 An escaped function whose definition cannot be resolved is different: code
 outside the analyzed inputs may invoke it as a callback, but locklint cannot

@@ -1,0 +1,2 @@
+# Leave finish without a target or contract to require an actionable warning.
+declare targets command_target_ops::start command_target_first

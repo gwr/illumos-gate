@@ -26,6 +26,7 @@ struct instruction;
 struct call_target_set;
 struct symbol;
 struct symbol_list;
+struct type_member;
 struct translation_unit;
 
 enum callgraph_declare_result {
@@ -86,6 +87,9 @@ enum callgraph_declare_result callgraph_declare_external_entry(const char *,
  */
 enum callgraph_declare_result callgraph_declare_targets(const char *,
     size_t, char **, const char **);
+enum callgraph_declare_result callgraph_declare_no_lock_contract(const char *);
+enum callgraph_declare_result callgraph_declare_no_lock_contract_member(
+    const struct type_member *);
 
 /*
  * Close construction, resolve function identities and indirect targets,
@@ -145,6 +149,10 @@ struct function_info *callgraph_target_set_target(
  * definitions have the referenced name.
  */
 bool callgraph_ambiguous_callee(const struct function_info *,
+    const struct instruction *);
+bool callgraph_indirect_call(const struct function_info *,
+    const struct instruction *);
+bool callgraph_no_lock_effects(const struct function_info *,
     const struct instruction *);
 
 /*
