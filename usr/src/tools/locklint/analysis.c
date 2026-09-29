@@ -1197,18 +1197,6 @@ context_call_targets(const struct function_context *context,
 	    operation_profile_member_targets(context, insn));
 }
 
-static struct function_info *
-context_callee(const struct function_context *context,
-    const struct semantic_state *state, const struct instruction *insn)
-{
-	const struct call_target_set *targets =
-	    context_call_targets(context, state, insn);
-
-	if (callgraph_target_set_count(targets) == 1)
-		return (callgraph_target_set_target(targets, 0));
-	return (NULL);
-}
-
 /*
  * Return whether one exact retained expression depends on a formal argument.
  * Only operations also accepted by the call-side structural matcher qualify.
@@ -2377,16 +2365,20 @@ project_stored_targets(struct analysis *analysis,
 	return (current);
 }
 
+/*
+ * Analyze one possible callee independently.  Sharing the caller input state
+ * preserves alternative target effects as separate successor states.
+ */
 static void
-process_call(struct analysis *analysis, struct point_state *point_state,
-    const struct semantic_state *caller_state)
+process_call_target(struct analysis *analysis,
+    struct point_state *point_state,
+    const struct semantic_state *caller_state,
+    const struct semantic_state *call_state,
+    struct function_info *callee_function)
 {
 	struct function_context *caller_context = point_state->context;
 	const struct binding_environment *bindings;
-	const struct semantic_state *call_state;
-	struct function_info *callee_function;
 	struct function_context *callee_context;
-	struct semantic_state *cleared_state;
 	struct semantic_state *callee_state;
 	struct continuation *continuation;
 	struct provenance_edge *edge;
@@ -2395,31 +2387,8 @@ process_call(struct analysis *analysis, struct point_state *point_state,
 	bool existed;
 	int error;
 
-	callee_function = context_callee(caller_context, caller_state,
-	    point_state->point.next_instruction);
-	bindings = callee_function != NULL ?
-	    call_bindings(analysis, caller_context, callee_function,
-	    caller_state, point_state->point.next_instruction) : NULL;
-	if (context_state_target_count(caller_state) == 0) {
-		call_state = caller_state;
-	} else {
-		error = context_state_clear_targets(caller_context->function,
-		    caller_state, &cleared_state, &existed);
-		if (error != 0)
-			die("cannot clear stored callback targets: %s",
-			    strerror(error));
-		record_semantic_state(analysis, existed);
-		call_state = cleared_state;
-	}
-	if (callee_function == NULL) {
-		resume_point = point_state->point;
-		resume_point.next_instruction = next_live_instruction(
-		    resume_point.block, resume_point.next_instruction);
-		record_analysis_point(analysis, caller_context, resume_point,
-		    call_state, false);
-		return;
-	}
-
+	bindings = call_bindings(analysis, caller_context, callee_function,
+	    caller_state, point_state->point.next_instruction);
 	statistics.call_import_semantic_states_find++;
 	error = context_state_import(callee_function, call_state,
 	    &callee_state, &existed);
@@ -2478,6 +2447,49 @@ process_call(struct analysis *analysis, struct point_state *point_state,
 		    callee_state, false);
 	}
 	record_reactivation(analysis, continuation);
+}
+
+static void
+process_call(struct analysis *analysis, struct point_state *point_state,
+    const struct semantic_state *caller_state)
+{
+	struct function_context *caller_context = point_state->context;
+	const struct call_target_set *targets;
+	const struct semantic_state *call_state;
+	struct semantic_state *cleared_state;
+	struct analysis_point resume_point;
+	size_t target_count;
+	size_t target_index;
+	bool existed;
+	int error;
+
+	targets = context_call_targets(caller_context, caller_state,
+	    point_state->point.next_instruction);
+	target_count = callgraph_target_set_count(targets);
+	if (context_state_target_count(caller_state) == 0) {
+		call_state = caller_state;
+	} else {
+		error = context_state_clear_targets(caller_context->function,
+		    caller_state, &cleared_state, &existed);
+		if (error != 0)
+			die("cannot clear stored callback targets: %s",
+			    strerror(error));
+		record_semantic_state(analysis, existed);
+		call_state = cleared_state;
+	}
+	if (target_count == 0) {
+		resume_point = point_state->point;
+		resume_point.next_instruction = next_live_instruction(
+		    resume_point.block, resume_point.next_instruction);
+		record_analysis_point(analysis, caller_context, resume_point,
+		    call_state, false);
+		return;
+	}
+	for (target_index = 0; target_index < target_count; target_index++) {
+		process_call_target(analysis, point_state, caller_state,
+		    call_state, callgraph_target_set_target(targets,
+		    target_index));
+	}
 }
 
 static struct instruction *
@@ -3351,7 +3363,7 @@ struct lock_transition_observation {
 };
 
 struct lock_transition_finding {
-	struct function_info *caller_function;
+	struct function_info *callee_function;
 	struct instruction *call_instruction;
 	struct instruction *transition_instruction;
 	struct locklint_access access;
@@ -3417,11 +3429,12 @@ static void
 record_lock_transition_finding(avl_tree_t *findings,
     const struct lock_transition_observation *observation,
     struct function_context *caller_context,
+    struct function_context *callee_context,
     struct instruction *call_instruction)
 {
 	struct lock_transition_finding key = {
-		.caller_function = caller_context != NULL ?
-		    caller_context->function : NULL,
+		.callee_function = callee_context != NULL ?
+		    callee_context->function : NULL,
 		.call_instruction = call_instruction,
 		.transition_instruction = observation->instruction,
 		.action = observation->action
@@ -3429,6 +3442,7 @@ record_lock_transition_finding(avl_tree_t *findings,
 	struct lock_transition_finding *finding;
 	avl_index_t where;
 
+	(void) caller_context;
 	finding = avl_find(findings, &key, &where);
 	if (finding == NULL) {
 		finding = calloc(1, sizeof (*finding));
@@ -3450,12 +3464,13 @@ struct lock_transition_trace {
 
 static void
 record_lock_transition_root(struct function_context *caller_context,
+    struct function_context *callee_context,
     struct instruction *call_instruction, void *data_arg)
 {
 	struct lock_transition_trace *data = data_arg;
 
 	record_lock_transition_finding(data->findings, data->observation,
-	    caller_context, call_instruction);
+	    caller_context, callee_context, call_instruction);
 }
 
 static void
@@ -3473,7 +3488,8 @@ trace_lock_transition(avl_tree_t *findings,
 	    observation->action != LOCKLINT_LOCK_RELEASE &&
 	    observation->action != LOCKLINT_LOCK_TRY_UPGRADE &&
 	    observation->action != LOCKLINT_LOCK_DOWNGRADE)) {
-		record_lock_transition_finding(findings, observation, NULL, NULL);
+		record_lock_transition_finding(findings, observation, NULL, NULL,
+		    NULL);
 		return;
 	}
 	(void) for_each_root_call(observation->context,
@@ -3577,11 +3593,8 @@ report_lock_transition(struct lock_transition_finding *finding)
 	    finding->call_instruction : finding->transition_instruction;
 	struct position pos = instruction->call_expr != NULL ?
 	    instruction->call_expr->pos : instruction->pos;
-	struct function_info *callee = finding->call_instruction != NULL ?
-	    callgraph_callee(finding->caller_function,
-	    finding->call_instruction) : NULL;
-	const char *callee_name = callee != NULL ?
-	    function_name(callee) : "<unknown>";
+	const char *callee_name = finding->callee_function != NULL ?
+	    function_name(finding->callee_function) : "<unknown>";
 	char *name = locklint_access_name(&finding->access);
 
 	if (finding->call_instruction == NULL) {
@@ -3768,7 +3781,7 @@ compare_declared_order_observation(const void *left_arg,
 }
 
 struct declared_order_origin {
-	struct function_info *caller_function;
+	struct function_info *callee_function;
 	struct instruction *call_instruction;
 	const struct instruction *acquisition_instruction;
 	size_t states;
@@ -3812,7 +3825,7 @@ struct wait_lock_finding {
 	struct wait_site *site;
 	const struct lock_identity *held;
 	size_t states;
-	struct function_info *caller_function;
+	struct function_info *callee_function;
 	struct instruction *call_instruction;
 	avl_node_t by_key;
 };
@@ -3883,9 +3896,11 @@ for_each_root_call(struct function_context *context,
 
 static void
 ignore_root_call(struct function_context *context,
-    struct instruction *instruction, void *data)
+    struct function_context *callee_context, struct instruction *instruction,
+    void *data)
 {
 	(void) context;
+	(void) callee_context;
 	(void) instruction;
 	(void) data;
 }
@@ -3905,11 +3920,12 @@ static void
 record_declared_order_origin(avl_tree_t *origins, avl_tree_t *findings,
     const struct declared_order_observation *observation,
     struct function_context *caller_context,
+    struct function_context *callee_context,
     struct instruction *call_instruction)
 {
 	struct declared_order_origin key = {
-		.caller_function = caller_context != NULL ?
-		    caller_context->function : NULL,
+		.callee_function = callee_context != NULL ?
+		    callee_context->function : NULL,
 		.call_instruction = call_instruction,
 		.acquisition_instruction = observation->acquisition_instruction
 	};
@@ -3917,6 +3933,7 @@ record_declared_order_origin(avl_tree_t *origins, avl_tree_t *findings,
 	struct declared_order_observation_violation *observed;
 	avl_index_t where;
 
+	(void) caller_context;
 	origin = avl_find(origins, &key, &where);
 	if (origin == NULL) {
 		origin = calloc(1, sizeof (*origin));
@@ -3955,12 +3972,13 @@ struct declared_order_trace {
 
 static void
 record_declared_order_root(struct function_context *caller_context,
+    struct function_context *callee_context,
     struct instruction *call_instruction, void *data_arg)
 {
 	struct declared_order_trace *data = data_arg;
 
 	record_declared_order_origin(data->origins, data->findings,
-	    data->observation, caller_context, call_instruction);
+	    data->observation, caller_context, callee_context, call_instruction);
 }
 
 /*
@@ -3979,13 +3997,13 @@ trace_declared_order_observation(avl_tree_t *origins, avl_tree_t *findings,
 
 	if (observation->context->kind == FUNCTION_CONTEXT_ROOT) {
 		record_declared_order_origin(origins, findings, observation,
-		    NULL, NULL);
+		    NULL, NULL, NULL);
 		return;
 	}
 	if (!for_each_root_call(observation->context,
 	    record_declared_order_root, &data)) {
 		record_declared_order_origin(origins, findings, observation,
-		    NULL, NULL);
+		    NULL, NULL, NULL);
 	}
 }
 
@@ -3995,6 +4013,7 @@ struct wait_root_trace {
 
 static void
 record_wait_root(struct function_context *caller_context,
+    struct function_context *callee_context,
     struct instruction *call_instruction, void *data_arg)
 {
 	struct wait_root_trace *data = data_arg;
@@ -4011,7 +4030,8 @@ record_wait_root(struct function_context *caller_context,
 		if (compare_transition_position(candidate, current) >= 0)
 			return;
 	}
-	finding->caller_function = caller_context->function;
+	(void) caller_context;
+	finding->callee_function = callee_context->function;
 	finding->call_instruction = call_instruction;
 }
 
@@ -4346,9 +4366,6 @@ diagnose_acquisition_order_and_waits(struct analysis *analysis)
 		locklint_order_report_declared_violation(finding->violation,
 		    &pos, finding->states < origin->states);
 		if (origin->call_instruction != NULL) {
-			struct function_info *callee = callgraph_callee(
-			    origin->caller_function,
-			    origin->call_instruction);
 			const struct instruction *acquisition =
 			    origin->acquisition_instruction;
 			struct position acquisition_pos =
@@ -4357,7 +4374,8 @@ diagnose_acquisition_order_and_waits(struct analysis *analysis)
 
 			info(acquisition_pos, "locklint: lock acquisition "
 			    "reached through callee '%s'",
-			    callee != NULL ? function_name(callee) :
+			    origin->callee_function != NULL ?
+			    function_name(origin->callee_function) :
 			    "<unknown>");
 		}
 		avl_remove(&findings, finding);
@@ -4380,9 +4398,6 @@ diagnose_acquisition_order_and_waits(struct analysis *analysis)
 		    "lock '%s'",
 		    locklint_order_identity_name(finding->held));
 		if (finding->call_instruction != NULL) {
-			struct function_info *callee = callgraph_callee(
-			    finding->caller_function,
-			    finding->call_instruction);
 			struct position call_pos =
 			    finding->call_instruction->call_expr != NULL ?
 			    finding->call_instruction->call_expr->pos :
@@ -4390,7 +4405,8 @@ diagnose_acquisition_order_and_waits(struct analysis *analysis)
 
 			info(call_pos, "locklint: lock is held on a path "
 			    "through call to '%s'",
-			    callee != NULL ? function_name(callee) :
+			    finding->callee_function != NULL ?
+			    function_name(finding->callee_function) :
 			    "<unknown>");
 		}
 		avl_remove(&wait_findings, finding);
@@ -4438,7 +4454,7 @@ compare_lock_assertion_observation(const void *left_arg, const void *right_arg)
 }
 
 struct lock_assertion_finding {
-	struct function_info *caller_function;
+	struct function_info *callee_function;
 	struct instruction *call_instruction;
 	struct instruction *assertion_instruction;
 	struct locklint_access access;
@@ -4488,7 +4504,7 @@ asserted_mode_name(unsigned int modes)
 static void
 record_lock_assertion_finding(avl_tree_t *findings,
     const struct lock_assertion_observation *observation,
-    struct function_info *caller_function, struct instruction *call_instruction)
+    struct function_info *callee_function, struct instruction *call_instruction)
 {
 	struct lock_assertion_finding key = {
 		.call_instruction = call_instruction,
@@ -4502,7 +4518,7 @@ record_lock_assertion_finding(avl_tree_t *findings,
 		finding = calloc(1, sizeof (*finding));
 		if (finding == NULL)
 			die("cannot allocate lock assertion finding");
-		finding->caller_function = caller_function;
+		finding->callee_function = callee_function;
 		finding->call_instruction = call_instruction;
 		finding->assertion_instruction =
 		    observation->assertion_instruction;
@@ -4521,12 +4537,14 @@ struct lock_assertion_trace {
 
 static void
 record_lock_assertion_root(struct function_context *caller_context,
+    struct function_context *callee_context,
     struct instruction *call_instruction, void *data_arg)
 {
 	struct lock_assertion_trace *data = data_arg;
 
+	(void) caller_context;
 	record_lock_assertion_finding(data->findings, data->observation,
-	    caller_context->function, call_instruction);
+	    callee_context->function, call_instruction);
 }
 
 /*
@@ -4664,12 +4682,12 @@ diagnose_lock_assertions(struct analysis *analysis)
 
 		if (finding->call_instruction != NULL && finding->invalid) {
 			struct instruction *call = finding->call_instruction;
-			struct function_info *callee = callgraph_callee(
-			    finding->caller_function, call);
 			struct position call_pos = call->call_expr != NULL ?
 			    call->call_expr->pos : call->pos;
-			const char *callee_name = callee != NULL ?
-			    function_name(callee) : "<unknown>";
+			const char *callee_name =
+			    finding->callee_function != NULL ?
+			    function_name(finding->callee_function) :
+			    "<unknown>";
 
 			if (finding->valid) {
 				locklint_warning(
@@ -5087,6 +5105,7 @@ compare_protected_access_finding(const void *left_arg, const void *right_arg)
 
 static void
 record_protected_access_call_witness(struct function_context *caller_context,
+    struct function_context *callee_context,
     struct instruction *call_instruction, void *data_arg)
 {
 	struct protected_access_finding *finding = data_arg;
@@ -5097,6 +5116,7 @@ record_protected_access_call_witness(struct function_context *caller_context,
 	struct protected_access_call_witness *witness;
 	avl_index_t where;
 
+	(void) callee_context;
 	witness = avl_find(&finding->call_witnesses, &key, &where);
 	if (witness != NULL)
 		return;

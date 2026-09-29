@@ -739,6 +739,129 @@ require_match "command external entry true provenance" \
     "property external-entry=true commands/external-entry-true.cf:2" \
     command-external-entry-true.out
 
+#
+# Verify declared targets for an operation-vector member supplied outside the
+# analysis.  A singleton declaration analyzes one target body; a target set
+# analyzes both bodies.  A declaration for start must not affect finish.
+#
+run_capture "command singleton target" command-targets-first.out \
+    "$LOCKLINT" --check-locks --dump-callgraph \
+    --cf commands/targets-first.cf \
+    commands/targets.c
+require_match "command singleton target effect" \
+    "commands/targets.c:.*: warning: locklint: condition wait occurs while holding lock 'command_target_state::first' \\[lock-held-during-wait\\]" \
+    command-targets-first.out
+reject_match "command singleton unrelated target" \
+    "command_target_state::second" command-targets-first.out
+require_match "command singleton resolved member call" \
+    "resolved-indirect command_target_first tu=commands/targets.c" \
+    command-targets-first.out
+require_match "command singleton unresolved other member" \
+    "call commands/targets.c:.* indirect$" command-targets-first.out
+if [ "$(grep -c 'warning:' command-targets-first.out)" -ne 1 ]; then
+	fail "command singleton target: expected exactly one warning"
+fi
+
+run_capture "command multiple targets" command-targets-both.out \
+    "$LOCKLINT" -DCOMMAND_TARGETS_BOTH=1 --check-locks \
+    --dump-callgraph \
+    --cf commands/targets-both.cf \
+    commands/targets.c
+require_match "command first possible target effect" \
+    "commands/targets.c:.*: warning: locklint: condition wait occurs while holding lock 'command_target_state::first' \\[lock-held-during-wait\\]" \
+    command-targets-both.out
+require_match "command second possible target effect" \
+    "commands/targets.c:.*: warning: locklint: condition wait occurs while holding lock 'command_target_state::second' \\[lock-held-during-wait\\]" \
+    command-targets-both.out
+require_match "command first possible target provenance" \
+    "lock is held on a path through call to 'command_target_first'" \
+    command-targets-both.out
+require_match "command second possible target provenance" \
+    "lock is held on a path through call to 'command_target_second'" \
+    command-targets-both.out
+require_match "command additive target set" \
+    "resolved-indirect-targets command_target_first@commands/targets.c command_target_second@commands/targets.c" \
+    command-targets-both.out
+if [ "$(grep -c 'warning:' command-targets-both.out)" -ne 2 ]; then
+	fail "command multiple targets: expected exactly two warnings"
+fi
+
+run_capture "command equivalent type targets" \
+    command-targets-equivalent.out \
+    "$LOCKLINT" --dump-callgraph \
+    --cf commands/targets-equivalent.cf \
+    commands/targets-equivalent-a.c commands/targets-equivalent-b.c
+require_match "command equivalent type resolved member call" \
+    "resolved-indirect command_equivalent_target tu=commands/targets-equivalent-a.c" \
+    command-targets-equivalent.out
+reject_match "command equivalent type unresolved member call" \
+    "call commands/targets-equivalent-[ab].c:.* indirect$" \
+    command-targets-equivalent.out
+if [ "$(grep -c 'resolved-indirect command_equivalent_target' \
+    command-targets-equivalent.out)" -ne 2 ]; then
+	fail "command equivalent type targets: expected two resolved calls"
+fi
+
+run_failure "command inconsistent target type" \
+    command-targets-inconsistent.out \
+    "$LOCKLINT" -DCOMMAND_EQUIVALENT_INCONSISTENT \
+    --cf commands/targets-equivalent.cf \
+    commands/targets-equivalent-a.c commands/targets-equivalent-b.c
+require_match "command inconsistent target type" \
+    "inconsistently defined type in function-pointer member 'command_equivalent_ops::start'" \
+    command-targets-inconsistent.out
+
+run_failure "command targets invalid member" \
+    command-targets-invalid-member.out \
+    "$LOCKLINT" --cf commands/targets-invalid-member.cf commands/targets.c
+require_match "command targets invalid member" \
+    "invalid function-pointer member name 'command_target_ops.start'" \
+    command-targets-invalid-member.out
+run_failure "command targets ambiguous function" \
+    command-targets-ambiguous-function.out \
+    "$LOCKLINT" --dump-callgraph \
+    --cf commands/targets-ambiguous-function.cf \
+    commands/targets-equivalent-b.c \
+    ambiguous-call-first.c ambiguous-call-second.c
+require_match "command targets ambiguous function" \
+    "ambiguous function name 'ambiguous_target'" \
+    command-targets-ambiguous-function.out
+
+run_failure "command targets arity" command-targets-arity.out \
+    "$LOCKLINT" --cf commands/targets-arity.cf commands/targets.c
+require_match "command targets arity" \
+    "declare targets requires one member and at least one function name" \
+    command-targets-arity.out
+run_failure "command targets unresolved member" \
+    command-targets-unresolved-member.out \
+    "$LOCKLINT" --cf commands/targets-unresolved-member.cf \
+    commands/targets.c
+require_match "command targets unresolved member" \
+    "unresolved function-pointer member 'missing_target_ops::start'" \
+    command-targets-unresolved-member.out
+run_failure "command targets non-function member" \
+    command-targets-non-function-member.out \
+    "$LOCKLINT" --cf commands/targets-non-function-member.cf \
+    commands/targets.c
+require_match "command targets non-function member" \
+    "member 'command_target_state::first' is not a function pointer" \
+    command-targets-non-function-member.out
+run_failure "command targets unresolved function" \
+    command-targets-unresolved-function.out \
+    "$LOCKLINT" --cf commands/targets-unresolved-function.cf \
+    commands/targets.c
+require_match "command targets unresolved function" \
+    "unresolved function name 'missing_command_target'" \
+    command-targets-unresolved-function.out
+run_failure "command targets incompatible function" \
+    command-targets-incompatible-function.out \
+    "$LOCKLINT" --dump-callgraph \
+    --cf commands/targets-incompatible-function.cf \
+    commands/targets.c
+require_match "command targets incompatible function" \
+    "function 'command_target_incompatible' has incompatible type for member 'command_target_ops::start'" \
+    command-targets-incompatible-function.out
+
 run_capture "rwlock annotations" rwlock-annotations.out \
     "$LOCKLINT" --dump-annotations rwlock.c
 compare "rwlock annotations" rwlock-annotations.ref \

@@ -32,7 +32,11 @@ enum callgraph_declare_result {
 	CALLGRAPH_DECLARE_OK,
 	CALLGRAPH_DECLARE_UNRESOLVED,
 	CALLGRAPH_DECLARE_AMBIGUOUS,
-	CALLGRAPH_DECLARE_CONFLICT
+	CALLGRAPH_DECLARE_CONFLICT,
+	CALLGRAPH_DECLARE_INVALID_NAME,
+	CALLGRAPH_DECLARE_NOT_FUNCTION_POINTER,
+	CALLGRAPH_DECLARE_INCOMPATIBLE_TYPE,
+	CALLGRAPH_DECLARE_INCONSISTENT_TYPE
 };
 
 /*
@@ -75,6 +79,13 @@ callgraph_declare_entry_no_competing_threads(const char *, const char *,
  */
 enum callgraph_declare_result callgraph_declare_external_entry(const char *,
     bool, const char *, unsigned long);
+
+/*
+ * Declare the possible functions called through a canonical function-pointer
+ * type member.  Repeated declarations add targets; duplicates are harmless.
+ */
+enum callgraph_declare_result callgraph_declare_targets(const char *,
+    size_t, char **, const char **);
 
 /*
  * Close construction, resolve function identities and indirect targets,

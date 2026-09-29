@@ -1,0 +1,2 @@
+# A bare function name must identify one retained definition.
+declare targets command_equivalent_ops::start ambiguous_target

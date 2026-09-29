@@ -19,11 +19,12 @@
  *     CONSTRUCTING -> RESOLVING -> READY -> CLEANED
  *
  * CONSTRUCTING collects linearized functions, function-address escapes,
- * function-pointer load/store evidence, and exact targets from supported
- * static const aggregate initializers.  Resolution is deliberately deferred
- * until every translation unit has been parsed, so function identity,
- * direct and indirect callees, ambiguous external definitions, roots, and
- * reachability are resolved with whole-program knowledge.
+ * function-pointer load/store evidence, exact targets from supported static
+ * const aggregate initializers, and declared type-member targets.  Resolution
+ * is deliberately deferred until every translation unit and command file has
+ * been parsed, so function identity, direct and indirect callees, ambiguous
+ * external definitions, roots, and reachability are resolved with
+ * whole-program knowledge.
  *
  * callgraph_add() and callgraph_record_pointer_evidence() are valid only
  * while CONSTRUCTING.  callgraph_resolve() is valid only while CONSTRUCTING
@@ -54,6 +55,7 @@
 #include "function_info.h"
 #include "identity.h"
 #include "symbol.h"
+#include "type.h"
 
 enum callgraph_state {
 	CALLGRAPH_CONSTRUCTING,
@@ -127,6 +129,15 @@ struct indirect_target {
 	struct position pos;
 	bool ambiguous;
 	struct indirect_target *next;
+};
+
+struct declared_member_targets {
+	const struct type_member *member;
+	struct function_info **functions;
+	size_t function_count;
+	size_t function_capacity;
+	const struct call_target_set *targets;
+	avl_node_t by_member;
 };
 
 enum function_pointer_activity_kind {
@@ -209,6 +220,8 @@ static avl_tree_t unanalyzed_callbacks_by_identity;
 static bool unanalyzed_callback_index_initialized;
 static struct indirect_target *indirect_targets;
 static struct indirect_target **indirect_targets_tail = &indirect_targets;
+static avl_tree_t declared_member_targets;
+static bool declared_member_targets_initialized;
 static struct function_pointer_activity *function_pointer_activities;
 static struct function_pointer_activity **function_pointer_activities_tail =
     &function_pointer_activities;
@@ -219,6 +232,15 @@ static unsigned int next_function_pointer_activity_sequence;
 static avl_tree_t call_target_sets;
 static bool call_target_sets_initialized;
 static bool has_declared_entries;
+
+static int
+compare_declared_member_targets(const void *left_arg, const void *right_arg)
+{
+	const struct declared_member_targets *left = left_arg;
+	const struct declared_member_targets *right = right_arg;
+
+	return (AVL_PCMP(left->member, right->member));
+}
 
 static int
 compare_call_target_entry(const void *left_arg, const void *right_arg)
@@ -964,6 +986,291 @@ callgraph_declare_external_entry(const char *name, bool value,
 	return (CALLGRAPH_DECLARE_OK);
 }
 
+static bool
+valid_command_identifier(const char *name, size_t length)
+{
+	size_t index;
+
+	if (length == 0 ||
+	    !((name[0] >= 'A' && name[0] <= 'Z') ||
+	    (name[0] >= 'a' && name[0] <= 'z') || name[0] == '_'))
+		return (false);
+	for (index = 1; index < length; index++) {
+		if (!((name[index] >= 'A' && name[index] <= 'Z') ||
+		    (name[index] >= 'a' && name[index] <= 'z') ||
+		    (name[index] >= '0' && name[index] <= '9') ||
+		    name[index] == '_'))
+			return (false);
+	}
+	return (true);
+}
+
+struct declared_member_lookup {
+	struct ident *member_name;
+	const struct ll_type *first_type;
+	const struct type_member **members;
+	size_t member_count;
+	size_t member_capacity;
+	bool found_type;
+	bool inconsistent;
+	bool unresolved;
+};
+
+static bool
+find_declared_member(const struct ll_type *type, void *data_arg)
+{
+	struct declared_member_lookup *data = data_arg;
+	const struct type_member *members = type_members(type);
+	size_t count = type_member_count(type);
+	size_t index;
+
+	data->found_type = true;
+	if (data->first_type == NULL) {
+		data->first_type = type;
+	} else if (!type_layout_equal(data->first_type, type)) {
+		data->inconsistent = true;
+		return (false);
+	}
+	for (index = 0; index < count; index++) {
+		if (!same_ident(members[index].representative->ident,
+		    data->member_name))
+			continue;
+		if (data->member_count == data->member_capacity) {
+			size_t capacity = data->member_capacity == 0 ? 4 :
+			    data->member_capacity * 2;
+			const struct type_member **expanded;
+
+			if (capacity < data->member_capacity ||
+			    capacity > SIZE_MAX / sizeof (*expanded))
+				die("too many matching declared target members");
+			expanded = realloc(data->members,
+			    capacity * sizeof (*expanded));
+			if (expanded == NULL)
+				die("out of memory resolving declared target member");
+			data->members = expanded;
+			data->member_capacity = capacity;
+		}
+		data->members[data->member_count++] = &members[index];
+		return (true);
+	}
+	data->unresolved = true;
+	return (false);
+}
+
+/*
+ * Resolve one direct type-member selector over every same-named type origin.
+ * A declaration is valid only when the complete aggregate layouts agree and
+ * the selected member exists in each origin.
+ */
+static enum callgraph_declare_result
+lookup_declared_members(const char *name,
+    const struct type_member ***membersp, size_t *countp)
+{
+	struct declared_member_lookup data = { 0 };
+	const char *separator = strstr(name, "::");
+	char *type_name;
+	size_t type_length;
+
+	if (separator == NULL || separator == name ||
+	    separator[2] == '\0' || strstr(separator + 2, "::") != NULL)
+		return (CALLGRAPH_DECLARE_INVALID_NAME);
+	type_length = (size_t)(separator - name);
+	if (!valid_command_identifier(name, type_length) ||
+	    !valid_command_identifier(separator + 2, strlen(separator + 2)))
+		return (CALLGRAPH_DECLARE_INVALID_NAME);
+	type_name = malloc(type_length + 1);
+	if (type_name == NULL)
+		die("out of memory resolving declared target member");
+	(void) memcpy(type_name, name, type_length);
+	type_name[type_length] = '\0';
+	data.member_name = built_in_ident(separator + 2);
+	type_name_visit_types(built_in_ident(type_name),
+	    find_declared_member, &data);
+	free(type_name);
+	if (data.inconsistent) {
+		free(data.members);
+		return (CALLGRAPH_DECLARE_INCONSISTENT_TYPE);
+	}
+	if (!data.found_type || data.unresolved || data.member_count == 0) {
+		free(data.members);
+		return (CALLGRAPH_DECLARE_UNRESOLVED);
+	}
+	*membersp = data.members;
+	*countp = data.member_count;
+	return (CALLGRAPH_DECLARE_OK);
+}
+
+static struct function_info *
+find_declared_function(const char *name, bool *ambiguous)
+{
+	struct function_record *function;
+	struct function_info *match = NULL;
+	struct ident *ident = built_in_ident(name);
+
+	*ambiguous = false;
+	for (function = functions; function != NULL; function = function->next) {
+		if (function->inline_implementation ||
+		    !same_ident(function->info.ep->name->ident, ident))
+			continue;
+		if (match != NULL) {
+			*ambiguous = true;
+			return (NULL);
+		}
+		match = &function->info;
+	}
+	return (match);
+}
+
+static struct symbol *
+declared_member_function_type(const struct type_member *member)
+{
+	struct symbol *type;
+
+	type = type_node_strip(member->representative->ctype.base_type);
+	if (type == NULL || type->type != SYM_PTR)
+		return (NULL);
+	type = type_node_strip(type->ctype.base_type);
+	return (type != NULL && type->type == SYM_FN ? type : NULL);
+}
+
+static bool
+declared_target_type_compatible(struct symbol *member_type,
+    const struct function_info *function)
+{
+	struct symbol *function_type;
+	const struct ll_type *member_ll_type;
+	const struct ll_type *function_ll_type;
+
+	function_type =
+	    type_node_strip(function->ep->name->ctype.base_type);
+	if (function_type == NULL || function_type->type != SYM_FN)
+		return (false);
+	member_ll_type = type_lookup_exact(member_type);
+	function_ll_type = type_lookup_exact(function_type);
+	return (member_ll_type != NULL && function_ll_type != NULL &&
+	    type_layout_equal(member_ll_type, function_ll_type));
+}
+
+static struct declared_member_targets *
+declared_targets_for_member(const struct type_member *member, bool create)
+{
+	struct declared_member_targets key = {
+		.member = member
+	};
+	struct declared_member_targets *declaration;
+	avl_index_t where;
+
+	if (!declared_member_targets_initialized) {
+		if (!create)
+			return (NULL);
+		avl_create(&declared_member_targets,
+		    compare_declared_member_targets, sizeof (*declaration),
+		    offsetof(struct declared_member_targets, by_member));
+		declared_member_targets_initialized = true;
+	}
+	declaration = avl_find(&declared_member_targets, &key, &where);
+	if (declaration != NULL || !create)
+		return (declaration);
+	declaration = calloc(1, sizeof (*declaration));
+	if (declaration == NULL)
+		die("out of memory recording declared targets");
+	declaration->member = member;
+	avl_insert(&declared_member_targets, declaration, where);
+	return (declaration);
+}
+
+static void
+declared_target_add(struct declared_member_targets *declaration,
+    struct function_info *function)
+{
+	size_t index;
+
+	for (index = 0; index < declaration->function_count; index++) {
+		if (declaration->functions[index] == function)
+			return;
+	}
+	if (declaration->function_count == declaration->function_capacity) {
+		size_t capacity = declaration->function_capacity == 0 ? 4 :
+		    declaration->function_capacity * 2;
+		struct function_info **functions;
+
+		if (capacity < declaration->function_capacity ||
+		    capacity > SIZE_MAX / sizeof (*functions))
+			die("too many declared function targets");
+		functions = realloc(declaration->functions,
+		    capacity * sizeof (*functions));
+		if (functions == NULL)
+			die("out of memory recording declared targets");
+		declaration->functions = functions;
+		declaration->function_capacity = capacity;
+	}
+	declaration->functions[declaration->function_count++] = function;
+}
+
+enum callgraph_declare_result
+callgraph_declare_targets(const char *member_name, size_t target_count,
+    char **target_names, const char **problem_name)
+{
+	const struct type_member **members;
+	struct symbol *member_type;
+	struct function_info **targets;
+	struct declared_member_targets *declaration;
+	enum callgraph_declare_result result;
+	size_t member_count;
+	size_t index;
+	size_t member_index;
+
+	/*
+	 * Resolve and validate the complete declaration before changing any
+	 * retained target set, so a command error cannot apply a partial union.
+	 */
+	require_state(CALLGRAPH_CONSTRUCTING, "target declaration");
+	*problem_name = member_name;
+	result = lookup_declared_members(member_name, &members, &member_count);
+	if (result != CALLGRAPH_DECLARE_OK)
+		return (result);
+	member_type = declared_member_function_type(members[0]);
+	if (member_type == NULL) {
+		free(members);
+		return (CALLGRAPH_DECLARE_NOT_FUNCTION_POINTER);
+	}
+	targets = calloc(target_count, sizeof (*targets));
+	if (targets == NULL)
+		die("out of memory resolving declared targets");
+	for (index = 0; index < target_count; index++) {
+		bool ambiguous;
+
+		*problem_name = target_names[index];
+		targets[index] = find_declared_function(target_names[index],
+		    &ambiguous);
+		if (ambiguous) {
+			free(members);
+			free(targets);
+			return (CALLGRAPH_DECLARE_AMBIGUOUS);
+		}
+		if (targets[index] == NULL) {
+			free(members);
+			free(targets);
+			return (CALLGRAPH_DECLARE_UNRESOLVED);
+		}
+		if (!declared_target_type_compatible(member_type,
+		    targets[index])) {
+			free(members);
+			free(targets);
+			return (CALLGRAPH_DECLARE_INCOMPATIBLE_TYPE);
+		}
+	}
+	for (member_index = 0; member_index < member_count; member_index++) {
+		declaration = declared_targets_for_member(members[member_index],
+		    true);
+		for (index = 0; index < target_count; index++)
+			declared_target_add(declaration, targets[index]);
+	}
+	free(members);
+	free(targets);
+	return (CALLGRAPH_DECLARE_OK);
+}
+
 static struct function_info *
 resolve_function_symbol(struct translation_unit *tu, struct symbol *symbol,
     bool use_inline_implementation, bool *ambiguous)
@@ -1093,14 +1400,30 @@ resolve_indirect_targets(void)
 }
 
 static void
+build_declared_target_sets(void)
+{
+	struct declared_member_targets *declaration;
+
+	for (declaration = declared_member_targets_initialized ?
+	    avl_first(&declared_member_targets) : NULL;
+	    declaration != NULL;
+	    declaration = AVL_NEXT(&declared_member_targets, declaration)) {
+		declaration->targets = call_target_set_intern(
+		    declaration->functions, declaration->function_count);
+	}
+}
+
+static void
 resolve_indirect_callee(const struct function_info *caller,
-    const struct instruction *insn, struct function_info **calleep,
+    const struct instruction *insn, const struct call_target_set **targetsp,
     bool *ambiguousp)
 {
 	struct locklint_access access;
 	struct indirect_target *entry;
+	const struct type_member *member;
+	struct declared_member_targets *declaration;
 
-	*calleep = NULL;
+	*targetsp = NULL;
 	*ambiguousp = false;
 	if (insn->opcode != OP_CALL || insn->call_expr == NULL ||
 	    !locklint_get_access(caller->tu, insn->call_expr->fn, &access))
@@ -1109,11 +1432,20 @@ resolve_indirect_callee(const struct function_info *caller,
 		if (entry->tu == caller->tu && entry->object == access.root &&
 		    entry->member == access.member &&
 		    entry->offset == access.offset) {
-			*calleep = entry->target;
 			*ambiguousp = entry->ambiguous;
+			if (entry->target != NULL) {
+				*targetsp = function_record(entry->target)->
+				    singleton_targets;
+			}
 			return;
 		}
 	}
+	if (access.member == NULL)
+		return;
+	member = type_member_lookup_exact(access.member);
+	declaration = declared_targets_for_member(member, false);
+	if (declaration != NULL)
+		*targetsp = declaration->targets;
 }
 
 /*
@@ -1154,7 +1486,7 @@ build_call_target_cache(void)
 			    offsetof(struct call_target_entry, node));
 			FOR_EACH_PTR(bb->insns, insn) {
 				struct call_target_entry *entry;
-				struct function_info *indirect_callee = NULL;
+				const struct call_target_set *targets = NULL;
 				bool direct;
 				bool direct_ambiguous = false;
 				bool indirect_ambiguous = false;
@@ -1167,26 +1499,30 @@ build_call_target_cache(void)
 				    insn->func->type == PSEUDO_SYM &&
 				    insn->func->sym != NULL;
 				if (direct) {
+					struct function_info *callee;
+
 					entry->kind = CALL_TARGET_DIRECT;
-					indirect_callee =
-					    resolve_function_symbol(
+					callee = resolve_function_symbol(
 					    function->info.tu, insn->func->sym,
 					    true, &direct_ambiguous);
+					if (callee != NULL) {
+						targets = function_record(callee)->
+						    singleton_targets;
+					}
 				}
-				if (indirect_callee == NULL) {
+				if (targets == NULL) {
 					resolve_indirect_callee(&function->info,
-					    insn, &indirect_callee,
+					    insn, &targets,
 					    &indirect_ambiguous);
-					if (indirect_callee != NULL) {
+					if (targets != NULL) {
 						entry->kind = CALL_TARGET_INDIRECT;
 					}
 				}
 				if (!direct)
 					entry->kind = CALL_TARGET_INDIRECT;
 				entry->direct_ambiguous = direct_ambiguous;
-				if (indirect_callee != NULL) {
-					entry->targets = function_record(
-					    indirect_callee)->singleton_targets;
+				if (targets != NULL) {
+					entry->targets = targets;
 					entry->state = CALL_TARGET_RESOLVED;
 				} else if (direct_ambiguous ||
 				    indirect_ambiguous) {
@@ -1440,6 +1776,7 @@ callgraph_resolve(void)
 	callgraph_state = CALLGRAPH_RESOLVING;
 	build_singleton_target_sets();
 	resolve_indirect_targets();
+	build_declared_target_sets();
 	resolve_function_escapes();
 	collect_unanalyzed_callbacks();
 	build_call_target_cache();
@@ -1559,6 +1896,24 @@ dump_function_calls(FILE *stream, struct function_info *function)
 			    "resolved" : "resolved-indirect",
 			    function_name(callee),
 			    locklint_translation_unit_file(callee->tu));
+			continue;
+		}
+		if (entry->state == CALL_TARGET_RESOLVED &&
+		    entry->targets != NULL) {
+			size_t target_count = entry->targets->count;
+			size_t target_index;
+
+			(void) fputs("resolved-indirect-targets", stream);
+			for (target_index = 0; target_index < target_count;
+			    target_index++) {
+				struct function_info *target =
+				    entry->targets->targets[target_index];
+
+				(void) fprintf(stream, " %s@%s",
+				    function_name(target),
+				    locklint_translation_unit_file(target->tu));
+			}
+			(void) fputc('\n', stream);
 			continue;
 		}
 		if (entry->direct_ambiguous) {
@@ -1753,6 +2108,23 @@ free_indirect_targets(void)
 }
 
 static void
+free_declared_member_targets(void)
+{
+	struct declared_member_targets *declaration;
+	void *cookie = NULL;
+
+	if (!declared_member_targets_initialized)
+		return;
+	while ((declaration = avl_destroy_nodes(&declared_member_targets,
+	    &cookie)) != NULL) {
+		free(declaration->functions);
+		free(declaration);
+	}
+	avl_destroy(&declared_member_targets);
+	declared_member_targets_initialized = false;
+}
+
+static void
 free_call_target_sets(void)
 {
 	struct call_target_set *set;
@@ -1792,6 +2164,7 @@ callgraph_cleanup(void)
 	if (open_iterators != NULL)
 		die("cleaning callgraph with active iterators");
 	free_call_target_sets();
+	free_declared_member_targets();
 	free_indirect_targets();
 	free_unanalyzed_callbacks();
 	free_function_pointer_activity();

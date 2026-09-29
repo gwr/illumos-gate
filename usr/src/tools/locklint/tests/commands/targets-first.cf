@@ -1,0 +1,2 @@
+# One externally configured implementation.
+declare targets command_target_ops::start command_target_first

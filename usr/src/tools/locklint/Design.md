@@ -747,6 +747,21 @@ unaccounted pointer escapes.  This distinguishes a module's externally
 invoked entries from external linkage used only to connect its translation
 units without discarding conservative roots discovered from other evidence.
 
+`declare targets type::member function-name...` declares the possible
+implementations of one function-pointer member for the selected analysis.
+The type and direct member must resolve in every same-named canonical type
+origin.  Those types must have equal layouts, the member must be a function
+pointer, each function name must select one retained definition, and every
+function type must match the member's function type.  Resolution failures,
+ambiguous names, inconsistent type definitions, and incompatible types are
+command errors.
+
+The declaration applies to each equivalent canonical member origin.  Repeated
+declarations union their functions, duplicate functions are harmless, and
+declaration order does not affect the interned target set.  The initial form
+is deliberately global to a named type member; object-, receiver-, call-site-,
+and nested-member selectors remain deferred.
+
 The remaining `declare`, `assert`, and `ignore` forms continue to fail
 explicitly until their semantics are designed.
 
@@ -1608,9 +1623,12 @@ instruction.  Each aggregate then walks incoming context-provenance edges
 backward through the provenance module until it reaches calls made by
 synthetic roots.  A per-walk AVL set of context pointers bounds recursive and
 mutually recursive provenance cycles, while a separate root-call set removes
-duplicates introduced by converging paths.  Findings aggregate again by
-originating call and assertion, so a call with only failing observations is
-definite while one with satisfying and failing observations is conditional.
+duplicates introduced by converging paths.  A recovered root call retains
+both its caller and the concrete callee context reached by the edge, so
+diagnostics through a multi-target call identify the target whose context
+produced the observation.  Findings aggregate again by originating call and
+assertion, so a call with only failing observations is definite while one
+with satisfying and failing observations is conditional.
 The primary warning identifies the originating call and an `info()` note
 identifies the assertion.  If a concrete context has no recoverable root
 provenance, the assertion source remains the diagnostic fallback.
@@ -1907,14 +1925,14 @@ While constructing, `locklint.c` adds each linearized function and records
 function-address escapes, optional function-pointer activity, and exact target
 candidates from supported static constant initializers.  Resolution is
 deferred until all translation units have been processed so C identity,
-ambiguous external definitions, exact indirect targets, roots, and
+ambiguous external definitions, exact and declared indirect targets, roots, and
 reachability are determined with complete program knowledge.
 
 `callgraph_resolve()` closes construction and makes the graph ready.
 During resolution, callgraph attaches one owned descriptor through Sparse's
 backend-private `basic_block.priv` field for each block containing live calls.
-tree.  Each entry retains direct or indirect classification, the cached
-callee and resolution state, and direct-call ambiguity independently.  A null
+Each entry retains direct or indirect classification, the cached target set
+and resolution state, and direct-call ambiguity independently.  A null
 `basic_block.priv` authoritatively means that the block has no live calls and
 never triggers deferred resolution.  These descriptors have process lifetime
 and are neither traversed nor released during cleanup.
@@ -1944,23 +1962,26 @@ units have separate Sparse symbol identities.
 Each live call instruction is classified when it is scanned as one of:
 
 - a resolved direct call, with one known callee;
-- a resolved indirect call through a supported exact aggregate member;
+- a resolved indirect call through a supported exact aggregate member or
+  declared type member, with one or more possible callees;
 - an unresolved external call, for which no retained definition is known;
 - an ambiguous external call, for which several definitions could match; or
 - an indirect call, for which the called expression does not identify one
   supported exact target.
 
-Resolved direct and indirect calls use one callee interface and contribute
-equally to root classification, reachability, lock and visibility effects,
-protection-condition propagation, and diagnostics.  Unresolved and ambiguous
-calls remain explicit in audit output rather than silently disappearing.
+Resolved direct and indirect calls contribute equally to root classification,
+reachability, lock and visibility effects, protection-condition propagation,
+and diagnostics.  Semantic call processing creates an independent callee
+context and continuation for every member of a target set; it does not merge
+the target bodies into one artificial callee.  Unresolved and ambiguous calls
+remain explicit in audit output rather than silently disappearing.
 
 Each resolved call cache entry refers to an immutable interned target set.
-Direct calls and exact static operations-vector calls currently produce
-singleton sets.  The compatibility `callgraph_callee()` query returns that
-single member and returns no callee for an empty or multi-target set;
-target-count and indexed-target queries support analyses which intentionally
-handle every member.
+Direct calls and exact static operations-vector calls produce singleton sets.
+Declared members may produce singleton or multi-target sets.  The
+compatibility `callgraph_callee()` query returns the sole member and returns
+no callee for an empty or multi-target set; target-count and indexed-target
+queries support analyses which intentionally handle every member.
 
 ### Exact static operations-vector targets
 
@@ -1984,6 +2005,23 @@ object/member entries with more than one possible target are not resolved.
 Callback registration, pointer copies, mutable pointer variables, and indexed
 target sets likewise remain outside this exact case.  Their calls stay
 visible as unresolved indirect calls.
+
+### Declared type-member targets
+
+When no exact aggregate target applies, a call through a direct member may use
+the target set supplied by `declare targets type::member function-name...`.
+Declarations are stored by canonical member pointer, so the call-cache lookup
+remains an AVL pointer lookup rather than repeating textual type resolution.
+Declaration-time resolution creates one entry for every layout-equal
+same-named type origin.  Each mutable declaration array is converted to the
+same immutable interned `call_target_set` representation used by exact and
+direct calls before call-cache construction.
+
+Exact source-derived targets take precedence over declared sets.  A
+declaration for one member does not affect other members of the same
+aggregate.  The declared set supplies concrete bodies, argument binding,
+effects, and diagnostics; it is not a callable contract for an unavailable
+implementation.
 
 ### Root discovery and explicit entries
 
@@ -2082,10 +2120,13 @@ function.  It shows:
 - exact function-valued uses and other function-pointer loads and stores;
   pointer copies appear as paired load and store uses.
 
-The audit labels supported inferred edges as `resolved-indirect`.  It reports
-other indirect calls as unresolved without inventing targets.  Unresolved
-indirect calls do not yet produce ordinary `--check-locks` diagnostics; the
-explicit audit remains their reporting interface.
+The audit labels a singleton inferred or declared edge as
+`resolved-indirect`.  It labels a multi-target edge
+`resolved-indirect-targets` and identifies each function together with its
+translation unit.  It reports other indirect calls as unresolved without
+inventing targets.  Unresolved indirect calls do not yet produce ordinary
+`--check-locks` diagnostics; the explicit audit remains their reporting
+interface.
 
 An escaped function whose definition cannot be resolved is different: code
 outside the analyzed inputs may invoke it as a callback, but locklint cannot
@@ -2501,7 +2542,8 @@ intermediate-frame rendering remain optional future work.
 | --- | --- |
 | `callgraph_record_pointer_evidence()` | Use Sparse's source-use walker to record function-valued uses and optional function-pointer loads and stores, then record supported exact aggregate targets while a translation unit is current |
 | `callgraph_add()` | Retain a function and add its Sparse and C-identity indexes during construction |
-| `callgraph_resolve()` | Resolve identities and exact targets, attach block-owned call-target caches, classify roots, propagate reachability, and make the complete graph ready |
+| `callgraph_declare_targets()` | Resolve and validate one named type member and add concrete functions to its analysis-wide target set |
+| `callgraph_resolve()` | Resolve identities and exact targets, intern declared member-target sets, attach block-owned call-target caches, classify roots, propagate reachability, and make the complete graph ready |
 | `callgraph_iter_open()`, `callgraph_iter_next()`, `callgraph_iter_close()` | Allocate, advance, and dispose an opaque cursor over the ready function set |
 | `callgraph_callee()` | Return the sole pre-resolved target of one call, or `NULL` for an empty or multi-target set |
 | `callgraph_target_count()`, `callgraph_target()` | Enumerate the immutable pre-resolved target set of one call |

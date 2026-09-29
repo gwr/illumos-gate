@@ -49,7 +49,8 @@ struct context_visit {
 };
 
 struct root_call {
-	struct function_context *context;
+	struct function_context *caller_context;
+	struct function_context *callee_context;
 	struct instruction *instruction;
 	avl_node_t by_call;
 };
@@ -70,7 +71,10 @@ compare_root_calls(const void *left_arg, const void *right_arg)
 	const struct root_call *right = right_arg;
 	int result;
 
-	result = AVL_PCMP(left->context, right->context);
+	result = AVL_PCMP(left->caller_context, right->caller_context);
+	if (result != 0)
+		return (result);
+	result = AVL_PCMP(left->callee_context, right->callee_context);
 	if (result != 0)
 		return (result);
 	return (AVL_PCMP(left->instruction, right->instruction));
@@ -101,11 +105,12 @@ record_context_visit(avl_tree_t *visited, struct context_visit **work,
 }
 
 static int
-record_root_call(avl_tree_t *calls, struct function_context *context,
-    struct instruction *instruction)
+record_root_call(avl_tree_t *calls, struct function_context *caller_context,
+    struct function_context *callee_context, struct instruction *instruction)
 {
 	struct root_call key = {
-		.context = context,
+		.caller_context = caller_context,
+		.callee_context = callee_context,
 		.instruction = instruction
 	};
 	struct root_call *call;
@@ -246,8 +251,10 @@ provenance_has_ancestor(struct function_context *context,
 /*
  * Visit each distinct call made by a synthetic root which can reach a
  * concrete context.  Context identity bounds recursive cycles, while the
- * separate call set removes duplicates introduced by converging paths.
- * Allocation is completed before callbacks begin.
+ * separate call set removes duplicates introduced by converging paths.  Each
+ * result retains the concrete callee at the root edge so callers do not need
+ * to assume that a call instruction has only one target.  Allocation is
+ * completed before callbacks begin.
  */
 int
 provenance_for_each_root_call(struct function_context *context,
@@ -301,7 +308,8 @@ provenance_for_each_root_call(struct function_context *context,
 				if (caller_depth > maximum_depth)
 					maximum_depth = caller_depth;
 				error = record_root_call(&calls,
-				    edge->caller_context, edge->call_instruction);
+				    edge->caller_context, visit->context,
+				    edge->call_instruction);
 			} else {
 				error = record_context_visit(&visited, &work,
 				    edge->caller_context, caller_depth);
@@ -345,7 +353,8 @@ provenance_for_each_root_call(struct function_context *context,
 	for (call = avl_first(&calls); call != NULL;
 	    call = AVL_NEXT(&calls, call)) {
 		statistics.caller_recovery_root_calls++;
-		callback(call->context, call->instruction, data);
+		callback(call->caller_context, call->callee_context,
+		    call->instruction, data);
 	}
 	free_root_calls(&calls);
 	return (0);

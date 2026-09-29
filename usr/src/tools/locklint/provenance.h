@@ -32,7 +32,7 @@ struct provenance_edge {
 };
 
 typedef void (*provenance_root_call_f)(struct function_context *,
-    struct instruction *, void *);
+    struct function_context *, struct instruction *, void *);
 
 void provenance_edges_create(struct function_context *);
 void provenance_edges_free(struct function_context *);

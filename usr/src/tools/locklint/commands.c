@@ -155,6 +155,57 @@ declare_entry(int argc, char **argv)
 	}
 }
 
+static int
+declare_targets(int argc, char **argv)
+{
+	enum callgraph_declare_result result;
+	const char *problem;
+
+	if (argc < 3) {
+		return (command_parse_error("declare targets requires one "
+		    "member and at least one function name"));
+	}
+	result = callgraph_declare_targets(argv[1], (size_t)(argc - 2),
+	    &argv[2], &problem);
+	switch (result) {
+	case CALLGRAPH_DECLARE_OK:
+		return (0);
+	case CALLGRAPH_DECLARE_INVALID_NAME:
+		return (command_parse_error(
+		    "invalid function-pointer member name '%s'", argv[1]));
+	case CALLGRAPH_DECLARE_UNRESOLVED:
+		if (problem == argv[1]) {
+			return (command_parse_error(
+			    "unresolved function-pointer member '%s'",
+			    argv[1]));
+		}
+		return (command_parse_error("unresolved function name '%s'",
+		    problem));
+	case CALLGRAPH_DECLARE_AMBIGUOUS:
+		if (problem == argv[1]) {
+			return (command_parse_error(
+			    "ambiguous function-pointer member '%s'",
+			    argv[1]));
+		}
+		return (command_parse_error("ambiguous function name '%s'",
+		    problem));
+	case CALLGRAPH_DECLARE_NOT_FUNCTION_POINTER:
+		return (command_parse_error(
+		    "member '%s' is not a function pointer", argv[1]));
+	case CALLGRAPH_DECLARE_INCOMPATIBLE_TYPE:
+		return (command_parse_error(
+		    "function '%s' has incompatible type for member '%s'",
+		    problem, argv[1]));
+	case CALLGRAPH_DECLARE_INCONSISTENT_TYPE:
+		return (command_parse_error("inconsistently defined type in "
+		    "function-pointer member '%s'", argv[1]));
+	default:
+		return (command_parse_error(
+		    "internal error resolving declared targets for '%s'",
+		    argv[1]));
+	}
+}
+
 int
 cmd_assert(int argc, char **argv)
 {
@@ -174,6 +225,8 @@ cmd_declare(int argc, char **argv)
 		return (declare_options(argc, argv));
 	if (strcmp(argv[0], "entry") == 0)
 		return (declare_entry(argc, argv));
+	if (strcmp(argv[0], "targets") == 0)
+		return (declare_targets(argc, argv));
 	if (strcmp(argv[0], "readable") != 0)
 		return (not_implemented("declare"));
 	if (argc != 2) {

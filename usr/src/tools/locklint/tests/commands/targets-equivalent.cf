@@ -1,0 +1,2 @@
+# Apply to every layout-equal definition of the named operation-vector type.
+declare targets command_equivalent_ops::start command_equivalent_target

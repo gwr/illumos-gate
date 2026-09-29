@@ -1,0 +1,2 @@
+# A type member selector requires the type::member separator.
+declare targets command_target_ops.start command_target_first
