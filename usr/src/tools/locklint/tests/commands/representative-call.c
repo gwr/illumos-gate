@@ -30,3 +30,11 @@ call_representative(struct representative_ops *ops,
 	ops->enter(object);
 	mutex_exit(&object->lock);
 }
+
+static void
+call_representative_create(struct representative_ops *ops)
+{
+	struct representative_object *object = ops->create();
+
+	mutex_exit(&object->lock);
+}

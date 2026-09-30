@@ -969,6 +969,13 @@ require_match "representative call remains indirect" \
 reject_match "representative is not a concrete target" \
     "resolved-indirect representative_enter" representative-call.out
 
+run_capture "declared returned object mismatch" \
+    declared-return-effect.out \
+    "$LOCKLINT" --check-locks declared-return-effect.c
+require_match "declared returned object mismatch" \
+    "function 'return_different_object' does not establish declared mutex acquisition of lock 'lock' \\[declared-lock-effect\\]" \
+    declared-return-effect.out
+
 run_capture "concrete target precedes representative" \
     representative-call-target.out \
     "$LOCKLINT" --check-locks \

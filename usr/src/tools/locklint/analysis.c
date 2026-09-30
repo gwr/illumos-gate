@@ -3582,6 +3582,38 @@ seed_initial_contexts(struct analysis *analysis)
 	callgraph_iter_close(iterator);
 }
 
+static struct lock_identity *
+declared_return_identity(struct analysis *analysis,
+    const struct function_context *context, const struct context_exit *exit,
+    const struct lock_identity *declared)
+{
+	struct lock_identity_key key;
+	struct lock_identity *identity;
+	enum lock_analysis_object_type object_type;
+	unsigned int argument;
+	bool composed;
+	bool existed;
+	int error;
+
+	if (declared->analysis_object_type != LOCK_ANALYSIS_OBJECT_SYMBOL ||
+	    identity_formal_argument(context->function, declared->key,
+	    declared->analysis_object_type, &argument) ||
+	    binding_contains_analysis_object(context->bindings,
+	    declared->key.analysis_object) ||
+	    exit->return_value == NULL ||
+	    exit->return_value->type == PSEUDO_VOID)
+		return (NULL);
+	key = declared->key;
+	key.analysis_object = exit->return_value;
+	object_type = LOCK_ANALYSIS_OBJECT_PSEUDO;
+	error = context_identity_intern(analysis, context, exit->state, key,
+	    object_type, &identity, &existed, &composed);
+	if (error != 0)
+		die("cannot identify declared return lock: %s",
+		    strerror(error));
+	return (identity);
+}
+
 static void
 diagnose_declared_acquisition(struct analysis *analysis,
     struct function_info *function, struct instruction *instruction,
@@ -3620,7 +3652,13 @@ diagnose_declared_acquisition(struct analysis *analysis,
 		if (context_state_lock_count(context->entry_state) != 0)
 			continue;
 		SLIST_FOREACH(exit, &context->exits, link) {
-			if (context_state_lock_modes(exit->state, identity) ==
+			struct lock_identity *exit_identity =
+			    declared_return_identity(analysis, context, exit,
+			    identity);
+
+			if (exit_identity == NULL)
+				exit_identity = identity;
+			if (context_state_lock_modes(exit->state, exit_identity) ==
 			    expected_mode)
 				valid++;
 			else

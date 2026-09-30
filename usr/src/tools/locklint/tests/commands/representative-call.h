@@ -21,12 +21,15 @@ struct representative_object {
 };
 
 typedef void (*representative_enter_t)(struct representative_object *);
+typedef struct representative_object *(*representative_create_t)(void);
 
 struct representative_ops {
 	representative_enter_t enter;
+	representative_create_t create;
 };
 
 void representative_enter(struct representative_object *);
+struct representative_object *representative_create(void);
 void concrete_enter(struct representative_object *);
 
 #endif /* _LOCKLINT_TEST_REPRESENTATIVE_CALL_H */

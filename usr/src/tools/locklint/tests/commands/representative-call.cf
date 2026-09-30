@@ -1,1 +1,2 @@
 declare contract representative_ops::enter representative_enter
+declare contract representative_ops::create representative_create

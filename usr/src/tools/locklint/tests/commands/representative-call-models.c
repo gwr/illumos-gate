@@ -20,10 +20,21 @@
 #define	_NOTE(arg)
 
 extern void mutex_enter(mutex_t *);
+extern struct representative_object *representative_allocate(void);
 
 void
 representative_enter(struct representative_object *object)
 {
 	mutex_enter(&object->lock);
 	_NOTE(MUTEX_ACQUIRED_AS_SIDE_EFFECT(object->lock))
+}
+
+struct representative_object *
+representative_create(void)
+{
+	struct representative_object *object = representative_allocate();
+
+	mutex_enter(&object->lock);
+	_NOTE(MUTEX_ACQUIRED_AS_SIDE_EFFECT(object->lock))
+	return (object);
 }
