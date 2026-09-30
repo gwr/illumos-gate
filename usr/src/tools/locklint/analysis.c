@@ -117,6 +117,8 @@ struct analysis_measurements {
 	struct distribution visibility_entries_per_set;
 	struct distribution target_sets_per_function;
 	struct distribution target_entries_per_set;
+	struct distribution alias_sets_per_function;
+	struct distribution alias_entries_per_set;
 	struct distribution point_states_per_context;
 	struct distribution states_per_analysis_point;
 	struct distribution exits_per_context;
@@ -125,6 +127,7 @@ struct analysis_measurements {
 	struct distribution locks_per_semantic_state;
 	struct distribution visibility_per_semantic_state;
 	struct distribution targets_per_semantic_state;
+	struct distribution aliases_per_semantic_state;
 	size_t lock_identities;
 	size_t lock_identity_analysis_objects;
 	size_t lock_identity_types[LOCK_ANALYSIS_OBJECT_PSEUDO + 1];
@@ -132,6 +135,7 @@ struct analysis_measurements {
 	size_t lock_set_bytes;
 	size_t visibility_set_bytes;
 	size_t target_set_bytes;
+	size_t alias_set_bytes;
 	size_t stored_target_demand_bytes;
 	size_t stored_target_demands;
 	size_t operation_family_profile_bytes;
@@ -249,13 +253,16 @@ struct operation_profile_builder {
 };
 
 static int context_access_identity(struct analysis *,
-    const struct function_context *, const struct locklint_access *,
+    const struct function_context *, const struct semantic_state *,
+    const struct locklint_access *,
     struct lock_identity **, bool *, bool *);
 static int context_access_key(const struct function_context *,
-    const struct locklint_access *, struct lock_identity_key *,
+    const struct semantic_state *, const struct locklint_access *,
+    struct lock_identity_key *,
     enum lock_analysis_object_type *, bool *);
 static int context_access_region(const struct function_context *,
-    const struct locklint_access *, struct visibility_region *, bool *, bool *);
+    const struct semantic_state *, const struct locklint_access *,
+    struct visibility_region *, bool *, bool *);
 static bool identity_formal_argument(const struct function_info *,
     struct lock_identity_key, enum lock_analysis_object_type, unsigned int *);
 static struct symbol *function_formal_argument(const struct function_info *,
@@ -491,8 +498,8 @@ apply_visibility_target(const struct locklint_access *access,
 		data->analysis->counts.visibility_transitions_unresolved++;
 		return;
 	}
-	error = context_access_region(data->point_state->context, access,
-	    &region, &available, &composed);
+	error = context_access_region(data->point_state->context, data->state,
+	    access, &region, &available, &composed);
 	if (error != 0)
 		die("cannot identify visibility target: %s", strerror(error));
 	if (!available) {
@@ -542,8 +549,11 @@ apply_visibility_event(struct analysis *analysis,
 }
 
 struct exit_mapping {
+	struct analysis *analysis;
 	const struct function_context *caller_context;
 	const struct binding_environment *bindings;
+	const struct context_exit *exit;
+	const struct continuation *continuation;
 	size_t filtered;
 };
 
@@ -566,17 +576,150 @@ binding_contains_analysis_object(const struct binding_environment *bindings,
 	return (false);
 }
 
+static const struct lock_identity *
+returned_value_identity(const struct exit_mapping *mapping)
+{
+	struct pseudo *value = strip_function_pointer_casts(
+	    mapping->exit->return_value);
+	const struct lock_identity *identity;
+	struct lock_identity *constant;
+	bool existed;
+	int error;
+
+	if (value == NULL)
+		return (NULL);
+	identity = context_state_alias(mapping->exit->state, value);
+	if (identity != NULL)
+		return (identity);
+	if (value->type == PSEUDO_VAL) {
+		error = lock_identity_intern(mapping->analysis->lock_identities,
+		    (struct lock_identity_key) {
+			.analysis_object = value,
+			.target_offset = 0
+		    }, LOCK_ANALYSIS_OBJECT_PSEUDO, &constant, &existed);
+		if (error != 0)
+			die("cannot identify returned constant: %s",
+			    strerror(error));
+		if (existed)
+			mapping->analysis->counts.lock_identities_reused++;
+		else
+			mapping->analysis->counts.lock_identities_created++;
+		return (constant);
+	}
+	if (value->type != PSEUDO_ARG || value->nr == 0)
+		return (NULL);
+	return (binding_environment_lookup(mapping->bindings, value->nr - 1));
+}
+
+static const struct lock_identity *
+returned_bound_identity(const struct exit_mapping *mapping)
+{
+	const struct lock_identity *identity =
+	    returned_value_identity(mapping);
+
+	if (identity == NULL)
+		return (NULL);
+	if (identity->analysis_object_type ==
+	    LOCK_ANALYSIS_OBJECT_OBJECT_IDENTITY ||
+	    binding_contains_analysis_object(mapping->bindings,
+	    identity->key.analysis_object))
+		return (identity);
+	return (NULL);
+}
+
 static bool
-return_lock_visible(const struct lock_identity *lock, void *data)
+pseudo_feeds_condition(struct pseudo *pseudo, unsigned int depth)
+{
+	struct pseudo_user *user;
+
+	if (pseudo == NULL || depth > 32 || !has_use_list(pseudo))
+		return (false);
+	FOR_EACH_PTR(pseudo->users, user) {
+		struct instruction *instruction = user->insn;
+
+		if (instruction->opcode == OP_CBR &&
+		    instruction->cond == pseudo)
+			return (true);
+		if (instruction->opcode == OP_PTRCAST &&
+		    instruction->src == pseudo &&
+		    pseudo_feeds_condition(instruction->target, depth + 1))
+			return (true);
+		if (instruction->opcode == OP_PHISOURCE &&
+		    instruction->phi_src == pseudo) {
+			struct instruction *phi;
+
+			FOR_EACH_PTR(instruction->phi_users, phi) {
+				if (pseudo_feeds_condition(phi->target,
+				    depth + 1))
+					return (true);
+			} END_FOR_EACH_PTR(phi);
+		}
+	} END_FOR_EACH_PTR(user);
+	return (false);
+}
+
+static const struct lock_identity *
+returned_caller_alias(const struct exit_mapping *mapping)
+{
+	const struct lock_identity *identity =
+	    returned_value_identity(mapping);
+
+	if (identity == NULL)
+		return (NULL);
+	if (identity->analysis_object_type == LOCK_ANALYSIS_OBJECT_PSEUDO) {
+		const struct pseudo *pseudo = identity->key.analysis_object;
+
+		if (pseudo->type == PSEUDO_VAL)
+			return (identity);
+	}
+	return (returned_bound_identity(mapping));
+}
+
+static bool
+map_return_lock(const struct lock_identity *lock,
+    const struct lock_identity **result, void *data)
 {
 	struct exit_mapping *mapping = data;
+	struct lock_identity_key key;
+	struct lock_identity *mapped;
+	struct pseudo *return_value = mapping->exit->return_value;
+	struct pseudo *call_result = mapping->continuation->call_result;
+	const struct lock_identity *returned =
+	    returned_value_identity(mapping);
+	bool existed;
+	int error;
 
 	if (lock->analysis_object_type ==
-	    LOCK_ANALYSIS_OBJECT_OBJECT_IDENTITY)
+	    LOCK_ANALYSIS_OBJECT_OBJECT_IDENTITY) {
+		*result = lock;
 		return (true);
+	}
 	if (binding_contains_analysis_object(mapping->bindings,
-	    lock->key.analysis_object))
+	    lock->key.analysis_object)) {
+		*result = lock;
 		return (true);
+	}
+	if (lock->analysis_object_type == LOCK_ANALYSIS_OBJECT_PSEUDO &&
+	    return_value != NULL && return_value->type != PSEUDO_VOID &&
+	    call_result != NULL && call_result->type != PSEUDO_VOID &&
+	    ((returned != NULL &&
+	    lock->key.analysis_object == returned->key.analysis_object) ||
+	    same_pseudo_expression(NULL,
+	    (struct pseudo *)lock->key.analysis_object, return_value, 0))) {
+		key = lock->key;
+		key.analysis_object = call_result;
+		error = lock_identity_intern(mapping->analysis->lock_identities,
+		    key, LOCK_ANALYSIS_OBJECT_PSEUDO, &mapped, &existed);
+		if (error != 0)
+			die("cannot map returned lock identity: %s",
+			    strerror(error));
+		if (existed)
+			mapping->analysis->counts.lock_identities_reused++;
+		else
+			mapping->analysis->counts.lock_identities_created++;
+		*result = mapped;
+		return (true);
+	}
 	mapping->filtered++;
 	return (false);
 }
@@ -627,8 +770,11 @@ record_reactivation(struct analysis *analysis,
 		    continuation->caller_context->function->tu ==
 		    continuation->callee_context->function->tu;
 		struct exit_mapping mapping = {
+			.analysis = analysis,
 			.caller_context = continuation->caller_context,
-			.bindings = continuation->callee_bindings
+			.bindings = continuation->callee_bindings,
+			.exit = exit,
+			.continuation = continuation
 		};
 		struct semantic_state *mapped_state;
 		struct point_state *point_state;
@@ -641,12 +787,41 @@ record_reactivation(struct analysis *analysis,
 		    continuation->caller_context->function,
 		    continuation->caller_state,
 		    continuation->callee_context->entry_state, exit->state,
-		    return_lock_visible, &mapping,
+		    map_return_lock, &mapping,
 		    same_translation_unit ? return_visibility_region : NULL,
 		    &mapping, &mapped_state, &state_existed);
 		if (error != 0)
 			die("cannot map context exit: %s", strerror(error));
 		record_semantic_state(analysis, state_existed);
+		{
+			const struct lock_identity *returned =
+			    returned_caller_alias(&mapping);
+
+			if (returned != NULL &&
+			    returned->analysis_object_type ==
+			    LOCK_ANALYSIS_OBJECT_PSEUDO &&
+			    ((const struct pseudo *)returned->key.
+			    analysis_object)->type == PSEUDO_VAL &&
+			    !pseudo_feeds_condition(
+			    continuation->call_result, 0))
+				returned = NULL;
+			if (returned != NULL &&
+			    continuation->call_result != NULL &&
+			    continuation->call_result->type != PSEUDO_VOID) {
+				struct semantic_state *aliased_state;
+
+				statistics.call_exit_semantic_states_find++;
+				error = context_state_set_alias(
+				    continuation->caller_context->function,
+				    mapped_state, continuation->call_result,
+				    returned, &aliased_state, &state_existed);
+				if (error != 0)
+					die("cannot bind call result identity: %s",
+					    strerror(error));
+				record_semantic_state(analysis, state_existed);
+				mapped_state = aliased_state;
+			}
+		}
 		analysis->counts.return_states_mapped++;
 		analysis->counts.return_locks_filtered += mapping.filtered;
 		error = dependency_continuation_apply_exit(continuation, exit,
@@ -674,7 +849,7 @@ publish_exit(struct analysis *analysis, struct point_state *point_state)
 	int error;
 
 	error = dependency_exit_publish(point_state->context, point_state->state,
-	    &exit, &existed);
+	    point_state->point.next_instruction->src, &exit, &existed);
 	if (error != 0)
 		die("cannot publish context exit: %s", strerror(error));
 	if (existed) {
@@ -720,8 +895,8 @@ apply_lock_event(struct analysis *analysis, struct point_state *point_state)
 		analysis->counts.lock_identities_unresolved++;
 		return (point_state->state);
 	}
-	error = context_access_identity(analysis, point_state->context, &access,
-	    &identity, &existed, &composed);
+	error = context_access_identity(analysis, point_state->context,
+	    point_state->state, &access, &identity, &existed, &composed);
 	if (error != 0)
 		die("cannot identify lock event: %s", strerror(error));
 	if (composed)
@@ -967,13 +1142,43 @@ compose_caller_identity(const struct function_context *caller,
 	return (true);
 }
 
+static bool
+compose_state_alias(const struct semantic_state *state,
+    struct lock_identity_key *key,
+    enum lock_analysis_object_type *object_type)
+{
+	const struct lock_identity *target;
+	int64_t relative_offset;
+	int64_t target_offset;
+
+	if (*object_type != LOCK_ANALYSIS_OBJECT_PSEUDO)
+		return (false);
+	target = context_state_alias(state, key->analysis_object);
+	if (target == NULL)
+		return (false);
+	relative_offset = key->target_offset;
+	target_offset = target->key.target_offset;
+	if ((relative_offset > 0 &&
+	    target_offset > INT64_MAX - relative_offset) ||
+	    (relative_offset < 0 &&
+	    target_offset < INT64_MIN - relative_offset))
+		die("composed return alias offset is out of range");
+	key->analysis_object = target->key.analysis_object;
+	key->target_offset = target_offset + relative_offset;
+	*object_type = target->analysis_object_type;
+	return (true);
+}
+
 static int
 context_identity_intern(struct analysis *analysis,
-    const struct function_context *context, struct lock_identity_key key,
+    const struct function_context *context, const struct semantic_state *state,
+    struct lock_identity_key key,
     enum lock_analysis_object_type object_type,
     struct lock_identity **identity, bool *existed, bool *composed)
 {
 	*composed = compose_caller_identity(context, &key, &object_type);
+	if (compose_state_alias(state, &key, &object_type))
+		*composed = true;
 	return (lock_identity_intern(analysis->lock_identities, key,
 	    object_type, identity, existed));
 }
@@ -1007,7 +1212,8 @@ canonicalize_derived_key(const struct function_info *function,
 
 static int
 context_access_key(const struct function_context *context,
-    const struct locklint_access *access, struct lock_identity_key *key,
+    const struct semantic_state *state, const struct locklint_access *access,
+    struct lock_identity_key *key,
     enum lock_analysis_object_type *object_type, bool *composed)
 {
 	const struct lock_identity *derived;
@@ -1030,6 +1236,8 @@ context_access_key(const struct function_context *context,
 		return (0);
 	}
 	*composed = compose_caller_identity(context, key, object_type);
+	if (compose_state_alias(state, key, object_type))
+		*composed = true;
 	return (0);
 }
 
@@ -1039,8 +1247,8 @@ context_access_key(const struct function_context *context,
  */
 static int
 context_access_region(const struct function_context *context,
-    const struct locklint_access *access, struct visibility_region *region,
-    bool *available, bool *composed)
+    const struct semantic_state *state, const struct locklint_access *access,
+    struct visibility_region *region, bool *available, bool *composed)
 {
 	struct lock_identity_key key;
 	enum lock_analysis_object_type object_type;
@@ -1053,7 +1261,7 @@ context_access_region(const struct function_context *context,
 	*composed = false;
 	if (!locklint_access_size(access, &length))
 		return (0);
-	error = context_access_key(context, access, &key, &object_type,
+	error = context_access_key(context, state, access, &key, &object_type,
 	    composed);
 	if (error != 0)
 		return (error);
@@ -1075,6 +1283,7 @@ context_access_region(const struct function_context *context,
 static int
 context_access_identity(struct analysis *analysis,
     const struct function_context *context,
+    const struct semantic_state *state,
     const struct locklint_access *access, struct lock_identity **identity,
     bool *existed, bool *composed)
 {
@@ -1082,7 +1291,7 @@ context_access_identity(struct analysis *analysis,
 	enum lock_analysis_object_type object_type;
 	int error;
 
-	error = context_access_key(context, access, &key, &object_type,
+	error = context_access_key(context, state, access, &key, &object_type,
 	    composed);
 	if (error != 0)
 		return (error);
@@ -1136,8 +1345,8 @@ state_value_targets(const struct function_context *context,
 	    !locklint_get_instruction_access(context->function->tu,
 	    pseudo->def, &access))
 		return (NULL);
-	error = context_access_region(context, &access, &region, &available,
-	    &composed);
+	error = context_access_region(context, state, &access, &region,
+	    &available, &composed);
 	if (error != 0)
 		die("cannot identify function-pointer load: %s",
 		    strerror(error));
@@ -1261,6 +1470,147 @@ pseudo_uses_formal(struct pseudo *pseudo, unsigned int depth)
 	default:
 		return (false);
 	}
+}
+
+static struct pseudo *
+phi_edge_source(struct instruction *phi,
+    const struct basic_block *parent)
+{
+	struct pseudo *operand;
+
+	FOR_EACH_PTR(phi->phi_list, operand) {
+		struct instruction *source;
+
+		if (operand == NULL || (source = operand->def) == NULL ||
+		    source->opcode != OP_PHISOURCE)
+			continue;
+		if (source->bb == parent ||
+		    (source->phi_src != NULL &&
+		    source->phi_src->type == PSEUDO_REG &&
+		    source->phi_src->def != NULL &&
+		    source->phi_src->def->bb == parent))
+			return (source->phi_src);
+	} END_FOR_EACH_PTR(operand);
+	return (NULL);
+}
+
+static bool
+phi_feeds_return(const struct function_info *function,
+    const struct pseudo *target)
+{
+	struct basic_block *block;
+	struct instruction *instruction;
+	struct symbol *type = function_type(function);
+
+	if (type == NULL || !is_ptr_type(type->ctype.base_type))
+		return (false);
+
+	FOR_EACH_PTR(function->ep->bbs, block) {
+		FOR_EACH_PTR(block->insns, instruction) {
+			if (instruction->bb != NULL &&
+			    instruction->opcode == OP_RET &&
+			    strip_function_pointer_casts(instruction->src) ==
+			    target)
+				return (true);
+		} END_FOR_EACH_PTR(instruction);
+	} END_FOR_EACH_PTR(block);
+	return (false);
+}
+
+/*
+ * Preserve the selected input of pointer PHIs while traversing one CFG edge.
+ * This avoids retaining a predecessor pointer in every analysis point.
+ */
+static const struct semantic_state *
+apply_phi_aliases(struct analysis *analysis, struct function_context *context,
+    struct basic_block *parent, const struct semantic_state *input,
+    struct basic_block *child)
+{
+	const struct semantic_state *state = input;
+	struct instruction *instruction;
+
+	FOR_EACH_PTR(child->insns, instruction) {
+		struct lock_identity_key key;
+		struct lock_identity *target;
+		struct semantic_state *next;
+		struct pseudo *source;
+		bool composed;
+		bool existed;
+		int error;
+
+		if (instruction->opcode != OP_PHI ||
+		    !phi_feeds_return(context->function,
+		    instruction->target))
+			continue;
+		source = strip_function_pointer_casts(
+		    phi_edge_source(instruction, parent));
+		if (source == NULL || source->type == PSEUDO_VOID ||
+		    source->type == PSEUDO_UNDEF)
+			continue;
+		key = (struct lock_identity_key) {
+			.analysis_object = source,
+			.target_offset = 0
+		};
+		error = context_identity_intern(analysis, context,
+		    state, key, LOCK_ANALYSIS_OBJECT_PSEUDO, &target, &existed,
+		    &composed);
+		if (error != 0)
+			die("cannot identify pointer phi input: %s",
+			    strerror(error));
+		if (composed)
+			analysis->counts.binding_identities_composed++;
+		if (existed)
+			analysis->counts.lock_identities_reused++;
+		else
+			analysis->counts.lock_identities_created++;
+		statistics.call_exit_semantic_states_find++;
+		error = context_state_set_alias(
+		    context->function, state, instruction->target,
+		    target, &next, &existed);
+		if (error != 0)
+			die("cannot record pointer phi alias: %s",
+			    strerror(error));
+		record_semantic_state(analysis, existed);
+		state = next;
+	} END_FOR_EACH_PTR(instruction);
+	return (state);
+}
+
+static bool
+state_pseudo_truth(const struct semantic_state *state, struct pseudo *pseudo,
+    bool *truth)
+{
+	const struct lock_identity *alias;
+	size_t index;
+
+	pseudo = strip_function_pointer_casts(pseudo);
+	if (pseudo == NULL)
+		return (false);
+	if (pseudo->type == PSEUDO_VAL) {
+		*truth = pseudo->value != 0;
+		return (true);
+	}
+	alias = context_state_alias(state, pseudo);
+	if (alias != NULL &&
+	    alias->analysis_object_type == LOCK_ANALYSIS_OBJECT_PSEUDO) {
+		const struct pseudo *value = alias->key.analysis_object;
+
+		if (value->type == PSEUDO_VAL) {
+			*truth = value->value != 0;
+			return (true);
+		}
+	}
+	for (index = 0; index < state->locks->count; index++) {
+		const struct lock_identity *lock =
+		    state->locks->entries[index].lock;
+
+		if (lock->analysis_object_type == LOCK_ANALYSIS_OBJECT_PSEUDO &&
+		    lock->key.analysis_object == pseudo) {
+			*truth = true;
+			return (true);
+		}
+	}
+	return (false);
 }
 
 static void
@@ -2073,8 +2423,15 @@ same_pseudo_expression(const struct instruction *insn,
 	}
 	source_def = source->def;
 	candidate_def = candidate->def;
-	if (source_def == NULL || candidate_def == NULL ||
-	    source_def->opcode != candidate_def->opcode ||
+	if (source_def == NULL || candidate_def == NULL)
+		return (false);
+	if (source_def->opcode == OP_PTRCAST)
+		return (same_pseudo_expression(insn, source_def->src, candidate,
+		    depth + 1));
+	if (candidate_def->opcode == OP_PTRCAST)
+		return (same_pseudo_expression(insn, source,
+		    candidate_def->src, depth + 1));
+	if (source_def->opcode != candidate_def->opcode ||
 	    source_def->size != candidate_def->size)
 		return (false);
 	switch (source_def->opcode) {
@@ -2148,8 +2505,9 @@ call_derived_bindings(const struct function_info *callee,
 
 static const struct lock_identity *
 call_argument_identity(struct analysis *analysis,
-    const struct function_context *caller, const struct instruction *insn,
-    unsigned int index)
+    const struct function_context *caller,
+    const struct semantic_state *caller_state,
+    const struct instruction *insn, unsigned int index)
 {
 	struct locklint_access access = { 0 };
 	struct lock_identity_key key;
@@ -2162,7 +2520,8 @@ call_argument_identity(struct analysis *analysis,
 
 	if (locklint_get_call_argument_access(caller->function->tu, insn, index,
 	    &access)) {
-		error = context_access_identity(analysis, caller, &access,
+		error = context_access_identity(analysis, caller, caller_state,
+		    &access,
 		    &identity, &existed, &composed);
 	} else {
 		pseudo = call_argument_pseudo(insn, index);
@@ -2171,7 +2530,7 @@ call_argument_identity(struct analysis *analysis,
 		key.analysis_object = pseudo;
 		key.target_offset = 0;
 		object_type = LOCK_ANALYSIS_OBJECT_PSEUDO;
-		error = context_identity_intern(analysis, caller, key,
+		error = context_identity_intern(analysis, caller, caller_state, key,
 		    object_type, &identity, &existed, &composed);
 	}
 	if (error != 0)
@@ -2311,7 +2670,8 @@ call_bindings(struct analysis *analysis,
 		if (formal_is_pointer(formal)) {
 			entries[binding_count].argument = argument;
 			entries[binding_count].actual_identity =
-			    call_argument_identity(analysis, caller, insn,
+			    call_argument_identity(analysis, caller, caller_state,
+			    insn,
 			    argument);
 			binding_count++;
 		}
@@ -2466,7 +2826,9 @@ process_call_target(struct analysis *analysis,
 	    point_state->point.block, point_state->point.next_instruction);
 	statistics.call_continuations_find++;
 	error = dependency_continuation_create(callee_context, caller_context,
-	    resume_point, call_state, bindings, &continuation, &existed);
+	    resume_point, call_state, bindings,
+	    point_state->point.next_instruction->target, &continuation,
+	    &existed);
 	if (error != 0)
 		die("cannot create call continuation: %s", strerror(error));
 	if (existed)
@@ -2511,6 +2873,54 @@ observe_indirect_call(struct analysis *analysis,
 		observation->unmodeled = true;
 }
 
+static bool
+alias_consumed_by_instruction(const void *source,
+    const struct instruction *instruction)
+{
+	struct pseudo *pseudo = (struct pseudo *)source;
+	struct pseudo_user *user;
+	bool found = false;
+
+	if (!has_use_list(pseudo) ||
+	    instruction->opcode == OP_PTRCAST ||
+	    instruction->opcode == OP_PHI)
+		return (false);
+	FOR_EACH_PTR(pseudo->users, user) {
+		if (user->insn != instruction)
+			return (false);
+		found = true;
+	} END_FOR_EACH_PTR(user);
+	return (found);
+}
+
+static const struct semantic_state *
+prune_consumed_aliases(struct analysis *analysis,
+    struct function_context *context, const struct semantic_state *state,
+    const struct instruction *instruction)
+{
+	const struct semantic_alias_set *aliases = state->aliases;
+	const struct semantic_state *current = state;
+	size_t index;
+
+	for (index = 0; index < aliases->count; index++) {
+		struct semantic_state *next;
+		bool existed;
+		int error;
+
+		if (!alias_consumed_by_instruction(
+		    aliases->entries[index].source, instruction))
+			continue;
+		error = context_state_remove_alias(context->function, current,
+		    aliases->entries[index].source, &next, &existed);
+		if (error != 0)
+			die("cannot prune consumed return alias: %s",
+			    strerror(error));
+		record_semantic_state(analysis, existed);
+		current = next;
+	}
+	return (current);
+}
+
 static void
 process_call(struct analysis *analysis, struct point_state *point_state,
     const struct semantic_state *caller_state)
@@ -2543,6 +2953,8 @@ process_call(struct analysis *analysis, struct point_state *point_state,
 		record_semantic_state(analysis, existed);
 		call_state = cleared_state;
 	}
+	call_state = prune_consumed_aliases(analysis, caller_context, call_state,
+	    point_state->point.next_instruction);
 	if (target_count == 0) {
 		resume_point = point_state->point;
 		resume_point.next_instruction = next_live_instruction(
@@ -2606,8 +3018,8 @@ process_lock_assertion(struct analysis *analysis,
 		    point_state->state, false);
 		return (true);
 	}
-	error = context_access_identity(analysis, point_state->context, &access,
-	    &identity, &existed, &composed);
+	error = context_access_identity(analysis, point_state->context,
+	    point_state->state, &access, &identity, &existed, &composed);
 	if (error != 0)
 		die("cannot identify lock assertion: %s", strerror(error));
 	if (composed)
@@ -2707,8 +3119,8 @@ process_conditional_lock(struct analysis *analysis,
 		    point_state->state, false);
 		return (true);
 	}
-	error = context_access_identity(analysis, point_state->context, &access,
-	    &identity, &existed, &composed);
+	error = context_access_identity(analysis, point_state->context,
+	    point_state->state, &access, &identity, &existed, &composed);
 	if (error != 0)
 		die("cannot identify conditional lock operation: %s",
 		    strerror(error));
@@ -2809,8 +3221,8 @@ apply_stored_targets(struct analysis *analysis, struct point_state *point_state,
 	    !locklint_get_instruction_access(
 	    point_state->context->function->tu, instruction, &access))
 		return (current);
-	error = context_access_region(point_state->context, &access, &region,
-	    &available, &composed);
+	error = context_access_region(point_state->context, current, &access,
+	    &region, &available, &composed);
 	if (error != 0)
 		die("cannot identify function-pointer store: %s",
 		    strerror(error));
@@ -2900,21 +3312,45 @@ process_point(struct analysis *analysis, struct point_state *point_state)
 	{
 		struct basic_block *child;
 		struct instruction *branch = NULL;
+		struct instruction *value_branch =
+		    last_instruction(point.block->insns);
+		bool branch_truth = false;
+		bool branch_truth_known = false;
+		const struct semantic_state *edge_state = point_state->state;
 
 		if (point.conditional_instruction != NULL)
 			branch = conditional_result_branch(point.block,
 			    point.conditional_instruction);
+		if (branch == NULL && value_branch != NULL &&
+		    value_branch->bb != NULL &&
+		    value_branch->opcode == OP_CBR) {
+			branch_truth_known = state_pseudo_truth(
+			    point_state->state, value_branch->cond,
+			    &branch_truth);
+		}
+		if (value_branch != NULL && value_branch->bb != NULL &&
+		    value_branch->opcode == OP_CBR) {
+			edge_state = prune_consumed_aliases(analysis,
+			    point_state->context, edge_state, value_branch);
+		}
 
 		FOR_EACH_PTR(point.block->children, child) {
 			struct analysis_point child_point = {
 				.block = child,
 				.next_instruction = first_live_instruction(child)
 			};
+			const struct semantic_state *child_state;
 
 			if (branch != NULL &&
 			    ((child == branch->bb_true) !=
 			    point.conditional_nonzero))
 				continue;
+			if (branch_truth_known &&
+			    ((child == value_branch->bb_true) != branch_truth))
+				continue;
+			child_state = apply_phi_aliases(analysis,
+			    point_state->context, point_state->point.block,
+			    edge_state, child);
 			if (branch == NULL) {
 				child_point.conditional_instruction =
 				    point.conditional_instruction;
@@ -2922,7 +3358,7 @@ process_point(struct analysis *analysis, struct point_state *point_state)
 				    point.conditional_nonzero;
 			}
 			record_analysis_point(analysis, point_state->context,
-			    child_point, point_state->state,
+			    child_point, child_state,
 			    domtree_dominates(child, point.block));
 		} END_FOR_EACH_PTR(child);
 	}
@@ -3165,7 +3601,8 @@ diagnose_declared_acquisition(struct analysis *analysis,
 
 		if (context->kind != FUNCTION_CONTEXT_EFFECT_CONTRACT)
 			continue;
-		error = context_access_identity(analysis, context, access,
+		error = context_access_identity(analysis, context,
+		    context->entry_state, access,
 		    &identity, &existed, &composed);
 		if (error != 0)
 			die("cannot identify declared acquisition diagnostic: %s",
@@ -3222,7 +3659,8 @@ diagnose_declared_release(struct analysis *analysis,
 
 		if (context->kind != FUNCTION_CONTEXT_EFFECT_CONTRACT)
 			continue;
-		error = context_access_identity(analysis, context, access,
+		error = context_access_identity(analysis, context,
+		    context->entry_state, access,
 		    &identity, &existed, &composed);
 		if (error != 0)
 			die("cannot identify declared release diagnostic: %s",
@@ -3288,7 +3726,8 @@ diagnose_declared_transition(struct analysis *analysis,
 
 		if (context->kind != FUNCTION_CONTEXT_EFFECT_CONTRACT)
 			continue;
-		error = context_access_identity(analysis, context, access,
+		error = context_access_identity(analysis, context,
+		    context->entry_state, access,
 		    &identity, &existed, &composed);
 		if (error != 0)
 			die("cannot identify declared transition diagnostic: %s",
@@ -3587,20 +4026,6 @@ observe_lock_transition(struct analysis *analysis, avl_tree_t *findings,
 	    &mode);
 	observation.action = action;
 	observation.access = access;
-	if ((action == LOCKLINT_LOCK_ACQUIRE ||
-	    action == LOCKLINT_LOCK_RESULT_ACQUIRE ||
-	    action == LOCKLINT_LOCK_RELEASE ||
-	    action == LOCKLINT_LOCK_WAIT ||
-	    action == LOCKLINT_LOCK_DOWNGRADE ||
-	    action == LOCKLINT_LOCK_TRY_UPGRADE) && access.root != NULL) {
-		error = context_access_identity(analysis, context, &access,
-		    &identity, &existed, &composed);
-		if (error != 0)
-			die("cannot identify lock diagnostic: %s",
-			    strerror(error));
-		if (!existed)
-			die("lock diagnostic identity was not observed");
-	}
 	for (point_state = first; point_state != NULL &&
 	    same_analysis_point(first, point_state);
 	    point_state = AVL_NEXT(&context->point_states, point_state)) {
@@ -3614,6 +4039,14 @@ observe_lock_transition(struct analysis *analysis, avl_tree_t *findings,
 		    action != LOCKLINT_LOCK_TRY_UPGRADE) ||
 		    access.root == NULL)
 			continue;
+		error = context_access_identity(analysis, context,
+		    point_state->state, &access, &identity, &existed,
+		    &composed);
+		if (error != 0)
+			die("cannot identify lock diagnostic: %s",
+			    strerror(error));
+		if (!existed)
+			die("lock diagnostic identity was not observed");
 		current_modes = context_state_lock_modes(point_state->state,
 		    identity);
 		if (action == LOCKLINT_LOCK_DOWNGRADE &&
@@ -4248,7 +4681,8 @@ diagnose_acquisition_order_and_waits(struct analysis *analysis)
 				if (access.root == NULL)
 					continue;
 				error = context_access_identity(analysis, context,
-				    &access, &acquired, &existed, &composed);
+				    point_state->state, &access, &acquired,
+				    &existed, &composed);
 				if (error != 0)
 					die("cannot identify ordered acquisition: "
 					    "%s", strerror(error));
@@ -4393,8 +4827,9 @@ diagnose_acquisition_order_and_waits(struct analysis *analysis)
 			if (action == LOCKLINT_LOCK_NONE)
 				die("observed acquisition is not a lock event");
 			error = context_access_identity(analysis,
-			    observation->context, &access, &acquired, &existed,
-			    &composed);
+			    observation->context,
+			    observation->context->entry_state, &access,
+			    &acquired, &existed, &composed);
 			if (error != 0)
 				die("cannot identify observed acquisition: %s",
 				    strerror(error));
@@ -4688,7 +5123,8 @@ diagnose_lock_assertions(struct analysis *analysis)
 				    &asserted_modes) || access.root == NULL)
 					continue;
 				error = context_access_identity(analysis, context,
-				    &access, &identity, &existed, &composed);
+				    point_state->state, &access, &identity,
+				    &existed, &composed);
 				if (error != 0)
 					die("cannot identify lock assertion "
 					    "diagnostic: %s", strerror(error));
@@ -5208,6 +5644,7 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 	struct lock_identity *identity;
 	struct visibility_region region;
 	struct point_state *point_state;
+	const struct semantic_alias_set *resolved_aliases = NULL;
 	size_t unprotected = 0;
 	size_t protected = 0;
 	size_t conditional = 0;
@@ -5224,6 +5661,8 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 	bool composed;
 	bool existed;
 	bool region_available;
+	bool resolved = false;
+	bool assumed_region = false;
 	int error;
 
 	if (!locklint_data_policy(access, &policy, &protector))
@@ -5245,40 +5684,6 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 	    data->instruction->opcode == OP_STORE;
 	if (!check_lock && !check_read_only)
 		return;
-	error = context_access_region(data->context, access, &region,
-	    &region_available, &composed);
-	if (error != 0)
-		die("cannot identify protected access region: %s",
-		    strerror(error));
-	if (composed)
-		data->analysis->counts.binding_identities_composed++;
-	if (region_available) {
-		struct assumed_region *assumed;
-
-		for (assumed = data->context->function->assumed_regions;
-		    assumed != NULL; assumed = assumed->next) {
-			struct visibility_region mapped;
-
-			if (assumed->valid &&
-			    map_assumed_region_to_context(data->context,
-			    assumed, &mapped) &&
-			    region_contains(mapped, region))
-				return;
-		}
-	}
-	if (check_lock) {
-		error = context_access_identity(data->analysis, data->context,
-		    &protector, &identity, &existed, &composed);
-		if (error != 0)
-			die("cannot identify data protector: %s",
-			    strerror(error));
-		if (composed)
-			data->analysis->counts.binding_identities_composed++;
-		if (existed)
-			data->analysis->counts.lock_identities_reused++;
-		else
-			data->analysis->counts.lock_identities_created++;
-	}
 	statistics.protected_policy_states_enum++;
 	for (point_state = data->first; point_state != NULL &&
 	    same_analysis_point(data->first, point_state);
@@ -5289,6 +5694,57 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 		    SEMANTIC_VISIBILITY_VISIBLE;
 		bool invisible;
 
+		if (!resolved ||
+		    resolved_aliases != point_state->state->aliases) {
+			struct assumed_region *assumed;
+
+			resolved = true;
+			resolved_aliases = point_state->state->aliases;
+			assumed_region = false;
+			error = context_access_region(data->context,
+			    point_state->state, access, &region,
+			    &region_available, &composed);
+			if (error != 0)
+				die("cannot identify protected access region: %s",
+				    strerror(error));
+			if (composed)
+				data->analysis->counts.
+				    binding_identities_composed++;
+			if (region_available) {
+				for (assumed = data->context->function->
+				    assumed_regions; assumed != NULL;
+				    assumed = assumed->next) {
+					struct visibility_region mapped;
+
+					if (assumed->valid &&
+					    map_assumed_region_to_context(
+					    data->context, assumed, &mapped) &&
+					    region_contains(mapped, region)) {
+						assumed_region = true;
+						break;
+					}
+				}
+			}
+			if (check_lock) {
+				error = context_access_identity(data->analysis,
+				    data->context, point_state->state,
+				    &protector, &identity, &existed, &composed);
+				if (error != 0)
+					die("cannot identify data protector: %s",
+					    strerror(error));
+				if (composed)
+					data->analysis->counts.
+					    binding_identities_composed++;
+				if (existed)
+					data->analysis->counts.
+					    lock_identities_reused++;
+				else
+					data->analysis->counts.
+					    lock_identities_created++;
+			}
+		}
+		if (assumed_region)
+			continue;
 		if (region_available) {
 			(void) context_state_effective_visibility(
 			    point_state->state, region, &visibility);
@@ -5672,7 +6128,8 @@ struct assumed_call_finding {
 static bool
 map_assumed_key_at_call(struct analysis *analysis,
     const struct function_context *caller, const struct function_info *callee,
-    const struct instruction *instruction, struct lock_identity_key source,
+    const struct semantic_state *state, const struct instruction *instruction,
+    struct lock_identity_key source,
     enum lock_analysis_object_type source_type, bool normalize_formal,
     struct lock_identity_key *result,
     enum lock_analysis_object_type *result_type)
@@ -5686,7 +6143,8 @@ map_assumed_key_at_call(struct analysis *analysis,
 	*result_type = source_type;
 	if (!identity_formal_argument(callee, source, source_type, &argument))
 		return (true);
-	actual = call_argument_identity(analysis, caller, instruction, argument);
+	actual = call_argument_identity(analysis, caller, state, instruction,
+	    argument);
 	if ((source.target_offset > 0 &&
 	    actual->key.target_offset >
 	    INT64_MAX - source.target_offset) ||
@@ -5750,7 +6208,7 @@ check_assumed_call_state(struct analysis *analysis,
 	enum semantic_visibility visibility = SEMANTIC_VISIBILITY_VISIBLE;
 	bool protected = false;
 
-	if (!map_assumed_key_at_call(analysis, caller, callee, instruction,
+	if (!map_assumed_key_at_call(analysis, caller, callee, state, instruction,
 	    key, assumed->object_type, true, &key, &object_type))
 		return;
 	(void) object_type;
@@ -5767,7 +6225,7 @@ check_assumed_call_state(struct analysis *analysis,
 		bool existed;
 		int error;
 
-		if (!map_assumed_key_at_call(analysis, caller, callee,
+		if (!map_assumed_key_at_call(analysis, caller, callee, state,
 		    instruction, assumed->mutex, assumed->mutex_object_type,
 		    false, &mutex_key, &mutex_type))
 			return;
@@ -6208,29 +6666,30 @@ observe_caller_visible_returns(struct analysis *analysis,
 			continue;
 		for (candidate = avl_first(candidates); candidate != NULL;
 		    candidate = AVL_NEXT(candidates, candidate)) {
-			struct lock_identity *identity;
 			struct point_state *point_state;
-			bool composed;
-			bool existed;
-			int error;
 
-			error = context_access_identity(analysis, context,
-			    &candidate->access, &identity, &existed, &composed);
-			if (error != 0)
-				die("cannot identify caller-visible return lock: %s",
-				    strerror(error));
-			if (!existed)
-				continue;
-			if (context_state_lock_modes(context->entry_state,
-			    identity) != 0)
-				continue;
 			statistics.caller_return_point_states_enum++;
 			for (point_state = avl_first(&context->point_states);
 			    point_state != NULL; point_state = AVL_NEXT(
 			    &context->point_states, point_state)) {
+				struct lock_identity *identity;
+				bool composed;
+				bool existed;
+				int error;
+
 				if (point_state->point.next_instruction == NULL ||
 				    point_state->point.next_instruction->opcode !=
 				    OP_RET)
+					continue;
+				error = context_access_identity(analysis, context,
+				    point_state->state, &candidate->access,
+				    &identity, &existed, &composed);
+				if (error != 0)
+					die("cannot identify caller-visible return "
+					    "lock: %s", strerror(error));
+				if (!existed ||
+				    context_state_lock_modes(
+				    context->entry_state, identity) != 0)
 					continue;
 				if (candidate->return_instruction == NULL ||
 				    compare_transition_position(
@@ -6557,6 +7016,7 @@ measure_collections(struct analysis *analysis)
 		struct semantic_lock_set *locks;
 		struct semantic_visibility_set *visibility;
 		struct semantic_target_set *targets;
+		struct semantic_alias_set *aliases;
 		struct semantic_state *state;
 		size_t contexts = context_count(function);
 		size_t binding_environments =
@@ -6565,6 +7025,7 @@ measure_collections(struct analysis *analysis)
 		size_t visibility_sets =
 		    context_visibility_set_count(function);
 		size_t target_sets = context_target_set_count(function);
+		size_t alias_sets = avl_numnodes(&function->contexts.alias_sets);
 
 		measurements->stored_target_demands +=
 		    function->stored_target_demand_count;
@@ -6622,6 +7083,8 @@ measure_collections(struct analysis *analysis)
 		    visibility_sets, function);
 		distribution_add(&measurements->target_sets_per_function,
 		    target_sets, function);
+		distribution_add(&measurements->alias_sets_per_function,
+		    alias_sets, function);
 		memory_add(&measurements->visibility_sets_created,
 		    context_visibility_sets_created(function), 1);
 		memory_add(&measurements->visibility_sets_reused,
@@ -6639,6 +7102,9 @@ measure_collections(struct analysis *analysis)
 			distribution_add(
 			    &measurements->targets_per_semantic_state,
 			    context_state_target_count(state), function);
+			distribution_add(
+			    &measurements->aliases_per_semantic_state,
+			    context_state_alias_count(state), function);
 		}
 		for (locks = avl_first(&function->contexts.lock_sets);
 		    locks != NULL;
@@ -6670,6 +7136,17 @@ measure_collections(struct analysis *analysis)
 			memory_add(&measurements->target_set_bytes, 1,
 			    sizeof (*targets) +
 			    targets->count * sizeof (*targets->entries));
+		}
+		for (aliases = avl_first(&function->contexts.alias_sets);
+		    aliases != NULL;
+		    aliases = AVL_NEXT(&function->contexts.alias_sets,
+		    aliases)) {
+			distribution_add(
+			    &measurements->alias_entries_per_set,
+			    aliases->count, function);
+			memory_add(&measurements->alias_set_bytes, 1,
+			    sizeof (*aliases) +
+			    aliases->count * sizeof (*aliases->entries));
 		}
 		memory_add(&measurements->context_bytes, contexts,
 		    sizeof (struct function_context));
@@ -6796,6 +7273,7 @@ retained_collection_bytes(const struct analysis_measurements *measurements)
 		measurements->lock_set_bytes,
 		measurements->visibility_set_bytes,
 		measurements->target_set_bytes,
+		measurements->alias_set_bytes,
 		measurements->stored_target_demand_bytes,
 		measurements->operation_family_profile_bytes,
 		measurements->operation_family_index_bytes,
@@ -6934,6 +7412,10 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	    &measurements->target_sets_per_function);
 	show_distribution(stream, "target-entries/set",
 	    &measurements->target_entries_per_set);
+	show_distribution(stream, "alias-sets/function",
+	    &measurements->alias_sets_per_function);
+	show_distribution(stream, "alias-entries/set",
+	    &measurements->alias_entries_per_set);
 	show_distribution(stream, "point-states/context",
 	    &measurements->point_states_per_context);
 	show_distribution(stream, "states/analysis-point",
@@ -6950,6 +7432,8 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	    &measurements->visibility_per_semantic_state);
 	show_distribution(stream, "targets/semantic-state",
 	    &measurements->targets_per_semantic_state);
+	show_distribution(stream, "aliases/semantic-state",
+	    &measurements->aliases_per_semantic_state);
 	show_maximum_owner(stream, "contexts/function",
 	    &measurements->contexts_per_function);
 	show_maximum_owner(stream, "binding-environments/function",
@@ -6966,6 +7450,10 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	    &measurements->target_sets_per_function);
 	show_maximum_owner(stream, "target-entries/set",
 	    &measurements->target_entries_per_set);
+	show_maximum_owner(stream, "alias-sets/function",
+	    &measurements->alias_sets_per_function);
+	show_maximum_owner(stream, "alias-entries/set",
+	    &measurements->alias_entries_per_set);
 	show_maximum_owner(stream, "point-states/context",
 	    &measurements->point_states_per_context);
 	show_maximum_owner(stream, "states/analysis-point",
@@ -6988,6 +7476,8 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	    measurements->visibility_set_bytes);
 	(void) fprintf(stream, "memory target-sets %zu bytes\n",
 	    measurements->target_set_bytes);
+	(void) fprintf(stream, "memory alias-sets %zu bytes\n",
+	    measurements->alias_set_bytes);
 	(void) fprintf(stream, "memory stored-target-demands %zu bytes\n",
 	    measurements->stored_target_demand_bytes);
 	(void) fprintf(stream, "memory operation-family-profiles %zu bytes\n",

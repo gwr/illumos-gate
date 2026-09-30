@@ -70,8 +70,10 @@ check(bool condition, const char *message)
 }
 
 static bool
-include_selected_lock(const struct lock_identity *lock, void *data)
+map_selected_lock(const struct lock_identity *lock,
+    const struct lock_identity **result, void *data)
 {
+	*result = lock;
 	return (lock == data);
 }
 
@@ -153,7 +155,7 @@ test_exit_state_mapping(void)
 	check(context_state_lock_modes(mapped, second) == 0,
 	    "exit mapping filters unapproved new lock");
 	error = context_state_map_exit(&caller, caller_held, callee_entry,
-	    callee_exit, include_selected_lock, (void *)second, NULL, NULL,
+	    callee_exit, map_selected_lock, (void *)second, NULL, NULL,
 	    &mapped, &existed);
 	check(error == 0 && !existed,
 	    "exit mapping includes approved new lock");
@@ -165,7 +167,7 @@ test_exit_state_mapping(void)
 	    &callee_deep, &existed);
 	check(error == 0 && !existed, "create deep callee exit state");
 	error = context_state_map_exit(&caller, caller_held, callee_entry,
-	    callee_deep, include_selected_lock, (void *)second, NULL, NULL,
+	    callee_deep, map_selected_lock, (void *)second, NULL, NULL,
 	    &mapped, &existed);
 	check(error == 0 && !existed &&
 	    context_state_competition(mapped).minimum == 2 &&
@@ -207,6 +209,62 @@ test_exit_state_mapping(void)
 	    context_state_visibility(mapped, REGION(first, 0, 4),
 	    &visibility) && visibility == SEMANTIC_VISIBILITY_VISIBLE,
 	    "changed mapped visibility overrides inherited visibility");
+
+	context_collection_free(&callee);
+	context_collection_free(&caller);
+}
+
+static void
+test_return_alias_state(void)
+{
+	struct function_info caller = { 0 };
+	struct function_info callee = { 0 };
+	struct lock_identity targets[2] = { 0 };
+	unsigned int sources[2];
+	struct semantic_state *empty;
+	struct semantic_state *first;
+	struct semantic_state *same;
+	struct semantic_state *second;
+	struct semantic_state *imported;
+	bool existed;
+	int error;
+
+	context_collection_create(&caller);
+	context_collection_create(&callee);
+	error = context_empty_state_intern(&caller, &empty, &existed);
+	check(error == 0 && !existed, "create return-alias empty state");
+	error = context_state_set_alias(&caller, empty, &sources[0],
+	    &targets[0], &first, &existed);
+	check(error == 0 && !existed, "create first return alias");
+	check(context_state_alias_count(first) == 1 &&
+	    context_state_alias(first, &sources[0]) == &targets[0],
+	    "look up first return alias");
+	error = context_state_set_alias(&caller, empty, &sources[0],
+	    &targets[0], &same, &existed);
+	check(error == 0 && existed && same == first,
+	    "intern equal return alias state");
+	error = context_state_set_alias(&caller, first, &sources[1],
+	    &targets[1], &second, &existed);
+	check(error == 0 && !existed &&
+	    context_state_alias_count(second) == 2 &&
+	    context_state_alias(second, &sources[0]) == &targets[0] &&
+	    context_state_alias(second, &sources[1]) == &targets[1],
+	    "retain sorted return aliases");
+	error = context_state_set_alias(&caller, first, &sources[0],
+	    &targets[1], &same, &existed);
+	check(error == 0 && !existed &&
+	    context_state_alias(same, &sources[0]) == &targets[1],
+	    "replace path-specific return alias");
+	error = context_state_remove_alias(&caller, second, &sources[0],
+	    &same, &existed);
+	check(error == 0 && !existed &&
+	    context_state_alias_count(same) == 1 &&
+	    context_state_alias(same, &sources[0]) == NULL &&
+	    context_state_alias(same, &sources[1]) == &targets[1],
+	    "remove one return alias");
+	error = context_state_import(&callee, second, &imported, &existed);
+	check(error == 0 && context_state_alias_count(imported) == 0,
+	    "callee import clears caller return aliases");
 
 	context_collection_free(&callee);
 	context_collection_free(&caller);
@@ -1053,6 +1111,7 @@ int
 main(void)
 {
 	test_exit_state_mapping();
+	test_return_alias_state();
 	test_state_interning();
 	test_operation_profile_state();
 	test_context_interning();

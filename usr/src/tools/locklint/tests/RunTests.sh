@@ -360,6 +360,24 @@ if [ "$(grep -c 'warning:' lock-identity-call-result.out)" -ne 2 ]; then
 fi
 
 #
+# A lock acquired on a callee-local object and returned as a side effect must
+# be visible through the caller's call-result identity.
+#
+run_capture "return object lock binding" return-bindings.out \
+    "$LOCKLINT" --check-locks return-bindings.c
+reject_match "return object lock binding" 'warning:' return-bindings.out
+
+run_capture "return object edge binding" return-bindings-edge.out \
+    "$LOCKLINT" --check-locks --dump-contexts return-bindings-edge.c
+reject_match "return object edge binding" 'warning:' \
+    return-bindings-edge.out
+require_match "discarded return result remains mapped" \
+    '^return-states mapped 7 locks-filtered 0$' return-bindings-edge.out
+require_match "return aliases remain bounded" \
+    '^distribution alias-entries/set samples 10 total 4 max 1$' \
+    return-bindings-edge.out
+
+#
 # Verify preprocessing-time annotation capture and initial name resolution.
 #
 run_capture "annotations" annotations.out \

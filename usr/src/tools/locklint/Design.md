@@ -789,6 +789,24 @@ contracts are harmless.  A member may have declared targets or a no-lock
 contract, but not both; concrete exact targets derived from source at an
 individual call site still take precedence over the member contract.
 
+The selected next design makes no-lock-effects the implicit contract for a
+function-pointer member without an explicit contract.  Rare effectful
+contracts will name a same-signature representative C function rather than
+introducing a separate contract-expression language.  The proposed forms are
+`declare contract type::member representative_function` and
+`_NOTE(DECLARE_CONTRACT(type::member, representative_function))`.
+Representative functions are analysis models, not runtime targets.  Their
+recognized lock assertions and declared effects describe the interface, and
+their formal and return relationships are normalized internally for
+assignment checking and call-site substitution.
+
+Under that design, contracts and targets are complementary.  Concrete
+source-derived and declared targets are validated against the member
+contract, then remain the callees analyzed at resolved calls.  The
+representative supplies behavior only when no concrete target is available.
+This replaces the current mutual-exclusion rule for declared targets and a
+no-lock contract.
+
 The remaining `declare`, `assert`, and `ignore` forms continue to fail
 explicitly until their semantics are designed.
 
@@ -1578,8 +1596,14 @@ Following the inference-first policy, undeclared inferred competition effects
 remain valid.
 
 Unresolved calls do not receive invented visibility or concurrency effects.
-Mapping returned allocations and general aliases remains later object-identity
-work.
+The selected function-pointer contract design will likewise add only
+explicitly represented lock requirements and effects; all other lock state is
+preserved by the implicit no-lock-effects contract.
+
+Resolved calls map a callee's returned object to the caller's call-result
+identity.  This direct relationship supplies the return-relative identity
+needed by representative contracts.  General returned-allocation provenance
+beyond that relationship remains later object-identity work.
 
 ### Focused validation
 
@@ -2079,6 +2103,65 @@ aggregated by call instruction rather than emitted once per context or point
 state.  `--no-check` suppresses this diagnostic along with other ordinary
 lock-checking diagnostics.
 
+The selected replacement policy makes no-lock-effects implicit and removes
+the need for a separate unmodeled-call diagnostic.  Its safety check is
+instead contract consistency: each visible function assigned to a member
+must satisfy the member's explicit representative contract or, when none is
+declared, implicit no-lock-effects.  An explicit no-lock-effects declaration
+documents the default but does not change it.
+
+An effectful contract will be represented by a same-signature C function
+already retained in the current analysis inputs.  This may be a real
+implementation or an analysis-only model.  Naming the representative does
+not add it to the member's possible runtime targets or change ordinary root
+discovery.  The declaration resolves a retained function definition and does
+not name or load a source file.  Contract evaluation reuses the existing
+effect-contract context kind; a function already reachable for other reasons
+keeps its independent ordinary contexts.  Ordinary positional formal binding
+applies its argument-relative requirements and effects.  Return-relative
+effects use the callee-return binding described below.
+
+### Callee-return binding
+
+Caller expressions already support lock identities rooted in an `OP_CALL`
+result, and continuations already map formal-relative callee locks back to
+caller actuals.  Each published context exit additionally retains the
+normalized `OP_RET` value, and each continuation retains the originating
+`OP_CALL` result pseudo.  Return value participates in exit identity and call
+result participates in continuation identity, so equal lock states do not
+collapse when they return different objects or resume through different
+results.
+
+During reactivation, a newly held lock rooted in a callee-local returned
+object is rebased onto the caller's call-result pseudo.  Existing canonical
+objects and formal-relative identities retain their ordinary mapping.  If
+the return aliases a formal or another canonical object, that identity wins
+and the result pseudo becomes its alias; no duplicate lock entry is created.
+A discarded result still has a stable pseudo and retains its returned lock
+state.
+
+Function contexts own immutable sorted alias sets interned by complete
+contents.  An entry maps a function-local source pseudo to a canonical base
+lock identity, and the alias-set pointer participates in semantic-state
+identity.  Identity and access construction compose through the active set.
+Caller aliases are not imported into callees; exit mapping restores the
+caller's set and adds any result relationship.
+
+Sparse may merge multiple C returns through `OP_PHISOURCE` and `OP_PHI`.
+Crossing a predecessor edge into a return-feeding pointer PHI records that
+edge's selected value, keeping the return relationship path-sensitive
+without adding predecessor identity to every point state.  Returned zero is
+correlated with a caller conditional so the null branch cannot inherit a
+locked-object state.  Constant aliases which cannot reach a condition are
+not retained, and common single-use aliases are removed after their consuming
+call or branch.
+
+Focused coverage includes direct returns, local aliases, address-preserving
+casts, returned formals, multiple returns, `NULL`, discarded results, and
+conditionally different returned objects.  This mapping is implemented
+independently of representative contracts so those contracts can later use
+return-relative lock roles.
+
 ### Root discovery and explicit entries
 
 Without explicit entry declarations or per-function external-entry
@@ -2276,6 +2359,15 @@ roots, synthetic declared-effect contract roots, and callees reached while
 evaluating an effect contract.  The kind is part of the context key.  This
 prevents contract evaluation from being merged with ordinary analysis even
 when bindings and initial semantic states happen to be equal.
+
+Representative member contracts will reuse this existing separation rather
+than add a representative-specific context kind.  Naming a function as a
+representative does not make it an ordinary root or possible target, but it
+does not suppress ordinary contexts created for other reasons.  Its
+caller-visible formal and return lock roles are compared with assigned
+implementations and substituted at unresolved member calls.  Reusing
+effect-contract contexts and exact-exit validation avoids a second
+function-summary engine.
 
 A function containing a declared mutex, reader, or writer acquisition gets
 one effect-contract root.  Its declared locks are initially unheld.  Within
@@ -3055,6 +3147,16 @@ The current implementation relies on these invariants:
     assertion refinements are not acquisitions.
 48. Data-policy indexing preserves source and command declaration order while
     selecting candidates by canonical type-member or object identity.
+49. Published exits with different return values and continuations with
+    different call results remain distinct even when their other state is
+    equal.
+50. A returned formal or canonical object keeps its existing lock identity;
+    the caller result aliases that identity rather than creating a duplicate
+    lock entry.
+51. Return-feeding pointer PHIs select aliases by predecessor, and returned
+    zero remains correlated with a caller conditional.
+52. A callee-local returned lock maps to the caller result even when that
+    result is discarded; unrelated callee-local locks remain filtered.
 
 Changes that invalidate one of these invariants should update this document
 and add a focused regression test.
@@ -3064,8 +3166,10 @@ and add a focused regression test.
 The implemented design remains intentionally narrow.  Important missing
 areas include:
 
-- general pointer relationships and identities reached through returned
-  pointers;
+- general pointer relationships beyond the implemented return, formal, and
+  derived-formal identity mappings;
+- effectful function-pointer contracts represented by C model functions and
+  consistency checking for functions assigned to members;
 - indirect targets from mutable pointers, escaped tables, callback
   registration, pointer copies, ambiguous assignments, and indexed target
   sets;

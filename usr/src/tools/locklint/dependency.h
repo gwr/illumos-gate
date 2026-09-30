@@ -23,6 +23,7 @@
 #include "context.h"
 
 struct worklist;
+struct pseudo;
 
 /*
  * Exit generations impose publication order without making generation
@@ -30,6 +31,7 @@ struct worklist;
  */
 struct context_exit {
 	const struct semantic_state *state;
+	struct pseudo *return_value;
 	unsigned int generation;
 	SLIST_ENTRY(context_exit) link;
 };
@@ -44,6 +46,7 @@ struct continuation {
 	struct analysis_point resume_point;
 	const struct semantic_state *caller_state;
 	const struct binding_environment *callee_bindings;
+	struct pseudo *call_result;
 	unsigned int last_consumed_generation;
 	avl_node_t by_key;
 };
@@ -52,11 +55,12 @@ void dependency_records_create(struct function_context *);
 void dependency_records_free(struct function_context *);
 
 int dependency_exit_publish(struct function_context *,
-    const struct semantic_state *, struct context_exit **, bool *);
+    const struct semantic_state *, struct pseudo *, struct context_exit **,
+    bool *);
 int dependency_continuation_create(struct function_context *,
     struct function_context *, struct analysis_point,
     const struct semantic_state *, const struct binding_environment *,
-    struct continuation **, bool *);
+    struct pseudo *, struct continuation **, bool *);
 
 struct continuation *dependency_continuation_first(struct function_context *);
 struct continuation *dependency_continuation_next(struct function_context *,

@@ -37,6 +37,7 @@ struct provenance_edge;
 #define	LOCKLINT_MAX_TRACKED_LOCKS	100
 #define	LOCKLINT_MAX_TRACKED_VISIBILITY	100
 #define	LOCKLINT_MAX_TRACKED_TARGETS	100
+#define	LOCKLINT_MAX_TRACKED_ALIASES	100
 
 SLIST_HEAD(context_exit_list, context_exit);
 
@@ -80,6 +81,17 @@ struct semantic_target_set {
 	struct semantic_target_state entries[];
 };
 
+struct semantic_alias_state {
+	const void *source;
+	const struct lock_identity *target;
+};
+
+struct semantic_alias_set {
+	avl_node_t by_value;
+	size_t count;
+	struct semantic_alias_state entries[];
+};
+
 struct semantic_visibility_state {
 	struct visibility_region region;
 	enum semantic_visibility visibility;
@@ -103,12 +115,14 @@ struct semantic_state {
 	const struct semantic_lock_set *locks;
 	const struct semantic_visibility_set *visibility;
 	const struct semantic_target_set *targets;
+	const struct semantic_alias_set *aliases;
 	const struct operation_family_profile *operation_profile;
 	struct competition_interval competition;
 	avl_node_t by_value;
 };
 
-typedef bool (*context_lock_filter_f)(const struct lock_identity *, void *);
+typedef bool (*context_lock_map_f)(const struct lock_identity *,
+    const struct lock_identity **, void *);
 typedef bool (*context_visibility_map_f)(const struct visibility_region *,
     struct visibility_region *, void *);
 
@@ -177,6 +191,7 @@ struct function_context_collection {
 	avl_tree_t lock_sets;
 	avl_tree_t visibility_sets;
 	avl_tree_t target_sets;
+	avl_tree_t alias_sets;
 	avl_tree_t semantic_states;
 	size_t visibility_sets_created;
 	size_t visibility_sets_reused;
@@ -199,7 +214,7 @@ int context_state_import(struct function_info *, const struct semantic_state *,
  */
 int context_state_map_exit(struct function_info *,
     const struct semantic_state *, const struct semantic_state *,
-    const struct semantic_state *, context_lock_filter_f, void *,
+    const struct semantic_state *, context_lock_map_f, void *,
     context_visibility_map_f, void *, struct semantic_state **, bool *);
 /*
  * Lock identities must be canonical and stable for the function collection's
@@ -216,6 +231,15 @@ int context_state_set_targets(struct function_info *,
     const struct call_target_set *, struct semantic_state **, bool *);
 int context_state_clear_targets(struct function_info *,
     const struct semantic_state *, struct semantic_state **, bool *);
+int context_state_set_alias(struct function_info *,
+    const struct semantic_state *, const void *,
+    const struct lock_identity *, struct semantic_state **, bool *);
+int context_state_remove_alias(struct function_info *,
+    const struct semantic_state *, const void *, struct semantic_state **,
+    bool *);
+const struct lock_identity *context_state_alias(
+    const struct semantic_state *, const void *);
+size_t context_state_alias_count(const struct semantic_state *);
 int context_state_select_operation_profile(struct function_info *,
     const struct semantic_state *, const struct operation_family_profile *,
     struct semantic_state **, bool *);

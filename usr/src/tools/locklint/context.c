@@ -166,6 +166,32 @@ compare_target_set(const void *left_arg, const void *right_arg)
 }
 
 static int
+compare_alias_set(const void *left_arg, const void *right_arg)
+{
+	const struct semantic_alias_set *left = left_arg;
+	const struct semantic_alias_set *right = right_arg;
+	size_t count = left->count < right->count ? left->count : right->count;
+	size_t index;
+	int result;
+
+	for (index = 0; index < count; index++) {
+		result = AVL_PCMP(left->entries[index].source,
+		    right->entries[index].source);
+		if (result != 0)
+			return (result);
+		result = AVL_PCMP(left->entries[index].target,
+		    right->entries[index].target);
+		if (result != 0)
+			return (result);
+	}
+	if (left->count < right->count)
+		return (-1);
+	if (left->count > right->count)
+		return (1);
+	return (0);
+}
+
+static int
 compare_competition(const struct competition_interval *left,
     const struct competition_interval *right)
 {
@@ -203,6 +229,9 @@ compare_semantic_state(const void *left_arg, const void *right_arg)
 	if (order != 0)
 		return (order);
 	order = AVL_PCMP(left->targets, right->targets);
+	if (order != 0)
+		return (order);
+	order = AVL_PCMP(left->aliases, right->aliases);
 	if (order != 0)
 		return (order);
 	return (AVL_PCMP(left->operation_profile, right->operation_profile));
@@ -270,6 +299,9 @@ context_collection_create(struct function_info *function)
 	avl_create(&collection->target_sets, compare_target_set,
 	    sizeof (struct semantic_target_set),
 	    offsetof(struct semantic_target_set, by_value));
+	avl_create(&collection->alias_sets, compare_alias_set,
+	    sizeof (struct semantic_alias_set),
+	    offsetof(struct semantic_alias_set, by_value));
 	avl_create(&collection->semantic_states, compare_semantic_state,
 	    sizeof (struct semantic_state),
 	    offsetof(struct semantic_state, by_value));
@@ -301,6 +333,7 @@ context_collection_free(struct function_info *function)
 	struct semantic_lock_set *locks;
 	struct semantic_visibility_set *visibility;
 	struct semantic_target_set *targets;
+	struct semantic_alias_set *aliases;
 	void *cookie = NULL;
 
 	statistics.cleanup_contexts_enum++;
@@ -337,6 +370,12 @@ context_collection_free(struct function_info *function)
 	    &cookie)) != NULL)
 		free(targets);
 	avl_destroy(&collection->target_sets);
+
+	cookie = NULL;
+	while ((aliases = avl_destroy_nodes(&collection->alias_sets,
+	    &cookie)) != NULL)
+		free(aliases);
+	avl_destroy(&collection->alias_sets);
 }
 
 /*
@@ -442,10 +481,42 @@ target_set_intern(struct function_context_collection *collection,
 }
 
 static int
+alias_set_intern(struct function_context_collection *collection,
+    const struct semantic_alias_state *entries, size_t count,
+    struct semantic_alias_set **result)
+{
+	struct semantic_alias_set *candidate;
+	struct semantic_alias_set *aliases;
+	avl_index_t where;
+	size_t size;
+
+	if (count > LOCKLINT_MAX_TRACKED_ALIASES)
+		return (E2BIG);
+	size = sizeof (*candidate) + count * sizeof (*entries);
+	candidate = calloc(1, size);
+	if (candidate == NULL)
+		return (ENOMEM);
+	candidate->count = count;
+	if (count != 0)
+		(void) memcpy(candidate->entries, entries,
+		    count * sizeof (*entries));
+	aliases = avl_find(&collection->alias_sets, candidate, &where);
+	if (aliases != NULL) {
+		free(candidate);
+		*result = aliases;
+		return (0);
+	}
+	avl_insert(&collection->alias_sets, candidate, where);
+	*result = candidate;
+	return (0);
+}
+
+static int
 semantic_state_intern(struct function_context_collection *collection,
     const struct semantic_lock_set *locks,
     const struct semantic_visibility_set *visibility,
     const struct semantic_target_set *targets,
+    const struct semantic_alias_set *aliases,
     const struct operation_family_profile *operation_profile,
     struct competition_interval competition,
     struct semantic_state **result, bool *existed)
@@ -454,6 +525,7 @@ semantic_state_intern(struct function_context_collection *collection,
 		.locks = locks,
 		.visibility = visibility,
 		.targets = targets,
+		.aliases = aliases,
 		.operation_profile = operation_profile,
 		.competition = competition
 	};
@@ -472,6 +544,7 @@ semantic_state_intern(struct function_context_collection *collection,
 	state->locks = locks;
 	state->visibility = visibility;
 	state->targets = targets;
+	state->aliases = aliases;
 	state->operation_profile = operation_profile;
 	state->competition = competition;
 	avl_insert(&collection->semantic_states, state, where);
@@ -492,6 +565,7 @@ context_empty_state_intern(struct function_info *function,
 	struct semantic_lock_set *locks;
 	struct semantic_visibility_set *visibility;
 	struct semantic_target_set *targets;
+	struct semantic_alias_set *aliases;
 	int error;
 
 	error = lock_set_intern(collection, NULL, 0, &locks);
@@ -503,8 +577,12 @@ context_empty_state_intern(struct function_info *function,
 	error = target_set_intern(collection, NULL, 0, &targets);
 	if (error != 0)
 		return (error);
+	error = alias_set_intern(collection, NULL, 0, &aliases);
+	if (error != 0)
+		return (error);
 	return (semantic_state_intern(collection, locks, visibility, targets,
-	    NULL, (struct competition_interval){ 0 }, result, existed));
+	    aliases, NULL, (struct competition_interval){ 0 }, result,
+	    existed));
 }
 
 /*
@@ -525,6 +603,7 @@ context_entry_state_intern(struct function_info *function,
 	struct semantic_lock_set *locks;
 	struct semantic_visibility_set *visibility;
 	struct semantic_target_set *targets;
+	struct semantic_alias_set *aliases;
 	int error;
 
 	error = lock_set_intern(collection, NULL, 0, &locks);
@@ -536,8 +615,11 @@ context_entry_state_intern(struct function_info *function,
 	error = target_set_intern(collection, NULL, 0, &targets);
 	if (error != 0)
 		return (error);
+	error = alias_set_intern(collection, NULL, 0, &aliases);
+	if (error != 0)
+		return (error);
 	return (semantic_state_intern(collection, locks, visibility, targets,
-	    NULL, competition, result, existed));
+	    aliases, NULL, competition, result, existed));
 }
 
 /*
@@ -554,6 +636,7 @@ context_state_import(struct function_info *function,
 	struct semantic_lock_set *locks;
 	struct semantic_visibility_set *visibility;
 	struct semantic_target_set *targets;
+	struct semantic_alias_set *aliases;
 	int error;
 
 	if (source == NULL)
@@ -569,8 +652,12 @@ context_state_import(struct function_info *function,
 	error = target_set_intern(collection, NULL, 0, &targets);
 	if (error != 0)
 		return (error);
+	error = alias_set_intern(collection, NULL, 0, &aliases);
+	if (error != 0)
+		return (error);
 	return (semantic_state_intern(collection, locks, visibility, targets,
-	    source->operation_profile, source->competition, result, existed));
+	    aliases, source->operation_profile, source->competition, result,
+	    existed));
 }
 
 /*
@@ -589,7 +676,7 @@ context_state_map_exit(struct function_info *function,
     const struct semantic_state *caller_state,
     const struct semantic_state *callee_entry,
     const struct semantic_state *callee_exit,
-    context_lock_filter_f include_new, void *lock_data,
+    context_lock_map_f map_new, void *lock_data,
     context_visibility_map_f map_visibility, void *visibility_data,
     struct semantic_state **result, bool *existed)
 {
@@ -627,6 +714,8 @@ context_state_map_exit(struct function_info *function,
 	for (exit_index = 0; exit_index < exit_locks->count; exit_index++) {
 		const struct semantic_lock_state *exit_lock =
 		    &exit_locks->entries[exit_index];
+		const struct lock_identity *mapped_lock = exit_lock->lock;
+		size_t insert;
 		bool inherited;
 
 		while (entry_index < entry_locks->count &&
@@ -636,10 +725,31 @@ context_state_map_exit(struct function_info *function,
 			entry_index++;
 		inherited = entry_index < entry_locks->count &&
 		    entry_locks->entries[entry_index].lock == exit_lock->lock;
-		if (inherited ||
-		    (include_new != NULL &&
-		    include_new(exit_lock->lock, lock_data)))
-			entries[result_count++] = *exit_lock;
+		if (!inherited &&
+		    (map_new == NULL ||
+		    !map_new(exit_lock->lock, &mapped_lock, lock_data)))
+			continue;
+		for (insert = 0; insert < result_count; insert++) {
+			int order = compare_lock_identity(entries[insert].lock,
+			    mapped_lock);
+
+			if (order >= 0)
+				break;
+		}
+		if (insert < result_count &&
+		    entries[insert].lock == mapped_lock) {
+			entries[insert].modes |= exit_lock->modes;
+			continue;
+		}
+		if (result_count == LOCKLINT_MAX_TRACKED_LOCKS)
+			return (E2BIG);
+		(void) memmove(&entries[insert + 1], &entries[insert],
+		    (result_count - insert) * sizeof (entries[0]));
+		entries[insert] = (struct semantic_lock_state) {
+			.lock = mapped_lock,
+			.modes = exit_lock->modes
+		};
+		result_count++;
 	}
 	error = lock_set_intern(collection, entries, result_count, &locks);
 	if (error != 0)
@@ -651,8 +761,9 @@ context_state_map_exit(struct function_info *function,
 		if (error != 0)
 			return (error);
 		return (semantic_state_intern(collection, locks, visibility,
-		    caller_state->targets, callee_exit->operation_profile,
-		    callee_exit->competition, result, existed));
+		    caller_state->targets, caller_state->aliases,
+		    callee_exit->operation_profile, callee_exit->competition,
+		    result, existed));
 	}
 	for (exit_index = 0; exit_index < callee_exit->visibility->count;
 	    exit_index++) {
@@ -704,8 +815,9 @@ context_state_map_exit(struct function_info *function,
 	if (error != 0)
 		return (error);
 	return (semantic_state_intern(collection, locks, visibility,
-	    caller_state->targets, callee_exit->operation_profile,
-	    callee_exit->competition, result, existed));
+	    caller_state->targets, caller_state->aliases,
+	    callee_exit->operation_profile, callee_exit->competition, result,
+	    existed));
 }
 
 /*
@@ -742,13 +854,13 @@ context_state_set_lock(struct function_info *function,
 	}
 	if (found && current_locks->entries[current_index].modes == modes) {
 		return (semantic_state_intern(collection, current_locks,
-		    current->visibility, current->targets,
+		    current->visibility, current->targets, current->aliases,
 		    current->operation_profile, current->competition, result,
 		    existed));
 	}
 	if (!found && modes == 0) {
 		return (semantic_state_intern(collection, current_locks,
-		    current->visibility, current->targets,
+		    current->visibility, current->targets, current->aliases,
 		    current->operation_profile, current->competition, result,
 		    existed));
 	}
@@ -775,7 +887,7 @@ context_state_set_lock(struct function_info *function,
 	if (error != 0)
 		return (error);
 	return (semantic_state_intern(collection, locks, current->visibility,
-	    current->targets, current->operation_profile,
+	    current->targets, current->aliases, current->operation_profile,
 	    current->competition, result, existed));
 }
 
@@ -838,7 +950,7 @@ context_state_set_visibility(struct function_info *function,
 	if (error != 0)
 		return (error);
 	return (semantic_state_intern(collection, current->locks, visibility,
-	    current->targets, current->operation_profile,
+	    current->targets, current->aliases, current->operation_profile,
 	    current->competition, result, existed));
 }
 
@@ -898,7 +1010,8 @@ context_state_set_targets(struct function_info *function,
 	if (error != 0)
 		return (error);
 	return (semantic_state_intern(collection, current->locks,
-	    current->visibility, targets, current->operation_profile,
+	    current->visibility, targets, current->aliases,
+	    current->operation_profile,
 	    current->competition, result, existed));
 }
 
@@ -922,8 +1035,150 @@ context_state_clear_targets(struct function_info *function,
 	if (error != 0)
 		return (error);
 	return (semantic_state_intern(collection, current->locks,
-	    current->visibility, targets, current->operation_profile,
+	    current->visibility, targets, current->aliases,
+	    current->operation_profile,
 	    current->competition, result, existed));
+}
+
+/*
+ * Bind one function-local value identity to an existing canonical object.
+ * A PHI target may be replaced while traversing a different predecessor.
+ */
+int
+context_state_set_alias(struct function_info *function,
+    const struct semantic_state *current, const void *source,
+    const struct lock_identity *target, struct semantic_state **result,
+    bool *existed)
+{
+	struct function_context_collection *collection = &function->contexts;
+	struct semantic_alias_state entries[LOCKLINT_MAX_TRACKED_ALIASES];
+	const struct semantic_alias_set *current_aliases;
+	struct semantic_alias_set *aliases;
+	size_t insert;
+	size_t result_count;
+	int error;
+
+	if (current == NULL || source == NULL || target == NULL)
+		return (EINVAL);
+	current_aliases = current->aliases;
+	for (insert = 0; insert < current_aliases->count; insert++) {
+		int order = AVL_PCMP(current_aliases->entries[insert].source,
+		    source);
+
+		if (order >= 0)
+			break;
+	}
+	if (insert < current_aliases->count &&
+	    current_aliases->entries[insert].source == source) {
+		if (current_aliases->entries[insert].target == target) {
+			return (semantic_state_intern(collection, current->locks,
+			    current->visibility, current->targets,
+			    current->aliases, current->operation_profile,
+			    current->competition, result, existed));
+		}
+		(void) memcpy(entries, current_aliases->entries,
+		    current_aliases->count * sizeof (entries[0]));
+		entries[insert].target = target;
+		error = alias_set_intern(collection, entries,
+		    current_aliases->count, &aliases);
+		if (error != 0)
+			return (error);
+		return (semantic_state_intern(collection, current->locks,
+		    current->visibility, current->targets, aliases,
+		    current->operation_profile, current->competition, result,
+		    existed));
+	}
+	if (current_aliases->count == LOCKLINT_MAX_TRACKED_ALIASES)
+		return (E2BIG);
+	result_count = current_aliases->count + 1;
+	if (insert != 0)
+		(void) memcpy(entries, current_aliases->entries,
+		    insert * sizeof (entries[0]));
+	entries[insert] = (struct semantic_alias_state) {
+		.source = source,
+		.target = target
+	};
+	if (insert < current_aliases->count) {
+		(void) memcpy(&entries[insert + 1],
+		    &current_aliases->entries[insert],
+		    (current_aliases->count - insert) * sizeof (entries[0]));
+	}
+	error = alias_set_intern(collection, entries, result_count, &aliases);
+	if (error != 0)
+		return (error);
+	return (semantic_state_intern(collection, current->locks,
+	    current->visibility, current->targets, aliases,
+	    current->operation_profile, current->competition, result, existed));
+}
+
+int
+context_state_remove_alias(struct function_info *function,
+    const struct semantic_state *current, const void *source,
+    struct semantic_state **result, bool *existed)
+{
+	struct function_context_collection *collection = &function->contexts;
+	struct semantic_alias_state entries[LOCKLINT_MAX_TRACKED_ALIASES];
+	const struct semantic_alias_set *current_aliases;
+	struct semantic_alias_set *aliases;
+	size_t index;
+	size_t insert;
+	int error;
+
+	if (current == NULL || source == NULL)
+		return (EINVAL);
+	current_aliases = current->aliases;
+	for (index = 0; index < current_aliases->count; index++) {
+		if (current_aliases->entries[index].source == source)
+			break;
+	}
+	if (index == current_aliases->count) {
+		return (semantic_state_intern(collection, current->locks,
+		    current->visibility, current->targets, current->aliases,
+		    current->operation_profile, current->competition, result,
+		    existed));
+	}
+	for (insert = 0; insert < index; insert++)
+		entries[insert] = current_aliases->entries[insert];
+	for (insert = index + 1; insert < current_aliases->count; insert++)
+		entries[insert - 1] = current_aliases->entries[insert];
+	error = alias_set_intern(collection, entries,
+	    current_aliases->count - 1, &aliases);
+	if (error != 0)
+		return (error);
+	return (semantic_state_intern(collection, current->locks,
+	    current->visibility, current->targets, aliases,
+	    current->operation_profile, current->competition, result, existed));
+}
+
+const struct lock_identity *
+context_state_alias(const struct semantic_state *state, const void *source)
+{
+	size_t low = 0;
+	size_t high;
+
+	if (state == NULL || source == NULL)
+		return (NULL);
+	high = state->aliases->count;
+	while (low < high) {
+		size_t middle = low + (high - low) / 2;
+		const struct semantic_alias_state *entry =
+		    &state->aliases->entries[middle];
+		int order = AVL_PCMP(entry->source, source);
+
+		if (order < 0)
+			low = middle + 1;
+		else if (order > 0)
+			high = middle;
+		else
+			return (entry->target);
+	}
+	return (NULL);
+}
+
+size_t
+context_state_alias_count(const struct semantic_state *state)
+{
+	return (state->aliases->count);
 }
 
 /*
@@ -942,7 +1197,7 @@ context_state_select_operation_profile(struct function_info *function,
 	    current->operation_profile != profile)
 		return (EEXIST);
 	return (semantic_state_intern(&function->contexts, current->locks,
-	    current->visibility, current->targets, profile,
+	    current->visibility, current->targets, current->aliases, profile,
 	    current->competition, result, existed));
 }
 
@@ -1022,8 +1277,8 @@ context_state_set_competition(struct function_info *function,
 	if (competition.maximum_unbounded)
 		competition.maximum = 0;
 	return (semantic_state_intern(&function->contexts, current->locks,
-	    current->visibility, current->targets, current->operation_profile,
-	    competition, result, existed));
+	    current->visibility, current->targets, current->aliases,
+	    current->operation_profile, competition, result, existed));
 }
 
 /*

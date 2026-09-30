@@ -58,7 +58,10 @@ compare_continuations(const void *left_arg, const void *right_arg)
 	result = AVL_PCMP(left->caller_state, right->caller_state);
 	if (result != 0)
 		return (result);
-	return (AVL_PCMP(left->callee_bindings, right->callee_bindings));
+	result = AVL_PCMP(left->callee_bindings, right->callee_bindings);
+	if (result != 0)
+		return (result);
+	return (AVL_PCMP(left->call_result, right->call_result));
 }
 
 void
@@ -95,13 +98,13 @@ dependency_records_free(struct function_context *context)
  */
 int
 dependency_exit_publish(struct function_context *context,
-    const struct semantic_state *state, struct context_exit **result,
-    bool *existed)
+    const struct semantic_state *state, struct pseudo *return_value,
+    struct context_exit **result, bool *existed)
 {
 	struct context_exit *exit;
 
 	SLIST_FOREACH(exit, &context->exits, link) {
-		if (exit->state == state) {
+		if (exit->state == state && exit->return_value == return_value) {
 			*result = exit;
 			*existed = true;
 			return (0);
@@ -113,6 +116,7 @@ dependency_exit_publish(struct function_context *context,
 	if (exit == NULL)
 		return (ENOMEM);
 	exit->state = state;
+	exit->return_value = return_value;
 	exit->generation = context->exit_generation + 1;
 	SLIST_INSERT_HEAD(&context->exits, exit, link);
 	context->exit_generation = exit->generation;
@@ -131,13 +135,14 @@ dependency_continuation_create(struct function_context *callee_context,
     struct function_context *caller_context, struct analysis_point resume_point,
     const struct semantic_state *caller_state,
     const struct binding_environment *callee_bindings,
-    struct continuation **result, bool *existed)
+    struct pseudo *call_result, struct continuation **result, bool *existed)
 {
 	struct continuation key = {
 		.caller_context = caller_context,
 		.resume_point = resume_point,
 		.caller_state = caller_state,
-		.callee_bindings = callee_bindings
+		.callee_bindings = callee_bindings,
+		.call_result = call_result
 	};
 	struct continuation *continuation;
 	avl_index_t where;
@@ -156,6 +161,7 @@ dependency_continuation_create(struct function_context *callee_context,
 	continuation->resume_point = resume_point;
 	continuation->caller_state = caller_state;
 	continuation->callee_bindings = callee_bindings;
+	continuation->call_result = call_result;
 	avl_insert(&callee_context->continuations, continuation, where);
 	*result = continuation;
 	*existed = false;
