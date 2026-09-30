@@ -1,0 +1,2 @@
+declare contract representative_ops::enter representative_enter
+declare targets representative_ops::enter concrete_enter

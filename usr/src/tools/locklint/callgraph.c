@@ -187,6 +187,7 @@ enum call_target_state {
 struct call_target_entry {
 	struct instruction *instruction;
 	const struct call_target_set *targets;
+	struct function_info *representative;
 	enum call_target_kind kind;
 	enum call_target_state state;
 	bool direct_ambiguous;
@@ -1579,7 +1580,8 @@ build_declared_target_sets(void)
 static void
 resolve_indirect_callee(const struct function_info *caller,
     const struct instruction *insn, const struct call_target_set **targetsp,
-    bool *ambiguousp, bool *no_lock_effectsp)
+    struct function_info **representativep, bool *ambiguousp,
+    bool *no_lock_effectsp)
 {
 	struct locklint_access access;
 	struct indirect_target *entry;
@@ -1587,6 +1589,7 @@ resolve_indirect_callee(const struct function_info *caller,
 	struct declared_member_targets *declaration;
 
 	*targetsp = NULL;
+	*representativep = NULL;
 	*ambiguousp = false;
 	*no_lock_effectsp = false;
 	if (insn->opcode != OP_CALL || insn->call_expr == NULL ||
@@ -1610,6 +1613,7 @@ resolve_indirect_callee(const struct function_info *caller,
 	declaration = declared_targets_for_member(member, false);
 	if (declaration != NULL) {
 		*targetsp = declaration->targets;
+		*representativep = declaration->representative;
 		*no_lock_effectsp = declaration->no_lock_effects;
 	}
 }
@@ -1653,6 +1657,7 @@ build_call_target_cache(void)
 			FOR_EACH_PTR(bb->insns, insn) {
 				struct call_target_entry *entry;
 				const struct call_target_set *targets = NULL;
+				struct function_info *representative = NULL;
 				bool direct;
 				bool direct_ambiguous = false;
 				bool indirect_ambiguous = false;
@@ -1679,7 +1684,7 @@ build_call_target_cache(void)
 				}
 				if (targets == NULL) {
 					resolve_indirect_callee(&function->info,
-					    insn, &targets,
+					    insn, &targets, &representative,
 					    &indirect_ambiguous,
 					    &no_lock_effects);
 					if (targets != NULL) {
@@ -1689,6 +1694,7 @@ build_call_target_cache(void)
 				if (!direct)
 					entry->kind = CALL_TARGET_INDIRECT;
 				entry->direct_ambiguous = direct_ambiguous;
+				entry->representative = representative;
 				entry->no_lock_effects = no_lock_effects;
 				if (targets != NULL) {
 					entry->targets = targets;
@@ -1801,6 +1807,18 @@ callgraph_targets(const struct function_info *caller,
 	(void) caller;
 	entry = find_call_target(insn);
 	return (entry != NULL ? entry->targets : NULL);
+}
+
+struct function_info *
+callgraph_representative(const struct function_info *caller,
+    const struct instruction *insn)
+{
+	struct call_target_entry *entry;
+
+	require_state(CALLGRAPH_READY, "representative contract query");
+	(void) caller;
+	entry = find_call_target(insn);
+	return (entry != NULL ? entry->representative : NULL);
 }
 
 const struct call_target_set *

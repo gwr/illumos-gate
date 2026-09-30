@@ -956,6 +956,34 @@ require_match "command representative incompatible" \
     "function 'command_target_incompatible' has incompatible type for member 'command_target_ops::start'" \
     command-contract-representative-incompatible.out
 
+run_capture "representative call behavior" representative-call.out \
+    "$LOCKLINT" --check-locks --dump-callgraph \
+    --cf commands/representative-call.cf \
+    commands/representative-call.c \
+    commands/representative-call-models.c
+reject_match "representative call behavior" 'warning:' \
+    representative-call.out
+require_match "representative call remains indirect" \
+    "call commands/representative-call.c:.* indirect$" \
+    representative-call.out
+reject_match "representative is not a concrete target" \
+    "resolved-indirect representative_enter" representative-call.out
+
+run_capture "concrete target precedes representative" \
+    representative-call-target.out \
+    "$LOCKLINT" --check-locks \
+    --cf commands/representative-call-target.cf \
+    commands/representative-call.c \
+    commands/representative-call-models.c
+require_match "concrete target does not acquire representative lock" \
+    "warning: locklint: lock 'lock' is not held \\[lock-not-held\\]" \
+    representative-call-target.out
+reject_match "concrete target call is modeled" \
+    "unmodeled-indirect-call" representative-call-target.out
+if [ "$(grep -c 'warning:' representative-call-target.out)" -ne 1 ]; then
+	fail "concrete target precedes representative: expected one warning"
+fi
+
 run_capture "command equivalent type targets" \
     command-targets-equivalent.out \
     "$LOCKLINT" --dump-callgraph \

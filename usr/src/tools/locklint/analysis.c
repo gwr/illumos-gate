@@ -2768,7 +2768,7 @@ process_call_target(struct analysis *analysis,
     struct point_state *point_state,
     const struct semantic_state *caller_state,
     const struct semantic_state *call_state,
-    struct function_info *callee_function)
+    struct function_info *callee_function, bool contract_model)
 {
 	struct function_context *caller_context = point_state->context;
 	const struct binding_environment *bindings;
@@ -2793,7 +2793,8 @@ process_call_target(struct analysis *analysis,
 	    callee_function, bindings, caller_state, callee_state);
 
 	statistics.call_contexts_find++;
-	if (caller_context->kind == FUNCTION_CONTEXT_EFFECT_CALLER ||
+	if (contract_model ||
+	    caller_context->kind == FUNCTION_CONTEXT_EFFECT_CALLER ||
 	    caller_context->kind == FUNCTION_CONTEXT_EFFECT_CONTRACT) {
 		error = context_effect_create(callee_function, bindings,
 		    callee_state, &callee_context, &context_existed);
@@ -2927,6 +2928,7 @@ process_call(struct analysis *analysis, struct point_state *point_state,
 {
 	struct function_context *caller_context = point_state->context;
 	const struct call_target_set *targets;
+	struct function_info *representative;
 	const struct semantic_state *call_state;
 	struct semantic_state *cleared_state;
 	struct analysis_point resume_point;
@@ -2938,8 +2940,11 @@ process_call(struct analysis *analysis, struct point_state *point_state,
 	targets = context_call_targets(caller_context, caller_state,
 	    point_state->point.next_instruction);
 	target_count = callgraph_target_set_count(targets);
+	representative = callgraph_representative(caller_context->function,
+	    point_state->point.next_instruction);
 	observe_indirect_call(analysis, caller_context,
 	    point_state->point.next_instruction, target_count != 0 ||
+	    representative != NULL ||
 	    callgraph_no_lock_effects(caller_context->function,
 	    point_state->point.next_instruction));
 	if (context_state_target_count(caller_state) == 0) {
@@ -2955,7 +2960,7 @@ process_call(struct analysis *analysis, struct point_state *point_state,
 	}
 	call_state = prune_consumed_aliases(analysis, caller_context, call_state,
 	    point_state->point.next_instruction);
-	if (target_count == 0) {
+	if (target_count == 0 && representative == NULL) {
 		resume_point = point_state->point;
 		resume_point.next_instruction = next_live_instruction(
 		    resume_point.block, resume_point.next_instruction);
@@ -2966,8 +2971,11 @@ process_call(struct analysis *analysis, struct point_state *point_state,
 	for (target_index = 0; target_index < target_count; target_index++) {
 		process_call_target(analysis, point_state, caller_state,
 		    call_state, callgraph_target_set_target(targets,
-		    target_index));
+		    target_index), false);
 	}
+	if (target_count == 0 && representative != NULL)
+		process_call_target(analysis, point_state, caller_state,
+		    call_state, representative, true);
 }
 
 static struct instruction *
