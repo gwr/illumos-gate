@@ -877,6 +877,19 @@ require_match "source no-lock contract annotation" \
     "DECLARE_CONTRACT command_target_ops::finish NO_LOCK_EFFECTS" \
     command-targets-source-contract.out
 
+run_capture "source representative contract" \
+    command-targets-source-representative.out \
+    "$LOCKLINT" -DCOMMAND_TARGETS_SOURCE_REPRESENTATIVE=1 \
+    --dump-annotations --dump-callgraph \
+    --cf commands/targets-unmodeled.cf \
+    commands/targets.c commands/representative-functions.c
+require_match "source representative contract annotation" \
+    "DECLARE_CONTRACT command_target_ops::start command_target_representative" \
+    command-targets-source-representative.out
+require_match "source representative contract declaration" \
+    "contract command_target_ops::start representative command_target_representative@commands/representative-functions.c" \
+    command-targets-source-representative.out
+
 run_failure "command contract arity" command-contract-arity.out \
     "$LOCKLINT" --cf commands/targets-contract-arity.cf commands/targets.c
 require_match "command contract arity" \
@@ -885,7 +898,7 @@ require_match "command contract arity" \
 run_failure "command contract kind" command-contract-kind.out \
     "$LOCKLINT" --cf commands/targets-contract-kind.cf commands/targets.c
 require_match "command contract kind" \
-    "unknown calling contract 'lock-free'" command-contract-kind.out
+    "unresolved function name 'lock-free'" command-contract-kind.out
 run_failure "command contract unresolved" command-contract-unresolved.out \
     "$LOCKLINT" --cf commands/targets-contract-unresolved.cf \
     commands/targets.c
@@ -899,19 +912,49 @@ run_failure "command contract non-function" \
 require_match "command contract non-function" \
     "member 'command_target_state::first' is not a function pointer" \
     command-contract-non-function.out
-run_failure "command contract conflict" command-contract-conflict.out \
+run_capture "command target and contract" command-contract-conflict.out \
     "$LOCKLINT" --cf commands/targets-contract-conflict.cf \
     commands/targets.c
-require_match "command contract conflict" \
-    "member 'command_target_ops::start' has both declared targets and a no-lock-effects contract" \
+reject_match "command target and contract conflict" \
+    "conflict" \
     command-contract-conflict.out
-run_failure "command contract reverse conflict" \
+run_capture "command contract and target" \
     command-contract-reverse-conflict.out \
     "$LOCKLINT" --cf commands/targets-contract-reverse-conflict.cf \
     commands/targets.c
-require_match "command contract reverse conflict" \
-    "member 'command_target_ops::start' has both declared targets and a no-lock-effects contract" \
+reject_match "command contract and target conflict" \
+    "conflict" \
     command-contract-reverse-conflict.out
+
+run_capture "command representative contract" \
+    command-contract-representative.out \
+    "$LOCKLINT" --dump-callgraph \
+    --cf commands/targets-representative.cf \
+    commands/targets.c commands/representative-functions.c
+require_match "command representative contract declaration" \
+    "contract command_target_ops::start representative command_target_representative@commands/representative-functions.c" \
+    command-contract-representative.out
+require_match "representative contract keeps concrete target" \
+    "resolved-indirect command_target_first tu=commands/targets.c" \
+    command-contract-representative.out
+
+run_failure "command representative unresolved" \
+    command-contract-representative-unresolved.out \
+    "$LOCKLINT" \
+    --cf commands/targets-contract-representative-unresolved.cf \
+    commands/targets.c commands/representative-functions.c
+require_match "command representative unresolved" \
+    "unresolved function name 'missing_representative'" \
+    command-contract-representative-unresolved.out
+
+run_failure "command representative incompatible" \
+    command-contract-representative-incompatible.out \
+    "$LOCKLINT" \
+    --cf commands/targets-contract-representative-incompatible.cf \
+    commands/targets.c commands/representative-functions.c
+require_match "command representative incompatible" \
+    "function 'command_target_incompatible' has incompatible type for member 'command_target_ops::start'" \
+    command-contract-representative-incompatible.out
 
 run_capture "command equivalent type targets" \
     command-targets-equivalent.out \

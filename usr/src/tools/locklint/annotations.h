@@ -105,6 +105,7 @@ bool locklint_get_declared_lock_effect(struct translation_unit *,
 void locklint_process_function_annotations(FILE *, struct translation_unit *,
     struct entrypoint *);
 void locklint_resolve_annotations(struct symbol_list *);
+void locklint_apply_contract_annotations(void);
 void locklint_show_annotations(FILE *);
 
 #endif /* ANNOTATIONS_H */

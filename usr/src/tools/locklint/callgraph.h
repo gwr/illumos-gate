@@ -90,6 +90,11 @@ enum callgraph_declare_result callgraph_declare_targets(const char *,
 enum callgraph_declare_result callgraph_declare_no_lock_contract(const char *);
 enum callgraph_declare_result callgraph_declare_no_lock_contract_member(
     const struct type_member *);
+enum callgraph_declare_result callgraph_declare_representative_contract(
+    const char *, const char *, const char *, unsigned long, const char **);
+enum callgraph_declare_result
+callgraph_declare_representative_contract_member(const struct type_member *,
+    const char *, const char *, const char *, unsigned long, const char **);
 
 /*
  * Close construction, resolve function identities and indirect targets,

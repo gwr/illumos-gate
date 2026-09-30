@@ -51,6 +51,11 @@ struct command_target_ops {
 _NOTE(DECLARE_CONTRACT(command_target_ops::finish, NO_LOCK_EFFECTS))
 #endif
 
+#if COMMAND_TARGETS_SOURCE_REPRESENTATIVE
+_NOTE(DECLARE_CONTRACT(command_target_ops::start,
+    command_target_representative))
+#endif
+
 extern void mutex_enter(mutex_t *);
 extern void mutex_exit(mutex_t *);
 extern void cv_wait(condvar_t *, mutex_t *);

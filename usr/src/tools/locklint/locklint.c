@@ -441,6 +441,7 @@ main(int argc, char **argv)
 		locklint_access_cleanup();
 		return (EXIT_FAILURE);
 	}
+	locklint_apply_contract_annotations();
 	timing_begin(TIMING_COMMANDS);
 	if (!parse_command_files()) {
 		locklint_access_cleanup();

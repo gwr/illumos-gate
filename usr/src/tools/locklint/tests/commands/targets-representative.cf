@@ -1,0 +1,2 @@
+declare contract command_target_ops::start command_target_representative
+declare targets command_target_ops::start command_target_first

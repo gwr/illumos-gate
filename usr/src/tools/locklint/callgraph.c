@@ -137,6 +137,10 @@ struct declared_member_targets {
 	size_t function_count;
 	size_t function_capacity;
 	const struct call_target_set *targets;
+	struct function_info *representative;
+	char *contract_member_name;
+	const char *contract_file;
+	unsigned long contract_line;
 	bool no_lock_effects;
 	avl_node_t by_member;
 };
@@ -1264,15 +1268,6 @@ callgraph_declare_targets(const char *member_name, size_t target_count,
 	}
 	for (member_index = 0; member_index < member_count; member_index++) {
 		declaration = declared_targets_for_member(members[member_index],
-		    false);
-		if (declaration != NULL && declaration->no_lock_effects) {
-			free(members);
-			free(targets);
-			return (CALLGRAPH_DECLARE_CONFLICT);
-		}
-	}
-	for (member_index = 0; member_index < member_count; member_index++) {
-		declaration = declared_targets_for_member(members[member_index],
 		    true);
 		for (index = 0; index < target_count; index++)
 			declared_target_add(declaration, targets[index]);
@@ -1290,10 +1285,9 @@ callgraph_declare_no_lock_contract_member(const struct type_member *member)
 	require_state(CALLGRAPH_CONSTRUCTING, "no-lock contract declaration");
 	if (declared_member_function_type(member) == NULL)
 		return (CALLGRAPH_DECLARE_NOT_FUNCTION_POINTER);
-	declaration = declared_targets_for_member(member, false);
-	if (declaration != NULL && declaration->function_count != 0)
-		return (CALLGRAPH_DECLARE_CONFLICT);
 	declaration = declared_targets_for_member(member, true);
+	if (declaration->representative != NULL)
+		return (CALLGRAPH_DECLARE_CONFLICT);
 	declaration->no_lock_effects = true;
 	return (CALLGRAPH_DECLARE_OK);
 }
@@ -1316,17 +1310,124 @@ callgraph_declare_no_lock_contract(const char *member_name)
 		return (CALLGRAPH_DECLARE_NOT_FUNCTION_POINTER);
 	}
 	for (index = 0; index < member_count; index++) {
-		declaration = declared_targets_for_member(members[index], false);
-		if (declaration != NULL && declaration->function_count != 0) {
+		declaration = declared_targets_for_member(members[index], true);
+		if (declaration->representative != NULL) {
+			free(members);
+			return (CALLGRAPH_DECLARE_CONFLICT);
+		}
+		declaration->no_lock_effects = true;
+	}
+	free(members);
+	return (CALLGRAPH_DECLARE_OK);
+}
+
+enum callgraph_declare_result
+callgraph_declare_representative_contract(const char *member_name,
+    const char *representative_name, const char *file, unsigned long line,
+    const char **problem_name)
+{
+	const struct type_member **members;
+	struct function_info *representative;
+	struct symbol *member_type;
+	enum callgraph_declare_result result;
+	size_t member_count;
+	size_t index;
+	bool ambiguous;
+
+	require_state(CALLGRAPH_CONSTRUCTING,
+	    "representative contract declaration");
+	*problem_name = member_name;
+	result = lookup_declared_members(member_name, &members, &member_count);
+	if (result != CALLGRAPH_DECLARE_OK)
+		return (result);
+	member_type = declared_member_function_type(members[0]);
+	if (member_type == NULL) {
+		free(members);
+		return (CALLGRAPH_DECLARE_NOT_FUNCTION_POINTER);
+	}
+	*problem_name = representative_name;
+	representative = find_declared_function(representative_name, &ambiguous);
+	if (ambiguous) {
+		free(members);
+		return (CALLGRAPH_DECLARE_AMBIGUOUS);
+	}
+	if (representative == NULL) {
+		free(members);
+		return (CALLGRAPH_DECLARE_UNRESOLVED);
+	}
+	if (!declared_target_type_compatible(member_type, representative)) {
+		free(members);
+		return (CALLGRAPH_DECLARE_INCOMPATIBLE_TYPE);
+	}
+	for (index = 0; index < member_count; index++) {
+		struct declared_member_targets *declaration =
+		    declared_targets_for_member(members[index], false);
+
+		if (declaration != NULL &&
+		    (declaration->no_lock_effects ||
+		    (declaration->representative != NULL &&
+		    declaration->representative != representative))) {
 			free(members);
 			return (CALLGRAPH_DECLARE_CONFLICT);
 		}
 	}
 	for (index = 0; index < member_count; index++) {
-		declaration = declared_targets_for_member(members[index], true);
-		declaration->no_lock_effects = true;
+		struct declared_member_targets *declaration =
+		    declared_targets_for_member(members[index], true);
+
+		declaration->representative = representative;
+		if (declaration->contract_member_name == NULL) {
+			declaration->contract_member_name = strdup(member_name);
+			if (declaration->contract_member_name == NULL)
+				die("out of memory recording representative "
+				    "contract");
+			declaration->contract_file = file;
+			declaration->contract_line = line;
+		}
 	}
 	free(members);
+	return (CALLGRAPH_DECLARE_OK);
+}
+
+enum callgraph_declare_result
+callgraph_declare_representative_contract_member(
+    const struct type_member *member, const char *member_name,
+    const char *representative_name, const char *file, unsigned long line,
+    const char **problem_name)
+{
+	struct declared_member_targets *declaration;
+	struct function_info *representative;
+	struct symbol *member_type;
+	bool ambiguous;
+
+	require_state(CALLGRAPH_CONSTRUCTING,
+	    "representative contract declaration");
+	*problem_name = representative_name;
+	member_type = declared_member_function_type(member);
+	if (member_type == NULL)
+		return (CALLGRAPH_DECLARE_NOT_FUNCTION_POINTER);
+	representative = find_declared_function(representative_name, &ambiguous);
+	if (ambiguous)
+		return (CALLGRAPH_DECLARE_AMBIGUOUS);
+	if (representative == NULL)
+		return (CALLGRAPH_DECLARE_UNRESOLVED);
+	if (!declared_target_type_compatible(member_type, representative))
+		return (CALLGRAPH_DECLARE_INCOMPATIBLE_TYPE);
+	declaration = declared_targets_for_member(member, false);
+	if (declaration != NULL &&
+	    (declaration->no_lock_effects ||
+	    (declaration->representative != NULL &&
+	    declaration->representative != representative)))
+		return (CALLGRAPH_DECLARE_CONFLICT);
+	declaration = declared_targets_for_member(member, true);
+	declaration->representative = representative;
+	if (declaration->contract_member_name == NULL) {
+		declaration->contract_member_name = strdup(member_name);
+		if (declaration->contract_member_name == NULL)
+			die("out of memory recording representative contract");
+		declaration->contract_file = file;
+		declaration->contract_line = line;
+	}
 	return (CALLGRAPH_DECLARE_OK);
 }
 
@@ -2028,11 +2129,26 @@ dump_function_calls(FILE *stream, struct function_info *function)
 void
 callgraph_dump(FILE *stream)
 {
+	struct declared_member_targets *declaration;
 	struct function_escape *escape;
 	struct function_pointer_activity *activity;
 	struct function_record *function;
 
 	require_state(CALLGRAPH_READY, "dump");
+	for (declaration = declared_member_targets_initialized ?
+	    avl_first(&declared_member_targets) : NULL;
+	    declaration != NULL;
+	    declaration = AVL_NEXT(&declared_member_targets, declaration)) {
+		if (declaration->representative == NULL)
+			continue;
+		(void) fprintf(stream,
+		    "  contract %s representative %s@%s %s:%lu\n",
+		    declaration->contract_member_name,
+		    function_name(declaration->representative),
+		    locklint_translation_unit_file(
+		    declaration->representative->tu),
+		    declaration->contract_file, declaration->contract_line);
+	}
 	for (function = functions; function != NULL; function = function->next) {
 		struct symbol *definition = function->info.ep->name;
 
@@ -2210,6 +2326,7 @@ free_declared_member_targets(void)
 	while ((declaration = avl_destroy_nodes(&declared_member_targets,
 	    &cookie)) != NULL) {
 		free(declaration->functions);
+		free(declaration->contract_member_name);
 		free(declaration);
 	}
 	avl_destroy(&declared_member_targets);

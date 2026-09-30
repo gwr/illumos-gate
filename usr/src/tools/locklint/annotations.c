@@ -91,10 +91,12 @@ struct annotation {
 	struct annotation_ref *data;
 	struct annotation_ref *order;
 	const char *scheme;
+	const char *contract_function;
 	enum annotation_kind kind;
 	bool parsed;
 	bool processed;
 	bool resolved;
+	bool contract_pending;
 	struct annotation *next;
 };
 
@@ -923,9 +925,15 @@ parse_annotation(struct annotation *annotation)
 			return (annotation_error(annotation, cursor,
 			    "expected ',' after DECLARE_CONTRACT member"));
 		cursor = cursor->next;
-		if (!token_is(cursor, "NO_LOCK_EFFECTS"))
+		if (token_is(cursor, "NO_LOCK_EFFECTS")) {
+			annotation->contract_function = NULL;
+		} else if (cursor != NULL && cursor->type == TOKEN_IDENT) {
+			annotation->contract_function = cursor->text;
+		} else {
 			return (annotation_error(annotation, cursor,
-			    "expected NO_LOCK_EFFECTS calling contract"));
+			    "expected NO_LOCK_EFFECTS or representative "
+			    "function"));
+		}
 		cursor = cursor->next;
 		if (!token_is(cursor, ")"))
 			return (annotation_named_error(annotation, cursor,
@@ -1765,13 +1773,19 @@ locklint_resolve_annotations(struct symbol_list *symbols)
 			if (!resolve_annotation_ref(ref, false, annotation->tu,
 			    symbols) || ref->member == NULL)
 				continue;
-			result = callgraph_declare_no_lock_contract_member(
-			    ref->member);
+			if (annotation->contract_function == NULL) {
+				result =
+				    callgraph_declare_no_lock_contract_member(
+				    ref->member);
+			} else {
+				annotation->contract_pending = true;
+				continue;
+			}
 			if (result != CALLGRAPH_DECLARE_OK) {
 				sparse_error(annotation->pos,
 				    "locklint: DECLARE_CONTRACT member is not "
 				    "a function pointer or conflicts with "
-				    "declared targets");
+				    "another contract");
 				continue;
 			}
 			annotation->resolved = true;
@@ -1802,6 +1816,52 @@ locklint_resolve_annotations(struct symbol_list *symbols)
 			annotation->resolved = true;
 			index_data_policy_refs(annotation);
 		}
+	}
+}
+
+/*
+ * Representative definitions may occur in later input files.  Apply these
+ * declarations after every translation unit has registered its functions;
+ * the annotated member itself was resolved while its file scope was current.
+ */
+void
+locklint_apply_contract_annotations(void)
+{
+	struct annotation *annotation;
+
+	for (annotation = annotations; annotation != NULL;
+	    annotation = annotation->next) {
+		enum callgraph_declare_result result;
+		const char *problem;
+		char *member_name;
+
+		if (!annotation->contract_pending)
+			continue;
+		annotation->contract_pending = false;
+		member_name = annotation_ref_name(annotation->data);
+		result = callgraph_declare_representative_contract_member(
+		    annotation->data->member, member_name,
+		    annotation->contract_function,
+		    stream_name(annotation->pos.stream), annotation->pos.line,
+		    &problem);
+		free(member_name);
+		if (result != CALLGRAPH_DECLARE_OK) {
+			if (result == CALLGRAPH_DECLARE_UNRESOLVED ||
+			    result == CALLGRAPH_DECLARE_AMBIGUOUS ||
+			    result == CALLGRAPH_DECLARE_INCOMPATIBLE_TYPE) {
+				sparse_error(annotation->pos,
+				    "locklint: representative function '%s' "
+				    "cannot be used for DECLARE_CONTRACT",
+				    annotation->contract_function);
+			} else {
+				sparse_error(annotation->pos,
+				    "locklint: DECLARE_CONTRACT member is not "
+				    "a function pointer or conflicts with "
+				    "another contract");
+			}
+			continue;
+		}
+		annotation->resolved = true;
 	}
 }
 
@@ -2486,8 +2546,12 @@ locklint_show_annotations(FILE *stream)
 				    annotation->scheme);
 			}
 			show_annotation_ref(stream, ref);
-			if (annotation->kind == ANNOTATION_DECLARE_CONTRACT)
-				(void) fputs(" NO_LOCK_EFFECTS", stream);
+			if (annotation->kind == ANNOTATION_DECLARE_CONTRACT) {
+				(void) fputc(' ', stream);
+				(void) fputs(annotation->contract_function != NULL ?
+				    annotation->contract_function :
+				    "NO_LOCK_EFFECTS", stream);
+			}
 			if (ref->replaced_by != NULL)
 				show_replacement(stream, "replaced by",
 				    ref->replaced_by);
