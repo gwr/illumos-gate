@@ -22,6 +22,7 @@ informational.
 
 import argparse
 from collections import Counter, defaultdict
+import csv
 from dataclasses import dataclass
 import re
 import sys
@@ -32,15 +33,26 @@ from typing import Iterable, Optional
 @dataclass(frozen=True, order=True)
 class Finding:
     source: str
+    line: int
+    column: Optional[int]
+    function: Optional[str]
     operation: str
     datum: str
     lock: str
-    region: str
 
 
 @dataclass(frozen=True, order=True)
 class FindingKey:
     source: str
+    operation: str
+    datum: str
+    lock: str
+
+
+@dataclass(frozen=True, order=True)
+class LocationFindingKey:
+    source: str
+    line: int
     operation: str
     datum: str
     lock: str
@@ -83,6 +95,7 @@ def finish_osll_finding(
     variable: Optional[str],
     protector: Optional[str],
     source: Optional[str],
+    source_line: Optional[int],
     function: Optional[str],
     findings: list[Finding],
 ) -> None:
@@ -93,7 +106,7 @@ def finish_osll_finding(
         missing.append("variable")
     if protector is None:
         missing.append("protector")
-    if source is None or function is None:
+    if source is None or source_line is None or function is None:
         missing.append("where")
     if missing:
         raise InputError(
@@ -103,10 +116,12 @@ def finish_osll_finding(
     findings.append(
         Finding(
             source,
+            source_line,
+            None,
+            function,
             "read" if operation == "read" else "modify",
             short_name(variable),
             osll_protector_name(protector),
-            function,
         )
     )
 
@@ -117,6 +132,7 @@ def parse_osll(path: Path) -> list[Finding]:
     variable: Optional[str] = None
     protector: Optional[str] = None
     source: Optional[str] = None
+    source_line: Optional[int] = None
     function: Optional[str] = None
     start_line = 0
 
@@ -132,6 +148,7 @@ def parse_osll(path: Path) -> list[Finding]:
                     variable,
                     protector,
                     source,
+                    source_line,
                     function,
                     findings,
                 )
@@ -139,6 +156,7 @@ def parse_osll(path: Path) -> list[Finding]:
                 variable = None
                 protector = None
                 source = None
+                source_line = None
                 function = None
                 start_line = line_number
                 continue
@@ -168,6 +186,7 @@ def parse_osll(path: Path) -> list[Finding]:
                     )
                 function = match.group(1).rsplit(":", 1)[-1]
                 source = Path(match.group(2)).name
+                source_line = int(match.group(3))
                 continue
             if line.startswith("* "):
                 finish_osll_finding(
@@ -177,6 +196,7 @@ def parse_osll(path: Path) -> list[Finding]:
                     variable,
                     protector,
                     source,
+                    source_line,
                     function,
                     findings,
                 )
@@ -184,6 +204,7 @@ def parse_osll(path: Path) -> list[Finding]:
                 variable = None
                 protector = None
                 source = None
+                source_line = None
                 function = None
 
     finish_osll_finding(
@@ -193,6 +214,7 @@ def parse_osll(path: Path) -> list[Finding]:
         variable,
         protector,
         source,
+        source_line,
         function,
         findings,
     )
@@ -219,10 +241,12 @@ def parse_newll(path: Path) -> list[Finding]:
             findings.append(
                 Finding(
                     Path(source).name,
+                    int(source_line),
+                    int(column),
+                    None,
                     "read" if operation == "read" else "modify",
                     datum,
                     lock,
-                    f"{source_line}:{column}",
                 )
             )
 
@@ -249,7 +273,19 @@ def describe(key: FindingKey) -> str:
     )
 
 
-def compare(osll: Iterable[Finding], newll: Iterable[Finding]) -> bool:
+def describe_location(key: LocationFindingKey) -> str:
+    return (
+        f"{key.operation} of '{key.datum}' requiring "
+        f"'{key.lock}' at {key.source}:{key.line}"
+    )
+
+
+def compare_semantic(
+    osll: Iterable[Finding],
+    newll: Iterable[Finding],
+    expect: str,
+    reviewed_newll_only: Optional[set[FindingKey]],
+) -> bool:
     osll_counts: Counter[FindingKey] = Counter()
     newll_counts: Counter[FindingKey] = Counter()
     osll_regions: dict[FindingKey, set[str]] = defaultdict(set)
@@ -257,14 +293,16 @@ def compare(osll: Iterable[Finding], newll: Iterable[Finding]) -> bool:
     for finding in osll:
         key = finding_key(finding)
         osll_counts[key] += 1
-        osll_regions[key].add(finding.region)
+        if finding.function is not None:
+            osll_regions[key].add(finding.function)
     for finding in newll:
         key = finding_key(finding)
         newll_counts[key] += 1
-        newll_regions[key].add(finding.region)
+        newll_regions[key].add(f"{finding.line}:{finding.column}")
 
     osll_keys = set(osll_counts)
     newll_keys = set(newll_counts)
+    newll_only = newll_keys - osll_keys
     equivalent = True
 
     for finding in sorted(osll_keys - newll_keys):
@@ -273,12 +311,26 @@ def compare(osll: Iterable[Finding], newll: Iterable[Finding]) -> bool:
             f"(OSLL count {osll_counts[finding]})"
         )
         equivalent = False
-    for key in sorted(newll_keys - osll_keys):
-        print(
-            f"unexpected in new locklint: {describe(key)} "
-            f"(new locklint count {newll_counts[key]})"
-        )
-        equivalent = False
+    if expect == "equivalent":
+        for key in sorted(newll_only):
+            print(
+                f"unexpected in new locklint: {describe(key)} "
+                f"(new locklint count {newll_counts[key]})"
+            )
+            equivalent = False
+    elif reviewed_newll_only is not None:
+        for key in sorted(newll_only - reviewed_newll_only):
+            print(
+                f"unreviewed in new locklint: {describe(key)} "
+                f"(new locklint count {newll_counts[key]})"
+            )
+            equivalent = False
+        for key in sorted(reviewed_newll_only - newll_only):
+            print(
+                "reviewed native-only group no longer reported: "
+                f"{describe(key)}"
+            )
+            equivalent = False
     for key in sorted(osll_keys & newll_keys):
         required = len(osll_regions[key])
         observed = len(newll_regions[key])
@@ -297,11 +349,147 @@ def compare(osll: Iterable[Finding], newll: Iterable[Finding]) -> bool:
             )
 
     if equivalent:
-        print(
-            f"equivalent: {len(osll_keys)} protected-access groups "
-            "occur on both sides"
-        )
+        if expect == "osll-covered":
+            suffix = "" if len(newll_only) == 1 else "s"
+            if reviewed_newll_only is None:
+                print(
+                    f"covered: {len(osll_keys)} OSLL protected-access "
+                    f"groups occur in new locklint; {len(newll_only)} new "
+                    f"locklint-only group{suffix}"
+                )
+            else:
+                print(
+                    f"covered: {len(osll_keys)} OSLL protected-access "
+                    f"groups occur in new locklint; {len(newll_only)} "
+                    f"reviewed native-only group{suffix}"
+                )
+        else:
+            print(
+                f"equivalent: {len(osll_keys)} protected-access groups "
+                "occur on both sides"
+            )
     return equivalent
+
+
+def location_finding_key(finding: Finding) -> LocationFindingKey:
+    return LocationFindingKey(
+        finding.source,
+        finding.line,
+        finding.operation,
+        finding.datum,
+        finding.lock,
+    )
+
+
+def compare_locations(
+    osll: Iterable[Finding], newll: Iterable[Finding], expect: str
+) -> bool:
+    osll_counts = Counter(location_finding_key(finding) for finding in osll)
+    newll_counts = Counter(location_finding_key(finding) for finding in newll)
+    equivalent = True
+
+    for key in sorted(osll_counts.keys() | newll_counts.keys()):
+        required = osll_counts[key]
+        observed = newll_counts[key]
+        if observed < required:
+            print(
+                f"missing from new locklint: {describe_location(key)} "
+                f"(OSLL {required}, new locklint {observed})"
+            )
+            equivalent = False
+        elif observed > required and expect == "equivalent":
+            print(
+                f"unexpected in new locklint: {describe_location(key)} "
+                f"(OSLL {required}, new locklint {observed})"
+            )
+            equivalent = False
+
+    if equivalent:
+        newll_only = len(newll_counts.keys() - osll_counts.keys())
+        if expect == "osll-covered":
+            suffix = "" if newll_only == 1 else "s"
+            print(
+                f"covered: {len(osll_counts)} OSLL protected-access "
+                f"locations occur in new locklint; {newll_only} new "
+                f"locklint-only location{suffix}"
+            )
+        else:
+            print(
+                f"equivalent: {len(osll_counts)} protected-access "
+                "locations occur on both sides"
+            )
+    return equivalent
+
+
+def write_normalized(
+    path: Path, osll: Iterable[Finding], newll: Iterable[Finding]
+) -> None:
+    with path.open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.writer(stream, delimiter="\t", lineterminator="\n")
+        writer.writerow(
+            [
+                "analyzer",
+                "source",
+                "line",
+                "column",
+                "function",
+                "operation",
+                "datum",
+                "lock",
+            ]
+        )
+        for analyzer, findings in (("osll", osll), ("new-locklint", newll)):
+            for finding in sorted(findings):
+                writer.writerow(
+                    [
+                        analyzer,
+                        finding.source,
+                        finding.line,
+                        "" if finding.column is None else finding.column,
+                        "" if finding.function is None else finding.function,
+                        finding.operation,
+                        finding.datum,
+                        finding.lock,
+                    ]
+                )
+
+
+def parse_native_only_reference(path: Path) -> set[FindingKey]:
+    findings: set[FindingKey] = set()
+    has_comment = False
+
+    with path.open(encoding="utf-8", errors="replace") as stream:
+        for line_number, raw_line in enumerate(stream, 1):
+            line = raw_line.rstrip("\n")
+            if not line:
+                has_comment = False
+                continue
+            if line.startswith("#"):
+                has_comment = True
+                continue
+            if not has_comment:
+                raise InputError(
+                    f"{path}:{line_number}: native-only group has no "
+                    "preceding rationale comment"
+                )
+            fields = line.split("\t")
+            if len(fields) != 4 or not all(fields):
+                raise InputError(
+                    f"{path}:{line_number}: expected tab-separated "
+                    "source, operation, datum, and lock"
+                )
+            source, operation, datum, lock = fields
+            if operation not in ("read", "modify"):
+                raise InputError(
+                    f"{path}:{line_number}: invalid operation '{operation}'"
+                )
+            finding = FindingKey(source, operation, datum, lock)
+            if finding in findings:
+                raise InputError(
+                    f"{path}:{line_number}: duplicate native-only group"
+                )
+            findings.add(finding)
+    return findings
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -310,7 +498,38 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument("--from-osll", required=True, type=Path)
     parser.add_argument("--from-newll", required=True, type=Path)
-    return parser.parse_args()
+    parser.add_argument(
+        "--match",
+        choices=("semantic", "location"),
+        default="semantic",
+        help="comparison key (default: semantic)",
+    )
+    parser.add_argument(
+        "--expect",
+        choices=("equivalent", "osll-covered"),
+        default="equivalent",
+        help="required relationship between reports (default: equivalent)",
+    )
+    parser.add_argument(
+        "--normalized-output",
+        type=Path,
+        help="write all parsed protected-access reports as TSV",
+    )
+    parser.add_argument(
+        "--native-only-reference",
+        type=Path,
+        help="reviewed native-only semantic groups with rationale comments",
+    )
+    arguments = parser.parse_args()
+    if arguments.native_only_reference is not None and (
+        arguments.expect != "osll-covered"
+        or arguments.match != "semantic"
+    ):
+        parser.error(
+            "--native-only-reference requires --expect=osll-covered "
+            "and --match=semantic"
+        )
+    return arguments
 
 
 def main() -> int:
@@ -318,10 +537,23 @@ def main() -> int:
     try:
         osll = parse_osll(arguments.from_osll)
         newll = parse_newll(arguments.from_newll)
+        reviewed_newll_only = (
+            parse_native_only_reference(arguments.native_only_reference)
+            if arguments.native_only_reference is not None
+            else None
+        )
+        if arguments.normalized_output is not None:
+            write_normalized(arguments.normalized_output, osll, newll)
     except (InputError, OSError) as error:
         print(f"compare-lock-reports: {error}", file=sys.stderr)
         return 2
-    return 0 if compare(osll, newll) else 1
+    if arguments.match == "location":
+        equivalent = compare_locations(osll, newll, arguments.expect)
+    else:
+        equivalent = compare_semantic(
+            osll, newll, arguments.expect, reviewed_newll_only
+        )
+    return 0 if equivalent else 1
 
 
 if __name__ == "__main__":

@@ -107,6 +107,33 @@ require_match "equivalent lock report result" \
     "equivalent: 3 protected-access groups occur on both sides" \
     compare-lock-reports.out
 
+run_failure "strict lock report locations" \
+    compare-lock-reports-locations.out \
+    "$COMPARE_LOCK_REPORTS" --match=location \
+    --from-osll=compare-lock-reports-osll.in \
+    --from-newll=compare-lock-reports-newll.in
+require_match "missing strict lock report location" \
+    "missing from new locklint: read of 'flags' requiring 'lock' at sample.c:11" \
+    compare-lock-reports-locations.out
+
+run_capture "normalized lock reports" compare-lock-reports-normalized.out \
+    "$COMPARE_LOCK_REPORTS" \
+    --normalized-output=compare-lock-reports-normalized.tsv \
+    --from-osll=compare-lock-reports-osll.in \
+    --from-newll=compare-lock-reports-newll.in
+require_match "normalized lock report header" \
+    "^analyzer	source	line	column	function	operation	datum	lock$" \
+    compare-lock-reports-normalized.tsv
+require_match "normalized OSLL lock report" \
+    "^osll	sample.c	10		sample	read	flags	lock$" \
+    compare-lock-reports-normalized.tsv
+require_match "normalized new locklint report" \
+    "^new-locklint	sample.c	10	1		read	flags	lock$" \
+    compare-lock-reports-normalized.tsv
+if [ "$(wc -l < compare-lock-reports-normalized.tsv)" -ne 10 ]; then
+	fail "normalized lock reports: expected exactly ten lines"
+fi
+
 run_failure "missing new locklint report" compare-lock-reports-missing.out \
     "$COMPARE_LOCK_REPORTS" \
     --from-osll=compare-lock-reports-osll.in \
@@ -123,6 +150,45 @@ run_failure "unexpected new locklint report" \
 require_match "unexpected new locklint report" \
     "unexpected in new locklint: read of 'extra' requiring 'lock'" \
     compare-lock-reports-unexpected.out
+
+run_capture "OSLL lock report coverage" \
+    compare-lock-reports-covered.out \
+    "$COMPARE_LOCK_REPORTS" --expect=osll-covered \
+    --from-osll=compare-lock-reports-osll.in \
+    --from-newll=compare-lock-reports-unexpected.in
+require_match "OSLL lock report coverage result" \
+    "covered: 3 OSLL protected-access groups occur in new locklint; 1 new locklint-only group" \
+    compare-lock-reports-covered.out
+
+run_capture "reviewed native-only lock report" \
+    compare-lock-reports-reviewed.out \
+    "$COMPARE_LOCK_REPORTS" --expect=osll-covered \
+    --native-only-reference=compare-lock-reports-native-only.ref \
+    --from-osll=compare-lock-reports-osll.in \
+    --from-newll=compare-lock-reports-unexpected.in
+require_match "reviewed native-only lock report result" \
+    "covered: 3 OSLL protected-access groups occur in new locklint; 1 reviewed native-only group" \
+    compare-lock-reports-reviewed.out
+
+run_failure "unreviewed native-only lock report" \
+    compare-lock-reports-unreviewed.out \
+    "$COMPARE_LOCK_REPORTS" --expect=osll-covered \
+    --native-only-reference=compare-lock-reports-no-native-only.ref \
+    --from-osll=compare-lock-reports-osll.in \
+    --from-newll=compare-lock-reports-unexpected.in
+require_match "unreviewed native-only lock report" \
+    "unreviewed in new locklint: read of 'extra' requiring 'lock'" \
+    compare-lock-reports-unreviewed.out
+
+run_failure "stale native-only lock report" \
+    compare-lock-reports-stale.out \
+    "$COMPARE_LOCK_REPORTS" --expect=osll-covered \
+    --native-only-reference=compare-lock-reports-native-only.ref \
+    --from-osll=compare-lock-reports-osll.in \
+    --from-newll=compare-lock-reports-newll.in
+require_match "stale native-only lock report" \
+    "reviewed native-only group no longer reported: read of 'extra' requiring 'lock'" \
+    compare-lock-reports-stale.out
 
 run_failure "insufficient new locklint locations" \
     compare-lock-reports-insufficient.out \

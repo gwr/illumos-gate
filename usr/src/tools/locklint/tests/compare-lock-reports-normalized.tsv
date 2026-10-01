@@ -1,0 +1,10 @@
+analyzer	source	line	column	function	operation	datum	lock
+osll	sample.c	10		sample	read	flags	lock
+osll	sample.c	11		sample	modify	flags	lock
+osll	sample.c	11		sample	read	flags	lock
+osll	sample.c	12		sample	modify	plain	lock
+osll	sample.c	30		other	read	flags	lock
+new-locklint	sample.c	10	1		read	flags	lock
+new-locklint	sample.c	11	1		modify	flags	lock
+new-locklint	sample.c	12	1		modify	plain	lock
+new-locklint	sample.c	30	1		read	flags	lock

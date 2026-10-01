@@ -1,3 +1,9 @@
+* Warning: Other locks held during wait on condition variable.
+  other locks held = sample_state::lock
+  traceback:
+	sample.c:sample_wait	[sample.c,8]
+	:sample	[sample.c,9]
+
 * Lock not protecting variable as asserted during read!
     variable = sample_state::flags
    protector = sample_state::lock(mutex)

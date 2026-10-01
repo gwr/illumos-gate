@@ -1,0 +1,2 @@
+# Exercise a reviewed native-only protected-access group.
+sample.c	read	extra	lock
