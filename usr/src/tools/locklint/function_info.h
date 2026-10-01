@@ -66,6 +66,7 @@ struct operation_family_entry {
 	int64_t target_offset;
 	uint64_t target_length;
 	const struct call_target_set *targets;
+	const struct instruction *assignment;
 };
 
 /*

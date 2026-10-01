@@ -1356,25 +1356,40 @@ visit_contract_target(const struct type_member *member,
     const char *target_file, unsigned long target_line,
     callgraph_contract_target_f visitor, void *argument)
 {
-	const struct declared_member_targets *declaration =
-	    declared_targets_for_member(member, false);
+	struct callgraph_member_contract contract;
 	struct callgraph_contract_target contract_target = {
 		.member = member,
 		.target = target,
-		.representative = declaration != NULL ?
-		    declaration->representative : NULL,
 		.target_position = target_position,
 		.target_file = target_file,
-		.target_line = target_line,
-		.contract_file = declaration != NULL ?
-		    declaration->contract_file : NULL,
-		.contract_line = declaration != NULL ?
-		    declaration->contract_line : 0,
+		.target_line = target_line
+	};
+
+	callgraph_member_contract(member, &contract);
+	contract_target.representative = contract.representative;
+	contract_target.contract_file = contract.file;
+	contract_target.contract_line = contract.line;
+	contract_target.explicit_no_lock_effects =
+	    contract.explicit_no_lock_effects;
+	visitor(&contract_target, argument);
+}
+
+void
+callgraph_member_contract(const struct type_member *member,
+    struct callgraph_member_contract *contract)
+{
+	const struct declared_member_targets *declaration;
+
+	require_state(CALLGRAPH_READY, "member contract query");
+	declaration = declared_targets_for_member(member, false);
+	*contract = (struct callgraph_member_contract) {
+		.representative = declaration != NULL ?
+		    declaration->representative : NULL,
+		.file = declaration != NULL ? declaration->contract_file : NULL,
+		.line = declaration != NULL ? declaration->contract_line : 0,
 		.explicit_no_lock_effects = declaration != NULL &&
 		    declaration->no_lock_effects
 	};
-
-	visitor(&contract_target, argument);
 }
 
 void

@@ -1617,8 +1617,39 @@ reject_match "second consumer excludes first profile" \
 require_match "incomplete operation profile is unmodeled" \
     "operation-profiles.c:193:26: warning: locklint: indirect call through 'operation_vector::start' has no target or calling contract \\[unmodeled-indirect-call\\]" \
     operation-profiles.out
-if [ "$(grep -c 'warning:' operation-profiles.out)" -ne 7 ]; then
-	fail "operation profile provenance: expected exactly seven warnings"
+require_match "first start profile contract mismatch" \
+    "function 'first_start' has lock acquisitions inconsistent with contract for 'operation_vector::start' \\[function-contract-mismatch\\]" \
+    operation-profiles.out
+require_match "first finish profile contract mismatch" \
+    "function 'first_finish' has lock acquisitions inconsistent with contract for 'operation_vector::finish' \\[function-contract-mismatch\\]" \
+    operation-profiles.out
+require_match "second start profile contract mismatch" \
+    "function 'second_start' has lock acquisitions inconsistent with contract for 'operation_vector::start' \\[function-contract-mismatch\\]" \
+    operation-profiles.out
+require_match "second finish profile contract mismatch" \
+    "function 'second_finish' has lock acquisitions inconsistent with contract for 'operation_vector::finish' \\[function-contract-mismatch\\]" \
+    operation-profiles.out
+require_match "unrelated start profile contract mismatch" \
+    "function 'first_start' has lock acquisitions inconsistent with contract for 'unrelated_vector::start' \\[function-contract-mismatch\\]" \
+    operation-profiles.out
+require_match "unrelated finish profile contract mismatch" \
+    "function 'first_finish' has lock acquisitions inconsistent with contract for 'unrelated_vector::finish' \\[function-contract-mismatch\\]" \
+    operation-profiles.out
+if [ "$(grep -c 'warning:' operation-profiles.out)" -ne 13 ]; then
+	fail "operation profile provenance: expected exactly thirteen warnings"
+fi
+
+run_capture "operation family contract consistency" \
+    operation-contracts.out "$LOCKLINT" --check-locks \
+    --cf commands/operation-contracts.cf operation-contracts.c
+require_match "operation profile target contract mismatch" \
+    "function 'operation_contract_acquire' has lock acquisitions inconsistent with contract for 'operation_contracts::start' \\[function-contract-mismatch\\]" \
+    operation-contracts.out
+reject_match "balanced nested profile target contract" \
+    "function 'operation_contract_balanced'.*\\[function-contract-mismatch\\]" \
+    operation-contracts.out
+if [ "$(grep -c 'warning:' operation-contracts.out)" -ne 2 ]; then
+	fail "operation family contract consistency: expected two warnings"
 fi
 
 run_capture "competition protected accesses" competition-accesses.out \

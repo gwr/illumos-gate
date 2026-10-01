@@ -1,0 +1,2 @@
+# The balanced callback is also a loader-declared non-competing root.
+declare entry no-competing-threads operation_contract_balanced

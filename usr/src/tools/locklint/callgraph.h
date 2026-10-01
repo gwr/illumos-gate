@@ -110,9 +110,18 @@ struct callgraph_contract_target {
 	bool explicit_no_lock_effects;
 };
 
+struct callgraph_member_contract {
+	struct function_info *representative;
+	const char *file;
+	unsigned long line;
+	bool explicit_no_lock_effects;
+};
+
 typedef void (*callgraph_contract_target_f)(
     const struct callgraph_contract_target *, void *);
 
+void callgraph_member_contract(const struct type_member *,
+    struct callgraph_member_contract *);
 void callgraph_for_each_contract_target(callgraph_contract_target_f, void *);
 
 /*

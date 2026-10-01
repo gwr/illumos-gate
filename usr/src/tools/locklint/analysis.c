@@ -243,6 +243,7 @@ struct operation_profile_store {
 	int64_t target_offset;
 	uint64_t target_length;
 	const struct call_target_set *targets;
+	const struct instruction *assignment;
 	size_t call_generation;
 };
 
@@ -2007,7 +2008,8 @@ operation_family_entry_apply(struct operation_family_profile *profile,
 	*entry = (struct operation_family_entry) {
 		.target_offset = store->target_offset,
 		.target_length = store->target_length,
-		.targets = store->targets
+		.targets = store->targets,
+		.assignment = store->assignment
 	};
 	if (avl_find(&profile->entries, entry, &where) != NULL)
 		abort();
@@ -2271,6 +2273,7 @@ collect_operation_profile_instruction(struct function_info *function,
 			.target_offset = key.target_offset,
 			.target_length = length,
 			.targets = targets,
+			.assignment = instruction,
 			.call_generation = builder->call_generation
 		    });
 	}
@@ -3480,9 +3483,82 @@ seed_contract_target(const struct callgraph_contract_target *target,
 {
 	struct analysis *analysis = argument;
 
-	seed_empty_effect_context(analysis, target->target);
-	if (target->representative != NULL)
+	if (target->target->root_reasons == 0)
+		seed_empty_effect_context(analysis, target->target);
+	if (target->representative != NULL &&
+	    target->representative->root_reasons == 0)
 		seed_empty_effect_context(analysis, target->representative);
+}
+
+/*
+ * Visit exact callback assignments retained in returned operation profiles.
+ * Profile entries retain the store instruction so canonical member identity
+ * and assignment provenance need not be duplicated in the profile.
+ */
+static void
+for_each_operation_contract_target(callgraph_contract_target_f visitor,
+    void *argument)
+{
+	struct callgraph_iter *iterator;
+	struct function_info *function;
+	int error;
+
+	error = callgraph_iter_open(&iterator);
+	if (error != 0)
+		die("cannot iterate ready callgraph: %s", strerror(error));
+	while ((function = callgraph_iter_next(iterator)) != NULL) {
+		struct operation_family_profile *profile;
+
+		if (function->operation_family_profile_count == 0)
+			continue;
+		for (profile = avl_first(&function->operation_family_profiles);
+		    profile != NULL;
+		    profile = AVL_NEXT(&function->operation_family_profiles,
+		    profile)) {
+			struct operation_family_entry *entry;
+
+			for (entry = avl_first(&profile->entries);
+			    entry != NULL;
+			    entry = AVL_NEXT(&profile->entries, entry)) {
+				struct callgraph_member_contract contract;
+				struct locklint_access access;
+				const struct type_member *member;
+				size_t target_index;
+
+				if (entry->assignment == NULL ||
+				    !locklint_get_instruction_access(function->tu,
+				    entry->assignment, &access) ||
+				    access.member == NULL ||
+				    (member = type_member_lookup_exact(
+				    access.member)) == NULL)
+					continue;
+				callgraph_member_contract(member, &contract);
+				for (target_index = 0;
+				    target_index < callgraph_target_set_count(
+				    entry->targets); target_index++) {
+					struct callgraph_contract_target target = {
+						.member = member,
+						.target =
+						    callgraph_target_set_target(
+						    entry->targets,
+						    target_index),
+						.representative =
+						    contract.representative,
+						.target_position =
+						    &entry->assignment->pos,
+						.contract_file = contract.file,
+						.contract_line = contract.line,
+						.explicit_no_lock_effects =
+						    contract.
+						    explicit_no_lock_effects
+					};
+
+					visitor(&target, argument);
+				}
+			}
+		}
+	}
+	callgraph_iter_close(iterator);
 }
 
 /*
@@ -3619,8 +3695,11 @@ seed_initial_contexts(struct analysis *analysis)
 			seed_root(analysis, function);
 	}
 	callgraph_iter_close(iterator);
-	if (analysis->check_locks)
+	if (analysis->check_locks) {
 		callgraph_for_each_contract_target(seed_contract_target, analysis);
+		for_each_operation_contract_target(seed_contract_target,
+		    analysis);
+	}
 }
 
 enum contract_acquisition_role {
@@ -3724,8 +3803,9 @@ summarize_contract_exit(const struct function_context *context,
 	    compare_contract_acquisition);
 }
 
-static void
-summarize_contract_acquisitions(struct function_info *function,
+static bool
+summarize_contract_contexts(struct function_info *function,
+    enum function_context_kind kind,
     struct contract_acquisition_summary *summary)
 {
 	struct function_context *context;
@@ -3738,7 +3818,10 @@ summarize_contract_acquisitions(struct function_info *function,
 	    context = AVL_NEXT(&function->contexts.contexts, context)) {
 		struct context_exit *exit;
 
-		if (context->kind != FUNCTION_CONTEXT_EFFECT_CONTRACT ||
+		if (context->kind != kind ||
+		    context->bindings->count != 0 ||
+		    context->bindings->derived_count != 0 ||
+		    context->bindings->target_count != 0 ||
 		    context_state_lock_count(context->entry_state) != 0)
 			continue;
 		found_context = true;
@@ -3752,11 +3835,59 @@ summarize_contract_acquisitions(struct function_info *function,
 			} else if (!contract_acquisition_equal(summary,
 			    &current)) {
 				summary->complete = false;
-				return;
+				return (true);
 			}
 		}
 	}
 	summary->complete = found_context && found_exit && summary->complete;
+	return (found_context);
+}
+
+static void
+summarize_contract_acquisitions(struct function_info *function,
+    struct contract_acquisition_summary *summary)
+{
+	if (summarize_contract_contexts(function,
+	    FUNCTION_CONTEXT_EFFECT_CONTRACT, summary))
+		return;
+	(void) summarize_contract_contexts(function, FUNCTION_CONTEXT_ROOT,
+	    summary);
+}
+
+static void
+seed_fallback_contract_target(
+    const struct callgraph_contract_target *target, void *argument)
+{
+	struct analysis *analysis = argument;
+	struct contract_acquisition_summary summary;
+
+	if (target->target->root_reasons != 0 &&
+	    !summarize_contract_contexts(target->target,
+	    FUNCTION_CONTEXT_EFFECT_CONTRACT, &summary) &&
+	    (!summarize_contract_contexts(target->target,
+	    FUNCTION_CONTEXT_ROOT, &summary) || !summary.complete))
+		seed_empty_effect_context(analysis, target->target);
+	if (target->representative != NULL &&
+	    target->representative->root_reasons != 0 &&
+	    !summarize_contract_contexts(target->representative,
+	    FUNCTION_CONTEXT_EFFECT_CONTRACT, &summary) &&
+	    (!summarize_contract_contexts(target->representative,
+	    FUNCTION_CONTEXT_ROOT, &summary) || !summary.complete))
+		seed_empty_effect_context(analysis, target->representative);
+}
+
+/*
+ * Root analysis is sufficient when it reaches a complete, uniform exact-exit
+ * summary.  Otherwise isolate contract observation from contexts shared with
+ * unrelated callers by scheduling a dedicated effect context.
+ */
+static void
+seed_fallback_contract_contexts(struct analysis *analysis)
+{
+	callgraph_for_each_contract_target(seed_fallback_contract_target,
+	    analysis);
+	for_each_operation_contract_target(seed_fallback_contract_target,
+	    analysis);
 }
 
 static char *
@@ -3874,6 +4005,7 @@ static void
 diagnose_function_contracts(struct analysis *analysis)
 {
 	callgraph_for_each_contract_target(diagnose_contract_target, analysis);
+	for_each_operation_contract_target(diagnose_contract_target, analysis);
 }
 
 static struct lock_identity *
@@ -7975,6 +8107,22 @@ free_indirect_call_observations(struct analysis *analysis)
 	avl_destroy(&analysis->indirect_calls);
 }
 
+/*
+ * Drain all scheduled point states, including recursive calls that become
+ * seedable only after the preceding work reaches a fixed point.
+ */
+static void
+run_fixed_point(struct analysis *analysis)
+{
+	struct point_state *point_state;
+
+	do {
+		while ((point_state =
+		    worklist_point_state_dequeue(&analysis->worklist)) != NULL)
+			process_point(analysis, point_state);
+	} while (seed_stalled_recursive_calls(analysis));
+}
+
 void
 analysis_run(struct lock_identity_collection *lock_identities, bool check_locks,
     FILE *stream, FILE *protection_state_stream)
@@ -7984,7 +8132,6 @@ analysis_run(struct lock_identity_collection *lock_identities, bool check_locks,
 		.check_locks = check_locks,
 		.protection_state_stream = protection_state_stream
 	};
-	struct point_state *point_state;
 
 	worklist_create(&analysis.worklist);
 	avl_create(&analysis.indirect_calls, compare_indirect_call_observation,
@@ -7995,11 +8142,9 @@ analysis_run(struct lock_identity_collection *lock_identities, bool check_locks,
 	collect_function_demands();
 	operation_family_index_build(&analysis.operation_families);
 	seed_initial_contexts(&analysis);
-	do {
-		while ((point_state =
-		    worklist_point_state_dequeue(&analysis.worklist)) != NULL)
-			process_point(&analysis, point_state);
-	} while (seed_stalled_recursive_calls(&analysis));
+	run_fixed_point(&analysis);
+	seed_fallback_contract_contexts(&analysis);
+	run_fixed_point(&analysis);
 	timing_end(TIMING_FIXED_POINT);
 	if (check_locks) {
 		report_unmodeled_indirect_calls(&analysis);
