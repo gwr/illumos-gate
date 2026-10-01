@@ -3446,6 +3446,45 @@ seed_effect_context(struct analysis *analysis, struct function_info *function,
 	    first_live_instruction(function->ep->entry->bb), state, false);
 }
 
+static void
+seed_empty_effect_context(struct analysis *analysis,
+    struct function_info *function)
+{
+	struct binding_environment *bindings;
+	struct semantic_state *state;
+	bool existed;
+	int error;
+
+	statistics.effect_binding_environments_find++;
+	error = binding_environment_intern(&function->bindings, NULL, 0,
+	    NULL, 0, &bindings, &existed);
+	if (error != 0)
+		die("cannot intern contract comparison bindings: %s",
+		    strerror(error));
+	if (existed)
+		analysis->counts.binding_environments_reused++;
+	else
+		analysis->counts.binding_environments_created++;
+	statistics.effect_semantic_states_find++;
+	error = context_entry_state_intern(function, &state, &existed);
+	if (error != 0)
+		die("cannot intern contract comparison state: %s",
+		    strerror(error));
+	record_semantic_state(analysis, existed);
+	seed_effect_context(analysis, function, bindings, state);
+}
+
+static void
+seed_contract_target(const struct callgraph_contract_target *target,
+    void *argument)
+{
+	struct analysis *analysis = argument;
+
+	seed_empty_effect_context(analysis, target->target);
+	if (target->representative != NULL)
+		seed_empty_effect_context(analysis, target->representative);
+}
+
 /*
  * Acquisition contracts start with their target unheld.  A generic release
  * contract must hold for each definite ownership mode, so each declared
@@ -3580,6 +3619,261 @@ seed_initial_contexts(struct analysis *analysis)
 			seed_root(analysis, function);
 	}
 	callgraph_iter_close(iterator);
+	if (analysis->check_locks)
+		callgraph_for_each_contract_target(seed_contract_target, analysis);
+}
+
+enum contract_acquisition_role {
+	CONTRACT_ACQUISITION_FORMAL,
+	CONTRACT_ACQUISITION_RETURN
+};
+
+struct contract_acquisition {
+	enum contract_acquisition_role role;
+	unsigned int argument;
+	int64_t offset;
+	unsigned int mode;
+};
+
+struct contract_acquisition_summary {
+	struct contract_acquisition entries[LOCKLINT_MAX_TRACKED_LOCKS];
+	size_t count;
+	bool complete;
+};
+
+static int
+compare_contract_acquisition(const void *left_arg, const void *right_arg)
+{
+	const struct contract_acquisition *left = left_arg;
+	const struct contract_acquisition *right = right_arg;
+
+	if (left->role != right->role)
+		return (left->role < right->role ? -1 : 1);
+	if (left->argument != right->argument)
+		return (left->argument < right->argument ? -1 : 1);
+	if (left->offset != right->offset)
+		return (left->offset < right->offset ? -1 : 1);
+	if (left->mode != right->mode)
+		return (left->mode < right->mode ? -1 : 1);
+	return (0);
+}
+
+static bool
+contract_acquisition_equal(const struct contract_acquisition_summary *left,
+    const struct contract_acquisition_summary *right)
+{
+	size_t index;
+
+	if (!left->complete || !right->complete ||
+	    left->count != right->count)
+		return (false);
+	for (index = 0; index < left->count; index++) {
+		if (compare_contract_acquisition(&left->entries[index],
+		    &right->entries[index]) != 0)
+			return (false);
+	}
+	return (true);
+}
+
+static bool
+returned_lock_identity(const struct lock_identity *identity,
+    const struct context_exit *exit)
+{
+	if (identity->analysis_object_type != LOCK_ANALYSIS_OBJECT_PSEUDO ||
+	    exit->return_value == NULL ||
+	    exit->return_value->type == PSEUDO_VOID)
+		return (false);
+	return (same_pseudo_expression(NULL,
+	    (struct pseudo *)identity->key.analysis_object,
+	    exit->return_value, 0));
+}
+
+static void
+summarize_contract_exit(const struct function_context *context,
+    const struct context_exit *exit,
+    struct contract_acquisition_summary *summary)
+{
+	size_t index;
+
+	memset(summary, 0, sizeof (*summary));
+	summary->complete = true;
+	for (index = 0; index < exit->state->locks->count; index++) {
+		const struct semantic_lock_state *lock =
+		    &exit->state->locks->entries[index];
+		struct contract_acquisition acquisition = {
+			.offset = lock->lock->key.target_offset,
+			.mode = lock->modes
+		};
+
+		if (identity_formal_argument(context->function,
+		    lock->lock->key, lock->lock->analysis_object_type,
+		    &acquisition.argument)) {
+			acquisition.role = CONTRACT_ACQUISITION_FORMAL;
+		} else if (returned_lock_identity(lock->lock, exit)) {
+			acquisition.role = CONTRACT_ACQUISITION_RETURN;
+		} else {
+			continue;
+		}
+		if (summary->count == LOCKLINT_MAX_TRACKED_LOCKS) {
+			summary->complete = false;
+			return;
+		}
+		summary->entries[summary->count++] = acquisition;
+	}
+	qsort(summary->entries, summary->count, sizeof (*summary->entries),
+	    compare_contract_acquisition);
+}
+
+static void
+summarize_contract_acquisitions(struct function_info *function,
+    struct contract_acquisition_summary *summary)
+{
+	struct function_context *context;
+	bool found_context = false;
+	bool found_exit = false;
+
+	memset(summary, 0, sizeof (*summary));
+	for (context = avl_first(&function->contexts.contexts);
+	    context != NULL;
+	    context = AVL_NEXT(&function->contexts.contexts, context)) {
+		struct context_exit *exit;
+
+		if (context->kind != FUNCTION_CONTEXT_EFFECT_CONTRACT ||
+		    context_state_lock_count(context->entry_state) != 0)
+			continue;
+		found_context = true;
+		SLIST_FOREACH(exit, &context->exits, link) {
+			struct contract_acquisition_summary current;
+
+			summarize_contract_exit(context, exit, &current);
+			if (!found_exit) {
+				*summary = current;
+				found_exit = true;
+			} else if (!contract_acquisition_equal(summary,
+			    &current)) {
+				summary->complete = false;
+				return;
+			}
+		}
+	}
+	summary->complete = found_context && found_exit && summary->complete;
+}
+
+static char *
+contract_member_selector(const struct type_member *member)
+{
+	const struct ll_type *owner = type_member_owner(member);
+	struct symbol *owner_type = type_representative(owner);
+	struct symbol *member_symbol = member->representative;
+	const char *type_name;
+	const char *member_name;
+	char *selector;
+	size_t length;
+
+	if (owner_type == NULL || owner_type->ident == NULL ||
+	    member_symbol == NULL || member_symbol->ident == NULL)
+		return (NULL);
+	type_name = show_ident(owner_type->ident);
+	member_name = show_ident(member_symbol->ident);
+	length = strlen(type_name) + 2 + strlen(member_name) + 1;
+	selector = malloc(length);
+	if (selector == NULL)
+		die("cannot allocate contract member selector");
+	(void) snprintf(selector, length, "%s::%s", type_name, member_name);
+	return (selector);
+}
+
+static const char *
+contract_mode_name(unsigned int mode)
+{
+	switch (mode) {
+	case LOCKLINT_MODE_MUTEX:
+		return ("mutex");
+	case LOCKLINT_MODE_READER:
+		return ("reader");
+	case LOCKLINT_MODE_WRITER:
+		return ("writer");
+	default:
+		return ("non-definite");
+	}
+}
+
+static void
+describe_contract_summary(struct position position, const char *kind,
+    const struct contract_acquisition_summary *summary)
+{
+	size_t index;
+
+	if (!summary->complete) {
+		info(position, "locklint: %s acquisitions are not identical on "
+		    "every exact return", kind);
+		return;
+	}
+	if (summary->count == 0) {
+		info(position, "locklint: %s acquisitions: none", kind);
+		return;
+	}
+	for (index = 0; index < summary->count; index++) {
+		const struct contract_acquisition *acquisition =
+		    &summary->entries[index];
+
+		if (acquisition->role == CONTRACT_ACQUISITION_FORMAL) {
+			info(position, "locklint: %s acquisition: %s lock at "
+			    "formal argument %u offset %lld", kind,
+			    contract_mode_name(acquisition->mode),
+			    acquisition->argument + 1,
+			    (long long)acquisition->offset);
+		} else {
+			info(position, "locklint: %s acquisition: %s lock at "
+			    "returned object offset %lld", kind,
+			    contract_mode_name(acquisition->mode),
+			    (long long)acquisition->offset);
+		}
+	}
+}
+
+static void
+diagnose_contract_target(const struct callgraph_contract_target *target,
+    void *argument)
+{
+	struct contract_acquisition_summary observed;
+	struct contract_acquisition_summary expected = {
+		.complete = true
+	};
+	struct position position;
+	char *selector;
+
+	(void) argument;
+	summarize_contract_acquisitions(target->target, &observed);
+	if (target->representative != NULL)
+		summarize_contract_acquisitions(target->representative, &expected);
+	if (contract_acquisition_equal(&observed, &expected))
+		return;
+	selector = contract_member_selector(target->member);
+	if (selector == NULL)
+		return;
+	position = target->target_position != NULL ?
+	    *target->target_position : target->target->ep->name->pos;
+	locklint_warning(LOCKLINT_DIAG_FUNCTION_CONTRACT_MISMATCH, position,
+	    "function '%s' has lock acquisitions inconsistent with contract "
+	    "for '%s'", function_name(target->target), selector);
+	describe_contract_summary(position, "observed", &observed);
+	describe_contract_summary(position, "required", &expected);
+	if (target->target_file != NULL) {
+		info(position, "locklint: target declared at %s:%lu",
+		    target->target_file, target->target_line);
+	}
+	if (target->contract_file != NULL) {
+		info(position, "locklint: contract declared at %s:%lu",
+		    target->contract_file, target->contract_line);
+	}
+	free(selector);
+}
+
+static void
+diagnose_function_contracts(struct analysis *analysis)
+{
+	callgraph_for_each_contract_target(diagnose_contract_target, analysis);
 }
 
 static struct lock_identity *
@@ -7709,6 +8003,7 @@ analysis_run(struct lock_identity_collection *lock_identities, bool check_locks,
 	timing_end(TIMING_FIXED_POINT);
 	if (check_locks) {
 		report_unmodeled_indirect_calls(&analysis);
+		diagnose_function_contracts(&analysis);
 		timing_begin(TIMING_DIAG_DECLARED_EFFECTS);
 		diagnose_declared_lock_effects(&analysis);
 		timing_end(TIMING_DIAG_DECLARED_EFFECTS);

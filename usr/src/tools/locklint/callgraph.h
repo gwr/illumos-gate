@@ -28,6 +28,7 @@ struct symbol;
 struct symbol_list;
 struct type_member;
 struct translation_unit;
+struct position;
 
 enum callgraph_declare_result {
 	CALLGRAPH_DECLARE_OK,
@@ -86,15 +87,33 @@ enum callgraph_declare_result callgraph_declare_external_entry(const char *,
  * type member.  Repeated declarations add targets; duplicates are harmless.
  */
 enum callgraph_declare_result callgraph_declare_targets(const char *,
-    size_t, char **, const char **);
-enum callgraph_declare_result callgraph_declare_no_lock_contract(const char *);
+    size_t, char **, const char *, unsigned long, const char **);
+enum callgraph_declare_result callgraph_declare_no_lock_contract(const char *,
+    const char *, unsigned long);
 enum callgraph_declare_result callgraph_declare_no_lock_contract_member(
-    const struct type_member *);
+    const struct type_member *, const char *, unsigned long);
 enum callgraph_declare_result callgraph_declare_representative_contract(
     const char *, const char *, const char *, unsigned long, const char **);
 enum callgraph_declare_result
 callgraph_declare_representative_contract_member(const struct type_member *,
     const char *, const char *, const char *, unsigned long, const char **);
+
+struct callgraph_contract_target {
+	const struct type_member *member;
+	struct function_info *target;
+	struct function_info *representative;
+	const struct position *target_position;
+	const char *target_file;
+	const char *contract_file;
+	unsigned long target_line;
+	unsigned long contract_line;
+	bool explicit_no_lock_effects;
+};
+
+typedef void (*callgraph_contract_target_f)(
+    const struct callgraph_contract_target *, void *);
+
+void callgraph_for_each_contract_target(callgraph_contract_target_f, void *);
 
 /*
  * Close construction, resolve function identities and indirect targets,

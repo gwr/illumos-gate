@@ -1,0 +1,1 @@
+declare contract explicit_consistency_ops::enter no-lock-effects

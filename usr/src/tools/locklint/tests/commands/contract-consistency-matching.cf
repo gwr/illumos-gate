@@ -1,0 +1,2 @@
+declare contract matching_consistency_ops::enter consistency_representative
+declare contract matching_return_consistency_ops::create consistency_create_representative

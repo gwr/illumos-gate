@@ -1,0 +1,1 @@
+declare contract conflicting_consistency_ops::enter consistency_representative

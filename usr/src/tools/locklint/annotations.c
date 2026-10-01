@@ -1776,7 +1776,9 @@ locklint_resolve_annotations(struct symbol_list *symbols)
 			if (annotation->contract_function == NULL) {
 				result =
 				    callgraph_declare_no_lock_contract_member(
-				    ref->member);
+				    ref->member,
+				    stream_name(annotation->pos.stream),
+				    annotation->pos.line);
 			} else {
 				annotation->contract_pending = true;
 				continue;

@@ -134,6 +134,8 @@ struct indirect_target {
 struct declared_member_targets {
 	const struct type_member *member;
 	struct function_info **functions;
+	const char **target_files;
+	unsigned long *target_lines;
 	size_t function_count;
 	size_t function_capacity;
 	const struct call_target_set *targets;
@@ -1188,7 +1190,7 @@ declared_targets_for_member(const struct type_member *member, bool create)
 
 static void
 declared_target_add(struct declared_member_targets *declaration,
-    struct function_info *function)
+    struct function_info *function, const char *file, unsigned long line)
 {
 	size_t index;
 
@@ -1200,6 +1202,8 @@ declared_target_add(struct declared_member_targets *declaration,
 		size_t capacity = declaration->function_capacity == 0 ? 4 :
 		    declaration->function_capacity * 2;
 		struct function_info **functions;
+		const char **files;
+		unsigned long *lines;
 
 		if (capacity < declaration->function_capacity ||
 		    capacity > SIZE_MAX / sizeof (*functions))
@@ -1208,15 +1212,29 @@ declared_target_add(struct declared_member_targets *declaration,
 		    capacity * sizeof (*functions));
 		if (functions == NULL)
 			die("out of memory recording declared targets");
+		files = realloc(declaration->target_files,
+		    capacity * sizeof (*files));
+		if (files == NULL)
+			die("out of memory recording declared target provenance");
+		lines = realloc(declaration->target_lines,
+		    capacity * sizeof (*lines));
+		if (lines == NULL)
+			die("out of memory recording declared target provenance");
 		declaration->functions = functions;
+		declaration->target_files = files;
+		declaration->target_lines = lines;
 		declaration->function_capacity = capacity;
 	}
-	declaration->functions[declaration->function_count++] = function;
+	declaration->functions[declaration->function_count] = function;
+	declaration->target_files[declaration->function_count] = file;
+	declaration->target_lines[declaration->function_count] = line;
+	declaration->function_count++;
 }
 
 enum callgraph_declare_result
 callgraph_declare_targets(const char *member_name, size_t target_count,
-    char **target_names, const char **problem_name)
+    char **target_names, const char *file, unsigned long line,
+    const char **problem_name)
 {
 	const struct type_member **members;
 	struct symbol *member_type;
@@ -1271,7 +1289,7 @@ callgraph_declare_targets(const char *member_name, size_t target_count,
 		declaration = declared_targets_for_member(members[member_index],
 		    true);
 		for (index = 0; index < target_count; index++)
-			declared_target_add(declaration, targets[index]);
+			declared_target_add(declaration, targets[index], file, line);
 	}
 	free(members);
 	free(targets);
@@ -1279,7 +1297,8 @@ callgraph_declare_targets(const char *member_name, size_t target_count,
 }
 
 enum callgraph_declare_result
-callgraph_declare_no_lock_contract_member(const struct type_member *member)
+callgraph_declare_no_lock_contract_member(const struct type_member *member,
+    const char *file, unsigned long line)
 {
 	struct declared_member_targets *declaration;
 
@@ -1290,11 +1309,16 @@ callgraph_declare_no_lock_contract_member(const struct type_member *member)
 	if (declaration->representative != NULL)
 		return (CALLGRAPH_DECLARE_CONFLICT);
 	declaration->no_lock_effects = true;
+	if (declaration->contract_file == NULL) {
+		declaration->contract_file = file;
+		declaration->contract_line = line;
+	}
 	return (CALLGRAPH_DECLARE_OK);
 }
 
 enum callgraph_declare_result
-callgraph_declare_no_lock_contract(const char *member_name)
+callgraph_declare_no_lock_contract(const char *member_name, const char *file,
+    unsigned long line)
 {
 	const struct type_member **members;
 	struct declared_member_targets *declaration;
@@ -1317,9 +1341,73 @@ callgraph_declare_no_lock_contract(const char *member_name)
 			return (CALLGRAPH_DECLARE_CONFLICT);
 		}
 		declaration->no_lock_effects = true;
+		if (declaration->contract_file == NULL) {
+			declaration->contract_file = file;
+			declaration->contract_line = line;
+		}
 	}
 	free(members);
 	return (CALLGRAPH_DECLARE_OK);
+}
+
+static void
+visit_contract_target(const struct type_member *member,
+    struct function_info *target, const struct position *target_position,
+    const char *target_file, unsigned long target_line,
+    callgraph_contract_target_f visitor, void *argument)
+{
+	const struct declared_member_targets *declaration =
+	    declared_targets_for_member(member, false);
+	struct callgraph_contract_target contract_target = {
+		.member = member,
+		.target = target,
+		.representative = declaration != NULL ?
+		    declaration->representative : NULL,
+		.target_position = target_position,
+		.target_file = target_file,
+		.target_line = target_line,
+		.contract_file = declaration != NULL ?
+		    declaration->contract_file : NULL,
+		.contract_line = declaration != NULL ?
+		    declaration->contract_line : 0,
+		.explicit_no_lock_effects = declaration != NULL &&
+		    declaration->no_lock_effects
+	};
+
+	visitor(&contract_target, argument);
+}
+
+void
+callgraph_for_each_contract_target(callgraph_contract_target_f visitor,
+    void *argument)
+{
+	struct declared_member_targets *declaration;
+	struct indirect_target *target;
+	size_t index;
+
+	require_state(CALLGRAPH_READY, "contract target iteration");
+	for (target = indirect_targets; target != NULL; target = target->next) {
+		const struct type_member *member;
+
+		if (target->target == NULL || target->member == NULL)
+			continue;
+		member = type_member_lookup_exact(target->member);
+		if (member == NULL)
+			continue;
+		visit_contract_target(member, target->target, &target->pos, NULL,
+		    0, visitor, argument);
+	}
+	for (declaration = declared_member_targets_initialized ?
+	    avl_first(&declared_member_targets) : NULL;
+	    declaration != NULL;
+	    declaration = AVL_NEXT(&declared_member_targets, declaration)) {
+		for (index = 0; index < declaration->function_count; index++) {
+			visit_contract_target(declaration->member,
+			    declaration->functions[index], NULL,
+			    declaration->target_files[index],
+			    declaration->target_lines[index], visitor, argument);
+		}
+	}
 }
 
 enum callgraph_declare_result
@@ -2344,6 +2432,8 @@ free_declared_member_targets(void)
 	while ((declaration = avl_destroy_nodes(&declared_member_targets,
 	    &cookie)) != NULL) {
 		free(declaration->functions);
+		free(declaration->target_files);
+		free(declaration->target_lines);
 		free(declaration->contract_member_name);
 		free(declaration);
 	}

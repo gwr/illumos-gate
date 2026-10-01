@@ -48,6 +48,8 @@ static const char *const diagnostic_names[LOCKLINT_DIAG_COUNT] = {
 	[LOCKLINT_DIAG_DECLARED_ORDER] = "declared-order",
 	[LOCKLINT_DIAG_DECLARED_ORDER_CYCLE] = "declared-order-cycle",
 	[LOCKLINT_DIAG_DECLARED_ORDER_POSSIBLE] = "declared-order-possible",
+	[LOCKLINT_DIAG_FUNCTION_CONTRACT_MISMATCH] =
+	    "function-contract-mismatch",
 	[LOCKLINT_DIAG_INVALID_ASSUMING_PROTECTED] =
 	    "invalid-assuming-protected",
 	[LOCKLINT_DIAG_LOCK_ALREADY_HELD] = "lock-already-held",

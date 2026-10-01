@@ -166,7 +166,7 @@ declare_targets(int argc, char **argv)
 		    "member and at least one function name"));
 	}
 	result = callgraph_declare_targets(argv[1], (size_t)(argc - 2),
-	    &argv[2], &problem);
+	    &argv[2], command_parse_path(), command_parse_line(), &problem);
 	switch (result) {
 	case CALLGRAPH_DECLARE_OK:
 		return (0);
@@ -221,7 +221,8 @@ declare_contract(int argc, char **argv)
 	}
 	if (strcmp(argv[2], "no-lock-effects") == 0) {
 		problem = argv[1];
-		result = callgraph_declare_no_lock_contract(argv[1]);
+		result = callgraph_declare_no_lock_contract(argv[1],
+		    command_parse_path(), command_parse_line());
 	} else {
 		result = callgraph_declare_representative_contract(argv[1],
 		    argv[2], command_parse_path(), command_parse_line(),

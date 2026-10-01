@@ -864,8 +864,14 @@ require_match "first target returned effect" \
 require_match "second target returned effect" \
     "warning: locklint: condition wait may occur while holding lock 'command_target_state::second' \\[lock-maybe-held-during-wait\\]" \
     command-targets-effects.out
-if [ "$(grep -c 'warning:' command-targets-effects.out)" -ne 4 ]; then
-	fail "command target return effects: expected exactly four warnings"
+require_match "first target contract mismatch" \
+    "function 'command_target_first' has lock acquisitions inconsistent with contract for 'command_target_ops::start' \\[function-contract-mismatch\\]" \
+    command-targets-effects.out
+require_match "second target contract mismatch" \
+    "function 'command_target_second' has lock acquisitions inconsistent with contract for 'command_target_ops::start' \\[function-contract-mismatch\\]" \
+    command-targets-effects.out
+if [ "$(grep -c 'warning:' command-targets-effects.out)" -ne 6 ]; then
+	fail "command target return effects: expected exactly six warnings"
 fi
 
 run_capture "source no-lock contract" command-targets-source-contract.out \
@@ -987,9 +993,60 @@ require_match "concrete target does not acquire representative lock" \
     representative-call-target.out
 reject_match "concrete target call is modeled" \
     "unmodeled-indirect-call" representative-call-target.out
-if [ "$(grep -c 'warning:' representative-call-target.out)" -ne 1 ]; then
-	fail "concrete target precedes representative: expected one warning"
+require_match "concrete target differs from representative contract" \
+    "function 'concrete_enter' has lock acquisitions inconsistent with contract for 'representative_ops::enter' \\[function-contract-mismatch\\]" \
+    representative-call-target.out
+if [ "$(grep -c 'warning:' representative-call-target.out)" -ne 2 ]; then
+	fail "concrete target precedes representative: expected two warnings"
 fi
+
+run_capture "implicit contract consistency" \
+    contract-consistency-implicit.out \
+    "$LOCKLINT" -DCONTRACT_CONSISTENCY_IMPLICIT=1 --check-locks \
+    commands/contract-consistency.c
+require_match "implicit contract mismatch" \
+    "function 'consistency_acquire' has lock acquisitions inconsistent with contract for 'implicit_consistency_ops::enter' \\[function-contract-mismatch\\]" \
+    contract-consistency-implicit.out
+require_match "implicit returned-object contract mismatch" \
+    "function 'consistency_create' has lock acquisitions inconsistent with contract for 'implicit_return_consistency_ops::create' \\[function-contract-mismatch\\]" \
+    contract-consistency-implicit.out
+
+run_capture "explicit contract consistency" \
+    contract-consistency-explicit.out \
+    "$LOCKLINT" -DCONTRACT_CONSISTENCY_EXPLICIT=1 --check-locks \
+    --cf commands/contract-consistency-explicit.cf \
+    commands/contract-consistency.c
+require_match "explicit contract mismatch" \
+    "function 'consistency_acquire' has lock acquisitions inconsistent with contract for 'explicit_consistency_ops::enter' \\[function-contract-mismatch\\]" \
+    contract-consistency-explicit.out
+
+run_capture "matching representative consistency" \
+    contract-consistency-matching.out \
+    "$LOCKLINT" -DCONTRACT_CONSISTENCY_MATCHING=1 --check-locks \
+    --cf commands/contract-consistency-matching.cf \
+    commands/contract-consistency.c \
+    commands/contract-consistency-models.c
+reject_match "matching representative consistency" \
+    "function-contract-mismatch" contract-consistency-matching.out
+
+run_capture "conflicting representative consistency" \
+    contract-consistency-conflicting.out \
+    "$LOCKLINT" -DCONTRACT_CONSISTENCY_CONFLICTING=1 --check-locks \
+    --cf commands/contract-consistency-conflicting.cf \
+    commands/contract-consistency.c \
+    commands/contract-consistency-models.c
+require_match "representative contract mismatch" \
+    "function 'consistency_none' has lock acquisitions inconsistent with contract for 'conflicting_consistency_ops::enter' \\[function-contract-mismatch\\]" \
+    contract-consistency-conflicting.out
+
+run_capture "declared target contract consistency" \
+    contract-consistency-command.out \
+    "$LOCKLINT" --check-locks \
+    --cf commands/contract-consistency-command.cf \
+    commands/contract-consistency.c
+require_match "declared target contract mismatch" \
+    "function 'consistency_acquire' has lock acquisitions inconsistent with contract for 'command_consistency_ops::enter' \\[function-contract-mismatch\\]" \
+    contract-consistency-command.out
 
 run_capture "command equivalent type targets" \
     command-targets-equivalent.out \

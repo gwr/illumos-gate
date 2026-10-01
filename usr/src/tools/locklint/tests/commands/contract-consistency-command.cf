@@ -1,0 +1,2 @@
+declare contract command_consistency_ops::enter no-lock-effects
+declare targets command_consistency_ops::enter consistency_acquire
