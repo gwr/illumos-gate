@@ -10,8 +10,8 @@
  */
 
 /*
- * Verify that external-entry declarations suppress only the external-linkage
- * reason for automatic root discovery.
+ * Exercise root-discovery modes and verify that per-function external-entry
+ * declarations affect only the external-linkage reason.
  */
 
 void external_entry_called(void);

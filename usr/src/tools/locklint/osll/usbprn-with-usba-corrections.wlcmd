@@ -1,0 +1,12 @@
+#
+# Correct the historical usbprn-with-USBA policy for callback slots added
+# after the Warlock command file was removed.  The loaded OHCI, UHCI, and EHCI
+# implementations leave the four xHCI-only HCDI slots NULL.  Old Solaris Lock
+# Lint cannot express an exact NULL target, so use the retained no-effect
+# dummy.
+#
+
+add usba_hcdi_ops::usba_hcdi_device_address targets warlock_dummy
+add usba_hcdi_ops::usba_hcdi_device_fini targets warlock_dummy
+add usba_hcdi_ops::usba_hcdi_device_init targets warlock_dummy
+add usba_hcdi_ops::usba_hcdi_hub_update targets warlock_dummy

@@ -208,6 +208,8 @@ struct callgraph_iter {
 };
 
 static enum callgraph_state callgraph_state = CALLGRAPH_CONSTRUCTING;
+static enum callgraph_root_discovery root_discovery =
+    CALLGRAPH_ROOT_DISCOVERY_AUTO;
 static struct callgraph_iter *open_iterators;
 static struct function_record *functions;
 static struct function_record **functions_tail = &functions;
@@ -240,7 +242,6 @@ static bool record_function_pointer_activity;
 static unsigned int next_function_pointer_activity_sequence;
 static avl_tree_t call_target_sets;
 static bool call_target_sets_initialized;
-static bool has_declared_entries;
 
 static int
 compare_declared_member_targets(const void *left_arg, const void *right_arg)
@@ -368,6 +369,13 @@ require_state(enum callgraph_state state, const char *operation)
 {
 	if (callgraph_state != state)
 		die("callgraph %s in invalid state", operation);
+}
+
+void
+callgraph_set_root_discovery(enum callgraph_root_discovery discovery)
+{
+	require_state(CALLGRAPH_CONSTRUCTING, "root discovery selection");
+	root_discovery = discovery;
 }
 
 static int
@@ -957,7 +965,6 @@ callgraph_declare_entry_no_competing_threads(const char *name,
 		function->entry_declaration_file = file;
 		function->entry_declaration_line = line;
 	}
-	has_declared_entries = true;
 	return (CALLGRAPH_DECLARE_OK);
 }
 
@@ -1588,7 +1595,8 @@ resolve_function_escapes(void)
 			continue;
 		target = function_record(escape->target);
 		target->has_exact_escape = true;
-		if (!escape->closed_initializer) {
+		if (!escape->closed_initializer &&
+		    root_discovery != CALLGRAPH_ROOT_DISCOVERY_NONE) {
 			escape->target->root_reasons |=
 			    FUNCTION_ROOT_POINTER_ESCAPE;
 		}
@@ -2058,20 +2066,23 @@ classify_roots(void)
 		    function->external_entry == FUNCTION_EXTERNAL_ENTRY_TRUE ||
 		    (function->external_entry ==
 		    FUNCTION_EXTERNAL_ENTRY_UNSPECIFIED &&
-		    !has_declared_entries);
+		    root_discovery == CALLGRAPH_ROOT_DISCOVERY_ALL_EXPORTED);
 		if (external_entry && !function->internal_linkage &&
 		    !function->inline_implementation)
 			function->info.root_reasons |= FUNCTION_ROOT_EXTERNAL;
-		if (!function->has_nonself_caller &&
+		if (root_discovery != CALLGRAPH_ROOT_DISCOVERY_NONE &&
+		    !function->has_nonself_caller &&
 		    !function->inline_implementation)
 			function->info.root_reasons |=
 			    FUNCTION_ROOT_NO_DIRECT_CALLER;
 		/*
 		 * Sparse marks ordinary external definitions addressable.
-		 * They are already roots, so use this fallback only for an
-		 * internal function without an exact recorded escape.
+		 * External linkage is handled separately according to root
+		 * policy, so use this fallback only for an internal function
+		 * without an exact recorded escape.
 		 */
-		if (function->internal_linkage &&
+		if (root_discovery != CALLGRAPH_ROOT_DISCOVERY_NONE &&
+		    function->internal_linkage &&
 		    (modifiers & MOD_ADDRESSABLE) != 0 &&
 		    !function->has_exact_escape)
 			function->info.root_reasons |=
@@ -2548,6 +2559,5 @@ callgraph_cleanup(void)
 	}
 	next_function_identity_sequence = 0;
 	functions_tail = &functions;
-	has_declared_entries = false;
 	callgraph_state = CALLGRAPH_CLEANED;
 }

@@ -715,6 +715,79 @@ require_match "command entry ambiguous" \
     command-entry-ambiguous.out
 
 #
+# Verify analysis-wide automatic root discovery independently of explicit
+# entry declarations and per-function external-entry properties.
+#
+run_capture "default automatic roots" root-discovery-auto.out \
+    "$LOCKLINT" --dump-callgraph \
+    commands/external-entry.c commands/external-entry-helper.c
+reject_match "default known-caller external root" \
+    "^  root external-linkage$" root-discovery-auto.out
+require_match "default no-caller root" \
+    "^  root no-known-direct-caller$" root-discovery-auto.out
+require_match "default escaped root" \
+    "^  root function-pointer-escape" root-discovery-auto.out
+
+run_capture "explicit automatic roots" root-discovery-auto-explicit.out \
+    "$LOCKLINT" --root-discovery=auto --dump-callgraph \
+    commands/external-entry.c commands/external-entry-helper.c
+compare "default and explicit automatic roots" root-discovery-auto.out \
+    root-discovery-auto-explicit.out
+
+run_capture "all exported roots" root-discovery-all-exported.out \
+    "$LOCKLINT" --root-discovery=all-exported --dump-callgraph \
+    commands/external-entry.c commands/external-entry-helper.c
+require_match "all exported external root" \
+    "^  root external-linkage$" root-discovery-all-exported.out
+require_match "all exported no-caller root" \
+    "^  root no-known-direct-caller$" root-discovery-all-exported.out
+require_match "all exported escaped root" \
+    "^  root function-pointer-escape" root-discovery-all-exported.out
+if ! awk '
+    /^function external_entry_called / { target = 1; next }
+    /^function / { target = 0 }
+    target && /^  root external-linkage$/ { found = 1 }
+    END { exit found ? 0 : 1 }
+' root-discovery-all-exported.out; then
+	fail "all exported known-caller function: missing external root"
+fi
+
+run_capture "no automatic roots" root-discovery-none.out \
+    "$LOCKLINT" --root-discovery=none --dump-callgraph \
+    commands/external-entry.c commands/external-entry-helper.c
+reject_match "disabled automatic root" \
+    "^  root " root-discovery-none.out
+
+run_capture "explicit root without discovery" root-discovery-explicit.out \
+    "$LOCKLINT" --root-discovery=none --dump-callgraph \
+    --cf commands/root-discovery-explicit.cf \
+    commands/external-entry.c commands/external-entry-helper.c
+require_match "explicit root without discovery reason" \
+    "^  root external-linkage$" root-discovery-explicit.out
+require_match "explicit root without discovery provenance" \
+    "property external-entry=true commands/root-discovery-explicit.cf:2" \
+    root-discovery-explicit.out
+
+run_capture "declared entries without discovery" \
+    root-discovery-declared.out \
+    "$LOCKLINT" --root-discovery=none --no-check --dump-callgraph \
+    --cf commands/entry-competition.cf \
+    commands/entry-competition.c commands/entry-competition-helper.c
+require_match "declared entry without discovery" \
+    "root declared-entry no-competing-threads commands/entry-competition.cf:2" \
+    root-discovery-declared.out
+
+run_failure "invalid root discovery" root-discovery-invalid.out \
+    "$LOCKLINT" --root-discovery=unknown smoke.c
+require_match "invalid root discovery" \
+    "unknown root discovery mode 'unknown'" root-discovery-invalid.out
+
+run_failure "missing root discovery" root-discovery-missing.out \
+    "$LOCKLINT" --root-discovery smoke.c
+require_match "missing root discovery" \
+    "root-discovery requires a mode" root-discovery-missing.out
+
+#
 # Verify the options-first declaration grammar and the narrow suppression of
 # external-linkage automatic roots.  Other independent root reasons remain.
 #
@@ -2066,7 +2139,8 @@ fi
 # alternatives retains the identity of a possibly held lock.
 #
 run_capture "nullable phi lock identity" nullable-phi-lock.out \
-    "$LOCKLINT" --check-locks -O2 -fno-inline-functions \
+    "$LOCKLINT" --root-discovery=all-exported --check-locks \
+    -O2 -fno-inline-functions \
     nullable-phi-lock.c
 require_match "nullable phi lock identity" \
     "nullable-phi-lock.c:66:28: warning: locklint: lock 'lock' may already be held \\[lock-maybe-already-held\\]" \

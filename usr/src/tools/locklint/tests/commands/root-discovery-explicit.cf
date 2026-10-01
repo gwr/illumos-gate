@@ -1,0 +1,2 @@
+# Explicit entries remain roots when automatic discovery is disabled.
+declare --external-entry=true external_entry_called

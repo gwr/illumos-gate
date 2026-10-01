@@ -5,7 +5,6 @@ function gnu_extern_inline_second tu=gnu-extern-inline-second.c definition=gnu-e
   root no-known-direct-caller
 function gnu_extern_inline_target tu=gnu-extern-inline-second.c definition=gnu-extern-inline.h:25:1 linkage=external reachable=no
 function gnu_extern_inline_target tu=gnu-extern-inline-external.c definition=gnu-extern-inline-external.c:20:1 linkage=external reachable=yes
-  root external-linkage
   root no-known-direct-caller
   root function-pointer-escape
 escapes

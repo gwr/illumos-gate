@@ -77,6 +77,7 @@ usage(FILE *stream)
 {
 	(void) fprintf(stream,
 	    "usage: locklint [--cf command-file] [--compat=osll] "
+	    "[--root-discovery=auto|all-exported|none] "
 	    "[--check-locks] [--no-check] "
 	    "[--dump-parsed] [--dump-linearized] "
 	    "[--dump-accesses] [--dump-annotations] [--dump-events] "
@@ -159,6 +160,22 @@ options(int argc, char **argv)
 			compat_osll = true;
 		} else if (strncmp(argv[i], "--compat=", 9) == 0) {
 			die("unknown compatibility mode '%s'", argv[i] + 9);
+		} else if (strcmp(argv[i],
+		    "--root-discovery=auto") == 0) {
+			callgraph_set_root_discovery(
+			    CALLGRAPH_ROOT_DISCOVERY_AUTO);
+		} else if (strcmp(argv[i],
+		    "--root-discovery=all-exported") == 0) {
+			callgraph_set_root_discovery(
+			    CALLGRAPH_ROOT_DISCOVERY_ALL_EXPORTED);
+		} else if (strcmp(argv[i],
+		    "--root-discovery=none") == 0) {
+			callgraph_set_root_discovery(
+			    CALLGRAPH_ROOT_DISCOVERY_NONE);
+		} else if (strcmp(argv[i], "--root-discovery") == 0) {
+			die("--root-discovery requires a mode");
+		} else if (strncmp(argv[i], "--root-discovery=", 17) == 0) {
+			die("unknown root discovery mode '%s'", argv[i] + 17);
 		} else if (strcmp(argv[i], "--help") == 0) {
 			usage(stdout);
 			exit(EXIT_SUCCESS);

@@ -4,10 +4,8 @@ function call_ambiguous_target tu=ambiguous-call-caller.c definition=ambiguous-c
   root no-known-direct-caller
   call ambiguous-call-caller.c:30:41 ambiguous-external
 function ambiguous_target tu=ambiguous-call-first.c definition=ambiguous-call-first.c:15:1 linkage=external reachable=yes
-  root external-linkage
   root no-known-direct-caller
 function ambiguous_target tu=ambiguous-call-second.c definition=ambiguous-call-second.c:15:1 linkage=external reachable=yes
-  root external-linkage
   root no-known-direct-caller
 escapes
 pointer activity

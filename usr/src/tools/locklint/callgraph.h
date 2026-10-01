@@ -41,6 +41,12 @@ enum callgraph_declare_result {
 	CALLGRAPH_DECLARE_INCONSISTENT_TYPE
 };
 
+enum callgraph_root_discovery {
+	CALLGRAPH_ROOT_DISCOVERY_AUTO,
+	CALLGRAPH_ROOT_DISCOVERY_ALL_EXPORTED,
+	CALLGRAPH_ROOT_DISCOVERY_NONE
+};
+
 /*
  * The callgraph progresses through four states:
  *
@@ -64,6 +70,13 @@ void callgraph_add(struct translation_unit *, struct entrypoint *);
  */
 void callgraph_record_pointer_evidence(struct translation_unit *,
     struct symbol_list *, bool record_activity);
+
+/*
+ * Select which callgraph evidence may create automatic roots.  Explicit entry
+ * declarations and per-function external-entry properties remain effective
+ * in every mode.
+ */
+void callgraph_set_root_discovery(enum callgraph_root_discovery);
 
 /*
  * Declare an externally named analysis entry with an exact no-competition

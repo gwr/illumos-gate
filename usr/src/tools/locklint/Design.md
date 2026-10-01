@@ -698,13 +698,14 @@ declare --external-entry=false usbvc_start_isoc_polling
 declare --readable-without-lock=true state_type::status global_status
 ```
 
-Here `--external-entry=false` suppresses only the external-linkage reason
-for automatic root discovery.  Other evidence, including the absence of a
-known caller or an unaccounted function-pointer escape, would still make the
-function a root.  That option is implemented; the other option names and
-examples in this subsection are provisional.  Existing positional command
-forms remain unchanged until a compatible migration is designed and
-implemented.  Backslash line continuation is not yet supported.
+Here `--external-entry=false` suppresses only the external-linkage reason when
+`--root-discovery=all-exported` would otherwise select it.  Other enabled
+evidence, including the absence of a known caller or an unaccounted
+function-pointer escape, can still make the function a root.  That declaration
+option is implemented; the other option names and examples in this subsection
+are provisional.  Existing positional command forms remain unchanged until a
+compatible migration is designed and implemented.  Backslash line
+continuation is not yet supported.
 
 ### Implemented forms
 
@@ -746,19 +747,12 @@ external function definitions are entries from outside the analyzed inputs.
 Options must precede the names.  Explicit `false` suppresses only the
 external-linkage automatic-root reason; no-known-direct-caller and
 function-pointer-escape reasons remain effective.  Explicit `true` retains
-the external-linkage root reason even when explicit entry declarations have
-otherwise selected closed external-entry scope.  Repeated equal declarations
-are accepted, contradictory values are errors, and the declaration source is
-retained as callgraph-audit provenance.
+the external-linkage root reason in every root-discovery mode.  Repeated equal
+declarations are accepted, contradictory values are errors, and the
+declaration source is retained as callgraph-audit provenance.
 
-The presence of any explicit entry declaration selects explicit
-external-entry scope for that analysis.  External linkage alone then stops
-being a root reason for functions without an explicit `--external-entry`
-property.  Declared entries and functions with `--external-entry=true` remain
-roots, as do functions with no known direct caller and functions with
-unaccounted pointer escapes.  This distinguishes a module's externally
-invoked entries from external linkage used only to connect its translation
-units without discarding conservative roots discovered from other evidence.
+Explicit entry declarations are additive and never change the analysis-wide
+root-discovery mode.
 
 `declare targets type::member function-name...` declares the possible
 implementations of one function-pointer member for the selected analysis.
@@ -2164,9 +2158,15 @@ return-relative lock roles.
 
 ### Root discovery and explicit entries
 
-Without explicit entry declarations or per-function external-entry
-properties, root classification is conservative and automatic.  A function
-accumulates every applicable root reason:
+The `--root-discovery=mode` command-line option selects automatic root
+discovery independently of command-file declarations:
+
+- `auto`, the default, enables no-known-direct-caller and
+  function-pointer-escape roots;
+- `all-exported` enables the `auto` reasons and external-linkage roots; and
+- `none` disables every automatic root reason.
+
+When enabled, a function accumulates every applicable automatic root reason:
 
 - **external linkage** - code outside the analyzed inputs may call it;
 - **no known direct caller** - no resolved non-self edge accounts for entry;
@@ -2175,19 +2175,16 @@ accumulates every applicable root reason:
 - **function pointer escape** - the function is used as a value outside a
   resolved call.
 
-One or more `declare entry no-competing-threads function-name` commands switch
-the analysis to explicit external-entry scope.  Each selected function gains
-a **declared entry** root reason and an exact zero competition entry
-condition.  External linkage by itself no longer supplies a root reason;
-no-known-direct-caller and function-pointer-escape discovery remain active.
-An external helper reached through a resolved cross-translation-unit call
-therefore receives only its caller-derived contexts unless other evidence
-makes it independently reachable.
+`declare entry no-competing-threads function-name` gives each selected
+function a **declared entry** root reason and an exact zero competition entry
+condition.  Declared entries remain roots in every discovery mode and do not
+change that mode.
 
-`declare --external-entry=false function-name...` provides the same narrow
-external-linkage suppression per function without changing the default scope
-for other external definitions.  An explicit true value makes external
-linkage a root reason for that function even in explicit external-entry scope.
+`declare --external-entry=false function-name...` suppresses automatic
+external-linkage selection for that function under `all-exported`; it has no
+effect on the other enabled reasons.  An explicit true value makes external
+linkage a root reason for that function in every discovery mode.  These
+per-function properties are explicit overrides, not automatic discovery.
 
 Function-pointer escape includes implicit function-to-pointer conversion, not
 only an explicit unary `&`.  Locklint therefore does not rely solely on
@@ -2219,13 +2216,14 @@ are recorded for audit even when they do not reveal an exact target.  A
 pointer copy appears as the independently observed source load and destination
 store.  A direct call does not by itself make its callee's address escape.
 
-`MOD_ADDRESSABLE` remains a conservative fallback for an internal-linkage
-function whose source use is not represented by recorded evidence.  Sparse
-also marks ordinary external definitions addressable, but those definitions
-are already roots and that modifier alone is not reported as separate escape
-provenance.  An internal fallback reason has the function declaration as
-provenance but may lack the position and destination of the operation that
-caused the modifier.
+When automatic discovery is enabled, `MOD_ADDRESSABLE` remains a conservative
+fallback for an internal-linkage function whose source use is not represented
+by recorded evidence.  Sparse also marks ordinary external definitions
+addressable, but external linkage is governed by the selected discovery mode
+and the per-function external-entry property, so that modifier alone is not
+reported as separate escape provenance.  An internal fallback reason has the
+function declaration as provenance but may lack the position and destination
+of the operation that caused the modifier.
 
 Reachability from those roots is propagated through resolved calls.  Static
 functions reached only by resolved calls may defer protected-data
