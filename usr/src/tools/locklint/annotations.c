@@ -2338,6 +2338,7 @@ locklint_data_policy(const struct locklint_access *access,
 	    policy->protection == LOCKLINT_PROTECTION_RWLOCK) {
 		unsigned long lock_base = protector_base;
 		unsigned long access_from_lock;
+		bool address_rebased = false;
 		bool have_lock_base = true;
 
 		if (protector->root == NULL &&
@@ -2358,7 +2359,10 @@ locklint_data_policy(const struct locklint_access *access,
 		    protector->offset;
 		lock->expr = NULL;
 		lock->path = NULL;
-		if (protector->root == NULL &&
+		if (protector->root == NULL && have_lock_base)
+			address_rebased = locklint_rebase_inline_address(
+			    access, lock_base, protector->offset, lock);
+		if (!address_rebased && protector->root == NULL &&
 		    have_lock_base &&
 		    access->address_base != NULL &&
 		    access->offset >= lock_base &&

@@ -2441,6 +2441,28 @@ if [ "$(grep -c 'warning:' identity-aliases-diagnostics.out)" -ne 4 ]; then
 fi
 
 #
+# An aggregate mutex protects its indexed inline storage without conflating
+# different aggregate instances or different elements of an aggregate array.
+#
+run_capture "array owner protection" array-owner-protection.out \
+    "$LOCKLINT" --check-locks array-owner-protection.c
+reject_match "same owner scalar array" \
+    "array-owner-protection.c:55:.*\\[unprotected-access\\]" \
+    array-owner-protection.out
+reject_match "same owner nested array" \
+    "array-owner-protection.c:66:.*\\[unprotected-access\\]" \
+    array-owner-protection.out
+require_match "different array owner" \
+    "array-owner-protection.c:78:.*warning: locklint: protected member 'values' read without holding 'lock' \\[unprotected-access\\]" \
+    array-owner-protection.out
+require_match "different aggregate array element" \
+    "array-owner-protection.c:90:.*warning: locklint: protected member 'items.value' read without holding 'lock' \\[unprotected-access\\]" \
+    array-owner-protection.out
+if [ "$(grep -c 'warning:' array-owner-protection.out)" -ne 2 ]; then
+	fail "array owner protection: expected exactly two warnings"
+fi
+
+#
 # Verify formal-to-actual identity for same and different caller objects.
 #
 run_capture "same formal actual identities" identity-formals-same.out \

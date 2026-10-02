@@ -57,6 +57,8 @@ bool locklint_get_call_argument_access(struct translation_unit *,
     const struct instruction *, unsigned int, struct locklint_access *);
 void locklint_rebase_access(const struct locklint_access *,
     const struct locklint_access *, struct locklint_access *);
+bool locklint_rebase_inline_address(const struct locklint_access *,
+    unsigned long, unsigned long, struct locklint_access *);
 bool locklint_same_access(const struct locklint_access *,
     const struct locklint_access *);
 bool locklint_access_contains(const struct locklint_access *,

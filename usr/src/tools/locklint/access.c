@@ -470,6 +470,92 @@ set_address(struct locklint_access *access, struct pseudo *pseudo,
 	access->address_base_is_symbol = pseudo->type == PSEUDO_SYM;
 }
 
+static bool
+pseudo_is_integer(struct pseudo *pseudo)
+{
+	struct symbol *type;
+
+	if (pseudo == NULL)
+		return (false);
+	if (pseudo->type == PSEUDO_VAL)
+		return (true);
+	if (pseudo->type == PSEUDO_REG && pseudo->def != NULL)
+		type = pseudo->def->type;
+	else if (pseudo->type == PSEUDO_SYM && pseudo->sym != NULL)
+		type = pseudo->sym->ctype.base_type;
+	else
+		return (false);
+	return (type != NULL && !is_ptr_type(type));
+}
+
+/*
+ * Return the pointer operand of lowered pointer arithmetic.  Sparse retains
+ * the pointer type on that operand's result while the subscript term is an
+ * integer.  Bare argument pseudos have no type, so identify them by excluding
+ * the known integer operand.
+ */
+static struct pseudo *
+pointer_add_base(struct pseudo *pseudo)
+{
+	struct instruction *def;
+	bool first_integer;
+	bool second_integer;
+
+	if (pseudo == NULL || pseudo->type != PSEUDO_REG ||
+	    (def = pseudo->def) == NULL || def->opcode != OP_ADD)
+		return (NULL);
+	first_integer = pseudo_is_integer(def->src1);
+	second_integer = pseudo_is_integer(def->src2);
+	if (first_integer == second_integer)
+		return (NULL);
+	return (first_integer ? def->src2 : def->src1);
+}
+
+/*
+ * Rebase an indexed inline access to its containing aggregate.  Follow only
+ * pointer-plus-integer operations and stop when the retained static
+ * displacement reaches the source member offset.  This removes subscripts
+ * within the aggregate while preserving any pointer computation that selected
+ * the aggregate itself.
+ */
+bool
+locklint_rebase_inline_address(const struct locklint_access *access,
+    unsigned long owner_offset, unsigned long target_offset,
+    struct locklint_access *result)
+{
+	struct locklint_access candidate;
+	struct pseudo *prefix;
+	int64_t suffix_offset;
+
+	if (access->address_base == NULL)
+		return (false);
+	candidate = *access;
+	suffix_offset = access->address_offset;
+	for (;;) {
+		if (candidate.address_offset >= 0 &&
+		    (uint64_t)candidate.address_offset == access->offset) {
+			if (owner_offset > INT64_MAX ||
+			    target_offset > INT64_MAX - owner_offset)
+				return (false);
+			result->address_base = candidate.address_base;
+			result->address_offset =
+			    (int64_t)owner_offset + (int64_t)target_offset;
+			result->address_base_is_symbol =
+			    candidate.address_base->type == PSEUDO_SYM;
+			return (true);
+		}
+		prefix = pointer_add_base(candidate.address_base);
+		if (prefix == NULL)
+			return (false);
+		set_address(&candidate, prefix, 0);
+		if (candidate.address_base == NULL)
+			return (false);
+		if (!add_address_offset(&candidate.address_offset,
+		    suffix_offset))
+			return (false);
+	}
+}
+
 bool
 locklint_get_instruction_access(struct translation_unit *tu,
     const struct instruction *insn, struct locklint_access *access)

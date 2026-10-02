@@ -1276,6 +1276,16 @@ the access's offset within that owner with the protector's relative offset.
 The lock consequently stays within the same alias, array element, or recovered
 container.
 
+An indexed inline member adds subscript arithmetic after the address of its
+containing aggregate.  Protector rebasing walks only Sparse
+pointer-plus-integer prefixes until their fixed displacement, including any
+load/store instruction offset, matches the retained source-member offset.
+It then replaces that offset with the protector offset.  This removes
+subscripts within the protected aggregate while preserving pointer arithmetic
+that selected the aggregate itself, such as an outer array index.  The walk
+uses the retained expression only and adds no analysis collection or context
+state.
+
 ### Effect on access checking
 
 An explanatory scheme excludes matching data from ordinary mechanical-lock
@@ -3036,11 +3046,14 @@ multi-translation-unit fixture may use a header stored with the fixture.
 System-header includes selected only by an optional compatibility branch are
 manual comparison plumbing and are not dependencies of the automated suite.
 
-Object-identity characterization uses two complementary fixtures.
+Object-identity characterization uses three complementary fixtures.
 `identity-aliases.c` covers direct aliases, array elements, and constant
 container recovery.  `identity-formals.c` is analyzed both normally and with
 `FORMAL_ALIAS_DIFFERENT`, giving each run one call whose actual arguments are
-either equal or distinct.
+either equal or distinct.  `array-owner-protection.c` verifies that one
+aggregate mutex protects scalar and nested indexed inline storage while
+different aggregate instances and different outer array elements remain
+distinct.
 
 Small fixture macros keep the protected accesses, control flow, and expected
 ownership semantics common between configurations while expanding to the
