@@ -1,0 +1,27 @@
+#
+# Define the analysis policy for the large usbprn-with-USBA integration
+# workload.
+#
+
+merge-instances ehci_state_t ohci_state_t uhci_state_t
+
+declare --external-entry=false ehci_init_ctlr ehci_init_check_status
+declare --external-entry=false uhci_uninit_ctlr
+
+declare targets usba_pipe_async_req::sync_func usba_pipe_sync_close
+declare targets usba_pipe_async_req::sync_func usba_pipe_sync_reset
+declare targets usba_pipe_async_req::sync_func usba_pipe_sync_drain_reqs
+declare targets usba_pipe_async_req::sync_func usba_pipe_sync_stop_intr_polling
+declare targets usba_pipe_async_req::sync_func usba_pipe_sync_stop_isoc_polling
+declare targets usba_pipe_async_req::sync_func usba_sync_clear_feature
+declare targets usba_pipe_async_req::sync_func usba_sync_set_cfg
+declare targets usba_pipe_async_req::sync_func usba_sync_set_alt_if
+
+declare targets ehci_trans_wrapper::tw_handle_qtd \
+    ehci_handle_ctrl_qtd ehci_handle_bulk_qtd ehci_handle_intr_qtd
+declare targets ohci_trans_wrapper::tw_handle_td \
+    ohci_handle_ctrl_td ohci_handle_bulk_td ohci_handle_intr_td \
+    ohci_handle_isoc_td
+declare targets uhci_trans_wrapper::tw_handle_td \
+    uhci_handle_ctrl_td uhci_handle_bulk_td uhci_handle_intr_td \
+    uhci_handle_isoc_td
