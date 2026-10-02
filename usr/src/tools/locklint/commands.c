@@ -15,11 +15,15 @@
  * explicitly rather than appearing to configure an analysis.
  */
 
+#include <ctype.h>
 #include <string.h>
 
 #include "annotations.h"
 #include "callgraph.h"
 #include "command_parse.h"
+#include "lib.h"
+#include "symbol.h"
+#include "type.h"
 
 static int
 not_implemented(const char *command)
@@ -325,4 +329,56 @@ cmd_ignore(int argc, char **argv)
 	(void) argc;
 	(void) argv;
 	return (not_implemented("ignore"));
+}
+
+static bool
+command_identifier_valid(const char *name)
+{
+	const unsigned char *cursor = (const unsigned char *)name;
+
+	if (*cursor != '_' && !isalpha(*cursor))
+		return (false);
+	for (cursor++; *cursor != '\0'; cursor++) {
+		if (*cursor != '_' && !isalnum(*cursor))
+			return (false);
+	}
+	return (true);
+}
+
+int
+cmd_merge_instances(int argc, char **argv)
+{
+	int i;
+
+	if (argc == 0)
+		return (command_parse_error(
+		    "merge-instances requires at least one type name"));
+	for (i = 0; i < argc; i++) {
+		enum type_merge_instances_result result;
+
+		if (!command_identifier_valid(argv[i])) {
+			return (command_parse_error("invalid type name '%s'",
+			    argv[i]));
+		}
+		result = type_merge_instances(built_in_ident(argv[i]));
+		switch (result) {
+		case TYPE_MERGE_INSTANCES_OK:
+			break;
+		case TYPE_MERGE_INSTANCES_UNRESOLVED:
+			return (command_parse_error("unresolved type name '%s'",
+			    argv[i]));
+		case TYPE_MERGE_INSTANCES_NOT_AGGREGATE:
+			return (command_parse_error(
+			    "type name '%s' does not name a structure or union",
+			    argv[i]));
+		case TYPE_MERGE_INSTANCES_INCONSISTENT:
+			return (command_parse_error(
+			    "inconsistently defined type name '%s'", argv[i]));
+		default:
+			return (command_parse_error(
+			    "internal error resolving type name '%s'",
+			    argv[i]));
+		}
+	}
+	return (0);
 }

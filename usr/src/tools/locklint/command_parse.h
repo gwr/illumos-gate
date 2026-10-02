@@ -26,5 +26,6 @@ unsigned long command_parse_line(void);
 int cmd_assert(int, char **);
 int cmd_declare(int, char **);
 int cmd_ignore(int, char **);
+int cmd_merge_instances(int, char **);
 
 #endif /* COMMAND_PARSE_H */

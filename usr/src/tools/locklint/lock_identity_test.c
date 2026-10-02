@@ -27,8 +27,14 @@
 
 #include "access.h"
 #include "lock_identity.h"
+#include "type.h"
 
 static unsigned int failures;
+
+void
+locklint_init_include_path(void)
+{
+}
 
 static void
 check(bool condition, const char *message)
@@ -349,11 +355,13 @@ test_invalid_accesses(void)
 int
 main(void)
 {
+	type_registry_create();
 	test_identity_interning();
 	test_identity_order();
 	test_invalid_identity();
 	test_source_accesses();
 	test_lowered_accesses();
 	test_invalid_accesses();
+	type_registry_destroy();
 	return (failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE);
 }

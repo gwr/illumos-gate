@@ -660,10 +660,10 @@ handler attempts semantic name resolution.  All command files are read before
 whole-program checking begins; commands cannot start a partial analysis or
 change analysis phases.
 
-The command parser recognizes `declare`, `assert`, and `ignore`, strips `#`
-comments, and passes the remaining whitespace-separated words to one
-`cmd_*()` handler per command.  Empty and comment-only command files are
-valid.
+The command parser recognizes `declare`, `assert`, `ignore`, and
+`merge-instances`, strips `#` comments, and passes the remaining
+whitespace-separated words to one `cmd_*()` handler per command.  Empty and
+comment-only command files are valid.
 
 ### Command-language direction
 
@@ -708,6 +708,30 @@ compatible migration is designed and implemented.  Backslash line
 continuation is not yet supported.
 
 ### Implemented forms
+
+`merge-instances type-name...` gives each named complete structure or union
+one representative analysis instance.  Every per-instance locking contour
+whose lock owner has that type is merged into one representative locking
+contour.  Member-lock identities use the canonical member offset within the
+representative instance, so accesses through different runtime objects of the
+selected type compare as the same lock.
+
+This is an explicit compatibility policy analogous to the OSLL `one
+typename` command.  It deliberately prevents locklint from distinguishing
+different runtime instances of the selected type: holding or reacquiring a
+member lock through instance A is treated the same as doing so through
+instance B.  Unnamed types and types not listed by the command retain normal
+per-instance identity.
+
+Type names are resolved after all translation units have registered their
+types.  All layout-equivalent definitions with the same name receive the
+same representative token; inconsistent same-named definitions are rejected.
+Repeated declarations are harmless.  `--dump-types` marks every selected
+canonical type name with `merged-instances=true`.
+
+Representative tokens are stored in the canonical type registry and selected
+when an access is converted to a lock-identity key.  They add no semantic
+state, context component, or per-access lookup collection.
 
 `declare readable data-name` applies data policy from outside the source.  It is
 equivalent to `DATA_READABLE_WITHOUT_LOCK(data-name)`: matching reads do not

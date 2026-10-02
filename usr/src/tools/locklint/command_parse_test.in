@@ -4,3 +4,4 @@
 assert a1 a2
 declare d1 d2
 ignore i1 i2
+merge-instances m1 m2

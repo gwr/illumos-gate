@@ -132,7 +132,11 @@ CMD_PARSE_TEST_OBJS = command_parse.o command_parse_test.o
 command_parse_test: $(CMD_PARSE_TEST_OBJS)
 	$(LINK.c) -o $@ $(CMD_PARSE_TEST_OBJS) $(LDLIBS)
 
-LOCK_ID_TEST_OBJS = lock_identity_test.o lock_identity.o avl.o
+TYPE_SUPPORT_OBJS = type.o diagnostics.o statistics.o avl.o \
+	$(SPARSE_OBJS) hashtable.o
+
+LOCK_ID_TEST_OBJS = lock_identity_test.o lock_identity.o \
+	$(TYPE_SUPPORT_OBJS)
 lock_identity_test: $(LOCK_ID_TEST_OBJS)
 	$(LINK.c) -o $@ $(LOCK_ID_TEST_OBJS) $(LDLIBS)
 
@@ -157,12 +161,11 @@ PROV_TEST_OBJS = provenance_test.o provenance.o context.o statistics.o avl.o
 provenance_test: $(PROV_TEST_OBJS)
 	$(LINK.c) -o $@ $(PROV_TEST_OBJS) $(LDLIBS)
 
-TYPE_TEST_OBJS = type_test.o type.o diagnostics.o statistics.o avl.o \
-	$(SPARSE_OBJS) hashtable.o
+TYPE_TEST_OBJS = type_test.o $(TYPE_SUPPORT_OBJS)
 type_test: $(TYPE_TEST_OBJS)
 	$(LINK.c) -o $@ $(TYPE_TEST_OBJS) $(LDLIBS)
 
-test: $(PROG) FRC
+test: $(PROG) unittest FRC
 	(cd tests && ./RunTests.sh)
 
 UNITTESTS = command_parse_test lock_identity_test binding_test context_test \

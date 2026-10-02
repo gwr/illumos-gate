@@ -49,6 +49,7 @@ struct ll_type {
 	size_t argument_count;
 	struct type_member *members;
 	size_t member_count;
+	const void *merged_instance;
 	avl_node_t by_origin;
 	avl_node_t by_shape;
 };
@@ -1285,6 +1286,72 @@ type_name_visit_types(struct ident *name, type_visit_f callback, void *data)
 	}
 }
 
+struct merge_instances_data {
+	const struct ll_type *first;
+	const void *identity;
+	enum type_merge_instances_result result;
+};
+
+/*
+ * Validate every retained definition before changing any of them.  Equivalent
+ * definitions share one opaque token, so all translation units use the same
+ * representative instance.
+ */
+static bool
+type_merge_instances_check(const struct ll_type *type, void *data_arg)
+{
+	struct merge_instances_data *data = data_arg;
+
+	if (type_kind(type) != SYM_STRUCT && type_kind(type) != SYM_UNION) {
+		data->result = TYPE_MERGE_INSTANCES_NOT_AGGREGATE;
+		return (false);
+	}
+	if (data->first == NULL) {
+		data->first = type;
+		data->identity = type->merged_instance != NULL ?
+		    type->merged_instance : type;
+		return (true);
+	}
+	if (!type_layout_equal(data->first, type)) {
+		data->result = TYPE_MERGE_INSTANCES_INCONSISTENT;
+		return (false);
+	}
+	if (data->identity == data->first && type->merged_instance != NULL)
+		data->identity = type->merged_instance;
+	return (true);
+}
+
+static bool
+type_merge_instances_apply(const struct ll_type *type, void *data_arg)
+{
+	const struct merge_instances_data *data = data_arg;
+
+	((struct ll_type *)type)->merged_instance = data->identity;
+	return (true);
+}
+
+enum type_merge_instances_result
+type_merge_instances(struct ident *name)
+{
+	struct merge_instances_data data = {
+		.result = TYPE_MERGE_INSTANCES_OK
+	};
+
+	type_name_visit_types(name, type_merge_instances_check, &data);
+	if (data.result != TYPE_MERGE_INSTANCES_OK)
+		return (data.result);
+	if (data.first == NULL)
+		return (TYPE_MERGE_INSTANCES_UNRESOLVED);
+	type_name_visit_types(name, type_merge_instances_apply, &data);
+	return (TYPE_MERGE_INSTANCES_OK);
+}
+
+const void *
+type_merged_instance(const struct ll_type *type)
+{
+	return (type != NULL ? type->merged_instance : NULL);
+}
+
 const struct ll_type *
 type_lookup_exact(struct symbol *symbol)
 {
@@ -1367,9 +1434,11 @@ type_registry_show(FILE *stream)
 		    "union" : "enum";
 
 		(void) fprintf(stream,
-		    "type %s kind=%s source=%s:%u:%u instances=%zu\n",
+		    "type %s kind=%s source=%s:%u:%u instances=%zu%s\n",
 		    show_ident(entry->name), kind, stream_name(pos.stream),
-		    pos.line, pos.pos, entry->type->instance_count);
+		    pos.line, pos.pos, entry->type->instance_count,
+		    entry->type->merged_instance != NULL ?
+		    " merged-instances=true" : "");
 	}
 	(void) fprintf(stream, "types %zu\n",
 	    avl_numnodes(&type_name_to_ll_type_index));

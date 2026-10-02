@@ -87,6 +87,8 @@ dispatch_command(const char *command, int argc, char **argv)
 		return (cmd_declare(argc, argv));
 	if (strcmp(command, "ignore") == 0)
 		return (cmd_ignore(argc, argv));
+	if (strcmp(command, "merge-instances") == 0)
+		return (cmd_merge_instances(argc, argv));
 
 	return (command_parse_error("unknown command '%s'", command));
 }

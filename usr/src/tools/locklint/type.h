@@ -30,6 +30,13 @@ struct type_member {
 	struct ll_type *type;
 };
 
+enum type_merge_instances_result {
+	TYPE_MERGE_INSTANCES_OK,
+	TYPE_MERGE_INSTANCES_UNRESOLVED,
+	TYPE_MERGE_INSTANCES_NOT_AGGREGATE,
+	TYPE_MERGE_INSTANCES_INCONSISTENT
+};
+
 typedef bool (*type_visit_f)(const struct ll_type *, void *);
 
 void type_registry_create(void);
@@ -48,6 +55,8 @@ bool type_registry_consistent(void);
 void type_registry_report_errors(void);
 bool type_layout_equal(const struct ll_type *, const struct ll_type *);
 void type_name_visit_types(struct ident *, type_visit_f, void *);
+enum type_merge_instances_result type_merge_instances(struct ident *);
+const void *type_merged_instance(const struct ll_type *);
 void type_registry_show(FILE *);
 
 #endif /* TYPE_H */

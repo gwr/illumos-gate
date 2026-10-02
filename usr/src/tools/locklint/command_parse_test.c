@@ -50,6 +50,12 @@ cmd_ignore(int argc, char **argv)
 }
 
 int
+cmd_merge_instances(int argc, char **argv)
+{
+	return (print_command("merge-instances", argc, argv));
+}
+
+int
 main(int argc, char **argv)
 {
 	if (argc != 2) {

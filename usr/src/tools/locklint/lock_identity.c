@@ -27,6 +27,8 @@
 #include "access.h"
 #include "avl.h"
 #include "lock_identity.h"
+#include "symbol.h"
+#include "type.h"
 
 static int
 compare_lock_identity(const void *left_arg, const void *right_arg)
@@ -111,12 +113,30 @@ lock_identity_key_from_access(const struct locklint_access *access,
     struct lock_identity_key *result_key,
     enum lock_analysis_object_type *result_type)
 {
+	const struct type_member *member;
+	const struct ll_type *owner;
+	const void *merged_instance;
 	struct lock_identity_key key;
 	enum lock_analysis_object_type object_type;
 
 	if (access == NULL || result_key == NULL || result_type == NULL)
 		return (EINVAL);
-	if (access->address_base != NULL) {
+	member = type_member_lookup_exact(access->member);
+	owner = type_member_owner(member);
+	if (owner == NULL && access->type != NULL) {
+		owner = type_lookup_exact(
+		    type_compound_resolve(access->type));
+	}
+	merged_instance = type_merged_instance(owner);
+	if (merged_instance != NULL) {
+		if (member != NULL &&
+		    member->representative->offset > INT64_MAX)
+			return (EOVERFLOW);
+		key.analysis_object = merged_instance;
+		key.target_offset = member != NULL ?
+		    (int64_t)member->representative->offset : 0;
+		object_type = LOCK_ANALYSIS_OBJECT_OBJECT_IDENTITY;
+	} else if (access->address_base != NULL) {
 		if (!access->address_base_is_symbol) {
 			key.analysis_object = access->address_base;
 			key.target_offset = access->address_offset;

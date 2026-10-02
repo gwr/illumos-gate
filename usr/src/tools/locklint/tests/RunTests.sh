@@ -788,6 +788,86 @@ require_match "missing root discovery" \
     "root-discovery requires a mode" root-discovery-missing.out
 
 #
+# Verify the OSLL-compatible representative-instance policy.  Without the
+# command, distinct controller instances remain distinct and cross-object
+# protection cannot select one.  With it, the selected type has one
+# representative object and member-lock identity.
+#
+run_capture "per-instance identities" merge-instances-before.out \
+    "$LOCKLINT" --check-locks commands/merge-instances.c
+require_match "per-instance cross-object protection" \
+    "merge-instances.c:.*protected member 'value' modified without holding 'lock'" \
+    merge-instances-before.out
+reject_match "per-instance distinct locks" \
+    "lock 'lock'.*already held" \
+    merge-instances-before.out
+
+run_capture "merged representative instance" merge-instances-after.out \
+    "$LOCKLINT" --check-locks --cf commands/merge-instances.cf \
+    commands/merge-instances.c
+reject_match "merged cross-object protection" \
+    "merge-instances.c:.*protected member 'value'" \
+    merge-instances-after.out
+require_match "merged member locks" \
+    "merge-instances.c:.*warning: locklint: lock 'lock' is already held" \
+    merge-instances-after.out
+reject_match "unrelated instances remain distinct" \
+    "lock 'other_lock'.*already held" merge-instances-after.out
+
+run_capture "merged representative audit" merge-instances-types.out \
+    "$LOCKLINT" --dump-types --cf commands/merge-instances.cf \
+    commands/merge-instances.c
+require_match "merged representative audit" \
+    "^type merge_instance_controller .* merged-instances=true$" \
+    merge-instances-types.out
+reject_match "unrelated type audit" \
+    "^type merge_instance_unrelated .* merged-instances=true$" \
+    merge-instances-types.out
+
+run_failure "merge instances missing type" merge-instances-empty.out \
+    "$LOCKLINT" --cf commands/merge-instances-empty.cf \
+    commands/merge-instances.c
+require_match "merge instances missing type" \
+    "merge-instances requires at least one type name" \
+    merge-instances-empty.out
+
+run_failure "merge instances invalid type" merge-instances-invalid.out \
+    "$LOCKLINT" --cf commands/merge-instances-invalid.cf \
+    commands/merge-instances.c
+require_match "merge instances invalid type" \
+    "invalid type name 'bad-name'" merge-instances-invalid.out
+
+run_failure "merge instances unresolved type" \
+    merge-instances-unresolved.out "$LOCKLINT" \
+    --cf commands/merge-instances-unresolved.cf \
+    commands/merge-instances.c
+require_match "merge instances unresolved type" \
+    "unresolved type name 'missing_merge_instance_type'" \
+    merge-instances-unresolved.out
+
+run_failure "merge instances scalar type" merge-instances-scalar.out \
+    "$LOCKLINT" --cf commands/merge-instances-scalar.cf \
+    commands/merge-instances.c
+require_match "merge instances scalar type" \
+    "unresolved type name 'merge_instance_scalar_t'" \
+    merge-instances-scalar.out
+
+run_failure "merge instances enum type" merge-instances-enum.out \
+    "$LOCKLINT" --cf commands/merge-instances-enum.cf \
+    commands/merge-instances.c
+require_match "merge instances enum type" \
+    "unresolved type name 'merge_instance_enum'" \
+    merge-instances-enum.out
+
+run_failure "merge instances inconsistent type" \
+    merge-instances-inconsistent.out "$LOCKLINT" \
+    --cf commands/merge-instances-inconsistent.cf \
+    type-name-first.c type-name-second-different.c
+require_match "merge instances inconsistent type" \
+    "inconsistently defined type name 'repeated_name'" \
+    merge-instances-inconsistent.out
+
+#
 # Verify the options-first declaration grammar and the narrow suppression of
 # external-linkage automatic roots.  Other independent root reasons remain.
 #
