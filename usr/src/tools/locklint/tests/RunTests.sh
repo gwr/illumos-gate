@@ -1091,6 +1091,118 @@ then
 	fail "explicitly dereferenced command targets: expected two warnings"
 fi
 
+#
+# An exact assignment to a member with a complete target declaration is
+# accounted for by that declaration.  An unrelated escape of the same
+# function must still retain the unknown-caller root.
+#
+run_capture "declared member assignment escape" \
+    command-targets-declared-assignment.out \
+    "$LOCKLINT" -DCOMMAND_TARGETS_ASSIGN_DECLARED=1 --dump-callgraph \
+    --cf commands/targets-first.cf commands/targets.c
+if awk '
+    /^function command_target_first / { target = 1; next }
+    /^function / { target = 0 }
+    target && /^  root function-pointer-escape/ { found = 1 }
+    END { exit found ? 0 : 1 }
+' command-targets-declared-assignment.out; then
+	fail "declared member assignment retained pointer-escape root"
+fi
+require_match "declared member assignment accounting" \
+    "^  escape uses exact=1 member-assignments=1 comparisons=0 accounted=1$" \
+    command-targets-declared-assignment.out
+
+run_capture "declared member unrelated escape" \
+    command-targets-unrelated-assignment.out \
+    "$LOCKLINT" -DCOMMAND_TARGETS_ASSIGN_DECLARED=1 \
+    -DCOMMAND_TARGETS_ASSIGN_UNRELATED=1 --dump-callgraph \
+    --cf commands/targets-first.cf commands/targets.c
+if ! awk '
+    /^function command_target_first / { target = 1; next }
+    /^function / { target = 0 }
+    target && /^  root function-pointer-escape/ { found = 1 }
+    END { exit found ? 0 : 1 }
+' command-targets-unrelated-assignment.out; then
+	fail "unrelated assignment lost pointer-escape root"
+fi
+require_match "unrelated assignment accounting" \
+    "^  escape uses exact=2 member-assignments=1 comparisons=0 accounted=1$" \
+    command-targets-unrelated-assignment.out
+
+run_capture "declared member copied escape" \
+    command-targets-copied-assignment.out \
+    "$LOCKLINT" -DCOMMAND_TARGETS_ASSIGN_DECLARED=1 \
+    -DCOMMAND_TARGETS_COPY_DECLARED=1 --dump-callgraph \
+    --cf commands/targets-first.cf commands/targets.c
+if ! awk '
+    /^function command_target_first / { target = 1; next }
+    /^function / { target = 0 }
+    target && /^  root function-pointer-escape/ { found = 1 }
+    END { exit found ? 0 : 1 }
+' command-targets-copied-assignment.out; then
+	fail "copied declared member lost pointer-escape root"
+fi
+
+run_capture "declared member target comparison" \
+    command-targets-target-comparison.out \
+    "$LOCKLINT" -DCOMMAND_TARGETS_COMPARE_TARGET=1 --dump-callgraph \
+    --cf commands/targets-first.cf commands/targets.c
+if awk '
+    /^function command_target_first / { target = 1; next }
+    /^function / { target = 0 }
+    target && /^  root function-pointer-escape/ { found = 1 }
+    END { exit found ? 0 : 1 }
+' command-targets-target-comparison.out; then
+	fail "function address comparison retained pointer-escape root"
+fi
+require_match "function address comparison accounting" \
+    "^  escape uses exact=1 member-assignments=0 comparisons=1 accounted=1$" \
+    command-targets-target-comparison.out
+
+run_capture "multiple declared member assignments" \
+    command-targets-declared-assignments.out \
+    "$LOCKLINT" -DCOMMAND_TARGETS_BOTH=1 \
+    -DCOMMAND_TARGETS_ASSIGN_DECLARED_SECOND=1 --dump-callgraph \
+    --cf commands/targets-both.cf commands/targets.c
+if awk '
+    /^function command_target_(first|second) / { target = 1; next }
+    /^function / { target = 0 }
+    target && /^  root function-pointer-escape/ { found = 1 }
+    END { exit found ? 0 : 1 }
+' command-targets-declared-assignments.out; then
+	fail "multiple declared member assignments retained pointer-escape root"
+fi
+if [ "$(grep -c '^  escape uses exact=1 member-assignments=1 comparisons=0 accounted=1$' \
+    command-targets-declared-assignments.out)" -ne 2 ]; then
+	fail "multiple declared member assignments were not all accounted"
+fi
+
+run_capture "undeclared member assignment" \
+    command-targets-undeclared-member.out \
+    "$LOCKLINT" -DCOMMAND_TARGETS_ASSIGN_UNDECLARED_MEMBER=1 \
+    --dump-callgraph --cf commands/targets-first.cf commands/targets.c
+if ! awk '
+    /^function command_target_first / { target = 1; next }
+    /^function / { target = 0 }
+    target && /^  root function-pointer-escape/ { found = 1 }
+    END { exit found ? 0 : 1 }
+' command-targets-undeclared-member.out; then
+	fail "undeclared member assignment lost pointer-escape root"
+fi
+
+run_capture "undeclared target assignment" \
+    command-targets-undeclared-target.out \
+    "$LOCKLINT" -DCOMMAND_TARGETS_ASSIGN_UNDECLARED_TARGET=1 \
+    --dump-callgraph --cf commands/targets-first.cf commands/targets.c
+if ! awk '
+    /^function command_target_second / { target = 1; next }
+    /^function / { target = 0 }
+    target && /^  root function-pointer-escape/ { found = 1 }
+    END { exit found ? 0 : 1 }
+' command-targets-undeclared-target.out; then
+	fail "undeclared target assignment lost pointer-escape root"
+fi
+
 run_capture "command target return effects" command-targets-effects.out \
     "$LOCKLINT" -DCOMMAND_TARGETS_DIFFERENT_EFFECTS=1 \
     --cf commands/targets-effects.cf commands/targets.c

@@ -2104,6 +2104,25 @@ selects the function to call; it does not cross into separately protected data
 storage.  Focused declared-target coverage requires both spellings to resolve
 the same multi-target set and contribute the same target effects.
 
+An exact assignment of a declared target to that member does not by itself
+make the target an unknown-caller root.  The assignment is accounted for only
+when every retained load of the member is confined to a direct call or an
+equality comparison.  Copying the member value, passing it as an argument,
+returning it, or otherwise carrying it beyond calls resolved by the
+declaration keeps the target's function-pointer-escape root.  An assignment to
+another member or of a function outside the declared set is likewise
+unaccounted.
+
+Function-address equality and inequality comparisons do not escape the
+address because they cannot create a future call.  Callgraph construction
+classifies direct member stores, function operands of comparisons, and the
+uses of each declared-member load from existing linearized instructions.
+Per-function source-escape and accounted-use counts must agree; any mismatch
+retains the conservative root.  The callgraph dump reports those counts for
+audit and focused tests cover declared assignments, multiple targets,
+unrelated direct escapes, copied member values, comparisons, undeclared
+members, and targets outside a declared set.
+
 Exact source-derived targets take precedence over declared sets.  A
 declaration for one member does not affect other members of the same
 aggregate.  The declared set supplies concrete bodies, argument binding,
@@ -3115,8 +3134,11 @@ The current implementation relies on these invariants:
     permits the store.
 18. Every analysis root retains all independently established reasons.
 19. A function used as a value outside a resolved call is a conservative root,
-    except for a closed static initializer escape accounted for by its exact
-    resolved indirect edges.
+    except for a closed static initializer accounted for by exact indirect
+    edges, an equality comparison that cannot create a future call, or an
+    exact assignment to a declared target member whose loads remain confined
+    to direct declared calls and comparisons.  Any unaccounted use preserves
+    the root.
 20. An exact indirect target matches translation unit, aggregate object,
     member, and offset; unsupported, unresolved, and ambiguous calls remain
     visible in the call-graph audit and do not create invented call edges.

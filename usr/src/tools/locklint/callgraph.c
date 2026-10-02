@@ -84,6 +84,10 @@ struct function_record {
 	const struct call_target_set *singleton_targets;
 	bool has_nonself_caller;
 	bool has_exact_escape;
+	size_t exact_escape_count;
+	size_t declared_member_escape_count;
+	size_t comparison_escape_count;
+	size_t accounted_escape_count;
 	bool internal_linkage;
 	bool inline_implementation;
 	bool identity_lower_bound;
@@ -144,6 +148,7 @@ struct declared_member_targets {
 	const char *contract_file;
 	unsigned long contract_line;
 	bool no_lock_effects;
+	bool unconfined_load;
 	avl_node_t by_member;
 };
 
@@ -1579,10 +1584,198 @@ resolve_function_symbol(struct translation_unit *tu, struct symbol *symbol,
 	return (function != NULL ? &function->info : NULL);
 }
 
+static struct pseudo *
+strip_pointer_casts(struct pseudo *value)
+{
+	while (value != NULL && value->type == PSEUDO_REG &&
+	    value->def != NULL && value->def->opcode == OP_PTRCAST)
+		value = value->def->src;
+	return (value);
+}
+
+static void
+account_function_comparison_operand(struct function_record *function,
+    struct pseudo *value)
+{
+	struct function_info *target;
+	bool ambiguous;
+
+	value = strip_pointer_casts(value);
+	if (value == NULL || value->type != PSEUDO_SYM ||
+	    !function_symbol(value->sym))
+		return;
+	target = resolve_function_symbol(function->info.tu, value->sym, false,
+	    &ambiguous);
+	if (target != NULL)
+		function_record(target)->comparison_escape_count++;
+}
+
+static bool
+function_pointer_value_confined(struct function_record *function,
+    const struct type_member *member, struct pseudo *value,
+    unsigned int depth)
+{
+	struct pseudo_user *user;
+
+	if (value == NULL || depth > 32)
+		return (false);
+	if (!has_use_list(value))
+		return (true);
+	FOR_EACH_PTR(value->users, user) {
+		struct instruction *insn = user->insn;
+
+		if (insn->bb == NULL)
+			continue;
+		if (insn->opcode == OP_PTRCAST && insn->src == value) {
+			if (!function_pointer_value_confined(function, member,
+			    insn->target, depth + 1))
+				return (false);
+			continue;
+		}
+		if ((insn->opcode == OP_SET_EQ ||
+		    insn->opcode == OP_SET_NE) &&
+		    (insn->src1 == value || insn->src2 == value))
+			continue;
+		if (insn->opcode == OP_CALL && insn->func == value &&
+		    insn->call_expr != NULL) {
+			struct locklint_access access;
+
+			if (locklint_get_access(function->info.tu,
+			    insn->call_expr->fn, &access) &&
+			    access.member != NULL &&
+			    type_member_lookup_exact(access.member) == member)
+				continue;
+		}
+		return (false);
+	} END_FOR_EACH_PTR(user);
+	return (true);
+}
+
+/*
+ * A declared member remains confined when every retained load is consumed by
+ * a direct call through that value or by an equality comparison.  Any copy,
+ * argument, return, or other use may carry the target beyond calls resolved by
+ * the member declaration, so assignments to that member must remain escapes.
+ */
+static void
+classify_declared_member_loads(void)
+{
+	struct function_record *function;
+
+	for (function = functions; function != NULL; function = function->next) {
+		struct basic_block *bb;
+
+		FOR_EACH_PTR(function->info.ep->bbs, bb) {
+			struct instruction *insn;
+
+			FOR_EACH_PTR(bb->insns, insn) {
+				struct declared_member_targets *declaration;
+				struct locklint_access access;
+				const struct type_member *member;
+
+				if (insn->bb == NULL || insn->opcode != OP_LOAD ||
+				    !locklint_get_instruction_access(
+				    function->info.tu, insn, &access) ||
+				    access.member == NULL)
+					continue;
+				member = type_member_lookup_exact(access.member);
+				if (member == NULL)
+					continue;
+				declaration = declared_targets_for_member(member,
+				    false);
+				if (declaration != NULL &&
+				    !function_pointer_value_confined(function,
+				    member, insn->target, 0))
+					declaration->unconfined_load = true;
+			} END_FOR_EACH_PTR(insn);
+		} END_FOR_EACH_PTR(bb);
+	}
+}
+
+/*
+ * Classify exact function-address uses that cannot create a future unknown
+ * call.  Direct stores are accounted only by a complete declaration for the
+ * destination member.  Equality comparisons merely inspect an address and
+ * are intrinsically non-escaping.
+ */
+static void
+account_function_address_uses(void)
+{
+	struct function_record *function;
+
+	for (function = functions; function != NULL; function = function->next) {
+		struct basic_block *bb;
+
+		FOR_EACH_PTR(function->info.ep->bbs, bb) {
+			struct instruction *insn;
+
+			FOR_EACH_PTR(bb->insns, insn) {
+				struct declared_member_targets *declaration;
+				struct function_info *target;
+				struct locklint_access access;
+				const struct type_member *member;
+				struct pseudo *value;
+				bool ambiguous;
+				size_t index;
+
+				if (insn->bb == NULL)
+					continue;
+				if (insn->opcode == OP_SET_EQ ||
+				    insn->opcode == OP_SET_NE) {
+					account_function_comparison_operand(
+					    function, insn->src1);
+					account_function_comparison_operand(
+					    function, insn->src2);
+					continue;
+				}
+				if (insn->opcode != OP_STORE ||
+				    !locklint_get_instruction_access(
+				    function->info.tu, insn, &access) ||
+				    access.member == NULL)
+					continue;
+				value = strip_pointer_casts(insn->target);
+				if (value == NULL || value->type != PSEUDO_SYM ||
+				    !function_symbol(value->sym))
+					continue;
+				member = type_member_lookup_exact(access.member);
+				if (member == NULL)
+					continue;
+				declaration = declared_targets_for_member(member,
+				    false);
+				if (declaration == NULL ||
+				    declaration->targets == NULL ||
+				    declaration->unconfined_load)
+					continue;
+				target = resolve_function_symbol(function->info.tu,
+				    value->sym, false, &ambiguous);
+				if (target == NULL)
+					continue;
+				for (index = 0;
+				    index < declaration->targets->count; index++) {
+					if (declaration->targets->targets[index] !=
+					    target)
+						continue;
+					function_record(target)->
+					    declared_member_escape_count++;
+					break;
+				}
+			} END_FOR_EACH_PTR(insn);
+		} END_FOR_EACH_PTR(bb);
+	}
+}
+
+/*
+ * Preserve an unknown-caller root unless every exact non-initializer escape
+ * is either a non-escaping comparison or an assignment to a confined member
+ * whose complete declaration contains the target.  If the independent
+ * evidence counts disagree, account for none: retaining a root is safer than
+ * hiding an unrelated escape.
+ */
 static void
 resolve_function_escapes(void)
 {
 	struct function_escape *escape;
+	struct function_record *function;
 
 	for (escape = function_escapes; escape != NULL;
 	    escape = escape->next) {
@@ -1595,12 +1788,27 @@ resolve_function_escapes(void)
 			continue;
 		target = function_record(escape->target);
 		target->has_exact_escape = true;
-		if (!escape->closed_initializer &&
-		    root_discovery != CALLGRAPH_ROOT_DISCOVERY_NONE) {
-			escape->target->root_reasons |=
+		if (!escape->closed_initializer)
+			target->exact_escape_count++;
+		avl_add(&function_escapes_by_target, escape);
+	}
+	if (root_discovery == CALLGRAPH_ROOT_DISCOVERY_NONE)
+		return;
+	for (function = functions; function != NULL; function = function->next) {
+		if (function->declared_member_escape_count <=
+		    function->exact_escape_count &&
+		    function->comparison_escape_count <=
+		    function->exact_escape_count -
+		    function->declared_member_escape_count) {
+			function->accounted_escape_count =
+			    function->declared_member_escape_count +
+			    function->comparison_escape_count;
+		}
+		if (function->exact_escape_count >
+		    function->accounted_escape_count) {
+			function->info.root_reasons |=
 			    FUNCTION_ROOT_POINTER_ESCAPE;
 		}
-		avl_add(&function_escapes_by_target, escape);
 	}
 }
 
@@ -2102,6 +2310,8 @@ callgraph_resolve(void)
 	build_singleton_target_sets();
 	resolve_indirect_targets();
 	build_declared_target_sets();
+	classify_declared_member_loads();
+	account_function_address_uses();
 	resolve_function_escapes();
 	collect_unanalyzed_callbacks();
 	build_call_target_cache();
@@ -2239,7 +2449,6 @@ dump_function_calls(FILE *stream, struct function_info *function)
 				    locklint_translation_unit_file(target->tu));
 			}
 			(void) fputc('\n', stream);
-			continue;
 		}
 		if (entry->direct_ambiguous) {
 			(void) fprintf(stream, "ambiguous-external\n");
@@ -2306,6 +2515,15 @@ callgraph_dump(FILE *stream)
 				    definition->pos.line, definition->pos.pos);
 			}
 			(void) fprintf(stream, "\n");
+		}
+		if (function->accounted_escape_count != 0) {
+			(void) fprintf(stream,
+			    "  escape uses exact=%zu member-assignments=%zu "
+			    "comparisons=%zu accounted=%zu\n",
+			    function->exact_escape_count,
+			    function->declared_member_escape_count,
+			    function->comparison_escape_count,
+			    function->accounted_escape_count);
 		}
 		if ((function->info.root_reasons &
 		    FUNCTION_ROOT_DECLARED_ENTRY) != 0) {

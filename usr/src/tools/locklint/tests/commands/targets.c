@@ -47,6 +47,13 @@ struct command_target_ops {
 	command_target_t finish;
 };
 
+#if COMMAND_TARGETS_ASSIGN_UNRELATED || COMMAND_TARGETS_COPY_DECLARED
+static command_target_t command_target_unrelated;
+#endif
+#if COMMAND_TARGETS_COMPARE_TARGET
+static int command_target_comparison;
+#endif
+
 #if COMMAND_TARGETS_SOURCE_CONTRACT
 _NOTE(DECLARE_CONTRACT(command_target_ops::finish, NO_LOCK_EFFECTS))
 #endif
@@ -77,7 +84,9 @@ command_target_first(struct command_target_state *state)
 #endif
 }
 
-#if COMMAND_TARGETS_BOTH || COMMAND_TARGETS_DIFFERENT_EFFECTS
+#if COMMAND_TARGETS_BOTH || COMMAND_TARGETS_DIFFERENT_EFFECTS || \
+    COMMAND_TARGETS_ASSIGN_DECLARED_SECOND || \
+    COMMAND_TARGETS_ASSIGN_UNDECLARED_TARGET
 static void
 command_target_second(struct command_target_state *state)
 {
@@ -100,6 +109,28 @@ command_target_incompatible(int value)
 	(void) value;
 }
 
+#if COMMAND_TARGETS_ASSIGN_DECLARED_SECOND
+static void
+command_targets_install_first(struct command_target_ops *ops)
+{
+	ops->start = command_target_first;
+}
+
+static void
+command_targets_install_second(struct command_target_ops *ops)
+{
+	ops->start = command_target_second;
+}
+#endif
+
+#if COMMAND_TARGETS_COPY_DECLARED
+static void
+command_targets_copy(struct command_target_ops *ops)
+{
+	command_target_unrelated = ops->start;
+}
+#endif
+
 static void
 #if COMMAND_TARGETS_DIFFERENT_EFFECTS
 command_targets_effects(struct command_target_ops *ops,
@@ -117,6 +148,21 @@ command_targets_effects(struct command_target_ops *ops,
 command_targets_start(struct command_target_ops *ops,
     struct command_target_state *state)
 {
+#if COMMAND_TARGETS_ASSIGN_DECLARED
+	ops->start = command_target_first;
+#endif
+#if COMMAND_TARGETS_ASSIGN_UNDECLARED_MEMBER
+	ops->finish = command_target_first;
+#endif
+#if COMMAND_TARGETS_ASSIGN_UNDECLARED_TARGET
+	ops->start = command_target_second;
+#endif
+#if COMMAND_TARGETS_ASSIGN_UNRELATED
+	command_target_unrelated = command_target_first;
+#endif
+#if COMMAND_TARGETS_COMPARE_TARGET
+	command_target_comparison = ops->start != command_target_first;
+#endif
 #if COMMAND_TARGETS_EXPLICIT_DEREFERENCE
 	(*ops->start)(state);
 #else
