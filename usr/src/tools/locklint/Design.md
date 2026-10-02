@@ -757,7 +757,9 @@ match; distinct source declarations and TU-local protectors remain separate.
 Retained data references enter the same ordered policy index as source
 annotations.
 Each command declaration retains its command-file pathname and line number as
-provenance.
+provenance.  A backslash immediately followed by newline joins physical
+command-file lines; diagnostics and retained provenance use the first physical
+line of the resulting command.
 
 `declare entry no-competing-threads function-name` declares a unique
 external function definition as an analysis entry whose competition depth is
@@ -828,9 +830,8 @@ no-lock contract.
 The remaining `declare`, `assert`, and `ignore` forms continue to fail
 explicitly until their semantics are designed.
 
-`command_parse_test` is an independent parser jig whose handlers print their
-arguments.  It is built and run with `make test_cmd`; it is not part of the
-locklint unit-test runner.
+`command_parse_test` is an independent, self-validating parser jig whose
+handlers check the arguments and source line received from the parser.
 
 ## Sparse integration
 
@@ -967,6 +968,15 @@ by locklint:
 The load/store expression permits reconstruction of the source object and
 member path.  The call expression permits inspection of source arguments and
 mapping from callee formals to caller actuals.
+
+Locklint checks the memory accesses represented by retained `OP_LOAD` and
+`OP_STORE` instructions, not every source-level spelling of an lvalue.
+Sparse may reuse a value produced by an earlier load, or the value supplied
+by a preceding store, as a compiler would reuse a value held in a register.
+A later source expression that uses that value has no additional memory-load
+instruction and therefore no separate read diagnostic.  When repeated uses
+share one memory load, the diagnostic remains at the source position of that
+load; stores continue to be checked at their retained `OP_STORE`.
 
 These fields are borrowed pointers into Sparse expression storage.  Locklint
 does not free or replace them and assumes they remain valid through the

@@ -1,7 +1,10 @@
 #
-# Test ineput for command_parse_test
+# Test input for command_parse_test
 #
 assert a1 a2
 declare d1 d2
+declare continued1 \
+    continued2 \
+    continued3
 ignore i1 i2
 merge-instances m1 m2
