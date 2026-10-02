@@ -117,7 +117,11 @@ command_targets_effects(struct command_target_ops *ops,
 command_targets_start(struct command_target_ops *ops,
     struct command_target_state *state)
 {
+#if COMMAND_TARGETS_EXPLICIT_DEREFERENCE
+	(*ops->start)(state);
+#else
 	ops->start(state);
+#endif
 	command_target_stop();
 }
 #endif

@@ -946,10 +946,12 @@ The retained chain is source metadata; Sparse continues using its normal
 evaluated expression for semantic analysis and lowering.
 
 Locklint retains only member components whose storage contains the final
-access.  Dereferencing a pointer-valued member crosses into a separate object,
+access.  Dereferencing a data-pointer member crosses into a separate object,
 so that member and its containing structure do not supply data policy for the
-pointee.  Array subscripting does not itself cross such a boundary because an
-array's elements remain inline storage.
+pointee.  An explicit function-pointer dereference such as
+`(*object->callback)(...)` still loads the callback member before the call and
+therefore retains that member.  Array subscripting does not itself cross such
+a boundary because an array's elements remain inline storage.
 
 ### Retained instruction expressions
 
@@ -2095,6 +2097,12 @@ Declaration-time resolution creates one entry for every layout-equal
 same-named type origin.  Each mutable declaration array is converted to the
 same immutable interned `call_target_set` representation used by exact and
 direct calls before call-cache construction.
+
+The direct-member selector is retained for both `object->member(...)` and the
+equivalent explicit spelling `(*object->member)(...)`.  The latter dereference
+selects the function to call; it does not cross into separately protected data
+storage.  Focused declared-target coverage requires both spellings to resolve
+the same multi-target set and contribute the same target effects.
 
 Exact source-derived targets take precedence over declared sets.  A
 declaration for one member does not affect other members of the same

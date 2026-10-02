@@ -170,7 +170,7 @@ find_member(struct expression *expr)
 }
 
 static bool
-member_is_pointer(const struct expression *member)
+member_is_object_pointer(const struct expression *member)
 {
 	struct symbol *type;
 
@@ -179,13 +179,20 @@ member_is_pointer(const struct expression *member)
 	type = member->member_symbol->ctype.base_type;
 	while (type != NULL && type->type == SYM_NODE)
 		type = type->ctype.base_type;
-	return (type != NULL && type->type == SYM_PTR);
+	if (type == NULL || type->type != SYM_PTR)
+		return (false);
+	type = type->ctype.base_type;
+	while (type != NULL && type->type == SYM_NODE)
+		type = type->ctype.base_type;
+	return (type == NULL || type->type != SYM_FN);
 }
 
 /*
  * Select only a member whose storage contains the final access.  A
  * dereference through a pointer-valued member reaches a separate object;
- * array subscripting remains within the member's inline storage.
+ * array subscripting remains within the member's inline storage.  Explicitly
+ * dereferencing a function-pointer member still reads that member before the
+ * call and therefore retains it.
  */
 static struct expression *
 find_access_member(struct expression *expr)
@@ -200,7 +207,7 @@ find_access_member(struct expression *expr)
 	switch (expr->type) {
 	case EXPR_PREOP:
 		if (expr->op == '*' &&
-		    member_is_pointer(find_member(expr->unop)))
+		    member_is_object_pointer(find_member(expr->unop)))
 			return (NULL);
 		return (find_access_member(expr->unop));
 	case EXPR_POSTOP:

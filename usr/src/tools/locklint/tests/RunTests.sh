@@ -1068,6 +1068,29 @@ if [ "$(grep -c 'warning:' command-targets-both.out)" -ne 2 ]; then
 	fail "command multiple targets: expected exactly two warnings"
 fi
 
+#
+# Explicitly dereferencing a function-pointer member is equivalent to calling
+# the member directly and must preserve its declared target selector.
+#
+run_capture "explicitly dereferenced command targets" \
+    command-targets-explicit-dereference.out \
+    "$LOCKLINT" -DCOMMAND_TARGETS_BOTH=1 \
+    -DCOMMAND_TARGETS_EXPLICIT_DEREFERENCE=1 --check-locks \
+    --dump-callgraph --cf commands/targets-both.cf commands/targets.c
+require_match "explicit dereference target set" \
+    "resolved-indirect-targets command_target_first@commands/targets.c command_target_second@commands/targets.c" \
+    command-targets-explicit-dereference.out
+require_match "explicit dereference first target effect" \
+    "condition wait occurs while holding lock 'command_target_state::first' \\[lock-held-during-wait\\]" \
+    command-targets-explicit-dereference.out
+require_match "explicit dereference second target effect" \
+    "condition wait occurs while holding lock 'command_target_state::second' \\[lock-held-during-wait\\]" \
+    command-targets-explicit-dereference.out
+if [ "$(grep -c 'warning:' command-targets-explicit-dereference.out)" -ne 2 ];
+then
+	fail "explicitly dereferenced command targets: expected two warnings"
+fi
+
 run_capture "command target return effects" command-targets-effects.out \
     "$LOCKLINT" -DCOMMAND_TARGETS_DIFFERENT_EFFECTS=1 \
     --cf commands/targets-effects.cf commands/targets.c
