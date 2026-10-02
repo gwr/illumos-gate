@@ -130,6 +130,10 @@ statistics_show(FILE *stream)
 	SHOW(source_type_policy_refs_deduplicated);
 	SHOW(data_policy_queries);
 	SHOW(data_policy_candidates);
+	SHOW(lock_identity_roles_recorded);
+	SHOW(lock_identity_role_conflicts);
+	SHOW(protected_lock_role_queries);
+	SHOW(protected_lock_role_matches);
 
 	SHOW(call_binding_environments_find);
 	SHOW(root_binding_environments_find);

@@ -788,14 +788,14 @@ require_match "missing root discovery" \
     "root-discovery requires a mode" root-discovery-missing.out
 
 #
-# Verify the OSLL-compatible representative-instance policy.  Without the
-# command, distinct controller instances remain distinct and cross-object
-# protection cannot select one.  With it, the selected type has one
-# representative object and member-lock identity.
+# Verify the OSLL-compatible representative-instance policy.  Cross-object
+# protection matches the declared lock role with or without the command.
+# Exact lock identities remain distinct until the selected controller type is
+# merged into one representative instance.
 #
 run_capture "per-instance identities" merge-instances-before.out \
     "$LOCKLINT" --check-locks commands/merge-instances.c
-require_match "per-instance cross-object protection" \
+reject_match "per-instance cross-object protection" \
     "merge-instances.c:.*protected member 'value' modified without holding 'lock'" \
     merge-instances-before.out
 reject_match "per-instance distinct locks" \
@@ -2456,6 +2456,45 @@ reject_match "locked pointer pointee policy" \
     pointer-member-policy.out
 
 #
+# Verify OSLL-compatible type-scoped protection across separately allocated
+# objects.  A held lock with the declared canonical member role protects the
+# child type regardless of owner instance or pointer provenance.
+#
+run_capture "cross-object lock role" cross-object-protection.out \
+    "$LOCKLINT" --check-locks cross-object-protection.c
+if [ "$(grep -c 'warning: locklint:.*\[unprotected-access\]$' \
+    cross-object-protection.out)" -ne 6 ]; then
+	fail "cross-object lock role: expected six unlocked accesses"
+fi
+for line in 58 75 92 110 129 130
+do
+	require_match "cross-object unlocked line $line" \
+	    "cross-object-protection.c:$line:.*warning: locklint:" \
+	    cross-object-protection.out
+done
+for line in 60 77 94 112 132 133
+do
+	reject_match "cross-object role-protected line $line" \
+	    "cross-object-protection.c:$line:.*warning: locklint:" \
+	    cross-object-protection.out
+done
+run_capture "cross-object protection states" \
+    cross-object-protection-states.out "$LOCKLINT" --check-locks \
+    --dump-protection-states --dump-statistics cross-object-protection.c
+require_match "cross-object unlocked protection state" \
+    "cross-object-protection.c:92:.*states=1 lock=0 invisible=0 no-competition=0 conditional=0 unprotected=1 role=0" \
+    cross-object-protection-states.out
+require_match "cross-object role protection state" \
+    "cross-object-protection.c:94:.*states=1 lock=0 invisible=0 no-competition=0 conditional=0 unprotected=0 role=1" \
+    cross-object-protection-states.out
+require_match "cross-object role match count" \
+    "^statistics protected_lock_role_matches 6$" \
+    cross-object-protection-states.out
+require_match "cross-object role conflict count" \
+    "^statistics lock_identity_role_conflicts 0$" \
+    cross-object-protection-states.out
+
+#
 # Verify that type-scoped policy declared for one exact header type applies to
 # the corresponding exact type in another translation unit.
 #
@@ -2772,14 +2811,18 @@ for statistic in \
     type_registry_insertions \
     type_registry_comparisons \
     data_policy_queries \
-    data_policy_candidates
+    data_policy_candidates \
+    lock_identity_roles_recorded \
+    lock_identity_role_conflicts \
+    protected_lock_role_queries \
+    protected_lock_role_matches
 do
 	require_match "context statistic $statistic" \
 	    "^statistics $statistic [0-9][0-9]*$" context-statistics.out
 done
 if [ "$(grep -c '^statistics [a-z_]* [0-9][0-9]*$' \
-    context-statistics.out)" -ne 74 ]; then
-	fail "context statistics: expected exactly seventy-four statistics lines"
+    context-statistics.out)" -ne 78 ]; then
+	fail "context statistics: expected exactly seventy-eight statistics lines"
 fi
 for histogram in \
     caller_recovery_first_max_depth \

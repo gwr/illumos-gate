@@ -92,6 +92,8 @@ struct semantic_alias_set {
 	struct semantic_alias_state entries[];
 };
 
+struct type_member;
+
 struct semantic_visibility_state {
 	struct visibility_region region;
 	enum semantic_visibility visibility;
@@ -289,6 +291,8 @@ size_t context_state_count(struct function_info *);
 size_t context_state_lock_count(const struct semantic_state *);
 unsigned int context_state_lock_modes(const struct semantic_state *,
     const struct lock_identity *);
+unsigned int context_state_lock_role_modes(const struct semantic_state *,
+    const struct type_member *);
 size_t context_state_visibility_count(const struct semantic_state *);
 size_t context_state_target_count(const struct semantic_state *);
 bool context_state_visibility(const struct semantic_state *,

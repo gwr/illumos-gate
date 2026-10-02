@@ -46,6 +46,10 @@ struct statistics_counts {
 	size_t source_type_policy_refs_deduplicated;
 	size_t data_policy_queries;
 	size_t data_policy_candidates;
+	size_t lock_identity_roles_recorded;
+	size_t lock_identity_role_conflicts;
+	size_t protected_lock_role_queries;
+	size_t protected_lock_role_matches;
 
 	size_t call_binding_environments_find;
 	size_t root_binding_environments_find;

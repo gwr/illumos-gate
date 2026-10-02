@@ -1661,6 +1661,27 @@ context_state_lock_modes(const struct semantic_state *state,
 	return (0);
 }
 
+/*
+ * Combine modes held for exact identities reached through one canonical
+ * member role.  Role conflicts on an identity match nothing.
+ */
+unsigned int
+context_state_lock_role_modes(const struct semantic_state *state,
+    const struct type_member *role)
+{
+	unsigned int modes = 0;
+	size_t index;
+
+	for (index = 0; index < state->locks->count; index++) {
+		const struct semantic_lock_state *entry =
+		    &state->locks->entries[index];
+
+		if (!entry->lock->role_conflict && entry->lock->role == role)
+			modes |= entry->modes;
+	}
+	return (modes);
+}
+
 size_t
 context_state_visibility_count(const struct semantic_state *state)
 {

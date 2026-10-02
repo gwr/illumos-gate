@@ -257,6 +257,8 @@ static int context_access_identity(struct analysis *,
     const struct function_context *, const struct semantic_state *,
     const struct locklint_access *,
     struct lock_identity **, bool *, bool *);
+static void record_lock_identity_role(struct lock_identity *,
+    const struct locklint_access *);
 static int context_access_key(const struct function_context *,
     const struct semantic_state *, const struct locklint_access *,
     struct lock_identity_key *,
@@ -687,6 +689,7 @@ map_return_lock(const struct lock_identity *lock,
 	struct pseudo *call_result = mapping->continuation->call_result;
 	const struct lock_identity *returned =
 	    returned_value_identity(mapping);
+	bool conflicted;
 	bool existed;
 	int error;
 
@@ -718,6 +721,11 @@ map_return_lock(const struct lock_identity *lock,
 			mapping->analysis->counts.lock_identities_reused++;
 		else
 			mapping->analysis->counts.lock_identities_created++;
+		conflicted = mapped->role_conflict;
+		if (lock_identity_copy_role(mapped, lock))
+			statistics.lock_identity_roles_recorded++;
+		else if (!conflicted && mapped->role_conflict)
+			statistics.lock_identity_role_conflicts++;
 		*result = mapped;
 		return (true);
 	}
@@ -906,6 +914,7 @@ apply_lock_event(struct analysis *analysis, struct point_state *point_state)
 		analysis->counts.lock_identities_reused++;
 	else
 		analysis->counts.lock_identities_created++;
+	record_lock_identity_role(identity, &access);
 	locklint_order_classify_identity(identity, &access);
 	if (action != LOCKLINT_LOCK_ACQUIRE &&
 	    action != LOCKLINT_LOCK_RELEASE &&
@@ -1296,8 +1305,26 @@ context_access_identity(struct analysis *analysis,
 	    composed);
 	if (error != 0)
 		return (error);
-	return (lock_identity_intern(analysis->lock_identities, key,
-	    object_type, identity, existed));
+	error = lock_identity_intern(analysis->lock_identities, key,
+	    object_type, identity, existed);
+	return (error);
+}
+
+static void
+record_lock_identity_role(struct lock_identity *identity,
+    const struct locklint_access *access)
+{
+	const struct type_member *prior;
+	const struct type_member *role =
+	    type_member_lookup_exact(access->member);
+
+	if (role == NULL || identity->role_conflict)
+		return;
+	prior = identity->role;
+	if (lock_identity_record_role(identity, role))
+		statistics.lock_identity_roles_recorded++;
+	else if (prior != NULL && prior != role && identity->role_conflict)
+		statistics.lock_identity_role_conflicts++;
 }
 
 static struct pseudo *
@@ -3039,6 +3066,7 @@ process_lock_assertion(struct analysis *analysis,
 		analysis->counts.lock_identities_reused++;
 	else
 		analysis->counts.lock_identities_created++;
+	record_lock_identity_role(identity, &access);
 	locklint_order_classify_identity(identity, &access);
 
 	current_modes = context_state_lock_modes(point_state->state, identity);
@@ -3141,6 +3169,7 @@ process_conditional_lock(struct analysis *analysis,
 		analysis->counts.lock_identities_reused++;
 	else
 		analysis->counts.lock_identities_created++;
+	record_lock_identity_role(identity, &access);
 	locklint_order_classify_identity(identity, &access);
 
 	current_modes = context_state_lock_modes(point_state->state, identity);
@@ -3642,6 +3671,7 @@ seed_effect_contracts(struct analysis *analysis,
 				analysis->counts.lock_identities_reused++;
 			else
 				analysis->counts.lock_identities_created++;
+			record_lock_identity_role(identity, &access);
 			locklint_order_classify_identity(identity, &access);
 			if (acquisition) {
 				seed_effect_context(analysis, function, bindings,
@@ -6042,6 +6072,7 @@ struct protected_access_finding {
 	bool read_only_maybe_visible;
 	size_t states;
 	size_t lock_protected;
+	size_t role_protected;
 	size_t invisible;
 	size_t no_competition;
 	size_t state_conditional;
@@ -6121,6 +6152,7 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 	size_t protected = 0;
 	size_t conditional = 0;
 	size_t lock_protected = 0;
+	size_t role_protected = 0;
 	size_t invisible_protected = 0;
 	size_t no_competition_protected = 0;
 	size_t read_only_visible = 0;
@@ -6128,6 +6160,7 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 	size_t read_only_maybe_visible = 0;
 	unsigned int required_modes = 0;
 	unsigned int observed_modes = 0;
+	const struct type_member *protector_role = NULL;
 	bool check_lock;
 	bool check_read_only;
 	bool composed;
@@ -6144,6 +6177,9 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 	    !(data->instruction->opcode == OP_LOAD &&
 	    policy.readable_without_lock);
 	if (check_lock) {
+		if (policy.lock_role_match)
+			protector_role =
+			    type_member_lookup_exact(protector.member);
 		if (policy.protection == LOCKLINT_PROTECTION_MUTEX)
 			required_modes = LOCKLINT_MODE_MUTEX;
 		else if (data->instruction->opcode == OP_LOAD)
@@ -6227,6 +6263,15 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 			unsigned int modes =
 			    context_state_lock_modes(point_state->state,
 			    identity);
+			unsigned int role_modes = 0;
+
+			if ((modes & required_modes) == 0 &&
+			    protector_role != NULL) {
+				statistics.protected_lock_role_queries++;
+				role_modes = context_state_lock_role_modes(
+				    point_state->state, protector_role);
+				observed_modes |= role_modes;
+			}
 
 			observed_modes |= modes;
 			/*
@@ -6236,6 +6281,10 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 			 */
 			if ((modes & required_modes) != 0) {
 				lock_protected++;
+				protected++;
+			} else if ((role_modes & required_modes) != 0) {
+				statistics.protected_lock_role_matches++;
+				role_protected++;
 				protected++;
 			} else if (invisible) {
 				invisible_protected++;
@@ -6297,6 +6346,7 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 		finding->observed_modes |= observed_modes;
 		finding->states += protected + conditional + unprotected;
 		finding->lock_protected += lock_protected;
+		finding->role_protected += role_protected;
 		finding->invisible += invisible_protected;
 		finding->no_competition += no_competition_protected;
 		finding->state_conditional += conditional;
@@ -6468,13 +6518,13 @@ emit_protection_state(FILE *stream,
 	    finding->instruction->access->pos : finding->instruction->pos;
 	(void) fprintf(stream, "%s:%u:%u: protection-state %s "
 	    "member='%s' function=%s states=%zu lock=%zu invisible=%zu "
-	    "no-competition=%zu conditional=%zu unprotected=%zu\n",
+	    "no-competition=%zu conditional=%zu unprotected=%zu role=%zu\n",
 	    stream_name(pos.stream), pos.line, pos.pos,
 	    finding->instruction->opcode == OP_LOAD ? "load" : "store",
 	    member, function_name(finding->function), finding->states,
 	    finding->lock_protected, finding->invisible,
 	    finding->no_competition, finding->state_conditional,
-	    finding->state_unprotected);
+	    finding->state_unprotected, finding->role_protected);
 	free(member);
 }
 

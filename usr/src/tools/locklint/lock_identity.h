@@ -23,6 +23,7 @@
 #include "avl.h"
 
 struct locklint_access;
+struct type_member;
 
 /*
  * analysis_object is an opaque identity token.  target_offset is compared as
@@ -47,7 +48,9 @@ enum lock_analysis_object_type {
 
 struct lock_identity {
 	struct lock_identity_key key;
+	const struct type_member *role;
 	enum lock_analysis_object_type analysis_object_type;
+	bool role_conflict;
 	avl_node_t by_key;
 };
 
@@ -65,6 +68,12 @@ int lock_identity_key_from_access(const struct locklint_access *,
     struct lock_identity_key *, enum lock_analysis_object_type *);
 int lock_identity_intern_access(struct lock_identity_collection *,
     const struct locklint_access *, struct lock_identity **, bool *);
+bool lock_identity_record_role(struct lock_identity *,
+    const struct type_member *);
+bool lock_identity_copy_role(struct lock_identity *,
+    const struct lock_identity *);
+bool lock_identity_has_role(const struct lock_identity *,
+    const struct type_member *);
 struct lock_identity *lock_identity_first(struct lock_identity_collection *);
 struct lock_identity *lock_identity_next(struct lock_identity_collection *,
     struct lock_identity *);

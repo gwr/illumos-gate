@@ -194,7 +194,7 @@ The main phases are:
    `--dump-protection-states` runs the required context analysis and emits one
    source-oriented record for every static lock-protected access.  Each record
    aggregates all reachable caller contexts and classifies each reaching
-   state exactly once, in required-lock, invisible-data,
+   state exactly once, in exact-lock, lock-role, invisible-data,
    no-competing-threads, conditional, then unprotected order.  The reason
    counts therefore sum to the reported state count.  `--dump-all` includes
    this report, the type registry, and the whole-program call-graph audit.
@@ -1272,11 +1272,27 @@ protecting lock identity.  A concrete lock keeps its own root and offset.  A
 type-scoped lock is based at the matched data owner when both use the same
 type.  If the lock belongs to a different type, the retained member path must
 prove that an instance of the lock owner contains the matched data object;
-unrelated objects are not associated by type alone.  When the data access has
-an exact computed address, the required lock address is derived by replacing
-the access's offset within that owner with the protector's relative offset.
-The lock consequently stays within the same alias, array element, or recovered
-container.
+this supplies the preferred exact identity when containment is available.
+When the data access has an exact computed address, the required lock address
+is derived by replacing the access's offset within that owner with the
+protector's relative offset.  The lock consequently stays within the same
+alias, array element, or recovered container.
+
+A type-scoped protection relation whose lock and data have different owner
+types also enables Old Solaris Lock Lint compatible lock-role matching.  If
+the exact required identity is not held, any definitely held identity reached
+through the protector's canonical type member satisfies the relation.  Thus
+`MUTEX_PROTECTS_DATA(owner::lock, child_type)` does not associate one
+`child_type` instance with one `owner` instance.  Absolute protectors and
+same-owner policies remain exact.
+
+Canonical lock-member roles are non-key metadata on exact lock identities.
+They are recorded only when an identity participates in lock state and are
+copied when a held returned identity is mapped to its caller.  Conflicting
+roles match none, conservatively.  Roles do not merge exact identities or add
+a semantic-state dimension.  Protection-state dumps report role satisfaction
+separately from exact-lock satisfaction, and statistics count recorded roles,
+conflicts, role queries, and matches.
 
 An indexed inline member adds subscript arithmetic after the address of its
 containing aggregate.  Protector rebasing walks only Sparse
@@ -3157,70 +3173,74 @@ The current implementation relies on these invariants:
     other computed pseudos are never assumed equal.
 25. A type-scoped protector is rebased from the observed data address so it
     remains within the same alias, array element, or recovered container.
-26. Formal-lock alternatives from one protected access are OR choices;
+26. When a type-scoped protector and protected datum have different owner
+    types, an exact identity is preferred and the canonical protector-member
+    role is the OSLL-compatible fallback.  Role metadata never changes exact
+    identity or semantic-state keys, and conflicting metadata matches no role.
+27. Formal-lock alternatives from one protected access are OR choices;
     conditions from distinct accesses remain independently required.
-27. A formal-lock alternative satisfies a caller condition only when both
+28. A formal-lock alternative satisfies a caller condition only when both
     mapped normalized lock addresses are exactly equal.
-28. Declared lock-order edges point from earlier to later permitted
+29. Declared lock-order edges point from earlier to later permitted
     acquisitions; transitive reachability has the same force as a direct edge.
-29. Acquisition diagnostic positions are provenance, not summary identity;
+30. Acquisition diagnostic positions are provenance, not summary identity;
     original checkpoints, wrapper replay contexts, and distinct prefix
     semantics prevent separate held sequences from being coalesced.
-30. A missing acquisition-prefix entry means that entry-visible lock is
+31. A missing acquisition-prefix entry means that entry-visible lock is
     unchanged at the acquisition.
-31. Declared-order inversions do not also contribute observed-order edges.
-32. Direct same-actual transfer, assertion-prefix, and acquisition-prefix
+32. Declared-order inversions do not also contribute observed-order edges.
+33. Direct same-actual transfer, assertion-prefix, and acquisition-prefix
     evaluation preserves callee operation order by replaying mapped roles
     against one shared state.
-33. A fully accepted ordinary assertion requirement is retained when any
+34. A fully accepted ordinary assertion requirement is retained when any
     alias-role set produces a stricter accepted-input mask.
-34. Multiple changed acquisition prefixes compose through an acyclic wrapper
+35. Multiple changed acquisition prefixes compose through an acyclic wrapper
     chain by replaying each retained call context to the original checkpoint.
-35. Recursive shared-state transfer contexts converge from the empty result
+36. Recursive shared-state transfer contexts converge from the empty result
     using function, aliased role set, and input-state mask as their identity.
-36. Every recognized condition wait requires held input, returns held, and
+37. Every recognized condition wait requires held input, returns held, and
     contributes a reacquisition event against other locks held across it.
-37. Rwlock downgrade and upgrade change ownership mode without creating
+38. Rwlock downgrade and upgrade change ownership mode without creating
     acquisition ownership or lock-order edges.
-38. A direct conditional lock result selects an edge-specific transition in
+39. A direct conditional lock result selects an edge-specific transition in
     both local analysis and transfer solving; unresolved results retain the
     documented conservative union.
-39. Try-acquisitions never contribute blocking-acquisition summaries or
+40. Try-acquisitions never contribute blocking-acquisition summaries or
     observed order edges.
-40. Every primary locklint warning carries one stable diagnostic identifier;
+41. Every primary locklint warning carries one stable diagnostic identifier;
     supporting `info()` provenance does not carry an independent identifier.
-41. A cover writer may substitute for a covered lock's data protection; a
+42. A cover writer may substitute for a covered lock's data protection; a
     cover reader may not.  Covered-lock acquisition requires either cover
     mode, and a call may not return after releasing a cover while retaining a
     covered lock.
-42. `NOT_REACHED` terminates the Sparse basic block, so state from that path is
+43. `NOT_REACHED` terminates the Sparse basic block, so state from that path is
     never merged into a successor or return summary.
-43. Function-context kind distinguishes ordinary analysis from synthetic
+44. Function-context kind distinguishes ordinary analysis from synthetic
     effect-contract roots and their callees even when bindings and entry state
     are otherwise identical.
-44. A declared acquisition is valid only when every exact effect-contract
+45. A declared acquisition is valid only when every exact effect-contract
     exit holds the declared lock in exactly the declared mode.
-45. A declared release is valid only when every exact exit from each
+46. A declared release is valid only when every exact exit from each
     mutex-held, reader-held, and writer-held contract entry leaves the target
     unheld.
-46. Declared upgrades map reader-held entry to writer-held exit, and declared
+47. Declared upgrades map reader-held entry to writer-held exit, and declared
     downgrades map writer-held entry to reader-held exit on every return.
-47. Direct and transitively propagated acquisitions of undeclared
+48. Direct and transitively propagated acquisitions of undeclared
     caller-visible locks are checked across every root-reachable ordinary
     context after normalization to one function-relative identity.  A context
     that never reaches the candidate acquisition contributes no observation;
     assertion refinements are not acquisitions.
-48. Data-policy indexing preserves source and command declaration order while
+49. Data-policy indexing preserves source and command declaration order while
     selecting candidates by canonical type-member or object identity.
-49. Published exits with different return values and continuations with
+50. Published exits with different return values and continuations with
     different call results remain distinct even when their other state is
     equal.
-50. A returned formal or canonical object keeps its existing lock identity;
+51. A returned formal or canonical object keeps its existing lock identity;
     the caller result aliases that identity rather than creating a duplicate
     lock entry.
-51. Return-feeding pointer PHIs select aliases by predecessor, and returned
+52. Return-feeding pointer PHIs select aliases by predecessor, and returned
     zero remains correlated with a caller conditional.
-52. A callee-local returned lock maps to the caller result even when that
+53. A callee-local returned lock maps to the caller result even when that
     result is discarded; unrelated callee-local locks remain filtered.
 
 Changes that invalidate one of these invariants should update this document

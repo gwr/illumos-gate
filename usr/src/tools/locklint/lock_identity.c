@@ -103,6 +103,50 @@ lock_identity_intern(struct lock_identity_collection *collection,
 }
 
 /*
+ * Retain the canonical member role used to reach an exact identity.  A
+ * conflicting role makes role-based matching conservative without changing
+ * the identity key or any semantic state containing it.
+ */
+bool
+lock_identity_record_role(struct lock_identity *identity,
+    const struct type_member *role)
+{
+	if (identity == NULL || role == NULL || identity->role_conflict)
+		return (false);
+	if (identity->role == NULL) {
+		identity->role = role;
+		return (true);
+	}
+	if (identity->role != role) {
+		identity->role = NULL;
+		identity->role_conflict = true;
+	}
+	return (false);
+}
+
+bool
+lock_identity_copy_role(struct lock_identity *target,
+    const struct lock_identity *source)
+{
+	if (target == NULL || source == NULL || target->role_conflict)
+		return (false);
+	if (source->role_conflict) {
+		target->role = NULL;
+		target->role_conflict = true;
+		return (false);
+	}
+	return (lock_identity_record_role(target, source->role));
+}
+
+bool
+lock_identity_has_role(const struct lock_identity *identity,
+    const struct type_member *role)
+{
+	return (identity != NULL && !identity->role_conflict &&
+	    identity->role == role);
+}
+
+/*
  * Select a canonical analysis object and coordinate from one populated
  * access.  Direct symbol pseudos use their canonical source object so the
  * same declaration does not acquire a second identity.  Other lowered

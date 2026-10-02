@@ -352,6 +352,55 @@ test_invalid_accesses(void)
 	lock_identity_collection_free(&collection);
 }
 
+static void
+test_identity_roles(void)
+{
+	struct lock_identity_collection collection;
+	struct type_member first_role = { 0 };
+	struct type_member second_role = { 0 };
+	struct lock_identity *first;
+	struct lock_identity *second;
+	struct lock_identity *third;
+	unsigned int objects[3];
+	bool existed;
+	int error;
+
+	lock_identity_collection_create(&collection);
+	error = lock_identity_intern(&collection,
+	    (struct lock_identity_key) { &objects[0], 0 },
+	    LOCK_ANALYSIS_OBJECT_SYMBOL, &first, &existed);
+	check(error == 0 && !existed, "create first role identity");
+	error = lock_identity_intern(&collection,
+	    (struct lock_identity_key) { &objects[1], 0 },
+	    LOCK_ANALYSIS_OBJECT_SYMBOL, &second, &existed);
+	check(error == 0 && !existed, "create copied role identity");
+	error = lock_identity_intern(&collection,
+	    (struct lock_identity_key) { &objects[2], 0 },
+	    LOCK_ANALYSIS_OBJECT_SYMBOL, &third, &existed);
+	check(error == 0 && !existed, "create conflicting role identity");
+
+	check(lock_identity_record_role(first, &first_role),
+	    "record first identity role");
+	check(!lock_identity_record_role(first, &first_role) &&
+	    lock_identity_has_role(first, &first_role),
+	    "recording same identity role is idempotent");
+	check(lock_identity_copy_role(second, first) &&
+	    lock_identity_has_role(second, &first_role),
+	    "copy identity role");
+
+	(void) lock_identity_record_role(first, &second_role);
+	check(first->role_conflict &&
+	    !lock_identity_has_role(first, &first_role) &&
+	    !lock_identity_has_role(first, &second_role),
+	    "conflicting identity roles match neither role");
+	(void) lock_identity_copy_role(third, first);
+	check(third->role_conflict &&
+	    !lock_identity_has_role(third, &first_role),
+	    "copying a conflict remains conservative");
+
+	lock_identity_collection_free(&collection);
+}
+
 int
 main(void)
 {
@@ -362,6 +411,7 @@ main(void)
 	test_source_accesses();
 	test_lowered_accesses();
 	test_invalid_accesses();
+	test_identity_roles();
 	type_registry_destroy();
 	return (failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE);
 }

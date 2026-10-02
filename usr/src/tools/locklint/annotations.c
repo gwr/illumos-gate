@@ -2341,6 +2341,9 @@ locklint_data_policy(const struct locklint_access *access,
 		bool address_rebased = false;
 		bool have_lock_base = true;
 
+		policy->lock_role_match = protector->root == NULL &&
+		    protector->owner_type != NULL && protected_owner != NULL &&
+		    protector->owner_type != protected_owner;
 		if (protector->root == NULL &&
 		    protector->owner_type != protected_owner) {
 			have_lock_base =

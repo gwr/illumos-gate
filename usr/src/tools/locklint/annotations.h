@@ -39,6 +39,7 @@ struct locklint_data_policy {
 	enum locklint_protection protection;
 	bool readable_without_lock;
 	bool read_only;
+	bool lock_role_match;
 };
 
 enum locklint_execution_kind {
