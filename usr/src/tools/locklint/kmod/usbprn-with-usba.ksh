@@ -2,7 +2,8 @@
 #
 # Run native locklint over the large usbprn-with-USBA integration workload.
 # This workload is intentionally separate from the focused tests run by
-# "make test".  Set DUMPS=1 to include development dumps and timing.
+# "make test".  Set DUMPS=1 to include development dumps.  Every run reports
+# locklint's total measured time.
 # Source and include pathnames are passed relative to the repository root so
 # diagnostics remain stable across workspaces.  SRC, LOCKLINT, CF, and OUT may
 # override the defaults.
@@ -40,11 +41,10 @@ case "$OUT" in
 	;;
 esac
 REPO_ROOT=$(cd "$SRC/../.." && pwd) || exit 1
-DUMP_OPTIONS=
+DUMP_OPTIONS=--times
 if [[ ${DUMPS:-0} == 1 ]]; then
 	DUMP_OPTIONS='--dump-callgraph --dump-contexts
-	    --dump-protection-states --dump-statistics --dump-types
-	    --times'
+	    --dump-protection-states --dump-statistics --dump-types --times'
 fi
 
 SOURCES='
@@ -83,11 +83,11 @@ common/io/usb/clients/printer/usbprn.c
 '
 
 if [[ ! -x "$LOCKLINT" ]]; then
-	print -u2 "RunLargeUSB: locklint executable not found: $LOCKLINT"
+	print -u2 "usbprn-with-usba: locklint executable not found: $LOCKLINT"
 	exit 1
 fi
 if [[ ! -r "$CF" ]]; then
-	print -u2 "RunLargeUSB: command file not found: $CF"
+	print -u2 "usbprn-with-usba: command file not found: $CF"
 	exit 1
 fi
 
@@ -121,3 +121,17 @@ cd "$REPO_ROOT" || exit 1
     -D_ELF64 -D_DDI_STRICT -Dsun -D__sun -D__SVR4 -DDEBUG \
     -Iusr/src/uts/intel -nostdinc -Iusr/src/uts/common \
     -mcmodel=kernel "$@" >"$OUT" 2>&1
+status=$?
+
+elapsed=$(awk '/^time total/ { print $3; exit }' "$OUT")
+if (( status == 0 )); then
+	result=PASS
+else
+	result=FAIL
+fi
+if [[ -n "$elapsed" ]]; then
+	print "$result usbprn-with-usba: $elapsed seconds"
+else
+	print "$result usbprn-with-usba: timing unavailable"
+fi
+exit "$status"

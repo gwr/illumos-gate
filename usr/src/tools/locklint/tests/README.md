@@ -57,13 +57,14 @@ The 32-translation-unit usbprn-with-USBA workload is intentionally excluded
 from `make test`.  Run it separately from any directory with:
 
 ```sh
-usr/src/tools/locklint/tests/RunLargeUSB.ksh
+usr/src/tools/locklint/kmod/usbprn-with-usba.ksh
 ```
 
 The runner changes to the repository root and passes source and include
 pathnames relative to that directory.  Diagnostics therefore identify inputs
 as `usr/src/uts/...` regardless of the workspace's absolute pathname.  Its
-default output is `tmp/locklint-large-usb.out`.
+default output is `tmp/locklint-large-usb.out`.  On completion, it prints
+`PASS` or `FAIL` with locklint's total measured time.
 
 ## Adding a test
 
