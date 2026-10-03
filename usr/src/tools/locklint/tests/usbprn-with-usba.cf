@@ -5,6 +5,10 @@
 
 merge-instances ehci_state_t ohci_state_t uhci_state_t
 
+lock-role-protects-data usba_list_entry_t::list_mutex \
+    usba_list_entry_t::next usba_list_entry_t::prev
+declare readable usba_list_entry_t::private
+
 declare --external-entry=false ehci_init_ctlr ehci_init_check_status
 declare --external-entry=false uhci_uninit_ctlr
 

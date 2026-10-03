@@ -32,7 +32,9 @@ static const struct expected_command expected_commands[] = {
 	{ "declare", 5, 2, { "d1", "d2" } },
 	{ "declare", 6, 3, { "continued1", "continued2", "continued3" } },
 	{ "ignore", 9, 2, { "i1", "i2" } },
-	{ "merge-instances", 10, 2, { "m1", "m2" } }
+	{ "merge-instances", 10, 2, { "m1", "m2" } },
+	{ "lock-role-protects-data", 11, 3,
+	    { "role", "data1", "data2" } }
 };
 
 static size_t command_index;
@@ -88,6 +90,12 @@ int
 cmd_ignore(int argc, char **argv)
 {
 	return (check_command("ignore", argc, argv));
+}
+
+int
+cmd_lock_role_protects_data(int argc, char **argv)
+{
+	return (check_command("lock-role-protects-data", argc, argv));
 }
 
 int

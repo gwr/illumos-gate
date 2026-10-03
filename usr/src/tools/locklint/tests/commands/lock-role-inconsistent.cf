@@ -1,0 +1,5 @@
+#
+# Verify rejection of an inconsistently defined lock-role owner type.
+#
+
+lock-role-protects-data repeated_name::value repeated_name::value

@@ -1,0 +1,6 @@
+#
+# Verify rejection of separate same-named canonical lock roles.
+#
+
+lock-role-protects-data duplicate_command_type::value \
+    duplicate_command_type::value

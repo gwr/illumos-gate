@@ -331,6 +331,41 @@ cmd_ignore(int argc, char **argv)
 	return (not_implemented("ignore"));
 }
 
+int
+cmd_lock_role_protects_data(int argc, char **argv)
+{
+	enum locklint_command_result result;
+	const char *problem;
+
+	if (argc < 2) {
+		return (command_parse_error("lock-role-protects-data requires "
+		    "one lock role and at least one data name"));
+	}
+	result = locklint_declare_lock_role(argv[0], (size_t)(argc - 1),
+	    (const char *const *)&argv[1], &problem, command_parse_path(),
+	    command_parse_line());
+	switch (result) {
+	case LOCKLINT_COMMAND_OK:
+		return (0);
+	case LOCKLINT_COMMAND_INVALID_NAME:
+		return (command_parse_error("invalid %s name '%s'",
+		    problem == argv[0] ? "lock role" : "data", problem));
+	case LOCKLINT_COMMAND_UNRESOLVED_NAME:
+		return (command_parse_error("unresolved %s name '%s'",
+		    problem == argv[0] ? "lock role" : "data", problem));
+	case LOCKLINT_COMMAND_AMBIGUOUS_NAME:
+		return (command_parse_error("ambiguous %s name '%s'",
+		    problem == argv[0] ? "lock role" : "data", problem));
+	case LOCKLINT_COMMAND_INCONSISTENT_TYPE:
+		return (command_parse_error(
+		    "inconsistently defined type in %s name '%s'",
+		    problem == argv[0] ? "lock role" : "data", problem));
+	default:
+		return (command_parse_error(
+		    "internal error resolving lock-role protection"));
+	}
+}
+
 static bool
 command_identifier_valid(const char *name)
 {

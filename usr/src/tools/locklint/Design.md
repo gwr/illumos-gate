@@ -681,10 +681,10 @@ handler attempts semantic name resolution.  All command files are read before
 whole-program checking begins; commands cannot start a partial analysis or
 change analysis phases.
 
-The command parser recognizes `declare`, `assert`, `ignore`, and
-`merge-instances`, strips `#` comments, and passes the remaining
-whitespace-separated words to one `cmd_*()` handler per command.  Empty and
-comment-only command files are valid.
+The command parser recognizes `declare`, `assert`, `ignore`,
+`merge-instances`, and `lock-role-protects-data`, strips `#` comments, and
+passes the remaining whitespace-separated words to one `cmd_*()` handler per
+command.  Empty and comment-only command files are valid.
 
 ### Command-language direction
 
@@ -725,8 +725,8 @@ evidence, including the absence of a known caller or an unaccounted
 function-pointer escape, can still make the function a root.  That declaration
 option is implemented; the other option names and examples in this subsection
 are provisional.  Existing positional command forms remain unchanged until a
-compatible migration is designed and implemented.  Backslash line
-continuation is not yet supported.
+compatible migration is designed and implemented.  A backslash immediately
+before a newline joins physical command-file lines.
 
 ### Implemented forms
 
@@ -779,6 +779,37 @@ Retained data references enter the same ordered policy index as source
 annotations.
 Each command declaration retains its command-file pathname and line number as
 provenance.  A backslash immediately followed by newline joins physical
+
+`lock-role-protects-data lock-role data-name...` declares that any definitely
+held instance of one canonical type-member lock role protects the named data.
+Both the role and every datum must be type-member paths.  For example:
+
+```text
+lock-role-protects-data queue_t::lock \
+    entry_t::next entry_t::prev
+```
+
+The command is equivalent to the source annotation:
+
+```c
+_NOTE(LOCK_ROLE_PROTECTS_DATA(queue_t::lock,
+    entry_t::{ next prev }))
+```
+
+The command accepts one role and at least one datum.  The lock role must
+resolve to one canonical type-member role; separate layout-equivalent
+same-named origins are ambiguous rather than being treated as interchangeable
+roles.  Each data name applies to every layout-equivalent origin of its named
+type.  Malformed, unresolved, ambiguous, or inconsistently defined names are
+errors.  Aggregate-valued data names expand into leaf members by the same
+rules as source annotations.
+
+Role protection does not merge object or lock identities.  Acquisition,
+release, recursive-acquisition, and lock-order analysis therefore continue
+to distinguish each runtime lock instance.  A read is protected by a held
+mutex, reader, or writer instance of the named role.  A modification requires
+a held mutex or writer instance.  Unlisted data members retain their existing
+protection policies.  A backslash immediately followed by newline joins physical
 command-file lines; diagnostics and retained provenance use the first physical
 line of the resulting command.
 
@@ -1184,15 +1215,23 @@ The parser accepts:
 The data-policy parser recognizes:
 
 - `MUTEX_PROTECTS_DATA(lock, names)`;
+- `RWLOCK_PROTECTS_DATA(rwlock, names)`;
+- `LOCK_ROLE_PROTECTS_DATA(lock-role, names)`;
 - `RWLOCK_COVERS_LOCKS(rwlock, locks)`;
 - `SCHEME_PROTECTS_DATA("description", names)`;
 - `DATA_READABLE_WITHOUT_LOCK(names)`; and
 - `READ_ONLY_DATA(names)`.
 
 The scheme description must be one quoted string.  It is explanatory text
-rather than a mechanically checkable lock expression.  All four forms use
-the same object/type name resolution and aggregate expansion for their data
-lists.
+rather than a mechanically checkable lock expression.  All data-policy forms
+use the same object/type name resolution and aggregate expansion for their
+data lists.
+
+`LOCK_ROLE_PROTECTS_DATA` requires a type-member role rather than a concrete
+object lock.  It is intended for shared protection contours such as a queue
+mutex protecting linkage embedded in multiple entries.  Naming only the link
+members keeps unrelated payload and per-entry state under their existing
+policies.
 
 `RWLOCK_COVERS_LOCKS` uses the same object/type name resolution for both
 endpoints, but its second argument is a list of lock roles rather than data.
@@ -1210,7 +1249,8 @@ available.
 
 Resolution performs these steps:
 
-1. Resolve the lock name when the annotation names a mechanical lock.
+1. Resolve the lock name when the annotation names a mechanical lock or lock
+   role.
 2. Retain the explanatory text when the annotation names a scheme.
 3. Resolve every data name.
 4. Recursively expand structure-valued data into leaf members.
@@ -1308,6 +1348,12 @@ When the data access has an exact computed address, the required lock address
 is derived by replacing the access's offset within that owner with the
 protector's relative offset.  The lock consequently stays within the same
 alias, array element, or recovered container.
+
+A lock-role mechanism skips concrete protector construction and queries the
+canonical type member directly.  The role is non-key metadata on each exact
+lock identity, so this adds neither a semantic-state field nor a merged
+identity.  The role declaration itself is retained in the existing ordered
+data-policy index; protection checking adds no separate policy collection.
 
 A type-scoped protection relation whose lock and data have different owner
 types also enables Old Solaris Lock Lint compatible lock-role matching.  If

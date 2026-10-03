@@ -183,7 +183,8 @@ show_memory_event(FILE *stream, struct translation_unit *tu,
 	if (locklint_get_instruction_access(tu, insn, &access) &&
 	    locklint_data_policy(&access, &policy, &protector) &&
 	    (policy.protection == LOCKLINT_PROTECTION_MUTEX ||
-	    policy.protection == LOCKLINT_PROTECTION_RWLOCK)) {
+	    policy.protection == LOCKLINT_PROTECTION_RWLOCK ||
+	    policy.protection == LOCKLINT_PROTECTION_LOCK_ROLE)) {
 		struct symbol *name = protector.member != NULL ?
 		    protector.member : protector.root;
 

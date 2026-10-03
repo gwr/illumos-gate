@@ -57,6 +57,7 @@ enum annotation_kind {
 	ANNOTATION_UNSUPPORTED,
 	ANNOTATION_MUTEX_PROTECTS_DATA,
 	ANNOTATION_RWLOCK_PROTECTS_DATA,
+	ANNOTATION_LOCK_ROLE_PROTECTS_DATA,
 	ANNOTATION_SCHEME_PROTECTS_DATA,
 	ANNOTATION_DATA_READABLE_WITHOUT_LOCK,
 	ANNOTATION_READ_ONLY_DATA,
@@ -844,6 +845,8 @@ parse_annotation(struct annotation *annotation)
 		annotation->kind = ANNOTATION_MUTEX_PROTECTS_DATA;
 	} else if (token_is(cursor, "RWLOCK_PROTECTS_DATA")) {
 		annotation->kind = ANNOTATION_RWLOCK_PROTECTS_DATA;
+	} else if (token_is(cursor, "LOCK_ROLE_PROTECTS_DATA")) {
+		annotation->kind = ANNOTATION_LOCK_ROLE_PROTECTS_DATA;
 	} else if (token_is(cursor, "SCHEME_PROTECTS_DATA")) {
 		annotation->kind = ANNOTATION_SCHEME_PROTECTS_DATA;
 	} else if (token_is(cursor, "DATA_READABLE_WITHOUT_LOCK")) {
@@ -868,6 +871,7 @@ parse_annotation(struct annotation *annotation)
 	switch (annotation->kind) {
 	case ANNOTATION_MUTEX_PROTECTS_DATA:
 	case ANNOTATION_RWLOCK_PROTECTS_DATA:
+	case ANNOTATION_LOCK_ROLE_PROTECTS_DATA:
 	case ANNOTATION_RWLOCK_COVERS_LOCKS:
 		if (!parse_name(annotation, &cursor, &lock, &tail))
 			return (false);
@@ -882,6 +886,10 @@ parse_annotation(struct annotation *annotation)
 			    ANNOTATION_RWLOCK_PROTECTS_DATA) {
 				message =
 				    "RWLOCK_PROTECTS_DATA requires one lock name";
+			} else if (annotation->kind ==
+			    ANNOTATION_LOCK_ROLE_PROTECTS_DATA) {
+				message = "LOCK_ROLE_PROTECTS_DATA requires "
+				    "one lock role";
 			} else {
 				message =
 				    "RWLOCK_COVERS_LOCKS requires one cover lock";
@@ -1236,13 +1244,13 @@ annotations_type_resolve(const struct ll_type *type, void *data_arg)
 }
 
 static enum locklint_command_result
-resolve_command_type(struct annotation *annotation, const char *name,
+resolve_command_type(struct annotation_ref **refs, const char *name,
     const char *separator)
 {
 	struct annotation_type_resolution data = {
 		.name = name,
 		.path = separator + 2,
-		.tail = &annotation->data,
+		.tail = refs,
 		.base_length = (size_t)(separator - name),
 		.result = LOCKLINT_COMMAND_UNRESOLVED_NAME
 	};
@@ -1268,6 +1276,61 @@ resolve_command_type(struct annotation *annotation, const char *name,
 		return (LOCKLINT_COMMAND_UNRESOLVED_NAME);
 	type_name_visit_types(ident, annotations_type_resolve, &data);
 	return (data.result);
+}
+
+static enum locklint_command_result
+resolve_command_type_name(struct annotation_ref **refs, const char *name)
+{
+	const char *dot = strchr(name, '.');
+	const char *separator = strstr(name, "::");
+
+	if (separator == NULL || strstr(separator + 2, "::") != NULL ||
+	    (dot != NULL && dot < separator))
+		return (LOCKLINT_COMMAND_INVALID_NAME);
+	return (resolve_command_type(refs, name, separator));
+}
+
+static void
+free_command_ref(struct annotation_ref *ref)
+{
+	free(ref->base_name);
+	free(ref->path);
+	free(ref);
+}
+
+static void
+free_command_refs(struct annotation_ref *refs)
+{
+	while (refs != NULL) {
+		struct annotation_ref *next = refs->next;
+
+		free_command_ref(refs);
+		refs = next;
+	}
+}
+
+static struct annotation_ref *
+clone_command_refs(const struct annotation_ref *source)
+{
+	struct annotation_ref *head = NULL;
+	struct annotation_ref **tail = &head;
+
+	for (; source != NULL; source = source->next) {
+		struct annotation_ref *copy = calloc(1, sizeof (*copy));
+
+		if (copy == NULL)
+			die("out of memory recording command-file declaration");
+		*copy = *source;
+		copy->base_name = copy_string(source->base_name);
+		copy->path =
+		    source->path != NULL ? copy_string(source->path) : NULL;
+		copy->replaces = NULL;
+		copy->replaced_by = NULL;
+		copy->next = NULL;
+		*tail = copy;
+		tail = &copy->next;
+	}
+	return (head);
 }
 
 static enum locklint_command_result
@@ -1334,7 +1397,7 @@ locklint_declare_readable(const char *name, const char *file,
 	    (dot != NULL && dot < separator))) {
 		result = LOCKLINT_COMMAND_INVALID_NAME;
 	} else if (separator != NULL) {
-		result = resolve_command_type(annotation, name, separator);
+		result = resolve_command_type(&annotation->data, name, separator);
 	} else {
 		result = resolve_command_object(annotation, name);
 	}
@@ -1347,6 +1410,72 @@ locklint_declare_readable(const char *name, const char *file,
 	*annotations_tail = annotation;
 	annotations_tail = &annotation->next;
 	index_data_policy_refs(annotation);
+	return (LOCKLINT_COMMAND_OK);
+}
+
+/*
+ * Add a command-file role policy to the same annotation index used by source
+ * protection declarations.  A role has one canonical member even when an
+ * identical header type has one exact origin in each translation unit.
+ */
+enum locklint_command_result
+locklint_declare_lock_role(const char *lock_name, size_t data_count,
+    const char *const *data_names, const char **problem, const char *file,
+    unsigned long line)
+{
+	struct annotation_ref *locks = NULL;
+	struct annotation_ref *data = NULL;
+	struct annotation_ref **data_tail = &data;
+	enum locklint_command_result result;
+	size_t i;
+
+	*problem = lock_name;
+	result = resolve_command_type_name(&locks, lock_name);
+	if (result != LOCKLINT_COMMAND_OK)
+		return (result);
+	if (locks->next != NULL) {
+		free_command_refs(locks);
+		return (LOCKLINT_COMMAND_AMBIGUOUS_NAME);
+	}
+
+	for (i = 0; i < data_count; i++) {
+		struct annotation_ref *refs = NULL;
+
+		*problem = data_names[i];
+		result = resolve_command_type_name(&refs, data_names[i]);
+		if (result != LOCKLINT_COMMAND_OK) {
+			free_command_refs(locks);
+			free_command_refs(data);
+			return (result);
+		}
+		*data_tail = refs;
+		while (*data_tail != NULL)
+			data_tail = &(*data_tail)->next;
+	}
+
+	while (locks != NULL) {
+		struct annotation *annotation;
+		struct annotation_ref *next = locks->next;
+
+		locks->next = NULL;
+		annotation = calloc(1, sizeof (*annotation));
+		if (annotation == NULL)
+			die("out of memory recording command-file declaration");
+		annotation->kind = ANNOTATION_LOCK_ROLE_PROTECTS_DATA;
+		annotation->command_file = copy_string(file);
+		annotation->command_line = line;
+		annotation->lock = locks;
+		annotation->data = clone_command_refs(data);
+		expand_data_refs(annotation);
+		annotation->parsed = true;
+		annotation->processed = true;
+		annotation->resolved = true;
+		*annotations_tail = annotation;
+		annotations_tail = &annotation->next;
+		index_data_policy_refs(annotation);
+		locks = next;
+	}
+	free_command_refs(data);
 	return (LOCKLINT_COMMAND_OK);
 }
 
@@ -1721,6 +1850,8 @@ record_replacements(struct annotation *annotation)
 			if (!earlier->resolved ||
 			    (earlier->kind != ANNOTATION_MUTEX_PROTECTS_DATA &&
 			    earlier->kind != ANNOTATION_RWLOCK_PROTECTS_DATA &&
+			    earlier->kind !=
+			    ANNOTATION_LOCK_ROLE_PROTECTS_DATA &&
 			    earlier->kind != ANNOTATION_SCHEME_PROTECTS_DATA))
 				continue;
 			for (candidate = earlier->data; candidate != NULL;
@@ -1797,11 +1928,28 @@ locklint_resolve_annotations(struct symbol_list *symbols)
 		    !resolve_annotation_ref(annotation->lock, true,
 		    annotation->tu, symbols))
 			continue;
+		if (annotation->kind == ANNOTATION_LOCK_ROLE_PROTECTS_DATA &&
+		    (annotation->lock->scope != ANNOTATION_TYPE ||
+		    annotation->lock->member == NULL)) {
+			sparse_error(annotation->pos,
+			    "LOCK_ROLE_PROTECTS_DATA requires a "
+			    "type-member lock role");
+			continue;
+		}
 		for (ref = annotation->data; ref != NULL; ref = ref->next) {
 			if (!resolve_annotation_ref(ref,
 			    annotation->kind == ANNOTATION_RWLOCK_COVERS_LOCKS,
 			    annotation->tu, symbols))
 				break;
+			if (annotation->kind ==
+			    ANNOTATION_LOCK_ROLE_PROTECTS_DATA &&
+			    (ref->scope != ANNOTATION_TYPE ||
+			    ref->member == NULL)) {
+				sparse_error(annotation->pos,
+				    "LOCK_ROLE_PROTECTS_DATA requires "
+				    "type-member data");
+				break;
+			}
 		}
 		if (ref == NULL) {
 			if (annotation->kind !=
@@ -1812,6 +1960,8 @@ locklint_resolve_annotations(struct symbol_list *symbols)
 			    ANNOTATION_MUTEX_PROTECTS_DATA ||
 			    annotation->kind ==
 			    ANNOTATION_RWLOCK_PROTECTS_DATA ||
+			    annotation->kind ==
+			    ANNOTATION_LOCK_ROLE_PROTECTS_DATA ||
 			    annotation->kind ==
 			    ANNOTATION_SCHEME_PROTECTS_DATA)
 				record_replacements(annotation);
@@ -2313,6 +2463,19 @@ locklint_data_policy(const struct locklint_access *access,
 			protection_rank = candidate_rank;
 			have_protection = true;
 			break;
+		case ANNOTATION_LOCK_ROLE_PROTECTS_DATA:
+			candidate_rank =
+			    data_policy_protection_rank(ref, access);
+			if (have_protection &&
+			    candidate_rank < protection_rank)
+				break;
+			policy->protection =
+			    LOCKLINT_PROTECTION_LOCK_ROLE;
+			protector = annotation->lock;
+			protected_owner = ref->owner_type;
+			protection_rank = candidate_rank;
+			have_protection = true;
+			break;
 		case ANNOTATION_SCHEME_PROTECTS_DATA:
 			candidate_rank =
 			    data_policy_protection_rank(ref, access);
@@ -2383,6 +2546,9 @@ locklint_data_policy(const struct locklint_access *access,
 			lock->address_base_is_symbol =
 			    access->address_base_is_symbol;
 		}
+	} else if (policy->protection == LOCKLINT_PROTECTION_LOCK_ROLE) {
+		annotation_ref_access(protector, lock);
+		policy->lock_role_match = true;
 	}
 	return (found);
 }
@@ -2492,6 +2658,8 @@ annotation_kind_name(enum annotation_kind kind)
 		return ("MUTEX_PROTECTS_DATA");
 	case ANNOTATION_RWLOCK_PROTECTS_DATA:
 		return ("RWLOCK_PROTECTS_DATA");
+	case ANNOTATION_LOCK_ROLE_PROTECTS_DATA:
+		return ("LOCK_ROLE_PROTECTS_DATA");
 	case ANNOTATION_SCHEME_PROTECTS_DATA:
 		return ("SCHEME_PROTECTS_DATA");
 	case ANNOTATION_DATA_READABLE_WITHOUT_LOCK:
@@ -2545,6 +2713,8 @@ locklint_show_annotations(FILE *stream)
 			    ANNOTATION_MUTEX_PROTECTS_DATA ||
 			    annotation->kind ==
 			    ANNOTATION_RWLOCK_PROTECTS_DATA ||
+			    annotation->kind ==
+			    ANNOTATION_LOCK_ROLE_PROTECTS_DATA ||
 			    annotation->kind ==
 			    ANNOTATION_RWLOCK_COVERS_LOCKS) {
 				show_annotation_ref(stream, annotation->lock);

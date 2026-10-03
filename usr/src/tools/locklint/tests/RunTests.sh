@@ -2339,6 +2339,12 @@ require_match "annotation errors" \
     "annotation lock 'error_state' names a structure" \
     annotation-errors.out
 require_match "annotation errors" \
+    "LOCK_ROLE_PROTECTS_DATA requires a type-member lock role" \
+    annotation-errors.out
+require_match "annotation errors" \
+    "LOCK_ROLE_PROTECTS_DATA requires type-member data" \
+    annotation-errors.out
+require_match "annotation errors" \
     "expected quoted protection scheme" annotation-errors.out
 require_match "annotation errors" \
     "unresolved annotation name 'error_state::missing_scheme'" \
@@ -2566,16 +2572,16 @@ reject_match "locked pointer pointee policy" \
 run_capture "cross-object lock role" cross-object-protection.out \
     "$LOCKLINT" --check-locks cross-object-protection.c
 if [ "$(grep -c 'warning:.*\[unprotected-access\]$' \
-    cross-object-protection.out)" -ne 6 ]; then
-	fail "cross-object lock role: expected six unlocked accesses"
+    cross-object-protection.out)" -ne 8 ]; then
+	fail "cross-object lock role: expected eight unlocked accesses"
 fi
-for line in 58 75 92 110 129 130
+for line in 66 83 100 118 137 138 156 161
 do
 	require_match "cross-object unlocked line $line" \
 	    "cross-object-protection.c:$line:.*warning:" \
 	    cross-object-protection.out
 done
-for line in 60 77 94 112 132 133
+for line in 68 85 102 120 140 141 158
 do
 	reject_match "cross-object role-protected line $line" \
 	    "cross-object-protection.c:$line:.*warning:" \
@@ -2585,10 +2591,10 @@ run_capture "cross-object protection states" \
     cross-object-protection-states.out "$LOCKLINT" --check-locks \
     --dump-protection-states --dump-statistics cross-object-protection.c
 require_match "cross-object unlocked protection state" \
-    "cross-object-protection.c:92:.*states=1 lock=0 invisible=0 no-competition=0 conditional=0 unprotected=1 role=0" \
+    "cross-object-protection.c:100:.*states=1 lock=0 invisible=0 no-competition=0 conditional=0 unprotected=1 role=0" \
     cross-object-protection-states.out
 require_match "cross-object role protection state" \
-    "cross-object-protection.c:94:.*states=1 lock=0 invisible=0 no-competition=0 conditional=0 unprotected=0 role=1" \
+    "cross-object-protection.c:102:.*states=1 lock=0 invisible=0 no-competition=0 conditional=0 unprotected=0 role=1" \
     cross-object-protection-states.out
 require_match "cross-object role match count" \
     "^statistics protected_lock_role_matches 6$" \
@@ -2596,6 +2602,102 @@ require_match "cross-object role match count" \
 require_match "cross-object role conflict count" \
     "^statistics lock_identity_role_conflicts 0$" \
     cross-object-protection-states.out
+
+#
+# Verify role-only data protection declared in source and by command.  The
+# selected role protects only the named member; other members retain exact
+# instance protection from their MUTEX_PROTECTS_DATA declarations.
+#
+run_capture "lock role protects data" lock-role-protection.out \
+    "$LOCKLINT" --check-locks --dump-annotations \
+    --dump-protection-states --dump-statistics \
+    --cf lock-role-protection.cf lock-role-protection.c
+if [ "$(grep -c 'warning:.*\[unprotected-access\]$' \
+    lock-role-protection.out)" -ne 5 ]; then
+	fail "lock role protects data: expected five unprotected accesses"
+fi
+for line in 56 59 71 74 114
+do
+	require_match "lock role unprotected line $line" \
+	    "lock-role-protection.c:$line:.*warning:" \
+	    lock-role-protection.out
+done
+for line in 58 73 103 123
+do
+	reject_match "lock role protected line $line" \
+	    "lock-role-protection.c:$line:.*warning:" \
+	    lock-role-protection.out
+	require_match "lock role protection state line $line" \
+	    "lock-role-protection.c:$line:.*states=1 lock=0 invisible=0 no-competition=0 conditional=0 unprotected=0 role=1" \
+	    lock-role-protection.out
+done
+require_match "source lock role annotation" \
+    "LOCK_ROLE_PROTECTS_DATA annotation_role_object_t::lock -> annotation_role_object_t::value" \
+    lock-role-protection.out
+require_match "command lock role annotation" \
+    "LOCK_ROLE_PROTECTS_DATA command_role_object_t::lock -> command_role_object_t::value" \
+    lock-role-protection.out
+require_match "lock role match count" \
+    "^statistics protected_lock_role_matches 4$" \
+    lock-role-protection.out
+require_match "lock role read mode mismatch" \
+    "lock-role-protection.c:114:.*required lock 'lock' is read-held; write-holding is required" \
+    lock-role-protection.out
+
+run_failure "empty lock role command" lock-role-empty.out \
+    "$LOCKLINT" --cf commands/lock-role-empty.cf \
+    lock-role-protection.c
+require_match "empty lock role command" \
+    "lock-role-protects-data requires one lock role and at least one data name" \
+    lock-role-empty.out
+
+run_failure "lock role without data" lock-role-no-data.out \
+    "$LOCKLINT" --cf commands/lock-role-no-data.cf \
+    lock-role-protection.c
+require_match "lock role without data" \
+    "lock-role-protects-data requires one lock role and at least one data name" \
+    lock-role-no-data.out
+
+run_failure "invalid lock role name" lock-role-invalid-lock.out \
+    "$LOCKLINT" --cf commands/lock-role-invalid-lock.cf \
+    lock-role-protection.c
+require_match "invalid lock role name" \
+    "invalid lock role name 'bad-name'" lock-role-invalid-lock.out
+
+run_failure "unresolved lock role name" lock-role-unresolved-lock.out \
+    "$LOCKLINT" --cf commands/lock-role-unresolved-lock.cf \
+    lock-role-protection.c
+require_match "unresolved lock role name" \
+    "unresolved lock role name 'missing_role_type::lock'" \
+    lock-role-unresolved-lock.out
+
+run_failure "invalid lock role data name" lock-role-invalid-data.out \
+    "$LOCKLINT" --cf commands/lock-role-invalid-data.cf \
+    lock-role-protection.c
+require_match "invalid lock role data name" \
+    "invalid data name 'bad-name'" lock-role-invalid-data.out
+
+run_failure "unresolved lock role data name" \
+    lock-role-unresolved-data.out "$LOCKLINT" \
+    --cf commands/lock-role-unresolved-data.cf \
+    lock-role-protection.c
+require_match "unresolved lock role data name" \
+    "unresolved data name 'command_role_object_t::missing'" \
+    lock-role-unresolved-data.out
+
+run_failure "inconsistent lock role type" lock-role-inconsistent.out \
+    "$LOCKLINT" --cf commands/lock-role-inconsistent.cf \
+    type-name-first.c type-name-second-different.c
+require_match "inconsistent lock role type" \
+    "inconsistently defined type in lock role name 'repeated_name::value'" \
+    lock-role-inconsistent.out
+
+run_failure "ambiguous lock role type" lock-role-ambiguous.out \
+    "$LOCKLINT" --cf commands/lock-role-ambiguous.cf \
+    commands/readable.c commands/readable-other.c
+require_match "ambiguous lock role type" \
+    "ambiguous lock role name 'duplicate_command_type::value'" \
+    lock-role-ambiguous.out
 
 #
 # Verify that type-scoped policy declared for one exact header type applies to

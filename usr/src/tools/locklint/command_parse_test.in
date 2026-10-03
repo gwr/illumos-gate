@@ -8,3 +8,4 @@ declare continued1 \
     continued3
 ignore i1 i2
 merge-instances m1 m2
+lock-role-protects-data role data1 data2

@@ -1,0 +1,5 @@
+#
+# Verify that role protection requires a protector and protected data.
+#
+
+lock-role-protects-data

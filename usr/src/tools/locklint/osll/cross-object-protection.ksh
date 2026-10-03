@@ -42,7 +42,8 @@ run_session()
 	    cross_object_saved_local \
 	    cross_object_wrong_owner \
 	    cross_object_unrelated \
-	    cross_object_reassigned
+	    cross_object_reassigned \
+	    same_type_wrong_owner
 	do
 		run_command "declare-root-$root" "$LOCK_LINT" declare root \
 		    "$root" || exit $?

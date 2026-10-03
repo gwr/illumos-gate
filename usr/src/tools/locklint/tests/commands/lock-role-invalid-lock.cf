@@ -1,0 +1,5 @@
+#
+# Verify rejection of a malformed lock-role name.
+#
+
+lock-role-protects-data bad-name command_role_object_t::value

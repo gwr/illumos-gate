@@ -32,6 +32,7 @@ enum locklint_protection {
 	LOCKLINT_PROTECTION_NONE,
 	LOCKLINT_PROTECTION_MUTEX,
 	LOCKLINT_PROTECTION_RWLOCK,
+	LOCKLINT_PROTECTION_LOCK_ROLE,
 	LOCKLINT_PROTECTION_SCHEME
 };
 
@@ -75,6 +76,7 @@ enum locklint_command_result {
 	LOCKLINT_COMMAND_OK,
 	LOCKLINT_COMMAND_INVALID_NAME,
 	LOCKLINT_COMMAND_UNRESOLVED_NAME,
+	LOCKLINT_COMMAND_AMBIGUOUS_NAME,
 	LOCKLINT_COMMAND_INCONSISTENT_TYPE
 };
 
@@ -87,6 +89,8 @@ typedef void (*locklint_visibility_target_f)(const struct locklint_access *,
 void locklint_annotations_enable(void);
 enum locklint_command_result locklint_declare_readable(const char *,
     const char *, unsigned long);
+enum locklint_command_result locklint_declare_lock_role(const char *, size_t,
+    const char *const *, const char **, const char *, unsigned long);
 bool locklint_get_covering_lock(const struct locklint_access *,
     struct locklint_access *);
 bool locklint_lock_covers(const struct locklint_access *,

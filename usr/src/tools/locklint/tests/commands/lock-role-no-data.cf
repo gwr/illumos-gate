@@ -1,0 +1,5 @@
+#
+# Verify that role protection requires at least one protected datum.
+#
+
+lock-role-protects-data command_role_object_t::lock

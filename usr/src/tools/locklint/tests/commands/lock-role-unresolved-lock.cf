@@ -1,0 +1,6 @@
+#
+# Verify rejection of an unresolved lock-role name.
+#
+
+lock-role-protects-data missing_role_type::lock \
+    command_role_object_t::value

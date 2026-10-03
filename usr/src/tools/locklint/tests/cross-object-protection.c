@@ -37,6 +37,13 @@ typedef struct cross_object_owner {
 _NOTE(MUTEX_PROTECTS_DATA(cross_object_owner_t::lock,
     cross_object_child_t))
 
+typedef struct same_type_object {
+	mutex_t lock;
+	int value;
+} same_type_object_t;
+
+_NOTE(MUTEX_PROTECTS_DATA(same_type_object_t::lock, same_type_object_t))
+
 extern void mutex_enter(mutex_t *);
 extern void mutex_exit(mutex_t *);
 
@@ -45,6 +52,7 @@ int cross_object_saved_local(cross_object_owner_t *);
 int cross_object_wrong_owner(cross_object_owner_t *, cross_object_owner_t *);
 int cross_object_unrelated(cross_object_owner_t *, cross_object_child_t *);
 int cross_object_reassigned(cross_object_owner_t *, cross_object_child_t *);
+int same_type_wrong_owner(same_type_object_t *, same_type_object_t *);
 
 /*
  * Establish the baseline for a direct access through the pointer member.
@@ -132,5 +140,26 @@ cross_object_reassigned(cross_object_owner_t *owner,
 	value += old_child->value;
 	value += owner->child->value;
 	mutex_exit(&owner->lock);
+	return (value);
+}
+
+/*
+ * Distinguish exact-instance protection from same-type lock-role matching.
+ * The data and lock owners are separate formals of the same annotated type.
+ */
+int
+same_type_wrong_owner(same_type_object_t *data_owner,
+    same_type_object_t *lock_owner)
+{
+	int value;
+
+	value = data_owner->value;
+	mutex_enter(&data_owner->lock);
+	value += data_owner->value;
+	mutex_exit(&data_owner->lock);
+	mutex_enter(&lock_owner->lock);
+	value += data_owner->value;
+	mutex_exit(&lock_owner->lock);
+
 	return (value);
 }

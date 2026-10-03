@@ -90,6 +90,8 @@ dispatch_command(const char *command, int argc, char **argv)
 		return (cmd_declare(argc, argv));
 	if (strcmp(command, "ignore") == 0)
 		return (cmd_ignore(argc, argv));
+	if (strcmp(command, "lock-role-protects-data") == 0)
+		return (cmd_lock_role_protects_data(argc, argv));
 	if (strcmp(command, "merge-instances") == 0)
 		return (cmd_merge_instances(argc, argv));
 

@@ -6173,7 +6173,8 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 	if (!locklint_data_policy(access, &policy, &protector))
 		return;
 	check_lock = (policy.protection == LOCKLINT_PROTECTION_MUTEX ||
-	    policy.protection == LOCKLINT_PROTECTION_RWLOCK) &&
+	    policy.protection == LOCKLINT_PROTECTION_RWLOCK ||
+	    policy.protection == LOCKLINT_PROTECTION_LOCK_ROLE) &&
 	    !(data->instruction->opcode == OP_LOAD &&
 	    policy.readable_without_lock);
 	if (check_lock) {
@@ -6182,11 +6183,18 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 			    type_member_lookup_exact(protector.member);
 		if (policy.protection == LOCKLINT_PROTECTION_MUTEX)
 			required_modes = LOCKLINT_MODE_MUTEX;
-		else if (data->instruction->opcode == OP_LOAD)
+		else if (policy.protection == LOCKLINT_PROTECTION_RWLOCK &&
+		    data->instruction->opcode == OP_LOAD)
 			required_modes =
 			    LOCKLINT_MODE_READER | LOCKLINT_MODE_WRITER;
-		else
+		else if (policy.protection == LOCKLINT_PROTECTION_RWLOCK)
 			required_modes = LOCKLINT_MODE_WRITER;
+		else if (data->instruction->opcode == OP_LOAD)
+			required_modes = LOCKLINT_MODE_MUTEX |
+			    LOCKLINT_MODE_READER | LOCKLINT_MODE_WRITER;
+		else
+			required_modes =
+			    LOCKLINT_MODE_MUTEX | LOCKLINT_MODE_WRITER;
 	}
 	check_read_only = policy.read_only &&
 	    data->instruction->opcode == OP_STORE;
@@ -6233,7 +6241,8 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 					}
 				}
 			}
-			if (check_lock) {
+			if (check_lock && policy.protection !=
+			    LOCKLINT_PROTECTION_LOCK_ROLE) {
 				error = context_access_identity(data->analysis,
 				    data->context, point_state->state,
 				    &protector, &identity, &existed, &composed);
@@ -6261,7 +6270,8 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 
 		if (check_lock) {
 			unsigned int modes =
-			    context_state_lock_modes(point_state->state,
+			    policy.protection == LOCKLINT_PROTECTION_LOCK_ROLE ?
+			    0 : context_state_lock_modes(point_state->state,
 			    identity);
 			unsigned int role_modes = 0;
 
@@ -6466,27 +6476,25 @@ emit_lock_mode_info(const struct protected_access_finding *finding,
 {
 	const char *held;
 	const char *required;
+	bool write_required =
+	    finding->instruction->opcode == OP_STORE;
 
 	if (finding->protection == LOCKLINT_PROTECTION_MUTEX) {
 		held = "mutex-held";
 		required = "";
 	} else if (finding->observed_modes == LOCKLINT_MODE_READER) {
 		held = "read-held";
-		required = finding->required_modes == LOCKLINT_MODE_WRITER ?
-		    "write-" : "read-";
+		required = write_required ? "write-" : "read-";
 	} else if (finding->observed_modes == LOCKLINT_MODE_WRITER) {
 		held = "write-held";
-		required = finding->required_modes == LOCKLINT_MODE_WRITER ?
-		    "write-" : "read-";
+		required = write_required ? "write-" : "read-";
 	} else if ((finding->observed_modes &
 	    (LOCKLINT_MODE_READER | LOCKLINT_MODE_WRITER)) != 0) {
 		held = "held in multiple modes";
-		required = finding->required_modes == LOCKLINT_MODE_WRITER ?
-		    "write-" : "read-";
+		required = write_required ? "write-" : "read-";
 	} else {
 		held = "held in an incompatible mode";
-		required = finding->required_modes == LOCKLINT_MODE_WRITER ?
-		    "write-" : "read-";
+		required = write_required ? "write-" : "read-";
 	}
 	if (conditional) {
 		locklint_info(pos, "required lock '%s' may be %s; "
@@ -6565,8 +6573,10 @@ emit_protected_access_findings(struct analysis *analysis,
 			    member, finding->instruction->opcode == OP_LOAD ?
 			    "read" : "modified", holding, lock);
 			emit_protected_access_call_witnesses(finding);
-			if (finding->protection ==
-			    LOCKLINT_PROTECTION_RWLOCK &&
+			if ((finding->protection ==
+			    LOCKLINT_PROTECTION_RWLOCK ||
+			    finding->protection ==
+			    LOCKLINT_PROTECTION_LOCK_ROLE) &&
 			    finding->observed_modes != 0)
 				emit_lock_mode_info(finding, pos, lock, false);
 			free(lock);
