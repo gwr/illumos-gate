@@ -70,6 +70,16 @@ OSLL_PROTECTOR = re.compile(r"^\s*protector = (\S+)\s*$")
 OSLL_WHERE = re.compile(
     r"^\s*where = (\S+) \[([^,\]]+),([0-9]+)\]"
 )
+OSLL_REFERENCE_HEADER = [
+    "analyzer",
+    "source",
+    "line",
+    "column",
+    "function",
+    "operation",
+    "datum",
+    "lock",
+]
 NEWLL_FINDING = re.compile(
     r"(?:^|: )([^:\n]+):([0-9]+):([0-9]+): "
     r"warning: locklint: protected member '([^']+)' "
@@ -126,7 +136,95 @@ def finish_osll_finding(
     )
 
 
-def parse_osll(path: Path) -> list[Finding]:
+def is_osll_reference(path: Path) -> bool:
+    with path.open(encoding="utf-8", errors="replace") as stream:
+        for raw_line in stream:
+            line = raw_line.rstrip("\n")
+            if line and not line.startswith("#"):
+                return line.split("\t", 1)[0] == "analyzer"
+    return False
+
+
+def parse_osll_reference(path: Path) -> list[Finding]:
+    findings: list[Finding] = []
+    saw_header = False
+
+    with path.open(encoding="utf-8", errors="replace", newline="") as stream:
+        reader = csv.reader(stream, delimiter="\t")
+        for line_number, fields in enumerate(reader, 1):
+            if not fields or (len(fields) == 1 and not fields[0]):
+                continue
+            if fields[0].startswith("#"):
+                continue
+            if not saw_header:
+                if fields != OSLL_REFERENCE_HEADER:
+                    raise InputError(
+                        f"{path}:{line_number}: invalid OSLL reference header"
+                    )
+                saw_header = True
+                continue
+            if len(fields) != len(OSLL_REFERENCE_HEADER):
+                raise InputError(
+                    f"{path}:{line_number}: expected "
+                    f"{len(OSLL_REFERENCE_HEADER)} tab-separated fields"
+                )
+            (
+                analyzer,
+                source,
+                source_line,
+                column,
+                function,
+                operation,
+                datum,
+                lock,
+            ) = fields
+            if analyzer != "osll":
+                raise InputError(
+                    f"{path}:{line_number}: expected analyzer 'osll'"
+                )
+            if column:
+                raise InputError(
+                    f"{path}:{line_number}: OSLL column must be empty"
+                )
+            if operation not in ("read", "modify"):
+                raise InputError(
+                    f"{path}:{line_number}: invalid operation '{operation}'"
+                )
+            if not all((source, source_line, function, datum, lock)):
+                raise InputError(
+                    f"{path}:{line_number}: incomplete OSLL reference record"
+                )
+            try:
+                parsed_line = int(source_line)
+            except ValueError as error:
+                raise InputError(
+                    f"{path}:{line_number}: invalid source line "
+                    f"'{source_line}'"
+                ) from error
+            if parsed_line <= 0:
+                raise InputError(
+                    f"{path}:{line_number}: source line must be positive"
+                )
+            findings.append(
+                Finding(
+                    source,
+                    parsed_line,
+                    None,
+                    function,
+                    operation,
+                    datum,
+                    lock,
+                )
+            )
+
+    if not saw_header:
+        raise InputError(f"{path}: no OSLL reference header found")
+    if not findings:
+        raise InputError(f"{path}: no OSLL protected-access reports found")
+    return findings
+
+
+def parse_osll_raw(path: Path) -> list[Finding]:
     findings: list[Finding] = []
     operation: Optional[str] = None
     variable: Optional[str] = None
@@ -221,6 +319,12 @@ def parse_osll(path: Path) -> list[Finding]:
     if not findings:
         raise InputError(f"{path}: no OSLL protected-access reports found")
     return findings
+
+
+def parse_osll(path: Path) -> list[Finding]:
+    if is_osll_reference(path):
+        return parse_osll_reference(path)
+    return parse_osll_raw(path)
 
 
 def parse_newll(path: Path) -> list[Finding]:
@@ -426,18 +530,7 @@ def write_normalized(
 ) -> None:
     with path.open("w", encoding="utf-8", newline="") as stream:
         writer = csv.writer(stream, delimiter="\t", lineterminator="\n")
-        writer.writerow(
-            [
-                "analyzer",
-                "source",
-                "line",
-                "column",
-                "function",
-                "operation",
-                "datum",
-                "lock",
-            ]
-        )
+        writer.writerow(OSLL_REFERENCE_HEADER)
         for analyzer, findings in (("osll", osll), ("new-locklint", newll)):
             for finding in sorted(findings):
                 writer.writerow(
@@ -452,6 +545,28 @@ def write_normalized(
                         finding.lock,
                     ]
                 )
+
+
+def write_osll_reference(path: Path, osll: Iterable[Finding]) -> None:
+    with path.open("w", encoding="utf-8", newline="") as stream:
+        stream.write(
+            "# Normalized Old Solaris Lock Lint protected-access findings.\n"
+        )
+        writer = csv.writer(stream, delimiter="\t", lineterminator="\n")
+        writer.writerow(OSLL_REFERENCE_HEADER)
+        for finding in sorted(osll):
+            writer.writerow(
+                [
+                    "osll",
+                    finding.source,
+                    finding.line,
+                    "",
+                    finding.function,
+                    finding.operation,
+                    finding.datum,
+                    finding.lock,
+                ]
+            )
 
 
 def parse_native_only_reference(path: Path) -> set[FindingKey]:
@@ -497,7 +612,7 @@ def parse_arguments() -> argparse.Namespace:
         description="compare OSLL and new locklint protected-access reports"
     )
     parser.add_argument("--from-osll", required=True, type=Path)
-    parser.add_argument("--from-newll", required=True, type=Path)
+    parser.add_argument("--from-newll", type=Path)
     parser.add_argument(
         "--match",
         choices=("semantic", "location"),
@@ -516,14 +631,29 @@ def parse_arguments() -> argparse.Namespace:
         help="write all parsed protected-access reports as TSV",
     )
     parser.add_argument(
+        "--osll-reference-output",
+        type=Path,
+        help="write parsed OSLL findings as a reusable normalized reference",
+    )
+    parser.add_argument(
         "--native-only-reference",
         type=Path,
         help="reviewed native-only semantic groups with rationale comments",
     )
     arguments = parser.parse_args()
+    if (
+        arguments.from_newll is None
+        and arguments.osll_reference_output is None
+    ):
+        parser.error(
+            "--from-newll is required unless --osll-reference-output is used"
+        )
+    if arguments.normalized_output is not None and arguments.from_newll is None:
+        parser.error("--normalized-output requires --from-newll")
     if arguments.native_only_reference is not None and (
         arguments.expect != "osll-covered"
         or arguments.match != "semantic"
+        or arguments.from_newll is None
     ):
         parser.error(
             "--native-only-reference requires --expect=osll-covered "
@@ -536,6 +666,10 @@ def main() -> int:
     arguments = parse_arguments()
     try:
         osll = parse_osll(arguments.from_osll)
+        if arguments.osll_reference_output is not None:
+            write_osll_reference(arguments.osll_reference_output, osll)
+        if arguments.from_newll is None:
+            return 0
         newll = parse_newll(arguments.from_newll)
         reviewed_newll_only = (
             parse_native_only_reference(arguments.native_only_reference)

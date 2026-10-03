@@ -191,6 +191,25 @@ require_match "equivalent lock report result" \
     "equivalent: 3 protected-access groups occur on both sides" \
     compare-lock-reports.out
 
+run_capture "normalized OSLL reference" compare-lock-reports-reference.out \
+    "$COMPARE_LOCK_REPORTS" \
+    --from-osll=compare-lock-reports-osll.ref \
+    --from-newll=compare-lock-reports-newll.in
+require_match "normalized OSLL reference result" \
+    "equivalent: 3 protected-access groups occur on both sides" \
+    compare-lock-reports-reference.out
+
+run_capture "write normalized OSLL reference" \
+    compare-lock-reports-write-reference.out \
+    "$COMPARE_LOCK_REPORTS" \
+    --from-osll=compare-lock-reports-osll.in \
+    --osll-reference-output=compare-lock-reports-written.ref
+if ! cmp -s compare-lock-reports-osll.ref compare-lock-reports-written.ref
+then
+	fail "write normalized OSLL reference: output differs"
+fi
+rm -f compare-lock-reports-written.ref
+
 run_failure "strict lock report locations" \
     compare-lock-reports-locations.out \
     "$COMPARE_LOCK_REPORTS" --match=location \
