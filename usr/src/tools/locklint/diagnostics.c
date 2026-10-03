@@ -10,15 +10,17 @@
  */
 
 /*
- * Emit locklint diagnostics with stable identifiers.  Centralizing emission
- * provides the policy boundary for later suppression and reporting controls.
+ * Emit locklint diagnostics with stable identifiers and Sparse source
+ * positions, independently of Sparse's parser-warning controls.
  */
 
 #include <stdarg.h>
 #include <stdio.h>
-#include <stdlib.h>
 
+#include "token.h"
 #include "diagnostics.h"
+
+static const char *program_name = "locklint";
 
 static const char *const diagnostic_names[LOCKLINT_DIAG_COUNT] = {
 	[LOCKLINT_DIAG_AMBIGUOUS_DIRECT_CALL] = "ambiguous-direct-call",
@@ -81,35 +83,55 @@ static const char *const diagnostic_names[LOCKLINT_DIAG_COUNT] = {
 	[LOCKLINT_DIAG_VISIBILITY_NO_OBJECT] = "visibility-no-object"
 };
 
+void
+diagnostics_init(const char *name)
+{
+	program_name = name;
+}
+
 /*
- * Format first so Sparse's warning interface remains the single owner of
- * source-position rendering and warning accounting.
+ * Render a source message directly so parser warning limits and warning-to-
+ * error conversion cannot alter locklint results.
  */
+static void
+locklint_vmessage(struct position pos, const char *type, const char *format,
+    va_list ap)
+{
+	if (pos.type == TOKEN_BAD)
+		return;
+	(void) fflush(stdout);
+	(void) fprintf(stderr, "%s: %s:%u:%u: %s", program_name,
+	    stream_name(pos.stream), pos.line, pos.pos, type);
+	(void) vfprintf(stderr, format, ap);
+	(void) fputc('\n', stderr);
+}
+
 void
 locklint_warning(enum locklint_diagnostic diagnostic, struct position pos,
     const char *format, ...)
 {
-	const char *name;
-	char *message;
 	va_list ap;
-	va_list copy;
-	int length;
 
 	if (diagnostic < 0 || diagnostic >= LOCKLINT_DIAG_COUNT ||
 	    diagnostic_names[diagnostic] == NULL)
 		die("invalid locklint diagnostic identifier");
-	name = diagnostic_names[diagnostic];
+	if (pos.type == TOKEN_BAD)
+		return;
+	(void) fflush(stdout);
+	(void) fprintf(stderr, "%s: %s:%u:%u: warning: locklint: ",
+	    program_name, stream_name(pos.stream), pos.line, pos.pos);
 	va_start(ap, format);
-	va_copy(copy, ap);
-	length = vsnprintf(NULL, 0, format, copy);
-	va_end(copy);
-	if (length < 0)
-		die("cannot format locklint diagnostic");
-	message = malloc((size_t)length + 1);
-	if (message == NULL)
-		die("out of memory formatting locklint diagnostic");
-	(void) vsnprintf(message, (size_t)length + 1, format, ap);
+	(void) vfprintf(stderr, format, ap);
 	va_end(ap);
-	warning(pos, "locklint: %s [%s]", message, name);
-	free(message);
+	(void) fprintf(stderr, " [%s]\n", diagnostic_names[diagnostic]);
+}
+
+void
+locklint_info(struct position pos, const char *format, ...)
+{
+	va_list ap;
+
+	va_start(ap, format);
+	locklint_vmessage(pos, "", format, ap);
+	va_end(ap);
 }

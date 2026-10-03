@@ -210,6 +210,13 @@ the post-fixed-point diagnostic passes, while
 ordinary protected-access warnings.  The former `--check-locks` opt-in
 spelling remains accepted as a compatibility no-op.
 
+Ordinary Sparse parser warnings are hidden by default because they are not
+locklint findings.  `--parser-warnings` enables them for troubleshooting, and
+an explicit Sparse `-fmax-warnings` argument may set their limit.  Parser
+errors remain visible in every mode.  Locklint warnings and their supporting
+information use independent output handlers and are never limited or converted
+to parser errors by Sparse warning options.
+
 Each dump begins with a `#### dump-name ####` header.  A bare dump option
 writes to standard output; `--dump-name=pathname` writes only that dump to the
 named file.  Distinct dumps may not share an explicit pathname.  The parsed,
@@ -2686,11 +2693,11 @@ durable references and future suppression keys.  Existing identifiers are not
 renamed or reused for a different semantic class when message wording changes.
 
 `diagnostics.h` defines the identifier set, and `diagnostics.c` maps it to
-output names.  `locklint_warning()` measures and allocates the complete
-formatted message before passing it to Sparse's `warning()` interface, avoiding
-a fixed-size or truncating buffer.  The central function is also the policy
-boundary for later suppression controls.  Supporting provenance emitted with
-`info()`, such as an assertion declaration or lock-order proof edge, remains
+output names.  `locklint_warning()` and `locklint_info()` render Sparse source
+positions through the public stream-name and position interfaces but do not
+use Sparse's warning handlers or warning state.  The primary function appends
+the stable identifier without a fixed-size formatting buffer.  Supporting
+provenance, such as an assertion declaration or lock-order proof edge, remains
 untagged because it is subordinate to the preceding primary warning.
 
 The current identifier set covers ambiguous calls, assertion requirements,
@@ -2809,7 +2816,9 @@ intermediate-frame rendering remain optional future work.
 
 | Function | Responsibility |
 | --- | --- |
+| `diagnostics_init()` | Record the locklint invocation name used to prefix diagnostics |
 | `locklint_warning()` | Format and emit one primary warning with its stable diagnostic identifier |
+| `locklint_info()` | Emit untagged supporting information for a locklint warning |
 
 ### Lock order: `lock_order.c`
 

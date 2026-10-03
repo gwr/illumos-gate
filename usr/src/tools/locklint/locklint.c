@@ -33,6 +33,7 @@
 #include "callgraph.h"
 #include "check.h"
 #include "command_parse.h"
+#include "diagnostics.h"
 #include "dump.h"
 #include "events.h"
 #include "identity.h"
@@ -45,6 +46,7 @@
 
 static bool check_locks = true;
 static bool compat_osll;
+static bool parser_warnings;
 static bool show_times;
 
 struct command_file {
@@ -70,6 +72,7 @@ usage(FILE *stream)
 	    "usage: locklint [--cf command-file] [--compat=osll] "
 	    "[--root-discovery=auto|all-exported|none] "
 	    "[--check-locks] [--no-check] "
+	    "[--parser-warnings] "
 	    "[--dump-parsed] [--dump-linearized] "
 	    "[--dump-accesses] [--dump-annotations] [--dump-events] "
 	    "[--dump-callgraph] [--dump-contexts] "
@@ -114,6 +117,8 @@ options(int argc, char **argv)
 			 */
 		} else if (strcmp(argv[i], "--no-check") == 0) {
 			check_locks = false;
+		} else if (strcmp(argv[i], "--parser-warnings") == 0) {
+			parser_warnings = true;
 		} else if (dump_option(argv[i], DUMP_PARSED)) {
 		} else if (dump_option(argv[i], DUMP_LINEARIZED)) {
 		} else if (dump_option(argv[i], DUMP_ACCESSES)) {
@@ -343,6 +348,7 @@ main(int argc, char **argv)
 	char *file;
 
 	timing_start();
+	diagnostics_init(argv[0]);
 	argc = options(argc, argv);
 	if (argc == 1) {
 		usage(stderr);
@@ -370,12 +376,11 @@ main(int argc, char **argv)
 	 */
 	Wone_bit_signed_bitfield = 0;
 	/*
-	 * Sparse's default warning cap is useful for broad checker runs.
-	 * Locklint diagnostics are a correctness result, so they must be
-	 * complete by default.  sparse_initialize() may still replace this
-	 * value when the user explicitly supplies -fmax-warnings.
+	 * Parser warnings are troubleshooting output rather than locklint
+	 * findings.  An explicit Sparse -fmax-warnings option may still replace
+	 * this default while sparse_initialize() processes its arguments.
 	 */
-	fmax_warnings = ~0U;
+	fmax_warnings = parser_warnings ? ~0U : 0;
 	/*
 	 * Sparse parses predefined and command-line-included source before the
 	 * explicit inputs.  Give records captured there stable provenance, and

@@ -92,6 +92,25 @@ require_empty()
 }
 
 #
+# Locklint findings are the default diagnostic output.  Ordinary parser
+# warnings are opt-in, while parser errors remain visible.
+#
+run_capture "hidden parser warnings" parser-warning-hidden.out \
+    "$LOCKLINT" --no-check parser-warning.c
+reject_match "hidden parser warning" "locklint parser warning test" \
+    parser-warning-hidden.out
+
+run_capture "enabled parser warnings" parser-warning-enabled.out \
+    "$LOCKLINT" --no-check --parser-warnings parser-warning.c
+require_match "enabled parser warning" "locklint parser warning test" \
+    parser-warning-enabled.out
+
+run_failure "visible parser errors" parser-error.out \
+    "$LOCKLINT" --no-check parser-error.c
+require_match "visible parser error" "locklint parser error test" \
+    parser-error.out
+
+#
 # Dump streams have one identifying header.  Per-function dumps sharing
 # stdout are collected into complete sections, while an explicit pathname
 # receives only its selected dump.
@@ -2166,7 +2185,7 @@ compare "indirect calls callgraph" indirect-calls-callgraph.ref \
     indirect-calls-callgraph.out
 
 run_capture "ambiguous call callgraph" ambiguous-call-callgraph.out \
-    "$LOCKLINT" --dump-callgraph ambiguous-call-caller.c \
+    "$LOCKLINT" --parser-warnings --dump-callgraph ambiguous-call-caller.c \
     ambiguous-call-first.c ambiguous-call-second.c
 compare "ambiguous call callgraph" ambiguous-call-callgraph.ref \
     ambiguous-call-callgraph.out

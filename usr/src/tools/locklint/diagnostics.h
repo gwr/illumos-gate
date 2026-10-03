@@ -62,7 +62,9 @@ enum locklint_diagnostic {
 	LOCKLINT_DIAG_COUNT
 };
 
+void diagnostics_init(const char *);
 void locklint_warning(enum locklint_diagnostic, struct position,
     const char *, ...) FORMAT_ATTR(3);
+void locklint_info(struct position, const char *, ...) FORMAT_ATTR(2);
 
 #endif /* LOCKLINT_DIAGNOSTICS_H */
