@@ -233,7 +233,7 @@ write_reference_summary()
 }
 
 print "Running new locklint over usbvc"
-run_locklint --compat=osll --check-locks --dump-callgraph \
+run_locklint --compat=osll --dump-callgraph \
     --cf "$SCRIPT_DIR/usbvc.cf" >"$ANALYZE_RAW" 2>&1
 status=$?
 if (( status != 0 )); then

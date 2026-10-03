@@ -28,15 +28,17 @@
 #include "lib.h"
 #include "linearize.h"
 #include "access.h"
+#include "analysis.h"
 #include "annotations.h"
 #include "assertions.h"
 #include "callgraph.h"
-#include "check.h"
 #include "command_parse.h"
 #include "diagnostics.h"
 #include "dump.h"
 #include "events.h"
 #include "identity.h"
+#include "lock_identity.h"
+#include "lock_order.h"
 #include "parse.h"
 #include "scope.h"
 #include "statistics.h"
@@ -71,7 +73,7 @@ usage(FILE *stream)
 	(void) fprintf(stream,
 	    "usage: locklint [--cf command-file] [--compat=osll] "
 	    "[--root-discovery=auto|all-exported|none] "
-	    "[--check-locks] [--no-check] "
+	    "[--no-check] "
 	    "[--parser-warnings] "
 	    "[--dump-parsed] [--dump-linearized] "
 	    "[--dump-accesses] [--dump-annotations] [--dump-events] "
@@ -110,11 +112,6 @@ options(int argc, char **argv)
 			if (++i == argc)
 				die("--cf requires a command file");
 			add_command_file(argv[i]);
-		} else if (strcmp(argv[i], "--check-locks") == 0) {
-			/*
-			 * Retain the former opt-in spelling for compatibility.
-			 * Lock checking is enabled by default.
-			 */
 		} else if (strcmp(argv[i], "--no-check") == 0) {
 			check_locks = false;
 		} else if (strcmp(argv[i], "--parser-warnings") == 0) {
@@ -339,6 +336,52 @@ locklint_sparse(char *filename)
 	return (symbols);
 }
 
+/*
+ * Resolve the whole-program callgraph, run the requested caller-context
+ * analysis and reports, then release analysis-owned state.
+ */
+static void
+run_analysis(void)
+{
+	struct lock_identity_collection lock_identities;
+	FILE *callgraph_stream = dump_is_enabled(DUMP_CALLGRAPH) ?
+	    dump_output(DUMP_CALLGRAPH) : NULL;
+	FILE *context_stream = dump_is_enabled(DUMP_CONTEXTS) ?
+	    dump_output(DUMP_CONTEXTS) : NULL;
+	FILE *protection_state_stream =
+	    dump_is_enabled(DUMP_PROTECTION_STATES) ?
+	    dump_output(DUMP_PROTECTION_STATES) : NULL;
+
+	timing_begin(TIMING_ANALYSIS_SETUP);
+	callgraph_resolve();
+	lock_identity_collection_create(&lock_identities);
+	if (check_locks) {
+		locklint_order_build();
+		locklint_order_report_declared_cycles();
+		callgraph_report_unanalyzed_callbacks();
+	}
+	if (callgraph_stream != NULL) {
+		(void) fprintf(callgraph_stream, "#### dump-callgraph ####\n");
+		callgraph_dump(callgraph_stream);
+	}
+	timing_end(TIMING_ANALYSIS_SETUP);
+	if (check_locks || context_stream != NULL ||
+	    protection_state_stream != NULL) {
+		analysis_run(&lock_identities, check_locks, context_stream,
+		    protection_state_stream);
+	}
+	timing_begin(TIMING_DIAG_OBSERVED_ORDER);
+	if (check_locks)
+		locklint_order_report_observed_cycles();
+	timing_end(TIMING_DIAG_OBSERVED_ORDER);
+	timing_begin(TIMING_ANALYSIS_CLEANUP);
+	if (check_locks)
+		locklint_order_cleanup();
+	callgraph_cleanup();
+	lock_identity_collection_free(&lock_identities);
+	timing_end(TIMING_ANALYSIS_CLEANUP);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -475,13 +518,7 @@ main(int argc, char **argv)
 	if (check_locks || dump_is_enabled(DUMP_CALLGRAPH) ||
 	    dump_is_enabled(DUMP_CONTEXTS) ||
 	    dump_is_enabled(DUMP_PROTECTION_STATES)) {
-		locklint_check_all(check_locks,
-		    dump_is_enabled(DUMP_CALLGRAPH) ?
-		    dump_output(DUMP_CALLGRAPH) : NULL,
-		    dump_is_enabled(DUMP_CONTEXTS) ?
-		    dump_output(DUMP_CONTEXTS) : NULL,
-		    dump_is_enabled(DUMP_PROTECTION_STATES) ?
-		    dump_output(DUMP_PROTECTION_STATES) : NULL);
+		run_analysis();
 	}
 	timing_begin(TIMING_FINAL_OUTPUT);
 	if (dump_is_enabled(DUMP_TYPES))

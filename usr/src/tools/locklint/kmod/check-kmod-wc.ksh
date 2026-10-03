@@ -52,7 +52,7 @@ run_locklint()
 }
 
 print "Running new locklint over wc"
-run_locklint --compat=osll --check-locks --dump-callgraph \
+run_locklint --compat=osll --dump-callgraph \
     --cf "$SCRIPT_DIR/wc.cf" \
     >"$ANALYZE_RAW" 2>&1
 status=$?

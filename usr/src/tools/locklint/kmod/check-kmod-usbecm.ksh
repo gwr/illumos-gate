@@ -209,7 +209,7 @@ write_summary()
 }
 
 print "Running new locklint over usbecm"
-run_locklint --compat=osll --check-locks --dump-callgraph \
+run_locklint --compat=osll --dump-callgraph \
     --cf "$SCRIPT_DIR/usbecm.cf" >"$ANALYZE_RAW" 2>&1
 status=$?
 if (( status != 0 )); then

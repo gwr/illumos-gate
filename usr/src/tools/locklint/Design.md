@@ -207,8 +207,8 @@ fixed point required to produce that output.  In particular,
 `--no-check --dump-contexts` computes and displays contexts without running
 the post-fixed-point diagnostic passes, while
 `--no-check --dump-protection-states` emits protection-state records without
-ordinary protected-access warnings.  The former `--check-locks` opt-in
-spelling remains accepted as a compatibility no-op.
+ordinary protected-access warnings.  The former `--check-locks` opt-in is no
+longer a locklint option.
 
 Ordinary Sparse parser warnings are hidden by default because they are not
 locklint findings.  `--parser-warnings` enables them for troubleshooting, and
@@ -2118,9 +2118,9 @@ the graph to the cleaned state.  Construction cannot resume after resolution.
 
 `callgraph.h` declares the module interface while keeping callgraph-owned
 collections and indexes opaque.  `function_info.h` privately defines the
-per-function representation shared by `callgraph.c` and `check.c`; it exposes
-the Sparse function identity and checker attachments but not the owning list
-or AVL linkages in the private `function_record`.
+per-function representation shared by `callgraph.c` and `analysis.c`; it
+exposes the Sparse function identity and analysis attachments but not the
+owning list or AVL linkages in the private `function_record`.
 
 For a call whose Sparse symbol already has an entrypoint, locklint uses that
 definition directly.
@@ -2765,7 +2765,8 @@ intermediate-frame rendering remain optional future work.
 | --- | --- |
 | `options()` | Consume locklint-specific options while retaining compiler and preprocessing arguments needed by Sparse |
 | `process_symbols()` | Expand symbols, create entrypoints, add functions to the callgraph, and emit requested dumps |
-| `main()` | Register hooks, drive per-file parsing/resolution, and start program-wide analysis |
+| `run_analysis()` | Resolve the callgraph, run requested caller-context analysis and reports, and release analysis-owned state |
+| `main()` | Register hooks, drive per-file parsing and resolution, and run whole-program analysis |
 | `locklint_init_include_path()` | Replace Sparse's default include-path initialization |
 
 ### Phase timing: `timing.c`
@@ -2853,14 +2854,6 @@ intermediate-frame rendering remain optional future work.
 | `callgraph_ambiguous_callee()` | Return the cached indication that a direct call has multiple matching external definitions |
 | `callgraph_dump()` | Emit the deterministic callgraph audit to a caller-supplied stream |
 | `callgraph_cleanup()` | Verify iterator and attachment lifetimes, then release all callgraph-owned records and indexes |
-
-### Checker: `check.c`
-
-| Function | Responsibility |
-| --- | --- |
-| `analyze_blocks()` | Solve unified intraprocedural lock, competition, and visibility state |
-| `run_lock_checks()` | Order transfer solving, block analysis, acquisition and protection-summary propagation, diagnostics, and observed-cycle reporting |
-| `locklint_check_all()` | Resolve the callgraph, order and iterate the complete analysis, release checker attachments, and clean up the callgraph |
 
 ### Diagnostics: `diagnostics.c`
 

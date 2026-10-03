@@ -85,7 +85,6 @@ LOCAL_OBJS = \
 	annotations.o \
 	assertions.o \
 	callgraph.o \
-	check.o \
 	command_parse.o \
 	commands.o \
 	diagnostics.o \

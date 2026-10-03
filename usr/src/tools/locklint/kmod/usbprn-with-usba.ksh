@@ -101,7 +101,7 @@ print "Running new locklint over usbprn+usba"
 
 mkdir -p "${OUT%/*}" || exit 1
 cd "$REPO_ROOT" || exit 1
-"$LOCKLINT" --compat=osll --check-locks $DUMP_OPTIONS --cf "$CF" \
+"$LOCKLINT" --compat=osll $DUMP_OPTIONS --cf "$CF" \
     -D__sun -m64 -Ui386 -U__i386 -O2 \
     -D_ASM_INLINES -std=gnu99 \
     -D_KERNEL -D_SYSCALL32 -D_SYSCALL32_IMPL \

@@ -445,7 +445,7 @@ write_reference_summary()
 }
 
 print "Running new locklint over usbsacm and usbser"
-run_locklint --compat=osll --check-locks --dump-callgraph \
+run_locklint --compat=osll --dump-callgraph \
     --cf "$SCRIPT_DIR/usbsacm.cf" >"$ANALYZE_RAW" 2>&1
 status=$?
 if (( status != 0 )); then

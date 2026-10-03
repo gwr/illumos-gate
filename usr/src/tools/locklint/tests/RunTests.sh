@@ -489,7 +489,7 @@ reject_match "derived lock identities" 'warning:' lock-identity-derived.out
 #
 run_capture "pointer member lock identities" \
     lock-identity-pointer-member.out \
-    "$LOCKLINT" --check-locks lock-identity-pointer-member.c
+    "$LOCKLINT" lock-identity-pointer-member.c
 reject_match "repeated pointer member lock identity" \
     "lock-identity-pointer-member.c:50:19:.*\\[lock-not-held\\]" \
     lock-identity-pointer-member.out
@@ -508,7 +508,7 @@ fi
 # balanced drop/reacquire loop.  A missing reacquisition remains visible.
 #
 run_capture "call-result lock identities" lock-identity-call-result.out \
-    "$LOCKLINT" --check-locks lock-identity-call-result.c
+    "$LOCKLINT" lock-identity-call-result.c
 reject_match "balanced call-result loop release" \
     "lock-identity-call-result.c:57:35:.*\\[lock-not-held\\]" \
     lock-identity-call-result.out
@@ -533,11 +533,11 @@ fi
 # be visible through the caller's call-result identity.
 #
 run_capture "return object lock binding" return-bindings.out \
-    "$LOCKLINT" --check-locks return-bindings.c
+    "$LOCKLINT" return-bindings.c
 reject_match "return object lock binding" 'warning:' return-bindings.out
 
 run_capture "return object edge binding" return-bindings-edge.out \
-    "$LOCKLINT" --check-locks --dump-contexts return-bindings-edge.c
+    "$LOCKLINT" --dump-contexts return-bindings-edge.c
 reject_match "return object edge binding" 'warning:' \
     return-bindings-edge.out
 require_match "discarded return result remains mapped" \
@@ -602,22 +602,22 @@ require_match "lock order trailing comma" \
     lock-order-errors.out
 
 run_capture "declared lock order cycle" lock-order-cycle.out \
-    "$LOCKLINT" --check-locks lock-order-cycle.c
+    "$LOCKLINT" lock-order-cycle.c
 compare "declared lock order cycle" lock-order-cycle.ref \
     lock-order-cycle.out
 
 run_capture "declared lock order" lock-order.out \
-    "$LOCKLINT" --check-locks lock-order.c
+    "$LOCKLINT" lock-order.c
 compare "declared lock order" lock-order.ref lock-order.out
 
 run_capture "observed lock order" lock-order-observed.out \
-    "$LOCKLINT" --check-locks lock-order-observed.c
+    "$LOCKLINT" lock-order-observed.c
 compare "observed lock order" lock-order-observed.ref \
     lock-order-observed.out
 
 run_capture "conditional local declared lock order" \
     lock-order-local-conditional.out \
-    "$LOCKLINT" --check-locks lock-order-local-conditional.c
+    "$LOCKLINT" lock-order-local-conditional.c
 compare "conditional local declared lock order" \
     lock-order-local-conditional.ref lock-order-local-conditional.out
 
@@ -774,7 +774,7 @@ require_match "command readable inconsistent type" \
 # Caller-free functions must remain roots for independent analysis.
 #
 run_capture "command entry competition" command-entry-competition.out \
-    "$LOCKLINT" --check-locks --dump-callgraph \
+    "$LOCKLINT" --dump-callgraph \
     --cf entry-competition.cf \
     entry-competition.c entry-competition-helper.c
 require_match "command entry retained caller-free root" \
@@ -897,7 +897,7 @@ require_match "missing root discovery" \
 # merged into one representative instance.
 #
 run_capture "per-instance identities" merge-instances-before.out \
-    "$LOCKLINT" --check-locks merge-instances.c
+    "$LOCKLINT" merge-instances.c
 reject_match "per-instance cross-object protection" \
     "merge-instances.c:.*protected member 'value' modified without holding 'lock'" \
     merge-instances-before.out
@@ -906,7 +906,7 @@ reject_match "per-instance distinct locks" \
     merge-instances-before.out
 
 run_capture "merged representative instance" merge-instances-after.out \
-    "$LOCKLINT" --check-locks --cf merge-instances.cf \
+    "$LOCKLINT" --cf merge-instances.cf \
     merge-instances.c
 reject_match "merged cross-object protection" \
     "merge-instances.c:.*protected member 'value'" \
@@ -1130,7 +1130,7 @@ reject_match "nested no-lock contract warning" \
     "unmodeled-indirect-call" nested-target-contract.out
 
 run_capture "command singleton target" command-targets-first.out \
-    "$LOCKLINT" --check-locks --dump-callgraph \
+    "$LOCKLINT" --dump-callgraph \
     --cf targets-first.cf \
     targets.c
 require_match "command singleton target effect" \
@@ -1148,7 +1148,7 @@ if [ "$(grep -c 'warning:' command-targets-first.out)" -ne 1 ]; then
 fi
 
 run_capture "command multiple targets" command-targets-both.out \
-    "$LOCKLINT" -DCOMMAND_TARGETS_BOTH=1 --check-locks \
+    "$LOCKLINT" -DCOMMAND_TARGETS_BOTH=1 \
     --dump-callgraph \
     --cf targets-both.cf \
     targets.c
@@ -1178,7 +1178,7 @@ fi
 run_capture "explicitly dereferenced command targets" \
     command-targets-explicit-dereference.out \
     "$LOCKLINT" -DCOMMAND_TARGETS_BOTH=1 \
-    -DCOMMAND_TARGETS_EXPLICIT_DEREFERENCE=1 --check-locks \
+    -DCOMMAND_TARGETS_EXPLICIT_DEREFERENCE=1 \
     --dump-callgraph --cf targets-both.cf targets.c
 require_match "explicit dereference target set" \
     "resolved-indirect-targets command_target_first@targets.c command_target_second@targets.c" \
@@ -1420,7 +1420,7 @@ require_match "command representative incompatible" \
     command-contract-representative-incompatible.out
 
 run_capture "representative call behavior" representative-call.out \
-    "$LOCKLINT" --check-locks --dump-callgraph \
+    "$LOCKLINT" --dump-callgraph \
     --cf representative-call.cf \
     representative-call.c \
     representative-call-models.c
@@ -1434,14 +1434,14 @@ reject_match "representative is not a concrete target" \
 
 run_capture "declared returned object mismatch" \
     declared-return-effect.out \
-    "$LOCKLINT" --check-locks declared-return-effect.c
+    "$LOCKLINT" declared-return-effect.c
 require_match "declared returned object mismatch" \
     "function 'return_different_object' does not establish declared mutex acquisition of lock 'lock' \\[declared-lock-effect\\]" \
     declared-return-effect.out
 
 run_capture "concrete target precedes representative" \
     representative-call-target.out \
-    "$LOCKLINT" --check-locks \
+    "$LOCKLINT" \
     --cf representative-call-target.cf \
     representative-call.c \
     representative-call-models.c
@@ -1459,7 +1459,7 @@ fi
 
 run_capture "implicit contract consistency" \
     contract-consistency-implicit.out \
-    "$LOCKLINT" -DCONTRACT_CONSISTENCY_IMPLICIT=1 --check-locks \
+    "$LOCKLINT" -DCONTRACT_CONSISTENCY_IMPLICIT=1 \
     contract-consistency.c
 require_match "implicit contract mismatch" \
     "function 'consistency_acquire' has lock acquisitions inconsistent with contract for 'implicit_consistency_ops::enter' \\[function-contract-mismatch\\]" \
@@ -1470,7 +1470,7 @@ require_match "implicit returned-object contract mismatch" \
 
 run_capture "explicit contract consistency" \
     contract-consistency-explicit.out \
-    "$LOCKLINT" -DCONTRACT_CONSISTENCY_EXPLICIT=1 --check-locks \
+    "$LOCKLINT" -DCONTRACT_CONSISTENCY_EXPLICIT=1 \
     --cf contract-consistency-explicit.cf \
     contract-consistency.c
 require_match "explicit contract mismatch" \
@@ -1479,7 +1479,7 @@ require_match "explicit contract mismatch" \
 
 run_capture "matching representative consistency" \
     contract-consistency-matching.out \
-    "$LOCKLINT" -DCONTRACT_CONSISTENCY_MATCHING=1 --check-locks \
+    "$LOCKLINT" -DCONTRACT_CONSISTENCY_MATCHING=1 \
     --cf contract-consistency-matching.cf \
     contract-consistency.c \
     contract-consistency-models.c
@@ -1488,7 +1488,7 @@ reject_match "matching representative consistency" \
 
 run_capture "conflicting representative consistency" \
     contract-consistency-conflicting.out \
-    "$LOCKLINT" -DCONTRACT_CONSISTENCY_CONFLICTING=1 --check-locks \
+    "$LOCKLINT" -DCONTRACT_CONSISTENCY_CONFLICTING=1 \
     --cf contract-consistency-conflicting.cf \
     contract-consistency.c \
     contract-consistency-models.c
@@ -1498,7 +1498,7 @@ require_match "representative contract mismatch" \
 
 run_capture "declared target contract consistency" \
     contract-consistency-command.out \
-    "$LOCKLINT" --check-locks \
+    "$LOCKLINT" \
     --cf contract-consistency-command.cf \
     contract-consistency.c
 require_match "declared target contract mismatch" \
@@ -1698,7 +1698,7 @@ fi
 # caller and cross-translation-unit visibility remain separate work.
 #
 run_capture "local visibility diagnostics" visibility-local-diagnostics.out \
-    "$LOCKLINT" --check-locks visibility.c
+    "$LOCKLINT" visibility.c
 grep -E \
     'visibility.c:(8[0-9]|9[0-9]|1[0-8][0-9]|190):.*\[(unprotected-access|conditional-protection|read-only-(maybe-)?visible)\]' \
     visibility-local-diagnostics.out > visibility-local.out
@@ -1717,7 +1717,7 @@ compare "visibility state diagnostics" visibility-state.ref \
 # conditional exits, globals, recursion, and nested formal-relative regions.
 #
 run_capture "call visibility diagnostics" visibility-calls.out \
-    "$LOCKLINT" --check-locks visibility-calls.c
+    "$LOCKLINT" visibility-calls.c
 compare "call visibility diagnostics" visibility-calls.ref \
     visibility-calls.out
 
@@ -1726,13 +1726,13 @@ compare "call visibility diagnostics" visibility-calls.ref \
 # identities across translation units independent of input order.
 #
 run_capture "cross translation unit visibility diagnostics" \
-    visibility-cross.out "$LOCKLINT" --check-locks \
+    visibility-cross.out "$LOCKLINT" \
     visibility-cross-caller.c visibility-cross-callee.c
 compare "cross translation unit visibility diagnostics" \
     visibility-cross.ref visibility-cross.out
 
 run_capture "reversed cross translation unit visibility diagnostics" \
-    visibility-cross-reversed.out "$LOCKLINT" --check-locks \
+    visibility-cross-reversed.out "$LOCKLINT" \
     visibility-cross-callee.c visibility-cross-caller.c
 compare "reversed cross translation unit visibility diagnostics" \
     visibility-cross.ref visibility-cross-reversed.out
@@ -1741,7 +1741,7 @@ compare "reversed cross translation unit visibility diagnostics" \
 # Verify declared competition side effects against every exact return state.
 #
 run_capture "declared competition effect diagnostics" \
-    competition-contracts.out "$LOCKLINT" --check-locks \
+    competition-contracts.out "$LOCKLINT" \
     competition-contracts.c
 compare "declared competition effect diagnostics" \
     competition-contracts.ref competition-contracts.out
@@ -1751,23 +1751,23 @@ compare "declared competition effect diagnostics" \
 # against every exact exit from distinct synthetic contract contexts.
 #
 run_capture "declared lock effect diagnostics" declared-effects.out \
-    "$LOCKLINT" --check-locks declared-effects.c
+    "$LOCKLINT" declared-effects.c
 compare "declared lock effect diagnostics" declared-effects.ref \
     declared-effects.out
 
 run_capture "declared release effect diagnostics" \
-    declared-releases.out "$LOCKLINT" --check-locks declared-releases.c
+    declared-releases.out "$LOCKLINT" declared-releases.c
 compare "declared release effect diagnostics" \
     declared-releases.ref declared-releases.out
 
 run_capture "declared upgrade effect diagnostics" \
-    rwlock-transition-effects-1.out "$LOCKLINT" --check-locks \
+    rwlock-transition-effects-1.out "$LOCKLINT" \
     -DRWLOCK_TRANSITION_EFFECT_VARIANT=1 rwlock-transition-effects.c
 compare "declared upgrade effect diagnostics" \
     rwlock-transition-effects-1.ref rwlock-transition-effects-1.out
 
 run_capture "declared downgrade effect diagnostics" \
-    rwlock-transition-effects-2.out "$LOCKLINT" --check-locks \
+    rwlock-transition-effects-2.out "$LOCKLINT" \
     -DRWLOCK_TRANSITION_EFFECT_VARIANT=2 rwlock-transition-effects.c
 compare "declared downgrade effect diagnostics" \
     rwlock-transition-effects-2.ref rwlock-transition-effects-2.out
@@ -1777,139 +1777,139 @@ compare "declared downgrade effect diagnostics" \
 # exact acquired/released state through direct calls and formal wrappers.
 #
 run_capture "absolute declared effect diagnostics" \
-    declared-effects-absolute.out "$LOCKLINT" --check-locks \
+    declared-effects-absolute.out "$LOCKLINT" \
     declared-effects-absolute.c
 compare "absolute declared effect diagnostics" \
     declared-effects-absolute.ref declared-effects-absolute.out
 
 run_capture "lock effect diagnostics" effects.out \
-    "$LOCKLINT" --check-locks effects.c
+    "$LOCKLINT" effects.c
 compare "lock effect diagnostics" effects.ref effects.out
 
 run_capture "user rwlock core state" rwlock-core-user.out \
-    "$LOCKLINT" --check-locks -DLOCKLINT_RWLOCK_CORE_ONLY rwlock.c
+    "$LOCKLINT" -DLOCKLINT_RWLOCK_CORE_ONLY rwlock.c
 compare "user rwlock core state" rwlock-core.ref rwlock-core-user.out
 
 run_capture "kernel rwlock core state" rwlock-core-kernel.out \
-    "$LOCKLINT" --check-locks -D_KERNEL -DLOCKLINT_RWLOCK_CORE_ONLY rwlock.c
+    "$LOCKLINT" -D_KERNEL -DLOCKLINT_RWLOCK_CORE_ONLY rwlock.c
 compare "kernel rwlock core state" rwlock-core.ref rwlock-core-kernel.out
 
 run_capture "user rwlock assertions" rwlock-user.out \
-    "$LOCKLINT" --check-locks rwlock.c
+    "$LOCKLINT" rwlock.c
 compare "user rwlock assertions" rwlock-user.ref rwlock-user.out
 
 run_capture "kernel rwlock assertions" rwlock-kernel.out \
-    "$LOCKLINT" --check-locks -D_KERNEL rwlock.c
+    "$LOCKLINT" -D_KERNEL rwlock.c
 compare "kernel rwlock assertions" rwlock-kernel.ref rwlock-kernel.out
 
 run_capture "direct assertion call sites" assertion-requirements.out \
-    "$LOCKLINT" --check-locks assertion-requirements.c
+    "$LOCKLINT" assertion-requirements.c
 compare "direct assertion call sites" assertion-requirements.ref \
     assertion-requirements.out
 
 run_capture "wrapped assertion call sites" \
     assertion-requirement-wrappers.out \
-    "$LOCKLINT" --check-locks assertion-requirement-wrappers.c
+    "$LOCKLINT" assertion-requirement-wrappers.c
 compare "wrapped assertion call sites" \
     assertion-requirement-wrappers.ref \
     assertion-requirement-wrappers.out
 
 run_capture "same-actual assertion aliases" assertion-alias-same.out \
-    "$LOCKLINT" --check-locks -DASSERTION_ALIAS_VARIANT=1 assertion-alias.c
+    "$LOCKLINT" -DASSERTION_ALIAS_VARIANT=1 assertion-alias.c
 reject_match "same-actual assertion aliases" "warning:" \
     assertion-alias-same.out
 
 run_capture "distinct assertion aliases" assertion-alias-distinct.out \
-    "$LOCKLINT" --check-locks -DASSERTION_ALIAS_VARIANT=2 assertion-alias.c
+    "$LOCKLINT" -DASSERTION_ALIAS_VARIANT=2 assertion-alias.c
 compare "distinct assertion aliases" assertion-alias-distinct.ref \
     assertion-alias-distinct.out
 
 run_capture "opposite assertion aliases" assertion-alias-opposite.out \
-    "$LOCKLINT" --check-locks -DASSERTION_ALIAS_VARIANT=3 assertion-alias.c
+    "$LOCKLINT" -DASSERTION_ALIAS_VARIANT=3 assertion-alias.c
 compare "opposite assertion aliases" assertion-alias-opposite.ref \
     assertion-alias-opposite.out
 
 run_capture "same-actual wrapped assertion aliases" \
     assertion-alias-wrapper-same.out \
-    "$LOCKLINT" --check-locks -DASSERTION_ALIAS_VARIANT=4 assertion-alias.c
+    "$LOCKLINT" -DASSERTION_ALIAS_VARIANT=4 assertion-alias.c
 reject_match "same-actual wrapped assertion aliases" "warning:" \
     assertion-alias-wrapper-same.out
 
 run_capture "distinct wrapped assertion aliases" \
     assertion-alias-wrapper-distinct.out \
-    "$LOCKLINT" --check-locks -DASSERTION_ALIAS_VARIANT=5 assertion-alias.c
+    "$LOCKLINT" -DASSERTION_ALIAS_VARIANT=5 assertion-alias.c
 compare "distinct wrapped assertion aliases" \
     assertion-alias-wrapper-distinct.ref \
     assertion-alias-wrapper-distinct.out
 
 run_capture "internally aliased assertion" assertion-alias-internal.out \
-    "$LOCKLINT" --check-locks -DASSERTION_ALIAS_VARIANT=6 assertion-alias.c
+    "$LOCKLINT" -DASSERTION_ALIAS_VARIANT=6 assertion-alias.c
 reject_match "internally aliased assertion" "warning:" \
     assertion-alias-internal.out
 
 run_capture "invalidated assertion alias" assertion-alias-invalidated.out \
-    "$LOCKLINT" --check-locks -DASSERTION_ALIAS_VARIANT=7 assertion-alias.c
+    "$LOCKLINT" -DASSERTION_ALIAS_VARIANT=7 assertion-alias.c
 compare "invalidated assertion alias" assertion-alias-invalidated.ref \
     assertion-alias-invalidated.out
 
 run_capture "multiple assertion aliases" assertion-alias-multiple.out \
-    "$LOCKLINT" --check-locks -DASSERTION_ALIAS_VARIANT=8 assertion-alias.c
+    "$LOCKLINT" -DASSERTION_ALIAS_VARIANT=8 assertion-alias.c
 compare "multiple assertion aliases" assertion-alias-multiple.ref \
     assertion-alias-multiple.out
 
 run_capture "merged assertion aliases" assertion-alias-merged.out \
-    "$LOCKLINT" --check-locks -DASSERTION_ALIAS_VARIANT=9 assertion-alias.c
+    "$LOCKLINT" -DASSERTION_ALIAS_VARIANT=9 assertion-alias.c
 reject_match "merged assertion aliases" "warning:" \
     assertion-alias-merged.out
 
 run_capture "assertion alias overflow replacement" \
     assertion-alias-overflow.out \
-    "$LOCKLINT" --check-locks -DASSERTION_ALIAS_VARIANT=10 assertion-alias.c
+    "$LOCKLINT" -DASSERTION_ALIAS_VARIANT=10 assertion-alias.c
 compare "assertion alias overflow replacement" \
     assertion-alias-overflow.ref assertion-alias-overflow.out
 
 run_capture "user rwlock call state" rwlock-calls-user.out \
-    "$LOCKLINT" --check-locks rwlock-calls.c
+    "$LOCKLINT" rwlock-calls.c
 compare "user rwlock call state" rwlock-calls.ref rwlock-calls-user.out
 
 run_capture "kernel rwlock call state" rwlock-calls-kernel.out \
-    "$LOCKLINT" --check-locks -D_KERNEL rwlock-calls.c
+    "$LOCKLINT" -D_KERNEL rwlock-calls.c
 compare "kernel rwlock call state" rwlock-calls.ref rwlock-calls-kernel.out
 
 run_capture "rwlock downgrade state" rwlock-downgrade.out \
-    "$LOCKLINT" --check-locks rwlock-downgrade.c
+    "$LOCKLINT" rwlock-downgrade.c
 compare "rwlock downgrade state" rwlock-downgrade.ref \
     rwlock-downgrade.out
 
 run_capture "rwlock tryupgrade state" rwlock-tryupgrade.out \
-    "$LOCKLINT" --check-locks rwlock-tryupgrade.c
+    "$LOCKLINT" rwlock-tryupgrade.c
 compare "rwlock tryupgrade state" rwlock-tryupgrade.ref \
     rwlock-tryupgrade.out
 
 run_capture "rwlock tryenter state" rwlock-tryenter.out \
-    "$LOCKLINT" --check-locks rwlock-tryenter.c
+    "$LOCKLINT" rwlock-tryenter.c
 compare "rwlock tryenter state" rwlock-tryenter.ref rwlock-tryenter.out
 
 run_capture "mutex tryenter state" mutex-tryenter.out \
-    "$LOCKLINT" --check-locks mutex-tryenter.c
+    "$LOCKLINT" mutex-tryenter.c
 compare "mutex tryenter state" mutex-tryenter.ref mutex-tryenter.out
 
 run_capture "mutex trylock state" mutex-trylock.out \
-    "$LOCKLINT" --check-locks mutex-trylock.c
+    "$LOCKLINT" mutex-trylock.c
 compare "mutex trylock state" mutex-trylock.ref mutex-trylock.out
 
 run_capture "mutex lock result state" mutex-lock-result.out \
-    "$LOCKLINT" --check-locks mutex-lock-result.c
+    "$LOCKLINT" mutex-lock-result.c
 compare "mutex lock result state" mutex-lock-result.ref \
     mutex-lock-result.out
 
 run_capture "condition wait state and order" condition-wait.out \
-    "$LOCKLINT" --check-locks condition-wait.c
+    "$LOCKLINT" condition-wait.c
 compare "condition wait state and order" condition-wait.ref \
     condition-wait.out
 
 run_capture "other locks held during condition wait" \
-    condition-wait-other-lock.out "$LOCKLINT" --check-locks \
+    condition-wait-other-lock.out "$LOCKLINT" \
     condition-wait-other-lock.c
 require_match "condition wait definite other lock" \
     "condition wait occurs while holding lock 'wait_other_state::other_first' \\[lock-held-during-wait\\]" \
@@ -1935,7 +1935,7 @@ fi
 # equivalent local pointer alias.
 #
 run_capture "held lock through callee" held-lock-callee.out \
-    "$LOCKLINT" --check-locks held-lock-callee.c
+    "$LOCKLINT" held-lock-callee.c
 require_match "direct callee nested acquisition" \
     "held-lock-callee.c:64:24: warning: call to 'balanced_callee' acquires already-held lock 'lock' \\[lock-already-held\\]" \
     held-lock-callee.out
@@ -1960,7 +1960,7 @@ fi
 # combining the targets or held-lock states of distinct callers.
 #
 run_capture "formal callback propagation" formal-callback.out \
-    "$LOCKLINT" --check-locks formal-callback.c
+    "$LOCKLINT" formal-callback.c
 require_match "first formal callback target" \
     "formal-callback.c:46:16: warning: condition wait may occur while holding lock 'formal_callback_state::outer_first' \\[lock-maybe-held-during-wait\\]" \
     formal-callback.out
@@ -1976,7 +1976,7 @@ fi
 # member without combining the targets or held-lock states of distinct callers.
 #
 run_capture "stored callback propagation" stored-callback.out \
-    "$LOCKLINT" --check-locks stored-callback.c
+    "$LOCKLINT" stored-callback.c
 require_match "first stored callback target" \
     "stored-callback.c:55:16: warning: condition wait may occur while holding lock 'stored_callback_state::outer_first' \\[lock-maybe-held-during-wait\\]" \
     stored-callback.out
@@ -1997,7 +1997,7 @@ if [ "$(grep -c 'warning:' stored-callback.out)" -ne 4 ]; then
 fi
 
 run_capture "stored callback helper projection" stored-callback-helper.out \
-    "$LOCKLINT" --check-locks --dump-contexts stored-callback-helper.c
+    "$LOCKLINT" --dump-contexts stored-callback-helper.c
 require_match "stored callback helper demand count" \
     "^stored-target-demands 1$" stored-callback-helper.out
 require_match "first stored callback helper target" \
@@ -2017,7 +2017,7 @@ if [ "$(grep -c 'warning:' stored-callback-helper.out)" -ne 2 ]; then
 fi
 
 run_capture "forwarded stored callback projection" \
-    stored-callback-forward.out "$LOCKLINT" --check-locks --dump-contexts \
+    stored-callback-forward.out "$LOCKLINT" --dump-contexts \
     stored-callback-forward.c
 require_match "forwarded stored callback demand count" \
     "^stored-target-demands 2$" stored-callback-forward.out
@@ -2038,7 +2038,7 @@ if [ "$(grep -c 'warning:' stored-callback-forward.out)" -ne 2 ]; then
 fi
 
 run_capture "operation family profile collection" operation-profiles.out \
-    "$LOCKLINT" --check-locks --dump-contexts operation-profiles.c
+    "$LOCKLINT" --dump-contexts operation-profiles.c
 require_match "operation family profile count" \
     "^operation-family-profiles 3$" operation-profiles.out
 require_match "operation family profile entry count" \
@@ -2097,7 +2097,7 @@ if [ "$(grep -c 'warning:' operation-profiles.out)" -ne 13 ]; then
 fi
 
 run_capture "operation family contract consistency" \
-    operation-contracts.out "$LOCKLINT" --check-locks \
+    operation-contracts.out "$LOCKLINT" \
     --cf operation-contracts.cf operation-contracts.c
 require_match "operation profile target contract mismatch" \
     "function 'operation_contract_acquire' has lock acquisitions inconsistent with contract for 'operation_contracts::start' \\[function-contract-mismatch\\]" \
@@ -2110,7 +2110,7 @@ if [ "$(grep -c 'warning:' operation-contracts.out)" -ne 2 ]; then
 fi
 
 run_capture "competition protected accesses" competition-accesses.out \
-    "$LOCKLINT" -DCOMPETITION_ACCESS_ONLY --check-locks competition-depth.c
+    "$LOCKLINT" -DCOMPETITION_ACCESS_ONLY competition-depth.c
 for location in 50 52 54 70 83 115
 do
 	require_match "definite competing access" \
@@ -2179,7 +2179,7 @@ compare "function pointers callgraph" function-pointers-callgraph.ref \
     function-pointers-callgraph.out
 
 run_capture "unanalyzed callbacks" unanalyzed-callback.out \
-    "$LOCKLINT" --check-locks unanalyzed-callback.c
+    "$LOCKLINT" unanalyzed-callback.c
 for function in unanalyzed_ops_only unanalyzed_pointer_only \
     unanalyzed_ops_and_call
 do
@@ -2421,7 +2421,7 @@ reject_match "no-check protection-state diagnostics" 'warning:' \
 # conditional compound assignment and folding across the sequence do not.
 #
 run_capture "read-modify-write access diagnostics" rmw-access.out \
-    "$LOCKLINT" --check-locks rmw-access.c
+    "$LOCKLINT" rmw-access.c
 for location in 49 55 61
 do
 	require_match "isolated read-modify-write read" \
@@ -2463,7 +2463,7 @@ fi
 # alternatives retains the identity of a possibly held lock.
 #
 run_capture "nullable phi lock identity" nullable-phi-lock.out \
-    "$LOCKLINT" --root-discovery=all-exported --check-locks \
+    "$LOCKLINT" --root-discovery=all-exported \
     -O2 -fno-inline-functions \
     nullable-phi-lock.c
 require_match "nullable phi lock identity" \
@@ -2477,7 +2477,7 @@ fi
 # Verify structure-valued global and member mutex identities.
 #
 run_capture "structure-valued mutex diagnostics" struct-lock-diagnostics.out \
-    "$LOCKLINT" --check-locks struct-lock.c
+    "$LOCKLINT" struct-lock.c
 compare "structure-valued mutex diagnostics" struct-lock.ref \
     struct-lock-diagnostics.out
 
@@ -2486,19 +2486,19 @@ compare "structure-valued mutex diagnostics" struct-lock.ref \
 # reaching subsequent protected accesses.
 #
 run_capture "competition assertion diagnostics" assertion-diagnostics.out \
-    "$LOCKLINT" --check-locks assertions.c
+    "$LOCKLINT" assertions.c
 compare "assertion diagnostics" assertions.ref assertion-diagnostics.out
 
 #
 # Verify mutex, readable-without-lock, and scheme data-policy interaction.
 #
 run_capture "mutex data policy diagnostics" data-policy-diagnostics.out \
-    "$LOCKLINT" --check-locks data-policy.c
+    "$LOCKLINT" data-policy.c
 compare "mutex data policy diagnostics" data-policy.ref \
     data-policy-diagnostics.out
 
 run_capture "protection state dump" protection-states.out \
-    "$LOCKLINT" --check-locks --dump-protection-states data-policy.c
+    "$LOCKLINT" --dump-protection-states data-policy.c
 require_match "unprotected protection state" \
     "data-policy.c:78:.*protection-state load member='protected' function=check_data_policy states=1 lock=0 invisible=0 no-competition=0 conditional=0 unprotected=1" \
     protection-states.out
@@ -2512,34 +2512,34 @@ require_match "lock-held protection state" \
 # retain source-order replacement semantics.
 #
 run_capture "nested scheme after containing mutex" \
-    scheme-mutex-precedence-separate-1.out "$LOCKLINT" --check-locks \
+    scheme-mutex-precedence-separate-1.out "$LOCKLINT" \
     scheme-mutex-precedence-access.c scheme-mutex-precedence-scheme.c
 require_match "nested scheme after containing mutex" \
     "scheme-mutex-precedence-access.c:26:.*protected member 'inner.value' modified without holding 'lock'" \
     scheme-mutex-precedence-separate-1.out
 
 run_capture "containing mutex after nested scheme" \
-    scheme-mutex-precedence-separate-2.out "$LOCKLINT" --check-locks \
+    scheme-mutex-precedence-separate-2.out "$LOCKLINT" \
     scheme-mutex-precedence-scheme.c scheme-mutex-precedence-access.c
 require_match "containing mutex after nested scheme" \
     "scheme-mutex-precedence-access.c:26:.*protected member 'inner.value' modified without holding 'lock'" \
     scheme-mutex-precedence-separate-2.out
 
 run_capture "same-TU nested scheme and containing mutex" \
-    scheme-mutex-precedence-local.out "$LOCKLINT" --check-locks \
+    scheme-mutex-precedence-local.out "$LOCKLINT" \
     scheme-mutex-precedence-local.c
 require_match "same-TU nested scheme and containing mutex" \
     "scheme-mutex-precedence-local.c:27:.*protected member 'inner.value' modified without holding 'lock'" \
     scheme-mutex-precedence-local.out
 
 run_capture "exact scheme replaces mutex" \
-    scheme-mutex-precedence-exact-1.out "$LOCKLINT" --check-locks \
+    scheme-mutex-precedence-exact-1.out "$LOCKLINT" \
     scheme-mutex-precedence-exact-mutex-first.c
 reject_match "exact scheme replaces mutex" \
     "warning:" scheme-mutex-precedence-exact-1.out
 
 run_capture "exact mutex replaces scheme" \
-    scheme-mutex-precedence-exact-2.out "$LOCKLINT" --check-locks \
+    scheme-mutex-precedence-exact-2.out "$LOCKLINT" \
     scheme-mutex-precedence-exact-scheme-first.c
 require_match "exact mutex replaces scheme" \
     "scheme-mutex-precedence-exact-scheme-first.c:27:.*protected member 'inner.value' modified without holding 'lock'" \
@@ -2549,7 +2549,7 @@ require_match "exact mutex replaces scheme" \
 # Verify that structure policy stops at pointer-member boundaries.
 #
 run_capture "pointer member data policy" pointer-member-policy.out \
-    "$LOCKLINT" --check-locks pointer-member-policy.c
+    "$LOCKLINT" pointer-member-policy.c
 if [ "$(grep -c 'warning:.*\[unprotected-access\]$' \
     pointer-member-policy.out)" -ne 1 ]; then
 	fail "pointer member data policy: expected one unprotected access"
@@ -2570,7 +2570,7 @@ reject_match "locked pointer pointee policy" \
 # child type regardless of owner instance or pointer provenance.
 #
 run_capture "cross-object lock role" cross-object-protection.out \
-    "$LOCKLINT" --check-locks cross-object-protection.c
+    "$LOCKLINT" cross-object-protection.c
 if [ "$(grep -c 'warning:.*\[unprotected-access\]$' \
     cross-object-protection.out)" -ne 8 ]; then
 	fail "cross-object lock role: expected eight unlocked accesses"
@@ -2588,7 +2588,7 @@ do
 	    cross-object-protection.out
 done
 run_capture "cross-object protection states" \
-    cross-object-protection-states.out "$LOCKLINT" --check-locks \
+    cross-object-protection-states.out "$LOCKLINT" \
     --dump-protection-states --dump-statistics cross-object-protection.c
 require_match "cross-object unlocked protection state" \
     "cross-object-protection.c:100:.*states=1 lock=0 invisible=0 no-competition=0 conditional=0 unprotected=1 role=0" \
@@ -2609,7 +2609,7 @@ require_match "cross-object role conflict count" \
 # instance protection from their MUTEX_PROTECTS_DATA declarations.
 #
 run_capture "lock role protects data" lock-role-protection.out \
-    "$LOCKLINT" --check-locks --dump-annotations \
+    "$LOCKLINT" --dump-annotations \
     --dump-protection-states --dump-statistics \
     --cf lock-role-protection.cf lock-role-protection.c
 if [ "$(grep -c 'warning:.*\[unprotected-access\]$' \
@@ -2704,7 +2704,7 @@ require_match "ambiguous lock role type" \
 # the corresponding exact type in another translation unit.
 #
 run_capture "canonical cross-TU policy" canonical-policy.out \
-    "$LOCKLINT" --check-locks --dump-statistics \
+    "$LOCKLINT" --dump-statistics \
     canonical-policy-declaration.c \
     canonical-policy-use.c
 require_match "canonical cross-TU write protection" \
@@ -2743,12 +2743,12 @@ fi
 # caller-held lock, while a different dynamic index remains unprotected.
 #
 run_capture "derived formal protection" derived-formal-protection.out \
-    "$LOCKLINT" --check-locks derived-formal-protection.c
+    "$LOCKLINT" derived-formal-protection.c
 require_empty "derived formal protection" derived-formal-protection.out
 
 run_capture "distinct derived formal protection" \
     derived-formal-protection-different.out "$LOCKLINT" \
-    -DDERIVED_FORMAL_DIFFERENT --check-locks derived-formal-protection.c
+    -DDERIVED_FORMAL_DIFFERENT derived-formal-protection.c
 if [ "$(grep -c 'warning:.*\[unprotected-access\]$' \
     derived-formal-protection-different.out)" -ne 2 ]; then
 	fail "distinct derived formal protection: expected two warnings"
@@ -2761,7 +2761,7 @@ require_match "distinct derived formal caller" \
 # Verify caller lock state through direct, wrapped, and recursive calls.
 #
 run_capture "basic call protection diagnostics" calls-basic-diagnostics.out \
-    "$LOCKLINT" --check-locks calls-basic.c
+    "$LOCKLINT" calls-basic.c
 require_match "unlocked direct call" \
     "calls-basic.c:49:22: warning: protected member 'direct_value' read without holding 'lock' \\[unprotected-access\\]" \
     calls-basic-diagnostics.out
@@ -2787,7 +2787,7 @@ fi
 #
 run_capture "unconditional recursion diagnostics" \
     unconditional-recursion.out \
-    "$LOCKLINT" --check-locks unconditional-recursion.c
+    "$LOCKLINT" unconditional-recursion.c
 require_match "access after unconditional self recursion" \
     "unconditional-recursion.c:63:.*warning: protected member 'after_self' modified without holding 'lock' \\[unprotected-access\\]" \
     unconditional-recursion.out
@@ -2802,7 +2802,7 @@ fi
 # Verify exact computed object identities for common alias forms.
 #
 run_capture "computed object alias diagnostics" identity-aliases-diagnostics.out \
-    "$LOCKLINT" --check-locks identity-aliases.c
+    "$LOCKLINT" identity-aliases.c
 require_match "different copied pointer" \
     "identity-aliases.c:83:22: warning: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
     identity-aliases-diagnostics.out
@@ -2824,7 +2824,7 @@ fi
 # different aggregate instances or different elements of an aggregate array.
 #
 run_capture "array owner protection" array-owner-protection.out \
-    "$LOCKLINT" --check-locks array-owner-protection.c
+    "$LOCKLINT" array-owner-protection.c
 reject_match "same owner scalar array" \
     "array-owner-protection.c:55:.*\\[unprotected-access\\]" \
     array-owner-protection.out
@@ -2845,11 +2845,11 @@ fi
 # Verify formal-to-actual identity for same and different caller objects.
 #
 run_capture "same formal actual identities" identity-formals-same.out \
-    "$LOCKLINT" --check-locks identity-formals.c
+    "$LOCKLINT" identity-formals.c
 require_empty "same formal actual identities" identity-formals-same.out
 
 run_capture "different formal actual identities" identity-formals-different.out \
-    "$LOCKLINT" -DFORMAL_ALIAS_DIFFERENT --check-locks identity-formals.c
+    "$LOCKLINT" -DFORMAL_ALIAS_DIFFERENT identity-formals.c
 require_match "different direct and wrapped formal actual" \
     "identity-formals.c:57:21: warning: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
     identity-formals-different.out
@@ -2864,7 +2864,7 @@ fi
 # Verify state and identity propagation across translation units.
 #
 run_capture "cross translation unit diagnostics" cross-diagnostics.out \
-    "$LOCKLINT" --check-locks cross-caller.c cross-callee.c
+    "$LOCKLINT" cross-caller.c cross-callee.c
 require_match "cross translation unlocked access" \
     "cross-callee.c:25:22: warning: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
     cross-diagnostics.out
@@ -2879,7 +2879,7 @@ fi
 # Verify protected access through an exactly resolved indirect call.
 #
 run_capture "exact indirect call diagnostics" indirect-call-diagnostics.out \
-    "$LOCKLINT" --check-locks indirect-calls.c
+    "$LOCKLINT" indirect-calls.c
 require_match "unlocked exact indirect call" \
     "indirect-calls.c:43:22: warning: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
     indirect-call-diagnostics.out
@@ -2891,7 +2891,7 @@ fi
 # Verify NOT_REACHED removes terminated paths from lock-state merges.
 #
 run_capture "not reached diagnostics" not-reached-diagnostics.out \
-    "$LOCKLINT" --check-locks not-reached.c
+    "$LOCKLINT" not-reached.c
 require_match "live unlocked path diagnostic" \
     "not-reached.c:79:14: warning: protected member 'value' modified without holding 'lock' \\[unprotected-access\\]" \
     not-reached-diagnostics.out

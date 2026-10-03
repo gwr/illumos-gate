@@ -118,7 +118,7 @@ verify_automatic_roots()
 }
 
 print "Running new locklint over ugen"
-run_locklint --compat=osll --check-locks --dump-callgraph \
+run_locklint --compat=osll --dump-callgraph \
     --cf "$SCRIPT_DIR/ugen.cf" >"$ANALYZE_RAW" 2>&1
 status=$?
 if (( status != 0 )); then
