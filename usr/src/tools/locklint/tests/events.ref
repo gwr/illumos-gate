@@ -1,3 +1,4 @@
+#### dump-events ####
 function event_sequence
 block .L0
   events.c:48:22 READ state.value offset=0 protected-by=lock

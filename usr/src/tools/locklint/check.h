@@ -17,7 +17,8 @@
 #define	CHECK_H
 
 #include <stdbool.h>
+#include <stdio.h>
 
-void locklint_check_all(bool, bool, bool, bool);
+void locklint_check_all(bool, FILE *, FILE *, FILE *);
 
 #endif /* CHECK_H */

@@ -33,6 +33,7 @@
 #include "callgraph.h"
 #include "check.h"
 #include "command_parse.h"
+#include "dump.h"
 #include "events.h"
 #include "identity.h"
 #include "parse.h"
@@ -42,16 +43,6 @@
 #include "timing.h"
 #include "type.h"
 
-static bool dump_parsed;
-static bool dump_linearized;
-static bool dump_accesses;
-static bool dump_annotations;
-static bool dump_events;
-static bool dump_callgraph;
-static bool dump_contexts;
-static bool dump_protection_states;
-static bool dump_statistics;
-static bool dump_types;
 static bool check_locks = true;
 static bool compat_osll;
 static bool show_times;
@@ -83,6 +74,7 @@ usage(FILE *stream)
 	    "[--dump-accesses] [--dump-annotations] [--dump-events] "
 	    "[--dump-callgraph] [--dump-contexts] "
 	    "[--dump-protection-states] [--dump-statistics] [--dump-types] "
+	    "(each dump option may use =pathname) "
 	    "[--times] "
 	    "[compiler-options] file.c ...\n");
 }
@@ -122,40 +114,20 @@ options(int argc, char **argv)
 			 */
 		} else if (strcmp(argv[i], "--no-check") == 0) {
 			check_locks = false;
-		} else if (strcmp(argv[i], "--dump-parsed") == 0) {
-			dump_parsed = true;
-		} else if (strcmp(argv[i], "--dump-linearized") == 0) {
-			dump_linearized = true;
-		} else if (strcmp(argv[i], "--dump-accesses") == 0) {
-			dump_accesses = true;
-		} else if (strcmp(argv[i], "--dump-annotations") == 0) {
-			dump_annotations = true;
-		} else if (strcmp(argv[i], "--dump-events") == 0) {
-			dump_events = true;
-		} else if (strcmp(argv[i], "--dump-callgraph") == 0) {
-			dump_callgraph = true;
-		} else if (strcmp(argv[i], "--dump-contexts") == 0) {
-			dump_contexts = true;
-		} else if (strcmp(argv[i],
-		    "--dump-protection-states") == 0) {
-			dump_protection_states = true;
-		} else if (strcmp(argv[i], "--dump-statistics") == 0) {
-			dump_statistics = true;
-		} else if (strcmp(argv[i], "--dump-types") == 0) {
-			dump_types = true;
+		} else if (dump_option(argv[i], DUMP_PARSED)) {
+		} else if (dump_option(argv[i], DUMP_LINEARIZED)) {
+		} else if (dump_option(argv[i], DUMP_ACCESSES)) {
+		} else if (dump_option(argv[i], DUMP_ANNOTATIONS)) {
+		} else if (dump_option(argv[i], DUMP_EVENTS)) {
+		} else if (dump_option(argv[i], DUMP_CALLGRAPH)) {
+		} else if (dump_option(argv[i], DUMP_CONTEXTS)) {
+		} else if (dump_option(argv[i], DUMP_PROTECTION_STATES)) {
+		} else if (dump_option(argv[i], DUMP_STATISTICS)) {
+		} else if (dump_option(argv[i], DUMP_TYPES)) {
 		} else if (strcmp(argv[i], "--times") == 0) {
 			show_times = true;
 		} else if (strcmp(argv[i], "--dump-all") == 0) {
-			dump_parsed = true;
-			dump_linearized = true;
-			dump_accesses = true;
-			dump_annotations = true;
-			dump_events = true;
-			dump_callgraph = true;
-			dump_contexts = true;
-			dump_protection_states = true;
-			dump_statistics = true;
-			dump_types = true;
+			dump_enable_all();
 		} else if (strcmp(argv[i], "--compat=osll") == 0) {
 			compat_osll = true;
 		} else if (strncmp(argv[i], "--compat=", 9) == 0) {
@@ -217,7 +189,7 @@ preprocessor_compatibility_enable(void)
 }
 
 static void
-show_accesses(struct entrypoint *ep)
+show_accesses(FILE *stream, struct entrypoint *ep)
 {
 	struct basic_block *bb;
 	char function[128];
@@ -242,11 +214,11 @@ show_accesses(struct entrypoint *ep)
 
 			expr = insn->access;
 			pos = expr != NULL ? expr->pos : insn->pos;
-			(void) printf("%s:%u:%u: %s ",
+			(void) fprintf(stream, "%s:%u:%u: %s ",
 			    stream_name(pos.stream), pos.line, pos.pos,
 			    operation);
-			locklint_show_access(stdout, expr);
-			(void) printf(" offset=%u function=%s\n",
+			locklint_show_access(stream, expr);
+			(void) fprintf(stream, " offset=%u function=%s\n",
 			    insn->offset, function);
 		} END_FOR_EACH_PTR(insn);
 	} END_FOR_EACH_PTR(bb);
@@ -261,30 +233,37 @@ process_symbols(struct translation_unit *tu, struct symbol_list *symbols)
 		struct entrypoint *ep;
 
 		expand_symbol(sym);
-		if (dump_parsed)
-			show_symbol(sym);
+		if (dump_is_enabled(DUMP_PARSED))
+			locklint_show_parsed(dump_output(DUMP_PARSED), sym);
 
-		if (!dump_linearized && !dump_accesses && !dump_annotations &&
-		    !dump_events && !dump_callgraph && !dump_contexts &&
-		    !dump_protection_states && !check_locks)
+		if (!dump_is_enabled(DUMP_LINEARIZED) &&
+		    !dump_is_enabled(DUMP_ACCESSES) &&
+		    !dump_is_enabled(DUMP_ANNOTATIONS) &&
+		    !dump_is_enabled(DUMP_EVENTS) &&
+		    !dump_is_enabled(DUMP_CALLGRAPH) &&
+		    !dump_is_enabled(DUMP_CONTEXTS) &&
+		    !dump_is_enabled(DUMP_PROTECTION_STATES) && !check_locks)
 			continue;
 
 		ep = linearize_symbol(sym);
 		if (ep == NULL)
 			continue;
-		if (check_locks || dump_callgraph || dump_contexts ||
-		    dump_protection_states)
+		if (check_locks || dump_is_enabled(DUMP_CALLGRAPH) ||
+		    dump_is_enabled(DUMP_CONTEXTS) ||
+		    dump_is_enabled(DUMP_PROTECTION_STATES))
 			callgraph_add(tu, ep);
-		if (dump_linearized)
-			show_entry(ep);
-		if (dump_accesses)
-			show_accesses(ep);
-		if (dump_annotations || check_locks || dump_contexts ||
-		    dump_protection_states)
+		if (dump_is_enabled(DUMP_LINEARIZED))
+			locklint_show_linearized(dump_output(DUMP_LINEARIZED), ep);
+		if (dump_is_enabled(DUMP_ACCESSES))
+			show_accesses(dump_output(DUMP_ACCESSES), ep);
+		if (dump_is_enabled(DUMP_ANNOTATIONS) || check_locks ||
+		    dump_is_enabled(DUMP_CONTEXTS) ||
+		    dump_is_enabled(DUMP_PROTECTION_STATES))
 			locklint_process_function_annotations(
-			    dump_annotations ? stdout : NULL, tu, ep);
-		if (dump_events)
-			locklint_show_events(tu, ep);
+			    dump_is_enabled(DUMP_ANNOTATIONS) ?
+			    dump_output(DUMP_ANNOTATIONS) : NULL, tu, ep);
+		if (dump_is_enabled(DUMP_EVENTS))
+			locklint_show_events(dump_output(DUMP_EVENTS), tu, ep);
 	} END_FOR_EACH_PTR(sym);
 }
 
@@ -369,15 +348,19 @@ main(int argc, char **argv)
 		usage(stderr);
 		return (EXIT_FAILURE);
 	}
+	dump_outputs_prepare();
 	if (show_times)
 		timing_enable();
 
 	type_registry_create();
 	preprocessor_compatibility_enable();
-	if (dump_annotations || dump_events || check_locks || dump_contexts ||
-	    dump_protection_states)
+	if (dump_is_enabled(DUMP_ANNOTATIONS) ||
+	    dump_is_enabled(DUMP_EVENTS) || check_locks ||
+	    dump_is_enabled(DUMP_CONTEXTS) ||
+	    dump_is_enabled(DUMP_PROTECTION_STATES))
 		locklint_annotations_enable();
-	if (check_locks || dump_contexts || dump_protection_states)
+	if (check_locks || dump_is_enabled(DUMP_CONTEXTS) ||
+	    dump_is_enabled(DUMP_PROTECTION_STATES))
 		locklint_assertions_enable();
 	do_output = 0;
 	/*
@@ -413,13 +396,16 @@ main(int argc, char **argv)
 		    "declarations are not supported");
 	register_translation_unit_declarations(tu, symbols);
 	timing_begin(TIMING_INPUT_EVIDENCE);
-	if (dump_annotations || dump_events || check_locks || dump_contexts ||
-	    dump_protection_states)
+	if (dump_is_enabled(DUMP_ANNOTATIONS) ||
+	    dump_is_enabled(DUMP_EVENTS) || check_locks ||
+	    dump_is_enabled(DUMP_CONTEXTS) ||
+	    dump_is_enabled(DUMP_PROTECTION_STATES))
 		locklint_resolve_annotations(symbols);
-	if (check_locks || dump_callgraph || dump_contexts ||
-	    dump_protection_states)
+	if (check_locks || dump_is_enabled(DUMP_CALLGRAPH) ||
+	    dump_is_enabled(DUMP_CONTEXTS) ||
+	    dump_is_enabled(DUMP_PROTECTION_STATES))
 		callgraph_record_pointer_evidence(tu, symbols,
-		    dump_callgraph);
+		    dump_is_enabled(DUMP_CALLGRAPH));
 	timing_end(TIMING_INPUT_EVIDENCE);
 	timing_begin(TIMING_INPUT_SYMBOLS);
 	process_symbols(tu, symbols);
@@ -438,13 +424,16 @@ main(int argc, char **argv)
 		timing_end(TIMING_INPUT_PARSE);
 		register_translation_unit_declarations(tu, symbols);
 		timing_begin(TIMING_INPUT_EVIDENCE);
-		if (dump_annotations || dump_events || check_locks ||
-		    dump_contexts || dump_protection_states)
+		if (dump_is_enabled(DUMP_ANNOTATIONS) ||
+		    dump_is_enabled(DUMP_EVENTS) || check_locks ||
+		    dump_is_enabled(DUMP_CONTEXTS) ||
+		    dump_is_enabled(DUMP_PROTECTION_STATES))
 			locklint_resolve_annotations(symbols);
-		if (check_locks || dump_callgraph || dump_contexts ||
-		    dump_protection_states)
+		if (check_locks || dump_is_enabled(DUMP_CALLGRAPH) ||
+		    dump_is_enabled(DUMP_CONTEXTS) ||
+		    dump_is_enabled(DUMP_PROTECTION_STATES))
 			callgraph_record_pointer_evidence(tu, symbols,
-			    dump_callgraph);
+			    dump_is_enabled(DUMP_CALLGRAPH));
 		timing_end(TIMING_INPUT_EVIDENCE);
 		timing_begin(TIMING_INPUT_SYMBOLS);
 		process_symbols(tu, symbols);
@@ -465,18 +454,25 @@ main(int argc, char **argv)
 		return (EXIT_FAILURE);
 	}
 	timing_end(TIMING_COMMANDS);
-	if (check_locks || dump_callgraph || dump_contexts ||
-	    dump_protection_states) {
+	if (check_locks || dump_is_enabled(DUMP_CALLGRAPH) ||
+	    dump_is_enabled(DUMP_CONTEXTS) ||
+	    dump_is_enabled(DUMP_PROTECTION_STATES)) {
 		locklint_check_all(check_locks,
-		    dump_callgraph, dump_contexts, dump_protection_states);
+		    dump_is_enabled(DUMP_CALLGRAPH) ?
+		    dump_output(DUMP_CALLGRAPH) : NULL,
+		    dump_is_enabled(DUMP_CONTEXTS) ?
+		    dump_output(DUMP_CONTEXTS) : NULL,
+		    dump_is_enabled(DUMP_PROTECTION_STATES) ?
+		    dump_output(DUMP_PROTECTION_STATES) : NULL);
 	}
 	timing_begin(TIMING_FINAL_OUTPUT);
-	if (dump_types)
-		type_registry_show(stdout);
-	if (dump_statistics)
-		statistics_show(stdout);
-	if (dump_annotations)
-		locklint_show_annotations(stdout);
+	if (dump_is_enabled(DUMP_TYPES))
+		type_registry_show(dump_stream(DUMP_TYPES));
+	if (dump_is_enabled(DUMP_STATISTICS))
+		statistics_show(dump_stream(DUMP_STATISTICS));
+	if (dump_is_enabled(DUMP_ANNOTATIONS))
+		locklint_show_annotations(dump_output(DUMP_ANNOTATIONS));
+	dump_outputs_finish();
 	locklint_access_cleanup();
 	(void) fflush(stdout);
 	timing_end(TIMING_FINAL_OUTPUT);

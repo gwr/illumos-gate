@@ -210,6 +210,16 @@ the post-fixed-point diagnostic passes, while
 ordinary protected-access warnings.  The former `--check-locks` opt-in
 spelling remains accepted as a compatibility no-op.
 
+Each dump begins with a `#### dump-name ####` header.  A bare dump option
+writes to standard output; `--dump-name=pathname` writes only that dump to the
+named file.  Distinct dumps may not share an explicit pathname.  The parsed,
+linearized, access, annotation, and event dumps are emitted while each
+function is processed, so their bare forms use separate anonymous on-disk
+streams to prevent interleaving.  Locklint creates each stream with
+`mkstemp()`, immediately unlinks it, and publishes its contents to standard
+output after processing.  This bounds memory use by the copy buffer and lets
+the operating system reclaim internal temporary files on every process exit.
+
 The optional `--times` report uses process-global accumulated timers.  It
 separates initialization; frontend parsing; object-identity, type-registration,
 annotation and pointer-evidence, symbol, and token-cleanup input work; command

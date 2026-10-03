@@ -1,3 +1,4 @@
+#### dump-annotations ####
 declared-effect-annotations.c:33:9: MUTEX_ACQUIRED_AS_SIDE_EFFECT state.mutex function=formal_effects
 declared-effect-annotations.c:34:9: READ_LOCK_ACQUIRED_AS_SIDE_EFFECT state.rwlock function=formal_effects
 declared-effect-annotations.c:35:9: WRITE_LOCK_ACQUIRED_AS_SIDE_EFFECT state.rwlock function=formal_effects

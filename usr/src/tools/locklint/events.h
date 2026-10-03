@@ -16,6 +16,8 @@
 #ifndef EVENTS_H
 #define	EVENTS_H
 
+#include <stdio.h>
+
 struct entrypoint;
 struct instruction;
 struct locklint_access;
@@ -43,6 +45,7 @@ enum locklint_lock_mode {
 enum locklint_lock_action locklint_get_lock_action(struct translation_unit *,
     const struct instruction *, struct locklint_access *,
     enum locklint_lock_mode *);
-void locklint_show_events(struct translation_unit *, struct entrypoint *);
+void locklint_show_events(FILE *, struct translation_unit *,
+    struct entrypoint *);
 
 #endif /* EVENTS_H */

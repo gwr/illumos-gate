@@ -8221,6 +8221,13 @@ analysis_run(struct lock_identity_collection *lock_identities, bool check_locks,
 		diagnose_competition_assertions();
 		timing_end(TIMING_DIAG_COMPETITION_ASSERTIONS);
 	}
+	if (protection_state_stream != NULL) {
+		(void) fprintf(protection_state_stream,
+		    "#### dump-protection-states ####\n");
+	}
+	/*
+	 * Run the protected-access pass for checks or its requested state dump.
+	 */
 	if (check_locks || protection_state_stream != NULL) {
 		timing_begin(TIMING_DIAG_PROTECTED_ACCESSES);
 		diagnose_protected_accesses(&analysis);
@@ -8237,6 +8244,7 @@ analysis_run(struct lock_identity_collection *lock_identities, bool check_locks,
 	}
 	if (stream != NULL) {
 		timing_begin(TIMING_MEASUREMENT);
+		(void) fprintf(stream, "#### dump-contexts ####\n");
 		analysis.measurements.lock_identities =
 		    lock_identity_count(analysis.lock_identities);
 		measure_lock_identities(&analysis);

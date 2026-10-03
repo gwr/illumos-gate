@@ -31,9 +31,9 @@
 #include "symbol.h"
 
 static void
-show_event_position(struct position pos, const char *event)
+show_event_position(FILE *stream, struct position pos, const char *event)
 {
-	(void) printf("  %s:%u:%u %s ", stream_name(pos.stream),
+	(void) fprintf(stream, "  %s:%u:%u %s ", stream_name(pos.stream),
 	    pos.line, pos.pos, event);
 }
 
@@ -160,7 +160,8 @@ locklint_get_lock_action(struct translation_unit *tu,
 }
 
 static bool
-show_memory_event(struct translation_unit *tu, struct instruction *insn)
+show_memory_event(FILE *stream, struct translation_unit *tu,
+    struct instruction *insn)
 {
 	struct locklint_access access;
 	struct locklint_access protector;
@@ -176,9 +177,9 @@ show_memory_event(struct translation_unit *tu, struct instruction *insn)
 	else
 		return (false);
 
-	show_event_position(insn->access->pos, event);
-	locklint_show_access(stdout, insn->access);
-	(void) printf(" offset=%u", insn->offset);
+	show_event_position(stream, insn->access->pos, event);
+	locklint_show_access(stream, insn->access);
+	(void) fprintf(stream, " offset=%u", insn->offset);
 	if (locklint_get_instruction_access(tu, insn, &access) &&
 	    locklint_data_policy(&access, &policy, &protector) &&
 	    (policy.protection == LOCKLINT_PROTECTION_MUTEX ||
@@ -186,16 +187,17 @@ show_memory_event(struct translation_unit *tu, struct instruction *insn)
 		struct symbol *name = protector.member != NULL ?
 		    protector.member : protector.root;
 
-		(void) printf(" protected-by=%s",
+		(void) fprintf(stream, " protected-by=%s",
 		    name != NULL && name->ident != NULL ?
 		    show_ident(name->ident) : "<unknown>");
 	}
-	(void) printf("\n");
+	(void) fprintf(stream, "\n");
 	return (true);
 }
 
 static bool
-show_call_event(struct translation_unit *tu, struct instruction *insn)
+show_call_event(FILE *stream, struct translation_unit *tu,
+    struct instruction *insn)
 {
 	struct locklint_access access;
 	struct expression *arg;
@@ -240,23 +242,24 @@ show_call_event(struct translation_unit *tu, struct instruction *insn)
 	else
 		event = "CALL";
 
-	show_event_position(insn->call_expr != NULL ?
+	show_event_position(stream, insn->call_expr != NULL ?
 	    insn->call_expr->pos : insn->pos, event);
 	if (event[0] == 'C') {
-		(void) printf("%s\n", name);
+		(void) fprintf(stream, "%s\n", name);
 		return (true);
 	}
 
 	arg = action == LOCKLINT_LOCK_WAIT ? call_argument(insn, 1) :
 	    (insn->call_expr != NULL ?
 	    first_expression(insn->call_expr->args) : NULL);
-	locklint_show_access(stdout, arg);
-	(void) printf("\n");
+	locklint_show_access(stream, arg);
+	(void) fprintf(stream, "\n");
 	return (true);
 }
 
 void
-locklint_show_events(struct translation_unit *tu, struct entrypoint *ep)
+locklint_show_events(FILE *stream, struct translation_unit *tu,
+    struct entrypoint *ep)
 {
 	struct basic_block *bb;
 	char function[128];
@@ -264,7 +267,7 @@ locklint_show_events(struct translation_unit *tu, struct entrypoint *ep)
 	(void) snprintf(function, sizeof (function), "%s",
 	    ep->name->ident != NULL ? show_ident(ep->name->ident) :
 	    "<anonymous>");
-	(void) printf("function %s\n", function);
+	(void) fprintf(stream, "function %s\n", function);
 
 	FOR_EACH_PTR(ep->bbs, bb) {
 		struct instruction *insn;
@@ -278,12 +281,12 @@ locklint_show_events(struct translation_unit *tu, struct entrypoint *ep)
 			    insn->opcode == OP_STORE ||
 			    (insn->opcode == OP_CALL &&
 			    !locklint_is_assertion_consumer(insn)))) {
-				(void) printf("block .L%u\n", bb->nr);
+				(void) fprintf(stream, "block .L%u\n", bb->nr);
 				showed_block = true;
 			}
-			if (show_memory_event(tu, insn))
+			if (show_memory_event(stream, tu, insn))
 				continue;
-			(void) show_call_event(tu, insn);
+			(void) show_call_event(stream, tu, insn);
 		} END_FOR_EACH_PTR(insn);
 	} END_FOR_EACH_PTR(bb);
 }

@@ -1,3 +1,4 @@
+#### dump-annotations ####
 rwlock-covers-locks.c:128:9: MUTEX_ACQUIRED_AS_SIDE_EFFECT state.inner function=acquire_inner
 rwlock-covers-locks.c:151:9: LOCK_RELEASED_AS_SIDE_EFFECT state.cover function=release_cover
 rwlock-covers-locks.c:50:1: MUTEX_PROTECTS_DATA covered_state::inner -> covered_state::value

@@ -1,3 +1,4 @@
+#### dump-annotations ####
 annotations.c:33:1: _NOTE(UNSUPPORTED_POLICY(event_state::LOCK_MEMBER))
 annotations.c:34:1: READ_ONLY_DATA event_state::lock
 annotations.c:35:1: MUTEX_PROTECTS_DATA event_state::lock -> event_state::value [replaced by annotations.c:38:1]

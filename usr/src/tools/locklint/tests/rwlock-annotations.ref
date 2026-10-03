@@ -1,3 +1,4 @@
+#### dump-annotations ####
 rwlock.c:81:1: RWLOCK_PROTECTS_DATA rwlock_state::lock -> rwlock_state::value
 rwlock.c:82:1: RWLOCK_PROTECTS_DATA rwlock_state::lock -> rwlock_state::readable
 rwlock.c:83:1: DATA_READABLE_WITHOUT_LOCK rwlock_state::readable

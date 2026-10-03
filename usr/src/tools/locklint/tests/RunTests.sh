@@ -92,6 +92,71 @@ require_empty()
 }
 
 #
+# Dump streams have one identifying header.  Per-function dumps sharing
+# stdout are collected into complete sections, while an explicit pathname
+# receives only its selected dump.
+#
+run_capture "separated stdout dumps" dump-sections.out \
+    "$LOCKLINT" --no-check --dump-linearized --dump-accesses events.c
+for dump in linearized accesses
+do
+	require_match "dump-$dump header" "^#### dump-$dump ####$" \
+	    dump-sections.out
+	if [ "$(grep -c "^#### dump-$dump ####$" dump-sections.out)" -ne 1 ]
+	then
+		fail "dump-$dump header: expected exactly one header"
+	fi
+done
+linearized_header=$(grep -n '^#### dump-linearized ####$' \
+    dump-sections.out | cut -d: -f1)
+accesses_header=$(grep -n '^#### dump-accesses ####$' \
+    dump-sections.out | cut -d: -f1)
+if [ "$linearized_header" -ge "$accesses_header" ]; then
+	fail "separated stdout dumps: unexpected section order"
+fi
+
+run_capture "explicit dump output" dump-accesses-stdout.out \
+    "$LOCKLINT" --no-check --dump-accesses=dump-accesses-file.out events.c
+require_empty "explicit dump stdout" dump-accesses-stdout.out
+require_match "explicit dump header" "^#### dump-accesses ####$" \
+    dump-accesses-file.out
+require_match "explicit dump content" " function=" dump-accesses-file.out
+
+run_capture "explicit whole-program dump" dump-callgraph-stdout.out \
+    "$LOCKLINT" --no-check \
+    --dump-callgraph=dump-callgraph-file.out events.c
+require_empty "explicit whole-program dump stdout" dump-callgraph-stdout.out
+require_match "explicit whole-program dump header" \
+    "^#### dump-callgraph ####$" dump-callgraph-file.out
+require_match "explicit whole-program dump content" "^function " \
+    dump-callgraph-file.out
+
+run_failure "empty dump pathname" dump-empty-path.out \
+    "$LOCKLINT" --dump-accesses= events.c
+require_match "empty dump pathname diagnostic" \
+    "dump-accesses requires a non-empty pathname" dump-empty-path.out
+
+run_failure "shared dump pathname" dump-shared-path.out \
+    "$LOCKLINT" --dump-accesses=dump-shared-file.out \
+    --dump-events=dump-shared-file.out events.c
+require_match "shared dump pathname diagnostic" \
+    "dump-accesses and dump-events cannot share output pathname" \
+    dump-shared-path.out
+
+run_capture "all dump headers" dump-all-headers.out \
+    "$LOCKLINT" --no-check --dump-all events.c
+for dump in parsed linearized accesses annotations events callgraph contexts \
+    protection-states statistics types
+do
+	require_match "dump-all $dump header" "^#### dump-$dump ####$" \
+	    dump-all-headers.out
+	if [ "$(grep -c "^#### dump-$dump ####$" dump-all-headers.out)" -ne 1 ]
+	then
+		fail "dump-all $dump header: expected exactly one header"
+	fi
+done
+
+#
 # Verify cross-analyzer protected-access comparison.  Duplicate counts are
 # informational, while every operation/data/lock group must occur on both
 # sides.

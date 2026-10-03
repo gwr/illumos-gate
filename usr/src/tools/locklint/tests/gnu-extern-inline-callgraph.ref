@@ -1,3 +1,4 @@
+#### dump-callgraph ####
 function gnu_extern_inline_first tu=gnu-extern-inline-first.c definition=gnu-extern-inline-first.c:20:1 linkage=internal reachable=yes
   root no-known-direct-caller
 function gnu_extern_inline_target tu=gnu-extern-inline-first.c definition=gnu-extern-inline.h:25:1 linkage=external reachable=no

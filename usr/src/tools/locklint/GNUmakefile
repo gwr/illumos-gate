@@ -89,6 +89,7 @@ LOCAL_OBJS = \
 	command_parse.o \
 	commands.o \
 	diagnostics.o \
+	dump.o \
 	events.o \
 	identity.o \
 	lock_identity.o \
@@ -116,6 +117,14 @@ LIBDEFS = -Dinit_include_path=locklint_init_include_path
 lib.o: $(SPARSE_SRCDIR)/lib.c
 	$(COMPILE.c) $(LIBDEFS) -o $@ $(SPARSE_SRCDIR)/lib.c
 
+show-parse.o: $(SPARSE_SRCDIR)/show-parse.c
+	$(COMPILE.c) -Dprintf=locklint_printf_parse -o $@ \
+	    $(SPARSE_SRCDIR)/show-parse.c
+
+linearize.o: $(SPARSE_SRCDIR)/linearize.c
+	$(COMPILE.c) -Dprintf=locklint_printf_linearize -o $@ \
+	    $(SPARSE_SRCDIR)/linearize.c
+
 %.o: %.c
 	$(COMPILE.c) -o $@ $<
 
@@ -132,7 +141,7 @@ CMD_PARSE_TEST_OBJS = command_parse.o command_parse_test.o
 command_parse_test: $(CMD_PARSE_TEST_OBJS)
 	$(LINK.c) -o $@ $(CMD_PARSE_TEST_OBJS) $(LDLIBS)
 
-TYPE_SUPPORT_OBJS = type.o diagnostics.o statistics.o avl.o \
+TYPE_SUPPORT_OBJS = type.o diagnostics.o dump.o statistics.o avl.o \
 	$(SPARSE_OBJS) hashtable.o
 
 LOCK_ID_TEST_OBJS = lock_identity_test.o lock_identity.o \

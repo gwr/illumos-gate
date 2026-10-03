@@ -1,3 +1,4 @@
+#### dump-callgraph ####
 function check_callee tu=calls.c definition=calls.c:39:1 linkage=internal reachable=yes
 function check_locked_caller tu=calls.c definition=calls.c:45:1 linkage=internal reachable=yes
   root no-known-direct-caller

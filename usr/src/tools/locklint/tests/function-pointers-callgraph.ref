@@ -1,3 +1,4 @@
+#### dump-callgraph ####
 function driver_open tu=function-pointers.c definition=function-pointers.c:24:1 linkage=internal reachable=yes
   root no-known-direct-caller
   root function-pointer-escape

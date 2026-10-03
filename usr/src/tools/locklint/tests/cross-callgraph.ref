@@ -1,3 +1,4 @@
+#### dump-callgraph ####
 function cross_locked tu=cross-caller.c definition=cross-caller.c:23:1 linkage=external reachable=yes
   root no-known-direct-caller
   call cross-caller.c:27:20 unresolved-external mutex_enter

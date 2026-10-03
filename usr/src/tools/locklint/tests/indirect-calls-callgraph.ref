@@ -1,3 +1,4 @@
+#### dump-callgraph ####
 function read_value tu=indirect-calls.c definition=indirect-calls.c:41:1 linkage=internal reachable=yes
 function locked_indirect tu=indirect-calls.c definition=indirect-calls.c:51:1 linkage=internal reachable=yes
   root no-known-direct-caller
