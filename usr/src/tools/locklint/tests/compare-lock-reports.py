@@ -82,7 +82,7 @@ OSLL_REFERENCE_HEADER = [
 ]
 NEWLL_FINDING = re.compile(
     r"(?:^|: )([^:\n]+):([0-9]+):([0-9]+): "
-    r"warning: locklint: protected member '([^']+)' "
+    r"warning: protected member '([^']+)' "
     r"(read|modified) without holding '([^']+)' "
     r"\[unprotected-access\]$"
 )

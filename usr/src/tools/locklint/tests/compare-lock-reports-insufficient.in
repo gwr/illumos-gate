@@ -1,3 +1,3 @@
-locklint: sample.c:10:1: warning: locklint: protected member 'flags' read without holding 'lock' [unprotected-access]
-locklint: sample.c:11:1: warning: locklint: protected member 'flags' modified without holding 'lock' [unprotected-access]
-locklint: sample.c:12:1: warning: locklint: protected member 'plain' modified without holding 'lock' [unprotected-access]
+locklint: sample.c:10:1: warning: protected member 'flags' read without holding 'lock' [unprotected-access]
+locklint: sample.c:11:1: warning: protected member 'flags' modified without holding 'lock' [unprotected-access]
+locklint: sample.c:12:1: warning: protected member 'plain' modified without holding 'lock' [unprotected-access]
