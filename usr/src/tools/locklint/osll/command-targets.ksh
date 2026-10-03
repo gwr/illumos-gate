@@ -64,7 +64,7 @@ fi
 SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
 SCRIPT="$SCRIPT_DIR/$(basename "$0")"
 REPO_ROOT=$(CDPATH= cd "$SCRIPT_DIR/../../../../.." && pwd)
-SOURCE="$REPO_ROOT/usr/src/tools/locklint/tests/commands/targets.c"
+SOURCE="$REPO_ROOT/usr/src/tools/locklint/tests/targets.c"
 RESULTS_ROOT="$REPO_ROOT/tmp/osll/results"
 
 if [[ ! -x "$CC" ]]; then

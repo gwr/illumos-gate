@@ -668,13 +668,13 @@ compare "data policy annotations" data-policy-annotations.ref \
 #
 run_capture "command readable provenance" command-readable-annotations.out \
     "$LOCKLINT" --dump-annotations --dump-statistics \
-    --cf commands/readable.cf \
-    commands/readable.c commands/readable-other.c
+    --cf readable.cf \
+    readable.c readable-other.c
 require_match "command readable type provenance" \
-    "commands/readable.cf:2: DATA_READABLE_WITHOUT_LOCK command_state::readable" \
+    "readable.cf:2: DATA_READABLE_WITHOUT_LOCK command_state::readable" \
     command-readable-annotations.out
 require_match "command readable object provenance" \
-    "commands/readable.cf:4: DATA_READABLE_WITHOUT_LOCK command_global" \
+    "readable.cf:4: DATA_READABLE_WITHOUT_LOCK command_global" \
     command-readable-annotations.out
 if [ "$(grep -c \
     'MUTEX_PROTECTS_DATA command_state::lock -> command_state::readable' \
@@ -693,7 +693,7 @@ require_match "command source type policy references deduplicated" \
 
 run_capture "command type dump" command-types.out \
     "$LOCKLINT" --dump-types --dump-statistics \
-    commands/readable.c commands/readable-other.c
+    readable.c readable-other.c
 if [ "$(grep -c '^type command_state kind=struct ' command-types.out)" \
     -ne 1 ]; then
 	fail "command type dump: expected one command_state locklint type"
@@ -723,37 +723,37 @@ reject_match "command type dump object" '^type command_object ' \
     command-types.out
 
 run_failure "command readable arity" command-readable-arity.out \
-    "$LOCKLINT" --cf commands/readable-arity.cf \
-    commands/readable.c
+    "$LOCKLINT" --cf readable-arity.cf \
+    readable.c
 require_match "command readable arity" \
     "declare readable requires one data name" command-readable-arity.out
 
 run_failure "command readable unresolved name" \
     command-readable-unresolved.out "$LOCKLINT" \
-    --cf commands/readable-unresolved.cf commands/readable.c
+    --cf readable-unresolved.cf readable.c
 require_match "command readable unresolved name" \
     "unresolved data name 'missing_command_object'" \
     command-readable-unresolved.out
 
 run_failure "command object is not a type" \
     command-readable-object-as-type.out "$LOCKLINT" \
-    --cf commands/readable-object-as-type.cf \
-    commands/readable.c
+    --cf readable-object-as-type.cf \
+    readable.c
 require_match "command object is not a type" \
     "unresolved data name 'command_object::readable'" \
     command-readable-object-as-type.out
 
 run_failure "command enum is not an object" command-readable-enum.out \
-    "$LOCKLINT" --cf commands/readable-enum.cf \
-    commands/readable.c
+    "$LOCKLINT" --cf readable-enum.cf \
+    readable.c
 require_match "command enum is not an object" \
     "unresolved data name 'COMMAND_READABLE_ENUM'" \
     command-readable-enum.out
 
 run_capture "command readable identical types" \
     command-readable-ambiguous.out "$LOCKLINT" \
-    --dump-annotations --cf commands/readable-ambiguous.cf \
-    commands/readable.c commands/readable-other.c
+    --dump-annotations --cf readable-ambiguous.cf \
+    readable.c readable-other.c
 if [ "$(grep -c \
     'DATA_READABLE_WITHOUT_LOCK duplicate_command_type::value' \
     command-readable-ambiguous.out)" -ne 2 ]; then
@@ -762,7 +762,7 @@ fi
 
 run_failure "command readable inconsistent type" \
     command-readable-inconsistent.out "$LOCKLINT" \
-    --cf commands/readable-inconsistent.cf \
+    --cf readable-inconsistent.cf \
     type-name-first.c type-name-second-different.c
 require_match "command readable inconsistent type" \
     "inconsistently defined type in data name 'repeated_name::value'" \
@@ -775,19 +775,19 @@ require_match "command readable inconsistent type" \
 #
 run_capture "command entry competition" command-entry-competition.out \
     "$LOCKLINT" --check-locks --dump-callgraph \
-    --cf commands/entry-competition.cf \
-    commands/entry-competition.c commands/entry-competition-helper.c
+    --cf entry-competition.cf \
+    entry-competition.c entry-competition-helper.c
 require_match "command entry retained caller-free root" \
-    "commands/entry-competition.c:47:9: warning: competing threads exist at NO_COMPETING_THREADS assertion" \
+    "entry-competition.c:47:9: warning: competing threads exist at NO_COMPETING_THREADS assertion" \
     command-entry-competition.out
 reject_match "command entry helper assertion" \
-    "commands/entry-competition-helper.c:29:9: warning:" \
+    "entry-competition-helper.c:29:9: warning:" \
     command-entry-competition.out
 require_match "command entry helper reachable" \
     "^function command_entry_helper .* reachable=yes$" \
     command-entry-competition.out
 require_match "command entry declaration provenance" \
-    "root declared-entry no-competing-threads commands/entry-competition.cf:2" \
+    "root declared-entry no-competing-threads entry-competition.cf:2" \
     command-entry-competition.out
 if awk '
     /^function command_entry_helper / { helper = 1; next }
@@ -798,20 +798,20 @@ if awk '
 	fail "command entry helper unexpectedly remained an analysis root"
 fi
 run_failure "command entry arity" command-entry-arity.out \
-    "$LOCKLINT" --cf commands/entry-competition-arity.cf \
-    commands/entry-competition.c commands/entry-competition-helper.c
+    "$LOCKLINT" --cf entry-competition-arity.cf \
+    entry-competition.c entry-competition-helper.c
 require_match "command entry arity" \
     "declare entry requires 'no-competing-threads' and one function name" \
     command-entry-arity.out
 run_failure "command entry unresolved" command-entry-unresolved.out \
-    "$LOCKLINT" --cf commands/entry-competition-unresolved.cf \
-    commands/entry-competition.c commands/entry-competition-helper.c
+    "$LOCKLINT" --cf entry-competition-unresolved.cf \
+    entry-competition.c entry-competition-helper.c
 require_match "command entry unresolved" \
     "unresolved function name 'missing_entry'" \
     command-entry-unresolved.out
 run_failure "command entry ambiguous" command-entry-ambiguous.out \
     "$LOCKLINT" --dump-callgraph \
-    --cf commands/entry-competition-ambiguous.cf \
+    --cf entry-competition-ambiguous.cf \
     ambiguous-call-first.c ambiguous-call-second.c
 require_match "command entry ambiguous" \
     "ambiguous function name 'ambiguous_target'" \
@@ -823,7 +823,7 @@ require_match "command entry ambiguous" \
 #
 run_capture "default automatic roots" root-discovery-auto.out \
     "$LOCKLINT" --dump-callgraph \
-    commands/external-entry.c commands/external-entry-helper.c
+    external-entry.c external-entry-helper.c
 reject_match "default known-caller external root" \
     "^  root external-linkage$" root-discovery-auto.out
 require_match "default no-caller root" \
@@ -833,13 +833,13 @@ require_match "default escaped root" \
 
 run_capture "explicit automatic roots" root-discovery-auto-explicit.out \
     "$LOCKLINT" --root-discovery=auto --dump-callgraph \
-    commands/external-entry.c commands/external-entry-helper.c
+    external-entry.c external-entry-helper.c
 compare "default and explicit automatic roots" root-discovery-auto.out \
     root-discovery-auto-explicit.out
 
 run_capture "all exported roots" root-discovery-all-exported.out \
     "$LOCKLINT" --root-discovery=all-exported --dump-callgraph \
-    commands/external-entry.c commands/external-entry-helper.c
+    external-entry.c external-entry-helper.c
 require_match "all exported external root" \
     "^  root external-linkage$" root-discovery-all-exported.out
 require_match "all exported no-caller root" \
@@ -857,27 +857,27 @@ fi
 
 run_capture "no automatic roots" root-discovery-none.out \
     "$LOCKLINT" --root-discovery=none --dump-callgraph \
-    commands/external-entry.c commands/external-entry-helper.c
+    external-entry.c external-entry-helper.c
 reject_match "disabled automatic root" \
     "^  root " root-discovery-none.out
 
 run_capture "explicit root without discovery" root-discovery-explicit.out \
     "$LOCKLINT" --root-discovery=none --dump-callgraph \
-    --cf commands/root-discovery-explicit.cf \
-    commands/external-entry.c commands/external-entry-helper.c
+    --cf root-discovery-explicit.cf \
+    external-entry.c external-entry-helper.c
 require_match "explicit root without discovery reason" \
     "^  root external-linkage$" root-discovery-explicit.out
 require_match "explicit root without discovery provenance" \
-    "property external-entry=true commands/root-discovery-explicit.cf:2" \
+    "property external-entry=true root-discovery-explicit.cf:2" \
     root-discovery-explicit.out
 
 run_capture "declared entries without discovery" \
     root-discovery-declared.out \
     "$LOCKLINT" --root-discovery=none --no-check --dump-callgraph \
-    --cf commands/entry-competition.cf \
-    commands/entry-competition.c commands/entry-competition-helper.c
+    --cf entry-competition.cf \
+    entry-competition.c entry-competition-helper.c
 require_match "declared entry without discovery" \
-    "root declared-entry no-competing-threads commands/entry-competition.cf:2" \
+    "root declared-entry no-competing-threads entry-competition.cf:2" \
     root-discovery-declared.out
 
 run_failure "invalid root discovery" root-discovery-invalid.out \
@@ -897,7 +897,7 @@ require_match "missing root discovery" \
 # merged into one representative instance.
 #
 run_capture "per-instance identities" merge-instances-before.out \
-    "$LOCKLINT" --check-locks commands/merge-instances.c
+    "$LOCKLINT" --check-locks merge-instances.c
 reject_match "per-instance cross-object protection" \
     "merge-instances.c:.*protected member 'value' modified without holding 'lock'" \
     merge-instances-before.out
@@ -906,8 +906,8 @@ reject_match "per-instance distinct locks" \
     merge-instances-before.out
 
 run_capture "merged representative instance" merge-instances-after.out \
-    "$LOCKLINT" --check-locks --cf commands/merge-instances.cf \
-    commands/merge-instances.c
+    "$LOCKLINT" --check-locks --cf merge-instances.cf \
+    merge-instances.c
 reject_match "merged cross-object protection" \
     "merge-instances.c:.*protected member 'value'" \
     merge-instances-after.out
@@ -918,8 +918,8 @@ reject_match "unrelated instances remain distinct" \
     "lock 'other_lock'.*already held" merge-instances-after.out
 
 run_capture "merged representative audit" merge-instances-types.out \
-    "$LOCKLINT" --dump-types --cf commands/merge-instances.cf \
-    commands/merge-instances.c
+    "$LOCKLINT" --dump-types --cf merge-instances.cf \
+    merge-instances.c
 require_match "merged representative audit" \
     "^type merge_instance_controller .* merged-instances=true$" \
     merge-instances-types.out
@@ -928,43 +928,43 @@ reject_match "unrelated type audit" \
     merge-instances-types.out
 
 run_failure "merge instances missing type" merge-instances-empty.out \
-    "$LOCKLINT" --cf commands/merge-instances-empty.cf \
-    commands/merge-instances.c
+    "$LOCKLINT" --cf merge-instances-empty.cf \
+    merge-instances.c
 require_match "merge instances missing type" \
     "merge-instances requires at least one type name" \
     merge-instances-empty.out
 
 run_failure "merge instances invalid type" merge-instances-invalid.out \
-    "$LOCKLINT" --cf commands/merge-instances-invalid.cf \
-    commands/merge-instances.c
+    "$LOCKLINT" --cf merge-instances-invalid.cf \
+    merge-instances.c
 require_match "merge instances invalid type" \
     "invalid type name 'bad-name'" merge-instances-invalid.out
 
 run_failure "merge instances unresolved type" \
     merge-instances-unresolved.out "$LOCKLINT" \
-    --cf commands/merge-instances-unresolved.cf \
-    commands/merge-instances.c
+    --cf merge-instances-unresolved.cf \
+    merge-instances.c
 require_match "merge instances unresolved type" \
     "unresolved type name 'missing_merge_instance_type'" \
     merge-instances-unresolved.out
 
 run_failure "merge instances scalar type" merge-instances-scalar.out \
-    "$LOCKLINT" --cf commands/merge-instances-scalar.cf \
-    commands/merge-instances.c
+    "$LOCKLINT" --cf merge-instances-scalar.cf \
+    merge-instances.c
 require_match "merge instances scalar type" \
     "unresolved type name 'merge_instance_scalar_t'" \
     merge-instances-scalar.out
 
 run_failure "merge instances enum type" merge-instances-enum.out \
-    "$LOCKLINT" --cf commands/merge-instances-enum.cf \
-    commands/merge-instances.c
+    "$LOCKLINT" --cf merge-instances-enum.cf \
+    merge-instances.c
 require_match "merge instances enum type" \
     "unresolved type name 'merge_instance_enum'" \
     merge-instances-enum.out
 
 run_failure "merge instances inconsistent type" \
     merge-instances-inconsistent.out "$LOCKLINT" \
-    --cf commands/merge-instances-inconsistent.cf \
+    --cf merge-instances-inconsistent.cf \
     type-name-first.c type-name-second-different.c
 require_match "merge instances inconsistent type" \
     "inconsistently defined type name 'repeated_name'" \
@@ -976,8 +976,8 @@ require_match "merge instances inconsistent type" \
 #
 run_capture "command external entry" command-external-entry.out \
     "$LOCKLINT" --dump-callgraph \
-    --cf commands/external-entry.cf \
-    commands/external-entry.c commands/external-entry-helper.c
+    --cf external-entry.cf \
+    external-entry.c external-entry-helper.c
 require_match "command external entry no-caller root" \
     "^function external_entry_caller_free .* reachable=yes$" \
     command-external-entry.out
@@ -985,7 +985,7 @@ require_match "command external entry escape root" \
     "^function external_entry_escaped .* reachable=yes$" \
     command-external-entry.out
 require_match "command external entry declaration provenance" \
-    "property external-entry=false commands/external-entry.cf:1" \
+    "property external-entry=false external-entry.cf:1" \
     command-external-entry.out
 if awk '
     /^function external_entry_called / { helper = 1; next }
@@ -1021,36 +1021,36 @@ if ! awk '
 fi
 run_failure "command external entry no name" \
     command-external-entry-no-name.out \
-    "$LOCKLINT" --cf commands/external-entry-no-name.cf \
-    commands/external-entry.c commands/external-entry-helper.c
+    "$LOCKLINT" --cf external-entry-no-name.cf \
+    external-entry.c external-entry-helper.c
 require_match "command external entry no name" \
     "declare requires at least one name" \
     command-external-entry-no-name.out
 run_failure "command external entry invalid value" \
     command-external-entry-invalid-value.out \
-    "$LOCKLINT" --cf commands/external-entry-invalid-value.cf \
-    commands/external-entry.c commands/external-entry-helper.c
+    "$LOCKLINT" --cf external-entry-invalid-value.cf \
+    external-entry.c external-entry-helper.c
 require_match "command external entry invalid value" \
     "invalid Boolean value 'unknown' for option '--external-entry'" \
     command-external-entry-invalid-value.out
 run_failure "command external entry option after name" \
     command-external-entry-option-after-name.out \
-    "$LOCKLINT" --cf commands/external-entry-option-after-name.cf \
-    commands/external-entry.c commands/external-entry-helper.c
+    "$LOCKLINT" --cf external-entry-option-after-name.cf \
+    external-entry.c external-entry-helper.c
 require_match "command external entry option after name" \
     "declaration options must precede names" \
     command-external-entry-option-after-name.out
 run_failure "command external entry unresolved" \
     command-external-entry-unresolved.out \
-    "$LOCKLINT" --cf commands/external-entry-unresolved.cf \
-    commands/external-entry.c commands/external-entry-helper.c
+    "$LOCKLINT" --cf external-entry-unresolved.cf \
+    external-entry.c external-entry-helper.c
 require_match "command external entry unresolved" \
     "unresolved function name 'missing_external_entry'" \
     command-external-entry-unresolved.out
 run_failure "command external entry ambiguous" \
     command-external-entry-ambiguous.out \
     "$LOCKLINT" --dump-callgraph \
-    --cf commands/external-entry-ambiguous.cf \
+    --cf external-entry-ambiguous.cf \
     ambiguous-call-first.c ambiguous-call-second.c
 require_match "command external entry ambiguous" \
     "ambiguous function name 'ambiguous_target'" \
@@ -1058,16 +1058,16 @@ require_match "command external entry ambiguous" \
 run_failure "command external entry conflict" \
     command-external-entry-conflict.out \
     "$LOCKLINT" --dump-callgraph \
-    --cf commands/external-entry-conflict.cf \
-    commands/external-entry.c commands/external-entry-helper.c
+    --cf external-entry-conflict.cf \
+    external-entry.c external-entry-helper.c
 require_match "command external entry conflict" \
     "conflicting value for option '--external-entry' on function 'external_entry_called'" \
     command-external-entry-conflict.out
 run_capture "command external entry true" \
     command-external-entry-true.out \
     "$LOCKLINT" --dump-callgraph \
-    --cf commands/external-entry-true.cf \
-    commands/entry-competition.c commands/entry-competition-helper.c
+    --cf external-entry-true.cf \
+    entry-competition.c entry-competition-helper.c
 if ! awk '
     /^function command_entry_helper / { helper = 1; next }
     /^function / { helper = 0 }
@@ -1077,7 +1077,7 @@ if ! awk '
 	fail "command external entry true did not retain external root"
 fi
 require_match "command external entry true provenance" \
-    "property external-entry=true commands/external-entry-true.cf:2" \
+    "property external-entry=true external-entry-true.cf:2" \
     command-external-entry-true.out
 
 #
@@ -1086,7 +1086,7 @@ require_match "command external entry true provenance" \
 # analyzes both bodies.  A declaration for start must not affect finish.
 #
 run_capture "command unmodeled indirect call" command-targets-unmodeled.out \
-    "$LOCKLINT" --cf commands/targets-unmodeled.cf commands/targets.c
+    "$LOCKLINT" --cf targets-unmodeled.cf targets.c
 require_match "command unmodeled indirect call" \
     "indirect call through 'command_target_ops::finish' has no target or calling contract \\[unmodeled-indirect-call\\]" \
     command-targets-unmodeled.out
@@ -1102,12 +1102,12 @@ require_match "source unmodeled contract advice" \
 run_capture "no-check unmodeled indirect call" \
     command-targets-unmodeled-no-check.out \
     "$LOCKLINT" --no-check --dump-contexts \
-    --cf commands/targets-unmodeled.cf commands/targets.c
+    --cf targets-unmodeled.cf targets.c
 reject_match "no-check unmodeled indirect call" \
     "unmodeled-indirect-call" command-targets-unmodeled-no-check.out
 
 run_capture "nested unmodeled indirect call" nested-target-unmodeled.out \
-    "$LOCKLINT" commands/nested-target.c
+    "$LOCKLINT" nested-target.c
 require_match "nested unmodeled indirect owner" \
     "indirect call through 'nested_target_ops::finish' has no target or calling contract \\[unmodeled-indirect-call\\]" \
     nested-target-unmodeled.out
@@ -1124,25 +1124,25 @@ require_match "nested unmodeled source advice" \
     nested-target-unmodeled.out
 
 run_capture "nested no-lock contract" nested-target-contract.out \
-    "$LOCKLINT" --cf commands/nested-target-contract.cf \
-    commands/nested-target.c
+    "$LOCKLINT" --cf nested-target-contract.cf \
+    nested-target.c
 reject_match "nested no-lock contract warning" \
     "unmodeled-indirect-call" nested-target-contract.out
 
 run_capture "command singleton target" command-targets-first.out \
     "$LOCKLINT" --check-locks --dump-callgraph \
-    --cf commands/targets-first.cf \
-    commands/targets.c
+    --cf targets-first.cf \
+    targets.c
 require_match "command singleton target effect" \
-    "commands/targets.c:.*: warning: condition wait occurs while holding lock 'command_target_state::first' \\[lock-held-during-wait\\]" \
+    "targets.c:.*: warning: condition wait occurs while holding lock 'command_target_state::first' \\[lock-held-during-wait\\]" \
     command-targets-first.out
 reject_match "command singleton unrelated target" \
     "command_target_state::second" command-targets-first.out
 require_match "command singleton resolved member call" \
-    "resolved-indirect command_target_first tu=commands/targets.c" \
+    "resolved-indirect command_target_first tu=targets.c" \
     command-targets-first.out
 require_match "command singleton unresolved other member" \
-    "call commands/targets.c:.* indirect$" command-targets-first.out
+    "call targets.c:.* indirect$" command-targets-first.out
 if [ "$(grep -c 'warning:' command-targets-first.out)" -ne 1 ]; then
 	fail "command singleton target: expected exactly one warning"
 fi
@@ -1150,13 +1150,13 @@ fi
 run_capture "command multiple targets" command-targets-both.out \
     "$LOCKLINT" -DCOMMAND_TARGETS_BOTH=1 --check-locks \
     --dump-callgraph \
-    --cf commands/targets-both.cf \
-    commands/targets.c
+    --cf targets-both.cf \
+    targets.c
 require_match "command first possible target effect" \
-    "commands/targets.c:.*: warning: condition wait occurs while holding lock 'command_target_state::first' \\[lock-held-during-wait\\]" \
+    "targets.c:.*: warning: condition wait occurs while holding lock 'command_target_state::first' \\[lock-held-during-wait\\]" \
     command-targets-both.out
 require_match "command second possible target effect" \
-    "commands/targets.c:.*: warning: condition wait occurs while holding lock 'command_target_state::second' \\[lock-held-during-wait\\]" \
+    "targets.c:.*: warning: condition wait occurs while holding lock 'command_target_state::second' \\[lock-held-during-wait\\]" \
     command-targets-both.out
 require_match "command first possible target provenance" \
     "lock is held on a path through call to 'command_target_first'" \
@@ -1165,7 +1165,7 @@ require_match "command second possible target provenance" \
     "lock is held on a path through call to 'command_target_second'" \
     command-targets-both.out
 require_match "command additive target set" \
-    "resolved-indirect-targets command_target_first@commands/targets.c command_target_second@commands/targets.c" \
+    "resolved-indirect-targets command_target_first@targets.c command_target_second@targets.c" \
     command-targets-both.out
 if [ "$(grep -c 'warning:' command-targets-both.out)" -ne 2 ]; then
 	fail "command multiple targets: expected exactly two warnings"
@@ -1179,9 +1179,9 @@ run_capture "explicitly dereferenced command targets" \
     command-targets-explicit-dereference.out \
     "$LOCKLINT" -DCOMMAND_TARGETS_BOTH=1 \
     -DCOMMAND_TARGETS_EXPLICIT_DEREFERENCE=1 --check-locks \
-    --dump-callgraph --cf commands/targets-both.cf commands/targets.c
+    --dump-callgraph --cf targets-both.cf targets.c
 require_match "explicit dereference target set" \
-    "resolved-indirect-targets command_target_first@commands/targets.c command_target_second@commands/targets.c" \
+    "resolved-indirect-targets command_target_first@targets.c command_target_second@targets.c" \
     command-targets-explicit-dereference.out
 require_match "explicit dereference first target effect" \
     "condition wait occurs while holding lock 'command_target_state::first' \\[lock-held-during-wait\\]" \
@@ -1202,7 +1202,7 @@ fi
 run_capture "declared member assignment escape" \
     command-targets-declared-assignment.out \
     "$LOCKLINT" -DCOMMAND_TARGETS_ASSIGN_DECLARED=1 --dump-callgraph \
-    --cf commands/targets-first.cf commands/targets.c
+    --cf targets-first.cf targets.c
 if awk '
     /^function command_target_first / { target = 1; next }
     /^function / { target = 0 }
@@ -1219,7 +1219,7 @@ run_capture "declared member unrelated escape" \
     command-targets-unrelated-assignment.out \
     "$LOCKLINT" -DCOMMAND_TARGETS_ASSIGN_DECLARED=1 \
     -DCOMMAND_TARGETS_ASSIGN_UNRELATED=1 --dump-callgraph \
-    --cf commands/targets-first.cf commands/targets.c
+    --cf targets-first.cf targets.c
 if ! awk '
     /^function command_target_first / { target = 1; next }
     /^function / { target = 0 }
@@ -1236,7 +1236,7 @@ run_capture "declared member copied escape" \
     command-targets-copied-assignment.out \
     "$LOCKLINT" -DCOMMAND_TARGETS_ASSIGN_DECLARED=1 \
     -DCOMMAND_TARGETS_COPY_DECLARED=1 --dump-callgraph \
-    --cf commands/targets-first.cf commands/targets.c
+    --cf targets-first.cf targets.c
 if ! awk '
     /^function command_target_first / { target = 1; next }
     /^function / { target = 0 }
@@ -1249,7 +1249,7 @@ fi
 run_capture "declared member target comparison" \
     command-targets-target-comparison.out \
     "$LOCKLINT" -DCOMMAND_TARGETS_COMPARE_TARGET=1 --dump-callgraph \
-    --cf commands/targets-first.cf commands/targets.c
+    --cf targets-first.cf targets.c
 if awk '
     /^function command_target_first / { target = 1; next }
     /^function / { target = 0 }
@@ -1266,7 +1266,7 @@ run_capture "multiple declared member assignments" \
     command-targets-declared-assignments.out \
     "$LOCKLINT" -DCOMMAND_TARGETS_BOTH=1 \
     -DCOMMAND_TARGETS_ASSIGN_DECLARED_SECOND=1 --dump-callgraph \
-    --cf commands/targets-both.cf commands/targets.c
+    --cf targets-both.cf targets.c
 if awk '
     /^function command_target_(first|second) / { target = 1; next }
     /^function / { target = 0 }
@@ -1283,7 +1283,7 @@ fi
 run_capture "undeclared member assignment" \
     command-targets-undeclared-member.out \
     "$LOCKLINT" -DCOMMAND_TARGETS_ASSIGN_UNDECLARED_MEMBER=1 \
-    --dump-callgraph --cf commands/targets-first.cf commands/targets.c
+    --dump-callgraph --cf targets-first.cf targets.c
 if ! awk '
     /^function command_target_first / { target = 1; next }
     /^function / { target = 0 }
@@ -1296,7 +1296,7 @@ fi
 run_capture "undeclared target assignment" \
     command-targets-undeclared-target.out \
     "$LOCKLINT" -DCOMMAND_TARGETS_ASSIGN_UNDECLARED_TARGET=1 \
-    --dump-callgraph --cf commands/targets-first.cf commands/targets.c
+    --dump-callgraph --cf targets-first.cf targets.c
 if ! awk '
     /^function command_target_second / { target = 1; next }
     /^function / { target = 0 }
@@ -1308,7 +1308,7 @@ fi
 
 run_capture "command target return effects" command-targets-effects.out \
     "$LOCKLINT" -DCOMMAND_TARGETS_DIFFERENT_EFFECTS=1 \
-    --cf commands/targets-effects.cf commands/targets.c
+    --cf targets-effects.cf targets.c
 require_match "first target conditional return effect" \
     "warning: lock 'first' may not be held \\[lock-maybe-not-held\\]" \
     command-targets-effects.out
@@ -1333,7 +1333,7 @@ fi
 
 run_capture "source no-lock contract" command-targets-source-contract.out \
     "$LOCKLINT" -DCOMMAND_TARGETS_SOURCE_CONTRACT=1 \
-    --dump-annotations --cf commands/targets-unmodeled.cf commands/targets.c
+    --dump-annotations --cf targets-unmodeled.cf targets.c
 reject_match "source no-lock contract warning" \
     "unmodeled-indirect-call" command-targets-source-contract.out
 require_match "source no-lock contract annotation" \
@@ -1344,47 +1344,47 @@ run_capture "source representative contract" \
     command-targets-source-representative.out \
     "$LOCKLINT" -DCOMMAND_TARGETS_SOURCE_REPRESENTATIVE=1 \
     --dump-annotations --dump-callgraph \
-    --cf commands/targets-unmodeled.cf \
-    commands/targets.c commands/representative-functions.c
+    --cf targets-unmodeled.cf \
+    targets.c representative-functions.c
 require_match "source representative contract annotation" \
     "DECLARE_CONTRACT command_target_ops::start command_target_representative" \
     command-targets-source-representative.out
 require_match "source representative contract declaration" \
-    "contract command_target_ops::start representative command_target_representative@commands/representative-functions.c" \
+    "contract command_target_ops::start representative command_target_representative@representative-functions.c" \
     command-targets-source-representative.out
 
 run_failure "command contract arity" command-contract-arity.out \
-    "$LOCKLINT" --cf commands/targets-contract-arity.cf commands/targets.c
+    "$LOCKLINT" --cf targets-contract-arity.cf targets.c
 require_match "command contract arity" \
     "declare contract requires one member and one contract" \
     command-contract-arity.out
 run_failure "command contract kind" command-contract-kind.out \
-    "$LOCKLINT" --cf commands/targets-contract-kind.cf commands/targets.c
+    "$LOCKLINT" --cf targets-contract-kind.cf targets.c
 require_match "command contract kind" \
     "unresolved function name 'lock-free'" command-contract-kind.out
 run_failure "command contract unresolved" command-contract-unresolved.out \
-    "$LOCKLINT" --cf commands/targets-contract-unresolved.cf \
-    commands/targets.c
+    "$LOCKLINT" --cf targets-contract-unresolved.cf \
+    targets.c
 require_match "command contract unresolved" \
     "unresolved function-pointer member 'missing_target_ops::finish'" \
     command-contract-unresolved.out
 run_failure "command contract non-function" \
     command-contract-non-function.out \
-    "$LOCKLINT" --cf commands/targets-contract-non-function.cf \
-    commands/targets.c
+    "$LOCKLINT" --cf targets-contract-non-function.cf \
+    targets.c
 require_match "command contract non-function" \
     "member 'command_target_state::first' is not a function pointer" \
     command-contract-non-function.out
 run_capture "command target and contract" command-contract-conflict.out \
-    "$LOCKLINT" --cf commands/targets-contract-conflict.cf \
-    commands/targets.c
+    "$LOCKLINT" --cf targets-contract-conflict.cf \
+    targets.c
 reject_match "command target and contract conflict" \
     "conflict" \
     command-contract-conflict.out
 run_capture "command contract and target" \
     command-contract-reverse-conflict.out \
-    "$LOCKLINT" --cf commands/targets-contract-reverse-conflict.cf \
-    commands/targets.c
+    "$LOCKLINT" --cf targets-contract-reverse-conflict.cf \
+    targets.c
 reject_match "command contract and target conflict" \
     "conflict" \
     command-contract-reverse-conflict.out
@@ -1392,20 +1392,20 @@ reject_match "command contract and target conflict" \
 run_capture "command representative contract" \
     command-contract-representative.out \
     "$LOCKLINT" --dump-callgraph \
-    --cf commands/targets-representative.cf \
-    commands/targets.c commands/representative-functions.c
+    --cf targets-representative.cf \
+    targets.c representative-functions.c
 require_match "command representative contract declaration" \
-    "contract command_target_ops::start representative command_target_representative@commands/representative-functions.c" \
+    "contract command_target_ops::start representative command_target_representative@representative-functions.c" \
     command-contract-representative.out
 require_match "representative contract keeps concrete target" \
-    "resolved-indirect command_target_first tu=commands/targets.c" \
+    "resolved-indirect command_target_first tu=targets.c" \
     command-contract-representative.out
 
 run_failure "command representative unresolved" \
     command-contract-representative-unresolved.out \
     "$LOCKLINT" \
-    --cf commands/targets-contract-representative-unresolved.cf \
-    commands/targets.c commands/representative-functions.c
+    --cf targets-contract-representative-unresolved.cf \
+    targets.c representative-functions.c
 require_match "command representative unresolved" \
     "unresolved function name 'missing_representative'" \
     command-contract-representative-unresolved.out
@@ -1413,21 +1413,21 @@ require_match "command representative unresolved" \
 run_failure "command representative incompatible" \
     command-contract-representative-incompatible.out \
     "$LOCKLINT" \
-    --cf commands/targets-contract-representative-incompatible.cf \
-    commands/targets.c commands/representative-functions.c
+    --cf targets-contract-representative-incompatible.cf \
+    targets.c representative-functions.c
 require_match "command representative incompatible" \
     "function 'command_target_incompatible' has incompatible type for member 'command_target_ops::start'" \
     command-contract-representative-incompatible.out
 
 run_capture "representative call behavior" representative-call.out \
     "$LOCKLINT" --check-locks --dump-callgraph \
-    --cf commands/representative-call.cf \
-    commands/representative-call.c \
-    commands/representative-call-models.c
+    --cf representative-call.cf \
+    representative-call.c \
+    representative-call-models.c
 reject_match "representative call behavior" 'warning:' \
     representative-call.out
 require_match "representative call remains indirect" \
-    "call commands/representative-call.c:.* indirect$" \
+    "call representative-call.c:.* indirect$" \
     representative-call.out
 reject_match "representative is not a concrete target" \
     "resolved-indirect representative_enter" representative-call.out
@@ -1442,9 +1442,9 @@ require_match "declared returned object mismatch" \
 run_capture "concrete target precedes representative" \
     representative-call-target.out \
     "$LOCKLINT" --check-locks \
-    --cf commands/representative-call-target.cf \
-    commands/representative-call.c \
-    commands/representative-call-models.c
+    --cf representative-call-target.cf \
+    representative-call.c \
+    representative-call-models.c
 require_match "concrete target does not acquire representative lock" \
     "warning: lock 'lock' is not held \\[lock-not-held\\]" \
     representative-call-target.out
@@ -1460,7 +1460,7 @@ fi
 run_capture "implicit contract consistency" \
     contract-consistency-implicit.out \
     "$LOCKLINT" -DCONTRACT_CONSISTENCY_IMPLICIT=1 --check-locks \
-    commands/contract-consistency.c
+    contract-consistency.c
 require_match "implicit contract mismatch" \
     "function 'consistency_acquire' has lock acquisitions inconsistent with contract for 'implicit_consistency_ops::enter' \\[function-contract-mismatch\\]" \
     contract-consistency-implicit.out
@@ -1471,8 +1471,8 @@ require_match "implicit returned-object contract mismatch" \
 run_capture "explicit contract consistency" \
     contract-consistency-explicit.out \
     "$LOCKLINT" -DCONTRACT_CONSISTENCY_EXPLICIT=1 --check-locks \
-    --cf commands/contract-consistency-explicit.cf \
-    commands/contract-consistency.c
+    --cf contract-consistency-explicit.cf \
+    contract-consistency.c
 require_match "explicit contract mismatch" \
     "function 'consistency_acquire' has lock acquisitions inconsistent with contract for 'explicit_consistency_ops::enter' \\[function-contract-mismatch\\]" \
     contract-consistency-explicit.out
@@ -1480,18 +1480,18 @@ require_match "explicit contract mismatch" \
 run_capture "matching representative consistency" \
     contract-consistency-matching.out \
     "$LOCKLINT" -DCONTRACT_CONSISTENCY_MATCHING=1 --check-locks \
-    --cf commands/contract-consistency-matching.cf \
-    commands/contract-consistency.c \
-    commands/contract-consistency-models.c
+    --cf contract-consistency-matching.cf \
+    contract-consistency.c \
+    contract-consistency-models.c
 reject_match "matching representative consistency" \
     "function-contract-mismatch" contract-consistency-matching.out
 
 run_capture "conflicting representative consistency" \
     contract-consistency-conflicting.out \
     "$LOCKLINT" -DCONTRACT_CONSISTENCY_CONFLICTING=1 --check-locks \
-    --cf commands/contract-consistency-conflicting.cf \
-    commands/contract-consistency.c \
-    commands/contract-consistency-models.c
+    --cf contract-consistency-conflicting.cf \
+    contract-consistency.c \
+    contract-consistency-models.c
 require_match "representative contract mismatch" \
     "function 'consistency_none' has lock acquisitions inconsistent with contract for 'conflicting_consistency_ops::enter' \\[function-contract-mismatch\\]" \
     contract-consistency-conflicting.out
@@ -1499,8 +1499,8 @@ require_match "representative contract mismatch" \
 run_capture "declared target contract consistency" \
     contract-consistency-command.out \
     "$LOCKLINT" --check-locks \
-    --cf commands/contract-consistency-command.cf \
-    commands/contract-consistency.c
+    --cf contract-consistency-command.cf \
+    contract-consistency.c
 require_match "declared target contract mismatch" \
     "function 'consistency_acquire' has lock acquisitions inconsistent with contract for 'command_consistency_ops::enter' \\[function-contract-mismatch\\]" \
     contract-consistency-command.out
@@ -1508,13 +1508,13 @@ require_match "declared target contract mismatch" \
 run_capture "command equivalent type targets" \
     command-targets-equivalent.out \
     "$LOCKLINT" --dump-callgraph \
-    --cf commands/targets-equivalent.cf \
-    commands/targets-equivalent-a.c commands/targets-equivalent-b.c
+    --cf targets-equivalent.cf \
+    targets-equivalent-a.c targets-equivalent-b.c
 require_match "command equivalent type resolved member call" \
-    "resolved-indirect command_equivalent_target tu=commands/targets-equivalent-a.c" \
+    "resolved-indirect command_equivalent_target tu=targets-equivalent-a.c" \
     command-targets-equivalent.out
 reject_match "command equivalent type unresolved member call" \
-    "call commands/targets-equivalent-[ab].c:.* indirect$" \
+    "call targets-equivalent-[ab].c:.* indirect$" \
     command-targets-equivalent.out
 if [ "$(grep -c 'resolved-indirect command_equivalent_target' \
     command-targets-equivalent.out)" -ne 2 ]; then
@@ -1524,59 +1524,59 @@ fi
 run_failure "command inconsistent target type" \
     command-targets-inconsistent.out \
     "$LOCKLINT" -DCOMMAND_EQUIVALENT_INCONSISTENT \
-    --cf commands/targets-equivalent.cf \
-    commands/targets-equivalent-a.c commands/targets-equivalent-b.c
+    --cf targets-equivalent.cf \
+    targets-equivalent-a.c targets-equivalent-b.c
 require_match "command inconsistent target type" \
     "inconsistently defined type in function-pointer member 'command_equivalent_ops::start'" \
     command-targets-inconsistent.out
 
 run_failure "command targets invalid member" \
     command-targets-invalid-member.out \
-    "$LOCKLINT" --cf commands/targets-invalid-member.cf commands/targets.c
+    "$LOCKLINT" --cf targets-invalid-member.cf targets.c
 require_match "command targets invalid member" \
     "invalid function-pointer member name 'command_target_ops.start'" \
     command-targets-invalid-member.out
 run_failure "command targets ambiguous function" \
     command-targets-ambiguous-function.out \
     "$LOCKLINT" --dump-callgraph \
-    --cf commands/targets-ambiguous-function.cf \
-    commands/targets-equivalent-b.c \
+    --cf targets-ambiguous-function.cf \
+    targets-equivalent-b.c \
     ambiguous-call-first.c ambiguous-call-second.c
 require_match "command targets ambiguous function" \
     "ambiguous function name 'ambiguous_target'" \
     command-targets-ambiguous-function.out
 
 run_failure "command targets arity" command-targets-arity.out \
-    "$LOCKLINT" --cf commands/targets-arity.cf commands/targets.c
+    "$LOCKLINT" --cf targets-arity.cf targets.c
 require_match "command targets arity" \
     "declare targets requires one member and at least one function name" \
     command-targets-arity.out
 run_failure "command targets unresolved member" \
     command-targets-unresolved-member.out \
-    "$LOCKLINT" --cf commands/targets-unresolved-member.cf \
-    commands/targets.c
+    "$LOCKLINT" --cf targets-unresolved-member.cf \
+    targets.c
 require_match "command targets unresolved member" \
     "unresolved function-pointer member 'missing_target_ops::start'" \
     command-targets-unresolved-member.out
 run_failure "command targets non-function member" \
     command-targets-non-function-member.out \
-    "$LOCKLINT" --cf commands/targets-non-function-member.cf \
-    commands/targets.c
+    "$LOCKLINT" --cf targets-non-function-member.cf \
+    targets.c
 require_match "command targets non-function member" \
     "member 'command_target_state::first' is not a function pointer" \
     command-targets-non-function-member.out
 run_failure "command targets unresolved function" \
     command-targets-unresolved-function.out \
-    "$LOCKLINT" --cf commands/targets-unresolved-function.cf \
-    commands/targets.c
+    "$LOCKLINT" --cf targets-unresolved-function.cf \
+    targets.c
 require_match "command targets unresolved function" \
     "unresolved function name 'missing_command_target'" \
     command-targets-unresolved-function.out
 run_failure "command targets incompatible function" \
     command-targets-incompatible-function.out \
     "$LOCKLINT" --dump-callgraph \
-    --cf commands/targets-incompatible-function.cf \
-    commands/targets.c
+    --cf targets-incompatible-function.cf \
+    targets.c
 require_match "command targets incompatible function" \
     "function 'command_target_incompatible' has incompatible type for member 'command_target_ops::start'" \
     command-targets-incompatible-function.out
@@ -2098,7 +2098,7 @@ fi
 
 run_capture "operation family contract consistency" \
     operation-contracts.out "$LOCKLINT" --check-locks \
-    --cf commands/operation-contracts.cf operation-contracts.c
+    --cf operation-contracts.cf operation-contracts.c
 require_match "operation profile target contract mismatch" \
     "function 'operation_contract_acquire' has lock acquisitions inconsistent with contract for 'operation_contracts::start' \\[function-contract-mismatch\\]" \
     operation-contracts.out
@@ -2645,56 +2645,56 @@ require_match "lock role read mode mismatch" \
     lock-role-protection.out
 
 run_failure "empty lock role command" lock-role-empty.out \
-    "$LOCKLINT" --cf commands/lock-role-empty.cf \
+    "$LOCKLINT" --cf lock-role-empty.cf \
     lock-role-protection.c
 require_match "empty lock role command" \
     "lock-role-protects-data requires one lock role and at least one data name" \
     lock-role-empty.out
 
 run_failure "lock role without data" lock-role-no-data.out \
-    "$LOCKLINT" --cf commands/lock-role-no-data.cf \
+    "$LOCKLINT" --cf lock-role-no-data.cf \
     lock-role-protection.c
 require_match "lock role without data" \
     "lock-role-protects-data requires one lock role and at least one data name" \
     lock-role-no-data.out
 
 run_failure "invalid lock role name" lock-role-invalid-lock.out \
-    "$LOCKLINT" --cf commands/lock-role-invalid-lock.cf \
+    "$LOCKLINT" --cf lock-role-invalid-lock.cf \
     lock-role-protection.c
 require_match "invalid lock role name" \
     "invalid lock role name 'bad-name'" lock-role-invalid-lock.out
 
 run_failure "unresolved lock role name" lock-role-unresolved-lock.out \
-    "$LOCKLINT" --cf commands/lock-role-unresolved-lock.cf \
+    "$LOCKLINT" --cf lock-role-unresolved-lock.cf \
     lock-role-protection.c
 require_match "unresolved lock role name" \
     "unresolved lock role name 'missing_role_type::lock'" \
     lock-role-unresolved-lock.out
 
 run_failure "invalid lock role data name" lock-role-invalid-data.out \
-    "$LOCKLINT" --cf commands/lock-role-invalid-data.cf \
+    "$LOCKLINT" --cf lock-role-invalid-data.cf \
     lock-role-protection.c
 require_match "invalid lock role data name" \
     "invalid data name 'bad-name'" lock-role-invalid-data.out
 
 run_failure "unresolved lock role data name" \
     lock-role-unresolved-data.out "$LOCKLINT" \
-    --cf commands/lock-role-unresolved-data.cf \
+    --cf lock-role-unresolved-data.cf \
     lock-role-protection.c
 require_match "unresolved lock role data name" \
     "unresolved data name 'command_role_object_t::missing'" \
     lock-role-unresolved-data.out
 
 run_failure "inconsistent lock role type" lock-role-inconsistent.out \
-    "$LOCKLINT" --cf commands/lock-role-inconsistent.cf \
+    "$LOCKLINT" --cf lock-role-inconsistent.cf \
     type-name-first.c type-name-second-different.c
 require_match "inconsistent lock role type" \
     "inconsistently defined type in lock role name 'repeated_name::value'" \
     lock-role-inconsistent.out
 
 run_failure "ambiguous lock role type" lock-role-ambiguous.out \
-    "$LOCKLINT" --cf commands/lock-role-ambiguous.cf \
-    commands/readable.c commands/readable-other.c
+    "$LOCKLINT" --cf lock-role-ambiguous.cf \
+    readable.c readable-other.c
 require_match "ambiguous lock role type" \
     "ambiguous lock role name 'duplicate_command_type::value'" \
     lock-role-ambiguous.out

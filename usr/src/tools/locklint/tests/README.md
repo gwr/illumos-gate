@@ -70,6 +70,9 @@ default output is `tmp/locklint-large-usb.out`.
 Keep each fixture focused on one behavior or closely related group of
 behaviors.
 
+Store command files directly in this directory beside their C sources,
+headers, and expected output.
+
 Keep automated fixtures stand-alone.  Declare the minimal types, constants,
 macros, and function prototypes needed by the test instead of including
 installed platform system headers.  Multi-file tests may share declarations
