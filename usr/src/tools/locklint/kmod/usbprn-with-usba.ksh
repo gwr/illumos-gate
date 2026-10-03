@@ -97,30 +97,17 @@ do
 	set -- "$@" "usr/src/uts/$source"
 done
 
+print "Running new locklint over usbprn+usba"
+
 mkdir -p "${OUT%/*}" || exit 1
 cd "$REPO_ROOT" || exit 1
 "$LOCKLINT" --compat=osll --check-locks $DUMP_OPTIONS --cf "$CF" \
-    -fident -finline -fno-inline-functions -fno-builtin -fno-asm \
-    -fdiagnostics-show-option -nodefaultlibs -D__sun -m64 \
-    -mtune=opteron -Ui386 -U__i386 -fno-strict-aliasing \
-    -fno-unit-at-a-time -fno-optimize-sibling-calls -O2 \
-    -D_ASM_INLINES -ffreestanding -mno-red-zone -mno-mmx -mno-sse \
-    -msave-args -Wall -Wextra -g -gdwarf-4 -gstrict-dwarf \
-    -std=gnu99 -msave-args -Werror \
-    -Wno-missing-braces -Wno-sign-compare -Wno-unused-parameter \
-    -Wno-missing-field-initializers -Winline \
-    -Wno-maybe-uninitialized -fno-inline-small-functions \
-    -fno-inline-functions-called-once -fno-ipa-cp -fno-ipa-icf \
-    -fno-clone-functions -fno-reorder-functions \
-    -fno-reorder-blocks-and-partition \
-    -fno-aggressive-loop-optimizations \
-    --param=max-inline-insns-single=450 -fno-shrink-wrap \
-    -mindirect-branch=thunk-extern -mindirect-branch-register \
-    -fno-asynchronous-unwind-tables -fstack-protector-strong \
-    -D_KERNEL -ffreestanding -D_SYSCALL32 -D_SYSCALL32_IMPL \
+    -D__sun -m64 -Ui386 -U__i386 -O2 \
+    -D_ASM_INLINES -std=gnu99 \
+    -D_KERNEL -D_SYSCALL32 -D_SYSCALL32_IMPL \
     -D_ELF64 -D_DDI_STRICT -Dsun -D__sun -D__SVR4 -DDEBUG \
     -Iusr/src/uts/intel -nostdinc -Iusr/src/uts/common \
-    -mcmodel=kernel "$@" >"$OUT" 2>&1
+     "$@" >"$OUT" 2>&1
 status=$?
 
 elapsed=$(awk '/^time total/ { print $3; exit }' "$OUT")

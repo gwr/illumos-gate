@@ -17,12 +17,14 @@
 
 SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
 
-"$SCRIPT_DIR/check-kmod-wc.ksh" || exit $?
-"$SCRIPT_DIR/check-kmod-ugen.ksh" || exit $?
-"$SCRIPT_DIR/check-kmod-usbskel.ksh" || exit $?
-"$SCRIPT_DIR/check-kmod-usbprn.ksh" || exit $?
-"$SCRIPT_DIR/check-kmod-usbecm.ksh" || exit $?
-"$SCRIPT_DIR/check-kmod-usbser.ksh" || exit $?
-"$SCRIPT_DIR/check-kmod-usb-ah.ksh" || exit $?
-"$SCRIPT_DIR/check-kmod-usbvc.ksh" || exit $?
-"$SCRIPT_DIR/check-kmod-usbsacm.ksh" || exit $?
+set -e
+"$SCRIPT_DIR/check-kmod-wc.ksh"
+"$SCRIPT_DIR/check-kmod-ugen.ksh"
+"$SCRIPT_DIR/check-kmod-usbskel.ksh"
+"$SCRIPT_DIR/check-kmod-usbprn.ksh"
+"$SCRIPT_DIR/check-kmod-usbecm.ksh"
+"$SCRIPT_DIR/check-kmod-usbser.ksh"
+"$SCRIPT_DIR/check-kmod-usb-ah.ksh"
+"$SCRIPT_DIR/check-kmod-usbvc.ksh"
+"$SCRIPT_DIR/check-kmod-usbsacm.ksh"
+"$SCRIPT_DIR/usbprn-with-usba.ksh"

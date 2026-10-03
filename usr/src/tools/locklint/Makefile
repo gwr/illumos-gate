@@ -176,6 +176,9 @@ TYPE_TEST_OBJS = type_test.o $(TYPE_SUPPORT_OBJS)
 type_test: $(TYPE_TEST_OBJS)
 	$(LINK.c) -o $@ $(TYPE_TEST_OBJS) $(LDLIBS)
 
+kmodtest: FRC
+	(cd kmod && ./RunTests.sh)
+
 test: $(PROG) unittest FRC
 	(cd tests && ./RunTests.sh)
 
