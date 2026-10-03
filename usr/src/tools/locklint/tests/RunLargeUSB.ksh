@@ -3,21 +3,48 @@
 # Run native locklint over the large usbprn-with-USBA integration workload.
 # This workload is intentionally separate from the focused tests run by
 # "make test".  Set DUMPS=1 to include development dumps and timing.
-# SRC, LOCKLINT, CF, and OUT may override the defaults.
+# Source and include pathnames are passed relative to the repository root so
+# diagnostics remain stable across workspaces.  SRC, LOCKLINT, CF, and OUT may
+# override the defaults.
 #
 
+START_DIR=$(pwd) || exit 1
 TESTDIR=$(cd "$(dirname "$0")" && pwd) || exit 1
 if [[ -z "$SRC" ]]; then
 	SRC=$(cd "$TESTDIR/../../.." && pwd) || exit 1
+else
+	SRC=$(cd "$SRC" && pwd) || exit 1
 fi
 LOCKLINT=${LOCKLINT:-"$SRC/tools/locklint/locklint"}
 CF=${CF:-"$TESTDIR/usbprn-with-usba.cf"}
 OUT=${OUT:-"$SRC/../../tmp/locklint-large-usb.out"}
+case "$LOCKLINT" in
+/*)
+	;;
+*)
+	LOCKLINT="$START_DIR/$LOCKLINT"
+	;;
+esac
+case "$CF" in
+/*)
+	;;
+*)
+	CF="$START_DIR/$CF"
+	;;
+esac
+case "$OUT" in
+/*)
+	;;
+*)
+	OUT="$START_DIR/$OUT"
+	;;
+esac
+REPO_ROOT=$(cd "$SRC/../.." && pwd) || exit 1
 DUMP_OPTIONS=
 if [[ ${DUMPS:-0} == 1 ]]; then
 	DUMP_OPTIONS='--dump-callgraph --dump-contexts
 	    --dump-protection-states --dump-statistics --dump-types
-	    --dump-policy-workload --times'
+	    --times'
 fi
 
 SOURCES='
@@ -67,10 +94,11 @@ fi
 set --
 for source in $SOURCES
 do
-	set -- "$@" "$SRC/uts/$source"
+	set -- "$@" "usr/src/uts/$source"
 done
 
 mkdir -p "${OUT%/*}" || exit 1
+cd "$REPO_ROOT" || exit 1
 "$LOCKLINT" --compat=osll --check-locks $DUMP_OPTIONS --cf "$CF" \
     -fident -finline -fno-inline-functions -fno-builtin -fno-asm \
     -fdiagnostics-show-option -nodefaultlibs -D__sun -m64 \
@@ -91,5 +119,5 @@ mkdir -p "${OUT%/*}" || exit 1
     -fno-asynchronous-unwind-tables -fstack-protector-strong \
     -D_KERNEL -ffreestanding -D_SYSCALL32 -D_SYSCALL32_IMPL \
     -D_ELF64 -D_DDI_STRICT -Dsun -D__sun -D__SVR4 -DDEBUG \
-    -I"$SRC/uts/intel" -nostdinc -I"$SRC/uts/common" \
+    -Iusr/src/uts/intel -nostdinc -Iusr/src/uts/common \
     -mcmodel=kernel "$@" >"$OUT" 2>&1

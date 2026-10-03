@@ -540,7 +540,7 @@ report_declared_path(struct order_vertex *from, struct order_vertex *to)
 
 	if (edge->before != from)
 		report_declared_path(from, edge->before);
-	locklint_info(edge->pos, "locklint: declared order requires '%s' before '%s'",
+	locklint_info(edge->pos, "declared order requires '%s' before '%s'",
 	    edge->before->name, edge->after->name);
 }
 
@@ -696,7 +696,7 @@ report_component(unsigned int component)
 	    component_edges[0]->pos, "declared lock order contains a cycle");
 	for (index = 0; index < count; index++) {
 		edge = component_edges[index];
-		locklint_info(edge->pos, "locklint: '%s' must precede '%s'",
+		locklint_info(edge->pos, "'%s' must precede '%s'",
 		    edge->before->name, edge->after->name);
 	}
 	free(component_edges);
@@ -808,10 +808,10 @@ report_observed_component(unsigned int component)
 	for (index = 0; index < count; index++) {
 		edge = component_edges[index];
 		if (edge->has_held_pos) {
-			locklint_info(edge->held_pos, "locklint: lock '%s' acquired here",
+			locklint_info(edge->held_pos, "lock '%s' acquired here",
 			    edge->before->name);
 		}
-		locklint_info(edge->acquire_pos, "locklint: lock '%s' %sacquired while "
+		locklint_info(edge->acquire_pos, "lock '%s' %sacquired while "
 		    "holding '%s'", edge->after->name,
 		    edge->possible ? "may be " : "",
 		    edge->before->name);

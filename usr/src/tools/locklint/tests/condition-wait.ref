@@ -1,28 +1,28 @@
-../locklint: condition-wait.c:97:16: warning: locklint: lock 'first' is not held [lock-not-held]
-../locklint: condition-wait.c:124:27: warning: locklint: lock 'first' is not held [lock-not-held]
-../locklint: condition-wait.c:131:28: warning: locklint: lock 'first' is not held [lock-not-held]
-../locklint: condition-wait.c:138:32: warning: locklint: lock 'first' is not held [lock-not-held]
-../locklint: condition-wait.c:145:31: warning: locklint: lock 'first' is not held [lock-not-held]
-../locklint: condition-wait.c:152:35: warning: locklint: lock 'first' is not held [lock-not-held]
-../locklint: condition-wait.c:183:21: warning: locklint: lock 'first' is not held [lock-not-held]
-../locklint: condition-wait.c:190:34: warning: locklint: lock 'first' is not held [lock-not-held]
-../locklint: condition-wait.c:197:39: warning: locklint: lock 'first' is not held [lock-not-held]
-../locklint: condition-wait.c:204:32: warning: locklint: lock 'first' is not held [lock-not-held]
-../locklint: condition-wait.c:213:37: warning: locklint: lock 'first' is not held [lock-not-held]
-../locklint: condition-wait.c:222:32: warning: locklint: lock 'first' is not held [lock-not-held]
-../locklint: condition-wait.c:293:16: warning: locklint: lock 'first' may not be held [lock-maybe-not-held]
-../locklint: condition-wait.c:243:21: warning: locklint: lock 'condition_wait_state::first' acquired out of declared order while holding 'condition_wait_state::second' [declared-order]
-../locklint: condition-wait.c:53:1: locklint: declared order requires 'condition_wait_state::first' before 'condition_wait_state::second'
-../locklint: condition-wait.c:79:16: locklint: lock acquisition reached through callee 'wait_wrapper'
-../locklint: condition-wait.c:263:16: warning: locklint: lock 'condition_wait_state::first' acquired out of declared order while holding 'condition_wait_state::second' [declared-order]
-../locklint: condition-wait.c:53:1: locklint: declared order requires 'condition_wait_state::first' before 'condition_wait_state::second'
-../locklint: condition-wait.c:273:32: warning: locklint: lock 'condition_wait_state::first' acquired out of declared order while holding 'condition_wait_state::second' [declared-order]
-../locklint: condition-wait.c:53:1: locklint: declared order requires 'condition_wait_state::first' before 'condition_wait_state::second'
-../locklint: condition-wait.c:283:32: warning: locklint: lock 'condition_wait_state::first' acquired out of declared order while holding 'condition_wait_state::second' [declared-order]
-../locklint: condition-wait.c:53:1: locklint: declared order requires 'condition_wait_state::first' before 'condition_wait_state::second'
-../locklint: condition-wait.c:79:16: warning: locklint: condition wait may occur while holding lock 'condition_wait_state::second' [lock-maybe-held-during-wait]
-../locklint: condition-wait.c:243:21: locklint: lock is held on a path through call to 'wait_wrapper'
-../locklint: condition-wait.c:253:16: warning: locklint: condition wait occurs while holding lock 'condition_wait_state::first' [lock-held-during-wait]
-../locklint: condition-wait.c:263:16: warning: locklint: condition wait occurs while holding lock 'condition_wait_state::second' [lock-held-during-wait]
-../locklint: condition-wait.c:273:32: warning: locklint: condition wait occurs while holding lock 'condition_wait_state::second' [lock-held-during-wait]
-../locklint: condition-wait.c:283:32: warning: locklint: condition wait occurs while holding lock 'condition_wait_state::second' [lock-held-during-wait]
+locklint: condition-wait.c:97:16: warning: lock 'first' is not held [lock-not-held]
+locklint: condition-wait.c:124:27: warning: lock 'first' is not held [lock-not-held]
+locklint: condition-wait.c:131:28: warning: lock 'first' is not held [lock-not-held]
+locklint: condition-wait.c:138:32: warning: lock 'first' is not held [lock-not-held]
+locklint: condition-wait.c:145:31: warning: lock 'first' is not held [lock-not-held]
+locklint: condition-wait.c:152:35: warning: lock 'first' is not held [lock-not-held]
+locklint: condition-wait.c:183:21: warning: lock 'first' is not held [lock-not-held]
+locklint: condition-wait.c:190:34: warning: lock 'first' is not held [lock-not-held]
+locklint: condition-wait.c:197:39: warning: lock 'first' is not held [lock-not-held]
+locklint: condition-wait.c:204:32: warning: lock 'first' is not held [lock-not-held]
+locklint: condition-wait.c:213:37: warning: lock 'first' is not held [lock-not-held]
+locklint: condition-wait.c:222:32: warning: lock 'first' is not held [lock-not-held]
+locklint: condition-wait.c:293:16: warning: lock 'first' may not be held [lock-maybe-not-held]
+locklint: condition-wait.c:243:21: warning: lock 'condition_wait_state::first' acquired out of declared order while holding 'condition_wait_state::second' [declared-order]
+locklint: condition-wait.c:53:1: declared order requires 'condition_wait_state::first' before 'condition_wait_state::second'
+locklint: condition-wait.c:79:16: lock acquisition reached through callee 'wait_wrapper'
+locklint: condition-wait.c:263:16: warning: lock 'condition_wait_state::first' acquired out of declared order while holding 'condition_wait_state::second' [declared-order]
+locklint: condition-wait.c:53:1: declared order requires 'condition_wait_state::first' before 'condition_wait_state::second'
+locklint: condition-wait.c:273:32: warning: lock 'condition_wait_state::first' acquired out of declared order while holding 'condition_wait_state::second' [declared-order]
+locklint: condition-wait.c:53:1: declared order requires 'condition_wait_state::first' before 'condition_wait_state::second'
+locklint: condition-wait.c:283:32: warning: lock 'condition_wait_state::first' acquired out of declared order while holding 'condition_wait_state::second' [declared-order]
+locklint: condition-wait.c:53:1: declared order requires 'condition_wait_state::first' before 'condition_wait_state::second'
+locklint: condition-wait.c:79:16: warning: condition wait may occur while holding lock 'condition_wait_state::second' [lock-maybe-held-during-wait]
+locklint: condition-wait.c:243:21: lock is held on a path through call to 'wait_wrapper'
+locklint: condition-wait.c:253:16: warning: condition wait occurs while holding lock 'condition_wait_state::first' [lock-held-during-wait]
+locklint: condition-wait.c:263:16: warning: condition wait occurs while holding lock 'condition_wait_state::second' [lock-held-during-wait]
+locklint: condition-wait.c:273:32: warning: condition wait occurs while holding lock 'condition_wait_state::second' [lock-held-during-wait]
+locklint: condition-wait.c:283:32: warning: condition wait occurs while holding lock 'condition_wait_state::second' [lock-held-during-wait]

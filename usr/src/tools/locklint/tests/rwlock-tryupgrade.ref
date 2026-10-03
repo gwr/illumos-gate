@@ -1,14 +1,14 @@
-../locklint: rwlock-tryupgrade.c:146:26: warning: locklint: lock 'first' is not read-held [lock-not-read-held]
-../locklint: rwlock-tryupgrade.c:148:16: warning: locklint: lock 'first' is not held [lock-not-held]
-../locklint: rwlock-tryupgrade.c:155:26: warning: locklint: lock 'first' is not read-held [lock-not-read-held]
-../locklint: rwlock-tryupgrade.c:60:22: warning: locklint: protected member 'value' modified without write-holding 'first' [unprotected-access]
-../locklint: rwlock-tryupgrade.c:60:22: locklint: required lock 'first' is read-held; write-holding is required at this protected access
-../locklint: rwlock-tryupgrade.c:71:22: warning: locklint: protected member 'value' modified without write-holding 'first' [unprotected-access]
-../locklint: rwlock-tryupgrade.c:71:22: locklint: required lock 'first' is read-held; write-holding is required at this protected access
-../locklint: rwlock-tryupgrade.c:82:22: warning: locklint: protected member 'value' modified without write-holding 'first' [unprotected-access]
-../locklint: rwlock-tryupgrade.c:82:22: locklint: required lock 'first' is read-held; write-holding is required at this protected access
-../locklint: rwlock-tryupgrade.c:111:14: warning: locklint: protection for member 'value' is not established on every path [conditional-protection]
-../locklint: rwlock-tryupgrade.c:111:14: locklint: required lock 'first' may be held in multiple modes; write-holding is required at this protected access
-../locklint: rwlock-tryupgrade.c:129:14: warning: locklint: protected member 'value' modified without write-holding 'first' [unprotected-access]
-../locklint: rwlock-tryupgrade.c:176:22: warning: locklint: protected member 'value' modified without write-holding 'first' [unprotected-access]
-../locklint: rwlock-tryupgrade.c:176:22: locklint: required lock 'first' is read-held; write-holding is required at this protected access
+locklint: rwlock-tryupgrade.c:146:26: warning: lock 'first' is not read-held [lock-not-read-held]
+locklint: rwlock-tryupgrade.c:148:16: warning: lock 'first' is not held [lock-not-held]
+locklint: rwlock-tryupgrade.c:155:26: warning: lock 'first' is not read-held [lock-not-read-held]
+locklint: rwlock-tryupgrade.c:60:22: warning: protected member 'value' modified without write-holding 'first' [unprotected-access]
+locklint: rwlock-tryupgrade.c:60:22: required lock 'first' is read-held; write-holding is required at this protected access
+locklint: rwlock-tryupgrade.c:71:22: warning: protected member 'value' modified without write-holding 'first' [unprotected-access]
+locklint: rwlock-tryupgrade.c:71:22: required lock 'first' is read-held; write-holding is required at this protected access
+locklint: rwlock-tryupgrade.c:82:22: warning: protected member 'value' modified without write-holding 'first' [unprotected-access]
+locklint: rwlock-tryupgrade.c:82:22: required lock 'first' is read-held; write-holding is required at this protected access
+locklint: rwlock-tryupgrade.c:111:14: warning: protection for member 'value' is not established on every path [conditional-protection]
+locklint: rwlock-tryupgrade.c:111:14: required lock 'first' may be held in multiple modes; write-holding is required at this protected access
+locklint: rwlock-tryupgrade.c:129:14: warning: protected member 'value' modified without write-holding 'first' [unprotected-access]
+locklint: rwlock-tryupgrade.c:176:22: warning: protected member 'value' modified without write-holding 'first' [unprotected-access]
+locklint: rwlock-tryupgrade.c:176:22: required lock 'first' is read-held; write-holding is required at this protected access

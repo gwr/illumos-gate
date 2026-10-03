@@ -435,7 +435,7 @@ annotation_error(struct annotation *annotation, struct annotation_token *token,
     const char *message)
 {
 	sparse_error(token != NULL ? token->pos : annotation->pos,
-	    "locklint: %s", message);
+	    "%s", message);
 	return (false);
 }
 
@@ -444,7 +444,7 @@ annotation_named_error(struct annotation *annotation,
     struct annotation_token *token, const char *message, const char *name)
 {
 	sparse_error(token != NULL ? token->pos : annotation->pos,
-	    "locklint: %s %s", message, name);
+	    "%s %s", message, name);
 	return (false);
 }
 
@@ -1420,7 +1420,7 @@ resolve_path(struct annotation_ref *ref, struct symbol *type,
 		char *name = annotation_ref_name(ref);
 
 		sparse_error(ref->pos,
-		    "locklint: unresolved annotation name '%s'", name);
+		    "unresolved annotation name '%s'", name);
 		free(name);
 		return (false);
 	}
@@ -1456,7 +1456,7 @@ resolve_annotation_ref(struct annotation_ref *ref, bool lock,
 		char *name = annotation_ref_name(ref);
 
 		sparse_error(ref->pos,
-		    "locklint: unresolved annotation name '%s'", name);
+		    "unresolved annotation name '%s'", name);
 		free(name);
 		return (false);
 	}
@@ -1478,7 +1478,7 @@ resolve_annotation_ref(struct annotation_ref *ref, bool lock,
 		char *name = annotation_ref_name(ref);
 
 		sparse_error(ref->pos,
-		    "locklint: annotation lock '%s' names a structure", name);
+		    "annotation lock '%s' names a structure", name);
 		free(name);
 		return (false);
 	}
@@ -1785,7 +1785,7 @@ locklint_resolve_annotations(struct symbol_list *symbols)
 			}
 			if (result != CALLGRAPH_DECLARE_OK) {
 				sparse_error(annotation->pos,
-				    "locklint: DECLARE_CONTRACT member is not "
+				    "DECLARE_CONTRACT member is not "
 				    "a function pointer or conflicts with "
 				    "another contract");
 				continue;
@@ -1852,12 +1852,12 @@ locklint_apply_contract_annotations(void)
 			    result == CALLGRAPH_DECLARE_AMBIGUOUS ||
 			    result == CALLGRAPH_DECLARE_INCOMPATIBLE_TYPE) {
 				sparse_error(annotation->pos,
-				    "locklint: representative function '%s' "
+				    "representative function '%s' "
 				    "cannot be used for DECLARE_CONTRACT",
 				    annotation->contract_function);
 			} else {
 				sparse_error(annotation->pos,
-				    "locklint: DECLARE_CONTRACT member is not "
+				    "DECLARE_CONTRACT member is not "
 				    "a function pointer or conflicts with "
 				    "another contract");
 			}
@@ -2051,7 +2051,7 @@ locklint_process_function_annotations(FILE *stream,
 				pos = insn->context_expr != NULL ?
 				    insn->context_expr->pos : insn->pos;
 				sparse_error(pos,
-				    "locklint: %s requires a lock expression",
+				    "%s requires a lock expression",
 				    declared_lock_effect_name(effect));
 				continue;
 			}

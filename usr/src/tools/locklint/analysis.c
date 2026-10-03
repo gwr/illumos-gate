@@ -3966,12 +3966,12 @@ describe_contract_summary(struct position position, const char *kind,
 	size_t index;
 
 	if (!summary->complete) {
-		locklint_info(position, "locklint: %s acquisitions are not identical on "
+		locklint_info(position, "%s acquisitions are not identical on "
 		    "every exact return", kind);
 		return;
 	}
 	if (summary->count == 0) {
-		locklint_info(position, "locklint: %s acquisitions: none", kind);
+		locklint_info(position, "%s acquisitions: none", kind);
 		return;
 	}
 	for (index = 0; index < summary->count; index++) {
@@ -3979,13 +3979,13 @@ describe_contract_summary(struct position position, const char *kind,
 		    &summary->entries[index];
 
 		if (acquisition->role == CONTRACT_ACQUISITION_FORMAL) {
-			locklint_info(position, "locklint: %s acquisition: %s lock at "
+			locklint_info(position, "%s acquisition: %s lock at "
 			    "formal argument %u offset %lld", kind,
 			    contract_mode_name(acquisition->mode),
 			    acquisition->argument + 1,
 			    (long long)acquisition->offset);
 		} else {
-			locklint_info(position, "locklint: %s acquisition: %s lock at "
+			locklint_info(position, "%s acquisition: %s lock at "
 			    "returned object offset %lld", kind,
 			    contract_mode_name(acquisition->mode),
 			    (long long)acquisition->offset);
@@ -4021,11 +4021,11 @@ diagnose_contract_target(const struct callgraph_contract_target *target,
 	describe_contract_summary(position, "observed", &observed);
 	describe_contract_summary(position, "required", &expected);
 	if (target->target_file != NULL) {
-		locklint_info(position, "locklint: target declared at %s:%lu",
+		locklint_info(position, "target declared at %s:%lu",
 		    target->target_file, target->target_line);
 	}
 	if (target->contract_file != NULL) {
-		locklint_info(position, "locklint: contract declared at %s:%lu",
+		locklint_info(position, "contract declared at %s:%lu",
 		    target->contract_file, target->contract_line);
 	}
 	free(selector);
@@ -4667,7 +4667,7 @@ report_lock_transition(struct lock_transition_finding *finding)
 		    finding->transition_instruction->call_expr->pos :
 		    finding->transition_instruction->pos;
 
-		locklint_info(source, "locklint: invalid lock transition is here");
+		locklint_info(source, "invalid lock transition is here");
 	}
 	free(name);
 }
@@ -5375,7 +5375,7 @@ diagnose_acquisition_order_and_waits(struct analysis *analysis)
 			    acquisition->call_expr != NULL ?
 			    acquisition->call_expr->pos : acquisition->pos;
 
-			locklint_info(acquisition_pos, "locklint: lock acquisition "
+			locklint_info(acquisition_pos, "lock acquisition "
 			    "reached through callee '%s'",
 			    origin->callee_function != NULL ?
 			    function_name(origin->callee_function) :
@@ -5406,7 +5406,7 @@ diagnose_acquisition_order_and_waits(struct analysis *analysis)
 			    finding->call_instruction->call_expr->pos :
 			    finding->call_instruction->pos;
 
-			locklint_info(call_pos, "locklint: lock is held on a path "
+			locklint_info(call_pos, "lock is held on a path "
 			    "through call to '%s'",
 			    finding->callee_function != NULL ?
 			    function_name(finding->callee_function) :
@@ -5707,7 +5707,7 @@ diagnose_lock_assertions(struct analysis *analysis)
 				    callee_name, mode, name);
 			}
 			locklint_info(assertion_pos,
-			    "locklint: asserted requirement is here");
+			    "asserted requirement is here");
 		} else if (finding->call_instruction == NULL &&
 		    finding->invalid) {
 			if (finding->valid) {
@@ -6449,7 +6449,7 @@ emit_protected_access_call_witnesses(struct protected_access_finding *finding)
 		    ordered[index]->call_instruction->call_expr->pos :
 		    ordered[index]->call_instruction->pos;
 
-		locklint_info(pos, "locklint: protection was not established at this "
+		locklint_info(pos, "protection was not established at this "
 		    "call to '%s'", function_name(finding->function));
 	}
 	free(ordered);
@@ -6489,11 +6489,11 @@ emit_lock_mode_info(const struct protected_access_finding *finding,
 		    "write-" : "read-";
 	}
 	if (conditional) {
-		locklint_info(pos, "locklint: required lock '%s' may be %s; "
+		locklint_info(pos, "required lock '%s' may be %s; "
 		    "%sholding is required at this protected access",
 		    lock, held, required);
 	} else {
-		locklint_info(pos, "locklint: required lock '%s' is %s; "
+		locklint_info(pos, "required lock '%s' is %s; "
 		    "%sholding is required at this protected access",
 		    lock, held, required);
 	}
@@ -8132,13 +8132,13 @@ report_unmodeled_indirect_calls(struct analysis *analysis)
 			    call->pos, "indirect call through '%s' has no "
 			    "target or calling contract", selector);
 		}
-		locklint_info(call->pos, "locklint: use 'declare targets %s "
+		locklint_info(call->pos, "use 'declare targets %s "
 		    "FUNCTION...' when the target function is known",
 		    selector);
-		locklint_info(call->pos, "locklint: use 'declare contract %s "
+		locklint_info(call->pos, "use 'declare contract %s "
 		    "no-lock-effects' for analysis-specific policy",
 		    selector);
-		locklint_info(call->pos, "locklint: add '_NOTE(DECLARE_CONTRACT(%s, "
+		locklint_info(call->pos, "add '_NOTE(DECLARE_CONTRACT(%s, "
 		    "NO_LOCK_EFFECTS))' for stable interface policy",
 		    selector);
 		free(selector);

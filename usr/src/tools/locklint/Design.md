@@ -215,7 +215,11 @@ locklint findings.  `--parser-warnings` enables them for troubleshooting, and
 an explicit Sparse `-fmax-warnings` argument may set their limit.  Parser
 errors remain visible in every mode.  Locklint warnings and their supporting
 information use independent output handlers and are never limited or converted
-to parser errors by Sparse warning options.
+to parser errors by Sparse warning options.  Locklint shortens `argv[0]` to its
+final pathname component before either diagnostic system is initialized, so
+locklint and parser messages use the same concise program-name prefix.
+Locklint-owned warnings carry a stable identifier at the end of the message;
+they do not repeat the program name inside the severity or message fields.
 
 Each dump begins with a `#### dump-name ####` header.  A bare dump option
 writes to standard output; `--dump-name=pathname` writes only that dump to the
@@ -2816,7 +2820,7 @@ intermediate-frame rendering remain optional future work.
 
 | Function | Responsibility |
 | --- | --- |
-| `diagnostics_init()` | Record the locklint invocation name used to prefix diagnostics |
+| `diagnostics_init()` | Record the shortened locklint program name used to prefix diagnostics |
 | `locklint_warning()` | Format and emit one primary warning with its stable diagnostic identifier |
 | `locklint_info()` | Emit untagged supporting information for a locklint warning |
 

@@ -436,19 +436,19 @@ require_match "local helper contexts" \
     '^maximum contexts/function 2 function local_helper tu=lock-identity-local.c$' \
     lock-identity-local.out
 require_match "local unmatched release" \
-    "lock-identity-local.c:79:19: warning: locklint: lock 'local_lock' is not held \\[lock-not-held\\]" \
+    "lock-identity-local.c:79:19: warning: lock 'local_lock' is not held \\[lock-not-held\\]" \
     lock-identity-local.out
 require_match "local duplicate acquire" \
-    "lock-identity-local.c:81:20: warning: locklint: lock 'local_lock' is already held \\[lock-already-held\\]" \
+    "lock-identity-local.c:81:20: warning: lock 'local_lock' is already held \\[lock-already-held\\]" \
     lock-identity-local.out
 require_match "formal held on return" \
-    "lock-identity-local.c:39:21: warning: locklint: lock 'lock' held on return from 'acquire_helper' \\[lock-held-on-return\\]" \
+    "lock-identity-local.c:39:21: warning: lock 'lock' held on return from 'acquire_helper' \\[lock-held-on-return\\]" \
     lock-identity-local.out
 require_match "local held on return" \
-    "lock-identity-local.c:53:22: warning: locklint: lock 'local_lock' held on return from 'local_lock_helper' \\[lock-held-on-return\\]" \
+    "lock-identity-local.c:53:22: warning: lock 'local_lock' held on return from 'local_lock_helper' \\[lock-held-on-return\\]" \
     lock-identity-local.out
 require_match "local maybe held on return" \
-    "lock-identity-local.c:62:30: warning: locklint: lock 'local_lock' held on only some paths returning from 'local_maybe_lock_helper' \\[lock-maybe-held-on-return\\]" \
+    "lock-identity-local.c:62:30: warning: lock 'local_lock' held on only some paths returning from 'local_maybe_lock_helper' \\[lock-maybe-held-on-return\\]" \
     lock-identity-local.out
 reject_match "local terminated nested acquisition path" \
     "lock-identity-local.c:83:32:" \
@@ -497,7 +497,7 @@ reject_match "nested pointer alias lock identity" \
     "lock-identity-pointer-member.c:59:19:.*\\[lock-not-held\\]" \
     lock-identity-pointer-member.out
 require_match "reassigned pointer member lock identity" \
-    "lock-identity-pointer-member.c:68:19: warning: locklint: lock 'lock' is not held \\[lock-not-held\\]" \
+    "lock-identity-pointer-member.c:68:19: warning: lock 'lock' is not held \\[lock-not-held\\]" \
     lock-identity-pointer-member.out
 if [ "$(grep -c 'warning:' lock-identity-pointer-member.out)" -ne 1 ]; then
 	fail "pointer member lock identities: expected exactly one warning"
@@ -519,10 +519,10 @@ reject_match "balanced call-result loop final release" \
     "lock-identity-call-result.c:64:19:.*\\[lock-not-held\\]" \
     lock-identity-call-result.out
 require_match "missing loop reacquisition body" \
-    "lock-identity-call-result.c:76:35: warning: locklint: lock 'lock' may not be held \\[lock-maybe-not-held\\]" \
+    "lock-identity-call-result.c:76:35: warning: lock 'lock' may not be held \\[lock-maybe-not-held\\]" \
     lock-identity-call-result.out
 require_match "missing loop reacquisition final release" \
-    "lock-identity-call-result.c:82:19: warning: locklint: lock 'lock' may not be held \\[lock-maybe-not-held\\]" \
+    "lock-identity-call-result.c:82:19: warning: lock 'lock' may not be held \\[lock-maybe-not-held\\]" \
     lock-identity-call-result.out
 if [ "$(grep -c 'warning:' lock-identity-call-result.out)" -ne 2 ]; then
 	fail "call-result lock identities: expected exactly two warnings"
@@ -778,10 +778,10 @@ run_capture "command entry competition" command-entry-competition.out \
     --cf commands/entry-competition.cf \
     commands/entry-competition.c commands/entry-competition-helper.c
 require_match "command entry retained caller-free root" \
-    "commands/entry-competition.c:47:9: warning: locklint: competing threads exist at NO_COMPETING_THREADS assertion" \
+    "commands/entry-competition.c:47:9: warning: competing threads exist at NO_COMPETING_THREADS assertion" \
     command-entry-competition.out
 reject_match "command entry helper assertion" \
-    "commands/entry-competition-helper.c:29:9: warning: locklint:" \
+    "commands/entry-competition-helper.c:29:9: warning:" \
     command-entry-competition.out
 require_match "command entry helper reachable" \
     "^function command_entry_helper .* reachable=yes$" \
@@ -912,7 +912,7 @@ reject_match "merged cross-object protection" \
     "merge-instances.c:.*protected member 'value'" \
     merge-instances-after.out
 require_match "merged member locks" \
-    "merge-instances.c:.*warning: locklint: lock 'lock' is already held" \
+    "merge-instances.c:.*warning: lock 'lock' is already held" \
     merge-instances-after.out
 reject_match "unrelated instances remain distinct" \
     "lock 'other_lock'.*already held" merge-instances-after.out
@@ -1134,7 +1134,7 @@ run_capture "command singleton target" command-targets-first.out \
     --cf commands/targets-first.cf \
     commands/targets.c
 require_match "command singleton target effect" \
-    "commands/targets.c:.*: warning: locklint: condition wait occurs while holding lock 'command_target_state::first' \\[lock-held-during-wait\\]" \
+    "commands/targets.c:.*: warning: condition wait occurs while holding lock 'command_target_state::first' \\[lock-held-during-wait\\]" \
     command-targets-first.out
 reject_match "command singleton unrelated target" \
     "command_target_state::second" command-targets-first.out
@@ -1153,10 +1153,10 @@ run_capture "command multiple targets" command-targets-both.out \
     --cf commands/targets-both.cf \
     commands/targets.c
 require_match "command first possible target effect" \
-    "commands/targets.c:.*: warning: locklint: condition wait occurs while holding lock 'command_target_state::first' \\[lock-held-during-wait\\]" \
+    "commands/targets.c:.*: warning: condition wait occurs while holding lock 'command_target_state::first' \\[lock-held-during-wait\\]" \
     command-targets-both.out
 require_match "command second possible target effect" \
-    "commands/targets.c:.*: warning: locklint: condition wait occurs while holding lock 'command_target_state::second' \\[lock-held-during-wait\\]" \
+    "commands/targets.c:.*: warning: condition wait occurs while holding lock 'command_target_state::second' \\[lock-held-during-wait\\]" \
     command-targets-both.out
 require_match "command first possible target provenance" \
     "lock is held on a path through call to 'command_target_first'" \
@@ -1310,16 +1310,16 @@ run_capture "command target return effects" command-targets-effects.out \
     "$LOCKLINT" -DCOMMAND_TARGETS_DIFFERENT_EFFECTS=1 \
     --cf commands/targets-effects.cf commands/targets.c
 require_match "first target conditional return effect" \
-    "warning: locklint: lock 'first' may not be held \\[lock-maybe-not-held\\]" \
+    "warning: lock 'first' may not be held \\[lock-maybe-not-held\\]" \
     command-targets-effects.out
 require_match "second target conditional return effect" \
-    "warning: locklint: lock 'second' may not be held \\[lock-maybe-not-held\\]" \
+    "warning: lock 'second' may not be held \\[lock-maybe-not-held\\]" \
     command-targets-effects.out
 require_match "first target returned effect" \
-    "warning: locklint: condition wait may occur while holding lock 'command_target_state::first' \\[lock-maybe-held-during-wait\\]" \
+    "warning: condition wait may occur while holding lock 'command_target_state::first' \\[lock-maybe-held-during-wait\\]" \
     command-targets-effects.out
 require_match "second target returned effect" \
-    "warning: locklint: condition wait may occur while holding lock 'command_target_state::second' \\[lock-maybe-held-during-wait\\]" \
+    "warning: condition wait may occur while holding lock 'command_target_state::second' \\[lock-maybe-held-during-wait\\]" \
     command-targets-effects.out
 require_match "first target contract mismatch" \
     "function 'command_target_first' has lock acquisitions inconsistent with contract for 'command_target_ops::start' \\[function-contract-mismatch\\]" \
@@ -1446,7 +1446,7 @@ run_capture "concrete target precedes representative" \
     commands/representative-call.c \
     commands/representative-call-models.c
 require_match "concrete target does not acquire representative lock" \
-    "warning: locklint: lock 'lock' is not held \\[lock-not-held\\]" \
+    "warning: lock 'lock' is not held \\[lock-not-held\\]" \
     representative-call-target.out
 reject_match "concrete target call is modeled" \
     "unmodeled-indirect-call" representative-call-target.out
@@ -1685,7 +1685,7 @@ require_match "visibility entries per set" \
     '^distribution visibility-entries/set samples 52 total 30 max 2$' \
     visibility-contexts.out
 require_match "invalid visibility operand" \
-    "visibility.c:151:9: warning: locklint: visibility annotation has no object \\[visibility-no-object\\]" \
+    "visibility.c:151:9: warning: visibility annotation has no object \\[visibility-no-object\\]" \
     visibility-contexts.out
 if [ "$(grep -c '\[visibility-no-object\]' visibility-contexts.out)" \
     -ne 1 ]; then
@@ -1937,16 +1937,16 @@ fi
 run_capture "held lock through callee" held-lock-callee.out \
     "$LOCKLINT" --check-locks held-lock-callee.c
 require_match "direct callee nested acquisition" \
-    "held-lock-callee.c:64:24: warning: locklint: call to 'balanced_callee' acquires already-held lock 'lock' \\[lock-already-held\\]" \
+    "held-lock-callee.c:64:24: warning: call to 'balanced_callee' acquires already-held lock 'lock' \\[lock-already-held\\]" \
     held-lock-callee.out
 require_match "formal callback nested acquisition" \
-    "held-lock-callee.c:74:24: warning: locklint: call to 'invoke_callback' acquires already-held lock 'lock' \\[lock-already-held\\]" \
+    "held-lock-callee.c:74:24: warning: call to 'invoke_callback' acquires already-held lock 'lock' \\[lock-already-held\\]" \
     held-lock-callee.out
 require_match "direct alias nested acquisition" \
-    "held-lock-callee.c:105:30: warning: locklint: call to 'balanced_alias_callee' acquires already-held lock 'lock' \\[lock-already-held\\]" \
+    "held-lock-callee.c:105:30: warning: call to 'balanced_alias_callee' acquires already-held lock 'lock' \\[lock-already-held\\]" \
     held-lock-callee.out
 require_match "formal callback alias nested acquisition" \
-    "held-lock-callee.c:115:30: warning: locklint: call to 'invoke_alias_callback' acquires already-held lock 'lock' \\[lock-already-held\\]" \
+    "held-lock-callee.c:115:30: warning: call to 'invoke_alias_callback' acquires already-held lock 'lock' \\[lock-already-held\\]" \
     held-lock-callee.out
 reject_match "held lock through callee path termination" \
     "\\[lock-not-held\\]" \
@@ -1962,10 +1962,10 @@ fi
 run_capture "formal callback propagation" formal-callback.out \
     "$LOCKLINT" --check-locks formal-callback.c
 require_match "first formal callback target" \
-    "formal-callback.c:46:16: warning: locklint: condition wait may occur while holding lock 'formal_callback_state::outer_first' \\[lock-maybe-held-during-wait\\]" \
+    "formal-callback.c:46:16: warning: condition wait may occur while holding lock 'formal_callback_state::outer_first' \\[lock-maybe-held-during-wait\\]" \
     formal-callback.out
 require_match "second formal callback target" \
-    "formal-callback.c:54:16: warning: locklint: condition wait may occur while holding lock 'formal_callback_state::outer_second' \\[lock-maybe-held-during-wait\\]" \
+    "formal-callback.c:54:16: warning: condition wait may occur while holding lock 'formal_callback_state::outer_second' \\[lock-maybe-held-during-wait\\]" \
     formal-callback.out
 if [ "$(grep -c 'warning:' formal-callback.out)" -ne 2 ]; then
 	fail "formal callback propagation: expected exactly two warnings"
@@ -1978,19 +1978,19 @@ fi
 run_capture "stored callback propagation" stored-callback.out \
     "$LOCKLINT" --check-locks stored-callback.c
 require_match "first stored callback target" \
-    "stored-callback.c:55:16: warning: locklint: condition wait may occur while holding lock 'stored_callback_state::outer_first' \\[lock-maybe-held-during-wait\\]" \
+    "stored-callback.c:55:16: warning: condition wait may occur while holding lock 'stored_callback_state::outer_first' \\[lock-maybe-held-during-wait\\]" \
     stored-callback.out
 require_match "second stored callback target" \
-    "stored-callback.c:63:16: warning: locklint: condition wait may occur while holding lock 'stored_callback_state::outer_second' \\[lock-maybe-held-during-wait\\]" \
+    "stored-callback.c:63:16: warning: condition wait may occur while holding lock 'stored_callback_state::outer_second' \\[lock-maybe-held-during-wait\\]" \
     stored-callback.out
 reject_match "stored callback target retained across call" \
     "stored-callback.c:55:16:.*stored_callback_state::outer_second" \
     stored-callback.out
 require_match "invalidated stored callback is unmodeled" \
-    "stored-callback.c:99:25: warning: locklint: indirect call through 'stored_request::callback' has no target or calling contract \\[unmodeled-indirect-call\\]" \
+    "stored-callback.c:99:25: warning: indirect call through 'stored_request::callback' has no target or calling contract \\[unmodeled-indirect-call\\]" \
     stored-callback.out
 require_match "cleared stored callback is unmodeled" \
-    "stored-callback.c:110:25: warning: locklint: indirect call through 'stored_request::callback' has no target or calling contract \\[unmodeled-indirect-call\\]" \
+    "stored-callback.c:110:25: warning: indirect call through 'stored_request::callback' has no target or calling contract \\[unmodeled-indirect-call\\]" \
     stored-callback.out
 if [ "$(grep -c 'warning:' stored-callback.out)" -ne 4 ]; then
 	fail "stored callback propagation: expected exactly four warnings"
@@ -2001,10 +2001,10 @@ run_capture "stored callback helper projection" stored-callback-helper.out \
 require_match "stored callback helper demand count" \
     "^stored-target-demands 1$" stored-callback-helper.out
 require_match "first stored callback helper target" \
-    "stored-callback-helper.c:56:16: warning: locklint: condition wait may occur while holding lock 'stored_callback_helper_state::outer_first' \\[lock-maybe-held-during-wait\\]" \
+    "stored-callback-helper.c:56:16: warning: condition wait may occur while holding lock 'stored_callback_helper_state::outer_first' \\[lock-maybe-held-during-wait\\]" \
     stored-callback-helper.out
 require_match "second stored callback helper target" \
-    "stored-callback-helper.c:64:16: warning: locklint: condition wait may occur while holding lock 'stored_callback_helper_state::outer_second' \\[lock-maybe-held-during-wait\\]" \
+    "stored-callback-helper.c:64:16: warning: condition wait may occur while holding lock 'stored_callback_helper_state::outer_second' \\[lock-maybe-held-during-wait\\]" \
     stored-callback-helper.out
 reject_match "unpassed second helper target" \
     "stored-callback-helper.c:64:16:.*stored_callback_helper_state::outer_first" \
@@ -2022,10 +2022,10 @@ run_capture "forwarded stored callback projection" \
 require_match "forwarded stored callback demand count" \
     "^stored-target-demands 2$" stored-callback-forward.out
 require_match "first forwarded stored callback target" \
-    "stored-callback-forward.c:55:16: warning: locklint: condition wait may occur while holding lock 'stored_callback_forward_state::outer_first' \\[lock-maybe-held-during-wait\\]" \
+    "stored-callback-forward.c:55:16: warning: condition wait may occur while holding lock 'stored_callback_forward_state::outer_first' \\[lock-maybe-held-during-wait\\]" \
     stored-callback-forward.out
 require_match "second forwarded stored callback target" \
-    "stored-callback-forward.c:63:16: warning: locklint: condition wait may occur while holding lock 'stored_callback_forward_state::outer_second' \\[lock-maybe-held-during-wait\\]" \
+    "stored-callback-forward.c:63:16: warning: condition wait may occur while holding lock 'stored_callback_forward_state::outer_second' \\[lock-maybe-held-during-wait\\]" \
     stored-callback-forward.out
 reject_match "unpassed second forwarded target" \
     "stored-callback-forward.c:63:16:.*stored_callback_forward_state::outer_first" \
@@ -2048,22 +2048,22 @@ require_match "operation family index key count" \
 require_match "operation family index candidate count" \
     "^operation-family-index-candidates 6$" operation-profiles.out
 require_match "first profile start target" \
-    "operation-profiles.c:163:16: warning: locklint: condition wait occurs while holding lock 'operation_state::first' \\[lock-held-during-wait\\]" \
+    "operation-profiles.c:163:16: warning: condition wait occurs while holding lock 'operation_state::first' \\[lock-held-during-wait\\]" \
     operation-profiles.out
 require_match "first profile start effect at second wait" \
-    "operation-profiles.c:167:16: warning: locklint: condition wait occurs while holding lock 'operation_state::first' \\[lock-held-during-wait\\]" \
+    "operation-profiles.c:167:16: warning: condition wait occurs while holding lock 'operation_state::first' \\[lock-held-during-wait\\]" \
     operation-profiles.out
 require_match "first profile finish target" \
-    "operation-profiles.c:167:16: warning: locklint: condition wait occurs while holding lock 'operation_state::first_done' \\[lock-held-during-wait\\]" \
+    "operation-profiles.c:167:16: warning: condition wait occurs while holding lock 'operation_state::first_done' \\[lock-held-during-wait\\]" \
     operation-profiles.out
 require_match "second profile start target" \
-    "operation-profiles.c:179:16: warning: locklint: condition wait occurs while holding lock 'operation_state::second' \\[lock-held-during-wait\\]" \
+    "operation-profiles.c:179:16: warning: condition wait occurs while holding lock 'operation_state::second' \\[lock-held-during-wait\\]" \
     operation-profiles.out
 require_match "second profile start effect at second wait" \
-    "operation-profiles.c:183:16: warning: locklint: condition wait occurs while holding lock 'operation_state::second' \\[lock-held-during-wait\\]" \
+    "operation-profiles.c:183:16: warning: condition wait occurs while holding lock 'operation_state::second' \\[lock-held-during-wait\\]" \
     operation-profiles.out
 require_match "second profile finish target" \
-    "operation-profiles.c:183:16: warning: locklint: condition wait occurs while holding lock 'operation_state::second_done' \\[lock-held-during-wait\\]" \
+    "operation-profiles.c:183:16: warning: condition wait occurs while holding lock 'operation_state::second_done' \\[lock-held-during-wait\\]" \
     operation-profiles.out
 reject_match "first consumer excludes second profile" \
     "operation-profiles.c:16[37]:16:.*operation_state::second" \
@@ -2072,7 +2072,7 @@ reject_match "second consumer excludes first profile" \
     "operation-profiles.c:1\\(79\\|83\\):16:.*operation_state::first" \
     operation-profiles.out
 require_match "incomplete operation profile is unmodeled" \
-    "operation-profiles.c:193:26: warning: locklint: indirect call through 'operation_vector::start' has no target or calling contract \\[unmodeled-indirect-call\\]" \
+    "operation-profiles.c:193:26: warning: indirect call through 'operation_vector::start' has no target or calling contract \\[unmodeled-indirect-call\\]" \
     operation-profiles.out
 require_match "first start profile contract mismatch" \
     "function 'first_start' has lock acquisitions inconsistent with contract for 'operation_vector::start' \\[function-contract-mismatch\\]" \
@@ -2114,13 +2114,13 @@ run_capture "competition protected accesses" competition-accesses.out \
 for location in 50 52 54 70 83 115
 do
 	require_match "definite competing access" \
-	    "competition-depth.c:$location:27: warning: locklint: protected member 'protected' modified without holding 'lock' \\[unprotected-access\\]" \
+	    "competition-depth.c:$location:27: warning: protected member 'protected' modified without holding 'lock' \\[unprotected-access\\]" \
 	    competition-accesses.out
 done
 for location in 104 154
 do
 	require_match "conditional competing access" \
-	    "competition-depth.c:$location:27: warning: locklint: protection for member 'protected' is not established on every path \\[conditional-protection\\]" \
+	    "competition-depth.c:$location:27: warning: protection for member 'protected' is not established on every path \\[conditional-protection\\]" \
 	    competition-accesses.out
 done
 if [ "$(grep -Ec '\[(unprotected-access|conditional-protection)\]' \
@@ -2129,13 +2129,13 @@ if [ "$(grep -Ec '\[(unprotected-access|conditional-protection)\]' \
 fi
 
 require_match "definite unmatched competition decrement" \
-    "competition-depth.c:91:9: warning: locklint: competition depth decremented below zero \\[competition-underflow\\]" \
+    "competition-depth.c:91:9: warning: competition depth decremented below zero \\[competition-underflow\\]" \
     competition-depth-contexts.out
 require_match "definite recovered competition decrement" \
-    "competition-depth.c:138:9: warning: locklint: competition depth decremented below zero \\[competition-underflow\\]" \
+    "competition-depth.c:138:9: warning: competition depth decremented below zero \\[competition-underflow\\]" \
     competition-depth-contexts.out
 require_match "possible loop competition decrement" \
-    "competition-depth.c:151:17: warning: locklint: competition depth may be decremented below zero \\[competition-maybe-underflow\\]" \
+    "competition-depth.c:151:17: warning: competition depth may be decremented below zero \\[competition-maybe-underflow\\]" \
     competition-depth-contexts.out
 if [ "$(grep -Ec '\[competition-(maybe-)?underflow\]' \
     competition-depth-contexts.out)" -ne 3 ]; then
@@ -2144,11 +2144,11 @@ fi
 for location in 125 127 129
 do
 	require_match "definite competing read-only write" \
-	    "competition-depth.c:$location:27: warning: locklint: read-only data 'read_only' modified while visible to competing threads \\[read-only-visible\\]" \
+	    "competition-depth.c:$location:27: warning: read-only data 'read_only' modified while visible to competing threads \\[read-only-visible\\]" \
 	    competition-depth-contexts.out
 done
 require_match "possible competing read-only write" \
-    "competition-depth.c:161:27: warning: locklint: read-only data 'read_only' may be modified while visible to competing threads \\[read-only-maybe-visible\\]" \
+    "competition-depth.c:161:27: warning: read-only data 'read_only' may be modified while visible to competing threads \\[read-only-maybe-visible\\]" \
     competition-depth-contexts.out
 if [ "$(grep -Ec '\[read-only-(maybe-)?visible\]' \
     competition-depth-contexts.out)" -ne 4 ]; then
@@ -2369,26 +2369,26 @@ require_match "annotation name dump" \
 run_capture "default lock transition diagnostics" \
     lock-transition-diagnostics.out "$LOCKLINT" check.c
 require_match "unprotected read diagnostic" \
-    "check.c:49:22: warning: locklint: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
+    "check.c:49:22: warning: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
     lock-transition-diagnostics.out
 require_match "unprotected write diagnostic" \
-    "check.c:103:14: warning: locklint: protected member 'value' modified without holding 'lock' \\[unprotected-access\\]" \
+    "check.c:103:14: warning: protected member 'value' modified without holding 'lock' \\[unprotected-access\\]" \
     lock-transition-diagnostics.out
 require_match "second unprotected read diagnostic" \
-    "check.c:55:30: warning: locklint: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
+    "check.c:55:30: warning: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
     lock-transition-diagnostics.out
 require_match "conditional protection diagnostic" \
-    "check.c:65:22: warning: locklint: protection for member 'value' is not established on every path \\[conditional-protection\\]" \
+    "check.c:65:22: warning: protection for member 'value' is not established on every path \\[conditional-protection\\]" \
     lock-transition-diagnostics.out
 require_match "mixed release diagnostic" \
-    "check.c:66:19: warning: locklint: lock 'lock' may not be held \\[lock-maybe-not-held\\]" \
+    "check.c:66:19: warning: lock 'lock' may not be held \\[lock-maybe-not-held\\]" \
     lock-transition-diagnostics.out
 
 require_match "mixed acquire diagnostic" \
-    "check.c:96:20: warning: locklint: lock 'lock' may already be held \\[lock-maybe-already-held\\]" \
+    "check.c:96:20: warning: lock 'lock' may already be held \\[lock-maybe-already-held\\]" \
     lock-transition-diagnostics.out
 require_match "conditional held on return" \
-    "check.c:88:30: warning: locklint: lock 'lock' held on only some paths returning from 'check_side_effect' \\[lock-maybe-held-on-return\\]" \
+    "check.c:88:30: warning: lock 'lock' held on only some paths returning from 'check_side_effect' \\[lock-maybe-held-on-return\\]" \
     lock-transition-diagnostics.out
 if [ "$(grep -c 'warning:' lock-transition-diagnostics.out)" -ne 7 ]; then
 	fail "lock transition diagnostics: expected exactly seven warnings"
@@ -2398,7 +2398,7 @@ run_capture "no-check context dump" no-check-contexts.out \
     "$LOCKLINT" --no-check --dump-contexts check.c
 require_match "no-check context dump" '^roots ' \
     no-check-contexts.out
-reject_match "no-check lock diagnostics" 'warning: locklint:' \
+reject_match "no-check lock diagnostics" 'warning:' \
     no-check-contexts.out
 
 run_capture "no-check protection-state dump" \
@@ -2406,7 +2406,7 @@ run_capture "no-check protection-state dump" \
     "$LOCKLINT" --no-check --dump-protection-states data-policy.c
 require_match "no-check protection-state dump" \
     '^data-policy.c:.*protection-state ' no-check-protection-states.out
-reject_match "no-check protection-state diagnostics" 'warning: locklint:' \
+reject_match "no-check protection-state diagnostics" 'warning:' \
     no-check-protection-states.out
 
 #
@@ -2461,7 +2461,7 @@ run_capture "nullable phi lock identity" nullable-phi-lock.out \
     -O2 -fno-inline-functions \
     nullable-phi-lock.c
 require_match "nullable phi lock identity" \
-    "nullable-phi-lock.c:66:28: warning: locklint: lock 'lock' may already be held \\[lock-maybe-already-held\\]" \
+    "nullable-phi-lock.c:66:28: warning: lock 'lock' may already be held \\[lock-maybe-already-held\\]" \
     nullable-phi-lock.out
 if [ "$(grep -c 'warning:' nullable-phi-lock.out)" -ne 1 ]; then
 	fail "nullable phi lock identity: expected exactly one warning"
@@ -2530,7 +2530,7 @@ run_capture "exact scheme replaces mutex" \
     scheme-mutex-precedence-exact-1.out "$LOCKLINT" --check-locks \
     scheme-mutex-precedence-exact-mutex-first.c
 reject_match "exact scheme replaces mutex" \
-    "warning: locklint:" scheme-mutex-precedence-exact-1.out
+    "warning:" scheme-mutex-precedence-exact-1.out
 
 run_capture "exact mutex replaces scheme" \
     scheme-mutex-precedence-exact-2.out "$LOCKLINT" --check-locks \
@@ -2544,18 +2544,18 @@ require_match "exact mutex replaces scheme" \
 #
 run_capture "pointer member data policy" pointer-member-policy.out \
     "$LOCKLINT" --check-locks pointer-member-policy.c
-if [ "$(grep -c 'warning: locklint:.*\[unprotected-access\]$' \
+if [ "$(grep -c 'warning:.*\[unprotected-access\]$' \
     pointer-member-policy.out)" -ne 1 ]; then
 	fail "pointer member data policy: expected one unprotected access"
 fi
 reject_match "pointer pointee policy" \
-    "pointer-member-policy.c:45:.*warning: locklint:" \
+    "pointer-member-policy.c:45:.*warning:" \
     pointer-member-policy.out
 require_match "pointer member write policy" \
     "pointer-member-policy.c:46:.*protected member 'buffer'" \
     pointer-member-policy.out
 reject_match "locked pointer pointee policy" \
-    "pointer-member-policy.c:49:.*warning: locklint:" \
+    "pointer-member-policy.c:49:.*warning:" \
     pointer-member-policy.out
 
 #
@@ -2565,20 +2565,20 @@ reject_match "locked pointer pointee policy" \
 #
 run_capture "cross-object lock role" cross-object-protection.out \
     "$LOCKLINT" --check-locks cross-object-protection.c
-if [ "$(grep -c 'warning: locklint:.*\[unprotected-access\]$' \
+if [ "$(grep -c 'warning:.*\[unprotected-access\]$' \
     cross-object-protection.out)" -ne 6 ]; then
 	fail "cross-object lock role: expected six unlocked accesses"
 fi
 for line in 58 75 92 110 129 130
 do
 	require_match "cross-object unlocked line $line" \
-	    "cross-object-protection.c:$line:.*warning: locklint:" \
+	    "cross-object-protection.c:$line:.*warning:" \
 	    cross-object-protection.out
 done
 for line in 60 77 94 112 132 133
 do
 	reject_match "cross-object role-protected line $line" \
-	    "cross-object-protection.c:$line:.*warning: locklint:" \
+	    "cross-object-protection.c:$line:.*warning:" \
 	    cross-object-protection.out
 done
 run_capture "cross-object protection states" \
@@ -2647,12 +2647,12 @@ require_empty "derived formal protection" derived-formal-protection.out
 run_capture "distinct derived formal protection" \
     derived-formal-protection-different.out "$LOCKLINT" \
     -DDERIVED_FORMAL_DIFFERENT --check-locks derived-formal-protection.c
-if [ "$(grep -c 'warning: locklint:.*\[unprotected-access\]$' \
+if [ "$(grep -c 'warning:.*\[unprotected-access\]$' \
     derived-formal-protection-different.out)" -ne 2 ]; then
 	fail "distinct derived formal protection: expected two warnings"
 fi
 require_match "distinct derived formal caller" \
-    "derived-formal-protection.c:62:31: locklint: protection was not established at this call to 'derived_helper'" \
+    "derived-formal-protection.c:62:31: protection was not established at this call to 'derived_helper'" \
     derived-formal-protection-different.out
 
 #
@@ -2661,19 +2661,19 @@ require_match "distinct derived formal caller" \
 run_capture "basic call protection diagnostics" calls-basic-diagnostics.out \
     "$LOCKLINT" --check-locks calls-basic.c
 require_match "unlocked direct call" \
-    "calls-basic.c:49:22: warning: locklint: protected member 'direct_value' read without holding 'lock' \\[unprotected-access\\]" \
+    "calls-basic.c:49:22: warning: protected member 'direct_value' read without holding 'lock' \\[unprotected-access\\]" \
     calls-basic-diagnostics.out
 require_match "unlocked wrapped call" \
-    "calls-basic.c:55:22: warning: locklint: protected member 'transitive_value' read without holding 'lock' \\[unprotected-access\\]" \
+    "calls-basic.c:55:22: warning: protected member 'transitive_value' read without holding 'lock' \\[unprotected-access\\]" \
     calls-basic-diagnostics.out
 require_match "unlocked recursive call" \
-    "calls-basic.c:69:22: warning: locklint: protected member 'recursive_value' read without holding 'lock' \\[unprotected-access\\]" \
+    "calls-basic.c:69:22: warning: protected member 'recursive_value' read without holding 'lock' \\[unprotected-access\\]" \
     calls-basic-diagnostics.out
 require_match "unlocked first aggregate leaf" \
-    "calls-basic.c:128:14: warning: locklint: protected member 'pair.first' modified without holding 'lock' \\[unprotected-access\\]" \
+    "calls-basic.c:128:14: warning: protected member 'pair.first' modified without holding 'lock' \\[unprotected-access\\]" \
     calls-basic-diagnostics.out
 require_match "unlocked second aggregate leaf" \
-    "calls-basic.c:128:14: warning: locklint: protected member 'pair.second' modified without holding 'lock' \\[unprotected-access\\]" \
+    "calls-basic.c:128:14: warning: protected member 'pair.second' modified without holding 'lock' \\[unprotected-access\\]" \
     calls-basic-diagnostics.out
 if [ "$(grep -c 'warning:' calls-basic-diagnostics.out)" -ne 5 ]; then
 	fail "basic call protection diagnostics: expected exactly five warnings"
@@ -2687,10 +2687,10 @@ run_capture "unconditional recursion diagnostics" \
     unconditional-recursion.out \
     "$LOCKLINT" --check-locks unconditional-recursion.c
 require_match "access after unconditional self recursion" \
-    "unconditional-recursion.c:63:.*warning: locklint: protected member 'after_self' modified without holding 'lock' \\[unprotected-access\\]" \
+    "unconditional-recursion.c:63:.*warning: protected member 'after_self' modified without holding 'lock' \\[unprotected-access\\]" \
     unconditional-recursion.out
 require_match "access after unconditional mutual recursion" \
-    "unconditional-recursion.c:70:.*warning: locklint: protected member 'after_mutual' modified without holding 'lock' \\[unprotected-access\\]" \
+    "unconditional-recursion.c:70:.*warning: protected member 'after_mutual' modified without holding 'lock' \\[unprotected-access\\]" \
     unconditional-recursion.out
 if [ "$(grep -c 'warning:' unconditional-recursion.out)" -ne 2 ]; then
 	fail "unconditional recursion diagnostics: expected exactly two warnings"
@@ -2702,16 +2702,16 @@ fi
 run_capture "computed object alias diagnostics" identity-aliases-diagnostics.out \
     "$LOCKLINT" --check-locks identity-aliases.c
 require_match "different copied pointer" \
-    "identity-aliases.c:83:22: warning: locklint: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
+    "identity-aliases.c:83:22: warning: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
     identity-aliases-diagnostics.out
 require_match "different constant array element" \
-    "identity-aliases.c:115:26: warning: locklint: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
+    "identity-aliases.c:115:26: warning: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
     identity-aliases-diagnostics.out
 require_match "different symbolic array element" \
-    "identity-aliases.c:138:31: warning: locklint: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
+    "identity-aliases.c:138:31: warning: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
     identity-aliases-diagnostics.out
 require_match "different recovered container" \
-    "identity-aliases.c:173:22: warning: locklint: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
+    "identity-aliases.c:173:22: warning: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
     identity-aliases-diagnostics.out
 if [ "$(grep -c 'warning:' identity-aliases-diagnostics.out)" -ne 4 ]; then
 	fail "computed object alias diagnostics: expected exactly four warnings"
@@ -2730,10 +2730,10 @@ reject_match "same owner nested array" \
     "array-owner-protection.c:66:.*\\[unprotected-access\\]" \
     array-owner-protection.out
 require_match "different array owner" \
-    "array-owner-protection.c:78:.*warning: locklint: protected member 'values' read without holding 'lock' \\[unprotected-access\\]" \
+    "array-owner-protection.c:78:.*warning: protected member 'values' read without holding 'lock' \\[unprotected-access\\]" \
     array-owner-protection.out
 require_match "different aggregate array element" \
-    "array-owner-protection.c:90:.*warning: locklint: protected member 'items.value' read without holding 'lock' \\[unprotected-access\\]" \
+    "array-owner-protection.c:90:.*warning: protected member 'items.value' read without holding 'lock' \\[unprotected-access\\]" \
     array-owner-protection.out
 if [ "$(grep -c 'warning:' array-owner-protection.out)" -ne 2 ]; then
 	fail "array owner protection: expected exactly two warnings"
@@ -2749,10 +2749,10 @@ require_empty "same formal actual identities" identity-formals-same.out
 run_capture "different formal actual identities" identity-formals-different.out \
     "$LOCKLINT" -DFORMAL_ALIAS_DIFFERENT --check-locks identity-formals.c
 require_match "different direct and wrapped formal actual" \
-    "identity-formals.c:57:21: warning: locklint: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
+    "identity-formals.c:57:21: warning: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
     identity-formals-different.out
 require_match "different independent formal actual" \
-    "identity-formals.c:90:22: warning: locklint: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
+    "identity-formals.c:90:22: warning: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
     identity-formals-different.out
 if [ "$(grep -c 'warning:' identity-formals-different.out)" -ne 2 ]; then
 	fail "different formal actual identities: expected exactly two warnings"
@@ -2764,10 +2764,10 @@ fi
 run_capture "cross translation unit diagnostics" cross-diagnostics.out \
     "$LOCKLINT" --check-locks cross-caller.c cross-callee.c
 require_match "cross translation unlocked access" \
-    "cross-callee.c:25:22: warning: locklint: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
+    "cross-callee.c:25:22: warning: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
     cross-diagnostics.out
 require_match "cross translation held on return" \
-    "cross-callee.c:31:22: warning: locklint: lock 'lock' held on return from 'cross_acquire' \\[lock-held-on-return\\]" \
+    "cross-callee.c:31:22: warning: lock 'lock' held on return from 'cross_acquire' \\[lock-held-on-return\\]" \
     cross-diagnostics.out
 if [ "$(grep -c 'warning:' cross-diagnostics.out)" -ne 2 ]; then
 	fail "cross translation unit diagnostics: expected exactly two warnings"
@@ -2779,7 +2779,7 @@ fi
 run_capture "exact indirect call diagnostics" indirect-call-diagnostics.out \
     "$LOCKLINT" --check-locks indirect-calls.c
 require_match "unlocked exact indirect call" \
-    "indirect-calls.c:43:22: warning: locklint: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
+    "indirect-calls.c:43:22: warning: protected member 'value' read without holding 'lock' \\[unprotected-access\\]" \
     indirect-call-diagnostics.out
 if [ "$(grep -c 'warning:' indirect-call-diagnostics.out)" -ne 1 ]; then
 	fail "exact indirect call diagnostics: expected exactly one warning"
@@ -2791,7 +2791,7 @@ fi
 run_capture "not reached diagnostics" not-reached-diagnostics.out \
     "$LOCKLINT" --check-locks not-reached.c
 require_match "live unlocked path diagnostic" \
-    "not-reached.c:79:14: warning: locklint: protected member 'value' modified without holding 'lock' \\[unprotected-access\\]" \
+    "not-reached.c:79:14: warning: protected member 'value' modified without holding 'lock' \\[unprotected-access\\]" \
     not-reached-diagnostics.out
 if [ "$(grep -c 'warning:' not-reached-diagnostics.out)" -ne 1 ]; then
 	fail "not reached diagnostics: expected exactly one warning"

@@ -118,7 +118,7 @@ locklint_warning(enum locklint_diagnostic diagnostic, struct position pos,
 	if (pos.type == TOKEN_BAD)
 		return;
 	(void) fflush(stdout);
-	(void) fprintf(stderr, "%s: %s:%u:%u: warning: locklint: ",
+	(void) fprintf(stderr, "%s: %s:%u:%u: warning: ",
 	    program_name, stream_name(pos.stream), pos.line, pos.pos);
 	va_start(ap, format);
 	(void) vfprintf(stderr, format, ap);

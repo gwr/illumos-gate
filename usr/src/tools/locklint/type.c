@@ -1417,7 +1417,7 @@ type_registry_report_errors(void)
 	kind = type->type == SYM_STRUCT ? "struct" :
 	    type->type == SYM_UNION ? "union" : "enum";
 	sparse_error(type_registry_mismatch_position,
-	    "locklint: %s '%s' is inconsistently defined: %s",
+	    "%s '%s' is inconsistently defined: %s",
 	    kind, show_ident(type->ident), type_registry_mismatch_reason);
 }
 

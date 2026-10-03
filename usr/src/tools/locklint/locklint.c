@@ -342,13 +342,26 @@ locklint_sparse(char *filename)
 int
 main(int argc, char **argv)
 {
+	char *program_name;
 	struct string_list *filelist = NULL;
 	struct symbol_list *symbols;
 	struct translation_unit *tu;
 	char *file;
 
 	timing_start();
-	diagnostics_init(argv[0]);
+	/*
+	 * Sparse also uses argv[0] as its diagnostic prefix, so shorten it
+	 * before either diagnostic system is initialized.
+	 */
+	program_name = strrchr(argv[0], '/');
+	if (program_name == NULL)
+		program_name = argv[0];
+	else
+		program_name++;
+	if (*program_name == '\0')
+		program_name = "locklint";
+	argv[0] = program_name;
+	diagnostics_init(program_name);
 	argc = options(argc, argv);
 	if (argc == 1) {
 		usage(stderr);
