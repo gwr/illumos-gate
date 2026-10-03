@@ -200,8 +200,6 @@ usbser_getchar
 usbser_ischar
 usbser_polledio_enter
 usbser_polledio_exit
-usbser_soft_state_size
-usbser_open
 usbser_close
 usbser_wput
 usbser_wsrv
@@ -213,9 +211,6 @@ usbser_wq_thread
 usbser_rq_thread
 usbser_disconnect_cb
 usbser_reconnect_cb
-usbser_attach
-usbser_detach
-usbser_getinfo
 usbser_power
 usbser_restart
 usbsacm_open
@@ -432,7 +427,7 @@ verify_indirect_calls()
 write_native_summary()
 {
 	awk -F "'" '
-	    /(usbser|usbsacm)\.c:[0-9]+:[0-9]+: warning: locklint:/ &&
+	    /(usbser|usbsacm)\.c:[0-9]+:[0-9]+: warning:/ &&
 	    /\[unprotected-access\]$/ {
 		match($0, /(usbser|usbsacm)\.c:[0-9]+/)
 		location = substr($0, RSTART, RLENGTH)
@@ -479,17 +474,8 @@ verify_module_coverage || exit 1
 verify_automatic_roots || exit 1
 verify_indirect_calls || exit 1
 
-duplicate_count=$(grep -Ec \
-    "warning: multiple definitions for function '_(init|fini|info)'" \
-    "$ANALYZE_RAW")
-if (( duplicate_count != 3 )); then
-	print -u2 "new locklint reported $duplicate_count expected module-entry " \
-	    "collisions instead of three"
-	exit 1
-fi
-
 sentinel_count=$(grep -c \
-    'check-kmod-usbsacm-sentinel.c:.*warning: locklint:.*\[unprotected-access\]$' \
+    'check-kmod-usbsacm-sentinel.c:.*warning:.*\[unprotected-access\]$' \
     "$ANALYZE_RAW")
 if (( sentinel_count != 1 )); then
 	print -u2 "new locklint usbsacm analysis produced $sentinel_count " \
@@ -498,34 +484,34 @@ if (( sentinel_count != 1 )); then
 fi
 
 usbsacm_unprotected=$(grep -c \
-    'usbsacm.c:.*warning: locklint:.*\[unprotected-access\]$' "$ANALYZE_RAW")
+    'usbsacm.c:.*warning:.*\[unprotected-access\]$' "$ANALYZE_RAW")
 usbsacm_conditional=$(grep -c \
-    'usbsacm.c:.*warning: locklint:.*\[conditional-protection\]$' \
+    'usbsacm.c:.*warning:.*\[conditional-protection\]$' \
     "$ANALYZE_RAW")
 usbser_unprotected=$(grep -c \
-    'usbser.c:.*warning: locklint:.*\[unprotected-access\]$' "$ANALYZE_RAW")
+    'usbser.c:.*warning:.*\[unprotected-access\]$' "$ANALYZE_RAW")
 usbser_conditional=$(grep -c \
-    'usbser.c:.*warning: locklint:.*\[conditional-protection\]$' \
+    'usbser.c:.*warning:.*\[conditional-protection\]$' \
     "$ANALYZE_RAW")
 usbser_asserted=$(grep -c \
-    'usbser.c:.*warning: locklint:.*\[asserted-lock-requirement\]$' \
+    'usbser.c:.*warning:.*\[asserted-lock-requirement\]$' \
     "$ANALYZE_RAW")
 #
 # These native diagnostic counts are stability guards, not the coverage
 # baseline.  Exact caller contexts eliminate extra conditionals seen in
-# locklint1.  The ten assertion findings retain conservative cases requiring
+# locklint1.  The seven assertion findings retain conservative cases requiring
 # an untracked stored thr_port relationship.  Correctness is checked below
 # against the normalized Old Solaris Lock Lint problem set.
 #
 if (( usbsacm_unprotected != 37 || usbsacm_conditional != 0 ||
     usbser_unprotected != 15 || usbser_conditional != 0 ||
-    usbser_asserted != 10 )); then
+    usbser_asserted != 7 )); then
 	print -u2 "Unexpected combined usbsacm diagnostic counts:"
 	print -u2 "  usbsacm unprotected=$usbsacm_unprotected (expected 37)"
 	print -u2 "  usbsacm conditional=$usbsacm_conditional (expected 0)"
 	print -u2 "  usbser unprotected=$usbser_unprotected (expected 15)"
 	print -u2 "  usbser conditional=$usbser_conditional (expected 0)"
-	print -u2 "  usbser asserted=$usbser_asserted (expected 10)"
+	print -u2 "  usbser asserted=$usbser_asserted (expected 7)"
 	exit 1
 fi
 

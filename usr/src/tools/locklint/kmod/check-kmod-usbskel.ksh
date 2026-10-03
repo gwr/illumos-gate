@@ -166,7 +166,7 @@ verify_module_coverage || exit 1
 verify_automatic_roots || exit 1
 
 sentinel_count=$(grep -c \
-    'check-kmod-usbskel-sentinel.c:.*warning: locklint:.*\[unprotected-access\]$' \
+    'check-kmod-usbskel-sentinel.c:.*warning:.*\[unprotected-access\]$' \
     "$ANALYZE_RAW")
 if (( sentinel_count != 1 )); then
 	print -u2 "new locklint usbskel analysis produced $sentinel_count " \
@@ -175,7 +175,8 @@ if (( sentinel_count != 1 )); then
 	exit 1
 fi
 
-awk '/warning: locklint:/ && $0 !~ /check-kmod-usbskel-sentinel.c:/ { print }' \
+awk '/\[unprotected-access\]$/ &&
+    $0 !~ /check-kmod-usbskel-sentinel.c:/ { print }' \
     "$ANALYZE_RAW" >"$OUTPUT" || exit 1
 awk '$0 !~ /^#/' "$REFERENCE" >"$REFERENCE_FILTERED" || exit 1
 

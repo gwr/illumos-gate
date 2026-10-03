@@ -346,7 +346,7 @@ verify_indirect_calls()
 write_native_summary()
 {
 	awk -F "'" '
-	    /usbser.c:[0-9]+:[0-9]+: warning: locklint:/ &&
+	    /usbser.c:[0-9]+:[0-9]+: warning:/ &&
 	    /\[unprotected-access\]$/ {
 		match($0, /usbser.c:[0-9]+/)
 		location = substr($0, RSTART, RLENGTH)
@@ -383,7 +383,7 @@ verify_historical_coverage || exit 1
 verify_indirect_calls || exit 1
 
 sentinel_count=$(grep -c \
-    'check-kmod-usbser-sentinel.c:.*warning: locklint:.*\[unprotected-access\]$' \
+    'check-kmod-usbser-sentinel.c:.*warning:.*\[unprotected-access\]$' \
     "$ANALYZE_RAW")
 if (( sentinel_count != 1 )); then
 	print -u2 "new locklint usbser analysis produced $sentinel_count " \
@@ -393,13 +393,13 @@ if (( sentinel_count != 1 )); then
 fi
 
 unprotected_count=$(grep -c \
-    'usbser.c:.*warning: locklint:.*\[unprotected-access\]$' \
+    'usbser.c:.*warning:.*\[unprotected-access\]$' \
     "$ANALYZE_RAW")
 conditional_count=$(grep -c \
-    'usbser.c:.*warning: locklint:.*\[conditional-protection\]$' \
+    'usbser.c:.*warning:.*\[conditional-protection\]$' \
     "$ANALYZE_RAW")
 asserted_count=$(grep -c \
-    'usbser.c:.*warning: locklint:.*\[asserted-lock-requirement\]$' \
+    'usbser.c:.*warning:.*\[asserted-lock-requirement\]$' \
     "$ANALYZE_RAW")
 #
 # These native diagnostic counts are stability guards, not the coverage

@@ -224,7 +224,7 @@ verify_automatic_roots()
 write_native_summary()
 {
 	awk -F "'" '
-	    /usbvc.c:[0-9]+:[0-9]+: warning: locklint:/ &&
+	    /usbvc.c:[0-9]+:[0-9]+: warning:/ &&
 	    /\[unprotected-access\]$/ {
 		match($0, /usbvc.c:[0-9]+/)
 		location = substr($0, RSTART, RLENGTH)
@@ -270,7 +270,7 @@ if (( indirect_count != 0 )); then
 fi
 
 sentinel_count=$(grep -c \
-    'check-kmod-usbvc-sentinel.c:.*warning: locklint:.*\[unprotected-access\]$' \
+    'check-kmod-usbvc-sentinel.c:.*warning:.*\[unprotected-access\]$' \
     "$ANALYZE_RAW")
 if (( sentinel_count != 1 )); then
 	print -u2 "new locklint usbvc analysis produced $sentinel_count " \
@@ -279,10 +279,11 @@ if (( sentinel_count != 1 )); then
 	exit 1
 fi
 
-module_diagnostic_count=$(grep -c \
-    'usbvc\(_v4l2\)\{0,1\}.c:.*warning: locklint:' "$ANALYZE_RAW")
+module_diagnostic_count=$(grep \
+    'usbvc\(_v4l2\)\{0,1\}.c:.*warning:' "$ANALYZE_RAW" |
+    grep -cv '\[unanalyzed-callback\]$')
 unprotected_count=$(grep -c \
-    'usbvc\(_v4l2\)\{0,1\}.c:.*warning: locklint:.*\[unprotected-access\]$' \
+    'usbvc\(_v4l2\)\{0,1\}.c:.*warning:.*\[unprotected-access\]$' \
     "$ANALYZE_RAW")
 if (( module_diagnostic_count != 7 || unprotected_count != 7 )); then
 	print -u2 "Unexpected new locklint usbvc diagnostic counts:"

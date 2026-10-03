@@ -88,7 +88,7 @@ if ! grep -q '^function wcopen tu=../../common/io/wscons.c ' \
 fi
 
 sentinel_count=$(grep -c \
-    'check-kmod-wc-sentinel.c:.*warning: locklint:.*\[unprotected-access\]$' \
+    'check-kmod-wc-sentinel.c:.*warning:.*\[unprotected-access\]$' \
     "$ANALYZE_RAW")
 if [[ "$sentinel_count" -ne 1 ]]; then
 	print -u2 "new locklint wc analysis produced $sentinel_count " \
@@ -97,7 +97,7 @@ if [[ "$sentinel_count" -ne 1 ]]; then
 	exit 1
 fi
 
-awk '/warning: locklint:/ &&
+awk '/\[unprotected-access\]$/ &&
     $0 !~ /check-kmod-wc-sentinel.c:/ { print }' \
     "$ANALYZE_RAW" >"$OUTPUT" || exit 1
 if cmp -s "$REFERENCE" "$OUTPUT"; then

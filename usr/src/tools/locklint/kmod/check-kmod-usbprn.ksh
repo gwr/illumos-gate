@@ -198,7 +198,7 @@ verify_physio_edges()
 write_summary()
 {
 	awk -F "'" '
-	    /warning: locklint:/ &&
+	    /warning:/ &&
 	    /\[unprotected-access\]$/ &&
 	    $0 !~ /check-kmod-usbprn-sentinel.c:/ {
 		print $2
@@ -221,7 +221,7 @@ verify_automatic_roots || exit 1
 verify_physio_edges || exit 1
 
 sentinel_count=$(grep -c \
-    'check-kmod-usbprn-sentinel.c:.*warning: locklint:.*\[unprotected-access\]$' \
+    'check-kmod-usbprn-sentinel.c:.*warning:.*\[unprotected-access\]$' \
     "$ANALYZE_RAW")
 if (( sentinel_count != 1 )); then
 	print -u2 "new locklint usbprn analysis produced $sentinel_count " \
@@ -231,7 +231,7 @@ if (( sentinel_count != 1 )); then
 fi
 
 finding_count=$(grep -c \
-    'usbprn.c:.*warning: locklint:.*\[unprotected-access\]$' \
+    'usbprn.c:.*warning:.*\[unprotected-access\]$' \
     "$ANALYZE_RAW")
 if (( finding_count != 51 )); then
 	print -u2 "new locklint usbprn analysis produced $finding_count " \

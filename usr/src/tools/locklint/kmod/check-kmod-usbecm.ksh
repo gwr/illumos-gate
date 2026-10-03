@@ -216,7 +216,7 @@ verify_unresolved_ds_calls()
 write_summary()
 {
 	awk -F "'" '
-	    /warning: locklint:/ &&
+	    /warning:/ &&
 	    /\[unprotected-access\]$/ &&
 	    $0 !~ /check-kmod-usbecm-sentinel.c:/ {
 		print $2
@@ -239,7 +239,7 @@ verify_automatic_roots || exit 1
 verify_unresolved_ds_calls || exit 1
 
 sentinel_count=$(grep -c \
-    'check-kmod-usbecm-sentinel.c:.*warning: locklint:.*\[unprotected-access\]$' \
+    'check-kmod-usbecm-sentinel.c:.*warning:.*\[unprotected-access\]$' \
     "$ANALYZE_RAW")
 if (( sentinel_count != 1 )); then
 	print -u2 "new locklint usbecm analysis produced $sentinel_count " \
@@ -249,7 +249,7 @@ if (( sentinel_count != 1 )); then
 fi
 
 finding_count=$(grep -c \
-    'usbecm.c:.*warning: locklint:.*\[unprotected-access\]$' \
+    'usbecm.c:.*warning:.*\[unprotected-access\]$' \
     "$ANALYZE_RAW")
 if (( finding_count != 41 )); then
 	print -u2 "new locklint usbecm analysis produced $finding_count " \

@@ -8,14 +8,3 @@
 # OSLL produces identical analysis and function inventories with and without
 # "one usbprn_state".  New locklint already distinguishes concrete object
 # identities and needs no declaration for this focused module.
-
-# These functions are called only with their interrupt mutex held.  Their
-# entry contracts could instead be documented in the source with the
-# appropriate assertion at the start of each function:
-#
-# ASSERT(mutex_owned(&ehcip->ehci_int_mutex));
-# ASSERT(mutex_owned(&uhcip->uhci_int_mutex));
-#
-# Until then, do not analyze them as independent external entries.
-declare --external-entry=false ehci_init_ctlr ehci_init_check_status
-declare --external-entry=false uhci_uninit_ctlr

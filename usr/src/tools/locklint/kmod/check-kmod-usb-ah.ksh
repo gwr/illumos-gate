@@ -161,7 +161,7 @@ if (( indirect_count != 0 )); then
 fi
 
 sentinel_count=$(grep -c \
-    'check-kmod-usb-ah-sentinel.c:.*warning: locklint:.*\[unprotected-access\]$' \
+    'check-kmod-usb-ah-sentinel.c:.*warning:.*\[unprotected-access\]$' \
     "$ANALYZE_RAW")
 if (( sentinel_count != 1 )); then
 	print -u2 "new locklint usb_ah analysis produced $sentinel_count " \
@@ -170,7 +170,8 @@ if (( sentinel_count != 1 )); then
 	exit 1
 fi
 
-awk '/warning: locklint:/ && $0 !~ /check-kmod-usb-ah-sentinel.c:/ {
+awk '/\[unprotected-access\]$/ &&
+    $0 !~ /check-kmod-usb-ah-sentinel.c:/ {
 	print
 }' "$ANALYZE_RAW" >"$OUTPUT" || exit 1
 awk '$0 !~ /^#/' "$REFERENCE" >"$REFERENCE_FILTERED" || exit 1
