@@ -2025,7 +2025,7 @@ usba_hubdi_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
 	}
 
 	if (hubd_set_hub_depth(hubd) != USB_SUCCESS) {
-
+		mutex_exit(HUBD_MUTEX(hubd));
 		goto fail;
 	}
 
