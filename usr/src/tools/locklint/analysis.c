@@ -4831,6 +4831,26 @@ struct wait_lock_finding {
 	avl_node_t by_key;
 };
 
+struct condition_wait_mutex_use {
+	const struct lock_identity *mutex;
+	struct locklint_access condition;
+	struct locklint_access mutex_access;
+	const struct instruction *instruction;
+	avl_node_t by_mutex;
+};
+
+struct condition_wait_pairing {
+	struct lock_identity_key condition;
+	avl_tree_t mutexes;
+	size_t mutex_count;
+	avl_node_t by_condition;
+};
+
+struct condition_wait_pairing_finding {
+	const struct condition_wait_mutex_use *first;
+	const struct condition_wait_mutex_use *conflict;
+};
+
 static int
 compare_declared_order_finding(const void *left_arg, const void *right_arg)
 {
@@ -4876,6 +4896,63 @@ compare_wait_site(const void *left_arg, const void *right_arg)
 	const struct wait_site *right = right_arg;
 
 	return (AVL_PCMP(left->instruction, right->instruction));
+}
+
+static int
+compare_condition_wait_pairing(const void *left_arg, const void *right_arg)
+{
+	const struct condition_wait_pairing *left = left_arg;
+	const struct condition_wait_pairing *right = right_arg;
+	int result;
+
+	result = AVL_PCMP(left->condition.analysis_object,
+	    right->condition.analysis_object);
+	if (result != 0)
+		return (result);
+	return (AVL_CMP(left->condition.target_offset,
+	    right->condition.target_offset));
+}
+
+static int
+compare_condition_wait_mutex_use(const void *left_arg, const void *right_arg)
+{
+	const struct condition_wait_mutex_use *left = left_arg;
+	const struct condition_wait_mutex_use *right = right_arg;
+
+	return (AVL_PCMP(left->mutex, right->mutex));
+}
+
+static int
+compare_condition_wait_pairing_finding(const void *left_arg,
+    const void *right_arg)
+{
+	const struct condition_wait_pairing_finding *left = left_arg;
+	const struct condition_wait_pairing_finding *right = right_arg;
+	struct position left_pos = left->conflict->instruction->call_expr != NULL ?
+	    left->conflict->instruction->call_expr->pos :
+	    left->conflict->instruction->pos;
+	struct position right_pos =
+	    right->conflict->instruction->call_expr != NULL ?
+	    right->conflict->instruction->call_expr->pos :
+	    right->conflict->instruction->pos;
+	int result;
+
+	result = compare_transition_position(left_pos, right_pos);
+	if (result != 0)
+		return (result);
+	left_pos = left->first->instruction->call_expr != NULL ?
+	    left->first->instruction->call_expr->pos :
+	    left->first->instruction->pos;
+	right_pos = right->first->instruction->call_expr != NULL ?
+	    right->first->instruction->call_expr->pos :
+	    right->first->instruction->pos;
+	result = compare_transition_position(left_pos, right_pos);
+	if (result != 0)
+		return (result);
+	result = AVL_PCMP(left->conflict->mutex, right->conflict->mutex);
+	if (result != 0)
+		return (result);
+	return (AVL_PCMP(left->first->mutex, right->first->mutex));
 }
 
 /*
@@ -5092,6 +5169,193 @@ record_wait_observation(avl_tree_t *sites, avl_tree_t *findings,
 }
 
 /*
+ * Retain one source use for each distinct mutex paired with a reached
+ * condition variable.  Repeated semantic states and repeated waits using the
+ * same pair do not increase the collection.
+ */
+static void
+record_condition_wait_pairing(avl_tree_t *pairings,
+    struct lock_identity_key condition_key,
+    const struct locklint_access *condition,
+    const struct lock_identity *mutex,
+    const struct locklint_access *mutex_access,
+    const struct instruction *instruction)
+{
+	struct condition_wait_pairing pairing_key = {
+		.condition = condition_key
+	};
+	struct condition_wait_pairing *pairing;
+	struct condition_wait_mutex_use use_key = {
+		.mutex = mutex
+	};
+	struct condition_wait_mutex_use *use;
+	struct position candidate = instruction->call_expr != NULL ?
+	    instruction->call_expr->pos : instruction->pos;
+	avl_index_t where;
+
+	pairing = avl_find(pairings, &pairing_key, &where);
+	if (pairing == NULL) {
+		pairing = calloc(1, sizeof (*pairing));
+		if (pairing == NULL)
+			die("cannot allocate condition wait pairing");
+		*pairing = pairing_key;
+		avl_create(&pairing->mutexes, compare_condition_wait_mutex_use,
+		    sizeof (struct condition_wait_mutex_use),
+		    offsetof(struct condition_wait_mutex_use, by_mutex));
+		avl_insert(pairings, pairing, where);
+	}
+	use = avl_find(&pairing->mutexes, &use_key, &where);
+	if (use == NULL) {
+		use = calloc(1, sizeof (*use));
+		if (use == NULL)
+			die("cannot allocate condition wait mutex use");
+		use->mutex = mutex;
+		use->condition = *condition;
+		use->mutex_access = *mutex_access;
+		use->instruction = instruction;
+		avl_insert(&pairing->mutexes, use, where);
+		pairing->mutex_count++;
+		return;
+	}
+	{
+		struct position current = use->instruction->call_expr != NULL ?
+		    use->instruction->call_expr->pos : use->instruction->pos;
+
+		if (compare_transition_position(candidate, current) < 0) {
+			use->condition = *condition;
+			use->mutex_access = *mutex_access;
+			use->instruction = instruction;
+		}
+	}
+}
+
+static char *
+condition_wait_mutex_name(const struct condition_wait_mutex_use *use)
+{
+	const char *role = locklint_order_identity_name(use->mutex);
+	char *name;
+
+	if (strcmp(role, "<unknown>") == 0)
+		return (locklint_access_name(&use->mutex_access));
+	name = malloc(strlen(role) + 1);
+	if (name == NULL)
+		die("cannot allocate condition wait mutex name");
+	(void) strcpy(name, role);
+	return (name);
+}
+
+static void
+report_condition_wait_pairings(avl_tree_t *pairings)
+{
+	struct condition_wait_pairing *pairing;
+	struct condition_wait_pairing_finding *findings;
+	size_t count = 0;
+	size_t index = 0;
+
+	for (pairing = avl_first(pairings); pairing != NULL;
+	    pairing = AVL_NEXT(pairings, pairing)) {
+		if (pairing->mutex_count > 1)
+			count += pairing->mutex_count - 1;
+	}
+	if (count == 0)
+		return;
+	findings = calloc(count, sizeof (*findings));
+	if (findings == NULL)
+		die("cannot allocate condition wait pairing findings");
+	for (pairing = avl_first(pairings); pairing != NULL;
+	    pairing = AVL_NEXT(pairings, pairing)) {
+		struct condition_wait_mutex_use *first = NULL;
+		struct condition_wait_mutex_use *use;
+
+		if (pairing->mutex_count < 2)
+			continue;
+		for (use = avl_first(&pairing->mutexes); use != NULL;
+		    use = AVL_NEXT(&pairing->mutexes, use)) {
+			struct position use_pos =
+			    use->instruction->call_expr != NULL ?
+			    use->instruction->call_expr->pos :
+			    use->instruction->pos;
+			struct position first_pos;
+
+			if (first == NULL) {
+				first = use;
+				continue;
+			}
+			first_pos = first->instruction->call_expr != NULL ?
+			    first->instruction->call_expr->pos :
+			    first->instruction->pos;
+			if (compare_transition_position(use_pos, first_pos) < 0)
+				first = use;
+		}
+		for (use = avl_first(&pairing->mutexes); use != NULL;
+		    use = AVL_NEXT(&pairing->mutexes, use)) {
+			if (use == first)
+				continue;
+			findings[index++] =
+			    (struct condition_wait_pairing_finding) {
+				.first = first,
+				.conflict = use
+			    };
+		}
+	}
+	if (index != count)
+		abort();
+	qsort(findings, count, sizeof (*findings),
+	    compare_condition_wait_pairing_finding);
+	for (index = 0; index < count; index++) {
+		const struct condition_wait_mutex_use *first =
+		    findings[index].first;
+		const struct condition_wait_mutex_use *conflict =
+		    findings[index].conflict;
+		struct position first_pos = first->instruction->call_expr != NULL ?
+		    first->instruction->call_expr->pos : first->instruction->pos;
+		struct position conflict_pos =
+		    conflict->instruction->call_expr != NULL ?
+		    conflict->instruction->call_expr->pos :
+		    conflict->instruction->pos;
+		char *condition_name =
+		    locklint_access_name(&conflict->condition);
+		char *conflict_mutex_name =
+		    condition_wait_mutex_name(conflict);
+		char *first_mutex_name =
+		    condition_wait_mutex_name(first);
+
+		locklint_warning(LOCKLINT_DIAG_CONDITION_WAIT_MUTEX_MISMATCH,
+		    conflict_pos, "condition variable '%s' is used with mutex "
+		    "'%s' after use with mutex '%s'", condition_name,
+		    conflict_mutex_name, first_mutex_name);
+		free(condition_name);
+		condition_name = locklint_access_name(&first->condition);
+		locklint_info(first_pos, "condition variable '%s' was first "
+		    "used with mutex '%s'", condition_name,
+		    first_mutex_name);
+		free(condition_name);
+		free(conflict_mutex_name);
+		free(first_mutex_name);
+	}
+	free(findings);
+}
+
+static void
+free_condition_wait_pairings(avl_tree_t *pairings)
+{
+	struct condition_wait_pairing *pairing;
+
+	while ((pairing = avl_first(pairings)) != NULL) {
+		struct condition_wait_mutex_use *use;
+
+		while ((use = avl_first(&pairing->mutexes)) != NULL) {
+			avl_remove(&pairing->mutexes, use);
+			free(use);
+		}
+		avl_destroy(&pairing->mutexes);
+		avl_remove(pairings, pairing);
+		free(pairing);
+	}
+	avl_destroy(pairings);
+}
+
+/*
  * Compare each unconditional acquisition with the exact locks held before it.
  * Context-local observations retain safe states as well as inversions before
  * provenance maps them to local acquisition sites or originating root calls.
@@ -5106,6 +5370,7 @@ diagnose_acquisition_order_and_waits(struct analysis *analysis)
 	avl_tree_t findings;
 	avl_tree_t wait_sites;
 	avl_tree_t wait_findings;
+	avl_tree_t wait_pairings;
 	int error;
 
 	avl_create(&observations, compare_declared_order_observation,
@@ -5122,6 +5387,9 @@ diagnose_acquisition_order_and_waits(struct analysis *analysis)
 	    offsetof(struct wait_lock_finding, by_key));
 	avl_create(&wait_sites, compare_wait_site, sizeof (struct wait_site),
 	    offsetof(struct wait_site, by_instruction));
+	avl_create(&wait_pairings, compare_condition_wait_pairing,
+	    sizeof (struct condition_wait_pairing),
+	    offsetof(struct condition_wait_pairing, by_condition));
 	error = callgraph_iter_open(&iterator);
 	if (error != 0)
 		die("cannot iterate ready callgraph: %s", strerror(error));
@@ -5190,10 +5458,35 @@ diagnose_acquisition_order_and_waits(struct analysis *analysis)
 					    "%s", strerror(error));
 				locklint_order_classify_identity(acquired, &access);
 				if (action == LOCKLINT_LOCK_WAIT) {
+					struct locklint_access condition = { 0 };
+					struct lock_identity_key condition_key;
+					enum lock_analysis_object_type
+					    condition_type;
+					bool condition_composed = false;
+
 					if ((context_state_lock_modes(
 					    point_state->state, acquired) &
 					    LOCKLINT_MODE_MUTEX) == 0)
 						continue;
+					if (locklint_get_call_argument_access(
+					    function->tu, acquisition, 0,
+					    &condition) &&
+					    condition.root != NULL) {
+						error = context_access_key(context,
+						    point_state->state,
+						    &condition, &condition_key,
+						    &condition_type,
+						    &condition_composed);
+						if (error != 0)
+							die("cannot identify condition "
+							    "wait variable: %s",
+							    strerror(error));
+						record_condition_wait_pairing(
+						    &wait_pairings,
+						    condition_key, &condition,
+						    acquired, &access,
+						    acquisition);
+					}
 				}
 				{
 					struct position pos =
@@ -5416,6 +5709,8 @@ diagnose_acquisition_order_and_waits(struct analysis *analysis)
 		free(finding);
 	}
 	avl_destroy(&wait_findings);
+	report_condition_wait_pairings(&wait_pairings);
+	free_condition_wait_pairings(&wait_pairings);
 	while (!avl_is_empty(&wait_sites)) {
 		struct wait_site *site = avl_first(&wait_sites);
 

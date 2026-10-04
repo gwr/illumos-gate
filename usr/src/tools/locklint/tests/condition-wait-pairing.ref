@@ -1,0 +1,4 @@
+locklint: condition-wait-pairing.c:84:16: warning: condition variable 'shared_cv' is used with mutex 'second' after use with mutex 'first' [condition-wait-mutex-mismatch]
+locklint: condition-wait-pairing.c:55:16: condition variable 'shared_cv' was first used with mutex 'first'
+locklint: condition-wait-pairing.c:101:16: warning: condition variable 'cv' is used with mutex 'wait_pairing_state::second' after use with mutex 'wait_pairing_state::first' [condition-wait-mutex-mismatch]
+locklint: condition-wait-pairing.c:95:16: condition variable 'cv' was first used with mutex 'wait_pairing_state::first'

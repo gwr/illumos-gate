@@ -1938,6 +1938,8 @@ It recognizes:
 `locklint_get_lock_action()` returns the action, normalized lock argument, and
 ownership mode for a recognized operation.  The lock is argument zero except
 for condition waits, where argument one is the released and reacquired mutex.
+The condition-wait consistency check separately decodes argument zero as the
+condition variable.
 The second `rw_enter()` or `rw_tryenter()` argument selects reader or writer
 mode when it is a supported constant.  Both the checker and `--dump-events`
 use this decoder so development output and semantic checking agree.
@@ -2040,6 +2042,26 @@ identity across all caller contexts.  The primary warning therefore remains
 at the wait instead of repeating once for every root call that reaches it.
 For a wait reached through a wrapper, one root-visible call is retained as
 explanatory provenance.
+
+Each reached wait with valid mutex-held input also contributes one
+condition-variable/mutex pairing observation.  Both arguments are mapped
+through the concrete caller context, so calls through wrappers compare their
+actual condition variables and mutexes rather than unrelated formal
+parameters.  A condition variable observed with more than one mutex produces
+`[condition-wait-mutex-mismatch]` at the earliest use of each conflicting
+mutex, with an informational note at the earliest established pairing.
+Diagnostics at wrapper wait sites use concrete mutex role names when the
+caller bindings provide them.
+
+Pairing observations are diagnostic-only and are collected after the
+caller-context fixed point.  A temporary AVL tree groups condition-variable
+identities, and each group indexes its distinct mutex identities while
+retaining only the earliest source use of each pair.  Repeated semantic states
+and repeated waits using the same pair therefore add no records.  The
+collection uses O(C + P) memory with O(log C + log P) insertion for C reached
+condition variables and P distinct condition-variable/mutex pairs; it is
+freed after diagnostics and does not affect semantic-state or context
+identity.
 
 ### Rwlock mode transitions
 
@@ -3272,6 +3294,8 @@ The current implementation relies on these invariants:
     using function, aliased role set, and input-state mask as their identity.
 37. Every recognized condition wait requires held input, returns held, and
     contributes a reacquisition event against other locks held across it.
+    Reached valid waits also require each condition variable to be paired
+    consistently with one mutex.
 38. Rwlock downgrade and upgrade change ownership mode without creating
     acquisition ownership or lock-order edges.
 39. A direct conditional lock result selects an edge-specific transition in

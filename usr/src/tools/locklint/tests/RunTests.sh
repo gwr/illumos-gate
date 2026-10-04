@@ -1908,6 +1908,11 @@ run_capture "condition wait state and order" condition-wait.out \
 compare "condition wait state and order" condition-wait.ref \
     condition-wait.out
 
+run_capture "condition wait mutex pairing" condition-wait-pairing.out \
+    "$LOCKLINT" condition-wait-pairing.c
+compare "condition wait mutex pairing" condition-wait-pairing.ref \
+    condition-wait-pairing.out
+
 run_capture "other locks held during condition wait" \
     condition-wait-other-lock.out "$LOCKLINT" \
     condition-wait-other-lock.c

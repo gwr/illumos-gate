@@ -31,6 +31,8 @@ static const char *const diagnostic_names[LOCKLINT_DIAG_COUNT] = {
 	[LOCKLINT_DIAG_COMPETITION_MAYBE_UNDERFLOW] =
 	    "competition-maybe-underflow",
 	[LOCKLINT_DIAG_COMPETITION_UNDERFLOW] = "competition-underflow",
+	[LOCKLINT_DIAG_CONDITION_WAIT_MUTEX_MISMATCH] =
+	    "condition-wait-mutex-mismatch",
 	[LOCKLINT_DIAG_CONDITIONAL_ASSERTED_COMPETITION_REQUIREMENT] =
 	    "conditional-asserted-competition-requirement",
 	[LOCKLINT_DIAG_CONDITIONAL_ASSERTED_LOCK_REQUIREMENT] =
