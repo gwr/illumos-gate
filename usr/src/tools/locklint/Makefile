@@ -92,6 +92,7 @@ LOCAL_OBJS = \
 	diagnostics.o \
 	dump.o \
 	events.o \
+	sync_api.o \
 	identity.o \
 	lock_identity.o \
 	binding.o \
@@ -150,6 +151,10 @@ LOCK_ID_TEST_OBJS = lock_identity_test.o lock_identity.o \
 lock_identity_test: $(LOCK_ID_TEST_OBJS)
 	$(LINK.c) -o $@ $(LOCK_ID_TEST_OBJS) $(LDLIBS)
 
+SYNC_API_TEST_OBJS = sync_api_test.o sync_api.o avl.o
+sync_api_test: $(SYNC_API_TEST_OBJS)
+	$(LINK.c) -o $@ $(SYNC_API_TEST_OBJS) $(LDLIBS)
+
 BINDING_TEST_OBJS = binding_test.o binding.o statistics.o avl.o
 binding_test: $(BINDING_TEST_OBJS)
 	$(LINK.c) -o $@ $(BINDING_TEST_OBJS) $(LDLIBS)
@@ -181,11 +186,13 @@ kmodtest: FRC
 test: $(PROG) unittest FRC
 	(cd tests && ./RunTests.sh)
 
-UNITTESTS = command_parse_test lock_identity_test binding_test context_test \
-	worklist_test dependency_test provenance_test type_test
+UNITTESTS = command_parse_test lock_identity_test sync_api_test \
+	binding_test context_test worklist_test dependency_test provenance_test \
+	type_test
 unittest: $(UNITTESTS) FRC
 	./command_parse_test command_parse_test.in
 	./lock_identity_test
+	./sync_api_test
 	./binding_test
 	./context_test
 	./worklist_test

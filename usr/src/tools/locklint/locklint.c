@@ -43,6 +43,7 @@
 #include "scope.h"
 #include "statistics.h"
 #include "symbol.h"
+#include "sync_api.h"
 #include "timing.h"
 #include "type.h"
 
@@ -390,6 +391,7 @@ main(int argc, char **argv)
 	struct symbol_list *symbols;
 	struct translation_unit *tu;
 	char *file;
+	int error;
 
 	timing_start();
 	/*
@@ -405,9 +407,14 @@ main(int argc, char **argv)
 		program_name = "locklint";
 	argv[0] = program_name;
 	diagnostics_init(program_name);
+	error = sync_api_init();
+	if (error != 0)
+		die("cannot initialize synchronization API: %s",
+		    strerror(error));
 	argc = options(argc, argv);
 	if (argc == 1) {
 		usage(stderr);
+		sync_api_fini();
 		return (EXIT_FAILURE);
 	}
 	dump_outputs_prepare();
@@ -506,12 +513,14 @@ main(int argc, char **argv)
 	if (!type_registry_consistent()) {
 		type_registry_report_errors();
 		locklint_access_cleanup();
+		sync_api_fini();
 		return (EXIT_FAILURE);
 	}
 	locklint_apply_contract_annotations();
 	timing_begin(TIMING_COMMANDS);
 	if (!parse_command_files()) {
 		locklint_access_cleanup();
+		sync_api_fini();
 		return (EXIT_FAILURE);
 	}
 	timing_end(TIMING_COMMANDS);
@@ -529,6 +538,7 @@ main(int argc, char **argv)
 		locklint_show_annotations(dump_output(DUMP_ANNOTATIONS));
 	dump_outputs_finish();
 	locklint_access_cleanup();
+	sync_api_fini();
 	(void) fflush(stdout);
 	timing_end(TIMING_FINAL_OUTPUT);
 	timing_report(stderr);

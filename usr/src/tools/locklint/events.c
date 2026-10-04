@@ -28,6 +28,7 @@
 #include "annotations.h"
 #include "assertions.h"
 #include "events.h"
+#include "sync_api.h"
 #include "symbol.h"
 
 static void
@@ -67,14 +68,15 @@ call_argument(const struct instruction *insn, unsigned int index)
  * Both reader variants provide the same ownership mode to locklint.
  */
 static bool
-call_rw_mode(const struct instruction *insn, enum locklint_lock_mode *mode)
+call_rw_mode(const struct instruction *insn, unsigned int argument,
+    enum locklint_lock_mode *mode)
 {
-	struct expression *argument = call_argument(insn, 1);
+	struct expression *expression = call_argument(insn, argument);
 	unsigned long long value;
 
-	if (argument == NULL || argument->type != EXPR_VALUE)
+	if (expression == NULL || expression->type != EXPR_VALUE)
 		return (false);
-	value = argument->value;
+	value = expression->value;
 	if (value == 0)
 		*mode = LOCKLINT_MODE_WRITER;
 	else if (value == 1 || value == 2)
@@ -89,9 +91,8 @@ locklint_get_lock_action(struct translation_unit *tu,
     const struct instruction *insn, struct locklint_access *access,
     enum locklint_lock_mode *mode)
 {
-	enum locklint_lock_action action;
+	const struct sync_func *func;
 	const char *name;
-	unsigned int argument = 0;
 
 	*mode = LOCKLINT_MODE_UNHELD;
 	*access = (struct locklint_access){ 0 };
@@ -99,64 +100,16 @@ locklint_get_lock_action(struct translation_unit *tu,
 		return (LOCKLINT_LOCK_NONE);
 
 	name = call_name(insn);
-	if (strcmp(name, "mutex_enter") == 0) {
-		action = LOCKLINT_LOCK_ACQUIRE;
-		*mode = LOCKLINT_MODE_MUTEX;
-	} else if (strcmp(name, "mutex_lock") == 0) {
-		action = LOCKLINT_LOCK_RESULT_ACQUIRE;
-		*mode = LOCKLINT_MODE_MUTEX;
-	} else if (strcmp(name, "mutex_trylock") == 0) {
-		action = LOCKLINT_LOCK_TRY_ACQUIRE_ZERO;
-		*mode = LOCKLINT_MODE_MUTEX;
-	} else if (strcmp(name, "mutex_tryenter") == 0) {
-		action = LOCKLINT_LOCK_TRY_ACQUIRE;
-		*mode = LOCKLINT_MODE_MUTEX;
-	} else if (strcmp(name, "rw_rdlock") == 0) {
-		action = LOCKLINT_LOCK_ACQUIRE;
-		*mode = LOCKLINT_MODE_READER;
-	} else if (strcmp(name, "rw_wrlock") == 0) {
-		action = LOCKLINT_LOCK_ACQUIRE;
-		*mode = LOCKLINT_MODE_WRITER;
-	} else if (strcmp(name, "rw_enter") == 0) {
-		if (!call_rw_mode(insn, mode))
-			return (LOCKLINT_LOCK_NONE);
-		action = LOCKLINT_LOCK_ACQUIRE;
-	} else if (strcmp(name, "rw_tryenter") == 0) {
-		if (!call_rw_mode(insn, mode))
-			return (LOCKLINT_LOCK_NONE);
-		action = LOCKLINT_LOCK_TRY_ACQUIRE;
-	} else if (strcmp(name, "rw_tryupgrade") == 0) {
-		action = LOCKLINT_LOCK_TRY_UPGRADE;
-		*mode = LOCKLINT_MODE_WRITER;
-	} else if (strcmp(name, "mutex_exit") == 0 ||
-	    strcmp(name, "mutex_unlock") == 0 ||
-	    strcmp(name, "rw_exit") == 0 ||
-	    strcmp(name, "rw_unlock") == 0) {
-		action = LOCKLINT_LOCK_RELEASE;
-	} else if (strcmp(name, "cv_wait") == 0 ||
-	    strcmp(name, "cv_wait_sig") == 0 ||
-	    strcmp(name, "cv_timedwait") == 0 ||
-	    strcmp(name, "cv_timedwait_sig") == 0 ||
-	    strcmp(name, "cv_reltimedwait") == 0 ||
-	    strcmp(name, "cv_reltimedwait_sig") == 0 ||
-	    strcmp(name, "cv_wait_stop") == 0 ||
-	    strcmp(name, "cv_timedwait_hires") == 0 ||
-	    strcmp(name, "cv_timedwait_sig_hrtime") == 0 ||
-	    strcmp(name, "cv_wait_sig_swap") == 0 ||
-	    strcmp(name, "cv_wait_sig_swap_core") == 0 ||
-	    strcmp(name, "cv_waituntil_sig") == 0) {
-		action = LOCKLINT_LOCK_WAIT;
-		*mode = LOCKLINT_MODE_MUTEX;
-		argument = 1;
-	} else if (strcmp(name, "rw_downgrade") == 0) {
-		action = LOCKLINT_LOCK_DOWNGRADE;
-		*mode = LOCKLINT_MODE_READER;
-	} else {
+	func = sync_api_find(name);
+	if (func == NULL)
 		return (LOCKLINT_LOCK_NONE);
-	}
-
-	(void) locklint_get_call_argument_access(tu, insn, argument, access);
-	return (action);
+	*mode = func->mode;
+	if (func->mode_argument != LOCKLINT_NO_ARGUMENT &&
+	    !call_rw_mode(insn, func->mode_argument, mode))
+		return (LOCKLINT_LOCK_NONE);
+	(void) locklint_get_call_argument_access(tu, insn,
+	    func->lock_argument, access);
+	return (func->action);
 }
 
 static bool
@@ -202,6 +155,7 @@ show_call_event(FILE *stream, struct translation_unit *tu,
 {
 	struct locklint_access access;
 	struct expression *arg;
+	const struct sync_func *func;
 	enum locklint_lock_action action;
 	enum locklint_lock_mode mode;
 	const char *event;
@@ -250,7 +204,9 @@ show_call_event(FILE *stream, struct translation_unit *tu,
 		return (true);
 	}
 
-	arg = action == LOCKLINT_LOCK_WAIT ? call_argument(insn, 1) :
+	func = sync_api_find(name);
+	arg = func != NULL ?
+	    call_argument(insn, func->lock_argument) :
 	    (insn->call_expr != NULL ?
 	    first_expression(insn->call_expr->args) : NULL);
 	locklint_show_access(stream, arg);

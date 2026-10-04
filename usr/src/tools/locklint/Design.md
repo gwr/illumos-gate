@@ -1921,6 +1921,31 @@ need semantic-state selection because one exact receiver value already
 identifies one profile.  Selected profile state remains available for later
 ambiguous provenance which must preserve correlation across dispatches.
 
+## Synchronization API
+
+`sync_api.c` owns the one process-wide set of recognized synchronization
+functions.  It indexes immutable `sync_func` descriptors by function name.
+Each descriptor records:
+
+- its mutex, rwlock, or condition-wait family;
+- its lock-state action;
+- its fixed ownership mode, or the argument selecting reader or writer mode;
+- the argument identifying the lock; and
+- its illumos kernel or user API-profile membership.
+
+`sync_api_init()` creates the collection and loads the supported illumos
+defaults before option and source processing.  `sync_api_fini()` destroys it
+during driver cleanup.  Setup code may use `sync_api_replace()` to replace
+one complete family.  Replacement allocates and validates the candidate
+family before removing the active family, rejects duplicate names and names
+retained by another family, and leaves the active API unchanged on failure.
+There are no user-facing replacement or profile-selection options yet.
+
+The active API changes only during startup and future early `--api*` option
+processing.  Parsing, event display, and analysis use `sync_api_find()` for
+read-only lookup.  Ordinary command files run after source processing and
+therefore do not configure the synchronization API.
+
 ## Event decoding
 
 `events.c` provides a shared interpretation of relevant Sparse instructions.
@@ -1935,17 +1960,18 @@ It recognizes:
 - kernel and user try-acquisitions; and
 - the complete condition-wait family declared by illumos `condvar.h`.
 
-`locklint_get_lock_action()` returns the action, normalized lock argument, and
-ownership mode for a recognized operation.  The lock is argument zero except
-for condition waits, where argument one is the released and reacquired mutex.
-The condition-wait consistency check separately decodes argument zero as the
-condition variable.
+`locklint_get_lock_action()` looks up a direct call in the synchronization
+API and returns its action, normalized lock argument, and ownership mode.  The
+lock is argument zero except for condition waits, where argument one is the
+released and reacquired mutex.  All supported condition waits use argument
+zero as the condition variable.
 The second `rw_enter()` or `rw_tryenter()` argument selects reader or writer
 mode when it is a supported constant.  Both the checker and `--dump-events`
 use this decoder so development output and semantic checking agree.
 
-Operation recognition currently uses the function name and argument identity.
-It does not validate that the argument's declared type is a known lock type.
+Synchronization-function recognition currently uses the function name and
+argument identity.  It does not validate the resolved declaration, argument
+count, or argument types.
 
 ## Intraprocedural lock state
 
@@ -2854,12 +2880,21 @@ intermediate-frame rendering remain optional future work.
 | `adjust_state()` | Apply direct negation and zero-comparison semantics |
 | `locklint_get_assertion()` | Match a linearized predicate call to captured source metadata |
 
+### Synchronization API: `sync_api.c`
+
+| Function | Responsibility |
+| --- | --- |
+| `sync_api_init()` | Create the process-wide API and load the supported illumos defaults |
+| `sync_api_find()` | Find one immutable synchronization-function descriptor by name |
+| `sync_api_replace()` | Validate and replace one complete function family without partially changing the active API |
+| `sync_api_fini()` | Release the process-wide API |
+
 ### Events: `events.c`
 
 | Function | Responsibility |
 | --- | --- |
 | `call_name()` | Return a direct call identifier or `<indirect>` |
-| `locklint_get_lock_action()` | Decode supported mutex acquire/release calls |
+| `locklint_get_lock_action()` | Decode a recognized synchronization call using its API descriptor |
 | `locklint_show_events()` | Display relevant instructions in CFG order |
 
 ### Callgraph: `callgraph.c`
