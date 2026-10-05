@@ -2502,6 +2502,30 @@ run_capture "mutex data policy diagnostics" data-policy-diagnostics.out \
 compare "mutex data policy diagnostics" data-policy.ref \
     data-policy-diagnostics.out
 
+#
+# C const qualification on the underlying object or member supplies implicit
+# read-only policy.  Qualification on an access expression is characterized
+# separately and does not define the underlying object's policy.
+#
+echo "test: implicit const data policy"
+: > implicit-const.out
+for case in \
+    "mutable-control 1" \
+    "explicit-control 2" \
+    "const-scalar 3" \
+    "const-aggregate 4" \
+    "forced-write 7"
+do
+    set -- $case
+    echo "case $1" >> implicit-const.out
+    if ! "$LOCKLINT" -DIMPLICIT_CONST_VARIANT="$2" implicit-const.c \
+        implicit-const-def.c >> implicit-const.out 2>&1
+    then
+        fail "implicit const data policy: $1 command failed"
+    fi
+done
+compare "implicit const data policy" implicit-const.ref implicit-const.out
+
 run_capture "protection state dump" protection-states.out \
     "$LOCKLINT" --dump-protection-states data-policy.c
 require_match "unprotected protection state" \

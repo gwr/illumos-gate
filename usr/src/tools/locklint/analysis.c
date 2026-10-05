@@ -6470,6 +6470,7 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 	check_lock = (policy.protection == LOCKLINT_PROTECTION_MUTEX ||
 	    policy.protection == LOCKLINT_PROTECTION_RWLOCK ||
 	    policy.protection == LOCKLINT_PROTECTION_LOCK_ROLE) &&
+	    !policy.read_only &&
 	    !(data->instruction->opcode == OP_LOAD &&
 	    policy.readable_without_lock);
 	if (check_lock) {

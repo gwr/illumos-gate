@@ -2375,9 +2375,32 @@ locklint_lock_covers(const struct locklint_access *cover,
 }
 
 /*
- * Merge canonical type and object candidate ranges in original annotation
- * order.  The last mechanical or scheme declaration wins; unlocked-read and
- * read-only properties are additive.
+ * Determine read-only policy from the declaration of the accessed object.
+ * Const qualification on a pointer describes the pointer itself or its view,
+ * not the pointed-to object, so only direct root objects and declared members
+ * contribute implicit policy.
+ */
+static bool
+access_declared_read_only(const struct locklint_access *access)
+{
+	struct symbol *type;
+
+	if (access->member != NULL &&
+	    (access->member->ctype.modifiers & MOD_CONST) != 0)
+		return (true);
+	if (access->root == NULL ||
+	    (access->root->ctype.modifiers & MOD_CONST) == 0)
+		return (false);
+	type = access->root->ctype.base_type;
+	while (type != NULL && type->type == SYM_NODE)
+		type = type->ctype.base_type;
+	return (type == NULL || type->type != SYM_PTR);
+}
+
+/*
+ * Merge declared const qualification and canonical type and object candidate
+ * ranges in original annotation order.  The last mechanical or scheme
+ * declaration wins; unlocked-read and read-only properties are additive.
  */
 bool
 locklint_data_policy(const struct locklint_access *access,
@@ -2392,11 +2415,13 @@ locklint_data_policy(const struct locklint_access *access,
 	unsigned long protector_base = 0;
 	const struct ll_type *protected_owner = NULL;
 	unsigned int protection_rank = 0;
-	bool found = false;
+	bool found;
 	bool have_protection = false;
 
 	(void) memset(policy, 0, sizeof (*policy));
 	(void) memset(lock, 0, sizeof (*lock));
+	policy->read_only = access_declared_read_only(access);
+	found = policy->read_only;
 	statistics.data_policy_queries++;
 	access_member = type_member_lookup_exact(access->member);
 	if (access_member != NULL) {

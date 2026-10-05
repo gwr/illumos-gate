@@ -1,0 +1,7 @@
+case mutable-control
+locklint: implicit-const.c:56:17: warning: protected member 'mutable_value' read without holding 'const_lock' [unprotected-access]
+case explicit-control
+case const-scalar
+case const-aggregate
+case forced-write
+locklint: implicit-const.c:134:9: warning: read-only data 'implicit_const_value' modified while visible to competing threads [read-only-visible]
