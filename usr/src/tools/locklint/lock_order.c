@@ -61,6 +61,8 @@ struct order_edge {
 	struct order_vertex *before;
 	struct order_vertex *after;
 	struct position pos;
+	const char *command_file;
+	unsigned long command_line;
 	struct order_edge *next;
 	struct order_edge *next_from;
 };
@@ -89,6 +91,7 @@ static bool declared_path(struct order_vertex *, struct order_vertex *);
 static bool path_uses_declared_cycle(struct order_vertex *,
     struct order_vertex *);
 static void report_declared_path(struct order_vertex *, struct order_vertex *);
+static void report_edge_info(const struct order_edge *, const char *);
 
 static char *
 copy_string(const char *text)
@@ -132,6 +135,29 @@ compare_position(struct position left, struct position right)
 		return (left.line < right.line ? -1 : 1);
 	if (left.pos != right.pos)
 		return (left.pos < right.pos ? -1 : 1);
+	return (0);
+}
+
+static int
+compare_edge_location(const struct order_edge *left,
+    const struct order_edge *right)
+{
+	int result;
+
+	/*
+	 * Preserve an existing source declaration as the explanatory location
+	 * when a command repeats it; this does not affect the merged constraint.
+	 */
+	if ((left->command_file == NULL) != (right->command_file == NULL))
+		return (left->command_file == NULL ? -1 : 1);
+	if (left->command_file == NULL)
+		return (compare_position(left->pos, right->pos));
+	result = strcmp(left->command_file, right->command_file);
+	if (result != 0)
+		return (result);
+	if (left->command_line != right->command_line) {
+		return (left->command_line < right->command_line ? -1 : 1);
+	}
 	return (0);
 }
 
@@ -249,20 +275,30 @@ observed_role(const struct locklint_access *access,
 static void
 add_declared_edge(const struct locklint_access *before,
     const char *before_name, const struct locklint_access *after,
-    const char *after_name, const struct position *pos, void *data)
+    const char *after_name, const struct position *pos,
+    const char *command_file, unsigned long command_line, void *data)
 {
 	struct order_vertex *from;
 	struct order_vertex *to;
 	struct order_edge *edge;
+	struct order_edge incoming = {
+		.command_file = command_file,
+		.command_line = command_line
+	};
 
 	(void) data;
+	if (pos != NULL)
+		incoming.pos = *pos;
 	from = add_vertex(before, before_name);
 	to = add_vertex(after, after_name);
 	for (edge = from->edges; edge != NULL; edge = edge->next_from) {
 		if (edge->after != to)
 			continue;
-		if (compare_position(*pos, edge->pos) < 0)
-			edge->pos = *pos;
+		if (compare_edge_location(&incoming, edge) < 0) {
+			edge->pos = incoming.pos;
+			edge->command_file = command_file;
+			edge->command_line = command_line;
+		}
 		return;
 	}
 	edge = calloc(1, sizeof (*edge));
@@ -270,7 +306,9 @@ add_declared_edge(const struct locklint_access *before,
 		die("out of memory building lock-order graph");
 	edge->before = from;
 	edge->after = to;
-	edge->pos = *pos;
+	edge->pos = incoming.pos;
+	edge->command_file = command_file;
+	edge->command_line = command_line;
 	edge->next_from = from->edges;
 	from->edges = edge;
 	edge->next = edges;
@@ -540,8 +578,7 @@ report_declared_path(struct order_vertex *from, struct order_vertex *to)
 
 	if (edge->before != from)
 		report_declared_path(from, edge->before);
-	locklint_info(edge->pos, "declared order requires '%s' before '%s'",
-	    edge->before->name, edge->after->name);
+	report_edge_info(edge, "declared order requires '%s' before '%s'");
 }
 
 bool
@@ -666,7 +703,31 @@ compare_edge_position(const void *left, const void *right)
 	const struct order_edge *const *left_edge = left;
 	const struct order_edge *const *right_edge = right;
 
-	return (compare_position((*left_edge)->pos, (*right_edge)->pos));
+	return (compare_edge_location(*left_edge, *right_edge));
+}
+
+static void
+report_edge_cycle_warning(const struct order_edge *edge)
+{
+	if (edge->command_file != NULL) {
+		locklint_file_warning(LOCKLINT_DIAG_DECLARED_ORDER_CYCLE,
+		    edge->command_file, edge->command_line,
+		    "declared lock order contains a cycle");
+		return;
+	}
+	locklint_warning(LOCKLINT_DIAG_DECLARED_ORDER_CYCLE, edge->pos,
+	    "declared lock order contains a cycle");
+}
+
+static void
+report_edge_info(const struct order_edge *edge, const char *format)
+{
+	if (edge->command_file != NULL) {
+		locklint_file_info(edge->command_file, edge->command_line, format,
+		    edge->before->name, edge->after->name);
+		return;
+	}
+	locklint_info(edge->pos, format, edge->before->name, edge->after->name);
 }
 
 static void
@@ -692,12 +753,10 @@ report_component(unsigned int component)
 	}
 	qsort(component_edges, count, sizeof (*component_edges),
 	    compare_edge_position);
-	locklint_warning(LOCKLINT_DIAG_DECLARED_ORDER_CYCLE,
-	    component_edges[0]->pos, "declared lock order contains a cycle");
+	report_edge_cycle_warning(component_edges[0]);
 	for (index = 0; index < count; index++) {
 		edge = component_edges[index];
-		locklint_info(edge->pos, "'%s' must precede '%s'",
-		    edge->before->name, edge->after->name);
+		report_edge_info(edge, "'%s' must precede '%s'");
 	}
 	free(component_edges);
 }

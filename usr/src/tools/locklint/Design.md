@@ -779,6 +779,24 @@ Retained data references enter the same ordered policy index as source
 annotations.
 Each command declaration retains its command-file pathname and line number as
 provenance.  A backslash immediately followed by newline joins physical
+command-file lines; retained provenance uses the first physical line.
+
+`declare lock-order lock-name...` supplies the external equivalent of
+`LOCK_ORDER` and requires at least two names.  Each name is an externally
+linked object or an existing `type::member.nested-member` role.  Object-member
+paths use canonical object identity; type-member paths use canonical type,
+member, and offset identity.  Layout-equivalent same-named types resolve to
+one semantic role, while inconsistent definitions, malformed paths, and
+unresolved names are errors.
+
+Like the source annotation, a list contributes one directed edge for each
+adjacent pair.  Source and command declarations enter the same module-wide
+graph.  Exact duplicate edges coalesce; all declarations remain visible in
+annotation dumps, and a source declaration remains the primary explanatory
+location when a command repeats it.  Distinct edges are additive even when
+they create a direct or transitive cycle.  Cycle and acquisition-violation
+proofs render source locations as `file:line:column` and command origins as
+`file:line`.
 
 `lock-role-protects-data lock-role data-name...` declares that any definitely
 held instance of one canonical type-member lock role protects the named data.
@@ -2631,9 +2649,11 @@ instruction.
 
 ### Declared order
 
-`LOCK_ORDER` accepts a sequence of at least two lock names.  Whitespace,
+Source `LOCK_ORDER` accepts a sequence of at least two lock names.  Whitespace,
 commas, or a mixture of both may separate names; leading, repeated, and
-trailing commas are errors.  A declaration:
+trailing commas are errors.  The external form is
+`declare lock-order lock-name...` and uses command words without comma
+separators.  A declaration:
 
 ```c
 _NOTE(LOCK_ORDER(A B C))
@@ -2643,10 +2663,11 @@ adds adjacent directed edges `A -> B` and `B -> C`.  Direction means permitted
 acquisition order, and reachability gives the transitive order.  Holding `B`
 while acquiring `A` therefore violates `A -> B`.
 
-After annotation resolution, `lock_order.c` builds one module-wide declared
-graph over semantic lock roles.  Object-scoped roles use canonical object
-identity.  Type-scoped roles use the owning type, member identity, and offset.
-Reader, writer, and mutex ownership modes share the same ordering graph.
+After source annotation and command resolution, `lock_order.c` builds one
+module-wide declared graph over semantic lock roles.  Object-scoped roles use
+canonical object identity.  Type-scoped roles use the owning type, member
+identity, and offset.  Reader, writer, and mutex ownership modes share the
+same ordering graph.
 
 A strongly connected declared component is invalid even when no function
 observes the cycle.  Locklint reports one deterministic warning per cyclic
@@ -2932,12 +2953,13 @@ intermediate-frame rendering remain optional future work.
 | `diagnostics_init()` | Record the shortened locklint program name used to prefix diagnostics |
 | `locklint_warning()` | Format and emit one primary warning with its stable diagnostic identifier |
 | `locklint_info()` | Emit untagged supporting information for a locklint warning |
+| `locklint_file_warning()` / `locklint_file_info()` | Emit diagnostics for external declarations that have a file and line but no Sparse source position |
 
 ### Lock order: `lock_order.c`
 
 | Function | Responsibility |
 | --- | --- |
-| `locklint_order_build()` | Build the module-wide declared graph from resolved adjacent annotation edges |
+| `locklint_order_build()` | Build the module-wide declared graph from resolved adjacent source and command declaration edges |
 | `locklint_order_report_declared_cycles()` | Diagnose cyclic components of the declared graph |
 | `locklint_order_check_declared()` | Check one held/acquired pair and report its transitive declaration proof |
 | `locklint_order_record_observed()` | Add one non-redundant held-to-acquired edge with provenance |
@@ -2945,8 +2967,8 @@ intermediate-frame rendering remain optional future work.
 
 The contextual checker now builds the declared graph before state analysis,
 reports each cyclic component, and releases the graph after analysis.
-Declaration cycles depend only on resolved `LOCK_ORDER` annotations, so this
-first lock-order increment does not inspect semantic lock state.
+Declaration cycles depend only on resolved source and command `LOCK_ORDER`
+declarations, so cycle detection does not inspect semantic lock state.
 
 Each declared vertex also owns a deduplicated list of canonical lock
 identities which source accesses have matched to that role.  This

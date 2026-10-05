@@ -606,6 +606,70 @@ run_capture "declared lock order cycle" lock-order-cycle.out \
 compare "declared lock order cycle" lock-order-cycle.ref \
     lock-order-cycle.out
 
+#
+# Verify post-parse command-file lock-order declarations, including adjacent
+# edges, duplicate declarations, source/command cycles, and resolution errors.
+#
+run_capture "command lock order annotations" command-lock-order.out \
+    "$LOCKLINT" --no-check --dump-annotations \
+    --cf command-lock-order.cf command-lock-order.c
+require_match "command lock order mixed names" \
+    "command-lock-order.cf:2: LOCK_ORDER command_order_global -> command_order_object.first -> command_order_state::third" \
+    command-lock-order.out
+if [ "$(grep -c \
+    'command-lock-order.cf:.*LOCK_ORDER command_order_state::first -> command_order_state::second' \
+    command-lock-order.out)" -ne 2 ]; then
+	fail "command lock order annotations: expected two duplicate command declarations"
+fi
+require_match "command lock order source duplicate" \
+    "command-lock-order.c:37:1: LOCK_ORDER command_order_state::first -> command_order_state::second" \
+    command-lock-order.out
+
+run_capture "command lock order equivalent types" \
+    command-lock-order-equivalent.out "$LOCKLINT" \
+    --no-check --dump-annotations \
+    --cf command-lock-order-equivalent.cf readable.c readable-other.c
+require_match "command lock order equivalent types" \
+    "command-lock-order-equivalent.cf:1: LOCK_ORDER command_global_lock -> duplicate_command_type::value" \
+    command-lock-order-equivalent.out
+
+run_capture "command lock order violation" \
+    command-lock-order-violation.out "$LOCKLINT" \
+    --cf command-lock-order-violation.cf command-lock-order.c
+compare "command lock order violation" command-lock-order-violation.ref \
+    command-lock-order-violation.out
+
+run_capture "command lock order cycle" command-lock-order-cycle.out \
+    "$LOCKLINT" --cf command-lock-order-cycle.cf command-lock-order.c
+compare "command lock order cycle" command-lock-order-cycle.ref \
+    command-lock-order-cycle.out
+
+run_failure "command lock order arity" command-lock-order-arity.out \
+    "$LOCKLINT" --cf command-lock-order-arity.cf command-lock-order.c
+require_match "command lock order arity" \
+    "declare lock-order requires at least two lock names" \
+    command-lock-order-arity.out
+
+run_failure "command lock order invalid name" command-lock-order-invalid.out \
+    "$LOCKLINT" --cf command-lock-order-invalid.cf command-lock-order.c
+require_match "command lock order invalid name" \
+    "invalid lock name 'invalid-name'" command-lock-order-invalid.out
+
+run_failure "command lock order unresolved name" \
+    command-lock-order-unresolved.out "$LOCKLINT" \
+    --cf command-lock-order-unresolved.cf command-lock-order.c
+require_match "command lock order unresolved name" \
+    "unresolved lock name 'missing_command_lock'" \
+    command-lock-order-unresolved.out
+
+run_failure "command lock order inconsistent type" \
+    command-lock-order-inconsistent.out "$LOCKLINT" \
+    --cf command-lock-order-inconsistent.cf \
+    type-name-first.c type-name-second-different.c
+require_match "command lock order inconsistent type" \
+    "inconsistently defined type in lock name 'repeated_name::value'" \
+    command-lock-order-inconsistent.out
+
 run_capture "declared lock order" lock-order.out \
     "$LOCKLINT" lock-order.c
 compare "declared lock order" lock-order.ref lock-order.out

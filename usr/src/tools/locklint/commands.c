@@ -275,6 +275,36 @@ declare_contract(int argc, char **argv)
 	}
 }
 
+static int
+declare_lock_order(int argc, char **argv)
+{
+	enum locklint_command_result result;
+	const char *problem = NULL;
+
+	if (argc < 3) {
+		return (command_parse_error(
+		    "declare lock-order requires at least two lock names"));
+	}
+	result = locklint_declare_lock_order((size_t)(argc - 1),
+	    (const char *const *)&argv[1], &problem, command_parse_path(),
+	    command_parse_line());
+	switch (result) {
+	case LOCKLINT_COMMAND_OK:
+		return (0);
+	case LOCKLINT_COMMAND_INVALID_NAME:
+		return (command_parse_error("invalid lock name '%s'", problem));
+	case LOCKLINT_COMMAND_UNRESOLVED_NAME:
+		return (command_parse_error("unresolved lock name '%s'",
+		    problem));
+	case LOCKLINT_COMMAND_INCONSISTENT_TYPE:
+		return (command_parse_error(
+		    "inconsistently defined type in lock name '%s'", problem));
+	default:
+		return (command_parse_error(
+		    "internal error resolving lock name '%s'", problem));
+	}
+}
+
 int
 cmd_assert(int argc, char **argv)
 {
@@ -298,6 +328,8 @@ cmd_declare(int argc, char **argv)
 		return (declare_targets(argc, argv));
 	if (strcmp(argv[0], "contract") == 0)
 		return (declare_contract(argc, argv));
+	if (strcmp(argv[0], "lock-order") == 0)
+		return (declare_lock_order(argc, argv));
 	if (strcmp(argv[0], "readable") != 0)
 		return (not_implemented("declare"));
 	if (argc != 2) {

@@ -83,13 +83,15 @@ enum locklint_command_result {
 
 typedef void (*locklint_order_edge_f)(const struct locklint_access *,
     const char *, const struct locklint_access *, const char *,
-    const struct position *, void *);
+    const struct position *, const char *, unsigned long, void *);
 typedef void (*locklint_visibility_target_f)(const struct locklint_access *,
     const struct expression *, void *);
 
 void locklint_annotations_enable(void);
 enum locklint_command_result locklint_declare_readable(const char *,
     const char *, unsigned long);
+enum locklint_command_result locklint_declare_lock_order(size_t,
+    const char *const *, const char **, const char *, unsigned long);
 enum locklint_command_result locklint_declare_lock_role(const char *, size_t,
     const char *const *, const char **, const char *, unsigned long);
 bool locklint_get_covering_lock(const struct locklint_access *,

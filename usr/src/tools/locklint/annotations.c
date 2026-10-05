@@ -1334,7 +1334,7 @@ clone_command_refs(const struct annotation_ref *source)
 }
 
 static enum locklint_command_result
-resolve_command_object(struct annotation *annotation, const char *name)
+resolve_command_object(struct annotation_ref **refs, const char *name)
 {
 	struct object_identity *object;
 	struct annotation_ref *ref;
@@ -1364,9 +1364,11 @@ resolve_command_object(struct annotation *annotation, const char *name)
 	ref->object = object;
 	type = root->ctype.base_type;
 	ref->owner_type = type_lookup_exact(type_compound_resolve(type));
-	if (ref->path != NULL && !resolve_command_path(ref, type))
+	if (ref->path != NULL && !resolve_command_path(ref, type)) {
+		free_command_ref(ref);
 		return (LOCKLINT_COMMAND_UNRESOLVED_NAME);
-	annotation->data = ref;
+	}
+	*refs = ref;
 	return (LOCKLINT_COMMAND_OK);
 }
 
@@ -1399,7 +1401,7 @@ locklint_declare_readable(const char *name, const char *file,
 	} else if (separator != NULL) {
 		result = resolve_command_type(&annotation->data, name, separator);
 	} else {
-		result = resolve_command_object(annotation, name);
+		result = resolve_command_object(&annotation->data, name);
 	}
 	if (result != LOCKLINT_COMMAND_OK)
 		return (result);
@@ -1410,6 +1412,59 @@ locklint_declare_readable(const char *name, const char *file,
 	*annotations_tail = annotation;
 	annotations_tail = &annotation->next;
 	index_data_policy_refs(annotation);
+	return (LOCKLINT_COMMAND_OK);
+}
+
+/*
+ * Add a command-file declaration to the resolved LOCK_ORDER list.  Type
+ * lookup may return equivalent declarations from several translation units;
+ * one canonical reference is sufficient for an analysis-wide order role.
+ */
+enum locklint_command_result
+locklint_declare_lock_order(size_t count, const char *const *names,
+    const char **problem, const char *file, unsigned long line)
+{
+	struct annotation *annotation;
+	struct annotation_ref **tail;
+	size_t i;
+
+	annotation = calloc(1, sizeof (*annotation));
+	if (annotation == NULL)
+		die("out of memory recording command-file declaration");
+	annotation->kind = ANNOTATION_LOCK_ORDER;
+	annotation->command_file = copy_string(file);
+	annotation->command_line = line;
+	tail = &annotation->order;
+
+	for (i = 0; i < count; i++) {
+		struct annotation_ref *refs = NULL;
+		struct annotation_ref *extra;
+		const char *separator = strstr(names[i], "::");
+		enum locklint_command_result result;
+
+		*problem = names[i];
+		if (separator != NULL)
+			result = resolve_command_type_name(&refs, names[i]);
+		else
+			result = resolve_command_object(&refs, names[i]);
+		if (result != LOCKLINT_COMMAND_OK) {
+			free_command_refs(annotation->order);
+			free(annotation->command_file);
+			free(annotation);
+			return (result);
+		}
+		extra = refs->next;
+		refs->next = NULL;
+		free_command_refs(extra);
+		*tail = refs;
+		tail = &refs->next;
+	}
+
+	annotation->parsed = true;
+	annotation->processed = true;
+	annotation->resolved = true;
+	*annotations_tail = annotation;
+	annotations_tail = &annotation->next;
 	return (LOCKLINT_COMMAND_OK);
 }
 
@@ -2580,9 +2635,10 @@ locklint_data_policy(const struct locklint_access *access,
 }
 
 /*
- * Present resolved adjacent LOCK_ORDER pairs without exposing parser-owned
- * annotation records.  Names are valid only for the duration of the callback;
- * resolved Sparse and identity pointers remain borrowed for the process.
+ * Present resolved adjacent LOCK_ORDER pairs and their source or command
+ * locations without exposing parser-owned annotation records.  Names are
+ * valid only for the duration of the callback; resolved Sparse and identity
+ * pointers remain borrowed for the process.
  */
 void
 locklint_for_each_order_edge(locklint_order_edge_f callback, void *data)
@@ -2620,7 +2676,11 @@ locklint_for_each_order_edge(locklint_order_edge_f callback, void *data)
 			left_name = annotation_ref_name(left);
 			right_name = annotation_ref_name(right);
 			callback(&left_access, left_name, &right_access,
-			    right_name, &annotation->pos, data);
+			    right_name,
+			    annotation->command_file == NULL ?
+			    &annotation->pos : NULL,
+			    annotation->command_file, annotation->command_line,
+			    data);
 			free(left_name);
 			free(right_name);
 		}

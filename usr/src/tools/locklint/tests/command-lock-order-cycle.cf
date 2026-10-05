@@ -1,0 +1,3 @@
+declare lock-order command_order_state::first command_order_state::second
+declare lock-order command_order_state::first command_order_state::second
+declare lock-order command_order_state::second command_order_state::first

@@ -1,0 +1,1 @@
+declare lock-order command_global_lock duplicate_command_type::value

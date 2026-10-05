@@ -69,5 +69,9 @@ void diagnostics_init(const char *);
 void locklint_warning(enum locklint_diagnostic, struct position,
     const char *, ...) FORMAT_ATTR(3);
 void locklint_info(struct position, const char *, ...) FORMAT_ATTR(2);
+void locklint_file_warning(enum locklint_diagnostic, const char *,
+    unsigned long, const char *, ...) FORMAT_ATTR(4);
+void locklint_file_info(const char *, unsigned long, const char *, ...)
+    FORMAT_ATTR(3);
 
 #endif /* LOCKLINT_DIAGNOSTICS_H */

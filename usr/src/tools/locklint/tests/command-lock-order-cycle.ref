@@ -1,0 +1,3 @@
+locklint: command-lock-order.c:37:1: warning: declared lock order contains a cycle [declared-order-cycle]
+locklint: command-lock-order.c:37:1: 'command_order_state::first' must precede 'command_order_state::second'
+locklint: command-lock-order-cycle.cf:3: 'command_order_state::second' must precede 'command_order_state::first'

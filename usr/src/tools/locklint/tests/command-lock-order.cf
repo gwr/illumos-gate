@@ -1,0 +1,6 @@
+# A list contributes adjacent edges across all supported existing name forms.
+declare lock-order command_order_global command_order_object.first command_order_state::third
+
+# Source/command and command/command duplicates remain visible declarations.
+declare lock-order command_order_state::first command_order_state::second
+declare lock-order command_order_state::first command_order_state::second

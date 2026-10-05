@@ -10,8 +10,8 @@
  */
 
 /*
- * Emit locklint diagnostics with stable identifiers and Sparse source
- * positions, independently of Sparse's parser-warning controls.
+ * Emit locklint diagnostics with stable identifiers and source or external
+ * file locations, independently of Sparse's parser-warning controls.
  */
 
 #include <stdarg.h>
@@ -140,4 +140,36 @@ locklint_info(struct position pos, const char *format, ...)
 	va_start(ap, format);
 	locklint_vmessage(pos, "", format, ap);
 	va_end(ap);
+}
+
+void
+locklint_file_warning(enum locklint_diagnostic diagnostic, const char *file,
+    unsigned long line, const char *format, ...)
+{
+	va_list ap;
+
+	if (diagnostic < 0 || diagnostic >= LOCKLINT_DIAG_COUNT ||
+	    diagnostic_names[diagnostic] == NULL)
+		die("invalid locklint diagnostic identifier");
+	(void) fflush(stdout);
+	(void) fprintf(stderr, "%s: %s:%lu: warning: ", program_name, file,
+	    line);
+	va_start(ap, format);
+	(void) vfprintf(stderr, format, ap);
+	va_end(ap);
+	(void) fprintf(stderr, " [%s]\n", diagnostic_names[diagnostic]);
+}
+
+void
+locklint_file_info(const char *file, unsigned long line, const char *format,
+    ...)
+{
+	va_list ap;
+
+	(void) fflush(stdout);
+	(void) fprintf(stderr, "%s: %s:%lu: ", program_name, file, line);
+	va_start(ap, format);
+	(void) vfprintf(stderr, format, ap);
+	va_end(ap);
+	(void) fputc('\n', stderr);
 }

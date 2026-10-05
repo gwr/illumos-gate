@@ -1,0 +1,2 @@
+locklint: command-lock-order.c:47:26: warning: lock 'command_order_state::second' acquired out of declared order while holding 'command_order_state::third' [declared-order]
+locklint: command-lock-order-violation.cf:1: declared order requires 'command_order_state::second' before 'command_order_state::third'
