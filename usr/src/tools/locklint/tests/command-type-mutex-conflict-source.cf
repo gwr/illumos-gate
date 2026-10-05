@@ -1,0 +1,1 @@
+declare mutex-protects-data command_type_state::alternate command_type_state::source_value

@@ -824,6 +824,98 @@ require_match "command mutex unresolved data" \
     command-mutex-protection-unresolved-data.out
 
 #
+# Verify same-owner type-member mutex protection across separately parsed,
+# layout-equivalent definitions without pairing unrelated type origins.
+#
+run_capture "command type mutex annotations" \
+    command-type-mutex-annotations.out "$LOCKLINT" \
+    --no-check --dump-annotations --cf command-type-mutex.cf \
+    command-type-mutex-first.c command-type-mutex-second.c
+for member in value nested.first nested.second
+do
+	if [ "$(grep -F -c \
+	    "MUTEX_PROTECTS_DATA command_type_state::lock -> command_type_state::$member" \
+	    command-type-mutex-annotations.out)" -ne 2 ]; then
+		fail "command type mutex annotations: expected two $member policies"
+	fi
+done
+if [ "$(grep -F -c \
+    'MUTEX_PROTECTS_DATA command_type_state::lock -> command_type_state::source_value' \
+    command-type-mutex-annotations.out)" -ne 5 ]; then
+	fail "command type mutex annotations: expected five duplicate source-value declarations"
+fi
+
+run_capture "command type mutex behavior" \
+    command-type-mutex.out "$LOCKLINT" \
+    --cf command-type-mutex.cf \
+    command-type-mutex-first.c command-type-mutex-second.c
+if [ "$(grep -F -c '[unprotected-access]' \
+    command-type-mutex.out)" -ne 6 ]; then
+	fail "command type mutex behavior: expected six findings"
+fi
+
+run_failure "command type mutex source conflict" \
+    command-type-mutex-conflict-source.out "$LOCKLINT" \
+    --cf command-type-mutex-conflict-source.cf \
+    command-type-mutex-first.c command-type-mutex-second.c
+require_match "command type mutex source conflict" \
+    "conflicting mutex protector for data name 'command_type_state::source_value'" \
+    command-type-mutex-conflict-source.out
+require_match "command type mutex source conflict origin" \
+    "previous declaration at command-type-mutex-first.c:23:1" \
+    command-type-mutex-conflict-source.out
+
+run_failure "command type mutex command conflict" \
+    command-type-mutex-conflict-command.out "$LOCKLINT" \
+    --cf command-type-mutex-conflict-command.cf \
+    command-type-mutex-first.c command-type-mutex-second.c
+require_match "command type mutex command conflict" \
+    "conflicting mutex protector for data name 'command_type_state::value'" \
+    command-type-mutex-conflict-command.out
+require_match "command type mutex command conflict origin" \
+    "previous declaration at command-type-mutex-conflict-command.cf:1" \
+    command-type-mutex-conflict-command.out
+
+run_failure "command type mutex mixed scope" \
+    command-type-mutex-mixed.out "$LOCKLINT" \
+    --cf command-type-mutex-mixed.cf \
+    command-type-mutex-first.c command-type-mutex-second.c
+require_match "command type mutex mixed scope" \
+    "lock and data names must both be object-specific or type-member" \
+    command-type-mutex-mixed.out
+
+run_failure "command type mutex different owner" \
+    command-type-mutex-owner.out "$LOCKLINT" \
+    --cf command-type-mutex-owner.cf \
+    command-type-mutex-first.c command-type-mutex-second.c
+require_match "command type mutex different owner" \
+    "data name 'command_other_state::value' has a different owning type from lock name 'command_type_state::lock'" \
+    command-type-mutex-owner.out
+
+run_failure "command type mutex inconsistent type" \
+    command-type-mutex-inconsistent.out "$LOCKLINT" \
+    --cf command-type-mutex-inconsistent.cf \
+    command-type-mutex-first.c command-type-mutex-different.c
+require_match "command type mutex inconsistent type" \
+    "inconsistently defined type in lock name 'command_type_state::lock'" \
+    command-type-mutex-inconsistent.out
+
+run_failure "command type mutex invalid name" \
+    command-type-mutex-invalid.out "$LOCKLINT" \
+    --cf command-type-mutex-invalid.cf \
+    command-type-mutex-first.c command-type-mutex-second.c
+require_match "command type mutex invalid name" \
+    "invalid lock name 'bad-name::lock'" command-type-mutex-invalid.out
+
+run_failure "command type mutex unresolved member" \
+    command-type-mutex-unresolved.out "$LOCKLINT" \
+    --cf command-type-mutex-unresolved.cf \
+    command-type-mutex-first.c command-type-mutex-second.c
+require_match "command type mutex unresolved member" \
+    "unresolved data name 'command_type_state::missing'" \
+    command-type-mutex-unresolved.out
+
+#
 # Verify command-file readable policy after all translation units have been
 # parsed, including a type declared separately in each translation unit.
 #

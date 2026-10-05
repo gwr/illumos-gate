@@ -1,0 +1,1 @@
+declare mutex-protects-data command_type_state::lock command_other_state::value

@@ -1313,23 +1313,31 @@ free_command_refs(struct annotation_ref *refs)
 }
 
 static struct annotation_ref *
+clone_command_ref(const struct annotation_ref *source)
+{
+	struct annotation_ref *copy;
+
+	copy = calloc(1, sizeof (*copy));
+	if (copy == NULL)
+		die("out of memory recording command-file declaration");
+	*copy = *source;
+	copy->base_name = copy_string(source->base_name);
+	copy->path = source->path != NULL ? copy_string(source->path) : NULL;
+	copy->replaces = NULL;
+	copy->replaced_by = NULL;
+	copy->next = NULL;
+	return (copy);
+}
+
+static struct annotation_ref *
 clone_command_refs(const struct annotation_ref *source)
 {
 	struct annotation_ref *head = NULL;
 	struct annotation_ref **tail = &head;
 
 	for (; source != NULL; source = source->next) {
-		struct annotation_ref *copy = calloc(1, sizeof (*copy));
+		struct annotation_ref *copy = clone_command_ref(source);
 
-		if (copy == NULL)
-			die("out of memory recording command-file declaration");
-		*copy = *source;
-		copy->base_name = copy_string(source->base_name);
-		copy->path =
-		    source->path != NULL ? copy_string(source->path) : NULL;
-		copy->replaces = NULL;
-		copy->replaced_by = NULL;
-		copy->next = NULL;
 		*tail = copy;
 		tail = &copy->next;
 	}
@@ -2407,7 +2415,10 @@ command_protection_conflict(const struct annotation_ref *lock,
 	struct data_policy_index_entry *entry;
 	const struct annotation *conflict = NULL;
 
-	if (data->object != NULL) {
+	if (data->root == NULL) {
+		data_policy_cursor_init(&cursor, DATA_POLICY_KEY_TYPE,
+		    data->member);
+	} else if (data->object != NULL) {
 		data_policy_cursor_init(&cursor, DATA_POLICY_KEY_OBJECT,
 		    data->object);
 	} else {
@@ -2466,10 +2477,68 @@ free_command_annotations(struct annotation *annotations)
 	}
 }
 
+static enum locklint_command_result
+resolve_command_protection_name(struct annotation_ref **refs,
+    const char *name, bool type_scope)
+{
+	if (type_scope)
+		return (resolve_command_type_name(refs, name));
+	return (resolve_command_object(refs, name));
+}
+
+static const struct annotation_ref *
+find_command_ref_owner(const struct annotation_ref *refs,
+    const struct ll_type *owner)
+{
+	for (; refs != NULL; refs = refs->next) {
+		if (refs->owner_type == owner)
+			return (refs);
+	}
+	return (NULL);
+}
+
+static bool
+same_command_type_name(const char *left, const char *right)
+{
+	const char *left_separator = strstr(left, "::");
+	const char *right_separator = strstr(right, "::");
+	size_t left_length;
+	size_t right_length;
+
+	if (left_separator == NULL || right_separator == NULL)
+		return (false);
+	left_length = (size_t)(left_separator - left);
+	right_length = (size_t)(right_separator - right);
+	return (left_length == right_length &&
+	    memcmp(left, right, left_length) == 0);
+}
+
+static struct annotation *
+new_command_protection(const struct annotation_ref *lock,
+    struct annotation_ref *data, const char *file, unsigned long line)
+{
+	struct annotation *annotation;
+
+	annotation = calloc(1, sizeof (*annotation));
+	if (annotation == NULL)
+		die("out of memory recording command-file declaration");
+	annotation->kind = ANNOTATION_MUTEX_PROTECTS_DATA;
+	annotation->command_file = copy_string(file);
+	annotation->command_line = line;
+	annotation->lock = clone_command_ref(lock);
+	annotation->data = data;
+	expand_data_refs(annotation);
+	annotation->parsed = true;
+	annotation->processed = true;
+	annotation->resolved = true;
+	return (annotation);
+}
+
 /*
- * Add object-specific command-file mutex protection.  Resolve and validate
- * every datum before publishing any annotation so a failed command cannot
- * partially change analysis policy.
+ * Add object-specific or same-owner type-member mutex protection.  Resolve
+ * and validate every datum before publishing any annotation so a failed
+ * command cannot partially change analysis policy.  Type references pair
+ * only with the lock reference having the same canonical owner.
  */
 enum locklint_command_result
 locklint_declare_mutex_protection(const char *lock_name, size_t data_count,
@@ -2481,50 +2550,76 @@ locklint_declare_mutex_protection(const char *lock_name, size_t data_count,
 	struct annotation *pending = NULL;
 	struct annotation **tail = &pending;
 	enum locklint_command_result result;
+	bool type_scope = strstr(lock_name, "::") != NULL;
 	size_t i;
 
 	*problem = lock_name;
-	result = resolve_command_object(&lock, lock_name);
+	result = resolve_command_protection_name(&lock, lock_name, type_scope);
 	if (result != LOCKLINT_COMMAND_OK)
 		return (result);
 
 	for (i = 0; i < data_count; i++) {
-		struct annotation *annotation;
+		struct annotation_ref *data = NULL;
 		struct annotation_ref *ref;
-		const struct annotation *conflict;
+		bool data_type_scope = strstr(data_names[i], "::") != NULL;
 
-		annotation = calloc(1, sizeof (*annotation));
-		if (annotation == NULL)
-			die("out of memory recording command-file declaration");
-		annotation->kind = ANNOTATION_MUTEX_PROTECTS_DATA;
-		annotation->command_file = copy_string(file);
-		annotation->command_line = line;
-		annotation->lock = clone_command_refs(lock);
 		*problem = data_names[i];
-		result = resolve_command_object(&annotation->data, data_names[i]);
+		if (data_type_scope != type_scope) {
+			free_command_annotations(pending);
+			free_command_refs(lock);
+			return (LOCKLINT_COMMAND_SCOPE_MISMATCH);
+		}
+		if (type_scope &&
+		    !same_command_type_name(lock_name, data_names[i])) {
+			free_command_annotations(pending);
+			free_command_refs(lock);
+			return (LOCKLINT_COMMAND_OWNER_MISMATCH);
+		}
+		result = resolve_command_protection_name(&data, data_names[i],
+		    type_scope);
 		if (result != LOCKLINT_COMMAND_OK) {
-			free_command_annotation(annotation);
 			free_command_annotations(pending);
 			free_command_refs(lock);
 			return (result);
 		}
-		expand_data_refs(annotation);
-		for (ref = annotation->data; ref != NULL; ref = ref->next) {
-			conflict = command_protection_conflict(annotation->lock,
-			    ref);
-			if (conflict != NULL) {
+
+		while (data != NULL) {
+			struct annotation *annotation;
+			struct annotation_ref *next = data->next;
+			const struct annotation_ref *paired_lock = lock;
+			const struct annotation *conflict;
+
+			data->next = NULL;
+			if (type_scope) {
+				paired_lock = find_command_ref_owner(lock,
+				    data->owner_type);
+				if (paired_lock == NULL) {
+					free_command_ref(data);
+					free_command_refs(next);
+					free_command_annotations(pending);
+					free_command_refs(lock);
+					return (LOCKLINT_COMMAND_OWNER_MISMATCH);
+				}
+			}
+			annotation = new_command_protection(paired_lock, data,
+			    file, line);
+			for (ref = annotation->data; ref != NULL;
+			    ref = ref->next) {
+				conflict = command_protection_conflict(
+				    annotation->lock, ref);
+				if (conflict == NULL)
+					continue;
 				command_origin(conflict, origin);
 				free_command_annotation(annotation);
+				free_command_refs(next);
 				free_command_annotations(pending);
 				free_command_refs(lock);
 				return (LOCKLINT_COMMAND_CONFLICT);
 			}
+			*tail = annotation;
+			tail = &annotation->next;
+			data = next;
 		}
-		annotation->parsed = true;
-		annotation->processed = true;
-		annotation->resolved = true;
-		*tail = annotation;
-		tail = &annotation->next;
 	}
 	free_command_refs(lock);
 

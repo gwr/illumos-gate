@@ -328,6 +328,10 @@ declare_mutex_protection(int argc, char **argv)
 	case LOCKLINT_COMMAND_UNRESOLVED_NAME:
 		return (command_parse_error("unresolved %s name '%s'",
 		    problem == argv[1] ? "lock" : "data", problem));
+	case LOCKLINT_COMMAND_INCONSISTENT_TYPE:
+		return (command_parse_error("inconsistently defined type in "
+		    "%s name '%s'", problem == argv[1] ? "lock" : "data",
+		    problem));
 	case LOCKLINT_COMMAND_CONFLICT:
 		if (origin.column != 0) {
 			return (command_parse_error("conflicting mutex protector "
@@ -338,6 +342,12 @@ declare_mutex_protection(int argc, char **argv)
 		return (command_parse_error("conflicting mutex protector for "
 		    "data name '%s' (previous declaration at %s:%lu)",
 		    problem, origin.file, origin.line));
+	case LOCKLINT_COMMAND_SCOPE_MISMATCH:
+		return (command_parse_error("lock and data names must both be "
+		    "object-specific or type-member"));
+	case LOCKLINT_COMMAND_OWNER_MISMATCH:
+		return (command_parse_error("data name '%s' has a different "
+		    "owning type from lock name '%s'", problem, argv[1]));
 	default:
 		return (command_parse_error(
 		    "internal error resolving mutex protection for '%s'",

@@ -1,0 +1,6 @@
+# Pair each lock member only with data from the same canonical type origin.
+declare mutex-protects-data command_type_state::lock command_type_state::value command_type_state::nested
+
+# Source/command and command/command duplicates remain visible declarations.
+declare mutex-protects-data command_type_state::lock command_type_state::source_value
+declare mutex-protects-data command_type_state::lock command_type_state::source_value

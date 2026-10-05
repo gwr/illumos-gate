@@ -1,0 +1,1 @@
+declare mutex-protects-data bad-name::lock command_type_state::value

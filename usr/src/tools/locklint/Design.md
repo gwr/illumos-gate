@@ -798,11 +798,18 @@ they create a direct or transitive cycle.  Cycle and acquisition-violation
 proofs render source locations as `file:line:column` and command origins as
 `file:line`.
 
-`declare mutex-protects-data lock-name data-name...` supplies object-specific
-mutex protection equivalent to source `MUTEX_PROTECTS_DATA`.  The lock and
-every datum must be an externally linked object or object-member path; type
-names are not accepted by this first form.  Aggregate data names expand into
-leaf policies by the same rules as source annotations.
+`declare mutex-protects-data lock-name data-name...` supplies mutex protection
+equivalent to source `MUTEX_PROTECTS_DATA`.  One command is either entirely
+object-specific, using externally linked objects and object-member paths, or
+entirely type-scoped.  In the type-scoped form every datum uses the same named
+owning type as the lock.  Aggregate data names expand into leaf policies by
+the same rules as source annotations.
+
+A type-scoped command resolves every layout-equivalent origin of the named
+type.  Each data reference pairs only with the lock reference having the same
+canonical owner-type pointer, so separately parsed definitions receive
+coherent per-origin policies rather than a Cartesian product.  Inconsistent
+layouts, mixed object/type scope, and different named owners are errors.
 
 The entire command is resolved and checked before any policy is published.
 An identical source or command declaration retains its own annotation-dump
@@ -814,8 +821,10 @@ type-scoped policies at another specificity, readable-without-lock policy,
 and read-only policy remain independent.
 
 Conflict and duplicate lookup uses the existing data-policy AVL index keyed
-by canonical object identity.  Command insertion therefore adds no persistent
-lookup collection and does not scan unrelated declarations.
+by canonical object or member identity.  Pairing performs only a temporary
+linear lookup among the resolved same-named type origins.  Command insertion
+therefore adds no persistent lookup collection and does not scan unrelated
+policies.
 
 `lock-role-protects-data lock-role data-name...` declares that any definitely
 held instance of one canonical type-member lock role protects the named data.
