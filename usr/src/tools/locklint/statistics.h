@@ -79,6 +79,7 @@ struct statistics_counts {
 	size_t lock_transition_contexts_enum;
 	size_t declared_order_contexts_enum;
 	size_t lock_assertion_contexts_enum;
+	size_t no_locks_held_assertion_contexts_enum;
 	size_t competition_underflow_contexts_enum;
 	size_t competition_effect_contexts_enum;
 	size_t competition_assertion_contexts_enum;
@@ -93,6 +94,7 @@ struct statistics_counts {
 	size_t lock_transition_point_states_enum;
 	size_t declared_order_point_states_enum;
 	size_t lock_assertion_point_states_enum;
+	size_t no_locks_held_assertion_point_states_enum;
 	size_t competition_underflow_point_states_enum;
 	size_t competition_assertion_point_states_enum;
 	size_t protected_scan_point_states_enum;

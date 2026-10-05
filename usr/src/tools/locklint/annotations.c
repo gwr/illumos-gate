@@ -2038,6 +2038,7 @@ locklint_get_execution_annotation(const struct instruction *insn)
 	case LOCKLINT_EXECUTION_LOCK_UPGRADED_EFFECT:
 	case LOCKLINT_EXECUTION_LOCK_DOWNGRADED_EFFECT:
 	case LOCKLINT_EXECUTION_ASSERT_NO_COMPETITION:
+	case LOCKLINT_EXECUTION_ASSERT_NO_LOCKS_HELD:
 	case LOCKLINT_EXECUTION_NOT_REACHED:
 		return ((enum locklint_execution_kind)insn->context_tag);
 	default:

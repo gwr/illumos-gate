@@ -2495,6 +2495,33 @@ run_capture "competition assertion diagnostics" assertion-diagnostics.out \
 compare "assertion diagnostics" assertions.ref assertion-diagnostics.out
 
 #
+# NO_LOCKS_HELD validates the complete reached lock set without changing it.
+# Report one finding at the assertion site, including when caller-held state
+# reaches a callee assertion or only some contexts hold a lock.
+#
+echo "test: no locks held assertions"
+: > no-locks-held.out
+for case in \
+    "empty 1" \
+    "released 2" \
+    "mutex 3" \
+    "reader 4" \
+    "writer 5" \
+    "conditional 6" \
+    "multiple 7" \
+    "caller 8"
+do
+    set -- $case
+    echo "case $1" >> no-locks-held.out
+    if ! "$LOCKLINT" -DNO_LOCKS_HELD_VARIANT="$2" no-locks-held.c \
+        >> no-locks-held.out 2>&1
+    then
+        fail "no locks held assertions: $1 command failed"
+    fi
+done
+compare "no locks held assertions" no-locks-held.ref no-locks-held.out
+
+#
 # Verify mutex, readable-without-lock, and scheme data-policy interaction.
 #
 run_capture "mutex data policy diagnostics" data-policy-diagnostics.out \
@@ -3055,8 +3082,8 @@ do
 	    "^statistics $statistic [0-9][0-9]*$" context-statistics.out
 done
 if [ "$(grep -c '^statistics [a-z_]* [0-9][0-9]*$' \
-    context-statistics.out)" -ne 78 ]; then
-	fail "context statistics: expected exactly seventy-eight statistics lines"
+    context-statistics.out)" -ne 80 ]; then
+	fail "context statistics: expected exactly eighty statistics lines"
 fi
 for histogram in \
     caller_recovery_first_max_depth \

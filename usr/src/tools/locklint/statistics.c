@@ -163,6 +163,7 @@ statistics_show(FILE *stream)
 	SHOW(lock_transition_contexts_enum);
 	SHOW(declared_order_contexts_enum);
 	SHOW(lock_assertion_contexts_enum);
+	SHOW(no_locks_held_assertion_contexts_enum);
 	SHOW(competition_underflow_contexts_enum);
 	SHOW(competition_effect_contexts_enum);
 	SHOW(competition_assertion_contexts_enum);
@@ -177,6 +178,7 @@ statistics_show(FILE *stream)
 	SHOW(lock_transition_point_states_enum);
 	SHOW(declared_order_point_states_enum);
 	SHOW(lock_assertion_point_states_enum);
+	SHOW(no_locks_held_assertion_point_states_enum);
 	SHOW(competition_underflow_point_states_enum);
 	SHOW(competition_assertion_point_states_enum);
 	SHOW(protected_scan_point_states_enum);

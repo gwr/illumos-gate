@@ -28,6 +28,8 @@ static const char *const diagnostic_names[LOCKLINT_DIAG_COUNT] = {
 	    "asserted-competition-requirement",
 	[LOCKLINT_DIAG_ASSERTED_LOCK_REQUIREMENT] =
 	    "asserted-lock-requirement",
+	[LOCKLINT_DIAG_ASSERTED_NO_LOCKS_HELD_REQUIREMENT] =
+	    "asserted-no-locks-held-requirement",
 	[LOCKLINT_DIAG_COMPETITION_MAYBE_UNDERFLOW] =
 	    "competition-maybe-underflow",
 	[LOCKLINT_DIAG_COMPETITION_UNDERFLOW] = "competition-underflow",
@@ -37,6 +39,8 @@ static const char *const diagnostic_names[LOCKLINT_DIAG_COUNT] = {
 	    "conditional-asserted-competition-requirement",
 	[LOCKLINT_DIAG_CONDITIONAL_ASSERTED_LOCK_REQUIREMENT] =
 	    "conditional-asserted-lock-requirement",
+	[LOCKLINT_DIAG_CONDITIONAL_ASSERTED_NO_LOCKS_HELD_REQUIREMENT] =
+	    "conditional-asserted-no-locks-held-requirement",
 	[LOCKLINT_DIAG_CONDITIONAL_PROTECTION] = "conditional-protection",
 	[LOCKLINT_DIAG_COVER_MAYBE_RELEASED_WHILE_COVERED] =
 	    "cover-maybe-released-while-covered",

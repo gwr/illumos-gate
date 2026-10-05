@@ -1,0 +1,14 @@
+case empty
+case released
+case mutex
+locklint: no-locks-held.c:79:9: warning: one or more locks are held at NO_LOCKS_HELD assertion [asserted-no-locks-held-requirement]
+case reader
+locklint: no-locks-held.c:89:9: warning: one or more locks are held at NO_LOCKS_HELD assertion [asserted-no-locks-held-requirement]
+case writer
+locklint: no-locks-held.c:99:9: warning: one or more locks are held at NO_LOCKS_HELD assertion [asserted-no-locks-held-requirement]
+case conditional
+locklint: no-locks-held.c:108:9: warning: one or more locks may be held at NO_LOCKS_HELD assertion [conditional-asserted-no-locks-held-requirement]
+case multiple
+locklint: no-locks-held.c:132:9: warning: one or more locks are held at NO_LOCKS_HELD assertion [asserted-no-locks-held-requirement]
+case caller
+locklint: no-locks-held.c:142:9: warning: one or more locks are held at NO_LOCKS_HELD assertion [asserted-no-locks-held-requirement]

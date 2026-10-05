@@ -15,7 +15,7 @@
 
 /*
  * Capture lock assertions and translate their predicates into lock-state
- * assumptions.  Competition assertions remain validation checkpoints.
+ * assumptions.  Whole-state assertions remain validation checkpoints.
  */
 
 #include <stdbool.h>
@@ -199,7 +199,8 @@ capture_assertion(const struct token *macro, const struct token *open,
 		unsigned int positive;
 		unsigned int negative;
 
-		if (token_is(token, "NO_COMPETING_THREADS"))
+		if (token_is(token, "NO_COMPETING_THREADS") ||
+		    token_is(token, "NO_LOCKS_HELD"))
 			preserve_argument = true;
 		if (!predicate_modes(token, &positive, &negative))
 			continue;
@@ -251,6 +252,9 @@ locklint_assertions_enable(void)
 	add_pre_buffer("#strong_define NO_COMPETING_THREADS "
 	    "__context__(0, 0, %lu);\n",
 	    (unsigned long)LOCKLINT_EXECUTION_ASSERT_NO_COMPETITION);
+	add_pre_buffer("#strong_define NO_LOCKS_HELD "
+	    "__context__(0, 0, %lu);\n",
+	    (unsigned long)LOCKLINT_EXECUTION_ASSERT_NO_LOCKS_HELD);
 }
 
 /*

@@ -1548,12 +1548,16 @@ access is diagnosed as unprotected.  `DATA_READABLE_WITHOUT_LOCK` continues
 to accept matching loads independently.  Explanatory scheme protection
 remains outside mechanical lock checking.
 
-`READ_ONLY_DATA` is checked independently of the selected protection
-mechanism.  A matching store is rejected only when the datum may currently be
-visible to competing threads.  A definitely invisible datum or a definite
-no-competition state permits initialization or private teardown writes.  The
-policy is based on current exposure, not a permanent seal after first
-publication; an explicit withdrawal can therefore permit later private
+`READ_ONLY_DATA` and declaration-derived const policy are checked
+independently of the selected protection mechanism.  A const-qualified direct
+object or member is read-only; const qualification on a pointer does not make
+the referenced object read-only.  Const qualification on an aggregate object
+applies to accesses to its members.  Read-only policy accepts loads without a
+protecting lock.  A matching store is rejected only when the datum may
+currently be visible to competing threads.  A definitely invisible datum or
+a definite no-competition state permits initialization or private teardown
+writes.  The policy is based on current exposure, not a permanent seal after
+first publication; an explicit withdrawal can therefore permit later private
 modification.
 
 Visibility-aware access diagnostics consume the exact state returned by
@@ -1574,6 +1578,15 @@ the assertion.  It does not refine later state, participate in a function
 effect summary, or become a caller condition.  Only the explicit
 `NO_COMPETING_THREADS_NOW` and `COMPETING_THREADS_NOW` annotations change
 competition state.
+
+`ASSERT(NO_LOCKS_HELD)` similarly validates rather than changes state.
+Locklint inspects every reached lock set and emits one finding per assertion
+site, not one per held lock.  The finding is definite only when every reached
+state has at least one definitely held lock.  If any reached state may hold a
+lock but at least one state may hold none, the finding is conditional.  This
+includes locks inherited from callers and lock modes that retain an unheld
+alternative.  The checkpoint does not release locks, contribute an effect,
+or alter subsequent lock-state analysis.
 
 Protected-access conditions express "this datum must be protected" rather
 than only "this mutex must be held."  At a resolved call, the caller may

@@ -6338,6 +6338,128 @@ diagnose_competition_assertions(void)
 	callgraph_iter_close(iterator);
 }
 
+struct no_locks_held_assertion_finding {
+	struct instruction *instruction;
+	bool may_hold;
+	bool may_be_clear;
+	avl_node_t by_instruction;
+};
+
+static int
+compare_no_locks_held_assertion(const void *left_arg, const void *right_arg)
+{
+	const struct no_locks_held_assertion_finding *left = left_arg;
+	const struct no_locks_held_assertion_finding *right = right_arg;
+
+	return (AVL_PCMP(left->instruction, right->instruction));
+}
+
+/*
+ * Validate the complete reached lock set at each NO_LOCKS_HELD assertion.
+ * Findings are aggregated by source assertion rather than by lock identity.
+ */
+static void
+diagnose_no_locks_held_assertions(void)
+{
+	struct callgraph_iter *iterator;
+	struct function_info *function;
+	avl_tree_t findings;
+	int error;
+
+	avl_create(&findings, compare_no_locks_held_assertion,
+	    sizeof (struct no_locks_held_assertion_finding),
+	    offsetof(struct no_locks_held_assertion_finding, by_instruction));
+	error = callgraph_iter_open(&iterator);
+	if (error != 0)
+		die("cannot iterate ready callgraph: %s", strerror(error));
+	while ((function = callgraph_iter_next(iterator)) != NULL) {
+		struct function_context *context;
+
+		statistics.no_locks_held_assertion_contexts_enum++;
+		for (context = avl_first(&function->contexts.contexts);
+		    context != NULL;
+		    context = AVL_NEXT(&function->contexts.contexts, context)) {
+			struct point_state *point_state;
+
+			statistics.no_locks_held_assertion_point_states_enum++;
+			for (point_state = avl_first(&context->point_states);
+			    point_state != NULL;
+			    point_state = AVL_NEXT(&context->point_states,
+			    point_state)) {
+				struct no_locks_held_assertion_finding key;
+				struct no_locks_held_assertion_finding *finding;
+				struct instruction *instruction;
+				bool definitely_held = false;
+				bool possibly_held = false;
+				avl_index_t where;
+				size_t index;
+
+				instruction =
+				    point_state->point.next_instruction;
+				if (instruction == NULL ||
+				    locklint_get_execution_annotation(instruction) !=
+				    LOCKLINT_EXECUTION_ASSERT_NO_LOCKS_HELD)
+					continue;
+				for (index = 0;
+				    index < point_state->state->locks->count;
+				    index++) {
+					unsigned int modes =
+					    point_state->state->locks->
+					    entries[index].modes;
+					unsigned int held_modes = modes &
+					    (LOCKLINT_MODE_MUTEX |
+					    LOCKLINT_MODE_READER |
+					    LOCKLINT_MODE_WRITER);
+
+					if (held_modes == 0)
+						continue;
+					possibly_held = true;
+					if ((modes & LOCKLINT_MODE_UNHELD) == 0)
+						definitely_held = true;
+				}
+				key = (struct no_locks_held_assertion_finding) {
+					.instruction = instruction
+				};
+				finding = avl_find(&findings, &key, &where);
+				if (finding == NULL) {
+					finding = calloc(1, sizeof (*finding));
+					if (finding == NULL)
+						die("cannot allocate NO_LOCKS_HELD "
+						    "assertion finding");
+					finding->instruction = instruction;
+					avl_insert(&findings, finding, where);
+				}
+				if (possibly_held)
+					finding->may_hold = true;
+				if (!definitely_held)
+					finding->may_be_clear = true;
+			}
+		}
+	}
+	callgraph_iter_close(iterator);
+	while (!avl_is_empty(&findings)) {
+		struct no_locks_held_assertion_finding *finding =
+		    avl_first(&findings);
+
+		if (finding->may_hold && finding->may_be_clear) {
+			locklint_warning(
+			    LOCKLINT_DIAG_CONDITIONAL_ASSERTED_NO_LOCKS_HELD_REQUIREMENT,
+			    finding->instruction->pos,
+			    "one or more locks may be held at "
+			    "NO_LOCKS_HELD assertion");
+		} else if (finding->may_hold) {
+			locklint_warning(
+			    LOCKLINT_DIAG_ASSERTED_NO_LOCKS_HELD_REQUIREMENT,
+			    finding->instruction->pos,
+			    "one or more locks are held at "
+			    "NO_LOCKS_HELD assertion");
+		}
+		avl_remove(&findings, finding);
+		free(finding);
+	}
+	avl_destroy(&findings);
+}
+
 struct protected_access_diagnostic {
 	struct analysis *analysis;
 	struct function_context *context;
@@ -8516,6 +8638,7 @@ analysis_run(struct lock_identity_collection *lock_identities, bool check_locks,
 		timing_end(TIMING_DIAG_DECLARED_ORDER);
 		timing_begin(TIMING_DIAG_LOCK_ASSERTIONS);
 		diagnose_lock_assertions(&analysis);
+		diagnose_no_locks_held_assertions();
 		timing_end(TIMING_DIAG_LOCK_ASSERTIONS);
 		timing_begin(TIMING_DIAG_COMPETITION_UNDERFLOW);
 		diagnose_competition_underflow();
