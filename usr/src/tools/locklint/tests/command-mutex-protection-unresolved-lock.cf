@@ -1,0 +1,1 @@
+declare mutex-protects-data missing_lock command_mutex_object.value

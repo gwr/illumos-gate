@@ -727,6 +727,103 @@ compare "data policy annotations" data-policy-annotations.ref \
     data-policy-annotations.out
 
 #
+# Verify object-specific mutex protection declared after source parsing,
+# including exact duplicates, conflicting protectors, and resolution errors.
+#
+run_capture "command mutex protection annotations" \
+    command-mutex-protection-annotations.out "$LOCKLINT" \
+    --no-check --dump-annotations \
+    --cf command-mutex-protection.cf command-mutex-protection.c
+require_match "command mutex member protection" \
+    "command-mutex-protection.cf:2: MUTEX_PROTECTS_DATA command_mutex_object.lock -> command_mutex_object.value" \
+    command-mutex-protection-annotations.out
+require_match "command mutex second member protection" \
+    "command-mutex-protection.cf:2: MUTEX_PROTECTS_DATA command_mutex_object.lock -> command_mutex_object.second" \
+    command-mutex-protection-annotations.out
+if [ "$(grep -c \
+    'MUTEX_PROTECTS_DATA command_mutex_global_lock -> command_mutex_global_value' \
+    command-mutex-protection-annotations.out)" -ne 2 ]; then
+	fail "command mutex protection annotations: expected two duplicate global declarations"
+fi
+if [ "$(grep -c \
+    'MUTEX_PROTECTS_DATA command_mutex_object.lock -> command_mutex_object.source_value' \
+    command-mutex-protection-annotations.out)" -ne 3 ]; then
+	fail "command mutex protection annotations: expected three duplicate declarations"
+fi
+
+run_capture "command mutex protection behavior" \
+    command-mutex-protection.out "$LOCKLINT" \
+    --dump-statistics --cf command-mutex-protection.cf \
+    command-mutex-protection.c
+require_match "command mutex unlocked member" \
+    "protected member 'value' read without holding 'lock'.*\\[unprotected-access\\]" \
+    command-mutex-protection.out
+require_match "command mutex unlocked second member" \
+    "protected member 'second' read without holding 'lock'.*\\[unprotected-access\\]" \
+    command-mutex-protection.out
+require_match "command mutex unlocked global" \
+    "protected member 'command_mutex_global_value' read without holding 'command_mutex_global_lock'.*\\[unprotected-access\\]" \
+    command-mutex-protection.out
+if [ "$(grep -F -c '[unprotected-access]' \
+    command-mutex-protection.out)" -ne 3 ]; then
+	fail "command mutex protection behavior: expected three findings"
+fi
+require_match "command mutex duplicate semantic policy" \
+    '^statistics data_policy_candidates 22$' \
+    command-mutex-protection.out
+
+run_failure "command mutex source conflict" \
+    command-mutex-protection-conflict-source.out "$LOCKLINT" \
+    --cf command-mutex-protection-conflict-source.cf \
+    command-mutex-protection.c
+require_match "command mutex source conflict command" \
+    "conflicting mutex protector for data name 'command_mutex_object.source_value'" \
+    command-mutex-protection-conflict-source.out
+require_match "command mutex source conflict origin" \
+    "previous declaration at command-mutex-protection.c:40:1" \
+    command-mutex-protection-conflict-source.out
+
+run_failure "command mutex command conflict" \
+    command-mutex-protection-conflict-command.out "$LOCKLINT" \
+    --cf command-mutex-protection-conflict-command.cf \
+    command-mutex-protection.c
+require_match "command mutex command conflict command" \
+    "conflicting mutex protector for data name 'command_mutex_object.value'" \
+    command-mutex-protection-conflict-command.out
+require_match "command mutex command conflict origin" \
+    "previous declaration at command-mutex-protection-conflict-command.cf:1" \
+    command-mutex-protection-conflict-command.out
+
+run_failure "command mutex protection arity" \
+    command-mutex-protection-arity.out "$LOCKLINT" \
+    --cf command-mutex-protection-arity.cf command-mutex-protection.c
+require_match "command mutex protection arity" \
+    "declare mutex-protects-data requires one lock and at least one data name" \
+    command-mutex-protection-arity.out
+
+run_failure "command mutex invalid lock" \
+    command-mutex-protection-invalid.out "$LOCKLINT" \
+    --cf command-mutex-protection-invalid.cf command-mutex-protection.c
+require_match "command mutex invalid lock" \
+    "invalid lock name 'invalid-name'" command-mutex-protection-invalid.out
+
+run_failure "command mutex unresolved lock" \
+    command-mutex-protection-unresolved-lock.out "$LOCKLINT" \
+    --cf command-mutex-protection-unresolved-lock.cf \
+    command-mutex-protection.c
+require_match "command mutex unresolved lock" \
+    "unresolved lock name 'missing_lock'" \
+    command-mutex-protection-unresolved-lock.out
+
+run_failure "command mutex unresolved data" \
+    command-mutex-protection-unresolved-data.out "$LOCKLINT" \
+    --cf command-mutex-protection-unresolved-data.cf \
+    command-mutex-protection.c
+require_match "command mutex unresolved data" \
+    "unresolved data name 'missing_data'" \
+    command-mutex-protection-unresolved-data.out
+
+#
 # Verify command-file readable policy after all translation units have been
 # parsed, including a type declared separately in each translation unit.
 #

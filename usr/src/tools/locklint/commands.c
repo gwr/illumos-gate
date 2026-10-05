@@ -305,6 +305,46 @@ declare_lock_order(int argc, char **argv)
 	}
 }
 
+static int
+declare_mutex_protection(int argc, char **argv)
+{
+	struct locklint_command_origin origin = { 0 };
+	enum locklint_command_result result;
+	const char *problem = NULL;
+
+	if (argc < 3) {
+		return (command_parse_error("declare mutex-protects-data "
+		    "requires one lock and at least one data name"));
+	}
+	result = locklint_declare_mutex_protection(argv[1],
+	    (size_t)(argc - 2), (const char *const *)&argv[2], &problem,
+	    &origin, command_parse_path(), command_parse_line());
+	switch (result) {
+	case LOCKLINT_COMMAND_OK:
+		return (0);
+	case LOCKLINT_COMMAND_INVALID_NAME:
+		return (command_parse_error("invalid %s name '%s'",
+		    problem == argv[1] ? "lock" : "data", problem));
+	case LOCKLINT_COMMAND_UNRESOLVED_NAME:
+		return (command_parse_error("unresolved %s name '%s'",
+		    problem == argv[1] ? "lock" : "data", problem));
+	case LOCKLINT_COMMAND_CONFLICT:
+		if (origin.column != 0) {
+			return (command_parse_error("conflicting mutex protector "
+			    "for data name '%s' (previous declaration at "
+			    "%s:%lu:%lu)", problem, origin.file, origin.line,
+			    origin.column));
+		}
+		return (command_parse_error("conflicting mutex protector for "
+		    "data name '%s' (previous declaration at %s:%lu)",
+		    problem, origin.file, origin.line));
+	default:
+		return (command_parse_error(
+		    "internal error resolving mutex protection for '%s'",
+		    problem));
+	}
+}
+
 int
 cmd_assert(int argc, char **argv)
 {
@@ -330,6 +370,8 @@ cmd_declare(int argc, char **argv)
 		return (declare_contract(argc, argv));
 	if (strcmp(argv[0], "lock-order") == 0)
 		return (declare_lock_order(argc, argv));
+	if (strcmp(argv[0], "mutex-protects-data") == 0)
+		return (declare_mutex_protection(argc, argv));
 	if (strcmp(argv[0], "readable") != 0)
 		return (not_implemented("declare"));
 	if (argc != 2) {

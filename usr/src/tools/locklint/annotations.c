@@ -79,6 +79,7 @@ struct annotation_ref {
 	struct annotation_ref *replaces;
 	struct annotation_ref *replaced_by;
 	struct position annotation_pos;
+	bool semantic_duplicate;
 	struct annotation_ref *next;
 };
 
@@ -228,6 +229,8 @@ index_data_policy_refs(const struct annotation *annotation)
 		struct data_policy_index_entry *entry;
 		avl_index_t where;
 
+		if (ref->semantic_duplicate)
+			continue;
 		entry = calloc(1, sizeof (*entry));
 		if (entry == NULL)
 			die("out of memory indexing data policy");
@@ -2380,6 +2383,161 @@ annotation_ref_access(const struct annotation_ref *ref,
 	access->member = ref->member != NULL ?
 	    ref->member->representative : NULL;
 	access->offset = ref->offset;
+}
+
+static bool
+is_protection_annotation(const struct annotation *annotation)
+{
+	return (annotation->kind == ANNOTATION_MUTEX_PROTECTS_DATA ||
+	    annotation->kind == ANNOTATION_RWLOCK_PROTECTS_DATA ||
+	    annotation->kind == ANNOTATION_LOCK_ROLE_PROTECTS_DATA ||
+	    annotation->kind == ANNOTATION_SCHEME_PROTECTS_DATA);
+}
+
+/*
+ * Find an exact existing protection policy through the same keyed collection
+ * used by analysis.  Additive readable and read-only policy is not a
+ * competing mechanical protector.
+ */
+static const struct annotation *
+command_protection_conflict(const struct annotation_ref *lock,
+    struct annotation_ref *data)
+{
+	struct data_policy_cursor cursor;
+	struct data_policy_index_entry *entry;
+	const struct annotation *conflict = NULL;
+
+	if (data->object != NULL) {
+		data_policy_cursor_init(&cursor, DATA_POLICY_KEY_OBJECT,
+		    data->object);
+	} else {
+		data_policy_cursor_init(&cursor, DATA_POLICY_KEY_ROOT,
+		    data->root);
+	}
+	while ((entry = data_policy_cursor_take(&cursor)) != NULL) {
+		const struct annotation *annotation = entry->annotation;
+
+		if (!is_protection_annotation(annotation) ||
+		    !same_data_ref(entry->ref, data))
+			continue;
+		if (annotation->kind == ANNOTATION_MUTEX_PROTECTS_DATA &&
+		    same_data_ref(annotation->lock, lock)) {
+			data->semantic_duplicate = true;
+			continue;
+		}
+		if (conflict == NULL)
+			conflict = annotation;
+	}
+	return (conflict);
+}
+
+static void
+command_origin(const struct annotation *annotation,
+    struct locklint_command_origin *origin)
+{
+	if (annotation->command_file != NULL) {
+		origin->file = annotation->command_file;
+		origin->line = annotation->command_line;
+		origin->column = 0;
+		return;
+	}
+	origin->file = stream_name(annotation->pos.stream);
+	origin->line = annotation->pos.line;
+	origin->column = annotation->pos.pos;
+}
+
+static void
+free_command_annotation(struct annotation *annotation)
+{
+	free_command_refs(annotation->lock);
+	free_command_refs(annotation->data);
+	free(annotation->command_file);
+	free(annotation);
+}
+
+static void
+free_command_annotations(struct annotation *annotations)
+{
+	while (annotations != NULL) {
+		struct annotation *next = annotations->next;
+
+		free_command_annotation(annotations);
+		annotations = next;
+	}
+}
+
+/*
+ * Add object-specific command-file mutex protection.  Resolve and validate
+ * every datum before publishing any annotation so a failed command cannot
+ * partially change analysis policy.
+ */
+enum locklint_command_result
+locklint_declare_mutex_protection(const char *lock_name, size_t data_count,
+    const char *const *data_names, const char **problem,
+    struct locklint_command_origin *origin, const char *file,
+    unsigned long line)
+{
+	struct annotation_ref *lock = NULL;
+	struct annotation *pending = NULL;
+	struct annotation **tail = &pending;
+	enum locklint_command_result result;
+	size_t i;
+
+	*problem = lock_name;
+	result = resolve_command_object(&lock, lock_name);
+	if (result != LOCKLINT_COMMAND_OK)
+		return (result);
+
+	for (i = 0; i < data_count; i++) {
+		struct annotation *annotation;
+		struct annotation_ref *ref;
+		const struct annotation *conflict;
+
+		annotation = calloc(1, sizeof (*annotation));
+		if (annotation == NULL)
+			die("out of memory recording command-file declaration");
+		annotation->kind = ANNOTATION_MUTEX_PROTECTS_DATA;
+		annotation->command_file = copy_string(file);
+		annotation->command_line = line;
+		annotation->lock = clone_command_refs(lock);
+		*problem = data_names[i];
+		result = resolve_command_object(&annotation->data, data_names[i]);
+		if (result != LOCKLINT_COMMAND_OK) {
+			free_command_annotation(annotation);
+			free_command_annotations(pending);
+			free_command_refs(lock);
+			return (result);
+		}
+		expand_data_refs(annotation);
+		for (ref = annotation->data; ref != NULL; ref = ref->next) {
+			conflict = command_protection_conflict(annotation->lock,
+			    ref);
+			if (conflict != NULL) {
+				command_origin(conflict, origin);
+				free_command_annotation(annotation);
+				free_command_annotations(pending);
+				free_command_refs(lock);
+				return (LOCKLINT_COMMAND_CONFLICT);
+			}
+		}
+		annotation->parsed = true;
+		annotation->processed = true;
+		annotation->resolved = true;
+		*tail = annotation;
+		tail = &annotation->next;
+	}
+	free_command_refs(lock);
+
+	while (pending != NULL) {
+		struct annotation *annotation = pending;
+
+		pending = pending->next;
+		annotation->next = NULL;
+		*annotations_tail = annotation;
+		annotations_tail = &annotation->next;
+		index_data_policy_refs(annotation);
+	}
+	return (LOCKLINT_COMMAND_OK);
 }
 
 bool

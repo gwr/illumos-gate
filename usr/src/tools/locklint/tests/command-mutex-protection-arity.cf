@@ -1,0 +1,1 @@
+declare mutex-protects-data command_mutex_object.lock

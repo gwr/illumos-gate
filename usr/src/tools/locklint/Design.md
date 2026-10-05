@@ -798,6 +798,25 @@ they create a direct or transitive cycle.  Cycle and acquisition-violation
 proofs render source locations as `file:line:column` and command origins as
 `file:line`.
 
+`declare mutex-protects-data lock-name data-name...` supplies object-specific
+mutex protection equivalent to source `MUTEX_PROTECTS_DATA`.  The lock and
+every datum must be an externally linked object or object-member path; type
+names are not accepted by this first form.  Aggregate data names expand into
+leaf policies by the same rules as source annotations.
+
+The entire command is resolved and checked before any policy is published.
+An identical source or command declaration retains its own annotation-dump
+provenance but does not add another indexed semantic policy.  A different
+mutex, readers-writer lock, lock role, or scheme protecting the same exact
+object datum is a configuration conflict, reported at the command with the
+previous declaration's location.  Policies for different objects or data,
+type-scoped policies at another specificity, readable-without-lock policy,
+and read-only policy remain independent.
+
+Conflict and duplicate lookup uses the existing data-policy AVL index keyed
+by canonical object identity.  Command insertion therefore adds no persistent
+lookup collection and does not scan unrelated declarations.
+
 `lock-role-protects-data lock-role data-name...` declares that any definitely
 held instance of one canonical type-member lock role protects the named data.
 Both the role and every datum must be type-member paths.  For example:

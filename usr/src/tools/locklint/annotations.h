@@ -78,7 +78,14 @@ enum locklint_command_result {
 	LOCKLINT_COMMAND_INVALID_NAME,
 	LOCKLINT_COMMAND_UNRESOLVED_NAME,
 	LOCKLINT_COMMAND_AMBIGUOUS_NAME,
-	LOCKLINT_COMMAND_INCONSISTENT_TYPE
+	LOCKLINT_COMMAND_INCONSISTENT_TYPE,
+	LOCKLINT_COMMAND_CONFLICT
+};
+
+struct locklint_command_origin {
+	const char *file;
+	unsigned long line;
+	unsigned long column;
 };
 
 typedef void (*locklint_order_edge_f)(const struct locklint_access *,
@@ -92,6 +99,9 @@ enum locklint_command_result locklint_declare_readable(const char *,
     const char *, unsigned long);
 enum locklint_command_result locklint_declare_lock_order(size_t,
     const char *const *, const char **, const char *, unsigned long);
+enum locklint_command_result locklint_declare_mutex_protection(const char *,
+    size_t, const char *const *, const char **,
+    struct locklint_command_origin *, const char *, unsigned long);
 enum locklint_command_result locklint_declare_lock_role(const char *, size_t,
     const char *const *, const char **, const char *, unsigned long);
 bool locklint_get_covering_lock(const struct locklint_access *,
