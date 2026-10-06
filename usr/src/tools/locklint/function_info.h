@@ -58,6 +58,22 @@ struct stored_target_demand {
 };
 
 /*
+ * One command-declared lock assertion applied at effective function entry.
+ * Formal-relative keys are rebound through ordinary call bindings; canonical
+ * object keys remain absolute.  The short name omits a formal root so
+ * diagnostics match source ASSERT() naming.
+ */
+struct entry_lock_requirement {
+	struct lock_identity_key key;
+	enum lock_analysis_object_type object_type;
+	unsigned int asserted_modes;
+	char *name;
+	char *command_file;
+	unsigned long command_line;
+	struct entry_lock_requirement *next;
+};
+
+/*
  * One exact callback assignment in a coherently initialized operation family.
  * Offsets are relative to the object returned by the setup function.
  */
@@ -93,6 +109,8 @@ struct function_info {
 	struct function_context_collection contexts;
 	struct assumed_region *assumed_regions;
 	struct assumed_region **assumed_regions_tail;
+	struct entry_lock_requirement *entry_lock_requirements;
+	struct entry_lock_requirement **entry_lock_requirements_tail;
 	struct lock_identity_key *derived_protectors;
 	size_t derived_protector_count;
 	size_t derived_protector_capacity;

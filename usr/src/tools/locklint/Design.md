@@ -886,6 +886,43 @@ declaration source is retained as callgraph-audit provenance.
 Explicit entry declarations are additive and never change the analysis-wide
 root-discovery mode.
 
+The mode-specific entry assertion commands are:
+
+```text
+assert mutex-held lock-path function-name...
+assert rw-read-held lock-path function-name...
+assert rw-write-held lock-path function-name...
+assert rw-held lock-path function-name...
+```
+
+A lock path is rooted first in a formal parameter name exactly as written in
+each selected function definition.  A bare formal may itself denote a lock;
+`formal.member` and deeper dotted paths select members through a structure
+pointer or object.  If no same-named formal exists, an exact externally linked
+global object may be selected.  `type::member` remains type-scoped role syntax
+and does not select a formal.
+
+Each command behaves as though the corresponding `ASSERT()` predicate
+appeared before the first function-body instruction.  A concrete caller
+continues only when its incoming state satisfies every declared requirement.
+A synthetic root instead seeds each accepted mode, allowing independent
+analysis without inventing a caller-visible acquire effect.  `rw-read-held`
+requires exact reader ownership, `rw-write-held` exact writer ownership, and
+`rw-held` either reader or writer ownership.
+
+Function names, every formal or global path, and the terminal lock kind are
+resolved for the complete command before any requirement is published.
+Repeated identical requirements are harmless; distinct requirements are
+conjunctive.  Diagnostics identify the originating call and cite the command
+file and line as the assertion origin.
+
+Each function owns a short linked list of normalized requirements.  Entries
+store a formal-relative or canonical global identity, byte offset, accepted
+mode mask, display name, and provenance.  Ordinary binding environments map
+formal-relative keys to caller identities.  Entry processing and diagnostics
+scan only that function's list, avoiding a program-wide lookup collection for
+an expected small number of requirements.
+
 `declare targets type::member function-name...` declares the possible
 implementations of one function-pointer member for the selected analysis.
 The type and direct member must resolve in every same-named canonical type
@@ -915,16 +952,21 @@ contracts are harmless.  A member may have declared targets or a no-lock
 contract, but not both; concrete exact targets derived from source at an
 individual call site still take precedence over the member contract.
 
-The selected next design makes no-lock-effects the implicit contract for a
+The selected design makes no-lock-effects the implicit contract for a
 function-pointer member without an explicit contract.  Rare effectful
-contracts will name a same-signature representative C function rather than
-introducing a separate contract-expression language.  The proposed forms are
+contracts name a same-signature representative C function rather than
+introducing a separate contract-expression language.  The forms are
 `declare contract type::member representative_function` and
 `_NOTE(DECLARE_CONTRACT(type::member, representative_function))`.
 Representative functions are analysis models, not runtime targets.  Their
 recognized lock assertions and declared effects describe the interface, and
 their formal and return relationships are normalized internally for
 assignment checking and call-site substitution.
+
+This representative-function mechanism is the external form for function
+lock effects.  A separate command family for acquired, released, upgraded, or
+downgraded lock expressions is intentionally not planned and should not be
+listed as an outstanding command-language gap.
 
 Under that design, contracts and targets are complementary.  Concrete
 source-derived and declared targets are validated against the member
@@ -1873,6 +1915,12 @@ with satisfying and failing observations is conditional.
 The primary warning identifies the originating call and an `info()` note
 identifies the assertion.  If a concrete context has no recoverable root
 provenance, the assertion source remains the diagnostic fallback.
+
+Command-owned entry requirements use the same contextual rule without
+manufacturing Sparse expressions or instructions.  They are applied before
+the first retained body instruction.  Diagnostics inspect each concrete
+context's unmodified entry state, aggregate by requirement and originating
+call, and render the command-file origin with `file:line` provenance.
 
 Scalar argument values are not part of function-context identity.  If an
 untracked scalar controls whether a wrapper establishes the asserted state,

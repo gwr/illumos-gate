@@ -38,13 +38,21 @@ enum callgraph_declare_result {
 	CALLGRAPH_DECLARE_INVALID_NAME,
 	CALLGRAPH_DECLARE_NOT_FUNCTION_POINTER,
 	CALLGRAPH_DECLARE_INCOMPATIBLE_TYPE,
-	CALLGRAPH_DECLARE_INCONSISTENT_TYPE
+	CALLGRAPH_DECLARE_INCONSISTENT_TYPE,
+	CALLGRAPH_DECLARE_MISSING_FORMAL,
+	CALLGRAPH_DECLARE_UNRESOLVED_PATH,
+	CALLGRAPH_DECLARE_WRONG_LOCK_TYPE
 };
 
 enum callgraph_root_discovery {
 	CALLGRAPH_ROOT_DISCOVERY_AUTO,
 	CALLGRAPH_ROOT_DISCOVERY_ALL_EXPORTED,
 	CALLGRAPH_ROOT_DISCOVERY_NONE
+};
+
+enum callgraph_assert_lock_kind {
+	CALLGRAPH_ASSERT_MUTEX,
+	CALLGRAPH_ASSERT_RWLOCK
 };
 
 /*
@@ -86,6 +94,9 @@ void callgraph_set_root_discovery(enum callgraph_root_discovery);
 enum callgraph_declare_result
 callgraph_declare_entry_no_competing_threads(const char *, const char *,
     unsigned long);
+enum callgraph_declare_result callgraph_declare_entry_lock_assertion(
+    enum callgraph_assert_lock_kind, unsigned int, const char *, size_t,
+    char **, const char *, unsigned long, const char **);
 
 /*
  * Declare whether an externally defined function is an entry from outside

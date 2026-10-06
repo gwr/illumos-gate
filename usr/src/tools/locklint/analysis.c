@@ -2790,6 +2790,74 @@ project_stored_targets(struct analysis *analysis,
 }
 
 /*
+ * Apply command-owned assertions before the first body instruction.  Caller
+ * contexts continue only when the imported state satisfies every assertion;
+ * synthetic contexts seed each allowed mode just as source ASSERT() does.
+ */
+static void
+record_context_entry(struct analysis *analysis,
+    struct function_context *context, const struct semantic_state *state,
+    const struct entry_lock_requirement *requirement)
+{
+	struct lock_identity *identity;
+	unsigned int current_modes;
+	unsigned int mode;
+	bool composed;
+	bool existed;
+	int error;
+
+	if (requirement == NULL) {
+		record_point(analysis, context, context->function->ep->entry->bb,
+		    first_live_instruction(context->function->ep->entry->bb),
+		    state, false);
+		return;
+	}
+	error = context_identity_intern(analysis, context, state,
+	    requirement->key, requirement->object_type, &identity, &existed,
+	    &composed);
+	if (error != 0)
+		die("cannot identify entry lock assertion: %s",
+		    strerror(error));
+	if (composed)
+		analysis->counts.binding_identities_composed++;
+	if (existed)
+		analysis->counts.lock_identities_reused++;
+	else
+		analysis->counts.lock_identities_created++;
+	current_modes = context_state_lock_modes(state, identity);
+	if (current_modes == 0)
+		current_modes = LOCKLINT_MODE_UNHELD;
+	if (context->kind == FUNCTION_CONTEXT_CALLER) {
+		if ((current_modes & requirement->asserted_modes) != 0) {
+			record_context_entry(analysis, context, state,
+			    requirement->next);
+		}
+		return;
+	}
+	if (current_modes != LOCKLINT_MODE_UNHELD &&
+	    (current_modes & requirement->asserted_modes) != 0) {
+		record_context_entry(analysis, context, state, requirement->next);
+		return;
+	}
+	for (mode = LOCKLINT_MODE_UNHELD;
+	    mode <= LOCKLINT_MODE_WRITER; mode <<= 1) {
+		struct semantic_state *next;
+
+		if ((requirement->asserted_modes & mode) == 0)
+			continue;
+		statistics.lock_assertion_semantic_states_find++;
+		error = context_state_set_lock(context->function, state, identity,
+		    mode == LOCKLINT_MODE_UNHELD ? 0 : mode, &next, &existed);
+		if (error != 0)
+			die("cannot apply entry lock assertion: %s",
+			    strerror(error));
+		record_semantic_state(analysis, existed);
+		record_context_entry(analysis, context, next,
+		    requirement->next);
+	}
+}
+
+/*
  * Analyze one possible callee independently.  Sharing the caller input state
  * preserves alternative target effects as separate successor states.
  */
@@ -2868,10 +2936,8 @@ process_call_target(struct analysis *analysis,
 		analysis->counts.continuations_created++;
 
 	if (!context_existed) {
-		record_point(analysis, callee_context,
-		    callee_function->ep->entry->bb,
-		    first_live_instruction(callee_function->ep->entry->bb),
-		    callee_state, false);
+		record_context_entry(analysis, callee_context, callee_state,
+		    callee_function->entry_lock_requirements);
 	}
 	record_reactivation(analysis, continuation);
 }
@@ -3445,8 +3511,8 @@ seed_root(struct analysis *analysis, struct function_info *function)
 		if (context_count(function) == 1)
 			analysis->counts.functions++;
 	}
-	record_point(analysis, context, function->ep->entry->bb,
-	    first_live_instruction(function->ep->entry->bb), state, false);
+	record_context_entry(analysis, context, state,
+	    function->entry_lock_requirements);
 }
 
 /*
@@ -3474,8 +3540,8 @@ seed_effect_context(struct analysis *analysis, struct function_info *function,
 	analysis->counts.contexts_created++;
 	if (context_count(function) == 1)
 		analysis->counts.functions++;
-	record_point(analysis, context, function->ep->entry->bb,
-	    first_live_instruction(function->ep->entry->bb), state, false);
+	record_context_entry(analysis, context, state,
+	    function->entry_lock_requirements);
 }
 
 static void
@@ -5730,6 +5796,7 @@ diagnose_acquisition_order_and_waits(struct analysis *analysis)
 struct lock_assertion_observation {
 	struct function_context *context;
 	struct instruction *assertion_instruction;
+	const struct entry_lock_requirement *entry_requirement;
 	struct locklint_access access;
 	unsigned int asserted_modes;
 	bool valid;
@@ -5747,14 +5814,20 @@ compare_lock_assertion_observation(const void *left_arg, const void *right_arg)
 	result = AVL_PCMP(left->context, right->context);
 	if (result != 0)
 		return (result);
-	return (AVL_PCMP(left->assertion_instruction,
-	    right->assertion_instruction));
+	return (AVL_PCMP(
+	    left->entry_requirement != NULL ?
+	    (const void *)left->entry_requirement :
+	    (const void *)left->assertion_instruction,
+	    right->entry_requirement != NULL ?
+	    (const void *)right->entry_requirement :
+	    (const void *)right->assertion_instruction));
 }
 
 struct lock_assertion_finding {
 	struct function_info *callee_function;
 	struct instruction *call_instruction;
 	struct instruction *assertion_instruction;
+	const struct entry_lock_requirement *entry_requirement;
 	struct locklint_access access;
 	unsigned int asserted_modes;
 	bool valid;
@@ -5772,8 +5845,13 @@ compare_lock_assertion_finding(const void *left_arg, const void *right_arg)
 	result = AVL_PCMP(left->call_instruction, right->call_instruction);
 	if (result != 0)
 		return (result);
-	return (AVL_PCMP(left->assertion_instruction,
-	    right->assertion_instruction));
+	return (AVL_PCMP(
+	    left->entry_requirement != NULL ?
+	    (const void *)left->entry_requirement :
+	    (const void *)left->assertion_instruction,
+	    right->entry_requirement != NULL ?
+	    (const void *)right->entry_requirement :
+	    (const void *)right->assertion_instruction));
 }
 
 static const char *
@@ -5806,7 +5884,8 @@ record_lock_assertion_finding(avl_tree_t *findings,
 {
 	struct lock_assertion_finding key = {
 		.call_instruction = call_instruction,
-		.assertion_instruction = observation->assertion_instruction
+		.assertion_instruction = observation->assertion_instruction,
+		.entry_requirement = observation->entry_requirement
 	};
 	struct lock_assertion_finding *finding;
 	avl_index_t where;
@@ -5820,6 +5899,7 @@ record_lock_assertion_finding(avl_tree_t *findings,
 		finding->call_instruction = call_instruction;
 		finding->assertion_instruction =
 		    observation->assertion_instruction;
+		finding->entry_requirement = observation->entry_requirement;
 		finding->access = observation->access;
 		finding->asserted_modes = observation->asserted_modes;
 		avl_insert(findings, finding, where);
@@ -5894,11 +5974,60 @@ diagnose_lock_assertions(struct analysis *analysis)
 		for (context = avl_first(&function->contexts.contexts);
 		    context != NULL;
 		    context = AVL_NEXT(&function->contexts.contexts, context)) {
+			const struct entry_lock_requirement *requirement;
 			struct point_state *point_state;
 
 			if (context->kind != FUNCTION_CONTEXT_CALLER ||
 			    !context_has_analysis_root(context))
 				continue;
+			for (requirement = function->entry_lock_requirements;
+			    requirement != NULL;
+			    requirement = requirement->next) {
+				struct lock_assertion_observation key = {
+					.context = context,
+					.entry_requirement = requirement
+				};
+				struct lock_assertion_observation *observation;
+				struct lock_identity *identity;
+				unsigned int current_modes;
+				avl_index_t where;
+				bool composed;
+				bool existed;
+
+				error = context_identity_intern(analysis, context,
+				    context->entry_state, requirement->key,
+				    requirement->object_type, &identity, &existed,
+				    &composed);
+				if (error != 0)
+					die("cannot identify command entry "
+					    "assertion diagnostic: %s",
+					    strerror(error));
+				current_modes = context_state_lock_modes(
+				    context->entry_state, identity);
+				if (current_modes == 0)
+					current_modes = LOCKLINT_MODE_UNHELD;
+				observation = avl_find(&observations, &key,
+				    &where);
+				if (observation == NULL) {
+					observation = calloc(1,
+					    sizeof (*observation));
+					if (observation == NULL)
+						die("cannot allocate command entry "
+						    "assertion observation");
+					observation->context = context;
+					observation->entry_requirement =
+					    requirement;
+					observation->asserted_modes =
+					    requirement->asserted_modes;
+					avl_insert(&observations, observation,
+					    where);
+				}
+				if ((current_modes &
+				    requirement->asserted_modes) != 0)
+					observation->valid = true;
+				else
+					observation->invalid = true;
+			}
 			statistics.lock_assertion_point_states_enum++;
 			for (point_state = avl_first(&context->point_states);
 			    point_state != NULL; point_state = AVL_NEXT(
@@ -5973,12 +6102,20 @@ diagnose_lock_assertions(struct analysis *analysis)
 		    avl_first(&findings);
 		struct instruction *assertion =
 		    finding->assertion_instruction;
-		struct position assertion_pos = assertion->call_expr != NULL ?
-		    assertion->call_expr->pos : assertion->pos;
-		char *name = locklint_access_name(&finding->access);
+		struct position assertion_pos = { .type = TOKEN_BAD };
+		char *source_name = NULL;
+		const char *name;
 		const char *mode = asserted_mode_name(
 		    finding->asserted_modes);
 
+		if (assertion != NULL) {
+			assertion_pos = assertion->call_expr != NULL ?
+			    assertion->call_expr->pos : assertion->pos;
+			source_name = locklint_access_name(&finding->access);
+			name = source_name;
+		} else {
+			name = finding->entry_requirement->name;
+		}
 		if (finding->call_instruction != NULL && finding->invalid) {
 			struct instruction *call = finding->call_instruction;
 			struct position call_pos = call->call_expr != NULL ?
@@ -6001,11 +6138,35 @@ diagnose_lock_assertions(struct analysis *analysis)
 				    "asserted %s requirement for lock '%s'",
 				    callee_name, mode, name);
 			}
-			locklint_info(assertion_pos,
-			    "asserted requirement is here");
+			if (finding->entry_requirement != NULL) {
+				locklint_file_info(
+				    finding->entry_requirement->command_file,
+				    finding->entry_requirement->command_line,
+				    "asserted requirement is here");
+			} else {
+				locklint_info(assertion_pos,
+				    "asserted requirement is here");
+			}
 		} else if (finding->call_instruction == NULL &&
 		    finding->invalid) {
-			if (finding->valid) {
+			if (finding->entry_requirement != NULL) {
+				if (finding->valid) {
+					locklint_file_warning(
+					    LOCKLINT_DIAG_CONDITIONAL_ASSERTED_LOCK_REQUIREMENT,
+					    finding->entry_requirement->command_file,
+					    finding->entry_requirement->command_line,
+					    "asserted %s requirement for lock '%s' "
+					    "is not established on every path",
+					    mode, name);
+				} else {
+					locklint_file_warning(
+					    LOCKLINT_DIAG_ASSERTED_LOCK_REQUIREMENT,
+					    finding->entry_requirement->command_file,
+					    finding->entry_requirement->command_line,
+					    "lock '%s' does not satisfy asserted %s "
+					    "requirement", name, mode);
+				}
+			} else if (finding->valid) {
 				locklint_warning(
 				    LOCKLINT_DIAG_CONDITIONAL_ASSERTED_LOCK_REQUIREMENT,
 				    assertion_pos, "asserted %s requirement for "
@@ -6018,7 +6179,7 @@ diagnose_lock_assertions(struct analysis *analysis)
 				    "asserted %s requirement", name, mode);
 			}
 		}
-		free(name);
+		free(source_name);
 		avl_remove(&findings, finding);
 		free(finding);
 	}

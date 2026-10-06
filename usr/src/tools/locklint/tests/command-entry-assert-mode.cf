@@ -1,0 +1,1 @@
+assert bad-mode state.mutex command_assert_mutex

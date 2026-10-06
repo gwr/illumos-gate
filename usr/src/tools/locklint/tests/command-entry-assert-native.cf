@@ -1,0 +1,15 @@
+# Formal member requirement on several functions.
+assert mutex-held state.mutex command_assert_mutex command_assert_mutex_second command_assert_synthetic_root
+
+# A formal that directly denotes the lock; the duplicate is harmless.
+assert mutex-held lock command_assert_direct
+assert mutex-held lock command_assert_direct
+
+# Nested formal member and canonical global object requirements.
+assert mutex-held state.nested.lock command_assert_nested
+assert mutex-held command_assert_global_lock command_assert_global
+
+# Exact readers-writer entry modes.
+assert rw-read-held state.rwlock command_assert_read
+assert rw-write-held state.rwlock command_assert_write
+assert rw-held state.rwlock command_assert_rw

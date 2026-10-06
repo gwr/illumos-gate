@@ -995,6 +995,96 @@ require_match "command rwlock protection arity" \
     command-rwlock-arity.out
 
 #
+# Verify command-declared entry assertions using formal names exactly as
+# written in each function definition.
+#
+run_capture "command entry assertion behavior" \
+    command-entry-assert-native.out "$LOCKLINT" \
+    --cf command-entry-assert-native.cf command-entry-assert-native.c
+require_match "command mutex entry assertion" \
+    "call to 'command_assert_mutex' does not satisfy asserted mutex-held requirement for lock 'mutex'.*\\[asserted-lock-requirement\\]" \
+    command-entry-assert-native.out
+require_match "command conditional mutex entry assertion" \
+    "asserted mutex-held requirement for lock 'mutex' is not established on every path calling 'command_assert_mutex'.*\\[conditional-asserted-lock-requirement\\]" \
+    command-entry-assert-native.out
+require_match "command second function entry assertion" \
+    "call to 'command_assert_mutex_second' does not satisfy asserted mutex-held requirement for lock 'mutex'.*\\[asserted-lock-requirement\\]" \
+    command-entry-assert-native.out
+require_match "command direct formal entry assertion" \
+    "call to 'command_assert_direct' does not satisfy asserted mutex-held requirement for lock 'lock'.*\\[asserted-lock-requirement\\]" \
+    command-entry-assert-native.out
+require_match "command nested formal entry assertion" \
+    "call to 'command_assert_nested' does not satisfy asserted mutex-held requirement for lock 'nested.lock'.*\\[asserted-lock-requirement\\]" \
+    command-entry-assert-native.out
+require_match "command global entry assertion" \
+    "call to 'command_assert_global' does not satisfy asserted mutex-held requirement for lock 'command_assert_global_lock'.*\\[asserted-lock-requirement\\]" \
+    command-entry-assert-native.out
+require_match "command exact reader rejects writer" \
+    "call to 'command_assert_read' does not satisfy asserted read-held requirement for lock 'rwlock'.*\\[asserted-lock-requirement\\]" \
+    command-entry-assert-native.out
+require_match "command exact writer rejects reader" \
+    "call to 'command_assert_write' does not satisfy asserted write-held requirement for lock 'rwlock'.*\\[asserted-lock-requirement\\]" \
+    command-entry-assert-native.out
+require_match "command rw held rejects unheld" \
+    "call to 'command_assert_rw' does not satisfy asserted lock-held requirement for lock 'rwlock'.*\\[asserted-lock-requirement\\]" \
+    command-entry-assert-native.out
+require_match "command assertion provenance" \
+    "command-entry-assert-native.cf:[1-9][0-9]*: asserted requirement is here" \
+    command-entry-assert-native.out
+if [ "$(grep -F -c '[asserted-lock-requirement]' \
+    command-entry-assert-native.out)" -ne 10 ]; then
+	fail "command entry assertion behavior: expected ten definite findings"
+fi
+if [ "$(grep -F -c '[conditional-asserted-lock-requirement]' \
+    command-entry-assert-native.out)" -ne 1 ]; then
+	fail "command entry assertion behavior: expected one conditional finding"
+fi
+reject_match "command synthetic root release" \
+    "command_assert_synthetic_root.*lock-not-held" \
+    command-entry-assert-native.out
+
+run_failure "command entry assertion arity" \
+    command-entry-assert-arity.out "$LOCKLINT" \
+    --cf command-entry-assert-arity.cf command-entry-assert-native.c
+require_match "command entry assertion arity" \
+    "assert mutex-held requires one lock and at least one function name" \
+    command-entry-assert-arity.out
+
+run_failure "command entry assertion mode" \
+    command-entry-assert-mode.out "$LOCKLINT" \
+    --cf command-entry-assert-mode.cf command-entry-assert-native.c
+require_match "command entry assertion mode" \
+    "unknown assert subcommand 'bad-mode'" command-entry-assert-mode.out
+
+run_failure "command entry assertion function" \
+    command-entry-assert-function.out "$LOCKLINT" \
+    --cf command-entry-assert-function.cf command-entry-assert-native.c
+require_match "command entry assertion function" \
+    "unresolved function name 'missing_command_assert_function'" \
+    command-entry-assert-function.out
+
+run_failure "command entry assertion formal" \
+    command-entry-assert-formal.out "$LOCKLINT" \
+    --cf command-entry-assert-formal.cf command-entry-assert-native.c
+require_match "command entry assertion formal" \
+    "function 'command_assert_mutex' has no formal named 'missing'" \
+    command-entry-assert-formal.out
+
+run_failure "command entry assertion member" \
+    command-entry-assert-member.out "$LOCKLINT" \
+    --cf command-entry-assert-member.cf command-entry-assert-native.c
+require_match "command entry assertion member" \
+    "unresolved lock path 'state.missing' in function 'command_assert_mutex'" \
+    command-entry-assert-member.out
+
+run_failure "command entry assertion type" \
+    command-entry-assert-type.out "$LOCKLINT" \
+    --cf command-entry-assert-type.cf command-entry-assert-native.c
+require_match "command entry assertion type" \
+    "lock path 'state.mutex' is not a readers-writer lock in function 'command_assert_mutex'" \
+    command-entry-assert-type.out
+
+#
 # Verify command-file readable policy after all translation units have been
 # parsed, including a type declared separately in each translation unit.
 #

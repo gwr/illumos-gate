@@ -21,6 +21,7 @@
 #include "annotations.h"
 #include "callgraph.h"
 #include "command_parse.h"
+#include "events.h"
 #include "lib.h"
 #include "symbol.h"
 #include "type.h"
@@ -359,9 +360,63 @@ declare_protection(int argc, char **argv,
 int
 cmd_assert(int argc, char **argv)
 {
-	(void) argc;
-	(void) argv;
-	return (not_implemented("assert"));
+	enum callgraph_assert_lock_kind kind;
+	enum callgraph_declare_result result;
+	unsigned int modes;
+	const char *problem;
+
+	if (argc == 0)
+		return (command_parse_error("assert requires a subcommand"));
+	if (strcmp(argv[0], "mutex-held") == 0) {
+		kind = CALLGRAPH_ASSERT_MUTEX;
+		modes = LOCKLINT_MODE_MUTEX;
+	} else if (strcmp(argv[0], "rw-read-held") == 0) {
+		kind = CALLGRAPH_ASSERT_RWLOCK;
+		modes = LOCKLINT_MODE_READER;
+	} else if (strcmp(argv[0], "rw-write-held") == 0) {
+		kind = CALLGRAPH_ASSERT_RWLOCK;
+		modes = LOCKLINT_MODE_WRITER;
+	} else if (strcmp(argv[0], "rw-held") == 0) {
+		kind = CALLGRAPH_ASSERT_RWLOCK;
+		modes = LOCKLINT_MODE_READER | LOCKLINT_MODE_WRITER;
+	} else {
+		return (command_parse_error("unknown assert subcommand '%s'",
+		    argv[0]));
+	}
+	if (argc < 3) {
+		return (command_parse_error("assert %s requires one lock and "
+		    "at least one function name", argv[0]));
+	}
+	result = callgraph_declare_entry_lock_assertion(kind, modes, argv[1],
+	    (size_t)(argc - 2), &argv[2], command_parse_path(),
+	    command_parse_line(), &problem);
+	switch (result) {
+	case CALLGRAPH_DECLARE_OK:
+		return (0);
+	case CALLGRAPH_DECLARE_UNRESOLVED:
+		return (command_parse_error("unresolved function name '%s'",
+		    problem));
+	case CALLGRAPH_DECLARE_AMBIGUOUS:
+		return (command_parse_error("ambiguous function name '%s'",
+		    problem));
+	case CALLGRAPH_DECLARE_MISSING_FORMAL:
+		return (command_parse_error("function '%s' has no formal named "
+		    "'%.*s'", problem, (int)(strcspn(argv[1], ".")),
+		    argv[1]));
+	case CALLGRAPH_DECLARE_UNRESOLVED_PATH:
+		return (command_parse_error("unresolved lock path '%s' in "
+		    "function '%s'", argv[1], problem));
+	case CALLGRAPH_DECLARE_WRONG_LOCK_TYPE:
+		return (command_parse_error("lock path '%s' is not a %s lock "
+		    "in function '%s'", argv[1],
+		    kind == CALLGRAPH_ASSERT_MUTEX ? "mutex" :
+		    "readers-writer", problem));
+	case CALLGRAPH_DECLARE_INVALID_NAME:
+		return (command_parse_error("invalid lock path '%s'", argv[1]));
+	default:
+		return (command_parse_error("internal error resolving lock path "
+		    "'%s' in function '%s'", argv[1], problem));
+	}
 }
 
 int

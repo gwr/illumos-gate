@@ -213,6 +213,17 @@ struct callgraph_iter {
 };
 
 static enum callgraph_state callgraph_state = CALLGRAPH_CONSTRUCTING;
+
+static char *
+copy_string(const char *text)
+{
+	char *copy = malloc(strlen(text) + 1);
+
+	if (copy == NULL)
+		die("out of memory copying callgraph string");
+	(void) strcpy(copy, text);
+	return (copy);
+}
 static enum callgraph_root_discovery root_discovery =
     CALLGRAPH_ROOT_DISCOVERY_AUTO;
 static struct callgraph_iter *open_iterators;
@@ -818,6 +829,8 @@ callgraph_add(struct translation_unit *tu, struct entrypoint *ep)
 	function->info.ep = ep;
 	function->info.assumed_regions_tail =
 	    &function->info.assumed_regions;
+	function->info.entry_lock_requirements_tail =
+	    &function->info.entry_lock_requirements;
 	context_collection_create(&function->info);
 	binding_collection_create(&function->info.bindings);
 	function->internal_linkage =
@@ -1140,6 +1153,274 @@ find_declared_function(const char *name, bool *ambiguous)
 		match = &function->info;
 	}
 	return (match);
+}
+
+static struct symbol *
+declared_function_type(const struct function_info *function)
+{
+	struct symbol *type;
+
+	type = type_node_strip(function->ep->name->ctype.base_type);
+	return (type != NULL && type->type == SYM_FN ? type : NULL);
+}
+
+static bool
+lock_type_named(struct symbol *type, enum callgraph_assert_lock_kind kind)
+{
+	static const char *const mutex_names[] = {
+		"mutex", "mutex_t", "kmutex", "kmutex_t", "pthread_mutex_t"
+	};
+	static const char *const rwlock_names[] = {
+		"rwlock", "rwlock_t", "krwlock", "krwlock_t",
+		"pthread_rwlock_t"
+	};
+	const char *const *names = kind == CALLGRAPH_ASSERT_MUTEX ?
+	    mutex_names : rwlock_names;
+	size_t count = kind == CALLGRAPH_ASSERT_MUTEX ?
+	    sizeof (mutex_names) / sizeof (mutex_names[0]) :
+	    sizeof (rwlock_names) / sizeof (rwlock_names[0]);
+
+	for (; type != NULL; type = type->ctype.base_type) {
+		size_t index;
+
+		if (type->ident == NULL)
+			continue;
+		for (index = 0; index < count; index++) {
+			if (strcmp(show_ident(type->ident), names[index]) == 0)
+				return (true);
+		}
+	}
+	return (false);
+}
+
+static struct symbol *
+entry_requirement_formal(struct function_info *function, const char *name,
+    size_t length)
+{
+	struct symbol *formal;
+	struct symbol *type = declared_function_type(function);
+
+	if (type == NULL)
+		return (NULL);
+	FOR_EACH_PTR(type->arguments, formal) {
+		const char *formal_name;
+
+		if (formal->ident == NULL)
+			continue;
+		formal_name = show_ident(formal->ident);
+		if (strlen(formal_name) == length &&
+		    memcmp(formal_name, name, length) == 0)
+			return (formal);
+	} END_FOR_EACH_PTR(formal);
+	return (NULL);
+}
+
+static bool
+resolve_entry_requirement_members(struct symbol *type, const char *path,
+    int64_t *offset, struct symbol **terminal)
+{
+	const char *component = path;
+
+	while (component != NULL && *component != '\0') {
+		const char *end = strchr(component, '.');
+		size_t length = end != NULL ? (size_t)(end - component) :
+		    strlen(component);
+		struct ident *ident;
+		struct symbol *member;
+		char *name;
+		int member_offset = 0;
+
+		type = type_node_strip(type);
+		if (type != NULL && type->type == SYM_PTR)
+			type = type_node_strip(type->ctype.base_type);
+		type = type_compound_resolve(type);
+		if (type == NULL)
+			return (false);
+		name = malloc(length + 1);
+		if (name == NULL)
+			die("out of memory resolving entry assertion");
+		(void) memcpy(name, component, length);
+		name[length] = '\0';
+		ident = built_in_ident(name);
+		free(name);
+		member = find_identifier(ident, type->symbol_list, &member_offset);
+		if (member == NULL ||
+		    (member_offset > 0 && *offset > INT64_MAX - member_offset))
+			return (false);
+		*offset += member_offset;
+		type = member->ctype.base_type;
+		*terminal = member;
+		component = end != NULL ? end + 1 : NULL;
+	}
+	return (true);
+}
+
+static enum callgraph_declare_result
+resolve_entry_requirement(struct function_info *function,
+    enum callgraph_assert_lock_kind kind, unsigned int asserted_modes,
+    const char *path, struct entry_lock_requirement *requirement)
+{
+	const char *dot = strchr(path, '.');
+	size_t base_length = dot != NULL ? (size_t)(dot - path) : strlen(path);
+	struct object_identity *object;
+	struct symbol *root;
+	struct symbol *terminal;
+	struct symbol *type;
+	const char *display_name;
+	const char *component;
+	int64_t offset = 0;
+
+	if (!valid_command_identifier(path, base_length))
+		return (CALLGRAPH_DECLARE_INVALID_NAME);
+	for (component = dot; component != NULL;) {
+		const char *start = component + 1;
+		const char *end = strchr(start, '.');
+		size_t length = end != NULL ? (size_t)(end - start) :
+		    strlen(start);
+
+		if (!valid_command_identifier(start, length))
+			return (CALLGRAPH_DECLARE_INVALID_NAME);
+		component = end;
+	}
+
+	root = entry_requirement_formal(function, path, base_length);
+	if (root != NULL) {
+		requirement->key.analysis_object = root;
+		requirement->object_type = LOCK_ANALYSIS_OBJECT_SYMBOL;
+		type = root->ctype.base_type;
+		terminal = root;
+		display_name = dot != NULL ? dot + 1 : path;
+	} else {
+		char *base = malloc(base_length + 1);
+
+		if (base == NULL)
+			die("out of memory resolving entry assertion");
+		(void) memcpy(base, path, base_length);
+		base[base_length] = '\0';
+		object = locklint_external_object(base, &root);
+		free(base);
+		if (object == NULL)
+			return (CALLGRAPH_DECLARE_MISSING_FORMAL);
+		requirement->key.analysis_object = object;
+		requirement->object_type =
+		    LOCK_ANALYSIS_OBJECT_OBJECT_IDENTITY;
+		type = root->ctype.base_type;
+		terminal = root;
+		display_name = path;
+	}
+	if (dot != NULL &&
+	    !resolve_entry_requirement_members(type, dot + 1, &offset,
+	    &terminal))
+		return (CALLGRAPH_DECLARE_UNRESOLVED_PATH);
+	requirement->key.target_offset = offset;
+	type = terminal->ctype.base_type;
+	if (!lock_type_named(type, kind))
+		return (CALLGRAPH_DECLARE_WRONG_LOCK_TYPE);
+	requirement->asserted_modes = asserted_modes;
+	requirement->name = copy_string(display_name);
+	return (CALLGRAPH_DECLARE_OK);
+}
+
+static bool
+same_entry_requirement(const struct entry_lock_requirement *left,
+    const struct entry_lock_requirement *right)
+{
+	return (left->key.analysis_object == right->key.analysis_object &&
+	    left->key.target_offset == right->key.target_offset &&
+	    left->object_type == right->object_type &&
+	    left->asserted_modes == right->asserted_modes);
+}
+
+struct pending_entry_requirement {
+	struct function_info *function;
+	struct entry_lock_requirement requirement;
+	struct pending_entry_requirement *next;
+};
+
+/*
+ * Resolve every named function and lock path before publishing any entry
+ * requirement.  Exact repeats are harmless and retain the first origin.
+ */
+enum callgraph_declare_result
+callgraph_declare_entry_lock_assertion(enum callgraph_assert_lock_kind kind,
+    unsigned int asserted_modes, const char *path, size_t function_count,
+    char **function_names, const char *file, unsigned long line,
+    const char **problem)
+{
+	struct pending_entry_requirement *pending = NULL;
+	struct pending_entry_requirement **tail = &pending;
+	enum callgraph_declare_result result = CALLGRAPH_DECLARE_OK;
+	size_t index;
+
+	require_state(CALLGRAPH_CONSTRUCTING, "entry lock assertion");
+	for (index = 0; index < function_count; index++) {
+		struct pending_entry_requirement *candidate;
+		struct function_info *function;
+		bool ambiguous;
+
+		*problem = function_names[index];
+		function = find_declared_function(function_names[index],
+		    &ambiguous);
+		if (ambiguous) {
+			result = CALLGRAPH_DECLARE_AMBIGUOUS;
+			break;
+		}
+		if (function == NULL) {
+			result = CALLGRAPH_DECLARE_UNRESOLVED;
+			break;
+		}
+		candidate = calloc(1, sizeof (*candidate));
+		if (candidate == NULL)
+			die("out of memory recording entry assertion");
+		candidate->function = function;
+		result = resolve_entry_requirement(function, kind,
+		    asserted_modes, path, &candidate->requirement);
+		if (result != CALLGRAPH_DECLARE_OK) {
+			free(candidate);
+			break;
+		}
+		candidate->requirement.command_file = copy_string(file);
+		candidate->requirement.command_line = line;
+		*tail = candidate;
+		tail = &candidate->next;
+	}
+	if (result == CALLGRAPH_DECLARE_OK) {
+		struct pending_entry_requirement *candidate;
+
+		for (candidate = pending; candidate != NULL;
+		    candidate = candidate->next) {
+			struct entry_lock_requirement *existing;
+
+			for (existing =
+			    candidate->function->entry_lock_requirements;
+			    existing != NULL; existing = existing->next) {
+				if (same_entry_requirement(existing,
+				    &candidate->requirement))
+					break;
+			}
+			if (existing != NULL)
+				continue;
+			existing = calloc(1, sizeof (*existing));
+			if (existing == NULL)
+				die("out of memory publishing entry assertion");
+			*existing = candidate->requirement;
+			candidate->requirement.name = NULL;
+			candidate->requirement.command_file = NULL;
+			*candidate->function->entry_lock_requirements_tail =
+			    existing;
+			candidate->function->entry_lock_requirements_tail =
+			    &existing->next;
+		}
+	}
+	while (pending != NULL) {
+		struct pending_entry_requirement *next = pending->next;
+
+		free(pending->requirement.name);
+		free(pending->requirement.command_file);
+		free(pending);
+		pending = next;
+	}
+	return (result);
 }
 
 static struct symbol *
@@ -2766,6 +3047,16 @@ callgraph_cleanup(void)
 			free(region->name);
 			free(region->mutex_name);
 			free(region);
+		}
+		while (functions->info.entry_lock_requirements != NULL) {
+			struct entry_lock_requirement *requirement =
+			    functions->info.entry_lock_requirements;
+
+			functions->info.entry_lock_requirements =
+			    requirement->next;
+			free(requirement->name);
+			free(requirement->command_file);
+			free(requirement);
 		}
 		free(functions);
 		functions = next;
