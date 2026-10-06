@@ -916,6 +916,85 @@ require_match "command type mutex unresolved member" \
     command-type-mutex-unresolved.out
 
 #
+# Verify that external readers-writer protection reuses object/type
+# resolution while enforcing read-held reads and write-held modifications.
+#
+run_capture "command rwlock protection annotations" \
+    command-rwlock-protection-annotations.out "$LOCKLINT" \
+    --no-check --dump-annotations \
+    --cf command-rwlock-protection.cf command-rwlock-protection.c
+if [ "$(grep -F -c \
+    'RWLOCK_PROTECTS_DATA command_rwlock_state::lock -> command_rwlock_state::value' \
+    command-rwlock-protection-annotations.out)" -ne 2 ]; then
+	fail "command rwlock annotations: expected two value declarations"
+fi
+if [ "$(grep -F -c \
+    'RWLOCK_PROTECTS_DATA command_rwlock_state::lock -> command_rwlock_state::duplicate' \
+    command-rwlock-protection-annotations.out)" -ne 3 ]; then
+	fail "command rwlock annotations: expected three duplicate declarations"
+fi
+require_match "command rwlock global annotation" \
+    "command-rwlock-protection.cf:8: RWLOCK_PROTECTS_DATA command_rwlock_global_lock -> command_rwlock_global_value" \
+    command-rwlock-protection-annotations.out
+
+run_capture "command rwlock protection behavior" \
+    command-rwlock-protection.out "$LOCKLINT" \
+    --cf command-rwlock-protection.cf command-rwlock-protection.c
+require_match "command rwlock unlocked read" \
+    "protected member 'value' read without read-holding 'lock'.*\\[unprotected-access\\]" \
+    command-rwlock-protection.out
+require_match "command rwlock unlocked write" \
+    "protected member 'value' modified without write-holding 'lock'.*\\[unprotected-access\\]" \
+    command-rwlock-protection.out
+require_match "command rwlock reader write" \
+    "required lock 'lock' is read-held; write-holding is required" \
+    command-rwlock-protection.out
+require_match "command rwlock unlocked global" \
+    "protected member 'command_rwlock_global_value' read without read-holding 'command_rwlock_global_lock'.*\\[unprotected-access\\]" \
+    command-rwlock-protection.out
+if [ "$(grep -F -c '[unprotected-access]' \
+    command-rwlock-protection.out)" -ne 4 ]; then
+	fail "command rwlock protection behavior: expected four findings"
+fi
+
+run_failure "command rwlock source conflict" \
+    command-rwlock-conflict-source.out "$LOCKLINT" \
+    --cf command-rwlock-conflict-source.cf command-rwlock-protection.c
+require_match "command rwlock source conflict" \
+    "conflicting rwlock protector for data name 'command_rwlock_state::duplicate'" \
+    command-rwlock-conflict-source.out
+require_match "command rwlock source conflict origin" \
+    "previous declaration at command-rwlock-protection.c:44:1" \
+    command-rwlock-conflict-source.out
+
+run_failure "command rwlock mutex conflict" \
+    command-rwlock-conflict-mutex.out "$LOCKLINT" \
+    --cf command-rwlock-conflict-mutex.cf command-rwlock-protection.c
+require_match "command rwlock mutex conflict" \
+    "conflicting rwlock protector for data name 'command_rwlock_state::mutex_value'" \
+    command-rwlock-conflict-mutex.out
+require_match "command rwlock mutex conflict origin" \
+    "previous declaration at command-rwlock-protection.c:46:1" \
+    command-rwlock-conflict-mutex.out
+
+run_failure "command rwlock command conflict" \
+    command-rwlock-conflict-command.out "$LOCKLINT" \
+    --cf command-rwlock-conflict-command.cf command-rwlock-protection.c
+require_match "command rwlock command conflict" \
+    "conflicting rwlock protector for data name 'command_rwlock_state::value'" \
+    command-rwlock-conflict-command.out
+require_match "command rwlock command conflict origin" \
+    "previous declaration at command-rwlock-conflict-command.cf:1" \
+    command-rwlock-conflict-command.out
+
+run_failure "command rwlock protection arity" \
+    command-rwlock-arity.out "$LOCKLINT" \
+    --cf command-rwlock-arity.cf command-rwlock-protection.c
+require_match "command rwlock protection arity" \
+    "declare rwlock-protects-data requires one lock and at least one data name" \
+    command-rwlock-arity.out
+
+#
 # Verify command-file readable policy after all translation units have been
 # parsed, including a type declared separately in each translation unit.
 #

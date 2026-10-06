@@ -1,0 +1,2 @@
+declare rwlock-protects-data command_rwlock_state::lock command_rwlock_state::value
+declare rwlock-protects-data command_rwlock_state::alternate command_rwlock_state::value

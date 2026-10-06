@@ -798,12 +798,14 @@ they create a direct or transitive cycle.  Cycle and acquisition-violation
 proofs render source locations as `file:line:column` and command origins as
 `file:line`.
 
-`declare mutex-protects-data lock-name data-name...` supplies mutex protection
-equivalent to source `MUTEX_PROTECTS_DATA`.  One command is either entirely
-object-specific, using externally linked objects and object-member paths, or
-entirely type-scoped.  In the type-scoped form every datum uses the same named
-owning type as the lock.  Aggregate data names expand into leaf policies by
-the same rules as source annotations.
+`declare mutex-protects-data lock-name data-name...` and
+`declare rwlock-protects-data lock-name data-name...` supply mechanical
+protection equivalent to source `MUTEX_PROTECTS_DATA` and
+`RWLOCK_PROTECTS_DATA`.  One command is either entirely object-specific,
+using externally linked objects and object-member paths, or entirely
+type-scoped.  In the type-scoped form every datum uses the same named owning
+type as the lock.  Aggregate data names expand into leaf policies by the same
+rules as source annotations.
 
 A type-scoped command resolves every layout-equivalent origin of the named
 type.  Each data reference pairs only with the lock reference having the same
@@ -815,10 +817,16 @@ The entire command is resolved and checked before any policy is published.
 An identical source or command declaration retains its own annotation-dump
 provenance but does not add another indexed semantic policy.  A different
 mutex, readers-writer lock, lock role, or scheme protecting the same exact
-object datum is a configuration conflict, reported at the command with the
-previous declaration's location.  Policies for different objects or data,
-type-scoped policies at another specificity, readable-without-lock policy,
-and read-only policy remain independent.
+object or type-member datum is a configuration conflict, reported at the
+command with the previous declaration's location.  Policies for different
+objects or data, type-scoped policies at another specificity,
+readable-without-lock policy, and read-only policy remain independent.
+
+Mutex-protected reads and writes require the mutex held.  Readers-writer
+protection uses the existing source-policy modes: a read requires read or
+write ownership, while a modification requires write ownership.  A
+reader-held modification therefore emits the ordinary unprotected-access
+warning and its existing wrong-mode explanation.
 
 Conflict and duplicate lookup uses the existing data-policy AVL index keyed
 by canonical object or member identity.  Pairing performs only a temporary

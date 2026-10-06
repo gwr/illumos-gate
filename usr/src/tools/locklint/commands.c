@@ -306,17 +306,19 @@ declare_lock_order(int argc, char **argv)
 }
 
 static int
-declare_mutex_protection(int argc, char **argv)
+declare_protection(int argc, char **argv,
+    enum locklint_protection protection, const char *command,
+    const char *protector)
 {
 	struct locklint_command_origin origin = { 0 };
 	enum locklint_command_result result;
 	const char *problem = NULL;
 
 	if (argc < 3) {
-		return (command_parse_error("declare mutex-protects-data "
-		    "requires one lock and at least one data name"));
+		return (command_parse_error("declare %s requires one lock and "
+		    "at least one data name", command));
 	}
-	result = locklint_declare_mutex_protection(argv[1],
+	result = locklint_declare_protection(protection, argv[1],
 	    (size_t)(argc - 2), (const char *const *)&argv[2], &problem,
 	    &origin, command_parse_path(), command_parse_line());
 	switch (result) {
@@ -334,14 +336,14 @@ declare_mutex_protection(int argc, char **argv)
 		    problem));
 	case LOCKLINT_COMMAND_CONFLICT:
 		if (origin.column != 0) {
-			return (command_parse_error("conflicting mutex protector "
+			return (command_parse_error("conflicting %s protector "
 			    "for data name '%s' (previous declaration at "
-			    "%s:%lu:%lu)", problem, origin.file, origin.line,
-			    origin.column));
+			    "%s:%lu:%lu)", protector, problem, origin.file,
+			    origin.line, origin.column));
 		}
-		return (command_parse_error("conflicting mutex protector for "
+		return (command_parse_error("conflicting %s protector for "
 		    "data name '%s' (previous declaration at %s:%lu)",
-		    problem, origin.file, origin.line));
+		    protector, problem, origin.file, origin.line));
 	case LOCKLINT_COMMAND_SCOPE_MISMATCH:
 		return (command_parse_error("lock and data names must both be "
 		    "object-specific or type-member"));
@@ -349,9 +351,8 @@ declare_mutex_protection(int argc, char **argv)
 		return (command_parse_error("data name '%s' has a different "
 		    "owning type from lock name '%s'", problem, argv[1]));
 	default:
-		return (command_parse_error(
-		    "internal error resolving mutex protection for '%s'",
-		    problem));
+		return (command_parse_error("internal error resolving %s "
+		    "protection for '%s'", protector, problem));
 	}
 }
 
@@ -380,8 +381,16 @@ cmd_declare(int argc, char **argv)
 		return (declare_contract(argc, argv));
 	if (strcmp(argv[0], "lock-order") == 0)
 		return (declare_lock_order(argc, argv));
-	if (strcmp(argv[0], "mutex-protects-data") == 0)
-		return (declare_mutex_protection(argc, argv));
+	if (strcmp(argv[0], "mutex-protects-data") == 0) {
+		return (declare_protection(argc, argv,
+		    LOCKLINT_PROTECTION_MUTEX, "mutex-protects-data",
+		    "mutex"));
+	}
+	if (strcmp(argv[0], "rwlock-protects-data") == 0) {
+		return (declare_protection(argc, argv,
+		    LOCKLINT_PROTECTION_RWLOCK, "rwlock-protects-data",
+		    "rwlock"));
+	}
 	if (strcmp(argv[0], "readable") != 0)
 		return (not_implemented("declare"));
 	if (argc != 2) {

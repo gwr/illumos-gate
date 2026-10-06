@@ -1,0 +1,8 @@
+# Type-member policy and an exact source duplicate.
+declare rwlock-protects-data command_rwlock_state::lock command_rwlock_state::value command_rwlock_state::duplicate
+
+# Repeating both policies is semantically harmless.
+declare rwlock-protects-data command_rwlock_state::lock command_rwlock_state::value command_rwlock_state::duplicate
+
+# Global-object policy.
+declare rwlock-protects-data command_rwlock_global_lock command_rwlock_global_value

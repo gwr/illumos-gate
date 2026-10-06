@@ -2408,8 +2408,8 @@ is_protection_annotation(const struct annotation *annotation)
  * competing mechanical protector.
  */
 static const struct annotation *
-command_protection_conflict(const struct annotation_ref *lock,
-    struct annotation_ref *data)
+command_protection_conflict(enum annotation_kind kind,
+    const struct annotation_ref *lock, struct annotation_ref *data)
 {
 	struct data_policy_cursor cursor;
 	struct data_policy_index_entry *entry;
@@ -2431,7 +2431,7 @@ command_protection_conflict(const struct annotation_ref *lock,
 		if (!is_protection_annotation(annotation) ||
 		    !same_data_ref(entry->ref, data))
 			continue;
-		if (annotation->kind == ANNOTATION_MUTEX_PROTECTS_DATA &&
+		if (annotation->kind == kind &&
 		    same_data_ref(annotation->lock, lock)) {
 			data->semantic_duplicate = true;
 			continue;
@@ -2514,15 +2514,16 @@ same_command_type_name(const char *left, const char *right)
 }
 
 static struct annotation *
-new_command_protection(const struct annotation_ref *lock,
-    struct annotation_ref *data, const char *file, unsigned long line)
+new_command_protection(enum annotation_kind kind,
+    const struct annotation_ref *lock, struct annotation_ref *data,
+    const char *file, unsigned long line)
 {
 	struct annotation *annotation;
 
 	annotation = calloc(1, sizeof (*annotation));
 	if (annotation == NULL)
 		die("out of memory recording command-file declaration");
-	annotation->kind = ANNOTATION_MUTEX_PROTECTS_DATA;
+	annotation->kind = kind;
 	annotation->command_file = copy_string(file);
 	annotation->command_line = line;
 	annotation->lock = clone_command_ref(lock);
@@ -2535,24 +2536,35 @@ new_command_protection(const struct annotation_ref *lock,
 }
 
 /*
- * Add object-specific or same-owner type-member mutex protection.  Resolve
- * and validate every datum before publishing any annotation so a failed
- * command cannot partially change analysis policy.  Type references pair
- * only with the lock reference having the same canonical owner.
+ * Add object-specific or same-owner type-member mechanical protection.
+ * Resolve and validate every datum before publishing any annotation so a
+ * failed command cannot partially change analysis policy.  Type references
+ * pair only with the lock reference having the same canonical owner.
  */
 enum locklint_command_result
-locklint_declare_mutex_protection(const char *lock_name, size_t data_count,
-    const char *const *data_names, const char **problem,
-    struct locklint_command_origin *origin, const char *file,
-    unsigned long line)
+locklint_declare_protection(enum locklint_protection protection,
+    const char *lock_name, size_t data_count, const char *const *data_names,
+    const char **problem, struct locklint_command_origin *origin,
+    const char *file, unsigned long line)
 {
 	struct annotation_ref *lock = NULL;
 	struct annotation *pending = NULL;
 	struct annotation **tail = &pending;
+	enum annotation_kind kind;
 	enum locklint_command_result result;
 	bool type_scope = strstr(lock_name, "::") != NULL;
 	size_t i;
 
+	switch (protection) {
+	case LOCKLINT_PROTECTION_MUTEX:
+		kind = ANNOTATION_MUTEX_PROTECTS_DATA;
+		break;
+	case LOCKLINT_PROTECTION_RWLOCK:
+		kind = ANNOTATION_RWLOCK_PROTECTS_DATA;
+		break;
+	default:
+		die("invalid command-file protection kind");
+	}
 	*problem = lock_name;
 	result = resolve_command_protection_name(&lock, lock_name, type_scope);
 	if (result != LOCKLINT_COMMAND_OK)
@@ -2601,12 +2613,12 @@ locklint_declare_mutex_protection(const char *lock_name, size_t data_count,
 					return (LOCKLINT_COMMAND_OWNER_MISMATCH);
 				}
 			}
-			annotation = new_command_protection(paired_lock, data,
-			    file, line);
+			annotation = new_command_protection(kind, paired_lock,
+			    data, file, line);
 			for (ref = annotation->data; ref != NULL;
 			    ref = ref->next) {
 				conflict = command_protection_conflict(
-				    annotation->lock, ref);
+				    kind, annotation->lock, ref);
 				if (conflict == NULL)
 					continue;
 				command_origin(conflict, origin);

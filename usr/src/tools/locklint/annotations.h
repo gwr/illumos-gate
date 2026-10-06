@@ -101,8 +101,9 @@ enum locklint_command_result locklint_declare_readable(const char *,
     const char *, unsigned long);
 enum locklint_command_result locklint_declare_lock_order(size_t,
     const char *const *, const char **, const char *, unsigned long);
-enum locklint_command_result locklint_declare_mutex_protection(const char *,
-    size_t, const char *const *, const char **,
+enum locklint_command_result locklint_declare_protection(
+    enum locklint_protection, const char *, size_t, const char *const *,
+    const char **,
     struct locklint_command_origin *, const char *, unsigned long);
 enum locklint_command_result locklint_declare_lock_role(const char *, size_t,
     const char *const *, const char **, const char *, unsigned long);

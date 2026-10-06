@@ -1,0 +1,1 @@
+declare rwlock-protects-data command_rwlock_state::alternate command_rwlock_state::duplicate
