@@ -89,6 +89,8 @@ LOCAL_OBJS = \
 	commands.o \
 	diagnostics.o \
 	dump.o \
+	output.o \
+	protection_audit.o \
 	events.o \
 	sync_api.o \
 	identity.o \
@@ -141,7 +143,7 @@ CMD_PARSE_TEST_OBJS = command_parse.o command_parse_test.o
 command_parse_test: $(CMD_PARSE_TEST_OBJS)
 	$(LINK.c) -o $@ $(CMD_PARSE_TEST_OBJS) $(LDLIBS)
 
-TYPE_SUPPORT_OBJS = type.o diagnostics.o dump.o statistics.o avl.o \
+TYPE_SUPPORT_OBJS = type.o diagnostics.o dump.o output.o statistics.o avl.o \
 	$(SPARSE_OBJS) hashtable.o
 
 LOCK_ID_TEST_OBJS = lock_identity_test.o lock_identity.o \
@@ -178,6 +180,11 @@ TYPE_TEST_OBJS = type_test.o $(TYPE_SUPPORT_OBJS)
 type_test: $(TYPE_TEST_OBJS)
 	$(LINK.c) -o $@ $(TYPE_TEST_OBJS) $(LDLIBS)
 
+PROTECTION_AUDIT_TEST_OBJS = protection_audit_test.o protection_audit.o \
+	access.o identity.o $(TYPE_SUPPORT_OBJS)
+protection_audit_test: $(PROTECTION_AUDIT_TEST_OBJS)
+	$(LINK.c) -o $@ $(PROTECTION_AUDIT_TEST_OBJS) $(LDLIBS)
+
 kmodtest: FRC
 	(cd kmod && ./RunTests.sh)
 
@@ -186,7 +193,7 @@ test: $(PROG) unittest FRC
 
 UNITTESTS = command_parse_test lock_identity_test sync_api_test \
 	binding_test context_test worklist_test dependency_test provenance_test \
-	type_test
+	type_test protection_audit_test
 unittest: $(UNITTESTS) FRC
 	./command_parse_test command_parse_test.in
 	./lock_identity_test
@@ -197,6 +204,7 @@ unittest: $(UNITTESTS) FRC
 	./dependency_test
 	./provenance_test
 	./type_test
+	./protection_audit_test
 
 clean: FRC
 	$(RM) -f $(PROG) version.h *.o

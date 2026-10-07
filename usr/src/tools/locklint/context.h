@@ -289,6 +289,8 @@ size_t context_visibility_sets_created(struct function_info *);
 size_t context_visibility_sets_reused(struct function_info *);
 size_t context_state_count(struct function_info *);
 size_t context_state_lock_count(const struct semantic_state *);
+bool context_state_lock_at(const struct semantic_state *, size_t,
+    const struct lock_identity **, unsigned int *);
 unsigned int context_state_lock_modes(const struct semantic_state *,
     const struct lock_identity *);
 unsigned int context_state_lock_role_modes(const struct semantic_state *,

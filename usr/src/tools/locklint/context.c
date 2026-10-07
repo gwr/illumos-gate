@@ -1643,6 +1643,20 @@ context_state_lock_count(const struct semantic_state *state)
 	return (state->locks->count);
 }
 
+/*
+ * Enumerate the immutable lock set without exposing its representation.
+ */
+bool
+context_state_lock_at(const struct semantic_state *state, size_t index,
+    const struct lock_identity **lock, unsigned int *modes)
+{
+	if (index >= state->locks->count)
+		return (false);
+	*lock = state->locks->entries[index].lock;
+	*modes = state->locks->entries[index].modes;
+	return (true);
+}
+
 unsigned int
 context_state_lock_modes(const struct semantic_state *state,
     const struct lock_identity *lock)

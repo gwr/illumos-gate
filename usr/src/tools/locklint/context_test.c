@@ -602,6 +602,10 @@ test_lock_state_interning(void)
 	    (const struct lock_identity *)&identities[0];
 	const struct lock_identity *second =
 	    (const struct lock_identity *)&identities[1];
+	const struct lock_identity *enumerated_first;
+	const struct lock_identity *enumerated_second;
+	unsigned int enumerated_first_modes;
+	unsigned int enumerated_second_modes;
 	struct semantic_state *empty;
 	struct semantic_state *first_held;
 	struct semantic_state *first_second;
@@ -615,6 +619,8 @@ test_lock_state_interning(void)
 	error = context_empty_state_intern(&function, &empty, &existed);
 	check(error == 0, "create empty state for lock sets");
 	check(context_state_lock_count(empty) == 0, "empty state has no locks");
+	check(!context_state_lock_at(empty, 0, &enumerated_first,
+	    &enumerated_first_modes), "empty lock state has no first entry");
 
 	error = context_state_set_lock(&function, empty, first, 1,
 	    &first_held, &existed);
@@ -623,6 +629,13 @@ test_lock_state_interning(void)
 	    "one-lock state has one lock");
 	check(context_state_lock_modes(first_held, first) == 1,
 	    "one-lock state records modes");
+	check(context_state_lock_at(first_held, 0, &enumerated_first,
+	    &enumerated_first_modes) && enumerated_first == first &&
+	    enumerated_first_modes == 1,
+	    "one-lock state enumerates identity and modes");
+	check(!context_state_lock_at(first_held, 1, &enumerated_first,
+	    &enumerated_first_modes),
+	    "one-lock state rejects out-of-range enumeration");
 	check(context_state_lock_modes(empty, first) == 0,
 	    "lock transition preserves empty state");
 
@@ -641,6 +654,16 @@ test_lock_state_interning(void)
 	    &same, &existed);
 	check(error == 0 && existed && same == first_second,
 	    "lock insertion order reuses canonical state");
+	check(context_state_lock_at(first_second, 0, &enumerated_first,
+	    &enumerated_first_modes) &&
+	    context_state_lock_at(first_second, 1, &enumerated_second,
+	    &enumerated_second_modes) &&
+	    enumerated_first != enumerated_second &&
+	    ((enumerated_first == first && enumerated_first_modes == 1 &&
+	    enumerated_second == second && enumerated_second_modes == 2) ||
+	    (enumerated_first == second && enumerated_first_modes == 2 &&
+	    enumerated_second == first && enumerated_second_modes == 1)),
+	    "two-lock state enumerates each canonical entry");
 
 	error = context_state_set_lock(&function, first_second, first, 0,
 	    &same, &existed);

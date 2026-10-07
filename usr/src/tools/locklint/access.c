@@ -36,6 +36,7 @@ struct locklint_member_path {
 	struct ident *ident;
 	unsigned long offset;
 	unsigned int depth;
+	size_t report_order;
 };
 
 struct locklint_access_owner {
@@ -53,9 +54,11 @@ member_path_hash(void *key)
 	uintptr_t parent = (uintptr_t)path->parent;
 	uintptr_t ident = (uintptr_t)path->ident;
 	unsigned long offset = path->offset;
+	size_t order = path->report_order;
 
 	return ((unsigned int)(parent ^ (parent >> 16) ^ ident ^
-	    (ident >> 16) ^ offset ^ (offset >> 16)));
+	    (ident >> 16) ^ offset ^ (offset >> 16) ^ order ^
+	    (order >> 16)));
 }
 
 static int
@@ -66,12 +69,13 @@ same_member_path(void *left_key, void *right_key)
 
 	return (left->parent == right->parent &&
 	    left->ident == right->ident &&
-	    left->offset == right->offset);
+	    left->offset == right->offset &&
+	    left->report_order == right->report_order);
 }
 
 static struct locklint_member_path *
 intern_member_path(struct locklint_member_path *parent, struct ident *ident,
-    unsigned long offset)
+    unsigned long offset, size_t report_order)
 {
 	struct locklint_member_path key = { 0 };
 	struct locklint_member_path *path;
@@ -85,6 +89,7 @@ intern_member_path(struct locklint_member_path *parent, struct ident *ident,
 	key.parent = parent;
 	key.ident = ident;
 	key.offset = offset;
+	key.report_order = report_order;
 	path = hashtable_search(member_paths, &key);
 	if (path != NULL)
 		return (path);
@@ -94,10 +99,17 @@ intern_member_path(struct locklint_member_path *parent, struct ident *ident,
 	path->parent = parent;
 	path->ident = ident;
 	path->offset = offset;
+	path->report_order = report_order;
 	path->depth = parent != NULL ? parent->depth + 1 : 1;
 	if (!hashtable_insert(member_paths, path, path))
 		die("out of memory interning member path");
 	return (path);
+}
+
+static size_t
+member_report_order(struct symbol *symbol)
+{
+	return (type_member_report_order(type_member_lookup_exact(symbol)));
 }
 
 static struct symbol *
@@ -278,7 +290,7 @@ member_path(struct expression *expr)
 	offset = (parent != NULL ? parent->offset : 0) +
 	    member->member_path_offset;
 	return (intern_member_path(parent, member->member_symbol->ident,
-	    offset));
+	    offset, member_report_order(member->member_symbol)));
 }
 
 static struct symbol *
@@ -631,7 +643,7 @@ for_each_compound_leaf(const struct locklint_access *access,
 			continue;
 		}
 		member_path = intern_member_path(path, member->ident,
-		    access->offset + offset);
+		    access->offset + offset, member_report_order(member));
 		if (member_type != NULL) {
 			for_each_compound_leaf(access, member_type, member_path,
 			    offset, &owner, callback, data);
@@ -828,7 +840,7 @@ append_member_path(struct locklint_member_path *base,
 		return (base);
 	base = append_member_path(base, relative->parent, base_offset);
 	return (intern_member_path(base, relative->ident,
-	    base_offset + relative->offset));
+	    base_offset + relative->offset, relative->report_order));
 }
 
 void
@@ -861,6 +873,41 @@ unsigned int
 locklint_access_depth(const struct locklint_access *access)
 {
 	return (access->path != NULL ? access->path->depth : 0);
+}
+
+/*
+ * Compare complete paths component by component.  Canonical declaration
+ * order handles overlapping union members; offsets and names provide stable
+ * fallback ordering when a component has no canonical member.
+ */
+int
+locklint_member_path_compare(const struct locklint_member_path *left,
+    const struct locklint_member_path *right)
+{
+	int comparison;
+	const char *left_name;
+	const char *right_name;
+
+	if (left == right)
+		return (0);
+	if (left == NULL)
+		return (-1);
+	if (right == NULL)
+		return (1);
+	comparison = locklint_member_path_compare(left->parent, right->parent);
+	if (comparison != 0)
+		return (comparison);
+	if (left->report_order < right->report_order)
+		return (-1);
+	if (left->report_order > right->report_order)
+		return (1);
+	if (left->offset < right->offset)
+		return (-1);
+	if (left->offset > right->offset)
+		return (1);
+	left_name = show_ident(left->ident);
+	right_name = show_ident(right->ident);
+	return (strcmp(left_name, right_name));
 }
 
 static char *

@@ -158,6 +158,8 @@ test_type_indexes(void)
 	    "same source origin uses one locklint type");
 	check(type_instance_count(first_type) == 2,
 	    "duplicate registration does not inflate instance count");
+	check(type_report_order(first_type) == 1,
+	    "first complete aggregate has first report order");
 
 	type_name_visit_types(tag, collect_type, &results);
 	check(results.count == 1 && results.types[0] == first_type,
@@ -171,6 +173,10 @@ test_type_indexes(void)
 	other_type = type_lookup_exact(&other);
 	check(other_type != NULL && other_type != first_type,
 	    "different source origin uses a distinct type");
+	check(type_report_order(other_type) == 2,
+	    "later complete aggregate has later report order");
+	check(type_report_order(first_type) == 1,
+	    "repeated definitions preserve report order");
 	(void) memset(&results, 0, sizeof (results));
 	type_name_visit_types(tag, collect_type, &results);
 	check(results.count == 2,
@@ -541,6 +547,10 @@ test_aggregate_members(void)
 	    type_member_owner(&members[1]) == type &&
 	    type_member_owner(&members[2]) == type,
 	    "canonical members retain their aggregate owner");
+	check(type_member_report_order(&members[0]) == 1 &&
+	    type_member_report_order(&members[1]) == 2 &&
+	    type_member_report_order(&members[2]) == 3,
+	    "canonical members retain declaration report order");
 	check(members[0].representative->offset == 0 &&
 	    members[1].representative->offset == 8 &&
 	    members[2].representative->offset == 16,
@@ -938,10 +948,14 @@ test_incomplete_pointer_targets(void)
 
 		type_registry_create();
 		register_symbol(&incomplete_target);
+		check(type_report_order(type_lookup_exact(&incomplete_target)) ==
+		    0, "incomplete aggregate has no report order");
 		type_name_visit_types(target, collect_type, &results);
 		check(results.count == 0,
 		    "incomplete aggregate is absent from the name index");
 		register_symbol(&complete_target);
+		check(type_report_order(type_lookup_exact(&complete_target)) ==
+		    1, "completed aggregate receives report order");
 		type_name_visit_types(target, collect_type, &results);
 		check(results.count == 1,
 		    "completed aggregate enters the name index");

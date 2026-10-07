@@ -65,6 +65,8 @@ bool locklint_access_contains(const struct locklint_access *,
     const struct locklint_access *);
 bool locklint_access_size(const struct locklint_access *, uint64_t *);
 unsigned int locklint_access_depth(const struct locklint_access *);
+int locklint_member_path_compare(const struct locklint_member_path *,
+    const struct locklint_member_path *);
 bool locklint_access_base(const struct locklint_access *, struct symbol *,
     unsigned long, unsigned long *);
 bool locklint_access_base_canonical(const struct locklint_access *,

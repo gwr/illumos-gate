@@ -50,6 +50,8 @@ struct ll_type {
 	struct type_member *members;
 	size_t member_count;
 	const void *merged_instance;
+	/* First complete-definition encounter; zero until one is registered. */
+	size_t report_order;
 	avl_node_t by_origin;
 	avl_node_t by_shape;
 };
@@ -99,6 +101,7 @@ static bool type_registry_is_consistent;
 static struct symbol *type_registry_mismatch;
 static const char *type_registry_mismatch_reason;
 static struct position type_registry_mismatch_position;
+static size_t next_report_order;
 
 static enum type
 type_kind(const struct ll_type *type)
@@ -257,6 +260,7 @@ type_registry_create(void)
 	type_registry_mismatch = NULL;
 	type_registry_mismatch_reason = NULL;
 	type_registry_mismatch_position = (struct position){ 0 };
+	next_report_order = 1;
 }
 
 void
@@ -972,6 +976,13 @@ type_intern(struct symbol *exact)
 			type_registry_is_consistent = false;
 			return (NULL);
 		}
+		if (type->report_order == 0 &&
+		    (exact->type == SYM_STRUCT || exact->type == SYM_UNION) &&
+		    !type_aggregate_is_incomplete(exact)) {
+			if (next_report_order == 0)
+				die("too many aggregate types");
+			type->report_order = next_report_order++;
+		}
 		return (type);
 	} else {
 		key.modifiers = type_semantic_modifiers(exact);
@@ -1370,6 +1381,12 @@ type_instance_count(const struct ll_type *type)
 	return (type == NULL ? 0 : type->instance_count);
 }
 
+size_t
+type_report_order(const struct ll_type *type)
+{
+	return (type == NULL ? 0 : type->report_order);
+}
+
 const struct type_member *
 type_members(const struct ll_type *type)
 {
@@ -1398,6 +1415,15 @@ const struct ll_type *
 type_member_owner(const struct type_member *member)
 {
 	return (member == NULL ? NULL : member->owner);
+}
+
+size_t
+type_member_report_order(const struct type_member *member)
+{
+	if (member == NULL || member->owner == NULL ||
+	    member->owner->members == NULL)
+		return (0);
+	return ((size_t)(member - member->owner->members) + 1);
 }
 
 bool

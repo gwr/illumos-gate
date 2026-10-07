@@ -41,6 +41,7 @@
 #include "lock_order.h"
 #include "parse.h"
 #include "scope.h"
+#include "output.h"
 #include "statistics.h"
 #include "symbol.h"
 #include "sync_api.h"
@@ -74,7 +75,7 @@ usage(FILE *stream)
 	(void) fprintf(stream,
 	    "usage: locklint [--cf command-file] [--compat=osll] "
 	    "[--root-discovery=auto|all-exported|none] "
-	    "[--no-check] "
+	    "[--no-diagnostics] "
 	    "[--parser-warnings] "
 	    "[--dump-parsed] [--dump-linearized] "
 	    "[--dump-accesses] [--dump-annotations] [--dump-events] "
@@ -113,7 +114,8 @@ options(int argc, char **argv)
 			if (++i == argc)
 				die("--cf requires a command file");
 			add_command_file(argv[i]);
-		} else if (strcmp(argv[i], "--no-check") == 0) {
+		} else if (strcmp(argv[i], "--no-diagnostics") == 0 ||
+		    strcmp(argv[i], "--no-check") == 0) {
 			check_locks = false;
 		} else if (strcmp(argv[i], "--parser-warnings") == 0) {
 			parser_warnings = true;
@@ -411,13 +413,14 @@ main(int argc, char **argv)
 	if (error != 0)
 		die("cannot initialize synchronization API: %s",
 		    strerror(error));
+	dump_outputs_register();
 	argc = options(argc, argv);
 	if (argc == 1) {
 		usage(stderr);
 		sync_api_fini();
 		return (EXIT_FAILURE);
 	}
-	dump_outputs_prepare();
+	locklint_outputs_prepare();
 	if (show_times)
 		timing_enable();
 
@@ -536,7 +539,7 @@ main(int argc, char **argv)
 		statistics_show(dump_stream(DUMP_STATISTICS));
 	if (dump_is_enabled(DUMP_ANNOTATIONS))
 		locklint_show_annotations(dump_output(DUMP_ANNOTATIONS));
-	dump_outputs_finish();
+	locklint_outputs_finish();
 	locklint_access_cleanup();
 	sync_api_fini();
 	(void) fflush(stdout);

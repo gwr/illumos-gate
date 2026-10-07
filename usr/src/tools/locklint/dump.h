@@ -44,12 +44,11 @@ enum dump_kind {
  * emits the dump's header once before returning the stream.
  */
 bool dump_option(const char *, enum dump_kind);
+void dump_outputs_register(void);
 void dump_enable_all(void);
 bool dump_is_enabled(enum dump_kind);
-void dump_outputs_prepare(void);
 FILE *dump_output(enum dump_kind);
 FILE *dump_stream(enum dump_kind);
-void dump_outputs_finish(void);
 
 int locklint_printf_parse(const char *, ...);
 int locklint_printf_linearize(const char *, ...);

@@ -32,5 +32,8 @@ struct object_identity *locklint_object_identity(struct translation_unit *,
     struct symbol *);
 struct object_identity *locklint_external_object(const char *,
     struct symbol **);
+const char *locklint_object_name(const struct object_identity *);
+const struct translation_unit *locklint_object_owner(
+    const struct object_identity *);
 
 #endif /* IDENTITY_H */

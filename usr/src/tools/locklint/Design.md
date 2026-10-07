@@ -127,6 +127,10 @@ not when future features should be added.
   corresponding exact members of a locklint type.  It retains its canonical
   owning aggregate so nested accesses can recover the direct
   `type::member` identity without a registry scan.
+- **Protection-audit datum key** - A source-oriented identity for one data
+  region selected for protection review.  It uses exact object identity when
+  available, canonical structural identity for pointees, and a source-backed
+  identity for function-local static objects.
 - **Source origin** - The translation unit and physical source position from
   which a locklint record was derived.
 
@@ -249,15 +253,16 @@ The implemented sequence is:
       state, and requested output resources.
 
 Lock checking and ordinary locklint diagnostics are enabled by default.
-`--no-check` suppresses those diagnostics.  Development output options remain
-independent: each `--dump-*` option requests its named output regardless of
-`--no-check`, and locklint still performs any callgraph resolution or context
-fixed point required to produce that output.  In particular,
-`--no-check --dump-contexts` computes and displays contexts without running
-the post-fixed-point diagnostic passes, while
-`--no-check --dump-protection-states` emits protection-state records without
-ordinary protected-access warnings.  The former `--check-locks` opt-in is no
-longer a locklint option.
+`--no-diagnostics` suppresses those diagnostics.  The older `--no-check`
+spelling remains an exact compatibility alias.  Development output options
+remain independent: each `--dump-*` option requests its named output
+regardless of either spelling, and locklint still performs any callgraph
+resolution or context fixed point required to produce that output.  In
+particular, `--no-diagnostics --dump-contexts` computes and displays contexts
+without running the post-fixed-point diagnostic passes, while
+`--no-diagnostics --dump-protection-states` emits protection-state records
+without ordinary protected-access warnings.  The former `--check-locks`
+opt-in is no longer a locklint option.
 
 Ordinary Sparse parser warnings are hidden by default because they are not
 locklint findings.  `--parser-warnings` enables them for troubleshooting, and
@@ -272,13 +277,17 @@ they do not repeat the program name inside the severity or message fields.
 
 Each dump begins with a `#### dump-name ####` header.  A bare dump option
 writes to standard output; `--dump-name=pathname` writes only that dump to the
-named file.  Distinct dumps may not share an explicit pathname.  The parsed,
-linearized, access, annotation, and event dumps are emitted while each
-function is processed, so their bare forms use separate anonymous on-disk
-streams to prevent interleaving.  Locklint creates each stream with
-`mkstemp()`, immediately unlinks it, and publishes its contents to standard
-output after processing.  This bounds memory use by the copy buffer and lets
-the operating system reclaim internal temporary files on every process exit.
+named file.  Registered outputs may not share an explicit pathname.
+`output.c` owns selection, global pathname-conflict checking, stream
+preparation, stdout spooling, publication order, and closing; registration
+order determines stdout publication order.  `dump.c` owns only dump
+selection, headers, and Sparse renderer routing.  The parsed, linearized,
+access, annotation, and event dumps are emitted while each function is
+processed, so their bare forms use separate anonymous on-disk streams to
+prevent interleaving.  Locklint creates each stream with `mkstemp()`,
+immediately unlinks it, and publishes its contents to standard output after
+processing.  This bounds memory use by the copy buffer and lets the operating
+system reclaim internal temporary files on every process exit.
 
 The optional `--times` report uses process-global accumulated timers.  It
 separates initialization; frontend parsing; object-identity, type-registration,
@@ -319,9 +328,9 @@ directly measurable.  Data-policy statistics count lookup requests and the
 indexed references examined after canonical selection.
 The counters are collected unconditionally.  `--dump-statistics` controls only
 whether they are reported at final output.  It does not independently request
-context analysis; default checking does, while `--no-check` permits statistics
-for only the work requested by other options.  Reporting occurs after analysis
-cleanup, so cleanup enumerations are included.
+context analysis; default checking does, while `--no-diagnostics` permits
+statistics for only the work requested by other options.  Reporting occurs
+after analysis cleanup, so cleanup enumerations are included.
 
 Locklint is not a general Sparse command-line frontend.  Passing the compiler
 and preprocessing options needed to parse illumos translation units is
@@ -554,7 +563,8 @@ The structures have these roles:
 | `struct annotation_ref` | One parsed and later resolved lock or data endpoint; refers to Sparse symbols and records replacement precedence |
 | `struct assertion` | One recognized lock predicate captured from `ASSERT(...)` or `VERIFY(...)`; records source ranges and the asserted state |
 | `struct locklint_access` | Dual source and computed-address identity for an object or member access; retains annotation and diagnostic provenance while optionally referring to the exact Sparse address pseudo and displacement |
-| `struct locklint_member_path` | One immutable, interned member-path component; links to its containing path and records a member identifier, cumulative offset, and depth |
+| `struct locklint_member_path` | One immutable, interned member-path component; links to its containing path and records a member identifier, cumulative offset, depth, and canonical declaration order |
+| `struct protection_audit_datum_key` | One exact static-object, canonical structural, or function-local static data region; retains stable analysis identities and numeric coordinates without allocating display strings |
 | `struct function_record` | Callgraph-private owning record for one function; contains its shared `function_info`, root and reachability bookkeeping, collection linkage, and AVL linkages |
 | `struct function_info` | Shared semantic view of one function; refers to its translation unit and Sparse entrypoint and carries checker-owned block state and summaries |
 | `struct call_audit` | One temporary source-order entry for a live call instruction while dumping a function's calls |
@@ -2460,8 +2470,8 @@ contract.  The warning identifies the `type::member` selector and advises the
 user to declare known targets, add an analysis-specific no-lock contract, or
 record a stable interface contract with `_NOTE()`.  Observations are
 aggregated by call instruction rather than emitted once per context or point
-state.  `--no-check` suppresses this diagnostic along with other ordinary
-lock-checking diagnostics.
+state.  `--no-diagnostics` suppresses this diagnostic along with other
+ordinary lock-checking diagnostics; `--no-check` has identical behavior.
 
 The selected replacement policy makes no-lock-effects implicit and removes
 the need for a separate unmodeled-call diagnostic.  Its safety check is
@@ -3010,6 +3020,7 @@ intermediate-frame rendering remain optional future work.
 | `type_lookup_exact()` | Map one exact Sparse type to its canonical locklint type |
 | `type_member_lookup_exact()` | Map one exact Sparse member to its canonical member |
 | `type_member_owner()` | Return the canonical aggregate which directly owns a member |
+| `type_member_report_order()` | Return a canonical member's 1-based declaration order |
 | `type_registry_show()` | Emit canonical named types and their exact-instance counts for `--dump-types` |
 
 ### Access identity: `access.c`
@@ -3026,9 +3037,23 @@ intermediate-frame rendering remain optional future work.
 | `locklint_rebase_access()` | Compose a callee-relative member path onto a caller object |
 | `locklint_same_access()` | Prefer exact computed-address equality, falling back to source identity |
 | `locklint_access_contains()` | Test whole-object and nested-member containment |
+| `locklint_member_path_compare()` | Order retained paths by canonical member declaration order |
 | `locklint_access_base()` | Map a type-scoped relation into a concrete embedded object |
 | `locklint_access_name()` | Allocate a diagnostic name containing the complete retained member path |
 | `locklint_show_access()` | Display a source-oriented access path |
+
+### Protection-audit identity: `protection_audit.c`
+
+| Function | Responsibility |
+| --- | --- |
+| `protection_audit_datum_key_init()` | Classify an instruction-backed access as an exact static object, canonical structural pointee, retained function-local static, excluded thread-private object, or unsupported fallback |
+| `protection_audit_datum_identity_compare()` | Compare complete datum identities for lookup and collection |
+| `protection_audit_datum_report_compare()` | Order datum identities by the deterministic source hierarchy used by future audit renderers |
+
+Direct automatic objects, parameter storage, and thread-local objects are
+excluded.  Data reached through a local or formal pointer are not excluded
+merely because the pointer itself is thread-private.  Result collection and
+rendering are not part of this foundation.
 
 ### Annotations: `annotations.c`
 

@@ -341,3 +341,15 @@ locklint_external_object(const char *name, struct symbol **symbol)
 		*symbol = object != NULL ? object->representative : NULL;
 	return (object);
 }
+
+const char *
+locklint_object_name(const struct object_identity *object)
+{
+	return (object != NULL ? show_ident(object->ident) : NULL);
+}
+
+const struct translation_unit *
+locklint_object_owner(const struct object_identity *object)
+{
+	return (object != NULL ? object->tu : NULL);
+}
