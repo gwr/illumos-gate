@@ -130,6 +130,43 @@ not when future features should be added.
 - **Source origin** - The translation unit and physical source position from
   which a locklint record was derived.
 
+### Processing phase names
+
+The design uses the following names for substantial processing:
+
+- **Option and preprocessing setup phase** - Consume locklint options,
+  preserve compiler options for Sparse, and register preprocessing hooks.
+- **Parse and lowering phase** - Initialize Sparse, parse each translation
+  unit, resolve source constructs while its namespaces are current, and
+  linearize retained function definitions.
+- **Program preparation phase** - Combine declarations, resolve calls and
+  targets, classify roots, propagate reachability, and build program-wide
+  indexes and declared relations needed by analysis.
+- **Context fixed-point analysis** - Repeatedly process the context worklist
+  until lock, competition, visibility, target, alias, and interprocedural
+  state no longer changes.  This is an iterative computation, not one linear
+  traversal.
+- **Post-fixed-point derivation passes** - Traverse completed context results
+  to collect and propagate caller-visible summaries or relationships which
+  require the stable context solution.
+- **Post-fixed-point diagnostic passes** - Traverse completed analysis state
+  to compare it with assertions, declarations, and unsafe-operation rules.
+- **Post-fixed-point access pass** - The diagnostic-phase traversal of
+  reachable function contexts, point states, load and store instructions, and
+  leaf accesses used for declared data-policy checking and requested
+  protection-state output.
+- **Output rendering phase** - Render requested reports and dumps from
+  completed analysis or collections without changing semantic state.
+- **Cleanup phase** - Release analysis, translation-unit, Sparse, and output
+  resources.
+
+A **phase** is a broad lifecycle portion and may contain several substantial
+computations.  A **pass** is a significant traversal or worklist computation
+over retained program or analysis data.  A **reduction** combines records
+inside a pass; it is not another pass unless it performs a separate traversal
+of substantial retained data.  Discussions and measurements should use these
+names rather than an unqualified “analysis pass” or “single pass.”
+
 ## Operational overview
 
 Locklint reads and parses all specified C source files into an intermediate
@@ -149,55 +186,67 @@ locklint.  Locklint registers callbacks to capture locking information during
 preprocessing, then examines Sparse's symbols, expressions, instructions, and
 control-flow graphs to perform its analysis.
 
-The main phases are:
+The implemented sequence is:
 
-1. Parse locklint command-line options and leave ordinary compiler options for
-   Sparse.
-2. Register preprocessing hooks for locking annotations and assertions.
-3. Create a synthetic translation-unit record for Sparse initialization,
-   initialize Sparse, register declarations produced by initialization,
-   resolve annotations while the initialization namespace is current, and
-   process the initial symbols.
-4. For each input file:
-   1. create and make current a locklint translation-unit record;
-   2. parse and evaluate the translation unit;
-   3. register its file-scope internal-linkage declarations and named
-      aggregate types needed after Sparse removes the namespace bindings;
-   4. resolve annotations while that translation unit's symbol namespaces are
-      current;
-   5. expand and linearize function definitions;
-   6. associate retained records and relevant Sparse symbols with the current
-      translation unit; and
-   7. use Sparse's source-use walker to record function-pointer evidence from
-      evaluated initializers and function bodies, and record exact targets
-      from supported closed aggregate initializers; and
-   8. retain each function entrypoint for later checking.
-5. After all files have been parsed:
-   1. combine object and function declarations according to C linkage;
-   2. resolve recorded exact indirect targets and function escapes to retained
-      definitions;
-   3. scan call instructions and resolve direct or supported indirect callees
-      as needed;
-   4. assign additive conservative root reasons;
-   5. propagate reachability from those roots through resolved calls;
-   6. emit a requested call-graph audit;
-   7. build and validate the declared lock-order graph;
-   8. solve function lock, competition, and visibility transfer summaries;
-   9. solve unified intraprocedural lock, competition, and visibility state;
-   10. collect and propagate acquisition summaries;
-   11. collect and propagate protection conditions;
-   12. emit diagnostics while collecting observed acquisition edges; and
-   13. report cycles in the observed lock-order graph.
-6. Emit other requested development dumps.  `--dump-types` lists every named
-   locklint type retained in the process-wide type registry and reports how
-   many exact Sparse instances each one represents.
-   `--dump-protection-states` runs the required context analysis and emits one
-   source-oriented record for every static lock-protected access.  Each record
-   aggregates all reachable caller contexts and classifies each reaching
-   state exactly once, in exact-lock, lock-role, invisible-data,
-   no-competing-threads, conditional, then unprotected order.  The reason
-   counts therefore sum to the reported state count.  `--dump-all` includes
-   this report, the type registry, and the whole-program call-graph audit.
+1. **Option and preprocessing setup phase**
+   1. Parse locklint command-line options and leave ordinary compiler options
+      for Sparse.
+   2. Register preprocessing hooks for locking annotations and assertions.
+2. **Parse and lowering phase**
+   1. Create a synthetic translation-unit record for Sparse initialization,
+      initialize Sparse, register declarations produced by initialization,
+      resolve annotations while the initialization namespace is current, and
+      process the initial symbols.
+   2. For each input file:
+      1. create and make current a locklint translation-unit record;
+      2. parse and evaluate the translation unit;
+      3. register its file-scope internal-linkage declarations and named
+         aggregate types needed after Sparse removes the namespace bindings;
+      4. resolve annotations while that translation unit's symbol namespaces
+         are current;
+      5. expand and linearize function definitions;
+      6. associate retained records and relevant Sparse symbols with the
+         current translation unit;
+      7. use Sparse's source-use walker to record function-pointer evidence
+         from evaluated initializers and function bodies, and record exact
+         targets from supported closed aggregate initializers; and
+      8. retain each function entrypoint for later checking.
+3. **Program preparation phase**
+   1. Combine object and function declarations according to C linkage.
+   2. Resolve recorded exact indirect targets and function escapes to retained
+      definitions.
+   3. Scan call instructions and resolve direct or supported indirect callees
+      as needed.
+   4. Assign additive conservative root reasons.
+   5. Propagate reachability from those roots through resolved calls.
+   6. Emit a requested call-graph audit.
+   7. Build and validate the declared lock-order graph.
+4. **Context fixed-point analysis**
+   1. Solve function lock, competition, and visibility transfer summaries.
+   2. Solve unified intraprocedural lock, competition, and visibility state.
+5. **Post-fixed-point derivation passes**
+   1. Collect and propagate acquisition summaries.
+   2. Collect and propagate protection conditions.
+6. **Post-fixed-point diagnostic passes**
+   1. Emit diagnostics while collecting observed acquisition edges.
+   2. Run the post-fixed-point access pass for ordinary declared data-policy
+      checking or requested protection-state output.
+   3. Report cycles in the observed lock-order graph.
+7. **Output rendering phase**
+   1. Emit requested development dumps.  `--dump-types` lists every named
+      locklint type retained in the process-wide type registry and reports how
+      many exact Sparse instances each one represents.
+      `--dump-protection-states` emits the source-oriented records produced by
+      the required context fixed-point analysis and post-fixed-point access
+      pass.  Each record aggregates all reachable caller contexts and
+      classifies each reaching state exactly once, in exact-lock, lock-role,
+      invisible-data, no-competing-threads, conditional, then unprotected
+      order.  The reason counts therefore sum to the reported state count.
+      `--dump-all` includes this report, the type registry, and the
+      whole-program call-graph audit.
+8. **Cleanup phase**
+   1. Release analysis collections, translation-unit records, Sparse-owned
+      state, and requested output resources.
 
 Lock checking and ordinary locklint diagnostics are enabled by default.
 `--no-check` suppresses those diagnostics.  Development output options remain
