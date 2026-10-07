@@ -7093,7 +7093,7 @@ visit_post_fixed_access(struct function_context *context,
 		    competition.maximum <= 0))
 			continue;
 		protection_audit_result_observe(pass->audit, context->function,
-		    access, key.analysis_object, key.target_offset,
+		    access, instruction, key.analysis_object, key.target_offset,
 		    point_state->state, instruction->opcode == OP_STORE);
 	}
 }
@@ -7321,7 +7321,11 @@ process_post_fixed_accesses(struct analysis *analysis,
 		    sizeof (struct protected_access_finding),
 		    offsetof(struct protected_access_finding, by_access));
 		statistics.protected_contexts_enum++;
+		if (audit != NULL)
+			protection_audit_result_begin_function(audit);
 		for_each_post_fixed_access(function, visit_post_fixed_access, &pass);
+		if (audit != NULL)
+			protection_audit_result_end_function(audit);
 		if (diagnose_protection)
 			emit_protected_access_findings(analysis, &findings);
 		avl_destroy(&findings);

@@ -20,6 +20,7 @@
 
 struct ll_type;
 struct function_info;
+struct instruction;
 struct locklint_access;
 struct locklint_member_path;
 struct object_identity;
@@ -117,10 +118,14 @@ unsigned int protection_audit_note_flags(bool, size_t, size_t, bool, bool);
 void protection_audit_output_register(void);
 bool protection_audit_option(const char *);
 bool protection_audit_is_enabled(void);
+void protection_audit_options_validate(void);
 struct protection_audit_result *protection_audit_result_create(void);
+void protection_audit_result_begin_function(struct protection_audit_result *);
+void protection_audit_result_end_function(struct protection_audit_result *);
 void protection_audit_result_observe(struct protection_audit_result *,
     const struct function_info *, const struct locklint_access *,
-    const void *, int64_t, const struct semantic_state *, bool);
+    const struct instruction *, const void *, int64_t,
+    const struct semantic_state *, bool);
 void protection_audit_result_render(struct protection_audit_result *);
 void protection_audit_result_free(struct protection_audit_result *);
 

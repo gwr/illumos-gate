@@ -5,6 +5,8 @@ consistent-protection.c::datum	read/write	none(note3)	-
 
 Notes:
 note3: no lock consistently held
+
+Use --audit-unprotected for details about entries marked with notes.
 --- variant 2
 Protection audit: observations include only analyzed roots, resolved targets, and input translation units.
 DATUM	ACCESS	PROTECTION	LOCK
@@ -16,6 +18,8 @@ consistent-protection.c::datum	read/write	mutex(note1)	consistent-protection.c::
 
 Notes:
 note1: lock not held consistently
+
+Use --audit-unprotected for details about entries marked with notes.
 --- variant 4
 Protection audit: observations include only analyzed roots, resolved targets, and input translation units.
 DATUM	ACCESS	PROTECTION	LOCK
@@ -23,6 +27,8 @@ consistent-protection.c::datum	read/write	locks(note2)	consistent-protection.c::
 
 Notes:
 note2: different locks held
+
+Use --audit-unprotected for details about entries marked with notes.
 --- variant 5
 Protection audit: observations include only analyzed roots, resolved targets, and input translation units.
 DATUM	ACCESS	PROTECTION	LOCK

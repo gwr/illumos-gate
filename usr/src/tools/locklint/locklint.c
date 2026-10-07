@@ -84,6 +84,8 @@ usage(FILE *stream)
 	    "[--dump-protection-states] [--dump-statistics] [--dump-types] "
 	    "(each dump option may use =pathname) "
 	    "[--audit-protection[=pathname]] "
+	    "[--audit-unprotected[=pathname]] "
+	    "[--audit-site-limit=N|all] "
 	    "[--times] "
 	    "[compiler-options] file.c ...\n");
 }
@@ -423,6 +425,7 @@ main(int argc, char **argv)
 	dump_outputs_register();
 	protection_audit_output_register();
 	argc = options(argc, argv);
+	protection_audit_options_validate();
 	if (argc == 1) {
 		usage(stderr);
 		sync_api_fini();

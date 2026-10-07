@@ -255,6 +255,9 @@ The implemented sequence is:
       retained datum from the temporary audit result.  It reports access
       classification, declared and observed protection, applicable lock
       names, and fixed note reasons for conclusions needing attention.
+   3. `--audit-unprotected` renders the note-marked subset with deterministic
+      source-site evidence.  `--audit-site-limit=N|all` bounds or explicitly
+      expands the retained sites for each datum.
 8. **Cleanup phase**
    1. Release analysis collections, translation-unit records, Sparse-owned
       state, and requested output resources.
@@ -289,8 +292,9 @@ named file.  Registered outputs may not share an explicit pathname.
 preparation, stdout spooling, publication order, and closing; registration
 order determines stdout publication order.  `dump.c` owns only dump
 selection, headers, and Sparse renderer routing.  `protection_audit.c`
-registers `--audit-protection` after the dumps and renders its completed
-temporary result through the same output manager.  The parsed, linearized,
+registers `--audit-protection` and `--audit-unprotected` after the dumps and
+renders their shared completed temporary result through the same output
+manager.  The parsed, linearized,
 access, annotation, and event dumps are emitted while each function is
 processed, so their bare forms use separate anonymous on-disk streams to
 prevent interleaving.  Locklint creates each stream with `mkstemp()`,
@@ -3060,14 +3064,16 @@ intermediate-frame rendering remain optional future work.
 | --- | --- |
 | `protection_audit_datum_key_init()` | Classify an instruction-backed access as an exact static object, canonical structural pointee, retained function-local static, excluded thread-private object, or unsupported fallback |
 | `protection_audit_datum_identity_compare()` | Compare complete datum identities for lookup and collection |
-| `protection_audit_datum_report_compare()` | Order datum identities by the deterministic source hierarchy used by future audit renderers |
+| `protection_audit_datum_report_compare()` | Order datum identities by the deterministic source hierarchy used by the audit renderers |
 | `protection_audit_candidate_init()` | Normalize a suitably held lock to exact, merged, proved same-owner, or unresolved evidence; exclude unsuitable modes and thread-local locks |
 | `protection_audit_candidate_identity_compare()` | Compare candidate identity without conflating it with evidence strength |
 | `protection_audit_candidate_combine()` | Retain the weakest evidence strength shared by observations of one candidate |
 | `protection_audit_note_flags()` | Classify common, inconsistent, varying, absent, unsuitable-mode, and unresolved observations into fixed note reasons |
 | `protection_audit_result_create()` | Create the temporary datum AVL and audit-local named-object validation index |
+| `protection_audit_result_begin_function()` | Begin the optional function-local static-site reduction for the detailed report |
 | `protection_audit_result_observe()` | Intersect suitable candidates and retain a bounded two-candidate observation sample for one relevant reached state |
-| `protection_audit_result_render()` | Render the deterministic four-column inventory and referenced fixed notes |
+| `protection_audit_result_end_function()` | Fold each distinct function-local static site once into its datum's bounded global site list |
+| `protection_audit_result_render()` | Render selected inventory and detailed note-site reports from the completed shared result |
 | `protection_audit_result_free()` | Release all temporary audit records and indexes |
 
 Direct automatic objects, parameter storage, and thread-local objects are
@@ -3082,6 +3088,13 @@ intermittently held lock from varying locks without retaining an unbounded
 union across caller contexts.  Internal exact, merged, proved, and unresolved
 evidence drives the conclusion, while normal inventory output exposes only
 user-facing protection and fixed note reasons.
+
+When `--audit-unprotected` is selected, one function-local AVL deduplicates
+static sites across caller contexts before global retention.  A numeric site
+limit keeps only the earliest source-ordered sites per datum and an exact
+distinct-site count; `all` explicitly retains every site.  The detailed
+renderer selects every note-marked inventory record and reports the retained
+site conditions without revisiting point states.
 
 ### Annotations: `annotations.c`
 

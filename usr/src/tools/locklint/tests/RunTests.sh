@@ -3649,6 +3649,61 @@ reject_match "redundant structural offset" \
     '^policy_state::[^	]*+[0-9]' audit-protection-structural.out
 
 #
+# The detailed audit expands every note-marked inventory entry into
+# deterministic source evidence and honors its site limit.
+#
+: > audit-unprotected.out
+for variant in 1 3 4
+do
+	echo "--- variant $variant" >> audit-unprotected.out
+	if ! "$LOCKLINT" --no-diagnostics --audit-unprotected \
+	    -DCONSISTENT_PROTECTION_VARIANT="$variant" \
+	    consistent-protection.c >> audit-unprotected.out 2>&1; then
+		fail "unprotected audit variant $variant: command failed"
+	fi
+done
+compare "unprotected audit" audit-unprotected.ref audit-unprotected.out
+
+run_capture "limited unprotected audit" audit-unprotected-limit.out \
+    "$LOCKLINT" --no-diagnostics --audit-unprotected \
+    --audit-site-limit=1 -DCONSISTENT_PROTECTION_VARIANT=1 \
+    consistent-protection.c
+require_match "limited unprotected site" \
+    '    (and 1 more access site)' audit-unprotected-limit.out
+
+run_failure "site limit without detailed audit" \
+    audit-site-limit-invalid.out "$LOCKLINT" --no-diagnostics \
+    --audit-site-limit=1 consistent-protection.c
+require_match "site limit requires detailed audit" \
+    'audit-site-limit requires --audit-unprotected' \
+    audit-site-limit-invalid.out
+
+run_capture "all unprotected audit sites" audit-unprotected-all.out \
+    "$LOCKLINT" --no-diagnostics --audit-unprotected \
+    --audit-site-limit=all rwlock.c
+require_match "unsuitable rwlock mode detail" \
+    'rwlock.c:115 .*written while holding rwlock_state.lock with an unsuitable mode in at least one state' \
+    audit-unprotected-all.out
+
+run_capture "unresolved unprotected audit" \
+    audit-unprotected-unresolved.out "$LOCKLINT" --no-diagnostics \
+    --audit-unprotected array-owner-protection.c
+require_match "unresolved held-lock detail" \
+    '^array_owner::values - held-lock relationship could not be resolved$' \
+    audit-unprotected-unresolved.out
+
+run_capture "separate audit destinations" audit-combined-stdout.out \
+    "$LOCKLINT" --no-diagnostics \
+    --audit-protection=audit-protection-path.out \
+    --audit-unprotected=audit-unprotected-path.out \
+    -DCONSISTENT_PROTECTION_VARIANT=3 consistent-protection.c
+require_empty "separate audit destination stdout" audit-combined-stdout.out
+require_match "separate protection destination" \
+    'mutex(note1)' audit-protection-path.out
+require_match "separate unprotected destination" \
+    'written with no lock held' audit-unprotected-path.out
+
+#
 # Final report
 #
 if [ "$failures" -ne 0 ]; then

@@ -15,6 +15,7 @@
  * rendering are deliberately separate.
  */
 
+#include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,6 +26,7 @@
 #include "avl.h"
 #include "context.h"
 #include "events.h"
+#include "expression.h"
 #include "function_info.h"
 #include "identity.h"
 #include "lib.h"
@@ -32,7 +34,22 @@
 #include "output.h"
 #include "protection_audit.h"
 #include "symbol.h"
+#include "token.h"
 #include "type.h"
+
+struct protection_audit_site {
+	struct protection_audit_datum_key datum;
+	const struct function_info *function;
+	const struct instruction *instruction;
+	struct protection_audit_candidate observed[2];
+	size_t observed_count;
+	bool observed_truncated;
+	bool read;
+	bool written;
+	bool no_lock;
+	bool unsuitable_mode;
+	avl_node_t by_site;
+};
 
 struct protection_audit_record {
 	struct protection_audit_datum_key datum;
@@ -50,6 +67,10 @@ struct protection_audit_record {
 	bool has_policy;
 	struct locklint_data_policy policy;
 	struct locklint_access policy_lock;
+	struct protection_audit_site **sites;
+	size_t site_count;
+	size_t site_capacity;
+	size_t total_sites;
 	avl_node_t by_datum;
 };
 
@@ -63,10 +84,17 @@ struct protection_audit_result {
 	struct protection_audit_named_object *objects;
 	size_t object_count;
 	size_t object_capacity;
+	avl_tree_t function_sites;
+	bool function_sites_active;
 };
 
 static struct locklint_output protection_output =
     LOCKLINT_OUTPUT_INITIALIZER("audit-protection", false);
+static struct locklint_output unprotected_output =
+    LOCKLINT_OUTPUT_INITIALIZER("audit-unprotected", false);
+static size_t protection_audit_site_limit = 3;
+static bool protection_audit_all_sites;
+static bool protection_audit_site_limit_specified;
 
 static const char *protection_audit_function_name(
     const struct function_info *);
@@ -570,6 +598,55 @@ protection_audit_record_compare(const void *left_arg, const void *right_arg)
 	    &right->datum));
 }
 
+static struct position
+protection_audit_site_position(const struct protection_audit_site *site)
+{
+	return (site->instruction->access != NULL ?
+	    site->instruction->access->pos : site->instruction->pos);
+}
+
+static int
+protection_audit_site_report_compare(const void *left_arg,
+    const void *right_arg)
+{
+	const struct protection_audit_site *const *left = left_arg;
+	const struct protection_audit_site *const *right = right_arg;
+	struct position left_position = protection_audit_site_position(*left);
+	struct position right_position = protection_audit_site_position(*right);
+	int comparison;
+
+	comparison = compare_string(stream_name(left_position.stream),
+	    stream_name(right_position.stream));
+	if (comparison != 0)
+		return (comparison);
+	if (left_position.line < right_position.line)
+		return (-1);
+	if (left_position.line > right_position.line)
+		return (1);
+	if (left_position.pos < right_position.pos)
+		return (-1);
+	if (left_position.pos > right_position.pos)
+		return (1);
+	return (compare_string(
+	    protection_audit_function_name((*left)->function),
+	    protection_audit_function_name((*right)->function)));
+}
+
+static int
+protection_audit_site_compare(const void *left_arg, const void *right_arg)
+{
+	const struct protection_audit_site *left = left_arg;
+	const struct protection_audit_site *right = right_arg;
+	int comparison;
+
+	comparison = protection_audit_datum_identity_compare(&left->datum,
+	    &right->datum);
+	if (comparison != 0)
+		return (comparison);
+	return (compare_uintptr((uintptr_t)left->instruction,
+	    (uintptr_t)right->instruction));
+}
+
 static int
 protection_audit_named_object_compare(const void *left_arg,
     const void *right_arg)
@@ -632,18 +709,51 @@ void
 protection_audit_output_register(void)
 {
 	locklint_output_register(&protection_output);
+	locklint_output_register(&unprotected_output);
 }
 
 bool
-protection_audit_option(const char *path)
+protection_audit_option(const char *argument)
 {
-	return (locklint_output_option(path, &protection_output));
+	const char *prefix = "--audit-site-limit=";
+	const char *value;
+	char *end;
+	unsigned long long limit;
+
+	if (locklint_output_option(argument, &protection_output) ||
+	    locklint_output_option(argument, &unprotected_output))
+		return (true);
+	if (strncmp(argument, prefix, strlen(prefix)) != 0)
+		return (false);
+	value = argument + strlen(prefix);
+	protection_audit_site_limit_specified = true;
+	if (strcmp(value, "all") == 0) {
+		protection_audit_all_sites = true;
+		return (true);
+	}
+	errno = 0;
+	limit = strtoull(value, &end, 10);
+	if (errno != 0 || *value == '\0' || *end != '\0' || limit == 0 ||
+	    limit > SIZE_MAX)
+		die("audit-site-limit requires a positive number or 'all'");
+	protection_audit_site_limit = (size_t)limit;
+	protection_audit_all_sites = false;
+	return (true);
 }
 
 bool
 protection_audit_is_enabled(void)
 {
-	return (locklint_output_is_enabled(&protection_output));
+	return (locklint_output_is_enabled(&protection_output) ||
+	    locklint_output_is_enabled(&unprotected_output));
+}
+
+void
+protection_audit_options_validate(void)
+{
+	if (protection_audit_site_limit_specified &&
+	    !locklint_output_is_enabled(&unprotected_output))
+		die("audit-site-limit requires --audit-unprotected");
 }
 
 struct protection_audit_result *
@@ -661,6 +771,90 @@ protection_audit_result_create(void)
 	qsort(result->objects, result->object_count, sizeof (*result->objects),
 	    protection_audit_named_object_compare);
 	return (result);
+}
+
+void
+protection_audit_result_begin_function(struct protection_audit_result *result)
+{
+	if (!locklint_output_is_enabled(&unprotected_output))
+		return;
+	if (result->function_sites_active)
+		abort();
+	avl_create(&result->function_sites, protection_audit_site_compare,
+	    sizeof (struct protection_audit_site),
+	    offsetof(struct protection_audit_site, by_site));
+	result->function_sites_active = true;
+}
+
+static void
+protection_audit_record_add_site(struct protection_audit_record *record,
+    struct protection_audit_site *site)
+{
+	size_t limit = protection_audit_all_sites ? SIZE_MAX :
+	    protection_audit_site_limit;
+
+	record->total_sites++;
+	if (record->site_count < limit) {
+		if (record->site_count == record->site_capacity) {
+			size_t capacity = record->site_capacity != 0 ?
+			    record->site_capacity * 2 : 4;
+
+			if (capacity > limit)
+				capacity = limit;
+			if (capacity < record->site_capacity ||
+			    capacity > SIZE_MAX / sizeof (*record->sites))
+				die("protection audit site allocation overflow");
+			record->sites = realloc(record->sites,
+			    capacity * sizeof (*record->sites));
+			if (record->sites == NULL)
+				die("cannot allocate protection audit sites");
+			record->site_capacity = capacity;
+		}
+		record->sites[record->site_count++] = site;
+		return;
+	}
+	if (record->site_count != 0) {
+		struct protection_audit_site *candidate = site;
+		size_t latest = 0;
+		size_t index;
+
+		for (index = 1; index < record->site_count; index++) {
+			if (protection_audit_site_report_compare(
+			    &record->sites[latest], &record->sites[index]) < 0)
+				latest = index;
+		}
+		if (protection_audit_site_report_compare(&candidate,
+		    &record->sites[latest]) < 0) {
+			free(record->sites[latest]);
+			record->sites[latest] = site;
+			return;
+		}
+	}
+	free(site);
+}
+
+void
+protection_audit_result_end_function(struct protection_audit_result *result)
+{
+	struct protection_audit_site *site;
+	void *cookie = NULL;
+
+	if (!result->function_sites_active)
+		return;
+	while ((site = avl_destroy_nodes(&result->function_sites,
+	    &cookie)) != NULL) {
+		struct protection_audit_record lookup = {
+			.datum = site->datum
+		};
+		struct protection_audit_record *record =
+		    avl_find(&result->records, &lookup, NULL);
+
+		if (record == NULL)
+			abort();
+		protection_audit_record_add_site(record, site);
+	}
+	avl_destroy(&result->function_sites);
+	result->function_sites_active = false;
 }
 
 static int
@@ -797,6 +991,90 @@ protection_audit_observe_candidates(struct protection_audit_record *record,
 }
 
 static void
+protection_audit_site_observe_candidate(struct protection_audit_site *site,
+    const struct protection_audit_candidate *candidate)
+{
+	size_t index;
+
+	for (index = 0; index < site->observed_count; index++) {
+		if (protection_audit_candidate_identity_compare(
+		    &site->observed[index], candidate) != 0)
+			continue;
+		(void) protection_audit_candidate_combine(
+		    &site->observed[index], candidate);
+		return;
+	}
+	if (site->observed_count < 2) {
+		site->observed[site->observed_count++] = *candidate;
+	} else {
+		site->observed_truncated = true;
+		if (protection_audit_candidate_report_compare(candidate,
+		    &site->observed[site->observed_count - 1]) >= 0)
+			return;
+		site->observed[site->observed_count - 1] = *candidate;
+	}
+	if (site->observed_count == 2 &&
+	    protection_audit_candidate_report_compare(&site->observed[0],
+	    &site->observed[1]) > 0) {
+		struct protection_audit_candidate temporary = site->observed[0];
+
+		site->observed[0] = site->observed[1];
+		site->observed[1] = temporary;
+	}
+}
+
+static void
+protection_audit_observe_site(struct protection_audit_result *result,
+    const struct protection_audit_datum_key *datum,
+    const struct function_info *function, const struct instruction *instruction,
+    bool written, const struct protection_audit_candidate *observed,
+    size_t observed_count, const struct protection_audit_candidate *suitable,
+    size_t suitable_count)
+{
+	struct protection_audit_site lookup = {
+		.datum = *datum,
+		.function = function,
+		.instruction = instruction
+	};
+	struct protection_audit_site *site;
+	size_t index;
+	size_t suitable_index;
+	avl_index_t where;
+
+	if (!result->function_sites_active)
+		return;
+	site = avl_find(&result->function_sites, &lookup, &where);
+	if (site == NULL) {
+		site = calloc(1, sizeof (*site));
+		if (site == NULL)
+			die("cannot allocate protection audit site");
+		site->datum = *datum;
+		site->function = function;
+		site->instruction = instruction;
+		avl_insert(&result->function_sites, site, where);
+	}
+	site->read |= !written;
+	site->written |= written;
+	if (observed_count == 0)
+		site->no_lock = true;
+	for (index = 0; index < observed_count; index++) {
+		bool found = false;
+
+		protection_audit_site_observe_candidate(site, &observed[index]);
+		for (suitable_index = 0; suitable_index < suitable_count;
+		    suitable_index++) {
+			if (protection_audit_candidate_identity_compare(
+			    &observed[index], &suitable[suitable_index]) == 0) {
+				found = true;
+				break;
+			}
+		}
+		if (!found)
+			site->unsuitable_mode = true;
+	}
+}
+
+static void
 protection_audit_intersect(struct protection_audit_record *record,
     const struct protection_audit_candidate *observed, size_t observed_count)
 {
@@ -827,8 +1105,9 @@ protection_audit_intersect(struct protection_audit_record *record,
 void
 protection_audit_result_observe(struct protection_audit_result *result,
     const struct function_info *function,
-    const struct locklint_access *access, const void *datum_object,
-    int64_t datum_offset, const struct semantic_state *state, bool written)
+    const struct locklint_access *access, const struct instruction *instruction,
+    const void *datum_object, int64_t datum_offset,
+    const struct semantic_state *state, bool written)
 {
 	struct protection_audit_candidate candidates[LOCKLINT_MAX_TRACKED_LOCKS];
 	struct protection_audit_candidate observed[LOCKLINT_MAX_TRACKED_LOCKS];
@@ -867,6 +1146,9 @@ protection_audit_result_observe(struct protection_audit_result *result,
 	}
 	protection_audit_observe_candidates(record, observed, observed_count,
 	    candidates, candidate_count);
+	protection_audit_observe_site(result, &record->datum, function,
+	    instruction, written, observed, observed_count, candidates,
+	    candidate_count);
 	if (!record->candidates_initialized) {
 		record->candidates_initialized = true;
 		if (candidate_count != 0) {
@@ -1054,7 +1336,7 @@ protection_audit_print_protection(FILE *stream,
     const struct protection_audit_record *record,
     const struct protection_audit_candidate *display, size_t display_count)
 {
-	const char *name;
+	const char *name = NULL;
 	bool read_only_in_name = false;
 	bool readable_in_name = false;
 
@@ -1088,6 +1370,8 @@ protection_audit_print_protection(FILE *stream,
 				readable_in_name = true;
 			}
 			break;
+		default:
+			abort();
 		}
 	} else if (record->unresolved) {
 		name = "unknown";
@@ -1095,6 +1379,8 @@ protection_audit_print_protection(FILE *stream,
 		name = protection_audit_candidate_kind_name(display,
 		    display_count);
 	}
+	if (name == NULL)
+		abort();
 	(void) fputs(name, stream);
 	if (record->has_policy) {
 		if (record->policy.readable_without_lock && !readable_in_name)
@@ -1236,8 +1522,8 @@ protection_audit_candidate_report_compare(const void *left_arg,
 	    left->offset > right->offset ? 1 : 0);
 }
 
-void
-protection_audit_result_render(struct protection_audit_result *result)
+static void
+protection_audit_result_render_inventory(struct protection_audit_result *result)
 {
 	struct protection_audit_record **ordered;
 	struct protection_audit_record *record;
@@ -1338,8 +1624,117 @@ protection_audit_result_render(struct protection_audit_result *result)
 		if ((report_notes & PROTECTION_AUDIT_NOTE_POLICY) != 0)
 			(void) fputs("note6: observed access contradicts "
 			    "declared policy\n", stream);
+		(void) fputs("\nUse --audit-unprotected for details about "
+		    "entries marked with notes.\n", stream);
 	}
 	free(ordered);
+}
+
+static const char *
+protection_audit_note_reason(unsigned int notes)
+{
+	if ((notes & PROTECTION_AUDIT_NOTE_POLICY) != 0)
+		return ("observed access contradicts declared policy");
+	if ((notes & PROTECTION_AUDIT_NOTE_MODE) != 0)
+		return ("lock mode is not consistently suitable");
+	if ((notes & PROTECTION_AUDIT_NOTE_UNRESOLVED) != 0)
+		return ("held-lock relationship could not be resolved");
+	if ((notes & PROTECTION_AUDIT_NOTE_VARYING) != 0)
+		return ("different locks are held");
+	if ((notes & PROTECTION_AUDIT_NOTE_INCONSISTENT) != 0)
+		return ("lock is not held consistently");
+	if ((notes & PROTECTION_AUDIT_NOTE_NONE) != 0)
+		return ("no lock is consistently held");
+	abort();
+}
+
+static void
+protection_audit_print_site(FILE *stream,
+    const struct protection_audit_site *site)
+{
+	struct position position = protection_audit_site_position(site);
+	size_t index;
+
+	(void) fprintf(stream, "    %s:%u in %s(): %s",
+	    stream_name(position.stream), position.line,
+	    protection_audit_function_name(site->function),
+	    site->read && site->written ? "read and written" :
+	    site->written ? "written" : "read");
+	if (site->observed_count == 0) {
+		(void) fputs(site->unsuitable_mode ?
+		    " with no suitably held lock" : " with no lock held",
+		    stream);
+	} else {
+		(void) fputs(site->no_lock ?
+		    " with varying lock state; observed " :
+		    " while holding ", stream);
+		for (index = 0; index < site->observed_count; index++) {
+			if (index != 0)
+				(void) fputs(", ", stream);
+			protection_audit_print_candidate(stream,
+			    &site->observed[index]);
+		}
+		if (site->observed_truncated)
+			(void) fputs(", ...", stream);
+		if (site->unsuitable_mode)
+			(void) fputs(" with an unsuitable mode in at least one "
+			    "state", stream);
+	}
+	(void) fputc('\n', stream);
+}
+
+static void
+protection_audit_result_render_unprotected(
+    struct protection_audit_result *result)
+{
+	struct protection_audit_record **ordered;
+	struct protection_audit_record *record;
+	FILE *stream = locklint_output_stream(&unprotected_output);
+	size_t count = avl_numnodes(&result->records);
+	size_t index = 0;
+
+	if (stream == NULL)
+		return;
+	ordered = calloc(count, sizeof (*ordered));
+	if (ordered == NULL && count != 0)
+		die("cannot allocate ordered unprotected audit records");
+	for (record = avl_first(&result->records); record != NULL;
+	    record = AVL_NEXT(&result->records, record))
+		ordered[index++] = record;
+	qsort(ordered, count, sizeof (*ordered),
+	    protection_audit_record_report_compare);
+	(void) fputs("Unprotected audit: observations include only analyzed "
+	    "roots, resolved targets, and input translation units.\n", stream);
+	for (index = 0; index < count; index++) {
+		unsigned int notes;
+		size_t site;
+
+		record = ordered[index];
+		notes = protection_audit_record_notes(record);
+		if (notes == 0)
+			continue;
+		protection_audit_print_datum(stream, &record->datum);
+		(void) fprintf(stream, " - %s\n",
+		    protection_audit_note_reason(notes));
+		qsort(record->sites, record->site_count,
+		    sizeof (*record->sites), protection_audit_site_report_compare);
+		for (site = 0; site < record->site_count; site++)
+			protection_audit_print_site(stream, record->sites[site]);
+		if (record->total_sites > record->site_count) {
+			(void) fprintf(stream, "    (and %zu more access site%s)\n",
+			    record->total_sites - record->site_count,
+			    record->total_sites - record->site_count == 1 ?
+			    "" : "s");
+		}
+	}
+	free(ordered);
+}
+
+void
+protection_audit_result_render(struct protection_audit_result *result)
+{
+	protection_audit_result_render_inventory(result);
+	protection_audit_result_render_unprotected(result);
 }
 
 void
@@ -1351,7 +1746,12 @@ protection_audit_result_free(struct protection_audit_result *result)
 	if (result == NULL)
 		return;
 	while ((record = avl_destroy_nodes(&result->records, &cookie)) != NULL) {
+		size_t site;
+
 		free(record->candidates);
+		for (site = 0; site < record->site_count; site++)
+			free(record->sites[site]);
+		free(record->sites);
 		free(record);
 	}
 	avl_destroy(&result->records);

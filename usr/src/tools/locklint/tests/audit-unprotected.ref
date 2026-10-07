@@ -1,0 +1,15 @@
+--- variant 1
+Unprotected audit: observations include only analyzed roots, resolved targets, and input translation units.
+consistent-protection.c::datum - no lock is consistently held
+    consistent-protection.c:60 in protection_all_unlocked(): read with no lock held
+    consistent-protection.c:61 in protection_all_unlocked(): written with no lock held
+--- variant 3
+Unprotected audit: observations include only analyzed roots, resolved targets, and input translation units.
+consistent-protection.c::datum - lock is not held consistently
+    consistent-protection.c:93 in protection_mixed_mutex(): read while holding consistent-protection.c::common_lock
+    consistent-protection.c:95 in protection_mixed_mutex(): written with no lock held
+--- variant 4
+Unprotected audit: observations include only analyzed roots, resolved targets, and input translation units.
+consistent-protection.c::datum - different locks are held
+    consistent-protection.c:110 in protection_two_mutexes(): read while holding consistent-protection.c::first_lock
+    consistent-protection.c:113 in protection_two_mutexes(): written while holding consistent-protection.c::second_lock
