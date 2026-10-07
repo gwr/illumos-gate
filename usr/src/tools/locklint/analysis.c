@@ -6958,30 +6958,99 @@ diagnose_protected_leaf(const struct locklint_access *access, void *data_arg)
 	}
 }
 
-static struct point_state *
-diagnose_protected_access(struct analysis *analysis,
-    struct function_context *context, struct point_state *first,
-    avl_tree_t *findings)
+typedef void (*post_fixed_access_f)(struct function_context *,
+    struct point_state *, struct instruction *,
+    const struct locklint_access *, void *);
+
+struct post_fixed_access_dispatch {
+	struct function_context *context;
+	struct point_state *first;
+	struct instruction *instruction;
+	post_fixed_access_f visit;
+	void *argument;
+};
+
+static void
+dispatch_post_fixed_access(const struct locklint_access *access, void *data_arg)
 {
-	struct instruction *instruction = first->point.next_instruction;
-	struct point_state *next;
+	struct post_fixed_access_dispatch *data = data_arg;
 
-	for (next = first; next != NULL && same_analysis_point(first, next);
-	    next = AVL_NEXT(&context->point_states, next))
-		;
-	if (instruction->opcode == OP_LOAD || instruction->opcode == OP_STORE) {
-		struct protected_access_diagnostic data = {
-			.analysis = analysis,
-			.context = context,
-			.first = first,
-			.instruction = instruction,
-			.findings = findings
-		};
+	data->visit(data->context, data->first, data->instruction, access,
+	    data->argument);
+}
 
-		locklint_for_each_instruction_leaf_access(context->function->tu,
-		    instruction, diagnose_protected_leaf, &data);
+/*
+ * Visit each analyzed leaf access in one function after fixed-point analysis.
+ * Point states for the same static instruction remain grouped; observers can
+ * inspect the first state and walk that group without another CFG traversal.
+ */
+static void
+for_each_post_fixed_access(struct function_info *function,
+    post_fixed_access_f visit, void *argument)
+{
+	struct function_context *context;
+
+	for (context = avl_first(&function->contexts.contexts);
+	    context != NULL;
+	    context = AVL_NEXT(&function->contexts.contexts, context)) {
+		struct point_state *first;
+
+		statistics.protected_scan_point_states_enum++;
+		first = avl_first(&context->point_states);
+		if (!context_has_analysis_root(context))
+			continue;
+		while (first != NULL) {
+			struct instruction *instruction =
+			    first->point.next_instruction;
+			struct point_state *next;
+
+			if (instruction == NULL) {
+				first = AVL_NEXT(&context->point_states, first);
+				continue;
+			}
+			for (next = first; next != NULL &&
+			    same_analysis_point(first, next);
+			    next = AVL_NEXT(&context->point_states, next))
+				;
+			if (instruction->opcode == OP_LOAD ||
+			    instruction->opcode == OP_STORE) {
+				struct post_fixed_access_dispatch data = {
+					.context = context,
+					.first = first,
+					.instruction = instruction,
+					.visit = visit,
+					.argument = argument
+				};
+
+				locklint_for_each_instruction_leaf_access(
+				    function->tu, instruction,
+				    dispatch_post_fixed_access, &data);
+			}
+			first = next;
+		}
 	}
-	return (next);
+}
+
+struct protected_access_pass {
+	struct analysis *analysis;
+	avl_tree_t *findings;
+};
+
+static void
+visit_protected_access(struct function_context *context,
+    struct point_state *first, struct instruction *instruction,
+    const struct locklint_access *access, void *data_arg)
+{
+	struct protected_access_pass *pass = data_arg;
+	struct protected_access_diagnostic data = {
+		.analysis = pass->analysis,
+		.context = context,
+		.first = first,
+		.instruction = instruction,
+		.findings = pass->findings
+	};
+
+	diagnose_protected_leaf(access, &data);
 }
 
 static int
@@ -7194,32 +7263,17 @@ diagnose_protected_accesses(struct analysis *analysis)
 	if (error != 0)
 		die("cannot iterate ready callgraph: %s", strerror(error));
 	while ((function = callgraph_iter_next(iterator)) != NULL) {
-		struct function_context *context;
 		avl_tree_t findings;
+		struct protected_access_pass pass = {
+			.analysis = analysis,
+			.findings = &findings
+		};
 
 		avl_create(&findings, compare_protected_access_finding,
 		    sizeof (struct protected_access_finding),
 		    offsetof(struct protected_access_finding, by_access));
 		statistics.protected_contexts_enum++;
-		for (context = avl_first(&function->contexts.contexts);
-		    context != NULL;
-		    context = AVL_NEXT(&function->contexts.contexts, context)) {
-			struct point_state *point_state;
-
-			statistics.protected_scan_point_states_enum++;
-			point_state = avl_first(&context->point_states);
-			if (!context_has_analysis_root(context))
-				continue;
-			while (point_state != NULL) {
-				if (point_state->point.next_instruction == NULL) {
-					point_state = AVL_NEXT(
-					    &context->point_states, point_state);
-					continue;
-				}
-				point_state = diagnose_protected_access(analysis,
-				    context, point_state, &findings);
-			}
-		}
+		for_each_post_fixed_access(function, visit_protected_access, &pass);
 		emit_protected_access_findings(analysis, &findings);
 		avl_destroy(&findings);
 	}

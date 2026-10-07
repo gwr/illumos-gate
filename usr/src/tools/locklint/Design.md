@@ -158,7 +158,8 @@ The design uses the following names for substantial processing:
 - **Post-fixed-point access pass** - The diagnostic-phase traversal of
   reachable function contexts, point states, load and store instructions, and
   leaf accesses used for declared data-policy checking and requested
-  protection-state output.
+  protection-state output.  One internal walker groups all exact states for
+  each static analysis point and supplies each leaf access to pass observers.
 - **Output rendering phase** - Render requested reports and dumps from
   completed analysis or collections without changing semantic state.
 - **Cleanup phase** - Release analysis, translation-unit, Sparse, and output
