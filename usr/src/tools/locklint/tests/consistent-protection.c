@@ -29,8 +29,8 @@ typedef struct krwlock {
 	int opaque;
 } krwlock_t;
 
-#define	RW_READER	0
-#define	RW_WRITER	1
+#define	RW_WRITER	0
+#define	RW_READER	1
 #define	_NOTE(arg)
 #endif
 

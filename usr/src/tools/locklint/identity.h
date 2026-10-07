@@ -20,6 +20,7 @@ struct object_identity;
 struct symbol;
 struct symbol_list;
 struct translation_unit;
+typedef void (*locklint_object_f)(const struct object_identity *, void *);
 
 struct translation_unit *locklint_translation_unit_begin(const char *);
 struct translation_unit *locklint_translation_unit_current(void);
@@ -35,5 +36,8 @@ struct object_identity *locklint_external_object(const char *,
 const char *locklint_object_name(const struct object_identity *);
 const struct translation_unit *locklint_object_owner(
     const struct object_identity *);
+const struct symbol *locklint_object_representative(
+    const struct object_identity *);
+void locklint_for_each_object(locklint_object_f, void *);
 
 #endif /* IDENTITY_H */

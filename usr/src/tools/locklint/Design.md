@@ -158,8 +158,9 @@ The design uses the following names for substantial processing:
 - **Post-fixed-point access pass** - The diagnostic-phase traversal of
   reachable function contexts, point states, load and store instructions, and
   leaf accesses used for declared data-policy checking and requested
-  protection-state output.  One internal walker groups all exact states for
-  each static analysis point and supplies each leaf access to pass observers.
+  protection-state or protection-audit output.  One internal walker groups all
+  exact states for each static analysis point and supplies each leaf access to
+  pass observers.
 - **Output rendering phase** - Render requested reports and dumps from
   completed analysis or collections without changing semantic state.
 - **Cleanup phase** - Release analysis, translation-unit, Sparse, and output
@@ -235,7 +236,8 @@ The implemented sequence is:
 6. **Post-fixed-point diagnostic passes**
    1. Emit diagnostics while collecting observed acquisition edges.
    2. Run the post-fixed-point access pass for ordinary declared data-policy
-      checking or requested protection-state output.
+      checking, requested protection-state output, or protection-audit
+      collection.
    3. Report cycles in the observed lock-order graph.
 7. **Output rendering phase**
    1. Emit requested development dumps.  `--dump-types` lists every named
@@ -249,6 +251,10 @@ The implemented sequence is:
       order.  The reason counts therefore sum to the reported state count.
       `--dump-all` includes this report, the type registry, and the
       whole-program call-graph audit.
+   2. `--audit-protection` renders one deterministic inventory line per
+      retained datum from the temporary audit result.  It reports access
+      classification, declared and observed protection, applicable lock
+      names, and fixed note reasons for conclusions needing attention.
 8. **Cleanup phase**
    1. Release analysis collections, translation-unit records, Sparse-owned
       state, and requested output resources.
@@ -282,7 +288,9 @@ named file.  Registered outputs may not share an explicit pathname.
 `output.c` owns selection, global pathname-conflict checking, stream
 preparation, stdout spooling, publication order, and closing; registration
 order determines stdout publication order.  `dump.c` owns only dump
-selection, headers, and Sparse renderer routing.  The parsed, linearized,
+selection, headers, and Sparse renderer routing.  `protection_audit.c`
+registers `--audit-protection` after the dumps and renders its completed
+temporary result through the same output manager.  The parsed, linearized,
 access, annotation, and event dumps are emitted while each function is
 processed, so their bare forms use separate anonymous on-disk streams to
 prevent interleaving.  Locklint creates each stream with `mkstemp()`,
@@ -3040,6 +3048,8 @@ intermediate-frame rendering remain optional future work.
 | `locklint_same_access()` | Prefer exact computed-address equality, falling back to source identity |
 | `locklint_access_contains()` | Test whole-object and nested-member containment |
 | `locklint_member_path_compare()` | Order retained paths by canonical member declaration order |
+| `locklint_member_path_name()` | Allocate the complete source member-path name |
+| `locklint_member_path_offset()` | Return the cumulative source member offset so renderers can omit redundant lowered offsets |
 | `locklint_access_base()` | Map a type-scoped relation into a concrete embedded object |
 | `locklint_access_name()` | Allocate a diagnostic name containing the complete retained member path |
 | `locklint_show_access()` | Display a source-oriented access path |
@@ -3054,12 +3064,24 @@ intermediate-frame rendering remain optional future work.
 | `protection_audit_candidate_init()` | Normalize a suitably held lock to exact, merged, proved same-owner, or unresolved evidence; exclude unsuitable modes and thread-local locks |
 | `protection_audit_candidate_identity_compare()` | Compare candidate identity without conflating it with evidence strength |
 | `protection_audit_candidate_combine()` | Retain the weakest evidence strength shared by observations of one candidate |
+| `protection_audit_note_flags()` | Classify common, inconsistent, varying, absent, unsuitable-mode, and unresolved observations into fixed note reasons |
+| `protection_audit_result_create()` | Create the temporary datum AVL and audit-local named-object validation index |
+| `protection_audit_result_observe()` | Intersect suitable candidates and retain a bounded two-candidate observation sample for one relevant reached state |
+| `protection_audit_result_render()` | Render the deterministic four-column inventory and referenced fixed notes |
+| `protection_audit_result_free()` | Release all temporary audit records and indexes |
 
 Direct automatic objects, parameter storage, and thread-local objects are
 excluded.  Data reached through a local or formal pointer are not excluded
 merely because the pointer itself is thread-private.  Candidate normalization
-also excludes thread-local locks because they are not shared.  Result
-collection and rendering are not part of this foundation.
+also excludes thread-local locks because they are not shared.
+
+The owning result uses one AVL keyed by datum identity.  Each datum's common
+candidate vector starts from one reached state and only shrinks.  Two
+report-ordered observed candidates plus a truncation flag distinguish one
+intermittently held lock from varying locks without retaining an unbounded
+union across caller contexts.  Internal exact, merged, proved, and unresolved
+evidence drives the conclusion, while normal inventory output exposes only
+user-facing protection and fixed note reasons.
 
 ### Annotations: `annotations.c`
 

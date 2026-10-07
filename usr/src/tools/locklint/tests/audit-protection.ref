@@ -1,0 +1,40 @@
+--- variant 1
+Protection audit: observations include only analyzed roots, resolved targets, and input translation units.
+DATUM	ACCESS	PROTECTION	LOCK
+consistent-protection.c::datum	read/write	none(note3)	-
+
+Notes:
+note3: no lock consistently held
+--- variant 2
+Protection audit: observations include only analyzed roots, resolved targets, and input translation units.
+DATUM	ACCESS	PROTECTION	LOCK
+consistent-protection.c::datum	read/write	mutex	consistent-protection.c::common_lock
+--- variant 3
+Protection audit: observations include only analyzed roots, resolved targets, and input translation units.
+DATUM	ACCESS	PROTECTION	LOCK
+consistent-protection.c::datum	read/write	mutex(note1)	consistent-protection.c::common_lock
+
+Notes:
+note1: lock not held consistently
+--- variant 4
+Protection audit: observations include only analyzed roots, resolved targets, and input translation units.
+DATUM	ACCESS	PROTECTION	LOCK
+consistent-protection.c::datum	read/write	locks(note2)	consistent-protection.c::first_lock, consistent-protection.c::second_lock
+
+Notes:
+note2: different locks held
+--- variant 5
+Protection audit: observations include only analyzed roots, resolved targets, and input translation units.
+DATUM	ACCESS	PROTECTION	LOCK
+consistent-protection.c::datum	read/write	mutex	consistent-protection.c::common_lock
+--- variant 6
+Protection audit: observations include only analyzed roots, resolved targets, and input translation units.
+DATUM	ACCESS	PROTECTION	LOCK
+consistent-protection.c::datum	read-only	none	-
+--- variant 7
+Protection audit: observations include only analyzed roots, resolved targets, and input translation units.
+DATUM	ACCESS	PROTECTION	LOCK
+consistent-protection.c::datum	read/write	rwlock	consistent-protection.c::common_rwlock
+--- variant 8
+Protection audit: observations include only analyzed roots, resolved targets, and input translation units.
+DATUM	ACCESS	PROTECTION	LOCK

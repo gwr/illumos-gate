@@ -3622,6 +3622,33 @@ require_match "context calls" '^memory retained-collections [1-9][0-9]* bytes$' 
 reject_match "context calls" 'warning:' context-calls.out
 
 #
+# The protection inventory distinguishes consistent, inconsistent, varying,
+# absent, read-only, readers-writer, and noncompeting observations.
+#
+: > audit-protection.out
+for variant in 1 2 3 4 5 6 7 8
+do
+	echo "--- variant $variant" >> audit-protection.out
+	if ! "$LOCKLINT" --no-diagnostics --audit-protection \
+	    -DCONSISTENT_PROTECTION_VARIANT="$variant" \
+	    consistent-protection.c >> audit-protection.out 2>&1; then
+		fail "protection inventory variant $variant: command failed"
+	fi
+done
+compare "protection inventory" audit-protection.ref audit-protection.out
+
+run_capture "structural protection inventory" \
+    audit-protection-structural.out "$LOCKLINT" --no-diagnostics \
+    --audit-protection data-policy.c
+require_match "structural protection datum" \
+    '^policy_state::protected[	]' audit-protection-structural.out
+require_match "additive protection policy" \
+    '^policy_state::read_only[	].*mutex+read-only(note6)[	]' \
+    audit-protection-structural.out
+reject_match "redundant structural offset" \
+    '^policy_state::[^	]*+[0-9]' audit-protection-structural.out
+
+#
 # Final report
 #
 if [ "$failures" -ne 0 ]; then

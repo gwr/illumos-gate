@@ -42,6 +42,7 @@
 #include "parse.h"
 #include "scope.h"
 #include "output.h"
+#include "protection_audit.h"
 #include "statistics.h"
 #include "symbol.h"
 #include "sync_api.h"
@@ -82,6 +83,7 @@ usage(FILE *stream)
 	    "[--dump-callgraph] [--dump-contexts] "
 	    "[--dump-protection-states] [--dump-statistics] [--dump-types] "
 	    "(each dump option may use =pathname) "
+	    "[--audit-protection[=pathname]] "
 	    "[--times] "
 	    "[compiler-options] file.c ...\n");
 }
@@ -129,6 +131,7 @@ options(int argc, char **argv)
 		} else if (dump_option(argv[i], DUMP_PROTECTION_STATES)) {
 		} else if (dump_option(argv[i], DUMP_STATISTICS)) {
 		} else if (dump_option(argv[i], DUMP_TYPES)) {
+		} else if (protection_audit_option(argv[i])) {
 		} else if (strcmp(argv[i], "--times") == 0) {
 			show_times = true;
 		} else if (strcmp(argv[i], "--dump-all") == 0) {
@@ -247,7 +250,8 @@ process_symbols(struct translation_unit *tu, struct symbol_list *symbols)
 		    !dump_is_enabled(DUMP_EVENTS) &&
 		    !dump_is_enabled(DUMP_CALLGRAPH) &&
 		    !dump_is_enabled(DUMP_CONTEXTS) &&
-		    !dump_is_enabled(DUMP_PROTECTION_STATES) && !check_locks)
+		    !dump_is_enabled(DUMP_PROTECTION_STATES) &&
+		    !protection_audit_is_enabled() && !check_locks)
 			continue;
 
 		ep = linearize_symbol(sym);
@@ -255,7 +259,8 @@ process_symbols(struct translation_unit *tu, struct symbol_list *symbols)
 			continue;
 		if (check_locks || dump_is_enabled(DUMP_CALLGRAPH) ||
 		    dump_is_enabled(DUMP_CONTEXTS) ||
-		    dump_is_enabled(DUMP_PROTECTION_STATES))
+		    dump_is_enabled(DUMP_PROTECTION_STATES) ||
+		    protection_audit_is_enabled())
 			callgraph_add(tu, ep);
 		if (dump_is_enabled(DUMP_LINEARIZED))
 			locklint_show_linearized(dump_output(DUMP_LINEARIZED), ep);
@@ -263,7 +268,8 @@ process_symbols(struct translation_unit *tu, struct symbol_list *symbols)
 			show_accesses(dump_output(DUMP_ACCESSES), ep);
 		if (dump_is_enabled(DUMP_ANNOTATIONS) || check_locks ||
 		    dump_is_enabled(DUMP_CONTEXTS) ||
-		    dump_is_enabled(DUMP_PROTECTION_STATES))
+		    dump_is_enabled(DUMP_PROTECTION_STATES) ||
+		    protection_audit_is_enabled())
 			locklint_process_function_annotations(
 			    dump_is_enabled(DUMP_ANNOTATIONS) ?
 			    dump_output(DUMP_ANNOTATIONS) : NULL, tu, ep);
@@ -369,7 +375,8 @@ run_analysis(void)
 	}
 	timing_end(TIMING_ANALYSIS_SETUP);
 	if (check_locks || context_stream != NULL ||
-	    protection_state_stream != NULL) {
+	    protection_state_stream != NULL ||
+	    protection_audit_is_enabled()) {
 		analysis_run(&lock_identities, check_locks, context_stream,
 		    protection_state_stream);
 	}
@@ -414,6 +421,7 @@ main(int argc, char **argv)
 		die("cannot initialize synchronization API: %s",
 		    strerror(error));
 	dump_outputs_register();
+	protection_audit_output_register();
 	argc = options(argc, argv);
 	if (argc == 1) {
 		usage(stderr);
@@ -429,10 +437,12 @@ main(int argc, char **argv)
 	if (dump_is_enabled(DUMP_ANNOTATIONS) ||
 	    dump_is_enabled(DUMP_EVENTS) || check_locks ||
 	    dump_is_enabled(DUMP_CONTEXTS) ||
-	    dump_is_enabled(DUMP_PROTECTION_STATES))
+	    dump_is_enabled(DUMP_PROTECTION_STATES) ||
+	    protection_audit_is_enabled())
 		locklint_annotations_enable();
 	if (check_locks || dump_is_enabled(DUMP_CONTEXTS) ||
-	    dump_is_enabled(DUMP_PROTECTION_STATES))
+	    dump_is_enabled(DUMP_PROTECTION_STATES) ||
+	    protection_audit_is_enabled())
 		locklint_assertions_enable();
 	do_output = 0;
 	/*
@@ -470,11 +480,13 @@ main(int argc, char **argv)
 	if (dump_is_enabled(DUMP_ANNOTATIONS) ||
 	    dump_is_enabled(DUMP_EVENTS) || check_locks ||
 	    dump_is_enabled(DUMP_CONTEXTS) ||
-	    dump_is_enabled(DUMP_PROTECTION_STATES))
+	    dump_is_enabled(DUMP_PROTECTION_STATES) ||
+	    protection_audit_is_enabled())
 		locklint_resolve_annotations(symbols);
 	if (check_locks || dump_is_enabled(DUMP_CALLGRAPH) ||
 	    dump_is_enabled(DUMP_CONTEXTS) ||
-	    dump_is_enabled(DUMP_PROTECTION_STATES))
+	    dump_is_enabled(DUMP_PROTECTION_STATES) ||
+	    protection_audit_is_enabled())
 		callgraph_record_pointer_evidence(tu, symbols,
 		    dump_is_enabled(DUMP_CALLGRAPH));
 	timing_end(TIMING_INPUT_EVIDENCE);
@@ -498,11 +510,13 @@ main(int argc, char **argv)
 		if (dump_is_enabled(DUMP_ANNOTATIONS) ||
 		    dump_is_enabled(DUMP_EVENTS) || check_locks ||
 		    dump_is_enabled(DUMP_CONTEXTS) ||
-		    dump_is_enabled(DUMP_PROTECTION_STATES))
+		    dump_is_enabled(DUMP_PROTECTION_STATES) ||
+		    protection_audit_is_enabled())
 			locklint_resolve_annotations(symbols);
 		if (check_locks || dump_is_enabled(DUMP_CALLGRAPH) ||
 		    dump_is_enabled(DUMP_CONTEXTS) ||
-		    dump_is_enabled(DUMP_PROTECTION_STATES))
+		    dump_is_enabled(DUMP_PROTECTION_STATES) ||
+		    protection_audit_is_enabled())
 			callgraph_record_pointer_evidence(tu, symbols,
 			    dump_is_enabled(DUMP_CALLGRAPH));
 		timing_end(TIMING_INPUT_EVIDENCE);
@@ -529,7 +543,8 @@ main(int argc, char **argv)
 	timing_end(TIMING_COMMANDS);
 	if (check_locks || dump_is_enabled(DUMP_CALLGRAPH) ||
 	    dump_is_enabled(DUMP_CONTEXTS) ||
-	    dump_is_enabled(DUMP_PROTECTION_STATES)) {
+	    dump_is_enabled(DUMP_PROTECTION_STATES) ||
+	    protection_audit_is_enabled()) {
 		run_analysis();
 	}
 	timing_begin(TIMING_FINAL_OUTPUT);

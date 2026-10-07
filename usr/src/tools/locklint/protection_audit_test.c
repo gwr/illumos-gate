@@ -18,6 +18,8 @@
 #include <stdio.h>
 
 #include "access.h"
+#include "annotations.h"
+#include "context.h"
 #include "events.h"
 #include "function_info.h"
 #include "identity.h"
@@ -33,6 +35,34 @@ static unsigned int failures;
 void
 locklint_init_include_path(void)
 {
+}
+
+bool
+locklint_data_policy(const struct locklint_access *access,
+    struct locklint_data_policy *policy, struct locklint_access *lock)
+{
+	(void) access;
+	(void) policy;
+	(void) lock;
+	return (false);
+}
+
+size_t
+context_state_lock_count(const struct semantic_state *state)
+{
+	(void) state;
+	return (0);
+}
+
+bool
+context_state_lock_at(const struct semantic_state *state, size_t index,
+    const struct lock_identity **lock, unsigned int *modes)
+{
+	(void) state;
+	(void) index;
+	(void) lock;
+	(void) modes;
+	return (false);
 }
 
 static void
@@ -491,11 +521,38 @@ test_candidates(void)
 	free_ptr_list(&aggregate.symbol_list);
 }
 
+static void
+test_note_flags(void)
+{
+	check(protection_audit_note_flags(true, 1, 1, false, false) == 0,
+	    "common candidate needs no note");
+	check(protection_audit_note_flags(true, 0, 1, false, false) ==
+	    PROTECTION_AUDIT_NOTE_INCONSISTENT,
+	    "one partial candidate is inconsistent");
+	check(protection_audit_note_flags(true, 0, 2, false, false) ==
+	    PROTECTION_AUDIT_NOTE_VARYING,
+	    "different candidates vary");
+	check(protection_audit_note_flags(true, 0, 0, false, false) ==
+	    PROTECTION_AUDIT_NOTE_NONE,
+	    "written datum without candidates has no consistent lock");
+	check(protection_audit_note_flags(false, 0, 0, false, false) == 0,
+	    "read-only datum without candidates needs no note");
+	check(protection_audit_note_flags(true, 0, 1, true, false) ==
+	    (PROTECTION_AUDIT_NOTE_INCONSISTENT |
+	    PROTECTION_AUDIT_NOTE_MODE),
+	    "unsuitable mode supplements inconsistent lock");
+	check(protection_audit_note_flags(true, 0, 1, false, true) ==
+	    (PROTECTION_AUDIT_NOTE_INCONSISTENT |
+	    PROTECTION_AUDIT_NOTE_UNRESOLVED),
+	    "unresolved relationship remains visible");
+}
+
 int
 main(void)
 {
 	test_datum_keys();
 	test_candidates();
+	test_note_flags();
 	if (failures != 0) {
 		(void) fprintf(stderr, "%u test failure%s\n", failures,
 		    failures == 1 ? "" : "s");

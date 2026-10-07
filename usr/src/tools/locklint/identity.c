@@ -353,3 +353,24 @@ locklint_object_owner(const struct object_identity *object)
 {
 	return (object != NULL ? object->tu : NULL);
 }
+
+const struct symbol *
+locklint_object_representative(const struct object_identity *object)
+{
+	return (object != NULL ? object->representative : NULL);
+}
+
+void
+locklint_for_each_object(locklint_object_f visit, void *argument)
+{
+	const struct translation_unit *tu;
+	const struct object_identity *object;
+
+	for (object = external_objects; object != NULL; object = object->next)
+		visit(object, argument);
+	for (tu = translation_units; tu != NULL; tu = tu->next) {
+		for (object = tu->internal_objects; object != NULL;
+		    object = object->next)
+			visit(object, argument);
+	}
+}

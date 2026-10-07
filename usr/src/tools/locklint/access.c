@@ -926,6 +926,36 @@ write_member_path(char *buffer, const struct locklint_member_path *path)
 	return (buffer + length);
 }
 
+char *
+locklint_member_path_name(const struct locklint_member_path *path)
+{
+	const struct locklint_member_path *component;
+	char *result;
+	char *end;
+	size_t length = 0;
+
+	if (path == NULL)
+		return (NULL);
+	for (component = path; component != NULL;
+	    component = component->parent) {
+		length += strlen(show_ident(component->ident));
+		if (component->parent != NULL)
+			length++;
+	}
+	result = malloc(length + 1);
+	if (result == NULL)
+		die("out of memory formatting member path");
+	end = write_member_path(result, path);
+	*end = '\0';
+	return (result);
+}
+
+unsigned long
+locklint_member_path_offset(const struct locklint_member_path *path)
+{
+	return (path != NULL ? path->offset : 0);
+}
+
 /*
  * Format the complete retained source member path when one is available.
  * Callers own the returned string.
@@ -934,28 +964,13 @@ char *
 locklint_access_name(const struct locklint_access *access)
 {
 	const struct locklint_member_path *path;
-	const struct locklint_member_path *component;
 	struct symbol *symbol;
 	const char *name;
 	char *result;
-	char *end;
-	size_t length = 0;
 
 	path = access->path;
-	if (path != NULL) {
-		for (component = path; component != NULL;
-		    component = component->parent) {
-			length += strlen(show_ident(component->ident));
-			if (component->parent != NULL)
-				length++;
-		}
-		result = malloc(length + 1);
-		if (result == NULL)
-			die("out of memory formatting member path");
-		end = write_member_path(result, path);
-		*end = '\0';
-		return (result);
-	}
+	if (path != NULL)
+		return (locklint_member_path_name(path));
 	symbol = access->member != NULL ? access->member : access->root;
 	name = symbol != NULL && symbol->ident != NULL ?
 	    show_ident(symbol->ident) : "<unknown>";

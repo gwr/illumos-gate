@@ -13,6 +13,7 @@
 #define	PROTECTION_AUDIT_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "lock_identity.h"
@@ -22,8 +23,10 @@ struct function_info;
 struct locklint_access;
 struct locklint_member_path;
 struct object_identity;
+struct semantic_state;
 struct symbol;
 struct translation_unit;
+struct protection_audit_result;
 
 enum protection_audit_datum_kind {
 	PROTECTION_AUDIT_DATUM_EXTERNAL,
@@ -50,6 +53,15 @@ enum protection_audit_evidence {
 	PROTECTION_AUDIT_EVIDENCE_MERGED,
 	PROTECTION_AUDIT_EVIDENCE_PROVEN,
 	PROTECTION_AUDIT_EVIDENCE_EXACT
+};
+
+enum protection_audit_note {
+	PROTECTION_AUDIT_NOTE_INCONSISTENT = 1 << 0,
+	PROTECTION_AUDIT_NOTE_VARYING = 1 << 1,
+	PROTECTION_AUDIT_NOTE_NONE = 1 << 2,
+	PROTECTION_AUDIT_NOTE_MODE = 1 << 3,
+	PROTECTION_AUDIT_NOTE_UNRESOLVED = 1 << 4,
+	PROTECTION_AUDIT_NOTE_POLICY = 1 << 5
 };
 
 /*
@@ -101,5 +113,15 @@ int protection_audit_candidate_identity_compare(
 bool protection_audit_candidate_combine(
     struct protection_audit_candidate *,
     const struct protection_audit_candidate *);
+unsigned int protection_audit_note_flags(bool, size_t, size_t, bool, bool);
+void protection_audit_output_register(void);
+bool protection_audit_option(const char *);
+bool protection_audit_is_enabled(void);
+struct protection_audit_result *protection_audit_result_create(void);
+void protection_audit_result_observe(struct protection_audit_result *,
+    const struct function_info *, const struct locklint_access *,
+    const void *, int64_t, const struct semantic_state *, bool);
+void protection_audit_result_render(struct protection_audit_result *);
+void protection_audit_result_free(struct protection_audit_result *);
 
 #endif /* PROTECTION_AUDIT_H */

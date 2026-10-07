@@ -52,6 +52,7 @@
 #include "lock_order.h"
 #include "provenance.h"
 #include "statistics.h"
+#include "protection_audit.h"
 #include "symbol.h"
 #include "timing.h"
 #include "type.h"
@@ -7031,26 +7032,70 @@ for_each_post_fixed_access(struct function_info *function,
 	}
 }
 
-struct protected_access_pass {
+struct post_fixed_pass {
 	struct analysis *analysis;
 	avl_tree_t *findings;
+	struct protection_audit_result *audit;
+	bool diagnose_protection;
 };
 
 static void
-visit_protected_access(struct function_context *context,
+visit_post_fixed_access(struct function_context *context,
     struct point_state *first, struct instruction *instruction,
     const struct locklint_access *access, void *data_arg)
 {
-	struct protected_access_pass *pass = data_arg;
-	struct protected_access_diagnostic data = {
-		.analysis = pass->analysis,
-		.context = context,
-		.first = first,
-		.instruction = instruction,
-		.findings = pass->findings
-	};
+	struct post_fixed_pass *pass = data_arg;
+	struct point_state *point_state;
 
-	diagnose_protected_leaf(access, &data);
+	if (pass->diagnose_protection) {
+		struct protected_access_diagnostic data = {
+			.analysis = pass->analysis,
+			.context = context,
+			.first = first,
+			.instruction = instruction,
+			.findings = pass->findings
+		};
+
+		diagnose_protected_leaf(access, &data);
+	}
+	if (pass->audit == NULL)
+		return;
+	for (point_state = first; point_state != NULL &&
+	    same_analysis_point(first, point_state);
+	    point_state = AVL_NEXT(&context->point_states, point_state)) {
+		struct competition_interval competition =
+		    context_state_competition(point_state->state);
+		struct lock_identity_key key;
+		struct visibility_region region;
+		enum lock_analysis_object_type object_type;
+		enum semantic_visibility visibility =
+		    SEMANTIC_VISIBILITY_VISIBLE;
+		bool available;
+		bool composed;
+		int error;
+
+		error = context_access_key(context, point_state->state, access,
+		    &key, &object_type, &composed);
+		if (error != 0)
+			die("cannot identify protection audit datum: %s",
+			    strerror(error));
+		error = context_access_region(context, point_state->state,
+		    access, &region, &available, &composed);
+		if (error != 0)
+			die("cannot identify protection audit region: %s",
+			    strerror(error));
+		if (available) {
+			(void) context_state_effective_visibility(
+			    point_state->state, region, &visibility);
+		}
+		if (visibility == SEMANTIC_VISIBILITY_INVISIBLE ||
+		    (!competition.maximum_unbounded &&
+		    competition.maximum <= 0))
+			continue;
+		protection_audit_result_observe(pass->audit, context->function,
+		    access, key.analysis_object, key.target_offset,
+		    point_state->state, instruction->opcode == OP_STORE);
+	}
 }
 
 static int
@@ -7253,7 +7298,8 @@ emit_protected_access_findings(struct analysis *analysis,
 }
 
 static void
-diagnose_protected_accesses(struct analysis *analysis)
+process_post_fixed_accesses(struct analysis *analysis,
+    bool diagnose_protection, struct protection_audit_result *audit)
 {
 	struct callgraph_iter *iterator;
 	struct function_info *function;
@@ -7264,17 +7310,20 @@ diagnose_protected_accesses(struct analysis *analysis)
 		die("cannot iterate ready callgraph: %s", strerror(error));
 	while ((function = callgraph_iter_next(iterator)) != NULL) {
 		avl_tree_t findings;
-		struct protected_access_pass pass = {
+		struct post_fixed_pass pass = {
 			.analysis = analysis,
-			.findings = &findings
+			.findings = &findings,
+			.audit = audit,
+			.diagnose_protection = diagnose_protection
 		};
 
 		avl_create(&findings, compare_protected_access_finding,
 		    sizeof (struct protected_access_finding),
 		    offsetof(struct protected_access_finding, by_access));
 		statistics.protected_contexts_enum++;
-		for_each_post_fixed_access(function, visit_protected_access, &pass);
-		emit_protected_access_findings(analysis, &findings);
+		for_each_post_fixed_access(function, visit_post_fixed_access, &pass);
+		if (diagnose_protection)
+			emit_protected_access_findings(analysis, &findings);
 		avl_destroy(&findings);
 	}
 	callgraph_iter_close(iterator);
@@ -8820,6 +8869,9 @@ void
 analysis_run(struct lock_identity_collection *lock_identities, bool check_locks,
     FILE *stream, FILE *protection_state_stream)
 {
+	struct protection_audit_result *audit =
+	    protection_audit_is_enabled() ?
+	    protection_audit_result_create() : NULL;
 	struct analysis analysis = {
 		.lock_identities = lock_identities,
 		.check_locks = check_locks,
@@ -8872,10 +8924,15 @@ analysis_run(struct lock_identity_collection *lock_identities, bool check_locks,
 	/*
 	 * Run the protected-access pass for checks or its requested state dump.
 	 */
-	if (check_locks || protection_state_stream != NULL) {
+	if (check_locks || protection_state_stream != NULL || audit != NULL) {
 		timing_begin(TIMING_DIAG_PROTECTED_ACCESSES);
-		diagnose_protected_accesses(&analysis);
+		process_post_fixed_accesses(&analysis,
+		    check_locks || protection_state_stream != NULL, audit);
 		timing_end(TIMING_DIAG_PROTECTED_ACCESSES);
+	}
+	if (audit != NULL) {
+		protection_audit_result_render(audit);
+		protection_audit_result_free(audit);
 	}
 	if (check_locks) {
 		timing_begin(TIMING_DIAG_ASSUMED_CALLS);
