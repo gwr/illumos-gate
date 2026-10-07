@@ -12,7 +12,10 @@
 #ifndef PROTECTION_AUDIT_H
 #define	PROTECTION_AUDIT_H
 
+#include <stdbool.h>
 #include <stdint.h>
+
+#include "lock_identity.h"
 
 struct ll_type;
 struct function_info;
@@ -35,6 +38,20 @@ enum protection_audit_key_result {
 	PROTECTION_AUDIT_KEY_UNSUPPORTED
 };
 
+enum protection_audit_candidate_kind {
+	PROTECTION_AUDIT_CANDIDATE_EXACT_OBJECT,
+	PROTECTION_AUDIT_CANDIDATE_EXACT_STATIC,
+	PROTECTION_AUDIT_CANDIDATE_ROLE,
+	PROTECTION_AUDIT_CANDIDATE_UNRESOLVED
+};
+
+enum protection_audit_evidence {
+	PROTECTION_AUDIT_EVIDENCE_UNRESOLVED,
+	PROTECTION_AUDIT_EVIDENCE_MERGED,
+	PROTECTION_AUDIT_EVIDENCE_PROVEN,
+	PROTECTION_AUDIT_EVIDENCE_EXACT
+};
+
 /*
  * Retain analysis-lifetime identities and numeric region coordinates here.
  * Renderers create display strings only when a selected report is emitted.
@@ -51,6 +68,20 @@ struct protection_audit_datum_key {
 	uint64_t size;
 };
 
+/*
+ * Candidate identity and evidence strength are separate.  A role remains the
+ * same candidate when observations prove different relationship strengths.
+ */
+struct protection_audit_candidate {
+	enum protection_audit_candidate_kind kind;
+	enum protection_audit_evidence evidence;
+	const void *identity;
+	const struct function_info *function;
+	const struct type_member *role;
+	int64_t offset;
+	unsigned int observed_modes;
+};
+
 enum protection_audit_key_result protection_audit_datum_key_init(
     struct protection_audit_datum_key *, struct translation_unit *,
     const struct function_info *, const struct locklint_access *);
@@ -60,5 +91,15 @@ int protection_audit_datum_identity_compare(
 int protection_audit_datum_report_compare(
     const struct protection_audit_datum_key *,
     const struct protection_audit_datum_key *);
+bool protection_audit_candidate_init(struct protection_audit_candidate *,
+    const struct function_info *, const struct locklint_access *,
+    const void *, int64_t, const struct lock_identity *, bool, bool,
+    unsigned int, bool);
+int protection_audit_candidate_identity_compare(
+    const struct protection_audit_candidate *,
+    const struct protection_audit_candidate *);
+bool protection_audit_candidate_combine(
+    struct protection_audit_candidate *,
+    const struct protection_audit_candidate *);
 
 #endif /* PROTECTION_AUDIT_H */

@@ -18,6 +18,7 @@
 #include <stdio.h>
 
 #include "access.h"
+#include "events.h"
 #include "function_info.h"
 #include "identity.h"
 #include "lib.h"
@@ -307,10 +308,194 @@ test_datum_keys(void)
 	free_ptr_list(&aggregate.symbol_list);
 }
 
+static void
+test_candidates(void)
+{
+	struct stream streams[] = {
+		{ .name = "candidates.h" }
+	};
+	struct symbol integer = {
+		.type = SYM_BASETYPE,
+		.bit_size = 32,
+		.examined = 1,
+		.ctype = {
+			.modifiers = MOD_SIGNED,
+			.alignment = 4,
+			.base_type = &int_type
+		}
+	};
+	struct ident *tag = built_in_ident("candidate_record");
+	struct symbol aggregate = {
+		.type = SYM_STRUCT,
+		.namespace = NS_STRUCT,
+		.pos = { .stream = 0, .line = 10, .pos = 1 },
+		.ident = tag,
+		.bit_size = 128,
+		.examined = 1,
+		.ctype = { .alignment = 4 }
+	};
+	struct symbol lock_member = {
+		.type = SYM_NODE,
+		.ident = built_in_ident("lock"),
+		.bit_size = 32,
+		.examined = 1,
+		.ctype = { .base_type = &integer }
+	};
+	struct symbol data_member = {
+		.type = SYM_NODE,
+		.ident = built_in_ident("value"),
+		.offset = 4,
+		.bit_size = 32,
+		.examined = 1,
+		.ctype = { .base_type = &integer }
+	};
+	struct symbol function_symbol = {
+		.type = SYM_NODE,
+		.namespace = NS_SYMBOL,
+		.pos = { .stream = 0, .line = 20, .pos = 1 },
+		.ident = built_in_ident("candidate_function"),
+		.examined = 1
+	};
+	struct entrypoint ep = {
+		.name = &function_symbol
+	};
+	struct function_info function = {
+		.ep = &ep
+	};
+	struct locklint_access access = {
+		.type = &aggregate,
+		.member = &data_member,
+		.offset = 20
+	};
+	struct lock_identity exact_lock = {
+		.key = {
+			.analysis_object = &exact_lock,
+			.target_offset = 0
+		},
+		.analysis_object_type = LOCK_ANALYSIS_OBJECT_OBJECT_IDENTITY
+	};
+	struct lock_identity role_lock = {
+		.key = {
+			.analysis_object = &aggregate,
+			.target_offset = 16
+		},
+		.analysis_object_type = LOCK_ANALYSIS_OBJECT_PSEUDO
+	};
+	struct lock_identity other_owner_lock = {
+		.key = {
+			.analysis_object = &integer,
+			.target_offset = 16
+		},
+		.analysis_object_type = LOCK_ANALYSIS_OBJECT_PSEUDO
+	};
+	struct lock_identity opaque_lock = {
+		.key = {
+			.analysis_object = &opaque_lock,
+			.target_offset = 7
+		},
+		.analysis_object_type = LOCK_ANALYSIS_OBJECT_PSEUDO
+	};
+	struct lock_identity ambiguous_merged;
+	struct protection_audit_candidate exact;
+	struct protection_audit_candidate proven;
+	struct protection_audit_candidate unresolved;
+	struct protection_audit_candidate merged;
+	struct protection_audit_candidate opaque;
+	struct protection_audit_candidate common;
+	const struct ll_type *owner;
+	const struct type_member *role;
+	bool candidate;
+
+	input_streams = streams;
+	input_stream_nr = 0;
+	add_symbol(&aggregate.symbol_list, &lock_member);
+	add_symbol(&aggregate.symbol_list, &data_member);
+	type_registry_create();
+	register_type(&aggregate);
+	owner = type_lookup_exact(&aggregate);
+	role = type_member_lookup_exact(&lock_member);
+	role_lock.role = role;
+	other_owner_lock.role = role;
+
+	candidate = protection_audit_candidate_init(&exact, &function,
+	    &access, &aggregate, 20, &exact_lock, true, false,
+	    LOCKLINT_MODE_MUTEX, true);
+	check(candidate &&
+	    exact.kind == PROTECTION_AUDIT_CANDIDATE_EXACT_OBJECT &&
+	    exact.evidence == PROTECTION_AUDIT_EVIDENCE_EXACT,
+	    "named object lock remains exact");
+	check(!protection_audit_candidate_init(&common, &function, &access,
+	    &aggregate, 20, &exact_lock, true, false, LOCKLINT_MODE_READER,
+	    true),
+	    "reader mode is unsuitable for a write");
+	check(!protection_audit_candidate_init(&common, &function, &access,
+	    &aggregate, 20, &exact_lock, true, true, LOCKLINT_MODE_MUTEX,
+	    true), "thread-local lock is unsuitable for shared protection");
+
+	candidate = protection_audit_candidate_init(&proven, &function,
+	    &access, &aggregate, 20, &role_lock, false, false,
+	    LOCKLINT_MODE_MUTEX, true);
+	check(candidate && proven.kind == PROTECTION_AUDIT_CANDIDATE_ROLE &&
+	    proven.role == role &&
+	    proven.evidence == PROTECTION_AUDIT_EVIDENCE_PROVEN,
+	    "same-owner role is proved");
+
+	candidate = protection_audit_candidate_init(&unresolved, &function,
+	    &access, &aggregate, 20, &other_owner_lock,
+	    false, false, LOCKLINT_MODE_MUTEX, true);
+	check(candidate &&
+	    unresolved.kind == PROTECTION_AUDIT_CANDIDATE_ROLE &&
+	    unresolved.evidence == PROTECTION_AUDIT_EVIDENCE_UNRESOLVED,
+	    "different owner retains unresolved role evidence");
+
+	check(type_merge_instances(tag) == TYPE_MERGE_INSTANCES_OK,
+	    "merge candidate aggregate instances");
+	role_lock.key.analysis_object = type_merged_instance(owner);
+	role_lock.key.target_offset = 0;
+	candidate = protection_audit_candidate_init(&merged, &function,
+	    &access, &aggregate, 20, &role_lock, false, false,
+	    LOCKLINT_MODE_MUTEX, true);
+	check(candidate && merged.kind == PROTECTION_AUDIT_CANDIDATE_ROLE &&
+	    merged.evidence == PROTECTION_AUDIT_EVIDENCE_MERGED,
+	    "explicitly merged role remains visible");
+
+	ambiguous_merged = role_lock;
+	ambiguous_merged.role = NULL;
+	ambiguous_merged.role_conflict = true;
+	candidate = protection_audit_candidate_init(&common, &function,
+	    &access, &aggregate, 20, &ambiguous_merged, false,
+	    false, LOCKLINT_MODE_MUTEX, true);
+	check(candidate &&
+	    common.kind == PROTECTION_AUDIT_CANDIDATE_UNRESOLVED &&
+	    common.evidence == PROTECTION_AUDIT_EVIDENCE_UNRESOLVED,
+	    "unnamed merged identity remains unresolved");
+
+	candidate = protection_audit_candidate_init(&opaque, &function,
+	    &access, &aggregate, 20, &opaque_lock, false, false,
+	    LOCKLINT_MODE_MUTEX, true);
+	check(candidate &&
+	    opaque.kind == PROTECTION_AUDIT_CANDIDATE_UNRESOLVED &&
+	    opaque.evidence == PROTECTION_AUDIT_EVIDENCE_UNRESOLVED,
+	    "opaque lock remains unresolved evidence");
+
+	common = proven;
+	check(protection_audit_candidate_combine(&common, &unresolved) &&
+	    common.evidence == PROTECTION_AUDIT_EVIDENCE_UNRESOLVED,
+	    "common role retains weakest evidence");
+	check(!protection_audit_candidate_combine(&common, &exact),
+	    "different candidate identities do not combine");
+	check(protection_audit_candidate_identity_compare(&proven,
+	    &unresolved) == 0, "role identity ignores evidence strength");
+
+	type_registry_destroy();
+	free_ptr_list(&aggregate.symbol_list);
+}
+
 int
 main(void)
 {
 	test_datum_keys();
+	test_candidates();
 	if (failures != 0) {
 		(void) fprintf(stderr, "%u test failure%s\n", failures,
 		    failures == 1 ? "" : "s");

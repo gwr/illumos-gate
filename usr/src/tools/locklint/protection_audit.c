@@ -20,6 +20,7 @@
 #include <string.h>
 
 #include "access.h"
+#include "events.h"
 #include "function_info.h"
 #include "identity.h"
 #include "lib.h"
@@ -337,4 +338,152 @@ protection_audit_datum_report_compare(
 	if (comparison != 0)
 		return (comparison);
 	return (protection_audit_datum_identity_compare(left, right));
+}
+
+static bool
+candidate_same_owner(const struct locklint_access *access,
+    const void *datum_object, int64_t datum_offset,
+    const struct lock_identity *lock, const struct type_member *role)
+{
+	const struct ll_type *owner = type_member_owner(role);
+	uint64_t relative;
+	unsigned long source_base;
+	unsigned long role_offset;
+	int64_t owner_offset;
+
+	if (owner == NULL ||
+	    !locklint_access_containing_base_canonical(access, owner,
+	    access->offset, &source_base) ||
+	    source_base > access->offset)
+		return (false);
+	relative = (uint64_t)access->offset - source_base;
+	role_offset = role->representative->offset;
+	if (relative > INT64_MAX || role_offset > INT64_MAX ||
+	    datum_offset < INT64_MIN + (int64_t)relative)
+		return (false);
+	owner_offset = datum_offset - (int64_t)relative;
+	if (owner_offset > INT64_MAX - (int64_t)role_offset)
+		return (false);
+	return (lock->key.analysis_object == datum_object &&
+	    lock->key.target_offset ==
+	    owner_offset + (int64_t)role_offset);
+}
+
+/*
+ * Preserve every suitably held lock at the strongest source evidence
+ * available in this state.  Exact named objects remain exact; canonical roles
+ * identify merged, proved same-owner, or unresolved structural evidence.
+ */
+bool
+protection_audit_candidate_init(struct protection_audit_candidate *candidate,
+    const struct function_info *function,
+    const struct locklint_access *datum_access, const void *datum_object,
+    int64_t datum_offset, const struct lock_identity *lock,
+    bool lock_is_named_object, bool lock_is_thread_local, unsigned int modes,
+    bool written)
+{
+	const struct type_member *role;
+	const struct ll_type *owner;
+	const void *merged_instance;
+	unsigned int suitable_modes = written ?
+	    LOCKLINT_MODE_MUTEX | LOCKLINT_MODE_WRITER :
+	    LOCKLINT_MODE_MUTEX | LOCKLINT_MODE_READER | LOCKLINT_MODE_WRITER;
+
+	if (candidate == NULL || datum_access == NULL || datum_object == NULL ||
+	    lock == NULL || lock_is_thread_local ||
+	    (modes & suitable_modes) == 0)
+		return (false);
+	(void) memset(candidate, 0, sizeof (*candidate));
+	candidate->observed_modes = modes & suitable_modes;
+
+	role = !lock->role_conflict ? lock->role : NULL;
+	owner = type_member_owner(role);
+	merged_instance = type_merged_instance(owner);
+	if (role != NULL && merged_instance != NULL &&
+	    lock->key.analysis_object == merged_instance) {
+		candidate->kind = PROTECTION_AUDIT_CANDIDATE_ROLE;
+		candidate->evidence = PROTECTION_AUDIT_EVIDENCE_MERGED;
+		candidate->identity = role;
+		candidate->role = role;
+		return (true);
+	}
+	if (lock_is_named_object && lock->analysis_object_type ==
+	    LOCK_ANALYSIS_OBJECT_OBJECT_IDENTITY) {
+		candidate->kind = PROTECTION_AUDIT_CANDIDATE_EXACT_OBJECT;
+		candidate->evidence = PROTECTION_AUDIT_EVIDENCE_EXACT;
+		candidate->identity = lock->key.analysis_object;
+		candidate->offset = lock->key.target_offset;
+		return (true);
+	}
+	if (role != NULL) {
+		candidate->kind = PROTECTION_AUDIT_CANDIDATE_ROLE;
+		candidate->evidence = candidate_same_owner(datum_access,
+		    datum_object, datum_offset, lock, role) ?
+		    PROTECTION_AUDIT_EVIDENCE_PROVEN :
+		    PROTECTION_AUDIT_EVIDENCE_UNRESOLVED;
+		candidate->identity = role;
+		candidate->role = role;
+		return (true);
+	}
+	if (lock->analysis_object_type == LOCK_ANALYSIS_OBJECT_SYMBOL &&
+	    lock->key.analysis_object != NULL &&
+	    (((const struct symbol *)lock->key.analysis_object)->
+	    ctype.modifiers & MOD_STATIC) != 0) {
+		candidate->kind = PROTECTION_AUDIT_CANDIDATE_EXACT_STATIC;
+		candidate->evidence = PROTECTION_AUDIT_EVIDENCE_EXACT;
+		candidate->identity = lock->key.analysis_object;
+		candidate->function = function;
+		candidate->offset = lock->key.target_offset;
+		return (true);
+	}
+	candidate->kind = PROTECTION_AUDIT_CANDIDATE_UNRESOLVED;
+	candidate->evidence = PROTECTION_AUDIT_EVIDENCE_UNRESOLVED;
+	candidate->identity = lock->key.analysis_object;
+	candidate->function = function;
+	candidate->offset = lock->key.target_offset;
+	return (true);
+}
+
+int
+protection_audit_candidate_identity_compare(
+    const struct protection_audit_candidate *left,
+    const struct protection_audit_candidate *right)
+{
+	int comparison;
+
+	if (left->kind < right->kind)
+		return (-1);
+	if (left->kind > right->kind)
+		return (1);
+	comparison = compare_uintptr((uintptr_t)left->identity,
+	    (uintptr_t)right->identity);
+	if (comparison != 0)
+		return (comparison);
+	if (left->kind == PROTECTION_AUDIT_CANDIDATE_EXACT_STATIC) {
+		comparison = compare_uintptr((uintptr_t)left->function,
+		    (uintptr_t)right->function);
+		if (comparison != 0)
+			return (comparison);
+	}
+	return (left->offset < right->offset ? -1 :
+	    left->offset > right->offset ? 1 : 0);
+}
+
+/*
+ * Combining observations never strengthens their shared conclusion.  Modes
+ * accumulate for later rendering, while identity remains the intersection
+ * key and evidence falls to the weakest observation.
+ */
+bool
+protection_audit_candidate_combine(
+    struct protection_audit_candidate *retained,
+    const struct protection_audit_candidate *observation)
+{
+	if (protection_audit_candidate_identity_compare(retained,
+	    observation) != 0)
+		return (false);
+	if (observation->evidence < retained->evidence)
+		retained->evidence = observation->evidence;
+	retained->observed_modes |= observation->observed_modes;
+	return (true);
 }

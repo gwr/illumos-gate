@@ -566,6 +566,7 @@ The structures have these roles:
 | `struct locklint_access` | Dual source and computed-address identity for an object or member access; retains annotation and diagnostic provenance while optionally referring to the exact Sparse address pseudo and displacement |
 | `struct locklint_member_path` | One immutable, interned member-path component; links to its containing path and records a member identifier, cumulative offset, depth, and canonical declaration order |
 | `struct protection_audit_datum_key` | One exact static-object, canonical structural, or function-local static data region; retains stable analysis identities and numeric coordinates without allocating display strings |
+| `struct protection_audit_candidate` | One exact, merged, proved structural, or unresolved suitably held lock observation; keeps identity separate from evidence strength |
 | `struct function_record` | Callgraph-private owning record for one function; contains its shared `function_info`, root and reachability bookkeeping, collection linkage, and AVL linkages |
 | `struct function_info` | Shared semantic view of one function; refers to its translation unit and Sparse entrypoint and carries checker-owned block state and summaries |
 | `struct call_audit` | One temporary source-order entry for a live call instruction while dumping a function's calls |
@@ -3050,11 +3051,15 @@ intermediate-frame rendering remain optional future work.
 | `protection_audit_datum_key_init()` | Classify an instruction-backed access as an exact static object, canonical structural pointee, retained function-local static, excluded thread-private object, or unsupported fallback |
 | `protection_audit_datum_identity_compare()` | Compare complete datum identities for lookup and collection |
 | `protection_audit_datum_report_compare()` | Order datum identities by the deterministic source hierarchy used by future audit renderers |
+| `protection_audit_candidate_init()` | Normalize a suitably held lock to exact, merged, proved same-owner, or unresolved evidence; exclude unsuitable modes and thread-local locks |
+| `protection_audit_candidate_identity_compare()` | Compare candidate identity without conflating it with evidence strength |
+| `protection_audit_candidate_combine()` | Retain the weakest evidence strength shared by observations of one candidate |
 
 Direct automatic objects, parameter storage, and thread-local objects are
 excluded.  Data reached through a local or formal pointer are not excluded
-merely because the pointer itself is thread-private.  Result collection and
-rendering are not part of this foundation.
+merely because the pointer itself is thread-private.  Candidate normalization
+also excludes thread-local locks because they are not shared.  Result
+collection and rendering are not part of this foundation.
 
 ### Annotations: `annotations.c`
 
