@@ -62,8 +62,14 @@ FILE_LOCAL_NAME = re.compile(r"^(.*\.[ch]):([^:]+)$")
 PROTECTION = re.compile(
     r"^([a-z-]+(?:\+[a-z-]+)*)(?:\(note([1-6](?:,[1-6])*)\))?$"
 )
-LOCK_PROTECTIONS = {"mutex", "rwlock", "locks"}
-VALID_PROTECTIONS = LOCK_PROTECTIONS | {"none", "unknown", "read-only"}
+LOCK_PROTECTIONS = {"mutex", "rwlock", "lock", "locks"}
+VALID_PROTECTIONS = LOCK_PROTECTIONS | {
+    "none",
+    "unknown",
+    "read-only",
+    "readable",
+    "external-scheme",
+}
 
 
 def normalize_name(name: str) -> str:
@@ -319,7 +325,7 @@ def parse_newll(path: Path) -> list[ProtectionRecord]:
                     "native protection fields"
                 )
             original_datum, access, rendered_protection, rendered_locks = fields
-            if access not in ("read-only", "read/write"):
+            if access not in ("read-only", "write-only", "read/write"):
                 raise InputError(
                     f"{path}:{line_number}: invalid native access "
                     f"'{access}'"
@@ -368,7 +374,7 @@ def parse_newll(path: Path) -> list[ProtectionRecord]:
             ):
                 common_state = "empty"
                 common_locks = ()
-            elif components & LOCK_PROTECTIONS:
+            elif observed_locks:
                 common_state = "locks"
                 common_locks = observed_locks
             else:
@@ -379,7 +385,7 @@ def parse_newll(path: Path) -> list[ProtectionRecord]:
                     "new-locklint",
                     original_datum,
                     normalize_name(original_datum),
-                    "yes" if access == "read/write" else "no",
+                    "yes" if access != "read-only" else "no",
                     common_state,
                     common_locks,
                     observed_locks,

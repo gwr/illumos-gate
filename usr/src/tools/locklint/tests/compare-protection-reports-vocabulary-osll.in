@@ -1,0 +1,5 @@
+sample.c:write_only	*held={ }
+sample.c:external	held={ sample.c:common_lock }
+sample.c:readable	held={ }
+sample.c:declared_lock	held={ sample.c:common_lock }
+sample.c:unknown

@@ -1,0 +1,11 @@
+analyzer	original_datum	datum	write_state	common_state	common_locks	observed_locks	protection	notes
+osll	sample.c:declared_lock	sample.c::declared_lock	unknown	locks	sample.c::common_lock	sample.c::common_lock		
+osll	sample.c:external	sample.c::external	unknown	locks	sample.c::common_lock	sample.c::common_lock		
+osll	sample.c:readable	sample.c::readable	no	empty				
+osll	sample.c:unknown	sample.c::unknown	unknown	unobserved				
+osll	sample.c:write_only	sample.c::write_only	yes	empty				
+new-locklint	sample.c::declared_lock	sample.c::declared_lock	yes	locks	sample.c::common_lock	sample.c::common_lock	lock	
+new-locklint	sample.c::external	sample.c::external	yes	locks	sample.c::common_lock	sample.c::common_lock	external-scheme	
+new-locklint	sample.c::readable	sample.c::readable	no	empty			readable	
+new-locklint	sample.c::unknown	sample.c::unknown	yes	unresolved		sample.c::common_lock,sample.c::other_lock	unknown+readable	note2,note5
+new-locklint	sample.c::write_only	sample.c::write_only	yes	empty			none	note3

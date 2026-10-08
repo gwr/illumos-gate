@@ -366,6 +366,22 @@ if [ "$(wc -l < compare-protection-reports-normalized.tsv)" -ne 18 ]; then
 	fail "normalized protection reports: expected exactly 18 lines"
 fi
 
+run_capture "native protection report vocabulary" \
+    compare-protection-reports-vocabulary.out \
+    "$COMPARE_PROTECTION_REPORTS" \
+    --normalized-output=compare-protection-reports-vocabulary.tsv \
+    --from-osll=compare-protection-reports-vocabulary-osll.in \
+    --from-newll=compare-protection-reports-vocabulary-newll.in
+require_match "native protection report vocabulary result" \
+    "equivalent: 4 protection records agree on shared OSLL facts" \
+    compare-protection-reports-vocabulary.out
+if ! cmp -s compare-protection-reports-vocabulary.ref \
+    compare-protection-reports-vocabulary.tsv
+then
+	fail "native protection report vocabulary: normalized output differs"
+fi
+rm -f compare-protection-reports-vocabulary.tsv
+
 run_failure "different protection reports" \
     compare-protection-reports-different.out \
     "$COMPARE_PROTECTION_REPORTS" \
