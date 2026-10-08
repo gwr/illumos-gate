@@ -1,0 +1,8 @@
+sample.c:unlocked	*held={ }
+sample.c:one	held={ sample.c:common_lock }
+sample.c:mixed	*held={ }
+sample.c:two	*held={ }
+sample.c:common	held={ sample.c:common_lock }
+sample.c:read_only	held={ }
+sample.c:rw	held={ sample.c:common_rwlock }
+sample_state::field	held={ sample_state::lock }

@@ -14,6 +14,7 @@
 
 LOCKLINT=../locklint
 COMPARE_LOCK_REPORTS=./compare-lock-reports.py
+COMPARE_PROTECTION_REPORTS=./compare-protection-reports.py
 failures=0
 
 fail()
@@ -309,6 +310,88 @@ run_failure "malformed OSLL lock report" compare-lock-reports-malformed.out \
 require_match "malformed OSLL lock report" \
     "incomplete OSLL protected-access report: missing protector" \
     compare-lock-reports-malformed.out
+
+#
+# Verify cross-analyzer observed-protection comparison.  Native detail is
+# retained while comparison uses the common facts exposed by OSLL vars -h.
+#
+run_capture "equivalent protection reports" compare-protection-reports.out \
+    "$COMPARE_PROTECTION_REPORTS" \
+    --from-osll=compare-protection-reports-osll.in \
+    --from-newll=compare-protection-reports-newll.in
+require_match "equivalent protection report result" \
+    "equivalent: 8 protection records agree on shared OSLL facts" \
+    compare-protection-reports.out
+
+run_capture "normalized OSLL protection reference" \
+    compare-protection-reports-reference.out \
+    "$COMPARE_PROTECTION_REPORTS" \
+    --from-osll=compare-protection-reports-osll.ref \
+    --from-newll=compare-protection-reports-newll.in
+require_match "normalized OSLL protection reference result" \
+    "equivalent: 8 protection records agree on shared OSLL facts" \
+    compare-protection-reports-reference.out
+
+run_capture "write normalized OSLL protection reference" \
+    compare-protection-reports-write-reference.out \
+    "$COMPARE_PROTECTION_REPORTS" \
+    --from-osll=compare-protection-reports-osll.in \
+    --osll-reference-output=compare-protection-reports-written.ref
+if ! cmp -s compare-protection-reports-osll.ref \
+    compare-protection-reports-written.ref
+then
+	fail "write normalized OSLL protection reference: output differs"
+fi
+rm -f compare-protection-reports-written.ref
+
+run_capture "normalized protection reports" \
+    compare-protection-reports-normalized.out \
+    "$COMPARE_PROTECTION_REPORTS" \
+    --normalized-output=compare-protection-reports-normalized.tsv \
+    --from-osll=compare-protection-reports-osll.in \
+    --from-newll=compare-protection-reports-newll.in
+require_match "normalized protection report header" \
+    "^analyzer	original_datum	datum	write_state	common_state	common_locks	observed_locks	protection	notes$" \
+    compare-protection-reports-normalized.tsv
+require_match "normalized OSLL protection report" \
+    "^osll	sample.c:one	sample.c::one	unknown	locks	sample.c::common_lock	sample.c::common_lock		$" \
+    compare-protection-reports-normalized.tsv
+require_match "normalized native protection detail" \
+    "^new-locklint	sample.c::mixed	sample.c::mixed	yes	empty		sample.c::common_lock	mutex	note1$" \
+    compare-protection-reports-normalized.tsv
+if [ "$(wc -l < compare-protection-reports-normalized.tsv)" -ne 17 ]; then
+	fail "normalized protection reports: expected exactly 17 lines"
+fi
+
+run_failure "different protection reports" \
+    compare-protection-reports-different.out \
+    "$COMPARE_PROTECTION_REPORTS" \
+    --from-osll=compare-protection-reports-osll.in \
+    --from-newll=compare-protection-reports-different.in
+require_match "protection report write difference" \
+    "write state differs for 'sample.c::unlocked': OSLL yes, new locklint no" \
+    compare-protection-reports-different.out
+require_match "protection report lock difference" \
+    "common locks differ for 'sample.c::one': OSLL sample.c::common_lock, new locklint sample.c::other_lock" \
+    compare-protection-reports-different.out
+require_match "protection report unresolved difference" \
+    "new locklint protection unresolved for 'sample.c::mixed'" \
+    compare-protection-reports-different.out
+require_match "missing native protection report" \
+    "missing from new locklint: protection data 'sample_state::field'" \
+    compare-protection-reports-different.out
+require_match "unexpected native protection report" \
+    "unexpected in new locklint: protection data 'sample.c::extra'" \
+    compare-protection-reports-different.out
+
+run_failure "malformed OSLL protection report" \
+    compare-protection-reports-malformed.out \
+    "$COMPARE_PROTECTION_REPORTS" \
+    --from-osll=compare-protection-reports-malformed.in \
+    --from-newll=compare-protection-reports-newll.in
+require_match "malformed OSLL protection report" \
+    "unrecognized OSLL protection report" \
+    compare-protection-reports-malformed.out
 
 #
 # Verify initial Sparse parsing, lowering, and source access identity.

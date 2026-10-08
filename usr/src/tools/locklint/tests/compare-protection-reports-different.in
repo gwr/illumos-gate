@@ -1,0 +1,17 @@
+Protection audit: observations include only analyzed roots, resolved targets, and input translation units.
+DATUM	ACCESS	PROTECTION	LOCK
+sample.c::unlocked	read-only	none	-
+sample.c::one	read/write	mutex	sample.c::other_lock
+sample.c::mixed	read/write	unknown(note5)	-
+sample.c::two	read/write	locks(note2)	sample.c::first_lock, sample.c::second_lock
+sample.c::common	read/write	mutex	sample.c::common_lock
+sample.c::read_only	read-only	none	-
+sample.c::rw	read/write	rwlock	sample.c::common_rwlock
+sample.c::extra	read/write	none(note3)	-
+
+Notes:
+note2: different locks held
+note3: no lock consistently held
+note5: held-lock relationship could not be resolved
+
+Use --audit-unprotected for details about entries marked with notes.

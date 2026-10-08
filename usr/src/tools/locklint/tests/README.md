@@ -66,6 +66,23 @@ as `usr/src/uts/...` regardless of the workspace's absolute pathname.  Its
 default output is `tmp/locklint-large-usb.out`.  On completion, it prints
 `PASS` or `FAIL` with locklint's total measured time.
 
+## Cross-analyzer comparison helpers
+
+Two Python helpers normalize reports produced by Old Solaris Lock Lint and
+native locklint:
+
+- `compare-lock-reports.py` compares protected-access diagnostics by source
+  operation, protected datum, and required lock.
+- `compare-protection-reports.py` compares the common protection facts exposed
+  by OSLL `vars -h` and native `--audit-protection`, while retaining native
+  notes and observed-lock samples for review.
+
+Both helpers accept raw OSLL output or a normalized OSLL reference.  They can
+write deterministic tab-separated output for inspection and a compact OSLL
+reference for registered native runners.  Generated module-comparison output
+belongs under `tmp/osll/results/`; checked-in files in this directory are
+focused parser and comparison fixtures.
+
 ## Adding a test
 
 Keep each fixture focused on one behavior or closely related group of
