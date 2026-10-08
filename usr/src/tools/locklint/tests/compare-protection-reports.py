@@ -59,7 +59,9 @@ REFERENCE_HEADER = [
 OSLL_RECORD = re.compile(r"^(\S+)\t(\*)?held=\{\s*(.*?)\s*\}\s*$")
 OSLL_UNOBSERVED = re.compile(r"^\S+$")
 FILE_LOCAL_NAME = re.compile(r"^(.*\.[ch]):([^:]+)$")
-PROTECTION = re.compile(r"^([a-z-]+(?:\+[a-z-]+)*)(?:\((note[1-6])\))?$")
+PROTECTION = re.compile(
+    r"^([a-z-]+(?:\+[a-z-]+)*)(?:\(note([1-6](?:,[1-6])*)\))?$"
+)
 LOCK_PROTECTIONS = {"mutex", "rwlock", "locks"}
 VALID_PROTECTIONS = LOCK_PROTECTIONS | {"none", "unknown", "read-only"}
 
@@ -328,7 +330,18 @@ def parse_newll(path: Path) -> list[ProtectionRecord]:
                     f"{path}:{line_number}: invalid native protection "
                     f"'{rendered_protection}'"
                 )
-            protection, note = match.groups()
+            protection, note_numbers = match.groups()
+            notes = (
+                ()
+                if note_numbers is None
+                else tuple(
+                    f"note{number}" for number in note_numbers.split(",")
+                )
+            )
+            if len(set(notes)) != len(notes):
+                raise InputError(
+                    f"{path}:{line_number}: duplicate native protection note"
+                )
             components = set(protection.split("+"))
             if not components or not components <= VALID_PROTECTIONS:
                 raise InputError(
@@ -346,10 +359,13 @@ def parse_newll(path: Path) -> list[ProtectionRecord]:
                 raise InputError(
                     f"{path}:{line_number}: lock protection has no lock name"
                 )
-            if note == "note5" or "unknown" in components:
+            if "note5" in notes or "unknown" in components:
                 common_state = "unresolved"
                 common_locks: tuple[str, ...] = ()
-            elif note in ("note1", "note2", "note3", "note4"):
+            elif any(
+                note in ("note1", "note2", "note3", "note4")
+                for note in notes
+            ):
                 common_state = "empty"
                 common_locks = ()
             elif components & LOCK_PROTECTIONS:
@@ -368,7 +384,7 @@ def parse_newll(path: Path) -> list[ProtectionRecord]:
                     common_locks,
                     observed_locks,
                     protection,
-                    () if note is None else (note,),
+                    notes,
                 )
             )
 

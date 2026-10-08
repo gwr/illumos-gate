@@ -9,7 +9,7 @@ osll	sample.c:unlocked	sample.c::unlocked	yes	empty
 osll	sample.c:unobserved	sample.c::unobserved	unknown	unobserved				
 osll	sample_state::field	sample_state::field	unknown	locks	sample_state::lock	sample_state::lock		
 new-locklint	sample.c::common	sample.c::common	yes	locks	sample.c::common_lock	sample.c::common_lock	mutex	
-new-locklint	sample.c::mixed	sample.c::mixed	yes	empty		sample.c::common_lock	mutex	note1
+new-locklint	sample.c::mixed	sample.c::mixed	yes	empty		sample.c::common_lock	mutex	note1,note4
 new-locklint	sample.c::one	sample.c::one	yes	locks	sample.c::common_lock	sample.c::common_lock	mutex	
 new-locklint	sample.c::read_only	sample.c::read_only	no	empty			none	
 new-locklint	sample.c::rw	sample.c::rw	yes	locks	sample.c::common_rwlock	sample.c::common_rwlock	rwlock	

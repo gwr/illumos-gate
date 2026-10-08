@@ -2,7 +2,7 @@ Protection audit: observations include only analyzed roots, resolved targets, an
 DATUM	ACCESS	PROTECTION	LOCK
 sample.c::unlocked	read/write	none(note3)	-
 sample.c::one	read/write	mutex	sample.c::common_lock
-sample.c::mixed	read/write	mutex(note1)	sample.c::common_lock
+sample.c::mixed	read/write	mutex(note1,4)	sample.c::common_lock
 sample.c::two	read/write	locks(note2)	sample.c::first_lock, sample.c::second_lock
 sample.c::common	read/write	mutex	sample.c::common_lock
 sample.c::read_only	read-only	none	-
@@ -13,5 +13,6 @@ Notes:
 note1: lock not held consistently
 note2: different locks held
 note3: no lock consistently held
+note4: lock mode not consistently suitable
 
 Use --audit-unprotected for details about entries marked with notes.

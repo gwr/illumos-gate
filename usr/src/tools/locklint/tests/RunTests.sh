@@ -360,7 +360,7 @@ require_match "normalized unobserved OSLL protection report" \
     "^osll	sample.c:unobserved	sample.c::unobserved	unknown	unobserved				$" \
     compare-protection-reports-normalized.tsv
 require_match "normalized native protection detail" \
-    "^new-locklint	sample.c::mixed	sample.c::mixed	yes	empty		sample.c::common_lock	mutex	note1$" \
+    "^new-locklint	sample.c::mixed	sample.c::mixed	yes	empty		sample.c::common_lock	mutex	note1,note4$" \
     compare-protection-reports-normalized.tsv
 if [ "$(wc -l < compare-protection-reports-normalized.tsv)" -ne 18 ]; then
 	fail "normalized protection reports: expected exactly 18 lines"
