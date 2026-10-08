@@ -3,13 +3,17 @@ osll	:global	global	unknown	locks	global_lock	global_lock
 osll	sample.c:declared_lock	sample.c::declared_lock	unknown	locks	sample.c::common_lock	sample.c::common_lock		
 osll	sample.c:external	sample.c::external	unknown	locks	sample.c::common_lock	sample.c::common_lock		
 osll	sample.c:file_local	sample.c::file_local	unknown	locks	sample.c::file_lock	sample.c::file_lock		
+osll	sample.c:qualified	sample.c::qualified	unknown	locks	sample.c::common_lock,sample.c::other_lock	sample.c::common_lock,sample.c::other_lock		
+osll	sample.c:qualified_readable	sample.c::qualified_readable	unknown	locks	sample.c::common_lock	sample.c::common_lock		
 osll	sample.c:readable	sample.c::readable	no	empty				
-osll	sample.c:unknown	sample.c::unknown	unknown	unobserved				
+osll	sample.c:unknown	sample.c::unknown	no	empty				
 osll	sample.c:write_only	sample.c::write_only	yes	empty				
 new-locklint	../../source/sample.c::file_local	sample.c::file_local	yes	locks	sample.c::file_lock	sample.c::file_lock	mutex	
 new-locklint	global	global	yes	locks	global_lock	global_lock	mutex	
 new-locklint	sample.c::declared_lock	sample.c::declared_lock	yes	locks	sample.c::common_lock	sample.c::common_lock	lock	
 new-locklint	sample.c::external	sample.c::external	yes	locks	sample.c::common_lock	sample.c::common_lock	external-scheme	
+new-locklint	sample.c::qualified	sample.c::qualified	yes	locks	sample.c::common_lock,sample.c::other_lock	sample.c::common_lock,sample.c::other_lock	unknown	note5
+new-locklint	sample.c::qualified_readable	sample.c::qualified_readable	yes	locks	sample.c::common_lock	sample.c::common_lock	unknown+readable	note5
 new-locklint	sample.c::readable	sample.c::readable	no	empty			readable	
-new-locklint	sample.c::unknown	sample.c::unknown	yes	unresolved		sample.c::common_lock,sample.c::other_lock	unknown+readable	note2,note5
+new-locklint	sample.c::unknown	sample.c::unknown	no	empty		sample.c::common_lock,sample.c::other_lock	unknown+readable	note2,note5
 new-locklint	sample.c::write_only	sample.c::write_only	yes	empty			none	note3

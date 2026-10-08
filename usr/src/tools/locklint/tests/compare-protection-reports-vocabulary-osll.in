@@ -2,6 +2,8 @@ sample.c:write_only	*held={ }
 sample.c:external	held={ sample.c:common_lock }
 sample.c:readable	held={ }
 sample.c:declared_lock	held={ sample.c:common_lock }
-sample.c:unknown
+sample.c:unknown	held={ }
+sample.c:qualified	held={ sample.c:common_lock sample.c:other_lock }
+sample.c:qualified_readable	held={ sample.c:common_lock }
 :global	held={ :global_lock }
 sample.c:file_local	held={ sample.c:file_lock }

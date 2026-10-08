@@ -373,7 +373,7 @@ run_capture "native protection report vocabulary" \
     --from-osll=compare-protection-reports-vocabulary-osll.in \
     --from-newll=compare-protection-reports-vocabulary-newll.in
 require_match "native protection report vocabulary result" \
-    "equivalent: 6 protection records agree on shared OSLL facts" \
+    "equivalent: 9 protection records agree on shared OSLL facts" \
     compare-protection-reports-vocabulary.out
 if ! cmp -s compare-protection-reports-vocabulary.ref \
     compare-protection-reports-vocabulary.tsv

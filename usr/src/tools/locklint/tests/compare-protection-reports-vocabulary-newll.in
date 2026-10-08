@@ -4,7 +4,9 @@ sample.c::write_only	write-only	none(note3)	-
 sample.c::external	read/write	external-scheme	sample.c::common_lock
 sample.c::readable	read-only	readable	-
 sample.c::declared_lock	read/write	lock	sample.c::common_lock
-sample.c::unknown	read/write	unknown+readable(note2,5)	sample.c::common_lock, sample.c::other_lock
+sample.c::unknown	read-only	unknown+readable(note2,5)	sample.c::common_lock, sample.c::other_lock
+sample.c::qualified	read/write	unknown(note5)	sample.c::common_lock, sample.c::other_lock
+sample.c::qualified_readable	read/write	unknown+readable(note5)	sample.c::common_lock
 global	read/write	mutex	global_lock
 ../../source/sample.c::file_local	read/write	mutex	../../source/sample.c::file_lock
 

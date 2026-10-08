@@ -369,18 +369,18 @@ def parse_newll(path: Path) -> list[ProtectionRecord]:
                 raise InputError(
                     f"{path}:{line_number}: lock protection has no lock name"
                 )
-            if "note5" in notes or "unknown" in components:
-                common_state = "unresolved"
-                common_locks: tuple[str, ...] = ()
-            elif any(
+            if any(
                 note in ("note1", "note2", "note3", "note4")
                 for note in notes
             ):
                 common_state = "empty"
-                common_locks = ()
+                common_locks: tuple[str, ...] = ()
             elif observed_locks:
                 common_state = "locks"
                 common_locks = observed_locks
+            elif "note5" in notes or "unknown" in components:
+                common_state = "unresolved"
+                common_locks = ()
             else:
                 common_state = "empty"
                 common_locks = ()
