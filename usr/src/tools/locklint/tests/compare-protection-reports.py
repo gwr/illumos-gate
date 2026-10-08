@@ -58,7 +58,9 @@ REFERENCE_HEADER = [
 ]
 OSLL_RECORD = re.compile(r"^(\S+)\t(\*)?held=\{\s*(.*?)\s*\}\s*$")
 OSLL_UNOBSERVED = re.compile(r"^\S+$")
-FILE_LOCAL_NAME = re.compile(r"^(.*\.[ch]):([^:]+)$")
+FILE_LOCAL_NAME = re.compile(
+    r"^(?:.*/)?([^/]+\.[ch])(?:::|:)([^:]+)$"
+)
 PROTECTION = re.compile(
     r"^([a-z-]+(?:\+[a-z-]+)*)(?:\(note([1-6](?:,[1-6])*)\))?$"
 )
@@ -73,6 +75,8 @@ VALID_PROTECTIONS = LOCK_PROTECTIONS | {
 
 
 def normalize_name(name: str) -> str:
+    if name.startswith(":"):
+        return name[1:]
     match = FILE_LOCAL_NAME.match(name)
     if match is None:
         return name

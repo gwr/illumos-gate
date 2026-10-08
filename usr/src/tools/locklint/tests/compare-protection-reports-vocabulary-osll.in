@@ -3,3 +3,5 @@ sample.c:external	held={ sample.c:common_lock }
 sample.c:readable	held={ }
 sample.c:declared_lock	held={ sample.c:common_lock }
 sample.c:unknown
+:global	held={ :global_lock }
+sample.c:file_local	held={ sample.c:file_lock }
