@@ -3754,7 +3754,7 @@ run_capture "readable protection inventory" \
     audit-protection-readable.out "$LOCKLINT" --no-diagnostics \
     --audit-protection readable-protection.c
 require_match "readable write-side protection" \
-    '^readable_state::value	read/write	mutex+readable	readable_state.lock$' \
+    '^readable_state::value	read/write	mutex+readable	readable_state::lock$' \
     audit-protection-readable.out
 
 #
@@ -3791,7 +3791,7 @@ run_capture "all unprotected audit sites" audit-unprotected-all.out \
     "$LOCKLINT" --no-diagnostics --audit-unprotected \
     --audit-site-limit=all rwlock.c
 require_match "unsuitable rwlock mode detail" \
-    'rwlock.c:115 .*written while holding rwlock_state.lock with an unsuitable mode in at least one state' \
+    'rwlock.c:115 .*written while holding rwlock_state::lock with an unsuitable mode in at least one state' \
     audit-unprotected-all.out
 
 run_capture "unresolved unprotected audit" \

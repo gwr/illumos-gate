@@ -1259,7 +1259,7 @@ protection_audit_print_role(FILE *stream, const struct type_member *role)
 {
 	struct symbol *member = role->representative;
 
-	(void) fprintf(stream, "%s.%s",
+	(void) fprintf(stream, "%s::%s",
 	    protection_audit_type_name(type_member_owner(role)),
 	    member != NULL && member->ident != NULL ?
 	    show_ident(member->ident) : "<anonymous member>");
