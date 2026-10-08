@@ -356,11 +356,14 @@ require_match "normalized protection report header" \
 require_match "normalized OSLL protection report" \
     "^osll	sample.c:one	sample.c::one	unknown	locks	sample.c::common_lock	sample.c::common_lock		$" \
     compare-protection-reports-normalized.tsv
+require_match "normalized unobserved OSLL protection report" \
+    "^osll	sample.c:unobserved	sample.c::unobserved	unknown	unobserved				$" \
+    compare-protection-reports-normalized.tsv
 require_match "normalized native protection detail" \
     "^new-locklint	sample.c::mixed	sample.c::mixed	yes	empty		sample.c::common_lock	mutex	note1$" \
     compare-protection-reports-normalized.tsv
-if [ "$(wc -l < compare-protection-reports-normalized.tsv)" -ne 17 ]; then
-	fail "normalized protection reports: expected exactly 17 lines"
+if [ "$(wc -l < compare-protection-reports-normalized.tsv)" -ne 18 ]; then
+	fail "normalized protection reports: expected exactly 18 lines"
 fi
 
 run_failure "different protection reports" \

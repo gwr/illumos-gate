@@ -57,6 +57,7 @@ REFERENCE_HEADER = [
     "notes",
 ]
 OSLL_RECORD = re.compile(r"^(\S+)\t(\*)?held=\{\s*(.*?)\s*\}\s*$")
+OSLL_UNOBSERVED = re.compile(r"^\S+$")
 FILE_LOCAL_NAME = re.compile(r"^(.*\.[ch]):([^:]+)$")
 PROTECTION = re.compile(r"^([a-z-]+(?:\+[a-z-]+)*)(?:\((note[1-6])\))?$")
 LOCK_PROTECTIONS = {"mutex", "rwlock", "locks"}
@@ -120,10 +121,25 @@ def parse_osll_raw(path: Path) -> list[ProtectionRecord]:
                 continue
             match = OSLL_RECORD.match(line)
             if match is None:
-                raise InputError(
-                    f"{path}:{line_number}: unrecognized OSLL protection "
-                    "report"
+                if OSLL_UNOBSERVED.match(line) is None:
+                    raise InputError(
+                        f"{path}:{line_number}: unrecognized OSLL protection "
+                        "report"
+                    )
+                records.append(
+                    ProtectionRecord(
+                        "osll",
+                        line,
+                        normalize_name(line),
+                        "unknown",
+                        "unobserved",
+                        (),
+                        (),
+                        "",
+                        (),
+                    )
                 )
+                continue
             original_datum, writable, held = match.groups()
             try:
                 locks = parse_lock_list(held, None)
@@ -217,7 +233,12 @@ def parse_osll_reference(path: Path) -> list[ProtectionRecord]:
                     f"{path}:{line_number}: invalid write state "
                     f"'{write_state}'"
                 )
-            if common_state not in ("locks", "empty", "unresolved"):
+            if common_state not in (
+                "locks",
+                "empty",
+                "unresolved",
+                "unobserved",
+            ):
                 raise InputError(
                     f"{path}:{line_number}: invalid common state "
                     f"'{common_state}'"
@@ -364,14 +385,19 @@ def format_locks(locks: tuple[str, ...]) -> str:
 def compare_reports(
     osll: Iterable[ProtectionRecord], newll: Iterable[ProtectionRecord]
 ) -> bool:
-    osll_by_datum = {record.datum: record for record in osll}
+    all_osll_by_datum = {record.datum: record for record in osll}
+    osll_by_datum = {
+        datum: record
+        for datum, record in all_osll_by_datum.items()
+        if record.common_state != "unobserved"
+    }
     newll_by_datum = {record.datum: record for record in newll}
     equivalent = True
 
     for datum in sorted(osll_by_datum.keys() - newll_by_datum.keys()):
         print(f"missing from new locklint: protection data '{datum}'")
         equivalent = False
-    for datum in sorted(newll_by_datum.keys() - osll_by_datum.keys()):
+    for datum in sorted(newll_by_datum.keys() - all_osll_by_datum.keys()):
         print(f"unexpected in new locklint: protection data '{datum}'")
         equivalent = False
     for datum in sorted(osll_by_datum.keys() & newll_by_datum.keys()):
