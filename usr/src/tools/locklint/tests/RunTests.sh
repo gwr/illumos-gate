@@ -3750,6 +3750,13 @@ require_match "additive protection policy" \
 reject_match "redundant structural offset" \
     '^policy_state::[^	]*+[0-9]' audit-protection-structural.out
 
+run_capture "readable protection inventory" \
+    audit-protection-readable.out "$LOCKLINT" --no-diagnostics \
+    --audit-protection readable-protection.c
+require_match "readable write-side protection" \
+    '^readable_state::value	read/write	mutex+readable	readable_state.lock$' \
+    audit-protection-readable.out
+
 #
 # The detailed audit expands every note-marked inventory entry into
 # deterministic source evidence and honors its site limit.

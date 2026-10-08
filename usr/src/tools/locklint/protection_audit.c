@@ -1144,11 +1144,21 @@ protection_audit_result_observe(struct protection_audit_result *result,
 		    candidate_count * sizeof (*observed));
 		observed_count = candidate_count;
 	}
-	protection_audit_observe_candidates(record, observed, observed_count,
-	    candidates, candidate_count);
 	protection_audit_observe_site(result, &record->datum, function,
 	    instruction, written, observed, observed_count, candidates,
 	    candidate_count);
+
+	/*
+	 * Readable policy removes reads from the inferred protection
+	 * intersection.  Retain their access and site evidence, but infer the
+	 * common lock from writes, which remain protected.
+	 */
+	if (!written && record->has_policy &&
+	    record->policy.readable_without_lock)
+		return;
+
+	protection_audit_observe_candidates(record, observed, observed_count,
+	    candidates, candidate_count);
 	if (!record->candidates_initialized) {
 		record->candidates_initialized = true;
 		if (candidate_count != 0) {
