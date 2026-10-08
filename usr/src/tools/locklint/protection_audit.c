@@ -1433,7 +1433,7 @@ protection_audit_print_notes(FILE *stream, unsigned int notes)
 	    index++) {
 		if ((notes & note_bits[index]) == 0)
 			continue;
-		(void) fprintf(stream, "%snote%zu", first ? "" : ",",
+		(void) fprintf(stream, "%s%zu", first ? "note" : ",",
 		    index + 1);
 		first = false;
 	}
