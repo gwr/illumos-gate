@@ -131,7 +131,11 @@ static void track_instruction_usage(struct basic_block *bb, struct instruction *
 
 	case OP_BADOP:
 	case OP_NOP:
+		break;
 	case OP_CONTEXT:
+		FOR_EACH_PTR(insn->context_roots, pseudo) {
+			use(bb, pseudo);
+		} END_FOR_EACH_PTR(pseudo);
 		break;
 	}
 }

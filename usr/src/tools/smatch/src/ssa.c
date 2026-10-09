@@ -93,6 +93,26 @@ static void kill_store(struct instruction *insn)
 	insn->bb = NULL;
 }
 
+/*
+ * Replace every occurrence of one retained context root while preserving
+ * pseudo use lists.  A comma-separated context may name the same root twice.
+ */
+static void replace_context_root(struct instruction *insn, pseudo_t old,
+	pseudo_t new)
+{
+	pseudo_t root;
+
+	FOR_EACH_PTR(insn->context_roots, root) {
+		pseudo_t *slot;
+
+		if (root != old)
+			continue;
+		slot = THIS_ADDRESS(root);
+		remove_use(slot);
+		use_pseudo(insn, new, slot);
+	} END_FOR_EACH_PTR(root);
+}
+
 static void rewrite_local_var(struct basic_block *bb, pseudo_t addr, int nbr_stores, int nbr_uses)
 {
 	struct instruction *insn;
@@ -103,7 +123,15 @@ static void rewrite_local_var(struct basic_block *bb, pseudo_t addr, int nbr_sto
 
 	FOR_EACH_PTR(bb->insns, insn) {
 
-		if (!insn->bb || insn->src != addr)
+		if (!insn->bb)
+			continue;
+		if (insn->opcode == OP_CONTEXT) {
+			if (!val)
+				val = undef_pseudo();
+			replace_context_root(insn, addr, val);
+			continue;
+		}
+		if (insn->src != addr)
 			continue;
 		switch (insn->opcode) {
 		case OP_LOAD:
@@ -129,7 +157,7 @@ static bool rewrite_single_store(struct instruction *store)
 	FOR_EACH_PTR(addr->users, pu) {
 		struct instruction *insn = pu->insn;
 
-		if (insn->opcode != OP_LOAD)
+		if (insn->opcode != OP_LOAD && insn->opcode != OP_CONTEXT)
 			continue;
 
 		// Let's try to replace the value of the load
@@ -150,7 +178,10 @@ static bool rewrite_single_store(struct instruction *store)
 
 		// undefs ?
 
-		convert_load_instruction(insn, store->target);
+		if (insn->opcode == OP_LOAD)
+			convert_load_instruction(insn, store->target);
+		else
+			replace_context_root(insn, addr, store->target);
 	} END_FOR_EACH_PTR(pu);
 
 	// is there some unconverted loads?
@@ -211,6 +242,7 @@ static void ssa_convert_one_var(struct entrypoint *ep, struct symbol *var)
 				add_bb(&alpha, bb);
 			/* fall through */
 		case OP_LOAD:
+		case OP_CONTEXT:
 			if (local) {
 				if (!samebb)
 					samebb = bb;
@@ -293,6 +325,15 @@ static void ssa_rename_insn(struct basic_block *bb, struct instruction *insn)
 			break;
 		val = lookup_var(bb, var);
 		convert_load_instruction(insn, val);
+		break;
+	case OP_CONTEXT:
+		FOR_EACH_PTR(insn->context_roots, addr) {
+			var = addr->type == PSEUDO_SYM ? addr->sym : NULL;
+			if (var == NULL || !var->torename)
+				continue;
+			val = lookup_var(bb, var);
+			replace_context_root(insn, addr, val);
+		} END_FOR_EACH_PTR(addr);
 		break;
 	case OP_PHI:
 		var = insn->type;

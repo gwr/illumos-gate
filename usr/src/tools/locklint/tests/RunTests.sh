@@ -2370,6 +2370,26 @@ compare "visibility state diagnostics" visibility-state.ref \
     visibility-local-diagnostics.out
 
 #
+# Verify whole-object visibility for identities returned by unresolved
+# allocation/accessor functions.  Private initialization must be accepted;
+# the post-publication control must remain diagnosed.
+#
+run_capture "allocated object visibility" visibility-allocated.out \
+    "$LOCKLINT" visibility-allocated.c
+reject_match "private allocated-object initialization" \
+    "visibility-allocated.c:39:14:.*\\[read-only-" \
+    visibility-allocated.out
+require_match "published allocated-object write" \
+    "visibility-allocated.c:41:14: warning: read-only data 'value' modified while visible to competing threads \\[read-only-visible\\]" \
+    visibility-allocated.out
+require_match "reassigned allocated-object write" \
+    "visibility-allocated.c:52:14: warning: read-only data 'value' modified while visible to competing threads \\[read-only-visible\\]" \
+    visibility-allocated.out
+if [ "$(grep -cF '[read-only-' visibility-allocated.out)" -ne 2 ]; then
+	fail "allocated object visibility: expected exactly two warnings"
+fi
+
+#
 # Verify direct and wrapped callees return exact visibility state, including
 # conditional exits, globals, recursion, and nested formal-relative regions.
 #

@@ -1656,7 +1656,12 @@ __context__((object), 0, LOCKLINT_CONTEXT_INVISIBLE);
 Multiple selected expressions are retained as a comma-expression tree in
 `context_expr`.  They are not evaluated and therefore create no synthetic
 loads, stores, calls, or function arguments.  Locklint flattens that tree
-when applying the transition.
+when applying the transition.  Tagged contexts also retain a parallel,
+ordered `context_roots` list for pointer-root operands.  Sparse's ordinary
+SSA conversion rewrites promotable local roots to the pointer value reaching
+the exact marker.  Direct objects and non-promotable roots retain their source
+identity.  This metadata participates in Sparse pseudo-use maintenance and
+liveness but does not add executable IR.
 
 `NOT_REACHED` expands to a tagged context followed by
 `__builtin_unreachable()`.  Sparse lowers the builtin to an `OP_UNREACH`
@@ -1689,9 +1694,10 @@ provenance provide all information needed by Locklint; it does not infer
 execution order from source positions.
 
 The shared Sparse changes are limited to deferred pre-buffer tokenization,
-the optional context tag in parsing and IR, preservation and display of that
-tag, correct `__builtin_unreachable()` and noreturn-call termination, and
-focused generic Sparse validation.  Interpretation of every nonzero tag
+the optional context tag and ordered pointer-root metadata in IR,
+preservation and display of that tag, SSA and liveness maintenance for the
+metadata, correct `__builtin_unreachable()` and noreturn-call termination,
+and focused generic Sparse validation.  Interpretation of every nonzero tag
 remains with the client that introduced it.
 
 ### State domains
@@ -1734,6 +1740,10 @@ the access byte size, and queried by overflow-safe range containment.  The
 narrowest containing region wins; absence of a containing region means
 visible.  Unbound formal source expressions and their lowered argument
 pseudos are normalized to the same formal object for local analysis.
+Pointer-root metadata similarly gives markers on promoted local pointers the
+same lowered identity as member accesses through unresolved call results.
+Because the metadata captures the reaching SSA value, reassigning the source
+pointer does not transfer visibility to the new object.
 
 At a control-flow merge, Locklint computes the effective state of every
 region distinguished on either incoming path.  Agreement remains definite;

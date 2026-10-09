@@ -406,6 +406,9 @@ Sparse tagging (line numbers, context, whatever)
 	Used for lock/unlock tracking and tagged analysis events.
 
 	* .context_expr: optional expression associated with the context
+	* .context_roots: ordered pointer-root identities for tagged context
+	  operands; SSA rewrites promotable roots to their values at the context
+	  instruction without evaluating the retained expressions
 	* .increment: (1 for locking, -1 for unlocking)
 	* .check: (ignore the instruction if 0)
 	* .context_tag: optional unsigned long client-defined event tag; zero for

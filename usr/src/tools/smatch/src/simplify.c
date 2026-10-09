@@ -374,6 +374,10 @@ int kill_insn(struct instruction *insn, int force)
 		kill_use(&insn->target);
 		break;
 
+	case OP_CONTEXT:
+		kill_use_list(insn->context_roots);
+		break;
+
 	case OP_ENTRY:
 		/* ignore */
 		return 0;

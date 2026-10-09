@@ -2077,6 +2077,77 @@ static pseudo_t linearize_inlined_call(struct entrypoint *ep, struct statement *
 	return pseudo;
 }
 
+/*
+ * Retain one pointer-root identity for each tagged context operand without
+ * evaluating the operand.  SSA conversion later replaces promotable roots
+ * with their values at the exact context instruction.
+ */
+static struct symbol *
+context_expression_root(struct expression *expr)
+{
+	struct symbol *root;
+
+	if (expr == NULL)
+		return NULL;
+	switch (expr->type) {
+	case EXPR_SYMBOL:
+		return expr->symbol;
+	case EXPR_PREOP:
+	case EXPR_POSTOP:
+		return context_expression_root(expr->unop);
+	case EXPR_BINOP:
+	case EXPR_COMPARE:
+	case EXPR_LOGICAL:
+	case EXPR_ASSIGNMENT:
+		root = context_expression_root(expr->left);
+		return root != NULL ? root : context_expression_root(expr->right);
+	case EXPR_CAST:
+	case EXPR_FORCE_CAST:
+	case EXPR_IMPLIED_CAST:
+		return context_expression_root(expr->cast_expression);
+	case EXPR_SLICE:
+		return context_expression_root(expr->base);
+	default:
+		return NULL;
+	}
+}
+
+static int
+context_root_is_pointer(struct symbol *root)
+{
+	struct symbol *type;
+
+	if (root == NULL)
+		return 0;
+	type = root->ctype.base_type;
+	while (type != NULL && type->type == SYM_NODE)
+		type = type->ctype.base_type;
+	return type != NULL && type->type == SYM_PTR;
+}
+
+static void
+linearize_context_roots(struct entrypoint *ep, struct instruction *insn,
+	struct expression *expr)
+{
+	struct symbol *root;
+	pseudo_t pseudo = VOID;
+	pseudo_t *slot;
+
+	if (expr != NULL && expr->type == EXPR_COMMA) {
+		linearize_context_roots(ep, insn, expr->left);
+		linearize_context_roots(ep, insn, expr->right);
+		return;
+	}
+	root = context_expression_root(expr);
+	if (context_root_is_pointer(root)) {
+		linearize_one_symbol(ep, root);
+		pseudo = symbol_pseudo(ep, root);
+	}
+	slot = add_pseudo(&insn->context_roots, pseudo);
+	if (pseudo != VOID)
+		use_pseudo(insn, pseudo, slot);
+}
+
 static pseudo_t linearize_context(struct entrypoint *ep, struct statement *stmt)
 {
 	struct instruction *insn = alloc_instruction(OP_CONTEXT, 0);
@@ -2085,6 +2156,8 @@ static pseudo_t linearize_context(struct entrypoint *ep, struct statement *stmt)
 	insn->increment = get_expression_value(expr);
 	insn->context_tag = stmt->context_tag;
 	insn->context_expr = stmt->context;
+	if (insn->context_tag != 0)
+		linearize_context_roots(ep, insn, insn->context_expr);
 	add_one_insn(ep, insn);
 	return VOID;
 }

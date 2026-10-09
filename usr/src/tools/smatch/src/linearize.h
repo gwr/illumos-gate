@@ -144,6 +144,7 @@ struct instruction {
 			int check;
 			unsigned long context_tag;
 			struct expression *context_expr;
+			struct pseudo_list *context_roots;
 		};
 		struct /* asm */ {
 			const char *string;

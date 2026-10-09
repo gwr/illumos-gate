@@ -496,6 +496,13 @@ set_address(struct locklint_access *access, struct pseudo *pseudo,
 	access->address_base_is_symbol = pseudo->type == PSEUDO_SYM;
 }
 
+void
+locklint_set_access_address(struct locklint_access *access,
+    struct pseudo *pseudo, unsigned long offset)
+{
+	set_address(access, pseudo, offset);
+}
+
 static bool
 pseudo_is_integer(struct pseudo *pseudo)
 {

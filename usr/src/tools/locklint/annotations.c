@@ -2134,24 +2134,45 @@ locklint_get_execution_annotation(const struct instruction *insn)
  */
 static void
 for_each_visibility_operand(struct translation_unit *tu,
-    struct expression *expr, locklint_visibility_target_f callback, void *data)
+    const struct instruction *insn, struct expression *expr,
+    unsigned int *root_index, locklint_visibility_target_f callback,
+    void *data)
 {
 	struct locklint_access access;
 	struct lock_identity_key key;
 	enum lock_analysis_object_type object_type;
+	struct pseudo_list *roots = insn->context_roots;
+	struct pseudo *root = NULL;
+	struct pseudo *candidate;
 	uint64_t length;
+	unsigned int current = 0;
 
 	if (expr != NULL && expr->type == EXPR_COMMA) {
-		for_each_visibility_operand(tu, expr->left, callback, data);
-		for_each_visibility_operand(tu, expr->right, callback, data);
+		for_each_visibility_operand(tu, insn, expr->left, root_index,
+		    callback, data);
+		for_each_visibility_operand(tu, insn, expr->right, root_index,
+		    callback, data);
 		return;
 	}
-	if (expr != NULL && locklint_get_access(tu, expr, &access) &&
-	    lock_identity_key_from_access(&access, &key, &object_type) == 0 &&
-	    locklint_access_size(&access, &length))
-		callback(&access, expr, data);
-	else
+	FOR_EACH_PTR(roots, candidate) {
+		if (current++ == *root_index) {
+			root = candidate;
+			break;
+		}
+	} END_FOR_EACH_PTR(candidate);
+	(*root_index)++;
+	if (expr == NULL || !locklint_get_access(tu, expr, &access)) {
 		callback(NULL, expr, data);
+		return;
+	}
+	if (root != NULL && root != VOID)
+		locklint_set_access_address(&access, root, access.offset);
+	if (lock_identity_key_from_access(&access, &key, &object_type) != 0 ||
+	    !locklint_access_size(&access, &length)) {
+		callback(NULL, expr, data);
+		return;
+	}
+	callback(&access, expr, data);
 }
 
 bool
@@ -2161,11 +2182,13 @@ locklint_for_each_visibility_target(struct translation_unit *tu,
 {
 	enum locklint_execution_kind kind =
 	    locklint_get_execution_annotation(insn);
+	unsigned int root_index = 0;
 
 	if (kind != LOCKLINT_EXECUTION_INVISIBLE &&
 	    kind != LOCKLINT_EXECUTION_VISIBLE)
 		return (false);
-	for_each_visibility_operand(tu, insn->context_expr, callback, data);
+	for_each_visibility_operand(tu, insn, insn->context_expr, &root_index,
+	    callback, data);
 	return (true);
 }
 
@@ -2174,10 +2197,13 @@ locklint_for_each_assumed_target(struct translation_unit *tu,
     const struct instruction *insn, locklint_visibility_target_f callback,
     void *data)
 {
+	unsigned int root_index = 0;
+
 	if (locklint_get_execution_annotation(insn) !=
 	    LOCKLINT_EXECUTION_ASSUME_PROTECTED)
 		return (false);
-	for_each_visibility_operand(tu, insn->context_expr, callback, data);
+	for_each_visibility_operand(tu, insn, insn->context_expr, &root_index,
+	    callback, data);
 	return (true);
 }
 

@@ -50,6 +50,8 @@ typedef void (*locklint_access_f)(const struct locklint_access *, void *);
 
 bool locklint_get_access(struct translation_unit *, struct expression *,
     struct locklint_access *);
+void locklint_set_access_address(struct locklint_access *, struct pseudo *,
+    unsigned long);
 bool locklint_get_instruction_access(struct translation_unit *,
     const struct instruction *, struct locklint_access *);
 void locklint_for_each_instruction_leaf_access(struct translation_unit *,
