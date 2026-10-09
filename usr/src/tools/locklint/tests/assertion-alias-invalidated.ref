@@ -1,2 +1,3 @@
 locklint: assertion-alias.c:202:51: warning: call to 'acquire_first_release_second_require_first' does not satisfy asserted mutex-held requirement for lock 'lock' [asserted-lock-requirement]
 locklint: assertion-alias.c:196:9: asserted requirement is here
+locklint: assertion-alias.c:202:59: warning: lock 'lock' held on return from 'same_release_invalidates_requirement' [lock-held-on-return]

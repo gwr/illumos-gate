@@ -3927,6 +3927,16 @@ reject_match "pointer-boundary containing datum" \
 reject_match "pointer-boundary containing member" \
     '^audit_outer::value	' audit-protection-pointer-boundary.out
 
+run_capture "composed pointer protection inventory" \
+    audit-protection-composed-pointer.out "$LOCKLINT" --no-diagnostics \
+    --audit-protection audit-composed-pointer.c
+require_match "composed formal callback member" \
+    '^audit_composed_state::callback	read-only	unknown(note5)	audit_composed_outer::lock$' \
+    audit-protection-composed-pointer.out
+require_match "composed formal argument member" \
+    '^audit_composed_state::argument	read-only	unknown(note5)	audit_composed_outer::lock$' \
+    audit-protection-composed-pointer.out
+
 run_capture "external-scheme protection inventory" \
     audit-protection-external-scheme.out "$LOCKLINT" --no-diagnostics \
     --audit-protection external-scheme-audit.c

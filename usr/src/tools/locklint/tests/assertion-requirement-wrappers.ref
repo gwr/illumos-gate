@@ -8,3 +8,5 @@ locklint: assertion-requirement-wrappers.c:127:31: warning: call to 'recursive_h
 locklint: assertion-requirement-wrappers.c:36:9: asserted requirement is here
 locklint: assertion-requirement-wrappers.c:141:33: warning: call to 'require_absolute_wrapper' does not satisfy asserted mutex-held requirement for lock 'absolute_lock' [asserted-lock-requirement]
 locklint: assertion-requirement-wrappers.c:83:9: asserted requirement is here
+locklint: assertion-requirement-wrappers.c:67:30: warning: lock 'lock' held on only some paths returning from 'conditional_held_wrapper' [lock-maybe-held-on-return]
+locklint: assertion-requirement-wrappers.c:121:41: warning: lock 'lock' held on only some paths returning from 'call_conditional_wrapper_unlocked' [lock-maybe-held-on-return]

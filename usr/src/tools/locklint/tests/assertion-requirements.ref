@@ -1,3 +1,5 @@
+locklint: assertion-requirements.c:124:19: warning: lock 'mutex' is not held [lock-not-held]
+locklint: assertion-requirements.c:232:19: warning: lock 'mutex' is not held [lock-not-held]
 locklint: assertion-requirements.c:110:27: warning: call to 'require_mutex_held' does not satisfy asserted mutex-held requirement for lock 'mutex' [asserted-lock-requirement]
 locklint: assertion-requirements.c:48:9: asserted requirement is here
 locklint: assertion-requirements.c:123:31: warning: call to 'require_mutex_not_held' does not satisfy asserted not-held requirement for lock 'mutex' [asserted-lock-requirement]

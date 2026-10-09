@@ -3139,15 +3139,13 @@ process_lock_assertion(struct analysis *analysis,
 	current_modes = context_state_lock_modes(point_state->state, identity);
 	if (current_modes == 0)
 		current_modes = LOCKLINT_MODE_UNHELD;
-	if (point_state->context->kind == FUNCTION_CONTEXT_CALLER) {
-		if ((current_modes & asserted_modes) != 0) {
-			record_analysis_point(analysis, point_state->context, next,
-			    point_state->state, false);
-		}
-		return (true);
-	}
-	if (current_modes != LOCKLINT_MODE_UNHELD &&
-	    (current_modes & asserted_modes) != 0) {
+	/*
+	 * An assertion describes the state of every continuing execution.
+	 * Preserve an already compatible state; otherwise refine the successful
+	 * continuation below.  Caller diagnostics still inspect the state at
+	 * the assertion and report a contradicted requirement.
+	 */
+	if ((current_modes & asserted_modes) != 0) {
 		record_analysis_point(analysis, point_state->context, next,
 		    point_state->state, false);
 		return (true);
