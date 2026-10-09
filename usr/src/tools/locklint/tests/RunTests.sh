@@ -3768,6 +3768,24 @@ reject_match "pointer-boundary containing datum" \
 reject_match "pointer-boundary containing member" \
     '^audit_outer::value	' audit-protection-pointer-boundary.out
 
+run_capture "external-scheme protection inventory" \
+    audit-protection-external-scheme.out "$LOCKLINT" --no-diagnostics \
+    --audit-protection external-scheme-audit.c
+require_match "external-scheme protection without incidental locks" \
+    '^scheme_audit_state::value	write-only	external-scheme	-$' \
+    audit-protection-external-scheme.out
+require_match "external-scheme common lock retained" \
+    '^scheme_audit_state::locked	write-only	external-scheme	scheme_audit_state::lock$' \
+    audit-protection-external-scheme.out
+
+run_capture "external-scheme detailed audit" \
+    audit-unprotected-external-scheme.out "$LOCKLINT" --no-diagnostics \
+    --audit-unprotected external-scheme-audit.c
+reject_match "external-scheme detailed audit datum" \
+    '^scheme_audit_state::value ' audit-unprotected-external-scheme.out
+reject_match "external-scheme common lock detailed audit datum" \
+    '^scheme_audit_state::locked ' audit-unprotected-external-scheme.out
+
 #
 # The detailed audit expands every note-marked inventory entry into
 # deterministic source evidence and honors its site limit.

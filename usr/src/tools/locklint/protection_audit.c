@@ -1408,10 +1408,13 @@ protection_audit_record_notes(const struct protection_audit_record *record)
 	    record->unsuitable_mode, record->unresolved);
 
 	if (record->has_policy &&
-	    ((!record->written && (record->policy.read_only ||
-	    record->policy.readable_without_lock)) ||
-	    record->policy.protection == LOCKLINT_PROTECTION_SCHEME))
+	    record->policy.protection == LOCKLINT_PROTECTION_SCHEME) {
+		notes = 0;
+	} else if (record->has_policy && !record->written &&
+	    (record->policy.read_only ||
+	    record->policy.readable_without_lock)) {
 		notes &= ~PROTECTION_AUDIT_NOTE_NONE;
+	}
 	if (protection_audit_policy_is_mechanical(record) &&
 	    record->candidate_count == 0 && record->observed_count == 0) {
 		notes &= ~PROTECTION_AUDIT_NOTE_NONE;
@@ -1563,7 +1566,12 @@ protection_audit_result_render_inventory(struct protection_audit_result *result)
 		unsigned int notes;
 
 		record = ordered[index];
-		if (record->candidate_count != 0) {
+		if (record->has_policy &&
+		    record->policy.protection == LOCKLINT_PROTECTION_SCHEME &&
+		    record->candidate_count == 0) {
+			display = NULL;
+			display_count = 0;
+		} else if (record->candidate_count != 0) {
 			display = record->candidates;
 			display_count = record->candidate_count;
 		} else {
