@@ -15,8 +15,9 @@
 # its recorded cw arguments.  Require complete function coverage, automatic
 # historical roots, the five unassigned device-specific calls, and one
 # deliberate lock diagnostic before comparing protected-member multiplicities
-# with OSLL.  Two explicitly checked compiler-lowering differences are
-# excluded; source anchors and emission order are intentionally excluded.
+# with OSLL, then compare the complete accepted native protection inventory.
+# Two explicitly checked compiler-lowering differences are excluded; source
+# anchors and emission order are intentionally excluded.
 #
 
 SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
@@ -28,6 +29,9 @@ ANALYZE_RAW="$WORK_DIR/analyze.raw"
 REFERENCE="$SCRIPT_DIR/../osll/check-kmod-usbecm.ref"
 REFERENCE_FILTERED="$WORK_DIR/reference.filtered"
 OUTPUT="$SCRIPT_DIR/check-kmod-usbecm.out"
+PROTECTION_REFERENCE="$SCRIPT_DIR/check-kmod-usbecm.ref"
+PROTECTION_RAW="$WORK_DIR/protection.raw"
+SENTINEL="$SCRIPT_DIR/check-kmod-sentinel.c"
 USBECM_SOURCE=../../common/io/usb/clients/usbecm/usbecm.c
 USBECM_FUNCTIONS='
 _init
@@ -121,20 +125,33 @@ if [[ ! -x "$LOCKLINT" ]]; then
 	print -u2 "locklint not found: $LOCKLINT"
 	exit 1
 fi
+for file in "$REFERENCE" "$PROTECTION_REFERENCE" "$SENTINEL" \
+    "$SCRIPT_DIR/usbecm.cf"
+do
+	if [[ ! -f "$file" ]]; then
+		print -u2 "usbecm comparison input not found: $file"
+		exit 1
+	fi
+done
 
 mkdir -p "$WORK_DIR" || exit 1
-rm -f "$ANALYZE_RAW" "$REFERENCE_FILTERED" "$OUTPUT"
+rm -f "$ANALYZE_RAW" "$REFERENCE_FILTERED" "$OUTPUT" "$PROTECTION_RAW"
 
 run_locklint()
 {
+	typeset sentinel=$1
+	shift
+
+	if [[ -n "$sentinel" ]]; then
+		set -- "$@" "$sentinel"
+	fi
 	"$LOCKLINT" "$@" \
 	    -D__sun -m64 -Ui386 -U__i386 -O2 \
 	    -D_ASM_INLINES -std=gnu99 \
 	    -D_KERNEL -D_SYSCALL32 -D_SYSCALL32_IMPL \
 	    -D_ELF64 -D_DDI_STRICT -Dsun -D__sun -D__SVR4 -DDEBUG \
 	    -I../../intel -nostdinc -I../../common \
-	    "$USBECM_SOURCE" \
-	    "$SCRIPT_DIR/check-kmod-sentinel.c"
+	    "$USBECM_SOURCE"
 }
 
 verify_module_coverage()
@@ -209,7 +226,7 @@ write_summary()
 }
 
 print "Running new locklint over usbecm"
-run_locklint --compat=osll --dump-callgraph \
+run_locklint "$SENTINEL" --compat=osll --dump-callgraph \
     --cf "$SCRIPT_DIR/usbecm.cf" >"$ANALYZE_RAW" 2>&1
 status=$?
 if (( status != 0 )); then
@@ -283,5 +300,17 @@ else
 	diff -u "$WORK_DIR/reference.comparable" \
 	    "$WORK_DIR/native.comparable"
 	print -u2 "Raw result: $ANALYZE_RAW"
+	exit 1
+fi
+
+run_locklint "" --compat=osll --no-diagnostics \
+    --cf "$SCRIPT_DIR/usbecm.cf" \
+    --audit-protection="$PROTECTION_RAW" >/dev/null 2>&1 || exit 1
+if cmp -s "$PROTECTION_REFERENCE" "$PROTECTION_RAW"; then
+	print "New locklint usbecm protection audit matches the native reference."
+else
+	print -u2 "New locklint usbecm protection audit differs from " \
+	    "check-kmod-usbecm.ref:"
+	diff -u "$PROTECTION_REFERENCE" "$PROTECTION_RAW"
 	exit 1
 fi
