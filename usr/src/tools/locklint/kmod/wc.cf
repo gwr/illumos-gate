@@ -11,3 +11,10 @@ declare readable vc_cons_user
 
 # vc_state_lock protects writes to vc_flags, but unlocked reads are permitted.
 declare readable vc_state::vc_flags
+
+# These module-internal fields are serialized by the wc STREAMS perimeter
+# after initialization and publication.
+declare scheme-protects-data "D_MTPERMOD protected data" \
+    vc_state::{ vc_acqsig vc_bufcallid vc_dispnum vc_login vc_minor \
+    vc_pid vc_relsig vc_switch_mode vc_switchto vc_tem vc_timeoutid \
+    vc_waitv vc_wq }
