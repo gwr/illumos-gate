@@ -1,0 +1,4 @@
+ugen.c::ugen_skel_statep	read-only	none	-
+ugen_skel_state_t::ugen_skel_dip	read-only	read-only	-
+ugen_skel_state_t::ugen_skel_instance	read-only	read-only	-
+ugen_skel_state_t::ugen_skel_hdl	read-only	read-only	-

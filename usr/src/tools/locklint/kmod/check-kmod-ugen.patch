@@ -1,0 +1,42 @@
+diff --git a/usr/src/uts/common/io/usb/clients/ugen/ugen.c b/usr/src/uts/common/io/usb/clients/ugen/ugen.c
+index b07c263323..0a8bfabf29 100644
+--- a/usr/src/uts/common/io/usb/clients/ugen/ugen.c
++++ b/usr/src/uts/common/io/usb/clients/ugen/ugen.c
+@@ -210,7 +210,7 @@ ugen_skel_getinfo(dev_info_t *dip, ddi_info_cmd_t infocmd, void *arg,
+ static int
+ ugen_skel_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
+ {
+-	ugen_skel_state_t	*ugen_skelp;
++	ugen_skel_state_t	*ugen_skelp = NULL;
+ 	int			instance;	/* Driver instance number */
+ 	int			rval;
+ 	usb_ugen_info_t		usb_ugen_info;
+@@ -246,6 +246,7 @@ ugen_skel_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
+ 
+ 		return (DDI_FAILURE);
+ 	}
++	_NOTE(NOW_INVISIBLE_TO_OTHER_THREADS(*ugen_skelp))
+ 
+ 	if ((rval = usb_client_attach(dip, USBDRV_VERSION, 0)) !=
+ 	    USB_SUCCESS) {
+@@ -266,6 +267,7 @@ ugen_skel_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
+ 	    (dev_t)~UGEN_MINOR_UGEN_BITS_MASK;
+ 	ugen_skelp->ugen_skel_hdl = usb_ugen_get_hdl(dip,
+ 	    &usb_ugen_info);
++	_NOTE(NOW_VISIBLE_TO_OTHER_THREADS(*ugen_skelp))
+ 
+ 	if (usb_ugen_attach(ugen_skelp->ugen_skel_hdl, cmd) != USB_SUCCESS) {
+ 
+diff --git a/usr/src/uts/common/sys/usb/clients/ugen/ugend.h b/usr/src/uts/common/sys/usb/clients/ugen/ugend.h
+index 767e23f5be..486caa1375 100644
+--- a/usr/src/uts/common/sys/usb/clients/ugen/ugend.h
++++ b/usr/src/uts/common/sys/usb/clients/ugen/ugend.h
+@@ -46,7 +46,7 @@ typedef struct {
+ 	usb_ugen_hdl_t		ugen_skel_hdl;
+ } ugen_skel_state_t;
+ 
+-_NOTE(DATA_READABLE_WITHOUT_LOCK(ugen_skel_state_t))
++_NOTE(READ_ONLY_DATA(ugen_skel_state_t))
+ 
+ #define	UGEN_MINOR_UGEN_BITS_MASK	0x1ff
+ #define	UGEN_MINOR_INSTANCE_SHIFT	9

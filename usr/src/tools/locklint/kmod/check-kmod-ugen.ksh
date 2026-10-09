@@ -19,6 +19,7 @@
 
 SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
 SRC=${SRC:-$(CDPATH= cd "$SCRIPT_DIR/../../.." && pwd)}
+REPO_ROOT=$(CDPATH= cd "$SRC/../.." && pwd)
 MODULE_DIR="$SRC/uts/intel/ugen"
 WORK_DIR="$MODULE_DIR/newll"
 LOCKLINT="$SRC/tools/locklint/locklint"
@@ -26,6 +27,18 @@ ANALYZE_RAW="$WORK_DIR/analyze.raw"
 REFERENCE="$SCRIPT_DIR/../osll/check-kmod-ugen.ref"
 REFERENCE_FILTERED="$WORK_DIR/reference.filtered"
 OUTPUT="$SCRIPT_DIR/check-kmod-ugen.out"
+PATCH="$SCRIPT_DIR/check-kmod-ugen.patch"
+PATCH_CONFIG="$SCRIPT_DIR/check-kmod-ugen.cf"
+PATCH_REFERENCE="$SCRIPT_DIR/check-kmod-ugen.ref"
+PATCH_ANALYZE_RAW="$WORK_DIR/analyze-patched.raw"
+PATCH_AUDIT_RAW="$WORK_DIR/audit-patched.raw"
+PATCH_AUDIT_OUTPUT="$WORK_DIR/audit-patched.out"
+PATCH_UNPROTECTED_RAW="$WORK_DIR/unprotected-patched.raw"
+SENTINEL="$SCRIPT_DIR/check-kmod-sentinel.c"
+PATCHED_FILES='
+usr/src/uts/common/io/usb/clients/ugen/ugen.c
+usr/src/uts/common/sys/usb/clients/ugen/ugend.h
+'
 UGEN_SOURCE=../../common/io/usb/clients/ugen/ugen.c
 UGEN_FUNCTIONS='
 _init
@@ -48,29 +61,73 @@ ugen_skel_disconnect_ev_cb
 ugen_skel_reconnect_ev_cb
 '
 
+restore_sources()
+{
+	cd "$REPO_ROOT" || return 1
+	git checkout -- $PATCHED_FILES
+}
+
+handle_exit()
+{
+	status=$?
+
+	trap - EXIT HUP INT TERM
+	if ! restore_sources; then
+		print -u2 "failed to restore patched ugen source files"
+		status=1
+	fi
+	exit "$status"
+}
+
+handle_signal()
+{
+	status=$1
+
+	trap - EXIT HUP INT TERM
+	if ! restore_sources; then
+		print -u2 "failed to restore patched ugen source files"
+		status=1
+	fi
+	exit "$status"
+}
+
 if [[ ! -d "$MODULE_DIR" ]]; then
 	print -u2 "ugen module directory not found: $MODULE_DIR"
 	exit 1
 fi
-cd "$MODULE_DIR" || exit 1
-
 if [[ ! -x "$LOCKLINT" ]]; then
 	print -u2 "locklint not found: $LOCKLINT"
 	exit 1
 fi
+for file in "$PATCH" "$PATCH_CONFIG" "$PATCH_REFERENCE" "$SENTINEL"
+do
+	if [[ ! -f "$file" ]]; then
+		print -u2 "ugen comparison input not found: $file"
+		exit 1
+	fi
+done
 
+cd "$MODULE_DIR" || exit 1
 mkdir -p "$WORK_DIR" || exit 1
-rm -f "$ANALYZE_RAW" "$REFERENCE_FILTERED" "$OUTPUT"
+rm -f "$ANALYZE_RAW" "$REFERENCE_FILTERED" "$OUTPUT" \
+    "$PATCH_ANALYZE_RAW" "$PATCH_AUDIT_RAW" "$PATCH_AUDIT_OUTPUT" \
+    "$PATCH_UNPROTECTED_RAW"
 
 run_locklint()
 {
+	typeset sentinel=$1
+	shift
+
+	if [[ -n "$sentinel" ]]; then
+		set -- "$@" "$sentinel"
+	fi
 	"$LOCKLINT" "$@" \
 	    -D__sun -m64 -Ui386 -U__i386 -O2 \
 	    -D_ASM_INLINES -std=gnu99 \
 	    -D_KERNEL -D_SYSCALL32 -D_SYSCALL32_IMPL \
 	    -D_ELF64 -D_DDI_STRICT -Dsun -D__sun -D__SVR4 -DDEBUG \
 	    -I../../intel -nostdinc -I../../common \
-	    "$UGEN_SOURCE" "$SCRIPT_DIR/check-kmod-sentinel.c"
+	    "$UGEN_SOURCE"
 }
 
 verify_module_coverage()
@@ -118,7 +175,7 @@ verify_automatic_roots()
 }
 
 print "Running new locklint over ugen"
-run_locklint --compat=osll --dump-callgraph \
+run_locklint "$SENTINEL" --compat=osll --dump-callgraph \
     --cf "$SCRIPT_DIR/ugen.cf" >"$ANALYZE_RAW" 2>&1
 status=$?
 if (( status != 0 )); then
@@ -155,3 +212,74 @@ else
 	print -u2 "Raw result: $ANALYZE_RAW"
 	exit 1
 fi
+
+cd "$REPO_ROOT" || exit 1
+dirty=$(git status --short -- $PATCHED_FILES) || exit 1
+if [[ -n "$dirty" ]]; then
+	print -u2 "refusing to patch modified ugen source files:"
+	print -u2 -- "$dirty"
+	exit 1
+fi
+git apply --check "$PATCH" || exit 1
+
+trap handle_exit EXIT
+trap 'handle_signal 129' HUP
+trap 'handle_signal 130' INT
+trap 'handle_signal 143' TERM
+git apply "$PATCH" || exit 1
+
+cd "$MODULE_DIR" || exit 1
+print "Running new locklint over patched ugen"
+run_locklint "$SENTINEL" --compat=osll --cf "$PATCH_CONFIG" \
+    >"$PATCH_ANALYZE_RAW" 2>&1
+status=$?
+if (( status != 0 )); then
+	print -u2 "new locklint patched ugen analysis failed with status $status"
+	print -u2 "see $PATCH_ANALYZE_RAW"
+	exit "$status"
+fi
+
+sentinel_count=$(grep -c \
+    'check-kmod-sentinel.c:.*warning:.*\[unprotected-access\]$' \
+    "$PATCH_ANALYZE_RAW")
+if (( sentinel_count != 1 )); then
+	print -u2 "new locklint patched ugen produced $sentinel_count " \
+	    "sentinel diagnostics instead of one"
+	exit 1
+fi
+if grep -q '\[read-only-data-modified\]$' "$PATCH_ANALYZE_RAW"; then
+	print -u2 "new locklint rejected private ugen initialization"
+	exit 1
+fi
+
+run_locklint "" --compat=osll --no-diagnostics \
+    --cf "$PATCH_CONFIG" --audit-protection="$PATCH_AUDIT_RAW" \
+    >/dev/null 2>&1 || exit 1
+awk -F '\t' '
+    /^DATUM\t/ {
+	report = 1
+	next
+    }
+    report && NF == 4 {
+	datum = $1
+	sub(/^.*\/ugen.c::/, "ugen.c::", datum)
+	print datum "\t" $2 "\t" $3 "\t" $4
+    }
+' "$PATCH_AUDIT_RAW" >"$PATCH_AUDIT_OUTPUT" || exit 1
+if ! cmp -s "$PATCH_REFERENCE" "$PATCH_AUDIT_OUTPUT"; then
+	print -u2 "new locklint patched ugen protection audit differs:"
+	diff -u "$PATCH_REFERENCE" "$PATCH_AUDIT_OUTPUT"
+	exit 1
+fi
+
+run_locklint "" --compat=osll --no-diagnostics \
+    --cf "$PATCH_CONFIG" --audit-unprotected="$PATCH_UNPROTECTED_RAW" \
+    >/dev/null 2>&1 || exit 1
+line_count=$(wc -l <"$PATCH_UNPROTECTED_RAW")
+if (( line_count != 1 )) ||
+    ! grep -q '^Unprotected audit:' "$PATCH_UNPROTECTED_RAW"; then
+	print -u2 "new locklint patched ugen has unprotected audit entries"
+	exit 1
+fi
+
+print "New locklint patched ugen protection audit matches."
