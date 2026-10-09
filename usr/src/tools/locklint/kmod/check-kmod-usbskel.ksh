@@ -89,7 +89,7 @@ run_locklint()
 	    -D_ELF64 -D_DDI_STRICT -Dsun -D__sun -D__SVR4 -DDEBUG \
 	    -I../../intel -nostdinc -I../../common \
 	    "$USBSKEL_SOURCE" \
-	    "$SCRIPT_DIR/check-kmod-usbskel-sentinel.c"
+	    "$SCRIPT_DIR/check-kmod-sentinel.c"
 }
 
 verify_module_coverage()
@@ -150,7 +150,7 @@ verify_module_coverage || exit 1
 verify_automatic_roots || exit 1
 
 sentinel_count=$(grep -c \
-    'check-kmod-usbskel-sentinel.c:.*warning:.*\[unprotected-access\]$' \
+    'check-kmod-sentinel.c:.*warning:.*\[unprotected-access\]$' \
     "$ANALYZE_RAW")
 if (( sentinel_count != 1 )); then
 	print -u2 "new locklint usbskel analysis produced $sentinel_count " \
@@ -160,7 +160,7 @@ if (( sentinel_count != 1 )); then
 fi
 
 awk '/\[unprotected-access\]$/ &&
-    $0 !~ /check-kmod-usbskel-sentinel.c:/ { print }' \
+    $0 !~ /check-kmod-sentinel.c:/ { print }' \
     "$ANALYZE_RAW" >"$OUTPUT" || exit 1
 awk '$0 !~ /^#/' "$REFERENCE" >"$REFERENCE_FILTERED" || exit 1
 

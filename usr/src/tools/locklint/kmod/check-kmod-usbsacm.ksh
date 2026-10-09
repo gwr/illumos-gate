@@ -304,7 +304,7 @@ run_locklint()
 	    -D_ELF64 -D_DDI_STRICT -Dsun -D__sun -D__SVR4 -DDEBUG \
 	    -I../../intel -nostdinc -I../../common \
 	    "$USBSACM_SOURCE" "$USBSER_SOURCE" "$RSEQ_SOURCE" \
-	    "$SCRIPT_DIR/check-kmod-usbsacm-sentinel.c"
+	    "$SCRIPT_DIR/check-kmod-sentinel.c"
 }
 
 verify_function_list()
@@ -459,7 +459,7 @@ verify_automatic_roots || exit 1
 verify_indirect_calls || exit 1
 
 sentinel_count=$(grep -c \
-    'check-kmod-usbsacm-sentinel.c:.*warning:.*\[unprotected-access\]$' \
+    'check-kmod-sentinel.c:.*warning:.*\[unprotected-access\]$' \
     "$ANALYZE_RAW")
 if (( sentinel_count != 1 )); then
 	print -u2 "new locklint usbsacm analysis produced $sentinel_count " \

@@ -134,7 +134,7 @@ run_locklint()
 	    -D_ELF64 -D_DDI_STRICT -Dsun -D__sun -D__SVR4 -DDEBUG \
 	    -I../../intel -nostdinc -I../../common \
 	    "$USBECM_SOURCE" \
-	    "$SCRIPT_DIR/check-kmod-usbecm-sentinel.c"
+	    "$SCRIPT_DIR/check-kmod-sentinel.c"
 }
 
 verify_module_coverage()
@@ -202,7 +202,7 @@ write_summary()
 	awk -F "'" '
 	    /warning:/ &&
 	    /\[unprotected-access\]$/ &&
-	    $0 !~ /check-kmod-usbecm-sentinel.c:/ {
+	    $0 !~ /check-kmod-sentinel.c:/ {
 		print $2
 	    }
 	' "$ANALYZE_RAW" | LC_ALL=C sort
@@ -223,7 +223,7 @@ verify_automatic_roots || exit 1
 verify_unresolved_ds_calls || exit 1
 
 sentinel_count=$(grep -c \
-    'check-kmod-usbecm-sentinel.c:.*warning:.*\[unprotected-access\]$' \
+    'check-kmod-sentinel.c:.*warning:.*\[unprotected-access\]$' \
     "$ANALYZE_RAW")
 if (( sentinel_count != 1 )); then
 	print -u2 "new locklint usbecm analysis produced $sentinel_count " \

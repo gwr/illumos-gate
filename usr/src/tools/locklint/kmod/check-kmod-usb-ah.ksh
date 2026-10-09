@@ -76,7 +76,7 @@ run_locklint()
 	    -D_KERNEL -D_SYSCALL32 -D_SYSCALL32_IMPL \
 	    -D_ELF64 -D_DDI_STRICT -Dsun -D__sun -D__SVR4 -DDEBUG \
 	    -I../../intel -nostdinc -I../../common \
-	    "$USB_AH_SOURCE" "$SCRIPT_DIR/check-kmod-usb-ah-sentinel.c"
+	    "$USB_AH_SOURCE" "$SCRIPT_DIR/check-kmod-sentinel.c"
 }
 
 verify_module_coverage()
@@ -145,7 +145,7 @@ if (( indirect_count != 0 )); then
 fi
 
 sentinel_count=$(grep -c \
-    'check-kmod-usb-ah-sentinel.c:.*warning:.*\[unprotected-access\]$' \
+    'check-kmod-sentinel.c:.*warning:.*\[unprotected-access\]$' \
     "$ANALYZE_RAW")
 if (( sentinel_count != 1 )); then
 	print -u2 "new locklint usb_ah analysis produced $sentinel_count " \
@@ -155,7 +155,7 @@ if (( sentinel_count != 1 )); then
 fi
 
 awk '/\[unprotected-access\]$/ &&
-    $0 !~ /check-kmod-usb-ah-sentinel.c:/ {
+    $0 !~ /check-kmod-sentinel.c:/ {
 	print
 }' "$ANALYZE_RAW" >"$OUTPUT" || exit 1
 awk '$0 !~ /^#/' "$REFERENCE" >"$REFERENCE_FILTERED" || exit 1

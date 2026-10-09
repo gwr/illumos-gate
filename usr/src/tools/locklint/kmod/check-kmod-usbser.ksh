@@ -231,7 +231,7 @@ run_locklint()
 	    -D_ELF64 -D_DDI_STRICT -Dsun -D__sun -D__SVR4 -DDEBUG \
 	    -I../../intel -nostdinc -I../../common \
 	    "$USBSER_SOURCE" "$RSEQ_SOURCE" \
-	    "$SCRIPT_DIR/check-kmod-usbser-sentinel.c"
+	    "$SCRIPT_DIR/check-kmod-sentinel.c"
 }
 
 verify_module_coverage()
@@ -367,7 +367,7 @@ verify_historical_coverage || exit 1
 verify_indirect_calls || exit 1
 
 sentinel_count=$(grep -c \
-    'check-kmod-usbser-sentinel.c:.*warning:.*\[unprotected-access\]$' \
+    'check-kmod-sentinel.c:.*warning:.*\[unprotected-access\]$' \
     "$ANALYZE_RAW")
 if (( sentinel_count != 1 )); then
 	print -u2 "new locklint usbser analysis produced $sentinel_count " \

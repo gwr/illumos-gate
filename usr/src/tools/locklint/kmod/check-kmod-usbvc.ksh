@@ -158,7 +158,7 @@ run_locklint()
 	    -D_ELF64 -D_DDI_STRICT -Dsun -D__sun -D__SVR4 -DDEBUG \
 	    -I../../intel -nostdinc -I../../common \
 	    "$USBVC_SOURCE" "$USBVC_V4L2_SOURCE" \
-	    "$SCRIPT_DIR/check-kmod-usbvc-sentinel.c"
+	    "$SCRIPT_DIR/check-kmod-sentinel.c"
 }
 
 verify_module_coverage()
@@ -254,7 +254,7 @@ if (( indirect_count != 0 )); then
 fi
 
 sentinel_count=$(grep -c \
-    'check-kmod-usbvc-sentinel.c:.*warning:.*\[unprotected-access\]$' \
+    'check-kmod-sentinel.c:.*warning:.*\[unprotected-access\]$' \
     "$ANALYZE_RAW")
 if (( sentinel_count != 1 )); then
 	print -u2 "new locklint usbvc analysis produced $sentinel_count " \
