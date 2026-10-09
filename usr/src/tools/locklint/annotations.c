@@ -1638,15 +1638,21 @@ resolve_path(struct annotation_ref *ref, struct symbol *type,
 }
 
 /*
- * Resolve automatic names in the current translation unit, preferring an
- * object over a type, and retain canonical identity only for object scope.
+ * Resolve automatic names in the current translation unit, normally
+ * preferring an object over a type, and retain canonical identity only for
+ * object scope.  A bare aggregate data policy prefers an aggregate type over
+ * a same-named non-aggregate object so whole-type annotations such as "buf"
+ * are not captured by a pointer variable in the ordinary identifier
+ * namespace.
  */
 static bool
 resolve_annotation_ref(struct annotation_ref *ref, bool lock,
-    struct translation_unit *tu, struct symbol_list *symbols)
+    bool prefer_aggregate_type, struct translation_unit *tu,
+    struct symbol_list *symbols)
 {
 	struct ident *ident = built_in_ident(ref->base_name);
 	struct symbol *base;
+	struct symbol *candidate;
 	struct symbol *type;
 
 	if (ref->scope == ANNOTATION_TYPE) {
@@ -1655,6 +1661,17 @@ resolve_annotation_ref(struct annotation_ref *ref, bool lock,
 		base = resolve_local(symbols, ident, ref->pos);
 		if (base == NULL)
 			base = lookup_symbol(ident, NS_SYMBOL);
+		if (ref->scope == ANNOTATION_AUTO && ref->path == NULL &&
+		    prefer_aggregate_type &&
+		    (base == NULL ||
+		    type_compound_resolve(base->ctype.base_type) == NULL)) {
+			candidate = resolve_type(ref->base_name);
+			if (candidate != NULL &&
+			    type_compound_resolve(candidate) != NULL) {
+				base = candidate;
+				ref->scope = ANNOTATION_TYPE;
+			}
+		}
 		if (base == NULL && ref->scope == ANNOTATION_AUTO) {
 			base = resolve_type(ref->base_name);
 			if (base != NULL)
@@ -1969,7 +1986,7 @@ locklint_resolve_annotations(struct symbol_list *symbols)
 		if (annotation->kind == ANNOTATION_LOCK_ORDER) {
 			for (ref = annotation->order; ref != NULL;
 			    ref = ref->next) {
-				if (!resolve_annotation_ref(ref, true,
+				if (!resolve_annotation_ref(ref, true, false,
 				    annotation->tu, symbols))
 					break;
 			}
@@ -1981,8 +1998,8 @@ locklint_resolve_annotations(struct symbol_list *symbols)
 			enum callgraph_declare_result result;
 
 			ref = annotation->data;
-			if (!resolve_annotation_ref(ref, false, annotation->tu,
-			    symbols) || ref->member == NULL)
+			if (!resolve_annotation_ref(ref, false, false,
+			    annotation->tu, symbols) || ref->member == NULL)
 				continue;
 			if (annotation->contract_function == NULL) {
 				result =
@@ -2005,7 +2022,7 @@ locklint_resolve_annotations(struct symbol_list *symbols)
 			continue;
 		}
 		if (annotation->lock != NULL &&
-		    !resolve_annotation_ref(annotation->lock, true,
+		    !resolve_annotation_ref(annotation->lock, true, false,
 		    annotation->tu, symbols))
 			continue;
 		if (annotation->kind == ANNOTATION_LOCK_ROLE_PROTECTS_DATA &&
@@ -2019,6 +2036,8 @@ locklint_resolve_annotations(struct symbol_list *symbols)
 		for (ref = annotation->data; ref != NULL; ref = ref->next) {
 			if (!resolve_annotation_ref(ref,
 			    annotation->kind == ANNOTATION_RWLOCK_COVERS_LOCKS,
+			    annotation->kind ==
+			    ANNOTATION_SCHEME_PROTECTS_DATA,
 			    annotation->tu, symbols))
 				break;
 			if (annotation->kind ==

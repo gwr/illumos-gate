@@ -3947,6 +3947,14 @@ require_match "external-scheme common lock retained" \
     '^scheme_audit_state::locked	write-only	external-scheme	scheme_audit_state::lock$' \
     audit-protection-external-scheme.out
 
+run_capture "duplicate aggregate scheme inventory" \
+    duplicate-aggregate-scheme.out "$LOCKLINT" --no-diagnostics \
+    --audit-protection duplicate-aggregate-scheme-first.c \
+    duplicate-aggregate-scheme-second.c
+require_match "duplicate aggregate member scheme" \
+    '^duplicate_scheme_shared.value	read/write	external-scheme	-$' \
+    duplicate-aggregate-scheme.out
+
 run_capture "external-scheme detailed audit" \
     audit-unprotected-external-scheme.out "$LOCKLINT" --no-diagnostics \
     --audit-unprotected external-scheme-audit.c
