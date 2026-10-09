@@ -277,8 +277,10 @@ member_offset(struct expression *expr)
 	return (offset);
 }
 
+static struct symbol *compound_type(struct symbol *);
+
 static struct locklint_member_path *
-member_path(struct expression *expr)
+member_path(struct expression *expr, struct symbol **storage_type)
 {
 	struct expression *member = find_access_member(expr);
 	struct locklint_member_path *parent;
@@ -286,7 +288,9 @@ member_path(struct expression *expr)
 
 	if (member == NULL)
 		return (NULL);
-	parent = member_path(member->member_base);
+	parent = member_path(member->member_base, storage_type);
+	if (parent == NULL)
+		*storage_type = compound_type(member->member_base->ctype);
 	offset = (parent != NULL ? parent->offset : 0) +
 	    member->member_path_offset;
 	return (intern_member_path(parent, member->member_symbol->ident,
@@ -335,7 +339,10 @@ locklint_get_access(struct translation_unit *tu, struct expression *expr,
 	access->offset = member_offset(expr);
 	access->expr_offset = access->offset;
 	access->expr = expr;
-	access->path = member_path(expr);
+	access->storage_type = NULL;
+	access->path = member_path(expr, &access->storage_type);
+	if (access->path == NULL)
+		access->storage_type = compound_type(expr->ctype);
 	access->owners = NULL;
 	access->address_base = NULL;
 	access->address_offset = 0;

@@ -245,6 +245,7 @@ test_datum_keys(void)
 	access.root = &external_symbol;
 	access.object = locklint_object_identity(tu, &external_symbol);
 	access.type = &integer;
+	access.storage_type = NULL;
 	access.address_base = &direct;
 	access.address_base_is_symbol = true;
 	result = protection_audit_datum_key_init(&external, tu, &function,
@@ -288,6 +289,7 @@ test_datum_keys(void)
 	access.root = &formal;
 	access.object = NULL;
 	access.type = &aggregate;
+	access.storage_type = &aggregate;
 	access.member = &member;
 	access.address_base = &indirect;
 	access.address_base_is_symbol = false;
@@ -307,6 +309,7 @@ test_datum_keys(void)
 
 	access.root = &local_static;
 	access.type = &integer;
+	access.storage_type = NULL;
 	access.member = NULL;
 	access.address_base = &direct;
 	access.address_base_is_symbol = true;
@@ -320,6 +323,7 @@ test_datum_keys(void)
 
 	access.root = &formal;
 	access.type = &integer;
+	access.storage_type = NULL;
 	access.address_base = &indirect;
 	access.address_base_is_symbol = false;
 	result = protection_audit_datum_key_init(&other, tu, &function,
@@ -394,6 +398,7 @@ test_candidates(void)
 	};
 	struct locklint_access access = {
 		.type = &aggregate,
+		.storage_type = &aggregate,
 		.member = &data_member,
 		.offset = 20
 	};

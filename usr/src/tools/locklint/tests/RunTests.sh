@@ -3757,6 +3757,17 @@ require_match "readable write-side protection" \
     '^readable_state::value	read/write	mutex+readable	readable_state::lock$' \
     audit-protection-readable.out
 
+run_capture "pointer-boundary protection inventory" \
+    audit-protection-pointer-boundary.out "$LOCKLINT" --no-diagnostics \
+    --audit-protection pointer-boundary-audit.c
+require_match "pointer-boundary pointee datum" \
+    '^audit_inner::value	read/write	none(note3)	-$' \
+    audit-protection-pointer-boundary.out
+reject_match "pointer-boundary containing datum" \
+    '^audit_outer	' audit-protection-pointer-boundary.out
+reject_match "pointer-boundary containing member" \
+    '^audit_outer::value	' audit-protection-pointer-boundary.out
+
 #
 # The detailed audit expands every note-marked inventory entry into
 # deterministic source evidence and honors its site limit.

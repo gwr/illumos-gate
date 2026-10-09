@@ -243,7 +243,7 @@ protection_audit_datum_key_init(struct protection_audit_datum_key *key,
 	} else {
 		if (direct_thread_private(access))
 			return (PROTECTION_AUDIT_KEY_EXCLUDED);
-		compound = type_compound_resolve(access->type);
+		compound = type_compound_resolve(access->storage_type);
 		key->type = type_lookup_exact(compound);
 		if (key->type == NULL || type_report_order(key->type) == 0)
 			return (PROTECTION_AUDIT_KEY_UNSUPPORTED);

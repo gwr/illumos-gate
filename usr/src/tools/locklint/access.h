@@ -34,6 +34,7 @@ struct locklint_access {
 	struct symbol *root;
 	struct object_identity *object;
 	struct symbol *type;
+	struct symbol *storage_type;
 	struct symbol *member;
 	unsigned long offset;
 	unsigned long expr_offset;
