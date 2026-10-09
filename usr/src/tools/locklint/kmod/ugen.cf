@@ -3,4 +3,9 @@
 # The two historical event callbacks are automatic roots because their
 # addresses escape through ugen_skel_events.  The seven bus_ops mappings to
 # warlock_dummy cannot affect ugen, whose dev_ops has no bus_ops vector.
-# Consequently this module needs no explicit locklint declarations.
+# Consequently this module needs no declarations for the historical policy.
+#
+# Attach initializes these fields before callback registration and device
+# publication; their values do not subsequently change.
+declare scheme-protects-data "constant after initialization" \
+    ugen_skel_state_t::{ ugen_skel_dip ugen_skel_instance ugen_skel_hdl }
