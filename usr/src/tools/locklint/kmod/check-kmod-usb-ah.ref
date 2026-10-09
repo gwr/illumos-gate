@@ -1,0 +1,40 @@
+Protection audit: observations include only analyzed roots, resolved targets, and input translation units.
+DATUM	ACCESS	PROTECTION	LOCK
+usb_ah_rpt_tick	read/write	unknown(note1,5)	usb_ah_state::usb_ah_mutex
+../../common/io/usb/clients/audio/usb_ah/usb_ah.c::usb_ah_log_handle	read/write	unknown(note1,5)	usb_ah_state::usb_ah_mutex
+datab::db_base	read-only	external-scheme	usb_ah_state::usb_ah_mutex
+datab::db_type	read/write	external-scheme	-
+msgb::b_cont	read/write	external-scheme	-
+msgb::b_rptr	read-only	external-scheme	-
+msgb::b_wptr	read/write	external-scheme	-
+msgb::b_datap	read-only	external-scheme	-
+queue::q_ptr	read/write	external-scheme	-
+usb_ah_button_descr::location	read/write	external-scheme	-
+usb_ah_button_descr::offset	read/write	external-scheme	-
+usb_ah_button_descr::no_of_bits	read/write	external-scheme	-
+usb_ah_button_descr::pressed	read/write	external-scheme	-
+usb_ah_button_descr::mblk	read/write	external-scheme	-
+usb_ah_button_descr::uahp	read/write	external-scheme	-
+hidparser_usage_info::rptsz	read-only	external-scheme	-
+hidparser_rpt::main_item_value	read/write	external-scheme	-
+hidparser_rpt::no_of_usages	read-only	external-scheme	-
+hidparser_rpt::usage_descr.usage_page	read-only	external-scheme	-
+hidparser_rpt::usage_descr.usage_id	read-only	external-scheme	-
+hidparser_rpt::usage_descr.collection_usage	read-only	external-scheme	-
+usb_ah_state::usb_ah_readq	read/write	external-scheme	-
+usb_ah_state::usb_ah_writeq	read/write	external-scheme	-
+usb_ah_state::usb_ah_flags	read/write	external-scheme	-
+usb_ah_state::usb_ah_packet_size	read/write	external-scheme	-
+usb_ah_state::usb_ah_uses_report_ids	read/write	external-scheme	-
+usb_ah_state::usb_ah_report_id	read/write	external-scheme	-
+usb_ah_state::usb_ah_tid	read/write	external-scheme	-
+usb_ah_state::usb_ah_cur_bd	read/write	external-scheme	-
+usb_ah_state::usb_ah_report_descr	read/write	external-scheme	-
+iocblk::ioc_cmd	read-only	external-scheme	-
+iocblk::ioc_count	read-only	external-scheme	-
+
+Notes:
+note1: lock not held consistently
+note5: held-lock relationship could not be resolved
+
+Use --audit-unprotected for details about entries marked with notes.
