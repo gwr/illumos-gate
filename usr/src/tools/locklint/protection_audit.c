@@ -204,6 +204,34 @@ direct_thread_private(const struct locklint_access *access)
 }
 
 /*
+ * A direct pointer with an unsized target still accesses sized pointer
+ * storage.  Fall back to the declaration only for direct symbol-backed
+ * storage, leaving the shared target-region sizing unchanged.
+ */
+static bool
+protection_audit_access_size(const struct locklint_access *access,
+    uint64_t *result)
+{
+	struct symbol *declared_type;
+	int size;
+
+	if (locklint_access_size(access, result))
+		return (true);
+	if (access->root == NULL || access->member != NULL ||
+	    access->path != NULL || access->address_base == NULL ||
+	    !access->address_base_is_symbol)
+		return (false);
+	declared_type = type_node_strip(access->root->ctype.base_type);
+	if (declared_type == NULL)
+		return (false);
+	size = bits_to_bytes(declared_type->bit_size);
+	if (size <= 0)
+		return (false);
+	*result = (uint64_t)size;
+	return (true);
+}
+
+/*
  * Select the strongest identity available without inventing provenance.
  * Exact objects and local statics retain declaration identity; indirect
  * aggregate accesses use their canonical type and member path.  Other
@@ -219,7 +247,8 @@ protection_audit_datum_key_init(struct protection_audit_datum_key *key,
 	uint64_t size;
 
 	if (key == NULL || tu == NULL || access == NULL ||
-	    access->root == NULL || !locklint_access_size(access, &size))
+	    access->root == NULL ||
+	    !protection_audit_access_size(access, &size))
 		return (PROTECTION_AUDIT_KEY_UNSUPPORTED);
 	(void) memset(key, 0, sizeof (*key));
 

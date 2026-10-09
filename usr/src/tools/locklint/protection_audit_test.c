@@ -126,6 +126,17 @@ test_datum_keys(void)
 		.examined = 1,
 		.ctype = { .alignment = 8, .base_type = &aggregate }
 	};
+	struct symbol void_target = {
+		.type = SYM_BASETYPE,
+		.bit_size = 0,
+		.examined = 1
+	};
+	struct symbol void_pointer = {
+		.type = SYM_PTR,
+		.bit_size = 64,
+		.examined = 1,
+		.ctype = { .alignment = 8, .base_type = &void_target }
+	};
 	struct symbol external_symbol = {
 		.type = SYM_NODE,
 		.namespace = NS_SYMBOL,
@@ -157,6 +168,16 @@ test_datum_keys(void)
 		.ctype = {
 			.modifiers = MOD_TOPLEVEL | MOD_STATIC,
 			.base_type = &integer
+		}
+	};
+	struct symbol internal_pointer = {
+		.type = SYM_NODE,
+		.namespace = NS_SYMBOL,
+		.ident = built_in_ident("pointer"),
+		.examined = 1,
+		.ctype = {
+			.modifiers = MOD_TOPLEVEL | MOD_STATIC,
+			.base_type = &void_pointer
 		}
 	};
 	struct symbol local = {
@@ -271,8 +292,18 @@ test_datum_keys(void)
 	    protection_audit_datum_report_compare(&external, &internal) < 0,
 	    "internal object follows external object");
 
+	access.root = &internal_pointer;
+	access.object = locklint_object_identity(tu, &internal_pointer);
+	access.type = &void_target;
+	result = protection_audit_datum_key_init(&other, tu, &function,
+	    &access);
+	check(result == PROTECTION_AUDIT_KEY_OK &&
+	    other.kind == PROTECTION_AUDIT_DATUM_INTERNAL &&
+	    other.size == 8, "direct pointer object uses pointer storage size");
+
 	access.root = &local;
 	access.object = NULL;
+	access.type = &integer;
 	access.address_base = &direct;
 	result = protection_audit_datum_key_init(&other, tu, &function,
 	    &access);

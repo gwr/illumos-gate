@@ -3872,6 +3872,12 @@ do
 done
 compare "protection inventory" audit-protection.ref audit-protection.out
 
+run_capture "global pointer protection inventory" \
+    audit-global-pointer.out "$LOCKLINT" --no-diagnostics \
+    --audit-protection audit-global-pointer.c
+compare "global pointer protection inventory" \
+    audit-global-pointer.ref audit-global-pointer.out
+
 run_capture "structural protection inventory" \
     audit-protection-structural.out "$LOCKLINT" --no-diagnostics \
     --audit-protection data-policy.c

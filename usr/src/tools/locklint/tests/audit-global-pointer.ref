@@ -1,0 +1,4 @@
+Protection audit: observations include only analyzed roots, resolved targets, and input translation units.
+DATUM	ACCESS	PROTECTION	LOCK
+audit-global-pointer.c::pointer	read-only	none	-
+audit-global-pointer.c::scalar	read-only	none	-

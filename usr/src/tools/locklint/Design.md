@@ -130,7 +130,9 @@ not when future features should be added.
 - **Protection-audit datum key** - A source-oriented identity for one data
   region selected for protection review.  It uses exact object identity when
   available, canonical structural identity for pointees, and a source-backed
-  identity for function-local static objects.
+  identity for function-local static objects.  A direct pointer access whose
+  target has no size uses the pointer declaration's storage size and remains
+  distinct from accesses through that pointer to its target.
 - **Source origin** - The translation unit and physical source position from
   which a locklint record was derived.
 
