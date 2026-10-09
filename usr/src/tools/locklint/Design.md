@@ -764,6 +764,22 @@ after a closing quote are errors.  The parser passes the resulting arguments
 to one `cmd_*()` handler per command.  Empty and comment-only command files
 are valid.
 
+Data-policy commands pass only their data-name arguments through a transient
+name expander.  It accepts the established annotation forms
+`type::{ first second }`, `object.{ first second }`,
+`type::{ nested.{ first second } }`, and suffix generators such as
+`global_prefix_{ first second }` or
+`type::{ member_prefix_{ first second } }`.  Commas between generated names
+are optional.  The expander produces ordinary object or type-member names
+before semantic resolution; locks, descriptions, functions, and lock-order
+names are not expanded.
+
+Expansion storage is geometrically grown while processing one command and
+freed after the command succeeds or fails.  It adds no persistent collection
+or analysis lookup.  Protection and readable handlers resolve every expanded
+name before publishing policy, so an invalid generated name cannot partially
+apply a command.
+
 ### Command-language direction
 
 The intended general declaration grammar is:
@@ -832,11 +848,12 @@ Representative tokens are stored in the canonical type registry and selected
 when an access is converted to a lock-identity key.  They add no semantic
 state, context component, or per-access lookup collection.
 
-`declare readable data-name` applies data policy from outside the source.  It is
-equivalent to `DATA_READABLE_WITHOUT_LOCK(data-name)`: matching reads do not
-require the otherwise declared protection, while writes remain protected.
-It accepts one externally linked object name or a type-member path such as
-`type::member.nested-member`.  Missing and malformed names are errors.
+`declare readable data-name...` applies data policy from outside the source.
+It is equivalent to `DATA_READABLE_WITHOUT_LOCK(data-name...)`: matching reads
+do not require the otherwise declared protection, while writes remain
+protected.  It accepts one or more externally linked object names or
+type-member paths such as `type::member.nested-member`, including grouped
+names.  Missing and malformed names are errors.
 
 External objects use the same module-wide C object identity as source
 annotations and accesses.  Named aggregate types reachable from file-scope declarations and function

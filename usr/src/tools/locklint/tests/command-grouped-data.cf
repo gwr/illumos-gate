@@ -1,0 +1,10 @@
+declare mutex-protects-data command_grouped_state::mutex \
+    command_grouped_state::{ mutex_first mutex_second }
+declare rwlock-protects-data command_grouped_state::rwlock \
+    command_grouped_state::{ rw_first rw_second }
+declare scheme-protects-data "grouped scheme" \
+    command_grouped_state::{ scheme_{ first second } \
+    nested.{ first second } }
+declare readable command_grouped_global_{ first second }
+lock-role-protects-data command_grouped_state::mutex \
+    command_grouped_other::{ role_first role_second }

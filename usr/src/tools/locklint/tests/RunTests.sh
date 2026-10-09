@@ -1192,6 +1192,43 @@ require_match "command scheme quote boundary" \
     command-scheme-quote-boundary.out
 
 #
+# Verify that data-policy commands accept the established annotation
+# grouping and suffix-generator grammar.
+#
+run_capture "command grouped data names" command-grouped-data.out \
+    "$LOCKLINT" --no-check --dump-annotations \
+    --cf command-grouped-data.cf command-grouped-data.c
+for member in mutex_first mutex_second
+do
+	require_match "command grouped mutex $member" \
+	    "MUTEX_PROTECTS_DATA command_grouped_state::mutex -> command_grouped_state::$member" \
+	    command-grouped-data.out
+done
+for member in rw_first rw_second
+do
+	require_match "command grouped rwlock $member" \
+	    "RWLOCK_PROTECTS_DATA command_grouped_state::rwlock -> command_grouped_state::$member" \
+	    command-grouped-data.out
+done
+for member in scheme_first scheme_second nested.first nested.second
+do
+	require_match "command grouped scheme $member" \
+	    "SCHEME_PROTECTS_DATA \"grouped scheme\" -> command_grouped_state::$member" \
+	    command-grouped-data.out
+done
+for name in command_grouped_global_first command_grouped_global_second
+do
+	require_match "command grouped readable $name" \
+	    "DATA_READABLE_WITHOUT_LOCK $name" command-grouped-data.out
+done
+for member in role_first role_second
+do
+	require_match "command grouped role $member" \
+	    "LOCK_ROLE_PROTECTS_DATA command_grouped_state::mutex -> command_grouped_other::$member" \
+	    command-grouped-data.out
+done
+
+#
 # Verify command-declared entry assertions using formal names exactly as
 # written in each function definition.
 #
@@ -1345,7 +1382,8 @@ run_failure "command readable arity" command-readable-arity.out \
     "$LOCKLINT" --cf readable-arity.cf \
     readable.c
 require_match "command readable arity" \
-    "declare readable requires one data name" command-readable-arity.out
+    "declare readable requires at least one data name" \
+    command-readable-arity.out
 
 run_failure "command readable unresolved name" \
     command-readable-unresolved.out "$LOCKLINT" \

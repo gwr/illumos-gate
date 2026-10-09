@@ -20,6 +20,7 @@
 
 #include "annotations.h"
 #include "callgraph.h"
+#include "command_names.h"
 #include "command_parse.h"
 #include "events.h"
 #include "lib.h"
@@ -307,95 +308,177 @@ declare_lock_order(int argc, char **argv)
 }
 
 static int
+expand_data_names(int argc, char **argv, struct command_name_list *names)
+{
+	if (command_names_expand((size_t)argc, (const char *const *)argv,
+	    names))
+		return (0);
+	(void) command_parse_error("%s", names->error);
+	command_names_free(names);
+	return (-1);
+}
+
+static int
 declare_protection(int argc, char **argv,
     enum locklint_protection protection, const char *command,
     const char *protector)
 {
+	struct command_name_list names = { 0 };
 	struct locklint_command_origin origin = { 0 };
 	enum locklint_command_result result;
 	const char *problem = NULL;
+	int status;
 
 	if (argc < 3) {
 		return (command_parse_error("declare %s requires one lock and "
 		    "at least one data name", command));
 	}
+	if (expand_data_names(argc - 2, &argv[2], &names) != 0)
+		return (-1);
 	result = locklint_declare_protection(protection, argv[1],
-	    (size_t)(argc - 2), (const char *const *)&argv[2], &problem,
+	    names.count, (const char *const *)names.names, &problem,
 	    &origin, command_parse_path(), command_parse_line());
 	switch (result) {
 	case LOCKLINT_COMMAND_OK:
-		return (0);
+		status = 0;
+		break;
 	case LOCKLINT_COMMAND_INVALID_NAME:
-		return (command_parse_error("invalid %s name '%s'",
-		    problem == argv[1] ? "lock" : "data", problem));
+		status = command_parse_error("invalid %s name '%s'",
+		    problem == argv[1] ? "lock" : "data", problem);
+		break;
 	case LOCKLINT_COMMAND_UNRESOLVED_NAME:
-		return (command_parse_error("unresolved %s name '%s'",
-		    problem == argv[1] ? "lock" : "data", problem));
+		status = command_parse_error("unresolved %s name '%s'",
+		    problem == argv[1] ? "lock" : "data", problem);
+		break;
 	case LOCKLINT_COMMAND_INCONSISTENT_TYPE:
-		return (command_parse_error("inconsistently defined type in "
+		status = command_parse_error("inconsistently defined type in "
 		    "%s name '%s'", problem == argv[1] ? "lock" : "data",
-		    problem));
+		    problem);
+		break;
 	case LOCKLINT_COMMAND_CONFLICT:
 		if (origin.column != 0) {
-			return (command_parse_error("conflicting %s protector "
+			status = command_parse_error("conflicting %s protector "
 			    "for data name '%s' (previous declaration at "
 			    "%s:%lu:%lu)", protector, problem, origin.file,
-			    origin.line, origin.column));
+			    origin.line, origin.column);
+			break;
 		}
-		return (command_parse_error("conflicting %s protector for "
+		status = command_parse_error("conflicting %s protector for "
 		    "data name '%s' (previous declaration at %s:%lu)",
-		    protector, problem, origin.file, origin.line));
+		    protector, problem, origin.file, origin.line);
+		break;
 	case LOCKLINT_COMMAND_SCOPE_MISMATCH:
-		return (command_parse_error("lock and data names must both be "
-		    "object-specific or type-member"));
+		status = command_parse_error("lock and data names must both be "
+		    "object-specific or type-member");
+		break;
 	case LOCKLINT_COMMAND_OWNER_MISMATCH:
-		return (command_parse_error("data name '%s' has a different "
-		    "owning type from lock name '%s'", problem, argv[1]));
+		status = command_parse_error("data name '%s' has a different "
+		    "owning type from lock name '%s'", problem, argv[1]);
+		break;
 	default:
-		return (command_parse_error("internal error resolving %s "
-		    "protection for '%s'", protector, problem));
+		status = command_parse_error("internal error resolving %s "
+		    "protection for '%s'", protector, problem);
+		break;
 	}
+	command_names_free(&names);
+	return (status);
 }
 
 static int
 declare_scheme(int argc, char **argv)
 {
+	struct command_name_list names = { 0 };
 	struct locklint_command_origin origin = { 0 };
 	enum locklint_command_result result;
 	const char *problem = NULL;
+	int status;
 
 	if (argc < 3) {
 		return (command_parse_error("declare scheme-protects-data "
 		    "requires one description and at least one data name"));
 	}
-	result = locklint_declare_scheme(argv[1], (size_t)(argc - 2),
-	    (const char *const *)&argv[2], &problem, &origin,
+	if (expand_data_names(argc - 2, &argv[2], &names) != 0)
+		return (-1);
+	result = locklint_declare_scheme(argv[1], names.count,
+	    (const char *const *)names.names, &problem, &origin,
 	    command_parse_path(), command_parse_line());
 	switch (result) {
 	case LOCKLINT_COMMAND_OK:
-		return (0);
+		status = 0;
+		break;
 	case LOCKLINT_COMMAND_INVALID_NAME:
-		return (command_parse_error("invalid data name '%s'", problem));
+		status = command_parse_error("invalid data name '%s'", problem);
+		break;
 	case LOCKLINT_COMMAND_UNRESOLVED_NAME:
-		return (command_parse_error("unresolved data name '%s'",
-		    problem));
+		status = command_parse_error("unresolved data name '%s'",
+		    problem);
+		break;
 	case LOCKLINT_COMMAND_INCONSISTENT_TYPE:
-		return (command_parse_error("inconsistently defined type in "
-		    "data name '%s'", problem));
+		status = command_parse_error("inconsistently defined type in "
+		    "data name '%s'", problem);
+		break;
 	case LOCKLINT_COMMAND_CONFLICT:
 		if (origin.column != 0) {
-			return (command_parse_error("conflicting scheme protector "
+			status = command_parse_error(
+			    "conflicting scheme protector "
 			    "for data name '%s' (previous declaration at "
 			    "%s:%lu:%lu)", problem, origin.file, origin.line,
-			    origin.column));
+			    origin.column);
+			break;
 		}
-		return (command_parse_error("conflicting scheme protector for "
+		status = command_parse_error(
+		    "conflicting scheme protector for "
 		    "data name '%s' (previous declaration at %s:%lu)",
-		    problem, origin.file, origin.line));
+		    problem, origin.file, origin.line);
+		break;
 	default:
-		return (command_parse_error("internal error resolving scheme "
-		    "protection for '%s'", problem));
+		status = command_parse_error("internal error resolving scheme "
+		    "protection for '%s'", problem);
+		break;
 	}
+	command_names_free(&names);
+	return (status);
+}
+
+static int
+declare_readable(int argc, char **argv)
+{
+	struct command_name_list names = { 0 };
+	enum locklint_command_result result;
+	const char *problem = NULL;
+	int status;
+
+	if (argc < 2) {
+		return (command_parse_error(
+		    "declare readable requires at least one data name"));
+	}
+	if (expand_data_names(argc - 1, &argv[1], &names) != 0)
+		return (-1);
+	result = locklint_declare_readable(names.count,
+	    (const char *const *)names.names, &problem, command_parse_path(),
+	    command_parse_line());
+	switch (result) {
+	case LOCKLINT_COMMAND_OK:
+		status = 0;
+		break;
+	case LOCKLINT_COMMAND_INVALID_NAME:
+		status = command_parse_error("invalid data name '%s'", problem);
+		break;
+	case LOCKLINT_COMMAND_UNRESOLVED_NAME:
+		status = command_parse_error("unresolved data name '%s'",
+		    problem);
+		break;
+	case LOCKLINT_COMMAND_INCONSISTENT_TYPE:
+		status = command_parse_error("inconsistently defined type in "
+		    "data name '%s'", problem);
+		break;
+	default:
+		status = command_parse_error(
+		    "internal error resolving data name '%s'", problem);
+		break;
+	}
+	command_names_free(&names);
+	return (status);
 }
 
 int
@@ -463,8 +546,6 @@ cmd_assert(int argc, char **argv)
 int
 cmd_declare(int argc, char **argv)
 {
-	enum locklint_command_result result;
-
 	if (argc == 0)
 		return (command_parse_error("declare requires a declaration kind"));
 	if (strncmp(argv[0], "--", 2) == 0)
@@ -489,29 +570,9 @@ cmd_declare(int argc, char **argv)
 	}
 	if (strcmp(argv[0], "scheme-protects-data") == 0)
 		return (declare_scheme(argc, argv));
-	if (strcmp(argv[0], "readable") != 0)
-		return (not_implemented("declare"));
-	if (argc != 2) {
-		return (command_parse_error(
-		    "declare readable requires one data name"));
-	}
-	result = locklint_declare_readable(argv[1], command_parse_path(),
-	    command_parse_line());
-	switch (result) {
-	case LOCKLINT_COMMAND_OK:
-		return (0);
-	case LOCKLINT_COMMAND_INVALID_NAME:
-		return (command_parse_error("invalid data name '%s'", argv[1]));
-	case LOCKLINT_COMMAND_UNRESOLVED_NAME:
-		return (command_parse_error("unresolved data name '%s'",
-		    argv[1]));
-	case LOCKLINT_COMMAND_INCONSISTENT_TYPE:
-		return (command_parse_error(
-		    "inconsistently defined type in data name '%s'", argv[1]));
-	default:
-		return (command_parse_error(
-		    "internal error resolving data name '%s'", argv[1]));
-	}
+	if (strcmp(argv[0], "readable") == 0)
+		return (declare_readable(argc, argv));
+	return (not_implemented("declare"));
 }
 
 int
@@ -525,36 +586,48 @@ cmd_ignore(int argc, char **argv)
 int
 cmd_lock_role_protects_data(int argc, char **argv)
 {
+	struct command_name_list names = { 0 };
 	enum locklint_command_result result;
 	const char *problem;
+	int status;
 
 	if (argc < 2) {
 		return (command_parse_error("lock-role-protects-data requires "
 		    "one lock role and at least one data name"));
 	}
-	result = locklint_declare_lock_role(argv[0], (size_t)(argc - 1),
-	    (const char *const *)&argv[1], &problem, command_parse_path(),
+	if (expand_data_names(argc - 1, &argv[1], &names) != 0)
+		return (-1);
+	result = locklint_declare_lock_role(argv[0], names.count,
+	    (const char *const *)names.names, &problem, command_parse_path(),
 	    command_parse_line());
 	switch (result) {
 	case LOCKLINT_COMMAND_OK:
-		return (0);
+		status = 0;
+		break;
 	case LOCKLINT_COMMAND_INVALID_NAME:
-		return (command_parse_error("invalid %s name '%s'",
-		    problem == argv[0] ? "lock role" : "data", problem));
+		status = command_parse_error("invalid %s name '%s'",
+		    problem == argv[0] ? "lock role" : "data", problem);
+		break;
 	case LOCKLINT_COMMAND_UNRESOLVED_NAME:
-		return (command_parse_error("unresolved %s name '%s'",
-		    problem == argv[0] ? "lock role" : "data", problem));
+		status = command_parse_error("unresolved %s name '%s'",
+		    problem == argv[0] ? "lock role" : "data", problem);
+		break;
 	case LOCKLINT_COMMAND_AMBIGUOUS_NAME:
-		return (command_parse_error("ambiguous %s name '%s'",
-		    problem == argv[0] ? "lock role" : "data", problem));
+		status = command_parse_error("ambiguous %s name '%s'",
+		    problem == argv[0] ? "lock role" : "data", problem);
+		break;
 	case LOCKLINT_COMMAND_INCONSISTENT_TYPE:
-		return (command_parse_error(
+		status = command_parse_error(
 		    "inconsistently defined type in %s name '%s'",
-		    problem == argv[0] ? "lock role" : "data", problem));
+		    problem == argv[0] ? "lock role" : "data", problem);
+		break;
 	default:
-		return (command_parse_error(
-		    "internal error resolving lock-role protection"));
+		status = command_parse_error(
+		    "internal error resolving lock-role protection");
+		break;
 	}
+	command_names_free(&names);
+	return (status);
 }
 
 static bool

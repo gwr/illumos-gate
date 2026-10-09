@@ -97,8 +97,8 @@ typedef void (*locklint_visibility_target_f)(const struct locklint_access *,
     const struct expression *, void *);
 
 void locklint_annotations_enable(void);
-enum locklint_command_result locklint_declare_readable(const char *,
-    const char *, unsigned long);
+enum locklint_command_result locklint_declare_readable(size_t,
+    const char *const *, const char **, const char *, unsigned long);
 enum locklint_command_result locklint_declare_lock_order(size_t,
     const char *const *, const char **, const char *, unsigned long);
 enum locklint_command_result locklint_declare_protection(

@@ -86,6 +86,7 @@ LOCAL_OBJS = \
 	assertions.o \
 	callgraph.o \
 	command_parse.o \
+	command_names.o \
 	commands.o \
 	diagnostics.o \
 	dump.o \
@@ -143,6 +144,10 @@ CMD_PARSE_TEST_OBJS = command_parse.o command_parse_test.o
 command_parse_test: $(CMD_PARSE_TEST_OBJS)
 	$(LINK.c) -o $@ $(CMD_PARSE_TEST_OBJS) $(LDLIBS)
 
+COMMAND_NAMES_TEST_OBJS = command_names.o command_names_test.o
+command_names_test: $(COMMAND_NAMES_TEST_OBJS)
+	$(LINK.c) -o $@ $(COMMAND_NAMES_TEST_OBJS) $(LDLIBS)
+
 TYPE_SUPPORT_OBJS = type.o diagnostics.o dump.o output.o statistics.o avl.o \
 	$(SPARSE_OBJS) hashtable.o
 
@@ -191,11 +196,12 @@ kmodtest: FRC
 test: $(PROG) unittest FRC
 	(cd tests && ./RunTests.sh)
 
-UNITTESTS = command_parse_test lock_identity_test sync_api_test \
+UNITTESTS = command_parse_test command_names_test lock_identity_test sync_api_test \
 	binding_test context_test worklist_test dependency_test provenance_test \
 	type_test protection_audit_test
 unittest: $(UNITTESTS) FRC
 	./command_parse_test command_parse_test.in
+	./command_names_test
 	./lock_identity_test
 	./sync_api_test
 	./binding_test

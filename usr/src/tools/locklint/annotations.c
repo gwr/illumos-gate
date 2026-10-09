@@ -1388,13 +1388,12 @@ resolve_command_object(struct annotation_ref **refs, const char *name)
  * source DATA_READABLE_WITHOUT_LOCK declarations.
  */
 enum locklint_command_result
-locklint_declare_readable(const char *name, const char *file,
-    unsigned long line)
+locklint_declare_readable(size_t count, const char *const *names,
+    const char **problem, const char *file, unsigned long line)
 {
 	struct annotation *annotation;
-	const char *dot;
-	const char *separator;
-	enum locklint_command_result result;
+	struct annotation_ref **tail;
+	size_t i;
 
 	annotation = calloc(1, sizeof (*annotation));
 	if (annotation == NULL)
@@ -1402,20 +1401,35 @@ locklint_declare_readable(const char *name, const char *file,
 	annotation->kind = ANNOTATION_DATA_READABLE_WITHOUT_LOCK;
 	annotation->command_file = copy_string(file);
 	annotation->command_line = line;
+	tail = &annotation->data;
 
-	separator = strstr(name, "::");
-	dot = strchr(name, '.');
-	if (separator != NULL &&
-	    (strstr(separator + 2, "::") != NULL ||
-	    (dot != NULL && dot < separator))) {
-		result = LOCKLINT_COMMAND_INVALID_NAME;
-	} else if (separator != NULL) {
-		result = resolve_command_type(&annotation->data, name, separator);
-	} else {
-		result = resolve_command_object(&annotation->data, name);
+	for (i = 0; i < count; i++) {
+		struct annotation_ref *refs = NULL;
+		const char *dot = strchr(names[i], '.');
+		const char *separator = strstr(names[i], "::");
+		enum locklint_command_result result;
+
+		*problem = names[i];
+		if (separator != NULL &&
+		    (strstr(separator + 2, "::") != NULL ||
+		    (dot != NULL && dot < separator))) {
+			result = LOCKLINT_COMMAND_INVALID_NAME;
+		} else if (separator != NULL) {
+			result = resolve_command_type(&refs, names[i], separator);
+		} else {
+			result = resolve_command_object(&refs, names[i]);
+		}
+		if (result != LOCKLINT_COMMAND_OK) {
+			free_command_refs(refs);
+			free_command_refs(annotation->data);
+			free(annotation->command_file);
+			free(annotation);
+			return (result);
+		}
+		*tail = refs;
+		while (*tail != NULL)
+			tail = &(*tail)->next;
 	}
-	if (result != LOCKLINT_COMMAND_OK)
-		return (result);
 	expand_data_refs(annotation);
 	annotation->parsed = true;
 	annotation->processed = true;
