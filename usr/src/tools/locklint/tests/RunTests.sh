@@ -1097,6 +1097,101 @@ require_match "command rwlock protection arity" \
     command-rwlock-arity.out
 
 #
+# Verify external-scheme policy declared after source parsing, including
+# quoted descriptions, exact duplicates, conflicts, and resolution errors.
+#
+run_capture "command scheme protection annotations" \
+    command-scheme-protection-annotations.out "$LOCKLINT" \
+    --no-check --dump-annotations \
+    --cf command-scheme-protection.cf command-scheme-protection.c
+require_match "command scheme description" \
+    'command-scheme-protection.cf:2: SCHEME_PROTECTS_DATA "D_MTPERMOD perimeter" -> command_scheme_state::value' \
+    command-scheme-protection-annotations.out
+if [ "$(grep -F -c \
+    'SCHEME_PROTECTS_DATA "D_MTPERMOD perimeter" -> command_scheme_state::duplicate' \
+    command-scheme-protection-annotations.out)" -ne 2 ]; then
+	fail "command scheme annotations: expected two duplicate declarations"
+fi
+if [ "$(grep -F -c \
+    'SCHEME_PROTECTS_DATA "source scheme" -> command_scheme_state::source_value' \
+    command-scheme-protection-annotations.out)" -ne 2 ]; then
+	fail "command scheme annotations: expected source/command duplicates"
+fi
+
+run_capture "command scheme protection behavior" \
+    command-scheme-protection.out "$LOCKLINT" \
+    --audit-protection --cf command-scheme-protection.cf \
+    command-scheme-protection.c
+reject_match "command scheme protection diagnostic" \
+    "\\[unprotected-access\\]" command-scheme-protection.out
+require_match "command scheme audit value" \
+    "command_scheme_state::value[	 ]*read/write[	 ]*external-scheme" \
+    command-scheme-protection.out
+
+run_failure "command scheme source conflict" \
+    command-scheme-conflict-source.out "$LOCKLINT" \
+    --cf command-scheme-conflict-source.cf command-scheme-protection.c
+require_match "command scheme source conflict command" \
+    "conflicting scheme protector for data name 'command_scheme_state::source_value'" \
+    command-scheme-conflict-source.out
+require_match "command scheme source conflict origin" \
+    "previous declaration at command-scheme-protection.c:35:1" \
+    command-scheme-conflict-source.out
+
+run_failure "command scheme command conflict" \
+    command-scheme-conflict-command.out "$LOCKLINT" \
+    --cf command-scheme-conflict-command.cf command-scheme-protection.c
+require_match "command scheme command conflict command" \
+    "conflicting scheme protector for data name 'command_scheme_state::value'" \
+    command-scheme-conflict-command.out
+require_match "command scheme command conflict origin" \
+    "previous declaration at command-scheme-conflict-command.cf:1" \
+    command-scheme-conflict-command.out
+
+run_failure "command scheme mechanical conflict" \
+    command-scheme-conflict-mechanical.out "$LOCKLINT" \
+    --cf command-scheme-conflict-mechanical.cf command-scheme-protection.c
+require_match "command scheme mechanical conflict command" \
+    "conflicting scheme protector for data name 'command_scheme_state::mechanical'" \
+    command-scheme-conflict-mechanical.out
+require_match "command scheme mechanical conflict origin" \
+    "previous declaration at command-scheme-protection.c:38:1" \
+    command-scheme-conflict-mechanical.out
+
+run_failure "command scheme protection arity" \
+    command-scheme-arity.out "$LOCKLINT" \
+    --cf command-scheme-arity.cf command-scheme-protection.c
+require_match "command scheme protection arity" \
+    "declare scheme-protects-data requires one description and at least one data name" \
+    command-scheme-arity.out
+
+run_failure "command scheme invalid data" \
+    command-scheme-invalid.out "$LOCKLINT" \
+    --cf command-scheme-invalid.cf command-scheme-protection.c
+require_match "command scheme invalid data" \
+    "invalid data name 'bad-name::value'" command-scheme-invalid.out
+
+run_failure "command scheme unresolved data" \
+    command-scheme-unresolved.out "$LOCKLINT" \
+    --cf command-scheme-unresolved.cf command-scheme-protection.c
+require_match "command scheme unresolved data" \
+    "unresolved data name 'command_scheme_state::missing'" \
+    command-scheme-unresolved.out
+
+run_failure "command scheme unterminated description" \
+    command-scheme-unterminated.out "$LOCKLINT" \
+    --cf command-scheme-unterminated.cf command-scheme-protection.c
+require_match "command scheme unterminated description" \
+    "unterminated quoted argument" command-scheme-unterminated.out
+
+run_failure "command scheme quote boundary" \
+    command-scheme-quote-boundary.out "$LOCKLINT" \
+    --cf command-scheme-quote-boundary.cf command-scheme-protection.c
+require_match "command scheme quote boundary" \
+    "quoted argument must end before the next word" \
+    command-scheme-quote-boundary.out
+
+#
 # Verify command-declared entry assertions using formal names exactly as
 # written in each function definition.
 #

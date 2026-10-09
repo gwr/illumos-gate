@@ -357,6 +357,47 @@ declare_protection(int argc, char **argv,
 	}
 }
 
+static int
+declare_scheme(int argc, char **argv)
+{
+	struct locklint_command_origin origin = { 0 };
+	enum locklint_command_result result;
+	const char *problem = NULL;
+
+	if (argc < 3) {
+		return (command_parse_error("declare scheme-protects-data "
+		    "requires one description and at least one data name"));
+	}
+	result = locklint_declare_scheme(argv[1], (size_t)(argc - 2),
+	    (const char *const *)&argv[2], &problem, &origin,
+	    command_parse_path(), command_parse_line());
+	switch (result) {
+	case LOCKLINT_COMMAND_OK:
+		return (0);
+	case LOCKLINT_COMMAND_INVALID_NAME:
+		return (command_parse_error("invalid data name '%s'", problem));
+	case LOCKLINT_COMMAND_UNRESOLVED_NAME:
+		return (command_parse_error("unresolved data name '%s'",
+		    problem));
+	case LOCKLINT_COMMAND_INCONSISTENT_TYPE:
+		return (command_parse_error("inconsistently defined type in "
+		    "data name '%s'", problem));
+	case LOCKLINT_COMMAND_CONFLICT:
+		if (origin.column != 0) {
+			return (command_parse_error("conflicting scheme protector "
+			    "for data name '%s' (previous declaration at "
+			    "%s:%lu:%lu)", problem, origin.file, origin.line,
+			    origin.column));
+		}
+		return (command_parse_error("conflicting scheme protector for "
+		    "data name '%s' (previous declaration at %s:%lu)",
+		    problem, origin.file, origin.line));
+	default:
+		return (command_parse_error("internal error resolving scheme "
+		    "protection for '%s'", problem));
+	}
+}
+
 int
 cmd_assert(int argc, char **argv)
 {
@@ -446,6 +487,8 @@ cmd_declare(int argc, char **argv)
 		    LOCKLINT_PROTECTION_RWLOCK, "rwlock-protects-data",
 		    "rwlock"));
 	}
+	if (strcmp(argv[0], "scheme-protects-data") == 0)
+		return (declare_scheme(argc, argv));
 	if (strcmp(argv[0], "readable") != 0)
 		return (not_implemented("declare"));
 	if (argc != 2) {

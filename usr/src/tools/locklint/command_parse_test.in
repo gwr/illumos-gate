@@ -9,3 +9,4 @@ declare continued1 \
 ignore i1 i2
 merge-instances m1 m2
 lock-role-protects-data role data1 data2
+declare scheme-protects-data "words and # signs" data1 data2 # comment

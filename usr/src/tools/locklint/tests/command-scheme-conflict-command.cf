@@ -1,0 +1,2 @@
+declare scheme-protects-data "first scheme" command_scheme_state::value
+declare scheme-protects-data "second scheme" command_scheme_state::value

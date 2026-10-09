@@ -24,7 +24,7 @@ struct expected_command {
 	const char *command;
 	unsigned long line;
 	int argc;
-	const char *argv[3];
+	const char *argv[4];
 };
 
 static const struct expected_command expected_commands[] = {
@@ -34,7 +34,10 @@ static const struct expected_command expected_commands[] = {
 	{ "ignore", 9, 2, { "i1", "i2" } },
 	{ "merge-instances", 10, 2, { "m1", "m2" } },
 	{ "lock-role-protects-data", 11, 3,
-	    { "role", "data1", "data2" } }
+	    { "role", "data1", "data2" } },
+	{ "declare", 12, 4,
+	    { "scheme-protects-data", "words and # signs", "data1",
+	    "data2" } }
 };
 
 static size_t command_index;

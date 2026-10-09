@@ -755,9 +755,14 @@ whole-program checking begins; commands cannot start a partial analysis or
 change analysis phases.
 
 The command parser recognizes `declare`, `assert`, `ignore`,
-`merge-instances`, and `lock-role-protects-data`, strips `#` comments, and
-passes the remaining whitespace-separated words to one `cmd_*()` handler per
-command.  Empty and comment-only command files are valid.
+`merge-instances`, and `lock-role-protects-data`.  Unquoted arguments are
+whitespace-separated, and an unquoted `#` starts a comment.  Double quotes
+group one argument and are removed before dispatch; whitespace and `#` are
+literal within the quotes.  There is no escape or quoted/unquoted
+concatenation syntax.  Missing closing quotes and non-whitespace immediately
+after a closing quote are errors.  The parser passes the resulting arguments
+to one `cmd_*()` handler per command.  Empty and comment-only command files
+are valid.
 
 ### Command-language direction
 
@@ -900,6 +905,18 @@ protection uses the existing source-policy modes: a read requires read or
 write ownership, while a modification requires write ownership.  A
 reader-held modification therefore emits the ordinary unprotected-access
 warning and its existing wrong-mode explanation.
+
+`declare scheme-protects-data "description" data-name...` supplies external
+scheme policy equivalent to source `SCHEME_PROTECTS_DATA`.  Each datum
+resolves independently and may be an externally linked object, object-member
+path, or type-member path; one command may mix those forms.  Aggregate data
+names expand by the same rules as source annotations.
+
+The description is retained verbatim as explanatory text and appears quoted
+in annotation dumps.  An exact source or command duplicate has the same
+description and datum.  A different description or mechanical protector for
+the same datum is a configuration conflict.  Matching accesses are treated
+as protected without adding a lock identity or lock-state requirement.
 
 Conflict and duplicate lookup uses the existing data-policy AVL index keyed
 by canonical object or member identity.  Pairing performs only a temporary

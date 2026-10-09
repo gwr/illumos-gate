@@ -1,0 +1,1 @@
+declare scheme-protects-data "external scheme" bad-name::value

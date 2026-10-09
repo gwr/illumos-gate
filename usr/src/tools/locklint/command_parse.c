@@ -11,9 +11,10 @@
 
 /*
  * Parse the deliberately small locklint command language.  Commands contain
- * whitespace-separated words, backslash-newline joins physical lines, and the
- * first '#' starts a comment.  Parsing stops at the first error so partially
- * valid input is never analyzed.
+ * whitespace-separated words or double-quoted arguments, backslash-newline
+ * joins physical lines, and an unquoted '#' starts a comment.  Quoted
+ * arguments have no escape syntax.  Parsing stops at the first error so
+ * partially valid input is never analyzed.
  */
 
 #include <errno.h>
@@ -134,6 +135,63 @@ append_text(char **textp, size_t *capacityp, size_t *lengthp,
 	return (0);
 }
 
+static bool
+command_space(char c)
+{
+	return (c == ' ' || c == '\t' || c == '\r' || c == '\n');
+}
+
+/*
+ * Extract one argument in place.  Quotes must enclose the complete argument;
+ * keeping concatenation and escapes out of the language makes malformed
+ * command files unambiguous.
+ */
+static int
+next_argument(char **cursorp, char **argumentp)
+{
+	char *cursor = *cursorp;
+	char *argument;
+
+	while (command_space(*cursor))
+		cursor++;
+	if (*cursor == '\0' || *cursor == '#') {
+		*cursorp = cursor;
+		return (0);
+	}
+
+	if (*cursor == '"') {
+		argument = ++cursor;
+		while (*cursor != '\0' && *cursor != '"')
+			cursor++;
+		if (*cursor == '\0')
+			return (command_parse_error("unterminated quoted argument"));
+		*cursor++ = '\0';
+		if (*cursor != '\0' && *cursor != '#' &&
+		    !command_space(*cursor)) {
+			return (command_parse_error(
+			    "quoted argument must end before the next word"));
+		}
+	} else {
+		argument = cursor;
+		while (*cursor != '\0' && *cursor != '#' &&
+		    !command_space(*cursor)) {
+			if (*cursor == '"') {
+				return (command_parse_error(
+				    "quoted argument must start at the beginning "
+				    "of a word"));
+			}
+			cursor++;
+		}
+		if (*cursor == '#')
+			*cursor = '\0';
+		else if (*cursor != '\0')
+			*cursor++ = '\0';
+	}
+	*cursorp = cursor;
+	*argumentp = argument;
+	return (1);
+}
+
 /*
  * Tokenize and dispatch one complete logical line.
  */
@@ -141,22 +199,22 @@ static int
 dispatch_line(char *line, char ***argvp, size_t *argv_capacityp)
 {
 	char *command;
-	char *comment;
-	char *last;
+	char *cursor = line;
 	char *word;
 	int argc = 0;
+	int parsed;
 
-	if ((comment = strchr(line, '#')) != NULL)
-		*comment = '\0';
-	command = strtok_r(line, " \t\r\n", &last);
-	if (command == NULL)
-		return (0);
+	parsed = next_argument(&cursor, &command);
+	if (parsed <= 0)
+		return (parsed);
 
-	while ((word = strtok_r(NULL, " \t\r\n", &last)) != NULL) {
+	while ((parsed = next_argument(&cursor, &word)) > 0) {
 		if (add_argument(argvp, argv_capacityp, argc, word) != 0)
 			return (-1);
 		argc++;
 	}
+	if (parsed < 0)
+		return (-1);
 	if (*argvp != NULL)
 		(*argvp)[argc] = NULL;
 	return (dispatch_command(command, argc, *argvp));

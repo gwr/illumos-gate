@@ -1,0 +1,6 @@
+# A description remains explanatory text rather than a command identifier.
+declare scheme-protects-data "D_MTPERMOD perimeter" command_scheme_state::value command_scheme_state::duplicate
+declare scheme-protects-data "D_MTPERMOD perimeter" command_scheme_state::duplicate
+
+# Source/command duplicates are harmless.
+declare scheme-protects-data "source scheme" command_scheme_state::source_value

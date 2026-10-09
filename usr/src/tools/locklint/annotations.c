@@ -2409,7 +2409,8 @@ is_protection_annotation(const struct annotation *annotation)
  */
 static const struct annotation *
 command_protection_conflict(enum annotation_kind kind,
-    const struct annotation_ref *lock, struct annotation_ref *data)
+    const struct annotation_ref *lock, const char *scheme,
+    struct annotation_ref *data)
 {
 	struct data_policy_cursor cursor;
 	struct data_policy_index_entry *entry;
@@ -2432,7 +2433,10 @@ command_protection_conflict(enum annotation_kind kind,
 		    !same_data_ref(entry->ref, data))
 			continue;
 		if (annotation->kind == kind &&
-		    same_data_ref(annotation->lock, lock)) {
+		    ((kind == ANNOTATION_SCHEME_PROTECTS_DATA &&
+		    strcmp(annotation->scheme, scheme) == 0) ||
+		    (kind != ANNOTATION_SCHEME_PROTECTS_DATA &&
+		    same_data_ref(annotation->lock, lock)))) {
 			data->semantic_duplicate = true;
 			continue;
 		}
@@ -2462,6 +2466,7 @@ free_command_annotation(struct annotation *annotation)
 {
 	free_command_refs(annotation->lock);
 	free_command_refs(annotation->data);
+	free((void *)annotation->scheme);
 	free(annotation->command_file);
 	free(annotation);
 }
@@ -2515,10 +2520,11 @@ same_command_type_name(const char *left, const char *right)
 
 static struct annotation *
 new_command_protection(enum annotation_kind kind,
-    const struct annotation_ref *lock, struct annotation_ref *data,
-    const char *file, unsigned long line)
+    const struct annotation_ref *lock, const char *scheme,
+    struct annotation_ref *data, const char *file, unsigned long line)
 {
 	struct annotation *annotation;
+	size_t scheme_length;
 
 	annotation = calloc(1, sizeof (*annotation));
 	if (annotation == NULL)
@@ -2526,7 +2532,21 @@ new_command_protection(enum annotation_kind kind,
 	annotation->kind = kind;
 	annotation->command_file = copy_string(file);
 	annotation->command_line = line;
-	annotation->lock = clone_command_ref(lock);
+	if (lock != NULL)
+		annotation->lock = clone_command_ref(lock);
+	if (scheme != NULL) {
+		char *quoted;
+
+		scheme_length = strlen(scheme);
+		quoted = malloc(scheme_length + 3);
+		if (quoted == NULL)
+			die("out of memory recording command-file declaration");
+		quoted[0] = '"';
+		(void) memcpy(quoted + 1, scheme, scheme_length);
+		quoted[scheme_length + 1] = '"';
+		quoted[scheme_length + 2] = '\0';
+		annotation->scheme = quoted;
+	}
 	annotation->data = data;
 	expand_data_refs(annotation);
 	annotation->parsed = true;
@@ -2613,12 +2633,12 @@ locklint_declare_protection(enum locklint_protection protection,
 					return (LOCKLINT_COMMAND_OWNER_MISMATCH);
 				}
 			}
-			annotation = new_command_protection(kind, paired_lock,
+			annotation = new_command_protection(kind, paired_lock, NULL,
 			    data, file, line);
 			for (ref = annotation->data; ref != NULL;
 			    ref = ref->next) {
 				conflict = command_protection_conflict(
-				    kind, annotation->lock, ref);
+				    kind, annotation->lock, NULL, ref);
 				if (conflict == NULL)
 					continue;
 				command_origin(conflict, origin);
@@ -2634,6 +2654,74 @@ locklint_declare_protection(enum locklint_protection protection,
 		}
 	}
 	free_command_refs(lock);
+
+	while (pending != NULL) {
+		struct annotation *annotation = pending;
+
+		pending = pending->next;
+		annotation->next = NULL;
+		*annotations_tail = annotation;
+		annotations_tail = &annotation->next;
+		index_data_policy_refs(annotation);
+	}
+	return (LOCKLINT_COMMAND_OK);
+}
+
+/*
+ * Add command-file external-scheme protection.  Unlike mechanical policy,
+ * each datum resolves independently because there is no lock whose scope or
+ * owning type must match it.
+ */
+enum locklint_command_result
+locklint_declare_scheme(const char *scheme, size_t data_count,
+    const char *const *data_names, const char **problem,
+    struct locklint_command_origin *origin, const char *file,
+    unsigned long line)
+{
+	struct annotation *pending = NULL;
+	struct annotation **tail = &pending;
+	enum locklint_command_result result;
+	size_t i;
+
+	for (i = 0; i < data_count; i++) {
+		struct annotation_ref *data = NULL;
+
+		*problem = data_names[i];
+		result = resolve_command_protection_name(&data, data_names[i],
+		    strstr(data_names[i], "::") != NULL);
+		if (result != LOCKLINT_COMMAND_OK) {
+			free_command_annotations(pending);
+			return (result);
+		}
+
+		while (data != NULL) {
+			struct annotation *annotation;
+			struct annotation_ref *next = data->next;
+			struct annotation_ref *ref;
+			const struct annotation *conflict;
+
+			data->next = NULL;
+			annotation = new_command_protection(
+			    ANNOTATION_SCHEME_PROTECTS_DATA, NULL, scheme, data,
+			    file, line);
+			for (ref = annotation->data; ref != NULL;
+			    ref = ref->next) {
+				conflict = command_protection_conflict(
+				    ANNOTATION_SCHEME_PROTECTS_DATA, NULL,
+				    annotation->scheme, ref);
+				if (conflict == NULL)
+					continue;
+				command_origin(conflict, origin);
+				free_command_annotation(annotation);
+				free_command_refs(next);
+				free_command_annotations(pending);
+				return (LOCKLINT_COMMAND_CONFLICT);
+			}
+			*tail = annotation;
+			tail = &annotation->next;
+			data = next;
+		}
+	}
 
 	while (pending != NULL) {
 		struct annotation *annotation = pending;
