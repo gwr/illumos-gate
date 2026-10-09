@@ -28,6 +28,9 @@ ANALYZE_RAW="$WORK_DIR/analyze.raw"
 REFERENCE="$SCRIPT_DIR/../osll/check-kmod-usbvc.ref"
 REFERENCE_FILTERED="$WORK_DIR/reference.filtered"
 OUTPUT="$SCRIPT_DIR/check-kmod-usbvc.out"
+PROTECTION_REFERENCE="$SCRIPT_DIR/check-kmod-usbvc.ref"
+PROTECTION_RAW="$WORK_DIR/protection.raw"
+SENTINEL="$SCRIPT_DIR/check-kmod-sentinel.c"
 USBVC_SOURCE=../../common/io/usb/clients/video/usbvc/usbvc.c
 USBVC_V4L2_SOURCE=../../common/io/usb/clients/video/usbvc/usbvc_v4l2.c
 
@@ -145,20 +148,33 @@ if [[ ! -x "$LOCKLINT" ]]; then
 	print -u2 "locklint not found: $LOCKLINT"
 	exit 1
 fi
+for file in "$REFERENCE" "$PROTECTION_REFERENCE" "$SENTINEL" \
+    "$SCRIPT_DIR/usbvc.cf"
+do
+	if [[ ! -f "$file" ]]; then
+		print -u2 "usbvc comparison input not found: $file"
+		exit 1
+	fi
+done
 
 mkdir -p "$WORK_DIR" || exit 1
-rm -f "$ANALYZE_RAW" "$REFERENCE_FILTERED" "$OUTPUT"
+rm -f "$ANALYZE_RAW" "$REFERENCE_FILTERED" "$OUTPUT" "$PROTECTION_RAW"
 
 run_locklint()
 {
+	typeset sentinel=$1
+	shift
+
+	if [[ -n "$sentinel" ]]; then
+		set -- "$@" "$sentinel"
+	fi
 	"$LOCKLINT" "$@" \
 	    -D__sun -m64 -Ui386 -U__i386 -O2 \
 	    -D_ASM_INLINES -std=gnu99 \
 	    -D_KERNEL -D_SYSCALL32 -D_SYSCALL32_IMPL \
 	    -D_ELF64 -D_DDI_STRICT -Dsun -D__sun -D__SVR4 -DDEBUG \
 	    -I../../intel -nostdinc -I../../common \
-	    "$USBVC_SOURCE" "$USBVC_V4L2_SOURCE" \
-	    "$SCRIPT_DIR/check-kmod-sentinel.c"
+	    "$USBVC_SOURCE" "$USBVC_V4L2_SOURCE"
 }
 
 verify_module_coverage()
@@ -233,7 +249,7 @@ write_reference_summary()
 }
 
 print "Running new locklint over usbvc"
-run_locklint --compat=osll --dump-callgraph \
+run_locklint "$SENTINEL" --compat=osll --dump-callgraph \
     --cf "$SCRIPT_DIR/usbvc.cf" >"$ANALYZE_RAW" 2>&1
 status=$?
 if (( status != 0 )); then
@@ -296,5 +312,17 @@ else
 	    "check-kmod-usbvc.ref:"
 	diff -u "$REFERENCE_FILTERED" "$OUTPUT"
 	print -u2 "Raw result: $ANALYZE_RAW"
+	exit 1
+fi
+
+run_locklint "" --compat=osll --no-diagnostics \
+    --cf "$SCRIPT_DIR/usbvc.cf" \
+    --audit-protection="$PROTECTION_RAW" >/dev/null 2>&1 || exit 1
+if cmp -s "$PROTECTION_REFERENCE" "$PROTECTION_RAW"; then
+	print "New locklint usbvc protection audit matches the native reference."
+else
+	print -u2 "New locklint usbvc protection audit differs from " \
+	    "check-kmod-usbvc.ref:"
+	diff -u "$PROTECTION_REFERENCE" "$PROTECTION_RAW"
 	exit 1
 fi
