@@ -551,7 +551,7 @@ typedef struct mptsas_topo_change_list {
 
 _NOTE(DATA_READABLE_WITHOUT_LOCK(mptsas_topo_change_list_t::mpt))
 _NOTE(DATA_READABLE_WITHOUT_LOCK(mptsas_topo_change_list_t::event))
-_NOTE(DATA_READABLE_WITHOUT_LOCK(mptsas_topo_change_list_t::physport))
+_NOTE(DATA_READABLE_WITHOUT_LOCK(mptsas_topo_change_list_t::un.physport))
 _NOTE(DATA_READABLE_WITHOUT_LOCK(mptsas_topo_change_list_t::devhdl))
 _NOTE(DATA_READABLE_WITHOUT_LOCK(mptsas_topo_change_list_t::object))
 _NOTE(DATA_READABLE_WITHOUT_LOCK(mptsas_topo_change_list_t::flags))
