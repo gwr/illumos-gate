@@ -17156,10 +17156,14 @@ st_recov_cb(struct scsi_pkt *pkt)
 		bioerror(bp, EACCES);
 		break;
 
-	case COMMAND_DONE_ERROR_RECOVERED: /* XXX maybe wrong */
-		ASSERT(0);
-		break;
-
+	/*
+	 * st_decode_sense() can return COMMAND_DONE_ERROR_RECOVERED for
+	 * deferred recovered errors, negative ILI on variable-block requests,
+	 * and some blank checks.
+	 * Fail the internal recovery command; st_recover() decides how to
+	 * complete the original request.
+	 */
+	case COMMAND_DONE_ERROR_RECOVERED:
 	case COMMAND_TIMEOUT:
 	case COMMAND_DONE_ERROR:
 		bioerror(bp, EIO);
