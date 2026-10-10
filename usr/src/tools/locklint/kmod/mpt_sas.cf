@@ -1,0 +1,17 @@
+# Model the indirect callback interfaces needed by the mpt_sas analysis.
+
+declare targets mptsas_func::f_pre \
+    mpi_pre_ioc_facts mpi_pre_port_facts mpi_pre_fw_download \
+    mpi_pre_fw_upload mpi_pre_sata_passthrough mpi_pre_smp_passthrough \
+    mpi_pre_scsi_io_req mpi_pre_config mpi_pre_sas_io_unit_control
+
+declare contract scsi_pkt::pkt_comp no-lock-effects
+
+# These callbacks remain reachable through mptsas_func::f_pre and must not
+# also be analyzed as independent function-pointer-escape roots.
+declare --root=false \
+    mpi_pre_ioc_facts mpi_pre_port_facts \
+    mpi_pre_fw_download mpi_pre_fw_upload \
+    mpi_pre_sata_passthrough mpi_pre_smp_passthrough \
+    mpi_pre_scsi_io_req mpi_pre_config \
+    mpi_pre_sas_io_unit_control

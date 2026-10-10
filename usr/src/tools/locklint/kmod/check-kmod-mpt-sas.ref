@@ -1,0 +1,613 @@
+Protection audit: observations include only analyzed roots, resolved targets, and input translation units.
+DATUM	ACCESS	PROTECTION	LOCK
+mdi_client_guid_prop	read-only	unknown(note1,5)	mptsas::m_mutex
+minclsyspri	read-only	unknown(note5)	mptsas_doneq_thread_list::mutex, mptsas::m_doneq_mutex
+mptsas_debug_resets	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_debuglog_flags	read-only	unknown(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas_doneq_thread_list::mutex, ...
+mptsas_debugprt_flags	read-only	unknown(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas_doneq_thread_list::mutex, ...
+mptsas_dev_attr.devacc_attr_version	read-only	none	-
+mptsas_dev_attr.devacc_attr_endian_flags	read-only	none	-
+mptsas_dev_attr.devacc_attr_dataorder	read-only	none	-
+mptsas_dev_attr.devacc_attr_access	read-only	none	-
+mptsas_dma_attrs.dma_attr_version	read-only	none	-
+mptsas_dma_attrs.dma_attr_addr_lo	read-only	none	-
+mptsas_dma_attrs.dma_attr_addr_hi	read-only	none	-
+mptsas_dma_attrs.dma_attr_count_max	read-only	none	-
+mptsas_dma_attrs.dma_attr_align	read-only	none	-
+mptsas_dma_attrs.dma_attr_burstsizes	read-only	none	-
+mptsas_dma_attrs.dma_attr_minxfer	read-only	none	-
+mptsas_dma_attrs.dma_attr_maxxfer	read-only	none	-
+mptsas_dma_attrs.dma_attr_seg	read-only	none	-
+mptsas_dma_attrs.dma_attr_sgllen	read-only	none	-
+mptsas_dma_attrs.dma_attr_granular	read-only	none	-
+mptsas_dma_attrs.dma_attr_flags	read-only	none	-
+mptsas_dma_attrs64.dma_attr_version	read-only	none	-
+mptsas_dma_attrs64.dma_attr_addr_lo	read-only	none	-
+mptsas_dma_attrs64.dma_attr_addr_hi	read-only	none	-
+mptsas_dma_attrs64.dma_attr_count_max	read-only	none	-
+mptsas_dma_attrs64.dma_attr_align	read-only	none	-
+mptsas_dma_attrs64.dma_attr_burstsizes	read-only	none	-
+mptsas_dma_attrs64.dma_attr_minxfer	read-only	none	-
+mptsas_dma_attrs64.dma_attr_maxxfer	read-only	none	-
+mptsas_dma_attrs64.dma_attr_seg	read-only	none	-
+mptsas_dma_attrs64.dma_attr_sgllen	read-only	none	-
+mptsas_dma_attrs64.dma_attr_granular	read-only	none	-
+mptsas_dma_attrs64.dma_attr_flags	read-only	none	-
+mptsas_driver_rev	read-only	none	-
+mptsas_enable_msi	read-only	none	-
+mptsas_extreq_sense_bufsize	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_inq83_retry_timeout	read-only	unknown(note1,5)	mptsas::m_mutex
+mptsas_physical_bind_failed_page_83	read-only	unknown(note1,5)	mptsas::m_mutex
+mptsas_use_64bit_msgaddr	read-only	none	-
+mptsas_use_fastpath	read-only	unknown(note5)	mptsas::m_mutex
+scsi_vhci_dip	read-only	unknown(note1,5)	mptsas::m_mutex
+../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_head	read/write	unknown(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_mutex, ../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, ...
+../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_label	read-only	unknown(note5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_log_mutex
+../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_reset_watch	read/write	unknown(note5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_mutex
+../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_scsi_watchdog_tick	read/write	unknown(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_mutex, ../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, ...
+../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_state	read-only	unknown(note1,5)	mptsas::m_mutex
+../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_tag_lookup.cmd_pkt_flags	read-only	external-scheme	mptsas::m_mutex
+../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_tail	read/write	unknown(note5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock
+../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_tail.m_next	write-only	external-scheme	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock
+../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_tick	read/write	mutex	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_mutex
+../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_timeout_id	read/write	unknown(note5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_mutex
+../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_timeouts_enabled	read/write	unknown(note5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_mutex
+scsi_address::a_hba_tran	read/write	external-scheme	-, ...
+scsi_address::a.a_sd	read-only	external-scheme	-
+scsi_address::a.spi.a_target	read/write	external-scheme	-
+scsi_address::a.spi.a_lun	read/write	external-scheme	-, ...
+scsi_address::a.spi._a_sublun	read-only	external-scheme	-
+scsi_inquiry::inq_dtype	read-only	unknown(note1,5)	mptsas::m_mutex
+scsi_device::sd_dev	read-only	external-scheme	-
+scsi_device::sd_private	read-only	external-scheme	-
+scsi_device::sd_address.a_hba_tran	read-only	external-scheme	-
+scsi_device::sd_address.a.spi.a_lun	read-only	external-scheme	-
+scsi_pkt::pkt_ha_private	read/write	external-scheme	-, ...
+scsi_pkt::pkt_private	read/write	external-scheme	-
+scsi_pkt::pkt_comp	read-only	external-scheme	-, ...
+scsi_pkt::pkt_flags	read/write	external-scheme	-, ...
+scsi_pkt::pkt_time	read/write	external-scheme	mptsas::m_mutex
+scsi_pkt::pkt_scbp	read/write	external-scheme	-, ...
+scsi_pkt::pkt_cdbp	read/write	external-scheme	-, ...
+scsi_pkt::pkt_resid	read/write	external-scheme	-, ...
+scsi_pkt::pkt_state	read/write	external-scheme	-, ...
+scsi_pkt::pkt_statistics	read/write	external-scheme	-, ...
+scsi_pkt::pkt_reason	read/write	external-scheme	-, ...
+scsi_pkt::pkt_address.a_hba_tran	read/write	external-scheme	-
+scsi_pkt::pkt_address.a.a_sd	write-only	external-scheme	-
+scsi_pkt::pkt_address.a.spi.a_target	read/write	external-scheme	-, ...
+scsi_pkt::pkt_address.a.spi.a_lun	read/write	external-scheme	-, ...
+scsi_pkt::pkt_address.a.spi._a_sublun	write-only	external-scheme	-
+kstat::ks_data	read-only	unknown(note2,5)	smhba_info::phy_mutex, mptsas::m_mutex
+kstat::ks_update	write-only	unknown(note5)	smhba_info::phy_mutex, mptsas::m_mutex
+kstat::ks_private	read/write	unknown(note2,5)	smhba_info::phy_mutex, mptsas::m_mutex
+buf::b_flags	read-only	external-scheme	-
+buf::b_bcount	read-only	external-scheme	-
+buf::b_un.b_addr	read-only	external-scheme	-, ...
+scsi_hba_tran::tran_hba_private	read/write	none(note3)	-
+scsi_hba_tran::tran_tgt_private	read/write	external-scheme	-, ...
+scsi_hba_tran::tran_tgt_init	write-only	none(note3)	-
+scsi_hba_tran::tran_tgt_free	write-only	none(note3)	-
+scsi_hba_tran::tran_start	write-only	none(note3)	-
+scsi_hba_tran::tran_reset	write-only	none(note3)	-
+scsi_hba_tran::tran_abort	write-only	none(note3)	-
+scsi_hba_tran::tran_getcap	write-only	none(note3)	-
+scsi_hba_tran::tran_setcap	write-only	none(note3)	-
+scsi_hba_tran::tran_init_pkt	write-only	none(note3)	-
+scsi_hba_tran::tran_destroy_pkt	write-only	none(note3)	-
+scsi_hba_tran::tran_dmafree	write-only	none(note3)	-
+scsi_hba_tran::tran_sync_pkt	write-only	none(note3)	-
+scsi_hba_tran::tran_reset_notify	write-only	none(note3)	-
+scsi_hba_tran::tran_get_bus_addr	write-only	none(note3)	-
+scsi_hba_tran::tran_get_name	write-only	none(note3)	-
+scsi_hba_tran::tran_get_eventcookie	write-only	none(note3)	-
+scsi_hba_tran::tran_add_eventcall	write-only	none(note3)	-
+scsi_hba_tran::tran_remove_eventcall	write-only	none(note3)	-
+scsi_hba_tran::tran_post_event	write-only	none(note3)	-
+scsi_hba_tran::tran_quiesce	write-only	none(note3)	-
+scsi_hba_tran::tran_unquiesce	write-only	none(note3)	-
+scsi_hba_tran::tran_bus_reset	write-only	none(note3)	-
+scsi_hba_tran::tran_bus_config	write-only	none(note3)	-
+scsi_hba_tran::tran_interconnect_type	write-only	none(note3)	-
+smp_address::smp_a_hba_tran	read-only	none	-
+smp_pkt::smp_pkt_address	read-only	external-scheme	-
+smp_pkt::smp_pkt_req	read-only	external-scheme	mptsas::m_mutex
+smp_pkt::smp_pkt_rsp	read-only	external-scheme	mptsas::m_mutex
+smp_pkt::smp_pkt_reqsize	read-only	external-scheme	-
+smp_pkt::smp_pkt_rspsize	read-only	external-scheme	-
+smp_pkt::smp_pkt_timeout	read-only	external-scheme	mptsas::m_mutex
+smp_pkt::smp_pkt_reason	write-only	external-scheme	-
+smp_hba_tran::smp_tran_hba_private	read/write	none(note3)	-
+smp_hba_tran::smp_tran_start	write-only	none(note3)	-
+mptsas_target_addr::mta_wwn	read-only	none	-
+mptsas_target_addr::mta_phymask	read-only	none	-
+scsi_status::sts_vu0	read-only	external-scheme	mptsas::m_mutex
+scsi_status::sts_chk	read-only	external-scheme	-, ...
+scsi_status::sts_cm	read-only	external-scheme	mptsas::m_mutex
+scsi_status::sts_busy	read-only	external-scheme	mptsas::m_mutex
+scsi_status::sts_is	read-only	external-scheme	mptsas::m_mutex
+scsi_status::sts_vu6	read-only	external-scheme	mptsas::m_mutex
+scsi_status::sts_vu7	read-only	external-scheme	mptsas::m_mutex
+scsi_status::sts_resvd	read-only	external-scheme	mptsas::m_mutex
+scsi_arq_status::sts_rqpkt_reason	write-only	unknown(note5)	mptsas::m_mutex
+scsi_arq_status::sts_rqpkt_resid	write-only	unknown(note5)	mptsas::m_mutex
+scsi_arq_status::sts_rqpkt_state	write-only	unknown(note5)	mptsas::m_mutex
+scsi_arq_status::sts_rqpkt_statistics	write-only	unknown(note5)	mptsas::m_mutex
+scsi_arq_status::sts_rqpkt_status.sts_vu0	write-only	external-scheme	mptsas::m_mutex
+scsi_arq_status::sts_rqpkt_status.sts_chk	write-only	external-scheme	mptsas::m_mutex
+scsi_arq_status::sts_rqpkt_status.sts_cm	write-only	external-scheme	mptsas::m_mutex
+scsi_arq_status::sts_rqpkt_status.sts_busy	write-only	external-scheme	mptsas::m_mutex
+scsi_arq_status::sts_rqpkt_status.sts_is	write-only	external-scheme	mptsas::m_mutex
+scsi_arq_status::sts_rqpkt_status.sts_vu6	write-only	external-scheme	mptsas::m_mutex
+scsi_arq_status::sts_rqpkt_status.sts_vu7	write-only	external-scheme	mptsas::m_mutex
+scsi_arq_status::sts_rqpkt_status.sts_resvd	write-only	external-scheme	mptsas::m_mutex
+NcrTableIndirect::count	read/write	external-scheme	-, ...
+NcrTableIndirect::addr.address64.Low	read/write	external-scheme	-, ...
+NcrTableIndirect::addr.address64.High	read/write	external-scheme	-, ...
+mptsas_cache_frames::m_dma_hdl	read/write	unknown(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas_cache_frames::m_acc_hdl	read/write	unknown(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas_cache_frames::m_frames_addr	read/write	unknown(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas_cache_frames::m_phys_addr	read/write	unknown(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas_cmd::cmd_flags	read/write	external-scheme	-, ...
+mptsas_cmd::cmd_dmahandle	read/write	external-scheme	-, ...
+mptsas_cmd::cmd_cookiec	read-only	external-scheme	-, ...
+mptsas_cmd::cmd_winindex	read/write	external-scheme	-
+mptsas_cmd::cmd_nwin	read-only	external-scheme	-
+mptsas_cmd::cmd_totaldmacount	read/write	external-scheme	-
+mptsas_cmd::cmd_arq_buf	read/write	external-scheme	-, ...
+mptsas_cmd::cmd_pkt_flags	read/write	external-scheme	-, ...
+mptsas_cmd::cmd_active_expiration	read/write	external-scheme	mptsas::m_mutex
+mptsas_cmd::cmd_pkt	read/write	external-scheme	-, ...
+mptsas_cmd::cmd_cdblen	read/write	external-scheme	-, ...
+mptsas_cmd::cmd_rqslen	read/write	external-scheme	-, ...
+mptsas_cmd::cmd_privlen	read/write	external-scheme	-
+mptsas_cmd::cmd_extrqslen	read/write	external-scheme	-, ...
+mptsas_cmd::cmd_extrqschunks	read/write	external-scheme	-
+mptsas_cmd::cmd_extrqsidx	read/write	external-scheme	-
+mptsas_cmd::cmd_scblen	read/write	external-scheme	-, ...
+mptsas_cmd::cmd_dmacount	read/write	external-scheme	-, ...
+mptsas_cmd::cmd_dma_addr	read/write	external-scheme	mptsas::m_mutex
+mptsas_cmd::cmd_age	write-only	external-scheme	-, ...
+mptsas_cmd::cmd_qfull_retries	read/write	external-scheme	mptsas::m_mutex
+mptsas_cmd::cmd_queued	read/write	external-scheme	mptsas::m_mutex
+mptsas_cmd::cmd_linkp	read/write	external-scheme	-, ...
+mptsas_cmd::cmd_sg	read/write	external-scheme	-, ...
+mptsas_cmd::cmd_slot	read/write	external-scheme	-, ...
+mptsas_cmd::ioc_cmd_slot	write-only	external-scheme	mptsas::m_mutex
+mptsas_cmd::cmd_extra_frames	read/write	external-scheme	-, ...
+mptsas_cmd::cmd_rfm	read/write	external-scheme	mptsas::m_mutex
+mptsas_cmd::cmd_tgt_addr	read/write	external-scheme	-, ...
+mptsas_cmd::cmd_cookie.dmac_size	read-only	external-scheme	-
+mptsas_cmd::cmd_active_link.tqe_next	read/write	external-scheme	mptsas::m_mutex
+mptsas_cmd::cmd_active_link.tqe_prev	read/write	external-scheme	mptsas::m_mutex
+mptsas_cmd::cmd_cookie._dmu._dmac_ll	read-only	external-scheme	-
+mptsas_active_cmdq::tqh_last	read-only	unknown(note5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex
+mptsas_target::m_dr_flag	read/write	unknown(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas_target::m_devhdl	read/write	unknown(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas_target::m_deviceinfo	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_target::m_phynum	read/write	unknown(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas_target::m_t_throttle	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_target::m_t_ncmds	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_target::m_reset_delay	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_target::m_t_nwait	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_target::m_qfull_retry_interval	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_target::m_qfull_retries	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_target::m_io_flags	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_target::m_enclosure	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_target::m_slot_num	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_target::m_tgt_unconfigured	read/write	unknown(note1,5)	mptsas::m_mutex
+mptsas_target::m_addr.mta_wwn	read/write	unknown(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas_target::m_addr.mta_phymask	read/write	unknown(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas_target::m_active_cmdq.tqh_first	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_target::m_active_cmdq.tqh_last	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_raidvol::m_raidhandle	read-only	unknown(note1,5)	mptsas::m_mutex
+mptsas_raidvol::m_raidwwid	write-only	unknown(note5)	mptsas::m_mutex
+mptsas_raidvol::m_state	write-only	none(note3)	-
+mptsas_raidvol::m_statusflags	write-only	none(note3)	-
+mptsas_raidvol::m_settings	write-only	none(note3)	-
+mptsas_raidvol::m_devhdl	write-only	unknown(note5)	mptsas::m_mutex
+mptsas_raidvol::m_disknum	read/write	unknown(note1,5)	mptsas::m_mutex
+mptsas_raidvol::m_diskstatus	write-only	unknown(note5)	mptsas::m_mutex
+mptsas_raidvol::m_raidsize	write-only	none(note3)	-
+mptsas_raidvol::m_raidlevel	write-only	none(note3)	-
+mptsas_raidvol::m_ndisks	write-only	none(note3)	-
+mptsas_raidconfig::m_physdisk_devhdl	write-only	unknown(note1,5)	mptsas::m_mutex
+mptsas_raidconfig::m_native	write-only	none(note3)	-
+mptsas_raidconfig::m_raidvol.m_israid	write-only	unknown(note1,5)	mptsas::m_mutex
+mptsas_raidconfig::m_raidvol.m_raidhandle	write-only	unknown(note1,5)	mptsas::m_mutex
+mptsas_raidconfig::m_raidvol.m_raidwwid	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_raidconfig::m_raidvol.m_raidtgt	write-only	unknown(note5)	mptsas::m_mutex
+mptsas_slots::m_size	read/write	unknown(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas_slots::m_n_normal	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_slots::m_rotor	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_slots::m_slot	read/write	unknown(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas_doneq_thread_arg::mpt	read-only	none	-
+mptsas_doneq_thread_arg::t	read-only	none	-
+mptsas_doneq_thread_list::doneq	read/write	unknown(note5)	mptsas_doneq_thread_list::mutex
+mptsas_doneq_thread_list::donetail	read/write	unknown(note5)	mptsas_doneq_thread_list::mutex
+mptsas_doneq_thread_list::threadp	write-only	unknown(note5)	mptsas_doneq_thread_list::mutex, mptsas::m_doneq_mutex
+mptsas_doneq_thread_list::flag	read/write	unknown(note5)	mptsas_doneq_thread_list::mutex
+mptsas_doneq_thread_list::len	read/write	unknown(note5)	mptsas_doneq_thread_list::mutex
+mptsas_doneq_thread_list::arg.mpt	write-only	unknown(note5)	mptsas_doneq_thread_list::mutex, mptsas::m_doneq_mutex
+mptsas_doneq_thread_list::arg.t	write-only	unknown(note5)	mptsas_doneq_thread_list::mutex, mptsas::m_doneq_mutex
+m_event_struct::m_event_linkp	read/write	unknown(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+m_event_struct::m_event_cmd.cmd_flags	read-only	external-scheme	-, ...
+m_replyh_arg::mpt	read/write	unknown+readable(note5)	mptsas::m_mutex
+m_replyh_arg::rfm	read/write	unknown+readable(note5)	mptsas::m_mutex
+smhba_info::phy_id	read-only	unknown(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+smhba_info::sas_addr	read-only	unknown(note5)	mptsas::m_mutex
+smhba_info::attached_devhdl	read-only	unknown(note1,5)	mptsas::m_mutex
+smhba_info::programmed_link_rate	read-only	unknown(note1,5)	mptsas::m_mutex
+smhba_info::hw_link_rate	read-only	unknown(note1,5)	mptsas::m_mutex
+smhba_info::negotiated_link_rate	read/write	unknown(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+smhba_info::phy_stats	read/write	unknown(note5)	smhba_info::phy_mutex
+smhba_info::invalid_dword_count	read-only	unknown(note5)	mptsas::m_mutex
+smhba_info::running_disparity_error_count	read-only	unknown(note5)	mptsas::m_mutex
+smhba_info::loss_of_dword_sync_count	read-only	unknown(note5)	mptsas::m_mutex
+smhba_info::phy_reset_problem_count	read-only	unknown(note5)	mptsas::m_mutex
+smhba_info::mpt	read-only	unknown(note1,5)	mptsas::m_mutex
+mptsas_dma_alloc_state::size	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_fw_diagnostic_buffer::extended_type	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_fw_diagnostic_buffer::buffer_type	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_fw_diagnostic_buffer::force_release	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_fw_diagnostic_buffer::product_specific	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_fw_diagnostic_buffer::immediate	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_fw_diagnostic_buffer::enabled	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_fw_diagnostic_buffer::valid_data	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_fw_diagnostic_buffer::owned_by_firmware	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_fw_diagnostic_buffer::unique_id	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_fw_diagnostic_buffer::buffer_data.handle	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_fw_diagnostic_buffer::buffer_data.memp	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_fw_diagnostic_buffer::buffer_data.size	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_fw_diagnostic_buffer::buffer_data.cookie._dmu._dmac_ll	read-only	unknown(note5)	mptsas::m_mutex
+mptsas::m_instance	read/write	mutex+readable(note1)	m_mutex
+mptsas::m_next	read/write	external-scheme	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock
+mptsas::m_tran	read/write	external-scheme	-, ...
+mptsas::m_smptran	read/write	mutex(note1,5)	mptsas::m_mutex
+mptsas::m_dip	read/write	external-scheme	-, ...
+mptsas::m_softstate	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_targets	read/write	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_smp_targets	read/write	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_tmp_targets	read/write	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_num_raid_configs	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_active	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_waitq	read/write	mutex(note5)	mptsas::m_mutex
+mptsas::m_waitqtail	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_tx_waitq	read/write	mutex(note5)	mptsas::m_mutex, mptsas::m_tx_waitq_mutex
+mptsas::m_tx_waitqtail	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_tx_draining	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_doneq	read/write	mutex(note5)	mptsas::m_mutex
+mptsas::m_donetail	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas_doneq_thread_list::mutex, ...
+mptsas::m_doneq_thread_id	read/write	mutex(note2,5)	mptsas_doneq_thread_list::mutex, mptsas::m_mutex, ...
+mptsas::m_doneq_thread_n	read/write	mutex(note2,5)	mptsas::m_mutex, mptsas::m_doneq_mutex
+mptsas::m_doneq_thread_threshold	read/write	mutex(note2,5)	mptsas_doneq_thread_list::mutex, mptsas::m_mutex
+mptsas::m_doneq_length_threshold	read/write	mutex(note1)	mptsas::m_mutex
+mptsas::m_doneq_len	read/write	mutex(note5)	mptsas::m_mutex
+mptsas::m_ncmds	read/write	mutex(note5)	mptsas::m_mutex
+mptsas::m_ioc_event_cmdq	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_ioc_event_cmdtail	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_datap	read-only	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_reg	read-only	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_devid	read/write	mutex+readable(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_revid	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_svid	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_ssid	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_quiesce_timeid	read/write	mutex	mptsas::m_mutex
+mptsas::m_dma_req_frame_hdl	read-only	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_acc_req_frame_hdl	read-only	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_dma_req_sense_hdl	read-only	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_acc_req_sense_hdl	read-only	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_dma_reply_frame_hdl	read-only	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_acc_reply_frame_hdl	read-only	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_dma_free_queue_hdl	read-only	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_acc_free_queue_hdl	read-only	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_dma_post_queue_hdl	read-only	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_acc_post_queue_hdl	read-only	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_reset_notify_listf	read-only	mutex(note1)	m_mutex
+mptsas::m_restart_cmd_timeid	read/write	mutex(note5)	mptsas::m_mutex
+mptsas::m_scsi_reset_delay	read/write	mutex(note2,5)	mptsas::m_mutex, mptsas::m_passthru_mutex
+mptsas::m_pm_idle_delay	write-only	mutex	mptsas::m_mutex
+mptsas::m_polled_intr	read/write	mutex(note5)	mptsas::m_mutex
+mptsas::m_suspended	read/write	mutex(note2)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex
+mptsas::m_kmem_cache	read/write	external-scheme	-
+mptsas::m_cache_frames	read/write	mutex(note1,5)	mptsas::m_mutex
+mptsas::m_options	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_in_callback	read/write	mutex(note5)	mptsas::m_mutex
+mptsas::m_power_level	read/write	mutex(note2)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex
+mptsas::m_busy	read/write	mutex	mptsas::m_mutex
+mptsas::m_pmcsr_offset	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_config_handle	read/write	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_req_frame	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_req_frame_dma_addr	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_req_sense	read/write	mutex(note5)	mptsas::m_mutex
+mptsas::m_extreq_sense	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_extreq_sense_refcount	read/write	mutex(note5)	mptsas::m_mutex
+mptsas::m_req_sense_dma_addr	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_reply_frame	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_reply_frame_dma_addr	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_free_queue	read/write	mutex(note5)	mptsas::m_mutex
+mptsas::m_free_queue_dma_addr	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_post_queue	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_post_queue_dma_addr	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_erqsense_map	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_replyh_args	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_max_requests	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_req_frame_size	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_req_sense_size	read/write	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_max_chain_depth	write-only	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_max_request_frames	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_free_queue_depth	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_post_queue_depth	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_max_replies	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_free_index	read/write	mutex(note5)	mptsas::m_mutex
+mptsas::m_post_index	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_reply_frame_size	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_ioc_capabilities	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_productid	write-only	mutex+readable(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_hshk_dma_hdl	read-only	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_hshk_acc_hdl	read-only	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_hshk_memp	read-only	mutex	mptsas::m_mutex
+mptsas::m_hshk_dma_size	read/write	mutex(note1,5)	mptsas::m_mutex
+mptsas::m_fwversion	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_htable	read/write	mutex(note1,5)	mptsas::m_mutex
+mptsas::m_intr_type	write-only	mutex(note1)	m_mutex
+mptsas::m_intr_cnt	read/write	mutex(note1,5)	mptsas::m_mutex
+mptsas::m_intr_size	read/write	mutex(note1,5)	mptsas::m_mutex
+mptsas::m_intr_pri	read-only	mutex(note1)	m_mutex
+mptsas::m_intr_cap	read-only	mutex(note1,5)	mptsas::m_mutex
+mptsas::m_event_taskq	read/write	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_num_phys	read/write	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_port_chng	read/write	mutex(note5)	mptsas::m_mutex
+mptsas::m_fm_capabilities	read/write	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_dr_taskq	read/write	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_mpxio_enable	read/write	mutex+readable(note5)	mptsas::m_mutex
+mptsas::m_done_traverse_dev	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_done_traverse_smp	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_done_traverse_enc	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_diag_action_in_progress	read/write	mutex	mptsas::m_mutex
+mptsas::m_dev_handle	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_smp_devhdl	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_ufmh	read-only	mutex(note1)	m_mutex
+mptsas::m_event_index	read/write	mutex(note5)	mptsas::m_mutex
+mptsas::m_event_number	read/write	mutex(note5)	mptsas::m_mutex
+mptsas::m_event_mask	read/write	mutex(note5)	mptsas::m_mutex
+mptsas::m_is_sea_ioc	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_is_gen35_ioc	write-only	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_MPI25	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_event_replay	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_ir_capable	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_in_reset	read/write	mutex(note5)	mptsas::m_mutex
+mptsas::m_mem_bar	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_raidconfig.m_physdisk_devhdl	read-only	mutex(note5)	mptsas::m_mutex
+mptsas::m_io_dma_attr.dma_attr_version	read/write	mutex(note2,5)	mptsas::m_mutex, mptsas::m_passthru_mutex
+mptsas::m_io_dma_attr.dma_attr_addr_lo	read/write	mutex(note2,5)	mptsas::m_mutex, mptsas::m_passthru_mutex
+mptsas::m_io_dma_attr.dma_attr_addr_hi	read/write	mutex(note2,5)	mptsas::m_mutex, mptsas::m_passthru_mutex
+mptsas::m_io_dma_attr.dma_attr_count_max	read/write	mutex(note2,5)	mptsas::m_mutex, mptsas::m_passthru_mutex
+mptsas::m_io_dma_attr.dma_attr_align	read/write	mutex(note2,5)	mptsas::m_mutex, mptsas::m_passthru_mutex
+mptsas::m_io_dma_attr.dma_attr_burstsizes	read/write	mutex(note2,5)	mptsas::m_mutex, mptsas::m_passthru_mutex
+mptsas::m_io_dma_attr.dma_attr_minxfer	read/write	mutex(note2,5)	mptsas::m_mutex, mptsas::m_passthru_mutex
+mptsas::m_io_dma_attr.dma_attr_maxxfer	read/write	mutex(note2,5)	mptsas::m_mutex, mptsas::m_passthru_mutex
+mptsas::m_io_dma_attr.dma_attr_seg	read/write	mutex(note2,5)	mptsas::m_mutex, mptsas::m_passthru_mutex
+mptsas::m_io_dma_attr.dma_attr_sgllen	read/write	mutex+readable(note1)	m_mutex
+mptsas::m_io_dma_attr.dma_attr_granular	read/write	mutex(note2,5)	mptsas::m_mutex, mptsas::m_passthru_mutex
+mptsas::m_io_dma_attr.dma_attr_flags	read/write	mutex(note2,5)	mptsas::m_mutex, mptsas::m_passthru_mutex
+mptsas::m_msg_dma_attr.dma_attr_version	read/write	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_msg_dma_attr.dma_attr_addr_lo	read/write	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_msg_dma_attr.dma_attr_addr_hi	read/write	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_msg_dma_attr.dma_attr_count_max	read/write	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_msg_dma_attr.dma_attr_align	read/write	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_msg_dma_attr.dma_attr_burstsizes	read/write	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_msg_dma_attr.dma_attr_minxfer	read/write	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_msg_dma_attr.dma_attr_maxxfer	read/write	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_msg_dma_attr.dma_attr_seg	read/write	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_msg_dma_attr.dma_attr_sgllen	read/write	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_msg_dma_attr.dma_attr_granular	read/write	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_msg_dma_attr.dma_attr_flags	read/write	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_dev_acc_attr.devacc_attr_version	write-only	mutex(note1)	m_mutex
+mptsas::m_dev_acc_attr.devacc_attr_endian_flags	write-only	mutex(note1)	m_mutex
+mptsas::m_dev_acc_attr.devacc_attr_dataorder	write-only	mutex(note1)	m_mutex
+mptsas::m_dev_acc_attr.devacc_attr_access	write-only	mutex(note1)	m_mutex
+mptsas::m_reg_acc_attr.devacc_attr_version	write-only	mutex(note1)	m_mutex
+mptsas::m_reg_acc_attr.devacc_attr_endian_flags	write-only	mutex(note1)	m_mutex
+mptsas::m_reg_acc_attr.devacc_attr_dataorder	write-only	mutex(note1)	m_mutex
+mptsas::m_reg_acc_attr.devacc_attr_access	write-only	mutex(note1,5)	mptsas::m_mutex
+mptsas::un.m_base_wwid	read-only	mutex(note2,5)	smhba_info::phy_mutex, mptsas::m_mutex
+mptsas::m_phy_info.port_num	read/write	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_phy_info.port_flags	read/write	mutex(note1,5)	mptsas::m_mutex
+mptsas::m_phy_info.ctrl_devhdl	write-only	mutex(note1,5)	mptsas::m_mutex
+mptsas::m_phy_info.phy_device_type	write-only	mutex(note1,5)	mptsas::m_mutex
+mptsas::m_phy_info.attached_devhdl	read/write	mutex(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_phy_info.phy_mask	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_MANU_page0.ChipName	write-only	mutex(note5)	mptsas::m_mutex
+mptsas::m_MANU_page0.ChipRevision	write-only	mutex(note5)	mptsas::m_mutex
+mptsas::m_MANU_page0.BoardName	write-only	mutex(note5)	mptsas::m_mutex
+mptsas::m_MANU_page0.BoardAssembly	write-only	mutex(note5)	mptsas::m_mutex
+mptsas::m_MANU_page0.BoardTracerNumber	write-only	mutex(note5)	mptsas::m_mutex
+mptsas::m_events.Type	write-only	mutex(note5)	mptsas::m_mutex
+mptsas::m_events.Number	write-only	mutex(note5)	mptsas::m_mutex
+mptsas::m_events.Data	write-only	mutex(note5)	mptsas::m_mutex
+mptsas::m_fw_diag_buffer_list.enabled	write-only	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_fw_diag_buffer_list.unique_id	read-only	mutex(note5)	mptsas::m_mutex
+mptsas::m_raidconfig.m_raidvol.m_israid	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_raidconfig.m_raidvol.m_raidhandle	read-only	mutex(note5)	mptsas::m_mutex
+mptsas::m_raidconfig.m_raidvol.m_state	write-only	mutex(note5)	mptsas::m_mutex
+mptsas::m_raidconfig.m_raidvol.m_statusflags	write-only	mutex(note5)	mptsas::m_mutex
+mptsas::m_raidconfig.m_raidvol.m_settings	write-only	mutex(note5)	mptsas::m_mutex
+mptsas::m_raidconfig.m_raidvol.m_devhdl	write-only	mutex(note5)	mptsas::m_mutex
+mptsas::m_raidconfig.m_raidvol.m_disknum	write-only	mutex(note5)	mptsas::m_mutex
+mptsas::m_raidconfig.m_raidvol.m_ndisks	write-only	mutex(note5)	mptsas::m_mutex
+mptsas::un.sasaddr.m_base_wwid_lo	write-only	mutex	mptsas::m_mutex
+mptsas::un.sasaddr.m_base_wwid_hi	write-only	mutex	mptsas::m_mutex
+mptsas::m_phy_info.smhba_info.phy_id	write-only	mutex(note5)	mptsas::m_mutex
+mptsas::m_phy_info.smhba_info.sas_addr	write-only	mutex(note5)	mptsas::m_mutex
+mptsas::m_phy_info.smhba_info.owner_devhdl	read-only	mutex(note1)	m_mutex
+mptsas::m_phy_info.smhba_info.attached_devhdl	read-only	mutex(note1)	m_mutex
+mptsas::m_phy_info.smhba_info.attached_phy_identify	read-only	mutex(note1)	m_mutex
+mptsas::m_phy_info.smhba_info.programmed_link_rate	read-only	mutex(note1)	m_mutex
+mptsas::m_phy_info.smhba_info.hw_link_rate	read-only	mutex(note1)	m_mutex
+mptsas::m_phy_info.smhba_info.negotiated_link_rate	read/write	mutex(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas::m_phy_info.smhba_info.mpt	write-only	mutex(note5)	mptsas::m_mutex
+mptsas_topo_change_list::mpt	read/write	unknown+readable(note5)	mptsas::m_mutex
+mptsas_topo_change_list::event	read/write	unknown+readable(note5)	mptsas::m_mutex
+mptsas_topo_change_list::devhdl	read/write	unknown+readable(note5)	mptsas::m_mutex
+mptsas_topo_change_list::object	read/write	unknown+readable(note5)	mptsas::m_mutex
+mptsas_topo_change_list::flags	read/write	unknown+readable(note5)	mptsas::m_mutex
+mptsas_topo_change_list::next	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_topo_change_list::un.physport	read/write	unknown+readable(note5)	mptsas::m_mutex
+mptsas_topo_change_list::un.phymask	read/write	unknown(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas_fw_diag_register::ExtendedType	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_fw_diag_register::BufferType	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_fw_diag_register::ProductSpecific	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_fw_diag_register::RequestedBufferSize	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_fw_diag_register::UniqueId	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_fw_diag_unregister::UniqueId	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_fw_diag_query::ExtendedType	write-only	unknown(note5)	mptsas::m_mutex
+mptsas_fw_diag_query::BufferType	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_fw_diag_query::ApplicationFlags	write-only	unknown(note5)	mptsas::m_mutex
+mptsas_fw_diag_query::DiagnosticFlags	write-only	unknown(note5)	mptsas::m_mutex
+mptsas_fw_diag_query::ProductSpecific	write-only	unknown(note5)	mptsas::m_mutex
+mptsas_fw_diag_query::TotalBufferSize	write-only	unknown(note5)	mptsas::m_mutex
+mptsas_fw_diag_query::DriverAddedBufferSize	write-only	unknown(note5)	mptsas::m_mutex
+mptsas_fw_diag_query::UniqueId	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_diag_read_buffer::Status	write-only	unknown(note5)	mptsas::m_mutex
+mptsas_diag_read_buffer::Flags	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_diag_read_buffer::StartingOffset	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_diag_read_buffer::BytesToRead	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_diag_read_buffer::UniqueId	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_fw_diag_release::UniqueId	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_smp::m_devhdl	read/write	unknown(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas_smp::m_deviceinfo	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_smp::m_pdevhdl	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_smp::m_pdevinfo	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_smp::m_addr.mta_wwn	read-only	unknown(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas_smp::m_addr.mta_phymask	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_enclosure::me_enchdl	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_enclosure::me_flags	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_enclosure::me_nslots	read/write	unknown(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas_enclosure::me_fslot	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_enclosure::me_slotleds	read/write	unknown(note2,4,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+mptsas_event_query::Types	write-only	unknown(note5)	mptsas::m_mutex
+mptsas_event_enable::Types	read-only	unknown(note5)	mptsas::m_mutex
+ddi_fm_error::fme_status	read-only	none	-
+mptsas_pt_request::request	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_pt_request::request_size	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_pt_request::data_size	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_pt_request::dataout_size	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_pt_request::direction	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_pt_request::simple	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_pt_request::sgl_offset	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_pt_request::data_cookie.dmac_size	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_pt_request::data_cookie.dmac_type	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_pt_request::dataout_cookie.dmac_size	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_pt_request::dataout_cookie.dmac_type	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_pt_request::data_cookie._dmu._dmac_ll	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_pt_request::data_cookie._dmu._dmac_la	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_pt_request::dataout_cookie._dmu._dmac_ll	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_pt_request::dataout_cookie._dmu._dmac_la	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_func::Function	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_func::Name	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_func::f_pre	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_pass_thru::PtrRequest	read-only	unknown(note5)	mptsas::m_mutex, mptsas::m_passthru_mutex
+mptsas_pass_thru::PtrReply	read-only	unknown(note5)	mptsas::m_mutex, mptsas::m_passthru_mutex
+mptsas_pass_thru::PtrData	read-only	unknown(note5)	mptsas::m_mutex, mptsas::m_passthru_mutex
+mptsas_pass_thru::RequestSize	read-only	unknown(note5)	mptsas::m_mutex, mptsas::m_passthru_mutex
+mptsas_pass_thru::ReplySize	read-only	unknown(note5)	mptsas::m_mutex, mptsas::m_passthru_mutex
+mptsas_pass_thru::DataSize	read-only	unknown(note5)	mptsas::m_mutex, mptsas::m_passthru_mutex
+mptsas_pass_thru::DataDirection	read/write	unknown(note5)	mptsas::m_mutex, mptsas::m_passthru_mutex
+mptsas_pass_thru::PtrDataOut	read-only	unknown(note5)	mptsas::m_mutex, mptsas::m_passthru_mutex
+mptsas_pass_thru::DataOutSize	read/write	unknown(note5)	mptsas::m_mutex, mptsas::m_passthru_mutex
+mptsas_pass_thru::Timeout	read/write	unknown(note5)	mptsas::m_mutex, mptsas::m_passthru_mutex
+mptsas_adapter_data::AdapterType	write-only	unknown(note5)	mptsas::m_mutex
+mptsas_adapter_data::MpiPortNumber	write-only	unknown(note5)	mptsas::m_mutex
+mptsas_adapter_data::PCIDeviceHwId	write-only	unknown(note5)	mptsas::m_mutex
+mptsas_adapter_data::PCIDeviceHwRev	write-only	unknown(note5)	mptsas::m_mutex
+mptsas_adapter_data::SubSystemId	write-only	unknown(note5)	mptsas::m_mutex
+mptsas_adapter_data::SubsystemVendorId	write-only	unknown(note5)	mptsas::m_mutex
+mptsas_adapter_data::MpiFirmwareVersion	write-only	unknown(note5)	mptsas::m_mutex
+mptsas_adapter_data::BiosVersion	write-only	unknown(note5)	mptsas::m_mutex
+mptsas_adapter_data::PciInformation.u.AsDWORD	write-only	unknown(note5)	mptsas::m_mutex
+mptsas_adapter_data::PciInformation.u.bits.DeviceNumber	write-only	unknown(note5)	mptsas::m_mutex
+mptsas_adapter_data::PciInformation.u.bits.FunctionNumber	write-only	unknown(note5)	mptsas::m_mutex
+mptsas_adapter_data::PciInformation.u.bits.BusNumber	read/write	unknown(note5)	mptsas::m_mutex
+mptsas_pci_info::BusNumber	write-only	unknown(note5)	mptsas::m_mutex
+mptsas_pci_info::DeviceNumber	write-only	unknown(note5)	mptsas::m_mutex
+mptsas_pci_info::FunctionNumber	write-only	unknown(note5)	mptsas::m_mutex
+mptsas_pci_info::InterruptVector	write-only	unknown(note5)	mptsas::m_mutex
+mptsas_pci_info::PciHeader	write-only	unknown(note5)	mptsas::m_mutex
+sas_phy_stats::invalid_dword_count.value.ull	write-only	unknown(note5)	mptsas::m_mutex
+sas_phy_stats::running_disparity_error_count.value.ull	write-only	unknown(note5)	mptsas::m_mutex
+sas_phy_stats::loss_of_dword_sync_count.value.ull	write-only	unknown(note5)	mptsas::m_mutex
+sas_phy_stats::phy_reset_problem_count.value.ull	write-only	unknown(note5)	mptsas::m_mutex
+pci_phys_spec::pci_phys_hi	read-only	unknown(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+_MPI2_REQUEST_HEADER::Function	read-only	unknown(note2,5)	../../common/io/scsi/adapters/mpt_sas/mptsas.c::mptsas_global_rwlock, mptsas::m_mutex, ...
+_MPI2_REQUEST_HEADER::MsgFlags	read-only	unknown(note5)	mptsas::m_mutex
+_MPI2_CONFIG_PAGE_RAID_VOL_0::NumPhysDisks	read-only	none	-
+_MPI2_CONFIG_PAGE_RAID_VOL_0::PhysDisk.PhysDiskNum	read-only	unknown(note1,5)	mptsas::m_mutex
+_MPI2_CONFIG_PAGE_SAS_ENCLOSURE_0::Flags	write-only	none(note3)	-
+_MPI2_CONFIG_PAGE_SAS_ENCLOSURE_0::EnclosureHandle	write-only	none(note3)	-
+_MPI2_CONFIG_PAGE_SAS_ENCLOSURE_0::NumSlots	write-only	none(note3)	-
+_MPI2_CONFIG_PAGE_SAS_ENCLOSURE_0::StartSlot	write-only	none(note3)	-
+_MPI2_CONFIG_PAGE_SAS_ENCLOSURE_0::EnclosureLevel	write-only	none(note3)	-
+_MPI2_CONFIG_PAGE_SAS_ENCLOSURE_0::SEPDevHandle	write-only	none(note3)	-
+_MPI2_CONFIG_PAGE_SAS_ENCLOSURE_0::Header.PageVersion	write-only	none(note3)	-
+_MPI2_CONFIG_PAGE_SAS_ENCLOSURE_0::Header.PageNumber	write-only	none(note3)	-
+_MPI2_CONFIG_PAGE_SAS_ENCLOSURE_0::Header.PageType	write-only	none(note3)	-
+_MPI2_CONFIG_PAGE_SAS_ENCLOSURE_0::Header.ExtPageLength	write-only	none(note3)	-
+_MPI2_CONFIG_PAGE_SAS_ENCLOSURE_0::Header.ExtPageType	write-only	none(note3)	-
+_MPI2_CONFIG_PAGE_SAS_ENCLOSURE_0::EnclosureLogicalID.Low	write-only	none(note3)	-
+_MPI2_CONFIG_PAGE_SAS_ENCLOSURE_0::EnclosureLogicalID.High	write-only	none(note3)	-
+_MPI2_SCSI_TASK_MANAGE_REQUEST::DevHandle	read-only	unknown(note5)	mptsas::m_mutex
+_MPI2_SCSI_TASK_MANAGE_REQUEST::TaskType	read-only	unknown(note5)	mptsas::m_mutex
+_MPI2_SCSI_TASK_MANAGE_REQUEST::LUN	read-only	unknown(note5)	mptsas::m_mutex
+_MPI2_EVENT_DATA_IR_VOLUME::ReasonCode	read-only	unknown(note5)	mptsas::m_mutex
+_MPI2_FW_DOWNLOAD_TCSGE::ContextSize	read-only	unknown(note5)	mptsas::m_mutex
+_MPI2_FW_DOWNLOAD_TCSGE::DetailsLength	read-only	unknown(note5)	mptsas::m_mutex
+_MPI2_FW_DOWNLOAD_TCSGE::Flags	read-only	unknown(note5)	mptsas::m_mutex
+_MPI2_FW_DOWNLOAD_TCSGE::ImageOffset	read-only	unknown(note5)	mptsas::m_mutex
+_MPI2_FW_DOWNLOAD_TCSGE::ImageSize	read-only	unknown(note5)	mptsas::m_mutex
+_MPI25_FW_DOWNLOAD_REQUEST::ImageOffset	write-only	unknown(note5)	mptsas::m_mutex
+_MPI25_FW_DOWNLOAD_REQUEST::ImageSize	write-only	unknown(note5)	mptsas::m_mutex
+_MPI2_FW_UPLOAD_TCSGE::ContextSize	read-only	unknown(note5)	mptsas::m_mutex
+_MPI2_FW_UPLOAD_TCSGE::DetailsLength	read-only	unknown(note5)	mptsas::m_mutex
+_MPI2_FW_UPLOAD_TCSGE::Flags	read-only	unknown(note5)	mptsas::m_mutex
+_MPI2_FW_UPLOAD_TCSGE::ImageOffset	read-only	unknown(note5)	mptsas::m_mutex
+_MPI2_FW_UPLOAD_TCSGE::ImageSize	read-only	unknown(note5)	mptsas::m_mutex
+_MPI25_FW_UPLOAD_REQUEST::ImageOffset	write-only	unknown(note5)	mptsas::m_mutex
+_MPI25_FW_UPLOAD_REQUEST::ImageSize	write-only	unknown(note5)	mptsas::m_mutex
+_MPI2_RAID_ACTION_REQUEST::Action	write-only	unknown(note1,5)	mptsas::m_mutex
+_MPI2_RAID_ACTION_REQUEST::Function	write-only	unknown(note1,5)	mptsas::m_mutex
+mdi_client::ct_dip	read-only	unknown(note1,5)	mptsas::m_mutex
+mdi_pathinfo::pi_client	read-only	unknown(note1,5)	mptsas::m_mutex
+mdi_pathinfo::pi_addr	read-only	unknown(note1,5)	mptsas::m_mutex
+mdi_pathinfo::pi_state	read-only	unknown(note1,5)	mptsas::m_mutex
+mptsas_disk_info::SasAddress	write-only	unknown(note5)	mptsas::m_mutex
+mptsas_disk_info::Instance	write-only	unknown(note5)	mptsas::m_mutex
+mptsas_disk_info::Enclosure	write-only	unknown(note5)	mptsas::m_mutex
+mptsas_disk_info::Slot	write-only	unknown(note5)	mptsas::m_mutex
+mptsas_get_disk_info::DiskCount	write-only	none(note3)	-
+mptsas_get_disk_info::PtrDiskInfoArray	read-only	none	-
+mptsas_get_disk_info::DiskInfoArraySize	read-only	none	-
+mptsas_get_disk_info32::DiskCount	write-only	none(note3)	-
+mptsas_get_disk_info32::PtrDiskInfoArray	read-only	none	-
+mptsas_get_disk_info32::DiskInfoArraySize	read-only	none	-
+mptsas_config_request::page_address	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_config_request::action	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_config_request::page_type	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_config_request::page_number	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_config_request::page_length	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_config_request::page_version	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_config_request::ext_page_type	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_config_request::ext_page_length	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_diag_request::pBuffer	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_diag_request::function	read-only	unknown(note5)	mptsas::m_mutex
+mptsas_tgt_private::t_lun	read/write	external-scheme	-, ...
+mptsas_tgt_private::t_private	read/write	external-scheme	-, ...
+
+Notes:
+note1: lock not held consistently
+note2: different locks held
+note3: no lock consistently held
+note4: lock mode not consistently suitable
+note5: held-lock relationship could not be resolved
+
+Use --audit-unprotected for details about entries marked with notes.
