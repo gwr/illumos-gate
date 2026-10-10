@@ -1879,7 +1879,9 @@ static struct token *direct_declarator(struct token *token, struct decl_state *c
 		struct symbol *fn;
 		fn = alloc_indirect_symbol(token->pos, ctype, SYM_FN);
 		token = token->next;
-		if (kind == K_R)
+		if (kind == Empty)
+			fn->unspecified_args = 1;
+		else if (kind == K_R)
 			token = identifier_list(token, fn);
 		else if (kind == Proto)
 			token = parameter_type_list(token, fn);

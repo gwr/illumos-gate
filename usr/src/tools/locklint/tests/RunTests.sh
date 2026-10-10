@@ -2860,6 +2860,15 @@ run_capture "function pointers callgraph" function-pointers-callgraph.out \
 compare "function pointers callgraph" function-pointers-callgraph.ref \
     function-pointers-callgraph.out
 
+run_capture "unspecified callback arguments" unspecified-callback.out \
+    "$LOCKLINT" --no-check unspecified-callback.c
+require_empty "unspecified callback arguments" unspecified-callback.out
+
+run_capture "void callback arguments" void-callback.out \
+    "$LOCKLINT" --no-check -DVOID_PROTOTYPE unspecified-callback.c
+require_match "void callback rejects arguments" \
+    'too many arguments for function callback' void-callback.out
+
 run_capture "unanalyzed callbacks" unanalyzed-callback.out \
     "$LOCKLINT" unanalyzed-callback.c
 for function in unanalyzed_ops_only unanalyzed_pointer_only \

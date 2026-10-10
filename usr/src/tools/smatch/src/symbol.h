@@ -170,6 +170,7 @@ struct symbol {
 			int		bit_size;
 			unsigned int	bit_offset:8,
 					variadic:1,
+					unspecified_args:1,
 					initialized:1,
 					examined:1,
 					expanding:1,
