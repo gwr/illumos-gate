@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2004, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2017 RackTop Systems.
+ * Copyright 2017-2026 RackTop Systems.
  */
 
 #ifndef	_SYS_FM_UTIL_H
@@ -86,7 +86,7 @@ extern size_t ereport_dumplen;
 
 extern void fm_init(void);
 extern void fm_nvprint(nvlist_t *);
-extern void fm_panic(const char *, ...);
+extern void fm_panic(const char *, ...) __NORETURN;
 extern void fm_banner(void);
 
 extern void fm_ereport_dump(void);
