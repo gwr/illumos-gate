@@ -953,6 +953,10 @@ typedef enum {
  * of one of the SCSI_DEVICE chains.
  */
 
+struct scsi_tape;
+struct uscsi_cmd;
+typedef int (*ubufunc_t)(struct scsi_tape *, struct uscsi_cmd *, int);
+
 struct scsi_tape {
 	struct scsi_device *un_sd;	/* back pointer to SCSI_DEVICE */
 	struct scsi_pkt *un_rqs;	/* ptr to request sense command */
@@ -1054,7 +1058,7 @@ struct scsi_tape {
 #endif
 	caddr_t un_media_id;
 	int un_media_id_len;
-	int (*un_media_id_method)(struct scsi_tape *, int (*)());
+	int (*un_media_id_method)(struct scsi_tape *, ubufunc_t);
 	buf_t *un_recov_buf;		/* buf to recover failed commands */
 	kcondvar_t un_recov_buf_cv;	/* cv for buf un_recov_buf */
 	uchar_t un_recov_buf_busy;
@@ -1071,7 +1075,6 @@ struct scsi_tape {
 };
 
 typedef int (*bufunc_t)(struct scsi_tape *, int, int64_t, int);
-typedef int (*ubufunc_t)(struct scsi_tape *, struct uscsi_cmd *, int);
 
 
 /*

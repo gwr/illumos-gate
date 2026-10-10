@@ -16388,24 +16388,22 @@ st_print_position(dev_info_t *dev, char *label, uint_t level,
 	    "Partition Number = 0x%x", pos->partition);
 }
 static int
-st_check_if_media_changed(struct scsi_tape *un, caddr_t data, int size)
+st_check_if_media_changed(struct scsi_tape *un, const char *data, int size)
 {
-
 	int result = 0;
-	int i;
+	size_t data_len;
+	size_t alloc_len;
+	size_t old_len;
+
 	ST_FUNC(ST_DEVINFO, st_check_if_media_changed);
 
 	/*
-	 * find non alpha numeric working from the end.
+	 * Device data is length-delimited and is not necessarily
+	 * NUL-terminated.  Preserve the existing string representation by
+	 * treating an embedded NUL as the end of the identifier, then trim
+	 * non-alphanumeric padding working from the end.
 	 */
-	for (i = size - 1; i >= 0; i--) {
-		if (ISALNUM(data[i]) == 0 || data[i] == ' ') {
-			data[i] = 0;
-			size = i;
-		}
-	}
-
-	if (size == 1) {
+	if (size <= 1) {
 		/*
 		 * Drive seems to think its returning useful data
 		 * but it looks like all junk
@@ -16413,50 +16411,67 @@ st_check_if_media_changed(struct scsi_tape *un, caddr_t data, int size)
 		return (result);
 	}
 
-	size++;
-
-	/*
-	 * Actually got a valid serial number.
-	 * If never stored one before alloc space for it.
-	 */
-	if (un->un_media_id_len == 0) {
-		un->un_media_id = kmem_zalloc(size, KM_SLEEP);
-		un->un_media_id_len = size;
-		(void) strncpy(un->un_media_id, data, min(size, strlen(data)));
-		un->un_media_id[min(size, strlen(data))] = 0;
-		ST_DEBUG1(ST_DEVINFO, st_label, SCSI_DEBUG,
-		    "Found Media Id %s length = %d\n", un->un_media_id, size);
-	} else if (size > un->un_media_id_len) {
-		if (strncmp(un->un_media_id, data, size) != 0) {
-			result = ESPIPE;
-		}
-		ST_DEBUG1(ST_DEVINFO, st_label, SCSI_DEBUG,
-		    "Longer Media Id old ID:%s new ID:%s\n",
-		    un->un_media_id, data);
-		kmem_free(un->un_media_id, un->un_media_id_len);
-		un->un_media_id = kmem_zalloc(size, KM_SLEEP);
-		un->un_media_id_len = size;
-		(void) strncpy(un->un_media_id, data, size);
-		un->un_media_id[size] = 0;
-	} else if (strncmp(data, un->un_media_id,
-	    min(size, un->un_media_id_len)) != 0) {
-		ST_DEBUG1(ST_DEVINFO, st_label, SCSI_DEBUG,
-		    "Old Media Id %s length = %d New %s length = %d\n",
-		    un->un_media_id, un->un_media_id_len, data, size);
-		bzero(un->un_media_id, un->un_media_id_len);
-		(void) strncpy(un->un_media_id, data, min(size, strlen(data)));
-		un->un_media_id[min(size, strlen(data))] = 0;
-		result = ESPIPE;
-	} else {
-		ST_DEBUG4(ST_DEVINFO, st_label, SCSI_DEBUG,
-		    "Media Id still %s\n", un->un_media_id);
+	data_len = strnlen(data, (size_t)size);
+	while (data_len != 0 &&
+	    (ISALNUM((uchar_t)data[data_len - 1]) == 0 ||
+	    data[data_len - 1] == ' ')) {
+		data_len--;
 	}
 
-	ASSERT(strlen(un->un_media_id) <= size);
+	if (data_len <= 1) {
+		return (result);
+	}
+
+	if (data_len >= INT_MAX) {
+		return (EIO);
+	}
+	alloc_len = data_len + 1;
+
+	/*
+	 * Compare using explicit lengths so neither device data nor the
+	 * saved identifier can be read beyond its allocation.
+	 */
+	if (un->un_media_id_len != 0) {
+		old_len = strnlen(un->un_media_id, un->un_media_id_len);
+		if (old_len != data_len ||
+		    bcmp(un->un_media_id, data, data_len) != 0) {
+			result = ESPIPE;
+		}
+
+		if (result == 0) {
+			ST_DEBUG4(ST_DEVINFO, st_label, SCSI_DEBUG,
+			    "Media Id still %s\n", un->un_media_id);
+			return (result);
+		}
+
+		ST_DEBUG1(ST_DEVINFO, st_label, SCSI_DEBUG,
+		    "Media Id changed, old length = %d new length = %d\n",
+		    un->un_media_id_len, (int)alloc_len);
+	}
+
+	if (alloc_len > un->un_media_id_len) {
+		if (un->un_media_id_len != 0) {
+			kmem_free(un->un_media_id, un->un_media_id_len);
+		}
+		un->un_media_id = kmem_alloc(alloc_len, KM_SLEEP);
+		un->un_media_id_len = (int)alloc_len;
+	} else {
+		bzero(un->un_media_id, un->un_media_id_len);
+	}
+
+	bcopy(data, un->un_media_id, data_len);
+	un->un_media_id[data_len] = '\0';
+
+	if (result == 0) {
+		ST_DEBUG1(ST_DEVINFO, st_label, SCSI_DEBUG,
+		    "Found Media Id %s length = %d\n", un->un_media_id,
+		    un->un_media_id_len);
+	}
 
 	return (result);
 }
-#define	ID_SIZE 32
+#define	ID_SIZE			32
+#define	ST_MAX_MEDIA_ID_LEN	UINT16_MAX
 typedef struct
 {
 	uchar_t avilable_data0;
@@ -16570,7 +16585,7 @@ st_get_media_id_via_media_serial_cmd(struct scsi_tape *un, ubufunc_t bufunc)
 	struct uscsi_cmd *ucmd;
 	struct scsi_extended_sense sense;
 	int rval;
-	int size = max(un->un_media_id_len, ID_SIZE);
+	size_t size = max((size_t)un->un_media_id_len, (size_t)ID_SIZE);
 	caddr_t buf;
 
 	ST_FUNC(ST_DEVINFO, st_get_media_id_via_media_serial_cmd);
@@ -16623,27 +16638,37 @@ upsize:
 		}
 		un->un_status = 0;
 	} else {
-		int act_size;
+		uint32_t act_size;
+		size_t xfer_size;
+		uchar_t *length = (uchar_t *)buf;
 
 		/*
 		 * get reported size.
 		 */
-		act_size = (int)buf[3] | (int)(buf[2] << 8) |
-		    (int)(buf[1] << 16) | (int)(buf[0] << 24);
+		act_size = (uint32_t)length[3] |
+		    ((uint32_t)length[2] << 8) |
+		    ((uint32_t)length[1] << 16) |
+		    ((uint32_t)length[0] << 24);
+
+		if (act_size > ST_MAX_MEDIA_ID_LEN) {
+			scsi_log(ST_DEVINFO, st_label, CE_WARN,
+			    "media serial number length %u exceeds maximum %u",
+			    act_size, ST_MAX_MEDIA_ID_LEN);
+			rval = EIO;
+			goto out;
+		}
 
 		/* documentation says mod 4. */
-		while (act_size & 3) {
-			act_size++;
-		}
+		xfer_size = P2ROUNDUP((size_t)act_size, 4);
 
 		/*
 		 * If reported size is larger that we our buffer.
 		 * Free the old one and allocate one that is larger
 		 * enough and re-issuse the command.
 		 */
-		if (act_size + 4 > size) {
+		if (xfer_size + 4 > size) {
 			kmem_free(buf, size);
-			size = act_size + 4;
+			size = xfer_size + 4;
 			goto upsize;
 		}
 
@@ -16664,6 +16689,7 @@ upsize:
 		}
 	}
 
+out:
 	kmem_free(ucmd, sizeof (struct uscsi_cmd));
 	kmem_free(buf, size);
 
