@@ -107,6 +107,14 @@ enum callgraph_declare_result callgraph_declare_external_entry(const char *,
     bool, const char *, unsigned long);
 
 /*
+ * Declare whether a uniquely named function is an explicit root or must not
+ * receive automatic root reasons.  Other explicit entry declarations remain
+ * effective when this property is false.
+ */
+enum callgraph_declare_result callgraph_declare_root(const char *, bool,
+    const char *, unsigned long);
+
+/*
  * Declare the possible functions called through a canonical function-pointer
  * type member.  Repeated declarations add targets; duplicates are harmless.
  */

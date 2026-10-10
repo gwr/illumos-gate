@@ -1488,6 +1488,42 @@ require_match "default no-caller root" \
 require_match "default escaped root" \
     "^  root function-pointer-escape" root-discovery-auto.out
 
+run_capture "suppressed automatic function roots" root-property-false.out \
+    "$LOCKLINT" --dump-callgraph \
+    --cf root-property-false.cf \
+    external-entry.c external-entry-helper.c
+require_match "suppressed caller-free function unreachable" \
+    "^function external_entry_caller_free .* reachable=no$" \
+    root-property-false.out
+require_match "suppressed escaped function remains reachable" \
+    "^function external_entry_escaped .* reachable=yes$" \
+    root-property-false.out
+if awk '
+    /^function external_entry_caller_free / ||
+    /^function external_entry_escaped / { target = 1; next }
+    /^function / { target = 0 }
+    target && /^  root / { found = 1 }
+    END { exit found ? 0 : 1 }
+' root-property-false.out; then
+	fail "suppressed automatic function retained a root reason"
+fi
+require_count "suppressed root property provenance" \
+    "  property root=false root-property-false.cf:1" 2 \
+    root-property-false.out
+
+run_capture "declared function root" root-property-true.out \
+    "$LOCKLINT" --root-discovery=none --dump-callgraph \
+    --cf root-property-true.cf \
+    external-entry.c external-entry-helper.c
+require_match "declared function root reachable" \
+    "^function external_entry_called .* reachable=yes$" \
+    root-property-true.out
+require_match "declared function root reason" \
+    "^  root declared$" root-property-true.out
+require_match "declared root property provenance" \
+    "  property root=true root-property-true.cf:1" \
+    root-property-true.out
+
 run_capture "explicit automatic roots" root-discovery-auto-explicit.out \
     "$LOCKLINT" --root-discovery=auto --dump-callgraph \
     external-entry.c external-entry-helper.c

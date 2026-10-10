@@ -68,13 +68,20 @@ enum function_root_reason {
 	FUNCTION_ROOT_EXTERNAL = 1 << 0,
 	FUNCTION_ROOT_NO_DIRECT_CALLER = 1 << 1,
 	FUNCTION_ROOT_POINTER_ESCAPE = 1 << 2,
-	FUNCTION_ROOT_DECLARED_ENTRY = 1 << 3
+	FUNCTION_ROOT_DECLARED_ENTRY = 1 << 3,
+	FUNCTION_ROOT_DECLARED = 1 << 4
 };
 
 enum function_external_entry {
 	FUNCTION_EXTERNAL_ENTRY_UNSPECIFIED,
 	FUNCTION_EXTERNAL_ENTRY_TRUE,
 	FUNCTION_EXTERNAL_ENTRY_FALSE
+};
+
+enum function_root_property {
+	FUNCTION_ROOT_PROPERTY_UNSPECIFIED,
+	FUNCTION_ROOT_PROPERTY_TRUE,
+	FUNCTION_ROOT_PROPERTY_FALSE
 };
 
 struct call_target_set;
@@ -97,6 +104,9 @@ struct function_record {
 	enum function_external_entry external_entry;
 	const char *external_entry_file;
 	unsigned long external_entry_line;
+	enum function_root_property root_property;
+	const char *root_property_file;
+	unsigned long root_property_line;
 	avl_node_t by_entrypoint;
 	avl_node_t by_identity;
 	struct function_record *next;
@@ -1155,6 +1165,41 @@ find_declared_function(const char *name, bool *ambiguous)
 	return (match);
 }
 
+/*
+ * Record an explicit root property on any uniquely named definition.
+ * True creates an explicit root.  False suppresses only automatic root
+ * discovery; independently declared entry properties remain effective.
+ */
+enum callgraph_declare_result
+callgraph_declare_root(const char *name, bool value, const char *file,
+    unsigned long line)
+{
+	struct function_info *info;
+	struct function_record *function;
+	enum function_root_property setting = value ?
+	    FUNCTION_ROOT_PROPERTY_TRUE : FUNCTION_ROOT_PROPERTY_FALSE;
+	bool ambiguous;
+
+	require_state(CALLGRAPH_CONSTRUCTING, "root declaration");
+	info = find_declared_function(name, &ambiguous);
+	if (ambiguous)
+		return (CALLGRAPH_DECLARE_AMBIGUOUS);
+	if (info == NULL)
+		return (CALLGRAPH_DECLARE_UNRESOLVED);
+	function = function_record(info);
+	if (function->root_property != FUNCTION_ROOT_PROPERTY_UNSPECIFIED &&
+	    function->root_property != setting)
+		return (CALLGRAPH_DECLARE_CONFLICT);
+	if (function->root_property == FUNCTION_ROOT_PROPERTY_UNSPECIFIED) {
+		function->root_property = setting;
+		function->root_property_file = file;
+		function->root_property_line = line;
+	}
+	if (value)
+		function->info.root_reasons |= FUNCTION_ROOT_DECLARED;
+	return (CALLGRAPH_DECLARE_OK);
+}
+
 static struct symbol *
 declared_function_type(const struct function_info *function)
 {
@@ -2085,7 +2130,8 @@ resolve_function_escapes(void)
 			    function->declared_member_escape_count +
 			    function->comparison_escape_count;
 		}
-		if (function->exact_escape_count >
+		if (function->root_property != FUNCTION_ROOT_PROPERTY_FALSE &&
+		    function->exact_escape_count >
 		    function->accounted_escape_count) {
 			function->info.root_reasons |=
 			    FUNCTION_ROOT_POINTER_ESCAPE;
@@ -2559,7 +2605,8 @@ classify_roots(void)
 		if (external_entry && !function->internal_linkage &&
 		    !function->inline_implementation)
 			function->info.root_reasons |= FUNCTION_ROOT_EXTERNAL;
-		if (root_discovery != CALLGRAPH_ROOT_DISCOVERY_NONE &&
+		if (function->root_property != FUNCTION_ROOT_PROPERTY_FALSE &&
+		    root_discovery != CALLGRAPH_ROOT_DISCOVERY_NONE &&
 		    !function->has_nonself_caller &&
 		    !function->inline_implementation)
 			function->info.root_reasons |=
@@ -2570,7 +2617,8 @@ classify_roots(void)
 		 * policy, so use this fallback only for an internal function
 		 * without an exact recorded escape.
 		 */
-		if (root_discovery != CALLGRAPH_ROOT_DISCOVERY_NONE &&
+		if (function->root_property != FUNCTION_ROOT_PROPERTY_FALSE &&
+		    root_discovery != CALLGRAPH_ROOT_DISCOVERY_NONE &&
 		    function->internal_linkage &&
 		    (modifiers & MOD_ADDRESSABLE) != 0 &&
 		    !function->has_exact_escape)
@@ -2797,6 +2845,9 @@ callgraph_dump(FILE *stream)
 			}
 			(void) fprintf(stream, "\n");
 		}
+		if ((function->info.root_reasons &
+		    FUNCTION_ROOT_DECLARED) != 0)
+			(void) fprintf(stream, "  root declared\n");
 		if (function->accounted_escape_count != 0) {
 			(void) fprintf(stream,
 			    "  escape uses exact=%zu member-assignments=%zu "
@@ -2821,6 +2872,15 @@ callgraph_dump(FILE *stream)
 			    FUNCTION_EXTERNAL_ENTRY_TRUE ? "true" : "false",
 			    function->external_entry_file,
 			    function->external_entry_line);
+		}
+		if (function->root_property !=
+		    FUNCTION_ROOT_PROPERTY_UNSPECIFIED) {
+			(void) fprintf(stream,
+			    "  property root=%s %s:%lu\n",
+			    function->root_property ==
+			    FUNCTION_ROOT_PROPERTY_TRUE ? "true" : "false",
+			    function->root_property_file,
+			    function->root_property_line);
 		}
 		dump_function_calls(stream, &function->info);
 	}

@@ -36,6 +36,8 @@ not_implemented(const char *command)
 struct declare_options {
 	bool external_entry_set;
 	bool external_entry;
+	bool root_set;
+	bool root;
 };
 
 static int
@@ -85,6 +87,31 @@ declare_external_entry(const struct declare_options *options,
 	}
 }
 
+static int
+declare_root(const struct declare_options *options, const char *name)
+{
+	enum callgraph_declare_result result;
+
+	result = callgraph_declare_root(name, options->root,
+	    command_parse_path(), command_parse_line());
+	switch (result) {
+	case CALLGRAPH_DECLARE_OK:
+		return (0);
+	case CALLGRAPH_DECLARE_UNRESOLVED:
+		return (command_parse_error("unresolved function name '%s'",
+		    name));
+	case CALLGRAPH_DECLARE_AMBIGUOUS:
+		return (command_parse_error("ambiguous function name '%s'",
+		    name));
+	case CALLGRAPH_DECLARE_CONFLICT:
+		return (command_parse_error("conflicting value for option "
+		    "'--root' on function '%s'", name));
+	default:
+		return (command_parse_error(
+		    "internal error resolving function name '%s'", name));
+	}
+}
+
 /*
  * Parse the options-first declaration form.  All options are validated before
  * applying the property set to any name.
@@ -107,6 +134,22 @@ declare_options(int argc, char **argv)
 		if (result < 0)
 			return (-1);
 		if (result == 0) {
+			result = parse_boolean_option(argv[first_name],
+			    "--root", &value);
+			if (result < 0)
+				return (-1);
+			if (result != 0) {
+				if (options.root_set && options.root != value) {
+					return (command_parse_error(
+					    "conflicting values for option "
+					    "'--root'"));
+				}
+				options.root_set = true;
+				options.root = value;
+				continue;
+			}
+		}
+		if (result == 0) {
 			return (command_parse_error(
 			    "unknown declaration option '%s'",
 			    argv[first_name]));
@@ -128,7 +171,11 @@ declare_options(int argc, char **argv)
 		}
 	}
 	for (i = first_name; i < argc; i++) {
-		if (declare_external_entry(&options, argv[i]) != 0)
+		if (options.external_entry_set &&
+		    declare_external_entry(&options, argv[i]) != 0)
+			return (-1);
+		if (options.root_set &&
+		    declare_root(&options, argv[i]) != 0)
 			return (-1);
 	}
 	return (0);
