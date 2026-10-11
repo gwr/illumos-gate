@@ -1,0 +1,426 @@
+#
+# This file and its contents are supplied under the terms of the
+# Common Development and Distribution License ("CDDL"), version 1.0.
+# You may only use this file in accordance with the terms of version
+# 1.0 of the CDDL.
+#
+# A full copy of the text of the CDDL should have accompanied this
+# source.  A copy of the CDDL is also available via the Internet at
+# http://www.illumos.org/license/CDDL.
+#
+
+import configparser
+import os
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+
+SCRIPT = Path(__file__).parent.parent / 'ozfs-apply.py'
+GROUPS = ('core', 'platform', 'userland', 'tests', 'exclude', 'exception')
+
+
+class OzfsApplyTest(unittest.TestCase):
+    def setUp(self):
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.root = Path(self.tempdir.name)
+        self.illumos = self.root / 'illumos'
+        self.openzfs = self.root / 'openzfs'
+        self.lists = self.root / 'lists'
+        self.config = self.root / 'ozfs-diff.conf'
+
+        self._create_repo(self.illumos, {
+            'usr/src/common/zfs/shared.h': 'shared\n',
+            'usr/src/uts/common/fs/zfs/sys/kernel.h': 'kernel\n',
+            'usr/src/uts/common/fs/zfs/main.c': 'main\n',
+            'usr/src/uts/common/fs/zfs/platform.c': 'platform\n',
+            'usr/src/uts/common/fs/zfs/exception.c': 'illumos exception\n',
+        })
+        self._create_repo(self.openzfs, {
+            'include/sys/shared.h': 'shared\n',
+            'include/sys/kernel.h': 'kernel\n',
+            'module/zfs/main.c': 'main\n',
+            'module/zfs/exception.c': 'OpenZFS exception\n',
+            'module/os/freebsd/zfs/platform.c': 'FreeBSD platform\n',
+            'module/os/linux/zfs/platform.c': 'Linux platform\n',
+            'config/build.m4': 'config\n',
+        })
+        self._create_lists()
+        self._write_config()
+
+    def tearDown(self):
+        self.tempdir.cleanup()
+
+    def _git(self, repo, *args):
+        return subprocess.run(
+            ['git', '-C', str(repo), *args],
+            check=True, text=True, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE).stdout.strip()
+
+    def _create_repo(self, repo, files):
+        repo.mkdir()
+        self._git(repo, 'init', '--quiet')
+        self._git(repo, 'config', 'user.name', 'ozfs-apply test')
+        self._git(repo, 'config', 'user.email', 'test@example.invalid')
+        for name, contents in files.items():
+            path = repo / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(contents, encoding='utf-8')
+        self._git(repo, 'add', '.')
+        self._git(repo, 'commit', '--quiet', '-m', 'initial tree')
+
+    def _create_lists(self):
+        self.lists.mkdir()
+        paths = {
+            'core-illumos.txt': (
+                'usr/src/common/zfs\n'
+                'usr/src/uts/common/fs/zfs/sys\n'
+                'usr/src/uts/common/fs/zfs\n'
+            ),
+            'core-openzfs.txt': (
+                'include/sys\n'
+                'include/sys\n'
+                'module/zfs\n'
+            ),
+            'platform-illumos.txt': 'usr/src/uts/common/fs/zfs\n',
+            'platform-openzfs.txt': 'module/os/linux/zfs\n',
+            'userland-illumos.txt': '',
+            'userland-openzfs.txt': '',
+            'tests-illumos.txt': '',
+            'tests-openzfs.txt': '',
+            'exclude-illumos.txt': '',
+            'exclude-openzfs.txt': 'config\n',
+            'exception-illumos.txt': (
+                'usr/src/uts/common/fs/zfs/exception.c\n'
+            ),
+            'exception-openzfs.txt': 'module/zfs/exception.c\n',
+        }
+        for name, contents in paths.items():
+            (self.lists / name).write_text(contents, encoding='utf-8')
+        (self.lists / 'platform-mappings.tsv').write_text(
+            'role\tvariant\tillumos-path\topenzfs-path\n'
+            'primary\tfreebsd\tusr/src/uts/common/fs/zfs/platform.c\t'
+            'module/os/freebsd/zfs/platform.c\n'
+            'alternate\tlinux\tusr/src/uts/common/fs/zfs/platform.c\t'
+            'module/os/linux/zfs/platform.c\n',
+            encoding='utf-8')
+
+    def _write_config(self):
+        config = configparser.ConfigParser(interpolation=None)
+        config['repositories'] = {
+            'openzfs': os.path.relpath(self.openzfs, self.root),
+            'illumos': os.path.relpath(self.illumos, self.root),
+        }
+        config['paths'] = {
+            'lists': os.path.relpath(self.lists, self.root),
+        }
+        with self.config.open('w', encoding='utf-8') as stream:
+            config.write(stream)
+
+    def _commit(self, message, changes):
+        for name, contents in changes.items():
+            path = self.openzfs / name
+            if contents is None:
+                path.unlink()
+                continue
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if isinstance(contents, bytes):
+                path.write_bytes(contents)
+            else:
+                path.write_text(contents, encoding='utf-8')
+        self._git(self.openzfs, 'add', '.')
+        self._git(self.openzfs, 'commit', '--quiet', '-m', message)
+        return self._git(self.openzfs, 'rev-parse', 'HEAD')
+
+    def _run(self, *args):
+        return subprocess.run(
+            [sys.executable, str(SCRIPT), '--cf', str(self.config), *args],
+            cwd=self.root, text=True, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE)
+
+    def test_check_reports_ordered_mapped_and_omitted_paths(self):
+        first = self._commit('first change', {
+            'module/zfs/main.c': 'main changed\n',
+            'config/build.m4': 'config changed\n',
+        })
+        second = self._commit('second change', {
+            'include/sys/kernel.h': 'kernel changed\n',
+        })
+
+        result = self._run('--check', first, second)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertLess(result.stdout.index(first), result.stdout.index(second))
+        self.assertIn(
+            'mapped\tmodule/zfs/main.c\t'
+            'usr/src/uts/common/fs/zfs/main.c',
+            result.stdout)
+        self.assertIn('excluded\tconfig/build.m4', result.stdout)
+        self.assertIn(
+            'mapped\tinclude/sys/kernel.h\t'
+            'usr/src/uts/common/fs/zfs/sys/kernel.h',
+            result.stdout)
+
+    def test_output_writes_one_combined_reshaped_mail_patch(self):
+        first = self._commit('first change', {
+            'module/zfs/main.c': 'main changed\n',
+            'config/build.m4': 'config changed\n',
+        })
+        second = self._commit('second change', {
+            'include/sys/shared.h': 'shared changed\n',
+        })
+        output = self.root / 'series.mbox'
+
+        result = self._run(
+            '--output', str(output), '--work-name', 'test work',
+            first, second)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        series = output.read_text(encoding='utf-8')
+        self.assertEqual(
+            sum(line.startswith('From ') for line in series.splitlines()), 1)
+        self.assertIn(
+            'Subject: [PATCH] OpenZFS test work import', series)
+        self.assertIn(f'import OpenZFS {first}', series)
+        self.assertIn(f'import OpenZFS {second}', series)
+        self.assertLess(series.index(first), series.index(second))
+        self.assertIn('first change', series)
+        self.assertIn('second change', series)
+        self.assertIn(
+            'diff --git a/usr/src/uts/common/fs/zfs/main.c '
+            'b/usr/src/uts/common/fs/zfs/main.c',
+            series)
+        self.assertIn(
+            'diff --git a/usr/src/common/zfs/shared.h '
+            'b/usr/src/common/zfs/shared.h',
+            series)
+        self.assertNotIn('config/build.m4', series)
+
+    def test_maps_primary_platform_variant_and_reports_alternate(self):
+        commit = self._commit('platform change', {
+            'module/os/freebsd/zfs/platform.c': 'FreeBSD changed\n',
+            'module/os/linux/zfs/platform.c': 'Linux changed\n',
+        })
+        output = self.root / 'platform.mbox'
+
+        result = self._run(
+            '--output', str(output), '--work-name', 'platform work',
+            commit)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(
+            'mapped\tmodule/os/freebsd/zfs/platform.c\t'
+            'usr/src/uts/common/fs/zfs/platform.c',
+            result.stdout)
+        self.assertIn(
+            'alternate\tmodule/os/linux/zfs/platform.c',
+            result.stdout)
+        series = output.read_text(encoding='utf-8')
+        self.assertIn(
+            'diff --git a/usr/src/uts/common/fs/zfs/platform.c '
+            'b/usr/src/uts/common/fs/zfs/platform.c',
+            series)
+        self.assertNotIn('module/os/linux/zfs/platform.c', series)
+
+    def test_refuses_unselected_platform_interface(self):
+        commit = self._commit('unknown platform change', {
+            'module/os/freebsd/zfs/unknown.c': 'unknown\n',
+        })
+
+        result = self._run('--check', commit)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            'unclassified path: module/os/freebsd/zfs/unknown.c',
+            result.stderr)
+
+    def test_reshapes_addition_deletion_and_rename(self):
+        first = self._commit('add and delete', {
+            'module/zfs/main.c': None,
+            'module/zfs/new.c': 'new\n',
+        })
+        self._git(
+            self.openzfs, 'mv', 'module/zfs/new.c',
+            'module/zfs/renamed.c')
+        self._git(self.openzfs, 'commit', '--quiet', '-m', 'rename file')
+        second = self._git(self.openzfs, 'rev-parse', 'HEAD')
+        output = self.root / 'file-operations.mbox'
+
+        result = self._run(
+            '--output', str(output), '--work-name', 'file operations',
+            first, second)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        series = output.read_text(encoding='utf-8')
+        self.assertIn(
+            'diff --git a/usr/src/uts/common/fs/zfs/main.c '
+            'b/usr/src/uts/common/fs/zfs/main.c',
+            series)
+        self.assertIn(
+            'diff --git a/usr/src/uts/common/fs/zfs/new.c '
+            'b/usr/src/uts/common/fs/zfs/new.c',
+            series)
+        self.assertIn(
+            'diff --git a/usr/src/uts/common/fs/zfs/renamed.c '
+            'b/usr/src/uts/common/fs/zfs/renamed.c',
+            series)
+        self.assertNotIn('rename from', series)
+
+    def test_preserves_binary_patch_and_mode_change(self):
+        first = self._commit('add binary file', {
+            'module/zfs/data.bin': b'\0binary data\n',
+        })
+        path = self.openzfs / 'module/zfs/main.c'
+        path.chmod(0o755)
+        self._git(self.openzfs, 'add', 'module/zfs/main.c')
+        self._git(self.openzfs, 'commit', '--quiet', '-m', 'change mode')
+        second = self._git(self.openzfs, 'rev-parse', 'HEAD')
+        output = self.root / 'binary-mode.mbox'
+
+        result = self._run(
+            '--output', str(output), '--work-name', 'binary and mode',
+            first, second)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        series = output.read_text(encoding='utf-8')
+        self.assertIn('GIT binary patch', series)
+        self.assertIn('old mode 100644', series)
+        self.assertIn('new mode 100755', series)
+        self.assertNotIn('module/zfs/data.bin', series)
+        self.assertIn(
+            'usr/src/uts/common/fs/zfs/data.bin',
+            series)
+
+    def test_combined_patch_is_accepted_by_git_am(self):
+        first = self._commit('first applicable change', {
+            'module/zfs/main.c': 'main changed once\n',
+        })
+        second = self._commit('second applicable change', {
+            'module/zfs/main.c': 'main changed twice\n',
+        })
+        output = self.root / 'applicable.mbox'
+        result = self._run(
+            '--output', str(output), '--work-name', 'applicable work',
+            first, second)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        applied = subprocess.run(
+            ['git', '-C', str(self.illumos), 'am', '--3way', str(output)],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        self.assertEqual(applied.returncode, 0, applied.stderr)
+        self.assertEqual(
+            (self.illumos / 'usr/src/uts/common/fs/zfs/main.c').read_text(
+                encoding='utf-8'),
+            'main changed twice\n')
+        self.assertEqual(
+            self._git(
+                self.illumos, 'show', '-s', '--format=%s', 'HEAD'),
+            'OpenZFS applicable work import')
+        message = self._git(
+            self.illumos, 'show', '-s', '--format=%B', 'HEAD')
+        self.assertIn(f'import OpenZFS {first}', message)
+        self.assertIn(f'import OpenZFS {second}', message)
+        self.assertEqual(
+            self._git(
+                self.illumos, 'rev-list', '--count', 'HEAD'), '2')
+
+    def test_refuses_merge_commit(self):
+        base_branch = self._git(
+            self.openzfs, 'symbolic-ref', '--short', 'HEAD')
+        self._git(self.openzfs, 'checkout', '-q', '-b', 'side')
+        self._commit('side change', {
+            'module/zfs/side.c': 'side\n',
+        })
+        self._git(self.openzfs, 'checkout', '-q', base_branch)
+        self._commit('main change', {
+            'module/zfs/main.c': 'main branch\n',
+        })
+        self._git(
+            self.openzfs, 'merge', '--quiet', '--no-ff', 'side',
+            '-m', 'merge side')
+        commit = self._git(self.openzfs, 'rev-parse', 'HEAD')
+
+        result = self._run('--check', commit)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            f'merge commit requires mainline selection: {commit}',
+            result.stderr)
+
+    def test_refuses_invalid_commit(self):
+        result = self._run('--check', 'not-a-commit')
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            'OpenZFS commit is not a commit: not-a-commit',
+            result.stderr)
+
+    def test_refuses_existing_output_file(self):
+        commit = self._commit('ordinary change', {
+            'module/zfs/main.c': 'main changed\n',
+        })
+        output = self.root / 'existing.mbox'
+        output.write_text('keep me\n', encoding='utf-8')
+
+        result = self._run(
+            '--output', str(output), '--work-name', 'existing output',
+            commit)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            f'output path already exists: {output.resolve()}',
+            result.stderr)
+        self.assertEqual(output.read_text(encoding='utf-8'), 'keep me\n')
+
+    def test_refuses_exceptional_path(self):
+        commit = self._commit('exceptional change', {
+            'module/zfs/exception.c': 'exception changed\n',
+        })
+
+        result = self._run('--check', commit)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            'exceptional path requires review: module/zfs/exception.c',
+            result.stderr)
+
+    def test_refuses_unclassified_path(self):
+        commit = self._commit('unclassified change', {
+            'README.md': 'new documentation\n',
+        })
+
+        result = self._run('--check', commit)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('unclassified path: README.md', result.stderr)
+
+    def test_refuses_ambiguous_new_path(self):
+        commit = self._commit('ambiguous addition', {
+            'include/sys/new.h': 'new header\n',
+        })
+
+        result = self._run('--check', commit)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            'ambiguous mapping for include/sys/new.h',
+            result.stderr)
+
+    def test_requires_check_or_output_in_generation_only_version(self):
+        commit = self._commit('ordinary change', {
+            'module/zfs/main.c': 'main changed\n',
+        })
+
+        result = self._run(commit)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            'one of --check or --output is required',
+            result.stderr)
+
+
+if __name__ == '__main__':
+    unittest.main()

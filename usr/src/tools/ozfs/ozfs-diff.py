@@ -16,7 +16,6 @@
 
 import argparse
 from collections import defaultdict
-import configparser
 import csv
 from dataclasses import dataclass
 import difflib
@@ -26,19 +25,16 @@ from pathlib import Path, PurePosixPath
 import subprocess
 import sys
 
-
-COMPARE_GROUPS = ('core', 'platform', 'userland', 'tests')
-GROUPS = COMPARE_GROUPS + ('exclude',)
-MODIFIERS = ('exception',)
-SIDES = ('illumos', 'openzfs')
-ALLOWED_SETTINGS = {
-    'repositories': {'openzfs', 'illumos'},
-    'paths': {'lists'},
-}
-
-
-class OzfsDiffError(Exception):
-    pass
+from ozfs_common import (
+    GROUPS,
+    SIDES,
+    OzfsError as OzfsDiffError,
+    load_config,
+    load_path_lists,
+    resolve_commit,
+    run_git,
+    validate_repository,
+)
 
 
 @dataclass(frozen=True)
@@ -90,130 +86,6 @@ def parse_args():
         '--out', dest='output',
         help='create detailed matching reports in this new directory')
     return parser.parse_args()
-
-
-def load_config(path):
-    config_path = Path(path).expanduser()
-    try:
-        config_path = config_path.resolve(strict=True)
-    except OSError as error:
-        raise OzfsDiffError(
-            f'cannot read configuration file {config_path}: {error.strerror}')
-
-    config = configparser.ConfigParser(interpolation=None, strict=True)
-    try:
-        with config_path.open(encoding='utf-8') as stream:
-            config.read_file(stream)
-    except (OSError, configparser.Error) as error:
-        raise OzfsDiffError(
-            f'cannot read configuration file {config_path}: {error}')
-
-    for section in config.sections():
-        if section not in ALLOWED_SETTINGS:
-            raise OzfsDiffError(
-                f'unknown configuration section: {section}')
-        for setting in config[section]:
-            if setting not in ALLOWED_SETTINGS[section]:
-                raise OzfsDiffError(
-                    f'unknown configuration setting: {section}.{setting}')
-
-    if not config.has_section('repositories'):
-        raise OzfsDiffError('missing configuration section: repositories')
-
-    openzfs_value = config.get('repositories', 'openzfs', fallback='').strip()
-    if not openzfs_value:
-        raise OzfsDiffError(
-            'missing configuration setting: repositories.openzfs')
-
-    base = Path.cwd()
-    openzfs_repo = resolve_config_path(openzfs_value, base)
-
-    illumos_value = config.get(
-        'repositories', 'illumos', fallback='').strip()
-    if illumos_value:
-        illumos_repo = resolve_config_path(illumos_value, base)
-    else:
-        illumos_repo = Path.cwd().resolve()
-
-    lists_value = config.get('paths', 'lists', fallback='').strip()
-    if lists_value:
-        lists_dir = resolve_config_path(lists_value, base)
-    else:
-        lists_dir = Path(__file__).resolve().parent / 'zfs-paths'
-
-    return illumos_repo, openzfs_repo, lists_dir
-
-
-def resolve_config_path(value, base):
-    path = Path(value).expanduser()
-    if not path.is_absolute():
-        path = base / path
-    return path.resolve()
-
-
-def load_path_lists(lists_dir):
-    result = {}
-    for group in GROUPS + MODIFIERS:
-        result[group] = {}
-        for side in SIDES:
-            name = f'{group}-{side}.txt'
-            path = lists_dir / name
-            try:
-                lines = path.read_text(encoding='utf-8').splitlines()
-            except FileNotFoundError:
-                raise OzfsDiffError(f'missing path list: {name}')
-            except OSError as error:
-                raise OzfsDiffError(
-                    f'cannot read path list {path}: {error.strerror}')
-
-            paths = []
-            for line_number, line in enumerate(lines, 1):
-                value = line.strip()
-                if not value:
-                    continue
-                validate_repo_path(value, name, line_number)
-                paths.append(value)
-            result[group][side] = paths
-
-    for group in COMPARE_GROUPS:
-        illumos_name = f'{group}-illumos.txt'
-        openzfs_name = f'{group}-openzfs.txt'
-        illumos_count = len(result[group]['illumos'])
-        openzfs_count = len(result[group]['openzfs'])
-        if illumos_count != openzfs_count:
-            raise OzfsDiffError(
-                f'path map length mismatch: {illumos_name} has '
-                f'{illumos_count} entries; {openzfs_name} has '
-                f'{openzfs_count}')
-    return result
-
-
-def validate_repo_path(value, name, line_number):
-    path = PurePosixPath(value)
-    if (path.is_absolute() or '..' in path.parts or value.startswith(':')):
-        raise OzfsDiffError(
-            f'invalid repository path in {name}:{line_number}: {value}')
-
-
-def validate_repository(path, label):
-    if not path.is_dir():
-        raise OzfsDiffError(f'{label} repository is not a directory: {path}')
-
-    result = run_git(path, 'rev-parse', '--show-toplevel')
-    if result.returncode != 0:
-        raise OzfsDiffError(
-            f'{label} repository is not a Git work tree: {path}')
-
-    return Path(result.stdout.decode().strip()).resolve()
-
-
-def resolve_commit(repo, value, label):
-    result = run_git(
-        repo, 'rev-parse', '--verify', '--end-of-options',
-        f'{value}^{{commit}}')
-    if result.returncode != 0:
-        raise OzfsDiffError(f'{label} commit is not a commit: {value}')
-    return result.stdout.decode().strip()
 
 
 def enumerate_files(repo, commit, paths):
@@ -603,12 +475,6 @@ def compare_blobs(illumos_data, openzfs_data):
         if operation in ('replace', 'insert'):
             added += openzfs_end - openzfs_start
     return 'text', added, deleted
-
-
-def run_git(repo, *args):
-    return subprocess.run(
-        ['git', '-C', str(repo), *args],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
 
 
 def run():

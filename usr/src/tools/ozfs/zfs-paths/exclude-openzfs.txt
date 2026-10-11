@@ -1,8 +1,6 @@
 cmd/zed
 module/icp
 module/zstd
-module/os/freebsd/zfs
-include/os/freebsd/zfs
 config
 rpm
 udev
