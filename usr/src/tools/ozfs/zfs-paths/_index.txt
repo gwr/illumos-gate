@@ -28,7 +28,11 @@ exclude
     These are reference paths, not a comparison group.  Exclude them from
     sibling-similarity measurements.
 
-Known exceptional files must remain in their normal groups but be handled
-separately by the comparison tool.  In particular, illumos full NFS ACL
-support in usr/src/uts/common/fs/zfs/zfs_acl.c must be preserved.  The
-OpenZFS implementation was rewritten and should not affect sibling ranking.
+exception
+    Modifiers for files in the normal comparison groups that have known,
+    intentional divergences.  Keep these files visible in reports but exclude
+    them from sibling-similarity measurements.
+
+    illumos full NFS ACL support in
+    usr/src/uts/common/fs/zfs/zfs_acl.c must be preserved.  The OpenZFS
+    implementation was rewritten and should not affect sibling ranking.

@@ -37,6 +37,7 @@ class OzfsDiffTest(unittest.TestCase):
 
         self._create_repo(self.illumos, {
             'src/core/a.c': 'illumos a\n',
+            'src/core/binary.dat': b'\0illumos\n',
             'src/core/nested/b.c': 'illumos b\n',
             'src/core/old_name.c': 'relocated content\n',
             'src/core/one/common.h': 'first illumos common\n',
@@ -48,6 +49,7 @@ class OzfsDiffTest(unittest.TestCase):
         })
         self._create_repo(self.openzfs, {
             'module/core/a.c': 'openzfs a\n',
+            'module/core/binary.dat': b'\0openzfs\n',
             'module/core/one/common.h': 'first OpenZFS common\n',
             'module/core/one/resolved.h': 'identical resolved content\n',
             'module/core/two/common.h': 'second OpenZFS common\n',
@@ -77,7 +79,10 @@ class OzfsDiffTest(unittest.TestCase):
         for name, contents in files.items():
             path = repo / name
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(contents, encoding='utf-8')
+            if isinstance(contents, bytes):
+                path.write_bytes(contents)
+            else:
+                path.write_text(contents, encoding='utf-8')
         self._git(repo, 'add', '.')
         self._git(repo, 'commit', '--quiet', '-m', 'test tree')
 
@@ -94,6 +99,8 @@ class OzfsDiffTest(unittest.TestCase):
             'tests-openzfs.txt': 'tests\n',
             'exclude-illumos.txt': 'src/excluded\n',
             'exclude-openzfs.txt': 'excluded\n',
+            'exception-illumos.txt': 'src/core/a.c\n',
+            'exception-openzfs.txt': 'module/core/a.c\n',
         }
         for name, contents in paths.items():
             (self.lists / name).write_text(contents, encoding='utf-8')
@@ -144,13 +151,13 @@ class OzfsDiffTest(unittest.TestCase):
         self.assertIn(
             f'OpenZFS commit: {self._git(self.openzfs, "rev-parse", "HEAD")}',
             result.stdout)
-        self.assertIn('core: illumos=7 OpenZFS=5', result.stdout)
+        self.assertIn('core: illumos=8 OpenZFS=6', result.stdout)
         self.assertIn('platform: illumos=0 OpenZFS=2', result.stdout)
         self.assertIn('userland: illumos=1 OpenZFS=1', result.stdout)
         self.assertIn('tests: illumos=0 OpenZFS=1', result.stdout)
         self.assertIn('exclude: illumos=1 OpenZFS=0', result.stdout)
         self.assertIn(
-            'core: basename=2 content=2 ambiguous=1 '
+            'core: basename=3 content=2 ambiguous=1 '
             'illumos-unmatched=3 OpenZFS-unmatched=3',
             result.stdout)
         self.assertIn(
@@ -163,6 +170,14 @@ class OzfsDiffTest(unittest.TestCase):
             result.stdout)
         self.assertIn(
             'platform supplement: matched=1 unmatched=1',
+            result.stdout)
+        self.assertIn(
+            'core: identical=2 text=1 binary=1 exceptional=1 '
+            'added=1 deleted=1',
+            result.stdout)
+        self.assertIn(
+            'userland: identical=0 text=1 binary=0 exceptional=0 '
+            'added=1 deleted=1',
             result.stdout)
 
     def test_defaults_illumos_repository_to_current_directory(self):
@@ -220,6 +235,7 @@ class OzfsDiffTest(unittest.TestCase):
             sorted(path.name for path in output.iterdir()),
             [
                 'ambiguous.tsv',
+                'comparisons.tsv',
                 'matches.tsv',
                 'summary.txt',
                 'unmatched-illumos.txt',
@@ -230,6 +246,20 @@ class OzfsDiffTest(unittest.TestCase):
             'core\tcontent\tplatform\tsrc/core/old_name.c\t'
             'module/platform/new_name.c\t',
             matches)
+        a_match = next(
+            line for line in matches.splitlines()
+            if '\tsrc/core/a.c\tmodule/core/a.c\t' in line)
+        self.assertTrue(a_match.endswith('\ttrue'), a_match)
+        comparisons = (
+            output / 'comparisons.tsv').read_text(encoding='utf-8')
+        self.assertIn(
+            'core\ttext\ttrue\t1\t1\tsrc/core/a.c\t'
+            'module/core/a.c\n',
+            comparisons)
+        self.assertIn(
+            'core\tbinary\tfalse\t0\t0\tsrc/core/binary.dat\t'
+            'module/core/binary.dat\n',
+            comparisons)
         ambiguous = (output / 'ambiguous.tsv').read_text(encoding='utf-8')
         self.assertIn(
             'core\tcommon.h\tillumos\tsrc/core/one/common.h\t',

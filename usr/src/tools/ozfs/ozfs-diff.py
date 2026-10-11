@@ -19,6 +19,7 @@ from collections import defaultdict
 import configparser
 import csv
 from dataclasses import dataclass
+import difflib
 import io
 import os
 from pathlib import Path, PurePosixPath
@@ -27,6 +28,7 @@ import sys
 
 
 GROUPS = ('core', 'platform', 'userland', 'tests', 'exclude')
+MODIFIERS = ('exception',)
 SIDES = ('illumos', 'openzfs')
 ALLOWED_SETTINGS = {
     'repositories': {'openzfs', 'illumos'},
@@ -59,6 +61,16 @@ class MatchResult:
     ambiguous_basenames: set
     illumos_unmatched: dict
     openzfs_unmatched: dict
+
+
+@dataclass(frozen=True)
+class FileComparison:
+    group: str
+    match: FileMatch
+    kind: str
+    exceptional: bool
+    added: int
+    deleted: int
 
 
 def parse_args():
@@ -140,7 +152,7 @@ def resolve_config_path(value, base):
 
 def load_path_lists(lists_dir):
     result = {}
-    for group in GROUPS:
+    for group in GROUPS + MODIFIERS:
         result[group] = {}
         for side in SIDES:
             name = f'{group}-{side}.txt'
@@ -292,7 +304,7 @@ def format_match_summary(group, result):
 
 def build_summary(
         illumos_repo, illumos_commit, openzfs_repo, openzfs_commit,
-        files, match_results):
+        files, match_results, comparisons):
     stream = io.StringIO()
     print(f'illumos repository: {illumos_repo}', file=stream)
     print(f'illumos commit: {illumos_commit}', file=stream)
@@ -320,10 +332,32 @@ def build_summary(
         f'  platform supplement: matched={platform_matched} '
         f'unmatched={platform_unmatched}',
         file=stream)
+    print('differences:', file=stream)
+    for group in ('core', 'userland', 'tests'):
+        group_comparisons = [
+            comparison for comparison in comparisons
+            if comparison.group == group
+        ]
+        included = [
+            comparison for comparison in group_comparisons
+            if not comparison.exceptional
+        ]
+        kinds = defaultdict(int)
+        for comparison in included:
+            kinds[comparison.kind] += 1
+        exceptional_count = sum(
+            item.exceptional for item in group_comparisons)
+        print(
+            f'  {group}: identical={kinds["identical"]} '
+            f'text={kinds["text"]} binary={kinds["binary"]} '
+            f'exceptional={exceptional_count} '
+            f'added={sum(item.added for item in included)} '
+            f'deleted={sum(item.deleted for item in included)}',
+            file=stream)
     return stream.getvalue()
 
 
-def write_report(path, summary, files, match_results):
+def write_report(path, summary, files, match_results, comparisons):
     output = Path(path).expanduser()
     if not output.is_absolute():
         output = Path.cwd() / output
@@ -382,8 +416,13 @@ def write_report(path, summary, files, match_results):
     write_tsv(
         output / 'matches.tsv',
         ('group', 'method', 'openzfs-source', 'illumos-path',
-         'openzfs-path', 'illumos-oid', 'openzfs-oid'),
-        match_rows)
+         'openzfs-path', 'illumos-oid', 'openzfs-oid', 'exceptional'),
+        add_exception_flags(match_rows, comparisons))
+    write_tsv(
+        output / 'comparisons.tsv',
+        ('group', 'kind', 'exceptional', 'added', 'deleted',
+         'illumos-path', 'openzfs-path'),
+        comparison_rows(comparisons))
     write_tsv(
         output / 'ambiguous.tsv',
         ('group', 'basename', 'side', 'path', 'oid'),
@@ -409,6 +448,45 @@ def openzfs_source(group, path, platform_paths):
     return group
 
 
+def add_exception_flags(match_rows, comparisons):
+    exceptional_pairs = {
+        (comparison.match.illumos.path, comparison.match.openzfs.path)
+        for comparison in comparisons
+        if comparison.exceptional
+    }
+    return [
+        row + (
+            boolean_text((row[3], row[4]) in exceptional_pairs),
+        )
+        for row in match_rows
+    ]
+
+
+def comparison_rows(comparisons):
+    return [
+        (
+            comparison.group,
+            comparison.kind,
+            boolean_text(comparison.exceptional),
+            comparison.added,
+            comparison.deleted,
+            comparison.match.illumos.path,
+            comparison.match.openzfs.path,
+        )
+        for comparison in sorted(
+            comparisons,
+            key=lambda item: (
+                item.group,
+                item.match.illumos.path,
+                item.match.openzfs.path,
+            ))
+    ]
+
+
+def boolean_text(value):
+    return 'true' if value else 'false'
+
+
 def write_tsv(path, header, rows):
     try:
         with path.open('w', encoding='utf-8', newline='') as stream:
@@ -418,6 +496,88 @@ def write_tsv(path, header, rows):
     except OSError as error:
         raise OzfsDiffError(
             f'cannot write report file {path}: {error.strerror}')
+
+
+def compare_matches(
+        illumos_repo, openzfs_repo, match_results, exception_paths):
+    matches = [
+        (group, match)
+        for group, result in match_results.items()
+        for match in result.matches
+    ]
+    illumos_blobs = read_blobs(
+        illumos_repo, {match.illumos.oid for _group, match in matches})
+    openzfs_blobs = read_blobs(
+        openzfs_repo, {match.openzfs.oid for _group, match in matches})
+
+    comparisons = []
+    for group, match in matches:
+        exceptional = (
+            match.illumos.path in exception_paths['illumos'] or
+            match.openzfs.path in exception_paths['openzfs']
+        )
+        kind, added, deleted = compare_blobs(
+            illumos_blobs[match.illumos.oid],
+            openzfs_blobs[match.openzfs.oid])
+        comparisons.append(FileComparison(
+            group=group,
+            match=match,
+            kind=kind,
+            exceptional=exceptional,
+            added=added,
+            deleted=deleted,
+        ))
+    return comparisons
+
+
+def read_blobs(repo, object_ids):
+    requested = sorted(object_ids)
+    if not requested:
+        return {}
+    result = subprocess.run(
+        ['git', '-C', str(repo), 'cat-file', '--batch'],
+        input=(''.join(f'{oid}\n' for oid in requested)).encode(),
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    if result.returncode != 0:
+        message = result.stderr.decode(errors='replace').strip()
+        raise OzfsDiffError(f'cannot read Git blobs: {message}')
+
+    stream = io.BytesIO(result.stdout)
+    blobs = {}
+    for requested_oid in requested:
+        header = stream.readline().rstrip(b'\n').split()
+        if len(header) != 3 or header[1] != b'blob':
+            raise OzfsDiffError(
+                f'unexpected git cat-file response for {requested_oid}')
+        size = int(header[2])
+        data = stream.read(size)
+        if len(data) != size or stream.read(1) != b'\n':
+            raise OzfsDiffError(
+                f'truncated git cat-file response for {requested_oid}')
+        blobs[requested_oid] = data
+    return blobs
+
+
+def compare_blobs(illumos_data, openzfs_data):
+    if illumos_data == openzfs_data:
+        return 'identical', 0, 0
+    if b'\0' in illumos_data or b'\0' in openzfs_data:
+        return 'binary', 0, 0
+
+    matcher = difflib.SequenceMatcher(
+        None,
+        illumos_data.splitlines(keepends=True),
+        openzfs_data.splitlines(keepends=True),
+        autojunk=False)
+    added = 0
+    deleted = 0
+    for operation, illumos_start, illumos_end, openzfs_start, openzfs_end in (
+            matcher.get_opcodes()):
+        if operation in ('replace', 'delete'):
+            deleted += illumos_end - illumos_start
+        if operation in ('replace', 'insert'):
+            added += openzfs_end - openzfs_start
+    return 'text', added, deleted
 
 
 def run_git(repo, *args):
@@ -458,12 +618,19 @@ def run():
         'tests': match_files(
             files['tests']['illumos'], files['tests']['openzfs']),
     }
+    exception_paths = {
+        side: set(path_lists['exception'][side])
+        for side in SIDES
+    }
+    comparisons = compare_matches(
+        illumos_repo, openzfs_repo, match_results, exception_paths)
 
     summary = build_summary(
         illumos_repo, illumos_commit, openzfs_repo, openzfs_commit,
-        files, match_results)
+        files, match_results, comparisons)
     if args.output:
-        write_report(args.output, summary, files, match_results)
+        write_report(
+            args.output, summary, files, match_results, comparisons)
     print(summary, end='')
 
 
