@@ -61,6 +61,7 @@ manlink/manlink
 mbh_patch/mbh_patch
 ndrgen/ndrgen
 ndrgen/ndrgen1
+ozfs/ozfs-diff
 protocmp/protocmp
 protolist/protolist
 rpcgen/rpcgen

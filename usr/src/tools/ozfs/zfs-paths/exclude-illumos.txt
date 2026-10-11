@@ -1,0 +1,3 @@
+usr/src/cmd/mdb/common/modules/zfs
+usr/src/uts/common/fs/vnode.c
+usr/src/tools/quick/make-zfs

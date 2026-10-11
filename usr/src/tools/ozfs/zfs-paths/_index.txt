@@ -1,0 +1,34 @@
+Each comparison group has an illumos path list and an OpenZFS path list:
+
+    <group>-illumos.txt
+    <group>-openzfs.txt
+
+The group files contain one path per line, without comments or blank lines,
+so their contents can be passed directly as command arguments.
+
+core
+    Core and shared ZFS implementation.
+
+platform
+    Platform-specific ZFS implementation.  OpenZFS separates its Linux
+    implementation, while the corresponding illumos sources are mixed into
+    the illumos core tree.  Therefore platform-illumos.txt is empty.
+
+userland
+    ZFS libraries and commands.  The OpenZFS list includes both file and
+    directory forms of zhack and ztest because their layout varies across
+    history.
+
+tests
+    ZFS test suites.  Keep this group separate so the large number of tests
+    does not dominate sibling-similarity measurements.
+
+exclude
+    Unpaired integration, support, build, packaging, and documentation paths.
+    These are reference paths, not a comparison group.  Exclude them from
+    sibling-similarity measurements.
+
+Known exceptional files must remain in their normal groups but be handled
+separately by the comparison tool.  In particular, illumos full NFS ACL
+support in usr/src/uts/common/fs/zfs/zfs_acl.c must be preserved.  The
+OpenZFS implementation was rewritten and should not affect sibling ranking.

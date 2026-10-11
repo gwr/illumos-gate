@@ -1,0 +1,5 @@
+usr/src/uts/common/fs/zfs
+usr/src/common/zfs
+usr/src/uts/common/sys/fs/zfs.h
+usr/src/uts/common/sys/fs/zut.h
+usr/src/uts/common/sys/fm/fs/zfs.h

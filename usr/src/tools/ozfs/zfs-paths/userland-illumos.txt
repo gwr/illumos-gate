@@ -1,0 +1,11 @@
+usr/src/lib/libzfs
+usr/src/lib/libzfs_core
+usr/src/lib/libzpool
+usr/src/lib/libzutil
+usr/src/cmd/zfs
+usr/src/cmd/zpool
+usr/src/cmd/zdb
+usr/src/cmd/zhack
+usr/src/cmd/zinject
+usr/src/cmd/zlook
+usr/src/cmd/ztest

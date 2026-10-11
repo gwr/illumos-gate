@@ -1,0 +1,12 @@
+lib/libzfs
+lib/libzfs_core
+lib/libzpool
+lib/libzutil
+cmd/zfs
+cmd/zpool
+cmd/zdb
+cmd/zhack
+cmd/zhack.c
+cmd/zinject
+cmd/ztest
+cmd/ztest.c
