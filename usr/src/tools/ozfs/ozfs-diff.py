@@ -15,7 +15,11 @@
 #
 
 import argparse
+from collections import defaultdict
 import configparser
+import csv
+from dataclasses import dataclass
+import io
 import os
 from pathlib import Path, PurePosixPath
 import subprocess
@@ -34,6 +38,29 @@ class OzfsDiffError(Exception):
     pass
 
 
+@dataclass(frozen=True)
+class FileInfo:
+    path: str
+    basename: str
+    oid: str
+    size: int
+
+
+@dataclass(frozen=True)
+class FileMatch:
+    illumos: FileInfo
+    openzfs: FileInfo
+    method: str
+
+
+@dataclass
+class MatchResult:
+    matches: list
+    ambiguous_basenames: set
+    illumos_unmatched: dict
+    openzfs_unmatched: dict
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description='Compare ZFS source trees from illumos and OpenZFS')
@@ -46,6 +73,9 @@ def parse_args():
     parser.add_argument(
         '--ilc', '--illumos-commit', dest='illumos_commit', required=True,
         help='illumos commit to compare')
+    parser.add_argument(
+        '--out', dest='output',
+        help='create detailed matching reports in this new directory')
     return parser.parse_args()
 
 
@@ -164,19 +194,230 @@ def resolve_commit(repo, value, label):
 
 def enumerate_files(repo, commit, paths):
     if not paths:
-        return set()
+        return {}
 
     result = run_git(
-        repo, 'ls-tree', '-r', '--name-only', '-z', commit, '--', *paths)
+        repo, 'ls-tree', '-r', '-l', '-z', commit, '--', *paths)
     if result.returncode != 0:
         message = result.stderr.decode(errors='replace').strip()
         raise OzfsDiffError(f'cannot enumerate files at {commit}: {message}')
 
-    return {
-        os.fsdecode(name)
-        for name in result.stdout.split(b'\0')
-        if name
+    files = {}
+    for record in result.stdout.split(b'\0'):
+        if not record:
+            continue
+        metadata, encoded_path = record.split(b'\t', 1)
+        _mode, object_type, encoded_oid, encoded_size = metadata.split()
+        if object_type != b'blob':
+            continue
+        path = os.fsdecode(encoded_path)
+        files[path] = FileInfo(
+            path=path,
+            basename=PurePosixPath(path).name,
+            oid=encoded_oid.decode(),
+            size=int(encoded_size),
+        )
+    return files
+
+
+def match_files(illumos_files, openzfs_files):
+    illumos_unmatched = dict(illumos_files)
+    openzfs_unmatched = dict(openzfs_files)
+    matches = []
+
+    match_unique_values(
+        illumos_unmatched, openzfs_unmatched, matches,
+        key=lambda item: item.basename, method='basename')
+    match_unique_values(
+        illumos_unmatched, openzfs_unmatched, matches,
+        key=lambda item: item.oid, method='content')
+    match_unique_values(
+        illumos_unmatched, openzfs_unmatched, matches,
+        key=lambda item: item.basename, method='basename')
+
+    illumos_names = {
+        item.basename for item in illumos_unmatched.values()
     }
+    openzfs_names = {
+        item.basename for item in openzfs_unmatched.values()
+    }
+    return MatchResult(
+        matches=matches,
+        ambiguous_basenames=illumos_names & openzfs_names,
+        illumos_unmatched=illumos_unmatched,
+        openzfs_unmatched=openzfs_unmatched,
+    )
+
+
+def match_unique_values(
+        illumos_unmatched, openzfs_unmatched, matches, *, key, method):
+    illumos_by_value = index_files(illumos_unmatched.values(), key)
+    openzfs_by_value = index_files(openzfs_unmatched.values(), key)
+
+    for value in sorted(illumos_by_value.keys() & openzfs_by_value.keys()):
+        illumos_candidates = illumos_by_value[value]
+        openzfs_candidates = openzfs_by_value[value]
+        if len(illumos_candidates) != 1 or len(openzfs_candidates) != 1:
+            continue
+        illumos_file = illumos_candidates[0]
+        openzfs_file = openzfs_candidates[0]
+        matches.append(FileMatch(
+            illumos=illumos_file,
+            openzfs=openzfs_file,
+            method=method,
+        ))
+        del illumos_unmatched[illumos_file.path]
+        del openzfs_unmatched[openzfs_file.path]
+
+
+def index_files(files, key):
+    result = defaultdict(list)
+    for item in files:
+        result[key(item)].append(item)
+    return result
+
+
+def format_match_summary(group, result):
+    methods = defaultdict(int)
+    for match in result.matches:
+        methods[match.method] += 1
+    return (
+        f'  {group}: basename={methods["basename"]} '
+        f'content={methods["content"]} '
+        f'ambiguous={len(result.ambiguous_basenames)} '
+        f'illumos-unmatched={len(result.illumos_unmatched)} '
+        f'OpenZFS-unmatched={len(result.openzfs_unmatched)}'
+    )
+
+
+def build_summary(
+        illumos_repo, illumos_commit, openzfs_repo, openzfs_commit,
+        files, match_results):
+    stream = io.StringIO()
+    print(f'illumos repository: {illumos_repo}', file=stream)
+    print(f'illumos commit: {illumos_commit}', file=stream)
+    print(f'OpenZFS repository: {openzfs_repo}', file=stream)
+    print(f'OpenZFS commit: {openzfs_commit}', file=stream)
+    print('groups:', file=stream)
+    for group in GROUPS:
+        illumos_count = len(files[group]['illumos'])
+        openzfs_count = len(files[group]['openzfs'])
+        print(
+            f'  {group}: illumos={illumos_count} OpenZFS={openzfs_count}',
+            file=stream)
+    print('matching:', file=stream)
+    for group in ('core', 'userland', 'tests'):
+        print(format_match_summary(group, match_results[group]), file=stream)
+
+    platform_paths = set(files['platform']['openzfs'])
+    platform_matched = sum(
+        match.openzfs.path in platform_paths
+        for match in match_results['core'].matches)
+    platform_unmatched = sum(
+        path in platform_paths
+        for path in match_results['core'].openzfs_unmatched)
+    print(
+        f'  platform supplement: matched={platform_matched} '
+        f'unmatched={platform_unmatched}',
+        file=stream)
+    return stream.getvalue()
+
+
+def write_report(path, summary, files, match_results):
+    output = Path(path).expanduser()
+    if not output.is_absolute():
+        output = Path.cwd() / output
+    output = output.resolve()
+    try:
+        output.mkdir(parents=True)
+    except FileExistsError:
+        raise OzfsDiffError(f'output path already exists: {output}')
+    except OSError as error:
+        raise OzfsDiffError(
+            f'cannot create output directory {output}: {error.strerror}')
+
+    platform_paths = set(files['platform']['openzfs'])
+    match_rows = []
+    ambiguous_rows = []
+    illumos_unmatched_rows = []
+    openzfs_unmatched_rows = []
+
+    for group in ('core', 'userland', 'tests'):
+        result = match_results[group]
+        for match in sorted(
+                result.matches,
+                key=lambda item: (item.illumos.path, item.openzfs.path)):
+            source = openzfs_source(group, match.openzfs.path, platform_paths)
+            match_rows.append((
+                group,
+                match.method,
+                source,
+                match.illumos.path,
+                match.openzfs.path,
+                match.illumos.oid,
+                match.openzfs.oid,
+            ))
+
+        for basename in sorted(result.ambiguous_basenames):
+            for side, unmatched in (
+                    ('illumos', result.illumos_unmatched),
+                    ('OpenZFS', result.openzfs_unmatched)):
+                candidates = (
+                    item for item in unmatched.values()
+                    if item.basename == basename)
+                for item in sorted(candidates, key=lambda entry: entry.path):
+                    ambiguous_rows.append((
+                        group, basename, side, item.path, item.oid))
+
+        for item in sorted(
+                result.illumos_unmatched.values(),
+                key=lambda entry: entry.path):
+            illumos_unmatched_rows.append((group, item.path))
+        for item in sorted(
+                result.openzfs_unmatched.values(),
+                key=lambda entry: entry.path):
+            source = openzfs_source(group, item.path, platform_paths)
+            openzfs_unmatched_rows.append((group, source, item.path))
+
+    write_tsv(
+        output / 'matches.tsv',
+        ('group', 'method', 'openzfs-source', 'illumos-path',
+         'openzfs-path', 'illumos-oid', 'openzfs-oid'),
+        match_rows)
+    write_tsv(
+        output / 'ambiguous.tsv',
+        ('group', 'basename', 'side', 'path', 'oid'),
+        ambiguous_rows)
+    write_tsv(
+        output / 'unmatched-illumos.txt',
+        ('group', 'path'),
+        illumos_unmatched_rows)
+    write_tsv(
+        output / 'unmatched-openzfs.txt',
+        ('group', 'source', 'path'),
+        openzfs_unmatched_rows)
+    try:
+        (output / 'summary.txt').write_text(summary, encoding='utf-8')
+    except OSError as error:
+        raise OzfsDiffError(
+            f'cannot write report in {output}: {error.strerror}')
+
+
+def openzfs_source(group, path, platform_paths):
+    if group == 'core' and path in platform_paths:
+        return 'platform'
+    return group
+
+
+def write_tsv(path, header, rows):
+    try:
+        with path.open('w', encoding='utf-8', newline='') as stream:
+            writer = csv.writer(stream, delimiter='\t', lineterminator='\n')
+            writer.writerow(header)
+            writer.writerows(rows)
+    except OSError as error:
+        raise OzfsDiffError(
+            f'cannot write report file {path}: {error.strerror}')
 
 
 def run_git(repo, *args):
@@ -197,23 +438,33 @@ def run():
     openzfs_commit = resolve_commit(
         openzfs_repo, args.openzfs_commit, 'OpenZFS')
 
-    counts = {}
+    files = {}
     for group in GROUPS:
         illumos_files = enumerate_files(
             illumos_repo, illumos_commit, path_lists[group]['illumos'])
         openzfs_files = enumerate_files(
             openzfs_repo, openzfs_commit, path_lists[group]['openzfs'])
-        counts[group] = (len(illumos_files), len(openzfs_files))
+        files[group] = {
+            'illumos': illumos_files,
+            'openzfs': openzfs_files,
+        }
 
-    print(f'illumos repository: {illumos_repo}')
-    print(f'illumos commit: {illumos_commit}')
-    print(f'OpenZFS repository: {openzfs_repo}')
-    print(f'OpenZFS commit: {openzfs_commit}')
-    print('groups:')
-    for group in GROUPS:
-        illumos_count, openzfs_count = counts[group]
-        print(
-            f'  {group}: illumos={illumos_count} OpenZFS={openzfs_count}')
+    core_openzfs = dict(files['core']['openzfs'])
+    core_openzfs.update(files['platform']['openzfs'])
+    match_results = {
+        'core': match_files(files['core']['illumos'], core_openzfs),
+        'userland': match_files(
+            files['userland']['illumos'], files['userland']['openzfs']),
+        'tests': match_files(
+            files['tests']['illumos'], files['tests']['openzfs']),
+    }
+
+    summary = build_summary(
+        illumos_repo, illumos_commit, openzfs_repo, openzfs_commit,
+        files, match_results)
+    if args.output:
+        write_report(args.output, summary, files, match_results)
+    print(summary, end='')
 
 
 def main():

@@ -38,11 +38,21 @@ class OzfsDiffTest(unittest.TestCase):
         self._create_repo(self.illumos, {
             'src/core/a.c': 'illumos a\n',
             'src/core/nested/b.c': 'illumos b\n',
+            'src/core/old_name.c': 'relocated content\n',
+            'src/core/one/common.h': 'first illumos common\n',
+            'src/core/one/resolved.h': 'identical resolved content\n',
+            'src/core/two/common.h': 'second illumos common\n',
+            'src/core/two/resolved.h': 'remaining illumos resolved\n',
             'src/user/u.c': 'illumos user\n',
             'src/excluded/e.c': 'illumos excluded\n',
         })
         self._create_repo(self.openzfs, {
             'module/core/a.c': 'openzfs a\n',
+            'module/core/one/common.h': 'first OpenZFS common\n',
+            'module/core/one/resolved.h': 'identical resolved content\n',
+            'module/core/two/common.h': 'second OpenZFS common\n',
+            'module/core/two/resolved.h': 'remaining OpenZFS resolved\n',
+            'module/platform/new_name.c': 'relocated content\n',
             'module/platform/p.c': 'openzfs platform\n',
             'cmd/user/u.c': 'openzfs user\n',
             'tests/t.ksh': 'openzfs test\n',
@@ -134,11 +144,26 @@ class OzfsDiffTest(unittest.TestCase):
         self.assertIn(
             f'OpenZFS commit: {self._git(self.openzfs, "rev-parse", "HEAD")}',
             result.stdout)
-        self.assertIn('core: illumos=2 OpenZFS=1', result.stdout)
-        self.assertIn('platform: illumos=0 OpenZFS=1', result.stdout)
+        self.assertIn('core: illumos=7 OpenZFS=5', result.stdout)
+        self.assertIn('platform: illumos=0 OpenZFS=2', result.stdout)
         self.assertIn('userland: illumos=1 OpenZFS=1', result.stdout)
         self.assertIn('tests: illumos=0 OpenZFS=1', result.stdout)
         self.assertIn('exclude: illumos=1 OpenZFS=0', result.stdout)
+        self.assertIn(
+            'core: basename=2 content=2 ambiguous=1 '
+            'illumos-unmatched=3 OpenZFS-unmatched=3',
+            result.stdout)
+        self.assertIn(
+            'userland: basename=1 content=0 ambiguous=0 '
+            'illumos-unmatched=0 OpenZFS-unmatched=0',
+            result.stdout)
+        self.assertIn(
+            'tests: basename=0 content=0 ambiguous=0 '
+            'illumos-unmatched=0 OpenZFS-unmatched=1',
+            result.stdout)
+        self.assertIn(
+            'platform supplement: matched=1 unmatched=1',
+            result.stdout)
 
     def test_defaults_illumos_repository_to_current_directory(self):
         config = self._write_config(
@@ -183,6 +208,51 @@ class OzfsDiffTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(
             'missing path list: tests-openzfs.txt', result.stderr)
+
+    def test_writes_detailed_report_directory(self):
+        config = self._write_config()
+        output = self.root / 'report'
+
+        result = self._run(config, '--out', str(output))
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            sorted(path.name for path in output.iterdir()),
+            [
+                'ambiguous.tsv',
+                'matches.tsv',
+                'summary.txt',
+                'unmatched-illumos.txt',
+                'unmatched-openzfs.txt',
+            ])
+        matches = (output / 'matches.tsv').read_text(encoding='utf-8')
+        self.assertIn(
+            'core\tcontent\tplatform\tsrc/core/old_name.c\t'
+            'module/platform/new_name.c\t',
+            matches)
+        ambiguous = (output / 'ambiguous.tsv').read_text(encoding='utf-8')
+        self.assertIn(
+            'core\tcommon.h\tillumos\tsrc/core/one/common.h\t',
+            ambiguous)
+        openzfs_unmatched = (
+            output / 'unmatched-openzfs.txt').read_text(encoding='utf-8')
+        self.assertIn(
+            'core\tplatform\tmodule/platform/p.c\n',
+            openzfs_unmatched)
+        self.assertEqual(
+            (output / 'summary.txt').read_text(encoding='utf-8'),
+            result.stdout)
+
+    def test_refuses_existing_output_directory(self):
+        config = self._write_config()
+        output = self.root / 'report'
+        output.mkdir()
+
+        result = self._run(config, '--out', str(output))
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            f'output path already exists: {output.resolve()}', result.stderr)
 
 
 if __name__ == '__main__':
