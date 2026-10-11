@@ -1,2 +1,2 @@
+include/os/linux/zfs/sys
 module/os/linux/zfs
-include/os/linux/zfs

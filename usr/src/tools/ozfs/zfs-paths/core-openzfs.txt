@@ -1,4 +1,8 @@
-module/zfs
-module/zcommon
 module/lua
+module/zcommon
 include/sys
+include/sys
+include/sys/fs/zfs.h
+include/sys/fs/zut.h
+include/sys/fm/fs/zfs.h
+module/zfs

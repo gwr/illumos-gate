@@ -27,7 +27,8 @@ import subprocess
 import sys
 
 
-GROUPS = ('core', 'platform', 'userland', 'tests', 'exclude')
+COMPARE_GROUPS = ('core', 'platform', 'userland', 'tests')
+GROUPS = COMPARE_GROUPS + ('exclude',)
 MODIFIERS = ('exception',)
 SIDES = ('illumos', 'openzfs')
 ALLOWED_SETTINGS = {
@@ -173,6 +174,17 @@ def load_path_lists(lists_dir):
                 validate_repo_path(value, name, line_number)
                 paths.append(value)
             result[group][side] = paths
+
+    for group in COMPARE_GROUPS:
+        illumos_name = f'{group}-illumos.txt'
+        openzfs_name = f'{group}-openzfs.txt'
+        illumos_count = len(result[group]['illumos'])
+        openzfs_count = len(result[group]['openzfs'])
+        if illumos_count != openzfs_count:
+            raise OzfsDiffError(
+                f'path map length mismatch: {illumos_name} has '
+                f'{illumos_count} entries; {openzfs_name} has '
+                f'{openzfs_count}')
     return result
 
 
@@ -232,70 +244,83 @@ def enumerate_files(repo, commit, paths):
     return files
 
 
-def match_files(illumos_files, openzfs_files):
+def match_path_mappings(illumos_files, openzfs_files, mappings):
     illumos_unmatched = dict(illumos_files)
     openzfs_unmatched = dict(openzfs_files)
     matches = []
 
-    match_unique_values(
-        illumos_unmatched, openzfs_unmatched, matches,
-        key=lambda item: item.basename, method='basename')
-    match_unique_values(
-        illumos_unmatched, openzfs_unmatched, matches,
-        key=lambda item: item.oid, method='content')
-    match_unique_values(
-        illumos_unmatched, openzfs_unmatched, matches,
-        key=lambda item: item.basename, method='basename')
+    for illumos_root, openzfs_root in mappings:
+        match_path_mapping(
+            illumos_unmatched, openzfs_unmatched, matches,
+            illumos_root, openzfs_root)
 
-    illumos_names = {
-        item.basename for item in illumos_unmatched.values()
-    }
-    openzfs_names = {
-        item.basename for item in openzfs_unmatched.values()
-    }
     return MatchResult(
         matches=matches,
-        ambiguous_basenames=illumos_names & openzfs_names,
+        ambiguous_basenames=set(),
         illumos_unmatched=illumos_unmatched,
         openzfs_unmatched=openzfs_unmatched,
     )
 
 
-def match_unique_values(
-        illumos_unmatched, openzfs_unmatched, matches, *, key, method):
-    illumos_by_value = index_files(illumos_unmatched.values(), key)
-    openzfs_by_value = index_files(openzfs_unmatched.values(), key)
+def match_path_mapping(
+        illumos_unmatched, openzfs_unmatched, matches,
+        illumos_root, openzfs_root):
+    illumos_candidates = files_under_root(illumos_unmatched, illumos_root)
+    openzfs_candidates = files_under_root(openzfs_unmatched, openzfs_root)
 
-    for value in sorted(illumos_by_value.keys() & openzfs_by_value.keys()):
-        illumos_candidates = illumos_by_value[value]
-        openzfs_candidates = openzfs_by_value[value]
-        if len(illumos_candidates) != 1 or len(openzfs_candidates) != 1:
-            continue
-        illumos_file = illumos_candidates[0]
-        openzfs_file = openzfs_candidates[0]
-        matches.append(FileMatch(
-            illumos=illumos_file,
-            openzfs=openzfs_file,
-            method=method,
-        ))
-        del illumos_unmatched[illumos_file.path]
-        del openzfs_unmatched[openzfs_file.path]
+    if (illumos_root in illumos_candidates and
+            openzfs_root in openzfs_candidates):
+        add_path_match(
+            illumos_unmatched, openzfs_unmatched, matches,
+            illumos_candidates[illumos_root],
+            openzfs_candidates[openzfs_root])
+        return
+
+    illumos_by_relative = {
+        relative_path(illumos_root, item.path): item
+        for item in illumos_candidates.values()
+    }
+    openzfs_by_relative = {
+        relative_path(openzfs_root, item.path): item
+        for item in openzfs_candidates.values()
+    }
+    for relative in sorted(
+            illumos_by_relative.keys() & openzfs_by_relative.keys()):
+        add_path_match(
+            illumos_unmatched, openzfs_unmatched, matches,
+            illumos_by_relative[relative],
+            openzfs_by_relative[relative])
 
 
-def index_files(files, key):
-    result = defaultdict(list)
-    for item in files:
-        result[key(item)].append(item)
-    return result
+def files_under_root(files, root):
+    prefix = f'{root}/'
+    return {
+        path: item for path, item in files.items()
+        if path == root or path.startswith(prefix)
+    }
+
+
+def relative_path(root, path):
+    if path == root:
+        return PurePosixPath(path).name
+    return path[len(root) + 1:]
+
+
+def add_path_match(
+        illumos_unmatched, openzfs_unmatched, matches,
+        illumos_file, openzfs_file):
+    matches.append(FileMatch(
+        illumos=illumos_file,
+        openzfs=openzfs_file,
+        method='path',
+    ))
+    del illumos_unmatched[illumos_file.path]
+    del openzfs_unmatched[openzfs_file.path]
 
 
 def format_match_summary(group, result):
-    methods = defaultdict(int)
-    for match in result.matches:
-        methods[match.method] += 1
     return (
-        f'  {group}: basename={methods["basename"]} '
-        f'content={methods["content"]} '
+        f'  {group}: path={len(result.matches)} '
         f'ambiguous={len(result.ambiguous_basenames)} '
         f'illumos-unmatched={len(result.illumos_unmatched)} '
         f'OpenZFS-unmatched={len(result.openzfs_unmatched)}'
@@ -609,14 +634,31 @@ def run():
             'openzfs': openzfs_files,
         }
 
+    core_illumos = dict(files['core']['illumos'])
+    core_illumos.update(files['platform']['illumos'])
     core_openzfs = dict(files['core']['openzfs'])
     core_openzfs.update(files['platform']['openzfs'])
+    core_mappings = list(zip(
+        path_lists['core']['illumos'],
+        path_lists['core']['openzfs']))
+    core_mappings.extend(zip(
+        path_lists['platform']['illumos'],
+        path_lists['platform']['openzfs']))
     match_results = {
-        'core': match_files(files['core']['illumos'], core_openzfs),
-        'userland': match_files(
-            files['userland']['illumos'], files['userland']['openzfs']),
-        'tests': match_files(
-            files['tests']['illumos'], files['tests']['openzfs']),
+        'core': match_path_mappings(
+            core_illumos, core_openzfs, core_mappings),
+        'userland': match_path_mappings(
+            files['userland']['illumos'],
+            files['userland']['openzfs'],
+            zip(
+                path_lists['userland']['illumos'],
+                path_lists['userland']['openzfs'])),
+        'tests': match_path_mappings(
+            files['tests']['illumos'],
+            files['tests']['openzfs'],
+            zip(
+                path_lists['tests']['illumos'],
+                path_lists['tests']['openzfs'])),
     }
     exception_paths = {
         side: set(path_lists['exception'][side])

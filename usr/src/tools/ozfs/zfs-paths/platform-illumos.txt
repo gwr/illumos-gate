@@ -1,0 +1,2 @@
+usr/src/uts/common/fs/zfs/sys
+usr/src/uts/common/fs/zfs

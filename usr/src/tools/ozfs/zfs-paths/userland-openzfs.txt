@@ -2,8 +2,8 @@ lib/libzfs
 lib/libzfs_core
 lib/libzpool
 lib/libzutil
-cmd/zfs
 cmd/zpool
+cmd/zfs
 cmd/zdb
 cmd/zhack
 cmd/zhack.c

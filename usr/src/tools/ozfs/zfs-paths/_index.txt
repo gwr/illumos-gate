@@ -6,6 +6,12 @@ Each comparison group has an illumos path list and an OpenZFS path list:
 The group files contain one path per line, without comments or blank lines,
 so their contents can be passed directly as command arguments.
 
+For core, platform, userland, and tests, line N in the illumos list maps to
+line N in the OpenZFS list.  The two lists must have the same number of lines.
+Files are counterparts only when their relative paths agree within one of
+these mapped path pairs.  Earlier, more-specific mappings take precedence over
+later, broader mappings.
+
 core
     Core and shared ZFS implementation.
 

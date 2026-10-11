@@ -91,8 +91,14 @@ class OzfsDiffTest(unittest.TestCase):
         paths = {
             'core-illumos.txt': 'src/core\n',
             'core-openzfs.txt': 'module/core\n',
-            'platform-illumos.txt': '',
-            'platform-openzfs.txt': 'module/platform\n',
+            'platform-illumos.txt': (
+                'src/core/old_name.c\n'
+                'src/core\n'
+            ),
+            'platform-openzfs.txt': (
+                'module/platform/new_name.c\n'
+                'module/platform\n'
+            ),
             'userland-illumos.txt': 'src/user\n',
             'userland-openzfs.txt': 'cmd/user\n',
             'tests-illumos.txt': 'tests\n',
@@ -152,28 +158,28 @@ class OzfsDiffTest(unittest.TestCase):
             f'OpenZFS commit: {self._git(self.openzfs, "rev-parse", "HEAD")}',
             result.stdout)
         self.assertIn('core: illumos=8 OpenZFS=6', result.stdout)
-        self.assertIn('platform: illumos=0 OpenZFS=2', result.stdout)
+        self.assertIn('platform: illumos=8 OpenZFS=2', result.stdout)
         self.assertIn('userland: illumos=1 OpenZFS=1', result.stdout)
         self.assertIn('tests: illumos=0 OpenZFS=1', result.stdout)
         self.assertIn('exclude: illumos=1 OpenZFS=0', result.stdout)
         self.assertIn(
-            'core: basename=3 content=2 ambiguous=1 '
-            'illumos-unmatched=3 OpenZFS-unmatched=3',
+            'core: path=7 ambiguous=0 '
+            'illumos-unmatched=1 OpenZFS-unmatched=1',
             result.stdout)
         self.assertIn(
-            'userland: basename=1 content=0 ambiguous=0 '
+            'userland: path=1 ambiguous=0 '
             'illumos-unmatched=0 OpenZFS-unmatched=0',
             result.stdout)
         self.assertIn(
-            'tests: basename=0 content=0 ambiguous=0 '
+            'tests: path=0 ambiguous=0 '
             'illumos-unmatched=0 OpenZFS-unmatched=1',
             result.stdout)
         self.assertIn(
             'platform supplement: matched=1 unmatched=1',
             result.stdout)
         self.assertIn(
-            'core: identical=2 text=1 binary=1 exceptional=1 '
-            'added=1 deleted=1',
+            'core: identical=2 text=3 binary=1 exceptional=1 '
+            'added=3 deleted=3',
             result.stdout)
         self.assertIn(
             'userland: identical=0 text=1 binary=0 exceptional=0 '
@@ -243,7 +249,7 @@ class OzfsDiffTest(unittest.TestCase):
             ])
         matches = (output / 'matches.tsv').read_text(encoding='utf-8')
         self.assertIn(
-            'core\tcontent\tplatform\tsrc/core/old_name.c\t'
+            'core\tpath\tplatform\tsrc/core/old_name.c\t'
             'module/platform/new_name.c\t',
             matches)
         a_match = next(
@@ -261,9 +267,9 @@ class OzfsDiffTest(unittest.TestCase):
             'module/core/binary.dat\n',
             comparisons)
         ambiguous = (output / 'ambiguous.tsv').read_text(encoding='utf-8')
-        self.assertIn(
-            'core\tcommon.h\tillumos\tsrc/core/one/common.h\t',
-            ambiguous)
+        self.assertEqual(
+            ambiguous,
+            'group\tbasename\tside\tpath\toid\n')
         openzfs_unmatched = (
             output / 'unmatched-openzfs.txt').read_text(encoding='utf-8')
         self.assertIn(
@@ -283,6 +289,19 @@ class OzfsDiffTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(
             f'output path already exists: {output.resolve()}', result.stderr)
+
+    def test_rejects_unpaired_comparison_paths(self):
+        config = self._write_config()
+        with (self.lists / 'core-illumos.txt').open('a') as stream:
+            stream.write('src/extra\n')
+
+        result = self._run(config)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            'path map length mismatch: core-illumos.txt has 2 entries; '
+            'core-openzfs.txt has 1',
+            result.stderr)
 
 
 if __name__ == '__main__':
