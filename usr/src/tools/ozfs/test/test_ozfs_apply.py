@@ -174,7 +174,8 @@ class OzfsApplyTest(unittest.TestCase):
         output = self.root / 'series.mbox'
 
         result = self._run(
-            '--output', str(output), '--work-name', 'test work',
+            '--no-apply', '--output', str(output),
+            '--work-name', 'test work',
             first, second)
 
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -206,7 +207,8 @@ class OzfsApplyTest(unittest.TestCase):
         output = self.root / 'platform.mbox'
 
         result = self._run(
-            '--output', str(output), '--work-name', 'platform work',
+            '--no-apply', '--output', str(output),
+            '--work-name', 'platform work',
             commit)
 
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -249,7 +251,8 @@ class OzfsApplyTest(unittest.TestCase):
         output = self.root / 'file-operations.mbox'
 
         result = self._run(
-            '--output', str(output), '--work-name', 'file operations',
+            '--no-apply', '--output', str(output),
+            '--work-name', 'file operations',
             first, second)
 
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -280,7 +283,8 @@ class OzfsApplyTest(unittest.TestCase):
         output = self.root / 'binary-mode.mbox'
 
         result = self._run(
-            '--output', str(output), '--work-name', 'binary and mode',
+            '--no-apply', '--output', str(output),
+            '--work-name', 'binary and mode',
             first, second)
 
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -293,24 +297,17 @@ class OzfsApplyTest(unittest.TestCase):
             'usr/src/uts/common/fs/zfs/data.bin',
             series)
 
-    def test_combined_patch_is_accepted_by_git_am(self):
+    def test_applies_group_as_one_commit(self):
         first = self._commit('first applicable change', {
             'module/zfs/main.c': 'main changed once\n',
         })
         second = self._commit('second applicable change', {
             'module/zfs/main.c': 'main changed twice\n',
         })
-        output = self.root / 'applicable.mbox'
         result = self._run(
-            '--output', str(output), '--work-name', 'applicable work',
+            '--work-name', 'applicable work',
             first, second)
         self.assertEqual(result.returncode, 0, result.stderr)
-
-        applied = subprocess.run(
-            ['git', '-C', str(self.illumos), 'am', '--3way', str(output)],
-            text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-        self.assertEqual(applied.returncode, 0, applied.stderr)
         self.assertEqual(
             (self.illumos / 'usr/src/uts/common/fs/zfs/main.c').read_text(
                 encoding='utf-8'),
@@ -326,6 +323,7 @@ class OzfsApplyTest(unittest.TestCase):
         self.assertEqual(
             self._git(
                 self.illumos, 'rev-list', '--count', 'HEAD'), '2')
+        self.assertFalse((self.root / '.ozfs-manifest.tsv').exists())
 
     def test_refuses_merge_commit(self):
         base_branch = self._git(
@@ -366,7 +364,8 @@ class OzfsApplyTest(unittest.TestCase):
         output.write_text('keep me\n', encoding='utf-8')
 
         result = self._run(
-            '--output', str(output), '--work-name', 'existing output',
+            '--no-apply', '--output', str(output),
+            '--work-name', 'existing output',
             commit)
 
         self.assertNotEqual(result.returncode, 0)
@@ -409,7 +408,7 @@ class OzfsApplyTest(unittest.TestCase):
             'ambiguous mapping for include/sys/new.h',
             result.stderr)
 
-    def test_requires_check_or_output_in_generation_only_version(self):
+    def test_requires_work_name_for_apply(self):
         commit = self._commit('ordinary change', {
             'module/zfs/main.c': 'main changed\n',
         })
@@ -418,8 +417,123 @@ class OzfsApplyTest(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(
-            'one of --check or --output is required',
+            '--work-name is required when applying',
             result.stderr)
+
+    def test_no_apply_requires_output(self):
+        commit = self._commit('ordinary change', {
+            'module/zfs/main.c': 'main changed\n',
+        })
+
+        result = self._run(
+            '--no-apply', '--work-name', 'ordinary work', commit)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('--output is required with --no-apply', result.stderr)
+
+    def test_refuses_dirty_illumos_worktree_before_apply(self):
+        commit = self._commit('ordinary change', {
+            'module/zfs/main.c': 'main changed\n',
+        })
+        path = self.illumos / 'usr/src/uts/common/fs/zfs/main.c'
+        path.write_text('dirty illumos change\n', encoding='utf-8')
+
+        result = self._run(
+            '--work-name', 'dirty work', commit)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('illumos worktree or index is not clean', result.stderr)
+        self.assertFalse((self.root / '.ozfs-manifest.tsv').exists())
+
+    def test_git_am_conflict_hands_control_to_user(self):
+        local = self.illumos / 'usr/src/uts/common/fs/zfs/main.c'
+        local.write_text('illumos local change\n', encoding='utf-8')
+        self._git(self.illumos, 'add', '.')
+        self._git(
+            self.illumos, 'commit', '--quiet', '-m', 'local divergence')
+        commit = self._commit('conflicting change', {
+            'module/zfs/main.c': 'OpenZFS conflicting change\n',
+        })
+        result = self._run(
+            '--work-name', 'conflicting work', commit)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('git am stopped; resolve it with Git', result.stderr)
+        git_path = self._git(
+            self.illumos, 'rev-parse', '--git-path', 'rebase-apply')
+        operation = Path(git_path)
+        if not operation.is_absolute():
+            operation = self.illumos / operation
+        self.assertTrue(operation.is_dir())
+        manifest = self.root / '.ozfs-manifest.tsv'
+        self.assertTrue(manifest.is_file())
+        self.assertIn(commit, manifest.read_text(encoding='utf-8'))
+        current = subprocess.run(
+            [
+                'git', '-C', str(self.illumos),
+                'am', '--show-current-patch=raw',
+            ],
+            check=True, text=True, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE).stdout
+        self.assertIn('OpenZFS conflicting work import', current)
+
+    def test_refuses_to_start_during_git_am(self):
+        commit = self._commit('conflicting change', {
+            'module/zfs/main.c': 'OpenZFS conflicting change\n',
+        })
+        patch = self.root / 'active.mbox'
+        generated = self._run(
+            '--no-apply', '--output', str(patch),
+            '--work-name', 'active work', commit)
+        self.assertEqual(generated.returncode, 0, generated.stderr)
+        local = self.illumos / 'usr/src/uts/common/fs/zfs/main.c'
+        local.write_text('illumos local change\n', encoding='utf-8')
+        self._git(self.illumos, 'add', '.')
+        self._git(
+            self.illumos, 'commit', '--quiet', '-m', 'local divergence')
+        subprocess.run(
+            ['git', '-C', str(self.illumos), 'am', '--3way', str(patch)],
+            check=False, text=True, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE)
+        result = self._run(
+            '--work-name', 'second work', commit)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('git am operation is already in progress', result.stderr)
+
+    def test_refuses_existing_well_known_manifest(self):
+        commit = self._commit('ordinary change', {
+            'module/zfs/main.c': 'main changed\n',
+        })
+        manifest = self.root / '.ozfs-manifest.tsv'
+        manifest.write_text('previous operation\n', encoding='utf-8')
+
+        result = self._run(
+            '--work-name', 'ordinary work', commit)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            f'output path already exists: {manifest.resolve()}',
+            result.stderr)
+        self.assertEqual(
+            manifest.read_text(encoding='utf-8'),
+            'previous operation\n')
+
+    def test_mapping_failure_retains_well_known_manifest(self):
+        commit = self._commit('unclassified change', {
+            'README.md': 'new documentation\n',
+        })
+
+        result = self._run(
+            '--work-name', 'unclassified work', commit)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('unclassified path: README.md', result.stderr)
+        manifest = self.root / '.ozfs-manifest.tsv'
+        self.assertTrue(manifest.is_file())
+        contents = manifest.read_text(encoding='utf-8')
+        self.assertIn('work\tunclassified work\n', contents)
+        self.assertIn(f'planning\t{commit}\n', contents)
 
 
 if __name__ == '__main__':
