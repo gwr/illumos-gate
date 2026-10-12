@@ -276,6 +276,28 @@ class OzfsApplyTest(unittest.TestCase):
             series)
         self.assertNotIn('config/build.m4', series)
 
+    def test_normalizes_commit_message_line_endings(self):
+        path = self.openzfs / 'module/zfs/main.c'
+        path.write_text('changed\n', encoding='utf-8')
+        self._git(self.openzfs, 'add', 'module/zfs/main.c')
+        message = self.root / 'message'
+        message.write_bytes(
+            b'line ending test\n\nfirst line\r\nsecond line\r\n')
+        self._git(
+            self.openzfs, 'commit', '--quiet', '--cleanup=verbatim',
+            '-F', str(message))
+        commit = self._git(self.openzfs, 'rev-parse', 'HEAD')
+        output = self.root / 'line-endings.mbox'
+
+        result = self._run(
+            '--no-apply', '--output', str(output),
+            '--work-name', 'line ending test', commit)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        series = output.read_bytes()
+        self.assertNotIn(b'\r', series)
+        self.assertIn(b'first line\nsecond line\n', series)
+
     def test_maps_primary_platform_variant_and_reports_alternate(self):
         commit = self._commit('platform change', {
             'module/os/freebsd/zfs/platform.c': 'FreeBSD changed\n',

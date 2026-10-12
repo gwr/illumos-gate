@@ -9,6 +9,9 @@ include/os/linux/spl
 lib/libspl
 module/os/freebsd/spl
 module/os/linux/spl
+include/os/linux/zfs/sys/policy.h
+module/os/linux/zfs/policy.c
+module/os/linux/zfs/zfs_acl.c
 lib/libicp
 lib/libshare
 lib/libzstd
@@ -19,6 +22,7 @@ lib/libuutil
 lib/libzfsbootenv
 lib/libzfs/libzfs.abi
 lib/libzfs_core/libzfs_core.abi
+lib/libzpool/kernel.c
 module/nvpair
 module/unicode
 tests/test-runner

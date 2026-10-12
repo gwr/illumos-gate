@@ -94,7 +94,7 @@ def plan_commit(
     ).decode().rstrip('\n')
     message = git_output(
         openzfs_repo, 'show', '-s', '--format=%B', commit
-    ).decode().rstrip('\n')
+    ).decode().replace('\r\n', '\n').replace('\r', '\n').rstrip('\n')
     return CommitPlan(commit, parent, subject, message, actions)
 
 
