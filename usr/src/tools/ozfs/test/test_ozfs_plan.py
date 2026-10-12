@@ -91,18 +91,27 @@ class OzfsPlanTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         plan = self._load_plan()
         self.assertEqual(plan['commit_count'], 5)
-        self.assertEqual(len(plan['groups']), 3)
+        self.assertEqual(len(plan['groups']), 4)
         first = plan['groups'][0]
         self.assertEqual(
             [item['commit'] for item in first['commits']],
-            [f'{number:040x}' for number in (1, 2, 4)])
-        movement = first['commits'][2]['movement']
+            [f'{number:040x}' for number in (1, 2)])
+        moved = plan['groups'][1]
+        self.assertEqual(
+            [item['commit'] for item in moved['commits']],
+            [f'{4:040x}'])
+        self.assertEqual(moved['moved_after'], 'G0001')
+        self.assertEqual(moved['todo'], 'squash with previous')
+        movement = moved['commits'][0]['movement']
         self.assertEqual(movement['trigger'], 'explicit-pr')
         self.assertEqual(movement['original_ordinal'], 4)
         self.assertEqual(movement['distance_days'], 2.0)
         self.assertEqual(movement['evidence'], 'follow-on to PR #100')
         markdown = self.markdown.read_text()
         self.assertIn('Moved from 0004', markdown)
+        self.assertIn('### NO-COMMIT original 0004', markdown)
+        self.assertIn('Moved to G0002 after G0001', markdown)
+        self.assertIn('Todo: squash with previous', markdown)
         self.assertNotIn('XXX-illumos', markdown)
 
     def test_accepts_decorated_commit_header(self):
@@ -139,12 +148,14 @@ class OzfsPlanTest(unittest.TestCase):
         result = self._run()
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        first = self._load_plan()['groups'][0]
+        plan = self._load_plan()
+        self.assertEqual(len(plan['groups']), 3)
         self.assertEqual(
-            [item['commit'] for item in first['commits']],
-            [f'{number:040x}' for number in (1, 3)])
+            [group['commits'][0]['commit'] for group in plan['groups']],
+            [f'{number:040x}' for number in (1, 3, 2)])
         self.assertEqual(
-            first['commits'][1]['movement']['trigger'], 'explicit-commit')
+            plan['groups'][1]['commits'][0]['movement']['trigger'],
+            'explicit-commit')
 
     def test_marks_explicit_relation_without_moving_pr_series(self):
         commits = [
@@ -209,7 +220,7 @@ class OzfsPlanTest(unittest.TestCase):
             'XXX-illumos: not moved (partial-revert)',
             self.markdown.read_text())
 
-    def test_records_expired_reference_and_same_file_as_candidates(self):
+    def test_records_expired_reference_without_raw_same_file_output(self):
         original = f'{1:040x}'
         commits = [
             self._commit(
@@ -235,8 +246,13 @@ class OzfsPlanTest(unittest.TestCase):
             (item['commit'], item['trigger'])
             for item in plan['candidates']
         }
-        self.assertIn((f'{2:040x}', 'next-same-file'), candidates)
+        self.assertNotIn((f'{2:040x}', 'next-same-file'), candidates)
         self.assertIn((f'{3:040x}', 'expired-explicit-commit'), candidates)
+        markdown = self.markdown.read_text()
+        self.assertNotIn('next-same-file', markdown)
+        self.assertIn(
+            'XXX-illumos: not moved (expired-explicit-commit)',
+            markdown)
 
     def test_records_pass_one_wording_clues(self):
         messages = (
@@ -316,13 +332,12 @@ class OzfsPlanTest(unittest.TestCase):
         plan = self._load_plan()
         self.assertEqual(plan['decisions'][0]['reason'], 'same logical change')
         self.assertEqual(
-            [item['commit'] for item in plan['groups'][0]['commits']],
-            [f'{number:040x}' for number in (1, 2)])
+            [group['commits'][0]['commit'] for group in plan['groups']],
+            [f'{number:040x}' for number in (1, 2, 3)])
         self.assertEqual(
-            plan['groups'][0]['commits'][1]['movement']['trigger'],
+            plan['groups'][1]['commits'][0]['movement']['trigger'],
             'manual-attach')
-        self.assertEqual(len(plan['groups']), 2)
-        self.assertEqual(plan['groups'][1]['commits'][0]['commit'], f'{3:040x}')
+        self.assertEqual(len(plan['groups']), 3)
 
 
 if __name__ == '__main__':

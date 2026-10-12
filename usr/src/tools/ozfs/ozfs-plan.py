@@ -11,7 +11,6 @@
 #
 
 import argparse
-from bisect import bisect_right
 from dataclasses import dataclass, field
 from datetime import datetime
 from email.utils import parsedate_to_datetime
@@ -24,7 +23,6 @@ import tempfile
 
 
 PLAN_VERSION = 1
-HEURISTIC_DAYS = 90
 EXPLICIT_DAYS = 180
 
 COMMIT_HEADER_RE = re.compile(
@@ -94,7 +92,7 @@ class PlannedCommit:
 @dataclass
 class Group:
     commits: list = field(default_factory=list)
-    removed: bool = False
+    moved_after: object = None
 
     @property
     def first_ordinal(self):
@@ -217,7 +215,7 @@ def initial_groups(commits):
 def group_map(groups):
     return {
         item.commit.commit: group
-        for group in groups if not group.removed
+        for group in groups
         for item in group.commits
     }
 
@@ -274,16 +272,19 @@ def movement_record(
     }
 
 
-def attach_group(
+def move_group(
         commits, target_group, source_group, trigger, evidence):
     if target_group is source_group:
         return
+    ancestor = target_group
+    while ancestor is not None:
+        if ancestor is source_group:
+            raise PlanError('group movement would create a cycle')
+        ancestor = ancestor.moved_after
     for item in source_group.commits:
         item.movement = movement_record(
             commits, target_group, item.commit, trigger, evidence)
-    target_group.commits.extend(source_group.commits)
-    target_group.commits.sort(key=lambda item: item.commit.ordinal)
-    source_group.removed = True
+    source_group.moved_after = target_group
 
 
 def validate_decision(decision, hashes):
@@ -318,7 +319,11 @@ def apply_manual_decisions(commits, groups, decisions):
             raise PlanError(
                 'manual attach cannot move a multi-commit group: '
                 f'{decision["commit"]}')
-        attach_group(
+        if target.first_ordinal >= source.first_ordinal:
+            raise PlanError(
+                'manual attach target must precede source: '
+                f'{decision["commit"]}')
+        move_group(
             commits, target, source, 'manual-attach',
             decision.get('reason', 'manual decision'))
 
@@ -334,8 +339,6 @@ def separate_pairs(decisions):
 def group_for_pr(groups, pr, before_ordinal):
     candidates = []
     for group in groups:
-        if group.removed:
-            continue
         matching = [
             item.commit
             for item in group.commits
@@ -428,55 +431,7 @@ def apply_explicit_relations(commits, groups, decisions):
                     }),
             })
             continue
-        attach_group(commits, target, source, trigger, evidence)
-    return candidates
-
-
-def same_file_candidates(commits, groups):
-    path_ordinals = {}
-    by_ordinal = {commit.ordinal: commit for commit in commits}
-    for commit in commits:
-        for path in commit.paths:
-            path_ordinals.setdefault(path, []).append(commit.ordinal)
-
-    candidates = []
-    by_commit = group_map(groups)
-    for group in groups:
-        if group.removed:
-            continue
-        last = group.last_ordinal
-        next_paths = {}
-        for path in {
-                path
-                for item in group.commits
-                for path in item.commit.paths}:
-            ordinals = path_ordinals[path]
-            index = bisect_right(ordinals, last)
-            if index < len(ordinals):
-                next_paths.setdefault(ordinals[index], []).append(path)
-        for ordinal, paths in sorted(next_paths.items()):
-            candidate = by_ordinal[ordinal]
-            if by_commit[candidate.commit] is group:
-                continue
-            target_commit = max(
-                (item.commit for item in group.commits),
-                key=lambda item: item.ordinal)
-            days = elapsed_days(target_commit, candidate)
-            if days > HEURISTIC_DAYS:
-                continue
-            candidates.append({
-                'commit': candidate.commit,
-                'target_commit': target_commit.commit,
-                'target_group': None,
-                'trigger': 'next-same-file',
-                'evidence': (
-                    f'next later commit touching {len(paths)} '
-                    f'group file{"s" if len(paths) != 1 else ""}'),
-                'distance_commits': candidate.ordinal - last,
-                'distance_days': days,
-                'paths': sorted(paths),
-                'clues': list(candidate.clues),
-            })
+        move_group(commits, target, source, trigger, evidence)
     return candidates
 
 
@@ -528,15 +483,35 @@ def commit_json(item):
     }
 
 
+def logical_groups(groups):
+    followers = {}
+    for group in groups:
+        if group.moved_after is not None:
+            followers.setdefault(id(group.moved_after), []).append(group)
+    for related in followers.values():
+        related.sort(key=lambda group: group.first_ordinal)
+
+    result = []
+
+    def append_group(group):
+        result.append(group)
+        for follower in followers.get(id(group), []):
+            append_group(follower)
+
+    for group in groups:
+        if group.moved_after is None:
+            append_group(group)
+    if len(result) != len(groups):
+        raise PlanError('group movement graph is incomplete')
+    return result
+
+
 def build_plan(logn, commits, decisions):
     groups = initial_groups(commits)
     apply_manual_decisions(commits, groups, decisions)
     candidates = apply_explicit_relations(commits, groups, decisions)
-    candidates.extend(same_file_candidates(commits, groups))
 
-    active = sorted(
-        (group for group in groups if not group.removed),
-        key=lambda group: group.first_ordinal)
+    active = logical_groups(groups)
     group_ids = {
         id(group): f'G{number:04d}'
         for number, group in enumerate(active, 1)
@@ -548,6 +523,36 @@ def build_plan(logn, commits, decisions):
             group_ids[id(target)] if target is not None else None)
     candidates.sort(key=lambda item: (
         item['target_group'] or '', item['commit'], item['trigger']))
+    groups_json = [
+        {
+            'id': group_ids[id(group)],
+            'original_ordinal': group.first_ordinal,
+            'name': group.commits[0].commit.subject,
+            'moved_after': (
+                group_ids[id(group.moved_after)]
+                if group.moved_after is not None else None),
+            'todo': (
+                'squash with previous'
+                if group.moved_after is not None else None),
+            'commits': [commit_json(item) for item in group.commits],
+        }
+        for group in active
+    ]
+    vacated = [
+        {
+            'original_ordinal': item.commit.ordinal,
+            'commit': item.commit.commit,
+            'subject': item.commit.subject,
+            'moved_group': group_ids[id(group)],
+            'moved_after': group_ids[id(group.moved_after)],
+            'trigger': item.movement['trigger'],
+            'evidence': item.movement['evidence'],
+        }
+        for group in active
+        for item in group.commits
+        if group.moved_after is not None
+    ]
+    vacated.sort(key=lambda item: item['original_ordinal'])
 
     return {
         'version': PLAN_VERSION,
@@ -555,19 +560,11 @@ def build_plan(logn, commits, decisions):
         'commit_count': len(commits),
         'clue_commit_count': sum(bool(commit.clues) for commit in commits),
         'policy': {
-            'heuristic_days': HEURISTIC_DAYS,
             'explicit_days': EXPLICIT_DAYS,
-            'same_file_action': 'candidate',
         },
         'decisions': decisions,
-        'groups': [
-            {
-                'id': group_ids[id(group)],
-                'name': group.commits[0].commit.subject,
-                'commits': [commit_json(item) for item in group.commits],
-            }
-            for group in active
-        ],
+        'groups': groups_json,
+        'vacated': vacated,
         'clue_candidates': [
             clue_candidate(commit)
             for commit in commits if commit.clues
@@ -593,11 +590,25 @@ def write_text_atomic(path, text):
         raise PlanError(f'cannot write {path}: {error}') from error
 
 
+def risky_candidate(candidate):
+    trigger = candidate['trigger']
+    return (
+        trigger == 'partial-revert' or
+        trigger.startswith('grouped-explicit-') or
+        trigger.startswith('expired-explicit-') or
+        trigger.startswith('conflicting-'))
+
+
 def format_markdown(plan):
     moved = sum(
         item['movement'] is not None
         for group in plan['groups']
         for item in group['commits'])
+    risky = [
+        candidate
+        for candidate in plan['candidates']
+        if risky_candidate(candidate)
+    ]
     lines = [
         '# OpenZFS commit plan',
         '',
@@ -605,8 +616,7 @@ def format_markdown(plan):
         f'- Logical groups: {len(plan["groups"])}',
         f'- Moved commits: {moved}',
         f'- Wording-clue commits: {plan["clue_commit_count"]}',
-        f'- Review candidates: {len(plan["candidates"])}',
-        f'- Heuristic window: {plan["policy"]["heuristic_days"]} days',
+        f'- Risky unmoved relationships: {len(risky)}',
         f'- Explicit-reference window: '
         f'{plan["policy"]["explicit_days"]} days',
         '',
@@ -618,13 +628,32 @@ def format_markdown(plan):
         '',
     ]
     candidates = {}
-    for candidate in plan['candidates']:
+    for candidate in risky:
         candidates.setdefault(candidate['target_group'], []).append(candidate)
+    by_id = {group['id']: group for group in plan['groups']}
+    followers = {}
     for group in plan['groups']:
+        if group['moved_after'] is not None:
+            followers.setdefault(group['moved_after'], []).append(group)
+    vacated = {
+        item['moved_group']: item
+        for item in plan['vacated']
+    }
+    rendered = set()
+
+    def render_group(group):
+        if group['id'] in rendered:
+            return
+        rendered.add(group['id'])
         lines.extend((
             f'### {group["id"]} {group["name"]}',
             '',
         ))
+        if group['todo'] is not None:
+            lines.extend((
+                f'Todo: {group["todo"]}',
+                '',
+            ))
         for item in group['commits']:
             line = (
                 f'- `{item["commit"]}` '
@@ -644,20 +673,33 @@ def format_markdown(plan):
             lines.append(line)
         for candidate in candidates.get(group['id'], []):
             trigger = candidate['trigger']
-            risky = (
-                trigger == 'partial-revert' or
-                trigger.startswith('grouped-explicit-') or
-                trigger.startswith('expired-explicit-') or
-                trigger.startswith('conflicting-'))
-            marker = (
-                f'**XXX-illumos: not moved ({trigger})**'
-                if risky else f'Candidate `{trigger}`')
             lines.append(
-                f'- {marker} '
+                f'- **XXX-illumos: not moved ({trigger})** '
                 f'`{candidate["commit"]}` after '
                 f'{candidate["distance_days"]:.2f} days: '
                 f'{candidate["evidence"]}')
         lines.append('')
+        for follower in followers.get(group['id'], []):
+            render_group(follower)
+
+    for group in sorted(
+            plan['groups'], key=lambda item: item['original_ordinal']):
+        if group['moved_after'] is None:
+            render_group(group)
+            continue
+        entry = vacated[group['id']]
+        lines.extend((
+            f'### NO-COMMIT original '
+            f'{entry["original_ordinal"]:04d}',
+            '',
+            f'- `{entry["commit"]}` {entry["subject"]}',
+            f'- Moved to {entry["moved_group"]} after '
+            f'{entry["moved_after"]} by '
+            f'`{entry["trigger"]}`: {entry["evidence"]}',
+            '',
+        ))
+    if len(rendered) != len(by_id):
+        raise PlanError('Markdown did not render every group')
     return '\n'.join(lines)
 
 
