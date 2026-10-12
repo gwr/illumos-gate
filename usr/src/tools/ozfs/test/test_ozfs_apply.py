@@ -245,7 +245,7 @@ class OzfsApplyTest(unittest.TestCase):
         self.assertEqual(
             sum(line.startswith('From ') for line in series.splitlines()), 1)
         self.assertIn(
-            'Subject: [PATCH] OpenZFS test work import', series)
+            'Subject: [PATCH] OpenZFS: test work', series)
         self.assertIn(f'import OpenZFS {first}', series)
         self.assertIn(f'import OpenZFS {second}', series)
         self.assertLess(series.index(first), series.index(second))
@@ -519,7 +519,7 @@ class OzfsApplyTest(unittest.TestCase):
         self.assertEqual(
             self._git(
                 self.illumos, 'show', '-s', '--format=%s', 'HEAD'),
-            'OpenZFS applicable work import')
+            'OpenZFS: applicable work')
         message = self._git(
             self.illumos, 'show', '-s', '--format=%B', 'HEAD')
         self.assertIn(f'import OpenZFS {first}', message)
@@ -679,7 +679,7 @@ class OzfsApplyTest(unittest.TestCase):
             ],
             check=True, text=True, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE).stdout
-        self.assertIn('OpenZFS conflicting work import', current)
+        self.assertIn('OpenZFS: conflicting work', current)
 
     def test_refuses_to_start_during_git_am(self):
         commit = self._commit('conflicting change', {

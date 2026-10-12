@@ -37,7 +37,7 @@ class OzfsRunPlanTest(unittest.TestCase):
                 f'path = Path({str(self.calls)!r})\n'
                 'with path.open("a", encoding="utf-8") as stream:\n'
                 '    stream.write(json.dumps(sys.argv[1:]) + "\\n")\n'
-                'if "G0002: second group" in sys.argv:\n'
+                'if "second group" in sys.argv:\n'
                 '    sys.exit(7)\n'
             ),
             encoding='utf-8')
@@ -113,7 +113,7 @@ class OzfsRunPlanTest(unittest.TestCase):
             self._calls(),
             [[
                 '--cf', str(self.config),
-                '--work-name', 'G0002: second group',
+                '--work-name', 'second group',
                 self.groups[1]['commits'][0]['commit'],
             ]])
         self.assertIn('G0002 failed with exit status 7', result.stderr)
@@ -130,11 +130,11 @@ class OzfsRunPlanTest(unittest.TestCase):
         self.assertEqual(result.returncode, 7)
         calls = self._calls()
         self.assertEqual(len(calls), 2)
-        self.assertEqual(calls[0][3], 'G0001: first group')
+        self.assertEqual(calls[0][3], 'first group')
         self.assertEqual(
             calls[0][4:],
             [item['commit'] for item in self.groups[0]['commits']])
-        self.assertEqual(calls[1][3], 'G0002: second group')
+        self.assertEqual(calls[1][3], 'second group')
 
     def test_rejects_unknown_selector_before_running(self):
         result = self._run(

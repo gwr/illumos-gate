@@ -166,7 +166,7 @@ def apply_command(args, group):
     return [
         sys.executable, str(program),
         '--cf', args.config,
-        '--work-name', f"{group['id']}: {group['name']}",
+        '--work-name', group['name'],
         *(commit['commit'] for commit in group['commits']),
     ]
 

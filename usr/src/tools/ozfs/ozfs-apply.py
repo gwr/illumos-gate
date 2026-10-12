@@ -231,7 +231,7 @@ def format_combined_patch(illumos_repo, work_name, plans, diffs):
         f'From {plans[0].commit} Mon Sep 17 00:00:00 2001\n'
         f'From: {formataddr((name, email))}\n'
         f'Date: {formatdate(localtime=True)}\n'
-        f'Subject: [PATCH] OpenZFS {work_name} import\n'
+        f'Subject: [PATCH] OpenZFS: {work_name}\n'
         '\n'
     )
     message = headers + '\n'.join(body) + '---\n'
