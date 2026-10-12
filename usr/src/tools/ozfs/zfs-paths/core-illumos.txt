@@ -1,5 +1,6 @@
 usr/src/uts/common/fs/zfs/lua
 usr/src/common/zfs
+usr/src/uts/common/fs/zfs/sys/abd_impl.h
 usr/src/common/zfs
 usr/src/uts/common/fs/zfs/sys
 usr/src/uts/common/sys/fs/zfs.h

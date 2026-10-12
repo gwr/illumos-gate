@@ -1,5 +1,6 @@
 module/lua
 module/zcommon
+include/sys/abd_impl.h
 include/sys
 include/sys
 include/sys/fs/zfs.h
