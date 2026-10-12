@@ -352,6 +352,26 @@ class OzfsDiffTest(unittest.TestCase):
             'excluded\t\texcluded/e.c\t\n',
             scope)
 
+    def test_scoped_comparison_reports_exceptional_target(self):
+        config = self._write_config()
+        base = self._git(self.openzfs, 'rev-parse', 'HEAD')
+        (self.openzfs / 'module/core/a.c').write_text(
+            'exceptional candidate change\n', encoding='utf-8')
+        self._git(self.openzfs, 'add', '.')
+        self._git(self.openzfs, 'commit', '--quiet', '-m', 'candidate')
+        output = self.root / 'exceptional-report'
+
+        result = self._run(
+            config, '--ozb', base, '--out', str(output))
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        comparisons = (
+            output / 'comparisons.tsv').read_text(encoding='utf-8')
+        self.assertIn(
+            'src/core/a.c\tmodule/core/a.c\n',
+            comparisons)
+        self.assertIn('\ttrue\t', comparisons)
+
     def test_scoped_comparison_transforms_platform_path(self):
         config = self._write_config()
         base = self._git(self.openzfs, 'rev-parse', 'HEAD')

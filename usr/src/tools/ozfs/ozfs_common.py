@@ -351,6 +351,22 @@ def resolve_platform_action(path, platform_mappings):
     return PathAction('mapped', path, target, 'core')
 
 
+def check_mapped_target(action, path_lists, reject_exception):
+    if (action.kind == 'mapped' and
+            path_matches_any(
+                action.target, path_lists['exclude']['illumos'])):
+        raise OzfsError(
+            f'mapped illumos path is excluded: '
+            f'{action.source} -> {action.target}')
+    if (reject_exception and action.kind == 'mapped' and
+            path_matches_any(
+                action.target, path_lists['exception']['illumos'])):
+        raise OzfsError(
+            f'mapped illumos path is exceptional: '
+            f'{action.source} -> {action.target}')
+    return action
+
+
 def classify_path(
         illumos_repo, illumos_commit, path, path_lists, platform_mappings,
         reject_exception=True):
@@ -360,13 +376,15 @@ def classify_path(
 
     platform_action = resolve_platform_action(path, platform_mappings)
     if platform_action is not None:
-        return platform_action
+        return check_mapped_target(
+            platform_action, path_lists, reject_exception)
 
     mapped = resolve_mapped_path(
         illumos_repo, illumos_commit, path, path_lists)
     if mapped is not None:
         group, target = mapped
-        return PathAction('mapped', path, target, group)
+        action = PathAction('mapped', path, target, group)
+        return check_mapped_target(action, path_lists, reject_exception)
 
     if path_matches_any(path, path_lists['exclude']['openzfs']):
         return PathAction('excluded', path)

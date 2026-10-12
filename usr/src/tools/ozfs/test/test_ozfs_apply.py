@@ -226,6 +226,68 @@ class OzfsApplyTest(unittest.TestCase):
             series)
         self.assertNotIn('module/os/linux/zfs/platform.c', series)
 
+    def test_refuses_mapping_to_excluded_illumos_path(self):
+        (self.lists / 'exclude-illumos.txt').write_text(
+            'usr/src/uts/common/fs/zfs/main.c\n', encoding='utf-8')
+        commit = self._commit('excluded target change', {
+            'module/zfs/main.c': 'changed\n',
+        })
+
+        result = self._run('--check', commit)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            'mapped illumos path is excluded: module/zfs/main.c -> '
+            'usr/src/uts/common/fs/zfs/main.c',
+            result.stderr)
+
+    def test_refuses_platform_mapping_to_excluded_illumos_path(self):
+        (self.lists / 'exclude-illumos.txt').write_text(
+            'usr/src/uts/common/fs/zfs/platform.c\n', encoding='utf-8')
+        commit = self._commit('excluded platform target change', {
+            'module/os/freebsd/zfs/platform.c': 'changed\n',
+        })
+
+        result = self._run('--check', commit)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            'mapped illumos path is excluded: '
+            'module/os/freebsd/zfs/platform.c -> '
+            'usr/src/uts/common/fs/zfs/platform.c',
+            result.stderr)
+
+    def test_refuses_mapping_to_exceptional_illumos_path(self):
+        (self.lists / 'exception-illumos.txt').write_text(
+            'usr/src/uts/common/fs/zfs/main.c\n', encoding='utf-8')
+        commit = self._commit('exceptional target change', {
+            'module/zfs/main.c': 'changed\n',
+        })
+
+        result = self._run('--check', commit)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            'mapped illumos path is exceptional: module/zfs/main.c -> '
+            'usr/src/uts/common/fs/zfs/main.c',
+            result.stderr)
+
+    def test_refuses_platform_mapping_to_exceptional_illumos_path(self):
+        (self.lists / 'exception-illumos.txt').write_text(
+            'usr/src/uts/common/fs/zfs/platform.c\n', encoding='utf-8')
+        commit = self._commit('exceptional platform target change', {
+            'module/os/freebsd/zfs/platform.c': 'changed\n',
+        })
+
+        result = self._run('--check', commit)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            'mapped illumos path is exceptional: '
+            'module/os/freebsd/zfs/platform.c -> '
+            'usr/src/uts/common/fs/zfs/platform.c',
+            result.stderr)
+
     def test_refuses_unselected_platform_interface(self):
         commit = self._commit('unknown platform change', {
             'module/os/freebsd/zfs/unknown.c': 'unknown\n',
