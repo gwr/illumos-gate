@@ -15,6 +15,7 @@
 
 import configparser
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -27,15 +28,15 @@ GROUPS = ('core', 'platform', 'userland', 'tests', 'exclude')
 
 
 class OzfsDiffTest(unittest.TestCase):
-    def setUp(self):
-        self.tempdir = tempfile.TemporaryDirectory()
-        self.root = Path(self.tempdir.name)
-        self.illumos = self.root / 'illumos'
-        self.openzfs = self.root / 'openzfs'
-        self.lists = self.root / 'lists'
-        self.config_dir = self.root / 'config'
-
-        self._create_repo(self.illumos, {
+    @classmethod
+    def setUpClass(cls):
+        cls.template_tempdir = tempfile.TemporaryDirectory(
+            prefix='ozfs-diff-template-', dir='/tmp')
+        cls.addClassCleanup(cls.template_tempdir.cleanup)
+        root = Path(cls.template_tempdir.name)
+        cls.illumos_template = root / 'illumos'
+        cls.openzfs_template = root / 'openzfs'
+        cls._create_repo(cls.illumos_template, {
             'src/core/a.c': 'illumos a\n',
             'src/core/binary.dat': b'\0illumos\n',
             'src/core/nested/b.c': 'illumos b\n',
@@ -47,7 +48,7 @@ class OzfsDiffTest(unittest.TestCase):
             'src/user/u.c': 'illumos user\n',
             'src/excluded/e.c': 'illumos excluded\n',
         })
-        self._create_repo(self.openzfs, {
+        cls._create_repo(cls.openzfs_template, {
             'module/core/a.c': 'openzfs a\n',
             'module/core/binary.dat': b'\0openzfs\n',
             'module/core/one/common.h': 'first OpenZFS common\n',
@@ -60,23 +61,37 @@ class OzfsDiffTest(unittest.TestCase):
             'tests/t.ksh': 'openzfs test\n',
             'build/Makefile.am': 'OpenZFS build metadata\n',
         })
+
+    def setUp(self):
+        self.tempdir = tempfile.TemporaryDirectory(
+            prefix='ozfs-diff-', dir='/tmp')
+        self.root = Path(self.tempdir.name)
+        self.illumos = self.root / 'illumos'
+        self.openzfs = self.root / 'openzfs'
+        self.lists = self.root / 'lists'
+        self.config_dir = self.root / 'config'
+
+        shutil.copytree(self.illumos_template, self.illumos)
+        shutil.copytree(self.openzfs_template, self.openzfs)
         self._create_lists()
         self.config_dir.mkdir()
 
     def tearDown(self):
         self.tempdir.cleanup()
 
-    def _git(self, repo, *args):
+    @staticmethod
+    def _git(repo, *args):
         return subprocess.run(
             ['git', '-C', str(repo), *args],
             check=True, text=True, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE).stdout.strip()
 
-    def _create_repo(self, repo, files):
+    @classmethod
+    def _create_repo(cls, repo, files):
         repo.mkdir()
-        self._git(repo, 'init', '--quiet')
-        self._git(repo, 'config', 'user.name', 'ozfs-diff test')
-        self._git(repo, 'config', 'user.email', 'test@example.invalid')
+        cls._git(repo, 'init', '--quiet')
+        cls._git(repo, 'config', 'user.name', 'ozfs-diff test')
+        cls._git(repo, 'config', 'user.email', 'test@example.invalid')
         for name, contents in files.items():
             path = repo / name
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -84,8 +99,8 @@ class OzfsDiffTest(unittest.TestCase):
                 path.write_bytes(contents)
             else:
                 path.write_text(contents, encoding='utf-8')
-        self._git(repo, 'add', '.')
-        self._git(repo, 'commit', '--quiet', '-m', 'test tree')
+        cls._git(repo, 'add', '.')
+        cls._git(repo, 'commit', '--quiet', '-m', 'test tree')
 
     def _create_lists(self):
         self.lists.mkdir()

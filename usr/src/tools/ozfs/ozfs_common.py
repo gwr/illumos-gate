@@ -47,6 +47,7 @@ class PathAction:
     source: str
     target: str = ''
     group: str = ''
+    reason: str = ''
 
 
 def load_config(path):
@@ -374,7 +375,8 @@ def resolve_platform_action(path, platform_mappings):
     return PathAction('mapped', path, target, 'core')
 
 
-def check_mapped_target(action, path_lists, reject_exception):
+def check_mapped_target(
+        action, path_lists, reject_exception, preserve_review):
     if (action.kind == 'mapped' and
             path_matches_any(
                 action.target, path_lists['exclude']['illumos'])):
@@ -384,6 +386,10 @@ def check_mapped_target(action, path_lists, reject_exception):
     if (reject_exception and action.kind == 'mapped' and
             path_matches_any(
                 action.target, path_lists['exception']['illumos'])):
+        if preserve_review:
+            return PathAction(
+                'review', action.source, action.target, action.group,
+                'exceptional illumos target')
         raise OzfsError(
             f'mapped illumos path is exceptional: '
             f'{action.source} -> {action.target}')
@@ -392,33 +398,55 @@ def check_mapped_target(action, path_lists, reject_exception):
 
 def classify_path(
         illumos_repo, illumos_commit, path, path_lists, platform_mappings,
-        reject_exception=True):
+        reject_exception=True, preserve_review=False):
     if (reject_exception and
             path_matches_any(path, path_lists['exception']['openzfs'])):
+        if preserve_review:
+            return PathAction(
+                'review', path, path, reason='exceptional OpenZFS path')
         raise OzfsError(f'exceptional path requires review: {path}')
 
     if path_matches_any(path, path_lists['exclude']['openzfs']):
         return PathAction('excluded', path)
 
-    addition = resolve_mapped_path(
-        illumos_repo, illumos_commit, path, path_lists, PAIRED_POLICIES)
+    try:
+        addition = resolve_mapped_path(
+            illumos_repo, illumos_commit, path, path_lists, PAIRED_POLICIES)
+    except OzfsError as error:
+        if preserve_review:
+            return PathAction('review', path, path, reason=str(error))
+        raise
     if addition is not None:
         group, target = addition
         action = PathAction('mapped', path, target, group)
-        return check_mapped_target(action, path_lists, reject_exception)
+        return check_mapped_target(
+            action, path_lists, reject_exception, preserve_review)
 
-    platform_action = resolve_platform_action(path, platform_mappings)
+    try:
+        platform_action = resolve_platform_action(path, platform_mappings)
+    except OzfsError as error:
+        if preserve_review:
+            return PathAction('review', path, path, reason=str(error))
+        raise
     if platform_action is not None:
         return check_mapped_target(
-            platform_action, path_lists, reject_exception)
+            platform_action, path_lists, reject_exception, preserve_review)
 
-    mapped = resolve_mapped_path(
-        illumos_repo, illumos_commit, path, path_lists)
+    try:
+        mapped = resolve_mapped_path(
+            illumos_repo, illumos_commit, path, path_lists)
+    except OzfsError as error:
+        if preserve_review:
+            return PathAction('review', path, path, reason=str(error))
+        raise
     if mapped is not None:
         group, target = mapped
         action = PathAction('mapped', path, target, group)
-        return check_mapped_target(action, path_lists, reject_exception)
+        return check_mapped_target(
+            action, path_lists, reject_exception, preserve_review)
 
+    if preserve_review:
+        return PathAction('review', path, path, reason='unclassified path')
     raise OzfsError(f'unclassified path: {path}')
 
 

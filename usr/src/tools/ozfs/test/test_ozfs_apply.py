@@ -11,6 +11,7 @@
 
 import configparser
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -23,22 +24,22 @@ GROUPS = ('core', 'platform', 'userland', 'tests', 'exclude', 'exception')
 
 
 class OzfsApplyTest(unittest.TestCase):
-    def setUp(self):
-        self.tempdir = tempfile.TemporaryDirectory()
-        self.root = Path(self.tempdir.name)
-        self.illumos = self.root / 'illumos'
-        self.openzfs = self.root / 'openzfs'
-        self.lists = self.root / 'lists'
-        self.config = self.root / 'ozfs-diff.conf'
-
-        self._create_repo(self.illumos, {
+    @classmethod
+    def setUpClass(cls):
+        cls.template_tempdir = tempfile.TemporaryDirectory(
+            prefix='ozfs-apply-template-', dir='/tmp')
+        cls.addClassCleanup(cls.template_tempdir.cleanup)
+        root = Path(cls.template_tempdir.name)
+        cls.illumos_template = root / 'illumos'
+        cls.openzfs_template = root / 'openzfs'
+        cls._create_repo(cls.illumos_template, {
             'usr/src/common/zfs/shared.h': 'shared\n',
             'usr/src/uts/common/fs/zfs/sys/kernel.h': 'kernel\n',
             'usr/src/uts/common/fs/zfs/main.c': 'main\n',
             'usr/src/uts/common/fs/zfs/platform.c': 'platform\n',
             'usr/src/uts/common/fs/zfs/exception.c': 'illumos exception\n',
         })
-        self._create_repo(self.openzfs, {
+        cls._create_repo(cls.openzfs_template, {
             'include/sys/shared.h': 'shared\n',
             'include/sys/kernel.h': 'kernel\n',
             'module/zfs/main.c': 'main\n',
@@ -47,29 +48,43 @@ class OzfsApplyTest(unittest.TestCase):
             'module/os/linux/zfs/platform.c': 'Linux platform\n',
             'config/build.m4': 'config\n',
         })
+
+    def setUp(self):
+        self.tempdir = tempfile.TemporaryDirectory(
+            prefix='ozfs-apply-', dir='/tmp')
+        self.root = Path(self.tempdir.name)
+        self.illumos = self.root / 'illumos'
+        self.openzfs = self.root / 'openzfs'
+        self.lists = self.root / 'lists'
+        self.config = self.root / 'ozfs-diff.conf'
+
+        shutil.copytree(self.illumos_template, self.illumos)
+        shutil.copytree(self.openzfs_template, self.openzfs)
         self._create_lists()
         self._write_config()
 
     def tearDown(self):
         self.tempdir.cleanup()
 
-    def _git(self, repo, *args):
+    @staticmethod
+    def _git(repo, *args):
         return subprocess.run(
             ['git', '-C', str(repo), *args],
             check=True, text=True, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE).stdout.strip()
 
-    def _create_repo(self, repo, files):
+    @classmethod
+    def _create_repo(cls, repo, files):
         repo.mkdir()
-        self._git(repo, 'init', '--quiet')
-        self._git(repo, 'config', 'user.name', 'ozfs-apply test')
-        self._git(repo, 'config', 'user.email', 'test@example.invalid')
+        cls._git(repo, 'init', '--quiet')
+        cls._git(repo, 'config', 'user.name', 'ozfs-apply test')
+        cls._git(repo, 'config', 'user.email', 'test@example.invalid')
         for name, contents in files.items():
             path = repo / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(contents, encoding='utf-8')
-        self._git(repo, 'add', '.')
-        self._git(repo, 'commit', '--quiet', '-m', 'initial tree')
+        cls._git(repo, 'add', '.')
+        cls._git(repo, 'commit', '--quiet', '-m', 'initial tree')
 
     def _create_lists(self):
         self.lists.mkdir()
@@ -330,9 +345,11 @@ class OzfsApplyTest(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(
-            'mapped illumos path is exceptional: module/zfs/main.c -> '
-            'usr/src/uts/common/fs/zfs/main.c',
-            result.stderr)
+            'review\tmodule/zfs/main.c\t'
+            'usr/src/uts/common/fs/zfs/main.c\t'
+            'exceptional illumos target',
+            result.stdout)
+        self.assertIn('review required for 1 path', result.stderr)
 
     def test_refuses_platform_mapping_to_exceptional_illumos_path(self):
         (self.lists / 'exception-illumos.txt').write_text(
@@ -345,10 +362,11 @@ class OzfsApplyTest(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(
-            'mapped illumos path is exceptional: '
-            'module/os/freebsd/zfs/platform.c -> '
-            'usr/src/uts/common/fs/zfs/platform.c',
-            result.stderr)
+            'review\tmodule/os/freebsd/zfs/platform.c\t'
+            'usr/src/uts/common/fs/zfs/platform.c\t'
+            'exceptional illumos target',
+            result.stdout)
+        self.assertIn('review required for 1 path', result.stderr)
 
     def test_refuses_modified_source_with_missing_mapped_target(self):
         target = self.illumos / 'usr/src/uts/common/fs/zfs/main.c'
@@ -364,9 +382,11 @@ class OzfsApplyTest(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(
-            'mapped illumos target does not exist: module/zfs/main.c -> '
-            'usr/src/uts/common/fs/zfs/main.c',
-            result.stderr)
+            'review\tmodule/zfs/main.c\t'
+            'usr/src/uts/common/fs/zfs/main.c\t'
+            'mapped illumos target does not exist',
+            result.stdout)
+        self.assertIn('review required for 1 path', result.stderr)
 
     def test_stops_before_git_am_for_unapproved_mapped_addition(self):
         commit = self._commit('new source', {
@@ -378,7 +398,7 @@ class OzfsApplyTest(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(
-            'review required for 1 new illumos path', result.stderr)
+            'review required for 1 path', result.stderr)
         self.assertIn(
             'git am was not run', result.stderr)
         patch = self.root / '.ozfs-review.mbox'
@@ -394,8 +414,8 @@ class OzfsApplyTest(unittest.TestCase):
         manifest = self.root / '.ozfs-manifest.tsv'
         self.assertTrue(manifest.is_file())
         self.assertIn(
-            'review-addition\tmodule/zfs/new.c\t'
-            'usr/src/uts/common/fs/zfs/new.c\n',
+            'review\tmodule/zfs/new.c\t'
+            'usr/src/uts/common/fs/zfs/new.c\tnew illumos path\n',
             manifest.read_text(encoding='utf-8'))
         git_path = self._git(
             self.illumos, 'rev-parse', '--git-path', 'rebase-apply')
@@ -413,11 +433,11 @@ class OzfsApplyTest(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(
-            'review-addition\tmodule/zfs/new.c\t'
-            'usr/src/uts/common/fs/zfs/new.c\n',
+            'review\tmodule/zfs/new.c\t'
+            'usr/src/uts/common/fs/zfs/new.c\tnew illumos path\n',
             result.stdout)
         self.assertIn(
-            'review required for 1 new illumos path', result.stderr)
+            'review required for 1 path', result.stderr)
         self.assertFalse((self.root / '.ozfs-review.mbox').exists())
         self.assertFalse((self.root / '.ozfs-manifest.tsv').exists())
 
@@ -430,8 +450,10 @@ class OzfsApplyTest(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(
-            'unclassified path: module/os/freebsd/zfs/unknown.c',
-            result.stderr)
+            'review\tmodule/os/freebsd/zfs/unknown.c\t'
+            'module/os/freebsd/zfs/unknown.c\tunclassified path',
+            result.stdout)
+        self.assertIn('review required for 1 path', result.stderr)
 
     def test_reshapes_addition_deletion_and_rename(self):
         self._approve_addition(
@@ -587,8 +609,10 @@ class OzfsApplyTest(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(
-            'exceptional path requires review: module/zfs/exception.c',
-            result.stderr)
+            'review\tmodule/zfs/exception.c\tmodule/zfs/exception.c\t'
+            'exceptional OpenZFS path',
+            result.stdout)
+        self.assertIn('review required for 1 path', result.stderr)
 
     def test_refuses_unclassified_path(self):
         commit = self._commit('unclassified change', {
@@ -598,7 +622,10 @@ class OzfsApplyTest(unittest.TestCase):
         result = self._run('--check', commit)
 
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn('unclassified path: README.md', result.stderr)
+        self.assertIn(
+            'review\tREADME.md\tREADME.md\tunclassified path',
+            result.stdout)
+        self.assertIn('review required for 1 path', result.stderr)
 
     def test_refuses_ambiguous_new_path(self):
         commit = self._commit('ambiguous addition', {
@@ -610,7 +637,8 @@ class OzfsApplyTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(
             'ambiguous mapping for include/sys/new.h',
-            result.stderr)
+            result.stdout)
+        self.assertIn('review required for 1 path', result.stderr)
 
     def test_requires_work_name_for_apply(self):
         commit = self._commit('ordinary change', {
@@ -723,21 +751,34 @@ class OzfsApplyTest(unittest.TestCase):
             manifest.read_text(encoding='utf-8'),
             'previous operation\n')
 
-    def test_mapping_failure_retains_well_known_manifest(self):
+    def test_review_stop_writes_complete_patch_and_manifest(self):
         commit = self._commit('unclassified change', {
             'README.md': 'new documentation\n',
+            'module/zfs/main.c': 'mapped change\n',
         })
 
         result = self._run(
             '--work-name', 'unclassified work', commit)
 
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn('unclassified path: README.md', result.stderr)
+        self.assertIn('review required for 1 path', result.stderr)
+        patch = self.root / '.ozfs-review.mbox'
+        self.assertTrue(patch.is_file())
+        contents = patch.read_text(encoding='utf-8')
+        self.assertIn(
+            'diff --git a/README.md b/README.md', contents)
+        self.assertIn(
+            'diff --git a/usr/src/uts/common/fs/zfs/main.c '
+            'b/usr/src/uts/common/fs/zfs/main.c',
+            contents)
         manifest = self.root / '.ozfs-manifest.tsv'
         self.assertTrue(manifest.is_file())
         contents = manifest.read_text(encoding='utf-8')
         self.assertIn('work\tunclassified work\n', contents)
         self.assertIn(f'planning\t{commit}\n', contents)
+        self.assertIn(
+            'review\tREADME.md\tREADME.md\tunclassified path\n',
+            contents)
 
 
 if __name__ == '__main__':

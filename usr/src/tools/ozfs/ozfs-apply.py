@@ -86,7 +86,7 @@ def plan_commit(
     actions = tuple(
         classify_path(
             illumos_repo, illumos_commit, path, path_lists,
-            platform_mappings)
+            platform_mappings, preserve_review=True)
         for path in paths
     )
     subject = git_output(
@@ -101,7 +101,7 @@ def plan_commit(
 def validate_mapped_targets(
         illumos_repo, illumos_commit, openzfs_repo, plans):
     target_exists = {}
-    review_additions = {}
+    review_actions = {}
     for plan in plans:
         for action in plan.actions:
             if action.kind != 'mapped':
@@ -115,43 +115,56 @@ def validate_mapped_targets(
                     illumos_repo, illumos_commit, action.target)
             if not source_existed and source_exists:
                 if action.group != 'addition':
-                    review_additions[
-                        (action.source, action.target)] = action
+                    review = PathAction(
+                        'review', action.source, action.target, action.group,
+                        'new illumos path')
+                    review_actions[
+                        (review.source, review.target, review.reason)] = review
                 target_exists[action.target] = True
                 continue
             if target_exists[action.target]:
                 if source_existed and not source_exists:
                     target_exists[action.target] = False
                 continue
-            raise OzfsError(
-                f'mapped illumos target does not exist: '
-                f'{action.source} -> {action.target}')
-    return tuple(review_additions.values())
+            review = PathAction(
+                'review', action.source, action.target, action.group,
+                'mapped illumos target does not exist')
+            review_actions[
+                (review.source, review.target, review.reason)] = review
+            target_exists[action.target] = source_exists
+    return tuple(review_actions.values())
 
 
-def format_manifest(plans):
+def format_actions(actions):
     lines = []
-    for plan in plans:
-        lines.append(f'commit\t{plan.commit}\t{plan.subject}')
-        for action in plan.actions:
-            fields = [action.kind, action.source]
-            if action.target:
-                fields.append(action.target)
-            lines.append('\t'.join(fields))
+    for action in actions:
+        fields = [action.kind, action.source]
+        if action.target:
+            fields.append(action.target)
+        if action.reason:
+            fields.append(action.reason)
+        lines.append('\t'.join(fields))
+    if not lines:
+        return ''
     return '\n'.join(lines) + '\n'
 
 
-def format_review_additions(actions):
-    return ''.join(
-        f'review-addition\t{action.source}\t{action.target}\n'
-        for action in actions
-    )
+def format_manifest(plans):
+    text = ''
+    for plan in plans:
+        text += f'commit\t{plan.commit}\t{plan.subject}\n'
+        text += format_actions(plan.actions)
+    return text
+
+
+def format_review_actions(actions):
+    return format_actions(actions)
 
 
 def review_error(actions, patch=None):
     count = len(actions)
     noun = 'path' if count == 1 else 'paths'
-    message = f'review required for {count} new illumos {noun}'
+    message = f'review required for {count} {noun}'
     if patch is not None:
         message += f'; patch written to {patch}; git am was not run'
     return OzfsError(message)
@@ -187,7 +200,7 @@ def format_diff(openzfs_repo, plan):
     mappings = [
         (action.source, action.target)
         for action in plan.actions
-        if action.kind == 'mapped'
+        if action.kind in ('mapped', 'review')
     ]
     if not mappings:
         return b''
@@ -424,17 +437,23 @@ def run():
         if operation_manifest is not None:
             append_manifest(operation_manifest, format_manifest([plan]))
 
-    review_additions = validate_mapped_targets(
+    validation_reviews = validate_mapped_targets(
         illumos_repo, illumos_commit, openzfs_repo, plans)
+    review_actions = tuple(
+        action
+        for plan in plans
+        for action in plan.actions
+        if action.kind == 'review'
+    ) + validation_reviews
     print(format_manifest(plans), end='')
-    review_manifest = format_review_additions(review_additions)
+    review_manifest = format_review_actions(validation_reviews)
     if review_manifest:
         print(review_manifest, end='')
         if operation_manifest is not None:
             append_manifest(operation_manifest, review_manifest)
     if args.check:
-        if review_additions:
-            raise review_error(review_additions)
+        if review_actions:
+            raise review_error(review_actions)
         return
 
     diffs = []
@@ -459,11 +478,11 @@ def run():
         write_patch(output, patch)
         return
 
-    if review_additions:
+    if review_actions:
         append_manifest(
             operation_manifest, f'review-patch\t{review_patch}\n')
         write_patch(review_patch, patch)
-        raise review_error(review_additions, review_patch)
+        raise review_error(review_actions, review_patch)
 
     append_manifest(operation_manifest, 'applying\tgit am --3way -\n')
     copy_preimages(illumos_repo, openzfs_repo, plans)

@@ -22,7 +22,8 @@ SCRIPT = Path(__file__).parent.parent / 'ozfs-run-plan.py'
 
 class OzfsRunPlanTest(unittest.TestCase):
     def setUp(self):
-        self.tempdir = tempfile.TemporaryDirectory()
+        self.tempdir = tempfile.TemporaryDirectory(
+            prefix='ozfs-run-plan-', dir='/tmp')
         self.root = Path(self.tempdir.name)
         self.plan = self.root / 'plan.json'
         self.config = self.root / 'ozfs.conf'
