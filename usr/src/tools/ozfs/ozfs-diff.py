@@ -18,19 +18,23 @@ import argparse
 from collections import defaultdict
 import csv
 from dataclasses import dataclass
-import difflib
 import io
 import os
 from pathlib import Path, PurePosixPath
 import subprocess
 import sys
+import tempfile
 
 from ozfs_common import (
     GROUPS,
     SIDES,
     OzfsError as OzfsDiffError,
+    changed_paths,
+    classify_path,
     load_config,
     load_path_lists,
+    load_platform_mappings,
+    path_matches_any,
     resolve_commit,
     run_git,
     validate_repository,
@@ -70,6 +74,20 @@ class FileComparison:
     deleted: int
 
 
+@dataclass(frozen=True)
+class ScopedComparison:
+    group: str
+    source: str
+    target: str
+    exceptional: bool
+    before_kind: str
+    before_added: int
+    before_deleted: int
+    after_kind: str
+    after_added: int
+    after_deleted: int
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description='Compare ZFS source trees from illumos and OpenZFS')
@@ -79,6 +97,9 @@ def parse_args():
     parser.add_argument(
         '--ozc', '--openzfs-commit', dest='openzfs_commit', required=True,
         help='OpenZFS commit to compare')
+    parser.add_argument(
+        '--ozb', '--openzfs-base', dest='openzfs_base',
+        help='limit comparison to paths changed after this OpenZFS commit')
     parser.add_argument(
         '--ilc', '--illumos-commit', dest='illumos_commit', required=True,
         help='illumos commit to compare')
@@ -406,16 +427,22 @@ def compare_matches(
         illumos_repo, {match.illumos.oid for _group, match in matches})
     openzfs_blobs = read_blobs(
         openzfs_repo, {match.openzfs.oid for _group, match in matches})
+    pairs = [
+        (
+            illumos_blobs[match.illumos.oid],
+            openzfs_blobs[match.openzfs.oid],
+        )
+        for _group, match in matches
+    ]
+    results = compare_data_pairs(pairs)
 
     comparisons = []
-    for group, match in matches:
+    for index, (group, match) in enumerate(matches):
         exceptional = (
             match.illumos.path in exception_paths['illumos'] or
             match.openzfs.path in exception_paths['openzfs']
         )
-        kind, added, deleted = compare_blobs(
-            illumos_blobs[match.illumos.oid],
-            openzfs_blobs[match.openzfs.oid])
+        kind, added, deleted = results[index]
         comparisons.append(FileComparison(
             group=group,
             match=match,
@@ -455,32 +482,234 @@ def read_blobs(repo, object_ids):
     return blobs
 
 
-def compare_blobs(illumos_data, openzfs_data):
-    if illumos_data == openzfs_data:
-        return 'identical', 0, 0
-    if b'\0' in illumos_data or b'\0' in openzfs_data:
-        return 'binary', 0, 0
+def compare_data_pairs(pairs):
+    results = {
+        index: ('identical', 0, 0)
+        for index in range(len(pairs))
+    }
+    with tempfile.TemporaryDirectory(prefix='ozfs-diff-') as temporary:
+        root = Path(temporary)
+        left = root / 'illumos'
+        right = root / 'openzfs'
+        left.mkdir()
+        right.mkdir()
+        for index, (left_data, right_data) in enumerate(pairs):
+            name = f'{index:08d}'
+            if left_data is not None:
+                (left / name).write_bytes(left_data)
+            if right_data is not None:
+                (right / name).write_bytes(right_data)
 
-    matcher = difflib.SequenceMatcher(
-        None,
-        illumos_data.splitlines(keepends=True),
-        openzfs_data.splitlines(keepends=True),
-        autojunk=False)
-    added = 0
-    deleted = 0
-    for operation, illumos_start, illumos_end, openzfs_start, openzfs_end in (
-            matcher.get_opcodes()):
-        if operation in ('replace', 'delete'):
-            deleted += illumos_end - illumos_start
-        if operation in ('replace', 'insert'):
-            added += openzfs_end - openzfs_start
-    return 'text', added, deleted
+        result = subprocess.run(
+            [
+                'git', 'diff', '--no-index', '--no-renames',
+                '--numstat', '-z', '--', str(left), str(right),
+            ],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        if result.returncode not in (0, 1):
+            message = result.stderr.decode(errors='replace').strip()
+            raise OzfsDiffError(f'Git comparison failed: {message}')
+
+        records = result.stdout.split(b'\0')
+        if records and not records[-1]:
+            records.pop()
+        position = 0
+        while position < len(records):
+            fields = records[position].split(b'\t', 2)
+            position += 1
+            if len(fields) != 3:
+                raise OzfsDiffError('unexpected Git numstat output')
+            added_text, deleted_text, encoded_path = fields
+            if not encoded_path:
+                if position + 1 >= len(records):
+                    raise OzfsDiffError('truncated Git numstat path pair')
+                left_path = records[position]
+                encoded_path = records[position + 1]
+                position += 2
+                if encoded_path == b'/dev/null':
+                    encoded_path = left_path
+            name = PurePosixPath(
+                os.fsdecode(encoded_path)).name
+            try:
+                index = int(name)
+            except ValueError:
+                raise OzfsDiffError(
+                    f'unexpected Git comparison path: '
+                    f'{os.fsdecode(encoded_path)}')
+            if added_text == b'-' and deleted_text == b'-':
+                results[index] = ('binary', 0, 0)
+            else:
+                results[index] = (
+                    'text', int(added_text), int(deleted_text))
+    return results
+
+
+def read_path(repo, commit, path):
+    spec = f'{commit}:{path}'
+    exists = run_git(repo, 'cat-file', '-e', spec)
+    if exists.returncode != 0:
+        return None
+    result = run_git(repo, 'cat-file', 'blob', spec)
+    if result.returncode != 0:
+        message = result.stderr.decode(errors='replace').strip()
+        raise OzfsDiffError(f'cannot read {spec}: {message}')
+    return result.stdout
+
+
+def scoped_comparisons(
+        illumos_repo, illumos_commit, openzfs_repo, openzfs_base,
+        openzfs_commit, path_lists, platform_mappings):
+    paths = changed_paths(openzfs_repo, openzfs_base, openzfs_commit)
+    actions = [
+        classify_path(
+            illumos_repo, illumos_commit, path, path_lists,
+            platform_mappings, reject_exception=False)
+        for path in paths
+    ]
+    mapped = [action for action in actions if action.kind == 'mapped']
+
+    before_pairs = []
+    after_pairs = []
+    for action in mapped:
+        illumos_data = read_path(
+            illumos_repo, illumos_commit, action.target)
+        before_pairs.append((
+            illumos_data,
+            read_path(openzfs_repo, openzfs_base, action.source),
+        ))
+        after_pairs.append((
+            illumos_data,
+            read_path(openzfs_repo, openzfs_commit, action.source),
+        ))
+    before_results = compare_data_pairs(before_pairs)
+    after_results = compare_data_pairs(after_pairs)
+
+    comparisons = []
+    for index, action in enumerate(mapped):
+        before_kind, before_added, before_deleted = before_results[index]
+        after_kind, after_added, after_deleted = after_results[index]
+        exceptional = (
+            path_matches_any(
+                action.source, path_lists['exception']['openzfs']) or
+            path_matches_any(
+                action.target, path_lists['exception']['illumos']))
+        comparisons.append(ScopedComparison(
+            group=action.group,
+            source=action.source,
+            target=action.target,
+            exceptional=exceptional,
+            before_kind=before_kind,
+            before_added=before_added,
+            before_deleted=before_deleted,
+            after_kind=after_kind,
+            after_added=after_added,
+            after_deleted=after_deleted,
+        ))
+    return actions, comparisons
+
+
+def scoped_totals(comparisons, prefix):
+    included = [
+        item for item in comparisons
+        if not item.exceptional
+    ]
+    kinds = defaultdict(int)
+    for item in included:
+        kinds[getattr(item, f'{prefix}_kind')] += 1
+    return (
+        kinds['identical'],
+        kinds['text'],
+        kinds['binary'],
+        sum(getattr(item, f'{prefix}_added') for item in included),
+        sum(getattr(item, f'{prefix}_deleted') for item in included),
+    )
+
+
+def format_scoped_summary(
+        illumos_repo, illumos_commit, openzfs_repo, openzfs_base,
+        openzfs_commit, actions, comparisons):
+    counts = defaultdict(int)
+    for action in actions:
+        counts[action.kind] += 1
+    before = scoped_totals(comparisons, 'before')
+    after = scoped_totals(comparisons, 'after')
+    before_distance = before[3] + before[4]
+    after_distance = after[3] + after[4]
+
+    stream = io.StringIO()
+    print(f'illumos repository: {illumos_repo}', file=stream)
+    print(f'illumos commit: {illumos_commit}', file=stream)
+    print(f'OpenZFS repository: {openzfs_repo}', file=stream)
+    print(f'OpenZFS base: {openzfs_base}', file=stream)
+    print(f'OpenZFS commit: {openzfs_commit}', file=stream)
+    print(
+        f'scope: changed={len(actions)} mapped={counts["mapped"]} '
+        f'alternate={counts["alternate"]} excluded={counts["excluded"]}',
+        file=stream)
+    print(
+        f'before: identical={before[0]} text={before[1]} '
+        f'binary={before[2]} added={before[3]} deleted={before[4]}',
+        file=stream)
+    print(
+        f'after: identical={after[0]} text={after[1]} '
+        f'binary={after[2]} added={after[3]} deleted={after[4]}',
+        file=stream)
+    print(
+        f'line distance: before={before_distance} after={after_distance} '
+        f'delta={after_distance - before_distance:+d}',
+        file=stream)
+    return stream.getvalue()
+
+
+def write_scoped_report(path, summary, actions, comparisons):
+    output = Path(path).expanduser()
+    if not output.is_absolute():
+        output = Path.cwd() / output
+    output = output.resolve()
+    try:
+        output.mkdir(parents=True)
+    except FileExistsError:
+        raise OzfsDiffError(f'output path already exists: {output}')
+    except OSError as error:
+        raise OzfsDiffError(
+            f'cannot create output directory {output}: {error.strerror}')
+
+    write_tsv(
+        output / 'scope.tsv',
+        ('status', 'group', 'openzfs-path', 'illumos-path'),
+        (
+            (action.kind, action.group, action.source, action.target)
+            for action in actions
+        ))
+    write_tsv(
+        output / 'comparisons.tsv',
+        (
+            'group', 'before-kind', 'after-kind', 'exceptional',
+            'before-added', 'before-deleted', 'after-added',
+            'after-deleted', 'illumos-path', 'openzfs-path',
+        ),
+        (
+            (
+                item.group, item.before_kind, item.after_kind,
+                boolean_text(item.exceptional),
+                item.before_added, item.before_deleted,
+                item.after_added, item.after_deleted,
+                item.target, item.source,
+            )
+            for item in comparisons
+        ))
+    try:
+        (output / 'summary.txt').write_text(summary, encoding='utf-8')
+    except OSError as error:
+        raise OzfsDiffError(
+            f'cannot write report in {output}: {error.strerror}')
 
 
 def run():
     args = parse_args()
     illumos_path, openzfs_path, lists_dir = load_config(args.config)
     path_lists = load_path_lists(lists_dir)
+    platform_mappings = load_platform_mappings(lists_dir)
 
     illumos_repo = validate_repository(illumos_path, 'illumos')
     openzfs_repo = validate_repository(openzfs_path, 'OpenZFS')
@@ -488,6 +717,22 @@ def run():
         illumos_repo, args.illumos_commit, 'illumos')
     openzfs_commit = resolve_commit(
         openzfs_repo, args.openzfs_commit, 'OpenZFS')
+    if args.openzfs_base:
+        openzfs_base = resolve_commit(
+            openzfs_repo, args.openzfs_base, 'OpenZFS base')
+        actions, comparisons = scoped_comparisons(
+            illumos_repo, illumos_commit,
+            openzfs_repo, openzfs_base, openzfs_commit,
+            path_lists, platform_mappings)
+        summary = format_scoped_summary(
+            illumos_repo, illumos_commit,
+            openzfs_repo, openzfs_base, openzfs_commit,
+            actions, comparisons)
+        if args.output:
+            write_scoped_report(
+                args.output, summary, actions, comparisons)
+        print(summary, end='')
+        return
 
     files = {}
     for group in GROUPS:

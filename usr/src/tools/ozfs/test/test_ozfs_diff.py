@@ -110,6 +110,13 @@ class OzfsDiffTest(unittest.TestCase):
         }
         for name, contents in paths.items():
             (self.lists / name).write_text(contents, encoding='utf-8')
+        (self.lists / 'platform-mappings.tsv').write_text(
+            'role\tvariant\tillumos-path\topenzfs-path\n'
+            'primary\tlinux\tsrc/core/old_name.c\t'
+            'module/platform/new_name.c\n'
+            'primary\tlinux\tsrc/core/nested/b.c\t'
+            'module/platform/p.c\n',
+            encoding='utf-8')
 
     def _write_config(
             self, *, include_illumos=True, extra=None, runtime_dir=None):
@@ -302,6 +309,126 @@ class OzfsDiffTest(unittest.TestCase):
             'path map length mismatch: core-illumos.txt has 2 entries; '
             'core-openzfs.txt has 1',
             result.stderr)
+
+    def test_scopes_comparison_to_openzfs_diff(self):
+        config = self._write_config()
+        base = self._git(self.openzfs, 'rev-parse', 'HEAD')
+        changed = self.openzfs / 'module/core/two/resolved.h'
+        changed.write_text(
+            'remaining illumos resolved\n', encoding='utf-8')
+        excluded = self.openzfs / 'excluded/e.c'
+        excluded.parent.mkdir()
+        excluded.write_text('excluded candidate change\n', encoding='utf-8')
+        self._git(self.openzfs, 'add', '.')
+        self._git(self.openzfs, 'commit', '--quiet', '-m', 'candidate')
+        output = self.root / 'scoped-report'
+
+        result = self._run(
+            config, '--ozb', base, '--out', str(output))
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(
+            'scope: changed=2 mapped=1 alternate=0 excluded=1',
+            result.stdout)
+        self.assertIn(
+            'before: identical=0 text=1 binary=0 added=1 deleted=1',
+            result.stdout)
+        self.assertIn(
+            'after: identical=1 text=0 binary=0 added=0 deleted=0',
+            result.stdout)
+        self.assertIn(
+            'line distance: before=2 after=0 delta=-2',
+            result.stdout)
+        comparisons = (
+            output / 'comparisons.tsv').read_text(encoding='utf-8')
+        self.assertIn(
+            'core\ttext\tidentical\tfalse\t1\t1\t0\t0\t'
+            'src/core/two/resolved.h\t'
+            'module/core/two/resolved.h\n',
+            comparisons)
+        self.assertNotIn('binary.dat', comparisons)
+        scope = (output / 'scope.tsv').read_text(encoding='utf-8')
+        self.assertIn(
+            'excluded\t\texcluded/e.c\t\n',
+            scope)
+
+    def test_scoped_comparison_transforms_platform_path(self):
+        config = self._write_config()
+        base = self._git(self.openzfs, 'rev-parse', 'HEAD')
+        (self.openzfs / 'module/platform/new_name.c').write_text(
+            'changed platform content\n', encoding='utf-8')
+        self._git(self.openzfs, 'add', '.')
+        self._git(self.openzfs, 'commit', '--quiet', '-m', 'candidate')
+        output = self.root / 'platform-report'
+
+        result = self._run(
+            config, '--ozb', base, '--out', str(output))
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        comparisons = (
+            output / 'comparisons.tsv').read_text(encoding='utf-8')
+        self.assertIn(
+            'src/core/old_name.c\tmodule/platform/new_name.c\n',
+            comparisons)
+
+    def test_scoped_comparison_rejects_unmapped_changed_path(self):
+        config = self._write_config()
+        base = self._git(self.openzfs, 'rev-parse', 'HEAD')
+        unmapped = self.openzfs / 'misc/new.c'
+        unmapped.parent.mkdir()
+        unmapped.write_text('unmapped\n', encoding='utf-8')
+        self._git(self.openzfs, 'add', '.')
+        self._git(self.openzfs, 'commit', '--quiet', '-m', 'candidate')
+
+        result = self._run(config, '--ozb', base)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('unclassified path: misc/new.c', result.stderr)
+
+    def test_scoped_comparison_handles_rename_as_add_and_delete(self):
+        config = self._write_config()
+        base = self._git(self.openzfs, 'rev-parse', 'HEAD')
+        self._git(
+            self.openzfs, 'mv',
+            'module/core/one/resolved.h',
+            'module/core/one/renamed.h')
+        self._git(self.openzfs, 'commit', '--quiet', '-m', 'candidate')
+
+        result = self._run(config, '--ozb', base)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(
+            'scope: changed=2 mapped=2 alternate=0 excluded=0',
+            result.stdout)
+        self.assertIn(
+            'before: identical=2 text=0 binary=0 added=0 deleted=0',
+            result.stdout)
+        self.assertIn(
+            'after: identical=0 text=2 binary=0 added=1 deleted=1',
+            result.stdout)
+
+    def test_scoped_comparison_reports_alternate_platform_path(self):
+        alternate = self.openzfs / 'module/platform/alternate.c'
+        alternate.write_text('before\n', encoding='utf-8')
+        self._git(self.openzfs, 'add', '.')
+        self._git(self.openzfs, 'commit', '--quiet', '-m', 'add alternate')
+        with (self.lists / 'platform-mappings.tsv').open(
+                'a', encoding='utf-8') as stream:
+            stream.write(
+                'alternate\tlinux\tsrc/core/old_name.c\t'
+                'module/platform/alternate.c\n')
+        config = self._write_config()
+        base = self._git(self.openzfs, 'rev-parse', 'HEAD')
+        alternate.write_text('after\n', encoding='utf-8')
+        self._git(self.openzfs, 'add', '.')
+        self._git(self.openzfs, 'commit', '--quiet', '-m', 'candidate')
+
+        result = self._run(config, '--ozb', base)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(
+            'scope: changed=1 mapped=0 alternate=1 excluded=0',
+            result.stdout)
 
 
 if __name__ == '__main__':

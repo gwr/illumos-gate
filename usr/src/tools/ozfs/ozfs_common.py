@@ -20,6 +20,7 @@ COMPARE_GROUPS = ('core', 'platform', 'userland', 'tests')
 GROUPS = COMPARE_GROUPS + ('exclude',)
 MODIFIERS = ('exception',)
 SIDES = ('illumos', 'openzfs')
+MAPPED_GROUPS = ('core', 'userland', 'tests')
 ALLOWED_SETTINGS = {
     'repositories': {'openzfs', 'illumos'},
     'paths': {'lists'},
@@ -36,6 +37,14 @@ class PlatformMapping:
     variant: str
     illumos_path: str
     openzfs_path: str
+
+
+@dataclass(frozen=True)
+class PathAction:
+    kind: str
+    source: str
+    target: str = ''
+    group: str = ''
 
 
 def load_config(path):
@@ -227,6 +236,141 @@ def map_relative_path(path, source_root, target_root):
     if path == source_root:
         return target_root
     return f'{target_root}/{path[len(source_root) + 1:]}'
+
+
+def git_output(repo, *args):
+    result = run_git(repo, *args)
+    if result.returncode != 0:
+        message = result.stderr.decode(errors='replace').strip()
+        raise OzfsError(f'Git command failed: {message}')
+    return result.stdout
+
+
+def changed_paths(repo, before, after):
+    output = git_output(
+        repo, 'diff', '--name-status', '-z', '--no-renames',
+        before, after, '--')
+    fields = output.split(b'\0')
+    if fields and not fields[-1]:
+        fields.pop()
+    if len(fields) % 2 != 0:
+        raise OzfsError(
+            f'unexpected path list for OpenZFS range {before}..{after}')
+
+    paths = []
+    for index in range(0, len(fields), 2):
+        status = fields[index].decode(errors='replace')
+        path = fields[index + 1].decode()
+        if status not in ('A', 'D', 'M', 'T'):
+            raise OzfsError(
+                f'unsupported change status {status} for {path}')
+        paths.append(path)
+    return paths
+
+
+def path_matches_any(path, roots):
+    return any(path_is_under(path, root) for root in roots)
+
+
+def mapped_candidates(path, path_lists):
+    candidates = []
+    for group in MAPPED_GROUPS:
+        pairs = zip(
+            path_lists[group]['openzfs'],
+            path_lists[group]['illumos'])
+        for source_root, target_root in pairs:
+            if path_is_under(path, source_root):
+                candidates.append((
+                    group,
+                    source_root,
+                    map_relative_path(path, source_root, target_root),
+                ))
+    if not candidates:
+        return []
+
+    longest = max(
+        len(source.split('/')) for _group, source, _target in candidates)
+    return [
+        candidate for candidate in candidates
+        if len(candidate[1].split('/')) == longest
+    ]
+
+
+def tree_has_path(repo, commit, path):
+    result = run_git(repo, 'cat-file', '-e', f'{commit}:{path}')
+    return result.returncode == 0
+
+
+def resolve_mapped_path(illumos_repo, illumos_commit, path, path_lists):
+    candidates = mapped_candidates(path, path_lists)
+    targets = sorted({target for _group, _source, target in candidates})
+    if not targets:
+        return None
+    if len(targets) == 1:
+        group = next(
+            group for group, _source, target in candidates
+            if target == targets[0])
+        return group, targets[0]
+
+    existing = [
+        target for target in targets
+        if tree_has_path(illumos_repo, illumos_commit, target)
+    ]
+    if len(existing) == 1:
+        group = next(
+            group for group, _source, target in candidates
+            if target == existing[0])
+        return group, existing[0]
+
+    choices = ', '.join(targets)
+    raise OzfsError(f'ambiguous mapping for {path}: {choices}')
+
+
+def resolve_platform_action(path, platform_mappings):
+    candidates = [
+        mapping for mapping in platform_mappings
+        if path_is_under(path, mapping.openzfs_path)
+    ]
+    if not candidates:
+        return None
+
+    longest = max(
+        len(mapping.openzfs_path.split('/')) for mapping in candidates)
+    candidates = [
+        mapping for mapping in candidates
+        if len(mapping.openzfs_path.split('/')) == longest
+    ]
+    if len(candidates) != 1:
+        raise OzfsError(f'ambiguous platform mapping for {path}')
+
+    mapping = candidates[0]
+    if mapping.role == 'alternate':
+        return PathAction('alternate', path, group='core')
+    target = map_relative_path(
+        path, mapping.openzfs_path, mapping.illumos_path)
+    return PathAction('mapped', path, target, 'core')
+
+
+def classify_path(
+        illumos_repo, illumos_commit, path, path_lists, platform_mappings,
+        reject_exception=True):
+    if (reject_exception and
+            path_matches_any(path, path_lists['exception']['openzfs'])):
+        raise OzfsError(f'exceptional path requires review: {path}')
+
+    platform_action = resolve_platform_action(path, platform_mappings)
+    if platform_action is not None:
+        return platform_action
+
+    mapped = resolve_mapped_path(
+        illumos_repo, illumos_commit, path, path_lists)
+    if mapped is not None:
+        group, target = mapped
+        return PathAction('mapped', path, target, group)
+
+    if path_matches_any(path, path_lists['exclude']['openzfs']):
+        return PathAction('excluded', path)
+    raise OzfsError(f'unclassified path: {path}')
 
 
 def run_git(repo, *args, input_data=None):
