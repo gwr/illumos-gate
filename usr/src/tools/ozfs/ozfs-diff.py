@@ -26,6 +26,7 @@ import sys
 import tempfile
 
 from ozfs_common import (
+    GLOB_PATHSPEC_PREFIX,
     GROUPS,
     SIDES,
     OzfsError as OzfsDiffError,
@@ -113,8 +114,12 @@ def enumerate_files(repo, commit, paths):
     if not paths:
         return {}
 
-    result = run_git(
-        repo, 'ls-tree', '-r', '-l', '-z', commit, '--', *paths)
+    has_glob = any(
+        path.startswith(GLOB_PATHSPEC_PREFIX) for path in paths)
+    arguments = ['ls-tree', '-r', '-l', '-z', commit]
+    if not has_glob:
+        arguments.extend(('--', *paths))
+    result = run_git(repo, *arguments)
     if result.returncode != 0:
         message = result.stderr.decode(errors='replace').strip()
         raise OzfsDiffError(f'cannot enumerate files at {commit}: {message}')
@@ -128,6 +133,8 @@ def enumerate_files(repo, commit, paths):
         if object_type != b'blob':
             continue
         path = os.fsdecode(encoded_path)
+        if has_glob and not path_matches_any(path, paths):
+            continue
         files[path] = FileInfo(
             path=path,
             basename=PurePosixPath(path).name,
@@ -439,8 +446,10 @@ def compare_matches(
     comparisons = []
     for index, (group, match) in enumerate(matches):
         exceptional = (
-            match.illumos.path in exception_paths['illumos'] or
-            match.openzfs.path in exception_paths['openzfs']
+            path_matches_any(
+                match.illumos.path, exception_paths['illumos']) or
+            path_matches_any(
+                match.openzfs.path, exception_paths['openzfs'])
         )
         kind, added, deleted = results[index]
         comparisons.append(FileComparison(

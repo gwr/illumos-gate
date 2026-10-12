@@ -142,8 +142,7 @@ def format_diff(openzfs_repo, plan):
         if action.kind == 'mapped'
     ]
     if not mappings:
-        raise OzfsError(
-            f'OpenZFS commit has no mapped illumos paths: {plan.commit}')
+        return b''
 
     patch = git_output(
         openzfs_repo, 'diff', '--full-index', '--binary', '--no-renames',
@@ -379,6 +378,9 @@ def run():
         if operation_manifest is not None:
             append_manifest(
                 operation_manifest, f'generated\t{plan.commit}\n')
+    if not any(diffs):
+        raise OzfsError(
+            'OpenZFS commit group has no mapped illumos paths')
     patch = format_combined_patch(
         illumos_repo, args.work_name.strip(), plans, diffs)
     if output is not None:

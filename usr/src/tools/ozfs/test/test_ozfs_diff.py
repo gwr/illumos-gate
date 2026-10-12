@@ -58,6 +58,7 @@ class OzfsDiffTest(unittest.TestCase):
             'module/platform/p.c': 'openzfs platform\n',
             'cmd/user/u.c': 'openzfs user\n',
             'tests/t.ksh': 'openzfs test\n',
+            'build/Makefile.am': 'OpenZFS build metadata\n',
         })
         self._create_lists()
         self.config_dir.mkdir()
@@ -104,9 +105,12 @@ class OzfsDiffTest(unittest.TestCase):
             'tests-illumos.txt': 'tests\n',
             'tests-openzfs.txt': 'tests\n',
             'exclude-illumos.txt': 'src/excluded\n',
-            'exclude-openzfs.txt': 'excluded\n',
-            'exception-illumos.txt': 'src/core/a.c\n',
-            'exception-openzfs.txt': 'module/core/a.c\n',
+            'exclude-openzfs.txt': (
+                'excluded\n'
+                ':(glob)**/Makefile.am\n'
+            ),
+            'exception-illumos.txt': ':(glob)src/core/a.?\n',
+            'exception-openzfs.txt': ':(glob)module/core/a.?\n',
         }
         for name, contents in paths.items():
             (self.lists / name).write_text(contents, encoding='utf-8')
@@ -168,7 +172,7 @@ class OzfsDiffTest(unittest.TestCase):
         self.assertIn('platform: illumos=8 OpenZFS=2', result.stdout)
         self.assertIn('userland: illumos=1 OpenZFS=1', result.stdout)
         self.assertIn('tests: illumos=0 OpenZFS=1', result.stdout)
-        self.assertIn('exclude: illumos=1 OpenZFS=0', result.stdout)
+        self.assertIn('exclude: illumos=1 OpenZFS=1', result.stdout)
         self.assertIn(
             'core: path=7 ambiguous=0 '
             'illumos-unmatched=1 OpenZFS-unmatched=1',

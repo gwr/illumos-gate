@@ -32,12 +32,15 @@ tests
 exclude
     Unpaired integration, support, build, packaging, and documentation paths.
     These are reference paths, not a comparison group.  Exclude them from
-    sibling-similarity measurements.
+    sibling-similarity measurements.  Exclusion entries may use Git
+    `:(glob)` pathspecs.  Literal and glob exclusions take precedence over
+    mapped roots.
 
 exception
     Modifiers for files in the normal comparison groups that have known,
     intentional divergences.  Keep these files visible in reports but exclude
-    them from sibling-similarity measurements.
+    them from sibling-similarity measurements.  Exception entries may use Git
+    `:(glob)` pathspecs.
 
     illumos full NFS ACL support in
     usr/src/uts/common/fs/zfs/zfs_acl.c must be preserved.  The OpenZFS

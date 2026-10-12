@@ -119,6 +119,10 @@ class OzfsRunPlanTest(unittest.TestCase):
         self.assertIn('G0002 failed with exit status 7', result.stderr)
         self.assertIn('--start G0002', result.stderr)
         self.assertIn('--after G0002', result.stderr)
+        self.assertIn(
+            f'\n  {SCRIPT} --plan', result.stderr)
+        self.assertNotIn(
+            f'\n  {sys.executable} {SCRIPT}', result.stderr)
 
     def test_stops_after_first_failure(self):
         result = self._run('--cf', str(self.config))

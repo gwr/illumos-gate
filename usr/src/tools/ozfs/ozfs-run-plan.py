@@ -47,7 +47,6 @@ def parse_args():
         help='list selected groups without invoking ozfs-apply')
     parser.add_argument(
         '--ozfs-apply', type=Path,
-        default=Path(__file__).with_name('ozfs-apply.py'),
         help='ozfs-apply program (default: adjacent ozfs-apply.py)')
     return parser.parse_args()
 
@@ -159,8 +158,13 @@ def display_group(group):
 
 
 def apply_command(args, group):
+    program = (
+        args.ozfs_apply
+        if args.ozfs_apply is not None
+        else Path(__file__).with_name('ozfs-apply.py')
+    )
     return [
-        sys.executable, str(args.ozfs_apply),
+        sys.executable, str(program),
         '--cf', args.config,
         '--work-name', f"{group['id']}: {group['name']}",
         *(commit['commit'] for commit in group['commits']),
@@ -169,12 +173,13 @@ def apply_command(args, group):
 
 def restart_command(args, option, group_id):
     command = [
-        sys.executable, sys.argv[0],
+        sys.argv[0],
         '--plan', str(args.plan),
         '--cf', args.config,
-        '--ozfs-apply', str(args.ozfs_apply),
-        option, group_id,
     ]
+    if args.ozfs_apply is not None:
+        command.extend(('--ozfs-apply', str(args.ozfs_apply)))
+    command.extend((option, group_id))
     return shlex.join(command)
 
 

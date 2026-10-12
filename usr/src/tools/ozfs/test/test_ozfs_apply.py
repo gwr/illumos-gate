@@ -163,6 +163,59 @@ class OzfsApplyTest(unittest.TestCase):
             'usr/src/uts/common/fs/zfs/sys/kernel.h',
             result.stdout)
 
+    def test_configured_glob_excludes_path_beneath_mapped_root(self):
+        with (self.lists / 'exclude-openzfs.txt').open('a') as stream:
+            stream.write(':(glob)**/Makefile.am\n')
+        commit = self._commit('build metadata', {
+            'module/zfs/Makefile.am': 'build metadata\n',
+        })
+
+        result = self._run('--check', commit)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(
+            'excluded\tmodule/zfs/Makefile.am',
+            result.stdout)
+
+    def test_group_allows_commit_with_only_excluded_paths(self):
+        excluded = self._commit('excluded metadata', {
+            'config/build.m4': 'changed config\n',
+        })
+        mapped = self._commit('mapped source', {
+            'module/zfs/main.c': 'changed source\n',
+        })
+        output = self.root / 'mixed-series.mbox'
+
+        result = self._run(
+            '--no-apply', '--output', str(output),
+            '--work-name', 'mixed work', excluded, mapped)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        series = output.read_text(encoding='utf-8')
+        self.assertIn(f'import OpenZFS {excluded}', series)
+        self.assertIn(f'import OpenZFS {mapped}', series)
+        self.assertNotIn('config/build.m4', series)
+        self.assertIn(
+            'diff --git a/usr/src/uts/common/fs/zfs/main.c '
+            'b/usr/src/uts/common/fs/zfs/main.c',
+            series)
+
+    def test_refuses_group_with_only_excluded_paths(self):
+        commit = self._commit('excluded metadata', {
+            'config/build.m4': 'changed config\n',
+        })
+        output = self.root / 'excluded-series.mbox'
+
+        result = self._run(
+            '--no-apply', '--output', str(output),
+            '--work-name', 'excluded work', commit)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            'OpenZFS commit group has no mapped illumos paths',
+            result.stderr)
+        self.assertFalse(output.exists())
+
     def test_output_writes_one_combined_reshaped_mail_patch(self):
         first = self._commit('first change', {
             'module/zfs/main.c': 'main changed\n',
@@ -259,7 +312,7 @@ class OzfsApplyTest(unittest.TestCase):
 
     def test_refuses_mapping_to_exceptional_illumos_path(self):
         (self.lists / 'exception-illumos.txt').write_text(
-            'usr/src/uts/common/fs/zfs/main.c\n', encoding='utf-8')
+            ':(glob)**/main.c\n', encoding='utf-8')
         commit = self._commit('exceptional target change', {
             'module/zfs/main.c': 'changed\n',
         })

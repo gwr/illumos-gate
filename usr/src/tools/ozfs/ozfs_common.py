@@ -21,6 +21,7 @@ GROUPS = COMPARE_GROUPS + ('exclude',)
 MODIFIERS = ('exception',)
 SIDES = ('illumos', 'openzfs')
 MAPPED_GROUPS = ('core', 'userland', 'tests')
+GLOB_PATHSPEC_PREFIX = ':(glob)'
 ALLOWED_SETTINGS = {
     'repositories': {'openzfs', 'illumos'},
     'paths': {'lists'},
@@ -125,7 +126,11 @@ def load_path_lists(lists_dir):
                 value = line.strip()
                 if not value:
                     continue
-                validate_repo_path(value, name, line_number)
+                if (group in ('exclude', 'exception') and
+                        value.startswith(GLOB_PATHSPEC_PREFIX)):
+                    validate_glob_pathspec(value, name, line_number)
+                else:
+                    validate_repo_path(value, name, line_number)
                 paths.append(value)
             result[group][side] = paths
 
@@ -207,6 +212,15 @@ def validate_repo_path(value, name, line_number):
             f'invalid repository path in {name}:{line_number}: {value}')
 
 
+def validate_glob_pathspec(value, name, line_number):
+    pattern = value[len(GLOB_PATHSPEC_PREFIX):]
+    path = PurePosixPath(pattern)
+    if (not pattern or path.is_absolute() or '..' in path.parts or
+            pattern.startswith(':')):
+        raise OzfsError(
+            f'invalid glob pathspec in {name}:{line_number}: {value}')
+
+
 def validate_repository(path, label):
     if not path.is_dir():
         raise OzfsError(f'{label} repository is not a directory: {path}')
@@ -269,7 +283,13 @@ def changed_paths(repo, before, after):
 
 
 def path_matches_any(path, roots):
-    return any(path_is_under(path, root) for root in roots)
+    candidate = PurePosixPath(path)
+    return any(
+        candidate.match(root[len(GLOB_PATHSPEC_PREFIX):])
+        if root.startswith(GLOB_PATHSPEC_PREFIX)
+        else path_is_under(path, root)
+        for root in roots
+    )
 
 
 def mapped_candidates(path, path_lists):
@@ -374,6 +394,9 @@ def classify_path(
             path_matches_any(path, path_lists['exception']['openzfs'])):
         raise OzfsError(f'exceptional path requires review: {path}')
 
+    if path_matches_any(path, path_lists['exclude']['openzfs']):
+        return PathAction('excluded', path)
+
     platform_action = resolve_platform_action(path, platform_mappings)
     if platform_action is not None:
         return check_mapped_target(
@@ -386,8 +409,6 @@ def classify_path(
         action = PathAction('mapped', path, target, group)
         return check_mapped_target(action, path_lists, reject_exception)
 
-    if path_matches_any(path, path_lists['exclude']['openzfs']):
-        return PathAction('excluded', path)
     raise OzfsError(f'unclassified path: {path}')
 
 
