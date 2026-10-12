@@ -244,6 +244,14 @@ def append_manifest(path, text):
             f'cannot update manifest {path}: {error.strerror}')
 
 
+def remove_manifest(path):
+    try:
+        path.unlink()
+    except OSError as error:
+        raise OzfsError(
+            f'cannot remove manifest {path}: {error.strerror}')
+
+
 def git_operation_path(repo, name):
     value = git_output(repo, 'rev-parse', '--git-path', name).decode().strip()
     path = Path(value)
@@ -379,8 +387,10 @@ def run():
             append_manifest(
                 operation_manifest, f'generated\t{plan.commit}\n')
     if not any(diffs):
-        raise OzfsError(
-            'OpenZFS commit group has no mapped illumos paths')
+        print('ozfs-apply: no mapped illumos paths; nothing to do')
+        if operation_manifest is not None:
+            remove_manifest(operation_manifest)
+        return
     patch = format_combined_patch(
         illumos_repo, args.work_name.strip(), plans, diffs)
     if output is not None:
@@ -391,12 +401,7 @@ def run():
     append_manifest(operation_manifest, 'applying\tgit am --3way -\n')
     copy_preimages(illumos_repo, openzfs_repo, plans)
     apply_patch(illumos_repo, patch)
-    try:
-        operation_manifest.unlink()
-    except OSError as error:
-        raise OzfsError(
-            f'import completed but cannot remove manifest '
-            f'{operation_manifest}: {error.strerror}')
+    remove_manifest(operation_manifest)
 
 
 def main():

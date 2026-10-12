@@ -200,21 +200,22 @@ class OzfsApplyTest(unittest.TestCase):
             'b/usr/src/uts/common/fs/zfs/main.c',
             series)
 
-    def test_refuses_group_with_only_excluded_paths(self):
+    def test_completes_group_with_only_excluded_paths(self):
         commit = self._commit('excluded metadata', {
             'config/build.m4': 'changed config\n',
         })
-        output = self.root / 'excluded-series.mbox'
+        before = self._git(self.illumos, 'rev-parse', 'HEAD')
 
         result = self._run(
-            '--no-apply', '--output', str(output),
             '--work-name', 'excluded work', commit)
 
-        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(
-            'OpenZFS commit group has no mapped illumos paths',
-            result.stderr)
-        self.assertFalse(output.exists())
+            'ozfs-apply: no mapped illumos paths; nothing to do',
+            result.stdout)
+        self.assertEqual(
+            self._git(self.illumos, 'rev-parse', 'HEAD'), before)
+        self.assertFalse((self.root / '.ozfs-manifest.tsv').exists())
 
     def test_output_writes_one_combined_reshaped_mail_patch(self):
         first = self._commit('first change', {
