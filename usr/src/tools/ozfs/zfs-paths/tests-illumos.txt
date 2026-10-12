@@ -1,1 +1,2 @@
+usr/src/test/zfs-tests/runfiles/common.run
 usr/src/test/zfs-tests

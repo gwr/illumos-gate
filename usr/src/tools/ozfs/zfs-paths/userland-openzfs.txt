@@ -1,3 +1,5 @@
+include/libzfs.h
+include/libzfs_impl.h
 lib/libzfs
 lib/libzfs_core
 lib/libzpool

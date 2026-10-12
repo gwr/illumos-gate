@@ -1,1 +1,2 @@
+tests/runfiles/common.run
 tests/zfs-tests

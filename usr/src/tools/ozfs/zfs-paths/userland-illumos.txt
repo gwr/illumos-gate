@@ -1,4 +1,6 @@
-usr/src/lib/libzfs
+usr/src/lib/libzfs/common/libzfs.h
+usr/src/lib/libzfs/common/libzfs_impl.h
+usr/src/lib/libzfs/common
 usr/src/lib/libzfs_core
 usr/src/lib/libzpool
 usr/src/lib/libzutil
