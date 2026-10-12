@@ -463,6 +463,31 @@ class OzfsApplyTest(unittest.TestCase):
         self.assertFalse((self.root / '.ozfs-review.mbox').exists())
         self.assertFalse((self.root / '.ozfs-manifest.tsv').exists())
 
+    def test_review_patch_copies_exceptional_path_preimage(self):
+        commit = self._commit('exceptional source change', {
+            'module/zfs/exception.c': 'changed exception\n',
+        })
+        preimage = self._git(
+            self.openzfs, 'rev-parse',
+            f'{commit}^:module/zfs/exception.c')
+        before = subprocess.run(
+            ['git', '-C', str(self.illumos),
+             'cat-file', '-e', preimage],
+            check=False)
+        self.assertNotEqual(before.returncode, 0)
+
+        result = self._run(
+            '--work-name', 'exceptional source review', commit)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertTrue((self.root / '.ozfs-review.mbox').is_file())
+        self._git(self.illumos, 'cat-file', '-e', preimage)
+        manifest = (
+            self.root / '.ozfs-manifest.tsv'
+        ).read_text(encoding='utf-8')
+        self.assertIn('copying\tpreimage blobs\n', manifest)
+        self.assertIn('copied\tpreimage blobs\n', manifest)
+
     def test_refuses_unselected_platform_interface(self):
         commit = self._commit('unknown platform change', {
             'module/os/freebsd/zfs/unknown.c': 'unknown\n',

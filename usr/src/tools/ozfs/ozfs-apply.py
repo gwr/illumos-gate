@@ -337,7 +337,7 @@ def preimage_oids(openzfs_repo, plans):
     result = set()
     for plan in plans:
         for action in plan.actions:
-            if action.kind != 'mapped':
+            if action.kind not in ('mapped', 'review'):
                 continue
             resolved = run_git(
                 openzfs_repo, 'rev-parse', '--verify', '--end-of-options',
@@ -481,6 +481,9 @@ def run():
     if review_actions:
         append_manifest(
             operation_manifest, f'review-patch\t{review_patch}\n')
+        append_manifest(operation_manifest, 'copying\tpreimage blobs\n')
+        copy_preimages(illumos_repo, openzfs_repo, plans)
+        append_manifest(operation_manifest, 'copied\tpreimage blobs\n')
         write_patch(review_patch, patch)
         raise review_error(review_actions, review_patch)
 
