@@ -29,6 +29,12 @@ tests
     ZFS test suites.  Keep this group separate so the large number of tests
     does not dominate sibling-similarity measurements.
 
+addition
+    Reviewed OpenZFS additions and their illumos destinations.  Line N in
+    addition-openzfs.txt maps to line N in addition-illumos.txt.  Broad
+    mappings may update existing counterparts, but only these pairs may
+    create new illumos paths.
+
 exclude
     Unpaired integration, support, build, packaging, and documentation paths.
     These are reference paths, not a comparison group.  Exclude them from

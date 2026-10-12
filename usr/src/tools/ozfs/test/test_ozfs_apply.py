@@ -90,6 +90,8 @@ class OzfsApplyTest(unittest.TestCase):
             'userland-openzfs.txt': '',
             'tests-illumos.txt': '',
             'tests-openzfs.txt': '',
+            'addition-illumos.txt': '',
+            'addition-openzfs.txt': '',
             'exclude-illumos.txt': '',
             'exclude-openzfs.txt': 'config\n',
             'exception-illumos.txt': (
@@ -118,6 +120,12 @@ class OzfsApplyTest(unittest.TestCase):
         }
         with self.config.open('w', encoding='utf-8') as stream:
             config.write(stream)
+
+    def _approve_addition(self, source, target):
+        with (self.lists / 'addition-openzfs.txt').open('a') as stream:
+            stream.write(f'{source}\n')
+        with (self.lists / 'addition-illumos.txt').open('a') as stream:
+            stream.write(f'{target}\n')
 
     def _commit(self, message, changes):
         for name, contents in changes.items():
@@ -342,6 +350,77 @@ class OzfsApplyTest(unittest.TestCase):
             'usr/src/uts/common/fs/zfs/platform.c',
             result.stderr)
 
+    def test_refuses_modified_source_with_missing_mapped_target(self):
+        target = self.illumos / 'usr/src/uts/common/fs/zfs/main.c'
+        target.unlink()
+        self._git(self.illumos, 'add', '.')
+        self._git(
+            self.illumos, 'commit', '--quiet', '-m', 'remove mapped target')
+        commit = self._commit('source change', {
+            'module/zfs/main.c': 'changed\n',
+        })
+
+        result = self._run('--check', commit)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            'mapped illumos target does not exist: module/zfs/main.c -> '
+            'usr/src/uts/common/fs/zfs/main.c',
+            result.stderr)
+
+    def test_stops_before_git_am_for_unapproved_mapped_addition(self):
+        commit = self._commit('new source', {
+            'module/zfs/new.c': 'new\n',
+        })
+
+        result = self._run(
+            '--work-name', 'new source review', commit)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            'review required for 1 new illumos path', result.stderr)
+        self.assertIn(
+            'git am was not run', result.stderr)
+        patch = self.root / '.ozfs-review.mbox'
+        self.assertTrue(patch.is_file())
+        series = patch.read_text(encoding='utf-8')
+        self.assertIn(
+            'usr/src/uts/common/fs/zfs/new.c', series)
+        self.assertIn('+new', series)
+        self.assertEqual(
+            self._git(self.illumos, 'rev-list', '--count', 'HEAD'), '1')
+        self.assertFalse(
+            (self.illumos / 'usr/src/uts/common/fs/zfs/new.c').exists())
+        manifest = self.root / '.ozfs-manifest.tsv'
+        self.assertTrue(manifest.is_file())
+        self.assertIn(
+            'review-addition\tmodule/zfs/new.c\t'
+            'usr/src/uts/common/fs/zfs/new.c\n',
+            manifest.read_text(encoding='utf-8'))
+        git_path = self._git(
+            self.illumos, 'rev-parse', '--git-path', 'rebase-apply')
+        operation = Path(git_path)
+        if not operation.is_absolute():
+            operation = self.illumos / operation
+        self.assertFalse(operation.exists())
+
+    def test_check_reports_unapproved_mapped_addition(self):
+        commit = self._commit('new source', {
+            'module/zfs/new.c': 'new\n',
+        })
+
+        result = self._run('--check', commit)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            'review-addition\tmodule/zfs/new.c\t'
+            'usr/src/uts/common/fs/zfs/new.c\n',
+            result.stdout)
+        self.assertIn(
+            'review required for 1 new illumos path', result.stderr)
+        self.assertFalse((self.root / '.ozfs-review.mbox').exists())
+        self.assertFalse((self.root / '.ozfs-manifest.tsv').exists())
+
     def test_refuses_unselected_platform_interface(self):
         commit = self._commit('unknown platform change', {
             'module/os/freebsd/zfs/unknown.c': 'unknown\n',
@@ -355,6 +434,12 @@ class OzfsApplyTest(unittest.TestCase):
             result.stderr)
 
     def test_reshapes_addition_deletion_and_rename(self):
+        self._approve_addition(
+            'module/zfs/new.c',
+            'usr/src/uts/common/fs/zfs/new.c')
+        self._approve_addition(
+            'module/zfs/renamed.c',
+            'usr/src/uts/common/fs/zfs/renamed.c')
         first = self._commit('add and delete', {
             'module/zfs/main.c': None,
             'module/zfs/new.c': 'new\n',
@@ -388,6 +473,9 @@ class OzfsApplyTest(unittest.TestCase):
         self.assertNotIn('rename from', series)
 
     def test_preserves_binary_patch_and_mode_change(self):
+        self._approve_addition(
+            'module/zfs/data.bin',
+            'usr/src/uts/common/fs/zfs/data.bin')
         first = self._commit('add binary file', {
             'module/zfs/data.bin': b'\0binary data\n',
         })

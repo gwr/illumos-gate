@@ -1,5 +1,6 @@
 cmd/zed
 cmd/zpios
+:(glob)cmd/zpool/compatibility.d/*
 include/zpios-ctl.h
 include/zpios-internal.h
 module/zpios
@@ -16,6 +17,8 @@ lib/libefi
 lib/libnvpair
 lib/libuutil
 lib/libzfsbootenv
+lib/libzfs/libzfs.abi
+lib/libzfs_core/libzfs_core.abi
 module/nvpair
 module/unicode
 tests/test-runner
@@ -35,3 +38,5 @@ autogen.sh
 :(glob)**/.gitignore
 :(glob)*.pc.in
 :(glob)**/*.pc.in
+:(glob)*.suppr
+:(glob)**/*.suppr

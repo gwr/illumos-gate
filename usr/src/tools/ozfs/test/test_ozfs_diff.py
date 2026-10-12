@@ -104,6 +104,8 @@ class OzfsDiffTest(unittest.TestCase):
             'userland-openzfs.txt': 'cmd/user\n',
             'tests-illumos.txt': 'tests\n',
             'tests-openzfs.txt': 'tests\n',
+            'addition-illumos.txt': '',
+            'addition-openzfs.txt': '',
             'exclude-illumos.txt': 'src/excluded\n',
             'exclude-openzfs.txt': (
                 'excluded\n'

@@ -19,6 +19,7 @@ import subprocess
 COMPARE_GROUPS = ('core', 'platform', 'userland', 'tests')
 GROUPS = COMPARE_GROUPS + ('exclude',)
 MODIFIERS = ('exception',)
+PAIRED_POLICIES = ('addition',)
 SIDES = ('illumos', 'openzfs')
 MAPPED_GROUPS = ('core', 'userland', 'tests')
 GLOB_PATHSPEC_PREFIX = ':(glob)'
@@ -108,7 +109,7 @@ def resolve_config_path(value, base):
 
 def load_path_lists(lists_dir):
     result = {}
-    for group in GROUPS + MODIFIERS:
+    for group in GROUPS + MODIFIERS + PAIRED_POLICIES:
         result[group] = {}
         for side in SIDES:
             name = f'{group}-{side}.txt'
@@ -134,7 +135,7 @@ def load_path_lists(lists_dir):
                 paths.append(value)
             result[group][side] = paths
 
-    for group in COMPARE_GROUPS:
+    for group in COMPARE_GROUPS + PAIRED_POLICIES:
         illumos_name = f'{group}-illumos.txt'
         openzfs_name = f'{group}-openzfs.txt'
         illumos_count = len(result[group]['illumos'])
@@ -292,9 +293,9 @@ def path_matches_any(path, roots):
     )
 
 
-def mapped_candidates(path, path_lists):
+def mapped_candidates(path, path_lists, groups=MAPPED_GROUPS):
     candidates = []
-    for group in MAPPED_GROUPS:
+    for group in groups:
         pairs = zip(
             path_lists[group]['openzfs'],
             path_lists[group]['illumos'])
@@ -321,8 +322,10 @@ def tree_has_path(repo, commit, path):
     return result.returncode == 0
 
 
-def resolve_mapped_path(illumos_repo, illumos_commit, path, path_lists):
-    candidates = mapped_candidates(path, path_lists)
+def resolve_mapped_path(
+        illumos_repo, illumos_commit, path, path_lists,
+        groups=MAPPED_GROUPS):
+    candidates = mapped_candidates(path, path_lists, groups)
     targets = sorted({target for _group, _source, target in candidates})
     if not targets:
         return None
@@ -396,6 +399,13 @@ def classify_path(
 
     if path_matches_any(path, path_lists['exclude']['openzfs']):
         return PathAction('excluded', path)
+
+    addition = resolve_mapped_path(
+        illumos_repo, illumos_commit, path, path_lists, PAIRED_POLICIES)
+    if addition is not None:
+        group, target = addition
+        action = PathAction('mapped', path, target, group)
+        return check_mapped_target(action, path_lists, reject_exception)
 
     platform_action = resolve_platform_action(path, platform_mappings)
     if platform_action is not None:

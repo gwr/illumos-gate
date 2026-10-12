@@ -1,1 +1,3 @@
 usr/src/uts/common/fs/zfs/zfs_acl.c
+usr/src/uts/common/fs/zfs/zfs_vfsops.c
+usr/src/uts/common/fs/zfs/zfs_vnops.c

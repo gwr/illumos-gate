@@ -29,6 +29,7 @@ from ozfs_common import (
     load_platform_mappings,
     resolve_commit,
     run_git,
+    tree_has_path,
     validate_repository,
 )
 
@@ -97,6 +98,37 @@ def plan_commit(
     return CommitPlan(commit, parent, subject, message, actions)
 
 
+def validate_mapped_targets(
+        illumos_repo, illumos_commit, openzfs_repo, plans):
+    target_exists = {}
+    review_additions = {}
+    for plan in plans:
+        for action in plan.actions:
+            if action.kind != 'mapped':
+                continue
+            source_existed = tree_has_path(
+                openzfs_repo, plan.parent, action.source)
+            source_exists = tree_has_path(
+                openzfs_repo, plan.commit, action.source)
+            if action.target not in target_exists:
+                target_exists[action.target] = tree_has_path(
+                    illumos_repo, illumos_commit, action.target)
+            if not source_existed and source_exists:
+                if action.group != 'addition':
+                    review_additions[
+                        (action.source, action.target)] = action
+                target_exists[action.target] = True
+                continue
+            if target_exists[action.target]:
+                if source_existed and not source_exists:
+                    target_exists[action.target] = False
+                continue
+            raise OzfsError(
+                f'mapped illumos target does not exist: '
+                f'{action.source} -> {action.target}')
+    return tuple(review_additions.values())
+
+
 def format_manifest(plans):
     lines = []
     for plan in plans:
@@ -107,6 +139,22 @@ def format_manifest(plans):
                 fields.append(action.target)
             lines.append('\t'.join(fields))
     return '\n'.join(lines) + '\n'
+
+
+def format_review_additions(actions):
+    return ''.join(
+        f'review-addition\t{action.source}\t{action.target}\n'
+        for action in actions
+    )
+
+
+def review_error(actions, patch=None):
+    count = len(actions)
+    noun = 'path' if count == 1 else 'paths'
+    message = f'review required for {count} new illumos {noun}'
+    if patch is not None:
+        message += f'; patch written to {patch}; git am was not run'
+    return OzfsError(message)
 
 
 def rewrite_patch_paths(patch, mappings):
@@ -339,14 +387,17 @@ def run():
     openzfs_repo = validate_repository(openzfs_path, 'OpenZFS')
     output = None
     operation_manifest = None
+    review_patch = None
     if args.no_apply:
         output = output_path(args.output)
         ensure_new_artifacts(output)
     elif not args.check:
         operation_manifest = Path.cwd() / '.ozfs-manifest.tsv'
-        if operation_manifest.exists():
-            raise OzfsError(
-                f'output path already exists: {operation_manifest}')
+        review_patch = Path.cwd() / '.ozfs-review.mbox'
+        for artifact in (operation_manifest, review_patch):
+            if artifact.exists():
+                raise OzfsError(
+                    f'output path already exists: {artifact}')
         ensure_no_git_am(illumos_repo)
         ensure_clean(illumos_repo)
     illumos_commit = resolve_commit(illumos_repo, 'HEAD', 'illumos')
@@ -373,8 +424,17 @@ def run():
         if operation_manifest is not None:
             append_manifest(operation_manifest, format_manifest([plan]))
 
+    review_additions = validate_mapped_targets(
+        illumos_repo, illumos_commit, openzfs_repo, plans)
     print(format_manifest(plans), end='')
+    review_manifest = format_review_additions(review_additions)
+    if review_manifest:
+        print(review_manifest, end='')
+        if operation_manifest is not None:
+            append_manifest(operation_manifest, review_manifest)
     if args.check:
+        if review_additions:
+            raise review_error(review_additions)
         return
 
     diffs = []
@@ -394,9 +454,16 @@ def run():
     patch = format_combined_patch(
         illumos_repo, args.work_name.strip(), plans, diffs)
     if output is not None:
-        write_manifest(manifest_path(output), format_manifest(plans))
+        write_manifest(
+            manifest_path(output), format_manifest(plans) + review_manifest)
         write_patch(output, patch)
         return
+
+    if review_additions:
+        append_manifest(
+            operation_manifest, f'review-patch\t{review_patch}\n')
+        write_patch(review_patch, patch)
+        raise review_error(review_additions, review_patch)
 
     append_manifest(operation_manifest, 'applying\tgit am --3way -\n')
     copy_preimages(illumos_repo, openzfs_repo, plans)
