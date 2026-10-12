@@ -8,5 +8,7 @@ cmd/zdb
 cmd/zhack
 cmd/zhack.c
 cmd/zinject
+cmd/raidz_test
+cmd/zstreamdump
 cmd/ztest
 cmd/ztest.c

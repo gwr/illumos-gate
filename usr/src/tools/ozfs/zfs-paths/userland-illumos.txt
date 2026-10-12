@@ -8,5 +8,7 @@ usr/src/cmd/zdb
 usr/src/cmd/zhack
 usr/src/cmd/zhack/zhack.c
 usr/src/cmd/zinject
+usr/src/cmd/raidz_test
+usr/src/cmd/zstreamdump
 usr/src/cmd/ztest
 usr/src/cmd/ztest/ztest.c
