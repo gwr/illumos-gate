@@ -210,6 +210,7 @@ struct svc_ops {
 #define	SVCCTL_SET_TAG		4
 #define	SVCCTL_SET_TAG_CLEAR	5
 #define	SVCCTL_CMP_TAG		6
+#define	SVCCTL_DISCONNECT	7
 
 #define	SVC_TATTR_ADDRMASK	1
 

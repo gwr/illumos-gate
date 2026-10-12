@@ -195,8 +195,6 @@ int rpc_gss_seccreate(CLIENT *, char *, rpc_gss_OID,
 
 int rpc_gss_revauth(uid_t, rpc_gss_OID);
 void rpc_gss_secpurge(void *);
-enum auth_stat __svcrpcsec_gss(struct svc_req *,
-			struct rpc_msg *, bool_t *);
 bool_t rpc_gss_set_defaults(AUTH *, rpc_gss_service_t, uint_t);
 rpc_gss_service_t rpc_gss_get_service_type(AUTH *);
 
@@ -314,7 +312,7 @@ rpc_gss_get_versions(
 	uint_t	*vers_lo
 );
 
-#define	RPCSEC_GSS_REFRESH_ATTEMPTS 	20
+#define	RPCSEC_GSS_REFRESH_ATTEMPTS	20
 
 /*
  * Protocol data.

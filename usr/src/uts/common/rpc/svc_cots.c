@@ -190,6 +190,7 @@ static rpc_tag_hd_t svc_tag_hd;
  * (set from rpcmod).
  */
 void    (*mir_start)(queue_t *);
+void    (*mir_svc_disconnect)(queue_t *);
 uint_t	*svc_max_msg_sizep;
 
 /*
@@ -777,6 +778,11 @@ svc_cots_kctl(SVCXPRT *clone_xprt, int cmd, void *arg)
 
 	case SVCCTL_SET_CBCONN:
 		rc = svc_cots_cbconn(arg);
+		break;
+
+	case SVCCTL_DISCONNECT:
+		ASSERT(mir_svc_disconnect != NULL);
+		(*mir_svc_disconnect)(clone_xprt->xp_wq);
 		break;
 
 	case SVCCTL_SET_TAG:

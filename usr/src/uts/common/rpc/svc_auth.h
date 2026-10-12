@@ -48,6 +48,12 @@ extern "C" {
  * Server side authenticator
  */
 #ifdef _KERNEL
+typedef enum sec_svc_action {
+	SEC_SVC_DISPATCH = 0,
+	SEC_SVC_DROP,
+	SEC_SVC_CLOSE
+} sec_svc_action_t;
+
 /*
  * Copy of GSS parameters, needed for MT operation
  */
@@ -94,10 +100,12 @@ typedef struct {
 	((*((auth)->svc_ah_ops.svc_ah_unwrap))(auth, xdrs, xfunc, xwhere))
 
 /*
- * Server side authenticator
+ * Server-side authentication interfaces
  */
+extern enum auth_stat __svcrpcsec_gss(struct svc_req *, struct rpc_msg *,
+				sec_svc_action_t *);
 extern enum auth_stat sec_svc_msg(struct svc_req *, struct rpc_msg *,
-				bool_t *);
+				sec_svc_action_t *);
 
 extern int sec_svc_getcred(struct svc_req *, cred_t *,  caddr_t *, int *);
 

@@ -508,10 +508,13 @@ shift_bits(uint_t *arr, int arrlen, int nbits)
  * Check that the received sequence number seq_num is valid.
  */
 static bool_t
-check_seq(svc_rpc_gss_data *cl, uint_t seq_num, bool_t *kill_context)
+check_seq(svc_rpc_gss_data *cl, uint_t seq_num, bool_t *kill_context,
+    bool_t *too_old)
 {
 	int			i, j;
 	uint_t			bit;
+
+	*too_old = FALSE;
 
 	/*
 	 * If it exceeds the maximum, kill context.
@@ -540,6 +543,7 @@ check_seq(svc_rpc_gss_data *cl, uint_t seq_num, bool_t *kill_context)
 	 */
 	i = cl->seq_num - seq_num;
 	if (i >= SEQ_WIN) {
+		*too_old = TRUE;
 		RPCGSS_LOG0(4, "check_seq: seq_num is outside the window\n");
 		return (FALSE);
 	}
@@ -1022,7 +1026,7 @@ rpcsec_gss_init(
 	struct svc_req		*rqst,
 	struct rpc_msg		*msg,
 	rpc_gss_creds		creds,
-	bool_t			*no_dispatch,
+	sec_svc_action_t	*action,
 	svc_rpc_gss_data	*c_d) /* client data, can be NULL */
 {
 	svc_rpc_gss_data	*client_data;
@@ -1119,7 +1123,7 @@ rpcsec_gss_init(
 	}
 
 	mutex_exit(&client_data->clm);
-	*no_dispatch = TRUE;
+	*action = SEC_SVC_DROP;
 	return (AUTH_OK);
 
 error2:
@@ -1135,7 +1139,7 @@ rpcsec_gss_continue_init(
 	struct svc_req		*rqst,
 	struct rpc_msg		*msg,
 	rpc_gss_creds		creds,
-	bool_t			*no_dispatch)
+	sec_svc_action_t	*action)
 {
 	int ret;
 	svc_rpc_gss_data	*client_data;
@@ -1166,7 +1170,7 @@ rpcsec_gss_continue_init(
 	 */
 	if (!client_data->established) {
 		mutex_exit(&client_data->clm);
-		return (rpcsec_gss_init(rqst, msg, creds, no_dispatch,
+		return (rpcsec_gss_init(rqst, msg, creds, action,
 		    client_data));
 	}
 
@@ -1205,7 +1209,7 @@ rpcsec_gss_continue_init(
 			gss_parms->established = FALSE;
 			(void) svc_sendreply(rqst->rq_xprt,
 			    __xdr_rpc_gss_init_res, (caddr_t)retrans_result);
-			*no_dispatch = TRUE;
+			*action = SEC_SVC_DROP;
 			ASSERT(client_data->ref_cnt > 0);
 			client_data->ref_cnt--;
 		}
@@ -1226,11 +1230,12 @@ rpcsec_gss_data(
 	struct svc_req		*rqst,
 	struct rpc_msg		*msg,
 	rpc_gss_creds		creds,
-	bool_t			*no_dispatch)
+	sec_svc_action_t	*action)
 {
 	int ret;
 	svc_rpc_gss_parms_t	*gss_parms;
 	svc_rpc_gss_data	*client_data;
+	bool_t			too_old;
 
 	switch (creds.service) {
 	case rpc_gss_svc_none:
@@ -1335,23 +1340,24 @@ rpcsec_gss_data(
 	/*
 	 * Validate sequence number.
 	 */
-	if (!check_seq(client_data, creds.seq_num, &client_data->stale)) {
+	if (!check_seq(client_data, creds.seq_num, &client_data->stale,
+	    &too_old)) {
 		if (client_data->stale) {
 			ret = RPCSEC_GSS_FAILED;
 			RPCGSS_LOG0(1,
 			    "_svc_rpcsec_gss:check seq failed\n");
 		} else {
-			RPCGSS_LOG0(4, "_svc_rpcsec_gss:check seq "
-			    "failed on good context. Ignoring "
-			    "request\n");
+			RPCGSS_LOG(4, "_svc_rpcsec_gss:check seq "
+			    "failed on good context. %s request\n",
+			    too_old ? "Closing connection for" : "Ignoring");
 			/*
-			 * Operational error, drop packet silently.
-			 * The client will recover after timing out,
-			 * assuming this is a client error and not
-			 * a relpay attack.  Don't dispatch.
+			 * A client might not retransmit on a live
+			 * connection, so an old request must close the
+			 * connection to preserve liveness.  A duplicate
+			 * within the window is still dropped silently.
 			 */
 			ret = AUTH_OK;
-			*no_dispatch = TRUE;
+			*action = too_old ? SEC_SVC_CLOSE : SEC_SVC_DROP;
 		}
 		goto error2;
 	}
@@ -1404,7 +1410,7 @@ static enum auth_stat
 rpcsec_gss_destroy(
 	struct svc_req		*rqst,
 	rpc_gss_creds		creds,
-	bool_t			*no_dispatch)
+	sec_svc_action_t	*action)
 {
 	svc_rpc_gss_data	*client_data;
 	int ret;
@@ -1432,7 +1438,7 @@ rpcsec_gss_destroy(
 	}
 
 	(void) svc_sendreply(rqst->rq_xprt, xdr_void, NULL);
-	*no_dispatch = TRUE;
+	*action = SEC_SVC_DROP;
 	ASSERT(client_data->ref_cnt > 0);
 	client_data->ref_cnt--;
 	client_data->stale = TRUE;
@@ -1454,14 +1460,14 @@ enum auth_stat
 __svcrpcsec_gss(
 	struct svc_req		*rqst,
 	struct rpc_msg		*msg,
-	bool_t			*no_dispatch)
+	sec_svc_action_t	*action)
 {
 	XDR			xdrs;
 	rpc_gss_creds		creds;
 	struct opaque_auth	*cred;
 	int			ret;
 
-	*no_dispatch = FALSE;
+	*action = SEC_SVC_DISPATCH;
 
 	/*
 	 * Initialize response verifier to NULL verifier.  If
@@ -1493,16 +1499,16 @@ __svcrpcsec_gss(
 
 	switch (creds.gss_proc) {
 	case RPCSEC_GSS_INIT:
-		ret = rpcsec_gss_init(rqst, msg, creds, no_dispatch, NULL);
+		ret = rpcsec_gss_init(rqst, msg, creds, action, NULL);
 		break;
 	case RPCSEC_GSS_CONTINUE_INIT:
-		ret = rpcsec_gss_continue_init(rqst, msg, creds, no_dispatch);
+		ret = rpcsec_gss_continue_init(rqst, msg, creds, action);
 		break;
 	case RPCSEC_GSS_DATA:
-		ret = rpcsec_gss_data(rqst, msg, creds, no_dispatch);
+		ret = rpcsec_gss_data(rqst, msg, creds, action);
 		break;
 	case RPCSEC_GSS_DESTROY:
-		ret = rpcsec_gss_destroy(rqst, creds, no_dispatch);
+		ret = rpcsec_gss_destroy(rqst, creds, action);
 		break;
 	default:
 		cmn_err(CE_NOTE, "__svcrpcsec_gss: bad proc=%d",

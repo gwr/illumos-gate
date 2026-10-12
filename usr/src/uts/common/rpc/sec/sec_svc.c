@@ -88,7 +88,8 @@ struct svc_auth_ops svc_authany_ops = {
  * invalid.
  */
 enum auth_stat
-sec_svc_msg(struct svc_req *rqst, struct rpc_msg *msg, bool_t *no_dispatch)
+sec_svc_msg(struct svc_req *rqst, struct rpc_msg *msg,
+    sec_svc_action_t *action)
 {
 	int cred_flavor;
 
@@ -101,7 +102,7 @@ sec_svc_msg(struct svc_req *rqst, struct rpc_msg *msg, bool_t *no_dispatch)
 	 */
 	rqst->rq_xprt->xp_auth.svc_ah_ops = svc_authany_ops;
 	rqst->rq_xprt->xp_auth.svc_ah_private = NULL;
-	*no_dispatch = FALSE;
+	*action = SEC_SVC_DISPATCH;
 
 	cred_flavor = rqst->rq_cred.oa_flavor;
 
@@ -124,11 +125,10 @@ sec_svc_msg(struct svc_req *rqst, struct rpc_msg *msg, bool_t *no_dispatch)
 
 	case RPCSEC_GSS:
 		/*
-		 * RPCSEC_GSS flavor routine takes an additional
-		 * boolean parameter that gets set to TRUE when
-		 * the call is not to be dispatched to the server.
+		 * RPCSEC_GSS can consume a call without dispatching it or
+		 * require that the underlying connection be closed.
 		 */
-		return (__svcrpcsec_gss(rqst, msg, no_dispatch));
+		return (__svcrpcsec_gss(rqst, msg, action));
 	}
 	return (AUTH_REJECTEDCRED);
 }
