@@ -164,6 +164,14 @@ enum auth_stat {
 };
 typedef enum auth_stat AUTH_STAT;
 
+#ifdef _KERNEL
+typedef enum sec_svc_action {
+	SEC_SVC_DISPATCH = 0,
+	SEC_SVC_DROP,
+	SEC_SVC_CLOSE
+} sec_svc_action_t;
+#endif
+
 union des_block {
 	struct	{
 		uint32_t high;

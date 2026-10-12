@@ -1010,6 +1010,7 @@ static int	mir_clnt_dup_request(queue_t *q, mblk_t *mp);
 static void	mir_rput_proto(queue_t *q, mblk_t *mp);
 static int	mir_svc_policy_notify(queue_t *q, int event);
 static void	mir_svc_start(queue_t *wq);
+static void	mir_svc_disconnect_impl(queue_t *);
 static void	mir_svc_idle_start(queue_t *, mir_t *);
 static void	mir_svc_idle_stop(queue_t *, mir_t *);
 static void	mir_svc_start_close(queue_t *, mir_t *);
@@ -1024,6 +1025,7 @@ static	int	mir_check_len(queue_t *, mblk_t *);
 static	void	mir_timer(void *);
 
 extern void	(*mir_start)(queue_t *);
+extern void	(*mir_svc_disconnect)(queue_t *);
 extern void	(*clnt_stop_idle)(queue_t *);
 
 clock_t	clnt_idle_timeout = MIR_CLNT_IDLE_TIMEOUT;
@@ -1341,6 +1343,8 @@ mir_open(queue_t *q, dev_t *devp __unused, int flag __unused,
 	/* Set variables used directly by kRPC. */
 	if (!mir_start)
 		mir_start = mir_svc_start;
+	if (!mir_svc_disconnect)
+		mir_svc_disconnect = mir_svc_disconnect_impl;
 	if (!clnt_stop_idle)
 		clnt_stop_idle = mir_clnt_idle_do_stop;
 	if (!clnt_max_msg_sizep)
@@ -2940,6 +2944,20 @@ mir_disconnect(queue_t *q, mir_t *mir)
 		mutex_exit(&mir->mir_mutex);
 		break;
 	}
+}
+
+static void
+mir_svc_disconnect_impl(queue_t *wq)
+{
+	queue_t *q = RD(wq);
+	mir_t *mir = q->q_ptr;
+
+	mutex_enter(&mir->mir_mutex);
+	if (mir->mir_type == RPC_SERVER && !mir->mir_svc_no_more_msgs) {
+		mir_disconnect(q, mir);
+		return;
+	}
+	mutex_exit(&mir->mir_mutex);
 }
 
 /*

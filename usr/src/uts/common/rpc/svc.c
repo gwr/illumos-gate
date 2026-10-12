@@ -1323,7 +1323,7 @@ svc_getreq(
 		void (*dispatchroutine) (struct svc_req *, SVCXPRT *);
 		rpcvers_t vers_min;
 		rpcvers_t vers_max;
-		bool_t no_dispatch;
+		sec_svc_action_t action;
 		enum auth_stat why;
 
 		/*
@@ -1341,7 +1341,7 @@ svc_getreq(
 		 */
 		TRACE_0(TR_FAC_KRPC, TR_SVC_GETREQ_AUTH_START,
 		    "svc_getreq_auth_start:");
-		if ((why = sec_svc_msg(&r, &msg, &no_dispatch)) != AUTH_OK) {
+		if ((why = sec_svc_msg(&r, &msg, &action)) != AUTH_OK) {
 			TRACE_1(TR_FAC_KRPC, TR_SVC_GETREQ_AUTH_END,
 			    "svc_getreq_auth_end:(%S)", "failed");
 			svcerr_auth(clone_xprt, why);
@@ -1349,12 +1349,16 @@ svc_getreq(
 			 * Free the arguments.
 			 */
 			(void) SVC_FREEARGS(clone_xprt, NULL, NULL);
-		} else if (no_dispatch) {
+		} else if (action != SEC_SVC_DISPATCH) {
 			/*
 			 * XXX - when bug id 4053736 is done, remove
 			 * the SVC_FREEARGS() call.
 			 */
 			(void) SVC_FREEARGS(clone_xprt, NULL, NULL);
+			if (action == SEC_SVC_CLOSE &&
+			    clone_xprt->xp_ops->xp_ctl != NULL)
+				(void) SVC_CTL(clone_xprt,
+				    SVCCTL_DISCONNECT, NULL);
 		} else {
 			TRACE_1(TR_FAC_KRPC, TR_SVC_GETREQ_AUTH_END,
 			    "svc_getreq_auth_end:(%S)", "good");
@@ -1393,8 +1397,8 @@ svc_getreq(
 			 * purpose of rpc_gss_cleanup is to decrement the
 			 * reference count associated with the cached
 			 * GSS security context. We should never get here
-			 * for an RPCSEC_GSS null proc since *no_dispatch
-			 * would have been set to true from sec_svc_msg above.
+			 * for an RPCSEC_GSS null proc since sec_svc_msg()
+			 * would have returned SEC_SVC_DROP.
 			 */
 			if (r.rq_cred.oa_flavor == RPCSEC_GSS)
 				rpc_gss_cleanup(clone_xprt);

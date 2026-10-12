@@ -97,7 +97,7 @@ typedef struct {
  * Server side authenticator
  */
 extern enum auth_stat sec_svc_msg(struct svc_req *, struct rpc_msg *,
-				bool_t *);
+				sec_svc_action_t *);
 
 extern int sec_svc_getcred(struct svc_req *, cred_t *,  caddr_t *, int *);
 
