@@ -29,39 +29,15 @@
 extern "C" {
 #endif
 
-typedef enum abd_flags {
-	ABD_FLAG_LINEAR	= 1 << 0,	/* is buffer linear (or scattered)? */
-	ABD_FLAG_OWNER	= 1 << 1,	/* does it own its data buffers? */
-	ABD_FLAG_META	= 1 << 2	/* does this represent FS metadata? */
-} abd_flags_t;
-
-typedef struct abd {
-	abd_flags_t	abd_flags;
-	uint_t		abd_size;	/* excludes scattered abd_offset */
-	struct abd	*abd_parent;
-	zfs_refcount_t	abd_children;
-	union {
-		struct abd_scatter {
-			uint_t	abd_offset;
-			uint_t	abd_chunk_size;
-			void	*abd_chunks[];
-		} abd_scatter;
-		struct abd_linear {
-			void	*abd_buf;
-		} abd_linear;
-	} abd_u;
-} abd_t;
+struct abd;
+typedef struct abd abd_t;
 
 typedef int abd_iter_func_t(void *, size_t, void *);
 typedef int abd_iter_func2_t(void *, void *, size_t, void *);
 
 extern boolean_t zfs_abd_scatter_enabled;
 
-inline boolean_t
-abd_is_linear(abd_t *abd)
-{
-	return ((abd->abd_flags & ABD_FLAG_LINEAR) != 0 ? B_TRUE : B_FALSE);
-}
+boolean_t abd_is_linear(abd_t *);
 
 /*
  * Allocations and deallocations

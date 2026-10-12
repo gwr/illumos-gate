@@ -88,6 +88,7 @@
  */
 
 #include <sys/abd.h>
+#include <sys/abd_impl.h>
 #include <sys/param.h>
 #include <sys/zio.h>
 #include <sys/zfs_context.h>
@@ -252,6 +253,12 @@ abd_scatter_chunkcnt(abd_t *abd)
 	ASSERT(!abd_is_linear(abd));
 	return (abd_chunkcnt_for_bytes(
 	    abd->abd_u.abd_scatter.abd_offset + abd->abd_size));
+}
+
+boolean_t
+abd_is_linear(abd_t *abd)
+{
+	return ((abd->abd_flags & ABD_FLAG_LINEAR) != 0 ? B_TRUE : B_FALSE);
 }
 
 static inline void

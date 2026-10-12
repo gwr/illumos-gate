@@ -34,6 +34,7 @@
 #include <sys/zio.h>
 #include <sys/zio_checksum.h>
 #include <sys/abd.h>
+#include <sys/abd_impl.h>
 #include <sys/fs/zfs.h>
 #include <sys/fm/fs/zfs.h>
 #include <sys/vdev_raidz.h>
