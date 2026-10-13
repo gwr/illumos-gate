@@ -481,6 +481,7 @@ type_validation_add_member(struct type_validation *validation,
 
 static bool type_validate_exact(struct type_validation *, struct symbol *,
     struct ll_type *, bool);
+static struct symbol *type_function_argument(struct symbol *);
 
 static bool
 type_validate_member(struct type_validation *validation,
@@ -757,7 +758,8 @@ type_validate_exact(struct type_validation *validation, struct symbol *exact,
 		    type->base, false))
 			return (false);
 		FOR_EACH_PTR(exact->arguments, argument) {
-			if (!type_validate_exact(validation, argument,
+			if (!type_validate_exact(validation,
+			    type_function_argument(argument),
 			    type->arguments[index++], false))
 				return (false);
 		} END_FOR_EACH_PTR(argument);
@@ -910,6 +912,37 @@ type_node_intern(struct symbol *exact)
 }
 
 /*
+ * Sparse normally adjusts an array parameter when it evaluates a function
+ * body or call.  An uncalled declaration can reach the type registry first,
+ * so apply the same C parameter adjustment before interning its signature.
+ */
+static struct symbol *
+type_function_argument(struct symbol *argument)
+{
+	struct symbol *base;
+	struct symbol *pointer;
+
+	examine_symbol_type(argument);
+	base = argument->ctype.base_type;
+	if (base == NULL || base->type != SYM_ARRAY)
+		return (base);
+
+	pointer = alloc_symbol(argument->pos, SYM_PTR);
+	pointer->ctype = base->ctype;
+	combine_address_space(argument->pos, &pointer->ctype.as,
+	    argument->ctype.as);
+	pointer->ctype.modifiers |=
+	    argument->ctype.modifiers & MOD_PTRINHERIT;
+	argument->ctype.base_type = pointer;
+	argument->ctype.as = NULL;
+	argument->ctype.modifiers &= ~MOD_PTRINHERIT;
+	argument->bit_size = 0;
+	argument->examined = 0;
+	examine_symbol_type(argument);
+	return (argument->ctype.base_type);
+}
+
+/*
  * Build a function key from its canonical result and argument types.  The
  * argument array becomes owned by a new type or is discarded on an AVL hit.
  */
@@ -936,7 +969,8 @@ type_function_intern(struct symbol *exact)
 			die("out of memory recording function type");
 	}
 	FOR_EACH_PTR(exact->arguments, argument) {
-		key.arguments[index++] = type_intern(argument);
+		key.arguments[index++] =
+		    type_intern(type_function_argument(argument));
 		if (key.arguments[index - 1] == NULL) {
 			free(key.arguments);
 			return (NULL);

@@ -3034,6 +3034,22 @@ require_match "shared header type inconsistency" \
     "struct 'shared_type' is inconsistently defined" \
     type-consistency-mismatch.out
 
+run_capture "function array parameter consistency" \
+    function-array-parameter.out "$LOCKLINT" --no-check --dump-types \
+    function-array-parameter-first.c function-array-parameter-second.c
+reject_match "function array parameter consistency" \
+    "inconsistently defined" function-array-parameter.out
+require_match "function array parameter instance count" \
+    '^type array_parameter_ops .* instances=2$' \
+    function-array-parameter.out
+
+run_failure "nested function parameter inconsistency" \
+    function-array-parameter-mismatch.out "$LOCKLINT" --no-check --dump-types \
+    function-array-parameter-first.c function-array-parameter-mismatch.c
+require_match "nested function parameter inconsistency" \
+    "struct 'array_parameter_owner' is inconsistently defined" \
+    function-array-parameter-mismatch.out
+
 run_capture "same-name identical types" type-name-same.out \
     "$LOCKLINT" --dump-types type-name-first.c type-name-second-same.c
 reject_match "same-name identical types" "same name but a different layout" \

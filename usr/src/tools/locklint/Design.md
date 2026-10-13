@@ -3042,6 +3042,14 @@ observed deadlocks, read-only visibility, unprotected access, and missing
 visibility objects.  Suppression, machine-readable output, and bounded
 intermediate-frame rendering remain optional future work.
 
+The type registry canonicalizes function signatures after applying C's
+top-level array-parameter adjustment.  Sparse may defer that adjustment until
+a function body or indirect call is evaluated, so locklint applies it before
+interning or validating a function type.  This prevents equivalent repeated
+header definitions from depending on which translation unit first calls
+through the function pointer.  The adjustment is limited to the parameter
+boundary: pointer-to-array and pointer-to-pointer types remain distinct.
+
 ## Important functions by subsystem
 
 ### Driver: `locklint.c`
@@ -3076,6 +3084,7 @@ intermediate-frame rendering remain optional future work.
 | Function | Responsibility |
 | --- | --- |
 | `type_symbols_register()` | Build and validate canonical types reachable from one Sparse symbol list |
+| `type_function_argument()` | Apply C array-parameter adjustment before interning or validating a function signature |
 | `type_name_visit_types()` | Visit canonical locklint types associated with one interned name |
 | `type_lookup_exact()` | Map one exact Sparse type to its canonical locklint type |
 | `type_member_lookup_exact()` | Map one exact Sparse member to its canonical member |
