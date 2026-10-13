@@ -24,6 +24,12 @@ import tempfile
 
 PLAN_VERSION = 1
 EXPLICIT_DAYS = 180
+OMIT_DISPOSITIONS = {
+    'false-dependency',
+    'intentional-divergence',
+    'native-equivalent',
+    'platform-only',
+}
 
 COMMIT_HEADER_RE = re.compile(
     r'(?m)^commit ([0-9a-f]{40})(?: .*)?\n')
@@ -334,22 +340,66 @@ def validate_decision(decision, hashes):
     if not isinstance(decision, dict):
         raise PlanError('each decision must be an object')
     action = decision.get('action')
-    if action not in ('attach', 'separate'):
+    if action not in ('attach', 'omit', 'separate'):
         raise PlanError(f'unsupported decision action: {action}')
     commit_hash = decision.get('commit')
-    target = decision.get('target')
     if commit_hash not in hashes:
         raise PlanError(f'decision names unknown commit: {commit_hash}')
+    if action == 'omit':
+        disposition = decision.get('disposition')
+        if disposition not in OMIT_DISPOSITIONS:
+            raise PlanError(
+                f'unsupported omit disposition: {disposition}')
+        reason = decision.get('reason')
+        if not isinstance(reason, str) or not reason.strip():
+            raise PlanError('omit decision requires a reason')
+        if decision.get('target') is not None:
+            raise PlanError('omit decision cannot name a target')
+        return
+    target = decision.get('target')
     if target not in hashes:
         raise PlanError(f'decision names unknown target: {target}')
     if commit_hash == target:
         raise PlanError(f'decision cannot target itself: {commit_hash}')
 
 
+def apply_omit_decisions(commits, decisions):
+    by_hash = {commit.commit: commit for commit in commits}
+    omitted = {}
+    for decision in decisions:
+        if decision['action'] != 'omit':
+            continue
+        commit_hash = decision['commit']
+        if commit_hash in omitted:
+            raise PlanError(
+                f'multiple omit decisions name commit: {commit_hash}')
+        commit = by_hash[commit_hash]
+        omitted[commit_hash] = {
+            'original_ordinal': commit.ordinal,
+            'commit': commit.commit,
+            'subject': commit.subject,
+            'disposition': decision['disposition'],
+            'reason': decision['reason'],
+        }
+    active = [
+        commit for commit in commits
+        if commit.commit not in omitted
+    ]
+    return active, sorted(
+        omitted.values(), key=lambda item: item['original_ordinal'])
+
+
 def apply_manual_decisions(commits, groups, decisions):
     hashes = {commit.commit for commit in commits}
     for decision in decisions:
-        validate_decision(decision, hashes)
+        if decision['action'] == 'omit':
+            continue
+        if decision['commit'] not in hashes:
+            raise PlanError(
+                f'decision names omitted commit: {decision["commit"]}')
+        if decision['target'] not in hashes:
+            raise PlanError(
+                f'decision names omitted target: {decision["target"]}')
     for decision in decisions:
         if decision['action'] != 'attach':
             continue
@@ -550,6 +600,10 @@ def logical_groups(groups):
 
 
 def build_plan(logn, commits, decisions, selection=None):
+    hashes = {commit.commit for commit in commits}
+    for decision in decisions:
+        validate_decision(decision, hashes)
+    commits, omitted = apply_omit_decisions(commits, decisions)
     groups = initial_groups(commits)
     apply_manual_decisions(commits, groups, decisions)
     candidates = apply_explicit_relations(commits, groups, decisions)
@@ -606,6 +660,7 @@ def build_plan(logn, commits, decisions, selection=None):
             'explicit_days': EXPLICIT_DAYS,
         },
         'decisions': decisions,
+        'omitted': omitted,
         'groups': groups_json,
         'vacated': vacated,
         'clue_candidates': [
@@ -670,6 +725,7 @@ def format_markdown(plan):
         ))
     lines.extend((
         f'- Logical groups: {len(plan["groups"])}',
+        f'- Disposition omissions: {len(plan.get("omitted", []))}',
         f'- Moved commits: {moved}',
         f'- Wording-clue commits: {plan["clue_commit_count"]}',
         f'- Risky unmoved relationships: {len(risky)}',
@@ -680,9 +736,16 @@ def format_markdown(plan):
         'objects to its `decisions` list and rerun the tool to preserve '
         'manual judgments.',
         '',
-        '## Groups',
-        '',
     ))
+    omitted = plan.get('omitted', [])
+    if omitted:
+        lines.extend(('## Omitted commits', ''))
+        for item in omitted:
+            lines.append(
+                f'- `{item["commit"]}` {item["subject"]} — '
+                f'`{item["disposition"]}`: {item["reason"]}')
+        lines.append('')
+    lines.extend(('## Groups', ''))
     candidates = {}
     for candidate in risky:
         candidates.setdefault(candidate['target_group'], []).append(candidate)

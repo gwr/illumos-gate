@@ -225,6 +225,48 @@ class OzfsPlanTest(unittest.TestCase):
             f'decision names unknown commit: {2:040x}',
             result.stderr)
 
+    def test_omit_decision_records_disposition_and_removes_commit(self):
+        commits = [
+            self._commit(
+                number,
+                datetime(2020, 1, number, tzinfo=timezone.utc),
+                f'commit {number}', paths=(f'{number}.c',))
+            for number in range(1, 3)
+        ]
+        self._write_log(commits)
+        result = self._run()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        plan = self._load_plan()
+        plan['decisions'] = [{
+            'action': 'omit',
+            'commit': f'{1:040x}',
+            'disposition': 'native-equivalent',
+            'reason': 'Behavior is already present.',
+        }]
+        self.plan.write_text(
+            json.dumps(plan, indent=2) + '\n', encoding='utf-8')
+
+        result = self._run()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        plan = self._load_plan()
+        self.assertEqual(plan['commit_count'], 1)
+        self.assertEqual(
+            [group['commits'][0]['commit'] for group in plan['groups']],
+            [f'{2:040x}'])
+        self.assertEqual(plan['omitted'], [{
+            'original_ordinal': 1,
+            'commit': f'{1:040x}',
+            'subject': 'commit 1',
+            'disposition': 'native-equivalent',
+            'reason': 'Behavior is already present.',
+        }])
+        markdown = self.markdown.read_text(encoding='utf-8')
+        self.assertIn('- Disposition omissions: 1', markdown)
+        self.assertIn('## Omitted commits', markdown)
+        self.assertIn('`native-equivalent`', markdown)
+        self.assertIn('Behavior is already present.', markdown)
+
     def test_pulls_forward_explicit_hash_within_six_months(self):
         original = f'{1:040x}'
         commits = [
