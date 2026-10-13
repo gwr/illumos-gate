@@ -29,6 +29,7 @@ class OzfsPlanTest(unittest.TestCase):
         self.logn = self.root / 'history.logn'
         self.plan = self.root / 'plan.json'
         self.markdown = self.root / 'plan.md'
+        self.include_list = self.root / 'include.txt'
 
     def tearDown(self):
         self.tempdir.cleanup()
@@ -52,14 +53,17 @@ class OzfsPlanTest(unittest.TestCase):
         self.logn.write_text(
             '\n'.join(reversed(commits)), encoding='utf-8')
 
-    def _run(self):
+    def _run(self, include_list=None):
+        command = [
+            sys.executable, str(SCRIPT),
+            '--logn', str(self.logn),
+            '--plan', str(self.plan),
+            '--markdown', str(self.markdown),
+        ]
+        if include_list is not None:
+            command.extend(('--include-list', str(include_list)))
         return subprocess.run(
-            [
-                sys.executable, str(SCRIPT),
-                '--logn', str(self.logn),
-                '--plan', str(self.plan),
-                '--markdown', str(self.markdown),
-            ],
+            command,
             text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     def _load_plan(self):
@@ -127,6 +131,99 @@ class OzfsPlanTest(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self._load_plan()['commit_count'], 1)
+
+    def test_include_list_filters_commits_in_source_order(self):
+        commits = [
+            self._commit(
+                number,
+                datetime(2020, 1, number, tzinfo=timezone.utc),
+                f'commit {number}', paths=(f'{number}.c',))
+            for number in range(1, 5)
+        ]
+        self._write_log(commits)
+        self.include_list.write_text(
+            f'# selected prerequisites\n\n{3:040x}\n{1:040x}\n',
+            encoding='utf-8')
+
+        result = self._run(self.include_list)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        plan = self._load_plan()
+        self.assertEqual(plan['commit_count'], 2)
+        self.assertEqual(
+            [group['commits'][0]['commit'] for group in plan['groups']],
+            [f'{number:040x}' for number in (1, 3)])
+        self.assertEqual(plan['selection'], {
+            'include_list': str(self.include_list),
+            'source_commit_count': 4,
+            'included_commit_count': 2,
+            'omitted_commit_count': 2,
+        })
+        markdown = self.markdown.read_text(encoding='utf-8')
+        self.assertIn('- Input commits: 4', markdown)
+        self.assertIn('- Included commits: 2', markdown)
+        self.assertIn('- Omitted commits: 2', markdown)
+
+    def test_include_list_rejects_unknown_commit(self):
+        self._write_log([
+            self._commit(
+                1, datetime(2020, 1, 1, tzinfo=timezone.utc),
+                'first', paths=('a.c',)),
+        ])
+        self.include_list.write_text(f'{2:040x}\n', encoding='utf-8')
+
+        result = self._run(self.include_list)
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn(
+            f'include list names unknown commit: {2:040x}',
+            result.stderr)
+        self.assertFalse(self.plan.exists())
+
+    def test_include_list_rejects_duplicate_commit(self):
+        self._write_log([
+            self._commit(
+                1, datetime(2020, 1, 1, tzinfo=timezone.utc),
+                'first', paths=('a.c',)),
+        ])
+        self.include_list.write_text(
+            f'{1:040x}\n{1:040x}\n', encoding='utf-8')
+
+        result = self._run(self.include_list)
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn(
+            f'include list repeats commit: {1:040x}',
+            result.stderr)
+
+    def test_include_list_rejects_decision_for_omitted_commit(self):
+        commits = [
+            self._commit(
+                number,
+                datetime(2020, 1, number, tzinfo=timezone.utc),
+                f'commit {number}', paths=(f'{number}.c',))
+            for number in range(1, 4)
+        ]
+        self._write_log(commits)
+        result = self._run()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        plan = self._load_plan()
+        plan['decisions'] = [{
+            'action': 'attach',
+            'commit': f'{2:040x}',
+            'target': f'{1:040x}',
+        }]
+        self.plan.write_text(
+            json.dumps(plan, indent=2) + '\n', encoding='utf-8')
+        self.include_list.write_text(
+            f'{1:040x}\n{3:040x}\n', encoding='utf-8')
+
+        result = self._run(self.include_list)
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn(
+            f'decision names unknown commit: {2:040x}',
+            result.stderr)
 
     def test_pulls_forward_explicit_hash_within_six_months(self):
         original = f'{1:040x}'

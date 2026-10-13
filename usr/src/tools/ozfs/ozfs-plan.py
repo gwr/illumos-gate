@@ -115,6 +115,9 @@ def parse_args():
     parser.add_argument(
         '--markdown', type=Path,
         help='optional readable rendering of the resulting plan')
+    parser.add_argument(
+        '--include-list', type=Path,
+        help='file containing full commit hashes to include')
     return parser.parse_args()
 
 
@@ -182,6 +185,46 @@ def parse_logn(path):
             reversed(newest_first), 1):
         records.append(parse_record(ordinal, commit_hash, record))
     return records
+
+
+def apply_include_list(path, commits):
+    try:
+        lines = path.read_text(encoding='utf-8').splitlines()
+    except OSError as error:
+        raise PlanError(f'cannot read {path}: {error}') from error
+
+    included = set()
+    for number, line in enumerate(lines, 1):
+        value = line.strip()
+        if not value or value.startswith('#'):
+            continue
+        if not re.fullmatch(r'[0-9a-fA-F]{40}', value):
+            raise PlanError(
+                f'{path}:{number}: expected a full commit hash')
+        commit_hash = value.lower()
+        if commit_hash in included:
+            raise PlanError(
+                f'include list repeats commit: {commit_hash}')
+        included.add(commit_hash)
+    if not included:
+        raise PlanError(f'include list contains no commits: {path}')
+
+    known = {commit.commit for commit in commits}
+    unknown = sorted(included - known)
+    if unknown:
+        raise PlanError(
+            f'include list names unknown commit: {unknown[0]}')
+    selected = [
+        commit for commit in commits
+        if commit.commit in included
+    ]
+    selection = {
+        'include_list': str(path),
+        'source_commit_count': len(commits),
+        'included_commit_count': len(selected),
+        'omitted_commit_count': len(commits) - len(selected),
+    }
+    return selected, selection
 
 
 def load_decisions(path):
@@ -506,7 +549,7 @@ def logical_groups(groups):
     return result
 
 
-def build_plan(logn, commits, decisions):
+def build_plan(logn, commits, decisions, selection=None):
     groups = initial_groups(commits)
     apply_manual_decisions(commits, groups, decisions)
     candidates = apply_explicit_relations(commits, groups, decisions)
@@ -554,7 +597,7 @@ def build_plan(logn, commits, decisions):
     ]
     vacated.sort(key=lambda item: item['original_ordinal'])
 
-    return {
+    plan = {
         'version': PLAN_VERSION,
         'source': str(logn),
         'commit_count': len(commits),
@@ -571,6 +614,9 @@ def build_plan(logn, commits, decisions):
         ],
         'candidates': candidates,
     }
+    if selection is not None:
+        plan['selection'] = selection
+    return plan
 
 
 def write_text_atomic(path, text):
@@ -613,6 +659,16 @@ def format_markdown(plan):
         '# OpenZFS commit plan',
         '',
         f'- Source commits: {plan["commit_count"]}',
+    ]
+    selection = plan.get('selection')
+    if selection is not None:
+        lines.extend((
+            f'- Input commits: {selection["source_commit_count"]}',
+            f'- Included commits: {selection["included_commit_count"]}',
+            f'- Omitted commits: {selection["omitted_commit_count"]}',
+            f'- Include list: `{selection["include_list"]}`',
+        ))
+    lines.extend((
         f'- Logical groups: {len(plan["groups"])}',
         f'- Moved commits: {moved}',
         f'- Wording-clue commits: {plan["clue_commit_count"]}',
@@ -626,7 +682,7 @@ def format_markdown(plan):
         '',
         '## Groups',
         '',
-    ]
+    ))
     candidates = {}
     for candidate in risky:
         candidates.setdefault(candidate['target_group'], []).append(candidate)
@@ -707,8 +763,12 @@ def main():
     args = parse_args()
     try:
         commits = parse_logn(args.logn)
+        selection = None
+        if args.include_list is not None:
+            commits, selection = apply_include_list(
+                args.include_list, commits)
         decisions = load_decisions(args.plan)
-        plan = build_plan(args.logn, commits, decisions)
+        plan = build_plan(args.logn, commits, decisions, selection)
         write_text_atomic(
             args.plan, json.dumps(plan, indent=2) + '\n')
         if args.markdown is not None:
