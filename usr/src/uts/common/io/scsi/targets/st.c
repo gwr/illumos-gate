@@ -1265,7 +1265,13 @@ st_detach(dev_info_t *devi, ddi_detach_cmd_t cmd)
 			 */
 			ST_DEBUG2(ST_DEVINFO, st_label, SCSI_DEBUG,
 			    "cannot unload instance %x\n", instance);
+			/*
+			 * Reset notification can run asynchronously and
+			 * modifies this field while holding ST_MUTEX.
+			 */
+			mutex_enter(ST_MUTEX);
 			un->un_unit_attention_flags |= 4;
+			mutex_exit(ST_MUTEX);
 			return (DDI_FAILURE);
 		}
 
@@ -1324,7 +1330,13 @@ st_detach(dev_info_t *devi, ddi_detach_cmd_t cmd)
 			    " lgclblkno=0x%"PRIx64"\n", un->un_pos.pmode,
 			    un->un_pos.fileno, un->un_pos.blkno,
 			    un->un_pos.lgclblkno);
+			/*
+			 * Reset notification can run asynchronously and
+			 * modifies this field while holding ST_MUTEX.
+			 */
+			mutex_enter(ST_MUTEX);
 			un->un_unit_attention_flags |= 4;
+			mutex_exit(ST_MUTEX);
 			return (DDI_FAILURE);
 		}
 
