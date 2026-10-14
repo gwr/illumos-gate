@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from email.utils import formataddr
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 
@@ -64,6 +65,9 @@ def parse_args():
     parser.add_argument(
         '--work-name',
         help='work-item name used in the combined patch subject')
+    parser.add_argument(
+        '--group',
+        help='stable GNNNN work-item identifier')
     parser.add_argument(
         'commits', metavar='commit', nargs='+',
         help='OpenZFS commit, in application order')
@@ -227,12 +231,12 @@ def quote_mbox_from_lines(text):
     )
 
 
-def format_combined_patch(illumos_repo, work_name, plans, diffs):
+def format_combined_patch(illumos_repo, work_name, group, plans, diffs):
     primary = plans[0]
-    body = []
+    body = [f'Import {group}', '']
     for plan in plans:
         body.extend((
-            f'import OpenZFS {plan.commit}',
+            f'OpenZFS {plan.commit}',
             '',
             quote_mbox_from_lines(plan.message),
             '',
@@ -390,6 +394,11 @@ def run():
             raise OzfsError('--work-name is required when applying')
         if '\n' in args.work_name or '\r' in args.work_name:
             raise OzfsError('--work-name must be a single line')
+        if not args.group:
+            raise OzfsError('--group is required when applying')
+    if args.group is not None and not re.fullmatch(
+            r'G[0-9]{4}(?:\.[0-9]+)*', args.group):
+        raise OzfsError('--group must be a GNNNN identifier')
 
     illumos_path, openzfs_path, lists_dir = load_config(args.config)
     path_lists = load_path_lists(lists_dir)
@@ -419,6 +428,7 @@ def run():
     if operation_manifest is not None:
         initial_manifest = (
             f'work\t{args.work_name.strip()}\n'
+            f'group\t{args.group}\n'
             f'illumos\t{illumos_commit}\n' +
             ''.join(f'requested\t{commit}\n' for commit in commits)
         )
@@ -469,7 +479,7 @@ def run():
             remove_manifest(operation_manifest)
         return
     patch = format_combined_patch(
-        illumos_repo, args.work_name.strip(), plans, diffs)
+        illumos_repo, args.work_name.strip(), args.group, plans, diffs)
     if output is not None:
         write_manifest(
             manifest_path(output), format_manifest(plans) + review_manifest)
