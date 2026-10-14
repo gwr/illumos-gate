@@ -63,9 +63,6 @@ def parse_args():
         '--output', type=Path,
         help='write the combined reshaped mail patch to this new file')
     parser.add_argument(
-        '--work-name',
-        help='work-item name used in the combined patch subject')
-    parser.add_argument(
         '--group',
         help='stable GNNNN work-item identifier')
     parser.add_argument(
@@ -231,7 +228,7 @@ def quote_mbox_from_lines(text):
     )
 
 
-def format_combined_patch(illumos_repo, work_name, group, plans, diffs):
+def format_combined_patch(illumos_repo, group, plans, diffs):
     primary = plans[0]
     body = [f'Import {group}', '']
     for plan in plans:
@@ -246,7 +243,7 @@ def format_combined_patch(illumos_repo, work_name, group, plans, diffs):
         f'From {primary.commit} Mon Sep 17 00:00:00 2001\n'
         f'From: {formataddr((primary.author_name, primary.author_email))}\n'
         f'Date: {primary.author_date}\n'
-        f'Subject: [PATCH] OpenZFS: {work_name}\n'
+        f'Subject: [PATCH] {primary.subject}\n'
         '\n'
     )
     message = headers + '\n'.join(body) + '---\n'
@@ -390,10 +387,6 @@ def run():
     if not args.check and not args.no_apply and args.output is not None:
         raise OzfsError('--output may only be used with --no-apply')
     if not args.check:
-        if not args.work_name or not args.work_name.strip():
-            raise OzfsError('--work-name is required when applying')
-        if '\n' in args.work_name or '\r' in args.work_name:
-            raise OzfsError('--work-name must be a single line')
         if not args.group:
             raise OzfsError('--group is required when applying')
     if args.group is not None and not re.fullmatch(
@@ -427,7 +420,6 @@ def run():
     ]
     if operation_manifest is not None:
         initial_manifest = (
-            f'work\t{args.work_name.strip()}\n'
             f'group\t{args.group}\n'
             f'illumos\t{illumos_commit}\n' +
             ''.join(f'requested\t{commit}\n' for commit in commits)
@@ -479,7 +471,7 @@ def run():
             remove_manifest(operation_manifest)
         return
     patch = format_combined_patch(
-        illumos_repo, args.work_name.strip(), args.group, plans, diffs)
+        illumos_repo, args.group, plans, diffs)
     if output is not None:
         write_manifest(
             manifest_path(output), format_manifest(plans) + review_manifest)

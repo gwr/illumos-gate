@@ -216,7 +216,7 @@ class OzfsApplyTest(unittest.TestCase):
 
         result = self._run(
             '--no-apply', '--output', str(output),
-            '--work-name', 'mixed work', '--group', 'G0001',
+            '--group', 'G0001',
             excluded, mapped)
 
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -236,7 +236,7 @@ class OzfsApplyTest(unittest.TestCase):
         before = self._git(self.illumos, 'rev-parse', 'HEAD')
 
         result = self._run(
-            '--work-name', 'excluded work', '--group', 'G0001', commit)
+            '--group', 'G0001', commit)
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(
@@ -264,7 +264,7 @@ class OzfsApplyTest(unittest.TestCase):
 
         result = self._run(
             '--no-apply', '--output', str(output),
-            '--work-name', 'test work', '--group', 'G0040',
+            '--group', 'G0040',
             first, second)
 
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -276,7 +276,7 @@ class OzfsApplyTest(unittest.TestCase):
             'From: Primary Author <primary@example.com>\n'
             'Date: Thu, 2 Jan 2020 03:04:05 -0500\n'))
         self.assertIn(
-            'Subject: [PATCH] OpenZFS: test work', series)
+            'Subject: [PATCH] first change', series)
         body = series.split('\n\n', 1)[1]
         self.assertTrue(body.startswith('Import G0040\n\n'))
         first_message = self._git(
@@ -316,7 +316,7 @@ class OzfsApplyTest(unittest.TestCase):
 
         result = self._run(
             '--no-apply', '--output', str(output),
-            '--work-name', 'line ending test', '--group', 'G0001', commit)
+            '--group', 'G0001', commit)
 
         self.assertEqual(result.returncode, 0, result.stderr)
         series = output.read_bytes()
@@ -332,7 +332,7 @@ class OzfsApplyTest(unittest.TestCase):
 
         result = self._run(
             '--no-apply', '--output', str(output),
-            '--work-name', 'platform work', '--group', 'G0001',
+            '--group', 'G0001',
             commit)
 
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -441,7 +441,7 @@ class OzfsApplyTest(unittest.TestCase):
         })
 
         result = self._run(
-            '--work-name', 'new source review', '--group', 'G0001', commit)
+            '--group', 'G0001', commit)
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(
@@ -502,7 +502,6 @@ class OzfsApplyTest(unittest.TestCase):
         self.assertNotEqual(before.returncode, 0)
 
         result = self._run(
-            '--work-name', 'exceptional source review',
             '--group', 'G0001', commit)
 
         self.assertNotEqual(result.returncode, 0)
@@ -548,7 +547,7 @@ class OzfsApplyTest(unittest.TestCase):
 
         result = self._run(
             '--no-apply', '--output', str(output),
-            '--work-name', 'file operations', '--group', 'G0001',
+            '--group', 'G0001',
             first, second)
 
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -583,7 +582,7 @@ class OzfsApplyTest(unittest.TestCase):
 
         result = self._run(
             '--no-apply', '--output', str(output),
-            '--work-name', 'binary and mode', '--group', 'G0001',
+            '--group', 'G0001',
             first, second)
 
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -604,7 +603,7 @@ class OzfsApplyTest(unittest.TestCase):
             'module/zfs/main.c': 'main changed twice\n',
         })
         result = self._run(
-            '--work-name', 'applicable work', '--group', 'G0001',
+            '--group', 'G0001',
             first, second)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(
@@ -614,11 +613,11 @@ class OzfsApplyTest(unittest.TestCase):
         self.assertEqual(
             self._git(
                 self.illumos, 'show', '-s', '--format=%s', 'HEAD'),
-            'OpenZFS: applicable work')
+            'first applicable change')
         message = self._git(
             self.illumos, 'show', '-s', '--format=%B', 'HEAD')
         self.assertTrue(message.startswith(
-            'OpenZFS: applicable work\n\n'
+            'first applicable change\n\n'
             'Import G0001\n\n'))
         self.assertIn(f'OpenZFS {first}', message)
         self.assertIn(f'OpenZFS {second}', message)
@@ -667,7 +666,7 @@ class OzfsApplyTest(unittest.TestCase):
 
         result = self._run(
             '--no-apply', '--output', str(output),
-            '--work-name', 'existing output', '--group', 'G0001',
+            '--group', 'G0001',
             commit)
 
         self.assertNotEqual(result.returncode, 0)
@@ -716,25 +715,12 @@ class OzfsApplyTest(unittest.TestCase):
             result.stdout)
         self.assertIn('review required for 1 path', result.stderr)
 
-    def test_requires_work_name_for_apply(self):
-        commit = self._commit('ordinary change', {
-            'module/zfs/main.c': 'main changed\n',
-        })
-
-        result = self._run(commit)
-
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn(
-            '--work-name is required when applying',
-            result.stderr)
-
     def test_requires_group_for_apply(self):
         commit = self._commit('ordinary change', {
             'module/zfs/main.c': 'main changed\n',
         })
 
-        result = self._run(
-            '--work-name', 'ordinary work', commit)
+        result = self._run(commit)
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('--group is required when applying', result.stderr)
@@ -746,7 +732,7 @@ class OzfsApplyTest(unittest.TestCase):
 
         result = self._run(
             '--no-apply', '--output', str(self.root / 'invalid.mbox'),
-            '--work-name', 'ordinary work', '--group', '40', commit)
+            '--group', '40', commit)
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(
@@ -758,7 +744,7 @@ class OzfsApplyTest(unittest.TestCase):
         })
 
         result = self._run(
-            '--no-apply', '--work-name', 'ordinary work', commit)
+            '--no-apply', commit)
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('--output is required with --no-apply', result.stderr)
@@ -771,7 +757,7 @@ class OzfsApplyTest(unittest.TestCase):
         path.write_text('dirty illumos change\n', encoding='utf-8')
 
         result = self._run(
-            '--work-name', 'dirty work', '--group', 'G0001', commit)
+            '--group', 'G0001', commit)
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('illumos worktree or index is not clean', result.stderr)
@@ -787,7 +773,7 @@ class OzfsApplyTest(unittest.TestCase):
             'module/zfs/main.c': 'OpenZFS conflicting change\n',
         })
         result = self._run(
-            '--work-name', 'conflicting work', '--group', 'G0001', commit)
+            '--group', 'G0001', commit)
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('git am stopped; resolve it with Git', result.stderr)
@@ -807,7 +793,7 @@ class OzfsApplyTest(unittest.TestCase):
             ],
             check=True, text=True, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE).stdout
-        self.assertIn('OpenZFS: conflicting work', current)
+        self.assertIn('Subject: [PATCH] conflicting change', current)
 
     def test_refuses_to_start_during_git_am(self):
         commit = self._commit('conflicting change', {
@@ -816,7 +802,7 @@ class OzfsApplyTest(unittest.TestCase):
         patch = self.root / 'active.mbox'
         generated = self._run(
             '--no-apply', '--output', str(patch),
-            '--work-name', 'active work', '--group', 'G0001', commit)
+            '--group', 'G0001', commit)
         self.assertEqual(generated.returncode, 0, generated.stderr)
         local = self.illumos / 'usr/src/uts/common/fs/zfs/main.c'
         local.write_text('illumos local change\n', encoding='utf-8')
@@ -828,7 +814,7 @@ class OzfsApplyTest(unittest.TestCase):
             check=False, text=True, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE)
         result = self._run(
-            '--work-name', 'second work', '--group', 'G0001', commit)
+            '--group', 'G0001', commit)
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('git am operation is already in progress', result.stderr)
@@ -841,7 +827,7 @@ class OzfsApplyTest(unittest.TestCase):
         manifest.write_text('previous operation\n', encoding='utf-8')
 
         result = self._run(
-            '--work-name', 'ordinary work', '--group', 'G0001', commit)
+            '--group', 'G0001', commit)
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(
@@ -858,7 +844,7 @@ class OzfsApplyTest(unittest.TestCase):
         })
 
         result = self._run(
-            '--work-name', 'unclassified work', '--group', 'G0001', commit)
+            '--group', 'G0001', commit)
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('review required for 1 path', result.stderr)
@@ -874,7 +860,7 @@ class OzfsApplyTest(unittest.TestCase):
         manifest = self.root / '.ozfs-manifest.tsv'
         self.assertTrue(manifest.is_file())
         contents = manifest.read_text(encoding='utf-8')
-        self.assertIn('work\tunclassified work\n', contents)
+        self.assertIn('group\tG0001\n', contents)
         self.assertIn(f'planning\t{commit}\n', contents)
         self.assertIn(
             'review\tREADME.md\tREADME.md\tunclassified path\n',
