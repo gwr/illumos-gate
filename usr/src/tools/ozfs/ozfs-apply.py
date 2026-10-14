@@ -12,7 +12,7 @@
 
 import argparse
 from dataclasses import dataclass
-from email.utils import formataddr, formatdate
+from email.utils import formataddr
 import os
 from pathlib import Path
 import subprocess
@@ -40,6 +40,9 @@ class CommitPlan:
     parent: str
     subject: str
     message: str
+    author_name: str
+    author_email: str
+    author_date: str
     actions: tuple
 
 
@@ -95,7 +98,12 @@ def plan_commit(
     message = git_output(
         openzfs_repo, 'show', '-s', '--format=%B', commit
     ).decode().replace('\r\n', '\n').replace('\r', '\n').rstrip('\n')
-    return CommitPlan(commit, parent, subject, message, actions)
+    author_name, author_email, author_date = git_output(
+        openzfs_repo, 'show', '-s', '--format=%an%x00%ae%x00%aD', commit
+    ).decode().rstrip('\n').split('\0')
+    return CommitPlan(
+        commit, parent, subject, message, author_name, author_email,
+        author_date, actions)
 
 
 def validate_mapped_targets(
@@ -212,16 +220,6 @@ def format_diff(openzfs_repo, plan):
     return rewrite_patch_paths(patch, mappings)
 
 
-def repository_identity(repo):
-    name = git_output(repo, 'config', '--get', 'user.name').decode().strip()
-    email = git_output(repo, 'config', '--get', 'user.email').decode().strip()
-    if not name:
-        raise OzfsError('illumos repository has no configured user.name')
-    if not email:
-        raise OzfsError('illumos repository has no configured user.email')
-    return name, email
-
-
 def quote_mbox_from_lines(text):
     return '\n'.join(
         f'>{line}' if line.startswith('From ') else line
@@ -230,7 +228,7 @@ def quote_mbox_from_lines(text):
 
 
 def format_combined_patch(illumos_repo, work_name, plans, diffs):
-    name, email = repository_identity(illumos_repo)
+    primary = plans[0]
     body = []
     for plan in plans:
         body.extend((
@@ -241,9 +239,9 @@ def format_combined_patch(illumos_repo, work_name, plans, diffs):
         ))
 
     headers = (
-        f'From {plans[0].commit} Mon Sep 17 00:00:00 2001\n'
-        f'From: {formataddr((name, email))}\n'
-        f'Date: {formatdate(localtime=True)}\n'
+        f'From {primary.commit} Mon Sep 17 00:00:00 2001\n'
+        f'From: {formataddr((primary.author_name, primary.author_email))}\n'
+        f'Date: {primary.author_date}\n'
         f'Subject: [PATCH] OpenZFS: {work_name}\n'
         '\n'
     )

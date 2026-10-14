@@ -142,7 +142,7 @@ class OzfsApplyTest(unittest.TestCase):
         with (self.lists / 'addition-illumos.txt').open('a') as stream:
             stream.write(f'{target}\n')
 
-    def _commit(self, message, changes):
+    def _commit(self, message, changes, author=None, date=None):
         for name, contents in changes.items():
             path = self.openzfs / name
             if contents is None:
@@ -154,7 +154,12 @@ class OzfsApplyTest(unittest.TestCase):
             else:
                 path.write_text(contents, encoding='utf-8')
         self._git(self.openzfs, 'add', '.')
-        self._git(self.openzfs, 'commit', '--quiet', '-m', message)
+        args = ['commit', '--quiet', '-m', message]
+        if author is not None:
+            args.append(f'--author={author}')
+        if date is not None:
+            args.append(f'--date={date}')
+        self._git(self.openzfs, *args)
         return self._git(self.openzfs, 'rev-parse', 'HEAD')
 
     def _run(self, *args):
@@ -241,13 +246,19 @@ class OzfsApplyTest(unittest.TestCase):
         self.assertFalse((self.root / '.ozfs-manifest.tsv').exists())
 
     def test_output_writes_one_combined_reshaped_mail_patch(self):
-        first = self._commit('first change', {
-            'module/zfs/main.c': 'main changed\n',
-            'config/build.m4': 'config changed\n',
-        })
-        second = self._commit('second change', {
-            'include/sys/shared.h': 'shared changed\n',
-        })
+        first = self._commit(
+            'first change', {
+                'module/zfs/main.c': 'main changed\n',
+                'config/build.m4': 'config changed\n',
+            },
+            author='Primary Author <primary@example.com>',
+            date='Thu, 2 Jan 2020 03:04:05 -0500')
+        second = self._commit(
+            'second change', {
+                'include/sys/shared.h': 'shared changed\n',
+            },
+            author='Later Author <later@example.com>',
+            date='Fri, 3 Jan 2020 04:05:06 -0500')
         output = self.root / 'series.mbox'
 
         result = self._run(
@@ -259,6 +270,10 @@ class OzfsApplyTest(unittest.TestCase):
         series = output.read_text(encoding='utf-8')
         self.assertEqual(
             sum(line.startswith('From ') for line in series.splitlines()), 1)
+        self.assertTrue(series.startswith(
+            f'From {first} Mon Sep 17 00:00:00 2001\n'
+            'From: Primary Author <primary@example.com>\n'
+            'Date: Thu, 2 Jan 2020 03:04:05 -0500\n'))
         self.assertIn(
             'Subject: [PATCH] OpenZFS: test work', series)
         self.assertIn(f'import OpenZFS {first}', series)
