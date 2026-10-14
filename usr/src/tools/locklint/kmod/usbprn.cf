@@ -8,3 +8,61 @@
 # OSLL produces identical analysis and function inventories with and without
 # "one usbprn_state".  New locklint already distinguishes concrete object
 # identities and needs no declaration for this focused module.
+
+# Kernel module lifecycle entries run without competing driver threads.
+declare entry no-competing-threads _init
+declare entry no-competing-threads _fini
+declare entry no-competing-threads _info
+declare entry no-competing-threads locklint_ddi_dki_model
+
+# Bind the common DDI/DKI representative model to usbprn's operation vectors.
+declare targets dev_ops::devo_getinfo usbprn_info
+declare targets dev_ops::devo_identify locklint_no_dev
+declare targets dev_ops::devo_probe locklint_no_dev
+declare targets dev_ops::devo_attach usbprn_attach
+declare targets dev_ops::devo_detach usbprn_detach
+declare targets dev_ops::devo_reset locklint_no_reset
+declare targets dev_ops::devo_power usbprn_power
+declare targets dev_ops::devo_quiesce locklint_no_dev
+
+declare targets cb_ops::cb_open usbprn_open
+declare targets cb_ops::cb_close usbprn_close
+declare targets cb_ops::cb_strategy locklint_no_strategy
+declare targets cb_ops::cb_print locklint_no_print
+declare targets cb_ops::cb_dump locklint_no_dump
+declare targets cb_ops::cb_read usbprn_read
+declare targets cb_ops::cb_write usbprn_write
+declare targets cb_ops::cb_ioctl usbprn_ioctl
+declare targets cb_ops::cb_devmap locklint_no_devmap
+declare targets cb_ops::cb_mmap locklint_no_mmap
+declare targets cb_ops::cb_segmap locklint_no_segmap
+declare targets cb_ops::cb_chpoll usbprn_poll
+declare targets cb_ops::cb_prop_op locklint_no_prop_op
+declare targets cb_ops::cb_aread locklint_no_aio
+declare targets cb_ops::cb_awrite locklint_no_aio
+
+# usbprn is a leaf driver, so every nexus operation has a no-op target.
+declare targets bus_ops::bus_map locklint_no_bus_map
+declare targets bus_ops::bus_map_fault locklint_no_bus_map_fault
+declare targets bus_ops::bus_dma_allochdl locklint_no_bus_dma_allochdl
+declare targets bus_ops::bus_dma_freehdl locklint_no_bus_dma_handle
+declare targets bus_ops::bus_dma_bindhdl locklint_no_bus_dma_bindhdl
+declare targets bus_ops::bus_dma_unbindhdl locklint_no_bus_dma_handle
+declare targets bus_ops::bus_dma_flush locklint_no_bus_dma_flush
+declare targets bus_ops::bus_dma_win locklint_no_bus_dma_win
+declare targets bus_ops::bus_dma_ctl locklint_no_bus_dma_ctl
+declare targets bus_ops::bus_ctl locklint_no_bus_ctl
+declare targets bus_ops::bus_prop_op locklint_no_bus_prop
+declare targets bus_ops::bus_get_eventcookie locklint_no_bus_get_event
+declare targets bus_ops::bus_add_eventcall locklint_no_bus_add_event
+declare targets bus_ops::bus_remove_eventcall locklint_no_bus_remove_event
+declare targets bus_ops::bus_post_event locklint_no_bus_post_event
+declare targets bus_ops::bus_config locklint_no_bus_config
+declare targets bus_ops::bus_unconfig locklint_no_bus_unconfig
+declare targets bus_ops::bus_fm_init locklint_no_bus_fm_init
+declare targets bus_ops::bus_fm_fini locklint_no_bus_fm_fini
+declare targets bus_ops::bus_fm_access_enter locklint_no_bus_fm_access
+declare targets bus_ops::bus_fm_access_exit locklint_no_bus_fm_access
+declare targets bus_ops::bus_power locklint_no_bus_power
+declare targets bus_ops::bus_intr_op locklint_no_bus_intr_op
+declare targets bus_ops::bus_hp_op locklint_no_bus_hp

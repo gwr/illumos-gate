@@ -1,0 +1,30 @@
+# Bind the common DDI/DKI nexus representative model to pseudonex.
+
+declare entry no-competing-threads locklint_ddi_dki_bus_model
+
+declare targets dev_ops::devo_detach pseudonex_detach
+
+declare targets bus_ops::bus_map locklint_no_bus_map
+declare targets bus_ops::bus_map_fault locklint_no_bus_map_fault
+declare targets bus_ops::bus_dma_allochdl locklint_no_bus_dma_allochdl
+declare targets bus_ops::bus_dma_freehdl locklint_no_bus_dma_handle
+declare targets bus_ops::bus_dma_bindhdl locklint_no_bus_dma_bindhdl
+declare targets bus_ops::bus_dma_unbindhdl locklint_no_bus_dma_handle
+declare targets bus_ops::bus_dma_flush locklint_no_bus_dma_flush
+declare targets bus_ops::bus_dma_win locklint_no_bus_dma_win
+declare targets bus_ops::bus_dma_ctl locklint_no_bus_dma_ctl
+declare targets bus_ops::bus_ctl pseudonex_ctl
+declare targets bus_ops::bus_prop_op locklint_no_bus_prop
+declare targets bus_ops::bus_get_eventcookie locklint_no_bus_get_event
+declare targets bus_ops::bus_add_eventcall locklint_no_bus_add_event
+declare targets bus_ops::bus_remove_eventcall locklint_no_bus_remove_event
+declare targets bus_ops::bus_post_event locklint_no_bus_post_event
+declare targets bus_ops::bus_config locklint_no_bus_config
+declare targets bus_ops::bus_unconfig locklint_no_bus_unconfig
+declare targets bus_ops::bus_fm_init pseudonex_fm_init
+declare targets bus_ops::bus_fm_fini locklint_no_bus_fm_fini
+declare targets bus_ops::bus_fm_access_enter locklint_no_bus_fm_access
+declare targets bus_ops::bus_fm_access_exit locklint_no_bus_fm_access
+declare targets bus_ops::bus_power locklint_no_bus_power
+declare targets bus_ops::bus_intr_op pseudonex_intr_op
+declare targets bus_ops::bus_hp_op locklint_no_bus_hp

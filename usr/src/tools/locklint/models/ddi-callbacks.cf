@@ -1,0 +1,1 @@
+declare targets bus_ops::bus_dma_allochdl locklint_no_bus_dma_allochdl
