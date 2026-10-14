@@ -66,6 +66,48 @@ as `usr/src/uts/...` regardless of the workspace's absolute pathname.  Its
 default output is `tmp/locklint-large-usb.out`.  On completion, it prints
 `PASS` or `FAIL` with locklint's total measured time.
 
+Registered kernel-module comparisons under `kmod/` may add
+`kmod/ddi-dki-model.c` as an analysis-only input.  That common representative
+file models selected calls made by kernel code outside the production driver
+inputs.  A module command file binds generic operation-vector members to the
+module's concrete functions with `declare targets`.  The common file is not
+product source and must not be compiled or linked into an illumos module.
+
+The initial common model covers leaf-driver `dev_ops`, `cb_ops`, module
+removal, and the synchronous shape of `physio()`.  Exact function-valued
+`physio()` arguments are stored in caller-specific binding environments and
+propagated through the model's callback formals.  The static callgraph can
+still label those calls `indirect`; tests must check analysis behavior rather
+than treating static callgraph wording as the callback result.
+
+The common model also covers every current revision-10 `bus_ops` member.
+`check-kmod-pseudonex.ksh` validates the nexus entry family against the real
+pseudonex driver.  Members which pseudonex leaves NULL or assigns an external
+kernel no-op bind to signature-correct analysis-only no-op targets; concrete
+control, FMA-init, and interrupt-operation members bind to pseudonex code.
+Members explicitly obsolete before revision 10 are documented but not called.
+
+Asynchronous registration models do not call their callback formals.
+Function-pointer escapes already make exact callbacks independent competing
+roots with empty lock sets.  `check-kmod-ddi-callbacks.ksh` verifies current
+timeout and interrupt registration, retained legacy interrupt registration,
+`ddi_set_callback()`, and the `ddi_dma_alloc_handle()` wait callback without
+allowing registration-time locks to flow into callback analysis.
+
+`check-kmod-ddi-forwarding.ksh` verifies current direct framework forwarding:
+`ddi_dma_mctl()` to `bus_dma_ctl`, `ddi_dma_sync()` to `bus_dma_flush`,
+`ddi_prop_op()` to `bus_prop_op`, and the public event interfaces to their
+corresponding nexus event operations.  The verifier checks each wrapper's own
+callgraph block so operation-entry calls elsewhere in the common model cannot
+mask a missing forwarding edge.  It also verifies power-framework calls to
+`devo_power` and NDI online/offline calls to `bus_config`/`bus_unconfig`.
+
+`check-kmod-ddi-blocking.ksh` verifies that the current `delay()` model uses
+an internal condition wait and preserves unrelated locks held by its caller.
+The historical pseudo-kernel's fake `putnext()` condition wait is not carried
+forward; current `putnext()` synchronization and downstream `qi_putp`
+dispatch require a separate STREAMS model.
+
 ## Cross-analyzer comparison helpers
 
 Two Python helpers normalize reports produced by Old Solaris Lock Lint and

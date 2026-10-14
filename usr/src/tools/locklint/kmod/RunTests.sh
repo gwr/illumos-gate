@@ -27,4 +27,8 @@ set -e
 "$SCRIPT_DIR/check-kmod-usb-ah.ksh"
 "$SCRIPT_DIR/check-kmod-usbvc.ksh"
 "$SCRIPT_DIR/check-kmod-usbsacm.ksh"
+"$SCRIPT_DIR/check-kmod-ddi-blocking.ksh"
+"$SCRIPT_DIR/check-kmod-ddi-callbacks.ksh"
+"$SCRIPT_DIR/check-kmod-ddi-forwarding.ksh"
+"$SCRIPT_DIR/check-kmod-pseudonex.ksh"
 "$SCRIPT_DIR/usbprn-with-usba.ksh"
