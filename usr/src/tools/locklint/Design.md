@@ -3050,6 +3050,14 @@ header definitions from depending on which translation unit first calls
 through the function pointer.  The adjustment is limited to the parameter
 boundary: pointer-to-array and pointer-to-pointer types remain distinct.
 
+Sparse equality and inequality evaluation permits a function pointer with
+unspecified parameters to be compared with a prototyped function pointer when
+their pointer address spaces and function return types agree.  This supports
+historical callback sentinel values without implying that the signatures are
+compatible for assignment, declaration, calling, target resolution, or
+cross-translation-unit validation.  Those operations retain strict argument
+checking.
+
 ## Important functions by subsystem
 
 ### Driver: `locklint.c`

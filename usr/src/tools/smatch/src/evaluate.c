@@ -1042,6 +1042,26 @@ static inline int is_null_pointer_constant(struct expression *e)
 	return is_zero_constant(e) ? NULL_ZERO : NON_NULL;
 }
 
+/*
+ * Equality does not call through either function pointer.  Permit historical
+ * unspecified-parameter sentinel values to be compared with prototyped
+ * callbacks, while retaining pointer address-space and return-type checks.
+ * Other type-compatibility uses remain strict.
+ */
+static int
+compatible_unspecified_function_comparison(struct symbol *ltype,
+    struct symbol *rtype, struct symbol *lbase, struct symbol *rbase)
+{
+	if (ltype->ctype.as != rtype->ctype.as)
+		return 0;
+	if (!is_function(lbase) || !is_function(rbase))
+		return 0;
+	if (!lbase->unspecified_args && !rbase->unspecified_args)
+		return 0;
+	return type_difference(&lbase->ctype, &rbase->ctype,
+	    MOD_IGN, MOD_IGN) == NULL;
+}
+
 static struct symbol *evaluate_compare(struct expression *expr)
 {
 	struct expression *left = expr->left, *right = expr->right;
@@ -1123,6 +1143,9 @@ static struct symbol *evaluate_compare(struct expression *expr)
 				left = cast_to(left, rtype);
 				goto OK;
 			}
+			if (compatible_unspecified_function_comparison(ltype,
+			    rtype, lbase, rbase))
+				goto OK;
 		}
 	}
 

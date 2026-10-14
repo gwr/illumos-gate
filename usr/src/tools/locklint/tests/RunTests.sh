@@ -3050,6 +3050,20 @@ require_match "nested function parameter inconsistency" \
     "struct 'array_parameter_owner' is inconsistently defined" \
     function-array-parameter-mismatch.out
 
+run_capture "unspecified function parameters compatible" \
+    function-unspecified-parameters-compatible.out "$LOCKLINT" --no-check \
+    function-unspecified-parameters-compatible.c
+reject_match "unspecified function parameters compatible" \
+    "incompatible types in comparison expression" \
+    function-unspecified-parameters-compatible.out
+
+run_failure "unspecified function parameters incompatible" \
+    function-unspecified-parameters-incompatible.out "$LOCKLINT" --no-check \
+    function-unspecified-parameters-incompatible.c
+require_match "unspecified function parameters incompatible" \
+    "incompatible types in comparison expression" \
+    function-unspecified-parameters-incompatible.out
+
 run_capture "same-name identical types" type-name-same.out \
     "$LOCKLINT" --dump-types type-name-first.c type-name-second-same.c
 reject_match "same-name identical types" "same name but a different layout" \
