@@ -1154,6 +1154,7 @@ Locklint adds a small, general hook facility to Sparse preprocessing:
 
 ```c
 add_macro_expansion_hook(name, callback, data)
+add_macro_expanded_argument_hook(name, callback, data)
 ```
 
 Sparse calls matching hooks after recognizing a function-like macro
@@ -1172,17 +1173,33 @@ Multiple hooks may be registered.  Sparse calls every hook whose name
 matches, and preserves the first argument if any matching callback requests
 it.
 
+An expanded-argument hook observes the first macro argument after ordinary
+macro expansion but before body substitution.  Sparse supplies both a raw
+copy, retaining the argument's original token positions, and the expanded
+token list.  These lists remain owned by Sparse and are valid only during the
+callback; clients must copy anything needed later.  Registering such a hook
+forces expansion of the first argument even when the macro body does not use
+it.  It does not change the configured replacement or the existing early-hook
+decision.
+
 Locklint registers these hooks:
 
 | Macro | Callback behavior |
 | --- | --- |
-| `_NOTE` | Copies the original argument tokens and returns zero.  The normal `_NOTE` macro expansion still occurs. |
+| `_NOTE` | The early hook preserves existing execution-annotation behavior.  The expanded-argument hook copies declarative raw and expanded tokens; normal `_NOTE` substitution still occurs. |
 | `ASSERT` | Records recognized mutex predicates.  Its strong analyzer definition passes the expanded condition to an opaque value consumer; `NO_COMPETING_THREADS` instead requests direct first-argument preservation. |
 | `VERIFY` | Uses the same analyzer definition and predicate capture as `ASSERT`. |
 
-`_NOTE` token copies use ordinary heap allocation because Sparse releases the
-translation unit's token arena after parsing.  The copies and other global
-analysis records currently live until process exit.
+Declarative `_NOTE` parsing dispatches on the raw first token and parses the
+remainder from the expanded token copy.  Thus object-like aliases expand in
+lock and data names, including complete names, individual path components,
+generated groups, and nested macro expansions.  A macro cannot supply the
+annotation keyword itself.  Raw spelling remains available for unresolved
+annotation dumps, while resolved dumps use canonical names.
+
+`_NOTE` raw and expanded token copies use ordinary heap allocation because
+Sparse releases the translation unit's token arena after parsing.  The copies
+and other global analysis records currently live until process exit.
 
 The analyzer definitions deliberately make `ASSERT` and `VERIFY` conditions
 visible regardless of the source definition of those macros or the value of
@@ -1388,7 +1405,9 @@ failed identity match can cause a protected access to be missed.
 Each `_NOTE` invocation becomes an `annotation` containing:
 
 - the source position of the invocation;
-- copied raw tokens;
+- copied raw tokens for source-facing output;
+- copied tokens with ordinary macro expansion applied after the raw
+  annotation keyword, for parsing and resolution;
 - its recognized annotation kind;
 - an optional parsed lock reference or explanatory scheme text;
 - a list of parsed data references; and

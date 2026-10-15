@@ -89,6 +89,7 @@ struct annotation {
 	char *command_file;
 	unsigned long command_line;
 	struct annotation_token *tokens;
+	struct annotation_token *expanded_tokens;
 	struct annotation_ref *lock;
 	struct annotation_ref *data;
 	struct annotation_ref *order;
@@ -267,46 +268,63 @@ copy_string(const char *text)
 	return (copy);
 }
 
-static const struct token *
-annotation_end(const struct token *open)
+static int
+prepare_annotation(const struct token *macro,
+    const struct token *open, void *data)
 {
-	const struct token *token;
-	unsigned int depth = 1;
+	(void) macro;
+	(void) data;
 
-	for (token = open->next; !eof_token(token); token = token->next) {
-		if (token_type(token) == TOKEN_SPECIAL &&
-		    token->special == '(') {
-			depth++;
-		} else if (token_type(token) == TOKEN_SPECIAL &&
-		    token->special == ')' && --depth == 0) {
-			return (token);
-		}
+	if (execution_kind(open->next) != LOCKLINT_EXECUTION_NONE)
+		return (1);
+	return (0);
+}
+
+static struct annotation_token *
+copy_annotation_token(const struct token *token)
+{
+	struct annotation_token *copy;
+
+	copy = calloc(1, sizeof (*copy));
+	if (copy == NULL)
+		die("out of memory recording locklint annotation token");
+	copy->pos = token->pos;
+	copy->type = token_type(token);
+	copy->text = copy_string(show_token(token));
+	return (copy);
+}
+
+static struct annotation_token *
+copy_annotation_tokens(const struct token *token)
+{
+	struct annotation_token *tokens = NULL;
+	struct annotation_token **tail = &tokens;
+
+	for (; token != NULL && !eof_token(token); token = token->next) {
+		struct annotation_token *copy = copy_annotation_token(token);
+
+		*tail = copy;
+		tail = &copy->next;
 	}
-
-	return (NULL);
+	return (tokens);
 }
 
 /*
- * Preserve the unexpanded _NOTE body and its translation-unit provenance
- * before Sparse releases the preprocessing tokens.
+ * Keep the raw spelling for source-facing output, but parse the raw
+ * annotation keyword followed by its ordinarily expanded arguments.
  */
-static int
-capture_annotation(const struct token *macro,
-    const struct token *open, void *data)
+static void
+capture_expanded_annotation(const struct token *macro,
+    const struct token *raw, const struct token *expanded, void *data)
 {
 	struct annotation *annotation;
 	struct annotation_token **tail;
-	const struct token *end;
-	const struct token *token;
 
 	(void) data;
 
-	if (execution_kind(open) != LOCKLINT_EXECUTION_NONE)
-		return (1);
-
-	end = annotation_end(open);
-	if (end == NULL)
-		return (0);
+	if (raw == NULL ||
+	    execution_kind(raw) != LOCKLINT_EXECUTION_NONE)
+		return;
 
 	annotation = calloc(1, sizeof (*annotation));
 	if (annotation == NULL)
@@ -314,30 +332,24 @@ capture_annotation(const struct token *macro,
 	annotation->pos = macro->pos;
 	/* The same header position can be captured in several translations. */
 	annotation->tu = locklint_translation_unit_current();
-	tail = &annotation->tokens;
-
-	for (token = open->next; token != end; token = token->next) {
-		struct annotation_token *copy;
-
-		copy = calloc(1, sizeof (*copy));
-		if (copy == NULL)
-			die("out of memory recording locklint annotation token");
-		copy->pos = token->pos;
-		copy->type = token_type(token);
-		copy->text = copy_string(show_token(token));
-		*tail = copy;
-		tail = &copy->next;
+	annotation->tokens = copy_annotation_tokens(raw);
+	if (!eof_token(raw)) {
+		annotation->expanded_tokens = copy_annotation_token(raw);
+		tail = &annotation->expanded_tokens->next;
+	} else {
+		tail = &annotation->expanded_tokens;
 	}
+	if (expanded != NULL && !eof_token(expanded))
+		expanded = expanded->next;
+	*tail = copy_annotation_tokens(expanded);
 
 	*annotations_tail = annotation;
 	annotations_tail = &annotation->next;
-	return (0);
 }
 
 static enum locklint_execution_kind
-execution_kind(const struct token *open)
+execution_kind(const struct token *name)
 {
-	const struct token *name = open->next;
 	const char *text;
 
 	if (name == NULL || token_type(name) != TOKEN_IDENT)
@@ -383,7 +395,9 @@ locklint_annotations_enable(void)
 	avl_create(&data_policy_index, data_policy_index_compare,
 	    sizeof (struct data_policy_index_entry),
 	    offsetof(struct data_policy_index_entry, by_identity));
-	add_macro_expansion_hook("_NOTE", capture_annotation, NULL);
+	add_macro_expansion_hook("_NOTE", prepare_annotation, NULL);
+	add_macro_expanded_argument_hook("_NOTE",
+	    capture_expanded_annotation, NULL);
 	add_pre_buffer("#define NO_COMPETING_THREADS_NOW "
 	    "__context__(0, 0, %lu);\n",
 	    (unsigned long)LOCKLINT_EXECUTION_NO_COMPETITION);
@@ -839,7 +853,7 @@ finish_order_annotation(struct annotation *annotation,
 static bool
 parse_annotation(struct annotation *annotation)
 {
-	struct annotation_token *cursor = annotation->tokens;
+	struct annotation_token *cursor = annotation->expanded_tokens;
 	struct annotation_ref *lock = NULL;
 	struct annotation_ref **tail = NULL;
 	const char *name;
