@@ -1,0 +1,3 @@
+# Reach one same-named static callback through an operation-vector member.
+declare --root=true static_entry_invoke
+declare targets static_entry_ops::run static-entry-first.c::static_vector_callback

@@ -1,0 +1,2 @@
+# A source qualifier must identify an input translation unit.
+declare --root=true missing-static-entry.c::static_vector_callback
