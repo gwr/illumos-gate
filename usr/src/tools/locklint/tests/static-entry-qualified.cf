@@ -1,0 +1,2 @@
+# Select only the first translation unit's static callback.
+declare --root=true static-entry-first.c::static_vector_callback

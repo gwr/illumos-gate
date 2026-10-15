@@ -1,0 +1,2 @@
+# An unqualified repeated static name remains ambiguous.
+declare --root=true static_vector_callback

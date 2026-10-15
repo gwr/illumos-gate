@@ -1524,6 +1524,63 @@ require_match "declared root property provenance" \
     "  property root=true root-property-true.cf:1" \
     root-property-true.out
 
+run_capture "qualified static function root" static-entry-qualified.out \
+    "$LOCKLINT" --root-discovery=none --dump-callgraph \
+    --cf static-entry-qualified.cf \
+    static-entry-first.c static-entry-second.c
+require_match "qualified static function diagnostic" \
+    "static-entry-first.c:28:9: warning: competing threads may exist at NO_COMPETING_THREADS assertion" \
+    static-entry-qualified.out
+reject_match "unselected static function diagnostic" \
+    "static-entry-second.c:28:9: warning:" \
+    static-entry-qualified.out
+require_match "qualified static function provenance" \
+    "property root=true static-entry-qualified.cf:2" \
+    static-entry-qualified.out
+if ! awk '
+    /^function static_vector_callback tu=static-entry-first.c / {
+        selected = 1
+        next
+    }
+    /^function / { selected = 0 }
+    selected && /^  root declared$/ { found = 1 }
+    END { exit found ? 0 : 1 }
+' static-entry-qualified.out; then
+	fail "qualified static function root: selected callback is not a root"
+fi
+require_match "qualified static function remains isolated" \
+    "^function static_vector_callback tu=static-entry-second.c .* reachable=no$" \
+    static-entry-qualified.out
+run_failure "unqualified static function root" static-entry-ambiguous.out \
+    "$LOCKLINT" --root-discovery=none \
+    --cf static-entry-ambiguous.cf \
+    static-entry-first.c static-entry-second.c
+require_match "unqualified static function root" \
+    "ambiguous function name 'static_vector_callback'" \
+    static-entry-ambiguous.out
+run_failure "unresolved static function qualifier" \
+    static-entry-unresolved.out \
+    "$LOCKLINT" --root-discovery=none \
+    --cf static-entry-unresolved.cf \
+    static-entry-first.c static-entry-second.c
+require_match "unresolved static function qualifier" \
+    "unresolved function name 'missing-static-entry.c::static_vector_callback'" \
+    static-entry-unresolved.out
+
+run_capture "qualified static operation target" static-entry-target.out \
+    "$LOCKLINT" --root-discovery=none --dump-callgraph \
+    --cf static-entry-target.cf \
+    static-entry-caller.c static-entry-first.c static-entry-second.c
+require_match "qualified static operation target call" \
+    "resolved-indirect static_vector_callback tu=static-entry-first.c" \
+    static-entry-target.out
+require_match "qualified static operation target reachable" \
+    "^function static_vector_callback tu=static-entry-first.c .* reachable=yes$" \
+    static-entry-target.out
+require_match "unselected static operation target unreachable" \
+    "^function static_vector_callback tu=static-entry-second.c .* reachable=no$" \
+    static-entry-target.out
+
 run_capture "explicit automatic roots" root-discovery-auto-explicit.out \
     "$LOCKLINT" --root-discovery=auto --dump-callgraph \
     external-entry.c external-entry-helper.c

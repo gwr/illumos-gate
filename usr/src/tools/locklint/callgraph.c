@@ -1144,17 +1144,55 @@ lookup_declared_members(const char *name,
 	return (CALLGRAPH_DECLARE_OK);
 }
 
+static bool
+translation_unit_matches(const struct function_info *function,
+    const char *qualifier, size_t qualifier_length)
+{
+	const char *file = locklint_translation_unit_file(function->tu);
+	size_t file_length = strlen(file);
+
+	if (file_length < qualifier_length)
+		return (false);
+	if (memcmp(file + file_length - qualifier_length, qualifier,
+	    qualifier_length) != 0)
+		return (false);
+	return (file_length == qualifier_length ||
+	    file[file_length - qualifier_length - 1] == '/');
+}
+
+/*
+ * Resolve an unqualified function name over all inputs, or constrain the
+ * lookup with a source-path::function qualifier.  A path suffix keeps
+ * repository-relative command files independent of the invocation directory;
+ * duplicate matching suffixes remain ambiguous.
+ */
 static struct function_info *
 find_declared_function(const char *name, bool *ambiguous)
 {
 	struct function_record *function;
 	struct function_info *match = NULL;
-	struct ident *ident = built_in_ident(name);
+	const char *separator = strstr(name, "::");
+	const char *function_name = name;
+	const char *qualifier = NULL;
+	size_t qualifier_length = 0;
+	struct ident *ident;
 
 	*ambiguous = false;
+	if (separator != NULL) {
+		if (separator == name || separator[2] == '\0' ||
+		    strstr(separator + 2, "::") != NULL)
+			return (NULL);
+		qualifier = name;
+		qualifier_length = (size_t)(separator - name);
+		function_name = separator + 2;
+	}
+	ident = built_in_ident(function_name);
 	for (function = functions; function != NULL; function = function->next) {
 		if (function->inline_implementation ||
-		    !same_ident(function->info.ep->name->ident, ident))
+		    !same_ident(function->info.ep->name->ident, ident) ||
+		    (qualifier != NULL &&
+		    !translation_unit_matches(&function->info, qualifier,
+		    qualifier_length)))
 			continue;
 		if (match != NULL) {
 			*ambiguous = true;

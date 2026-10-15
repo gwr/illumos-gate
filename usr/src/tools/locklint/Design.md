@@ -983,6 +983,22 @@ entry state is propagated through ordinary resolved calls, so a module loader
 entry can establish the state used to validate assertions in cross-translation
 unit helpers.
 
+Function names used by explicit-root declarations, declared targets,
+representative contracts, and entry-lock assertions may have the form
+`translation-unit::function`.  The translation-unit qualifier matches either
+the complete retained pathname or a path suffix beginning at a component
+boundary.  A unique basename therefore works, while duplicate matching
+suffixes remain ambiguous.  Resolution scans the retained functions once
+when processing each declaration; it adds no persistent collection or
+analysis-time lookup.
+
+`declare --root=boolean function-name...` controls the explicit-root property
+of each selected definition.  Explicit `true` selects a root independently of
+automatic discovery.  Explicit `false` removes only that property, so other
+enabled root evidence can still select the function.  Unlike
+`--external-entry`, this declaration can select a file-local definition;
+translation-unit qualification disambiguates repeated static callback names.
+
 `declare --external-entry=boolean function-name...` declares whether unique
 external function definitions are entries from outside the analyzed inputs.
 Options must precede the names.  Explicit `false` suppresses only the
