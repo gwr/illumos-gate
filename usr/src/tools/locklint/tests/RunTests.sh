@@ -3113,6 +3113,28 @@ fi
 require_match "shared header type instance count" \
     '^type shared_type .* instances=2$' type-consistency.out
 
+run_capture "shared callback type consistency" \
+    type-callback-consistency.out "$LOCKLINT" --dump-types \
+    type-callback-consistency-first.c type-callback-consistency-second.c
+reject_match "shared callback type consistency" "inconsistently defined" \
+    type-callback-consistency.out
+if [ "$(grep -c \
+    '^type callback_consistency kind=struct source=type-callback-consistency.h:' \
+    type-callback-consistency.out)" -ne 1 ]; then
+	fail "shared callback type consistency: expected one locklint type"
+fi
+require_match "shared callback type instance count" \
+    '^type callback_consistency .* instances=2$' \
+    type-callback-consistency.out
+
+run_failure "shared callback type inconsistency" \
+    type-callback-consistency-mismatch.out "$LOCKLINT" --dump-types \
+    type-callback-consistency-first.c \
+    type-callback-consistency-mismatch.c
+require_match "shared callback type inconsistency" \
+    "struct 'callback_consistency' is inconsistently defined" \
+    type-callback-consistency-mismatch.out
+
 run_failure "shared header type inconsistency" \
     type-consistency-mismatch.out "$LOCKLINT" --dump-types \
     type-consistency-first.c type-consistency-mismatch.c

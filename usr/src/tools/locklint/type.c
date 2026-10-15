@@ -693,8 +693,8 @@ type_validate_exact(struct type_validation *validation, struct symbol *exact,
 	    type_incomplete_pointer_target_matches(exact, type))
 		return (true);
 	mapped = type_exact_find(exact);
-	if (mapped != NULL)
-		return (mapped == type);
+	if (mapped == type)
+		return (true);
 	examine_symbol_type(exact);
 
 	if (exact->type == SYM_BITFIELD) {
@@ -732,11 +732,14 @@ type_validate_exact(struct type_validation *validation, struct symbol *exact,
 
 	switch (exact->type) {
 	case SYM_BASETYPE:
-		return ((exact->ctype.base_type != NULL ?
+		if ((exact->ctype.base_type != NULL ?
 		    exact->ctype.base_type : exact) ==
 		    (type->representative->ctype.base_type != NULL ?
 		    type->representative->ctype.base_type :
-		    type->representative));
+		    type->representative))
+			return (true);
+		return (type_validation_mismatch(validation, exact,
+		    "base type differs"));
 	case SYM_NODE:
 	case SYM_TYPEDEF:
 		mapped = type_exact_find(type->representative->ctype.base_type);
@@ -753,8 +756,10 @@ type_validate_exact(struct type_validation *validation, struct symbol *exact,
 	case SYM_FN:
 		if (exact->variadic != type->representative->variadic ||
 		    ptr_list_size((struct ptr_list *)exact->arguments) !=
-		    type->argument_count ||
-		    !type_validate_exact(validation, exact->ctype.base_type,
+		    type->argument_count)
+			return (type_validation_mismatch(validation, exact,
+			    "function argument count or variadic status differs"));
+		if (!type_validate_exact(validation, exact->ctype.base_type,
 		    type->base, false))
 			return (false);
 		FOR_EACH_PTR(exact->arguments, argument) {
@@ -768,12 +773,16 @@ type_validate_exact(struct type_validation *validation, struct symbol *exact,
 	case SYM_UNION:
 	case SYM_ENUM:
 		if (!type_validate_origin(exact, type))
-			return (false);
+			return (type_validation_mismatch(validation, exact,
+			    "type definition origin differs"));
 		if (exact->type == SYM_STRUCT)
 			return (type_validate_struct(validation, exact, type));
 		if (exact->type == SYM_UNION)
 			return (type_validate_union(validation, exact, type));
-		return (type_validate_enum(exact, type->representative));
+		if (type_validate_enum(exact, type->representative))
+			return (true);
+		return (type_validation_mismatch(validation, exact,
+		    "enumerators differ"));
 	default:
 		return (type_validation_mismatch(validation, exact,
 		    "unsupported type differs"));

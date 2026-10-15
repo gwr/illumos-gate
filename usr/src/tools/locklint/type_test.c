@@ -920,6 +920,18 @@ test_incomplete_pointer_targets(void)
 	type_registry_destroy();
 
 	type_registry_create();
+	register_type(&incomplete_pointer);
+	register_symbol(&first);
+	register_symbol(&second);
+	check(type_registry_consistent(),
+	    "preinterned incomplete pointer target is compatible");
+	check(type_lookup_exact(&first) == type_lookup_exact(&second),
+	    "containing types unify with a preinterned incomplete pointer");
+	clear_type_aux(fixture_types,
+	    sizeof (fixture_types) / sizeof (fixture_types[0]));
+	type_registry_destroy();
+
+	type_registry_create();
 	register_symbol(&second);
 	register_symbol(&first);
 	check(type_registry_consistent(),
