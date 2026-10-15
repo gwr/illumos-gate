@@ -207,6 +207,16 @@ typedef int (*macro_expansion_hook_t)(const struct token *,
     const struct token *, void *);
 void add_macro_expansion_hook(const char *, macro_expansion_hook_t, void *);
 
+/*
+ * Expanded-argument hooks run after ordinary expansion of the first macro
+ * argument but before body substitution.  The raw and expanded token lists
+ * are valid only for the duration of the callback.
+ */
+typedef void (*macro_expanded_argument_hook_t)(const struct token *,
+    const struct token *, const struct token *, void *);
+void add_macro_expanded_argument_hook(const char *,
+    macro_expanded_argument_hook_t, void *);
+
 #define MAX_STRING 8191
 
 static inline struct token *containing_token(struct token **p)

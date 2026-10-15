@@ -1,0 +1,5 @@
+locklint: annotation-macros.c:54:20: warning: protected member 'data.complete' modified without holding 'lock' [unprotected-access]
+locklint: annotation-macros.c:55:20: warning: protected member 'data.component' modified without holding 'lock' [unprotected-access]
+locklint: annotation-macros.c:56:20: warning: protected member 'data.grouped_first' modified without holding 'lock' [unprotected-access]
+locklint: annotation-macros.c:57:20: warning: protected member 'data.grouped_second' modified without holding 'lock' [unprotected-access]
+locklint: annotation-macros.c:58:20: warning: protected member 'data.nested' modified without holding 'lock' [unprotected-access]

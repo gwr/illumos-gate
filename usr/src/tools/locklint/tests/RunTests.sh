@@ -3173,6 +3173,32 @@ require_match "annotation errors" \
     annotation-errors.out
 
 #
+# Verify that ordinary macros expand throughout declarative annotation names.
+#
+run_capture "macro-expanded annotation names" annotation-macros.out \
+    "$LOCKLINT" annotation-macros.c
+compare "macro-expanded annotation names" annotation-macros.ref \
+    annotation-macros.out
+
+run_capture "macro-expanded annotation dump" annotation-macros-dump.out \
+    "$LOCKLINT" --no-diagnostics --dump-annotations annotation-macros.c
+for name in data.complete data.component data.grouped_first \
+    data.grouped_second data.nested data.scheme
+do
+	require_match "macro-expanded annotation dump $name" \
+	    "macro_state::$name" annotation-macros-dump.out
+done
+
+run_failure "macro-expanded unresolved annotation" \
+    annotation-macro-error.out \
+    "$LOCKLINT" annotation-macro-error.c
+require_match "macro-expanded unresolved spelling" \
+    "unresolved annotation name 'macro_error_state::missing_member'" \
+    annotation-macro-error.out
+reject_match "unexpanded unresolved spelling" "MACRO_MISSING_MEMBER" \
+    annotation-macro-error.out
+
+#
 # Verify later protection declarations report override provenance.
 #
 run_capture "annotation name dump" annotation-names-dump.out \

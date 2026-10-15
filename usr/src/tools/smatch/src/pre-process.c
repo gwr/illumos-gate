@@ -61,6 +61,15 @@ struct macro_expansion_hook {
 
 static struct macro_expansion_hook *macro_expansion_hooks;
 
+struct macro_expanded_argument_hook {
+	char *name;
+	macro_expanded_argument_hook_t hook;
+	void *data;
+	struct macro_expanded_argument_hook *next;
+};
+
+static struct macro_expanded_argument_hook *macro_expanded_argument_hooks;
+
 void
 add_macro_expansion_hook(const char *name, macro_expansion_hook_t hook,
     void *data)
@@ -75,6 +84,22 @@ add_macro_expansion_hook(const char *name, macro_expansion_hook_t hook,
 	entry->data = data;
 	entry->next = macro_expansion_hooks;
 	macro_expansion_hooks = entry;
+}
+
+void
+add_macro_expanded_argument_hook(const char *name,
+    macro_expanded_argument_hook_t hook, void *data)
+{
+	struct macro_expanded_argument_hook *entry;
+
+	entry = malloc(sizeof (*entry));
+	if (entry == NULL)
+		die("out of memory registering expanded macro argument hook");
+	entry->name = xstrdup(name);
+	entry->hook = hook;
+	entry->data = data;
+	entry->next = macro_expanded_argument_hooks;
+	macro_expanded_argument_hooks = entry;
 }
 
 static int
@@ -92,6 +117,34 @@ call_macro_expansion_hooks(const struct token *macro,
 			    entry->data);
 	}
 	return preserve_argument;
+}
+
+static int
+has_macro_expanded_argument_hook(const struct token *macro)
+{
+	struct macro_expanded_argument_hook *entry;
+	const char *name = show_ident(macro->ident);
+
+	for (entry = macro_expanded_argument_hooks; entry != NULL;
+	    entry = entry->next) {
+		if (strcmp(entry->name, name) == 0)
+			return 1;
+	}
+	return 0;
+}
+
+static void
+call_macro_expanded_argument_hooks(const struct token *macro,
+    const struct token *raw, const struct token *expanded)
+{
+	struct macro_expanded_argument_hook *entry;
+	const char *name = show_ident(macro->ident);
+
+	for (entry = macro_expanded_argument_hooks; entry != NULL;
+	    entry = entry->next) {
+		if (strcmp(entry->name, name) == 0)
+			entry->hook(macro, raw, expanded, entry->data);
+	}
 }
 
 #define INCLUDEPATHS 300
@@ -307,10 +360,13 @@ static void expand_list(struct token **list)
 
 static void preprocessor_line(struct stream *stream, struct token **line);
 
-static struct token *collect_arg(struct token *prev, int vararg, struct position *pos, int count)
+static struct token *
+collect_arg(struct token *prev, int vararg, struct position *pos, int count,
+    struct token **raw)
 {
 	struct stream *stream = input_streams + prev->pos.stream;
 	struct token **p = &prev->next;
+	struct token **raw_tail = raw;
 	struct token *next;
 	int nesting = 0;
 
@@ -348,11 +404,21 @@ static struct token *collect_arg(struct token *prev, int vararg, struct position
 		} else if (match_op(next, ',') && !nesting && !vararg) {
 			break;
 		}
+		if (raw_tail != NULL) {
+			struct token *copy = __alloc_token(0);
+
+			*copy = *next;
+			copy->next = &eof_token_entry;
+			*raw_tail = copy;
+			raw_tail = &copy->next;
+		}
 		next->pos.stream = pos->stream;
 		next->pos.line = pos->line;
 		next->pos.pos = pos->pos;
 		p = &next->next;
 	}
+	if (raw_tail != NULL)
+		*raw_tail = &eof_token_entry;
 	*p = &eof_token_entry;
 	return next;
 }
@@ -363,6 +429,7 @@ static struct token *collect_arg(struct token *prev, int vararg, struct position
 
 struct arg {
 	struct token *arg;
+	struct token *raw;
 	struct token *expanded;
 	struct token *str;
 	int n_normal;
@@ -370,7 +437,9 @@ struct arg {
 	int n_str;
 };
 
-static int collect_arguments(struct token *start, struct token *arglist, struct arg *args, struct token *what)
+static int
+collect_arguments(struct token *start, struct token *arglist, struct arg *args,
+    struct token *what, int observe_first)
 {
 	int wanted = arglist->count.normal;
 	struct token *next = NULL;
@@ -379,7 +448,7 @@ static int collect_arguments(struct token *start, struct token *arglist, struct 
 	arglist = arglist->next;	/* skip counter */
 
 	if (!wanted) {
-		next = collect_arg(start, 0, &what->pos, 0);
+		next = collect_arg(start, 0, &what->pos, 0, NULL);
 		if (eof_token(next))
 			goto Eclosing;
 		if (!eof_token(start->next) || !match_op(next, ')')) {
@@ -389,7 +458,12 @@ static int collect_arguments(struct token *start, struct token *arglist, struct 
 	} else {
 		for (count = 0; count < wanted; count++) {
 			struct argcount *p = &arglist->next->count;
-			next = collect_arg(start, p->vararg, &what->pos, p->normal);
+			struct token **raw = NULL;
+
+			if (observe_first && count == 0)
+				raw = &args[count].raw;
+			next = collect_arg(start, p->vararg, &what->pos,
+			    p->normal, raw);
 			if (eof_token(next))
 				goto Eclosing;
 			if (p->vararg && wanted == 1 && eof_token(start->next))
@@ -428,7 +502,7 @@ Efew:
 	goto out;
 Emany:
 	while (match_op(next, ',')) {
-		next = collect_arg(next, 0, &what->pos, 0);
+		next = collect_arg(next, 0, &what->pos, 0, NULL);
 		count++;
 	}
 	if (eof_token(next))
@@ -803,6 +877,7 @@ static int expand(struct token **list, struct symbol *sym)
 	struct token **tail;
 	int nargs = sym->arglist ? sym->arglist->count.normal : 0;
 	int preserve_argument = 0;
+	int observe_first = 0;
 	struct arg args[nargs];
 
 	if (expanding->tainted) {
@@ -816,11 +891,17 @@ static int expand(struct token **list, struct symbol *sym)
 		if (!match_op(open, '('))
 			return 1;
 		preserve_argument = call_macro_expansion_hooks(token, open);
-		if (!collect_arguments(token->next, sym->arglist, args, token))
+		observe_first = nargs != 0 &&
+		    has_macro_expanded_argument_hook(token);
+		if (!collect_arguments(token->next, sym->arglist, args, token,
+		    observe_first))
 			return 1;
-		if (preserve_argument && nargs != 0)
+		if ((preserve_argument || observe_first) && nargs != 0)
 			args[0].n_normal = 1;
 		expand_arguments(nargs, args);
+		if (observe_first)
+			call_macro_expanded_argument_hooks(token, args[0].raw,
+			    args[0].expanded);
 	}
 
 	expanding->tainted = 1;
