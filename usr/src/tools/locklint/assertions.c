@@ -141,13 +141,13 @@ is_special(const struct token *token, unsigned int special)
  * pending negation, while every other token starts a new expression suffix.
  */
 static bool
-predicate_is_inverted(const struct token *open,
+predicate_is_inverted(const struct token *start,
     const struct token *predicate)
 {
 	const struct token *token;
 	bool invert = false;
 
-	for (token = open->next; token != predicate; token = token->next) {
+	for (token = start; token != predicate; token = token->next) {
 		if (is_special(token, '!')) {
 			invert = !invert;
 		} else if (!is_special(token, '(')) {
@@ -158,12 +158,12 @@ predicate_is_inverted(const struct token *open,
 }
 
 static unsigned int
-adjust_modes(const struct token *open, const struct token *predicate,
+adjust_modes(const struct token *start, const struct token *predicate,
     const struct token *close, unsigned int positive, unsigned int negative)
 {
 	const struct token *operator = close->next;
 	const struct token *value = operator != NULL ? operator->next : NULL;
-	bool invert = predicate_is_inverted(open, predicate);
+	bool invert = predicate_is_inverted(start, predicate);
 
 	if ((is_special(operator, SPECIAL_EQUAL) ||
 	    is_special(operator, SPECIAL_NOTEQUAL)) &&
@@ -176,6 +176,50 @@ adjust_modes(const struct token *open, const struct token *predicate,
 		return (negative);
 	}
 	return (positive);
+}
+
+/*
+ * Capture predicates from one spelling of an assertion argument.  Raw tokens
+ * retain exact source ranges; expanded tokens add predicates introduced by
+ * wrapper macros.  Matching later prefers exact ranges over invocation-level
+ * fallback, so recording both spellings preserves direct-predicate precision.
+ */
+static void
+capture_assertion_predicates(const struct token *macro,
+    const struct token *start, const struct token *end)
+{
+	const struct token *token;
+
+	for (token = start; token != end && !eof_token(token);
+	    token = token->next) {
+		const struct token *predicate_open;
+		const struct token *predicate_close;
+		struct assertion *assertion;
+		unsigned int positive;
+		unsigned int negative;
+
+		if (!predicate_modes(token, &positive, &negative))
+			continue;
+		predicate_open = token->next;
+		if (!is_special(predicate_open, '('))
+			continue;
+		predicate_close = matching_close(predicate_open);
+		if (predicate_close == NULL ||
+		    predicate_close == predicate_open->next)
+			continue;
+		assertion = calloc(1, sizeof (*assertion));
+		if (assertion == NULL)
+			die("out of memory recording lock assertion");
+		assertion->invocation = macro->pos;
+		assertion->tu = locklint_translation_unit_current();
+		assertion->predicate = token->pos;
+		assertion->argument_start = predicate_open->next->pos;
+		assertion->argument_end = predicate_close->pos;
+		assertion->modes = adjust_modes(start, token, predicate_close,
+		    positive, negative);
+		*assertions_tail = assertion;
+		assertions_tail = &assertion->next;
+	}
 }
 
 static int
@@ -193,36 +237,11 @@ capture_assertion(const struct token *macro, const struct token *open,
 	if (end == NULL)
 		return (0);
 	for (token = open->next; token != end; token = token->next) {
-		const struct token *predicate_open;
-		const struct token *predicate_close;
-		struct assertion *assertion;
-		unsigned int positive;
-		unsigned int negative;
-
 		if (token_is(token, "NO_COMPETING_THREADS") ||
 		    token_is(token, "NO_LOCKS_HELD"))
 			preserve_argument = true;
-		if (!predicate_modes(token, &positive, &negative))
-			continue;
-		predicate_open = token->next;
-		if (!is_special(predicate_open, '('))
-			continue;
-		predicate_close = matching_close(predicate_open);
-		if (predicate_close == NULL || predicate_close == predicate_open->next)
-			continue;
-		assertion = calloc(1, sizeof (*assertion));
-		if (assertion == NULL)
-			die("out of memory recording lock assertion");
-		assertion->invocation = macro->pos;
-		assertion->tu = locklint_translation_unit_current();
-		assertion->predicate = token->pos;
-		assertion->argument_start = predicate_open->next->pos;
-		assertion->argument_end = predicate_close->pos;
-		assertion->modes = adjust_modes(open, token, predicate_close,
-		    positive, negative);
-		*assertions_tail = assertion;
-		assertions_tail = &assertion->next;
 	}
+	capture_assertion_predicates(macro, open->next, end);
 	/*
 	 * The competition predicate expands to a statement-like __context__.
 	 * Preserve it directly instead of nesting it in the value consumer.
@@ -230,11 +249,25 @@ capture_assertion(const struct token *macro, const struct token *open,
 	return (preserve_argument);
 }
 
+static void
+capture_expanded_assertion(const struct token *macro,
+    const struct token *raw, const struct token *expanded, void *data)
+{
+	(void) raw;
+	(void) data;
+
+	capture_assertion_predicates(macro, expanded, NULL);
+}
+
 void
 locklint_assertions_enable(void)
 {
 	add_macro_expansion_hook("ASSERT", capture_assertion, NULL);
 	add_macro_expansion_hook("VERIFY", capture_assertion, NULL);
+	add_macro_expanded_argument_hook("ASSERT",
+	    capture_expanded_assertion, NULL);
+	add_macro_expanded_argument_hook("VERIFY",
+	    capture_expanded_assertion, NULL);
 	/*
 	 * Keep the original argument live without exposing the configured macro
 	 * body.  The opaque consumer prevents Sparse from discarding pure loads;
@@ -296,7 +329,10 @@ locklint_get_assertion(struct translation_unit *tu, struct instruction *insn,
 {
 	struct expression *argument;
 	struct assertion *assertion;
+	unsigned int exact = 0;
+	unsigned int fallback = 0;
 	unsigned int selected = 0;
+	bool fallback_conflict = false;
 
 	*modes = 0;
 	*access = (struct locklint_access){ 0 };
@@ -318,18 +354,25 @@ locklint_get_assertion(struct translation_unit *tu, struct instruction *insn,
 		    assertion->argument_start, assertion->argument_end) ||
 		    (insn->call_expr->pos.line == assertion->predicate.line &&
 		    insn->call_expr->pos.pos == assertion->predicate.pos)) {
-			selected = assertion->modes;
-			break;
+			if (exact != 0 && exact != assertion->modes)
+				return (false);
+			exact = assertion->modes;
+			continue;
 		}
 		invocation_match =
 		    insn->call_expr->pos.line == assertion->invocation.line &&
 		    insn->call_expr->pos.pos == assertion->invocation.pos;
 		if (!invocation_match)
 			continue;
-		if (selected != 0 && selected != assertion->modes)
-			return (false);
-		selected = assertion->modes;
+		if (fallback != 0 && fallback != assertion->modes)
+			fallback_conflict = true;
+		fallback = assertion->modes;
 	}
+	/* Macro-generated predicates share the enclosing invocation position. */
+	if (exact != 0)
+		selected = exact;
+	else if (!fallback_conflict)
+		selected = fallback;
 	if (selected == 0 ||
 	    !locklint_get_call_argument_access(tu, insn, 0, access))
 		return (false);

@@ -2584,6 +2584,35 @@ compare "wrapped assertion call sites" \
     assertion-requirement-wrappers.ref \
     assertion-requirement-wrappers.out
 
+run_capture "macro-expanded assertion predicates" \
+    assertion-predicate-macros.out \
+    "$LOCKLINT" assertion-predicate-macros.c
+require_match "nested mutex predicate macro" \
+    "call to 'require_nested_mutex' does not satisfy asserted mutex-held requirement for lock 'mutex'.*\\[asserted-lock-requirement\\]" \
+    assertion-predicate-macros.out
+require_match "VERIFY predicate macro" \
+    "call to 'verify_mutex' does not satisfy asserted mutex-held requirement for lock 'mutex'.*\\[asserted-lock-requirement\\]" \
+    assertion-predicate-macros.out
+require_match "direct VERIFY predicate control" \
+    "call to 'verify_mutex_direct' does not satisfy asserted mutex-held requirement for lock 'mutex'.*\\[asserted-lock-requirement\\]" \
+    assertion-predicate-macros.out
+require_match "reader predicate macro" \
+    "call to 'require_read' does not satisfy asserted read-held requirement for lock 'rwlock'.*\\[asserted-lock-requirement\\]" \
+    assertion-predicate-macros.out
+require_match "writer predicate macro" \
+    "call to 'require_write' does not satisfy asserted write-held requirement for lock 'rwlock'.*\\[asserted-lock-requirement\\]" \
+    assertion-predicate-macros.out
+require_match "any-rw predicate macro" \
+    "call to 'require_rw' does not satisfy asserted lock-held requirement for lock 'rwlock'.*\\[asserted-lock-requirement\\]" \
+    assertion-predicate-macros.out
+require_match "direct any-rw predicate control" \
+    "call to 'require_rw_direct' does not satisfy asserted lock-held requirement for lock 'rwlock'.*\\[asserted-lock-requirement\\]" \
+    assertion-predicate-macros.out
+if [ "$(grep -F -c '[asserted-lock-requirement]' \
+    assertion-predicate-macros.out)" -ne 7 ]; then
+	fail "macro-expanded assertion predicates: expected seven findings"
+fi
+
 run_capture "same-actual assertion aliases" assertion-alias-same.out \
     "$LOCKLINT" -DASSERTION_ALIAS_VARIANT=1 assertion-alias.c
 reject_match "same-actual assertion aliases" "warning:" \

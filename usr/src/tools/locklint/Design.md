@@ -1187,8 +1187,8 @@ Locklint registers these hooks:
 | Macro | Callback behavior |
 | --- | --- |
 | `_NOTE` | The early hook preserves existing execution-annotation behavior.  The expanded-argument hook copies declarative raw and expanded tokens; normal `_NOTE` substitution still occurs. |
-| `ASSERT` | Records recognized mutex predicates.  Its strong analyzer definition passes the expanded condition to an opaque value consumer; `NO_COMPETING_THREADS` instead requests direct first-argument preservation. |
-| `VERIFY` | Uses the same analyzer definition and predicate capture as `ASSERT`. |
+| `ASSERT` | The early hook records direct lock predicates with exact source ranges and preserves whole-state predicates.  The expanded-argument hook also records predicates introduced by wrapper macros.  Its strong analyzer definition passes the expanded condition to an opaque value consumer; `NO_COMPETING_THREADS` instead requests direct first-argument preservation. |
+| `VERIFY` | Uses the same early and expanded predicate capture and analyzer definition as `ASSERT`. |
 
 Declarative `_NOTE` parsing dispatches on the raw first token and parses the
 remainder from the expanded token copy.  Thus object-like aliases expand in
@@ -1208,6 +1208,14 @@ argument even when ordinary preprocessing would replace the invocation with
 `(void)0`.  This is static-analysis policy, not a claim that a non-debug
 runtime evaluates `ASSERT`.  Other `#if DEBUG` source selection remains under
 the user's control.
+
+Raw and expanded assertion capture may observe the same direct predicate.
+When connecting a lowered predicate call to captured assertion metadata,
+locklint prefers an exact raw argument range.  A predicate introduced by
+macro expansion instead uses the enclosing `ASSERT` or `VERIFY` invocation
+position.  If several macro-generated predicates at one invocation imply
+incompatible modes and no exact raw range selects one, locklint declines the
+ambiguous match.
 
 The opaque `__locklint_assertion_value()` consumer keeps side-effect-free
 loads in Sparse IR without exposing implementation helpers such as
