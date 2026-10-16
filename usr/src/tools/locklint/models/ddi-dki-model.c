@@ -28,6 +28,7 @@
 #include <sys/epm.h>
 #include <sys/modctl.h>
 #include <sys/note.h>
+#include <sys/stream.h>
 #include <sys/sunddi.h>
 #include <sys/sunndi.h>
 #include <sys/sunpm.h>
@@ -38,6 +39,7 @@ struct cb_ops *locklint_cb_ops;
 struct bus_ops *locklint_bus_ops;
 static kmutex_t locklint_delay_mutex;
 static kcondvar_t locklint_delay_cv;
+static volatile int locklint_streams_call_direct;
 
 /*
  * Give per-module policy type-correct targets for operation-vector members
@@ -382,6 +384,32 @@ physio(int (*strategy)(struct buf *), struct buf *bp, dev_t dev, int rw,
 {
 	mincnt(bp);
 	return (strategy(bp));
+}
+
+/*
+ * Represent qwriter's possible immediate callback.  The callback argument
+ * also escapes at the caller, which independently covers deferred execution
+ * without inheriting locks held by the thread calling qwriter().
+ */
+void
+qwriter(queue_t *q, mblk_t *mp, void (*func)(), int perimeter)
+{
+	if (locklint_streams_call_direct)
+		(*func)(q, mp);
+}
+
+/*
+ * Represent putnext's possible immediate downstream put procedure.  Registered
+ * qi_putp procedures retain their independent entry contexts for deferred
+ * delivery, while the direct path preserves locks held by the caller.
+ */
+void
+putnext(queue_t *q, mblk_t *mp)
+{
+	queue_t *next = q->q_next;
+
+	if (locklint_streams_call_direct)
+		(*next->q_qinfo->qi_putp)(next, mp);
 }
 
 /*
