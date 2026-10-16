@@ -11,7 +11,7 @@
 #
 
 #
-# Validate single-module STREAMS put entry under D_MP and D_MTPERMOD.
+# Validate single-module STREAMS put entry under inner and outer perimeters.
 #
 
 SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
@@ -27,7 +27,8 @@ run_case()
 	flags=$2
 	commands=$3
 	expected_modeled=$4
-	expected_direct=$5
+	expected_outer=$5
+	expected_direct=$6
 	output="$SCRIPT_DIR/streams-perimeter-$name.raw"
 
 	rm -f "$output"
@@ -56,21 +57,28 @@ run_case()
 	fi
 
 	modeled=$(grep -c "'modeled_data'.*\\[unprotected-access\\]$" "$output")
+	outer=$(grep -c "'outer_data'.*\\[unprotected-access\\]$" "$output")
 	direct=$(grep -c "'direct_data'.*\\[unprotected-access\\]$" "$output")
-	if (( modeled != expected_modeled || direct != expected_direct )); then
+	if (( modeled != expected_modeled || outer != expected_outer ||
+	    direct != expected_direct )); then
 		print -u2 "Unexpected STREAMS perimeter $name findings:"
 		print -u2 "  modeled=$modeled (expected $expected_modeled)"
+		print -u2 "  outer=$outer (expected $expected_outer)"
 		print -u2 "  direct=$direct (expected $expected_direct)"
 		print -u2 "see $output"
 		return 1
 	fi
 }
 
-run_case d-mp D_MP "$SCRIPT_DIR/streams-perimeter.cf" 2 2 || exit $?
+run_case d-mp D_MP "$SCRIPT_DIR/streams-perimeter.cf" 2 2 2 || exit $?
 run_case d-mtpermod '(D_MP|D_MTPERMOD)' \
-    "$SCRIPT_DIR/streams-perimeter-mtpermod.cf" 0 2 || exit $?
+    "$SCRIPT_DIR/streams-perimeter-mtpermod.cf" 0 2 2 || exit $?
 run_case d-mtpermod-putshared \
     '(D_MP|D_MTPERMOD|D_MTPUTSHARED)' \
-    "$SCRIPT_DIR/streams-perimeter-mtpermod-putshared.cf" 1 2 || exit $?
+    "$SCRIPT_DIR/streams-perimeter-mtpermod-putshared.cf" 1 2 2 || exit $?
+run_case d-mtouter '(D_MP|D_MTOUTPERIM)' \
+    "$SCRIPT_DIR/streams-perimeter-outer.cf" 2 1 2 || exit $?
+run_case d-mtpermod-outer '(D_MP|D_MTPERMOD|D_MTOUTPERIM)' \
+    "$SCRIPT_DIR/streams-perimeter-mtpermod-outer.cf" 0 1 2 || exit $?
 
 print "New locklint single-module STREAMS perimeter entry works."

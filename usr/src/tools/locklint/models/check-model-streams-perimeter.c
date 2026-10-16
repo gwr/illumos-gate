@@ -20,17 +20,21 @@
 #include <sys/synch.h>
 
 extern krwlock_t locklint_inner;
+extern krwlock_t locklint_outer;
 
 static int modeled_data;
+static int outer_data;
 static int direct_data;
 
 _NOTE(RWLOCK_PROTECTS_DATA(locklint_inner, modeled_data))
+_NOTE(RWLOCK_PROTECTS_DATA(locklint_outer, outer_data))
 _NOTE(RWLOCK_PROTECTS_DATA(locklint_inner, direct_data))
 
 static int
 streams_modeled_put(queue_t *q, mblk_t *mp)
 {
 	modeled_data++;
+	outer_data++;
 	return (0);
 }
 

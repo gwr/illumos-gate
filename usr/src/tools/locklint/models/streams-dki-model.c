@@ -35,6 +35,7 @@
 #define	MODEL_NAME(name)	MODEL_CAT(MODEL_PREFIX, name)
 
 krwlock_t MODEL_NAME(inner);
+krwlock_t MODEL_NAME(outer);
 static struct qinit *MODEL_NAME(qinit);
 static queue_t MODEL_NAME(queue);
 static mblk_t MODEL_NAME(message);
@@ -42,6 +43,9 @@ static mblk_t MODEL_NAME(message);
 void
 MODEL_NAME(put)(void)
 {
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+	rw_enter(&MODEL_NAME(outer), RW_READER);
+#endif
 #if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
 #if (MODEL_FLAGS & D_MTPUTSHARED) != 0
 	rw_enter(&MODEL_NAME(inner), RW_READER);
@@ -53,5 +57,8 @@ MODEL_NAME(put)(void)
 	    &MODEL_NAME(message));
 #if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
 	rw_exit(&MODEL_NAME(inner));
+#endif
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+	rw_exit(&MODEL_NAME(outer));
 #endif
 }
