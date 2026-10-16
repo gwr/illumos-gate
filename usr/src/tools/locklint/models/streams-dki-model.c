@@ -43,7 +43,11 @@ void
 MODEL_NAME(put)(void)
 {
 #if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
+#if (MODEL_FLAGS & D_MTPUTSHARED) != 0
+	rw_enter(&MODEL_NAME(inner), RW_READER);
+#else
 	rw_enter(&MODEL_NAME(inner), RW_WRITER);
+#endif
 #endif
 	(*MODEL_NAME(qinit)->qi_putp)(&MODEL_NAME(queue),
 	    &MODEL_NAME(message));

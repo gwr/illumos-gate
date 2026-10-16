@@ -49,6 +49,11 @@ run_case()
 		print -u2 "see $output"
 		return "$status"
 	fi
+	if grep -q "asserted-lock-requirement" "$output"; then
+		print -u2 "STREAMS perimeter $name has an entry-mode mismatch"
+		print -u2 "see $output"
+		return 1
+	fi
 
 	modeled=$(grep -c "'modeled_data'.*\\[unprotected-access\\]$" "$output")
 	direct=$(grep -c "'direct_data'.*\\[unprotected-access\\]$" "$output")
@@ -64,5 +69,8 @@ run_case()
 run_case d-mp D_MP "$SCRIPT_DIR/streams-perimeter.cf" 2 2 || exit $?
 run_case d-mtpermod '(D_MP|D_MTPERMOD)' \
     "$SCRIPT_DIR/streams-perimeter-mtpermod.cf" 0 2 || exit $?
+run_case d-mtpermod-putshared \
+    '(D_MP|D_MTPERMOD|D_MTPUTSHARED)' \
+    "$SCRIPT_DIR/streams-perimeter-mtpermod-putshared.cf" 1 2 || exit $?
 
 print "New locklint single-module STREAMS perimeter entry works."
