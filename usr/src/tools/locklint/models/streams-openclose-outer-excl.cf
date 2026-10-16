@@ -1,0 +1,3 @@
+declare targets qinit::qi_qopen streams_modeled_open
+declare targets qinit::qi_qclose streams_modeled_close
+assert rw-write-held locklint_outer streams_modeled_open streams_modeled_close

@@ -39,6 +39,8 @@ krwlock_t MODEL_NAME(outer);
 static struct qinit *MODEL_NAME(qinit);
 static queue_t MODEL_NAME(queue);
 static mblk_t MODEL_NAME(message);
+static dev_t MODEL_NAME(device);
+static cred_t *MODEL_NAME(credential);
 
 void
 MODEL_NAME(put)(void)
@@ -81,6 +83,68 @@ MODEL_NAME(service)(void)
 #endif
 #endif
 	(*MODEL_NAME(qinit)->qi_srvp)(&MODEL_NAME(queue));
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
+	rw_exit(&MODEL_NAME(inner));
+#endif
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+	rw_exit(&MODEL_NAME(outer));
+#endif
+}
+
+/*
+ * Model framework open-procedure entry using the open/close-specific inner
+ * and outer modes.
+ */
+void
+MODEL_NAME(open)(void)
+{
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+#if (MODEL_FLAGS & D_MTOCEXCL) != 0
+	rw_enter(&MODEL_NAME(outer), RW_WRITER);
+#else
+	rw_enter(&MODEL_NAME(outer), RW_READER);
+#endif
+#endif
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
+#if (MODEL_FLAGS & _D_MTOCSHARED) != 0
+	rw_enter(&MODEL_NAME(inner), RW_READER);
+#else
+	rw_enter(&MODEL_NAME(inner), RW_WRITER);
+#endif
+#endif
+	(*MODEL_NAME(qinit)->qi_qopen)(&MODEL_NAME(queue),
+	    &MODEL_NAME(device), 0, 0, MODEL_NAME(credential));
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
+	rw_exit(&MODEL_NAME(inner));
+#endif
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+	rw_exit(&MODEL_NAME(outer));
+#endif
+}
+
+/*
+ * Model framework close-procedure entry using the open/close-specific inner
+ * and outer modes.
+ */
+void
+MODEL_NAME(close)(void)
+{
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+#if (MODEL_FLAGS & D_MTOCEXCL) != 0
+	rw_enter(&MODEL_NAME(outer), RW_WRITER);
+#else
+	rw_enter(&MODEL_NAME(outer), RW_READER);
+#endif
+#endif
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
+#if (MODEL_FLAGS & _D_MTOCSHARED) != 0
+	rw_enter(&MODEL_NAME(inner), RW_READER);
+#else
+	rw_enter(&MODEL_NAME(inner), RW_WRITER);
+#endif
+#endif
+	(*MODEL_NAME(qinit)->qi_qclose)(&MODEL_NAME(queue), 0,
+	    MODEL_NAME(credential));
 #if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
 	rw_exit(&MODEL_NAME(inner));
 #endif
