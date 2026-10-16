@@ -1277,6 +1277,12 @@ reject_match "command synthetic root release" \
     "command_assert_synthetic_root.*lock-not-held" \
     command-entry-assert-native.out
 
+run_capture "illumos rwlock entry assertions" \
+    command-entry-assert-krwlock.out "$LOCKLINT" \
+    --cf command-entry-assert-krwlock.cf command-entry-assert-krwlock.c
+require_empty "illumos rwlock entry assertion output" \
+    command-entry-assert-krwlock.out
+
 run_failure "command entry assertion arity" \
     command-entry-assert-arity.out "$LOCKLINT" \
     --cf command-entry-assert-arity.cf command-entry-assert-native.c

@@ -1254,7 +1254,7 @@ lock_type_named(struct symbol *type, enum callgraph_assert_lock_kind kind)
 		"mutex", "mutex_t", "kmutex", "kmutex_t", "pthread_mutex_t"
 	};
 	static const char *const rwlock_names[] = {
-		"rwlock", "rwlock_t", "krwlock", "krwlock_t",
+		"rwlock", "rwlock_t", "krwlock", "krwlock_t", "_krwlock",
 		"pthread_rwlock_t"
 	};
 	const char *const *names = kind == CALLGRAPH_ASSERT_MUTEX ?

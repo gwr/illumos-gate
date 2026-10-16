@@ -1,0 +1,3 @@
+# Recognize both source spellings of the illumos readers-writer lock type.
+assert rw-write-held command_assert_krwlock_typedef_lock command_assert_krwlock_typedef
+assert rw-write-held command_assert_krwlock_tag_lock command_assert_krwlock_tag
