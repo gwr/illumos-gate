@@ -62,3 +62,29 @@ MODEL_NAME(put)(void)
 	rw_exit(&MODEL_NAME(outer));
 #endif
 }
+
+/*
+ * Model framework service-procedure entry using the module's selected inner
+ * mode and shared outer-perimeter entry.
+ */
+void
+MODEL_NAME(service)(void)
+{
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+	rw_enter(&MODEL_NAME(outer), RW_READER);
+#endif
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
+#if (MODEL_FLAGS & _D_MTSVCSHARED) != 0
+	rw_enter(&MODEL_NAME(inner), RW_READER);
+#else
+	rw_enter(&MODEL_NAME(inner), RW_WRITER);
+#endif
+#endif
+	(*MODEL_NAME(qinit)->qi_srvp)(&MODEL_NAME(queue));
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
+	rw_exit(&MODEL_NAME(inner));
+#endif
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+	rw_exit(&MODEL_NAME(outer));
+#endif
+}
