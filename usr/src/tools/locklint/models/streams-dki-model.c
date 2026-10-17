@@ -64,8 +64,13 @@ qwriter(queue_t *q, mblk_t *mp, void (*func)(), int perimeter)
 	}
 }
 
-void
-MODEL_NAME(put)(void)
+/*
+ * Enter the selected downstream module's put procedure.  Both framework put
+ * entry and immediate putnext dispatch use this sequence so their perimeter
+ * ordering and modes remain identical.
+ */
+static void
+MODEL_NAME(put_entry)(struct qinit *qinit, queue_t *q, mblk_t *mp)
 {
 #if (MODEL_FLAGS & D_MTOUTPERIM) != 0
 	rw_enter(&MODEL_NAME(outer), RW_READER);
@@ -77,14 +82,33 @@ MODEL_NAME(put)(void)
 	rw_enter(&MODEL_NAME(inner), RW_WRITER);
 #endif
 #endif
-	(*MODEL_NAME(qinit)->qi_putp)(&MODEL_NAME(queue),
-	    &MODEL_NAME(message));
+	(*qinit->qi_putp)(q, mp);
 #if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
 	rw_exit(&MODEL_NAME(inner));
 #endif
 #if (MODEL_FLAGS & D_MTOUTPERIM) != 0
 	rw_exit(&MODEL_NAME(outer));
 #endif
+}
+
+void
+MODEL_NAME(put)(void)
+{
+	MODEL_NAME(put_entry)(MODEL_NAME(qinit), &MODEL_NAME(queue),
+	    &MODEL_NAME(message));
+}
+
+/*
+ * Model putnext's possible immediate downstream put procedure.  Registered
+ * qi_putp procedures retain independent entry contexts for later delivery.
+ */
+void
+putnext(queue_t *q, mblk_t *mp)
+{
+	queue_t *next = q->q_next;
+
+	if (MODEL_NAME(call_direct))
+		MODEL_NAME(put_entry)(next->q_qinfo, next, mp);
 }
 
 /*

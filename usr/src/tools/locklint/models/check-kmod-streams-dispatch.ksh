@@ -12,14 +12,14 @@
 
 #
 # Validate optional immediate putnext dispatch plus independent callback entry
-# in the common DDI/DKI representative model.
+# in the single-module STREAMS representative model.
 #
 
 SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
 SRC=${SRC:-$(CDPATH= cd "$SCRIPT_DIR/../../.." && pwd)}
 MODULE_DIR="$SRC/uts/intel/pseudo"
 LOCKLINT="$SRC/tools/locklint/locklint"
-MODEL="$SCRIPT_DIR/ddi-dki-model.c"
+MODEL="$SCRIPT_DIR/streams-dki-model.c"
 INPUT="$SCRIPT_DIR/check-kmod-streams-dispatch.c"
 OUTPUT="$SCRIPT_DIR/streams-dispatch.raw"
 

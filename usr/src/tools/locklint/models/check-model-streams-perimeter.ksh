@@ -34,7 +34,7 @@ run_case()
 	rm -f "$output"
 	(
 		cd "$MODULE_DIR" || exit 1
-		"$LOCKLINT" --compat=osll --cf "$commands" \
+		"$LOCKLINT" --compat=osll --dump-callgraph --cf "$commands" \
 		    -D__sun -m64 -Ui386 -U__i386 -O2 \
 		    -D_ASM_INLINES -std=gnu99 \
 		    -D_KERNEL -D_SYSCALL32 -D_SYSCALL32_IMPL \
@@ -49,6 +49,12 @@ run_case()
 		    "status $status"
 		print -u2 "see $output"
 		return "$status"
+	fi
+	if ! grep -q \
+	    "^  call $INPUT:.* resolved putnext tu=$MODEL\$" "$output"; then
+		print -u2 "STREAMS perimeter $name did not resolve putnext"
+		print -u2 "see $output"
+		return 1
 	fi
 	if grep -q "asserted-lock-requirement" "$output"; then
 		print -u2 "STREAMS perimeter $name has an entry-mode mismatch"

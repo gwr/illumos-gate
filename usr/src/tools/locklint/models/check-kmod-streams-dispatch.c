@@ -10,7 +10,7 @@
  */
 
 /*
- * Verify that the common putnext representative preserves both possible
+ * Verify that the STREAMS putnext representative preserves both possible
  * immediate callback execution and independent deferred entry.
  */
 

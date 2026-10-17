@@ -42,6 +42,22 @@ static struct qinit streams_modeled_qinit = {
 	.qi_putp = streams_modeled_put
 };
 
+static queue_t streams_putnext_target = {
+	.q_qinfo = &streams_modeled_qinit
+};
+
+static queue_t streams_putnext_source = {
+	.q_next = &streams_putnext_target
+};
+
+static mblk_t streams_putnext_message;
+
+void
+streams_modeled_putnext(void)
+{
+	putnext(&streams_putnext_source, &streams_putnext_message);
+}
+
 void
 streams_direct_put(void)
 {
