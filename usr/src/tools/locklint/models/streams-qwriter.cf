@@ -1,0 +1,11 @@
+declare --root=true check_qwriter_inner check_qwriter_outer
+declare --root=true check_qwriter_forward check_qwriter_unknown
+declare --root=true streams_qwriter_inner streams_qwriter_outer
+declare --root=true streams_qwriter_forward
+
+declare discriminant qwriter perimeter
+declare discriminant streams_qwriter_forwarding perimeter
+
+assert rw-write-held locklint_inner streams_qwriter_inner
+assert rw-write-held locklint_inner streams_qwriter_forward
+assert rw-write-held locklint_outer streams_qwriter_outer

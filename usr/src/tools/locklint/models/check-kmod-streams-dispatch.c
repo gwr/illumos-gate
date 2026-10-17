@@ -10,7 +10,7 @@
  */
 
 /*
- * Verify that the shared STREAMS representatives preserve both possible
+ * Verify that the common putnext representative preserves both possible
  * immediate callback execution and independent deferred entry.
  */
 
@@ -19,15 +19,7 @@
 #include <sys/stream.h>
 #include <sys/synch.h>
 
-static kmutex_t qwriter_effect_lock;
 static kmutex_t putnext_effect_lock;
-
-static void
-streams_qwriter_callback(queue_t *q, mblk_t *mp)
-{
-	_NOTE(MUTEX_ACQUIRED_AS_SIDE_EFFECT(qwriter_effect_lock))
-	mutex_enter(&qwriter_effect_lock);
-}
 
 static int
 streams_putnext_callback(queue_t *q, mblk_t *mp)
@@ -50,14 +42,6 @@ static queue_t streams_dispatch_source = {
 };
 
 static mblk_t streams_dispatch_message;
-
-void
-check_qwriter_dispatch(void)
-{
-	qwriter(&streams_dispatch_source, &streams_dispatch_message,
-	    streams_qwriter_callback, PERIM_INNER);
-	mutex_exit(&qwriter_effect_lock);
-}
 
 void
 check_putnext_dispatch(void)

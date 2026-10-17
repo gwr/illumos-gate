@@ -387,18 +387,6 @@ physio(int (*strategy)(struct buf *), struct buf *bp, dev_t dev, int rw,
 }
 
 /*
- * Represent qwriter's possible immediate callback.  The callback argument
- * also escapes at the caller, which independently covers deferred execution
- * without inheriting locks held by the thread calling qwriter().
- */
-void
-qwriter(queue_t *q, mblk_t *mp, void (*func)(), int perimeter)
-{
-	if (locklint_streams_call_direct)
-		(*func)(q, mp);
-}
-
-/*
  * Represent putnext's possible immediate downstream put procedure.  Registered
  * qi_putp procedures retain their independent entry contexts for deferred
  * delivery, while the direct path preserves locks held by the caller.

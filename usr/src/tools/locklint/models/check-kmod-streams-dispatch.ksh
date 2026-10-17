@@ -11,7 +11,7 @@
 #
 
 #
-# Validate optional immediate STREAMS dispatch plus independent callback entry
+# Validate optional immediate putnext dispatch plus independent callback entry
 # in the common DDI/DKI representative model.
 #
 
@@ -41,20 +41,15 @@ if (( status != 0 )); then
 	exit "$status"
 fi
 
-for function in qwriter putnext
-do
-	if ! grep -q \
-	    "^  call $INPUT:.* resolved ${function} tu=$MODEL\$" "$OUTPUT"; then
-		print -u2 "STREAMS dispatch model did not resolve $function"
-		exit 1
-	fi
-done
+if ! grep -q \
+    "^  call $INPUT:.* resolved putnext tu=$MODEL\$" "$OUTPUT"; then
+	print -u2 "STREAMS dispatch model did not resolve putnext"
+	exit 1
+fi
 
-for function in streams_qwriter_callback streams_putnext_callback
-do
-	if ! awk -v target="$function" '
+if ! awk '
 	    /^function / {
-		in_function = ($2 == target)
+		in_function = ($2 == "streams_putnext_callback")
 	    }
 	    in_function && /^  root function-pointer-escape$/ {
 		found = 1
@@ -62,21 +57,17 @@ do
 	    END {
 		exit !found
 	    }
-	' "$OUTPUT"; then
-		print -u2 "$function is not an independent callback root"
-		exit 1
-	fi
-done
+' "$OUTPUT"; then
+	print -u2 "streams_putnext_callback is not an independent callback root"
+	exit 1
+fi
 
-for lock in qwriter_effect_lock putnext_effect_lock
-do
-	if ! grep -q \
-	    "lock '$lock' may not be held.*\\[lock-maybe-not-held\\]$" \
-	    "$OUTPUT"; then
-		print -u2 "$lock did not retain optional direct callback effects"
-		print -u2 "see $OUTPUT"
-		exit 1
-	fi
-done
+if ! grep -q \
+    "lock 'putnext_effect_lock' may not be held.*\\[lock-maybe-not-held\\]$" \
+    "$OUTPUT"; then
+	print -u2 "putnext_effect_lock did not retain optional direct callback effects"
+	print -u2 "see $OUTPUT"
+	exit 1
+fi
 
-print "New locklint STREAMS representatives preserve optional dispatch."
+print "New locklint putnext representative preserves optional dispatch."

@@ -41,6 +41,28 @@ static queue_t MODEL_NAME(queue);
 static mblk_t MODEL_NAME(message);
 static dev_t MODEL_NAME(device);
 static cred_t *MODEL_NAME(credential);
+static volatile int MODEL_NAME(call_direct);
+
+/*
+ * Model qwriter's possible immediate callback under the selected exclusive
+ * perimeter.  Per-target entry assertions separately seed the same state for
+ * callbacks which run after qwriter returns.
+ */
+void
+qwriter(queue_t *q, mblk_t *mp, void (*func)(), int perimeter)
+{
+	if (MODEL_NAME(call_direct)) {
+		if (perimeter == PERIM_INNER) {
+			rw_enter(&MODEL_NAME(inner), RW_WRITER);
+			(*func)(q, mp);
+			rw_exit(&MODEL_NAME(inner));
+		} else {
+			rw_enter(&MODEL_NAME(outer), RW_WRITER);
+			(*func)(q, mp);
+			rw_exit(&MODEL_NAME(outer));
+		}
+	}
+}
 
 void
 MODEL_NAME(put)(void)
