@@ -1298,6 +1298,72 @@ entry_requirement_formal(struct function_info *function, const char *name,
 	return (NULL);
 }
 
+/*
+ * Add one declared discriminant in formal argument order.  Keeping this
+ * compact list sorted makes both duplicate declarations and call-time lookup
+ * cheap without allocating per-formal metadata.
+ */
+enum callgraph_declare_result
+callgraph_declare_discriminant(const char *function_name,
+    const char *formal_name)
+{
+	struct function_info *function;
+	struct discriminant_formals *discriminants;
+	struct symbol *candidate;
+	struct symbol *formal;
+	struct symbol *type;
+	unsigned int argument = 0;
+	size_t index;
+	bool ambiguous;
+
+	require_state(CALLGRAPH_CONSTRUCTING, "discriminant declaration");
+	function = find_declared_function(function_name, &ambiguous);
+	if (ambiguous)
+		return (CALLGRAPH_DECLARE_AMBIGUOUS);
+	if (function == NULL)
+		return (CALLGRAPH_DECLARE_UNRESOLVED);
+	formal = entry_requirement_formal(function, formal_name,
+	    strlen(formal_name));
+	if (formal == NULL)
+		return (CALLGRAPH_DECLARE_MISSING_FORMAL);
+	type = declared_function_type(function);
+	FOR_EACH_PTR(type->arguments, candidate) {
+		if (candidate == formal)
+			break;
+		argument++;
+	} END_FOR_EACH_PTR(candidate);
+	if (!is_int_type(formal->ctype.base_type))
+		return (CALLGRAPH_DECLARE_NOT_INTEGER);
+
+	discriminants = &function->discriminants;
+	for (index = 0; index < discriminants->count; index++) {
+		if (discriminants->arguments[index] == argument)
+			return (CALLGRAPH_DECLARE_OK);
+		if (discriminants->arguments[index] > argument)
+			break;
+	}
+	if (discriminants->count == discriminants->capacity) {
+		size_t capacity = discriminants->capacity == 0 ? 2 :
+		    discriminants->capacity * 2;
+		unsigned int *arguments = realloc(discriminants->arguments,
+		    capacity * sizeof (*arguments));
+
+		if (arguments == NULL)
+			die("out of memory recording discriminant declaration");
+		discriminants->arguments = arguments;
+		discriminants->capacity = capacity;
+	}
+	if (index < discriminants->count) {
+		(void) memmove(&discriminants->arguments[index + 1],
+		    &discriminants->arguments[index],
+		    (discriminants->count - index) *
+		    sizeof (*discriminants->arguments));
+	}
+	discriminants->arguments[index] = argument;
+	discriminants->count++;
+	return (CALLGRAPH_DECLARE_OK);
+}
+
 static bool
 resolve_entry_requirement_members(struct symbol *type, const char *path,
     int64_t *offset, struct symbol **terminal)
@@ -3119,6 +3185,7 @@ callgraph_cleanup(void)
 		binding_collection_free(&functions->info.bindings);
 		free(functions->info.derived_protectors);
 		free(functions->info.stored_target_demands);
+		free(functions->info.discriminants.arguments);
 		if (functions->info.operation_family_profile_count != 0) {
 			struct operation_family_profile *profile;
 

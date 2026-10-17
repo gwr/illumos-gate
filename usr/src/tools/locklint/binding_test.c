@@ -57,6 +57,18 @@ test_interning(void)
 		{ .argument = 0, .actual_identity = first },
 		{ .argument = 2, .actual_identity = first }
 	};
+	struct formal_constant_binding constants[] = {
+		{ .argument = 3, .value = 2 },
+		{ .argument = 1, .value = 1 }
+	};
+	struct formal_constant_binding reversed_constants[] = {
+		{ .argument = 1, .value = 1 },
+		{ .argument = 3, .value = 2 }
+	};
+	struct formal_constant_binding changed_constants[] = {
+		{ .argument = 1, .value = 2 },
+		{ .argument = 3, .value = 2 }
+	};
 	struct derived_binding derived[] = {
 		{
 			.source = {
@@ -69,7 +81,10 @@ test_interning(void)
 	struct binding_environment *environment;
 	struct binding_environment *same;
 	struct binding_environment *alias_environment;
+	struct binding_environment *constant_environment;
+	struct binding_environment *changed_environment;
 	struct binding_environment *empty;
+	long long value;
 	bool existed;
 	int error;
 
@@ -114,10 +129,29 @@ test_interning(void)
 	check(alias_environment->entries[0].actual_identity ==
 	    alias_environment->entries[1].actual_identity,
 	    "binding environment preserves exact aliases");
-	check(binding_environment_count(&collection) == 3,
-	    "collection owns three canonical binding environments");
-	check(binding_environment_entry_count(&collection) == 5,
-	    "binding environments retain five entries");
+
+	error = binding_environment_intern_complete(&collection, NULL, 0,
+	    NULL, 0, NULL, 0, constants, 2, &constant_environment, &existed);
+	check(error == 0 && !existed, "create constant binding environment");
+	check(binding_environment_lookup_constant(constant_environment, 1,
+	    &value) && value == 1, "find first constant binding");
+	check(binding_environment_lookup_constant(constant_environment, 3,
+	    &value) && value == 2, "find second constant binding");
+	check(!binding_environment_lookup_constant(constant_environment, 2,
+	    &value), "missing constant binding is absent");
+	error = binding_environment_intern_complete(&collection, NULL, 0,
+	    NULL, 0, NULL, 0, reversed_constants, 2, &same, &existed);
+	check(error == 0 && existed && same == constant_environment,
+	    "constant insertion order reuses canonical environment");
+	error = binding_environment_intern_complete(&collection, NULL, 0,
+	    NULL, 0, NULL, 0, changed_constants, 2, &changed_environment,
+	    &existed);
+	check(error == 0 && !existed,
+	    "distinct constant value creates binding environment");
+	check(binding_environment_count(&collection) == 5,
+	    "collection owns five canonical binding environments");
+	check(binding_environment_entry_count(&collection) == 9,
+	    "binding environments retain nine entries");
 
 	binding_collection_free(&collection);
 }
@@ -157,6 +191,10 @@ test_errors(void)
 		.source.analysis_object = &identities[0]
 	};
 	struct formal_binding missing = { .argument = 0 };
+	struct formal_constant_binding duplicate_constants[] = {
+		{ .argument = 1, .value = 1 },
+		{ .argument = 1, .value = 2 }
+	};
 	struct binding_environment *environment = NULL;
 	bool existed = true;
 	int error;
@@ -177,6 +215,10 @@ test_errors(void)
 	    &missing_derived, 1, &environment, &existed);
 	check(error == EINVAL,
 	    "derived binding without actual identity is rejected");
+	error = binding_environment_intern_complete(&collection, NULL, 0,
+	    NULL, 0, NULL, 0, duplicate_constants, 2, &environment,
+	    &existed);
+	check(error == EINVAL, "duplicate constant binding is rejected");
 	check(binding_environment_count(&collection) == 0,
 	    "invalid bindings are not retained");
 

@@ -528,6 +528,37 @@ declare_readable(int argc, char **argv)
 	return (status);
 }
 
+static int
+declare_discriminant(int argc, char **argv)
+{
+	enum callgraph_declare_result result;
+
+	if (argc != 3) {
+		return (command_parse_error("declare discriminant requires one "
+		    "function and one formal name"));
+	}
+	result = callgraph_declare_discriminant(argv[1], argv[2]);
+	switch (result) {
+	case CALLGRAPH_DECLARE_OK:
+		return (0);
+	case CALLGRAPH_DECLARE_UNRESOLVED:
+		return (command_parse_error("unresolved function name '%s'",
+		    argv[1]));
+	case CALLGRAPH_DECLARE_AMBIGUOUS:
+		return (command_parse_error("ambiguous function name '%s'",
+		    argv[1]));
+	case CALLGRAPH_DECLARE_MISSING_FORMAL:
+		return (command_parse_error("function '%s' has no formal named "
+		    "'%s'", argv[1], argv[2]));
+	case CALLGRAPH_DECLARE_NOT_INTEGER:
+		return (command_parse_error("formal '%s' in function '%s' is not "
+		    "an integer or enum", argv[2], argv[1]));
+	default:
+		return (command_parse_error("internal error resolving formal "
+		    "'%s' in function '%s'", argv[2], argv[1]));
+	}
+}
+
 int
 cmd_assert(int argc, char **argv)
 {
@@ -601,6 +632,8 @@ cmd_declare(int argc, char **argv)
 		return (declare_entry(argc, argv));
 	if (strcmp(argv[0], "targets") == 0)
 		return (declare_targets(argc, argv));
+	if (strcmp(argv[0], "discriminant") == 0)
+		return (declare_discriminant(argc, argv));
 	if (strcmp(argv[0], "contract") == 0)
 		return (declare_contract(argc, argv));
 	if (strcmp(argv[0], "lock-order") == 0)

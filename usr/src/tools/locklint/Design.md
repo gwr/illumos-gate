@@ -1011,6 +1011,17 @@ declaration source is retained as callgraph-audit provenance.
 Explicit entry declarations are additive and never change the analysis-wide
 root-discovery mode.
 
+`declare discriminant function-name formal-name` opts one integer or enum
+formal into exact constant propagation.  Both names must resolve uniquely
+after all inputs are parsed.  Repeated equal declarations are harmless.
+Pointer, floating-point, aggregate, missing, and unnamed formals are rejected.
+
+A direct integer constant actual becomes part of the callee's interned binding
+environment.  A bound discriminant formal may be forwarded only to another
+declared discriminant formal.  Arbitrary scalar expressions, ranges, and
+sets of possible values are deliberately not tracked.  A nonconstant actual
+has no constant binding and remains conservative.
+
 The mode-specific entry assertion commands are:
 
 ```text
@@ -2084,10 +2095,18 @@ the first retained body instruction.  Diagnostics inspect each concrete
 context's unmodified entry state, aggregate by requirement and originating
 call, and render the command-file origin with `file:line` provenance.
 
-Scalar argument values are not part of function-context identity.  If an
-untracked scalar controls whether a wrapper establishes the asserted state,
-both exact lock-state paths remain possible and the originating-call
-diagnostic is conditional.
+Scalar argument values are not ordinarily part of function-context identity.
+The command-declared discriminant exception stores one exact integer constant
+against the selected formal argument.  That sorted binding participates in
+environment identity, so otherwise equal calls with different constants
+create distinct contexts.  Direct constants and already-bound discriminant
+formals may supply the value; no general scalar evaluation occurs at calls.
+
+Within such a context, an equality or inequality comparison between a bound
+formal and an integer constant has a known Boolean result.  Ordinary CFG
+processing then retains only the matching branch.  An untracked or
+nonconstant scalar retains both branches, so a wrapper which conditionally
+establishes asserted state remains conservative.
 
 Alias handling needs no assertion-specific collection.  Call binding
 environments map formal-relative lock addresses and exact derived-formal lock
@@ -2105,6 +2124,24 @@ Because target bindings participate in environment identity, callers with
 different callbacks create distinct callee contexts instead of contributing
 to one global cross-product.  Unsupported actual expressions leave the formal
 call unresolved.
+
+Discriminant entries use the same compact immutable environment rather than a
+semantic-state value map.  Each entry contains a zero-based formal argument
+number and a `long long` constant; entries are sorted for binary lookup and
+included in interning comparison, entry-count statistics, and retained-memory
+measurement.  The per-function declaration list is also a sorted compact
+array because declarations are expected to be rare and call-time lookup is
+frequent.
+
+The accepted 32-translation-unit USB workload contains no discriminant
+declarations.  Its post-change run preserved the retained 1,932-line
+diagnostic stream byte-for-byte and created 24,739 contexts, 13,782 binding
+environments, and 1,808,276 point states.  The binding-environment structure
+adds one count and one pointer, or 16 bytes at LP64; with no constant entries
+that accounts for 220,512 bytes across this run.  Total retained collections
+were 176,281,168 bytes, and the single measured run completed in 15.043
+seconds.  This establishes the no-opt-in scale boundary; real discriminant
+use must still be measured when added to a representative workload.
 
 Exact function targets stored in memory are a fourth immutable semantic-state
 component.  Each entry maps the canonical object and byte range already used

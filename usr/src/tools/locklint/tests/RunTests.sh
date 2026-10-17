@@ -1325,6 +1325,62 @@ require_match "command entry assertion type" \
     command-entry-assert-type.out
 
 #
+# A declared discriminant specializes a function context only for exact
+# integer constants.  Forwarded constants retain specialization, while an
+# unknown-value control conservatively keeps both branches.
+#
+run_capture "command discriminant behavior" command-discriminant.out \
+    "$LOCKLINT" --root-discovery=none --dump-contexts \
+    --cf command-discriminant.cf command-discriminant.c
+for data in discriminant_inner_data discriminant_outer_data \
+    discriminant_forward_inner_data discriminant_forward_outer_data
+do
+	reject_match "command discriminant protected $data" \
+	    "'$data'.*\\[unprotected-access\\]" command-discriminant.out
+done
+require_match "command discriminant unknown read" \
+    "'discriminant_unknown_data'.*read without read-holding.*\\[unprotected-access\\]" \
+    command-discriminant.out
+require_match "command discriminant unknown write" \
+    "'discriminant_unknown_data'.*modified without write-holding.*\\[unprotected-access\\]" \
+    command-discriminant.out
+require_match "command discriminant distinct constant contexts" \
+    "maximum contexts/function 7 function discriminant_dispatch " \
+    command-discriminant.out
+if [ "$(grep -F -c '[unprotected-access]' command-discriminant.out)" -ne 2 ]
+then
+	fail "command discriminant behavior: expected two control findings"
+fi
+
+run_failure "command discriminant arity" command-discriminant-arity.out \
+    "$LOCKLINT" --root-discovery=none \
+    --cf command-discriminant-arity.cf command-discriminant.c
+require_match "command discriminant arity" \
+    "declare discriminant requires one function and one formal name" \
+    command-discriminant-arity.out
+
+run_failure "command discriminant function" \
+    command-discriminant-function.out "$LOCKLINT" --root-discovery=none \
+    --cf command-discriminant-function.cf command-discriminant.c
+require_match "command discriminant function" \
+    "unresolved function name 'missing_discriminant_function'" \
+    command-discriminant-function.out
+
+run_failure "command discriminant formal" command-discriminant-formal.out \
+    "$LOCKLINT" --root-discovery=none \
+    --cf command-discriminant-formal.cf command-discriminant.c
+require_match "command discriminant formal" \
+    "function 'discriminant_dispatch' has no formal named 'missing'" \
+    command-discriminant-formal.out
+
+run_failure "command discriminant type" command-discriminant-type.out \
+    "$LOCKLINT" --root-discovery=none \
+    --cf command-discriminant-type.cf command-discriminant.c
+require_match "command discriminant type" \
+    "formal 'func' in function 'discriminant_dispatch' is not an integer or enum" \
+    command-discriminant-type.out
+
+#
 # Verify command-file readable policy after all translation units have been
 # parsed, including a type declared separately in each translation unit.
 #

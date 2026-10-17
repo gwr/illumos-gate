@@ -58,6 +58,16 @@ struct stored_target_demand {
 };
 
 /*
+ * Zero-based integer or enum formal arguments whose exact constant values
+ * distinguish function contexts.  Entries are sorted by argument number.
+ */
+struct discriminant_formals {
+	unsigned int *arguments;
+	size_t count;
+	size_t capacity;
+};
+
+/*
  * One command-declared lock assertion applied at effective function entry.
  * Formal-relative keys are rebound through ordinary call bindings; canonical
  * object keys remain absolute.  The short name omits a formal root so
@@ -117,6 +127,7 @@ struct function_info {
 	struct stored_target_demand *stored_target_demands;
 	size_t stored_target_demand_count;
 	size_t stored_target_demand_capacity;
+	struct discriminant_formals discriminants;
 	avl_tree_t operation_family_profiles;
 	size_t operation_family_profile_count;
 	unsigned int root_reasons;

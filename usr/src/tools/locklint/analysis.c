@@ -1394,6 +1394,29 @@ call_argument_targets(const struct function_context *caller,
 }
 
 /*
+ * Resolve only values admitted by discriminant semantics: a literal constant,
+ * or a caller formal which already has an exact discriminant binding.
+ */
+static bool
+call_argument_constant(const struct function_context *caller,
+    const struct instruction *insn, unsigned int index, long long *value)
+{
+	struct pseudo *pseudo = call_argument_pseudo(insn, index);
+
+	if (pseudo == NULL)
+		return (false);
+	if (pseudo->type == PSEUDO_VAL) {
+		*value = pseudo->value;
+		return (true);
+	}
+	if (pseudo->type == PSEUDO_ARG && pseudo->nr != 0) {
+		return (binding_environment_lookup_constant(caller->bindings,
+		    pseudo->nr - 1, value));
+	}
+	return (false);
+}
+
+/*
  * Return the unique operation profile produced by one exact direct call
  * result.  Pointer casts preserve the value; memory and merged values require
  * separate provenance support.
@@ -1606,10 +1629,35 @@ apply_phi_aliases(struct analysis *analysis, struct function_context *context,
 }
 
 static bool
-state_pseudo_truth(const struct semantic_state *state, struct pseudo *pseudo,
-    bool *truth)
+context_pseudo_constant(const struct function_context *context,
+    const struct pseudo *pseudo, long long *value)
+{
+	if (pseudo == NULL)
+		return (false);
+	if (pseudo->type == PSEUDO_VAL) {
+		*value = pseudo->value;
+		return (true);
+	}
+	if (pseudo->type == PSEUDO_ARG && pseudo->nr != 0) {
+		return (binding_environment_lookup_constant(context->bindings,
+		    pseudo->nr - 1, value));
+	}
+	return (false);
+}
+
+/*
+ * Resolve direct Boolean constants and the exact equality comparisons emitted
+ * for branches on declared discriminants.  Unknown operands deliberately
+ * retain both CFG successors.
+ */
+static bool
+state_pseudo_truth(const struct function_context *context,
+    const struct semantic_state *state, struct pseudo *pseudo, bool *truth)
 {
 	const struct lock_identity *alias;
+	struct instruction *definition;
+	long long left;
+	long long right;
 	size_t index;
 
 	pseudo = strip_function_pointer_casts(pseudo);
@@ -1628,6 +1676,16 @@ state_pseudo_truth(const struct semantic_state *state, struct pseudo *pseudo,
 			*truth = value->value != 0;
 			return (true);
 		}
+	}
+	definition = pseudo->type == PSEUDO_REG ? pseudo->def : NULL;
+	if (definition != NULL &&
+	    (definition->opcode == OP_SET_EQ ||
+	    definition->opcode == OP_SET_NE) &&
+	    context_pseudo_constant(context, definition->src1, &left) &&
+	    context_pseudo_constant(context, definition->src2, &right)) {
+		*truth = definition->opcode == OP_SET_EQ ?
+		    left == right : left != right;
+		return (true);
 	}
 	for (index = 0; index < state->locks->count; index++) {
 		const struct lock_identity *lock =
@@ -2654,9 +2712,9 @@ collect_assumed_regions(void)
 }
 
 /*
- * Construct the callee's canonical mapping for pointer formals.  Scalar
- * arguments are values copied into the callee and do not identify caller
- * objects.
+ * Construct the callee's canonical mapping for pointer formals and explicitly
+ * declared scalar discriminants.  Other scalar arguments remain untracked
+ * values copied into the callee.
  */
 static const struct binding_environment *
 call_bindings(struct analysis *analysis,
@@ -2668,11 +2726,14 @@ call_bindings(struct analysis *analysis,
 	struct derived_binding *derived_entries;
 	struct formal_binding *entries;
 	struct formal_target_binding *target_entries;
+	struct formal_constant_binding *constant_entries;
 	struct binding_environment *bindings;
 	size_t formal_count = 0;
 	size_t binding_count = 0;
 	size_t derived_count;
 	size_t target_count = 0;
+	size_t constant_count = 0;
+	size_t discriminant_index = 0;
 	unsigned int argument = 0;
 	bool existed;
 	int error;
@@ -2695,8 +2756,13 @@ call_bindings(struct analysis *analysis,
 	target_entries = calloc(formal_count, sizeof (*target_entries));
 	if (target_entries == NULL && formal_count != 0)
 		die("cannot allocate call target bindings");
+	constant_entries = calloc(callee->discriminants.count,
+	    sizeof (*constant_entries));
+	if (constant_entries == NULL && callee->discriminants.count != 0)
+		die("cannot allocate discriminant call bindings");
 	FOR_EACH_PTR(type->arguments, formal) {
 		const struct call_target_set *targets;
+		long long value;
 
 		if (formal_is_pointer(formal)) {
 			entries[binding_count].argument = argument;
@@ -2714,17 +2780,31 @@ call_bindings(struct analysis *analysis,
 			target_entries[target_count].actual_targets = targets;
 			target_count++;
 		}
+		if (discriminant_index < callee->discriminants.count &&
+		    callee->discriminants.arguments[discriminant_index] ==
+		    argument) {
+			if (call_argument_constant(caller, insn, argument,
+			    &value)) {
+				constant_entries[constant_count].argument =
+				    argument;
+				constant_entries[constant_count].value = value;
+				constant_count++;
+			}
+			discriminant_index++;
+		}
 		argument++;
 	} END_FOR_EACH_PTR(formal);
 	derived_count = call_derived_bindings(callee, caller_state, insn,
 	    derived_entries);
 	statistics.call_binding_environments_find++;
-	error = binding_environment_intern_targets(&callee->bindings, entries,
+	error = binding_environment_intern_complete(&callee->bindings, entries,
 	    binding_count, derived_entries, derived_count, target_entries,
-	    target_count, &bindings, &existed);
+	    target_count, constant_entries, constant_count, &bindings,
+	    &existed);
 	free(entries);
 	free(derived_entries);
 	free(target_entries);
+	free(constant_entries);
 	if (error != 0)
 		die("cannot intern call bindings: %s", strerror(error));
 	if (existed)
@@ -3430,7 +3510,8 @@ process_point(struct analysis *analysis, struct point_state *point_state)
 		    value_branch->bb != NULL &&
 		    value_branch->opcode == OP_CBR) {
 			branch_truth_known = state_pseudo_truth(
-			    point_state->state, value_branch->cond,
+			    point_state->context, point_state->state,
+			    value_branch->cond,
 			    &branch_truth);
 		}
 		if (value_branch != NULL && value_branch->bb != NULL &&
@@ -8283,7 +8364,8 @@ measure_collections(struct analysis *analysis)
 			distribution_add(
 			    &measurements->bindings_per_environment,
 			    bindings->count + bindings->derived_count +
-			    bindings->target_count, function);
+			    bindings->target_count + bindings->constant_count,
+			    function);
 			memory_add(
 			    &measurements->binding_environment_bytes, 1,
 			    sizeof (*bindings) +
@@ -8291,7 +8373,9 @@ measure_collections(struct analysis *analysis)
 			    bindings->derived_count *
 			    sizeof (*bindings->derived_entries) +
 			    bindings->target_count *
-			    sizeof (*bindings->target_entries));
+			    sizeof (*bindings->target_entries) +
+			    bindings->constant_count *
+			    sizeof (*bindings->constant_entries));
 		}
 		distribution_add(&measurements->semantic_states_per_function,
 		    states, function);

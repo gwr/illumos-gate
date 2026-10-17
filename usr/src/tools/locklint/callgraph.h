@@ -40,6 +40,7 @@ enum callgraph_declare_result {
 	CALLGRAPH_DECLARE_INCOMPATIBLE_TYPE,
 	CALLGRAPH_DECLARE_INCONSISTENT_TYPE,
 	CALLGRAPH_DECLARE_MISSING_FORMAL,
+	CALLGRAPH_DECLARE_NOT_INTEGER,
 	CALLGRAPH_DECLARE_UNRESOLVED_PATH,
 	CALLGRAPH_DECLARE_WRONG_LOCK_TYPE
 };
@@ -113,6 +114,13 @@ enum callgraph_declare_result callgraph_declare_external_entry(const char *,
  */
 enum callgraph_declare_result callgraph_declare_root(const char *, bool,
     const char *, unsigned long);
+
+/*
+ * Declare one integer or enum formal whose exact constant actual participates
+ * in callee context identity.  Exact duplicate declarations are harmless.
+ */
+enum callgraph_declare_result callgraph_declare_discriminant(const char *,
+    const char *);
 
 /*
  * Declare the possible functions called through a canonical function-pointer
