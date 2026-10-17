@@ -1,0 +1,3 @@
+declare --root=true check_qprocson check_qprocsoff
+
+declare --external-entry=false qprocson qprocsoff

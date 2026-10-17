@@ -42,6 +42,30 @@ static mblk_t MODEL_NAME(message);
 static dev_t MODEL_NAME(device);
 static cred_t *MODEL_NAME(credential);
 static volatile int MODEL_NAME(call_direct);
+static kmutex_t MODEL_NAME(qprocsoff_mutex);
+static kcondvar_t MODEL_NAME(qprocsoff_cv);
+
+/*
+ * Enabling queue processing has no caller-visible lock or blocking effect.
+ * Queue-instance lifecycle state is outside this single-module model.
+ */
+void
+qprocson(queue_t *q)
+{
+}
+
+/*
+ * Disabling queue processing can wait for active put and service procedures
+ * to drain.  A private wait preserves every lock retained by the caller
+ * without exposing STREAMS implementation locks as part of the model.
+ */
+void
+qprocsoff(queue_t *q)
+{
+	mutex_enter(&MODEL_NAME(qprocsoff_mutex));
+	cv_wait(&MODEL_NAME(qprocsoff_cv), &MODEL_NAME(qprocsoff_mutex));
+	mutex_exit(&MODEL_NAME(qprocsoff_mutex));
+}
 
 /*
  * Model qwriter's possible immediate callback under the selected exclusive

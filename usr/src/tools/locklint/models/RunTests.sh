@@ -25,3 +25,4 @@ set -e
 "$SCRIPT_DIR/check-model-streams-service.ksh"
 "$SCRIPT_DIR/check-model-streams-openclose.ksh"
 "$SCRIPT_DIR/check-model-streams-qwriter.ksh"
+"$SCRIPT_DIR/check-model-streams-qproc.ksh"
