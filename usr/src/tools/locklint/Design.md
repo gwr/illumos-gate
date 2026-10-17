@@ -1754,6 +1754,11 @@ metadata, correct `__builtin_unreachable()` and noreturn-call termination,
 and focused generic Sparse validation.  Interpretation of every nonzero tag
 remains with the client that introduced it.
 
+`HELD_DURING_WAIT_EXEMPT_ON(lock)` and
+`HELD_DURING_WAIT_EXEMPT_OFF(lock)` use the same tagged-context mechanism.
+Their retained expression identifies an ordinary lock object; neither Sparse
+nor Locklint assigns framework-specific meaning to that identity.
+
 ### State domains
 
 Competition is a flow-sensitive interval of anonymous nesting depths.
@@ -1783,6 +1788,21 @@ An unmentioned region is visible.  `NOW_INVISIBLE_TO_OTHER_THREADS` and
 `NOW_VISIBLE_TO_OTHER_THREADS` set the selected regions to the corresponding
 definite state.  A whole-object selection covers its members.  A member
 selection affects that member and nested data within it but not its siblings.
+
+A held lock entry also carries analysis flags independent of its mutex,
+reader, or writer mode.  The held-during-wait exemption is currently the only
+flag.  `HELD_DURING_WAIT_EXEMPT_ON(lock)` requires the lock held and not
+already exempt; `OFF` requires it held and exempt.  Mode transitions preserve
+the flag, while release removes the lock entry and is diagnosed if the flag
+remains active.  A callee inherits the flags on caller-held locks and must
+return the inherited exemption state unchanged.  Differing flags retain
+distinct semantic states, so an exemption active on only some paths does not
+silently widen to all paths.
+
+The flag occupies prior padding in `semantic_lock_state` on the supported
+64-bit local build: both the old two-field layout and the current
+pointer/modes/flags layout are 16 bytes.  `semantic_state` remains 88 bytes.
+No separate exemption collection or per-state pointer is allocated.
 When overlapping whole-object and member facts exist, the most specific
 covering fact determines the queried state.  Updating a region removes
 obsolete facts wholly covered by that update.
@@ -2376,6 +2396,13 @@ reaching the wait, or `[lock-maybe-held-during-wait]` when it is present in
 only some states.  States in which the waited-on mutex is not held contribute
 only the invalid-transition diagnostic and do not create secondary wait
 warnings.
+
+A held identity marked by `HELD_DURING_WAIT_EXEMPT_ON` is omitted from this
+one diagnostic class until the matching `OFF`.  Its ownership, lock mode,
+declared-order participation, and data-protection effect remain unchanged.
+Other held identities at the same wait remain reportable.  Invalid ON/OFF
+transitions, release with an active exemption, and a changed exemption state
+at function return use `[invalid-wait-exemption]`.
 
 Findings are aggregated by the underlying wait instruction and held-lock
 identity across all caller contexts.  The primary warning therefore remains
@@ -3750,6 +3777,9 @@ The current implementation relies on these invariants:
     zero remains correlated with a caller conditional.
 53. A callee-local returned lock maps to the caller result even when that
     result is discarded; unrelated callee-local locks remain filtered.
+54. A held-during-wait exemption is a flag on an existing held-lock entry.
+    It changes only held-during-wait reporting, follows that identity through
+    calls, and must return to its inherited value before function exit.
 
 Changes that invalidate one of these invariants should update this document
 and add a focused regression test.

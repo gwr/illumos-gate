@@ -60,7 +60,9 @@ enum locklint_execution_kind {
 	LOCKLINT_EXECUTION_LOCK_DOWNGRADED_EFFECT,
 	LOCKLINT_EXECUTION_ASSERT_NO_COMPETITION,
 	LOCKLINT_EXECUTION_NOT_REACHED,
-	LOCKLINT_EXECUTION_ASSERT_NO_LOCKS_HELD
+	LOCKLINT_EXECUTION_ASSERT_NO_LOCKS_HELD,
+	LOCKLINT_EXECUTION_WAIT_EXEMPT_ON,
+	LOCKLINT_EXECUTION_WAIT_EXEMPT_OFF
 };
 
 enum locklint_declared_lock_effect {
@@ -126,6 +128,8 @@ bool locklint_for_each_assumed_target(struct translation_unit *,
 bool locklint_get_declared_lock_effect(struct translation_unit *,
     const struct instruction *, enum locklint_declared_lock_effect *,
     struct locklint_access *);
+bool locklint_get_wait_exemption(struct translation_unit *,
+    const struct instruction *, bool *, struct locklint_access *);
 void locklint_process_function_annotations(FILE *, struct translation_unit *,
     struct entrypoint *);
 void locklint_resolve_annotations(struct symbol_list *);

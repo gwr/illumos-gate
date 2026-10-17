@@ -60,6 +60,8 @@ static const char *const diagnostic_names[LOCKLINT_DIAG_COUNT] = {
 	    "function-contract-mismatch",
 	[LOCKLINT_DIAG_INVALID_ASSUMING_PROTECTED] =
 	    "invalid-assuming-protected",
+	[LOCKLINT_DIAG_INVALID_WAIT_EXEMPTION] =
+	    "invalid-wait-exemption",
 	[LOCKLINT_DIAG_LOCK_ALREADY_HELD] = "lock-already-held",
 	[LOCKLINT_DIAG_LOCK_HELD_DURING_WAIT] = "lock-held-during-wait",
 	[LOCKLINT_DIAG_LOCK_HELD_ON_RETURN] = "lock-held-on-return",

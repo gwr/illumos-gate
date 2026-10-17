@@ -383,6 +383,10 @@ execution_kind(const struct token *name)
 		return (LOCKLINT_EXECUTION_LOCK_DOWNGRADED_EFFECT);
 	if (strcmp(text, "NOT_REACHED") == 0)
 		return (LOCKLINT_EXECUTION_NOT_REACHED);
+	if (strcmp(text, "HELD_DURING_WAIT_EXEMPT_ON") == 0)
+		return (LOCKLINT_EXECUTION_WAIT_EXEMPT_ON);
+	if (strcmp(text, "HELD_DURING_WAIT_EXEMPT_OFF") == 0)
+		return (LOCKLINT_EXECUTION_WAIT_EXEMPT_OFF);
 	return (LOCKLINT_EXECUTION_NONE);
 }
 
@@ -440,6 +444,12 @@ locklint_annotations_enable(void)
 	add_pre_buffer("#define NOT_REACHED "
 	    "__context__(0, 0, %lu); __builtin_unreachable();\n",
 	    (unsigned long)LOCKLINT_EXECUTION_NOT_REACHED);
+	add_pre_buffer("#define HELD_DURING_WAIT_EXEMPT_ON(...) "
+	    "__context__((__VA_ARGS__), 0, %lu);\n",
+	    (unsigned long)LOCKLINT_EXECUTION_WAIT_EXEMPT_ON);
+	add_pre_buffer("#define HELD_DURING_WAIT_EXEMPT_OFF(...) "
+	    "__context__((__VA_ARGS__), 0, %lu);\n",
+	    (unsigned long)LOCKLINT_EXECUTION_WAIT_EXEMPT_OFF);
 }
 
 static bool
@@ -2153,6 +2163,8 @@ locklint_get_execution_annotation(const struct instruction *insn)
 	case LOCKLINT_EXECUTION_ASSERT_NO_COMPETITION:
 	case LOCKLINT_EXECUTION_ASSERT_NO_LOCKS_HELD:
 	case LOCKLINT_EXECUTION_NOT_REACHED:
+	case LOCKLINT_EXECUTION_WAIT_EXEMPT_ON:
+	case LOCKLINT_EXECUTION_WAIT_EXEMPT_OFF:
 		return ((enum locklint_execution_kind)insn->context_tag);
 	default:
 		return (LOCKLINT_EXECUTION_NONE);
@@ -2292,6 +2304,27 @@ locklint_get_declared_lock_effect(struct translation_unit *tu,
 		return (false);
 	}
 
+	return (insn->context_expr != NULL &&
+	    locklint_get_access(tu, insn->context_expr, lock));
+}
+
+bool
+locklint_get_wait_exemption(struct translation_unit *tu,
+    const struct instruction *insn, bool *enable,
+    struct locklint_access *lock)
+{
+	*lock = (struct locklint_access){ 0 };
+
+	switch (locklint_get_execution_annotation(insn)) {
+	case LOCKLINT_EXECUTION_WAIT_EXEMPT_ON:
+		*enable = true;
+		break;
+	case LOCKLINT_EXECUTION_WAIT_EXEMPT_OFF:
+		*enable = false;
+		break;
+	default:
+		return (false);
+	}
 	return (insn->context_expr != NULL &&
 	    locklint_get_access(tu, insn->context_expr, lock));
 }

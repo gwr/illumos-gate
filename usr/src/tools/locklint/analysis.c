@@ -87,6 +87,9 @@ struct analysis_counts {
 	size_t visibility_transitions_applied;
 	size_t visibility_transitions_deferred;
 	size_t visibility_transitions_unresolved;
+	size_t wait_exemption_transitions_applied;
+	size_t wait_exemption_transitions_deferred;
+	size_t wait_exemption_transitions_unresolved;
 	size_t competition_transitions_applied;
 	size_t competition_backedges_widened;
 	size_t competition_backedges_covered;
@@ -527,6 +530,55 @@ apply_visibility_target(const struct locklint_access *access,
 }
 
 static const struct semantic_state *
+apply_wait_exemption_event(struct analysis *analysis,
+    struct point_state *point_state, const struct semantic_state *current)
+{
+	struct locklint_access access;
+	struct lock_identity *identity;
+	struct semantic_state *state;
+	unsigned int flags;
+	bool composed;
+	bool enable;
+	bool existed;
+	int error;
+
+	if (!locklint_get_wait_exemption(
+	    point_state->context->function->tu,
+	    point_state->point.next_instruction, &enable, &access))
+		return (current);
+	if (access.root == NULL) {
+		analysis->counts.wait_exemption_transitions_unresolved++;
+		return (current);
+	}
+	error = context_access_identity(analysis, point_state->context, current,
+	    &access, &identity, &existed, &composed);
+	if (error != 0)
+		die("cannot identify wait exemption lock: %s", strerror(error));
+	if (composed)
+		analysis->counts.binding_identities_composed++;
+	flags = context_state_lock_flags(current, identity);
+	if (context_state_lock_modes(current, identity) == 0 ||
+	    (enable &&
+	    (flags & SEMANTIC_LOCK_HELD_DURING_WAIT_EXEMPT) != 0) ||
+	    (!enable &&
+	    (flags & SEMANTIC_LOCK_HELD_DURING_WAIT_EXEMPT) == 0)) {
+		analysis->counts.wait_exemption_transitions_deferred++;
+		return (current);
+	}
+	if (enable)
+		flags |= SEMANTIC_LOCK_HELD_DURING_WAIT_EXEMPT;
+	else
+		flags &= ~SEMANTIC_LOCK_HELD_DURING_WAIT_EXEMPT;
+	error = context_state_set_lock_flags(point_state->context->function,
+	    current, identity, flags, &state, &existed);
+	if (error != 0)
+		die("cannot apply wait exemption: %s", strerror(error));
+	record_semantic_state(analysis, existed);
+	analysis->counts.wait_exemption_transitions_applied++;
+	return (state);
+}
+
+static const struct semantic_state *
 apply_visibility_event(struct analysis *analysis,
     struct point_state *point_state)
 {
@@ -534,7 +586,8 @@ apply_visibility_event(struct analysis *analysis,
 	struct visibility_transition transition = {
 		.analysis = analysis,
 		.point_state = point_state,
-		.state = apply_competition_event(analysis, point_state)
+		.state = apply_wait_exemption_event(analysis, point_state,
+		    apply_competition_event(analysis, point_state))
 	};
 
 	kind = locklint_get_execution_annotation(
@@ -4935,6 +4988,245 @@ struct declared_order_origin {
 	avl_node_t by_source;
 };
 
+enum wait_exemption_problem {
+	WAIT_EXEMPT_ON_UNHELD,
+	WAIT_EXEMPT_ON_ACTIVE,
+	WAIT_EXEMPT_OFF_INACTIVE,
+	WAIT_EXEMPT_RELEASE_ACTIVE,
+	WAIT_EXEMPT_RETURN_CHANGED
+};
+
+struct wait_exemption_finding {
+	struct instruction *instruction;
+	enum wait_exemption_problem problem;
+	size_t states;
+	size_t invalid;
+	avl_node_t by_key;
+};
+
+static int
+compare_wait_exemption_finding(const void *left_arg, const void *right_arg)
+{
+	const struct wait_exemption_finding *left = left_arg;
+	const struct wait_exemption_finding *right = right_arg;
+	int order = AVL_PCMP(left->instruction, right->instruction);
+
+	if (order != 0)
+		return (order);
+	if (left->problem < right->problem)
+		return (-1);
+	if (left->problem > right->problem)
+		return (1);
+	return (0);
+}
+
+static void
+record_wait_exemption_finding(avl_tree_t *findings,
+    struct instruction *instruction,
+    enum wait_exemption_problem problem, bool invalid)
+{
+	struct wait_exemption_finding key = {
+		.instruction = instruction,
+		.problem = problem
+	};
+	struct wait_exemption_finding *finding;
+	avl_index_t where;
+
+	finding = avl_find(findings, &key, &where);
+	if (finding == NULL) {
+		finding = calloc(1, sizeof (*finding));
+		if (finding == NULL)
+			die("cannot allocate wait exemption finding");
+		finding->instruction = instruction;
+		finding->problem = problem;
+		avl_insert(findings, finding, where);
+	}
+	finding->states++;
+	if (invalid)
+		finding->invalid++;
+}
+
+/*
+ * Validate scoped wait-exemption transitions after the fixed point so one
+ * source annotation produces one definite or possible diagnostic.
+ */
+static void
+diagnose_wait_exemptions(struct analysis *analysis)
+{
+	struct callgraph_iter *iterator;
+	struct function_info *function;
+	avl_tree_t findings;
+	int error;
+
+	avl_create(&findings, compare_wait_exemption_finding,
+	    sizeof (struct wait_exemption_finding),
+	    offsetof(struct wait_exemption_finding, by_key));
+	error = callgraph_iter_open(&iterator);
+	if (error != 0)
+		die("cannot iterate ready callgraph: %s", strerror(error));
+	while ((function = callgraph_iter_next(iterator)) != NULL) {
+		struct function_context *context;
+
+		for (context = avl_first(&function->contexts.contexts);
+		    context != NULL;
+		    context = AVL_NEXT(&function->contexts.contexts, context)) {
+			struct point_state *point_state;
+
+			for (point_state = avl_first(&context->point_states);
+			    point_state != NULL; point_state = AVL_NEXT(
+			    &context->point_states, point_state)) {
+				struct instruction *instruction =
+				    point_state->point.next_instruction;
+				struct locklint_access access;
+				struct lock_identity *identity;
+				enum locklint_lock_action action;
+				enum locklint_lock_mode mode;
+				unsigned int flags;
+				bool composed;
+				bool enable;
+				bool existed;
+				int identity_error;
+
+				if (instruction == NULL)
+					continue;
+				if (locklint_get_wait_exemption(function->tu,
+				    instruction, &enable, &access) &&
+				    access.root != NULL) {
+					identity_error = context_access_identity(
+					    analysis, context, point_state->state,
+					    &access, &identity, &existed,
+					    &composed);
+					if (identity_error != 0)
+						die("cannot identify wait exemption "
+						    "diagnostic: %s",
+						    strerror(identity_error));
+					flags = context_state_lock_flags(
+					    point_state->state, identity);
+					if (enable) {
+						record_wait_exemption_finding(
+						    &findings, instruction,
+						    WAIT_EXEMPT_ON_UNHELD,
+						    context_state_lock_modes(
+						    point_state->state,
+						    identity) == 0);
+						record_wait_exemption_finding(
+						    &findings, instruction,
+						    WAIT_EXEMPT_ON_ACTIVE,
+						    (flags &
+						    SEMANTIC_LOCK_HELD_DURING_WAIT_EXEMPT)
+						    != 0);
+					} else {
+						record_wait_exemption_finding(
+						    &findings, instruction,
+						    WAIT_EXEMPT_OFF_INACTIVE,
+						    context_state_lock_modes(
+						    point_state->state,
+						    identity) == 0 ||
+						    (flags &
+						    SEMANTIC_LOCK_HELD_DURING_WAIT_EXEMPT)
+						    == 0);
+					}
+					continue;
+				}
+				action = locklint_get_lock_action(function->tu,
+				    instruction, &access, &mode);
+				if (action == LOCKLINT_LOCK_RELEASE &&
+				    access.root != NULL) {
+					identity_error = context_access_identity(
+					    analysis, context, point_state->state,
+					    &access, &identity, &existed,
+					    &composed);
+					if (identity_error != 0)
+						die("cannot identify released wait "
+						    "exemption: %s",
+						    strerror(identity_error));
+					record_wait_exemption_finding(&findings,
+					    instruction,
+					    WAIT_EXEMPT_RELEASE_ACTIVE,
+					    (context_state_lock_flags(
+					    point_state->state, identity) &
+					    SEMANTIC_LOCK_HELD_DURING_WAIT_EXEMPT)
+					    != 0);
+					continue;
+				}
+				if (instruction->opcode == OP_RET) {
+					bool changed = false;
+					size_t index;
+
+					for (index = 0; index <
+					    point_state->state->locks->count;
+					    index++) {
+						const struct
+						    semantic_lock_state *entry =
+						    &point_state->state->locks->
+						    entries[index];
+
+						if (entry->flags !=
+						    context_state_lock_flags(
+						    context->entry_state,
+						    entry->lock)) {
+							changed = true;
+							break;
+						}
+					}
+					record_wait_exemption_finding(&findings,
+					    instruction,
+					    WAIT_EXEMPT_RETURN_CHANGED, changed);
+				}
+			}
+		}
+	}
+	callgraph_iter_close(iterator);
+	while (!avl_is_empty(&findings)) {
+		struct wait_exemption_finding *finding =
+		    avl_first(&findings);
+		struct position pos = finding->instruction->pos;
+		bool possible = finding->invalid < finding->states;
+
+		if (finding->invalid != 0) {
+			switch (finding->problem) {
+			case WAIT_EXEMPT_ON_UNHELD:
+				locklint_warning(
+				    LOCKLINT_DIAG_INVALID_WAIT_EXEMPTION, pos,
+				    possible ? "wait exemption may be enabled "
+				    "for an unheld lock" : "wait exemption "
+				    "enabled for an unheld lock");
+				break;
+			case WAIT_EXEMPT_ON_ACTIVE:
+				locklint_warning(
+				    LOCKLINT_DIAG_INVALID_WAIT_EXEMPTION, pos,
+				    possible ? "wait exemption may already be "
+				    "active" : "wait exemption is already "
+				    "active");
+				break;
+			case WAIT_EXEMPT_OFF_INACTIVE:
+				locklint_warning(
+				    LOCKLINT_DIAG_INVALID_WAIT_EXEMPTION, pos,
+				    possible ? "wait exemption may not be "
+				    "active" : "wait exemption is not active");
+				break;
+			case WAIT_EXEMPT_RELEASE_ACTIVE:
+				locklint_warning(
+				    LOCKLINT_DIAG_INVALID_WAIT_EXEMPTION, pos,
+				    possible ? "lock may be released with a "
+				    "wait exemption active" : "lock released "
+				    "with a wait exemption active");
+				break;
+			case WAIT_EXEMPT_RETURN_CHANGED:
+				locklint_warning(
+				    LOCKLINT_DIAG_INVALID_WAIT_EXEMPTION, pos,
+				    possible ? "function may return with "
+				    "changed wait exemptions" : "function "
+				    "returns with changed wait exemptions");
+				break;
+			}
+		}
+		avl_remove(&findings, finding);
+		free(finding);
+	}
+	avl_destroy(&findings);
+}
+
 static int
 compare_declared_order_origin(const void *left_arg, const void *right_arg)
 {
@@ -5679,6 +5971,12 @@ diagnose_acquisition_order_and_waits(struct analysis *analysis)
 					    *observed_held;
 
 					if (held == acquired)
+						continue;
+					if (action == LOCKLINT_LOCK_WAIT &&
+					    (point_state->state->locks->
+					    entries[index].flags &
+					    SEMANTIC_LOCK_HELD_DURING_WAIT_EXEMPT)
+					    != 0)
 						continue;
 					for (observed_held =
 					    observation->held_identities;
@@ -8678,6 +8976,12 @@ show_counts(FILE *stream, const struct analysis *analysis)
 	    counts->visibility_transitions_deferred,
 	    counts->visibility_transitions_unresolved);
 	(void) fprintf(stream,
+	    "wait-exemption-transitions applied %zu deferred %zu "
+	    "unresolved %zu\n",
+	    counts->wait_exemption_transitions_applied,
+	    counts->wait_exemption_transitions_deferred,
+	    counts->wait_exemption_transitions_unresolved);
+	(void) fprintf(stream,
 	    "competition-transitions applied %zu backedges-widened %zu "
 	    "backedges-covered %zu\n",
 	    counts->competition_transitions_applied,
@@ -8985,6 +9289,7 @@ analysis_run(struct lock_identity_collection *lock_identities, bool check_locks,
 		timing_end(TIMING_DIAG_DECLARED_EFFECTS);
 		timing_begin(TIMING_DIAG_LOCK_TRANSITIONS);
 		diagnose_lock_transitions(&analysis);
+		diagnose_wait_exemptions(&analysis);
 		timing_end(TIMING_DIAG_LOCK_TRANSITIONS);
 		timing_begin(TIMING_DIAG_DECLARED_ORDER);
 		diagnose_acquisition_order_and_waits(&analysis);

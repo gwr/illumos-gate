@@ -49,9 +49,12 @@ SLIST_HEAD(context_exit_list, context_exit);
 struct semantic_lock_state {
 	const struct lock_identity *lock;
 	unsigned int modes;
+	unsigned int flags;
 };
 
-
+enum semantic_lock_flag {
+	SEMANTIC_LOCK_HELD_DURING_WAIT_EXEMPT = 1 << 0
+};
 
 struct semantic_lock_set {
 	avl_node_t by_value;
@@ -225,6 +228,9 @@ int context_state_map_exit(struct function_info *,
 int context_state_set_lock(struct function_info *,
     const struct semantic_state *, const struct lock_identity *, unsigned int,
     struct semantic_state **, bool *);
+int context_state_set_lock_flags(struct function_info *,
+    const struct semantic_state *, const struct lock_identity *, unsigned int,
+    struct semantic_state **, bool *);
 int context_state_set_visibility(struct function_info *,
     const struct semantic_state *, struct visibility_region,
     enum semantic_visibility, struct semantic_state **, bool *);
@@ -292,6 +298,8 @@ size_t context_state_lock_count(const struct semantic_state *);
 bool context_state_lock_at(const struct semantic_state *, size_t,
     const struct lock_identity **, unsigned int *);
 unsigned int context_state_lock_modes(const struct semantic_state *,
+    const struct lock_identity *);
+unsigned int context_state_lock_flags(const struct semantic_state *,
     const struct lock_identity *);
 unsigned int context_state_lock_role_modes(const struct semantic_state *,
     const struct type_member *);

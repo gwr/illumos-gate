@@ -1,0 +1,6 @@
+locklint: wait-exemption-errors.c:35:9: warning: wait exemption enabled for an unheld lock [invalid-wait-exemption]
+locklint: wait-exemption-errors.c:42:9: warning: wait exemption is not active [invalid-wait-exemption]
+locklint: wait-exemption-errors.c:51:9: warning: wait exemption is already active [invalid-wait-exemption]
+locklint: wait-exemption-errors.c:61:19: warning: lock released with a wait exemption active [invalid-wait-exemption]
+locklint: wait-exemption-errors.c:68:9: warning: function returns with changed wait exemptions [invalid-wait-exemption]
+locklint: wait-exemption-errors.c:68:9: warning: lock 'exemption_error_lock' held on return from 'exemption_active_on_return' [lock-held-on-return]

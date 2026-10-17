@@ -1,0 +1,5 @@
+locklint: wait-exemption.c:59:16: warning: condition wait may occur while holding lock '<unknown>' [lock-maybe-held-during-wait]
+locklint: wait-exemption.c:118:43: lock is held on a path through call to 'wait_in_conditional_helper'
+locklint: wait-exemption.c:68:16: warning: condition wait occurs while holding lock '<unknown>' [lock-held-during-wait]
+locklint: wait-exemption.c:90:16: warning: condition wait occurs while holding lock '<unknown>' [lock-held-during-wait]
+locklint: wait-exemption.c:104:16: warning: condition wait occurs while holding lock '<unknown>' [lock-held-during-wait]

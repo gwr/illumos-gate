@@ -57,6 +57,10 @@ compare_lock_set(const void *left_arg, const void *right_arg)
 			return (-1);
 		if (left->entries[index].modes > right->entries[index].modes)
 			return (1);
+		if (left->entries[index].flags < right->entries[index].flags)
+			return (-1);
+		if (left->entries[index].flags > right->entries[index].flags)
+			return (1);
 	}
 	if (left->count < right->count)
 		return (-1);
@@ -739,6 +743,7 @@ context_state_map_exit(struct function_info *function,
 		if (insert < result_count &&
 		    entries[insert].lock == mapped_lock) {
 			entries[insert].modes |= exit_lock->modes;
+			entries[insert].flags &= exit_lock->flags;
 			continue;
 		}
 		if (result_count == LOCKLINT_MAX_TRACKED_LOCKS)
@@ -747,7 +752,8 @@ context_state_map_exit(struct function_info *function,
 		    (result_count - insert) * sizeof (entries[0]));
 		entries[insert] = (struct semantic_lock_state) {
 			.lock = mapped_lock,
-			.modes = exit_lock->modes
+			.modes = exit_lock->modes,
+			.flags = exit_lock->flags
 		};
 		result_count++;
 	}
@@ -876,6 +882,8 @@ context_state_set_lock(struct function_info *function,
 	if (modes != 0) {
 		entries[result_index].lock = lock;
 		entries[result_index].modes = modes;
+		entries[result_index].flags = found ?
+		    current_locks->entries[current_index].flags : 0;
 		result_index++;
 	}
 	if (found)
@@ -889,6 +897,53 @@ context_state_set_lock(struct function_info *function,
 	return (semantic_state_intern(collection, locks, current->visibility,
 	    current->targets, current->aliases, current->operation_profile,
 	    current->competition, result, existed));
+}
+
+/*
+ * Replace the analysis flags on one held lock without changing its modes.
+ */
+int
+context_state_set_lock_flags(struct function_info *function,
+    const struct semantic_state *current, const struct lock_identity *lock,
+    unsigned int flags, struct semantic_state **result, bool *existed)
+{
+	struct function_context_collection *collection = &function->contexts;
+	struct semantic_lock_state entries[LOCKLINT_MAX_TRACKED_LOCKS];
+	const struct semantic_lock_set *current_locks;
+	struct semantic_lock_set *locks;
+	size_t index;
+	int error;
+
+	if (current == NULL || lock == NULL)
+		return (EINVAL);
+	current_locks = current->locks;
+	for (index = 0; index < current_locks->count; index++) {
+		int order = compare_lock_identity(
+		    current_locks->entries[index].lock, lock);
+
+		if (order > 0)
+			break;
+		if (order != 0)
+			continue;
+		if (current_locks->entries[index].flags == flags) {
+			return (semantic_state_intern(collection, current_locks,
+			    current->visibility, current->targets,
+			    current->aliases, current->operation_profile,
+			    current->competition, result, existed));
+		}
+		(void) memcpy(entries, current_locks->entries,
+		    current_locks->count * sizeof (entries[0]));
+		entries[index].flags = flags;
+		error = lock_set_intern(collection, entries,
+		    current_locks->count, &locks);
+		if (error != 0)
+			return (error);
+		return (semantic_state_intern(collection, locks,
+		    current->visibility, current->targets, current->aliases,
+		    current->operation_profile, current->competition, result,
+		    existed));
+	}
+	return (ENOENT);
 }
 
 int
@@ -1669,6 +1724,24 @@ context_state_lock_modes(const struct semantic_state *state,
 
 		if (order == 0)
 			return (state->locks->entries[index].modes);
+		if (order > 0)
+			break;
+	}
+	return (0);
+}
+
+unsigned int
+context_state_lock_flags(const struct semantic_state *state,
+    const struct lock_identity *lock)
+{
+	size_t index;
+
+	for (index = 0; index < state->locks->count; index++) {
+		int order = compare_lock_identity(state->locks->entries[index].lock,
+		    lock);
+
+		if (order == 0)
+			return (state->locks->entries[index].flags);
 		if (order > 0)
 			break;
 	}

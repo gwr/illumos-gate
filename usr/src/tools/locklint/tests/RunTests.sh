@@ -2769,6 +2769,16 @@ run_capture "condition wait state and order" condition-wait.out \
 compare "condition wait state and order" condition-wait.ref \
     condition-wait.out
 
+run_capture "held-during-wait exemptions" wait-exemption.out \
+    "$LOCKLINT" wait-exemption.c
+compare "held-during-wait exemptions" wait-exemption.ref \
+    wait-exemption.out
+
+run_capture "held-during-wait exemption errors" wait-exemption-errors.out \
+    "$LOCKLINT" wait-exemption-errors.c
+compare "held-during-wait exemption errors" wait-exemption-errors.ref \
+    wait-exemption-errors.out
+
 run_capture "condition wait mutex pairing" condition-wait-pairing.out \
     "$LOCKLINT" condition-wait-pairing.c
 compare "condition wait mutex pairing" condition-wait-pairing.ref \

@@ -1,0 +1,6 @@
+declare --root=true locklint_close
+declare --external-entry=false qprocsoff
+
+declare targets qinit::qi_qclose streams_qproc_close
+assert rw-write-held locklint_inner streams_qproc_close
+assert rw-read-held locklint_outer streams_qproc_close

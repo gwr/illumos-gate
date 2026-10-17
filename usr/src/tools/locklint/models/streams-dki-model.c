@@ -19,6 +19,7 @@
 
 #include <sys/types.h>
 #include <sys/conf.h>
+#include <sys/note.h>
 #include <sys/stream.h>
 #include <sys/synch.h>
 
@@ -57,13 +58,27 @@ qprocson(queue_t *q)
 /*
  * Disabling queue processing can wait for active put and service procedures
  * to drain.  A private wait preserves every lock retained by the caller
- * without exposing STREAMS implementation locks as part of the model.
+ * without exposing STREAMS implementation locks as part of the model.  The
+ * scoped exemptions permit only the selected framework perimeters across
+ * that wait; unrelated driver locks remain diagnostic.
  */
 void
 qprocsoff(queue_t *q)
 {
 	mutex_enter(&MODEL_NAME(qprocsoff_mutex));
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+	_NOTE(HELD_DURING_WAIT_EXEMPT_ON(MODEL_NAME(outer)))
+#endif
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
+	_NOTE(HELD_DURING_WAIT_EXEMPT_ON(MODEL_NAME(inner)))
+#endif
 	cv_wait(&MODEL_NAME(qprocsoff_cv), &MODEL_NAME(qprocsoff_mutex));
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
+	_NOTE(HELD_DURING_WAIT_EXEMPT_OFF(MODEL_NAME(inner)))
+#endif
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+	_NOTE(HELD_DURING_WAIT_EXEMPT_OFF(MODEL_NAME(outer)))
+#endif
 	mutex_exit(&MODEL_NAME(qprocsoff_mutex));
 }
 
