@@ -172,18 +172,24 @@ putnext(queue_t *q, mblk_t *mp)
 void
 MODEL_NAME(service)(void)
 {
+	queue_t *q = &MODEL_NAME(queue);
+
 #if (MODEL_FLAGS & D_MTOUTPERIM) != 0
 	rw_enter(&MODEL_NAME(outer), RW_READER);
 #endif
-#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERQ
+	rw_enter(MODEL_PERQ_LOCK(q), RW_WRITER);
+#elif (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
 #if (MODEL_FLAGS & _D_MTSVCSHARED) != 0
 	rw_enter(&MODEL_NAME(inner), RW_READER);
 #else
 	rw_enter(&MODEL_NAME(inner), RW_WRITER);
 #endif
 #endif
-	(*MODEL_NAME(qinit)->qi_srvp)(&MODEL_NAME(queue));
-#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
+	(*MODEL_NAME(qinit)->qi_srvp)(q);
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERQ
+	rw_exit(MODEL_PERQ_LOCK(q));
+#elif (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
 	rw_exit(&MODEL_NAME(inner));
 #endif
 #if (MODEL_FLAGS & D_MTOUTPERIM) != 0
