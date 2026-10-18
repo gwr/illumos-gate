@@ -35,6 +35,13 @@
 #define	MODEL_CAT(left, right)	MODEL_CAT_(left, right)
 #define	MODEL_NAME(name)	MODEL_CAT(MODEL_PREFIX, name)
 
+/*
+ * A per-queue perimeter has the queue address as its model-only lock
+ * identity.  The cast is analyzed but never executed; it avoids a runtime
+ * instance map while preserving aliases and distinguishing different queues.
+ */
+#define	MODEL_PERQ_LOCK(q)	((krwlock_t *)(void *)(q))
+
 krwlock_t MODEL_NAME(inner);
 krwlock_t MODEL_NAME(outer);
 static struct qinit *MODEL_NAME(qinit);
@@ -114,7 +121,13 @@ MODEL_NAME(put_entry)(struct qinit *qinit, queue_t *q, mblk_t *mp)
 #if (MODEL_FLAGS & D_MTOUTPERIM) != 0
 	rw_enter(&MODEL_NAME(outer), RW_READER);
 #endif
-#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERQ
+#if (MODEL_FLAGS & D_MTPUTSHARED) != 0
+	rw_enter(MODEL_PERQ_LOCK(q), RW_READER);
+#else
+	rw_enter(MODEL_PERQ_LOCK(q), RW_WRITER);
+#endif
+#elif (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
 #if (MODEL_FLAGS & D_MTPUTSHARED) != 0
 	rw_enter(&MODEL_NAME(inner), RW_READER);
 #else
@@ -122,7 +135,9 @@ MODEL_NAME(put_entry)(struct qinit *qinit, queue_t *q, mblk_t *mp)
 #endif
 #endif
 	(*qinit->qi_putp)(q, mp);
-#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERQ
+	rw_exit(MODEL_PERQ_LOCK(q));
+#elif (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
 	rw_exit(&MODEL_NAME(inner));
 #endif
 #if (MODEL_FLAGS & D_MTOUTPERIM) != 0

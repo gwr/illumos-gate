@@ -22,6 +22,7 @@ set -e
 "$SCRIPT_DIR/check-kmod-ddi-forwarding.ksh"
 "$SCRIPT_DIR/check-kmod-streams-dispatch.ksh"
 "$SCRIPT_DIR/check-model-streams-perimeter.ksh"
+"$SCRIPT_DIR/check-model-streams-perq.ksh"
 "$SCRIPT_DIR/check-model-streams-service.ksh"
 "$SCRIPT_DIR/check-model-streams-openclose.ksh"
 "$SCRIPT_DIR/check-model-streams-qwriter.ksh"
