@@ -1,0 +1,8 @@
+declare --root=true locklint_open locklint_close streams_perq_openclose_direct
+declare --external-entry=false streams_perq_open streams_perq_close
+declare --external-entry=false qprocson qprocsoff qwriter putnext
+declare --external-entry=false locklint_put locklint_service
+declare targets qinit::qi_putp streams_perq_openclose_put
+declare targets qinit::qi_srvp streams_perq_openclose_service
+declare targets qinit::qi_qopen streams_perq_open
+declare targets qinit::qi_qclose streams_perq_close

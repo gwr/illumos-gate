@@ -204,6 +204,8 @@ MODEL_NAME(service)(void)
 void
 MODEL_NAME(open)(void)
 {
+	queue_t *q = &MODEL_NAME(queue);
+
 #if (MODEL_FLAGS & D_MTOUTPERIM) != 0
 #if (MODEL_FLAGS & D_MTOCEXCL) != 0
 	rw_enter(&MODEL_NAME(outer), RW_WRITER);
@@ -211,16 +213,24 @@ MODEL_NAME(open)(void)
 	rw_enter(&MODEL_NAME(outer), RW_READER);
 #endif
 #endif
-#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERQ
+#if (MODEL_FLAGS & _D_MTOCSHARED) != 0
+	rw_enter(MODEL_PERQ_LOCK(q), RW_READER);
+#else
+	rw_enter(MODEL_PERQ_LOCK(q), RW_WRITER);
+#endif
+#elif (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
 #if (MODEL_FLAGS & _D_MTOCSHARED) != 0
 	rw_enter(&MODEL_NAME(inner), RW_READER);
 #else
 	rw_enter(&MODEL_NAME(inner), RW_WRITER);
 #endif
 #endif
-	(*MODEL_NAME(qinit)->qi_qopen)(&MODEL_NAME(queue),
-	    &MODEL_NAME(device), 0, 0, MODEL_NAME(credential));
-#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
+	(*MODEL_NAME(qinit)->qi_qopen)(q, &MODEL_NAME(device), 0, 0,
+	    MODEL_NAME(credential));
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERQ
+	rw_exit(MODEL_PERQ_LOCK(q));
+#elif (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
 	rw_exit(&MODEL_NAME(inner));
 #endif
 #if (MODEL_FLAGS & D_MTOUTPERIM) != 0
@@ -235,6 +245,8 @@ MODEL_NAME(open)(void)
 void
 MODEL_NAME(close)(void)
 {
+	queue_t *q = &MODEL_NAME(queue);
+
 #if (MODEL_FLAGS & D_MTOUTPERIM) != 0
 #if (MODEL_FLAGS & D_MTOCEXCL) != 0
 	rw_enter(&MODEL_NAME(outer), RW_WRITER);
@@ -242,16 +254,23 @@ MODEL_NAME(close)(void)
 	rw_enter(&MODEL_NAME(outer), RW_READER);
 #endif
 #endif
-#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERQ
+#if (MODEL_FLAGS & _D_MTOCSHARED) != 0
+	rw_enter(MODEL_PERQ_LOCK(q), RW_READER);
+#else
+	rw_enter(MODEL_PERQ_LOCK(q), RW_WRITER);
+#endif
+#elif (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
 #if (MODEL_FLAGS & _D_MTOCSHARED) != 0
 	rw_enter(&MODEL_NAME(inner), RW_READER);
 #else
 	rw_enter(&MODEL_NAME(inner), RW_WRITER);
 #endif
 #endif
-	(*MODEL_NAME(qinit)->qi_qclose)(&MODEL_NAME(queue), 0,
-	    MODEL_NAME(credential));
-#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
+	(*MODEL_NAME(qinit)->qi_qclose)(q, 0, MODEL_NAME(credential));
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERQ
+	rw_exit(MODEL_PERQ_LOCK(q));
+#elif (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
 	rw_exit(&MODEL_NAME(inner));
 #endif
 #if (MODEL_FLAGS & D_MTOUTPERIM) != 0
