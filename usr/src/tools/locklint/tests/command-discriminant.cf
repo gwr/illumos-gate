@@ -3,15 +3,19 @@ declare --root=true discriminant_call_ne_inner discriminant_call_ne_outer
 declare --root=true discriminant_call_forward_inner discriminant_call_forward_outer
 declare --root=true discriminant_call_same_inner discriminant_call_same_outer
 declare --root=true discriminant_call_unknown
+declare --root=true discriminant_call_boolean_zero \
+    discriminant_call_boolean_one
 
 declare discriminant discriminant_dispatch mode
 declare discriminant discriminant_dispatch mode
 declare discriminant discriminant_dispatch_ne mode
 declare discriminant discriminant_forward mode
 declare discriminant discriminant_enum_formal mode
+declare discriminant discriminant_boolean_dispatch mode
 
 declare rwlock-protects-data discriminant_inner \
     discriminant_inner_data discriminant_forward_inner_data \
-    discriminant_unknown_data
+    discriminant_unknown_data discriminant_boolean_zero_data
 declare rwlock-protects-data discriminant_outer \
-    discriminant_outer_data discriminant_forward_outer_data
+    discriminant_outer_data discriminant_forward_outer_data \
+    discriminant_boolean_one_data

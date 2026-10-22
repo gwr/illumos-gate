@@ -2122,10 +2122,13 @@ environment identity, so otherwise equal calls with different constants
 create distinct contexts.  Direct constants and already-bound discriminant
 formals may supply the value; no general scalar evaluation occurs at calls.
 
-Within such a context, an equality or inequality comparison between a bound
-formal and an integer constant has a known Boolean result.  Ordinary CFG
-processing then retains only the matching branch.  An untracked or
-nonconstant scalar retains both branches, so a wrapper which conditionally
+Within such a context, a bare branch evaluates the bound formal's exact
+integer constant as a Boolean, and an equality or inequality comparison
+between the formal and an integer constant has a known Boolean result.
+Ordinary CFG processing then retains only the matching branch.  This includes
+the common zero-or-one case after Sparse simplifies `formal == 0` to a branch
+directly on the formal.  An untracked or nonconstant scalar retains both
+branches, so a wrapper which conditionally
 establishes asserted state remains conservative.
 
 Alias handling needs no assertion-specific collection.  Call binding
@@ -2162,6 +2165,12 @@ that accounts for 220,512 bytes across this run.  Total retained collections
 were 176,281,168 bytes, and the single measured run completed in 15.043
 seconds.  This establishes the no-opt-in scale boundary; real discriminant
 use must still be measured when added to a representative workload.
+
+Evaluating an exact bound discriminant formal as a Boolean adds no retained
+data or collection.  It reuses the environment's sorted constant bindings
+when a branch condition is a bare formal.  The warmed
+32-translation-unit USB run preserved its exact warning multiset and changed
+from 14.763 to 15.069 seconds, within the established single-run noise range.
 
 Exact function targets stored in memory are a fourth immutable semantic-state
 component.  Each entry maps the canonical object and byte range already used

@@ -1,0 +1,2 @@
+declare --root=true interprocedural_container_root
+declare discriminant container_entry side

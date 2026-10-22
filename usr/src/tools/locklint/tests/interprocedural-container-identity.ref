@@ -1,0 +1,2 @@
+locklint: interprocedural-container-identity.c:78:22: warning: protected member 'value' read without read-holding 'lock' [unprotected-access]
+locklint: interprocedural-container-identity.c:130:39: protection was not established at this call to 'write_callback'

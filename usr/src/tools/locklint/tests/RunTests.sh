@@ -1333,7 +1333,8 @@ run_capture "command discriminant behavior" command-discriminant.out \
     "$LOCKLINT" --root-discovery=none --dump-contexts \
     --cf command-discriminant.cf command-discriminant.c
 for data in discriminant_inner_data discriminant_outer_data \
-    discriminant_forward_inner_data discriminant_forward_outer_data
+    discriminant_forward_inner_data discriminant_forward_outer_data \
+    discriminant_boolean_zero_data discriminant_boolean_one_data
 do
 	reject_match "command discriminant protected $data" \
 	    "'$data'.*\\[unprotected-access\\]" command-discriminant.out
@@ -1351,6 +1352,20 @@ if [ "$(grep -F -c '[unprotected-access]' command-discriminant.out)" -ne 2 ]
 then
 	fail "command discriminant behavior: expected two control findings"
 fi
+
+#
+# A zero-or-one discriminant selects one exact embedded-object conversion.
+# The selected owner remains identifiable through direct framework entry and
+# an indirect callback, while a callback on a different owner is diagnosed.
+#
+run_capture "interprocedural container identity" \
+    interprocedural-container-identity.out \
+    "$LOCKLINT" --root-discovery=none \
+    --cf interprocedural-container-identity.cf \
+    interprocedural-container-identity.c
+compare "interprocedural container identity" \
+    interprocedural-container-identity.ref \
+    interprocedural-container-identity.out
 
 run_failure "command discriminant arity" command-discriminant-arity.out \
     "$LOCKLINT" --root-discovery=none \

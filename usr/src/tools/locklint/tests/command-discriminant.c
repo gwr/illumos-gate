@@ -31,6 +31,8 @@ int discriminant_outer_data;
 int discriminant_forward_inner_data;
 int discriminant_forward_outer_data;
 int discriminant_unknown_data;
+int discriminant_boolean_zero_data;
+int discriminant_boolean_one_data;
 
 extern void rw_wrlock(rwlock_t *);
 extern void rw_exit(rwlock_t *);
@@ -68,6 +70,18 @@ discriminant_unknown_callback(void)
 static void
 discriminant_neutral_callback(void)
 {
+}
+
+static void
+discriminant_boolean_zero_callback(void)
+{
+	discriminant_boolean_zero_data++;
+}
+
+static void
+discriminant_boolean_one_callback(void)
+{
+	discriminant_boolean_one_data++;
 }
 
 void
@@ -108,6 +122,20 @@ void
 discriminant_forward(void (*func)(void), int mode)
 {
 	discriminant_dispatch(func, mode);
+}
+
+void
+discriminant_boolean_dispatch(void (*func)(void), int mode)
+{
+	if (mode) {
+		rw_wrlock(&discriminant_outer);
+		(*func)();
+		rw_exit(&discriminant_outer);
+	} else {
+		rw_wrlock(&discriminant_inner);
+		(*func)();
+		rw_exit(&discriminant_inner);
+	}
 }
 
 void
@@ -164,4 +192,16 @@ void
 discriminant_call_unknown(int mode)
 {
 	discriminant_dispatch(discriminant_unknown_callback, mode);
+}
+
+void
+discriminant_call_boolean_zero(void)
+{
+	discriminant_boolean_dispatch(discriminant_boolean_zero_callback, 0);
+}
+
+void
+discriminant_call_boolean_one(void)
+{
+	discriminant_boolean_dispatch(discriminant_boolean_one_callback, 1);
 }

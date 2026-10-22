@@ -1699,9 +1699,9 @@ context_pseudo_constant(const struct function_context *context,
 }
 
 /*
- * Resolve direct Boolean constants and the exact equality comparisons emitted
- * for branches on declared discriminants.  Unknown operands deliberately
- * retain both CFG successors.
+ * Resolve direct Boolean constants, exact bound discriminant formals, and the
+ * equality comparisons emitted for declared discriminants.  Unknown operands
+ * deliberately retain both CFG successors.
  */
 static bool
 state_pseudo_truth(const struct function_context *context,
@@ -1716,8 +1716,8 @@ state_pseudo_truth(const struct function_context *context,
 	pseudo = strip_function_pointer_casts(pseudo);
 	if (pseudo == NULL)
 		return (false);
-	if (pseudo->type == PSEUDO_VAL) {
-		*truth = pseudo->value != 0;
+	if (context_pseudo_constant(context, pseudo, &left)) {
+		*truth = left != 0;
 		return (true);
 	}
 	alias = context_state_alias(state, pseudo);
