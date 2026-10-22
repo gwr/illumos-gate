@@ -159,16 +159,13 @@ gcm_mul(uint64_t *x_in, uint64_t *y, uint64_t *res)
 /*
  * helper factored out of gcm_mode_encrypt_contiguous_blocks
  */
-static inline void
+static inline int
 gcm_encrypt_block(gcm_ctx_t *ctx, uint8_t *datap, crypto_data_t *out,
-    size_t block_size, uint8_t *blockp, void *iov_or_mp, offset_t *offset,
+    size_t block_size, uint8_t *blockp, void **iov_or_mp, offset_t *offset,
     int (*encrypt_block)(const void *, const uint8_t *, uint8_t *),
     void (*copy_block)(uint8_t *, uint8_t *),
     void (*xor_block)(uint8_t *, uint8_t *))
 {
-	uint8_t *out_data_1;
-	uint8_t *out_data_2;
-	size_t out_data_1_len;
 	uint64_t counter;
 	uint64_t counter_mask = ntohll(0x00000000ffffffffULL);
 
@@ -193,24 +190,18 @@ gcm_encrypt_block(gcm_ctx_t *ctx, uint8_t *datap, crypto_data_t *out,
 			    block_size - ctx->gcm_remainder_len);
 		}
 	} else {
-		uint8_t *tmpp = (uint8_t *)ctx->gcm_tmp;
-		crypto_get_ptrs(out, iov_or_mp, offset, &out_data_1,
-		    &out_data_1_len, &out_data_2, block_size);
+		int rv;
 
 		/* copy block to where it belongs */
-		if (out_data_1_len == block_size) {
-			copy_block(tmpp, out_data_1);
-		} else {
-			bcopy(tmpp, out_data_1, out_data_1_len);
-			if (out_data_2 != NULL) {
-				bcopy(tmpp + out_data_1_len,
-				    out_data_2,
-				    block_size - out_data_1_len);
-			}
-		}
+		rv = crypto_put_ptrs(out, iov_or_mp, offset,
+		    (uint8_t *)ctx->gcm_tmp, block_size, copy_block);
+		if (rv != CRYPTO_SUCCESS)
+			return (rv);
 		/* update offset */
 		out->cd_offset += block_size;
 	}
+
+	return (CRYPTO_SUCCESS);
 }
 
 /*
@@ -273,9 +264,13 @@ gcm_mode_encrypt_contiguous_blocks(gcm_ctx_t *ctx, char *data, size_t length,
 			    CRYPTO_BYTES2BITS(block_size);
 			GHASH(ctx, blockp, ctx->gcm_ghash);
 		} else {
-			gcm_encrypt_block(ctx, datap, out, block_size, blockp,
-			    &iov_or_mp, &offset, encrypt_block, copy_block,
-			    xor_block);
+			int rv;
+
+			rv = gcm_encrypt_block(ctx, datap, out, block_size,
+			    blockp, &iov_or_mp, &offset, encrypt_block,
+			    copy_block, xor_block);
+			if (rv != CRYPTO_SUCCESS)
+				return (rv);
 			/* add ciphertext to the hash */
 			ctx->gcm_processed_data_len += block_size;
 			GHASH(ctx, ctx->gcm_tmp, ctx->gcm_ghash);

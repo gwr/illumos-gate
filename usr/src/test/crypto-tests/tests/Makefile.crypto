@@ -14,6 +14,7 @@
 # Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
 # Copyright 2019 Joyent, Inc.
 # Copyright 2020 Oxide Computer Company
+# Copyright 2023-2026 RackTop Systems, Inc.
 #
 
 include $(SRC)/cmd/Makefile.cmd
@@ -27,16 +28,22 @@ PROGS = $(PROGS_32) $(PROGS_64)
 COMMON_OBJS_32 = $(COMMON_OBJS:%.o=%.32.o)
 COMMON_OBJS_64 = $(COMMON_OBJS:%.o=%.64.o)
 
-# Some tests may only be relevant for PKCS#11 or KCF.  One can use
-# a statement like 'CRYPTO_kcf = $(POUND_SIGN)' in a test's Makefile to
-# disable creation of tests for a given framework.  For an example, see
-# modes/aes/cbc_pad/Makefile
+# CRYPTO selects the backends to build and install.
+#
+# The uio and mblk backends call the AES mode code in libsoftcrypto
+# directly to exercise scatter-gather output.  Only AES cipher tests
+# include these backends in CRYPTO.  The same list selects which test
+# binaries to build and install.
 $(CRYPTO_pkcs)PROGS_pkcs = $(BASEPROG:%=%_32_pkcs) $(BASEPROG:%=%_64_pkcs)
 $(CRYPTO_kcf)PROGS_kcf = $(BASEPROG:%=%_32_kcf) $(BASEPROG:%=%_64_kcf)
+PROGS_uio = $(BASEPROG:%=%_32_uio) $(BASEPROG:%=%_64_uio)
+PROGS_mblk = $(BASEPROG:%=%_32_mblk) $(BASEPROG:%=%_64_mblk)
 
 # $(TESTROOT) must be set by whatever includes this file
 $(CRYPTO_pkcs)TESTDIR_pkcs = $(TESTROOT)/pkcs
 $(CRYPTO_kcf)TESTDIR_kcf = $(TESTROOT)/kcf
+TESTDIR_uio = $(TESTROOT)/uio
+TESTDIR_mblk = $(TESTROOT)/mblk
 
 COMMONDIR = $(SRC)/test/crypto-tests/tests/common
 $(PROGS_32) := OBJS += $(BASEPROG:%=%.32.o) $(COMMON_OBJS_32)
@@ -46,16 +53,28 @@ $(PROGS_64) := OBJS += $(COMMONDIR)/testfuncs.64.o
 $(PROGS_64) := LDLIBS.cmd = $(LDLIBS64)
 $(CRYPTO_pkcs)$(BASEPROG)_32_pkcs := OBJS += $(COMMONDIR)/cryptotest_pkcs.32.o
 $(CRYPTO_pkcs)$(BASEPROG)_64_pkcs := OBJS += $(COMMONDIR)/cryptotest_pkcs.64.o
-$(CRYPTO_kcf)$(BASEPROG)_32_kcf	:= OBJS += $(COMMONDIR)/cryptotest_kcf.32.o
-$(CRYPTO_kcf)$(BASEPROG)_64_kcf	:= OBJS += $(COMMONDIR)/cryptotest_kcf.64.o
+$(CRYPTO_kcf)$(BASEPROG)_32_kcf := OBJS += $(COMMONDIR)/cryptotest_kcf.32.o \
+	$(COMMONDIR)/kcf_common.32.o
+$(CRYPTO_kcf)$(BASEPROG)_64_kcf := OBJS += $(COMMONDIR)/cryptotest_kcf.64.o \
+	$(COMMONDIR)/kcf_common.64.o
+$(BASEPROG)_32_uio := OBJS += $(COMMONDIR)/cryptotest_uio.32.o \
+	$(COMMONDIR)/cryptotest_sg.32.o $(COMMONDIR)/kcf_common.32.o
+$(BASEPROG)_64_uio := OBJS += $(COMMONDIR)/cryptotest_uio.64.o \
+	$(COMMONDIR)/cryptotest_sg.64.o $(COMMONDIR)/kcf_common.64.o
+$(BASEPROG)_32_mblk := OBJS += $(COMMONDIR)/cryptotest_mblk.32.o \
+	$(COMMONDIR)/cryptotest_sg.32.o $(COMMONDIR)/kcf_common.32.o
+$(BASEPROG)_64_mblk := OBJS += $(COMMONDIR)/cryptotest_mblk.64.o \
+	$(COMMONDIR)/cryptotest_sg.64.o $(COMMONDIR)/kcf_common.64.o
 
 $(CRYPTO_pkcs)$(PROGS_pkcs)	:= LDLIBS += -lpkcs11 -lcryptoutil
+$(PROGS_uio)	:= LDLIBS += -lsoftcrypto
+$(PROGS_mblk)	:= LDLIBS += -lsoftcrypto
 
 CSTD = $(CSTD_GNU99)
 
-$(CRYPTO_pkcs)CMDS_pkcs = $(PROGS_pkcs:%_pkcs=$(TESTDIR_pkcs)/%)
-$(CRYPTO_kcf)CMDS_kcf = $(PROGS_kcf:%_kcf=$(TESTDIR_kcf)/%)
-CMDS = $(CMDS_pkcs) $(CMDS_kcf)
+CMDS = $(CRYPTO:%=$(TESTROOT)/%/$(BASEPROG)_32) \
+	$(CRYPTO:%=$(TESTROOT)/%/$(BASEPROG)_64)
+TESTDIRS = $(CRYPTO:%=$(TESTROOT)/%)
 
 $(CMDS) := FILEMODE = 0555
 
@@ -80,6 +99,22 @@ all: $(PROGS)
 	$(LINK64.c) $(OBJS) -o $@ $(LDLIBS)
 	$(POST_PROCESS)
 
+%_32_uio: %.32.o $(COMMON_OBJS_32)
+	$(LINK.c) $(OBJS) -o $@ $(LDLIBS)
+	$(POST_PROCESS)
+
+%_64_uio: %.64.o $(COMMON_OBJS_64)
+	$(LINK64.c) $(OBJS) -o $@ $(LDLIBS)
+	$(POST_PROCESS)
+
+%_32_mblk: %.32.o $(COMMON_OBJS_32)
+	$(LINK.c) $(OBJS) -o $@ $(LDLIBS)
+	$(POST_PROCESS)
+
+%_64_mblk: %.64.o $(COMMON_OBJS_64)
+	$(LINK64.c) $(OBJS) -o $@ $(LDLIBS)
+	$(POST_PROCESS)
+
 %.32.o: %.c
 	$(COMPILE.c) -o $@ $<
 	$(POST_PROCESS_O)
@@ -96,9 +131,9 @@ clobber: clean
 clean:
 	-$(RM) *.o $(COMMON_OBJS_32) $(COMMON_OBJS_64) $(PROGS)
 
-$(CMDS): $(TESTDIR_pkcs) $(TESTDIR_kcf) $(PROGS)
+$(CMDS): $(TESTDIRS) $(PROGS)
 
-$(TESTDIR_pkcs) $(TESTDIR_kcf):
+$(TESTDIRS):
 	$(INS.dir)
 
 $(TESTDIR_pkcs)/%_32: %_32_pkcs
@@ -111,4 +146,16 @@ $(TESTDIR_kcf)/%_32: %_32_kcf
 	$(INS.rename)
 
 $(TESTDIR_kcf)/%_64: %_64_kcf
+	$(INS.rename)
+
+$(TESTDIR_uio)/%_32: %_32_uio
+	$(INS.rename)
+
+$(TESTDIR_uio)/%_64: %_64_uio
+	$(INS.rename)
+
+$(TESTDIR_mblk)/%_32: %_32_mblk
+	$(INS.rename)
+
+$(TESTDIR_mblk)/%_64: %_64_mblk
 	$(INS.rename)

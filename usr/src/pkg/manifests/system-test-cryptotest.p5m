@@ -102,6 +102,43 @@ file opt/crypto-tests/tests/aes/kcf/cleanup \
     path=opt/crypto-tests/tests/aes/kcf/cleanup owner=root group=root mode=0555
 file opt/crypto-tests/tests/aes/kcf/setup \
     path=opt/crypto-tests/tests/aes/kcf/setup owner=root group=root mode=0555
+dir  path=opt/crypto-tests/tests/aes/mblk owner=root group=root mode=0755
+file opt/crypto-tests/tests/aes/mblk/aes_cbc_32 \
+    path=opt/crypto-tests/tests/aes/mblk/aes_cbc_32 owner=root group=root \
+    mode=0555
+file opt/crypto-tests/tests/aes/mblk/aes_cbc_64 \
+    path=opt/crypto-tests/tests/aes/mblk/aes_cbc_64 owner=root group=root \
+    mode=0555
+file opt/crypto-tests/tests/aes/mblk/aes_ccm_32 \
+    path=opt/crypto-tests/tests/aes/mblk/aes_ccm_32 owner=root group=root \
+    mode=0555
+file opt/crypto-tests/tests/aes/mblk/aes_ccm_64 \
+    path=opt/crypto-tests/tests/aes/mblk/aes_ccm_64 owner=root group=root \
+    mode=0555
+file opt/crypto-tests/tests/aes/mblk/aes_cfb8_32 \
+    path=opt/crypto-tests/tests/aes/mblk/aes_cfb8_32 owner=root group=root \
+    mode=0555
+file opt/crypto-tests/tests/aes/mblk/aes_cfb8_64 \
+    path=opt/crypto-tests/tests/aes/mblk/aes_cfb8_64 owner=root group=root \
+    mode=0555
+file opt/crypto-tests/tests/aes/mblk/aes_ctr_32 \
+    path=opt/crypto-tests/tests/aes/mblk/aes_ctr_32 owner=root group=root \
+    mode=0555
+file opt/crypto-tests/tests/aes/mblk/aes_ctr_64 \
+    path=opt/crypto-tests/tests/aes/mblk/aes_ctr_64 owner=root group=root \
+    mode=0555
+file opt/crypto-tests/tests/aes/mblk/aes_ecb_32 \
+    path=opt/crypto-tests/tests/aes/mblk/aes_ecb_32 owner=root group=root \
+    mode=0555
+file opt/crypto-tests/tests/aes/mblk/aes_ecb_64 \
+    path=opt/crypto-tests/tests/aes/mblk/aes_ecb_64 owner=root group=root \
+    mode=0555
+file opt/crypto-tests/tests/aes/mblk/aes_gcm_32 \
+    path=opt/crypto-tests/tests/aes/mblk/aes_gcm_32 owner=root group=root \
+    mode=0555
+file opt/crypto-tests/tests/aes/mblk/aes_gcm_64 \
+    path=opt/crypto-tests/tests/aes/mblk/aes_gcm_64 owner=root group=root \
+    mode=0555
 dir  path=opt/crypto-tests/tests/aes/pkcs owner=root group=root mode=0755
 file opt/crypto-tests/tests/aes/pkcs/aes_cbc_32 \
     path=opt/crypto-tests/tests/aes/pkcs/aes_cbc_32 owner=root group=root \
@@ -163,6 +200,43 @@ file opt/crypto-tests/tests/aes/pkcs/aes_gmac_enc_32 \
 file opt/crypto-tests/tests/aes/pkcs/aes_gmac_enc_64 \
     path=opt/crypto-tests/tests/aes/pkcs/aes_gmac_enc_64 owner=root \
     group=root mode=0555
+dir  path=opt/crypto-tests/tests/aes/uio owner=root group=root mode=0755
+file opt/crypto-tests/tests/aes/uio/aes_cbc_32 \
+    path=opt/crypto-tests/tests/aes/uio/aes_cbc_32 owner=root group=root \
+    mode=0555
+file opt/crypto-tests/tests/aes/uio/aes_cbc_64 \
+    path=opt/crypto-tests/tests/aes/uio/aes_cbc_64 owner=root group=root \
+    mode=0555
+file opt/crypto-tests/tests/aes/uio/aes_ccm_32 \
+    path=opt/crypto-tests/tests/aes/uio/aes_ccm_32 owner=root group=root \
+    mode=0555
+file opt/crypto-tests/tests/aes/uio/aes_ccm_64 \
+    path=opt/crypto-tests/tests/aes/uio/aes_ccm_64 owner=root group=root \
+    mode=0555
+file opt/crypto-tests/tests/aes/uio/aes_cfb8_32 \
+    path=opt/crypto-tests/tests/aes/uio/aes_cfb8_32 owner=root group=root \
+    mode=0555
+file opt/crypto-tests/tests/aes/uio/aes_cfb8_64 \
+    path=opt/crypto-tests/tests/aes/uio/aes_cfb8_64 owner=root group=root \
+    mode=0555
+file opt/crypto-tests/tests/aes/uio/aes_ctr_32 \
+    path=opt/crypto-tests/tests/aes/uio/aes_ctr_32 owner=root group=root \
+    mode=0555
+file opt/crypto-tests/tests/aes/uio/aes_ctr_64 \
+    path=opt/crypto-tests/tests/aes/uio/aes_ctr_64 owner=root group=root \
+    mode=0555
+file opt/crypto-tests/tests/aes/uio/aes_ecb_32 \
+    path=opt/crypto-tests/tests/aes/uio/aes_ecb_32 owner=root group=root \
+    mode=0555
+file opt/crypto-tests/tests/aes/uio/aes_ecb_64 \
+    path=opt/crypto-tests/tests/aes/uio/aes_ecb_64 owner=root group=root \
+    mode=0555
+file opt/crypto-tests/tests/aes/uio/aes_gcm_32 \
+    path=opt/crypto-tests/tests/aes/uio/aes_gcm_32 owner=root group=root \
+    mode=0555
+file opt/crypto-tests/tests/aes/uio/aes_gcm_64 \
+    path=opt/crypto-tests/tests/aes/uio/aes_gcm_64 owner=root group=root \
+    mode=0555
 dir  path=opt/crypto-tests/tests/digest
 dir  path=opt/crypto-tests/tests/digest/kcf
 file opt/crypto-tests/tests/digest/kcf/cleanup \

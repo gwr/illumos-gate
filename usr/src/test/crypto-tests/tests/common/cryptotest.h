@@ -12,7 +12,7 @@
 /*
  * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  * Copyright 2019 Joyent, Inc.
- * Copyright 2023 RackTop Systems, Inc.
+ * Copyright 2023-2026 RackTop Systems, Inc.
  */
 
 #ifndef _CRYPTOTEST_H
@@ -124,6 +124,13 @@ size_t ccm_param_len(void);
 
 void gmac_init_params(void *, uchar_t *, uchar_t *, ulong_t);
 size_t gmac_param_len(void);
+
+/*
+ * Output format (CRYPTO_DATA_UIO or CRYPTO_DATA_MBLK) used by the
+ * scatter-gather backend (cryptotest_sg.c).  Defined by cryptotest_uio.c
+ * or cryptotest_mblk.c.
+ */
+extern const crypto_data_format_t cryptotest_sg_format;
 
 #ifdef __cplusplus
 }

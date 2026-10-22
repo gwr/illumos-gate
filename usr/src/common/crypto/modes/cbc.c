@@ -22,6 +22,7 @@
  * Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  * Copyright 2017 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2026 RackTop Systems, Inc.
  */
 
 #ifndef _KERNEL
@@ -59,9 +60,7 @@ cbc_encrypt_contiguous_blocks(cbc_ctx_t *ctx, char *data, size_t length,
 	uint8_t *lastp;
 	void *iov_or_mp;
 	offset_t offset;
-	uint8_t *out_data_1;
-	uint8_t *out_data_2;
-	size_t out_data_1_len;
+	int rv;
 
 	if (length + ctx->cbc_remainder_len < ctx->max_remain) {
 		/* accumulate bytes here and return */
@@ -123,23 +122,11 @@ cbc_encrypt_contiguous_blocks(cbc_ctx_t *ctx, char *data, size_t length,
 			 * CMAC doesn't output until encrypt_final
 			 */
 			if ((ctx->cbc_flags & CMAC_MODE) == 0) {
-				crypto_get_ptrs(out, &iov_or_mp, &offset,
-				    &out_data_1, &out_data_1_len,
-				    &out_data_2, block_size);
-
 				/* copy block to where it belongs */
-				if (out_data_1_len == block_size) {
-					copy_block(lastp, out_data_1);
-				} else {
-					bcopy(lastp, out_data_1,
-					    out_data_1_len);
-					if (out_data_2 != NULL) {
-						bcopy(lastp + out_data_1_len,
-						    out_data_2,
-						    block_size -
-						    out_data_1_len);
-					}
-				}
+				rv = crypto_put_ptrs(out, &iov_or_mp, &offset,
+				    lastp, block_size, copy_block);
+				if (rv != CRYPTO_SUCCESS)
+					return (rv);
 				/* update offset */
 				out->cd_offset += block_size;
 			}
@@ -196,9 +183,7 @@ cbc_decrypt_contiguous_blocks(cbc_ctx_t *ctx, char *data, size_t length,
 	uint8_t *lastp;
 	void *iov_or_mp;
 	offset_t offset;
-	uint8_t *out_data_1;
-	uint8_t *out_data_2;
-	size_t out_data_1_len;
+	int rv;
 
 	if (length + ctx->cbc_remainder_len < block_size) {
 		/* accumulate bytes here and return */
@@ -251,14 +236,10 @@ cbc_decrypt_contiguous_blocks(cbc_ctx_t *ctx, char *data, size_t length,
 		lastp = (uint8_t *)OTHER((uint64_t *)lastp, ctx);
 
 		if (out != NULL) {
-			crypto_get_ptrs(out, &iov_or_mp, &offset, &out_data_1,
-			    &out_data_1_len, &out_data_2, block_size);
-
-			bcopy(blockp, out_data_1, out_data_1_len);
-			if (out_data_2 != NULL) {
-				bcopy(blockp + out_data_1_len, out_data_2,
-				    block_size - out_data_1_len);
-			}
+			rv = crypto_put_ptrs(out, &iov_or_mp, &offset, blockp,
+			    block_size, NULL);
+			if (rv != CRYPTO_SUCCESS)
+				return (rv);
 
 			/* update offset */
 			out->cd_offset += block_size;

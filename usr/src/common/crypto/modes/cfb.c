@@ -113,14 +113,10 @@ cfb_mode_contiguous_blocks(cfb_ctx_t *ctx, char *in, size_t in_length,
 
 	while (in_remainder > 0) {
 		crypto_get_ptrs(out, &iov_or_mp, &offset, &out_data,
-		    &out_data_len, NULL, in_remainder);
-
-		/*
-		 * crypto_get_ptrs() should guarantee these, but act as a
-		 * safeguard in case the behavior ever changes.
-		 */
+		    &out_data_len, in_remainder);
+		if (out_data_len == 0)
+			return (CRYPTO_ARGUMENTS_BAD);
 		ASSERT3U(out_data_len, <=, in_remainder);
-		ASSERT3U(out_data_len, >, 0);
 
 		while (out_data_len > 0) {
 			uint8_t out_val;

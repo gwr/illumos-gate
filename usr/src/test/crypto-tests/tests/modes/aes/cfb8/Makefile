@@ -10,7 +10,8 @@
 #
 
 BASEPROG = aes_cfb8
-CRYPTO = pkcs
+CRYPTO = pkcs uio mblk
+CRYPTO_kcf = $(POUND_SIGN)
 
 include $(SRC)/cmd/Makefile.cmd
 include ../Makefile.subdirs

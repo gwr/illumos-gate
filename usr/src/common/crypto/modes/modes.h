@@ -418,7 +418,9 @@ extern void gcm_mul(uint64_t *, uint64_t *, uint64_t *);
 
 extern void crypto_init_ptrs(crypto_data_t *, void **, offset_t *);
 extern void crypto_get_ptrs(crypto_data_t *, void **, offset_t *,
-    uint8_t **, size_t *, uint8_t **, size_t);
+    uint8_t **, size_t *, size_t);
+extern int crypto_put_ptrs(crypto_data_t *, void **, offset_t *,
+    uint8_t *, size_t, void (*)(uint8_t *, uint8_t *));
 
 extern void *ecb_alloc_ctx(int);
 extern void *cbc_alloc_ctx(int);

@@ -16,7 +16,7 @@
 #
 
 BASEPROG = aes_cbc
-CRYPTO = pkcs kcf
+CRYPTO = pkcs kcf uio mblk
 
 include $(SRC)/cmd/Makefile.cmd
 include ../Makefile.subdirs

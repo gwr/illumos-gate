@@ -23,6 +23,7 @@
  * Use is subject to license terms.
  *
  * Copyright 2019 Joyent, Inc.
+ * Copyright 2026 RackTop Systems, Inc.
  */
 
 #ifndef _KERNEL
@@ -173,7 +174,6 @@ ctr_mode_contiguous_blocks(ctr_ctx_t *ctx, char *in, size_t in_length,
 	void *iov_or_mp;
 	offset_t offset;
 	uint8_t *out_data;
-	uint8_t *out_data_remainder;
 	size_t out_data_len;
 
 	if (block_size > sizeof (ctx->ctr_keystream))
@@ -188,13 +188,6 @@ ctr_mode_contiguous_blocks(ctr_ctx_t *ctx, char *in, size_t in_length,
 	if (SIZE_MAX - in_length < (size_t)out->cd_offset)
 		return (CRYPTO_ENCRYPTED_DATA_LEN_RANGE);
 
-	/*
-	 * This check guarantees 'out' contains sufficient space for
-	 * the resulting output.
-	 */
-	if (out->cd_offset + in_length > out->cd_length)
-		return (CRYPTO_BUFFER_TOO_SMALL);
-
 	crypto_init_ptrs(out, &iov_or_mp, &offset);
 
 	/* Now XOR the output with the keystream */
@@ -202,28 +195,18 @@ ctr_mode_contiguous_blocks(ctr_ctx_t *ctx, char *in, size_t in_length,
 		/*
 		 * If out is a uio_t or an mblk_t, in_remainder might be
 		 * larger than an individual iovec_t or mblk_t in out.
-		 * crypto_get_ptrs uses the value of offset to set the
-		 * the value of out_data to the correct address for writing
-		 * and sets out_data_len to reflect the largest amount of data
-		 * (up to in_remainder) that can be written to out_data. It
-		 * also increments offset by out_data_len. out_data_remainder
-		 * is set to the start of the next segment for writing, however
-		 * it is not used here since the updated value of offset
-		 * will be used in the next loop iteration to locate the
-		 * next mblk_t/iovec_t. Since the sum of the size of all data
-		 * buffers in 'out' (out->cd_length) was checked immediately
-		 * prior to starting the loop, we should always terminate
-		 * the loop.
+		 * crypto_get_ptrs sets out_data to the current output
+		 * position and out_data_len to the largest amount of data
+		 * (up to in_remainder) that can be written there, and
+		 * advances iov_or_mp and offset past that span so the next
+		 * iteration continues in the following iovec_t or mblk_t.
+		 * An out_data_len of zero means the output space is exhausted.
 		 */
 		crypto_get_ptrs(out, &iov_or_mp, &offset, &out_data,
-		    &out_data_len, &out_data_remainder, in_remainder);
-
-		/*
-		 * crypto_get_ptrs() should guarantee these, but act as a
-		 * safeguard in case the behavior ever changes.
-		 */
+		    &out_data_len, in_remainder);
+		if (out_data_len == 0)
+			return (CRYPTO_ARGUMENTS_BAD);
 		ASSERT3U(out_data_len, <=, in_remainder);
-		ASSERT3U(out_data_len, >, 0);
 
 		ctr_xor(ctx, inp, out_data, out_data_len, block_size, cipher);
 

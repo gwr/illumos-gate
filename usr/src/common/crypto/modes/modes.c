@@ -34,6 +34,7 @@
 
 #include <sys/strsun.h>
 #include <sys/types.h>
+#include <sys/sysmacros.h>
 #include <modes/modes.h>
 #include <sys/crypto/common.h>
 #include <sys/crypto/impl.h>
@@ -84,103 +85,118 @@ crypto_init_ptrs(crypto_data_t *out, void **iov_or_mp, offset_t *current_offset)
 }
 
 /*
- * Get pointers for where in the output to copy a block of encrypted or
- * decrypted data.  The iov_or_mp argument stores a pointer to the current
- * iovec or mp, and current_offset stores the current offset within that.
+ * Get a pointer to the next contiguous span of the output, at most 'amt'
+ * bytes long, and advance the output position past that span.  The
+ * iov_or_mp argument stores the current iovec index or mblk, and
+ * current_offset stores the offset within it (see crypto_init_ptrs).
  *
- * If out_data_2 is NULL, return only the first span.
+ * The span returned in *out_data / *out_data_len is limited to what fits
+ * in the current iovec, mblk, or raw buffer, so it may be shorter than
+ * 'amt'.  Callers that need to write more than *out_data_len bytes must
+ * call this again (or use crypto_put_ptrs) for the rest; the output may
+ * be split across any number of segments.  When the output has no space
+ * left, *out_data is set to NULL and *out_data_len to zero.
  */
 void
 crypto_get_ptrs(crypto_data_t *out, void **iov_or_mp, offset_t *current_offset,
-    uint8_t **out_data_1, size_t *out_data_1_len, uint8_t **out_data_2,
-    size_t amt)
+    uint8_t **out_data, size_t *out_data_len, size_t amt)
 {
-	offset_t offset;
+	offset_t offset = *current_offset;
+	uint8_t *base = NULL;
+	size_t len = 0;
+	size_t span;
+
+	*out_data = NULL;
+	*out_data_len = 0;
 
 	switch (out->cd_format) {
-	case CRYPTO_DATA_RAW: {
-		iovec_t *iov;
-
-		offset = *current_offset;
-		iov = &out->cd_raw;
-		if ((offset + amt) <= iov->iov_len) {
-			/* one block fits */
-			*out_data_1 = (uint8_t *)iov->iov_base + offset;
-			*out_data_1_len = amt;
-			if (out_data_2 != NULL)
-				*out_data_2 = NULL;
-			*current_offset = offset + amt;
-		}
+	case CRYPTO_DATA_RAW:
+		base = (uint8_t *)out->cd_raw.iov_base;
+		len = out->cd_raw.iov_len;
 		break;
-	}
 
 	case CRYPTO_DATA_UIO: {
 		uio_t *uio = out->cd_uio;
-		iovec_t *iov;
-		offset_t offset;
-		uintptr_t vec_idx;
-		uint8_t *p;
+		uintptr_t vec_idx = (uintptr_t)*iov_or_mp;
 
-		offset = *current_offset;
-		vec_idx = (uintptr_t)(*iov_or_mp);
-		iov = &uio->uio_iov[vec_idx];
-		p = (uint8_t *)iov->iov_base + offset;
-		*out_data_1 = p;
-
-		if (offset + amt <= iov->iov_len) {
-			/* can fit one block into this iov */
-			*out_data_1_len = amt;
-			if (out_data_2 != NULL)
-				*out_data_2 = NULL;
-			*current_offset = offset + amt;
-		} else {
-			/* the request extends beyond this iovec */
-			*out_data_1_len = iov->iov_len - offset;
-			if (vec_idx + 1 == uio->uio_iovcnt)
-				return;
+		/* Skip past any exhausted (or empty) iovecs. */
+		while (vec_idx < uio->uio_iovcnt &&
+		    (size_t)offset >= uio->uio_iov[vec_idx].iov_len) {
+			offset -= uio->uio_iov[vec_idx].iov_len;
 			vec_idx++;
-			if (out_data_2 != NULL) {
-				iov = &uio->uio_iov[vec_idx];
-				*out_data_2 = (uint8_t *)iov->iov_base;
-				*current_offset = amt - *out_data_1_len;
-			} else {
-				*current_offset = 0;
-			}
 		}
 		*iov_or_mp = (void *)vec_idx;
+		if (vec_idx < uio->uio_iovcnt) {
+			base = (uint8_t *)uio->uio_iov[vec_idx].iov_base;
+			len = uio->uio_iov[vec_idx].iov_len;
+		}
 		break;
 	}
 
 	case CRYPTO_DATA_MBLK: {
-		mblk_t *mp;
-		uint8_t *p;
+		mblk_t *mp = (mblk_t *)*iov_or_mp;
 
-		offset = *current_offset;
-		mp = (mblk_t *)*iov_or_mp;
-		p = mp->b_rptr + offset;
-		*out_data_1 = p;
-		if ((p + amt) <= mp->b_wptr) {
-			/* can fit one block into this mblk */
-			*out_data_1_len = amt;
-			if (out_data_2 != NULL)
-				*out_data_2 = NULL;
-			*current_offset = offset + amt;
-		} else {
-			/* the request extends beyond this mblk */
-			*out_data_1_len = _PTRDIFF(mp->b_wptr, p);
-			if ((mp = mp->b_cont) == NULL)
-				return;
-			if (out_data_2 != NULL) {
-				*out_data_2 = mp->b_rptr;
-				*current_offset = amt - *out_data_1_len;
-			} else {
-				*current_offset = 0;
-			}
+		/* Skip past any exhausted (or empty) mblks. */
+		while (mp != NULL && offset >= MBLKL(mp)) {
+			offset -= MBLKL(mp);
+			mp = mp->b_cont;
 		}
 		*iov_or_mp = mp;
+		if (mp != NULL) {
+			base = mp->b_rptr;
+			len = MBLKL(mp);
+		}
 		break;
 	}
 	} /* end switch */
+
+	*current_offset = offset;
+	if (offset < 0 || (size_t)offset >= len)
+		return;
+
+	span = MIN(amt, len - (size_t)offset);
+	*out_data = base + offset;
+	*out_data_len = span;
+	*current_offset = offset + span;
+}
+
+/*
+ * Copy 'len' bytes from 'src' to the output at the position tracked by
+ * iov_or_mp and current_offset, spanning as many iovecs or mblks as needed,
+ * and advance the position.  If copy_block is not NULL and the next span
+ * of the output can hold all 'len' bytes (which must then be one cipher
+ * block), copy_block is used for the copy.
+ *
+ * The callers' providers check the declared output length (cd_length)
+ * before any processing, so running out of space here means cd_length
+ * claims more room than the iovecs or mblks actually provide.  Mode state
+ * may already have been advanced, so the operation cannot be retried;
+ * fail with CRYPTO_ARGUMENTS_BAD rather than CRYPTO_BUFFER_TOO_SMALL.
+ */
+int
+crypto_put_ptrs(crypto_data_t *out, void **iov_or_mp, offset_t *current_offset,
+    uint8_t *src, size_t len, void (*copy_block)(uint8_t *, uint8_t *))
+{
+	uint8_t *dst;
+	size_t dst_len;
+
+	while (len > 0) {
+		crypto_get_ptrs(out, iov_or_mp, current_offset, &dst, &dst_len,
+		    len);
+		if (dst_len == 0)
+			return (CRYPTO_ARGUMENTS_BAD);
+
+		if (copy_block != NULL && dst_len == len)
+			copy_block(src, dst);
+		else
+			bcopy(src, dst, dst_len);
+
+		copy_block = NULL;
+		src += dst_len;
+		len -= dst_len;
+	}
+
+	return (CRYPTO_SUCCESS);
 }
 
 void

@@ -20,6 +20,7 @@
  */
 /*
  * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright 2026 RackTop Systems, Inc.
  */
 
 #ifndef _KERNEL
@@ -58,10 +59,8 @@ ccm_mode_encrypt_contiguous_blocks(ccm_ctx_t *ctx, char *data, size_t length,
 	uint8_t *lastp;
 	void *iov_or_mp;
 	offset_t offset;
-	uint8_t *out_data_1;
-	uint8_t *out_data_2;
-	size_t out_data_1_len;
 	uint64_t counter;
+	int rv;
 	uint8_t *mac_buf;
 
 	if (length + ctx->ccm_remainder_len < block_size) {
@@ -136,20 +135,11 @@ ccm_mode_encrypt_contiguous_blocks(ccm_ctx_t *ctx, char *data, size_t length,
 				    need);
 			}
 		} else {
-			crypto_get_ptrs(out, &iov_or_mp, &offset, &out_data_1,
-			    &out_data_1_len, &out_data_2, block_size);
-
 			/* copy block to where it belongs */
-			if (out_data_1_len == block_size) {
-				copy_block(lastp, out_data_1);
-			} else {
-				bcopy(lastp, out_data_1, out_data_1_len);
-				if (out_data_2 != NULL) {
-					bcopy(lastp + out_data_1_len,
-					    out_data_2,
-					    block_size - out_data_1_len);
-				}
-			}
+			rv = crypto_put_ptrs(out, &iov_or_mp, &offset, lastp,
+			    block_size, copy_block);
+			if (rv != CRYPTO_SUCCESS)
+				return (rv);
 			/* update offset */
 			out->cd_offset += block_size;
 		}
@@ -211,10 +201,7 @@ ccm_encrypt_final(ccm_ctx_t *ctx, crypto_data_t *out, size_t block_size,
 	uint8_t *lastp, *mac_buf, *ccm_mac_p, *macp;
 	void *iov_or_mp;
 	offset_t offset;
-	uint8_t *out_data_1;
-	uint8_t *out_data_2;
-	size_t out_data_1_len;
-	int i;
+	int i, rv;
 
 	if (out->cd_length < (ctx->ccm_remainder_len + ctx->ccm_mac_len)) {
 		return (CRYPTO_DATA_LEN_RANGE);
@@ -261,66 +248,19 @@ ccm_encrypt_final(ccm_ctx_t *ctx, crypto_data_t *out, size_t block_size,
 	ccm_mac_p = (uint8_t *)ctx->ccm_tmp;
 	calculate_ccm_mac(ctx, ccm_mac_p, encrypt_block);
 
+	/* copy the last partial block (if any) and the MAC to the output */
 	crypto_init_ptrs(out, &iov_or_mp, &offset);
-	crypto_get_ptrs(out, &iov_or_mp, &offset, &out_data_1,
-	    &out_data_1_len, &out_data_2,
-	    ctx->ccm_remainder_len + ctx->ccm_mac_len);
-
 	if (ctx->ccm_remainder_len > 0) {
-
-		/* copy temporary block to where it belongs */
-		if (out_data_2 == NULL) {
-			/* everything will fit in out_data_1 */
-			bcopy(macp, out_data_1, ctx->ccm_remainder_len);
-			bcopy(ccm_mac_p, out_data_1 + ctx->ccm_remainder_len,
-			    ctx->ccm_mac_len);
-		} else {
-
-			if (out_data_1_len < ctx->ccm_remainder_len) {
-
-				size_t data_2_len_used;
-
-				bcopy(macp, out_data_1, out_data_1_len);
-
-				data_2_len_used = ctx->ccm_remainder_len
-				    - out_data_1_len;
-
-				bcopy((uint8_t *)macp + out_data_1_len,
-				    out_data_2, data_2_len_used);
-				bcopy(ccm_mac_p, out_data_2 + data_2_len_used,
-				    ctx->ccm_mac_len);
-			} else {
-				bcopy(macp, out_data_1, out_data_1_len);
-				if (out_data_1_len == ctx->ccm_remainder_len) {
-					/* mac will be in out_data_2 */
-					bcopy(ccm_mac_p, out_data_2,
-					    ctx->ccm_mac_len);
-				} else {
-					size_t len_not_used = out_data_1_len -
-					    ctx->ccm_remainder_len;
-					/*
-					 * part of mac in will be in
-					 * out_data_1, part of the mac will be
-					 * in out_data_2
-					 */
-					bcopy(ccm_mac_p,
-					    out_data_1 + ctx->ccm_remainder_len,
-					    len_not_used);
-					bcopy(ccm_mac_p + len_not_used,
-					    out_data_2,
-					    ctx->ccm_mac_len - len_not_used);
-
-				}
-			}
-		}
-	} else {
-		/* copy block to where it belongs */
-		bcopy(ccm_mac_p, out_data_1, out_data_1_len);
-		if (out_data_2 != NULL) {
-			bcopy(ccm_mac_p + out_data_1_len, out_data_2,
-			    block_size - out_data_1_len);
-		}
+		rv = crypto_put_ptrs(out, &iov_or_mp, &offset, macp,
+		    ctx->ccm_remainder_len, NULL);
+		if (rv != CRYPTO_SUCCESS)
+			return (rv);
 	}
+	rv = crypto_put_ptrs(out, &iov_or_mp, &offset, ccm_mac_p,
+	    ctx->ccm_mac_len, NULL);
+	if (rv != CRYPTO_SUCCESS)
+		return (rv);
+
 	out->cd_offset += ctx->ccm_remainder_len + ctx->ccm_mac_len;
 	ctx->ccm_remainder_len = 0;
 	return (CRYPTO_SUCCESS);

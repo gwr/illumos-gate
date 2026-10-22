@@ -13,13 +13,15 @@
 # Copyright (c) 2012 by Delphix. All rights reserved.
 # Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
 # Copyright 2019 Joyent, Inc.
+# Copyright 2026 RackTop Systems, Inc.
 #
 
 include $(SRC)/cmd/Makefile.cmd
 include $(SRC)/cmd/Makefile.ctf
 include $(SRC)/test/Makefile.com
 
-BASEOBJS = testfuncs.o cryptotest_pkcs.o cryptotest_kcf.o
+BASEOBJS = testfuncs.o cryptotest_pkcs.o cryptotest_kcf.o kcf_common.o \
+	cryptotest_sg.o cryptotest_uio.o cryptotest_mblk.o
 OBJS = $(BASEOBJS:%.o=%.32.o) $(BASEOBJS:%.o=%.64.o)
 SRCS = $(OBJS:%.o=%.c)
 
