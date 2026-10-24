@@ -212,6 +212,37 @@ putnext(queue_t *q, mblk_t *mp)
 }
 
 /*
+ * Enter a D_MTQPAIR service procedure as a writer under the perimeter shared
+ * by the concrete read and write queues.  STREAMS does not support shared
+ * service entry for queue-pair perimeters.
+ */
+void
+MODEL_NAME(qpair_service)(queue_t *q, int side, int (*srvp)(queue_t *))
+{
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTQPAIR
+	if (side == 0) {
+		struct MODEL_NAME(qpair) *pair =
+		    (void *)((char *)q -
+		    __builtin_offsetof(struct MODEL_NAME(qpair), read_queue));
+
+		rw_enter(&pair->perimeter, RW_WRITER);
+		(*srvp)(q);
+		rw_exit(&pair->perimeter);
+	} else {
+		struct MODEL_NAME(qpair) *pair =
+		    (void *)((char *)q -
+		    __builtin_offsetof(struct MODEL_NAME(qpair), write_queue));
+
+		rw_enter(&pair->perimeter, RW_WRITER);
+		(*srvp)(q);
+		rw_exit(&pair->perimeter);
+	}
+#else
+	(*srvp)(q);
+#endif
+}
+
+/*
  * Model framework service-procedure entry using the module's selected inner
  * mode and shared outer-perimeter entry.
  */
