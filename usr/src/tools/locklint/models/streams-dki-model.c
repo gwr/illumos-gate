@@ -290,14 +290,22 @@ MODEL_NAME(service)(void)
 
 /*
  * Enter a D_MTQPAIR open procedure under the perimeter shared by the
- * concrete read and write queues.  Branch-local fixed offsets preserve the
- * pair identity while the original queue is passed to the callback.
+ * concrete read and write queues, nested inside the optional module outer
+ * perimeter.  Branch-local fixed offsets preserve the pair identity while
+ * the original queue is passed to the callback.
  */
 void
 MODEL_NAME(qpair_open)(queue_t *q, int side,
     int (*openp)(queue_t *, dev_t *, int, int, cred_t *), dev_t *devp,
     int oflag, int sflag, cred_t *credp)
 {
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+#if (MODEL_FLAGS & D_MTOCEXCL) != 0
+	rw_enter(&MODEL_NAME(outer), RW_WRITER);
+#else
+	rw_enter(&MODEL_NAME(outer), RW_READER);
+#endif
+#endif
 #if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTQPAIR
 	if (side == 0) {
 		struct MODEL_NAME(qpair) *pair =
@@ -327,16 +335,26 @@ MODEL_NAME(qpair_open)(queue_t *q, int side,
 #else
 	(*openp)(q, devp, oflag, sflag, credp);
 #endif
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+	rw_exit(&MODEL_NAME(outer));
+#endif
 }
 
 /*
  * Enter a D_MTQPAIR close procedure under the same pair-relative perimeter
- * and mode as open entry.
+ * and inner and outer modes as open entry.
  */
 void
 MODEL_NAME(qpair_close)(queue_t *q, int side,
     int (*closep)(queue_t *, int, cred_t *), int flag, cred_t *credp)
 {
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+#if (MODEL_FLAGS & D_MTOCEXCL) != 0
+	rw_enter(&MODEL_NAME(outer), RW_WRITER);
+#else
+	rw_enter(&MODEL_NAME(outer), RW_READER);
+#endif
+#endif
 #if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTQPAIR
 	if (side == 0) {
 		struct MODEL_NAME(qpair) *pair =
@@ -365,6 +383,9 @@ MODEL_NAME(qpair_close)(queue_t *q, int side,
 	}
 #else
 	(*closep)(q, flag, credp);
+#endif
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+	rw_exit(&MODEL_NAME(outer));
 #endif
 }
 
