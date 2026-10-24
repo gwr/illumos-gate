@@ -275,6 +275,86 @@ MODEL_NAME(service)(void)
 }
 
 /*
+ * Enter a D_MTQPAIR open procedure under the perimeter shared by the
+ * concrete read and write queues.  Branch-local fixed offsets preserve the
+ * pair identity while the original queue is passed to the callback.
+ */
+void
+MODEL_NAME(qpair_open)(queue_t *q, int side,
+    int (*openp)(queue_t *, dev_t *, int, int, cred_t *), dev_t *devp,
+    int oflag, int sflag, cred_t *credp)
+{
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTQPAIR
+	if (side == 0) {
+		struct MODEL_NAME(qpair) *pair =
+		    (void *)((char *)q -
+		    __builtin_offsetof(struct MODEL_NAME(qpair), read_queue));
+
+#if (MODEL_FLAGS & _D_MTOCSHARED) != 0
+		rw_enter(&pair->perimeter, RW_READER);
+#else
+		rw_enter(&pair->perimeter, RW_WRITER);
+#endif
+		(*openp)(q, devp, oflag, sflag, credp);
+		rw_exit(&pair->perimeter);
+	} else {
+		struct MODEL_NAME(qpair) *pair =
+		    (void *)((char *)q -
+		    __builtin_offsetof(struct MODEL_NAME(qpair), write_queue));
+
+#if (MODEL_FLAGS & _D_MTOCSHARED) != 0
+		rw_enter(&pair->perimeter, RW_READER);
+#else
+		rw_enter(&pair->perimeter, RW_WRITER);
+#endif
+		(*openp)(q, devp, oflag, sflag, credp);
+		rw_exit(&pair->perimeter);
+	}
+#else
+	(*openp)(q, devp, oflag, sflag, credp);
+#endif
+}
+
+/*
+ * Enter a D_MTQPAIR close procedure under the same pair-relative perimeter
+ * and mode as open entry.
+ */
+void
+MODEL_NAME(qpair_close)(queue_t *q, int side,
+    int (*closep)(queue_t *, int, cred_t *), int flag, cred_t *credp)
+{
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTQPAIR
+	if (side == 0) {
+		struct MODEL_NAME(qpair) *pair =
+		    (void *)((char *)q -
+		    __builtin_offsetof(struct MODEL_NAME(qpair), read_queue));
+
+#if (MODEL_FLAGS & _D_MTOCSHARED) != 0
+		rw_enter(&pair->perimeter, RW_READER);
+#else
+		rw_enter(&pair->perimeter, RW_WRITER);
+#endif
+		(*closep)(q, flag, credp);
+		rw_exit(&pair->perimeter);
+	} else {
+		struct MODEL_NAME(qpair) *pair =
+		    (void *)((char *)q -
+		    __builtin_offsetof(struct MODEL_NAME(qpair), write_queue));
+
+#if (MODEL_FLAGS & _D_MTOCSHARED) != 0
+		rw_enter(&pair->perimeter, RW_READER);
+#else
+		rw_enter(&pair->perimeter, RW_WRITER);
+#endif
+		(*closep)(q, flag, credp);
+		rw_exit(&pair->perimeter);
+	}
+#else
+	(*closep)(q, flag, credp);
+#endif
+}
+
+/*
  * Model framework open-procedure entry using the open/close-specific inner
  * and outer modes.
  */

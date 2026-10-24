@@ -27,6 +27,7 @@ set -e
 "$SCRIPT_DIR/check-model-streams-perq-service.ksh"
 "$SCRIPT_DIR/check-model-streams-qpair-service.ksh"
 "$SCRIPT_DIR/check-model-streams-perq-openclose.ksh"
+"$SCRIPT_DIR/check-model-streams-qpair-openclose.ksh"
 "$SCRIPT_DIR/check-model-streams-service.ksh"
 "$SCRIPT_DIR/check-model-streams-openclose.ksh"
 "$SCRIPT_DIR/check-model-streams-qwriter.ksh"
