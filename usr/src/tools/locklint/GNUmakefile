@@ -196,6 +196,9 @@ kmodtest: FRC
 test: $(PROG) unittest FRC
 	(cd tests && ./RunTests.sh)
 
+models: $(PROG) FRC
+	(cd models && ./RunTests.sh)
+
 UNITTESTS = command_parse_test command_names_test lock_identity_test sync_api_test \
 	binding_test context_test worklist_test dependency_test provenance_test \
 	type_test protection_audit_test
