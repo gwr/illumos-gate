@@ -42,6 +42,12 @@
  */
 #define	MODEL_PERQ_LOCK(q)	((krwlock_t *)(void *)(q))
 
+struct MODEL_NAME(qpair) {
+	krwlock_t perimeter;
+	queue_t read_queue;
+	queue_t write_queue;
+};
+
 krwlock_t MODEL_NAME(inner);
 krwlock_t MODEL_NAME(outer);
 static struct qinit *MODEL_NAME(qinit);
@@ -150,6 +156,46 @@ MODEL_NAME(put)(void)
 {
 	MODEL_NAME(put_entry)(MODEL_NAME(qinit), &MODEL_NAME(queue),
 	    &MODEL_NAME(message));
+}
+
+/*
+ * Enter a D_MTQPAIR put procedure under the perimeter shared by the concrete
+ * read and write queues.  Branch-local fixed offsets preserve both the exact
+ * queue passed to the callback and the identity of its containing pair.
+ */
+void
+MODEL_NAME(qpair_put)(queue_t *q, int side,
+    int (*putp)(queue_t *, mblk_t *), mblk_t *mp)
+{
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTQPAIR
+	if (side == 0) {
+		struct MODEL_NAME(qpair) *pair =
+		    (void *)((char *)q -
+		    __builtin_offsetof(struct MODEL_NAME(qpair), read_queue));
+
+#if (MODEL_FLAGS & D_MTPUTSHARED) != 0
+		rw_enter(&pair->perimeter, RW_READER);
+#else
+		rw_enter(&pair->perimeter, RW_WRITER);
+#endif
+		(*putp)(q, mp);
+		rw_exit(&pair->perimeter);
+	} else {
+		struct MODEL_NAME(qpair) *pair =
+		    (void *)((char *)q -
+		    __builtin_offsetof(struct MODEL_NAME(qpair), write_queue));
+
+#if (MODEL_FLAGS & D_MTPUTSHARED) != 0
+		rw_enter(&pair->perimeter, RW_READER);
+#else
+		rw_enter(&pair->perimeter, RW_WRITER);
+#endif
+		(*putp)(q, mp);
+		rw_exit(&pair->perimeter);
+	}
+#else
+	(*putp)(q, mp);
+#endif
 }
 
 /*
