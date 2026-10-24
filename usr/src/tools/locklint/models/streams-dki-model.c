@@ -160,13 +160,17 @@ MODEL_NAME(put)(void)
 
 /*
  * Enter a D_MTQPAIR put procedure under the perimeter shared by the concrete
- * read and write queues.  Branch-local fixed offsets preserve both the exact
- * queue passed to the callback and the identity of its containing pair.
+ * read and write queues, nested inside the optional module outer perimeter.
+ * Branch-local fixed offsets preserve both the exact queue passed to the
+ * callback and the identity of its containing pair.
  */
 void
 MODEL_NAME(qpair_put)(queue_t *q, int side,
     int (*putp)(queue_t *, mblk_t *), mblk_t *mp)
 {
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+	rw_enter(&MODEL_NAME(outer), RW_READER);
+#endif
 #if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTQPAIR
 	if (side == 0) {
 		struct MODEL_NAME(qpair) *pair =
@@ -195,6 +199,9 @@ MODEL_NAME(qpair_put)(queue_t *q, int side,
 	}
 #else
 	(*putp)(q, mp);
+#endif
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+	rw_exit(&MODEL_NAME(outer));
 #endif
 }
 

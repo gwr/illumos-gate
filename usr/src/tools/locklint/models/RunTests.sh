@@ -24,6 +24,7 @@ set -e
 "$SCRIPT_DIR/check-model-streams-perimeter.ksh"
 "$SCRIPT_DIR/check-model-streams-perq.ksh"
 "$SCRIPT_DIR/check-model-streams-qpair-put.ksh"
+"$SCRIPT_DIR/check-model-streams-qpair-put-outer.ksh"
 "$SCRIPT_DIR/check-model-streams-perq-service.ksh"
 "$SCRIPT_DIR/check-model-streams-qpair-service.ksh"
 "$SCRIPT_DIR/check-model-streams-perq-openclose.ksh"
