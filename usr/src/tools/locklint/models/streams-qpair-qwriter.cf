@@ -1,0 +1,11 @@
+declare --root=true streams_qpair_qwriter_root
+declare --external-entry=false streams_qpair_read_writer
+declare --external-entry=false streams_qpair_write_writer
+declare --external-entry=false locklint_put locklint_service
+declare --external-entry=false locklint_open locklint_close
+declare --external-entry=false qprocson qprocsoff qwriter putnext
+declare discriminant locklint_qpair_qwriter side
+declare targets qinit::qi_putp streams_qpair_qwriter_other_put
+declare targets qinit::qi_srvp streams_qpair_qwriter_other_service
+declare targets qinit::qi_qopen streams_qpair_qwriter_open
+declare targets qinit::qi_qclose streams_qpair_qwriter_close

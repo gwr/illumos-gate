@@ -117,6 +117,42 @@ qwriter(queue_t *q, mblk_t *mp, void (*func)(), int perimeter)
 }
 
 /*
+ * Model qwriter's possible immediate PERIM_INNER callback for D_MTQPAIR.
+ * The exact side derives the pair-relative writer perimeter while preserving
+ * the concrete queue passed to the callback.
+ */
+void
+MODEL_NAME(qpair_qwriter)(queue_t *q, int side, mblk_t *mp,
+    void (*func)(queue_t *, mblk_t *))
+{
+	if (MODEL_NAME(call_direct)) {
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTQPAIR
+		if (side == 0) {
+			struct MODEL_NAME(qpair) *pair =
+			    (void *)((char *)q -
+			    __builtin_offsetof(struct MODEL_NAME(qpair),
+			    read_queue));
+
+			rw_enter(&pair->perimeter, RW_WRITER);
+			(*func)(q, mp);
+			rw_exit(&pair->perimeter);
+		} else {
+			struct MODEL_NAME(qpair) *pair =
+			    (void *)((char *)q -
+			    __builtin_offsetof(struct MODEL_NAME(qpair),
+			    write_queue));
+
+			rw_enter(&pair->perimeter, RW_WRITER);
+			(*func)(q, mp);
+			rw_exit(&pair->perimeter);
+		}
+#else
+		(*func)(q, mp);
+#endif
+	}
+}
+
+/*
  * Enter the selected downstream module's put procedure.  Both framework put
  * entry and immediate putnext dispatch use this sequence so their perimeter
  * ordering and modes remain identical.
