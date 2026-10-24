@@ -71,4 +71,5 @@ if grep -q "lock is held on a path through call to 'qprocson'\$" "$OUTPUT"; then
 	exit 1
 fi
 
+rm -f "$OUTPUT"
 print "New locklint qproc blocking model works."

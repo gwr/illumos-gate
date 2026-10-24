@@ -70,6 +70,8 @@ run_case()
 		print -u2 "STREAMS qproc close $name lacks caller provenance"
 		return 1
 	fi
+
+	rm -f "$output"
 }
 
 run_case inner '(D_MP|D_MTPERMOD)' 0 \

@@ -68,6 +68,8 @@ run_case()
 		print -u2 "see $output"
 		return 1
 	fi
+
+	rm -f "$output"
 }
 
 run_case d-mp D_MP 4 || exit $?

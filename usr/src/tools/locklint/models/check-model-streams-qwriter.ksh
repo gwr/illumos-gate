@@ -71,4 +71,5 @@ if (( unknown != 2 )); then
 	exit 1
 fi
 
+rm -f "$OUTPUT"
 print "New locklint qwriter perimeter entry works."

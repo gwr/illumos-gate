@@ -70,4 +70,5 @@ if ! grep -q \
 	exit 1
 fi
 
+rm -f "$OUTPUT"
 print "New locklint putnext representative preserves optional dispatch."

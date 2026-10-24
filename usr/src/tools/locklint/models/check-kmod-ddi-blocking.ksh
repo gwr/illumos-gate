@@ -62,4 +62,5 @@ if ! grep -q "lock is held on a path through call to 'delay'\$" "$OUTPUT"; then
 	exit 1
 fi
 
+rm -f "$OUTPUT"
 print "New locklint delay model preserves blocking lock state."

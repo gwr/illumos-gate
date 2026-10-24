@@ -97,4 +97,5 @@ if (( callback_warnings != 10 )); then
 	exit 1
 fi
 
+rm -f "$OUTPUT"
 print "New locklint DDI callback registrations use independent callback roots."

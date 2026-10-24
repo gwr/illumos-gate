@@ -84,4 +84,5 @@ verify_forwarding pm_lower_power locklint_no_power || exit 1
 verify_forwarding ndi_devi_online locklint_no_bus_config || exit 1
 verify_forwarding ndi_devi_offline locklint_no_bus_unconfig || exit 1
 
+rm -f "$OUTPUT"
 print "New locklint DDI framework forwarding resolves."
