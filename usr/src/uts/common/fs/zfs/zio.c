@@ -25,6 +25,7 @@
  * Copyright (c) 2014 Integros [integros.com]
  * Copyright (c) 2017, Intel Corporation.
  * Copyright 2020 Joyent, Inc.
+ * Copyright 2026 Oxide Computer Company
  */
 
 #include <sys/sysmacros.h>
@@ -1999,6 +2000,13 @@ zio_reexecute(zio_t *pio)
 	for (int c = 0; c < ZIO_CHILD_TYPES; c++)
 		pio->io_child_error[c] = 0;
 
+	/*
+	 * Start a new allocation trace, or a zio that is reexecuted many
+	 * times would add to it until it is too long.
+	 */
+	metaslab_trace_fini(&pio->io_alloc_list);
+	metaslab_trace_init(&pio->io_alloc_list);
+
 	if (IO_IS_ALLOCATING(pio))
 		BP_ZERO(pio->io_bp);
 
@@ -2023,10 +2031,13 @@ zio_reexecute(zio_t *pio)
 
 	/*
 	 * Now that all children have been reexecuted, execute the parent.
-	 * We don't reexecute "The Godfather" I/O here as it's the
-	 * responsibility of the caller to wait on it.
+	 * "The Godfather" I/O is executed by zio_wait(), so we don't execute
+	 * it here when zio_resume() reexecutes it before waiting on it.  But
+	 * when zio_done() reexecutes it because some of its children must
+	 * be reexecuted, it has already been executed, so it must be
+	 * executed again here or it will never complete.
 	 */
-	if (!(pio->io_flags & ZIO_FLAG_GODFATHER)) {
+	if (!(pio->io_flags & ZIO_FLAG_GODFATHER) || pio->io_executor != NULL) {
 		pio->io_queued_timestamp = gethrtime();
 		zio_execute(pio);
 	}
