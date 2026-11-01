@@ -1,0 +1,10 @@
+declare --root=true locklint_module_lifecycle
+
+declare targets locklint_read_ops::qi_putp streams_lifecycle_read_put
+declare targets locklint_write_ops::qi_putp streams_lifecycle_write_put
+declare targets locklint_read_ops::qi_srvp streams_lifecycle_read_service
+declare targets locklint_write_ops::qi_srvp streams_lifecycle_write_service
+declare targets locklint_read_ops::qi_qopen streams_lifecycle_open
+declare targets locklint_read_ops::qi_qclose streams_lifecycle_close
+declare contract locklint_write_ops::qi_qopen no-lock-effects
+declare contract locklint_write_ops::qi_qclose no-lock-effects

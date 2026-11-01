@@ -53,6 +53,9 @@
     (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) != D_MTQPAIR
 #error "MODEL_QWRITER_QPAIR_SIDE requires D_MTQPAIR"
 #endif
+#if defined(MODEL_MODULE_LIFECYCLE) && !defined(MODEL_MODULE_ENTRY)
+#error "MODEL_MODULE_LIFECYCLE requires MODEL_MODULE_ENTRY"
+#endif
 
 #define	MODEL_CAT_(left, right)	left##right
 #define	MODEL_CAT(left, right)	MODEL_CAT_(left, right)
@@ -153,13 +156,21 @@ static volatile int MODEL_NAME(call_direct);
 static kmutex_t MODEL_NAME(qprocsoff_mutex);
 static kcondvar_t MODEL_NAME(qprocsoff_cv);
 
+#ifdef MODEL_MODULE_LIFECYCLE
+static void MODEL_NAME(module_enabled)(queue_t *);
+#endif
+
 /*
  * Enabling queue processing has no caller-visible lock or blocking effect.
- * Queue-instance lifecycle state is outside this single-module model.
+ * A complete module analysis also starts independently scheduled put and
+ * service entry for the exact queue pair.
  */
 void
 qprocson(queue_t *q)
 {
+#ifdef MODEL_MODULE_LIFECYCLE
+	MODEL_NAME(module_enabled)(q);
+#endif
 }
 
 /*
@@ -169,8 +180,15 @@ qprocson(queue_t *q)
  * scoped exemptions permit only the selected framework perimeters across
  * that wait; unrelated driver locks remain diagnostic.
  */
-void
-qprocsoff(queue_t *q)
+#if defined(MODEL_MODULE_LIFECYCLE) && \
+    ((MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERQ || \
+    (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTQPAIR)
+static void
+MODEL_NAME(qprocsoff_wait)(krwlock_t *instance_perimeter)
+#else
+static void
+MODEL_NAME(qprocsoff_wait)(void)
+#endif
 {
 	mutex_enter(&MODEL_NAME(qprocsoff_mutex));
 #if (MODEL_FLAGS & D_MTOUTPERIM) != 0
@@ -179,7 +197,17 @@ qprocsoff(queue_t *q)
 #if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
 	_NOTE(HELD_DURING_WAIT_EXEMPT_ON(MODEL_NAME(inner)))
 #endif
+#if defined(MODEL_MODULE_LIFECYCLE) && \
+    ((MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERQ || \
+    (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTQPAIR)
+	_NOTE(HELD_DURING_WAIT_EXEMPT_ON(*instance_perimeter))
+#endif
 	cv_wait(&MODEL_NAME(qprocsoff_cv), &MODEL_NAME(qprocsoff_mutex));
+#if defined(MODEL_MODULE_LIFECYCLE) && \
+    ((MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERQ || \
+    (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTQPAIR)
+	_NOTE(HELD_DURING_WAIT_EXEMPT_OFF(*instance_perimeter))
+#endif
 #if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
 	_NOTE(HELD_DURING_WAIT_EXEMPT_OFF(MODEL_NAME(inner)))
 #endif
@@ -187,6 +215,24 @@ qprocsoff(queue_t *q)
 	_NOTE(HELD_DURING_WAIT_EXEMPT_OFF(MODEL_NAME(outer)))
 #endif
 	mutex_exit(&MODEL_NAME(qprocsoff_mutex));
+}
+
+void
+qprocsoff(queue_t *q)
+{
+#if defined(MODEL_MODULE_LIFECYCLE) && \
+    (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTQPAIR
+	struct MODEL_NAME(qpair) *pair =
+	    (void *)((char *)q -
+	    __builtin_offsetof(struct MODEL_NAME(qpair), read_queue));
+
+	MODEL_NAME(qprocsoff_wait)(&pair->perimeter);
+#elif defined(MODEL_MODULE_LIFECYCLE) && \
+    (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERQ
+	MODEL_NAME(qprocsoff_wait)(MODEL_PERQ_LOCK(q));
+#else
+	MODEL_NAME(qprocsoff_wait)();
+#endif
 }
 
 static void MODEL_NAME(qpair_qwriter_invoke)(queue_t *, int, mblk_t *,
@@ -850,4 +896,41 @@ MODEL_NAME(module_entry)(void)
 	MODEL_NAME(write_close)(&MODEL_NAME(module_pair).write_queue, 0,
 	    MODEL_NAME(credential));
 }
+
+#ifdef MODEL_MODULE_LIFECYCLE
+/*
+ * Represent arbitrary put and service delivery while this exact queue pair
+ * is enabled.  qprocson() receives the read queue by interface contract, so
+ * its fixed container relationship supplies the matching write queue.
+ */
+static void
+MODEL_NAME(module_enabled)(queue_t *q)
+{
+	struct MODEL_NAME(qpair) *pair =
+	    (void *)((char *)q -
+	    __builtin_offsetof(struct MODEL_NAME(qpair), read_queue));
+
+	MODEL_NAME(read_put)(q, &MODEL_NAME(message));
+	MODEL_NAME(write_put)(&pair->write_queue, &MODEL_NAME(message));
+	MODEL_NAME(read_service)(q);
+	MODEL_NAME(write_service)(&pair->write_queue);
+}
+
+_NOTE(ASYNC_ENTRY(MODEL_NAME(module_enabled)))
+
+/*
+ * Model one module instance from framework open through framework close.
+ * Only a real qprocson() call inside the configured open callback makes put
+ * and service entry reachable.
+ */
+static void
+MODEL_NAME(module_lifecycle)(void)
+{
+	queue_t *q = &MODEL_NAME(module_pair).read_queue;
+
+	MODEL_NAME(read_open)(q, &MODEL_NAME(device), 0, 0,
+	    MODEL_NAME(credential));
+	MODEL_NAME(read_close)(q, 0, MODEL_NAME(credential));
+}
+#endif
 #endif
