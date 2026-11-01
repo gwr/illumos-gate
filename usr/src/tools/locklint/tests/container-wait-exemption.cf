@@ -1,0 +1,3 @@
+declare --root=true container_wait_root
+declare targets container_ops::closep container_close
+declare targets invalid_container_ops::closep invalid_container_close

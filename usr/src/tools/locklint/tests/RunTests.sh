@@ -1367,6 +1367,23 @@ compare "interprocedural container identity" \
     interprocedural-container-identity.ref \
     interprocedural-container-identity.out
 
+run_capture "container wait exemption identity" \
+    container-wait-exemption.out \
+    "$LOCKLINT" --root-discovery=none \
+    --cf container-wait-exemption.cf container-wait-exemption.c
+require_match "container wait exemption unheld" \
+    "wait exemption enabled for an unheld lock" \
+    container-wait-exemption.out
+require_match "container wait exemption inactive" \
+    "wait exemption is not active" container-wait-exemption.out
+reject_match "container wait exemption synthetic context" \
+    "wait exemption may" container-wait-exemption.out
+if [ "$(grep -F -c '[invalid-wait-exemption]' \
+    container-wait-exemption.out)" -ne 2 ]
+then
+	fail "container wait exemption identity: expected two control findings"
+fi
+
 run_failure "command discriminant arity" command-discriminant-arity.out \
     "$LOCKLINT" --root-discovery=none \
     --cf command-discriminant-arity.cf command-discriminant.c

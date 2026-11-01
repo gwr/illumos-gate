@@ -5118,6 +5118,15 @@ diagnose_wait_exemptions(struct analysis *analysis)
 		    context = AVL_NEXT(&function->contexts.contexts, context)) {
 			struct point_state *point_state;
 
+			/*
+			 * Effect-only contexts intentionally use synthetic
+			 * entry lock states to summarize operation contracts.
+			 * They do not represent executable roots and must not
+			 * make source wait-exemption transitions look invalid.
+			 */
+			if (context->kind == FUNCTION_CONTEXT_EFFECT_CALLER ||
+			    context->kind == FUNCTION_CONTEXT_EFFECT_CONTRACT)
+				continue;
 			for (point_state = avl_first(&context->point_states);
 			    point_state != NULL; point_state = AVL_NEXT(
 			    &context->point_states, point_state)) {

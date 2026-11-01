@@ -1809,6 +1809,12 @@ return the inherited exemption state unchanged.  Differing flags retain
 distinct semantic states, so an exemption active on only some paths does not
 silently widen to all paths.
 
+Post-fixed-point exemption validation excludes effect-only caller and
+contract contexts.  Those synthetic contexts deliberately vary or omit entry
+lock state while profiling operation-vector effects; they are not executable
+roots and cannot make a source transition invalid.  Ordinary root, direct,
+indirect, and asynchronous contexts remain fully validated.
+
 The flag occupies prior padding in `semantic_lock_state` on the supported
 64-bit local build: both the old two-field layout and the current
 pointer/modes/flags layout are 16 bytes.  `semantic_state` remains 88 bytes.
@@ -3829,6 +3835,8 @@ The current implementation relies on these invariants:
 54. A held-during-wait exemption is a flag on an existing held-lock entry.
     It changes only held-during-wait reporting, follows that identity through
     calls, and must return to its inherited value before function exit.
+55. Synthetic operation-contract contexts do not contribute ordinary
+    wait-exemption validity diagnostics; every executable context does.
 
 Changes that invalidate one of these invariants should update this document
 and add a focused regression test.
