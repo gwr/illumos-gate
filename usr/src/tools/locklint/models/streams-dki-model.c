@@ -16,10 +16,11 @@
  * STREAMS concurrency contract.  Conservative defaults provide a usable
  * single-module model with no implied perimeter.  An analysis runner may
  * define MODEL_QWRITER_QPAIR_SIDE as zero or one when every modeled qwriter
- * call is known to use that queue side.  MODEL_MODULE_ENTRY enables exact
- * read- and write-side operation vectors when the command file supplies
- * callback targets for implemented members and no-lock contracts for null
- * members.
+ * call is known to use that queue side.  MODEL_QCALLBACK_QPAIR_SIDE provides
+ * the analogous fixed-side setting for qtimeout() and qbufcall().
+ * MODEL_MODULE_ENTRY enables exact read- and write-side operation vectors
+ * when the command file supplies callback targets for implemented members
+ * and no-lock contracts for null members.
  *
  * The accompanying analysis command file supplies policy for the selected
  * unchanged module.  Its target declarations associate indirect qinit and
@@ -52,6 +53,14 @@
 #if defined(MODEL_QWRITER_QPAIR_SIDE) && \
     (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) != D_MTQPAIR
 #error "MODEL_QWRITER_QPAIR_SIDE requires D_MTQPAIR"
+#endif
+#if defined(MODEL_QCALLBACK_QPAIR_SIDE) && \
+    MODEL_QCALLBACK_QPAIR_SIDE != 0 && MODEL_QCALLBACK_QPAIR_SIDE != 1
+#error "MODEL_QCALLBACK_QPAIR_SIDE must be zero or one"
+#endif
+#if defined(MODEL_QCALLBACK_QPAIR_SIDE) && \
+    (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) != D_MTQPAIR
+#error "MODEL_QCALLBACK_QPAIR_SIDE requires D_MTQPAIR"
 #endif
 #if defined(MODEL_MODULE_LIFECYCLE) && !defined(MODEL_MODULE_ENTRY)
 #error "MODEL_MODULE_LIFECYCLE requires MODEL_MODULE_ENTRY"
@@ -153,6 +162,8 @@ static mblk_t MODEL_NAME(message);
 static dev_t MODEL_NAME(device);
 static cred_t *MODEL_NAME(credential);
 static volatile int MODEL_NAME(call_direct);
+static volatile timeout_id_t MODEL_NAME(timeout_id);
+static volatile bufcall_id_t MODEL_NAME(bufcall_id);
 static kmutex_t MODEL_NAME(qprocsoff_mutex);
 static kcondvar_t MODEL_NAME(qprocsoff_cv);
 
@@ -344,6 +355,109 @@ MODEL_NAME(qpair_qwriter)(queue_t *q, int side, mblk_t *mp,
 	if (MODEL_NAME(call_direct))
 		MODEL_NAME(qpair_qwriter_invoke)(q, side, mp, func);
 	MODEL_NAME(qpair_qwriter_deferred)(q, side, mp, func);
+}
+
+#if (MODEL_FLAGS & _D_MTCBSHARED) != 0
+#define	MODEL_QCALLBACK_INNER_MODE	RW_READER
+#else
+#define	MODEL_QCALLBACK_INNER_MODE	RW_WRITER
+#endif
+
+/*
+ * Invoke a queue-bound callback under one fixed D_MTQPAIR side.  This
+ * preserves both the concrete queue and its containing pair identity.
+ */
+static void
+MODEL_NAME(qpair_qcallback_invoke)(queue_t *q, int side,
+    void (*func)(void *), void *argument)
+{
+	if (side == 0) {
+		struct MODEL_NAME(qpair) *pair =
+		    (void *)((char *)q -
+		    __builtin_offsetof(struct MODEL_NAME(qpair), read_queue));
+
+		rw_enter(&pair->perimeter, MODEL_QCALLBACK_INNER_MODE);
+		(*func)(argument);
+		rw_exit(&pair->perimeter);
+	} else {
+		struct MODEL_NAME(qpair) *pair =
+		    (void *)((char *)q -
+		    __builtin_offsetof(struct MODEL_NAME(qpair), write_queue));
+
+		rw_enter(&pair->perimeter, MODEL_QCALLBACK_INNER_MODE);
+		(*func)(argument);
+		rw_exit(&pair->perimeter);
+	}
+}
+
+/*
+ * Enter a qtimeout() or qbufcall() callback under the queue-associated
+ * perimeter.  The outer perimeter is always shared; _D_MTCBSHARED selects
+ * shared rather than exclusive inner entry.  Without fixed D_MTQPAIR policy,
+ * both possible queue sides remain reachable.
+ */
+static void
+MODEL_NAME(qcallback_invoke)(queue_t *q, void (*func)(void *),
+    void *argument)
+{
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+	rw_enter(&MODEL_NAME(outer), RW_READER);
+#endif
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTQPAIR
+#ifdef MODEL_QCALLBACK_QPAIR_SIDE
+	MODEL_NAME(qpair_qcallback_invoke)(q, MODEL_QCALLBACK_QPAIR_SIDE,
+	    func, argument);
+#else
+	if (MODEL_NAME(call_direct))
+		MODEL_NAME(qpair_qcallback_invoke)(q, 0, func, argument);
+	else
+		MODEL_NAME(qpair_qcallback_invoke)(q, 1, func, argument);
+#endif
+#elif (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERQ
+	rw_enter(MODEL_PERQ_LOCK(q), MODEL_QCALLBACK_INNER_MODE);
+	(*func)(argument);
+	rw_exit(MODEL_PERQ_LOCK(q));
+#elif (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
+	rw_enter(&MODEL_NAME(inner), MODEL_QCALLBACK_INNER_MODE);
+	(*func)(argument);
+	rw_exit(&MODEL_NAME(inner));
+#else
+	(*func)(argument);
+#endif
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+	rw_exit(&MODEL_NAME(outer));
+#endif
+}
+
+/*
+ * A queue-bound callback retains its callback, argument, and queue bindings,
+ * but starts independently of all locks held by the scheduling thread.
+ */
+static void
+MODEL_NAME(qcallback_deferred)(queue_t *q, void (*func)(void *),
+    void *argument)
+{
+	MODEL_NAME(qcallback_invoke)(q, func, argument);
+}
+
+_NOTE(ASYNC_ENTRY(MODEL_NAME(qcallback_deferred)))
+
+timeout_id_t
+qtimeout(queue_t *q, void (*func)(void *), void *argument, clock_t ticks)
+{
+	(void) ticks;
+	MODEL_NAME(qcallback_deferred)(q, func, argument);
+	return (MODEL_NAME(timeout_id));
+}
+
+bufcall_id_t
+qbufcall(queue_t *q, size_t size, uint_t priority, void (*func)(void *),
+    void *argument)
+{
+	(void) size;
+	(void) priority;
+	MODEL_NAME(qcallback_deferred)(q, func, argument);
+	return (MODEL_NAME(bufcall_id));
 }
 
 /*

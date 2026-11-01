@@ -1,0 +1,3 @@
+declare --root=true streams_qcallback_root
+
+declare discriminant locklint_qpair_qcallback_invoke side
