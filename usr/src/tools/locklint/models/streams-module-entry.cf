@@ -1,0 +1,10 @@
+declare --root=true locklint_module_entry
+
+declare targets locklint_read_ops::qi_putp streams_module_read_put
+declare targets locklint_write_ops::qi_putp streams_module_write_put
+declare targets locklint_read_ops::qi_srvp streams_module_read_service
+declare targets locklint_write_ops::qi_srvp streams_module_write_service
+declare targets locklint_read_ops::qi_qopen streams_module_read_open
+declare targets locklint_write_ops::qi_qopen streams_module_write_open
+declare targets locklint_read_ops::qi_qclose streams_module_read_close
+declare targets locklint_write_ops::qi_qclose streams_module_write_close

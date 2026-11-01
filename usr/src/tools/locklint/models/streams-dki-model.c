@@ -16,7 +16,19 @@
  * STREAMS concurrency contract.  Conservative defaults provide a usable
  * single-module model with no implied perimeter.  An analysis runner may
  * define MODEL_QWRITER_QPAIR_SIDE as zero or one when every modeled qwriter
- * call is known to use that queue side.
+ * call is known to use that queue side.  MODEL_MODULE_ENTRY enables exact
+ * read- and write-side operation vectors when the command file supplies
+ * callback targets for implemented members and no-lock contracts for null
+ * members.
+ *
+ * The accompanying analysis command file supplies policy for the selected
+ * unchanged module.  Its target declarations associate indirect qinit and
+ * model operation-vector calls with that module's callbacks; discriminant
+ * declarations preserve exact dispatch choices across calls; roots select
+ * the entry paths to analyze; and entry-lock assertions describe framework
+ * state for callbacks that remain independently reachable.  This policy
+ * belongs in the command file rather than this shared model or production
+ * source because callback names and selected entry paths vary by module.
  */
 
 #include <sys/types.h>
@@ -59,9 +71,80 @@ struct MODEL_NAME(qpair) {
 	queue_t write_queue;
 };
 
+#ifdef MODEL_MODULE_ENTRY
+/*
+ * Side-specific operation-vector entry uses a direct member call so command
+ * policy can bind its exact target.  These expressions retain the concrete
+ * inner-perimeter identity around that call without forwarding the callback
+ * through another function.
+ */
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTQPAIR
+#define	MODEL_MODULE_HAS_INNER	1
+#define	MODEL_READ_INNER_LOCK(q) \
+	(&((struct MODEL_NAME(qpair) *)((char *)(q) - \
+	    __builtin_offsetof(struct MODEL_NAME(qpair), read_queue)))->perimeter)
+#define	MODEL_WRITE_INNER_LOCK(q) \
+	(&((struct MODEL_NAME(qpair) *)((char *)(q) - \
+	    __builtin_offsetof(struct MODEL_NAME(qpair), write_queue)))->perimeter)
+#elif (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERQ
+#define	MODEL_MODULE_HAS_INNER	1
+#define	MODEL_READ_INNER_LOCK(q)	MODEL_PERQ_LOCK(q)
+#define	MODEL_WRITE_INNER_LOCK(q)	MODEL_PERQ_LOCK(q)
+#elif (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
+#define	MODEL_MODULE_HAS_INNER	1
+#define	MODEL_READ_INNER_LOCK(q)	(&MODEL_NAME(inner))
+#define	MODEL_WRITE_INNER_LOCK(q)	(&MODEL_NAME(inner))
+#else
+#define	MODEL_MODULE_HAS_INNER	0
+#endif
+
+#if (MODEL_FLAGS & D_MTPUTSHARED) != 0
+#define	MODEL_PUT_INNER_MODE	RW_READER
+#else
+#define	MODEL_PUT_INNER_MODE	RW_WRITER
+#endif
+
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD && \
+    (MODEL_FLAGS & _D_MTSVCSHARED) != 0
+#define	MODEL_SERVICE_INNER_MODE	RW_READER
+#else
+#define	MODEL_SERVICE_INNER_MODE	RW_WRITER
+#endif
+
+#if (MODEL_FLAGS & _D_MTOCSHARED) != 0
+#define	MODEL_OPENCLOSE_INNER_MODE	RW_READER
+#else
+#define	MODEL_OPENCLOSE_INNER_MODE	RW_WRITER
+#endif
+
+/*
+ * Distinct model operation-vector types let command policy associate
+ * callbacks with one queue side without changing the production qinit
+ * objects or the linkage of their static functions.
+ */
+struct MODEL_NAME(read_ops) {
+	int (*qi_putp)(queue_t *, mblk_t *);
+	int (*qi_srvp)(queue_t *);
+	int (*qi_qopen)(queue_t *, dev_t *, int, int, cred_t *);
+	int (*qi_qclose)(queue_t *, int, cred_t *);
+};
+
+struct MODEL_NAME(write_ops) {
+	int (*qi_putp)(queue_t *, mblk_t *);
+	int (*qi_srvp)(queue_t *);
+	int (*qi_qopen)(queue_t *, dev_t *, int, int, cred_t *);
+	int (*qi_qclose)(queue_t *, int, cred_t *);
+};
+#endif
+
 krwlock_t MODEL_NAME(inner);
 krwlock_t MODEL_NAME(outer);
 static struct qinit *MODEL_NAME(qinit);
+#ifdef MODEL_MODULE_ENTRY
+static struct MODEL_NAME(read_ops) MODEL_NAME(read_ops);
+static struct MODEL_NAME(write_ops) MODEL_NAME(write_ops);
+static struct MODEL_NAME(qpair) MODEL_NAME(module_pair);
+#endif
 static queue_t MODEL_NAME(queue);
 static mblk_t MODEL_NAME(message);
 static dev_t MODEL_NAME(device);
@@ -570,3 +653,201 @@ MODEL_NAME(close)(void)
 	rw_exit(&MODEL_NAME(outer));
 #endif
 }
+
+#ifdef MODEL_MODULE_ENTRY
+/*
+ * Enter one callback selected from the model-only read operation vector.
+ * D_MTQPAIR uses the concrete read side; other inner-perimeter modes use
+ * their ordinary queue- or module-relative entry.
+ */
+static void
+MODEL_NAME(read_put)(queue_t *q, mblk_t *mp)
+{
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+	rw_enter(&MODEL_NAME(outer), RW_READER);
+#endif
+#if MODEL_MODULE_HAS_INNER
+	rw_enter(MODEL_READ_INNER_LOCK(q), MODEL_PUT_INNER_MODE);
+#endif
+	(*MODEL_NAME(read_ops).qi_putp)(q, mp);
+#if MODEL_MODULE_HAS_INNER
+	rw_exit(MODEL_READ_INNER_LOCK(q));
+#endif
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+	rw_exit(&MODEL_NAME(outer));
+#endif
+}
+
+static void
+MODEL_NAME(read_service)(queue_t *q)
+{
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+	rw_enter(&MODEL_NAME(outer), RW_READER);
+#endif
+#if MODEL_MODULE_HAS_INNER
+	rw_enter(MODEL_READ_INNER_LOCK(q), MODEL_SERVICE_INNER_MODE);
+#endif
+	(*MODEL_NAME(read_ops).qi_srvp)(q);
+#if MODEL_MODULE_HAS_INNER
+	rw_exit(MODEL_READ_INNER_LOCK(q));
+#endif
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+	rw_exit(&MODEL_NAME(outer));
+#endif
+}
+
+static void
+MODEL_NAME(read_open)(queue_t *q, dev_t *devp, int oflag, int sflag,
+    cred_t *credp)
+{
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+#if (MODEL_FLAGS & D_MTOCEXCL) != 0
+	rw_enter(&MODEL_NAME(outer), RW_WRITER);
+#else
+	rw_enter(&MODEL_NAME(outer), RW_READER);
+#endif
+#endif
+#if MODEL_MODULE_HAS_INNER
+	rw_enter(MODEL_READ_INNER_LOCK(q), MODEL_OPENCLOSE_INNER_MODE);
+#endif
+	(*MODEL_NAME(read_ops).qi_qopen)(q, devp, oflag, sflag, credp);
+#if MODEL_MODULE_HAS_INNER
+	rw_exit(MODEL_READ_INNER_LOCK(q));
+#endif
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+	rw_exit(&MODEL_NAME(outer));
+#endif
+}
+
+static void
+MODEL_NAME(read_close)(queue_t *q, int flag, cred_t *credp)
+{
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+#if (MODEL_FLAGS & D_MTOCEXCL) != 0
+	rw_enter(&MODEL_NAME(outer), RW_WRITER);
+#else
+	rw_enter(&MODEL_NAME(outer), RW_READER);
+#endif
+#endif
+#if MODEL_MODULE_HAS_INNER
+	rw_enter(MODEL_READ_INNER_LOCK(q), MODEL_OPENCLOSE_INNER_MODE);
+#endif
+	(*MODEL_NAME(read_ops).qi_qclose)(q, flag, credp);
+#if MODEL_MODULE_HAS_INNER
+	rw_exit(MODEL_READ_INNER_LOCK(q));
+#endif
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+	rw_exit(&MODEL_NAME(outer));
+#endif
+}
+
+/*
+ * Enter one callback selected from the model-only write operation vector.
+ * The read and write vector types deliberately remain distinct command-file
+ * target selectors.
+ */
+static void
+MODEL_NAME(write_put)(queue_t *q, mblk_t *mp)
+{
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+	rw_enter(&MODEL_NAME(outer), RW_READER);
+#endif
+#if MODEL_MODULE_HAS_INNER
+	rw_enter(MODEL_WRITE_INNER_LOCK(q), MODEL_PUT_INNER_MODE);
+#endif
+	(*MODEL_NAME(write_ops).qi_putp)(q, mp);
+#if MODEL_MODULE_HAS_INNER
+	rw_exit(MODEL_WRITE_INNER_LOCK(q));
+#endif
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+	rw_exit(&MODEL_NAME(outer));
+#endif
+}
+
+static void
+MODEL_NAME(write_service)(queue_t *q)
+{
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+	rw_enter(&MODEL_NAME(outer), RW_READER);
+#endif
+#if MODEL_MODULE_HAS_INNER
+	rw_enter(MODEL_WRITE_INNER_LOCK(q), MODEL_SERVICE_INNER_MODE);
+#endif
+	(*MODEL_NAME(write_ops).qi_srvp)(q);
+#if MODEL_MODULE_HAS_INNER
+	rw_exit(MODEL_WRITE_INNER_LOCK(q));
+#endif
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+	rw_exit(&MODEL_NAME(outer));
+#endif
+}
+
+static void
+MODEL_NAME(write_open)(queue_t *q, dev_t *devp, int oflag, int sflag,
+    cred_t *credp)
+{
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+#if (MODEL_FLAGS & D_MTOCEXCL) != 0
+	rw_enter(&MODEL_NAME(outer), RW_WRITER);
+#else
+	rw_enter(&MODEL_NAME(outer), RW_READER);
+#endif
+#endif
+#if MODEL_MODULE_HAS_INNER
+	rw_enter(MODEL_WRITE_INNER_LOCK(q), MODEL_OPENCLOSE_INNER_MODE);
+#endif
+	(*MODEL_NAME(write_ops).qi_qopen)(q, devp, oflag, sflag, credp);
+#if MODEL_MODULE_HAS_INNER
+	rw_exit(MODEL_WRITE_INNER_LOCK(q));
+#endif
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+	rw_exit(&MODEL_NAME(outer));
+#endif
+}
+
+static void
+MODEL_NAME(write_close)(queue_t *q, int flag, cred_t *credp)
+{
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+#if (MODEL_FLAGS & D_MTOCEXCL) != 0
+	rw_enter(&MODEL_NAME(outer), RW_WRITER);
+#else
+	rw_enter(&MODEL_NAME(outer), RW_READER);
+#endif
+#endif
+#if MODEL_MODULE_HAS_INNER
+	rw_enter(MODEL_WRITE_INNER_LOCK(q), MODEL_OPENCLOSE_INNER_MODE);
+#endif
+	(*MODEL_NAME(write_ops).qi_qclose)(q, flag, credp);
+#if MODEL_MODULE_HAS_INNER
+	rw_exit(MODEL_WRITE_INNER_LOCK(q));
+#endif
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0
+	rw_exit(&MODEL_NAME(outer));
+#endif
+}
+
+/*
+ * Exercise every configured queue-side operation for one concrete module
+ * instance.  Analysis policy declares this static function as a root only
+ * when validating complete operation-vector entry.
+ */
+static void
+MODEL_NAME(module_entry)(void)
+{
+	MODEL_NAME(read_put)(&MODEL_NAME(module_pair).read_queue,
+	    &MODEL_NAME(message));
+	MODEL_NAME(write_put)(&MODEL_NAME(module_pair).write_queue,
+	    &MODEL_NAME(message));
+	MODEL_NAME(read_service)(&MODEL_NAME(module_pair).read_queue);
+	MODEL_NAME(write_service)(&MODEL_NAME(module_pair).write_queue);
+	MODEL_NAME(read_open)(&MODEL_NAME(module_pair).read_queue,
+	    &MODEL_NAME(device), 0, 0, MODEL_NAME(credential));
+	MODEL_NAME(write_open)(&MODEL_NAME(module_pair).write_queue,
+	    &MODEL_NAME(device), 0, 0, MODEL_NAME(credential));
+	MODEL_NAME(read_close)(&MODEL_NAME(module_pair).read_queue, 0,
+	    MODEL_NAME(credential));
+	MODEL_NAME(write_close)(&MODEL_NAME(module_pair).write_queue, 0,
+	    MODEL_NAME(credential));
+}
+#endif
