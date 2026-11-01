@@ -26,11 +26,12 @@ struct streams_qpair_qwriter_shadow {
 	krwlock_t perimeter;
 	queue_t read_queue;
 	queue_t write_queue;
-	int data;
+	int qwriter_data;
+	int wrong_pair_data;
 };
 
 _NOTE(RWLOCK_PROTECTS_DATA(streams_qpair_qwriter_shadow::perimeter,
-    streams_qpair_qwriter_shadow::data))
+    streams_qpair_qwriter_shadow::{ qwriter_data wrong_pair_data }))
 
 #define	STREAMS_QPAIR_FROM_READ(q) \
 	((struct streams_qpair_qwriter_shadow *)((char *)(q) - \
@@ -43,16 +44,22 @@ _NOTE(RWLOCK_PROTECTS_DATA(streams_qpair_qwriter_shadow::perimeter,
 extern void locklint_qpair_qwriter(queue_t *, int, mblk_t *,
     streams_qpair_writer_t);
 
-static struct streams_qpair_qwriter_shadow streams_qpair_qwriter_first;
+struct streams_qpair_qwriter_shadow streams_qpair_qwriter_first;
 static struct streams_qpair_qwriter_shadow streams_qpair_qwriter_second;
 static mblk_t streams_qpair_qwriter_message;
+static kmutex_t streams_qpair_qwriter_caller_lock;
+static int streams_qpair_qwriter_caller_data;
+
+_NOTE(MUTEX_PROTECTS_DATA(streams_qpair_qwriter_caller_lock,
+    streams_qpair_qwriter_caller_data))
 
 void
 streams_qpair_read_writer(queue_t *q, mblk_t *mp)
 {
 	struct streams_qpair_qwriter_shadow *pair = STREAMS_QPAIR_FROM_READ(q);
 
-	pair->data++;
+	pair->qwriter_data++;
+	streams_qpair_qwriter_caller_data = 1;
 }
 
 void
@@ -60,7 +67,24 @@ streams_qpair_write_writer(queue_t *q, mblk_t *mp)
 {
 	struct streams_qpair_qwriter_shadow *pair = STREAMS_QPAIR_FROM_WRITE(q);
 
-	pair->data++;
+	pair->qwriter_data++;
+	streams_qpair_qwriter_caller_data = 1;
+}
+
+void
+streams_qpair_reentrant_writer(queue_t *q, mblk_t *mp)
+{
+	struct streams_qpair_qwriter_shadow *pair = STREAMS_QPAIR_FROM_READ(q);
+
+	pair->qwriter_data++;
+}
+
+void
+streams_qpair_wrong_pair_writer(queue_t *q, mblk_t *mp)
+{
+	struct streams_qpair_qwriter_shadow *pair = STREAMS_QPAIR_FROM_WRITE(q);
+
+	pair->wrong_pair_data = 1;
 }
 
 int
@@ -91,6 +115,7 @@ streams_qpair_qwriter_close(queue_t *q, int flag, cred_t *credp)
 void
 streams_qpair_qwriter_root(void)
 {
+	mutex_enter(&streams_qpair_qwriter_caller_lock);
 	locklint_qpair_qwriter(&streams_qpair_qwriter_first.read_queue, 0,
 	    &streams_qpair_qwriter_message, streams_qpair_read_writer);
 	locklint_qpair_qwriter(&streams_qpair_qwriter_first.write_queue, 1,
@@ -99,14 +124,20 @@ streams_qpair_qwriter_root(void)
 	    &streams_qpair_qwriter_message, streams_qpair_read_writer);
 	locklint_qpair_qwriter(&streams_qpair_qwriter_second.write_queue, 1,
 	    &streams_qpair_qwriter_message, streams_qpair_write_writer);
-
-	streams_qpair_read_writer(&streams_qpair_qwriter_first.read_queue,
-	    &streams_qpair_qwriter_message);
-	streams_qpair_write_writer(&streams_qpair_qwriter_first.write_queue,
-	    &streams_qpair_qwriter_message);
+	mutex_exit(&streams_qpair_qwriter_caller_lock);
 
 	rw_enter(&streams_qpair_qwriter_first.perimeter, RW_WRITER);
-	streams_qpair_write_writer(&streams_qpair_qwriter_second.write_queue,
+	streams_qpair_wrong_pair_writer(
+	    &streams_qpair_qwriter_second.write_queue,
 	    &streams_qpair_qwriter_message);
 	rw_exit(&streams_qpair_qwriter_first.perimeter);
+}
+
+void
+streams_qpair_qwriter_reentrance_root(void)
+{
+#ifdef MODEL_QPAIR_REENTRANCE
+	locklint_qpair_qwriter(&streams_qpair_qwriter_first.read_queue, 0,
+	    &streams_qpair_qwriter_message, streams_qpair_reentrant_writer);
+#endif
 }

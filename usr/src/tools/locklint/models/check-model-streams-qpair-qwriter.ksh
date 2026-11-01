@@ -11,8 +11,10 @@
 #
 
 #
-# Validate immediate qwriter inner dispatch to exact callbacks under the
-# selected D_MTQPAIR perimeter.  Direct and wrong-pair calls remain unsafe.
+# Validate immediate and deferred qwriter dispatch to exact callbacks under
+# the selected D_MTQPAIR perimeter.  Deferred entry drops the scheduling
+# thread's locks, immediate entry retains them, and wrong-pair protection does
+# not satisfy the callback.
 #
 
 SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
@@ -27,7 +29,10 @@ run_case()
 {
 	name=$1
 	flags=$2
-	expected_fixture=$3
+	extra_cpp=$3
+	expected_qwriter=$4
+	expected_reentrance=$5
+	expected_warnings=$6
 	output="$SCRIPT_DIR/streams-qpair-qwriter-$name.raw"
 
 	rm -f "$output"
@@ -40,6 +45,7 @@ run_case()
 		    -D_KERNEL -D_SYSCALL32 -D_SYSCALL32_IMPL \
 		    -D_ELF64 -D_DDI_STRICT -Dsun -D__sun -D__SVR4 -DDEBUG \
 		    "-DMODEL_FLAGS=$flags" \
+		    $extra_cpp \
 		    -I../../intel -nostdinc -I../../common \
 		    "$INPUT" "$MODEL"
 	) >"$output" 2>&1
@@ -51,21 +57,36 @@ run_case()
 		return "$status"
 	fi
 
-	warnings=$(grep -c "warning:.*\\[unprotected-access\\]$" "$output")
-	fixture=$(grep -c \
-	    "check-model-streams-qpair-qwriter.c:.*protection was not established" \
+	qwriter=$(grep -c \
+	    "protected member 'qwriter_data'.*\\[unprotected-access\\]$" \
 	    "$output")
+	caller=$(grep -c \
+	    "'streams_qpair_qwriter_caller_data'.*\\[unprotected-access\\]$" \
+	    "$output")
+	wrong_pair=$(grep -c \
+	    "'wrong_pair_data'.*\\[unprotected-access\\]$" "$output")
+	reentrance=$(grep -c "\\[lock-already-held\\]$" "$output")
+	bad_release=$(grep -c "\\[lock-maybe-not-held\\]$" "$output")
+	unmodeled=$(grep -c "\\[unmodeled-indirect-call\\]$" "$output")
 	model=$(grep -c \
 	    "streams-dki-model.c:.*protection was not established" "$output")
 	all_warnings=$(grep -c "warning:" "$output")
-	if (( warnings != 4 || all_warnings != 4 ||
-	    fixture != expected_fixture || model != 0 )); then
+	if (( qwriter != expected_qwriter || caller != 2 ||
+	    wrong_pair != 1 || reentrance != expected_reentrance ||
+	    bad_release != 0 || unmodeled != 0 || model != 0 ||
+	    all_warnings != expected_warnings )); then
 		print -u2 "Unexpected STREAMS queue-pair qwriter $name findings:"
-		print -u2 "  warnings=$warnings (expected 4)"
-		print -u2 "  all warnings=$all_warnings (expected 4)"
-		print -u2 "  fixture provenance=$fixture " \
-		    "(expected $expected_fixture)"
+		print -u2 "  unprotected qwriter data=$qwriter " \
+		    "(expected $expected_qwriter)"
+		print -u2 "  missing scheduling lock=$caller (expected 2)"
+		print -u2 "  wrong-pair protection=$wrong_pair (expected 1)"
+		print -u2 "  immediate reentrance=$reentrance " \
+		    "(expected $expected_reentrance)"
+		print -u2 "  bad releases=$bad_release (expected 0)"
+		print -u2 "  unmodeled callbacks=$unmodeled (expected 0)"
 		print -u2 "  model provenance=$model (expected 0)"
+		print -u2 "  all warnings=$all_warnings " \
+		    "(expected $expected_warnings)"
 		print -u2 "see $output"
 		return 1
 	fi
@@ -73,7 +94,8 @@ run_case()
 	rm -f "$output"
 }
 
-run_case d-mp D_MP 14 || exit $?
-run_case d-mtqpair '(D_MP|D_MTQPAIR)' 6 || exit $?
+run_case d-mp D_MP "" 4 0 7 || exit $?
+run_case d-mtqpair '(D_MP|D_MTQPAIR)' \
+    -DMODEL_QPAIR_REENTRANCE 0 1 4 || exit $?
 
-print "New locklint D_MTQPAIR qwriter inner dispatch works."
+print "New locklint D_MTQPAIR qwriter immediate and deferred dispatch works."
