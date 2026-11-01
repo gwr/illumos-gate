@@ -27,11 +27,13 @@ struct streams_qpair_qwriter_shadow {
 	queue_t read_queue;
 	queue_t write_queue;
 	int qwriter_data;
+	int standard_qwriter_data;
 	int wrong_pair_data;
 };
 
 _NOTE(RWLOCK_PROTECTS_DATA(streams_qpair_qwriter_shadow::perimeter,
-    streams_qpair_qwriter_shadow::{ qwriter_data wrong_pair_data }))
+    streams_qpair_qwriter_shadow::{
+    qwriter_data standard_qwriter_data wrong_pair_data }))
 
 #define	STREAMS_QPAIR_FROM_READ(q) \
 	((struct streams_qpair_qwriter_shadow *)((char *)(q) - \
@@ -87,6 +89,15 @@ streams_qpair_wrong_pair_writer(queue_t *q, mblk_t *mp)
 	pair->wrong_pair_data = 1;
 }
 
+void
+streams_qpair_standard_writer(queue_t *q, mblk_t *mp)
+{
+	struct streams_qpair_qwriter_shadow *pair = STREAMS_QPAIR_FROM_WRITE(q);
+
+	pair->standard_qwriter_data = 1;
+	streams_qpair_qwriter_caller_data = 1;
+}
+
 int
 streams_qpair_qwriter_other_put(queue_t *q, mblk_t *mp)
 {
@@ -124,6 +135,11 @@ streams_qpair_qwriter_root(void)
 	    &streams_qpair_qwriter_message, streams_qpair_read_writer);
 	locklint_qpair_qwriter(&streams_qpair_qwriter_second.write_queue, 1,
 	    &streams_qpair_qwriter_message, streams_qpair_write_writer);
+#ifdef MODEL_QWRITER_QPAIR_SIDE
+	qwriter(&streams_qpair_qwriter_second.write_queue,
+	    &streams_qpair_qwriter_message, streams_qpair_standard_writer,
+	    PERIM_INNER);
+#endif
 	mutex_exit(&streams_qpair_qwriter_caller_lock);
 
 	rw_enter(&streams_qpair_qwriter_first.perimeter, RW_WRITER);

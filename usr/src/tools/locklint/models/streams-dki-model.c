@@ -14,7 +14,9 @@
  *
  * MODEL_PREFIX names this model instance.  MODEL_FLAGS selects the module's
  * STREAMS concurrency contract.  Conservative defaults provide a usable
- * single-module model with no implied perimeter.
+ * single-module model with no implied perimeter.  An analysis runner may
+ * define MODEL_QWRITER_QPAIR_SIDE as zero or one when every modeled qwriter
+ * call is known to use that queue side.
  */
 
 #include <sys/types.h>
@@ -29,6 +31,15 @@
 
 #ifndef MODEL_FLAGS
 #define	MODEL_FLAGS	D_MP
+#endif
+
+#if defined(MODEL_QWRITER_QPAIR_SIDE) && \
+    MODEL_QWRITER_QPAIR_SIDE != 0 && MODEL_QWRITER_QPAIR_SIDE != 1
+#error "MODEL_QWRITER_QPAIR_SIDE must be zero or one"
+#endif
+#if defined(MODEL_QWRITER_QPAIR_SIDE) && \
+    (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) != D_MTQPAIR
+#error "MODEL_QWRITER_QPAIR_SIDE requires D_MTQPAIR"
 #endif
 
 #define	MODEL_CAT_(left, right)	left##right
@@ -95,26 +106,8 @@ qprocsoff(queue_t *q)
 	mutex_exit(&MODEL_NAME(qprocsoff_mutex));
 }
 
-/*
- * Model qwriter's possible immediate callback under the selected exclusive
- * perimeter.  Per-target entry assertions separately seed the same state for
- * callbacks which run after qwriter returns.
- */
-void
-qwriter(queue_t *q, mblk_t *mp, void (*func)(), int perimeter)
-{
-	if (MODEL_NAME(call_direct)) {
-		if (perimeter == PERIM_INNER) {
-			rw_enter(&MODEL_NAME(inner), RW_WRITER);
-			(*func)(q, mp);
-			rw_exit(&MODEL_NAME(inner));
-		} else {
-			rw_enter(&MODEL_NAME(outer), RW_WRITER);
-			(*func)(q, mp);
-			rw_exit(&MODEL_NAME(outer));
-		}
-	}
-}
+static void MODEL_NAME(qpair_qwriter_invoke)(queue_t *, int, mblk_t *,
+    void (*)(queue_t *, mblk_t *));
 
 /*
  * Invoke a PERIM_INNER callback for D_MTQPAIR.  The exact side derives the
@@ -146,6 +139,56 @@ MODEL_NAME(qpair_qwriter_invoke)(queue_t *q, int side, mblk_t *mp,
 #else
 	(*func)(q, mp);
 #endif
+}
+
+/*
+ * Invoke qwriter under the selected exclusive perimeter.  A configured
+ * queue-pair side maps inner entry to the pair containing the concrete queue;
+ * otherwise inner entry uses the module-wide synthetic perimeter.
+ */
+static void
+MODEL_NAME(qwriter_invoke)(queue_t *q, mblk_t *mp, void (*func)(),
+    int perimeter)
+{
+	if (perimeter == PERIM_INNER) {
+#ifdef MODEL_QWRITER_QPAIR_SIDE
+		MODEL_NAME(qpair_qwriter_invoke)(q,
+		    MODEL_QWRITER_QPAIR_SIDE, mp,
+		    (void (*)(queue_t *, mblk_t *))func);
+#else
+		rw_enter(&MODEL_NAME(inner), RW_WRITER);
+		(*func)(q, mp);
+		rw_exit(&MODEL_NAME(inner));
+#endif
+	} else {
+		rw_enter(&MODEL_NAME(outer), RW_WRITER);
+		(*func)(q, mp);
+		rw_exit(&MODEL_NAME(outer));
+	}
+}
+
+/*
+ * Deferred qwriter entry retains exact arguments but not locks held by the
+ * scheduling thread.
+ */
+static void
+MODEL_NAME(qwriter_deferred)(queue_t *q, mblk_t *mp, void (*func)(),
+    int perimeter)
+{
+	MODEL_NAME(qwriter_invoke)(q, mp, func, perimeter);
+}
+
+_NOTE(ASYNC_ENTRY(MODEL_NAME(qwriter_deferred)))
+
+/*
+ * Model qwriter's possible immediate and deferred callback execution.
+ */
+void
+qwriter(queue_t *q, mblk_t *mp, void (*func)(), int perimeter)
+{
+	if (MODEL_NAME(call_direct))
+		MODEL_NAME(qwriter_invoke)(q, mp, func, perimeter);
+	MODEL_NAME(qwriter_deferred)(q, mp, func, perimeter);
 }
 
 /*

@@ -4,12 +4,16 @@ declare --external-entry=false streams_qpair_read_writer
 declare --external-entry=false streams_qpair_write_writer
 declare --external-entry=false streams_qpair_reentrant_writer
 declare --external-entry=false streams_qpair_wrong_pair_writer
+declare --external-entry=false streams_qpair_standard_writer
 declare --external-entry=false locklint_put locklint_service
 declare --external-entry=false locklint_open locklint_close
 declare --external-entry=false qprocson qprocsoff qwriter putnext
 declare discriminant locklint_qpair_qwriter side
 declare discriminant locklint_qpair_qwriter_invoke side
 declare discriminant locklint_qpair_qwriter_deferred side
+declare discriminant qwriter perimeter
+declare discriminant locklint_qwriter_invoke perimeter
+declare discriminant locklint_qwriter_deferred perimeter
 assert rw-write-held streams_qpair_qwriter_first.perimeter \
     streams_qpair_qwriter_reentrance_root
 declare targets qinit::qi_putp streams_qpair_qwriter_other_put

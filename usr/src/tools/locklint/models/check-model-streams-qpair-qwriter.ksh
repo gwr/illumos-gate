@@ -33,6 +33,7 @@ run_case()
 	expected_qwriter=$4
 	expected_reentrance=$5
 	expected_warnings=$6
+	expected_caller=$7
 	output="$SCRIPT_DIR/streams-qpair-qwriter-$name.raw"
 
 	rm -f "$output"
@@ -65,20 +66,25 @@ run_case()
 	    "$output")
 	wrong_pair=$(grep -c \
 	    "'wrong_pair_data'.*\\[unprotected-access\\]$" "$output")
+	standard=$(grep -c \
+	    "'standard_qwriter_data'.*\\[unprotected-access\\]$" "$output")
 	reentrance=$(grep -c "\\[lock-already-held\\]$" "$output")
 	bad_release=$(grep -c "\\[lock-maybe-not-held\\]$" "$output")
 	unmodeled=$(grep -c "\\[unmodeled-indirect-call\\]$" "$output")
 	model=$(grep -c \
 	    "streams-dki-model.c:.*protection was not established" "$output")
 	all_warnings=$(grep -c "warning:" "$output")
-	if (( qwriter != expected_qwriter || caller != 2 ||
-	    wrong_pair != 1 || reentrance != expected_reentrance ||
+	if (( qwriter != expected_qwriter || caller != expected_caller ||
+	    wrong_pair != 1 || standard != 0 ||
+	    reentrance != expected_reentrance ||
 	    bad_release != 0 || unmodeled != 0 || model != 0 ||
 	    all_warnings != expected_warnings )); then
 		print -u2 "Unexpected STREAMS queue-pair qwriter $name findings:"
 		print -u2 "  unprotected qwriter data=$qwriter " \
 		    "(expected $expected_qwriter)"
-		print -u2 "  missing scheduling lock=$caller (expected 2)"
+		print -u2 "  standard qwriter data=$standard (expected 0)"
+		print -u2 "  missing scheduling lock=$caller " \
+		    "(expected $expected_caller)"
 		print -u2 "  wrong-pair protection=$wrong_pair (expected 1)"
 		print -u2 "  immediate reentrance=$reentrance " \
 		    "(expected $expected_reentrance)"
@@ -94,8 +100,9 @@ run_case()
 	rm -f "$output"
 }
 
-run_case d-mp D_MP "" 4 0 7 || exit $?
+run_case d-mp D_MP "" 4 0 7 2 || exit $?
 run_case d-mtqpair '(D_MP|D_MTQPAIR)' \
-    -DMODEL_QPAIR_REENTRANCE 0 1 4 || exit $?
+    '-DMODEL_QPAIR_REENTRANCE -DMODEL_QWRITER_QPAIR_SIDE=1' \
+    0 1 5 3 || exit $?
 
 print "New locklint D_MTQPAIR qwriter immediate and deferred dispatch works."

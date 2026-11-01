@@ -28,6 +28,7 @@ rm -f "$OUTPUT"
 (
 	cd "$MODULE_DIR" || exit 1
 	"$LOCKLINT" --compat=osll --root-discovery=none --dump-callgraph \
+	    --dump-annotations \
 	    --cf "$COMMANDS" \
 	    -D__sun -m64 -Ui386 -U__i386 -O2 \
 	    -D_ASM_INLINES -std=gnu99 \
@@ -64,12 +65,17 @@ do
 done
 
 unknown=$(grep -c "'unknown_data'.*\\[unprotected-access\\]$" "$OUTPUT")
-if (( unknown != 2 )); then
+schedule=$(grep -c \
+    "'scheduling_data'.*\\[unprotected-access\\]$" "$OUTPUT")
+annotations=$(grep -c "ASYNC_ENTRY locklint_qwriter_deferred" "$OUTPUT")
+if (( unknown != 2 || schedule != 4 || annotations != 1 )); then
 	print -u2 "Unexpected STREAMS qwriter unknown-selector findings: " \
 	    "$unknown (expected 2)"
+	print -u2 "  missing scheduling lock=$schedule (expected 4)"
+	print -u2 "  async annotations=$annotations (expected 1)"
 	print -u2 "see $OUTPUT"
 	exit 1
 fi
 
 rm -f "$OUTPUT"
-print "New locklint qwriter perimeter entry works."
+print "New locklint qwriter immediate and deferred perimeter entry works."
