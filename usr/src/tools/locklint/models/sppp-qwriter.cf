@@ -1,0 +1,6 @@
+declare --root=true sppp_uwput
+
+declare discriminant qwriter perimeter
+declare discriminant locklint_sppp_qwriter_invoke perimeter
+declare discriminant locklint_sppp_qwriter_deferred perimeter
+declare discriminant locklint_sppp_qpair_qwriter_invoke side
