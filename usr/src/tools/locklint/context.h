@@ -149,6 +149,7 @@ struct point_state;
 enum function_context_kind {
 	FUNCTION_CONTEXT_CALLER,
 	FUNCTION_CONTEXT_ROOT,
+	FUNCTION_CONTEXT_ASYNC_ENTRY,
 	FUNCTION_CONTEXT_EFFECT_CALLER,
 	FUNCTION_CONTEXT_EFFECT_CONTRACT
 };
@@ -273,6 +274,9 @@ int context_create(struct function_info *,
     const struct binding_environment *, const struct semantic_state *,
     struct function_context **, bool *);
 int context_root_create(struct function_info *,
+    const struct binding_environment *, const struct semantic_state *,
+    struct function_context **, bool *);
+int context_async_entry_create(struct function_info *,
     const struct binding_environment *, const struct semantic_state *,
     struct function_context **, bool *);
 int context_effect_create(struct function_info *,

@@ -1,0 +1,3 @@
+declare --root=true async_entry_root async_entry_second_root
+declare discriminant async-entry.c::async_worker selected
+declare discriminant async-entry-second.c::async_worker selected

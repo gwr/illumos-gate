@@ -1518,6 +1518,16 @@ context_root_create(struct function_info *function,
 }
 
 int
+context_async_entry_create(struct function_info *function,
+    const struct binding_environment *bindings,
+    const struct semantic_state *entry_state,
+    struct function_context **result, bool *existed)
+{
+	return (context_create_impl(function, bindings, entry_state,
+	    FUNCTION_CONTEXT_ASYNC_ENTRY, result, existed));
+}
+
+int
 context_effect_create(struct function_info *function,
     const struct binding_environment *bindings,
     const struct semantic_state *entry_state,

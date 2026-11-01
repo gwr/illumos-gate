@@ -116,6 +116,13 @@ enum callgraph_declare_result callgraph_declare_root(const char *, bool,
     const char *, unsigned long);
 
 /*
+ * Declare that calls to one source-resolved function start an independent
+ * competing context while retaining ordinary actual-to-formal bindings.
+ */
+enum callgraph_declare_result callgraph_declare_async_entry(
+    struct translation_unit *, struct symbol *, const char *, unsigned long);
+
+/*
  * Declare one integer or enum formal whose exact constant actual participates
  * in callee context identity.  Exact duplicate declarations are harmless.
  */

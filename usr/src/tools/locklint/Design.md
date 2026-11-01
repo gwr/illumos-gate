@@ -93,6 +93,9 @@ not when future features should be added.
   safely attributable to a known caller.  Roots seed call-graph reachability
   and are boundaries at which unsatisfied protection conditions cannot simply be
   deferred to a known caller.
+- **Asynchronous entry** - A call which retains ordinary actual-to-formal
+  bindings but starts the callee with fresh root-like lock and competition
+  state.  The scheduling caller continues with its unchanged state.
 - **Root reason** - One independently established reason for treating a
   function as an analysis root.  A function may have several reasons, each
   with its own provenance.
@@ -1428,12 +1431,19 @@ Each `_NOTE` invocation becomes an `annotation` containing:
 - copied tokens with ordinary macro expansion applied after the raw
   annotation keyword, for parsing and resolution;
 - its recognized annotation kind;
-- an optional parsed lock reference or explanatory scheme text;
+- an optional parsed lock reference, explanatory scheme text, or function
+  name;
 - a list of parsed data references; and
 - parse, processing, and resolution state.
 
 Unsupported annotation names retain their raw tokens for dumps but do not
 currently affect checking.
+
+`ASYNC_ENTRY` resolves its function name while the defining translation
+unit's namespace remains available, so repeated static names in different
+translation units remain distinct.  Application is deferred until all
+function definitions have entered the callgraph.  The resolved function
+record then carries the asynchronous-entry property used by call processing.
 
 ### Names and references
 
@@ -2029,6 +2039,36 @@ Resolved calls map a callee's returned object to the caller's call-result
 identity.  This direct relationship supplies the return-relative identity
 needed by representative contracts.  General returned-allocation provenance
 beyond that relationship remains later object-identity work.
+
+### Bound asynchronous entry
+
+`_NOTE(ASYNC_ENTRY(function))` marks a void function defined in the same
+translation unit.  The property applies to the function, not to one annotated
+call site: every resolved call to the named function crosses an asynchronous
+boundary.  At each such call, locklint constructs the ordinary binding
+environment first.  Pointer identities, exact callback target sets, derived
+identities, and declared scalar discriminants therefore remain available in
+the callee.
+
+The callee starts in a distinct asynchronous context with fresh competing
+entry state and no locks from the scheduling thread.  Entry lock requirements
+are seeded like root requirements.  The scheduling caller resumes immediately
+from its unchanged call state; no continuation maps callee exits, lock
+effects, or return values back into it.  Lock-on-return diagnostics are also
+excluded because an asynchronous context has no caller-visible return.
+Scheduling-call provenance is retained for diagnostics and auditing.
+
+Contexts remain bounded by canonical callee binding environments and entry
+states rather than by runtime scheduling events.  The initial source form
+accepts only void functions, which prevents analysis from fabricating a
+return value for a caller that continues independently.
+
+Because the property is function-wide, representative-model code should use
+a dedicated helper whose name makes its synthetic asynchronous role clear,
+such as `locklint_async_callback` or
+`locklint_qpair_qwriter_deferred`.  Do not annotate a general helper that also
+has synchronous callers; instead, keep shared behavior in an unannotated
+implementation and call it through a dedicated annotated wrapper.
 
 ### Focused validation
 

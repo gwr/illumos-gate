@@ -133,6 +133,7 @@ struct function_info {
 	unsigned int root_reasons;
 	bool reachable_from_root;
 	bool entry_no_competing_threads;
+	bool async_entry;
 };
 
 #endif /* FUNCTION_INFO_H */

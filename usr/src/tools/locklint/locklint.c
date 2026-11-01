@@ -536,6 +536,7 @@ main(int argc, char **argv)
 		sync_api_fini();
 		return (EXIT_FAILURE);
 	}
+	locklint_apply_async_entry_annotations();
 	locklint_apply_contract_annotations();
 	timing_begin(TIMING_COMMANDS);
 	if (!parse_command_files()) {

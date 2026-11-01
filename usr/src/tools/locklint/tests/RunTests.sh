@@ -1907,6 +1907,11 @@ require_match "command external entry true provenance" \
     "property external-entry=true external-entry-true.cf:2" \
     command-external-entry-true.out
 
+echo "test: async entry"
+if ! ksh ./check-async-entry.ksh; then
+	fail "async entry"
+fi
+
 #
 # Verify declared targets for an operation-vector member supplied outside the
 # analysis.  A singleton declaration analyzes one target body; a target set
@@ -3309,6 +3314,13 @@ require_match "annotation errors" \
 require_match "annotation errors" \
     "unresolved annotation name 'error_state::missing_read_only'" \
     annotation-errors.out
+require_match "annotation errors" \
+    "unresolved ASYNC_ENTRY function 'missing_async_entry'" \
+    annotation-errors.out
+require_match "annotation errors" \
+    "ASYNC_ENTRY requires a void function" annotation-errors.out
+require_match "annotation errors" \
+    "ASYNC_ENTRY requires one function name" annotation-errors.out
 
 #
 # Verify that ordinary macros expand throughout declarative annotation names.

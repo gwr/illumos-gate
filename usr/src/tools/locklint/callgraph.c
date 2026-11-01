@@ -97,6 +97,8 @@ struct function_record {
 	size_t accounted_escape_count;
 	bool internal_linkage;
 	bool inline_implementation;
+	const char *async_entry_file;
+	unsigned long async_entry_line;
 	bool identity_lower_bound;
 	unsigned int identity_sequence;
 	const char *entry_declaration_file;
@@ -268,6 +270,9 @@ static bool record_function_pointer_activity;
 static unsigned int next_function_pointer_activity_sequence;
 static avl_tree_t call_target_sets;
 static bool call_target_sets_initialized;
+
+static struct function_info *resolve_function_symbol(
+    struct translation_unit *, struct symbol *, bool, bool *);
 
 static int
 compare_declared_member_targets(const void *left_arg, const void *right_arg)
@@ -1235,6 +1240,29 @@ callgraph_declare_root(const char *name, bool value, const char *file,
 	}
 	if (value)
 		function->info.root_reasons |= FUNCTION_ROOT_DECLARED;
+	return (CALLGRAPH_DECLARE_OK);
+}
+
+enum callgraph_declare_result
+callgraph_declare_async_entry(struct translation_unit *tu,
+    struct symbol *symbol, const char *file, unsigned long line)
+{
+	struct function_info *info;
+	struct function_record *function;
+	bool ambiguous;
+
+	require_state(CALLGRAPH_CONSTRUCTING, "async entry declaration");
+	info = resolve_function_symbol(tu, symbol, false, &ambiguous);
+	if (ambiguous)
+		return (CALLGRAPH_DECLARE_AMBIGUOUS);
+	if (info == NULL)
+		return (CALLGRAPH_DECLARE_UNRESOLVED);
+	function = function_record(info);
+	info->async_entry = true;
+	if (function->async_entry_file == NULL) {
+		function->async_entry_file = file;
+		function->async_entry_line = line;
+	}
 	return (CALLGRAPH_DECLARE_OK);
 }
 
@@ -2985,6 +3013,12 @@ callgraph_dump(FILE *stream)
 			    FUNCTION_ROOT_PROPERTY_TRUE ? "true" : "false",
 			    function->root_property_file,
 			    function->root_property_line);
+		}
+		if (function->info.async_entry) {
+			(void) fprintf(stream,
+			    "  property async-entry=true %s:%lu\n",
+			    function->async_entry_file,
+			    function->async_entry_line);
 		}
 		dump_function_calls(stream, &function->info);
 	}

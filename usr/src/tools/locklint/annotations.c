@@ -63,6 +63,7 @@ enum annotation_kind {
 	ANNOTATION_READ_ONLY_DATA,
 	ANNOTATION_RWLOCK_COVERS_LOCKS,
 	ANNOTATION_LOCK_ORDER,
+	ANNOTATION_ASYNC_ENTRY,
 	ANNOTATION_DECLARE_CONTRACT
 };
 
@@ -94,11 +95,15 @@ struct annotation {
 	struct annotation_ref *data;
 	struct annotation_ref *order;
 	const char *scheme;
+	const char *async_function;
 	const char *contract_function;
+	struct symbol *async_symbol;
+	struct translation_unit *async_tu;
 	enum annotation_kind kind;
 	bool parsed;
 	bool processed;
 	bool resolved;
+	bool async_pending;
 	bool contract_pending;
 	struct annotation *next;
 };
@@ -884,6 +889,8 @@ parse_annotation(struct annotation *annotation)
 		annotation->kind = ANNOTATION_RWLOCK_COVERS_LOCKS;
 	} else if (token_is(cursor, "LOCK_ORDER")) {
 		annotation->kind = ANNOTATION_LOCK_ORDER;
+	} else if (token_is(cursor, "ASYNC_ENTRY")) {
+		annotation->kind = ANNOTATION_ASYNC_ENTRY;
 	} else if (token_is(cursor, "DECLARE_CONTRACT")) {
 		annotation->kind = ANNOTATION_DECLARE_CONTRACT;
 	} else {
@@ -945,6 +952,20 @@ parse_annotation(struct annotation *annotation)
 		break;
 	case ANNOTATION_LOCK_ORDER:
 		return (finish_order_annotation(annotation, cursor, name));
+	case ANNOTATION_ASYNC_ENTRY:
+		if (cursor == NULL || cursor->type != TOKEN_IDENT)
+			return (annotation_error(annotation, cursor,
+			    "ASYNC_ENTRY requires one function name"));
+		annotation->async_function = cursor->text;
+		cursor = cursor->next;
+		if (!token_is(cursor, ")"))
+			return (annotation_named_error(annotation, cursor,
+			    "expected ')' after", name));
+		if (cursor->next != NULL)
+			return (annotation_named_error(annotation, cursor->next,
+			    "unexpected tokens after", name));
+		annotation->parsed = true;
+		return (true);
 	case ANNOTATION_DECLARE_CONTRACT:
 		if (!parse_name(annotation, &cursor, &annotation->data, &tail))
 			return (false);
@@ -2018,6 +2039,38 @@ locklint_resolve_annotations(struct symbol_list *symbols)
 				annotation->resolved = true;
 			continue;
 		}
+		if (annotation->kind == ANNOTATION_ASYNC_ENTRY) {
+			struct ident *ident =
+			    built_in_ident(annotation->async_function);
+			struct symbol *type;
+			struct symbol *return_type;
+
+			annotation->async_symbol = resolve_local(symbols, ident,
+			    annotation->pos);
+			if (annotation->async_symbol == NULL) {
+				annotation->async_symbol =
+				    lookup_symbol(ident, NS_SYMBOL);
+			}
+			if (annotation->async_symbol == NULL) {
+				sparse_error(annotation->pos,
+				    "unresolved ASYNC_ENTRY function '%s'",
+				    annotation->async_function);
+				continue;
+			}
+			type = annotation->async_symbol != NULL ?
+			    type_node_strip(annotation->async_symbol->
+			    ctype.base_type) : NULL;
+			return_type = type != NULL && type->type == SYM_FN ?
+			    type_node_strip(type->ctype.base_type) : NULL;
+			if (return_type != &void_ctype) {
+				sparse_error(annotation->pos,
+				    "ASYNC_ENTRY requires a void function");
+				continue;
+			}
+			annotation->async_tu = annotation->tu;
+			annotation->async_pending = true;
+			continue;
+		}
 		if (annotation->kind == ANNOTATION_DECLARE_CONTRACT) {
 			enum callgraph_declare_result result;
 
@@ -2091,6 +2144,31 @@ locklint_resolve_annotations(struct symbol_list *symbols)
 			annotation->resolved = true;
 			index_data_policy_refs(annotation);
 		}
+	}
+}
+
+void
+locklint_apply_async_entry_annotations(void)
+{
+	struct annotation *annotation;
+
+	for (annotation = annotations; annotation != NULL;
+	    annotation = annotation->next) {
+		enum callgraph_declare_result result;
+
+		if (!annotation->async_pending)
+			continue;
+		annotation->async_pending = false;
+		result = callgraph_declare_async_entry(annotation->async_tu,
+		    annotation->async_symbol,
+		    stream_name(annotation->pos.stream), annotation->pos.line);
+		if (result != CALLGRAPH_DECLARE_OK) {
+			sparse_error(annotation->pos,
+			    "function '%s' cannot be used for ASYNC_ENTRY",
+			    annotation->async_function);
+			continue;
+		}
+		annotation->resolved = true;
 	}
 }
 
@@ -3215,6 +3293,8 @@ annotation_kind_name(enum annotation_kind kind)
 		return ("RWLOCK_COVERS_LOCKS");
 	case ANNOTATION_LOCK_ORDER:
 		return ("LOCK_ORDER");
+	case ANNOTATION_ASYNC_ENTRY:
+		return ("ASYNC_ENTRY");
 	case ANNOTATION_DECLARE_CONTRACT:
 		return ("DECLARE_CONTRACT");
 	default:
@@ -3248,6 +3328,13 @@ locklint_show_annotations(FILE *stream)
 				show_annotation_ref(stream, ref);
 			}
 			(void) fputc('\n', stream);
+			continue;
+		}
+		if (annotation->kind == ANNOTATION_ASYNC_ENTRY) {
+			show_annotation_location(stream, annotation);
+			(void) fprintf(stream, "%s %s\n",
+			    annotation_kind_name(annotation->kind),
+			    annotation->async_function);
 			continue;
 		}
 		for (ref = annotation->data; ref != NULL; ref = ref->next) {

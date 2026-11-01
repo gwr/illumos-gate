@@ -3015,6 +3015,52 @@ process_call_target(struct analysis *analysis,
 
 	bindings = call_bindings(analysis, caller_context, callee_function,
 	    caller_state, point_state->point.next_instruction);
+	if (callee_function->async_entry && !contract_model) {
+		statistics.root_semantic_states_find++;
+		error = context_entry_state_intern(callee_function,
+		    &callee_state, &existed);
+		if (error != 0)
+			die("cannot intern async entry state: %s",
+			    strerror(error));
+		record_semantic_state(analysis, existed);
+
+		statistics.call_contexts_find++;
+		error = context_async_entry_create(callee_function, bindings,
+		    callee_state, &callee_context, &context_existed);
+		if (error != 0)
+			die("cannot create async entry context: %s",
+			    strerror(error));
+		if (context_existed) {
+			analysis->counts.contexts_reused++;
+		} else {
+			analysis->counts.contexts_created++;
+			if (context_count(callee_function) == 1)
+				analysis->counts.functions++;
+		}
+
+		statistics.call_provenance_edges_find++;
+		error = provenance_edge_create(callee_context, caller_context,
+		    point_state->point.next_instruction, &edge, &existed);
+		if (error != 0)
+			die("cannot record async entry provenance: %s",
+			    strerror(error));
+		if (existed)
+			analysis->counts.provenance_edges_reused++;
+		else
+			analysis->counts.provenance_edges_created++;
+
+		if (!context_existed) {
+			record_context_entry(analysis, callee_context, callee_state,
+			    callee_function->entry_lock_requirements);
+		}
+		resume_point = point_state->point;
+		resume_point.next_instruction = next_live_instruction(
+		    point_state->point.block,
+		    point_state->point.next_instruction);
+		record_analysis_point(analysis, caller_context, resume_point,
+		    call_state, false);
+		return;
+	}
 	statistics.call_import_semantic_states_find++;
 	error = context_state_import(callee_function, call_state,
 	    &callee_state, &existed);
@@ -8257,7 +8303,8 @@ observe_caller_visible_returns(struct analysis *analysis,
 	    context = AVL_NEXT(&function->contexts.contexts, context)) {
 		struct caller_visible_return_lock *candidate;
 
-		if (!context_has_analysis_root(context))
+		if (!context_has_analysis_root(context) ||
+		    context->kind == FUNCTION_CONTEXT_ASYNC_ENTRY)
 			continue;
 		for (candidate = avl_first(candidates); candidate != NULL;
 		    candidate = AVL_NEXT(candidates, candidate)) {
@@ -8505,7 +8552,8 @@ diagnose_locks_on_return(struct analysis *analysis)
 
 			statistics.local_return_point_states_enum++;
 			point_state = avl_first(&context->point_states);
-			if (!context_has_analysis_root(context))
+			if (!context_has_analysis_root(context) ||
+			    context->kind == FUNCTION_CONTEXT_ASYNC_ENTRY)
 				continue;
 			while (point_state != NULL) {
 				if (point_state->point.next_instruction == NULL ||

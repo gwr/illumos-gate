@@ -133,6 +133,7 @@ bool locklint_get_wait_exemption(struct translation_unit *,
 void locklint_process_function_annotations(FILE *, struct translation_unit *,
     struct entrypoint *);
 void locklint_resolve_annotations(struct symbol_list *);
+void locklint_apply_async_entry_annotations(void);
 void locklint_apply_contract_annotations(void);
 void locklint_show_annotations(FILE *);
 
