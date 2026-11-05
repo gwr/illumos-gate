@@ -51,3 +51,20 @@ reassign_allocated_state(void)
 	state = get_state();
 	state->value = 3;
 }
+
+/*
+ * Exercise a valid read-only lifecycle for the audit checks: initialize
+ * privately, publish, then read without modifying the published object.
+ */
+static int
+initialize_then_read_allocated_state(void)
+{
+	struct allocated_state *state = get_state();
+
+	_NOTE(COMPETING_THREADS_NOW)
+	_NOTE(NOW_INVISIBLE_TO_OTHER_THREADS(*state))
+	state->value = 1;
+	_NOTE(NOW_VISIBLE_TO_OTHER_THREADS(*state))
+
+	return (state->value);
+}

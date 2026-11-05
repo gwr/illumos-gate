@@ -1,0 +1,2 @@
+# Isolate the valid lifecycle from the diagnostic counterexamples for auditing.
+declare --root=true initialize_then_read_allocated_state
