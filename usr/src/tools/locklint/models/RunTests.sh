@@ -21,6 +21,7 @@ set -e
 "$SCRIPT_DIR/check-kmod-ddi-callbacks.ksh"
 "$SCRIPT_DIR/check-kmod-ddi-forwarding.ksh"
 "$SCRIPT_DIR/check-kmod-streams-dispatch.ksh"
+"$SCRIPT_DIR/check-model-streams-putnext.ksh"
 "$SCRIPT_DIR/check-model-streams-perimeter.ksh"
 "$SCRIPT_DIR/check-model-streams-perq.ksh"
 "$SCRIPT_DIR/check-model-streams-qpair-put.ksh"

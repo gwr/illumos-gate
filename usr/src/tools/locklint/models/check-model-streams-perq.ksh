@@ -34,7 +34,8 @@ run_case()
 	rm -f "$output"
 	(
 		cd "$MODULE_DIR" || exit 1
-		"$LOCKLINT" --compat=osll --cf "$COMMANDS" \
+		"$LOCKLINT" --compat=osll --root-discovery=none \
+		    --cf "$COMMANDS" \
 		    -D__sun -m64 -Ui386 -U__i386 -O2 \
 		    -D_ASM_INLINES -std=gnu99 \
 		    -D_KERNEL -D_SYSCALL32 -D_SYSCALL32_IMPL \
@@ -72,8 +73,8 @@ run_case()
 	rm -f "$output"
 }
 
-run_case d-mp D_MP 4 || exit $?
+run_case d-mp D_MP 2 || exit $?
 run_case d-mtperq '(D_MP|D_MTPERQ)' 0 || exit $?
-run_case d-mtperq-putshared '(D_MP|D_MTPERQ|D_MTPUTSHARED)' 2 || exit $?
+run_case d-mtperq-putshared '(D_MP|D_MTPERQ|D_MTPUTSHARED)' 1 || exit $?
 
 print "New locklint D_MTPERQ put entry works."

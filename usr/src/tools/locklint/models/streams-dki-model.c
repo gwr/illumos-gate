@@ -461,9 +461,10 @@ qbufcall(queue_t *q, size_t size, uint_t priority, void (*func)(void *),
 }
 
 /*
- * Enter the selected downstream module's put procedure.  Both framework put
- * entry and immediate putnext dispatch use this sequence so their perimeter
- * ordering and modes remain identical.
+ * Enter the selected module's put procedure from the framework, establishing
+ * its configured perimeter state.  Outbound putnext delivery must not use
+ * this sequence because the selected module does not own the destination's
+ * perimeter.
  */
 static void
 MODEL_NAME(put_entry)(struct qinit *qinit, queue_t *q, mblk_t *mp)
@@ -550,8 +551,11 @@ MODEL_NAME(qpair_put)(queue_t *q, int side,
 }
 
 /*
- * Model putnext's possible immediate downstream put procedure.  Registered
- * qi_putp procedures retain independent entry contexts for later delivery.
+ * Model putnext's possible immediate downstream put procedure without adding
+ * perimeter ownership.  Caller-held locks remain visible through the call;
+ * neighboring-module perimeters are outside the selected-module boundary.
+ * Registered qi_putp procedures retain independent entry contexts for later
+ * delivery when the analysis policy enables those roots.
  */
 void
 putnext(queue_t *q, mblk_t *mp)
@@ -559,7 +563,7 @@ putnext(queue_t *q, mblk_t *mp)
 	queue_t *next = q->q_next;
 
 	if (MODEL_NAME(call_direct))
-		MODEL_NAME(put_entry)(next->q_qinfo, next, mp);
+		(*next->q_qinfo->qi_putp)(next, mp);
 }
 
 /*

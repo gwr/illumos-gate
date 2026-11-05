@@ -21,6 +21,7 @@
 
 extern krwlock_t locklint_inner;
 extern krwlock_t locklint_outer;
+extern void locklint_put(void);
 
 static int modeled_data;
 static int outer_data;
@@ -38,24 +39,10 @@ streams_modeled_put(queue_t *q, mblk_t *mp)
 	return (0);
 }
 
-static struct qinit streams_modeled_qinit = {
-	.qi_putp = streams_modeled_put
-};
-
-static queue_t streams_putnext_target = {
-	.q_qinfo = &streams_modeled_qinit
-};
-
-static queue_t streams_putnext_source = {
-	.q_next = &streams_putnext_target
-};
-
-static mblk_t streams_putnext_message;
-
 void
-streams_modeled_putnext(void)
+streams_modeled_entry(void)
 {
-	putnext(&streams_putnext_source, &streams_putnext_message);
+	locklint_put();
 }
 
 void

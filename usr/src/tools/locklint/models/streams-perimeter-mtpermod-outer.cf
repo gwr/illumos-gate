@@ -1,3 +1,4 @@
+declare --root=true streams_modeled_entry streams_direct_put
 declare targets qinit::qi_putp streams_modeled_put
 assert rw-write-held locklint_inner streams_modeled_put
 assert rw-read-held locklint_outer streams_modeled_put

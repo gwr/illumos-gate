@@ -1,0 +1,2 @@
+declare --root=true streams_putnext_unlocked streams_putnext_locked
+declare targets qinit::qi_putp streams_putnext_target

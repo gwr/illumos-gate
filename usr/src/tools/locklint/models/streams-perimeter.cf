@@ -1,1 +1,2 @@
+declare --root=true streams_modeled_entry streams_direct_put
 declare targets qinit::qi_putp streams_modeled_put
