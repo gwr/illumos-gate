@@ -1924,6 +1924,8 @@ require_match "command external entry true provenance" \
     "property external-entry=true external-entry-true.cf:2" \
     command-external-entry-true.out
 
+ksh ./rwlock-predicate.ksh || fail "rwlock predicate branches"
+
 echo "test: async entry"
 if ! ksh ./check-async-entry.ksh; then
 	fail "async entry"

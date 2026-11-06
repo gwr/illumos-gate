@@ -2496,6 +2496,49 @@ upgrade flags so callers receive the corresponding mode diagnostic.
 
 Neither transition releases ownership or creates a lock-order edge.
 
+### Ordinary rwlock predicate branches
+
+Direct calls to rw_read_held, rw_write_held, rw_lock_held, _rw_read_held,
+and _rw_write_held can select feasible paths when their result feeds the
+current basic block's Boolean branch. rw_write_held and libc's underscored
+read/write spellings test current-thread ownership. Kernel rw_read_held
+tests whether any thread holds the lock for reading, and rw_lock_held tests
+whether any thread holds it in either mode. Known local ownership determines
+these queries: a local writer excludes readers, a local reader establishes
+reader presence, and either local mode establishes that the lock is held.
+
+locklint_get_rwlock_predicate decodes the queried access, positive local
+modes, and whether the query may observe another thread, independently of
+assertion provenance. After assertion handling,
+process_rwlock_predicate uses the existing contextual identity and lock-mode
+lookup to tag feasible true and false outcomes with the existing conditional
+instruction metadata. It changes no ownership, creates no entry requirement,
+and adds no lock-order edge. A result saved across a release in the same
+block retains the answer observed at the call rather than querying the
+changed state at the branch.
+
+Concrete identities absent from the held map use the existing locally unheld
+entry state. That excludes current-thread ownership but cannot exclude
+another thread's reader or writer. Unprefixed rw_read_held and rw_lock_held
+therefore retain both answers in locally unheld state. Unprefixed
+rw_read_held is conservative for libc callers as well, because no per-TU API
+profile selects its kernel versus user meaning. An opaque pseudo identity
+with no recorded ownership is unknown and
+retains both answers; a recorded held mode for that same identity remains
+usable. Mixed modes permit both answers when appropriate without introducing
+refined semantic states. Unsupported accesses and results consumed through
+other blocks, wrappers, memory, or general scalar expressions retain ordinary
+conservative control flow. Source ASSERT handling remains separate.
+
+The implementation introduces no predicate-value map, state field, or new
+collection. Lookup uses existing canonical bindings and the lock map; at
+most two conditional point alternatives survive until the immediate branch.
+Non-predicate calls are rejected before scanning the block for a consumer.
+tests/rwlock-predicate.c and its ksh runner cover exact modes, aliases,
+negation and zero tests, caller binding, possible remote owners, live negative
+controls, mixed upgrade outcomes, unresolved identities, and saved-result
+timing. Ordinary predicate uncertainty does not alter source ASSERT contracts.
+
 ### Result-sensitive acquisitions
 
 The recognized conditional acquisitions have these return conventions:

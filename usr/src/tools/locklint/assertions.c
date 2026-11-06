@@ -16,6 +16,8 @@
 /*
  * Capture lock assertions and translate their predicates into lock-state
  * assumptions.  Whole-state assertions remain validation checkpoints.
+ * Share predicate decoding with ordinary state-observing rwlock branches,
+ * keeping their observations separate from assertion requirements.
  */
 
 #include <stdbool.h>
@@ -304,23 +306,54 @@ locklint_is_assertion_consumer(const struct instruction *insn)
 	    ASSERTION_CONSUMER) == 0);
 }
 
-static bool
-is_lock_predicate(struct instruction *insn)
+/* Return the ownership modes tested by a supported, direct predicate call. */
+static unsigned int
+lock_predicate_modes(const struct instruction *insn)
 {
 	const char *name;
 
 	if (insn->opcode != OP_CALL || insn->func == NULL ||
 	    insn->func->type != PSEUDO_SYM || insn->func->sym == NULL ||
 	    insn->func->sym->ident == NULL)
+		return (0);
+	name = show_ident(insn->func->sym->ident);
+	if (strcmp(name, "mutex_owned") == 0 ||
+	    strcmp(name, "_mutex_held") == 0)
+		return (LOCKLINT_MODE_MUTEX);
+	if (strcmp(name, "rw_read_held") == 0 ||
+	    strcmp(name, "_rw_read_held") == 0)
+		return (LOCKLINT_MODE_READER);
+	if (strcmp(name, "rw_write_held") == 0 ||
+	    strcmp(name, "_rw_write_held") == 0)
+		return (LOCKLINT_MODE_WRITER);
+	if (strcmp(name, "rw_lock_held") == 0)
+		return (LOCKLINT_MODE_READER | LOCKLINT_MODE_WRITER);
+	return (0);
+}
+
+/*
+ * Decode an ordinary rwlock query without assertion provenance or polarity.
+ * Distinguish current-thread ownership from unprefixed read/held queries
+ * which can observe another thread in the kernel.  These names also exist
+ * in libc, so keep their classification conservative without a TU profile.
+ * The lowered Boolean branch determines how the result is consumed.
+ */
+bool
+locklint_get_rwlock_predicate(struct translation_unit *tu,
+    const struct instruction *insn, struct locklint_access *access,
+    unsigned int *modes, bool *may_observe_other_threads)
+{
+	const char *name;
+
+	*access = (struct locklint_access) { 0 };
+	*modes = lock_predicate_modes(insn);
+	*may_observe_other_threads = false;
+	if (*modes == 0 || *modes == LOCKLINT_MODE_MUTEX)
 		return (false);
 	name = show_ident(insn->func->sym->ident);
-	return (strcmp(name, "mutex_owned") == 0 ||
-	    strcmp(name, "_mutex_held") == 0 ||
-	    strcmp(name, "rw_read_held") == 0 ||
-	    strcmp(name, "_rw_read_held") == 0 ||
-	    strcmp(name, "rw_write_held") == 0 ||
-	    strcmp(name, "_rw_write_held") == 0 ||
-	    strcmp(name, "rw_lock_held") == 0);
+	*may_observe_other_threads = strcmp(name, "rw_read_held") == 0 ||
+	    strcmp(name, "rw_lock_held") == 0;
+	return (locklint_get_call_argument_access(tu, insn, 0, access));
 }
 
 bool
@@ -336,7 +369,7 @@ locklint_get_assertion(struct translation_unit *tu, struct instruction *insn,
 
 	*modes = 0;
 	*access = (struct locklint_access){ 0 };
-	if (!is_lock_predicate(insn) || insn->call_expr == NULL)
+	if (lock_predicate_modes(insn) == 0 || insn->call_expr == NULL)
 		return (false);
 	argument = first_expression(insn->call_expr->args);
 	if (argument == NULL)

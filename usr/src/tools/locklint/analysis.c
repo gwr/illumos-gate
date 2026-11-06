@@ -3364,6 +3364,81 @@ record_conditional_outcome(struct analysis *analysis,
 }
 
 /*
+ * Observe ordinary rwlock predicates at the call, tagging only feasible
+ * outcomes until their branch.  Ownership is unchanged, even when the result
+ * is saved across a later lock operation.  Unresolved access stays unknown;
+ * mixed modes retain both answers without inventing a refined lock state.
+ */
+static bool
+process_rwlock_predicate(struct analysis *analysis,
+    struct point_state *point_state)
+{
+	struct instruction *instruction = point_state->point.next_instruction;
+	struct instruction *branch;
+	struct locklint_access access;
+	struct lock_identity *identity;
+	struct analysis_point next = point_state->point;
+	unsigned int positive_modes;
+	unsigned int current_modes;
+	bool may_observe_other_threads;
+	bool composed;
+	bool existed;
+	int error;
+
+	if (!locklint_get_rwlock_predicate(point_state->context->function->tu,
+	    instruction, &access, &positive_modes, &may_observe_other_threads))
+		return (false);
+	branch = conditional_result_branch(point_state->point.block,
+	    instruction);
+	if (branch == NULL)
+		return (false);
+	next.next_instruction =
+	    next_live_instruction(point_state->point.block, instruction);
+	if (access.root == NULL) {
+		record_analysis_point(analysis, point_state->context, next,
+		    point_state->state, false);
+		return (true);
+	}
+	error = context_access_identity(analysis, point_state->context,
+	    point_state->state, &access, &identity, &existed, &composed);
+	if (error != 0)
+		die("cannot identify rwlock predicate: %s", strerror(error));
+	if (composed)
+		analysis->counts.binding_identities_composed++;
+	if (existed)
+		analysis->counts.lock_identities_reused++;
+	else
+		analysis->counts.lock_identities_created++;
+	record_lock_identity_role(identity, &access);
+	locklint_order_classify_identity(identity, &access);
+
+	current_modes = context_state_lock_modes(point_state->state, identity);
+	/*
+	 * An untracked opaque pointer is not proof of an unheld concrete lock.
+	 */
+	if (current_modes == 0 && identity->analysis_object_type ==
+	    LOCK_ANALYSIS_OBJECT_PSEUDO) {
+		record_conditional_outcome(analysis, point_state, next, branch,
+		    true, point_state->state);
+		record_conditional_outcome(analysis, point_state, next, branch,
+		    false, point_state->state);
+		return (true);
+	}
+	if (current_modes == 0)
+		current_modes = LOCKLINT_MODE_UNHELD;
+	/* Local absence cannot exclude a reader or holder in another thread. */
+	if ((current_modes & positive_modes) != 0 ||
+	    (may_observe_other_threads &&
+	    (current_modes & LOCKLINT_MODE_UNHELD) != 0))
+		record_conditional_outcome(analysis, point_state, next, branch,
+		    true, point_state->state);
+	if ((current_modes & ~positive_modes) != 0)
+		record_conditional_outcome(analysis, point_state, next, branch,
+		    false, point_state->state);
+	return (true);
+}
+
+/*
  * Preserve the possible results of a conditional lock operation.  A result
  * consumed by this block's branch remains tagged until that edge is selected;
  * otherwise both states continue without a condition.
@@ -3565,6 +3640,8 @@ process_point(struct analysis *analysis, struct point_state *point_state)
 			const struct semantic_state *state;
 
 			if (process_lock_assertion(analysis, point_state))
+				return;
+			if (process_rwlock_predicate(analysis, point_state))
 				return;
 			if (process_conditional_lock(analysis, point_state))
 				return;

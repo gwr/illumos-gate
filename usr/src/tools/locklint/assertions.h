@@ -24,6 +24,9 @@ struct translation_unit;
 
 void locklint_assertions_enable(void);
 bool locklint_is_assertion_consumer(const struct instruction *);
+bool locklint_get_rwlock_predicate(struct translation_unit *,
+    const struct instruction *, struct locklint_access *, unsigned int *,
+    bool *);
 bool locklint_get_assertion(struct translation_unit *, struct instruction *,
     struct locklint_access *, unsigned int *);
 
