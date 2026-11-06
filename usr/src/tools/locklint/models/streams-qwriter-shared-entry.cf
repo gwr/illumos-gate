@@ -1,0 +1,7 @@
+declare --root=true check_qwriter_shared_entry
+declare targets qinit::qi_putp streams_qwriter_shared_put
+declare targets qinit::qi_srvp streams_qwriter_exclusive_service
+
+declare discriminant qwriter perimeter
+declare discriminant locklint_qwriter_invoke perimeter
+declare discriminant locklint_qwriter_deferred perimeter

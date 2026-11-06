@@ -322,10 +322,26 @@ _NOTE(ASYNC_ENTRY(MODEL_NAME(qwriter_deferred)))
 
 /*
  * Model qwriter's possible immediate and deferred callback execution.
+ * Module-wide inner entry upgrades its existing claim rather than acquiring
+ * another lock.  Successful immediate execution retains writer ownership
+ * until enclosing framework entry exits; failure preserves the reader claim
+ * and schedules fresh asynchronous entry.  Already-exclusive entry needs
+ * neither another acquisition nor deferred execution.
  */
 void
 qwriter(queue_t *q, mblk_t *mp, void (*func)(), int perimeter)
 {
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
+	if (perimeter == PERIM_INNER) {
+		if (rw_write_held(&MODEL_NAME(inner)) ||
+		    rw_tryupgrade(&MODEL_NAME(inner))) {
+			(*func)(q, mp);
+		} else {
+			MODEL_NAME(qwriter_deferred)(q, mp, func, perimeter);
+		}
+		return;
+	}
+#endif
 	if (MODEL_NAME(call_direct))
 		MODEL_NAME(qwriter_invoke)(q, mp, func, perimeter);
 	MODEL_NAME(qwriter_deferred)(q, mp, func, perimeter);

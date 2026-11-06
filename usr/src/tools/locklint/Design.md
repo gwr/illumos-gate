@@ -2076,6 +2076,17 @@ such as `locklint_async_callback` or
 has synchronous callers; instead, keep shared behavior in an unannotated
 implementation and call it through a dedicated annotated wrapper.
 
+The STREAMS representative uses this separation for module-wide inner
+qwriter callbacks. An already writer-held caller invokes the callback
+directly. A reader-held caller uses rw_tryupgrade: success runs the callback
+and retains writer ownership until the enclosing framework entry exits;
+failure preserves reader ownership and calls the asynchronous wrapper.
+That wrapper establishes and releases its own writer ownership in the fresh
+context. Balancing acquisition and release around the immediate callback
+would lose the enclosing entry's ownership. This implemented transition is
+limited to D_MTPERMOD/PERIM_INNER; other perimeter paths have separate models
+and pending transition review.
+
 ### Focused validation
 
 The tests cover:
