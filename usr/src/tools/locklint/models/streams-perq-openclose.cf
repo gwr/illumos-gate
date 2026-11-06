@@ -1,4 +1,5 @@
 declare --root=true locklint_open locklint_close streams_perq_openclose_direct
+declare --root=false qwriter
 declare --external-entry=false streams_perq_open streams_perq_close
 declare --external-entry=false qprocson qprocsoff qwriter putnext
 declare --external-entry=false locklint_put locklint_service

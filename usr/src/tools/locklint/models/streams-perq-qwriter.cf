@@ -1,0 +1,5 @@
+declare --root=true perq_qwriter_root
+
+declare discriminant qwriter perimeter
+declare discriminant locklint_qwriter_invoke perimeter
+declare discriminant locklint_qwriter_deferred perimeter

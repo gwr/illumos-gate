@@ -284,7 +284,8 @@ MODEL_NAME(qpair_qwriter_invoke)(queue_t *q, int side, mblk_t *mp,
 /*
  * Invoke qwriter under the selected exclusive perimeter.  A configured
  * queue-pair side maps inner entry to the pair containing the concrete queue;
- * otherwise inner entry uses the module-wide synthetic perimeter.
+ * per-queue entry uses the queue address, and module-wide entry uses the
+ * module-wide synthetic perimeter.
  */
 static void
 MODEL_NAME(qwriter_invoke)(queue_t *q, mblk_t *mp, void (*func)(),
@@ -295,6 +296,10 @@ MODEL_NAME(qwriter_invoke)(queue_t *q, mblk_t *mp, void (*func)(),
 		MODEL_NAME(qpair_qwriter_invoke)(q,
 		    MODEL_QWRITER_QPAIR_SIDE, mp,
 		    (void (*)(queue_t *, mblk_t *))func);
+#elif (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERQ
+		rw_enter(MODEL_PERQ_LOCK(q), RW_WRITER);
+		(*func)(q, mp);
+		rw_exit(MODEL_PERQ_LOCK(q));
 #else
 		rw_enter(&MODEL_NAME(inner), RW_WRITER);
 		(*func)(q, mp);
@@ -322,19 +327,25 @@ _NOTE(ASYNC_ENTRY(MODEL_NAME(qwriter_deferred)))
 
 /*
  * Model qwriter's possible immediate and deferred callback execution.
- * Module-wide inner entry upgrades its existing claim rather than acquiring
- * another lock.  Successful immediate execution retains writer ownership
- * until enclosing framework entry exits; failure preserves the reader claim
- * and schedules fresh asynchronous entry.  Already-exclusive entry needs
- * neither another acquisition nor deferred execution.
+ * Module-wide or per-queue inner entry upgrades its existing claim rather
+ * than acquiring another lock.  Successful immediate execution retains writer
+ * ownership until enclosing framework entry exits; failure preserves the
+ * reader claim and schedules fresh asynchronous entry.  Already-exclusive
+ * entry needs neither another acquisition nor deferred execution.
  */
 void
 qwriter(queue_t *q, mblk_t *mp, void (*func)(), int perimeter)
 {
-#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD || \
+	(MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERQ
 	if (perimeter == PERIM_INNER) {
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERQ
+		if (rw_write_held(MODEL_PERQ_LOCK(q)) ||
+		    rw_tryupgrade(MODEL_PERQ_LOCK(q))) {
+#else
 		if (rw_write_held(&MODEL_NAME(inner)) ||
 		    rw_tryupgrade(&MODEL_NAME(inner))) {
+#endif
 			(*func)(q, mp);
 		} else {
 			MODEL_NAME(qwriter_deferred)(q, mp, func, perimeter);
