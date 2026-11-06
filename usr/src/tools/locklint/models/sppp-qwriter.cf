@@ -4,3 +4,5 @@ declare discriminant qwriter perimeter
 declare discriminant locklint_sppp_qwriter_invoke perimeter
 declare discriminant locklint_sppp_qwriter_deferred perimeter
 declare discriminant locklint_sppp_qpair_qwriter_invoke side
+declare discriminant locklint_sppp_qpair_qwriter side
+declare discriminant locklint_sppp_qpair_qwriter_deferred side

@@ -248,6 +248,8 @@ qprocsoff(queue_t *q)
 
 static void MODEL_NAME(qpair_qwriter_invoke)(queue_t *, int, mblk_t *,
     void (*)(queue_t *, mblk_t *));
+void MODEL_NAME(qpair_qwriter)(queue_t *, int, mblk_t *,
+    void (*)(queue_t *, mblk_t *));
 
 /*
  * Invoke a PERIM_INNER callback for D_MTQPAIR.  The exact side derives the
@@ -336,6 +338,13 @@ _NOTE(ASYNC_ENTRY(MODEL_NAME(qwriter_deferred)))
 void
 qwriter(queue_t *q, mblk_t *mp, void (*func)(), int perimeter)
 {
+#ifdef MODEL_QWRITER_QPAIR_SIDE
+	if (perimeter == PERIM_INNER) {
+		MODEL_NAME(qpair_qwriter)(q, MODEL_QWRITER_QPAIR_SIDE, mp,
+		    (void (*)(queue_t *, mblk_t *))func);
+		return;
+	}
+#endif
 #if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD || \
 	(MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERQ
 	if (perimeter == PERIM_INNER) {
@@ -372,16 +381,44 @@ MODEL_NAME(qpair_qwriter_deferred)(queue_t *q, int side, mblk_t *mp,
 _NOTE(ASYNC_ENTRY(MODEL_NAME(qpair_qwriter_deferred)))
 
 /*
- * Model qwriter's possible immediate and deferred PERIM_INNER callback for
- * D_MTQPAIR.
+ * Model qwriter's immediate upgrade or deferred PERIM_INNER callback for
+ * D_MTQPAIR.  Derive each side separately to preserve the containing pair's
+ * identity.  Only deferred execution acquires a fresh perimeter claim;
+ * immediate writer ownership lasts until the enclosing entry exits.
  */
 void
 MODEL_NAME(qpair_qwriter)(queue_t *q, int side, mblk_t *mp,
     void (*func)(queue_t *, mblk_t *))
 {
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTQPAIR
+	if (side == 0) {
+		struct MODEL_NAME(qpair) *pair =
+		    (void *)((char *)q -
+		    __builtin_offsetof(struct MODEL_NAME(qpair), read_queue));
+
+		if (rw_write_held(&pair->perimeter) ||
+		    rw_tryupgrade(&pair->perimeter)) {
+			(*func)(q, mp);
+		} else {
+			MODEL_NAME(qpair_qwriter_deferred)(q, side, mp, func);
+		}
+	} else {
+		struct MODEL_NAME(qpair) *pair =
+		    (void *)((char *)q -
+		    __builtin_offsetof(struct MODEL_NAME(qpair), write_queue));
+
+		if (rw_write_held(&pair->perimeter) ||
+		    rw_tryupgrade(&pair->perimeter)) {
+			(*func)(q, mp);
+		} else {
+			MODEL_NAME(qpair_qwriter_deferred)(q, side, mp, func);
+		}
+	}
+#else
 	if (MODEL_NAME(call_direct))
 		MODEL_NAME(qpair_qwriter_invoke)(q, side, mp, func);
 	MODEL_NAME(qpair_qwriter_deferred)(q, side, mp, func);
+#endif
 }
 
 #if (MODEL_FLAGS & _D_MTCBSHARED) != 0

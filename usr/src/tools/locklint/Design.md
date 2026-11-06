@@ -2076,18 +2076,21 @@ such as `locklint_async_callback` or
 has synchronous callers; instead, keep shared behavior in an unannotated
 implementation and call it through a dedicated annotated wrapper.
 
-The STREAMS representative uses this separation for module-wide and per-queue inner
-qwriter callbacks. An already writer-held caller invokes the callback
+The STREAMS representative uses this separation for module-wide, per-queue,
+and queue-pair inner qwriter callbacks. An already writer-held caller invokes the callback
 directly. A reader-held caller uses rw_tryupgrade: success runs the callback
 and retains writer ownership until the enclosing framework entry exits;
 failure preserves reader ownership and calls the asynchronous wrapper.
 That wrapper establishes and releases its own writer ownership in the fresh
 context. Balancing acquisition and release around the immediate callback
 would lose the enclosing entry's ownership. This implemented transition is
-limited to D_MTPERMOD and D_MTPERQ with PERIM_INNER. Per-queue immediate and
-deferred execution both select the queue-address shadow lock, preserving
-distinct queue identities without acquiring the module-wide perimeter.
-Other perimeter paths have separate models and pending transition review.
+limited to PERIM_INNER for D_MTPERMOD, D_MTPERQ, and exact-side D_MTQPAIR.
+Per-queue immediate and deferred execution both select the queue-address
+shadow lock. Queue-pair execution derives the containing pair from the queue
+and exact side; the fixed-side standard interface forwards to the same
+ownership transition. Both preserve distinct instance identities without
+acquiring the module-wide perimeter. Outer transitions and explicit nested
+callback scenarios remain subject to separate review and focused validation.
 
 ### Focused validation
 

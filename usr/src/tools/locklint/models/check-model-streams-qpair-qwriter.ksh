@@ -11,10 +11,9 @@
 #
 
 #
-# Validate immediate and deferred qwriter dispatch to exact callbacks under
-# the selected D_MTQPAIR perimeter.  Deferred entry drops the scheduling
-# thread's locks, immediate entry retains them, and wrong-pair protection does
-# not satisfy the callback.
+# Validate shared and already-exclusive D_MTQPAIR qwriter ownership for exact
+# callbacks.  Deferred entry drops scheduling-thread locks; immediate upgrade
+# retains writer ownership until entry exit.  Wrong-pair protection fails.
 #
 
 SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
@@ -34,6 +33,8 @@ run_case()
 	expected_reentrance=$5
 	expected_warnings=$6
 	expected_caller=$7
+	expected_conditional=$8
+	expected_released=$9
 	output="$SCRIPT_DIR/streams-qpair-qwriter-$name.raw"
 
 	rm -f "$output"
@@ -74,10 +75,15 @@ run_case()
 	model=$(grep -c \
 	    "streams-dki-model.c:.*protection was not established" "$output")
 	all_warnings=$(grep -c "warning:" "$output")
+	conditional=$(grep -c \
+	    "'after_write'.*\[conditional-protection\]\$" "$output")
+	released=$(grep -c \
+	    "'after_exit'.*\[unprotected-access\]\$" "$output")
 	if (( qwriter != expected_qwriter || caller != expected_caller ||
 	    wrong_pair != 1 || standard != 0 ||
 	    reentrance != expected_reentrance ||
 	    bad_release != 0 || unmodeled != 0 || model != 0 ||
+	    conditional != expected_conditional || released != expected_released ||
 	    all_warnings != expected_warnings )); then
 		print -u2 "Unexpected STREAMS queue-pair qwriter $name findings:"
 		print -u2 "  unprotected qwriter data=$qwriter " \
@@ -91,6 +97,10 @@ run_case()
 		print -u2 "  bad releases=$bad_release (expected 0)"
 		print -u2 "  unmodeled callbacks=$unmodeled (expected 0)"
 		print -u2 "  model provenance=$model (expected 0)"
+		print -u2 "  conditional writes=$conditional " \
+		    "(expected $expected_conditional)"
+		print -u2 "  released perimeter=$released " \
+		    "(expected $expected_released)"
 		print -u2 "  all warnings=$all_warnings " \
 		    "(expected $expected_warnings)"
 		print -u2 "see $output"
@@ -100,9 +110,8 @@ run_case()
 	rm -f "$output"
 }
 
-run_case d-mp D_MP "" 4 0 7 2 || exit $?
-run_case d-mtqpair '(D_MP|D_MTQPAIR)' \
-    '-DMODEL_QPAIR_REENTRANCE -DMODEL_QWRITER_QPAIR_SIDE=1' \
-    0 1 5 3 || exit $?
+run_case d-mp D_MP "" 4 0 7 2 0 0 || exit $?
+run_case d-mtqpair '(D_MP|D_MTQPAIR|D_MTPUTSHARED)' \
+    '-DMODEL_QWRITER_QPAIR_SIDE=1' 0 0 9 3 2 3 || exit $?
 
-print "New locklint D_MTQPAIR qwriter immediate and deferred dispatch works."
+print "New locklint D_MTQPAIR qwriter preserves inner perimeter ownership."

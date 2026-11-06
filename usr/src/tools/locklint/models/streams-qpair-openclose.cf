@@ -1,4 +1,5 @@
 declare --root=true streams_qpair_openclose_root
+declare --root=false locklint_qpair_qwriter
 declare --external-entry=false streams_qpair_read_open streams_qpair_write_open
 declare --external-entry=false streams_qpair_read_close streams_qpair_write_close
 declare --external-entry=false locklint_put locklint_service
