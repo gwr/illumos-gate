@@ -39,6 +39,7 @@ set -e
 "$SCRIPT_DIR/check-model-streams-qwriter.ksh"
 "$SCRIPT_DIR/check-model-streams-perq-qwriter.ksh"
 "$SCRIPT_DIR/check-model-streams-qpair-qwriter.ksh"
+"$SCRIPT_DIR/check-model-streams-qwriter-nested.ksh"
 "$SCRIPT_DIR/check-model-streams-qcallback.ksh"
 "$SCRIPT_DIR/check-kmod-sppp-qwriter.ksh"
 "$SCRIPT_DIR/check-model-streams-qproc.ksh"

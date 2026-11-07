@@ -2077,9 +2077,9 @@ has synchronous callers; instead, keep shared behavior in an unannotated
 implementation and call it through a dedicated annotated wrapper.
 
 The STREAMS representative uses this separation for module-wide, per-queue,
-and queue-pair inner qwriter callbacks. An already writer-held caller invokes the callback
-directly. A reader-held caller uses rw_tryupgrade: success runs the callback
-and retains writer ownership until the enclosing framework entry exits;
+and queue-pair inner qwriter callbacks. An already writer-held caller invokes
+the callback directly. A reader-held caller uses rw_tryupgrade: success runs
+the callback and retains writer ownership until the enclosing framework entry exits;
 failure preserves reader ownership and calls the asynchronous wrapper.
 That wrapper establishes and releases its own writer ownership in the fresh
 context. Balancing acquisition and release around the immediate callback
@@ -2089,8 +2089,12 @@ Per-queue immediate and deferred execution both select the queue-address
 shadow lock. Queue-pair execution derives the containing pair from the queue
 and exact side; the fixed-side standard interface forwards to the same
 ownership transition. Both preserve distinct instance identities without
-acquiring the module-wide perimeter. Outer transitions and explicit nested
-callback scenarios remain subject to separate review and focused validation.
+acquiring the module-wide perimeter. Focused nested inner callbacks cover
+module-wide, per-queue, and fixed-side queue-pair entry: a nested callback
+retains a mutex acquired by the outer callback, and writer ownership survives
+both callback returns until enclosing entry exit. This also holds when the
+outer callback starts through fresh deferred entry. Outer transitions and
+mixed-side nesting remain subject to separate review and focused validation.
 
 ### Focused validation
 

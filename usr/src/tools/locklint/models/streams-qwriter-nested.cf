@@ -1,0 +1,8 @@
+declare --root=true nested_root
+declare discriminant nested_entry mode
+declare discriminant qwriter perimeter
+declare discriminant locklint_qwriter_invoke perimeter
+declare discriminant locklint_qwriter_deferred perimeter
+declare discriminant locklint_qpair_qwriter side
+declare discriminant locklint_qpair_qwriter_invoke side
+declare discriminant locklint_qpair_qwriter_deferred side
