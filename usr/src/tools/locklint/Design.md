@@ -2096,6 +2096,16 @@ both callback returns until enclosing entry exit. This also holds when the
 outer callback starts through fresh deferred entry. Outer transitions and
 mixed-side nesting remain subject to separate review and focused validation.
 
+Outer-only D_MP|D_MTOUTPERIM entry has a different ownership lifetime.
+Immediate PERIM_OUTER execution nonblockingly upgrades the caller's outer
+reader claim, invokes the callback, and downgrades to reader before returning.
+Deferred submission preserves that reader claim and uses fresh balanced
+writer entry for the callback. An already writer-held outer claim takes the
+deferred path. The focused fixture covers ordinary put entry, caller-lock
+effects, reader restoration, and framework release. Queue-relative inner
+combinations and nested outer requests require separate focused validation.
+D_MTPERMOD|D_MTOUTPERIM is not a supported illumos flag combination.
+
 ### Focused validation
 
 The tests cover:

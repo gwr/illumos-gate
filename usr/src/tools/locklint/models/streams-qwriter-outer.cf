@@ -1,0 +1,5 @@
+declare --root=true outer_root
+declare targets qinit::qi_putp outer_put
+declare discriminant qwriter perimeter
+declare discriminant locklint_qwriter_invoke perimeter
+declare discriminant locklint_qwriter_deferred perimeter

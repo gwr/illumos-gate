@@ -334,10 +334,26 @@ _NOTE(ASYNC_ENTRY(MODEL_NAME(qwriter_deferred)))
  * ownership until enclosing framework entry exits; failure preserves the
  * reader claim and schedules fresh asynchronous entry.  Already-exclusive
  * entry needs neither another acquisition nor deferred execution.
+ * Outer-only entry instead restores its reader claim after immediate
+ * execution.  An existing outer writer claim requires deferred execution.
  */
 void
 qwriter(queue_t *q, mblk_t *mp, void (*func)(), int perimeter)
 {
+#if (MODEL_FLAGS & D_MTOUTPERIM) != 0 && \
+	(MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == 0
+	if (perimeter == PERIM_OUTER) {
+		if (MODEL_NAME(call_direct) &&
+		    !rw_write_held(&MODEL_NAME(outer)) &&
+		    rw_tryupgrade(&MODEL_NAME(outer))) {
+			(*func)(q, mp);
+			rw_downgrade(&MODEL_NAME(outer));
+		} else {
+			MODEL_NAME(qwriter_deferred)(q, mp, func, perimeter);
+		}
+		return;
+	}
+#endif
 #ifdef MODEL_QWRITER_QPAIR_SIDE
 	if (perimeter == PERIM_INNER) {
 		MODEL_NAME(qpair_qwriter)(q, MODEL_QWRITER_QPAIR_SIDE, mp,
