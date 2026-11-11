@@ -104,4 +104,23 @@ run_case qpair-outer-excl-driver \
     '-DMODEL_MODULE_ENTRY -DMODEL_MODULE_LIFECYCLE' \
     locklint_read_close || exit $?
 
+run_case qpair-shared-outer \
+    '(D_MP|D_MTQPAIR|D_MTPUTSHARED|_D_MTOCSHARED|D_MTOUTPERIM)' 0 \
+    "$SCRIPT_DIR/streams-qproc-close-qpair-outer.cf" 0 \
+    '-DMODEL_MODULE_ENTRY -DMODEL_MODULE_LIFECYCLE' || exit $?
+run_case qpair-shared-outer-driver \
+    '(D_MP|D_MTQPAIR|D_MTPUTSHARED|_D_MTOCSHARED|D_MTOUTPERIM)' 1 \
+    "$SCRIPT_DIR/streams-qproc-close-qpair-outer.cf" 1 \
+    '-DMODEL_MODULE_ENTRY -DMODEL_MODULE_LIFECYCLE' \
+    locklint_read_close || exit $?
+run_case qpair-shared-outer-excl \
+    '(D_MP|D_MTQPAIR|D_MTPUTSHARED|_D_MTOCSHARED|D_MTOUTPERIM|D_MTOCEXCL)' 0 \
+    "$SCRIPT_DIR/streams-qproc-close-qpair-outer.cf" 0 \
+    '-DMODEL_MODULE_ENTRY -DMODEL_MODULE_LIFECYCLE' || exit $?
+run_case qpair-shared-outer-excl-driver \
+    '(D_MP|D_MTQPAIR|D_MTPUTSHARED|_D_MTOCSHARED|D_MTOUTPERIM|D_MTOCEXCL)' 1 \
+    "$SCRIPT_DIR/streams-qproc-close-qpair-outer.cf" 1 \
+    '-DMODEL_MODULE_ENTRY -DMODEL_MODULE_LIFECYCLE' \
+    locklint_read_close || exit $?
+
 print "New locklint qproc close wait exemptions work."

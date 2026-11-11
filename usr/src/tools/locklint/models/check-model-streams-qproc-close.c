@@ -38,7 +38,13 @@ struct qproc_pair {
 
 extern krwlock_t locklint_outer;
 
-/* Require the configured mode, not just an arbitrary held outer claim. */
+/* Check configured close modes independently at the pair and outer scopes. */
+#if (MODEL_FLAGS & _D_MTOCSHARED) != 0
+#define	QPROC_INNER_HELD(pair)	rw_read_held(&(pair)->perimeter)
+#else
+#define	QPROC_INNER_HELD(pair)	rw_write_held(&(pair)->perimeter)
+#endif
+
 #if (MODEL_FLAGS & D_MTOCEXCL) != 0
 #define	QPROC_OUTER_HELD()	rw_write_held(&locklint_outer)
 #else
@@ -63,7 +69,7 @@ streams_qproc_close(queue_t *q, int flag, cred_t *credp)
 	struct qproc_pair *pair = (void *)((char *)q -
 	    __builtin_offsetof(struct qproc_pair, read_queue));
 
-	if (!rw_write_held(&pair->perimeter) || !QPROC_OUTER_HELD())
+	if (!QPROC_INNER_HELD(pair) || !QPROC_OUTER_HELD())
 		qproc_claim_failure = 1;
 #endif
 #if QPROC_HOLD_DRIVER_LOCK
@@ -71,7 +77,7 @@ streams_qproc_close(queue_t *q, int flag, cred_t *credp)
 #endif
 	qprocsoff(q);
 #if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTQPAIR
-	if (!rw_write_held(&pair->perimeter) || !QPROC_OUTER_HELD())
+	if (!QPROC_INNER_HELD(pair) || !QPROC_OUTER_HELD())
 		qproc_claim_failure = 1;
 #endif
 #if QPROC_HOLD_DRIVER_LOCK
