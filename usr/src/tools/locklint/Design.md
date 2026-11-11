@@ -2076,6 +2076,44 @@ such as `locklint_async_callback` or
 has synchronous callers; instead, keep shared behavior in an unannotated
 implementation and call it through a dedicated annotated wrapper.
 
+### STREAMS model configuration
+
+`models/streams-dki-model.c` represents one selected module. `MODEL_FLAGS`
+must describe a configuration accepted by illumos `devflg_to_qflag()` in
+`usr/src/uts/common/os/strsubr.c`, using the flag definitions in
+`usr/src/uts/common/sys/conf.h`. For this model's `D_MP` configurations,
+choose one inner scope:
+
+| Base flags | Inner perimeter | May add `D_MTOUTPERIM`? |
+| --- | --- | --- |
+| `D_MP` | None | Yes |
+| `D_MP \| D_MTPERQ` | One per queue instance | Yes |
+| `D_MP \| D_MTQPAIR` | One per queue pair | Yes |
+| `D_MP \| D_MTPERMOD` | One shared across the module's instances | No |
+
+`D_MTPERMOD` encodes both scope bits: OR-ing `D_MTPERQ` and `D_MTQPAIR`
+selects module-wide scope, not two independent perimeters. An outer perimeter
+is shared across the selected module's instances. Illumos rejects
+`D_MTPERMOD | D_MTOUTPERIM`.
+
+The sharing and outer-entry modifiers have additional prerequisites:
+
+- `D_MTPUTSHARED` requires an inner perimeter and makes put entry shared.
+- `_D_MTOCSHARED` and `_D_MTCBSHARED` require an inner perimeter plus
+  `D_MTPUTSHARED`; they select shared inner open/close and callback entry.
+- `_D_MTSVCSHARED` requires `D_MTPERMOD` plus `D_MTPUTSHARED`. Per-queue
+  and queue-pair service entry remains exclusive.
+- `D_MTOCEXCL` requires `D_MTOUTPERIM` and selects exclusive outer open/close
+  entry; ordinary outer entry is shared.
+
+These are runtime configuration constraints, independent of whether a
+synthetic sequence of lock operations can be analyzed. The representative
+currently checks only some configuration constraints. Model acceptance alone
+does not prove flag validity; fixtures and runners must use legal combinations
+when claiming illumos framework coverage.
+
+### STREAMS qwriter ownership
+
 The STREAMS representative uses this separation for module-wide, per-queue,
 and queue-pair inner qwriter callbacks. An already writer-held caller invokes
 the callback directly. A reader-held caller uses rw_tryupgrade: success runs

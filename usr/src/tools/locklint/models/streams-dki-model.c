@@ -46,6 +46,23 @@
 #define	MODEL_FLAGS	D_MP
 #endif
 
+/*
+ * MODEL_FLAGS must follow devflg_to_qflag() in os/strsubr.c.  Use D_MP
+ * alone for no inner perimeter, or select D_MTPERQ, D_MTQPAIR, or
+ * D_MTPERMOD for queue, queue-pair, or module-wide inner scope.  D_MTPERMOD
+ * encodes both scope bits; OR-ing D_MTPERQ and D_MTQPAIR selects that scope.
+ * D_MTOUTPERIM is valid with D_MP alone, D_MTPERQ, or D_MTQPAIR, but not
+ * D_MTPERMOD.  Its outer perimeter is shared across the module's instances.
+ *
+ * D_MTPUTSHARED requires an inner perimeter.  _D_MTOCSHARED and
+ * _D_MTCBSHARED also require D_MTPUTSHARED.  _D_MTSVCSHARED requires both
+ * D_MTPERMOD and D_MTPUTSHARED.  D_MTOCEXCL requires D_MTOUTPERIM.
+ *
+ * Configuration checks below are partial.  An analyzable synthetic lock
+ * sequence does not establish a valid illumos configuration.  See the
+ * STREAMS model configuration section of Design.md for the flag matrix.
+ */
+
 #if defined(MODEL_QWRITER_QPAIR_SIDE) && \
     MODEL_QWRITER_QPAIR_SIDE != 0 && MODEL_QWRITER_QPAIR_SIDE != 1
 #error "MODEL_QWRITER_QPAIR_SIDE must be zero or one"
