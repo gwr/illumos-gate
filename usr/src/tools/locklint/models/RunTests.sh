@@ -42,6 +42,7 @@ set -e
 "$SCRIPT_DIR/check-model-streams-qwriter-nested.ksh"
 "$SCRIPT_DIR/check-model-streams-qwriter-outer.ksh"
 "$SCRIPT_DIR/check-model-streams-qcallback.ksh"
+"$SCRIPT_DIR/check-model-streams-quntimeout.ksh"
 "$SCRIPT_DIR/check-kmod-sppp-qwriter.ksh"
 "$SCRIPT_DIR/check-model-streams-qproc.ksh"
 "$SCRIPT_DIR/check-model-streams-qproc-close.ksh"

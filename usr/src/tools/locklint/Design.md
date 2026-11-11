@@ -2144,6 +2144,23 @@ effects, reader restoration, and framework release. Queue-relative inner
 combinations and nested outer requests require separate focused validation.
 D_MTPERMOD|D_MTOUTPERIM is not a supported illumos flag combination.
 
+### STREAMS cancellation blocking
+
+The `quntimeout()` representative exposes potential blocking during
+cancellation while preserving ordinary caller-held locks. A private
+mutex/condition wait supplies the blocking point without exposing framework
+implementation locks. Focused D_MP cases require no warning for an unlocked
+caller and one held-during-wait warning, with caller provenance, for a
+driver-mutex-held caller. A protected store after return checks that ownership
+is retained.
+
+The clock_t result is unconstrained model state. It does not establish a
+relationship between an ID, the return value, and callback execution.
+Cancellation does not suppress independently reachable qtimeout callbacks
+or prove teardown/lifetime ordering. Framework-perimeter cancellation rules
+and wait exemptions require separate characterization; this initial blocking
+representative adds no such exemptions. qunbufcall remains separate work.
+
 ### Focused validation
 
 The tests cover:
