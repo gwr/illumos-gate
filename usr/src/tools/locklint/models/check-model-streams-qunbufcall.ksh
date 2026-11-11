@@ -12,7 +12,7 @@
 
 #
 # Check ordinary caller-lock obligations across qunbufcall's possible wait.
-# Module-wide close entry exempts the framework writer, retaining driver checks.
+# Module-wide close entry exempts the framework claim, retaining driver checks.
 # Exact warning totals also reject lost ownership after cancellation returns.
 #
 
@@ -77,6 +77,18 @@ run_case unlocked 0 || exit $?
 run_case inner 0 '(D_MP|D_MTPERMOD)' \
     "$SCRIPT_DIR/streams-qunbufcall-inner.cf" || exit $?
 run_case inner-driver 1 '(D_MP|D_MTPERMOD)' \
+    "$SCRIPT_DIR/streams-qunbufcall-inner.cf" streams_qunbufcall_close || exit $?
+
+# Shared close entry with exclusive and shared callback configurations.
+shared_flags='(D_MP|D_MTPERMOD|D_MTPUTSHARED|_D_MTOCSHARED)'
+callback_flags='(D_MP|D_MTPERMOD|D_MTPUTSHARED|_D_MTOCSHARED|_D_MTCBSHARED)'
+run_case inner-shared 0 "$shared_flags" \
+    "$SCRIPT_DIR/streams-qunbufcall-inner.cf" || exit $?
+run_case inner-shared-driver 1 "$shared_flags" \
+    "$SCRIPT_DIR/streams-qunbufcall-inner.cf" streams_qunbufcall_close || exit $?
+run_case inner-shared-callback 0 "$callback_flags" \
+    "$SCRIPT_DIR/streams-qunbufcall-inner.cf" || exit $?
+run_case inner-shared-callback-driver 1 "$callback_flags" \
     "$SCRIPT_DIR/streams-qunbufcall-inner.cf" streams_qunbufcall_close || exit $?
 
 print "New locklint qunbufcall model preserves locks and scopes wait exemptions."

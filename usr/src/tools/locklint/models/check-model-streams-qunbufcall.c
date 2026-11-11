@@ -12,7 +12,7 @@
 /*
  * Verify qunbufcall's potential blocking without transferring caller locks.
  * Separate runs supply unlocked, driver-mutex-held, and framework close
- * entry.  A protected store checks retained driver ownership; ordinary writer
+ * entry.  A protected store checks retained driver ownership; ordinary
  * queries check framework ownership before and after cancellation without
  * supplying missing claims.  Only the framework claim is exempt at the wait.
  * Request IDs, callback suppression, and lifetime ordering are not modeled.
@@ -39,6 +39,14 @@ extern krwlock_t locklint_inner;
 static kmutex_t qunbufcall_probe_lock;
 static int qunbufcall_claim_failure;
 _NOTE(MUTEX_PROTECTS_DATA(qunbufcall_probe_lock, qunbufcall_claim_failure))
+
+/* Shared close entry must remain reader-only, not silently become writer. */
+#if (MODEL_FLAGS & _D_MTOCSHARED) != 0
+#define	CANCEL_INNER_HELD() \
+	(rw_read_held(&locklint_inner) && !rw_write_held(&locklint_inner))
+#else
+#define	CANCEL_INNER_HELD() rw_write_held(&locklint_inner)
+#endif
 #endif
 
 /* Missing framework ownership must fail independently of the driver lock. */
@@ -46,7 +54,7 @@ void
 check_qunbufcall(queue_t *q)
 {
 #if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
-	if (!rw_write_held(&locklint_inner))
+	if (!CANCEL_INNER_HELD())
 		qunbufcall_claim_failure = 1;
 #endif
 #if QUNBUFCALL_HOLD_DRIVER_LOCK
@@ -54,7 +62,7 @@ check_qunbufcall(queue_t *q)
 #endif
 	qunbufcall(q, qunbufcall_id);
 #if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
-	if (!rw_write_held(&locklint_inner))
+	if (!CANCEL_INNER_HELD())
 		qunbufcall_claim_failure = 1;
 #endif
 #if QUNBUFCALL_HOLD_DRIVER_LOCK
