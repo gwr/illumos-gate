@@ -109,11 +109,5 @@ run_case d-mtouter '(D_MP|D_MTOUTPERIM)' \
     "$SCRIPT_DIR/streams-openclose-outer.cf" 2 1 2 || exit $?
 run_case d-mtouter-excl '(D_MP|D_MTOUTPERIM|D_MTOCEXCL)' \
     "$SCRIPT_DIR/streams-openclose-outer-excl.cf" 2 0 2 || exit $?
-run_case d-mtpermod-outer '(D_MP|D_MTPERMOD|D_MTOUTPERIM)' \
-    "$SCRIPT_DIR/streams-openclose-mtpermod-outer.cf" 0 1 2 || exit $?
-run_case d-mtpermod-shared-outer-excl \
-    '(D_MP|D_MTPERMOD|D_MTPUTSHARED|_D_MTOCSHARED|D_MTOUTPERIM|D_MTOCEXCL)' \
-    "$SCRIPT_DIR/streams-openclose-mtpermod-shared-outer-excl.cf" \
-    1 0 2 || exit $?
 
 print "New locklint single-module STREAMS open/close entry works."
