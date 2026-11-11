@@ -13,7 +13,7 @@
 #
 # Validate qprocsoff() wait exemptions under framework close-entry perimeters
 # while retaining diagnostics for an ordinary driver mutex.
-# Test module-wide inner and outer-only entry as separate legal scopes.
+# Test standalone scopes and legal combined queue-pair/outer entry.
 #
 
 SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
@@ -30,6 +30,8 @@ run_case()
 	driver_lock=$3
 	commands=$4
 	expected_waits=$5
+	extra_cpp=${6:-}
+	caller=${7:-streams_qproc_close}
 	output="$SCRIPT_DIR/streams-qproc-close-$name.raw"
 
 	rm -f "$output"
@@ -43,6 +45,7 @@ run_case()
 		    -D_ELF64 -D_DDI_STRICT -Dsun -D__sun -D__SVR4 -DDEBUG \
 		    "-DMODEL_FLAGS=$flags" \
 		    "-DQPROC_HOLD_DRIVER_LOCK=$driver_lock" \
+		    $extra_cpp \
 		    -I../../intel -nostdinc -I../../common \
 		    "$INPUT" "$MODEL"
 	) >"$output" 2>&1
@@ -59,14 +62,16 @@ run_case()
 		return 1
 	fi
 	waits=$(grep -c "\\[lock-held-during-wait\\]$" "$output")
-	if (( waits != expected_waits )); then
+	warnings=$(grep -c 'warning:' "$output")
+	if (( waits != expected_waits || warnings != expected_waits )); then
 		print -u2 "STREAMS qproc close $name produced $waits " \
 		    "held-during-wait findings instead of $expected_waits"
+		print -u2 "  all warnings=$warnings (expected $expected_waits)"
 		print -u2 "see $output"
 		return 1
 	fi
 	if (( expected_waits != 0 )) && ! grep -q \
-	    "lock is held on a path through call to 'streams_qproc_close'\$" \
+	    "lock is held on a path through call to '$caller'\$" \
 	    "$output"; then
 		print -u2 "STREAMS qproc close $name lacks caller provenance"
 		return 1
@@ -83,5 +88,12 @@ run_case inner-driver '(D_MP|D_MTPERMOD)' 1 \
     "$SCRIPT_DIR/streams-qproc-close-inner.cf" 1 || exit $?
 run_case outer-driver '(D_MP|D_MTOUTPERIM)' 1 \
     "$SCRIPT_DIR/streams-qproc-close-outer.cf" 1 || exit $?
+run_case qpair-outer '(D_MP|D_MTQPAIR|D_MTOUTPERIM)' 0 \
+    "$SCRIPT_DIR/streams-qproc-close-qpair-outer.cf" 0 \
+    '-DMODEL_MODULE_ENTRY -DMODEL_MODULE_LIFECYCLE' || exit $?
+run_case qpair-outer-driver '(D_MP|D_MTQPAIR|D_MTOUTPERIM)' 1 \
+    "$SCRIPT_DIR/streams-qproc-close-qpair-outer.cf" 1 \
+    '-DMODEL_MODULE_ENTRY -DMODEL_MODULE_LIFECYCLE' \
+    locklint_read_close || exit $?
 
 print "New locklint qproc close wait exemptions work."

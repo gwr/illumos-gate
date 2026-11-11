@@ -1,0 +1,3 @@
+declare --root=true locklint_module_lifecycle
+declare contract locklint_read_ops::qi_qopen no-lock-effects
+declare targets locklint_read_ops::qi_qclose streams_qproc_close

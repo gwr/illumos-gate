@@ -13,10 +13,12 @@
  * Characterize qprocsoff() under framework close-entry perimeters, with and
  * without an additional driver mutex.  The selected framework perimeters are
  * exempt across the modeled drain wait, while the driver mutex must remain
- * diagnostic.
+ * diagnostic.  Combined queue-pair/outer cases check ownership on both sides
+ * of the wait so missing claims cannot make the exemption test pass.
  */
 
 #include <sys/types.h>
+#include <sys/conf.h>
 #include <sys/stream.h>
 #include <sys/synch.h>
 
@@ -26,13 +28,45 @@
 
 static kmutex_t qproc_driver_lock;
 
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTQPAIR
+/* Match the model's fixed queue-pair layout for the read-side close entry. */
+struct qproc_pair {
+	krwlock_t perimeter;
+	queue_t read_queue;
+	queue_t write_queue;
+};
+
+extern krwlock_t locklint_outer;
+
+/*
+ * Ordinary queries check ownership without seeding a missing claim.  A
+ * separate diagnostic lock keeps failure visible even with the driver mutex
+ * held; neither framework ownership nor that mutex protects this control.
+ */
+static kmutex_t qproc_probe_lock;
+static int qproc_claim_failure;
+_NOTE(MUTEX_PROTECTS_DATA(qproc_probe_lock, qproc_claim_failure))
+#endif
+
+/* Framework claims must survive the wait independently of the driver mutex. */
 static int
 streams_qproc_close(queue_t *q, int flag, cred_t *credp)
 {
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTQPAIR
+	struct qproc_pair *pair = (void *)((char *)q -
+	    __builtin_offsetof(struct qproc_pair, read_queue));
+
+	if (!rw_write_held(&pair->perimeter) || !rw_read_held(&locklint_outer))
+		qproc_claim_failure = 1;
+#endif
 #if QPROC_HOLD_DRIVER_LOCK
 	mutex_enter(&qproc_driver_lock);
 #endif
 	qprocsoff(q);
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTQPAIR
+	if (!rw_write_held(&pair->perimeter) || !rw_read_held(&locklint_outer))
+		qproc_claim_failure = 1;
+#endif
 #if QPROC_HOLD_DRIVER_LOCK
 	mutex_exit(&qproc_driver_lock);
 #endif
