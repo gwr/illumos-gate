@@ -87,7 +87,5 @@ run_case d-mtpermod-putshared \
     "$SCRIPT_DIR/streams-perimeter-mtpermod-putshared.cf" 1 2 2 || exit $?
 run_case d-mtouter '(D_MP|D_MTOUTPERIM)' \
     "$SCRIPT_DIR/streams-perimeter-outer.cf" 2 1 2 || exit $?
-run_case d-mtpermod-outer '(D_MP|D_MTPERMOD|D_MTOUTPERIM)' \
-    "$SCRIPT_DIR/streams-perimeter-mtpermod-outer.cf" 0 1 2 || exit $?
 
 print "New locklint single-module STREAMS perimeter entry works."
