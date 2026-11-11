@@ -1,0 +1,2 @@
+declare --root=true locklint_close
+declare targets qinit::qi_qclose streams_qunbufcall_close

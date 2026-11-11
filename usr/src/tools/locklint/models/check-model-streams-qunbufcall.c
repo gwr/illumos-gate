@@ -11,12 +11,15 @@
 
 /*
  * Verify qunbufcall's potential blocking without transferring caller locks.
- * Separate runs supply unlocked and driver-mutex-held entry.  A protected
- * store after cancellation checks that the locked caller retains ownership.
+ * Separate runs supply unlocked, driver-mutex-held, and framework close
+ * entry.  A protected store checks retained driver ownership; ordinary writer
+ * queries check framework ownership before and after cancellation without
+ * supplying missing claims.  Only the framework claim is exempt at the wait.
  * Request IDs, callback suppression, and lifetime ordering are not modeled.
  */
 
 #include <sys/types.h>
+#include <sys/conf.h>
 #include <sys/note.h>
 #include <sys/stream.h>
 #include <sys/synch.h>
@@ -25,22 +28,50 @@
 #define	QUNBUFCALL_HOLD_DRIVER_LOCK	0
 #endif
 
-static queue_t qunbufcall_queue;
 static bufcall_id_t qunbufcall_id;
 static kmutex_t qunbufcall_driver_lock;
 static int qunbufcall_after_data;
 
 _NOTE(MUTEX_PROTECTS_DATA(qunbufcall_driver_lock, qunbufcall_after_data))
 
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
+extern krwlock_t locklint_inner;
+static kmutex_t qunbufcall_probe_lock;
+static int qunbufcall_claim_failure;
+_NOTE(MUTEX_PROTECTS_DATA(qunbufcall_probe_lock, qunbufcall_claim_failure))
+#endif
+
+/* Missing framework ownership must fail independently of the driver lock. */
 void
-check_qunbufcall(void)
+check_qunbufcall(queue_t *q)
 {
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
+	if (!rw_write_held(&locklint_inner))
+		qunbufcall_claim_failure = 1;
+#endif
 #if QUNBUFCALL_HOLD_DRIVER_LOCK
 	mutex_enter(&qunbufcall_driver_lock);
 #endif
-	qunbufcall(&qunbufcall_queue, qunbufcall_id);
+	qunbufcall(q, qunbufcall_id);
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
+	if (!rw_write_held(&locklint_inner))
+		qunbufcall_claim_failure = 1;
+#endif
 #if QUNBUFCALL_HOLD_DRIVER_LOCK
 	qunbufcall_after_data = 1;
 	mutex_exit(&qunbufcall_driver_lock);
 #endif
 }
+
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
+static int
+streams_qunbufcall_close(queue_t *q, int flag, cred_t *credp)
+{
+	check_qunbufcall(q);
+	return (0);
+}
+
+static struct qinit streams_qunbufcall_qinit = {
+	.qi_qclose = streams_qunbufcall_close
+};
+#endif
