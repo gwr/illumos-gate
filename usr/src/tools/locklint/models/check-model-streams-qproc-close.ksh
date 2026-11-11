@@ -13,6 +13,7 @@
 #
 # Validate qprocsoff() wait exemptions under framework close-entry perimeters
 # while retaining diagnostics for an ordinary driver mutex.
+# Test module-wide inner and outer-only entry as separate legal scopes.
 #
 
 SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
@@ -78,9 +79,9 @@ run_case inner '(D_MP|D_MTPERMOD)' 0 \
     "$SCRIPT_DIR/streams-qproc-close-inner.cf" 0 || exit $?
 run_case outer '(D_MP|D_MTOUTPERIM)' 0 \
     "$SCRIPT_DIR/streams-qproc-close-outer.cf" 0 || exit $?
-run_case combined '(D_MP|D_MTPERMOD|D_MTOUTPERIM)' 0 \
-    "$SCRIPT_DIR/streams-qproc-close-combined.cf" 0 || exit $?
-run_case combined-driver '(D_MP|D_MTPERMOD|D_MTOUTPERIM)' 1 \
-    "$SCRIPT_DIR/streams-qproc-close-combined.cf" 1 || exit $?
+run_case inner-driver '(D_MP|D_MTPERMOD)' 1 \
+    "$SCRIPT_DIR/streams-qproc-close-inner.cf" 1 || exit $?
+run_case outer-driver '(D_MP|D_MTOUTPERIM)' 1 \
+    "$SCRIPT_DIR/streams-qproc-close-outer.cf" 1 || exit $?
 
 print "New locklint qproc close wait exemptions work."
