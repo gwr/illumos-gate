@@ -562,13 +562,25 @@ qtimeout(queue_t *q, void (*func)(void *), void *argument, clock_t ticks)
  * completion.  A private condition wait exposes the ordinary caller-lock
  * obligation without changing caller ownership.  This shared helper models
  * potential blocking, not request serialization or callback lifetime.
- * Framework-perimeter exemptions require separate characterization.
+ * qcallbwrapper can bypass entry for a matching cancellation while blocked
+ * on the registered syncq.  The caller retains its semantic perimeter claim;
+ * it does not release/reenter it.  Module-wide scope shares one inner syncq,
+ * so exempt only that framework lock across the wait.  Ordinary driver locks
+ * remain diagnostic because an already executing callback may need them.
+ * Queue-relative and outer exemptions are not yet modeled.  The bypass is
+ * not a guarantee against request-level reentrant cancellation cycles.
  */
 static void
 MODEL_NAME(qcancel_wait)(void)
 {
 	mutex_enter(&MODEL_NAME(qcancel_mutex));
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
+	_NOTE(HELD_DURING_WAIT_EXEMPT_ON(MODEL_NAME(inner)))
+#endif
 	cv_wait(&MODEL_NAME(qcancel_cv), &MODEL_NAME(qcancel_mutex));
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
+	_NOTE(HELD_DURING_WAIT_EXEMPT_OFF(MODEL_NAME(inner)))
+#endif
 	mutex_exit(&MODEL_NAME(qcancel_mutex));
 }
 

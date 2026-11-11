@@ -12,6 +12,7 @@
 
 #
 # Check ordinary caller-lock obligations across quntimeout's possible wait.
+# Module-wide close entry exempts the framework writer, retaining driver checks.
 # Exact warning totals also reject lost ownership after cancellation returns.
 #
 
@@ -26,17 +27,20 @@ run_case()
 {
 	name=$1
 	held=$2
+	flags=${3:-D_MP}
+	commands=${4:-$SCRIPT_DIR/streams-quntimeout.cf}
+	caller=${5:-quntimeout}
 	output="$SCRIPT_DIR/streams-quntimeout-$name.raw"
 
 	(
 		cd "$MODULE_DIR" || exit 1
 		"$LOCKLINT" --compat=osll --root-discovery=none --dump-callgraph \
-		    --cf "$SCRIPT_DIR/streams-quntimeout.cf" \
+		    --cf "$commands" \
 		    -D__sun -m64 -Ui386 -U__i386 -O2 \
 		    -D_ASM_INLINES -std=gnu99 \
 		    -D_KERNEL -D_SYSCALL32 -D_SYSCALL32_IMPL \
 		    -D_ELF64 -D_DDI_STRICT -Dsun -D__sun -D__SVR4 -DDEBUG \
-		    -DMODEL_FLAGS=D_MP "-DQUNTIMEOUT_HOLD_DRIVER_LOCK=$held" \
+		    "-DMODEL_FLAGS=$flags" "-DQUNTIMEOUT_HOLD_DRIVER_LOCK=$held" \
 		    -I../../intel -nostdinc -I../../common \
 		    "$INPUT" "$MODEL"
 	) >"$output" 2>&1
@@ -61,7 +65,7 @@ run_case()
 		return 1
 	fi
 	if (( held != 0 )) && ! grep -q \
-	    "lock is held on a path through call to 'quntimeout'\$" "$output"; then
+	    "lock is held on a path through call to '$caller'\$" "$output"; then
 		print -u2 "quntimeout $name lacks caller provenance; see $output"
 		return 1
 	fi
@@ -70,5 +74,9 @@ run_case()
 
 run_case driver 1 || exit $?
 run_case unlocked 0 || exit $?
+run_case inner 0 '(D_MP|D_MTPERMOD)' \
+    "$SCRIPT_DIR/streams-quntimeout-inner.cf" || exit $?
+run_case inner-driver 1 '(D_MP|D_MTPERMOD)' \
+    "$SCRIPT_DIR/streams-quntimeout-inner.cf" streams_quntimeout_close || exit $?
 
-print "New locklint quntimeout model exposes blocking and preserves caller locks."
+print "New locklint quntimeout model preserves locks and scopes wait exemptions."
