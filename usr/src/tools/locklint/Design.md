@@ -1,5 +1,12 @@
 # Locklint design
 
+This document covers the locklint program's architecture, analysis semantics,
+data structures, and interfaces, including general mechanisms used by models.
+
+For API-specific framework models (DKI, STREAMS, etc.), see the
+[DDI/DKI model](models/ddi-dki-model.c) and
+[STREAMS model](models/streams-dki-model.c).
+
 <details>
 <summary>Copyright and license</summary>
 
@@ -2071,95 +2078,22 @@ return value for a caller that continues independently.
 
 Because the property is function-wide, representative-model code should use
 a dedicated helper whose name makes its synthetic asynchronous role clear,
-such as `locklint_async_callback` or
-`locklint_qpair_qwriter_deferred`.  Do not annotate a general helper that also
+such as `locklint_async_callback`. Do not annotate a general helper that also
 has synchronous callers; instead, keep shared behavior in an unannotated
 implementation and call it through a dedicated annotated wrapper.
 
-### STREAMS model configuration
+### Representative model inputs
 
-`models/streams-dki-model.c` represents one selected module. `MODEL_FLAGS`
-must describe a configuration accepted by illumos `devflg_to_qflag()` in
-`usr/src/uts/common/os/strsubr.c`, using the flag definitions in
-`usr/src/uts/common/sys/conf.h`. For this model's `D_MP` configurations,
-choose one inner scope:
+Representatives are ordinary C inputs analyzed with the selected sources.
+They use recognized synchronization operations to expose caller-visible lock
+and blocking effects, and dedicated asynchronous helpers for independently
+scheduled execution. Command policy supplies analysis roots, callback targets,
+and external contracts without requiring changes to production sources.
 
-| Base flags | Inner perimeter | May add `D_MTOUTPERIM`? |
-| --- | --- | --- |
-| `D_MP` | None | Yes |
-| `D_MP \| D_MTPERQ` | One per queue instance | Yes |
-| `D_MP \| D_MTQPAIR` | One per queue pair | Yes |
-| `D_MP \| D_MTPERMOD` | One shared across the module's instances | No |
-
-`D_MTPERMOD` encodes both scope bits: OR-ing `D_MTPERQ` and `D_MTQPAIR`
-selects module-wide scope, not two independent perimeters. An outer perimeter
-is shared across the selected module's instances. Illumos rejects
-`D_MTPERMOD | D_MTOUTPERIM`.
-
-The sharing and outer-entry modifiers have additional prerequisites:
-
-- `D_MTPUTSHARED` requires an inner perimeter and makes put entry shared.
-- `_D_MTOCSHARED` and `_D_MTCBSHARED` require an inner perimeter plus
-  `D_MTPUTSHARED`; they select shared inner open/close and callback entry.
-- `_D_MTSVCSHARED` requires `D_MTPERMOD` plus `D_MTPUTSHARED`. Per-queue
-  and queue-pair service entry remains exclusive.
-- `D_MTOCEXCL` requires `D_MTOUTPERIM` and selects exclusive outer open/close
-  entry; ordinary outer entry is shared.
-
-These are runtime configuration constraints, independent of whether a
-synthetic sequence of lock operations can be analyzed. The representative
-currently checks only some configuration constraints. Model acceptance alone
-does not prove flag validity; fixtures and runners must use legal combinations
-when claiming illumos framework coverage.
-
-### STREAMS qwriter ownership
-
-The STREAMS representative uses this separation for module-wide, per-queue,
-and queue-pair inner qwriter callbacks. An already writer-held caller invokes
-the callback directly. A reader-held caller uses rw_tryupgrade: success runs
-the callback and retains writer ownership until the enclosing framework entry exits;
-failure preserves reader ownership and calls the asynchronous wrapper.
-That wrapper establishes and releases its own writer ownership in the fresh
-context. Balancing acquisition and release around the immediate callback
-would lose the enclosing entry's ownership. This implemented transition is
-limited to PERIM_INNER for D_MTPERMOD, D_MTPERQ, and exact-side D_MTQPAIR.
-Per-queue immediate and deferred execution both select the queue-address
-shadow lock. Queue-pair execution derives the containing pair from the queue
-and exact side; the fixed-side standard interface forwards to the same
-ownership transition. Both preserve distinct instance identities without
-acquiring the module-wide perimeter. Focused nested inner callbacks cover
-module-wide, per-queue, and fixed-side queue-pair entry: a nested callback
-retains a mutex acquired by the outer callback, and writer ownership survives
-both callback returns until enclosing entry exit. This also holds when the
-outer callback starts through fresh deferred entry. Outer transitions and
-mixed-side nesting remain subject to separate review and focused validation.
-
-Outer-only D_MP|D_MTOUTPERIM entry has a different ownership lifetime.
-Immediate PERIM_OUTER execution nonblockingly upgrades the caller's outer
-reader claim, invokes the callback, and downgrades to reader before returning.
-Deferred submission preserves that reader claim and uses fresh balanced
-writer entry for the callback. An already writer-held outer claim takes the
-deferred path. The focused fixture covers ordinary put entry, caller-lock
-effects, reader restoration, and framework release. Queue-relative inner
-combinations and nested outer requests require separate focused validation.
-D_MTPERMOD|D_MTOUTPERIM is not a supported illumos flag combination.
-
-### STREAMS cancellation blocking
-
-The `quntimeout()` representative exposes potential blocking during
-cancellation while preserving ordinary caller-held locks. A private
-mutex/condition wait supplies the blocking point without exposing framework
-implementation locks. Focused D_MP cases require no warning for an unlocked
-caller and one held-during-wait warning, with caller provenance, for a
-driver-mutex-held caller. A protected store after return checks that ownership
-is retained.
-
-The clock_t result is unconstrained model state. It does not establish a
-relationship between an ID, the return value, and callback execution.
-Cancellation does not suppress independently reachable qtimeout callbacks
-or prove teardown/lifetime ordering. Framework-perimeter cancellation rules
-and wait exemptions require separate characterization; this initial blocking
-representative adds no such exemptions. qunbufcall remains separate work.
+The supplied [DDI/DKI model](models/ddi-dki-model.c) and
+[STREAMS model](models/streams-dki-model.c) illustrate these mechanisms.
+Framework-specific contracts, configuration constraints, and non-obvious
+modeling choices can be found in comments in the relevant model sources.
 
 ### Focused validation
 

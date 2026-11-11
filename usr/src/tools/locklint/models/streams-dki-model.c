@@ -47,20 +47,25 @@
 #endif
 
 /*
- * MODEL_FLAGS must follow devflg_to_qflag() in os/strsubr.c.  Use D_MP
- * alone for no inner perimeter, or select D_MTPERQ, D_MTQPAIR, or
- * D_MTPERMOD for queue, queue-pair, or module-wide inner scope.  D_MTPERMOD
- * encodes both scope bits; OR-ing D_MTPERQ and D_MTQPAIR selects that scope.
- * D_MTOUTPERIM is valid with D_MP alone, D_MTPERQ, or D_MTQPAIR, but not
- * D_MTPERMOD.  Its outer perimeter is shared across the module's instances.
+ * MODEL_FLAGS must follow devflg_to_qflag() in os/strsubr.c.  Start with
+ * D_MP, then choose no inner perimeter or one scope: D_MTPERQ per queue,
+ * D_MTQPAIR per pair, or D_MTPERMOD across the module's instances.
+ * D_MTPERMOD encodes both scope bits; OR-ing D_MTPERQ and D_MTQPAIR selects
+ * module-wide scope, not two independent perimeters.  D_MTOUTPERIM may be
+ * added to D_MP alone or queue/queue-pair scope, but not D_MTPERMOD.  The
+ * outer perimeter is shared across the module's instances.
  *
- * D_MTPUTSHARED requires an inner perimeter.  _D_MTOCSHARED and
- * _D_MTCBSHARED also require D_MTPUTSHARED.  _D_MTSVCSHARED requires both
- * D_MTPERMOD and D_MTPUTSHARED.  D_MTOCEXCL requires D_MTOUTPERIM.
+ * Inner entry is normally writer-held.  D_MTPUTSHARED selects shared put
+ * entry and requires an inner perimeter.  _D_MTOCSHARED and _D_MTCBSHARED
+ * select shared open/close and callback entry, respectively; both require
+ * D_MTPUTSHARED.  _D_MTSVCSHARED selects shared service entry and requires
+ * both D_MTPERMOD and D_MTPUTSHARED.  Queue/queue-pair service stays exclusive.
+ * Normal outer entry is reader-held.  D_MTOCEXCL selects outer writer entry
+ * for open/close and requires D_MTOUTPERIM.
  *
  * Configuration checks below are partial.  An analyzable synthetic lock
- * sequence does not establish a valid illumos configuration.  See the
- * STREAMS model configuration section of Design.md for the flag matrix.
+ * sequence does not establish a valid illumos configuration; model acceptance
+ * alone is not evidence that a flag combination is supported by the kernel.
  */
 
 #if defined(MODEL_QWRITER_QPAIR_SIDE) && \
@@ -354,6 +359,8 @@ _NOTE(ASYNC_ENTRY(MODEL_NAME(qwriter_deferred)))
  * ownership until enclosing framework entry exits; failure preserves the
  * reader claim and schedules fresh asynchronous entry.  Already-exclusive
  * entry needs neither another acquisition nor deferred execution.
+ * Acquiring/releasing around an immediate inner callback would lose the
+ * enclosing entry's claim, including during nested inner qwriter calls.
  * Outer-only entry instead restores its reader claim after immediate
  * execution.  An existing outer writer claim requires deferred execution.
  */
