@@ -90,15 +90,16 @@ run_case()
 
 run_case d-mp D_MP none 4 || exit $?
 run_case d-mtpermod '(D_MP|D_MTPERMOD)' none 2 || exit $?
+# Shared callback modes require shared put entry in every inner scope.
 run_case d-mtpermod-shared \
-    '(D_MP|D_MTPERMOD|_D_MTCBSHARED)' none 3 || exit $?
+    '(D_MP|D_MTPERMOD|D_MTPUTSHARED|_D_MTCBSHARED)' none 3 || exit $?
 run_case d-mtperq '(D_MP|D_MTPERQ)' none 2 || exit $?
 run_case d-mtperq-shared \
-    '(D_MP|D_MTPERQ|_D_MTCBSHARED)' none 3 || exit $?
+    '(D_MP|D_MTPERQ|D_MTPUTSHARED|_D_MTCBSHARED)' none 3 || exit $?
 run_case d-mtqpair-read '(D_MP|D_MTQPAIR)' 0 2 || exit $?
 run_case d-mtqpair-write '(D_MP|D_MTQPAIR)' 1 2 || exit $?
 run_case d-mtqpair-shared \
-    '(D_MP|D_MTQPAIR|_D_MTCBSHARED)' 1 3 || exit $?
+    '(D_MP|D_MTQPAIR|D_MTPUTSHARED|_D_MTCBSHARED)' 1 3 || exit $?
 run_case d-outer '(D_MP|D_MTOUTPERIM)' none 3 || exit $?
 run_case d-mtqpair-outer \
     '(D_MP|D_MTQPAIR|D_MTOUTPERIM)' 1 3 || exit $?

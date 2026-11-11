@@ -101,7 +101,9 @@ run_case()
 run_case d-mp D_MP "$SCRIPT_DIR/streams-openclose.cf" 2 2 2 || exit $?
 run_case d-mtpermod '(D_MP|D_MTPERMOD)' \
     "$SCRIPT_DIR/streams-openclose-mtpermod.cf" 0 2 2 || exit $?
-run_case d-mtpermod-shared '(D_MP|D_MTPERMOD|_D_MTOCSHARED)' \
+# Shared open/close entry also requires shared put entry.
+run_case d-mtpermod-shared \
+    '(D_MP|D_MTPERMOD|D_MTPUTSHARED|_D_MTOCSHARED)' \
     "$SCRIPT_DIR/streams-openclose-mtpermod-shared.cf" 1 2 2 || exit $?
 run_case d-mtouter '(D_MP|D_MTOUTPERIM)' \
     "$SCRIPT_DIR/streams-openclose-outer.cf" 2 1 2 || exit $?
@@ -110,7 +112,7 @@ run_case d-mtouter-excl '(D_MP|D_MTOUTPERIM|D_MTOCEXCL)' \
 run_case d-mtpermod-outer '(D_MP|D_MTPERMOD|D_MTOUTPERIM)' \
     "$SCRIPT_DIR/streams-openclose-mtpermod-outer.cf" 0 1 2 || exit $?
 run_case d-mtpermod-shared-outer-excl \
-    '(D_MP|D_MTPERMOD|_D_MTOCSHARED|D_MTOUTPERIM|D_MTOCEXCL)' \
+    '(D_MP|D_MTPERMOD|D_MTPUTSHARED|_D_MTOCSHARED|D_MTOUTPERIM|D_MTOCEXCL)' \
     "$SCRIPT_DIR/streams-openclose-mtpermod-shared-outer-excl.cf" \
     1 0 2 || exit $?
 
