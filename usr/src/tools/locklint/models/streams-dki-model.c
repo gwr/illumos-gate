@@ -183,8 +183,8 @@ static volatile timeout_id_t MODEL_NAME(timeout_id);
 static volatile bufcall_id_t MODEL_NAME(bufcall_id);
 static kmutex_t MODEL_NAME(qprocsoff_mutex);
 static kcondvar_t MODEL_NAME(qprocsoff_cv);
-static kmutex_t MODEL_NAME(quntimeout_mutex);
-static kcondvar_t MODEL_NAME(quntimeout_cv);
+static kmutex_t MODEL_NAME(qcancel_mutex);
+static kcondvar_t MODEL_NAME(qcancel_cv);
 static volatile clock_t MODEL_NAME(quntimeout_result);
 
 #ifdef MODEL_MODULE_LIFECYCLE
@@ -551,11 +551,22 @@ qtimeout(queue_t *q, void (*func)(void *), void *argument, clock_t ticks)
 }
 
 /*
- * Cancellation can block while another cancellation is in progress or while
- * untimeout waits for the callback.  A private condition wait exposes the
- * ordinary caller-lock obligation without changing caller ownership.
- * Framework-perimeter exemptions require separate characterization.  IDs
- * and return values do not suppress independently reachable callbacks or
+ * Both cancellation APIs can block on another cancellation or callback
+ * completion.  A private condition wait exposes the ordinary caller-lock
+ * obligation without changing caller ownership.  This shared helper models
+ * potential blocking, not request serialization or callback lifetime.
+ * Framework-perimeter exemptions require separate characterization.
+ */
+static void
+MODEL_NAME(qcancel_wait)(void)
+{
+	mutex_enter(&MODEL_NAME(qcancel_mutex));
+	cv_wait(&MODEL_NAME(qcancel_cv), &MODEL_NAME(qcancel_mutex));
+	mutex_exit(&MODEL_NAME(qcancel_mutex));
+}
+
+/*
+ * IDs and return values do not suppress independently reachable callbacks or
  * establish lifetime ordering; keep the clock_t result unconstrained.
  */
 clock_t
@@ -563,9 +574,7 @@ quntimeout(queue_t *q, timeout_id_t id)
 {
 	(void) q;
 	(void) id;
-	mutex_enter(&MODEL_NAME(quntimeout_mutex));
-	cv_wait(&MODEL_NAME(quntimeout_cv), &MODEL_NAME(quntimeout_mutex));
-	mutex_exit(&MODEL_NAME(quntimeout_mutex));
+	MODEL_NAME(qcancel_wait)();
 	return (MODEL_NAME(quntimeout_result));
 }
 
@@ -577,6 +586,15 @@ qbufcall(queue_t *q, size_t size, uint_t priority, void (*func)(void *),
 	(void) priority;
 	MODEL_NAME(qcallback_deferred)(q, func, argument);
 	return (MODEL_NAME(bufcall_id));
+}
+
+/* Cancellation retains caller locks without removing callback entry paths. */
+void
+qunbufcall(queue_t *q, bufcall_id_t id)
+{
+	(void) q;
+	(void) id;
+	MODEL_NAME(qcancel_wait)();
 }
 
 /*
