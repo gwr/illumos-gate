@@ -16,8 +16,10 @@
 
 #
 # Copyright (c) 2014 by Delphix. All rights reserved.
+# Copyright 2026 RackTop Systems Inc.
 #
 
 . $STF_SUITE/include/libtest.shlib
 
+log_must set_tunable32 zfs_removal_suspend_progress 0
 default_cleanup
