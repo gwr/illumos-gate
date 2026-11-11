@@ -38,6 +38,13 @@ struct qproc_pair {
 
 extern krwlock_t locklint_outer;
 
+/* Require the configured mode, not just an arbitrary held outer claim. */
+#if (MODEL_FLAGS & D_MTOCEXCL) != 0
+#define	QPROC_OUTER_HELD()	rw_write_held(&locklint_outer)
+#else
+#define	QPROC_OUTER_HELD()	rw_read_held(&locklint_outer)
+#endif
+
 /*
  * Ordinary queries check ownership without seeding a missing claim.  A
  * separate diagnostic lock keeps failure visible even with the driver mutex
@@ -56,7 +63,7 @@ streams_qproc_close(queue_t *q, int flag, cred_t *credp)
 	struct qproc_pair *pair = (void *)((char *)q -
 	    __builtin_offsetof(struct qproc_pair, read_queue));
 
-	if (!rw_write_held(&pair->perimeter) || !rw_read_held(&locklint_outer))
+	if (!rw_write_held(&pair->perimeter) || !QPROC_OUTER_HELD())
 		qproc_claim_failure = 1;
 #endif
 #if QPROC_HOLD_DRIVER_LOCK
@@ -64,7 +71,7 @@ streams_qproc_close(queue_t *q, int flag, cred_t *credp)
 #endif
 	qprocsoff(q);
 #if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTQPAIR
-	if (!rw_write_held(&pair->perimeter) || !rw_read_held(&locklint_outer))
+	if (!rw_write_held(&pair->perimeter) || !QPROC_OUTER_HELD())
 		qproc_claim_failure = 1;
 #endif
 #if QPROC_HOLD_DRIVER_LOCK
