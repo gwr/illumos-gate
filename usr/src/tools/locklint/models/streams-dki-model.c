@@ -567,13 +567,27 @@ qtimeout(queue_t *q, void (*func)(void *), void *argument, clock_t ticks)
  * it does not release/reenter it.  Module-wide scope shares one inner syncq,
  * so exempt only that framework lock across the wait.  Ordinary driver locks
  * remain diagnostic because an already executing callback may need them.
- * Queue-relative and outer exemptions are not yet modeled.  The bypass is
- * not a guarantee against request-level reentrant cancellation cycles.
+ * Per-queue scope exempts only q's writer claim, when held by this thread;
+ * other queues remain diagnostic.  Keep ON, wait, and OFF inside one guard:
+ * an opaque query's false path does not establish a persistent unheld fact.
+ * Per-queue reader, queue-pair, and outer exemptions are not yet modeled.
+ * The bypass is not a guarantee against request-level reentrant cancellation
+ * cycles.
  */
 static void
-MODEL_NAME(qcancel_wait)(void)
+MODEL_NAME(qcancel_wait)(queue_t *q)
 {
+	(void) q;
 	mutex_enter(&MODEL_NAME(qcancel_mutex));
+#if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERQ
+	if (rw_write_held(MODEL_PERQ_LOCK(q))) {
+		_NOTE(HELD_DURING_WAIT_EXEMPT_ON(*MODEL_PERQ_LOCK(q)))
+		cv_wait(&MODEL_NAME(qcancel_cv), &MODEL_NAME(qcancel_mutex));
+		_NOTE(HELD_DURING_WAIT_EXEMPT_OFF(*MODEL_PERQ_LOCK(q)))
+		mutex_exit(&MODEL_NAME(qcancel_mutex));
+		return;
+	}
+#endif
 #if (MODEL_FLAGS & (D_MTPERQ | D_MTQPAIR)) == D_MTPERMOD
 	_NOTE(HELD_DURING_WAIT_EXEMPT_ON(MODEL_NAME(inner)))
 #endif
@@ -591,9 +605,8 @@ MODEL_NAME(qcancel_wait)(void)
 clock_t
 quntimeout(queue_t *q, timeout_id_t id)
 {
-	(void) q;
 	(void) id;
-	MODEL_NAME(qcancel_wait)();
+	MODEL_NAME(qcancel_wait)(q);
 	return (MODEL_NAME(quntimeout_result));
 }
 
@@ -611,9 +624,8 @@ qbufcall(queue_t *q, size_t size, uint_t priority, void (*func)(void *),
 void
 qunbufcall(queue_t *q, bufcall_id_t id)
 {
-	(void) q;
 	(void) id;
-	MODEL_NAME(qcancel_wait)();
+	MODEL_NAME(qcancel_wait)(q);
 }
 
 /*

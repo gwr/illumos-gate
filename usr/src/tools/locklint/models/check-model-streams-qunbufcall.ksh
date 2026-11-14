@@ -30,6 +30,8 @@ run_case()
 	flags=${3:-D_MP}
 	commands=${4:-$SCRIPT_DIR/streams-qunbufcall.cf}
 	caller=${5:-qunbufcall}
+	extra_cpp=${6:-}
+	expected=${7:-$held}
 	output="$SCRIPT_DIR/streams-qunbufcall-$name.raw"
 
 	(
@@ -41,6 +43,7 @@ run_case()
 		    -D_KERNEL -D_SYSCALL32 -D_SYSCALL32_IMPL \
 		    -D_ELF64 -D_DDI_STRICT -Dsun -D__sun -D__SVR4 -DDEBUG \
 		    "-DMODEL_FLAGS=$flags" "-DQUNBUFCALL_HOLD_DRIVER_LOCK=$held" \
+		    $extra_cpp \
 		    -I../../intel -nostdinc -I../../common \
 		    "$INPUT" "$MODEL"
 	) >"$output" 2>&1
@@ -53,9 +56,9 @@ run_case()
 
 	waits=$(grep -c '\[lock-held-during-wait\]$' "$output")
 	warnings=$(grep -c 'warning:' "$output")
-	if (( waits != held || warnings != held )); then
+	if (( waits != expected || warnings != expected )); then
 		print -u2 "qunbufcall $name: waits=$waits, warnings=$warnings " \
-		    "(expected $held each); see $output"
+		    "(expected $expected each); see $output"
 		return 1
 	fi
 	if ! grep -q \
@@ -64,7 +67,7 @@ run_case()
 		print -u2 "see $output"
 		return 1
 	fi
-	if (( held != 0 )) && ! grep -q \
+	if (( expected != 0 )) && ! grep -q \
 	    "lock is held on a path through call to '$caller'\$" "$output"; then
 		print -u2 "qunbufcall $name lacks caller provenance; see $output"
 		return 1
@@ -90,5 +93,30 @@ run_case inner-shared-callback 0 "$callback_flags" \
     "$SCRIPT_DIR/streams-qunbufcall-inner.cf" || exit $?
 run_case inner-shared-callback-driver 1 "$callback_flags" \
     "$SCRIPT_DIR/streams-qunbufcall-inner.cf" streams_qunbufcall_close || exit $?
+
+
+# Per-queue writer entry must not exempt a different queue's perimeter.
+run_case perq 0 '(D_MP|D_MTPERQ)' \
+    "$SCRIPT_DIR/streams-qunbufcall-inner.cf" || exit $?
+run_case perq-driver 1 '(D_MP|D_MTPERQ)' \
+    "$SCRIPT_DIR/streams-qunbufcall-inner.cf" streams_qunbufcall_close || exit $?
+run_case perq-other 0 '(D_MP|D_MTPERQ)' \
+    "$SCRIPT_DIR/streams-qunbufcall-inner.cf" streams_qunbufcall_close \
+    '-DCANCEL_HOLD_OTHER_QUEUE' 1 || exit $?
+run_case perq-other-driver 1 '(D_MP|D_MTPERQ)' \
+    "$SCRIPT_DIR/streams-qunbufcall-inner.cf" streams_qunbufcall_close \
+    '-DCANCEL_HOLD_OTHER_QUEUE' 2 || exit $?
+run_case perq-unlocked 0 '(D_MP|D_MTPERQ)' \
+    "$SCRIPT_DIR/streams-qunbufcall.cf" qunbufcall \
+    '-DCANCEL_NO_ENTRY' || exit $?
+run_case perq-other-only 0 '(D_MP|D_MTPERQ)' \
+    "$SCRIPT_DIR/streams-qunbufcall.cf" qunbufcall \
+    '-DCANCEL_NO_ENTRY -DCANCEL_HOLD_OTHER_QUEUE' 1 || exit $?
+
+
+# An unbound queue tests the guarded exemption independently of discovery.
+run_case perq-opaque 0 '(D_MP|D_MTPERQ)' \
+    "$SCRIPT_DIR/streams-qunbufcall.cf" qunbufcall \
+    '-DCANCEL_NO_ENTRY -DCANCEL_OPAQUE_QUEUE' || exit $?
 
 print "New locklint qunbufcall model preserves locks and scopes wait exemptions."
