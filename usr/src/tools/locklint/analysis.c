@@ -3365,9 +3365,10 @@ record_conditional_outcome(struct analysis *analysis,
 
 /*
  * Observe ordinary rwlock predicates at the call, tagging only feasible
- * outcomes until their branch.  Ownership is unchanged, even when the result
- * is saved across a later lock operation.  Unresolved access stays unknown;
- * mixed modes retain both answers without inventing a refined lock state.
+ * outcomes until their branch.  An opaque current-thread writer test supplies
+ * observed ownership only on its true path, at the call rather than at a
+ * later branch.  It is not an acquisition or an asserted caller requirement.
+ * Other unknown queries and false paths retain their conservative state.
  */
 static bool
 process_rwlock_predicate(struct analysis *analysis,
@@ -3418,8 +3419,24 @@ process_rwlock_predicate(struct analysis *analysis,
 	 */
 	if (current_modes == 0 && identity->analysis_object_type ==
 	    LOCK_ANALYSIS_OBJECT_PSEUDO) {
+		const struct semantic_state *true_state = point_state->state;
+
+		if (positive_modes == LOCKLINT_MODE_WRITER &&
+		    !may_observe_other_threads) {
+			struct semantic_state *observed;
+
+			error = context_state_set_lock(
+			    point_state->context->function, point_state->state,
+			    identity, LOCKLINT_MODE_WRITER, &observed,
+			    &existed);
+			if (error != 0)
+				die("cannot record writer observation: %s",
+				    strerror(error));
+			record_semantic_state(analysis, existed);
+			true_state = observed;
+		}
 		record_conditional_outcome(analysis, point_state, next, branch,
-		    true, point_state->state);
+		    true, true_state);
 		record_conditional_outcome(analysis, point_state, next, branch,
 		    false, point_state->state);
 		return (true);

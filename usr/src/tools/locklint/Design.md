@@ -2531,7 +2531,7 @@ modes, and whether the query may observe another thread, independently of
 assertion provenance. After assertion handling,
 process_rwlock_predicate uses the existing contextual identity and lock-mode
 lookup to tag feasible true and false outcomes with the existing conditional
-instruction metadata. It changes no ownership, creates no entry requirement,
+instruction metadata. It creates no entry requirement or acquisition event
 and adds no lock-order edge. A result saved across a release in the same
 block retains the answer observed at the call rather than querying the
 changed state at the branch.
@@ -2542,21 +2542,34 @@ another thread's reader or writer. Unprefixed rw_read_held and rw_lock_held
 therefore retain both answers in locally unheld state. Unprefixed
 rw_read_held is conservative for libc callers as well, because no per-TU API
 profile selects its kernel versus user meaning. An opaque pseudo identity
-with no recorded ownership is unknown and
-retains both answers; a recorded held mode for that same identity remains
-usable. Mixed modes permit both answers when appropriate without introducing
-refined semantic states. Unsupported accesses and results consumed through
+with no recorded ownership is unknown and retains both answers. On the true
+path of a current-thread writer query, the existing lock map records observed
+writer ownership at the query. That fact permits protected accesses and scoped
+wait exemptions and exposes recursive acquisition; it is not a lock operation
+or an asserted caller requirement. Later lock operations update it normally,
+so consuming a saved result cannot restore ownership after release. The false
+path remains unknown, and remote-owner queries grant no local ownership.
+Repeated queries therefore do not establish correlated negative facts; a
+guarded exemption should keep ON, wait, and OFF inside one lexical guard.
+A recorded held mode for the same identity remains usable. Mixed modes permit
+both answers when appropriate without further refinement.
+Unsupported accesses and results consumed through
 other blocks, wrappers, memory, or general scalar expressions retain ordinary
 conservative control flow. Source ASSERT handling remains separate.
 
 The implementation introduces no predicate-value map, state field, or new
 collection. Lookup uses existing canonical bindings and the lock map; at
 most two conditional point alternatives survive until the immediate branch.
+Opaque writer truth may intern one ordinary held-lock state; neither state
+headers nor lock entries grow, and predicate-free paths add no state.
 Non-predicate calls are rejected before scanning the block for a consumer.
 tests/rwlock-predicate.c and its ksh runner cover exact modes, aliases,
 negation and zero tests, caller binding, possible remote owners, live negative
 controls, mixed upgrade outcomes, unresolved identities, and saved-result
 timing. Ordinary predicate uncertainty does not alter source ASSERT contracts.
+tests/rwlock-predicate-opaque.c and its runner cover opaque writer facts,
+guarded waits, recursive acquisition, concrete caller controls, unrelated
+locks, remote readers, and saved results after release.
 
 ### Result-sensitive acquisitions
 
