@@ -1,0 +1,327 @@
+.\" This file and its contents are supplied under the terms of the
+.\" Common Development and Distribution License ("CDDL"), version 1.0.
+.\" You may only use this file in accordance with the terms of version
+.\" 1.0 of the CDDL.
+.\" A full copy of the text of the CDDL should have accompanied this
+.\" source.  A copy is available at http://www.illumos.org/license/CDDL.
+.\" Copyright 2026 Gordon W. Ross
+.TH OZFS-IMPORT 1ONBLD "November 15, 2026"
+.SH NAME
+ ozfs-import \- prepare or apply OpenZFS changes with illumos paths
+.SH SYNOPSIS
+.nf
+\fBozfs-import\fR [\fB--config\fR \fIfile\fR] [\fB--source\fR \fIrepository\fR]
+    [\fB--destination\fR \fIrepository\fR] [\fB--import-paths\fR \fIfile\fR]
+    [\fB--group\fR \fIlabel\fR] [\fB--output\fR \fIfile\fR] \fIcommit\fR ...
+
+\fBozfs-import\fR [\fIoptions\fR] \fB--check\fR \fIcommit\fR ...
+\fBozfs-import\fR [\fIoptions\fR] \fB--apply\fR \fIpatch-file\fR
+.fi
+.SH DESCRIPTION
+The
+.B ozfs-import
+command converts an ordered list of OpenZFS commits into one mail patch
+whose paths correspond to an illumos Git worktree.
+The list represents one complete logical change; the command does not
+select prerequisites or discover follow-up fixes.
+Merge commits are not supported.
+.LP
+By default, the command writes the patch in the current directory as
+.BR 0001-subject.patch ,
+using Git's filename-safe form of the first source commit's subject.
+The filename is limited to 64 characters, with a fallback subject of
+.B patch
+when the sanitized subject is empty.
+Use
+.B --output
+to choose another filename.
+The command also writes a sibling file with the suffix
+.B .manifest.tsv
+that records source commits and path classifications.
+Neither file may already exist.
+The patch preserves the first source commit's subject, author, and author
+date, and includes each selected commit's full hash and original message.
+Applying it produces one illumos commit.
+.LP
+Below the commit-message separator, the patch includes a Git diffstat and
+file-operation summary.
+For a combined work item, the summary describes the ordered source diffs,
+so a file changed by several commits may appear more than once.
+If paths require review, a
+.B Requires review
+section follows the summary and lists their source paths, mapped destinations
+when known, and reasons.
+These annotations travel with the patch but are excluded from the commit
+message by
+.BR "git am" .
+.LP
+Configured mappings rewrite file paths, with the longest source prefix
+taking precedence.
+A unique existing destination can resolve multiple possible mappings;
+otherwise the mapping requires review.
+Configured exclusions and unselected platform variants are omitted and
+reported in the manifest.
+Unclassified paths, exceptional native implementations, ambiguous mappings,
+missing targets, and unapproved additions require review.
+Only the
+.B [additions]
+section authorizes new destination paths.
+The shipped policy is a starting point and must be reviewed for the
+particular source and destination revisions.
+.LP
+Preparation writes only the mail patch and manifest.
+It changes neither the destination object database, index, worktree, nor branch.
+The source OpenZFS repository is read through Git objects and is not changed.
+A prepared patch can subsequently be applied with:
+.LP
+.nf
+    git am --3way change.mbox
+.fi
+.LP
+Manual application can use three-way fallback only when the preimage blobs
+are already available in that destination.
+To copy the required blobs and apply the prepared patch in one operation,
+use
+.B --apply
+with its filename.
+.LP
+If review is required, preparation still writes the complete patch and
+manifest, then returns nonzero.
+Unresolved paths retain their OpenZFS names so the changes remain visible.
+Such a patch is review material and may require editing before application.
+.SH OPTIONS
+.TP
+.BI "--config " file
+Read local settings from the specified INI file.
+No local configuration file is read implicitly.
+Relative paths in this file are resolved from its containing directory.
+.TP
+.BI "--source " repository
+Select the OpenZFS Git worktree.
+Overrides the configuration file's source setting.
+A source must be specified by option or configuration.
+.TP
+.BI "--destination " repository
+Select the illumos Git worktree.
+Overrides the configuration file's destination setting.
+The default is the current Git worktree.
+Relative paths supplied as options are resolved from the current directory.
+.TP
+.BI "--import-paths " file
+Use a replacement INI path policy instead of the shipped
+.B import-paths.conf
+file.
+Overrides the configuration file's
+.B paths.import-paths
+setting.
+.TP
+.BI "--output " file
+Write a new mail patch and manifest.
+Overrides the default
+.B 0001-subject.patch
+filename.
+Incompatible with
+.B --check
+and
+.BR --apply .
+.TP
+.B --check
+Report commit and path classifications without writing artifacts, copying
+objects, or invoking
+.BR "git am" .
+Incompatible with
+.BR --apply .
+.TP
+.B --apply
+Read one supplied mail patch and extract full
+.B OpenZFS
+commit hashes from its commit message.
+Locate the required preimage blobs in the parents of those source commits,
+copy and verify them in the destination Git object database, and invoke
+.B git am --3way
+once with the supplied patch.
+Existing native preimage blobs may also be used.
+The patch is applied as supplied, preserving review edits to its message
+and diff.
+No source commits need to be supplied as arguments.
+A source repository must still be specified by configuration or
+.BR --source .
+The operation accepts exactly one mail message, which may contain a
+combined logical change from several source commits.
+It does not read mapping files or the preparation manifest.
+The
+.B --group
+and
+.B --import-paths
+options apply only during preparation and checking.
+Requires a clean tracked worktree and index and no pending
+.B git am
+operation or retained import artifacts.
+.TP
+.BI "--group " label
+Add an optional
+.B Import
+label to the generated commit message.
+The label is a nonempty single line; no research group numbering is required.
+.SH CONFIGURATION
+For example:
+.LP
+.nf
+    [repositories]
+    openzfs = ../openzfs
+    illumos = .
+
+    [paths]
+    import-paths = ./my-import-paths.conf
+.fi
+.LP
+All settings are optional if their values are supplied as options or defaults.
+Shipped path policy resides in
+.BR /opt/onbld/etc/ozfs/import-paths.conf .
+When run from source, the command uses
+.BR $SRC/tools/ozfs/import-paths.conf .
+.SH PATH POLICY
+The policy uses INI syntax, parsed with Python's standard-library
+.BR configparser .
+Paths are case sensitive and relative to their respective Git tree roots.
+Comments start with
+.B #
+or
+.B ;
+on separate lines.
+Inline comments and variable interpolation are disabled.
+The only key/value delimiter is
+.BR = .
+Unknown sections, duplicate keys, and malformed entries are errors.
+The
+.B DEFAULT
+section must not contain values.
+Omitted sections are treated as empty.
+.LP
+For example:
+.LP
+.nf
+    [map]
+    module/zfs = usr/src/uts/common/fs/zfs
+    include/sys = usr/src/common/zfs
+        usr/src/uts/common/fs/zfs/sys
+    include/sys/nvpair.h = usr/src/uts/common/sys/nvpair.h
+
+    [additions]
+    tests/zfs-tests = usr/src/test/zfs-tests
+
+    [exclude-openzfs]
+    lib/libshare
+    :(glob)**/Makefile.am
+
+    [review-illumos]
+    usr/src/uts/common/fs/zfs/zfs_acl.c
+
+    [primary-freebsd]
+    module/os/freebsd/zfs/arc_os.c = usr/src/uts/common/fs/zfs/arc.c
+
+    [alternate-linux]
+    module/os/linux/zfs/arc_os.c = usr/src/uts/common/fs/zfs/arc.c
+.fi
+.LP
+The supported sections are:
+.TP
+.B [map]
+Entries map an OpenZFS file or directory prefix to an illumos counterpart.
+Relative paths beneath a mapped directory are preserved.
+Indented continuation lines list alternative destinations for one source.
+The longest source prefix wins; among equally specific destinations, a
+unique existing counterpart resolves the mapping.
+Remaining ambiguity requires review.
+ZFS-private headers normally belong under
+.BR uts/common/fs/zfs/sys ;
+native platform headers use explicit filename mappings into
+.BR uts/common/sys .
+Headers shared with userland may belong under
+.BR common/zfs .
+.TP
+.B [additions]
+Source-to-destination mappings that also permit new destination paths.
+These take precedence over ordinary mappings.
+.TP
+.BR [exclude-openzfs] ", " [exclude-illumos]
+Paths without values.
+An excluded OpenZFS path is omitted and reported.
+Mapping into an excluded illumos path is an error.
+Literal paths select a file or a directory subtree.
+The
+.B :(glob)
+prefix selects a glob pattern.
+.TP
+.BR [review-openzfs] ", " [review-illumos]
+Paths without values, using the same literal and glob syntax.
+These select exceptional or intentionally divergent code for review.
+Their diffs remain visible in prepared review artifacts.
+.TP
+.BR [primary-freebsd] ", " [primary-linux]
+Map explicitly selected platform-specific source files or directories to
+their illumos counterparts.
+Each illumos destination has at most one primary.
+.TP
+.BR [alternate-freebsd] ", " [alternate-linux]
+Map alternate platform source paths to the corresponding illumos destination.
+Changes to alternates are omitted and reported.
+Each alternate must have a primary for its destination.
+No platform source path may appear in more than one platform section.
+.LP
+The policy is read only during preparation and checking.
+Applying a reviewed patch uses the paths already present in that patch.
+.SH CONFLICT HANDLING
+With
+.BR --apply ,
+an operation manifest is stored at the destination Git path
+.BR ozfs-import.manifest.tsv .
+Use
+.B git rev-parse --git-path
+with this name to locate it, including in linked worktrees.
+It records source hashes, the starting illumos commit, and a digest of the
+supplied patch.
+Successful application removes the operation manifest.
+Failed application retains it for inspection.
+.LP
+When Git stops with a conflict, the command returns nonzero and preserves
+Git's operation state.
+Resolve the files, stage the resolutions, and run
+.BR "git am --continue" .
+Alternatively, deliberately use
+.BR "git am --abort" ,
+.BR "git am --skip" ,
+or
+.BR "git am --quit" .
+The command never performs these recovery operations itself.
+After settling the operation, remove the retained import manifest before
+starting another invocation with
+.BR --apply .
+.SH EXIT STATUS
+.TP
+.B 0
+The requested check, preparation, or application completed without a review
+stop, or all changed paths were omitted by policy and no patch was needed.
+.TP
+.B 1
+An error, required path review, or failed application prevented completion.
+.TP
+.B 2
+Invalid command-line syntax.
+.SH EXAMPLES
+Prepare one selected change for manual review and import:
+.LP
+.nf
+    ozfs-import --source ../openzfs --output change.mbox COMMIT
+    git am --3way change.mbox
+.fi
+.LP
+Prepare a selected change and its follow-up, then apply the combined patch:
+.LP
+.nf
+    ozfs-import --source ../openzfs --output combined.patch COMMIT FOLLOWUP
+    ozfs-import --source ../openzfs --apply combined.patch
+.fi
+.SH SEE ALSO
+.BR git-am (1),
+.BR git-apply (1)

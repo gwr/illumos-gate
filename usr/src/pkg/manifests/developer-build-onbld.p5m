@@ -98,6 +98,8 @@ file path=opt/onbld/bin/mapfilechk mode=0555 \
     pkg.depend.bypass-generate=.*(?:Checks|onbld).*
 file path=opt/onbld/bin/nightly mode=0555
 file path=opt/onbld/bin/onu mode=0555
+file path=opt/onbld/bin/ozfs-import mode=0555 \
+    pkg.depend.bypass-generate=.*(?:onbld|Ozfs).*
 file path=opt/onbld/bin/protocmp.terse mode=0555
 file path=opt/onbld/bin/signit mode=0555
 file path=opt/onbld/bin/signproto mode=0555
@@ -126,6 +128,8 @@ file path=opt/onbld/etc/exception_lists/interface_check
 file path=opt/onbld/etc/exception_lists/interface_cmp
 file path=opt/onbld/etc/its.conf
 file path=opt/onbld/etc/its.reg
+dir  path=opt/onbld/etc/ozfs
+file path=opt/onbld/etc/ozfs/import-paths.conf mode=0444
 dir  path=opt/onbld/lib
 dir  path=opt/onbld/lib/$(ARCH)
 dir  path=opt/onbld/lib/$(ARCH)/64
@@ -245,6 +249,23 @@ dir  path=opt/onbld/lib/python$(PYTHON3_VERSION)/onbld/__pycache__
 file \
     path=opt/onbld/lib/python$(PYTHON3_VERSION)/onbld/__pycache__/__init__.cpython$(PYTHON3_PKGVERS).pyc \
     mode=0444
+dir  path=opt/onbld/lib/python$(PYTHON3_VERSION)/onbld/Ozfs
+file path=opt/onbld/lib/python$(PYTHON3_VERSION)/onbld/Ozfs/__init__.py mode=0444 \
+    pkg.depend.bypass-generate=.*(?:onbld|Ozfs|Paths).*
+file path=opt/onbld/lib/python$(PYTHON3_VERSION)/onbld/Ozfs/Import.py mode=0444 \
+    pkg.depend.bypass-generate=.*(?:onbld|Ozfs|Paths).*
+file path=opt/onbld/lib/python$(PYTHON3_VERSION)/onbld/Ozfs/Paths.py mode=0444 \
+    pkg.depend.bypass-generate=.*(?:onbld|Ozfs|Paths).*
+dir  path=opt/onbld/lib/python$(PYTHON3_VERSION)/onbld/Ozfs/__pycache__
+file \
+    path=opt/onbld/lib/python$(PYTHON3_VERSION)/onbld/Ozfs/__pycache__/__init__.cpython$(PYTHON3_PKGVERS).pyc \
+    mode=0444 pkg.depend.bypass-generate=.*
+file \
+    path=opt/onbld/lib/python$(PYTHON3_VERSION)/onbld/Ozfs/__pycache__/Import.cpython$(PYTHON3_PKGVERS).pyc \
+    mode=0444 pkg.depend.bypass-generate=.*
+file \
+    path=opt/onbld/lib/python$(PYTHON3_VERSION)/onbld/Ozfs/__pycache__/Paths.cpython$(PYTHON3_PKGVERS).pyc \
+    mode=0444 pkg.depend.bypass-generate=.*
 dir  path=opt/onbld/man
 dir  path=opt/onbld/man/man1onbld
 file path=opt/onbld/man/man1onbld/bldenv.1onbld
@@ -269,6 +290,7 @@ file path=opt/onbld/man/man1onbld/mapfilechk.1onbld
 file path=opt/onbld/man/man1onbld/ndrgen.1onbld
 file path=opt/onbld/man/man1onbld/nightly.1onbld
 file path=opt/onbld/man/man1onbld/onu.1onbld
+file path=opt/onbld/man/man1onbld/ozfs-import.1onbld
 file path=opt/onbld/man/man1onbld/signit.1onbld
 file path=opt/onbld/man/man1onbld/signproto.1onbld
 file path=opt/onbld/man/man1onbld/webrev.1onbld
@@ -288,3 +310,5 @@ license usr/src/lib/libdwarf/THIRDPARTYLICENSE \
     license=usr/src/lib/libdwarf/THIRDPARTYLICENSE
 # nightly(1) uses wget
 depend type=require fmri=web/wget
+# ozfs-import(1onbld) invokes git
+depend type=require fmri=developer/versioning/git

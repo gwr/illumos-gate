@@ -27,7 +27,7 @@
 
 include ../Makefile.tools
 
-SUBDIRS=Checks Scm py3
+SUBDIRS=Checks Scm Ozfs py3
 
 all :=		TARGET= all
 install :=	TARGET= install

@@ -64,6 +64,7 @@ COMMON_SUBDIRS=		\
 	manlink		\
 	ndrgen		\
 	onbld		\
+	ozfs		\
 	protocmp	\
 	protolist	\
 	scripts		\
@@ -114,6 +115,7 @@ ROOTDIRS=					\
 	$(ROOTONBLD)/env			\
 	$(ROOTONBLD)/etc			\
 	$(ROOTONBLD)/etc/exception_lists	\
+	$(ROOTONBLD)/etc/ozfs		\
 	$(ROOTONBLD)/share			\
 	$(ROOTONBLD)/share/lib			\
 	$(ROOTONBLD)/share/lib/ccs		\
@@ -127,7 +129,9 @@ ROOTDIRS +=							\
 	$(ROOTONBLD)/lib/python$(PYTHON3_VERSION)/onbld/Checks			\
 	$(ROOTONBLD)/lib/python$(PYTHON3_VERSION)/onbld/Checks/__pycache__	\
 	$(ROOTONBLD)/lib/python$(PYTHON3_VERSION)/onbld/Scm			\
-	$(ROOTONBLD)/lib/python$(PYTHON3_VERSION)/onbld/Scm/__pycache__
+	$(ROOTONBLD)/lib/python$(PYTHON3_VERSION)/onbld/Scm/__pycache__	\
+	$(ROOTONBLD)/lib/python$(PYTHON3_VERSION)/onbld/Ozfs			\
+	$(ROOTONBLD)/lib/python$(PYTHON3_VERSION)/onbld/Ozfs/__pycache__
 
 all :=		TARGET= install
 install :=	TARGET= install
